@@ -8,10 +8,12 @@ puts t.b.c_string
 s = Some 2
 
 match s
-| Some x -> log "s = %d\n" x
-| None -> log "s = None\n" 0
+| Some x -> log "s = " x
+| None -> log "s = " None
 
-log s x = printf s.c_string x
+log s x =
+    printne s
+    print x
 
 // args: --delete-binary
 // expected stdout:

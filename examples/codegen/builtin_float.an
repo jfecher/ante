@@ -5,11 +5,11 @@ mul_float = 11.0 * 12.0
 div_float = 15.0 / 16.0
 mod_float = 10.0 % 3.0
 
-printf "%.5f\n".c_string add_float
-printf "%.5f\n".c_string sub_float
-printf "%.5f\n".c_string mul_float
-printf "%.5f\n".c_string div_float
-printf "%.5f\n".c_string mod_float
+print add_float
+print sub_float
+print mul_float
+print div_float
+print mod_float
 
 // args: --delete-binary
 // expected stdout:

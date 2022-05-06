@@ -909,17 +909,17 @@ impl<'c> Context<'c> {
             "MulInt" => MulInt,
             "MulFloat" => MulFloat,
 
-            "DivInt" => DivInt,
+            "DivSigned" => DivSigned,
+            "DivUnsigned" => DivUnsigned,
             "DivFloat" => DivFloat,
 
-            "ModInt" => ModInt,
+            "ModSigned" => ModSigned,
+            "ModUnsigned" => ModUnsigned,
             "ModFloat" => ModFloat,
 
-            "LessInt" => LessInt,
+            "LessSigned" => LessSigned,
+            "LessUnsigned" => LessUnsigned,
             "LessFloat" => LessFloat,
-
-            "GreaterInt" => GreaterInt,
-            "GreaterFloat" => GreaterFloat,
 
             "EqInt" => EqInt,
             "EqFloat" => EqFloat,

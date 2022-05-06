@@ -210,17 +210,17 @@ pub enum Builtin {
     MulInt,
     MulFloat,
 
-    DivInt,
+    DivSigned,
+    DivUnsigned,
     DivFloat,
 
-    ModInt,
+    ModSigned,
+    ModUnsigned,
     ModFloat,
 
-    LessInt,
+    LessSigned,
+    LessUnsigned,
     LessFloat,
-
-    GreaterInt,
-    GreaterFloat,
 
     EqInt,
     EqFloat,

@@ -392,7 +392,7 @@ impl<'a> Ast<'a> {
     /// is both a Variable node and is not a VariableKind::TypeConstructor
     fn is_matchable_variable(&self) -> bool {
         match self {
-            Ast::Variable(variable) => matches!(variable.kind, VariableKind::TypeConstructor(..)),
+            Ast::Variable(variable) => !matches!(variable.kind, VariableKind::TypeConstructor(..)),
             _ => false,
         }
     }

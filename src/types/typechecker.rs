@@ -1141,6 +1141,7 @@ impl<'a> Inferable<'a> for ast::Match<'a> {
             // Unroll the first iteration of inferring (pattern, branch) types so each
             // subsequent (pattern, branch) types can be unified against the first.
             let (pattern_type, mut pattern_traits) = infer(&mut self.branches[0].0, cache);
+
             traits.append(&mut pattern_traits);
             unify(&expression, &pattern_type, self.branches[0].0.locate(), cache);
 

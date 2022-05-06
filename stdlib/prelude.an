@@ -169,11 +169,29 @@ impl Mul a given Int a with (*) _ _ = builtin "MulInt"
 impl Mul float with (*) (_: float) (_: float) : float = builtin "MulFloat"
 
 trait Div n with (/): n - n -> n
-impl Div a given Int a with (/) _ _ = builtin "DivInt"
+impl Div i8  with (/) _ _ = builtin "DivSigned"
+impl Div i16 with (/) _ _ = builtin "DivSigned"
+impl Div i32 with (/) _ _ = builtin "DivSigned"
+impl Div i64 with (/) _ _ = builtin "DivSigned"
+impl Div isz with (/) _ _ = builtin "DivSigned"
+impl Div u8  with (/) _ _ = builtin "DivUnsigned"
+impl Div u16 with (/) _ _ = builtin "DivUnsigned"
+impl Div u32 with (/) _ _ = builtin "DivUnsigned"
+impl Div u64 with (/) _ _ = builtin "DivUnsigned"
+impl Div usz with (/) _ _ = builtin "DivUnsigned"
 impl Div float with (/) (_: float) (_: float) : float = builtin "DivFloat"
 
 trait Mod n with (%): n - n -> n
-impl Mod a given Int a with (%) _ _ = builtin "ModInt"
+impl Mod i8  with (%) _ _ = builtin "ModSigned"
+impl Mod i16 with (%) _ _ = builtin "ModSigned"
+impl Mod i32 with (%) _ _ = builtin "ModSigned"
+impl Mod i64 with (%) _ _ = builtin "ModSigned"
+impl Mod isz with (%) _ _ = builtin "ModSigned"
+impl Mod u8  with (%) _ _ = builtin "ModUnsigned"
+impl Mod u16 with (%) _ _ = builtin "ModUnsigned"
+impl Mod u32 with (%) _ _ = builtin "ModUnsigned"
+impl Mod u64 with (%) _ _ = builtin "ModUnsigned"
+impl Mod usz with (%) _ _ = builtin "ModUnsigned"
 impl Mod float with (%) (_: float) (_: float) : float = builtin "ModFloat"
 
 trait Eq t with (==): t - t -> bool
@@ -186,35 +204,26 @@ impl Eq bool with (==) (_: bool) (_: bool) : bool = builtin "EqBool"
 (not) a = if a then false else true
 (!=) l r = not (l == r)
 
-type Ordering = | Less | Equal | Greater
-
-impl Eq Ordering with
-    (==) (a: Ordering) (b: Ordering) : bool =
-        match a, b
-        | Less, Less -> true
-        | Equal, Equal -> true
-        | Greater, Greater -> true
-        | _ -> false
-
 trait Cmp a with
-    compare: a - a -> Ordering
+    (<): a - a -> bool
 
-(<) a b = compare a b == Less
-(>) a b = compare a b == Greater
-(<=) a b = compare a b != Greater
-(>=) a b = compare a b != Less
+(>) a b = b < a
+(<=) a b = not (b < a)
+(>=) a b = not (a < b)
 
-impl Cmp a given Int a with
-    compare _ _ =
-        if builtin "LessInt" then Less
-        else if builtin "GreaterInt" then Greater
-        else Equal
+impl Cmp i8  with (<) _ _ = builtin "LessSigned"
+impl Cmp i16 with (<) _ _ = builtin "LessSigned"
+impl Cmp i32 with (<) _ _ = builtin "LessSigned"
+impl Cmp i64 with (<) _ _ = builtin "LessSigned"
+impl Cmp isz with (<) _ _ = builtin "LessSigned"
 
-impl Cmp float with
-    compare (_: float) (_: float) : Ordering =
-        if builtin "LessFloat" then Less
-        else if builtin "GreaterFloat" then Greater
-        else Equal
+impl Cmp u8  with (<) _ _ = builtin "LessUnsigned"
+impl Cmp u16 with (<) _ _ = builtin "LessUnsigned"
+impl Cmp u32 with (<) _ _ = builtin "LessUnsigned"
+impl Cmp u64 with (<) _ _ = builtin "LessUnsigned"
+impl Cmp usz with (<) _ _ = builtin "LessUnsigned"
+
+impl Cmp float with (<) _ _ = builtin "LessFloat"
 
 impl TryCast i64 u64 with
     try_cast x =
@@ -302,7 +311,9 @@ impl Print isz with
 
 impl Print char with printne x = putchar x
 
-impl Print float with printne _ = panic "float printing is currently disabled"
+impl Print float with printne f = 
+    extern printf : Ptr char - float -> unit
+    printf ("%.5f".c_string) f
 
 impl Print string with printne s =
     print_string s
