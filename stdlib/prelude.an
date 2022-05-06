@@ -320,6 +320,12 @@ impl Print string with printne s =
 
 impl Print (Ptr char) with printne s = print_c_string s
 
+impl Print (Maybe a) given Print a with
+    printne m =
+        match m
+        | Some a -> printne a
+        | None -> printne "None"
+
 unwrap (m: Maybe t) : t =
     match m
     | Some x -> x

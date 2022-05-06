@@ -28,6 +28,11 @@ use crate::util::{fmap, trustme};
 use colored::Colorize;
 use std::collections::HashMap;
 
+/// Arbitrary impl requirements can result in arbitrary recursion
+/// when attempting to solve impl constraints. To prevent infinitely
+/// recursing on bad inputs, a limit of 10 recursive calls is arbitrarily chosen.
+const RECURSION_LIMIT: u32 = 10;
+
 /// Go through the given list of traits and determine if they should
 /// be propogated upward or if an impl should be searched for now.
 /// Returns the list of traits propogated upward.
@@ -65,7 +70,7 @@ pub fn resolve_traits<'a>(
     for constraint in other_constraints.iter() {
         // Searching for an impl for normal constraints may require recursively searching for
         // more impls (due to `impl A given B` constraints) before finding a matching one.
-        solve_normal_constraint(constraint, &empty_bindings, cache);
+        solve_normal_constraint(constraint, cache);
     }
 
     propagated_traits
@@ -227,8 +232,9 @@ fn find_field<'c>(
 
 /// Search and bind a specific impl to the given TraitConstraint, erroring if 0
 /// or >1 matching impls are found.
-fn solve_normal_constraint<'c>(constraint: &TraitConstraint, bindings: &TypeBindings, cache: &mut ModuleCache<'c>) {
-    let mut matching_impls = find_matching_impls(constraint, bindings, cache);
+fn solve_normal_constraint<'c>(constraint: &TraitConstraint, cache: &mut ModuleCache<'c>) {
+    let mut bindings = HashMap::new();
+    let mut matching_impls = find_matching_impls(constraint, &mut bindings, RECURSION_LIMIT, cache);
 
     #[allow(clippy::comparison_chain)]
     if matching_impls.len() == 1 {
@@ -270,9 +276,12 @@ fn solve_normal_constraint<'c>(constraint: &TraitConstraint, bindings: &TypeBind
 /// Note that any impls that are automatically impld by the compiler will not have their
 /// ImplInfoIds within the returned Vec (since they don't have any).
 fn find_matching_impls<'c>(
-    constraint: &TraitConstraint, bindings: &TypeBindings, cache: &mut ModuleCache<'c>,
+    constraint: &TraitConstraint, bindings: &TypeBindings, fuel: u32, cache: &mut ModuleCache<'c>,
 ) -> Vec<(Vec<(ImplInfoId, TraitConstraint)>, TypeBindings)> {
-    if constraint.is_int_constraint(cache) {
+
+    if fuel == 0 {
+        vec![]
+    } else if constraint.is_int_constraint(cache) {
         match find_int_constraint_impl(constraint, bindings, cache) {
             Ok(bindings) => vec![(vec![], bindings)],
             Err(_) => vec![],
@@ -283,7 +292,7 @@ fn find_matching_impls<'c>(
             Err(_) => vec![],
         }
     } else {
-        find_matching_normal_impls(constraint, bindings, cache)
+        find_matching_normal_impls(constraint, bindings, fuel - 1, cache)
     }
 }
 
@@ -293,7 +302,7 @@ fn find_matching_impls<'c>(
 /// Thus, each element of the returned Vec will contain a set of the original impl found
 /// and all impls it depends on (in practice this number is small, usually < 2).
 fn find_matching_normal_impls<'c>(
-    constraint: &TraitConstraint, bindings: &TypeBindings, cache: &mut ModuleCache<'c>,
+    constraint: &TraitConstraint, bindings: &TypeBindings, fuel: u32, cache: &mut ModuleCache<'c>,
 ) -> Vec<(Vec<(ImplInfoId, TraitConstraint)>, TypeBindings)> {
     let scope = cache[constraint.scope].clone();
 
@@ -321,7 +330,7 @@ fn find_matching_normal_impls<'c>(
             .ok()?;
 
             // Then, check any `given Trait2 a ...` clauses for our impls to further narrow them down
-            check_given_constraints(constraint, impl_id, type_bindings, impl_bindings, cache)
+            check_given_constraints(constraint, impl_id, type_bindings, impl_bindings, fuel, cache)
         })
         .collect()
 }
@@ -333,7 +342,7 @@ fn find_matching_normal_impls<'c>(
 /// of the original constraint and all its required given constraints are returned.
 fn check_given_constraints<'c>(
     constraint: &TraitConstraint, impl_id: ImplInfoId, mut type_bindings: TypeBindings,
-    mut impl_bindings: TypeBindings, cache: &mut ModuleCache<'c>,
+    mut impl_bindings: TypeBindings, fuel: u32, cache: &mut ModuleCache<'c>,
 ) -> Option<(Vec<(ImplInfoId, TraitConstraint)>, TypeBindings)> {
     let mut required_impls = vec![(impl_id, constraint.clone())];
 
@@ -349,7 +358,7 @@ fn check_given_constraints<'c>(
             typechecker::replace_all_typevars_with_bindings(typ, &mut impl_bindings, cache)
         });
 
-        let mut matching_impls = find_matching_impls(&constraint, &type_bindings, cache);
+        let mut matching_impls = find_matching_impls(&constraint, &type_bindings, fuel, cache);
 
         if matching_impls.len() == 1 {
             let (mut impls, bindings) = matching_impls.remove(0);

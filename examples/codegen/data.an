@@ -1,19 +1,19 @@
 type T = a: i32, b: string
 
 t = T 1 "one"
-log "t = %d, " t.a
+printne "t = "
+printne (t.a)
+printne ", "
 
 puts t.b.c_string
 
 s = Some 2
 
 match s
-| Some x -> log "s = " x
-| None -> log "s = " None
-
-log s x =
-    printne s
+| Some x -> 
+    printne "s = "
     print x
+| None -> print "s = None"
 
 // args: --delete-binary
 // expected stdout:
