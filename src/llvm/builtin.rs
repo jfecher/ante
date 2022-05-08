@@ -52,6 +52,11 @@ pub fn call_builtin<'g, 'c>(builtin: &Builtin, generator: &mut Generator<'g>) ->
         Builtin::SignExtend => sign_extend(generator),
         Builtin::ZeroExtend => zero_extend(generator),
 
+        Builtin::SignedToFloat => signed_to_float(generator),
+        Builtin::UnsignedToFloat => unsigned_to_float(generator),
+        Builtin::FloatToSigned => float_to_signed(generator),
+        Builtin::FloatToUnsigned => float_to_unsigned(generator),
+
         Builtin::Truncate => truncate(generator),
 
         Builtin::Deref => deref_ptr(generator),
@@ -214,6 +219,34 @@ fn zero_extend<'g>(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
     let x = current_function.get_nth_param(0).unwrap().as_basic_value_enum().into_int_value();
     let ret = current_function.get_type().get_return_type().unwrap().into_int_type();
     generator.builder.build_int_z_extend(x, ret, "zero_extend").as_basic_value_enum()
+}
+
+fn signed_to_float<'g>(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+    let current_function = generator.current_function();
+    let x = current_function.get_nth_param(0).unwrap().as_basic_value_enum().into_int_value();
+    let ret = current_function.get_type().get_return_type().unwrap().into_float_type();
+    generator.builder.build_signed_int_to_float(x, ret, "signed_to_float").as_basic_value_enum()
+}
+
+fn unsigned_to_float<'g>(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+    let current_function = generator.current_function();
+    let x = current_function.get_nth_param(0).unwrap().as_basic_value_enum().into_int_value();
+    let ret = current_function.get_type().get_return_type().unwrap().into_float_type();
+    generator.builder.build_unsigned_int_to_float(x, ret, "unsigned_to_float").as_basic_value_enum()
+}
+
+fn float_to_signed<'g>(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+    let current_function = generator.current_function();
+    let x = current_function.get_nth_param(0).unwrap().as_basic_value_enum().into_float_value();
+    let ret = current_function.get_type().get_return_type().unwrap().into_int_type();
+    generator.builder.build_float_to_signed_int(x, ret, "float_to_signed").as_basic_value_enum()
+}
+
+fn float_to_unsigned<'g>(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+    let current_function = generator.current_function();
+    let x = current_function.get_nth_param(0).unwrap().as_basic_value_enum().into_float_value();
+    let ret = current_function.get_type().get_return_type().unwrap().into_int_type();
+    generator.builder.build_float_to_unsigned_int(x, ret, "float_to_unsigned").as_basic_value_enum()
 }
 
 fn truncate<'g>(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {

@@ -1095,17 +1095,24 @@ impl<'a> Inferable<'a> for ast::Definition<'a> {
             self.pattern.set_type(t.clone());
         }
 
-        // Now infer the traits + type of the lhs
-        let typevars_in_fn = find_all_typevars(self.pattern.get_type().unwrap(), false, cache);
-        let exposed_traits = traitchecker::resolve_traits(traits, &typevars_in_fn, cache);
-
+        // If this definition is of a lambda or variable we try to generalize it,
+        // which entails wrapping type variables in a forall, and finding which traits
+        // usages of this definitio require.
         let should_generalize = matches!(self.expr.as_ref(), ast::Ast::Lambda(_) | ast::Ast::Variable(_));
-        bind_irrefutable_pattern(self.pattern.as_mut(), &t, &exposed_traits, should_generalize, cache);
+
+        let traits = if should_generalize {
+            let typevars_in_fn = find_all_typevars(self.pattern.get_type().unwrap(), false, cache);
+            let exposed_traits = traitchecker::resolve_traits(traits, &typevars_in_fn, cache);
+
+            bind_irrefutable_pattern(self.pattern.as_mut(), &t, &exposed_traits, should_generalize, cache);
+            vec![]
+        } else {
+            traits
+        };
 
         // TODO: Can these operations on the LetBindingLevel be simplified?
         CURRENT_LEVEL.store(previous_level, Ordering::SeqCst);
-
-        (unit, vec![])
+        (unit, traits)
     }
 }
 

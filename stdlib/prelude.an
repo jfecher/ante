@@ -91,59 +91,84 @@ impl Cast (Maybe m) string given Cast m string with
         | None -> "None"
 
 // Begin wall of casts
-impl Cast u8 u16 with cast _ = builtin "zero_extend"
-impl Cast u8 u32 with cast _ = builtin "zero_extend"
-impl Cast u8 u64 with cast _ = builtin "zero_extend"
-impl Cast u8 usz with cast _ = builtin "zero_extend"
+impl Cast u8 u16 with cast _ = builtin "ZeroExtend"
+impl Cast u8 u32 with cast _ = builtin "ZeroExtend"
+impl Cast u8 u64 with cast _ = builtin "ZeroExtend"
+impl Cast u8 usz with cast _ = builtin "ZeroExtend"
 
-impl Cast u16 u8  with cast _ = builtin "truncate"
-impl Cast u16 u32 with cast _ = builtin "zero_extend"
-impl Cast u16 u64 with cast _ = builtin "zero_extend"
-impl Cast u16 usz with cast _ = builtin "zero_extend"
+impl Cast u16 u8  with cast _ = builtin "Truncate"
+impl Cast u16 u32 with cast _ = builtin "ZeroExtend"
+impl Cast u16 u64 with cast _ = builtin "ZeroExtend"
+impl Cast u16 usz with cast _ = builtin "ZeroExtend"
 
-impl Cast u32 u8  with cast _ = builtin "truncate"
-impl Cast u32 u16 with cast _ = builtin "truncate"
-impl Cast u32 u64 with cast _ = builtin "zero_extend"
-impl Cast u32 usz with cast _ = builtin "zero_extend"
+impl Cast u32 u8  with cast _ = builtin "Truncate"
+impl Cast u32 u16 with cast _ = builtin "Truncate"
+impl Cast u32 u64 with cast _ = builtin "ZeroExtend"
+impl Cast u32 usz with cast _ = builtin "ZeroExtend"
 
-impl Cast u64 u8  with cast _ = builtin "truncate"
-impl Cast u64 u16 with cast _ = builtin "truncate"
-impl Cast u64 u32 with cast _ = builtin "truncate"
-impl Cast u64 usz with cast _ = builtin "truncate"
+impl Cast u64 u8  with cast _ = builtin "Truncate"
+impl Cast u64 u16 with cast _ = builtin "Truncate"
+impl Cast u64 u32 with cast _ = builtin "Truncate"
+impl Cast u64 usz with cast _ = builtin "Truncate"
 
-impl Cast usz u8  with cast _ = builtin "truncate"
-impl Cast usz u16 with cast _ = builtin "truncate"
-impl Cast usz u64 with cast _ = builtin "truncate"
-impl Cast usz usz with cast _ = builtin "zero_extend"
+impl Cast usz u8  with cast _ = builtin "Truncate"
+impl Cast usz u16 with cast _ = builtin "Truncate"
+impl Cast usz u64 with cast _ = builtin "Truncate"
+impl Cast usz usz with cast _ = builtin "ZeroExtend"
 
 // Signed types
-impl Cast i8 i16 with cast _ = builtin "sign_extend"
-impl Cast i8 i32 with cast _ = builtin "sign_extend"
-impl Cast i8 i64 with cast _ = builtin "sign_extend"
-impl Cast i8 isz with cast _ = builtin "sign_extend"
+impl Cast i8 i16 with cast _ = builtin "SignExtend"
+impl Cast i8 i32 with cast _ = builtin "SignExtend"
+impl Cast i8 i64 with cast _ = builtin "SignExtend"
+impl Cast i8 isz with cast _ = builtin "SignExtend"
 
-impl Cast i16 i8  with cast _ = builtin "truncate"
-impl Cast i16 i32 with cast _ = builtin "sign_extend"
-impl Cast i16 i64 with cast _ = builtin "sign_extend"
-impl Cast i16 isz with cast _ = builtin "sign_extend"
+impl Cast i16 i8  with cast _ = builtin "Truncate"
+impl Cast i16 i32 with cast _ = builtin "SignExtend"
+impl Cast i16 i64 with cast _ = builtin "SignExtend"
+impl Cast i16 isz with cast _ = builtin "SignExtend"
 
-impl Cast i32 i8  with cast _ = builtin "truncate"
-impl Cast i32 i16 with cast _ = builtin "truncate"
-impl Cast i32 i64 with cast _ = builtin "sign_extend"
-impl Cast i32 isz with cast _ = builtin "sign_extend"
+impl Cast i32 i8  with cast _ = builtin "Truncate"
+impl Cast i32 i16 with cast _ = builtin "Truncate"
+impl Cast i32 i64 with cast _ = builtin "SignExtend"
+impl Cast i32 isz with cast _ = builtin "SignExtend"
 
-impl Cast i64 i8  with cast _ = builtin "truncate"
-impl Cast i64 i16 with cast _ = builtin "truncate"
-impl Cast i64 i32 with cast _ = builtin "truncate"
-impl Cast i64 isz with cast _ = builtin "truncate"
+impl Cast i64 i8  with cast _ = builtin "Truncate"
+impl Cast i64 i16 with cast _ = builtin "Truncate"
+impl Cast i64 i32 with cast _ = builtin "Truncate"
+impl Cast i64 isz with cast _ = builtin "Truncate"
 
-impl Cast isz i8  with cast _ = builtin "truncate"
-impl Cast isz i16 with cast _ = builtin "truncate"
-impl Cast isz i64 with cast _ = builtin "truncate"
-impl Cast isz isz with cast _ = builtin "sign_extend"
+impl Cast isz i8  with cast _ = builtin "Truncate"
+impl Cast isz i16 with cast _ = builtin "Truncate"
+impl Cast isz i64 with cast _ = builtin "Truncate"
+impl Cast isz isz with cast _ = builtin "SignExtend"
+
+// Float casts
+impl Cast i8  float with cast _ = builtin "SignedToFloat"
+impl Cast i16 float with cast _ = builtin "SignedToFloat"
+impl Cast i32 float with cast _ = builtin "SignedToFloat"
+impl Cast i64 float with cast _ = builtin "SignedToFloat"
+impl Cast isz float with cast _ = builtin "SignedToFloat"
+
+impl Cast u8  float with cast _ = builtin "UnsignedToFloat"
+impl Cast u16 float with cast _ = builtin "UnsignedToFloat"
+impl Cast u32 float with cast _ = builtin "UnsignedToFloat"
+impl Cast u64 float with cast _ = builtin "UnsignedToFloat"
+impl Cast usz float with cast _ = builtin "UnsignedToFloat"
+
+impl Cast float i8  with cast _ = builtin "FloatToSigned"
+impl Cast float i16 with cast _ = builtin "FloatToSigned"
+impl Cast float i32 with cast _ = builtin "FloatToSigned"
+impl Cast float i64 with cast _ = builtin "FloatToSigned"
+impl Cast float isz with cast _ = builtin "FloatToSigned"
+
+impl Cast float u8  with cast _ = builtin "FloatToUnsigned"
+impl Cast float u16 with cast _ = builtin "FloatToUnsigned"
+impl Cast float u32 with cast _ = builtin "FloatToUnsigned"
+impl Cast float u64 with cast _ = builtin "FloatToUnsigned"
+impl Cast float usz with cast _ = builtin "FloatToUnsigned"
 
 // Other casts: TODO fill in
-impl Cast u64 char with cast _ = builtin "truncate"
+impl Cast u64 char with cast _ = builtin "Truncate"
 
 /// Represents a failable type cast from a to b
 trait TryCast a b with
@@ -250,10 +275,10 @@ offset_c_string (ptr: Ptr char) (index: usz) : Ptr char =
     transmute new_addr
 
 offset (_ptr: Ptr t) (_index: usz) : Ptr t =
-    builtin "offset"
+    builtin "Offset"
 
 deref (_: ref t) : t =
-    builtin "deref"
+    builtin "Deref"
 
 deref_ptr (p: Ptr t) : t =
     deref <| transmute p
@@ -261,7 +286,7 @@ deref_ptr (p: Ptr t) : t =
 null = cast 0usz : Ptr a
 
 transmute (_: a) : b =
-    builtin "transmute"
+    builtin "Transmute"
 
 // TODO: 'mut' and special-case extract versus append
 // trait Insert collection index elem
@@ -311,9 +336,21 @@ impl Print isz with
 
 impl Print char with printne x = putchar x
 
-impl Print float with printne f = 
-    extern printf : Ptr char - float -> unit
-    printf ("%.5f".c_string) f
+impl Print float with 
+    printne = print_float
+
+// TODO: temporary, very inaccurate
+print_float f =
+    if f < 0.0 then
+        putchar '-'
+        print_float (0.0-f)
+    else
+        uint = cast f
+        print_unsigned uint
+        putchar '.'
+        f2 = f - cast uint
+        // Show up to 5 decimal places
+        print_unsigned (cast (f2 * 10_000.0))
 
 impl Print string with printne s =
     print_string s
@@ -497,7 +534,7 @@ impl Extract string usz char with
 
 type Type t = | MkType
 
-size_of (_: Type t) : usz = builtin "size_of"
+size_of (_: Type t) : usz = builtin "SizeOf"
 
 
 // impl Insert string int char

@@ -229,6 +229,12 @@ pub enum Builtin {
 
     SignExtend,
     ZeroExtend,
+
+    SignedToFloat,
+    UnsignedToFloat,
+    FloatToSigned,
+    FloatToUnsigned,
+
     Truncate,
     Deref,
     Offset,

@@ -926,14 +926,19 @@ impl<'c> Context<'c> {
             "EqChar" => EqChar,
             "EqBool" => EqBool,
 
-            "sign_extend" => SignExtend,
-            "zero_extend" => ZeroExtend,
+            "SignExtend" => SignExtend,
+            "ZeroExtend" => ZeroExtend,
 
-            "truncate" => Truncate,
+            "SignedToFloat" => SignedToFloat,
+            "UnsignedToFloat" => UnsignedToFloat,
+            "FloatToSigned" => FloatToSigned,
+            "FloatToUnsigned" => FloatToUnsigned,
 
-            "deref" => Deref,
-            "offset" => Offset,
-            "transmute" => Transmute,
+            "Truncate" => Truncate,
+
+            "Deref" => Deref,
+            "Offset" => Offset,
+            "Transmute" => Transmute,
 
             _ => unreachable!("Unknown builtin '{}'", arg),
         })
