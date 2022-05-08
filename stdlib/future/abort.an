@@ -1,0 +1,30 @@
+effect Fail with
+    fail: unit -> a
+
+try (f: unit -> a can Fail) -> Maybe a =
+    handle f ()
+    | return a -> Some a
+    | fail () -> None
+
+try_or (default: a) (f: unit -> a can Fail) -> a =
+    try f else default
+
+assert (cond: bool) -> unit can Fail =
+    if not cond then fail ()
+
+/// Retry a function until it succeeds (doesn't call fail).
+/// This should be used with functions using a Fail effect
+/// along with other effects. Otherwise, it will loop forever.
+///
+/// ```
+/// get_input () -> string can IO = ...
+/// parse (s: string) -> u32 can Fail = ...
+///
+/// number = retry_until_success $$
+///     input = get_input ()
+///     parse input
+/// ```
+retry_until_success (f: unit -> a can Fail) -> a =
+    handle f ()
+    | return a -> a
+    | fail () -> retry_until_success f

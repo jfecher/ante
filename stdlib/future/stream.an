@@ -1,0 +1,53 @@
+// A Stream library for after algebraic effects are implemented in ante.
+// Until then this serves only as an example design of some future language features.
+
+effect Emit a with
+    emit: a -> unit
+
+trait Stream t a with
+    stream: t -> unit can Emit a
+
+impl Stream (unit -> unit can Emit a) a with
+    stream f = f ()
+
+impl Stream (Vec a) a with
+    stream vec =
+        indices () = range 0 (len vec)
+        map indices (vec#_)
+
+for (s: Stream _ a) (f: a -> b) -> unit =
+    handle stream s
+    | emit a ->
+        f a
+        for resume f
+
+filter_map (s: Stream _ a) (f: a -> Maybe b) -> unit can Emit b =
+    handle stream s
+    | emit a ->
+        match f a
+        | Some b -> emit b
+        | None -> ()
+
+        filter_map resume f
+
+map s f = filter_map s fn x -> Some (f x)
+
+filter s f = filter_map s fn x -> if f x then x
+
+fold (s: Stream _ a) (acc: b) (f: a -> b -> b) -> b =
+    handle stream s
+    | return _ -> acc
+    | emit value ->
+        x = f value acc
+        fold resume x f
+
+map2 (as: Stream _ a) (bs: Stream _ b) (f: a -> b -> c) -> unit can Emit c =
+    handle stream as
+    | emit a ->
+        resume_a = resume
+        handle stream bs
+        | emit b ->
+            emit (f a b)
+            map2 resume_a resume
+
+zip as bs = map2 as bs (,)
