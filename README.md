@@ -82,9 +82,8 @@ to contribute to
 ### Community
 
 The best place to follow ante's development is in the official discord: https://discord.gg/BN97fKnEH2.
-Some development is also posted to the #ante channel of the Programming Languages discord: https://discord.gg/4Kjt3ZE.
 There is also the mostly inactive subreddit at [/r/ante](https://reddit.com/r/ante) which is mainly used for questions about the language rather
-than development updates.
+than development updates. You can also feel to file issues or ask questions on this repository.
 
 ---
 
