@@ -14,16 +14,16 @@
 //! Any pass-specific information that isn't needed for later phases shouldn't be
 //! kept in the ModuleCache and instead should be in a special data structure for
 //! the relevant phase. An example is the `llvm::Generator` in the llvm codegen phase.
-use crate::nameresolution::NameResolver;
-use crate::types::{ TypeVariableId, TypeInfoId, TypeInfo, Type, TypeInfoBody };
-use crate::types::{ TypeBinding, LetBindingLevel, Kind };
-use crate::types::traits::{ RequiredImpl, RequiredTrait };
-use crate::error::location::{ Location, Locatable };
-use crate::parser::ast::{ Ast, Definition, TraitDefinition, TraitImpl, TypeAnnotation };
 use crate::cache::unsafecache::UnsafeCache;
+use crate::error::location::{Locatable, Location};
+use crate::nameresolution::NameResolver;
+use crate::parser::ast::{Ast, Definition, TraitDefinition, TraitImpl, TypeAnnotation};
+use crate::types::traits::{RequiredImpl, RequiredTrait};
+use crate::types::{Kind, LetBindingLevel, TypeBinding};
+use crate::types::{Type, TypeInfo, TypeInfoBody, TypeInfoId, TypeVariableId};
 
-use std::path::{ Path, PathBuf };
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 mod unsafecache;
 
@@ -84,9 +84,9 @@ pub struct ModuleCache<'a> {
     /// definitions within impls aren't publically exposed.
     pub impl_infos: Vec<ImplInfo<'a>>,
 
-    /// Maps ImplScopeId -> Vec<ImplInfo>
+    /// Maps ModuleId -> Vec<ImplInfo>
     /// Name resolution needs to store the impls visible to
-    /// each variable so when any UnknownTraitImpls are resolved
+    /// each variable so when impls are resolved
     /// during type inference the inferencer can quickly get the
     /// impls that should be in scope and select an instance.
     pub impl_scopes: Vec<Vec<ImplInfoId>>,
@@ -101,7 +101,7 @@ pub struct ModuleCache<'a> {
 
     /// Used to give a unique ID to each node so they can later be
     /// used during static trait dispatch.
-    pub variable_nodes: Vec</* name: */String>,
+    pub variable_nodes: Vec</* name: */ String>,
 
     /// The filepath to ante's stdlib/prelude.an file to be automatically
     /// included when defining a new ante module.
@@ -135,7 +135,10 @@ pub enum DefinitionKind<'a> {
     /// A TypeConstructor function to construct a type.
     /// If the constructed type is a tagged union, tag will
     /// be Some, otherwise if it is a struct, tag is None.
-    TypeConstructor { name: String, tag: Option<u8> },
+    TypeConstructor {
+        name: String,
+        tag: Option<u8>,
+    },
 
     Parameter,
 
@@ -244,7 +247,7 @@ impl<'a> TraitInfo<'a> {
     /// Member access traits are special in that they're automatically
     /// defined and implemented by the compiler.
     pub fn is_member_access(&self) -> bool {
-        self.name.starts_with(".")
+        self.name.starts_with('.')
     }
 
     /// The `name` of a member access trait is `.field`
@@ -372,11 +375,10 @@ impl<'a> ModuleCache<'a> {
         Type::TypeVariable(id)
     }
 
-    pub fn push_trait_definition(&mut self, name: String, typeargs: Vec<TypeVariableId>,
-                fundeps: Vec<TypeVariableId>, trait_node: Option<&'a mut TraitDefinition<'a>>,
-                location: Location<'a>) -> TraitInfoId
-    {
-
+    pub fn push_trait_definition(
+        &mut self, name: String, typeargs: Vec<TypeVariableId>, fundeps: Vec<TypeVariableId>,
+        trait_node: Option<&'a mut TraitDefinition<'a>>, location: Location<'a>,
+    ) -> TraitInfoId {
         let id = self.trait_infos.len();
         self.trait_infos.push(TraitInfo {
             name,
@@ -390,19 +392,12 @@ impl<'a> ModuleCache<'a> {
         TraitInfoId(id)
     }
 
-    pub fn push_trait_impl(&mut self, trait_id: TraitInfoId, typeargs: Vec<Type>,
-            definitions: Vec<DefinitionInfoId>, trait_impl: &'a mut TraitImpl<'a>,
-            given: Vec<RequiredTrait>, location: Location<'a>) -> ImplInfoId {
-
+    pub fn push_trait_impl(
+        &mut self, trait_id: TraitInfoId, typeargs: Vec<Type>, definitions: Vec<DefinitionInfoId>,
+        trait_impl: &'a mut TraitImpl<'a>, given: Vec<RequiredTrait>, location: Location<'a>,
+    ) -> ImplInfoId {
         let id = self.impl_infos.len();
-        self.impl_infos.push(ImplInfo {
-            trait_id,
-            typeargs,
-            definitions,
-            location,
-            given,
-            trait_impl,
-        });
+        self.impl_infos.push(ImplInfo { trait_id, typeargs, definitions, location, given, trait_impl });
         ImplInfoId(id)
     }
 
@@ -414,10 +409,7 @@ impl<'a> ModuleCache<'a> {
 
     pub fn push_trait_binding(&mut self, location: Location<'a>) -> TraitBindingId {
         let id = self.trait_bindings.len();
-        self.trait_bindings.push(TraitBinding {
-            required_impls: vec![],
-            location,
-        });
+        self.trait_bindings.push(TraitBinding { required_impls: vec![], location });
         TraitBindingId(id)
     }
 
@@ -429,7 +421,13 @@ impl<'a> ModuleCache<'a> {
                 let trait_name = ".".to_string() + field_name;
                 let collection_type = self.next_type_variable_id(level);
                 let field_type = self.next_type_variable_id(level);
-                let id = self.push_trait_definition(trait_name, vec![collection_type], vec![field_type], None, Location::builtin());
+                let id = self.push_trait_definition(
+                    trait_name,
+                    vec![collection_type],
+                    vec![field_type],
+                    None,
+                    Location::builtin(),
+                );
                 self.member_access_traits.insert(field_name.to_string(), id);
                 id
             },
@@ -440,5 +438,43 @@ impl<'a> ModuleCache<'a> {
         let id = VariableId(self.variable_nodes.len());
         self.variable_nodes.push(name.to_string());
         id
+    }
+}
+
+macro_rules! impl_index_for {
+    ( $index_type:ty, $elem_type:tt, $field_name:tt ) => {
+        impl<'c> std::ops::Index<$index_type> for ModuleCache<'c> {
+            type Output = $elem_type<'c>;
+
+            fn index(&self, index: $index_type) -> &Self::Output {
+                &self.$field_name[index.0]
+            }
+        }
+
+        impl<'c> std::ops::IndexMut<$index_type> for ModuleCache<'c> {
+            fn index_mut(&mut self, index: $index_type) -> &mut Self::Output {
+                &mut self.$field_name[index.0]
+            }
+        }
+    };
+}
+
+impl_index_for!(DefinitionInfoId, DefinitionInfo, definition_infos);
+impl_index_for!(TypeInfoId, TypeInfo, type_infos);
+impl_index_for!(TraitInfoId, TraitInfo, trait_infos);
+impl_index_for!(ImplInfoId, ImplInfo, impl_infos);
+impl_index_for!(TraitBindingId, TraitBinding, trait_bindings);
+
+impl<'c> std::ops::Index<ImplScopeId> for ModuleCache<'c> {
+    type Output = Vec<ImplInfoId>;
+
+    fn index(&self, index: ImplScopeId) -> &Self::Output {
+        &self.impl_scopes[index.0]
+    }
+}
+
+impl<'c> std::ops::IndexMut<ImplScopeId> for ModuleCache<'c> {
+    fn index_mut(&mut self, index: ImplScopeId) -> &mut Self::Output {
+        &mut self.impl_scopes[index.0]
     }
 }

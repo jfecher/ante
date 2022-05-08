@@ -28,10 +28,10 @@
 //!
 //! These types are mostly useful for their data they hold - they only have a few simple
 //! methods on them for displaying them or converting between them.
-use crate::cache::{ ModuleCache, TraitInfoId, DefinitionInfoId, ImplScopeId, TraitBindingId, VariableId };
-use crate::types::{ Type, TypeVariableId, typeprinter::TypePrinter, PrimitiveType };
-use crate::types::typechecker::find_all_typevars;
+use crate::cache::{DefinitionInfoId, ImplScopeId, ModuleCache, TraitBindingId, TraitInfoId, VariableId};
 use crate::error::location::Location;
+use crate::types::typechecker::find_all_typevars;
+use crate::types::{typeprinter::TypePrinter, PrimitiveType, Type, TypeVariableId};
 
 use colored::Colorize;
 
@@ -119,15 +119,15 @@ pub struct TraitConstraint {
 pub type TraitConstraints = Vec<TraitConstraint>;
 
 impl RequiredTrait {
-    pub fn as_constraint(&self, scope: ImplScopeId, callsite_id: VariableId, callsite: TraitBindingId) -> TraitConstraint {
+    pub fn as_constraint(
+        &self, scope: ImplScopeId, callsite_id: VariableId, callsite: TraitBindingId,
+    ) -> TraitConstraint {
         TraitConstraint {
             trait_id: self.trait_id,
             args: self.args.clone(),
             scope,
             callsite,
-            origin: self.origin.unwrap_or_else(|| {
-                callsite_id
-            }),
+            origin: self.origin.unwrap_or(callsite_id),
         }
     }
 
@@ -182,7 +182,7 @@ pub struct RequiredTraitPrinter<'a, 'b> {
     /// Controls whether to show some hidden data, like lifetimes of each ref
     pub debug: bool,
 
-    pub cache: &'a ModuleCache<'b>
+    pub cache: &'a ModuleCache<'b>,
 }
 
 impl<'a, 'b> Display for RequiredTraitPrinter<'a, 'b> {
@@ -191,7 +191,7 @@ impl<'a, 'b> Display for RequiredTraitPrinter<'a, 'b> {
 
         write!(f, "{}", trait_info.name.blue())?;
         for arg in self.required_trait.args.iter() {
-            let arg_printer =  TypePrinter::new(arg, self.typevar_names.clone(), self.debug, self.cache);
+            let arg_printer = TypePrinter::new(arg, self.typevar_names.clone(), self.debug, self.cache);
             write!(f, " {}", arg_printer)?;
         }
         Ok(())
@@ -204,14 +204,10 @@ impl TraitConstraint {
     /// to compile. Since they essentially don't have scopes, callsites, or origins
     /// care must be taken inside find_impl and Variable::codegen to avoid referring
     /// to these invalid values.
-    pub fn member_access_constraint(trait_id: TraitInfoId, args: Vec<Type>, callsite: TraitBindingId) -> TraitConstraint {
-        TraitConstraint {
-            trait_id,
-            args,
-            scope: ImplScopeId(0),
-            callsite,
-            origin: VariableId(0),
-        }
+    pub fn member_access_constraint(
+        trait_id: TraitInfoId, args: Vec<Type>, callsite: TraitBindingId,
+    ) -> TraitConstraint {
+        TraitConstraint { trait_id, args, scope: ImplScopeId(0), callsite, origin: VariableId(0) }
     }
 
     pub fn is_member_access<'c>(&self, cache: &ModuleCache<'c>) -> bool {
@@ -222,7 +218,7 @@ impl TraitConstraint {
     /// "a given Int a". This function returns a TraitConstraint for this
     /// builtin Int trait to be resolved later in typechecking to a specific
     /// integer type or propagataed to the function signature to take any Int.
-    pub fn int_constraint<'c>(arg: TypeVariableId, callsite: TraitBindingId, cache: &ModuleCache<'c>) -> TraitConstraint {
+    pub fn int_constraint(arg: TypeVariableId, callsite: TraitBindingId, cache: &ModuleCache) -> TraitConstraint {
         TraitConstraint {
             trait_id: cache.int_trait,
             args: vec![Type::TypeVariable(arg)],
@@ -236,20 +232,12 @@ impl TraitConstraint {
         self.trait_id == cache.int_trait
     }
 
-    pub fn as_required_trait(self) -> RequiredTrait {
-        RequiredTrait {
-            trait_id: self.trait_id,
-            args: self.args,
-            origin: Some(self.origin),
-        }
+    pub fn into_required_trait(self) -> RequiredTrait {
+        RequiredTrait { trait_id: self.trait_id, args: self.args, origin: Some(self.origin) }
     }
 
-    pub fn as_required_impl(&self, binding: DefinitionInfoId) -> RequiredImpl {
-        RequiredImpl {
-            args: self.args.clone(),
-            origin: self.origin,
-            binding,
-        }
+    pub fn into_required_impl(self, binding: DefinitionInfoId) -> RequiredImpl {
+        RequiredImpl { args: self.args, origin: self.origin, binding }
     }
 
     /// Get the location of the callsite where this TraitConstraint arose from
@@ -258,12 +246,12 @@ impl TraitConstraint {
     }
 
     pub fn display<'a, 'c>(&self, cache: &'a ModuleCache<'c>) -> RequiredTraitPrinter<'a, 'c> {
-        self.clone().as_required_trait().display(cache)
+        self.clone().into_required_trait().display(cache)
     }
 
     #[allow(dead_code)]
     pub fn debug<'a, 'c>(&self, cache: &'a ModuleCache<'c>) -> RequiredTraitPrinter<'a, 'c> {
-        self.clone().as_required_trait().debug(cache)
+        self.clone().into_required_trait().debug(cache)
     }
 }
 

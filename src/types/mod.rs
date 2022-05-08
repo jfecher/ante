@@ -4,25 +4,23 @@
 //! the representation of `Type`s - which represent any Type in ante's
 //! type system - and `TypeInfo`s - which hold more information about the
 //! definition of a user-defined type.
-use crate::cache::{ ModuleCache, DefinitionInfoId };
-use crate::error::location::{ Locatable, Location };
+use crate::cache::{DefinitionInfoId, ModuleCache};
+use crate::error::location::{Locatable, Location};
 use crate::lexer::token::IntegerKind;
 use crate::lifetimes;
 
 use std::collections::HashMap;
 
 pub mod pattern;
-pub mod typed;
-pub mod typechecker;
 pub mod traitchecker;
-pub mod typeprinter;
 pub mod traits;
+pub mod typechecker;
+pub mod typed;
+pub mod typeprinter;
 
 /// The type to default any Inferred integer types to that were
 /// not bound to any other concrete integer type (e.g. via `1 + 2u8`).
-pub const DEFAULT_INTEGER_TYPE: Type =
-    Type::Primitive(PrimitiveType::IntegerType(IntegerKind::I32));
-
+pub const DEFAULT_INTEGER_TYPE: Type = Type::Primitive(PrimitiveType::IntegerType(IntegerKind::I32));
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct TypeVariableId(pub usize);
@@ -31,6 +29,10 @@ pub struct TypeVariableId(pub usize);
 /// They're equal simply if the other type is also the same PrimitiveType variant,
 /// there is no recursion needed like with other Types. If the `Type`
 /// enum forms a tree, then these are the leaf nodes.
+///
+/// A restriction from the cranelift backend enforces primitive
+/// types must be of size <= a pointer size to be able to store them
+/// unboxed when all other values are boxed.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum PrimitiveType {
     IntegerType(IntegerKind), // : *
@@ -62,6 +64,7 @@ pub struct FunctionType {
 /// Thus, PartialEq/Hash may think two types aren't equal when they otherwise
 /// would be. For this reason, these impls are currently only used after
 /// following all type bindings via `follow_bindings` or a similar function.
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum Type {
     /// int, char, bool, etc
@@ -84,7 +87,7 @@ pub enum Type {
     /// These have a unique UserDefinedTypeId which points to
     /// additional information about the contents of the type
     /// not needed for most type checking.
-    UserDefinedType(TypeInfoId),
+    UserDefined(TypeInfoId),
 
     /// Any type in the form `constructor arg1 arg2 ... argN`
     TypeApplication(Box<Type>, Vec<Type>),
@@ -105,19 +108,37 @@ pub enum Type {
 
 impl Type {
     pub fn is_pair_type(&self) -> bool {
-        self == &Type::UserDefinedType(PAIR_TYPE)
+        self == &Type::UserDefined(PAIR_TYPE)
     }
 
     pub fn is_unit<'c>(&self, cache: &ModuleCache<'c>) -> bool {
         match self {
             Type::Primitive(PrimitiveType::UnitType) => true,
-            Type::TypeVariable(id) => {
-                match &cache.type_bindings[id.0] {
-                    TypeBinding::Bound(typ) => typ.is_unit(cache),
-                    TypeBinding::Unbound(..) => false,
-                }
+            Type::TypeVariable(id) => match &cache.type_bindings[id.0] {
+                TypeBinding::Bound(typ) => typ.is_unit(cache),
+                TypeBinding::Unbound(..) => false,
             },
             _ => false,
+        }
+    }
+
+    pub fn is_union_constructor<'a, 'c>(&'a self, cache: &'a ModuleCache<'c>) -> bool {
+        self.union_constructor_variants(cache).is_some()
+    }
+
+    /// Returns Some(variants) if this is a union type constructor or union type itself.
+    pub fn union_constructor_variants<'a, 'c>(
+        &'a self, cache: &'a ModuleCache<'c>,
+    ) -> Option<&'a Vec<TypeConstructor>> {
+        use Type::*;
+        match self {
+            Primitive(_) => None,
+            Ref(_) => None,
+            Function(function) => function.return_type.union_constructor_variants(cache),
+            TypeApplication(typ, _) => typ.union_constructor_variants(cache),
+            ForAll(_, typ) => typ.union_constructor_variants(cache),
+            UserDefined(id) => cache.type_infos[id.0].union_variants(),
+            TypeVariable(_) => unreachable!("Constructors should always have concrete types"),
         }
     }
 
@@ -238,20 +259,20 @@ impl<'a> Locatable<'a> for TypeInfo<'a> {
 }
 
 impl<'a> TypeInfo<'a> {
-    pub fn is_union(&self) -> bool {
+    pub fn union_variants(&self) -> Option<&Vec<TypeConstructor>> {
         match &self.body {
-            TypeInfoBody::Union(..) => true,
-            _ => false,
+            TypeInfoBody::Union(variants) => Some(variants),
+            _ => None,
         }
     }
 
     pub fn find_field<'b>(&'b self, field_name: &str) -> Option<(u32, &'b Field)> {
         match &self.body {
-            TypeInfoBody::Struct(fields) => {
-                fields.iter().enumerate()
-                    .find(|(_, field)| field.name == field_name)
-                    .map(|(i, field)| (i as u32, field))
-            },
+            TypeInfoBody::Struct(fields) => fields
+                .iter()
+                .enumerate()
+                .find(|(_, field)| field.name == field_name)
+                .map(|(i, field)| (i as u32, field)),
             _ => None,
         }
     }

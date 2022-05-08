@@ -9,15 +9,15 @@
 pub mod location;
 use crate::error::location::Location;
 
-use std::cmp::{min, max};
-use std::fmt::{ Display, Formatter };
-use std::fs::File;
-use std::io::{ BufReader, Read };
-use std::path::Path;
-use std::sync::atomic::{ AtomicBool, AtomicUsize };
-use std::sync::atomic::Ordering::SeqCst;
 use colored::ColoredString;
 use colored::*;
+use std::cmp::{max, min};
+use std::fmt::{Display, Formatter};
+use std::fs::File;
+use std::io::{BufReader, Read};
+use std::path::Path;
+use std::sync::atomic::Ordering::SeqCst;
+use std::sync::atomic::{AtomicBool, AtomicUsize};
 
 static COLORED_OUTPUT: AtomicBool = AtomicBool::new(true);
 
@@ -93,7 +93,7 @@ impl<'a> Ord for ErrorMessage<'a> {
 }
 
 impl<'a> PartialOrd for ErrorMessage<'a> {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering>{
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         self.location.partial_cmp(&other.location)
     }
 }
@@ -182,7 +182,7 @@ fn os_agnostic_display_path(path: &Path) -> ColoredString {
 
 impl<'a> Display for Location<'a> {
     fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
-        let filename = os_agnostic_display_path(&self.filename);
+        let filename = os_agnostic_display_path(self.filename);
         write!(f, "{}: {},{}", filename, self.start.line, self.start.column)
     }
 }
@@ -210,9 +210,9 @@ impl<'a> Display for ErrorMessage<'a> {
         // let adjusted_len = max(1, actual_len);
 
         // write the first part of the line, then the erroring part in red, then the rest
-        write!(f, "{}", &line[0 .. start_column])?;
-        write!(f, "{}", self.color(&line[start_column .. start_column + actual_len]))?;
-        writeln!(f, "{}", &line[start_column + actual_len ..])?;
+        write!(f, "{}", &line[0..start_column])?;
+        write!(f, "{}", self.color(&line[start_column..start_column + actual_len]))?;
+        writeln!(f, "{}", &line[start_column + actual_len..])?;
 
         if !COLORED_OUTPUT.load(SeqCst) {
             let padding = " ".repeat(start_column);

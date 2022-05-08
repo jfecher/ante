@@ -19,7 +19,7 @@ foo (x: S) (y: S) =
 x = mut S "original x string"
 foo x x
 
-// args: --run --delete-binary
+// args: --delete-binary
 // expected stdout:
 // x before: original x string
 // x after:  original x string

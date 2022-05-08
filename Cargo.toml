@@ -5,19 +5,30 @@ authors = ["Jake Fecher <jfecher11@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-clap = "2.33"
-colored = "1.9"
+clap = { version = "3.1.0", features = ["derive"] }
+colored = "2.0.0"
 mimalloc = { version = "0.1.19", default-features = false }
 difference = "2.0.0"
-goldentests = "0.3.8"
-inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm13-0"] }
-dirs = "3.0"
+inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm13-0"], optional = true }
+dirs = "4.0.0"
+cranelift = "0.82"
+cranelift-module = "0.82"
+cranelift-jit = "0.82"
+cranelift-object = "0.82"
+target-lexicon = "0.12.3"
+
+[dev-dependencies]
+goldentests = "1.1.0"
 
 [build-dependencies]
-dirs = "3.0"
+dirs = "4.0.0"
 
 [profile.release]
 lto = "fat"
 codegen-units = 1
 panic = "abort"
 debug = true
+
+[features]
+default = ["llvm"]
+llvm = ["inkwell"]

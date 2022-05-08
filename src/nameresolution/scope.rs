@@ -10,11 +10,11 @@
 //! is significant because a type variable's scope is different
 //! than the general Scope for other symbols. See the TypeVariableScope
 //! struct for more details on this.
-use std::collections::HashMap;
-use crate::cache::{ DefinitionInfoId, TraitInfoId, ImplInfoId, ModuleCache, ImplScopeId };
+use crate::cache::{DefinitionInfoId, ImplInfoId, ImplScopeId, ModuleCache, TraitInfoId};
+use crate::error::location::{Locatable, Location};
 use crate::parser::ast;
-use crate::types::{ TypeInfoId, TypeVariableId };
-use crate::error::location::{ Location, Locatable };
+use crate::types::{TypeInfoId, TypeVariableId};
+use std::collections::HashMap;
 
 /// A scope represents all symbols defined in a given scope.
 ///
@@ -48,7 +48,7 @@ impl Scope {
     }
 
     /// Imports all symbols from the given scope into the current scope.
-    /// 
+    ///
     /// This is meant to be done in the "define" pass of name resolution after which
     /// symbols are exported are determined in the "declare" pass. This is because since
     /// the other Scope's symbols are mutably added to self, they cannot be easily distinguished
@@ -71,7 +71,7 @@ impl Scope {
     /// Helper for `import` which imports all non-impl symbols.
     fn import_definitions_types_and_traits(&mut self, other: &Scope, cache: &mut ModuleCache, location: Location) {
         macro_rules! merge_table {
-            ( $field:tt , $cache_field:tt , $errors:tt ) => ({
+            ( $field:tt , $cache_field:tt , $errors:tt ) => {{
                 for (k, v) in other.$field.iter() {
                     if let Some(existing) = self.$field.get(k) {
                         let prev_loc = cache.$cache_field[existing.0].locate();
@@ -82,7 +82,7 @@ impl Scope {
                         self.$field.insert(k.clone(), *v);
                     }
                 }
-            });
+            }};
         }
 
         let mut errors = vec![];
@@ -101,21 +101,32 @@ impl Scope {
     /// This is meant to be done at the end of a scope since if we're still in the middle
     /// of name resolution for a particular scope, any currently unused symbol may become
     /// used later on.
-    pub fn check_for_unused_definitions(&self, cache: &ModuleCache) {
-        macro_rules! check {
-            ( $field:tt , $cache_field:tt, $warnings:tt ) => ({
-                for (name, id) in &self.$field {
-                    let definition = &cache.$cache_field[id.0];
-                    if definition.uses == 0 && definition.name.chars().next() != Some('_') {
-                        $warnings.push(make_warning!(definition.location, "{} is unused (prefix name with _ to silence this warning)", name));
-                    }
+    pub fn check_for_unused_definitions(&self, cache: &ModuleCache, id_to_ignore: Option<DefinitionInfoId>) {
+        let mut warnings = vec![];
+
+        for (name, id) in &self.definitions {
+            if id_to_ignore != Some(*id) {
+                let definition = &cache.definition_infos[id.0];
+                if definition.uses == 0 && definition.name.chars().next() != Some('_') {
+                    warnings.push(make_warning!(
+                        definition.location,
+                        "{} is unused (prefix name with _ to silence this warning)",
+                        name
+                    ));
                 }
-            });
+            }
         }
 
-        let mut warnings = vec![];
-        check!(definitions, definition_infos, warnings);
-        check!(types, type_infos, warnings);
+        for (name, id) in &self.types {
+            let definition = &cache.type_infos[id.0];
+            if definition.uses == 0 && definition.name.chars().next() != Some('_') {
+                warnings.push(make_warning!(
+                    definition.location,
+                    "{} is unused (prefix name with _ to silence this warning)",
+                    name
+                ));
+            }
+        }
 
         if !warnings.is_empty() {
             warnings.sort();
@@ -152,27 +163,21 @@ impl TypeVariableScope {
     }
 }
 
-
 #[derive(Debug)]
 pub struct FunctionScopes {
     pub function: Option<*mut ast::Lambda<'static>>,
+    pub function_id: Option<DefinitionInfoId>,
     pub scopes: Vec<Scope>,
 }
 
 impl FunctionScopes {
     pub fn new() -> FunctionScopes {
-        FunctionScopes {
-            function: None,
-            scopes: vec![],
-        }
+        FunctionScopes { function: None, function_id: None, scopes: vec![] }
     }
 
-    pub fn from_lambda<'c>(lambda: &mut ast::Lambda<'c>) -> FunctionScopes {
+    pub fn from_lambda(lambda: &mut ast::Lambda, id: Option<DefinitionInfoId>) -> FunctionScopes {
         let function = Some(unsafe { std::mem::transmute(lambda) });
-        FunctionScopes {
-            function,
-            scopes: vec![],
-        }
+        FunctionScopes { function, function_id: id, scopes: vec![] }
     }
 
     pub fn iter(&self) -> std::slice::Iter<Scope> {
@@ -202,8 +207,11 @@ impl FunctionScopes {
     /// Within the current function, map an existing variable to a parameter variable
     /// that is part of the closure's environment. This mapping is remembered for codegen
     /// so we can store the existing variable along with the closure as part of its environment.
-    pub fn add_closure_environment_variable_mapping(&mut self, existing: DefinitionInfoId, parameter: DefinitionInfoId) {
-        let function = self.function.expect("Internal compiler error: attempted to create a closure without a current function");
+    pub fn add_closure_environment_variable_mapping(
+        &mut self, existing: DefinitionInfoId, parameter: DefinitionInfoId,
+    ) {
+        let function =
+            self.function.expect("Internal compiler error: attempted to create a closure without a current function");
         let function = unsafe { function.as_mut().unwrap() };
         function.closure_environment.insert(existing, parameter);
     }

@@ -3,15 +3,15 @@
 //! printing out a bound type requires using the cache as well. Resultingly,
 //! types/traits are displayed via `type.display(cache)` rather than directly having
 //! a Display impl.
-use crate::types::{ Type, TypeVariableId, TypeInfoId, PrimitiveType,
-                    FunctionType, TypeBinding };
-use crate::types::traits::{ RequiredTrait, RequiredTraitPrinter };
-use crate::types::typechecker::find_all_typevars;
 use crate::cache::ModuleCache;
+use crate::types::traits::{RequiredTrait, RequiredTraitPrinter};
+use crate::types::typechecker::find_all_typevars;
+use crate::types::{FunctionType, PrimitiveType, Type, TypeBinding, TypeInfoId, TypeVariableId};
 use crate::util::join_with;
 
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use std::fmt::{ Display, Debug, Formatter };
+use std::fmt::{Debug, Display, Formatter};
 
 use colored::*;
 
@@ -25,18 +25,18 @@ pub struct TypePrinter<'a, 'b> {
     /// Controls whether to show or hide some hidden data, like ref lifetimes
     debug: bool,
 
-    cache: &'a ModuleCache<'b>
+    cache: &'a ModuleCache<'b>,
 }
 
 impl<'a, 'b> Display for TypePrinter<'a, 'b> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        self.fmt_type(&self.typ, f)
+        self.fmt_type(self.typ, f)
     }
 }
 
 impl<'a, 'b> Debug for TypePrinter<'a, 'b> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        self.fmt_type(&self.typ, f)
+        self.fmt_type(self.typ, f)
     }
 }
 
@@ -45,8 +45,8 @@ impl<'a, 'b> Debug for TypePrinter<'a, 'b> {
 /// respectively.
 fn fill_typevar_map(map: &mut HashMap<TypeVariableId, String>, typevars: Vec<TypeVariableId>, current: &mut char) {
     for typevar in typevars {
-        if !map.contains_key(&typevar) {
-            map.insert(typevar, current.to_string());
+        if let Entry::Vacant(entry) = map.entry(typevar) {
+            entry.insert(current.to_string());
             *current = (*current as u8 + 1) as char;
             assert!(*current != 'z'); // TODO: wrap to aa, ab, ac...
         }
@@ -68,11 +68,14 @@ pub fn show_type_and_traits<'b>(typ: &Type, traits: &[RequiredTrait], cache: &Mo
     let debug = true;
     print!("{}", TypePrinter { typ, cache, debug, typevar_names: map.clone() });
 
-    let mut traits = traits.iter().map(|required_trait| {
-        fill_typevar_map(&mut map, required_trait.find_all_typevars(cache), &mut current);
-        RequiredTraitPrinter { required_trait: required_trait.clone(), cache, debug, typevar_names: map.clone() }
-            .to_string()
-    }).collect::<Vec<String>>();
+    let mut traits = traits
+        .iter()
+        .map(|required_trait| {
+            fill_typevar_map(&mut map, required_trait.find_all_typevars(cache), &mut current);
+            RequiredTraitPrinter { required_trait: required_trait.clone(), cache, debug, typevar_names: map.clone() }
+                .to_string()
+        })
+        .collect::<Vec<String>>();
 
     // Remove "duplicate" traits so users don't see `given Add a, Add a`.
     // These contain usage information that is different within them but this
@@ -84,11 +87,13 @@ pub fn show_type_and_traits<'b>(typ: &Type, traits: &[RequiredTrait], cache: &Mo
         print!("\n  given {}", join_with(&traits, ", "));
     }
 
-    println!("");
+    println!();
 }
 
 impl<'a, 'b> TypePrinter<'a, 'b> {
-    pub fn new(typ: &'a Type, typevar_names: HashMap<TypeVariableId, String>, debug: bool, cache: &'a ModuleCache<'b>) -> TypePrinter<'a, 'b> {
+    pub fn new(
+        typ: &'a Type, typevar_names: HashMap<TypeVariableId, String>, debug: bool, cache: &'a ModuleCache<'b>,
+    ) -> TypePrinter<'a, 'b> {
         TypePrinter { typ, typevar_names, debug, cache }
     }
 
@@ -97,7 +102,7 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             Type::Primitive(primitive) => self.fmt_primitive(primitive, f),
             Type::Function(function) => self.fmt_function(function, f),
             Type::TypeVariable(id) => self.fmt_type_variable(*id, f),
-            Type::UserDefinedType(id) => self.fmt_user_defined_type(*id, f),
+            Type::UserDefined(id) => self.fmt_user_defined_type(*id, f),
             Type::TypeApplication(constructor, args) => self.fmt_type_application(constructor, args, f),
             Type::Ref(lifetime) => self.fmt_ref(*lifetime, f),
             Type::ForAll(typevars, typ) => self.fmt_forall(typevars, typ, f),
@@ -130,7 +135,7 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             write!(f, "{}", "... ".blue())?;
         }
 
-        if function.environment.is_unit(&self.cache) {
+        if function.environment.is_unit(self.cache) {
             write!(f, "{}", "-> ".blue())?;
         } else {
             write!(f, "{}", "=> ".blue())?;
@@ -147,7 +152,7 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
                 let default = "?".to_string();
                 let name = self.typevar_names.get(&id).unwrap_or(&default).blue();
                 write!(f, "{}", name)
-            }
+            },
         }
     }
 
@@ -156,13 +161,13 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
         write!(f, "{}", name)
     }
 
-    fn fmt_type_application(&self, constructor: &Box<Type>, args: &Vec<Type>, f: &mut Formatter) -> std::fmt::Result {
+    fn fmt_type_application(&self, constructor: &Type, args: &[Type], f: &mut Formatter) -> std::fmt::Result {
         write!(f, "{}", "(".blue())?;
 
         if constructor.is_pair_type() {
             self.fmt_pair(args, f)?;
         } else {
-            self.fmt_type(constructor.as_ref(), f)?;
+            self.fmt_type(constructor, f)?;
             for arg in args.iter() {
                 write!(f, " ")?;
                 self.fmt_type(arg, f)?;
@@ -172,7 +177,7 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
         write!(f, "{}", ")".blue())
     }
 
-    fn fmt_pair(&self, args: &Vec<Type>, f: &mut Formatter) -> std::fmt::Result {
+    fn fmt_pair(&self, args: &[Type], f: &mut Formatter) -> std::fmt::Result {
         assert_eq!(args.len(), 2);
 
         self.fmt_type(&args[0], f)?;
@@ -180,10 +185,8 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
         write!(f, "{}", ", ".blue())?;
 
         match &args[1] {
-            Type::TypeApplication(constructor, args) if constructor.is_pair_type() => {
-                self.fmt_pair(args, f)
-            },
-            other => self.fmt_type(other, f)
+            Type::TypeApplication(constructor, args) if constructor.is_pair_type() => self.fmt_pair(args, f),
+            other => self.fmt_type(other, f),
         }
     }
 
@@ -200,18 +203,18 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
                     }
                 }
                 Ok(())
-            }
+            },
         }
     }
 
-    fn fmt_forall(&self, typevars: &Vec<TypeVariableId>, typ: &Box<Type>, f: &mut Formatter) -> std::fmt::Result {
+    fn fmt_forall(&self, typevars: &[TypeVariableId], typ: &Type, f: &mut Formatter) -> std::fmt::Result {
         write!(f, "{}", "(forall".blue())?;
         for typevar in typevars.iter() {
             write!(f, " ")?;
             self.fmt_type_variable(*typevar, f)?;
         }
         write!(f, "{}", ". ".blue())?;
-        self.fmt_type(typ.as_ref(), f)?;
+        self.fmt_type(typ, f)?;
         write!(f, "{}", ")".blue())
     }
 }

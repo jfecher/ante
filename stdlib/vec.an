@@ -29,7 +29,9 @@ reserve (v: mut Vec t) (numElems: usz) : unit =
         ptr = realloc (v.data) size
 
         if ptr == null then
-            printf ("Error in reserving %u elements for Vec\n".c_string) numElems
+            printne "Error in reserving "
+            printne numElems
+            print " elements for Vec"
             return ()
 
         v.data := ptr
@@ -58,13 +60,12 @@ remove_index (v: mut Vec t) (idx:usz) : t =
     if idx == v.len - 1 then
         v.len := v.len - 1
     else if idx >= 0 and idx < v.len - 1 then
-        iter (Range idx v.len) fn i ->
+        iter (Range idx (v.len - 1)) fn i ->
             v.data#i := v.data#(i+1)
 
         v.len := v.len - 1
     else
-        print "Vec.remove_index: index ${idx} out of bounds for Vec of length ${v.len}"
-        exit 1
+        panic "Vec.remove_index: index ${idx} out of bounds for Vec of length ${v.len}"
 
     v.data#v.len
 

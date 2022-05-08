@@ -7,7 +7,8 @@
 
 //C functions
 extern 
-    printf: Ptr char - ... -> unit
+    // varargs is not supported by the cranelift backend
+    // printf: Ptr char - ... -> unit
     puts: Ptr char -> i32
     putchar: char -> unit
     getchar: unit -> char
@@ -50,8 +51,8 @@ extern
 // feofb f = feof f as bool
 
 type Maybe t =
-   | Some t
    | None
+   | Some t
 
 type Result t e =
    | Ok t
@@ -78,10 +79,10 @@ impl Cast a a with
     cast a = a
 
 impl Cast (Ptr a) usz with
-    cast (_ptr: Ptr a) = builtin "CastPtrUsz"
+    cast ptr = transmute ptr
 
 impl Cast usz (Ptr a) with
-    cast (_address: usz) = builtin "CastUszPtr"
+    cast address = transmute address
 
 impl Cast (Maybe m) string given Cast m string with
     cast maybe =
@@ -89,6 +90,85 @@ impl Cast (Maybe m) string given Cast m string with
         | Some val -> "Some (" ++ cast val ++ ")"
         | None -> "None"
 
+// Begin wall of casts
+impl Cast u8 u16 with cast _ = builtin "ZeroExtend"
+impl Cast u8 u32 with cast _ = builtin "ZeroExtend"
+impl Cast u8 u64 with cast _ = builtin "ZeroExtend"
+impl Cast u8 usz with cast _ = builtin "ZeroExtend"
+
+impl Cast u16 u8  with cast _ = builtin "Truncate"
+impl Cast u16 u32 with cast _ = builtin "ZeroExtend"
+impl Cast u16 u64 with cast _ = builtin "ZeroExtend"
+impl Cast u16 usz with cast _ = builtin "ZeroExtend"
+
+impl Cast u32 u8  with cast _ = builtin "Truncate"
+impl Cast u32 u16 with cast _ = builtin "Truncate"
+impl Cast u32 u64 with cast _ = builtin "ZeroExtend"
+impl Cast u32 usz with cast _ = builtin "ZeroExtend"
+
+impl Cast u64 u8  with cast _ = builtin "Truncate"
+impl Cast u64 u16 with cast _ = builtin "Truncate"
+impl Cast u64 u32 with cast _ = builtin "Truncate"
+impl Cast u64 usz with cast _ = builtin "Truncate"
+
+impl Cast usz u8  with cast _ = builtin "Truncate"
+impl Cast usz u16 with cast _ = builtin "Truncate"
+impl Cast usz u64 with cast _ = builtin "Truncate"
+impl Cast usz usz with cast _ = builtin "ZeroExtend"
+
+// Signed types
+impl Cast i8 i16 with cast _ = builtin "SignExtend"
+impl Cast i8 i32 with cast _ = builtin "SignExtend"
+impl Cast i8 i64 with cast _ = builtin "SignExtend"
+impl Cast i8 isz with cast _ = builtin "SignExtend"
+
+impl Cast i16 i8  with cast _ = builtin "Truncate"
+impl Cast i16 i32 with cast _ = builtin "SignExtend"
+impl Cast i16 i64 with cast _ = builtin "SignExtend"
+impl Cast i16 isz with cast _ = builtin "SignExtend"
+
+impl Cast i32 i8  with cast _ = builtin "Truncate"
+impl Cast i32 i16 with cast _ = builtin "Truncate"
+impl Cast i32 i64 with cast _ = builtin "SignExtend"
+impl Cast i32 isz with cast _ = builtin "SignExtend"
+
+impl Cast i64 i8  with cast _ = builtin "Truncate"
+impl Cast i64 i16 with cast _ = builtin "Truncate"
+impl Cast i64 i32 with cast _ = builtin "Truncate"
+impl Cast i64 isz with cast _ = builtin "Truncate"
+
+impl Cast isz i8  with cast _ = builtin "Truncate"
+impl Cast isz i16 with cast _ = builtin "Truncate"
+impl Cast isz i64 with cast _ = builtin "Truncate"
+impl Cast isz isz with cast _ = builtin "SignExtend"
+
+// Float casts
+impl Cast i8  float with cast _ = builtin "SignedToFloat"
+impl Cast i16 float with cast _ = builtin "SignedToFloat"
+impl Cast i32 float with cast _ = builtin "SignedToFloat"
+impl Cast i64 float with cast _ = builtin "SignedToFloat"
+impl Cast isz float with cast _ = builtin "SignedToFloat"
+
+impl Cast u8  float with cast _ = builtin "UnsignedToFloat"
+impl Cast u16 float with cast _ = builtin "UnsignedToFloat"
+impl Cast u32 float with cast _ = builtin "UnsignedToFloat"
+impl Cast u64 float with cast _ = builtin "UnsignedToFloat"
+impl Cast usz float with cast _ = builtin "UnsignedToFloat"
+
+impl Cast float i8  with cast _ = builtin "FloatToSigned"
+impl Cast float i16 with cast _ = builtin "FloatToSigned"
+impl Cast float i32 with cast _ = builtin "FloatToSigned"
+impl Cast float i64 with cast _ = builtin "FloatToSigned"
+impl Cast float isz with cast _ = builtin "FloatToSigned"
+
+impl Cast float u8  with cast _ = builtin "FloatToUnsigned"
+impl Cast float u16 with cast _ = builtin "FloatToUnsigned"
+impl Cast float u32 with cast _ = builtin "FloatToUnsigned"
+impl Cast float u64 with cast _ = builtin "FloatToUnsigned"
+impl Cast float usz with cast _ = builtin "FloatToUnsigned"
+
+// Other casts: TODO fill in
+impl Cast u64 char with cast _ = builtin "Truncate"
 
 /// Represents a failable type cast from a to b
 trait TryCast a b with
@@ -102,59 +182,83 @@ impl TryCast a b given Cast a b with
 trait Add n with (+): n - n -> n
 impl Add a given Int a with (+) _ _ = builtin "AddInt"
 impl Add float with (+) (_: float) (_: float) : float = builtin "AddFloat"
+impl Add char with (+) (_: char) (_: char) : char = builtin "AddInt"
 
 trait Sub n with (-): n - n -> n
 impl Sub a given Int a with (-) _ _ = builtin "SubInt"
 impl Sub float with (-) (_: float) (_: float) : float = builtin "SubFloat"
+impl Sub char with (-) (_: char) (_: char) : char = builtin "SubInt"
 
 trait Mul n with (*): n - n -> n
 impl Mul a given Int a with (*) _ _ = builtin "MulInt"
 impl Mul float with (*) (_: float) (_: float) : float = builtin "MulFloat"
 
 trait Div n with (/): n - n -> n
-impl Div a given Int a with (/) _ _ = builtin "DivInt"
+impl Div i8  with (/) _ _ = builtin "DivSigned"
+impl Div i16 with (/) _ _ = builtin "DivSigned"
+impl Div i32 with (/) _ _ = builtin "DivSigned"
+impl Div i64 with (/) _ _ = builtin "DivSigned"
+impl Div isz with (/) _ _ = builtin "DivSigned"
+impl Div u8  with (/) _ _ = builtin "DivUnsigned"
+impl Div u16 with (/) _ _ = builtin "DivUnsigned"
+impl Div u32 with (/) _ _ = builtin "DivUnsigned"
+impl Div u64 with (/) _ _ = builtin "DivUnsigned"
+impl Div usz with (/) _ _ = builtin "DivUnsigned"
 impl Div float with (/) (_: float) (_: float) : float = builtin "DivFloat"
 
 trait Mod n with (%): n - n -> n
-impl Mod a given Int a with (%) _ _ = builtin "ModInt"
+impl Mod i8  with (%) _ _ = builtin "ModSigned"
+impl Mod i16 with (%) _ _ = builtin "ModSigned"
+impl Mod i32 with (%) _ _ = builtin "ModSigned"
+impl Mod i64 with (%) _ _ = builtin "ModSigned"
+impl Mod isz with (%) _ _ = builtin "ModSigned"
+impl Mod u8  with (%) _ _ = builtin "ModUnsigned"
+impl Mod u16 with (%) _ _ = builtin "ModUnsigned"
+impl Mod u32 with (%) _ _ = builtin "ModUnsigned"
+impl Mod u64 with (%) _ _ = builtin "ModUnsigned"
+impl Mod usz with (%) _ _ = builtin "ModUnsigned"
 impl Mod float with (%) (_: float) (_: float) : float = builtin "ModFloat"
 
 trait Eq t with (==): t - t -> bool
 impl Eq a given Int a with (==) _ _ = builtin "EqInt"
 impl Eq float with (==) (_: float) (_: float) : bool = builtin "EqFloat"
 
+impl Eq char with (==) (_: char) (_: char) : bool = builtin "EqChar"
+impl Eq bool with (==) (_: bool) (_: bool) : bool = builtin "EqBool"
+
 (not) a = if a then false else true
 (!=) l r = not (l == r)
 
-type Ordering = | Less | Equal | Greater
-
-impl Eq Ordering with
-    (==) (a: Ordering) (b: Ordering) : bool =
-        match a, b
-        | Less, Less -> true
-        | Equal, Equal -> true
-        | Greater, Greater -> true
-        | _ -> false
-
 trait Cmp a with
-    compare: a - a -> Ordering
+    (<): a - a -> bool
 
-(<) a b = compare a b == Less
-(>) a b = compare a b == Greater
-(<=) a b = compare a b != Greater
-(>=) a b = compare a b != Less
+(>) a b = b < a
+(<=) a b = not (b < a)
+(>=) a b = not (a < b)
 
-impl Cmp a given Int a with
-    compare _ _ =
-        if builtin "LessInt" then Less
-        else if builtin "GreaterInt" then Greater
-        else Equal
+impl Cmp i8  with (<) _ _ = builtin "LessSigned"
+impl Cmp i16 with (<) _ _ = builtin "LessSigned"
+impl Cmp i32 with (<) _ _ = builtin "LessSigned"
+impl Cmp i64 with (<) _ _ = builtin "LessSigned"
+impl Cmp isz with (<) _ _ = builtin "LessSigned"
 
-impl Cmp float with
-    compare (_: float) (_: float) : Ordering =
-        if builtin "LessFloat" then Less
-        else if builtin "GreaterFloat" then Greater
-        else Equal
+impl Cmp u8  with (<) _ _ = builtin "LessUnsigned"
+impl Cmp u16 with (<) _ _ = builtin "LessUnsigned"
+impl Cmp u32 with (<) _ _ = builtin "LessUnsigned"
+impl Cmp u64 with (<) _ _ = builtin "LessUnsigned"
+impl Cmp usz with (<) _ _ = builtin "LessUnsigned"
+
+impl Cmp float with (<) _ _ = builtin "LessFloat"
+
+impl TryCast i64 u64 with
+    try_cast x =
+        if x < 0 then None
+        else Some (transmute x)
+
+impl TryCast u64 i64 with
+    try_cast x =
+        if x > 9_223_372_036_854_775_807 then None
+        else Some (transmute x)
 
 trait Append t with
     (++): t - t -> t
@@ -165,19 +269,24 @@ trait Extract collection index -> elem with
 impl Extract (Ptr t) usz t with
     (#) ptr index = deref_ptr <| offset ptr index
 
+offset_c_string (ptr: Ptr char) (index: usz) : Ptr char =
+    addr: usz = transmute ptr
+    new_addr = addr + index
+    transmute new_addr
+
 offset (_ptr: Ptr t) (_index: usz) : Ptr t =
-    builtin "offset"
+    builtin "Offset"
 
 deref (_: ref t) : t =
-    builtin "deref"
+    builtin "Deref"
 
 deref_ptr (p: Ptr t) : t =
-    deref <| cast p
+    deref <| transmute p
 
 null = cast 0usz : Ptr a
 
 transmute (_: a) : b =
-    builtin "transmute"
+    builtin "Transmute"
 
 // TODO: 'mut' and special-case extract versus append
 // trait Insert collection index elem
@@ -201,25 +310,103 @@ print x =
     printne x
     putchar '\n'
 
-impl Print i8  with printne x = printf ("%hhd".c_string) x
-impl Print i16 with printne x = printf ("%hd".c_string) x
-impl Print i32 with printne x = printf ("%d".c_string) x
-impl Print i64 with printne x = printf ("%ld".c_string) x
-impl Print isz with printne x = printf ("%zi".c_string) x
-impl Print u8  with printne x = printf ("%hhu".c_string) x
-impl Print u16 with printne x = printf ("%hu".c_string) x
-impl Print u32 with printne x = printf ("%u".c_string) x
-impl Print u64 with printne x = printf ("%lu".c_string) x
-impl Print usz with printne x = printf ("%zu".c_string) x
-impl Print char with printne x = printf ("%c".c_string) x
-impl Print float with printne x = printf ("%.14f".c_string) x
-impl Print string with printne s = printf "%s".c_string s.c_string
-impl Print (ref char) with printne s = printf ("%s".c_string) s
+impl Print u8  with printne x = print_unsigned (cast x)
+impl Print u16 with printne x = print_unsigned (cast x)
+impl Print u32 with printne x = print_unsigned (cast x)
+impl Print u64 with printne x = print_unsigned x
+impl Print usz with printne x = print_unsigned (cast x)
+
+impl Print i8 with
+    printne x = print_signed (cast x) -128 "-128"
+
+impl Print i16 with
+    printne x = print_signed (cast x) -32_768 "-32_768"
+
+impl Print i32 with
+    printne x = print_signed (cast x) -2_147_483_648 "-2_147_483_648"
+
+impl Print i64 with
+    printne x = print_signed x -9_223_372_036_854_775_808 "-9_223_372_036_854_775_808"
+
+// TODO: This is broken for 32 bit platforms.
+impl Print isz with
+    printne x =
+        print_signed (cast x) -9_223_372_036_854_775_808 "-9_223_372_036_854_775_808"
+
+
+impl Print char with printne x = putchar x
+
+impl Print float with 
+    printne = print_float
+
+// TODO: temporary, very inaccurate
+print_float f =
+    if f < 0.0 then
+        putchar '-'
+        print_float (0.0-f)
+    else
+        uint = cast f
+        print_unsigned uint
+        putchar '.'
+        f2 = f - cast uint
+        // Show up to 5 decimal places
+        print_unsigned (cast (f2 * 10_000.0))
+
+impl Print string with printne s =
+    print_string s
+
+impl Print (Ptr char) with printne s = print_c_string s
+
+impl Print (Maybe a) given Print a with
+    printne m =
+        match m
+        | Some a -> printne a
+        | None -> printne "None"
+
+unwrap (m: Maybe t) : t =
+    match m
+    | Some x -> x
+    | None -> panic "Tried to unwrap a None value"
+
+// Naive replacement for printf which isn't supported by the cranelift backend
+print_unsigned (x: u64) : unit =
+    if x >= 10 then print_unsigned (x / 10)
+    digit: char = cast (x % 10)
+    putchar (digit + '0')
+
+print_signed (x: i64) (min: i64) (min_string: string) : unit =
+    if x < 0 then
+        if x == min then
+            printne min_string
+        else
+            putchar '-'
+            print_unsigned <| unwrap <| try_cast (0-x)
+    else
+        print_unsigned <| unwrap <| try_cast x
+
+print_string (s: string) : unit =
+    go (s2: string) i =
+        if i < s2.length then
+            off = offset_c_string (s2.c_string) i
+            c = deref off
+            putchar c
+            go s2 (i + 1)
+
+    go s 0
+
+print_c_string (s: Ptr char) : unit =
+    go (s: Ptr char) i =
+        c = deref (offset_c_string s i)
+        if c != '\0' then
+            putchar c
+            go s (i + 1)
+
+    go s 0
 
 impl Print bool with
     printne b =
-        if b then printf ("true".c_string)
-        else printf ("false".c_string)
+        if b then printne "true"
+        else printne "false"
 
 // TODO: This impl would conflict with others
 // impl Print t given Cast t string
@@ -347,7 +534,7 @@ impl Extract string usz char with
 
 type Type t = | MkType
 
-size_of (_: Type t) : usz = builtin "size_of"
+size_of (_: Type t) : usz = builtin "SizeOf"
 
 
 // impl Insert string int char
@@ -395,23 +582,25 @@ impl Cast string OutFile with
 //         string cstr len
 // 
 // 
-// //print a message then return user input
-// input msg -> string =
-//     len = mut 0int
-//     cstr = mut cast 0
-// 
-//     printne msg
-// 
-//     while
-//         c = getchar ()
-//         if len % 32int == 0int then
-//             cstr := realloc cstr (len+32int)
-// 
-//         cstr#len := c
-//         len += 1int
-//         c != '\n'
-//     do ()
-// 
-//     len -= 1int
-//     cstr#len := '\0'
-//     string cstr len
+
+/// Print a message then return user input
+input msg : string =
+    printne msg
+
+    go buffer len =
+        c = getchar ()
+        buffer2 = if len % 32 == 0
+            then realloc buffer (len + 32)
+            else buffer
+
+        buffer2#len := c
+
+        if c != '\n'
+        then go buffer2 (len + 1) 
+        else buffer2, len
+
+    buffer, len = go null 0
+
+    buffer#len := '\0'
+    ""
+    // string buffer len

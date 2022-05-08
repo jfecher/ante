@@ -20,7 +20,7 @@ main () =
 
 main ()
 
-// args: --run --delete-binary
+// args: --delete-binary
 // expected stdout:
 // 4
 // 3

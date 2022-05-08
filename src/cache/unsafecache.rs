@@ -2,7 +2,7 @@
 //! and can thus hand out references for any lifetime. Used to store
 //! the Ast after parsing.
 use std::cell::UnsafeCell;
-use std::marker::{ PhantomData, PhantomPinned };
+use std::marker::{PhantomData, PhantomPinned};
 use std::pin::Pin;
 
 /// A container whose elements are never freed until the program ends.
@@ -10,7 +10,7 @@ use std::pin::Pin;
 /// with any desired lifetime. Note that this type is unsafe to use if the
 /// UnsafeCache itself lives longer than any references it passes out.
 #[derive(Debug)]
-pub struct UnsafeCache<'a, T: 'a>{
+pub struct UnsafeCache<'a, T: 'a> {
     cache: Vec<Pin<Box<UnsafeCell<T>>>>,
     lifetime: PhantomData<&'a T>,
 
@@ -26,7 +26,7 @@ impl<'a, T> UnsafeCache<'a, T> {
         // since we neither expose method removing values from the `inner`, nor expose any
         // option to mutate the containing Box. The lifetime should be fine, though this
         // does permit multiple mutable references to a given element
-        unsafe{ value.get().as_mut() }
+        unsafe { value.get().as_mut() }
     }
 
     /// Push a new element to the cache and return its index
@@ -39,10 +39,6 @@ impl<'a, T> UnsafeCache<'a, T> {
 
 impl<'a, T> Default for UnsafeCache<'a, T> {
     fn default() -> UnsafeCache<'a, T> {
-        UnsafeCache {
-            cache: vec![],
-            lifetime: PhantomData,
-            no_pin: PhantomPinned,
-        }
+        UnsafeCache { cache: vec![], lifetime: PhantomData, no_pin: PhantomPinned }
     }
 }

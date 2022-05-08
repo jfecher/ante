@@ -6,6 +6,6 @@ get_closure () =
 foo = get_closure ()
 foo ()
 
-// args: --run --delete-binary
+// args: --delete-binary
 // expected stdout:
 // hi there

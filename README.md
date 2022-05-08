@@ -47,8 +47,9 @@ See the [website](https://antelang.org) and [language tour](https://antelang.org
     - [x] [Article on the sugar for immediately invoked recursive functions (loop/recur)](https://antelang.org/docs/language/#loops)
     - [ ] Article on interactions between `mut`, `ref`, and passing by reference
     - [ ] Article on autoboxing recursive types for polymorphic pointer types
-- [ ] Refinement Types
-- [ ] Cranelift backend for faster debug builds
+- [~] Refinement Types (in progress)
+- [x] Cranelift backend for faster debug builds
+- [ ] Algebraic Effects
 - [ ] Incremental compilation metadata
 - [ ] REPL
 
@@ -89,10 +90,11 @@ than development updates.
 
 ### Building
 
-Ante currently requires llvm 13.0 while building. If you already have this installed with
-sources, you may be fine building with `cargo build` alone. If `cargo build` complains
-about not finding any suitable llvm version, the easiest way to build llvm is through `llvmenv`.
-In that case, you can build from source using the following:
+Ante currently optionally requires llvm 13.0 while building. If you already have this installed with
+sources, you may be fine building with `cargo install --path .` alone. If cargo complains
+about not finding any suitable llvm version, you can either choose to build ante without 
+the llvm backend via `cargo install --path . --no-default-features` or you can build llvm from
+source, either via `llvmenv` or `cmake` as covered in the next sections.
 
 #### Linux and Mac
 
@@ -112,17 +114,25 @@ location and re-running `cargo build`.
 
 #### Windows
 
+Note: LLVM is notoriously difficult to build on windows. If you're a windows user who has tried
+the following and still cannot build llvm, I highly recommend trying out ante without the llvm
+backend via `cargo install --path . --no-default-features`.
+
+That being said, here is one way to build llvm via llvmenv on windows:
+
 ```shell
 $ cargo install llvmenv
 $ llvmenv init
 $ llvmenv build-entry -G VisualStudio -j7 13.0.0
-$ llvmenv global 12.0.1
-$ for /f "tokens=*" %a in ('llvmenv prefix') do (set LLVM_SYS_120_PREFIX=%a)
+$ llvmenv global 13.0.0
+$ for /f "tokens=*" %a in ('llvmenv prefix') do (set LLVM_SYS_130_PREFIX=%a)
 $ cargo build
 ```
 
 You can confirm your current version of llvm by running `llvmenv version`
 or `llvm-config`
+
+##### CMake
 
 If the above steps don't work for you, you can try [building llvm from source
 with cmake](https://www.llvm.org/docs/CMake.html). If you're on windows this
@@ -146,6 +156,6 @@ done, move on to compiling llvm and ante:
 $ cmake --build .
 $ cmake --build . --target install
 $ cd ..
-$ set LLVM_SYS_120_PREFIX=/absolute/path/to/llvm-build
+$ set LLVM_SYS_130_PREFIX=/absolute/path/to/llvm-build
 $ cargo build
 ```

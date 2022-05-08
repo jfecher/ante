@@ -4,11 +4,11 @@
 //! actual string type is defined) and the `builtin` function which is
 //! used by codegen to stand in place of primitive operations like adding
 //! integers together.
-use crate::cache::{ ModuleCache, DefinitionInfoId, DefinitionKind };
+use crate::cache::{DefinitionInfoId, DefinitionKind, ModuleCache};
 use crate::error::location::Location;
-use crate::lexer::token::{ IntegerKind, Token };
-use crate::nameresolution::{ NameResolver, declare_module, define_module };
-use crate::types::{ Type, PrimitiveType, FunctionType, TypeInfoBody, Field, LetBindingLevel, STRING_TYPE, PAIR_TYPE };
+use crate::lexer::token::{IntegerKind, Token};
+use crate::nameresolution::{declare_module, define_module, NameResolver};
+use crate::types::{Field, FunctionType, LetBindingLevel, PrimitiveType, Type, TypeInfoBody, PAIR_TYPE, STRING_TYPE};
 
 use std::path::PathBuf;
 
@@ -32,7 +32,7 @@ pub const PAIR_ID: DefinitionInfoId = DefinitionInfoId(2);
 /// This function needs to be called before any other DefinitionInfoId is
 /// created, otherwise the `builtin` symbol will have the wrong id. If this
 /// happens, this function will assert at runtime.
-pub fn define_builtins<'a>(cache: &mut ModuleCache<'a>) {
+pub fn define_builtins(cache: &mut ModuleCache) {
     // Define builtin : forall a. string -> a imported only into the prelude to define
     // builtin operations by name. The specific string arguments are matched on in src/llvm/builtin.rs
     let id = cache.push_definition("builtin", false, Location::builtin());
@@ -48,10 +48,10 @@ pub fn define_builtins<'a>(cache: &mut ModuleCache<'a>) {
         parameters: vec![string_type],
         return_type: Box::new(Type::TypeVariable(a)),
         environment: Box::new(Type::Primitive(PrimitiveType::UnitType)),
-        is_varargs: false
+        is_varargs: false,
     });
 
-    let builtin_type= Type::ForAll(vec![a], Box::new(builtin_fn_type));
+    let builtin_type = Type::ForAll(vec![a], Box::new(builtin_fn_type));
     info.typ = Some(builtin_type);
 }
 
@@ -89,7 +89,7 @@ pub fn import_prelude<'a>(resolver: &mut NameResolver, cache: &mut ModuleCache<'
 /// The builtin string type is defined here as:
 ///
 /// type string = c_string: Ptr char, length: usz
-fn define_string<'a>(cache: &mut ModuleCache<'a>) -> Type {
+fn define_string(cache: &mut ModuleCache) -> Type {
     let location = Location::builtin();
 
     let ptr_type = Type::Primitive(PrimitiveType::Ptr);
@@ -101,11 +101,11 @@ fn define_string<'a>(cache: &mut ModuleCache<'a>) -> Type {
     let name = "string".to_string();
     let string_id = cache.push_type_info(name.clone(), vec![], location);
     assert_eq!(string_id, STRING_TYPE);
-    let string = Type::UserDefinedType(STRING_TYPE);
+    let string = Type::UserDefined(STRING_TYPE);
 
     let fields = TypeInfoBody::Struct(vec![
         Field { name: "c_string".into(), field_type: c_string_type.clone(), location },
-        Field { name: "length".into(),   field_type: length_type.clone(),   location },
+        Field { name: "length".into(), field_type: length_type.clone(), location },
     ]);
 
     let constructor = cache.push_definition(&name, false, Location::builtin());
@@ -114,7 +114,7 @@ fn define_string<'a>(cache: &mut ModuleCache<'a>) -> Type {
         parameters: vec![c_string_type, length_type],
         return_type: Box::new(string.clone()),
         environment: Box::new(Type::Primitive(PrimitiveType::UnitType)),
-        is_varargs: false
+        is_varargs: false,
     });
 
     cache.definition_infos[constructor.0].typ = Some(constructor_type);
@@ -127,7 +127,7 @@ fn define_string<'a>(cache: &mut ModuleCache<'a>) -> Type {
 /// The builtin pair type is defined here as:
 ///
 /// type (,) a b = first: a, second: b
-fn define_pair<'a>(cache: &mut ModuleCache<'a>) {
+fn define_pair(cache: &mut ModuleCache) {
     let location = Location::builtin();
 
     let level = LetBindingLevel(0);
@@ -139,7 +139,7 @@ fn define_pair<'a>(cache: &mut ModuleCache<'a>) {
     assert_eq!(pair, PAIR_TYPE);
 
     cache.type_infos[pair.0].body = TypeInfoBody::Struct(vec![
-        Field { name: "first".into(),  field_type: Type::TypeVariable(a), location },
+        Field { name: "first".into(), field_type: Type::TypeVariable(a), location },
         Field { name: "second".into(), field_type: Type::TypeVariable(b), location },
     ]);
 
@@ -147,14 +147,14 @@ fn define_pair<'a>(cache: &mut ModuleCache<'a>) {
 
     // The type is defined, now we define the constructor
     let parameters = vec![Type::TypeVariable(a), Type::TypeVariable(b)];
-    let pair = Box::new(Type::UserDefinedType(pair));
+    let pair = Box::new(Type::UserDefined(pair));
     let pair_a_b = Box::new(Type::TypeApplication(pair, parameters.clone()));
 
     let constructor_type = Box::new(Type::Function(FunctionType {
         parameters,
         return_type: pair_a_b,
         environment: Box::new(Type::Primitive(PrimitiveType::UnitType)),
-        is_varargs: false
+        is_varargs: false,
     }));
 
     let constructor_type = Type::ForAll(vec![a, b], constructor_type);

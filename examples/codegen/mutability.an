@@ -1,9 +1,9 @@
 num = mut 32
-printf ("%d\n".c_string) num
+print num
 num := 7
-printf ("%d\n".c_string) num
+print num
 
-// args: --run --delete-binary
+// args: --delete-binary
 // expected stdout:
 // 32
 // 7

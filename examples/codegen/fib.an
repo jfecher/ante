@@ -2,7 +2,7 @@ fib n =
     if n < 2 then n
     else fib (n - 2) + fib (n - 1)
 
-printf "%d\n".c_string (fib 10)
+print (fib 10)
 
-// args: --run --delete-binary
+// args: --delete-binary
 // expected stdout: 55

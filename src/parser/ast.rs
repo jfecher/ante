@@ -20,20 +20,20 @@
 //!   - `type_info: Option<TypeInfoId>` for `ast::TypeDefinition`s,
 //!   - `trait_info: Option<TraitInfoId>` for `ast::TraitDefinition`s and `ast::TraitImpl`s
 //!   - `module_id: Option<ModuleId>` for `ast::Import`s,
-//! 
+//!
 //! - Type inference fills out:
 //!   `typ: Option<Type>` for all nodes,
 //!   `trait_binding: Option<TraitBindingId>` for `ast::Variable`s,
 //!   `decision_tree: Option<DecisionTree>` for `ast::Match`s
-use crate::lexer::token::{ Token, IntegerKind };
-use crate::error::location::{ Location, Locatable };
-use crate::cache::{ DefinitionInfoId, TraitInfoId, ModuleId, ImplScopeId, TraitBindingId, VariableId };
-use crate::types::{ self, TypeInfoId, LetBindingLevel };
+use crate::cache::{DefinitionInfoId, ImplScopeId, ModuleId, TraitBindingId, TraitInfoId, VariableId};
+use crate::error::location::{Locatable, Location};
+use crate::lexer::token::{IntegerKind, Token};
 use crate::types::pattern::DecisionTree;
-use crate::util::reinterpret_as_bits;
+use crate::types::traits::RequiredTrait;
+use crate::types::{self, LetBindingLevel, TypeInfoId};
 use std::collections::BTreeMap;
 
-#[derive(Clone, Debug, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Debug, Eq, PartialOrd, Ord)]
 pub enum LiteralKind {
     Integer(u64, IntegerKind),
     Float(u64),
@@ -47,7 +47,7 @@ pub enum LiteralKind {
 pub struct Literal<'a> {
     pub kind: LiteralKind,
     pub location: Location<'a>,
-    pub typ: Option<types::Type>
+    pub typ: Option<types::Type>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -76,7 +76,8 @@ pub struct Variable<'a> {
     /// a given impl definition for static dispatch of traits.
     pub trait_binding: Option<TraitBindingId>,
 
-    /// The trait impls in scope. Used during trait resolution.
+    /// The module this Variable is contained in. Determines which
+    /// impls are visible to it during type inference.
     pub impl_scope: Option<ImplScopeId>,
 
     /// A unique ID that can be used to identify this variable node
@@ -98,6 +99,8 @@ pub struct Lambda<'a> {
     /// Needed because closure environment variables are converted to
     /// parameters of the function which need separate IDs.
     pub closure_environment: BTreeMap<DefinitionInfoId, DefinitionInfoId>,
+
+    pub required_traits: Vec<RequiredTrait>,
 
     pub location: Location<'a>,
     pub typ: Option<types::Type>,
@@ -166,20 +169,21 @@ pub struct Match<'a> {
 /// Type nodes in the AST, different from the representation of types during type checking.
 /// PointerType and potentially UserDefinedType are actually type constructors
 #[derive(Debug)]
+#[allow(clippy::enum_variant_names)]
 pub enum Type<'a> {
-    IntegerType(IntegerKind, Location<'a>),
-    FloatType(Location<'a>),
-    CharType(Location<'a>),
-    StringType(Location<'a>),
-    PointerType(Location<'a>),
-    BooleanType(Location<'a>),
-    UnitType(Location<'a>),
-    ReferenceType(Location<'a>),
-    FunctionType(Vec<Type<'a>>, Box<Type<'a>>, /*varargs:*/bool, Location<'a>),
+    Integer(IntegerKind, Location<'a>),
+    Float(Location<'a>),
+    Char(Location<'a>),
+    String(Location<'a>),
+    Pointer(Location<'a>),
+    Boolean(Location<'a>),
+    Unit(Location<'a>),
+    Reference(Location<'a>),
+    Function(Vec<Type<'a>>, Box<Type<'a>>, /*varargs:*/ bool, Location<'a>),
     TypeVariable(String, Location<'a>),
-    UserDefinedType(String, Location<'a>),
+    UserDefined(String, Location<'a>),
     TypeApplication(Box<Type<'a>>, Vec<Type<'a>>, Location<'a>),
-    PairType(Box<Type<'a>>, Box<Type<'a>>, Location<'a>),
+    Pair(Box<Type<'a>>, Box<Type<'a>>, Location<'a>),
 }
 
 /// The AST representation of a trait usage.
@@ -194,9 +198,9 @@ pub struct Trait<'a> {
 
 #[derive(Debug)]
 pub enum TypeDefinitionBody<'a> {
-    UnionOf(Vec<(String, Vec<Type<'a>>, Location<'a>)>),
-    StructOf(Vec<(String, Type<'a>, Location<'a>)>),
-    AliasOf(Type<'a>),
+    Union(Vec<(String, Vec<Type<'a>>, Location<'a>)>),
+    Struct(Vec<(String, Type<'a>, Location<'a>)>),
+    Alias(Type<'a>),
 }
 
 /// type Name arg1 arg2 ... argN = definition
@@ -358,15 +362,27 @@ impl PartialEq for LiteralKind {
     }
 }
 
+impl std::hash::Hash for LiteralKind {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        core::mem::discriminant(self).hash(state);
+        match self {
+            LiteralKind::Integer(x, _) => x.hash(state),
+            LiteralKind::Float(x) => x.hash(state),
+            LiteralKind::String(x) => x.hash(state),
+            LiteralKind::Char(x) => x.hash(state),
+            LiteralKind::Bool(x) => x.hash(state),
+            LiteralKind::Unit => (),
+        }
+    }
+}
+
 /// These are all convenience functions for creating various Ast nodes from the parser
 impl<'a> Ast<'a> {
     pub fn get_operator(self) -> Option<Token> {
         match self {
-            Ast::Variable(variable) => {
-                match variable.kind {
-                    VariableKind::Operator(token) => Some(token),
-                    _ => None,
-                }
+            Ast::Variable(variable) => match variable.kind {
+                VariableKind::Operator(token) => Some(token),
+                _ => None,
             },
             _ => None,
         }
@@ -376,12 +392,7 @@ impl<'a> Ast<'a> {
     /// is both a Variable node and is not a VariableKind::TypeConstructor
     fn is_matchable_variable(&self) -> bool {
         match self {
-            Ast::Variable(variable) => {
-                match variable.kind {
-                    VariableKind::TypeConstructor(..) => false,
-                    _ => true,
-                }
-            },
+            Ast::Variable(variable) => !matches!(variable.kind, VariableKind::TypeConstructor(..)),
             _ => false,
         }
     }
@@ -391,7 +402,7 @@ impl<'a> Ast<'a> {
     }
 
     pub fn float(x: f64, location: Location<'a>) -> Ast<'a> {
-        Ast::Literal(Literal { kind: LiteralKind::Float(reinterpret_as_bits(x)), location, typ: None })
+        Ast::Literal(Literal { kind: LiteralKind::Float(x.to_bits()), location, typ: None })
     }
 
     pub fn string(x: String, location: Location<'a>) -> Ast<'a> {
@@ -411,20 +422,52 @@ impl<'a> Ast<'a> {
     }
 
     pub fn variable(name: String, location: Location<'a>) -> Ast<'a> {
-        Ast::Variable(Variable { kind: VariableKind::Identifier(name), location, definition: None, id: None, impl_scope: None, trait_binding: None, typ: None })
+        Ast::Variable(Variable {
+            kind: VariableKind::Identifier(name),
+            location,
+            definition: None,
+            id: None,
+            impl_scope: None,
+            trait_binding: None,
+            typ: None,
+        })
     }
 
     pub fn operator(operator: Token, location: Location<'a>) -> Ast<'a> {
-        Ast::Variable(Variable { kind: VariableKind::Operator(operator), location, definition: None, trait_binding: None, id: None, impl_scope: None, typ: None })
+        Ast::Variable(Variable {
+            kind: VariableKind::Operator(operator),
+            location,
+            definition: None,
+            trait_binding: None,
+            id: None,
+            impl_scope: None,
+            typ: None,
+        })
     }
 
     pub fn type_constructor(name: String, location: Location<'a>) -> Ast<'a> {
-        Ast::Variable(Variable { kind: VariableKind::TypeConstructor(name), location, definition: None, trait_binding: None, id: None, impl_scope: None, typ: None })
+        Ast::Variable(Variable {
+            kind: VariableKind::TypeConstructor(name),
+            location,
+            definition: None,
+            trait_binding: None,
+            id: None,
+            impl_scope: None,
+            typ: None,
+        })
     }
 
     pub fn lambda(args: Vec<Ast<'a>>, return_type: Option<Type<'a>>, body: Ast<'a>, location: Location<'a>) -> Ast<'a> {
         assert!(!args.is_empty());
-        Ast::Lambda(Lambda { args, body: Box::new(body), closure_environment: BTreeMap::new(), return_type, location, typ: None })
+        Ast::Lambda(Lambda {
+            args,
+            body: Box::new(body),
+            closure_environment: BTreeMap::new(),
+            return_type,
+            location,
+            required_traits: vec![],
+            typ: None,
+        })
     }
 
     pub fn function_call(function: Ast<'a>, args: Vec<Ast<'a>>, location: Location<'a>) -> Ast<'a> {
@@ -433,11 +476,25 @@ impl<'a> Ast<'a> {
     }
 
     pub fn if_expr(condition: Ast<'a>, then: Ast<'a>, otherwise: Option<Ast<'a>>, location: Location<'a>) -> Ast<'a> {
-        Ast::If(If { condition: Box::new(condition), then: Box::new(then), otherwise: otherwise.map(Box::new), location, typ: None })
+        Ast::If(If {
+            condition: Box::new(condition),
+            then: Box::new(then),
+            otherwise: otherwise.map(Box::new),
+            location,
+            typ: None,
+        })
     }
 
     pub fn definition(pattern: Ast<'a>, expr: Ast<'a>, location: Location<'a>) -> Ast<'a> {
-        Ast::Definition(Definition { pattern: Box::new(pattern), expr: Box::new(expr), location, mutable: false, level: None, info: None, typ: None })
+        Ast::Definition(Definition {
+            pattern: Box::new(pattern),
+            expr: Box::new(expr),
+            location,
+            mutable: false,
+            level: None,
+            info: None,
+            typ: None,
+        })
     }
 
     pub fn match_expr(expression: Ast<'a>, mut branches: Vec<(Ast<'a>, Ast<'a>)>, location: Location<'a>) -> Ast<'a> {
@@ -458,7 +515,9 @@ impl<'a> Ast<'a> {
         }
     }
 
-    pub fn type_definition(name: String, args: Vec<String>, definition: TypeDefinitionBody<'a>, location: Location<'a>) -> Ast<'a> {
+    pub fn type_definition(
+        name: String, args: Vec<String>, definition: TypeDefinitionBody<'a>, location: Location<'a>,
+    ) -> Ast<'a> {
         Ast::TypeDefinition(TypeDefinition { name, args, definition, location, type_info: None, typ: None })
     }
 
@@ -468,17 +527,41 @@ impl<'a> Ast<'a> {
 
     pub fn import(path: Vec<String>, location: Location<'a>) -> Ast<'a> {
         assert!(!path.is_empty());
-        Ast::Import(Import { path, location, typ: None, module_id: None, })
+        Ast::Import(Import { path, location, typ: None, module_id: None })
     }
 
-    pub fn trait_definition(name: String, args: Vec<String>, fundeps: Vec<String>, declarations: Vec<TypeAnnotation<'a>>, location: Location<'a>) -> Ast<'a> {
+    pub fn trait_definition(
+        name: String, args: Vec<String>, fundeps: Vec<String>, declarations: Vec<TypeAnnotation<'a>>,
+        location: Location<'a>,
+    ) -> Ast<'a> {
         assert!(!args.is_empty());
-        Ast::TraitDefinition(TraitDefinition { name, args, fundeps, declarations, location, level: None, trait_info: None, typ: None })
+        Ast::TraitDefinition(TraitDefinition {
+            name,
+            args,
+            fundeps,
+            declarations,
+            location,
+            level: None,
+            trait_info: None,
+            typ: None,
+        })
     }
 
-    pub fn trait_impl(trait_name: String, trait_args: Vec<Type<'a>>, given: Vec<Trait<'a>>, definitions: Vec<Definition<'a>>, location: Location<'a>) -> Ast<'a> {
+    pub fn trait_impl(
+        trait_name: String, trait_args: Vec<Type<'a>>, given: Vec<Trait<'a>>, definitions: Vec<Definition<'a>>,
+        location: Location<'a>,
+    ) -> Ast<'a> {
         assert!(!trait_args.is_empty());
-        Ast::TraitImpl(TraitImpl { trait_name, trait_args, given, definitions, location, trait_arg_types: vec![], trait_info: None, typ: None })
+        Ast::TraitImpl(TraitImpl {
+            trait_name,
+            trait_args,
+            given,
+            definitions,
+            location,
+            trait_arg_types: vec![],
+            trait_info: None,
+            typ: None,
+        })
     }
 
     pub fn return_expr(expression: Ast<'a>, location: Location<'a>) -> Ast<'a> {
@@ -536,13 +619,15 @@ impl<'a> Locatable<'a> for Ast<'a> {
     }
 }
 
-macro_rules! impl_locatable_for {( $name:tt ) => {
-    impl<'a> Locatable<'a> for $name<'a> {
-        fn locate(&self) -> Location<'a> {
-            self.location
+macro_rules! impl_locatable_for {
+    ( $name:tt ) => {
+        impl<'a> Locatable<'a> for $name<'a> {
+            fn locate(&self) -> Location<'a> {
+                self.location
+            }
         }
-    }
-};}
+    };
+}
 
 impl_locatable_for!(Literal);
 impl_locatable_for!(Variable);

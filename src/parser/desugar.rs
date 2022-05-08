@@ -1,12 +1,13 @@
-
-use crate::{error::location::Locatable, lexer::token::Token, parser::ast, util::fmap};
-use crate::parser::ast::Ast;
 use crate::error::location::Location;
+use crate::parser::ast::Ast;
+use crate::{error::location::Locatable, lexer::token::Token, parser::ast, util::fmap};
 
 /// Turns `(foo _  _ 2)` into `(fn $1 $2 -> (foo $1 $2 2))`
-pub fn desugar_explicit_currying<'a, F>(function: Ast<'a>, args: Vec<Ast<'a>>,
-        make_function_call: F, loc: Location<'a>) -> Ast<'a>
-    where F: FnOnce(Ast<'a>, Vec<Ast<'a>>, Location<'a>) -> Ast<'a>
+pub fn desugar_explicit_currying<'a, F>(
+    function: Ast<'a>, args: Vec<Ast<'a>>, make_function_call: F, loc: Location<'a>,
+) -> Ast<'a>
+where
+    F: FnOnce(Ast<'a>, Vec<Ast<'a>>, Location<'a>) -> Ast<'a>,
 {
     if args.iter().any(matches_underscore) {
         curried_function_call(function, args, make_function_call, loc)
@@ -15,9 +16,9 @@ pub fn desugar_explicit_currying<'a, F>(function: Ast<'a>, args: Vec<Ast<'a>>,
     }
 }
 
-fn curried_function_call<'a, F>(function: Ast<'a>, args: Vec<Ast<'a>>,
-        call_function: F, loc: Location<'a>) -> Ast<'a>
-    where F: FnOnce(Ast<'a>, Vec<Ast<'a>>, Location<'a>) -> Ast<'a>
+fn curried_function_call<'a, F>(function: Ast<'a>, args: Vec<Ast<'a>>, call_function: F, loc: Location<'a>) -> Ast<'a>
+where
+    F: FnOnce(Ast<'a>, Vec<Ast<'a>>, Location<'a>) -> Ast<'a>,
 {
     let mut curried_args = vec![];
     let mut curried_arg_count = 0;
@@ -53,7 +54,7 @@ pub fn desugar_operators<'a>(operator: Token, lhs: Ast<'a>, rhs: Ast<'a>, locati
         let lhs = arguments.pop().unwrap();
 
         match function.get_operator() {
-            Some(Token::ApplyLeft)  => prepend_argument_to_function(lhs, rhs, location),
+            Some(Token::ApplyLeft) => prepend_argument_to_function(lhs, rhs, location),
             Some(Token::ApplyRight) => prepend_argument_to_function(rhs, lhs, location),
             Some(Token::And) => Ast::if_expr(lhs, rhs, Some(Ast::bool_literal(false, location)), location),
             Some(Token::Or) => Ast::if_expr(lhs, Ast::bool_literal(true, location), Some(rhs), location),
@@ -75,6 +76,6 @@ fn prepend_argument_to_function<'a>(f: Ast<'a>, arg: Ast<'a>, location: Location
             call.args.insert(0, arg);
             Ast::FunctionCall(call)
         },
-        _ => Ast::function_call(f, vec![arg], location)
+        _ => Ast::function_call(f, vec![arg], location),
     }
 }

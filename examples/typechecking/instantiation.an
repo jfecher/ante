@@ -18,4 +18,4 @@ id x = x
 // id : (forall a. (a -> a))
 // one : (forall a b c. ((a => b) - a -> b))
 // two1 : (forall a b. ((a => a) - a -> a))
-// two2 : (forall a b. ((a => a) => (a => a)))
+// two2 : ((a => a) => (a => a))

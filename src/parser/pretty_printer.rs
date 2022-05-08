@@ -1,9 +1,9 @@
 //! Defines a simple pretty printer to print the Ast to stdout.
 //! Used for the golden tests testing parsing to ensure there
 //! are no parsing regressions.
-use crate::parser::ast::{ self, Ast };
-use crate::util::{ fmap, join_with, reinterpret_from_bits };
-use std::fmt::{ self, Display, Formatter };
+use crate::parser::ast::{self, Ast};
+use crate::util::{fmap, join_with};
+use std::fmt::{self, Display, Formatter};
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
@@ -20,7 +20,7 @@ impl<'a> Display for ast::Literal<'a> {
         use ast::LiteralKind::*;
         match &self.kind {
             Integer(x, _) => write!(f, "{}", x),
-            Float(x) => write!(f, "{}", reinterpret_from_bits(*x)),
+            Float(x) => write!(f, "{}", f64::from_bits(*x)),
             String(s) => write!(f, "\"{}\"", s),
             Char(c) => write!(f, "'{}'", c),
             Bool(b) => write!(f, "{}", if *b { "true" } else { "false" }),
@@ -89,26 +89,25 @@ impl<'a> Display for ast::Type<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         use ast::Type::*;
         match self {
-            IntegerType(kind, _) => write!(f, "{}", kind),
-            FloatType(_) => write!(f, "float"),
-            CharType(_) => write!(f, "char"),
-            StringType(_) => write!(f, "string"),
-            PointerType(_) => write!(f, "Ptr"),
-            BooleanType(_) => write!(f, "bool"),
-            UnitType(_) => write!(f, "unit"),
-            ReferenceType(_) => write!(f, "ref"),
+            Integer(kind, _) => write!(f, "{}", kind),
+            Float(_) => write!(f, "float"),
+            Char(_) => write!(f, "char"),
+            String(_) => write!(f, "string"),
+            Pointer(_) => write!(f, "Ptr"),
+            Boolean(_) => write!(f, "bool"),
+            Unit(_) => write!(f, "unit"),
+            Reference(_) => write!(f, "ref"),
             TypeVariable(name, _) => write!(f, "{}", name),
-            UserDefinedType(name, _) => write!(f, "{}", name),
-            FunctionType(params, return_type, varargs, _) => {
-                write!(f, "({} {}-> {})", join_with(params, " "),
-                    if *varargs { "... " } else { "" }, return_type)
+            UserDefined(name, _) => write!(f, "{}", name),
+            Function(params, return_type, varargs, _) => {
+                write!(f, "({} {}-> {})", join_with(params, " "), if *varargs { "... " } else { "" }, return_type)
             },
             TypeApplication(constructor, args, _) => {
                 write!(f, "({} {})", constructor, join_with(args, " "))
             },
-            PairType(first, rest, _) => {
+            Pair(first, rest, _) => {
                 write!(f, "({}, {})", first, rest)
-            }
+            },
         }
     }
 }
@@ -117,18 +116,18 @@ impl<'a> Display for ast::TypeDefinitionBody<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         use ast::TypeDefinitionBody::*;
         match self {
-            UnionOf(types) => {
+            Union(types) => {
                 for (name, variant_fields, _) in types {
                     let s = join_with(variant_fields, " ");
                     write!(f, "| {} {}", name, s)?;
                 }
                 Ok(())
             },
-            StructOf(types) => {
+            Struct(types) => {
                 let types = fmap(types, |(name, ty, _)| format!("{}: {}", name, ty));
                 write!(f, "{}", types.join(", "))
             },
-            AliasOf(alias) => write!(f, "{}", alias),
+            Alias(alias) => write!(f, "{}", alias),
         }
     }
 }
@@ -167,8 +166,15 @@ impl<'a> Display for ast::TraitImpl<'a> {
         let args = join_with(&self.trait_args, " ");
         let definitions = join_with(&self.definitions, "\n    ");
         let given = join_with(&self.given, " ");
-        write!(f, "(impl {} {}{}{} with\n    {}\n)", self.trait_name, args,
-            if !given.is_empty() { " given " } else { "" }, given, definitions)
+        write!(
+            f,
+            "(impl {} {}{}{} with\n    {}\n)",
+            self.trait_name,
+            args,
+            if !given.is_empty() { " given " } else { "" },
+            given,
+            definitions
+        )
     }
 }
 
@@ -207,7 +213,7 @@ impl<'a> Display for ast::Sequence<'a> {
                 }
                 statements += line;
             }
-            
+
             if i != self.statements.len() - 1 {
                 statements += ";"
             }
