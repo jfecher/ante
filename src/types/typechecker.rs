@@ -1054,6 +1054,19 @@ impl<'a> Inferable<'a> for ast::FunctionCall<'a> {
     }
 }
 
+/// True if the expression can be generalized. Generalizing expressions
+/// will cause them to be re-evaluated whenever they're used with new types,
+/// so generalization should be limited to when this would be expected by
+/// users (functions) or when it would not be noticeable (variables).
+fn should_generalize(ast: &ast::Ast) -> bool {
+    match ast {
+        ast::Ast::Variable(_) => true,
+        ast::Ast::Lambda(lambda) => lambda.closure_environment.is_empty(),
+        _ => false,
+    }
+}
+
+
 /* Let
  *   infer cache expr = t
  *   infer (pattern:(generalize t) :: cache) rest = t'
@@ -1098,13 +1111,11 @@ impl<'a> Inferable<'a> for ast::Definition<'a> {
         // If this definition is of a lambda or variable we try to generalize it,
         // which entails wrapping type variables in a forall, and finding which traits
         // usages of this definitio require.
-        let should_generalize = matches!(self.expr.as_ref(), ast::Ast::Lambda(_) | ast::Ast::Variable(_));
-
-        let traits = if should_generalize {
+        let traits = if should_generalize(self.expr.as_ref()) {
             let typevars_in_fn = find_all_typevars(self.pattern.get_type().unwrap(), false, cache);
             let exposed_traits = traitchecker::resolve_traits(traits, &typevars_in_fn, cache);
 
-            bind_irrefutable_pattern(self.pattern.as_mut(), &t, &exposed_traits, should_generalize, cache);
+            bind_irrefutable_pattern(self.pattern.as_mut(), &t, &exposed_traits, true, cache);
             vec![]
         } else {
             traits
