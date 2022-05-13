@@ -151,7 +151,13 @@ fn transmute(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftV
     // TODO: struct types
     let param1 = context.current_function_parameters[0];
     let target_type = builder.func.signature.returns[0].value_type;
-    builder.ins().bitcast(target_type, param1)
+    let start_type = builder.func.dfg.value_type(param1);
+
+    if start_type != target_type {
+        builder.ins().bitcast(target_type, param1)
+    } else {
+        param1
+    }
 }
 
 fn offset(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {

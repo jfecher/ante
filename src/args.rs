@@ -1,11 +1,10 @@
+use std::str::FromStr;
+
 use clap::Parser;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 pub struct Args {
-    #[clap(long, default_value = "args:", help = "The program to run for each test file")]
-    pub args_prefix: String,
-
     #[clap(help = "The file to compile")]
     pub file: String,
 
@@ -23,6 +22,9 @@ pub struct Args {
 
     #[clap(long, help = "Build the resulting binary without running it afterward")]
     pub build: bool,
+
+    #[clap(long, help = "Specify the backend to use ('llvm' or 'cranelift'). Note that cranelift is only for debug builds. Ante will use cranelift by default for debug builds and llvm by default for optimized builds, unless overridden by this flag")]
+    pub backend: Option<Backend>,
 
     #[clap(
         short = 'O',
@@ -49,6 +51,24 @@ pub struct Args {
 
     #[clap(long, help = "Print out the type of each definition")]
     pub show_types: bool,
+}
+
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+pub enum Backend {
+    Cranelift,
+    Llvm,
+}
+
+impl FromStr for Backend {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "cranelift" => Ok(Backend::Cranelift),
+            "llvm" => Ok(Backend::Llvm),
+            _ => Err("Unknown backend. Valid backends are 'llvm' and 'cranelift'"),
+        }
+    }
 }
 
 fn validate_opt_argument(arg: &str) -> Result<(), &'static str> {

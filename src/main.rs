@@ -43,6 +43,8 @@ use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::Path;
 
+use crate::args::Backend;
+
 #[global_allocator]
 static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
@@ -143,7 +145,7 @@ pub fn main() {
     // }
 
     // Phase 6: Codegen
-    if args.opt_level == '0' {
+    if args.opt_level == '0' && args.backend != Some(Backend::Llvm) {
         cranelift_backend::run(filename, hir, &args);
     } else if cfg!(feature = "llvm") {
         #[cfg(feature = "llvm")]
