@@ -3,13 +3,13 @@ add_float = 3.0 + 4.0
 sub_float = 7.0 - 8.0
 mul_float = 11.0 * 12.0
 div_float = 15.0 / 16.0
-mod_float = 10.0 % 3.0
+// mod_float = 10.0 % 3.0
 
 print add_float
 print sub_float
 print mul_float
 print div_float
-print mod_float
+// print mod_float
 
 // args: --delete-binary
 // expected stdout:
@@ -17,4 +17,7 @@ print mod_float
 // -1.0
 // 132.0
 // 0.9375
-// 1.0
+
+// We used to check 1.0 for print mod_float but
+// cranelift does not support modulus for floats
+// so we can no longer support this operation at all.

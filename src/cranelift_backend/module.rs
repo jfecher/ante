@@ -1,9 +1,6 @@
 use std::path::Path;
 
-use cranelift::prelude::{
-    isa::{self, TargetFrontendConfig},
-    settings, Configurable,
-};
+use cranelift::prelude::{isa, settings, Configurable};
 use cranelift_jit::JITBuilder;
 use cranelift_module::{DataContext, FuncId, Linkage, Module};
 use cranelift_object::ObjectBuilder;
@@ -17,7 +14,7 @@ pub enum DynModule {
 }
 
 impl DynModule {
-    pub fn new(output_name: String, use_jit: bool) -> (Self, TargetFrontendConfig) {
+    pub fn new(output_name: String, use_jit: bool) -> Self {
         let mut settings = settings::builder();
 
         // Cranelift-jit currently only supports PIC on x86-64 and
@@ -30,24 +27,17 @@ impl DynModule {
         let shared_flags = settings::Flags::new(settings);
 
         // TODO: Should we use cranelift_native here to get the native target instead?
-        let target_isa = isa::lookup(target_lexicon::Triple::host())
-            .unwrap()
-            .finish(shared_flags)
-            .unwrap();
-
-        let frontend_config = target_isa.frontend_config();
+        let target_isa = isa::lookup(target_lexicon::Triple::host()).unwrap().finish(shared_flags).unwrap();
 
         let libcall_names = cranelift_module::default_libcall_names();
 
-        let module = if use_jit {
+        if use_jit {
             let builder = JITBuilder::with_isa(target_isa, libcall_names);
             DynModule::Jit(cranelift_jit::JITModule::new(builder))
         } else {
             let builder = ObjectBuilder::new(target_isa, output_name, libcall_names);
             DynModule::Static(cranelift_object::ObjectModule::new(builder.unwrap()))
-        };
-
-        (module, frontend_config)
+        }
     }
 
     pub fn finish(self, main_id: FuncId, output_file: &Path) {

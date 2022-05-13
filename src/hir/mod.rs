@@ -80,6 +80,7 @@ pub struct Lambda {
 pub struct FunctionCall {
     pub function: Box<Ast>,
     pub args: Vec<Ast>,
+    pub function_type: FunctionType,
 }
 
 /// Unlike ast::Definition, hir::Definition
@@ -104,6 +105,7 @@ pub struct If {
     pub condition: Box<Ast>,
     pub then: Box<Ast>,
     pub otherwise: Option<Box<Ast>>,
+    pub result_type: Type,
 }
 
 #[derive(Debug, Clone)]
@@ -111,8 +113,8 @@ pub struct Match {
     // Unlike ast::Match this only contains the parts of the
     // branch after the ->.
     pub branches: Vec<Ast>,
-
     pub decision_tree: DecisionTree,
+    pub result_type: Type,
 }
 
 // This cannot be desugared into Ast::If due to the sharing

@@ -278,7 +278,6 @@ fn solve_normal_constraint<'c>(constraint: &TraitConstraint, cache: &mut ModuleC
 fn find_matching_impls<'c>(
     constraint: &TraitConstraint, bindings: &TypeBindings, fuel: u32, cache: &mut ModuleCache<'c>,
 ) -> Vec<(Vec<(ImplInfoId, TraitConstraint)>, TypeBindings)> {
-
     if fuel == 0 {
         vec![]
     } else if constraint.is_int_constraint(cache) {

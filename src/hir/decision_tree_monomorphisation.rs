@@ -15,9 +15,10 @@ impl<'c> Context<'c> {
         let match_prelude = self.store_initial_value(match_);
         let decision_tree = self.monomorphise_tree(match_.decision_tree.as_ref().unwrap());
         let branches = fmap(&match_.branches, |branch| self.monomorphise(&branch.1));
+        let result_type = self.convert_type(match_.typ.as_ref().unwrap());
 
         hir::Ast::Sequence(hir::Sequence {
-            statements: vec![match_prelude, hir::Ast::Match(hir::Match { branches, decision_tree })],
+            statements: vec![match_prelude, hir::Ast::Match(hir::Match { branches, decision_tree, result_type })],
         })
     }
 

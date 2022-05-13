@@ -113,8 +113,8 @@ impl Cast u64 usz with cast _ = builtin "Truncate"
 
 impl Cast usz u8  with cast _ = builtin "Truncate"
 impl Cast usz u16 with cast _ = builtin "Truncate"
-impl Cast usz u64 with cast _ = builtin "Truncate"
-impl Cast usz usz with cast _ = builtin "ZeroExtend"
+impl Cast usz u32 with cast _ = builtin "Truncate"
+impl Cast usz u64 with cast _ = builtin "ZeroExtend"
 
 // Signed types
 impl Cast i8 i16 with cast _ = builtin "SignExtend"
@@ -139,8 +139,8 @@ impl Cast i64 isz with cast _ = builtin "Truncate"
 
 impl Cast isz i8  with cast _ = builtin "Truncate"
 impl Cast isz i16 with cast _ = builtin "Truncate"
-impl Cast isz i64 with cast _ = builtin "Truncate"
-impl Cast isz isz with cast _ = builtin "SignExtend"
+impl Cast isz i32 with cast _ = builtin "Truncate"
+impl Cast isz i64 with cast _ = builtin "SignExtend"
 
 // Float casts
 impl Cast i8  float with cast _ = builtin "SignedToFloat"
@@ -217,7 +217,9 @@ impl Mod u16 with (%) _ _ = builtin "ModUnsigned"
 impl Mod u32 with (%) _ _ = builtin "ModUnsigned"
 impl Mod u64 with (%) _ _ = builtin "ModUnsigned"
 impl Mod usz with (%) _ _ = builtin "ModUnsigned"
-impl Mod float with (%) (_: float) (_: float) : float = builtin "ModFloat"
+
+// Cranelift backend does not support floating-point remainder or modulus
+// impl Mod float with (%) (_: float) (_: float) : float = builtin "ModFloat"
 
 trait Eq t with (==): t - t -> bool
 impl Eq a given Int a with (==) _ _ = builtin "EqInt"

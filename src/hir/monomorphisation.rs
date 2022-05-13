@@ -959,23 +959,32 @@ impl<'c> Context<'c> {
                 // is to check if it is a tuple type or not
                 let function_type = self.convert_type(call.function.get_type().unwrap());
 
-                if matches!(function_type, Type::Tuple(..)) {
-                    // Extract the function from the closure
-                    let (function_definition, id) = self.fresh_definition(function, false);
-                    let function_variable = id.to_variable();
-                    let function = Box::new(extract(function_variable.clone(), 0));
-                    let environment = extract(function_variable, 1);
-                    args.push(environment);
+                match function_type {
+                    Type::Tuple(mut params) => {
+                        let function_type = match params.swap_remove(0) {
+                            Type::Function(f) => f,
+                            _ => unreachable!(),
+                        };
 
-                    hir::Ast::Sequence(hir::Sequence {
-                        statements: vec![
-                            function_definition,
-                            hir::Ast::FunctionCall(hir::FunctionCall { function, args }),
-                        ],
-                    })
-                } else {
-                    let function = Box::new(function);
-                    hir::Ast::FunctionCall(hir::FunctionCall { function, args })
+                        // Extract the function from the closure
+                        let (function_definition, id) = self.fresh_definition(function, false);
+                        let function_variable = id.to_variable();
+                        let function = Box::new(extract(function_variable.clone(), 0));
+                        let environment = extract(function_variable, 1);
+                        args.push(environment);
+
+                        hir::Ast::Sequence(hir::Sequence {
+                            statements: vec![
+                                function_definition,
+                                hir::Ast::FunctionCall(hir::FunctionCall { function, args, function_type }),
+                            ],
+                        })
+                    },
+                    Type::Function(function_type) => {
+                        let function = Box::new(function);
+                        hir::Ast::FunctionCall(hir::FunctionCall { function, args, function_type })
+                    },
+                    _ => unreachable!(),
                 }
             },
         }
@@ -1013,8 +1022,9 @@ impl<'c> Context<'c> {
         let condition = Box::new(self.monomorphise(&if_.condition));
         let then = Box::new(self.monomorphise(&if_.then));
         let otherwise = if_.otherwise.as_ref().map(|e| Box::new(self.monomorphise(&e)));
+        let result_type = self.convert_type(if_.typ.as_ref().unwrap());
 
-        hir::Ast::If(hir::If { condition, then, otherwise })
+        hir::Ast::If(hir::If { condition, then, otherwise, result_type })
     }
 
     fn monomorphise_return(&mut self, return_: &ast::Return<'c>) -> hir::Ast {

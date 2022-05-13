@@ -26,7 +26,7 @@ mod cache;
 
 #[macro_use]
 mod hir;
-// mod cranelift_backend;
+mod cranelift_backend;
 mod lifetimes;
 mod nameresolution;
 mod types;
@@ -143,10 +143,9 @@ pub fn main() {
     // }
 
     // Phase 6: Codegen
-    // if args.opt_level == '0' {
-    //     cranelift_backend::run(filename, ast, &mut cache, &args);
-    /*} else*/
-    if cfg!(feature = "llvm") {
+    if args.opt_level == '0' {
+        cranelift_backend::run(filename, hir, &args);
+    } else if cfg!(feature = "llvm") {
         #[cfg(feature = "llvm")]
         llvm::run(filename, hir, &args);
     } else {

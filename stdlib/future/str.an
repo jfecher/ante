@@ -1,0 +1,48 @@
+import Vec
+
+reverse (s: string) -> string =
+    buf = mut malloc (s.len + 1usz)
+
+    loop (i = 0) ->
+        if i < s.len then
+            buf#i := s#(s.len - i - 1usz)
+            recur (i + 1)
+
+    buf#i := '\0'
+    string buf i
+
+
+split (s: string) (c: char) -> Vec string =
+    v = mut Vec.empty ()
+
+    i, j = loop (subend = 0) (substart = 0) ->
+        if subend < s.len then
+            substart = if s#subend == c then
+                push v (substr s substart subend)
+                subend + 1
+            else 
+                substart
+
+            recur (subend + 1) substart
+        else
+            subend, substart
+        
+
+    push v (substr s j i)
+    v
+
+substr (s: string) (begin: usz) (end: usz) -> string =
+    if end > s.len or begin >= s.len then
+        return ""
+
+    len = end - begin
+    buf = mut malloc (len + 1)
+    buf#end := '\0'
+
+    loop (i = 0) ->
+        b = begin + i
+        if b < end then
+            buf#i := s#b
+            recur (i + 1)
+
+    string buf len

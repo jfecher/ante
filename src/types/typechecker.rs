@@ -1066,7 +1066,6 @@ fn should_generalize(ast: &ast::Ast) -> bool {
     }
 }
 
-
 /* Let
  *   infer cache expr = t
  *   infer (pattern:(generalize t) :: cache) rest = t'
