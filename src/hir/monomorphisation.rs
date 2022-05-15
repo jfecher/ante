@@ -890,55 +890,80 @@ impl<'c> Context<'c> {
         hir::Ast::Tuple(hir::Tuple { fields })
     }
 
-    fn convert_builtin(&mut self, args: &[ast::Ast<'c>]) -> hir::Ast {
-        assert!(args.len() == 1);
+    fn size_of_type_arg0(&mut self, ptr_type: &types::Type) -> u32 {
+        match self.follow_all_bindings(ptr_type) {
+            types::Type::TypeApplication(_, arg_types) => {
+                assert_eq!(arg_types.len(), 1);
+                self.size_of_type(&arg_types[0]) as u32
+            },
+            _ => unreachable!(),
+        }
+    }
 
+    fn convert_builtin(&mut self, args: &[ast::Ast<'c>], result_type: &types::Type) -> hir::Ast {
+        use hir::Builtin::*;
         let arg = match &args[0] {
             ast::Ast::Literal(ast::Literal { kind: ast::LiteralKind::String(string), .. }) => string,
             _ => unreachable!(),
         };
 
-        use hir::Builtin::*;
+        let binary = |this: &mut Self, f: fn(Box<hir::Ast>, Box<hir::Ast>) -> hir::Builtin| {
+            f(Box::new(this.monomorphise(&args[1])), Box::new(this.monomorphise(&args[2])))
+        };
+
+        let cast = |this: &mut Self, f: fn(Box<hir::Ast>, Type) -> hir::Builtin| {
+            f(Box::new(this.monomorphise(&args[1])), this.convert_type(result_type))
+        };
+
         hir::Ast::Builtin(match arg.as_ref() {
-            "AddInt" => AddInt,
-            "AddFloat" => AddFloat,
+            "AddInt" => binary(self, AddInt),
+            "AddFloat" => binary(self, AddFloat),
 
-            "SubInt" => SubInt,
-            "SubFloat" => SubFloat,
+            "SubInt" => binary(self, SubInt),
+            "SubFloat" => binary(self, SubFloat),
 
-            "MulInt" => MulInt,
-            "MulFloat" => MulFloat,
+            "MulInt" => binary(self, MulInt),
+            "MulFloat" => binary(self, MulFloat),
 
-            "DivSigned" => DivSigned,
-            "DivUnsigned" => DivUnsigned,
-            "DivFloat" => DivFloat,
+            "DivSigned" => binary(self, DivSigned),
+            "DivUnsigned" => binary(self, DivUnsigned),
+            "DivFloat" => binary(self, DivFloat),
 
-            "ModSigned" => ModSigned,
-            "ModUnsigned" => ModUnsigned,
-            "ModFloat" => ModFloat,
+            "ModSigned" => binary(self, ModSigned),
+            "ModUnsigned" => binary(self, ModUnsigned),
+            "ModFloat" => binary(self, ModFloat),
 
-            "LessSigned" => LessSigned,
-            "LessUnsigned" => LessUnsigned,
-            "LessFloat" => LessFloat,
+            "LessSigned" => binary(self, LessSigned),
+            "LessUnsigned" => binary(self, LessUnsigned),
+            "LessFloat" => binary(self, LessFloat),
 
-            "EqInt" => EqInt,
-            "EqFloat" => EqFloat,
-            "EqChar" => EqChar,
-            "EqBool" => EqBool,
+            "EqInt" => binary(self, EqInt),
+            "EqFloat" => binary(self, EqFloat),
+            "EqChar" => binary(self, EqChar),
+            "EqBool" => binary(self, EqBool),
 
-            "SignExtend" => SignExtend,
-            "ZeroExtend" => ZeroExtend,
+            "SignExtend" => cast(self, SignExtend),
+            "ZeroExtend" => cast(self, ZeroExtend),
 
-            "SignedToFloat" => SignedToFloat,
-            "UnsignedToFloat" => UnsignedToFloat,
-            "FloatToSigned" => FloatToSigned,
-            "FloatToUnsigned" => FloatToUnsigned,
+            "SignedToFloat" => cast(self, SignedToFloat),
+            "UnsignedToFloat" => cast(self, UnsignedToFloat),
+            "FloatToSigned" => cast(self, FloatToSigned),
+            "FloatToUnsigned" => cast(self, FloatToUnsigned),
 
-            "Truncate" => Truncate,
+            "Truncate" => cast(self, Truncate),
 
-            "Deref" => Deref,
-            "Offset" => Offset,
-            "Transmute" => Transmute,
+            "Deref" => cast(self, Deref),
+            "Offset" => {
+                Offset(Box::new(self.monomorphise(&args[1])), Box::new(self.monomorphise(&args[2])), self.size_of_type_arg0(result_type))
+            }
+            "Transmute" => cast(self, Transmute),
+
+            // We know the result of SizeOf now, so replace it with a constant
+            "SizeOf" => {
+                // We expect (size_of : Type t -> usz), so get the size of t
+                let size = self.size_of_type_arg0(&args[1].get_type().unwrap());
+                return hir::Ast::Literal(hir::Literal::Integer(size as u64, IntegerKind::Usz));
+            }
 
             _ => unreachable!("Unknown builtin '{}'", arg),
         })
@@ -946,7 +971,9 @@ impl<'c> Context<'c> {
 
     fn monomorphise_call(&mut self, call: &ast::FunctionCall<'c>) -> hir::Ast {
         match call.function.as_ref() {
-            ast::Ast::Variable(variable) if variable.definition == Some(BUILTIN_ID) => self.convert_builtin(&call.args),
+            ast::Ast::Variable(variable) if variable.definition == Some(BUILTIN_ID) => {
+                self.convert_builtin(&call.args, call.typ.as_ref().unwrap())
+            },
             _ => {
                 // TODO: Code smell: args currently must be monomorphised before the function in case
                 // they contain polymorphic integer literals which still need to be defaulted

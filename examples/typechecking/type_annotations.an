@@ -4,6 +4,9 @@ foo (_: i32) (_: string) : char = 'a'
 bar: a - a -> i32 =
     fn _ b -> b
 
+baz (a: usz) : Ptr a =
+    transmute a
+
 exit2 = exit
 puts2: (Ptr char) -> i32 = puts
 
@@ -14,12 +17,13 @@ puts2
 // TODO: bar should probably error that its annotated
 //       type is more general than its actual type
 // expected stderr:
-// examples/typechecking/type_annotations.an: 10,1	error: Type mismatch between i32 and string
+// examples/typechecking/type_annotations.an: 13,1	error: Type mismatch between i32 and string
 // exit2 "test"
 // 
 
 // expected stdout:
 // bar : (i32 - i32 -> i32)
+// baz : (forall a. (usz -> (Ptr a)))
 // exit2 : (forall a. (i32 -> a))
 // foo : (i32 - string -> char)
 // puts2 : ((Ptr char) -> i32)

@@ -201,46 +201,46 @@ pub struct ReinterpretCast {
     pub target_type: Type,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 pub enum Builtin {
-    AddInt,
-    AddFloat,
+    AddInt(Box<Ast>, Box<Ast>),
+    AddFloat(Box<Ast>, Box<Ast>),
 
-    SubInt,
-    SubFloat,
+    SubInt(Box<Ast>, Box<Ast>),
+    SubFloat(Box<Ast>, Box<Ast>),
 
-    MulInt,
-    MulFloat,
+    MulInt(Box<Ast>, Box<Ast>),
+    MulFloat(Box<Ast>, Box<Ast>),
 
-    DivSigned,
-    DivUnsigned,
-    DivFloat,
+    DivSigned(Box<Ast>, Box<Ast>),
+    DivUnsigned(Box<Ast>, Box<Ast>),
+    DivFloat(Box<Ast>, Box<Ast>),
 
-    ModSigned,
-    ModUnsigned,
-    ModFloat,
+    ModSigned(Box<Ast>, Box<Ast>),
+    ModUnsigned(Box<Ast>, Box<Ast>),
+    ModFloat(Box<Ast>, Box<Ast>),
 
-    LessSigned,
-    LessUnsigned,
-    LessFloat,
+    LessSigned(Box<Ast>, Box<Ast>),
+    LessUnsigned(Box<Ast>, Box<Ast>),
+    LessFloat(Box<Ast>, Box<Ast>),
 
-    EqInt,
-    EqFloat,
-    EqChar,
-    EqBool,
+    EqInt(Box<Ast>, Box<Ast>),
+    EqFloat(Box<Ast>, Box<Ast>),
+    EqChar(Box<Ast>, Box<Ast>),
+    EqBool(Box<Ast>, Box<Ast>),
 
-    SignExtend,
-    ZeroExtend,
+    SignExtend(Box<Ast>, Type),
+    ZeroExtend(Box<Ast>, Type),
 
-    SignedToFloat,
-    UnsignedToFloat,
-    FloatToSigned,
-    FloatToUnsigned,
+    SignedToFloat(Box<Ast>, Type),
+    UnsignedToFloat(Box<Ast>, Type),
+    FloatToSigned(Box<Ast>, Type),
+    FloatToUnsigned(Box<Ast>, Type),
 
-    Truncate,
-    Deref,
-    Offset,
-    Transmute,
+    Truncate(Box<Ast>, Type),
+    Deref(Box<Ast>, Type),
+    Offset(Box<Ast>, Box<Ast>, u32), // u32 is the pointer element size in bytes
+    Transmute(Box<Ast>, Type),
 }
 
 #[derive(Debug, Clone)]

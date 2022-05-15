@@ -48,7 +48,7 @@ pub fn define_builtins(cache: &mut ModuleCache) {
         parameters: vec![string_type],
         return_type: Box::new(Type::TypeVariable(a)),
         environment: Box::new(Type::Primitive(PrimitiveType::UnitType)),
-        is_varargs: false,
+        is_varargs: true,
     });
 
     let builtin_type = Type::ForAll(vec![a], Box::new(builtin_fn_type));

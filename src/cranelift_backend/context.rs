@@ -25,7 +25,6 @@ pub struct Context<'ast> {
     pub definitions: HashMap<DefinitionId, Value>,
     module: DynModule,
     data_context: DataContext,
-    pub current_function_parameters: Vec<CraneliftValue>,
     function_queue: FunctionQueue<'ast>,
 
     pub current_function_name: Option<DefinitionId>,
@@ -151,7 +150,6 @@ impl<'local> Context<'local> {
                 data_context: DataContext::new(),
                 function_queue: vec![],
                 current_function_name: None,
-                current_function_parameters: vec![],
             },
             builder_context,
         )
@@ -189,8 +187,6 @@ impl<'local> Context<'local> {
         builder.switch_to_block(entry);
         builder.seal_block(entry);
         builder.append_block_params_for_function_params(entry);
-
-        self.current_function_parameters = builder.block_params(entry).to_vec();
 
         let body = self.codegen_lambda(function, &mut builder);
         self.create_return(body, &mut builder);

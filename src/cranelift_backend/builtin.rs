@@ -1,155 +1,140 @@
 use cranelift::frontend::FunctionBuilder;
 use cranelift::prelude::{FloatCC, InstBuilder, IntCC, MemFlags, Value as CraneliftValue};
 
-use crate::hir::Builtin;
+use crate::hir::{Builtin, Ast};
 
 use super::context::{int_pointer_type, pointer_type};
-use super::{Context, Value};
+use super::{Context, Value, CodeGen};
 
-pub fn call_builtin(builtin: Builtin, context: &mut Context, builder: &mut FunctionBuilder) -> Value {
+pub fn call_builtin<'ast>(builtin: &'ast Builtin, context: &mut Context<'ast>, builder: &mut FunctionBuilder) -> Value {
+    let mut value = |ast: &'ast Box<Ast>| {
+        ast.eval_single(context, builder)
+    };
+
     let result = match builtin {
-        Builtin::AddInt => add_int(context, builder),
-        Builtin::AddFloat => add_float(context, builder),
+        Builtin::AddInt(a, b) => add_int(value(a), value(b), builder),
+        Builtin::AddFloat(a, b) => add_float(value(a), value(b), builder),
 
-        Builtin::SubInt => sub_int(context, builder),
-        Builtin::SubFloat => sub_float(context, builder),
+        Builtin::SubInt(a, b) => sub_int(value(a), value(b), builder),
+        Builtin::SubFloat(a, b) => sub_float(value(a), value(b), builder),
 
-        Builtin::MulInt => mul_int(context, builder),
-        Builtin::MulFloat => mul_float(context, builder),
+        Builtin::MulInt(a, b) => mul_int(value(a), value(b), builder),
+        Builtin::MulFloat(a, b) => mul_float(value(a), value(b), builder),
 
-        Builtin::DivSigned => div_signed(context, builder),
-        Builtin::DivUnsigned => div_unsigned(context, builder),
-        Builtin::DivFloat => div_float(context, builder),
+        Builtin::DivSigned(a, b) => div_signed(value(a), value(b), builder),
+        Builtin::DivUnsigned(a, b) => div_unsigned(value(a), value(b), builder),
+        Builtin::DivFloat(a, b) => div_float(value(a), value(b), builder),
 
-        Builtin::ModSigned => mod_signed(context, builder),
-        Builtin::ModUnsigned => mod_unsigned(context, builder),
-        Builtin::ModFloat => mod_float(context, builder),
+        Builtin::ModSigned(a, b) => mod_signed(value(a), value(b), builder),
+        Builtin::ModUnsigned(a, b) => mod_unsigned(value(a), value(b), builder),
+        Builtin::ModFloat(_, _) => unimplemented!("cranelift defines no float remainder function"),
 
-        Builtin::LessSigned => less_signed(context, builder),
-        Builtin::LessUnsigned => less_unsigned(context, builder),
-        Builtin::LessFloat => less_float(context, builder),
+        Builtin::LessSigned(a, b) => less_signed(value(a), value(b), builder),
+        Builtin::LessUnsigned(a, b) => less_unsigned(value(a), value(b), builder),
+        Builtin::LessFloat(a, b) => less_float(value(a), value(b), builder),
 
-        Builtin::EqInt => eq_int(context, builder),
-        Builtin::EqFloat => eq_float(context, builder),
-        Builtin::EqChar => eq_char(context, builder),
-        Builtin::EqBool => eq_bool(context, builder),
+        Builtin::EqInt(a, b) => eq_int(value(a), value(b), builder),
+        Builtin::EqFloat(a, b) => eq_float(value(a), value(b), builder),
+        Builtin::EqChar(a, b) => eq_char(value(a), value(b), builder),
+        Builtin::EqBool(a, b) => eq_bool(value(a), value(b), builder),
 
-        Builtin::SignExtend => sign_extend(context, builder),
-        Builtin::ZeroExtend => zero_extend(context, builder),
+        Builtin::SignExtend(a, _typ) => sign_extend(value(a), builder),
+        Builtin::ZeroExtend(a, _typ) => zero_extend(value(a), builder),
 
-        Builtin::SignedToFloat => signed_to_float(context, builder),
-        Builtin::UnsignedToFloat => unsigned_to_float(context, builder),
-        Builtin::FloatToSigned => float_to_signed(context, builder),
-        Builtin::FloatToUnsigned => float_to_unsigned(context, builder),
+        Builtin::SignedToFloat(a, _typ) => signed_to_float(value(a), builder),
+        Builtin::UnsignedToFloat(a, _typ) => unsigned_to_float(value(a), builder),
+        Builtin::FloatToSigned(a, _typ) => float_to_signed(value(a), builder),
+        Builtin::FloatToUnsigned(a, _typ) => float_to_unsigned(value(a), builder),
 
-        Builtin::Truncate => truncate(context, builder),
+        Builtin::Truncate(a, _typ) => truncate(value(a), builder),
 
-        Builtin::Deref => deref(context, builder),
-        Builtin::Offset => offset(context, builder),
-        Builtin::Transmute => transmute(context, builder),
+        Builtin::Deref(a, _typ) => deref(value(a), builder),
+        Builtin::Offset(a, b, elem_size) => offset(value(a), value(b), *elem_size, builder),
+        Builtin::Transmute(a, _typ) => transmute(value(a), builder),
     };
 
     Value::Normal(result)
 }
 
-fn binary_function<F>(context: &mut Context, builder: &mut FunctionBuilder, f: F) -> CraneliftValue
-where
-    F: FnOnce(CraneliftValue, CraneliftValue, &mut FunctionBuilder) -> CraneliftValue,
-{
-    let param1 = context.current_function_parameters[0];
-    let param2 = context.current_function_parameters[1];
-    f(param1, param2, builder)
+fn add_int(param1: CraneliftValue, param2: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
+    builder.ins().iadd(param1, param2)
 }
 
-fn add_int(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
-    binary_function(context, builder, |param1, param2, builder| builder.ins().iadd(param1, param2))
+fn add_float(param1: CraneliftValue, param2: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
+    builder.ins().fadd(param1, param2)
 }
 
-fn add_float(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
-    binary_function(context, builder, |param1, param2, builder| builder.ins().fadd(param1, param2))
+fn sub_int(param1: CraneliftValue, param2: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
+    builder.ins().isub(param1, param2)
 }
 
-fn sub_int(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
-    binary_function(context, builder, |param1, param2, builder| builder.ins().isub(param1, param2))
+fn sub_float(param1: CraneliftValue, param2: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
+    builder.ins().fsub(param1, param2)
 }
 
-fn sub_float(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
-    binary_function(context, builder, |param1, param2, builder| builder.ins().fsub(param1, param2))
+fn mul_int(param1: CraneliftValue, param2: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
+    builder.ins().imul(param1, param2)
 }
 
-fn mul_int(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
-    binary_function(context, builder, |param1, param2, builder| builder.ins().imul(param1, param2))
+fn mul_float(param1: CraneliftValue, param2: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
+    builder.ins().fmul(param1, param2)
 }
 
-fn mul_float(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
-    binary_function(context, builder, |param1, param2, builder| builder.ins().fmul(param1, param2))
+fn div_signed(param1: CraneliftValue, param2: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
+    builder.ins().sdiv(param1, param2)
 }
 
-fn div_signed(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
-    binary_function(context, builder, |param1, param2, builder| builder.ins().sdiv(param1, param2))
+fn div_unsigned(param1: CraneliftValue, param2: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
+    builder.ins().udiv(param1, param2)
 }
 
-fn div_unsigned(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
-    binary_function(context, builder, |param1, param2, builder| builder.ins().udiv(param1, param2))
+fn div_float(param1: CraneliftValue, param2: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
+    builder.ins().fdiv(param1, param2)
 }
 
-fn div_float(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
-    binary_function(context, builder, |param1, param2, builder| builder.ins().fdiv(param1, param2))
+fn mod_signed(param1: CraneliftValue, param2: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
+    builder.ins().srem(param1, param2)
 }
 
-fn mod_signed(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
-    binary_function(context, builder, |param1, param2, builder| builder.ins().srem(param1, param2))
+fn mod_unsigned(param1: CraneliftValue, param2: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
+    builder.ins().urem(param1, param2)
 }
 
-fn mod_unsigned(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
-    binary_function(context, builder, |param1, param2, builder| builder.ins().urem(param1, param2))
+fn less_signed(param1: CraneliftValue, param2: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
+    builder.ins().icmp(IntCC::SignedLessThan, param1, param2)
 }
 
-fn mod_float(_context: &mut Context, _builder: &mut FunctionBuilder) -> CraneliftValue {
-    unimplemented!("cranelift defines no float remainder function")
+fn less_unsigned(param1: CraneliftValue, param2: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
+    builder.ins().icmp(IntCC::UnsignedLessThan, param1, param2)
 }
 
-fn less_signed(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
-    binary_function(context, builder, |param1, param2, builder| {
-        builder.ins().icmp(IntCC::SignedLessThan, param1, param2)
-    })
+fn less_float(param1: CraneliftValue, param2: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
+    builder.ins().fcmp(FloatCC::LessThan, param1, param2)
 }
 
-fn less_unsigned(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
-    binary_function(context, builder, |param1, param2, builder| {
-        builder.ins().icmp(IntCC::UnsignedLessThan, param1, param2)
-    })
+fn eq_int(param1: CraneliftValue, param2: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
+    builder.ins().icmp(IntCC::Equal, param1, param2)
 }
 
-fn less_float(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
-    binary_function(context, builder, |param1, param2, builder| builder.ins().fcmp(FloatCC::LessThan, param1, param2))
+fn eq_float(param1: CraneliftValue, param2: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
+    builder.ins().fcmp(FloatCC::Equal, param1, param2)
 }
 
-fn eq_int(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
-    binary_function(context, builder, |param1, param2, builder| builder.ins().icmp(IntCC::Equal, param1, param2))
+fn eq_char(param1: CraneliftValue, param2: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
+    builder.ins().icmp(IntCC::Equal, param1, param2)
 }
 
-fn eq_float(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
-    binary_function(context, builder, |param1, param2, builder| builder.ins().fcmp(FloatCC::Equal, param1, param2))
+fn eq_bool(param1: CraneliftValue, param2: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
+    builder.ins().icmp(IntCC::Equal, param1, param2)
 }
 
-fn eq_char(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
-    binary_function(context, builder, |param1, param2, builder| builder.ins().icmp(IntCC::Equal, param1, param2))
-}
-
-fn eq_bool(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
-    binary_function(context, builder, |param1, param2, builder| builder.ins().icmp(IntCC::Equal, param1, param2))
-}
-
-fn deref(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
-    let param1 = context.current_function_parameters[0];
+fn deref(param1: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
     let target_type = builder.func.signature.returns[0].value_type;
     builder.ins().load(target_type, MemFlags::new(), param1, 0)
 }
 
-fn transmute(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
+fn transmute(param1: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
     // TODO: struct types
-    let param1 = context.current_function_parameters[0];
     let target_type = builder.func.signature.returns[0].value_type;
     let start_type = builder.func.dfg.value_type(param1);
 
@@ -160,16 +145,11 @@ fn transmute(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftV
     }
 }
 
-fn offset(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
-    let address = context.current_function_parameters[0];
-    let offset = context.current_function_parameters[1];
-    let return_types = &builder.func.signature.returns;
-
+fn offset(address: CraneliftValue, offset: CraneliftValue, elem_size: u32, builder: &mut FunctionBuilder) -> CraneliftValue {
     let usize_type = int_pointer_type();
     let pointer_type = pointer_type();
 
-    let type_size = return_types.iter().map(|p| p.value_type.bytes()).sum::<u32>() as i64;
-    let size = builder.ins().iconst(int_pointer_type(), type_size);
+    let size = builder.ins().iconst(int_pointer_type(), elem_size as i64);
     let offset = builder.ins().imul(offset, size);
 
     let address = builder.ins().bitcast(usize_type, address);
@@ -178,66 +158,59 @@ fn offset(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValu
 }
 
 // All integers are boxed as an i64, so this is a no-op in this backend
-fn sign_extend(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
+fn sign_extend(param1: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
     let target_type = builder.func.signature.returns[0].value_type;
-    let int = context.current_function_parameters[0];
-    let start_type = builder.func.dfg.value_type(int);
+    let start_type = builder.func.dfg.value_type(param1);
     assert!(start_type.bytes() <= target_type.bytes());
 
     if start_type.bytes() < target_type.bytes() {
-        builder.ins().sextend(target_type, int)
+        builder.ins().sextend(target_type, param1)
     } else {
-        int
+        param1
     }
 }
 
 // All integers are boxed as an i64, so this is a no-op in this backend
-fn zero_extend(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
+fn zero_extend(param1: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
     let target_type = builder.func.signature.returns[0].value_type;
-    let int = context.current_function_parameters[0];
-    let start_type = builder.func.dfg.value_type(int);
+    let start_type = builder.func.dfg.value_type(param1);
     assert!(start_type.bytes() <= target_type.bytes());
 
     if start_type.bytes() < target_type.bytes() {
-        builder.ins().uextend(target_type, int)
+        builder.ins().uextend(target_type, param1)
     } else {
-        int
+        param1
     }
 }
 
-fn signed_to_float(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
+fn signed_to_float(param1: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
     let target_type = builder.func.signature.returns[0].value_type;
-    let int = context.current_function_parameters[0];
-    builder.ins().fcvt_from_sint(target_type, int)
+    builder.ins().fcvt_from_sint(target_type, param1)
 }
 
-fn unsigned_to_float(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
+fn unsigned_to_float(param1: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
     let target_type = builder.func.signature.returns[0].value_type;
-    let int = context.current_function_parameters[0];
-    builder.ins().fcvt_from_uint(target_type, int)
+    builder.ins().fcvt_from_uint(target_type, param1)
 }
 
-fn float_to_signed(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
+fn float_to_signed(param1: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
     let target_type = builder.func.signature.returns[0].value_type;
-    let flt = context.current_function_parameters[0];
-    builder.ins().fcvt_to_sint(target_type, flt)
+    builder.ins().fcvt_to_sint(target_type, param1)
 }
 
-fn float_to_unsigned(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
+fn float_to_unsigned(param1: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
     let target_type = builder.func.signature.returns[0].value_type;
-    let flt = context.current_function_parameters[0];
-    builder.ins().fcvt_to_uint(target_type, flt)
+    builder.ins().fcvt_to_uint(target_type, param1)
 }
 
-fn truncate(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
+fn truncate(param1: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
     let target_type = builder.func.signature.returns[0].value_type;
-    let int = context.current_function_parameters[0];
-    let start_type = builder.func.dfg.value_type(int);
+    let start_type = builder.func.dfg.value_type(param1);
     assert!(start_type.bytes() >= target_type.bytes());
 
     if start_type.bytes() > target_type.bytes() {
-        builder.ins().ireduce(target_type, int)
+        builder.ins().ireduce(target_type, param1)
     } else {
-        int
+        param1
     }
 }

@@ -23,7 +23,10 @@ pub struct Args {
     #[clap(long, help = "Build the resulting binary without running it afterward")]
     pub build: bool,
 
-    #[clap(long, help = "Specify the backend to use ('llvm' or 'cranelift'). Note that cranelift is only for debug builds. Ante will use cranelift by default for debug builds and llvm by default for optimized builds, unless overridden by this flag")]
+    #[clap(
+        long,
+        help = "Specify the backend to use ('llvm' or 'cranelift'). Note that cranelift is only for debug builds. Ante will use cranelift by default for debug builds and llvm by default for optimized builds, unless overridden by this flag"
+    )]
     pub backend: Option<Backend>,
 
     #[clap(

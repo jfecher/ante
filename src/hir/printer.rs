@@ -28,15 +28,62 @@ impl AstPrinter {
         }
         Ok(())
     }
+
+    fn fmt_call(&mut self, func: impl FmtAst, args: &[impl FmtAst], f: &mut Formatter) -> fmt::Result {
+        write!(f, "(")?;
+        func.fmt_ast(self, f)?;
+
+        for arg in args {
+            write!(f, " ")?;
+            arg.fmt_ast(self, f)?;
+        }
+
+        write!(f, ")")
+    }
+
+    fn fmt_cast(&mut self, func: impl FmtAst, arg: impl FmtAst, typ: &Type, f: &mut Formatter) -> fmt::Result {
+        write!(f, "(")?;
+        func.fmt_ast(self, f)?;
+        write!(f, " ")?;
+        arg.fmt_ast(self, f)?;
+        write!(f, " {})", typ)
+    }
+
+    fn fmt_offset(&mut self, ptr: impl FmtAst, offset: impl FmtAst, size: u32, f: &mut Formatter) -> fmt::Result {
+        write!(f, "(#Offset")?;
+        write!(f, " ")?;
+        ptr.fmt_ast(self, f)?;
+        write!(f, " ")?;
+        offset.fmt_ast(self, f)?;
+        write!(f, " {})", size)
+    }
 }
 
 pub trait FmtAst {
     fn fmt_ast(&self, printer: &mut AstPrinter, f: &mut Formatter) -> fmt::Result;
 }
 
+impl FmtAst for &'static str {
+    fn fmt_ast(&self, _: &mut AstPrinter, f: &mut Formatter) -> fmt::Result {
+        write!(f, "{}", self)
+    }
+}
+
 impl FmtAst for Ast {
     fn fmt_ast(&self, printer: &mut AstPrinter, f: &mut Formatter) -> fmt::Result {
         dispatch_on_hir!(self, FmtAst::fmt_ast, printer, f)
+    }
+}
+
+impl<'a> FmtAst for &'a Ast {
+    fn fmt_ast(&self, printer: &mut AstPrinter, f: &mut Formatter) -> fmt::Result {
+        dispatch_on_hir!(self, FmtAst::fmt_ast, printer, f)
+    }
+}
+
+impl<'a> FmtAst for &'a Box<Ast> {
+    fn fmt_ast(&self, printer: &mut AstPrinter, f: &mut Formatter) -> fmt::Result {
+        dispatch_on_hir!(self.as_ref(), FmtAst::fmt_ast, printer, f)
     }
 }
 
@@ -85,15 +132,7 @@ impl FmtAst for Lambda {
 
 impl FmtAst for FunctionCall {
     fn fmt_ast(&self, printer: &mut AstPrinter, f: &mut Formatter) -> fmt::Result {
-        write!(f, "(")?;
-        self.function.fmt_ast(printer, f)?;
-
-        for arg in &self.args {
-            write!(f, " ")?;
-            arg.fmt_ast(printer, f)?;
-        }
-
-        write!(f, ")")
+        printer.fmt_call(self.function.as_ref(), &self.args, f)
     }
 }
 
@@ -192,38 +231,37 @@ impl FmtAst for ReinterpretCast {
 }
 
 impl FmtAst for Builtin {
-    fn fmt_ast(&self, _printer: &mut AstPrinter, f: &mut Formatter) -> fmt::Result {
-        write!(f, "#")?;
+    fn fmt_ast(&self, printer: &mut AstPrinter, f: &mut Formatter) -> fmt::Result {
         match self {
-            Builtin::AddInt => write!(f, "AddInt"),
-            Builtin::AddFloat => write!(f, "AddFloat"),
-            Builtin::SubInt => write!(f, "SubInt"),
-            Builtin::SubFloat => write!(f, "SubFloat"),
-            Builtin::MulInt => write!(f, "MulInt"),
-            Builtin::MulFloat => write!(f, "MulFloat"),
-            Builtin::DivSigned => write!(f, "DivSigned"),
-            Builtin::DivUnsigned => write!(f, "DivUnsigned"),
-            Builtin::DivFloat => write!(f, "DivFloat"),
-            Builtin::ModSigned => write!(f, "ModSigned"),
-            Builtin::ModUnsigned => write!(f, "ModSigned"),
-            Builtin::ModFloat => write!(f, "ModFloat"),
-            Builtin::LessSigned => write!(f, "LessSigned"),
-            Builtin::LessUnsigned => write!(f, "LessUnsigned"),
-            Builtin::LessFloat => write!(f, "LessFloat"),
-            Builtin::EqInt => write!(f, "EqInt"),
-            Builtin::EqFloat => write!(f, "EqFloat"),
-            Builtin::EqChar => write!(f, "EqChar"),
-            Builtin::EqBool => write!(f, "EqBool"),
-            Builtin::SignExtend => write!(f, "SignExtend"),
-            Builtin::ZeroExtend => write!(f, "ZeroExtend"),
-            Builtin::SignedToFloat => write!(f, "SignedToFloat"),
-            Builtin::UnsignedToFloat => write!(f, "UnsignedToFloat"),
-            Builtin::FloatToSigned => write!(f, "FloatToSigned"),
-            Builtin::FloatToUnsigned => write!(f, "FloatToUnsigned"),
-            Builtin::Truncate => write!(f, "Truncate"),
-            Builtin::Deref => write!(f, "Deref"),
-            Builtin::Offset => write!(f, "Offset"),
-            Builtin::Transmute => write!(f, "Transmute"),
+            Builtin::AddInt(a, b) => printer.fmt_call("#AddInt", &[a, b], f),
+            Builtin::AddFloat(a, b) => printer.fmt_call("#AddFloat", &[a, b], f),
+            Builtin::SubInt(a, b) => printer.fmt_call("#SubInt", &[a, b], f),
+            Builtin::SubFloat(a, b) => printer.fmt_call("#SubFloat", &[a, b], f),
+            Builtin::MulInt(a, b) => printer.fmt_call("#MulInt", &[a, b], f),
+            Builtin::MulFloat(a, b) => printer.fmt_call("#MulFloat", &[a, b], f),
+            Builtin::DivSigned(a, b) => printer.fmt_call("#DivSigned", &[a, b], f),
+            Builtin::DivUnsigned(a, b) => printer.fmt_call("#DivUnsigned", &[a, b], f),
+            Builtin::DivFloat(a, b) => printer.fmt_call("#DivFloat", &[a, b], f),
+            Builtin::ModSigned(a, b) => printer.fmt_call("#ModSigned", &[a, b], f),
+            Builtin::ModUnsigned(a, b) => printer.fmt_call("#ModSigned", &[a, b], f),
+            Builtin::ModFloat(a, b) => printer.fmt_call("#ModFloat", &[a, b], f),
+            Builtin::LessSigned(a, b) => printer.fmt_call("#LessSigned", &[a, b], f),
+            Builtin::LessUnsigned(a, b) => printer.fmt_call("#LessUnsigned", &[a, b], f),
+            Builtin::LessFloat(a, b) => printer.fmt_call("#LessFloat", &[a, b], f),
+            Builtin::EqInt(a, b) => printer.fmt_call("#EqInt", &[a, b], f),
+            Builtin::EqFloat(a, b) => printer.fmt_call("#EqFloat", &[a, b], f),
+            Builtin::EqChar(a, b) => printer.fmt_call("#EqChar", &[a, b], f),
+            Builtin::EqBool(a, b) => printer.fmt_call("#EqBool", &[a, b], f),
+            Builtin::SignExtend(a, b) => printer.fmt_cast("#SignExtend", a, b, f),
+            Builtin::ZeroExtend(a, b) => printer.fmt_cast("#ZeroExtend", a, b, f),
+            Builtin::SignedToFloat(a, b) => printer.fmt_cast("#SignedToFloat", a, b, f),
+            Builtin::UnsignedToFloat(a, b) => printer.fmt_cast("#UnsignedToFloat", a, b, f),
+            Builtin::FloatToSigned(a, b) => printer.fmt_cast("#FloatToSigned", a, b, f),
+            Builtin::FloatToUnsigned(a, b) => printer.fmt_cast("#FloatToUnsigned", a, b, f),
+            Builtin::Truncate(a, b) => printer.fmt_cast("#Truncate", a, b, f),
+            Builtin::Deref(a, b) => printer.fmt_cast("#Deref", a, b, f),
+            Builtin::Offset(a, b, size) => printer.fmt_offset(a, b, *size, f),
+            Builtin::Transmute(a, b) => printer.fmt_cast("#Transmute", a, b, f),
         }
     }
 }

@@ -46,6 +46,7 @@ use crate::lexer::{token::Token, Lexer};
 use crate::nameresolution::scope::{FunctionScopes, Scope};
 use crate::parser::{self, ast, ast::Ast};
 use crate::types::traits::RequiredTrait;
+use crate::types::typed::Typed;
 use crate::types::{
     Field, FunctionType, LetBindingLevel, PrimitiveType, Type, TypeConstructor, TypeInfoBody, TypeInfoId,
     TypeVariableId, INITIAL_LEVEL, STRING_TYPE,
@@ -308,6 +309,7 @@ impl NameResolver {
     fn push_lambda<'c>(&mut self, lambda: &mut ast::Lambda<'c>, cache: &mut ModuleCache<'c>) {
         let function_id = self.current_function.as_ref().map(|(_, id)| *id);
         self.scopes.push(FunctionScopes::from_lambda(lambda, function_id));
+        self.push_type_variable_scope();
         self.push_scope(cache);
     }
 
@@ -338,6 +340,7 @@ impl NameResolver {
         let function = self.function_scopes();
         let function_id = function.function_id;
         assert_eq!(function.scopes.len(), 1);
+        self.pop_type_variable_scope();
         self.pop_scope(cache, true, function_id);
         self.scopes.pop();
     }
@@ -829,6 +832,14 @@ impl<'c> Resolvable<'c> for ast::Lambda<'c> {
         resolver.push_lambda(self, cache);
         resolver.try_add_current_function_to_scope();
         resolver.resolve_all_definitions(self.args.iter_mut(), cache, || DefinitionKind::Parameter);
+
+        if let Some(typ) = &self.return_type {
+            // Auto-declare any new type variables within the return type
+            resolver.auto_declare = true;
+            self.body.set_type(resolver.convert_type(cache, typ));
+            resolver.auto_declare = false;
+        }
+
         self.body.define(resolver, cache);
         resolver.pop_lambda(cache);
     }
@@ -857,12 +868,14 @@ impl<'c> Resolvable<'c> for ast::Definition<'c> {
         let definition = || DefinitionKind::Definition(trustme::make_mut(definition));
 
         resolver.push_let_binding_level();
+        resolver.push_type_variable_scope();
         resolver.in_mutable_context = self.mutable;
 
         resolver.resolve_declarations(self.pattern.as_mut(), cache, definition);
 
         resolver.in_mutable_context = false;
         self.level = Some(resolver.let_binding_level);
+        resolver.pop_type_variable_scope();
         resolver.pop_let_binding_level();
     }
 
@@ -873,6 +886,7 @@ impl<'c> Resolvable<'c> for ast::Definition<'c> {
         let definition = || DefinitionKind::Definition(trustme::make_mut(definition));
 
         resolver.push_let_binding_level();
+        resolver.push_type_variable_scope();
         resolver.in_mutable_context = self.mutable;
 
         resolver.resolve_definitions(self.pattern.as_mut(), cache, definition);
@@ -883,6 +897,7 @@ impl<'c> Resolvable<'c> for ast::Definition<'c> {
         resolver.try_set_current_function(self);
         self.expr.define(resolver, cache);
 
+        resolver.pop_type_variable_scope();
         resolver.pop_let_binding_level();
     }
 }

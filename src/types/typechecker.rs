@@ -1005,7 +1005,15 @@ impl<'a> Inferable<'a> for ast::Lambda<'a> {
 
         bind_closure_environment(&self.closure_environment, cache);
 
-        let (return_type, traits) = infer(self.body.as_mut(), cache);
+        let (return_type, traits) = if let Some(typ) = self.body.get_type() {
+            // Check if user specified a return type
+            let typ = typ.clone();
+            let (return_type, traits) = self.body.infer_impl(cache);
+            unify(&typ, &return_type, self.location, cache);
+            (typ, traits)
+        } else {
+            infer(self.body.as_mut(), cache)
+        };
 
         let typ = Function(FunctionType {
             parameters: parameter_types,

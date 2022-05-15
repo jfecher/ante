@@ -246,6 +246,6 @@ impl CodeGen for hir::ReinterpretCast {
 
 impl CodeGen for hir::Builtin {
     fn codegen<'a>(&'a self, context: &mut Context<'a>, builder: &mut FunctionBuilder) -> Value {
-        builtin::call_builtin(*self, context, builder)
+        builtin::call_builtin(self, context, builder)
     }
 }
