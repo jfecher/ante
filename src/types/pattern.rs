@@ -20,6 +20,8 @@ use crate::util::{fmap, join_with, unwrap_clone};
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use super::GeneralizedType;
+
 /// Compiles the given match_expr to a DecisionTree, doing
 /// completeness and redundancy checking in the process.
 pub fn compile<'c>(match_expr: &ast::Match<'c>, cache: &mut ModuleCache<'c>) -> DecisionTree {
@@ -281,17 +283,11 @@ fn get_type_info_id(typ: &Type) -> TypeInfoId {
 /// Used as a helper function when checking exhaustiveness.
 fn get_variant_type_from_constructor(constructor_id: DefinitionInfoId, cache: &ModuleCache) -> TypeInfoId {
     let constructor_type = &cache.definition_infos[constructor_id.0].typ;
-    match constructor_type {
-        Some(Type::ForAll(_, typ)) => match typ.as_ref() {
-            Type::Function(function) => get_type_info_id(function.return_type.as_ref()),
-            typ => get_type_info_id(typ),
-        },
+    match constructor_type.as_ref().map(GeneralizedType::remove_forall) {
         Some(Type::Function(function)) => get_type_info_id(function.return_type.as_ref()),
         Some(Type::UserDefined(id)) => *id,
-        _ => unreachable!(
-            "get_variant_type_from_constructor called on invalid constructor of type: {:?}",
-            constructor_type
-        ),
+        Some(other) => get_type_info_id(other),
+        None => unreachable!(),
     }
 }
 
@@ -826,7 +822,7 @@ impl DecisionTree {
             DecisionTree::Fail => (),
             DecisionTree::Switch(id, cases) => {
                 let typ = unwrap_clone(&cache.definition_infos[id.0].typ);
-                let typ = typechecker::follow_bindings_in_cache_and_map(&typ, &std::collections::HashMap::new(), cache);
+                let typ = typechecker::follow_bindings_in_cache(&typ.into_monotype(), cache);
 
                 // Bind the id for each field to its corresponding field type
                 for case in cases.iter_mut() {
@@ -866,11 +862,11 @@ fn set_type<'c>(id: DefinitionInfoId, expected: &Type, location: Location<'c>, c
     let definition = &mut cache.definition_infos[id.0];
     match &definition.typ {
         Some(definition_type) => {
-            let definition_type = definition_type.clone();
+            let definition_type = definition_type.as_monotype().clone();
             typechecker::unify(&definition_type, expected, location, cache);
         },
         None => {
-            definition.typ = Some(expected.clone());
+            definition.typ = Some(GeneralizedType::MonoType(expected.clone()));
         },
     }
 }
@@ -907,7 +903,7 @@ impl Case {
         match &self.tag {
             Some(UserDefined(id)) => {
                 let constructor_type = unwrap_clone(&cache.definition_infos[id.0].typ);
-                typechecker::instantiate(&constructor_type, vec![], cache).0
+                constructor_type.instantiate(vec![], cache).0
             },
             Some(Literal(LiteralKind::Integer(_, kind))) => Type::Primitive(PrimitiveType::IntegerType(*kind)),
             Some(Literal(LiteralKind::Float(_))) => Type::Primitive(PrimitiveType::FloatType),

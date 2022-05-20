@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use crate::cache::{DefinitionInfoId, DefinitionKind, ModuleCache, VariableId};
+use crate::cache::{DefinitionInfoId, DefinitionKind, ImplInfoId, ModuleCache, VariableId};
 use crate::hir;
 use crate::nameresolution::builtin::BUILTIN_ID;
 use crate::parser::ast;
-use crate::types::traits::RequiredImpl;
+use crate::types::traits::{Callsite, RequiredImpl, TraitConstraintId};
 use crate::types::typechecker::{self, TypeBindings};
 use crate::types::typed::Typed;
 use crate::types::{self, TypeInfoId, TypeVariableId};
@@ -18,6 +18,9 @@ const DEFAULT_INTEGER_KIND: IntegerKind = IntegerKind::I32;
 /// The type to bind most typevars to if they are still unbound when we codegen them.
 const UNBOUND_TYPE: types::Type = types::Type::Primitive(types::PrimitiveType::UnitType);
 
+/// Arbitrary recursion limit for following type variable mappings
+const RECURSION_LIMIT: u32 = 500;
+
 /// Monomorphise this ast, simplifying it by removing all generics, traits,
 /// and unneeded ast constructs.
 pub fn monomorphise<'c>(ast: &ast::Ast<'c>, cache: ModuleCache<'c>) -> hir::Ast {
@@ -26,7 +29,7 @@ pub fn monomorphise<'c>(ast: &ast::Ast<'c>, cache: ModuleCache<'c>) -> hir::Ast 
 }
 
 pub struct Context<'c> {
-    monomorphisation_bindings: Vec<TypeBindings>,
+    monomorphisation_bindings: Vec<Rc<TypeBindings>>,
     pub cache: ModuleCache<'c>,
 
     /// Monomorphisation can result in what was 1 DefinitionInfoId being split into
@@ -38,7 +41,8 @@ pub struct Context<'c> {
     /// Compile-time mapping of variable -> definition for impls that were resolved
     /// after type inference. This is needed for definitions that are polymorphic in
     /// the impls they may use within.
-    impl_mappings: HashMap<VariableId, DefinitionInfoId>,
+    direct_impl_mappings: Vec<HashMap<VariableId, DefinitionInfoId>>,
+    indirect_impl_mappings: Vec<HashMap<(VariableId, TraitConstraintId), ImplInfoId>>,
 
     next_id: usize,
 }
@@ -75,7 +79,8 @@ impl<'c> Context<'c> {
             monomorphisation_bindings: vec![],
             definitions: HashMap::new(),
             types: HashMap::new(),
-            impl_mappings: HashMap::new(),
+            direct_impl_mappings: vec![HashMap::new()],
+            indirect_impl_mappings: vec![HashMap::new()],
             next_id: 0,
             cache,
         }
@@ -110,63 +115,81 @@ impl<'c> Context<'c> {
         }
     }
 
-    fn find_binding(&self, id: TypeVariableId) -> Option<&types::Type> {
+    /// Follow the bindings as far as possible.
+    /// Returns a non-type variable on success.
+    /// Returns the last type variable found on failure.
+    fn find_binding(&self, id: TypeVariableId, fuel: u32) -> Result<&types::Type, TypeVariableId> {
         use types::Type::*;
         use types::TypeBinding::*;
 
+        if fuel == 0 {
+            panic!("Recursion limit reached in find_binding");
+        }
+
+        let fuel = fuel - 1;
         match &self.cache.type_bindings[id.0] {
-            Bound(TypeVariable(id) | Ref(id)) => self.find_binding(*id),
-            Bound(binding) => Some(binding),
+            Bound(TypeVariable(id2) | Ref(id2)) => self.find_binding(*id2, fuel),
+            Bound(binding) => Ok(&binding),
             Unbound(..) => {
                 for bindings in self.monomorphisation_bindings.iter().rev() {
-                    if let Some(binding) = bindings.get(&id) {
-                        return Some(binding);
+                    match bindings.get(&id) {
+                        Some(TypeVariable(id2) | Ref(id2)) => return self.find_binding(*id2, fuel),
+                        Some(binding) => return Ok(binding),
+                        None => (),
                     }
                 }
-                None
+                Err(id)
             },
         }
     }
 
     /// If this type is a type variable, follow what it is bound to
     /// until we find the first type that isn't also a type variable.
-    fn follow_bindings_shallow<'a>(&'a self, typ: &'a types::Type) -> &'a types::Type {
+    fn follow_bindings_shallow<'a>(&'a self, typ: &'a types::Type) -> Result<&'a types::Type, TypeVariableId> {
         use types::Type::*;
 
         match typ {
-            TypeVariable(id) => self.find_binding(*id).unwrap_or(typ),
-            _ => typ,
+            TypeVariable(id) => self.find_binding(*id, RECURSION_LIMIT),
+            _ => Ok(typ),
         }
     }
 
     /// Recursively follow all type variables in this type such that all Bound
     /// type variables are replaced with whatever they are bound to.
     pub fn follow_all_bindings<'a>(&'a self, typ: &'a types::Type) -> types::Type {
+        self.follow_all_bindings_inner(typ, RECURSION_LIMIT)
+    }
+
+    fn follow_all_bindings_inner<'a>(&'a self, typ: &'a types::Type, fuel: u32) -> types::Type {
         use types::Type::*;
 
+        if fuel == 0 {
+            panic!("Recursion limit reached in convert_type");
+        }
+
+        let fuel = fuel - 1;
         match typ {
-            TypeVariable(id) => match self.find_binding(*id) {
-                Some(binding) => self.follow_all_bindings(binding),
-                None => typ.clone(),
+            TypeVariable(id) => match self.find_binding(*id, fuel) {
+                Ok(binding) => self.follow_all_bindings_inner(binding, fuel),
+                Err(id) => TypeVariable(id),
             },
             Primitive(_) => typ.clone(),
             Function(f) => {
                 let f = types::FunctionType {
-                    parameters: fmap(&f.parameters, |param| self.follow_all_bindings(param)),
-                    return_type: Box::new(self.follow_all_bindings(&f.return_type)),
-                    environment: Box::new(self.follow_all_bindings(&f.environment)),
+                    parameters: fmap(&f.parameters, |param| self.follow_all_bindings_inner(param, fuel)),
+                    return_type: Box::new(self.follow_all_bindings_inner(&f.return_type, fuel)),
+                    environment: Box::new(self.follow_all_bindings_inner(&f.environment, fuel)),
                     is_varargs: f.is_varargs,
                 };
                 Function(f)
             },
             UserDefined(_) => typ.clone(),
             TypeApplication(con, args) => {
-                let con = self.follow_all_bindings(con);
-                let args = fmap(args, |arg| self.follow_all_bindings(arg));
+                let con = self.follow_all_bindings_inner(con, fuel);
+                let args = fmap(args, |arg| self.follow_all_bindings_inner(arg, fuel));
                 TypeApplication(Box::new(con), args)
             },
             Ref(_) => typ.clone(),
-            ForAll(_, t) => self.follow_all_bindings(t),
         }
     }
 
@@ -246,7 +269,7 @@ impl<'c> Context<'c> {
             Function(..) => Self::ptr_size(),
 
             TypeVariable(id) => {
-                let binding = self.find_binding(*id).unwrap_or(&UNBOUND_TYPE).clone();
+                let binding = self.find_binding(*id, RECURSION_LIMIT).unwrap_or(&UNBOUND_TYPE).clone();
                 self.size_of_type(&binding)
             },
 
@@ -258,8 +281,6 @@ impl<'c> Context<'c> {
             },
 
             Ref(_) => Self::ptr_size(),
-
-            ForAll(_, typ) => self.size_of_type(typ),
         }
     }
 
@@ -359,24 +380,33 @@ impl<'c> Context<'c> {
     }
 
     fn empty_closure_environment(&self, environment: &types::Type) -> bool {
-        self.follow_bindings_shallow(environment).is_unit(&self.cache)
+        self.follow_bindings_shallow(environment).map_or(false, |env| env.is_unit(&self.cache))
     }
 
     /// Monomorphise a types::Type into a hir::Type with no generics.
     pub fn convert_type(&mut self, typ: &types::Type) -> Type {
+        self.convert_type_inner(typ, RECURSION_LIMIT)
+    }
+
+    pub fn convert_type_inner(&mut self, typ: &types::Type, fuel: u32) -> Type {
         use types::PrimitiveType::Ptr;
         use types::Type::*;
 
+        if fuel == 0 {
+            panic!("Recursion limit reached in convert_type");
+        }
+
+        let fuel = fuel - 1;
         match typ {
             Primitive(primitive) => self.convert_primitive_type(primitive),
 
             Function(function) => {
-                let mut parameters = fmap(&function.parameters, |typ| self.convert_type(typ).into());
+                let mut parameters = fmap(&function.parameters, |typ| self.convert_type_inner(typ, fuel).into());
 
-                let return_type = Box::new(self.convert_type(&function.return_type));
+                let return_type = Box::new(self.convert_type_inner(&function.return_type, fuel));
 
                 let environment = (!self.empty_closure_environment(&function.environment)).then(|| {
-                    let environment_parameter = self.convert_type(&function.environment);
+                    let environment_parameter = self.convert_type_inner(&function.environment, fuel);
                     parameters.push(environment_parameter.clone());
                     environment_parameter
                 });
@@ -393,7 +423,13 @@ impl<'c> Context<'c> {
                 }
             },
 
-            TypeVariable(id) => self.convert_type(&self.find_binding(*id).unwrap_or(&UNBOUND_TYPE).clone()),
+            TypeVariable(id) => match self.find_binding(*id, fuel) {
+                Ok(binding) => {
+                    let binding = binding.clone();
+                    self.convert_type_inner(&binding, fuel)
+                },
+                Err(_) => self.convert_type_inner(&UNBOUND_TYPE, fuel),
+            },
 
             UserDefined(id) => self.convert_user_defined_type(*id, vec![]),
 
@@ -402,17 +438,20 @@ impl<'c> Context<'c> {
                 let typ = self.follow_bindings_shallow(typ);
 
                 match typ {
-                    Primitive(Ptr) | Ref(_) => Type::Primitive(hir::PrimitiveType::Pointer),
-                    UserDefined(id) => {
+                    Ok(Primitive(Ptr) | Ref(_)) => Type::Primitive(hir::PrimitiveType::Pointer),
+                    Ok(UserDefined(id)) => {
                         let id = *id;
                         self.convert_user_defined_type(id, args)
                     },
-                    _ => {
+                    Ok(other) => {
                         unreachable!(
                             "Type {} requires 0 type args but was applied to {:?}",
-                            typ.display(&self.cache),
+                            other.display(&self.cache),
                             args
                         );
+                    },
+                    Err(var) => {
+                        unreachable!("Tried to apply an unbound type variable (id {}), args: {:?}", var.0, args);
                     },
                 }
             },
@@ -422,8 +461,6 @@ impl<'c> Context<'c> {
                     "Kind error during monomorphisation. Attempted to translate a `ref` without a type argument"
                 )
             },
-
-            ForAll(_, typ) => self.convert_type(typ),
         }
     }
 
@@ -435,10 +472,10 @@ impl<'c> Context<'c> {
                 use types::PrimitiveType;
                 use types::Type::*;
 
-                match self.find_binding(id) {
-                    Some(Primitive(PrimitiveType::IntegerType(kind))) => self.convert_integer_kind(*kind),
-                    None => DEFAULT_INTEGER_KIND,
-                    Some(other) => {
+                match self.find_binding(id, RECURSION_LIMIT) {
+                    Ok(Primitive(PrimitiveType::IntegerType(kind))) => self.convert_integer_kind(*kind),
+                    Err(_) => DEFAULT_INTEGER_KIND,
+                    Ok(other) => {
                         unreachable!("convert_integer_kind called with non-integer type {}", other.display(&self.cache))
                     },
                 }
@@ -479,18 +516,19 @@ impl<'c> Context<'c> {
     }
 
     fn add_required_impls(&mut self, required_impls: &[RequiredImpl]) {
-        for required_impl in required_impls {
-            // TODO: This assert is failing in builtin_int for some reason.
-            // It may be the case that this assert was wrong to begin with and
-            // there _should_ be multiple bindings for a given origin.
-            // assert!(!self.impl_mappings.contains_key(&required_impl.origin), "impl_mappings already had a mapping for {:?}", required_impl.origin);
-            self.impl_mappings.insert(required_impl.origin, required_impl.binding);
-        }
-    }
+        let new_direct = self.direct_impl_mappings.last_mut().unwrap();
+        let new_indirect = self.indirect_impl_mappings.last_mut().unwrap();
 
-    fn remove_required_impls(&mut self, required_impls: &[RequiredImpl]) {
         for required_impl in required_impls {
-            self.impl_mappings.remove(&required_impl.origin);
+            match required_impl.callsite {
+                Callsite::Direct(callsite) => {
+                    let binding = self.cache.find_method_in_impl(callsite, required_impl.binding);
+                    new_direct.insert(callsite, binding);
+                },
+                Callsite::Indirect(callsite, id) => {
+                    new_indirect.insert((callsite, id), required_impl.binding);
+                },
+            }
         }
     }
 
@@ -500,21 +538,28 @@ impl<'c> Context<'c> {
     /// definition. This is currently only done for trait functions/values to
     /// point them to impls that actually have definitions.
     fn get_definition_id(&self, variable: &ast::Variable<'c>) -> DefinitionInfoId {
-        self.impl_mappings.get(&variable.id.unwrap()).copied().unwrap_or_else(|| variable.definition.unwrap())
+        self.direct_impl_mappings
+            .last()
+            .unwrap()
+            .get(&variable.id.unwrap())
+            .copied()
+            .unwrap_or_else(|| variable.definition.unwrap())
     }
 
     fn monomorphise_variable(&mut self, variable: &ast::Variable<'c>) -> hir::Ast {
-        let required_impls = self.cache[variable.trait_binding.unwrap()].required_impls.clone();
+        let required_impls = self.cache[variable.id.unwrap()].required_impls.clone();
 
         self.add_required_impls(&required_impls);
 
         // The definition to compile is either the corresponding impl definition if this
         // variable refers to a trait function, or otherwise it is the regular definition of this variable.
-        let id = self.get_definition_id(&variable);
+        let definition_id = self.get_definition_id(&variable);
 
-        let definition = self.monomorphise_definition_id(id, variable.typ.as_ref().unwrap());
+        let variable_id = variable.id.unwrap();
+        let typ = variable.typ.as_ref().unwrap();
+        let definition =
+            self.monomorphise_definition_id(definition_id, variable_id, typ, &variable.instantiation_mapping);
 
-        self.remove_required_impls(&required_impls);
         definition.into()
     }
 
@@ -523,21 +568,74 @@ impl<'c> Context<'c> {
         self.definitions.get(&(id, typ)).cloned()
     }
 
-    fn monomorphise_definition_id(&mut self, id: DefinitionInfoId, typ: &types::Type) -> Definition {
+    fn push_monomorphisation_bindings(
+        &mut self, instantiation_mapping: &Rc<TypeBindings>, typ: &types::Type,
+        definition: &crate::cache::DefinitionInfo<'c>,
+    ) {
+        if !instantiation_mapping.is_empty() {
+            self.monomorphisation_bindings.push(instantiation_mapping.clone());
+        }
+
+        if definition.trait_impl {
+            let definition_type = definition.typ.as_ref().unwrap().remove_forall();
+            let bindings = typechecker::try_unify(&typ, &definition_type, definition.location, &mut self.cache)
+                .map_err(|error| eprintln!("{}", error))
+                .expect("Unification error during monomorphisation");
+
+            self.monomorphisation_bindings.push(Rc::new(bindings.bindings));
+        }
+    }
+
+    fn pop_monomorphisation_bindings(
+        &mut self, instantiation_mapping: &Rc<TypeBindings>, definition: &crate::cache::DefinitionInfo,
+    ) {
+        if !instantiation_mapping.is_empty() {
+            self.monomorphisation_bindings.pop();
+        }
+
+        if definition.trait_impl {
+            self.monomorphisation_bindings.pop();
+        }
+    }
+
+    fn monomorphise_definition_id(
+        &mut self, id: DefinitionInfoId, variable: VariableId, typ: &types::Type,
+        instantiation_mapping: &Rc<TypeBindings>,
+    ) -> Definition {
         if let Some(value) = self.lookup_definition(id, &typ) {
             return value;
         }
 
-        let definition = trustme::extend_lifetime(&mut self.cache[id]);
-        let definition_type = remove_forall(definition.typ.as_ref().unwrap());
-
         let typ = self.follow_all_bindings(typ);
 
-        let bindings = typechecker::try_unify(&typ, &definition_type, definition.location, &mut self.cache)
-            .map_err(|error| eprintln!("{}", error))
-            .expect("Unification error during monomorphisation");
+        let definition = trustme::extend_lifetime(&mut self.cache[id]);
+        self.push_monomorphisation_bindings(instantiation_mapping, &typ, definition);
 
-        self.monomorphisation_bindings.push(bindings);
+        let mut new_direct = HashMap::new();
+        let mut new_indirect = HashMap::new();
+        for required_trait in &definition.required_traits {
+            let key = (variable, required_trait.signature.id);
+
+            // TODO: Need a better system for impls with 0 definitions
+            if required_trait.is_builtin(&self.cache) {
+                continue;
+            }
+
+            let binding = self.indirect_impl_mappings.last().unwrap()[&key];
+
+            match required_trait.callsite {
+                Callsite::Direct(callsite) => {
+                    let binding = self.cache.find_method_in_impl(callsite, binding);
+                    new_direct.insert(callsite, binding);
+                },
+                Callsite::Indirect(callsite, id) => {
+                    new_indirect.insert((callsite, id), binding);
+                },
+            }
+        }
+
+        self.direct_impl_mappings.push(new_direct);
+        self.indirect_impl_mappings.push(new_indirect);
 
         // Compile the definition with the bindings in scope. Each definition is expected to
         // add itself to Generator.definitions
@@ -562,15 +660,16 @@ impl<'c> Context<'c> {
                     "Cannot monomorphise from a TraitDefinition.\nNo cached impl for {} {}: {}",
                     definition.name,
                     id.0,
-                    typ.display(&self.cache)
+                    typ.debug(&self.cache)
                 )
             },
             Some(DefinitionKind::Parameter) => {
                 unreachable!(
-                    "Parameters should already be defined.\nEncountered while compiling {} {}: {}",
+                    "Parameters should already be defined.\nEncountered while compiling {} {}: {}, {:?}",
                     definition.name,
                     id.0,
-                    typ.display(&self.cache)
+                    typ.debug(&self.cache),
+                    typ
                 )
             },
             Some(DefinitionKind::MatchPattern) => {
@@ -578,13 +677,16 @@ impl<'c> Context<'c> {
                     "MatchPatterns should already be defined.\n Encountered while compiling {} {}: {}",
                     definition.name,
                     id.0,
-                    typ.display(&self.cache)
+                    typ.debug(&self.cache)
                 )
             },
             None => unreachable!("No definition for {} {}", definition.name, id.0),
         };
 
-        self.monomorphisation_bindings.pop();
+        self.direct_impl_mappings.pop();
+        self.indirect_impl_mappings.pop();
+
+        self.pop_monomorphisation_bindings(instantiation_mapping, definition);
         value
     }
 
@@ -678,6 +780,8 @@ impl<'c> Context<'c> {
     /// ```
     /// This function will not add the new variables into self.definitions
     /// as they should not be able to be referenced externally - unlike `a` and `b` above.
+    ///
+    /// PRE-REQUISITE: `typ` must equal `self.follow_all_bindings(typ)`
     fn desugar_pattern(
         &mut self, pattern: &ast::Ast<'c>, definition_id: hir::DefinitionId, typ: types::Type,
         definitions: &mut Vec<hir::Ast>,
@@ -686,11 +790,6 @@ impl<'c> Context<'c> {
             ast::Ast::{FunctionCall, Literal, TypeAnnotation, Variable},
             ast::LiteralKind,
         };
-
-        // Sanity check the expected type exactly matches that of the actual pattern
-        let pattern_type = pattern.get_type().unwrap();
-        let pattern_type = self.follow_all_bindings(pattern_type);
-        assert_eq!(pattern_type, typ);
 
         match pattern {
             Literal(literal) => assert_eq!(literal.kind, LiteralKind::Unit),
@@ -850,11 +949,11 @@ impl<'c> Context<'c> {
             param
         });
 
-        args.extend(lambda.closure_environment.values().map(|value| {
+        args.extend(lambda.closure_environment.values().map(|(_, inner_var, _)| {
             let param = self.fresh_variable();
-            let typ = self.cache[*value].typ.as_ref().unwrap();
+            let typ = self.cache[*inner_var].typ.as_ref().unwrap().as_monotype();
             let typ = self.follow_all_bindings(typ);
-            self.definitions.insert((*value, typ), Definition::Normal(param.clone()));
+            self.definitions.insert((*inner_var, typ), Definition::Normal(param.clone()));
 
             param.into()
         }));
@@ -876,9 +975,9 @@ impl<'c> Context<'c> {
             let mut values = Vec::with_capacity(lambda.closure_environment.len() + 1);
             values.push(function);
 
-            for key in lambda.closure_environment.keys() {
-                let typ = self.cache[*key].typ.as_ref().unwrap().clone();
-                let definition = self.monomorphise_definition_id(*key, &typ);
+            for (outer_var, (id, _, bindings)) in &lambda.closure_environment {
+                let typ = self.cache[*outer_var].typ.as_ref().unwrap().clone().into_monotype();
+                let definition = self.monomorphise_definition_id(*outer_var, *id, &typ, bindings);
                 values.push(definition.into());
             }
 
@@ -953,9 +1052,11 @@ impl<'c> Context<'c> {
             "Truncate" => cast(self, Truncate),
 
             "Deref" => cast(self, Deref),
-            "Offset" => {
-                Offset(Box::new(self.monomorphise(&args[1])), Box::new(self.monomorphise(&args[2])), self.size_of_type_arg0(result_type))
-            }
+            "Offset" => Offset(
+                Box::new(self.monomorphise(&args[1])),
+                Box::new(self.monomorphise(&args[2])),
+                self.size_of_type_arg0(result_type),
+            ),
             "Transmute" => cast(self, Transmute),
 
             // We know the result of SizeOf now, so replace it with a constant
@@ -963,7 +1064,7 @@ impl<'c> Context<'c> {
                 // We expect (size_of : Type t -> usz), so get the size of t
                 let size = self.size_of_type_arg0(&args[1].get_type().unwrap());
                 return hir::Ast::Literal(hir::Literal::Integer(size as u64, IntegerKind::Usz));
-            }
+            },
 
             _ => unreachable!("Unknown builtin '{}'", arg),
         })
@@ -1067,7 +1168,8 @@ impl<'c> Context<'c> {
         use types::Type::*;
 
         match self.follow_bindings_shallow(typ) {
-            UserDefined(id) => self.cache[*id].find_field(field_name).unwrap().0,
+            Ok(UserDefined(id)) => self.cache[*id].find_field(field_name).unwrap().0,
+            Ok(TypeApplication(typ, _)) => self.get_field_index(field_name, typ),
             _ => unreachable!(
                 "get_field_index called with type {} that doesn't have a '{}' field",
                 typ.display(&self.cache),
@@ -1092,13 +1194,6 @@ impl<'c> Context<'c> {
 
 fn unit_literal() -> hir::Ast {
     hir::Ast::Literal(hir::Literal::Unit)
-}
-
-fn remove_forall(typ: &types::Type) -> &types::Type {
-    match typ {
-        types::Type::ForAll(_, t) => t,
-        _ => typ,
-    }
 }
 
 fn tag_value(tag: u8) -> hir::Ast {

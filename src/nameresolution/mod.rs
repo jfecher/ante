@@ -45,16 +45,17 @@ use crate::error::{
 use crate::lexer::{token::Token, Lexer};
 use crate::nameresolution::scope::{FunctionScopes, Scope};
 use crate::parser::{self, ast, ast::Ast};
-use crate::types::traits::RequiredTrait;
+use crate::types::traits::ConstraintSignature;
 use crate::types::typed::Typed;
 use crate::types::{
-    Field, FunctionType, LetBindingLevel, PrimitiveType, Type, TypeConstructor, TypeInfoBody, TypeInfoId,
-    TypeVariableId, INITIAL_LEVEL, STRING_TYPE,
+    Field, FunctionType, GeneralizedType, LetBindingLevel, PrimitiveType, Type, TypeConstructor, TypeInfoBody,
+    TypeInfoId, TypeVariableId, INITIAL_LEVEL, STRING_TYPE,
 };
 use crate::util::{fmap, timing, trustme};
 
 use colored::Colorize;
 
+use std::borrow::Cow;
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
@@ -256,7 +257,7 @@ impl NameResolver {
             let next_fn = origin_fn + 1;
 
             let to = self.add_closure_parameter_definition(environment_name, mutable, next_fn, location, cache);
-            self.scopes[next_fn].add_closure_environment_variable_mapping(environment, to);
+            self.scopes[next_fn].add_closure_environment_variable_mapping(environment, to, location, cache);
             environment = to;
             ret = Some(to);
         }
@@ -393,13 +394,11 @@ impl NameResolver {
         let trait_info = &mut cache.trait_infos[trait_id.0];
         trait_info.definitions.push(id);
 
-        let info = &mut cache.definition_infos[id.0];
-        info.trait_info = Some(trait_id);
-
         let args =
             trait_info.typeargs.iter().chain(trait_info.fundeps.iter()).map(|id| Type::TypeVariable(*id)).collect();
 
-        info.required_traits.push(RequiredTrait { trait_id, args, origin: None });
+        let info = &mut cache.definition_infos[id.0];
+        info.trait_info = Some((trait_id, args));
     }
 
     /// Push a new Definition onto the current scope.
@@ -475,7 +474,7 @@ impl NameResolver {
     #[allow(clippy::too_many_arguments)]
     fn push_trait_impl<'c>(
         &mut self, trait_id: TraitInfoId, args: Vec<Type>, definitions: Vec<DefinitionInfoId>,
-        trait_impl: &'c mut ast::TraitImpl<'c>, given: Vec<RequiredTrait>, cache: &mut ModuleCache<'c>,
+        trait_impl: &'c mut ast::TraitImpl<'c>, given: Vec<ConstraintSignature>, cache: &mut ModuleCache<'c>,
         location: Location<'c>,
     ) -> ImplInfoId {
         // Any overlapping impls are only reported when they're used during typechecking
@@ -704,12 +703,17 @@ impl<'c> NameResolver {
         }
     }
 
-    fn resolve_required_traits(&mut self, given: &[ast::Trait<'c>], cache: &mut ModuleCache<'c>) -> Vec<RequiredTrait> {
+    fn resolve_required_traits(
+        &mut self, given: &[ast::Trait<'c>], cache: &mut ModuleCache<'c>,
+    ) -> Vec<ConstraintSignature> {
         let mut required_traits = vec![];
         for trait_ in given {
             if let Some(trait_id) = self.lookup_trait(&trait_.name, cache) {
-                let args = fmap(&trait_.args, |arg| self.convert_type(cache, arg));
-                required_traits.push(RequiredTrait { trait_id, args, origin: None });
+                required_traits.push(ConstraintSignature {
+                    trait_id,
+                    args: fmap(&trait_.args, |arg| self.convert_type(cache, arg)),
+                    id: cache.next_trait_constraint_id(),
+                });
             } else {
                 error!(trait_.location, "Could not find trait {} in scope", trait_.name.blue());
             }
@@ -761,32 +765,26 @@ impl<'c> Resolvable<'c> for ast::Variable<'c> {
     fn declare(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'c>) {
         if resolver.auto_declare {
             use ast::VariableKind::*;
-            let token_name;
             let (name, should_declare) = match &self.kind {
                 Operator(token) => {
-                    token_name = token.to_string();
                     // TODO: Disabling should_declare only for `,` is a hack to make tuple
                     // patterns work without rebinding the `,` symbol.
-                    (&token_name, *token != Token::Comma)
+                    (Cow::Owned(token.to_string()), *token != Token::Comma)
                 },
-                Identifier(name) => (name, true),
-                TypeConstructor(name) => (name, false),
+                Identifier(name) => (Cow::Borrowed(name), true),
+                TypeConstructor(name) => (Cow::Borrowed(name), false),
             };
 
             if should_declare {
-                let id = resolver.push_definition(name, resolver.in_mutable_context, cache, self.location);
+                let id = resolver.push_definition(&name, resolver.in_mutable_context, cache, self.location);
                 resolver.definitions_collected.push(id);
                 self.definition = Some(id);
             } else {
-                self.definition = resolver.reference_definition(name, self.location, cache);
+                self.definition = resolver.reference_definition(&name, self.location, cache);
             }
 
-            self.id = Some(cache.push_variable_node(name));
+            self.id = Some(cache.push_variable(name.into_owned(), self.location));
             self.impl_scope = Some(resolver.current_scope().impl_scope);
-
-            // TODO: optimization - it would be faster and save more space if we only had
-            // to push trait binding IDs for variables that actually need trait bindings.
-            self.trait_binding = Some(cache.push_trait_binding(self.location));
         }
     }
 
@@ -796,23 +794,15 @@ impl<'c> Resolvable<'c> for ast::Variable<'c> {
                 self.declare(resolver, cache);
             } else {
                 use ast::VariableKind::*;
-                let token_name;
                 let name = match &self.kind {
-                    Operator(token) => {
-                        token_name = token.to_string();
-                        &token_name
-                    },
-                    Identifier(name) => name,
-                    TypeConstructor(name) => name,
+                    Operator(token) => Cow::Owned(token.to_string()),
+                    Identifier(name) => Cow::Borrowed(name),
+                    TypeConstructor(name) => Cow::Borrowed(name),
                 };
 
-                self.id = Some(cache.push_variable_node(name));
                 self.impl_scope = Some(resolver.current_scope().impl_scope);
-                self.definition = resolver.reference_definition(name, self.location, cache);
-
-                // TODO: optimization - it would be faster and save more space if we only had
-                // to push trait binding IDs for variables that actually need trait bindings.
-                self.trait_binding = Some(cache.push_trait_binding(self.location));
+                self.definition = resolver.reference_definition(&name, self.location, cache);
+                self.id = Some(cache.push_variable(name.into_owned(), self.location));
             }
 
             // If it is still not declared, print an error
@@ -939,7 +929,9 @@ impl<'c> Resolvable<'c> for ast::Match<'c> {
 
 /// Given "type T a b c = ..." return
 /// forall a b c. args -> T a b c
-fn create_variant_constructor_type(parent_type_id: TypeInfoId, args: Vec<Type>, cache: &ModuleCache) -> Type {
+fn create_variant_constructor_type(
+    parent_type_id: TypeInfoId, args: Vec<Type>, cache: &ModuleCache,
+) -> GeneralizedType {
     let info = &cache.type_infos[parent_type_id.0];
     let mut result = Type::UserDefined(parent_type_id);
 
@@ -961,10 +953,10 @@ fn create_variant_constructor_type(parent_type_id: TypeInfoId, args: Vec<Type>, 
 
     // finally, wrap the type in a forall if it has type variables
     if !info.args.is_empty() {
-        result = Type::ForAll(info.args.clone(), Box::new(result))
+        GeneralizedType::PolyType(info.args.clone(), result)
+    } else {
+        GeneralizedType::MonoType(result)
     }
-
-    result
 }
 
 type Variants<'c> = Vec<(String, Vec<ast::Type<'c>>, Location<'c>)>;

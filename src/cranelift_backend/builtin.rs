@@ -1,15 +1,13 @@
 use cranelift::frontend::FunctionBuilder;
 use cranelift::prelude::{FloatCC, InstBuilder, IntCC, MemFlags, Value as CraneliftValue};
 
-use crate::hir::{Builtin, Ast};
+use crate::hir::{Ast, Builtin};
 
 use super::context::{int_pointer_type, pointer_type};
-use super::{Context, Value, CodeGen};
+use super::{CodeGen, Context, Value};
 
 pub fn call_builtin<'ast>(builtin: &'ast Builtin, context: &mut Context<'ast>, builder: &mut FunctionBuilder) -> Value {
-    let mut value = |ast: &'ast Box<Ast>| {
-        ast.eval_single(context, builder)
-    };
+    let mut value = |ast: &'ast Box<Ast>| ast.eval_single(context, builder);
 
     let result = match builtin {
         Builtin::AddInt(a, b) => add_int(value(a), value(b), builder),
@@ -145,7 +143,9 @@ fn transmute(param1: CraneliftValue, builder: &mut FunctionBuilder) -> Cranelift
     }
 }
 
-fn offset(address: CraneliftValue, offset: CraneliftValue, elem_size: u32, builder: &mut FunctionBuilder) -> CraneliftValue {
+fn offset(
+    address: CraneliftValue, offset: CraneliftValue, elem_size: u32, builder: &mut FunctionBuilder,
+) -> CraneliftValue {
     let usize_type = int_pointer_type();
     let pointer_type = pointer_type();
 

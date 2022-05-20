@@ -29,7 +29,7 @@ impl<'c> Context<'c> {
 
         if let Some(DecisionTree::Switch(id, _)) = &match_.decision_tree {
             let (def, new_id) = self.fresh_definition(value, false);
-            let typ = self.follow_all_bindings(self.cache[*id].typ.as_ref().unwrap());
+            let typ = self.follow_all_bindings(self.cache[*id].typ.as_ref().unwrap().as_monotype());
             self.definitions.insert((*id, typ), new_id.into());
             def
         } else {
@@ -48,7 +48,7 @@ impl<'c> Context<'c> {
     }
 
     fn monomorphise_switch(&mut self, id_to_match_on: DefinitionInfoId, cases: &[Case]) -> hir::DecisionTree {
-        let typ = self.cache[id_to_match_on].typ.as_ref().unwrap();
+        let typ = self.cache[id_to_match_on].typ.as_ref().unwrap().as_monotype();
 
         let value = match self.lookup_definition(id_to_match_on, typ) {
             Some(Definition::Normal(variable)) => variable,
@@ -160,7 +160,10 @@ impl<'c> Context<'c> {
                 let start_index = if info_type.is_union_constructor(&self.cache) { 1 } else { 0 };
 
                 let info_type = info_type.clone();
-                let function_type = self.convert_type(&info_type).into_function();
+
+                // Note: should not use function_type for any bindings, it is from a generalized
+                // info_type that makes it only useful for checking if it is a function or not.
+                let function_type = self.convert_type(&info_type.remove_forall()).into_function();
 
                 if function_type.is_some() {
                     fmap(case.fields.iter().enumerate(), |(i, field_aliases)| {
@@ -169,7 +172,8 @@ impl<'c> Context<'c> {
                         let field_variable = self.next_unique_id();
 
                         for field_alias in field_aliases {
-                            let field_type = self.follow_all_bindings(self.cache[*field_alias].typ.as_ref().unwrap());
+                            let alias_type = self.cache[*field_alias].typ.as_ref().unwrap().as_monotype();
+                            let field_type = self.follow_all_bindings(alias_type);
                             self.definitions.insert((*field_alias, field_type), field_variable.into());
                         }
 
@@ -187,7 +191,8 @@ impl<'c> Context<'c> {
                 assert!(case.fields.len() <= 1);
                 for field_aliases in &case.fields {
                     for field_alias in field_aliases {
-                        let field_type = self.follow_all_bindings(self.cache[*field_alias].typ.as_ref().unwrap());
+                        let alias_type = self.cache[*field_alias].typ.as_ref().unwrap().as_monotype();
+                        let field_type = self.follow_all_bindings(alias_type);
                         self.definitions.insert((*field_alias, field_type), variant.into());
                     }
                 }
@@ -204,15 +209,15 @@ impl<'c> Context<'c> {
         let value = value.into();
         match &case.tag {
             Some(VariantTag::UserDefined(id)) => {
-                let constructor = self.follow_all_bindings(self.cache[*id].typ.as_ref().unwrap());
                 let mut elems = Vec::with_capacity(case.fields.len() + 1);
 
+                let constructor = self.follow_all_bindings(self.cache[*id].typ.as_ref().unwrap().remove_forall());
                 if constructor.is_union_constructor(&self.cache) {
                     elems.push(Self::tag_type());
                 }
 
                 for field_aliases in &case.fields {
-                    let typ = self.cache[field_aliases[0]].typ.as_ref().unwrap().clone();
+                    let typ = self.cache[field_aliases[0]].typ.as_ref().unwrap().clone().into_monotype();
                     elems.push(self.convert_type(&typ));
                 }
 

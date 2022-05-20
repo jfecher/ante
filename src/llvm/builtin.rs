@@ -169,7 +169,9 @@ fn deref_ptr<'g>(ptr: &Box<Ast>, generator: &mut Generator<'g>) -> BasicValueEnu
 /// offset (p: Ptr t) (offset: usz) = (p as usize + offset * size_of t) as Ptr t
 ///
 // This builtin is unnecessary once we replace it with size_of
-fn offset<'g>(ptr: &Box<Ast>, offset: IntValue<'g>, _type_size: u32, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+fn offset<'g>(
+    ptr: &Box<Ast>, offset: IntValue<'g>, _type_size: u32, generator: &mut Generator<'g>,
+) -> BasicValueEnum<'g> {
     let ptr = ptr.codegen(generator).into_pointer_value();
     unsafe { generator.builder.build_gep(ptr, &[offset], "offset").as_basic_value_enum() }
 }

@@ -276,10 +276,10 @@ type Type t = | MkType
 size_of (v: Type t) : usz = builtin "SizeOf" v
 
 offset (ptr: Ptr t) (index: usz) : Ptr t =
-    // builtin "Offset" ptr index
-    addr: usz = transmute ptr
-    new_addr = addr + index * size_of (MkType: Type t)
-    transmute new_addr : Ptr t
+    builtin "Offset" ptr index
+    // addr: usz = transmute ptr
+    // new_addr = addr + index * size_of (MkType: Type t)
+    // transmute new_addr
 
 deref (x: ref t) : t =
     builtin "Deref" x

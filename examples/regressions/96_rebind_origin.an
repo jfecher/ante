@@ -1,0 +1,12 @@
+
+origin foo =
+    cast foo : u64
+
+twice foo bar =
+    origin foo
+    origin bar
+
+twice 1u8 2u16
+
+// args: --delete-binary
+// expected stdout:

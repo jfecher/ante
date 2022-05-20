@@ -18,8 +18,8 @@ use crate::cache::unsafecache::UnsafeCache;
 use crate::error::location::{Locatable, Location};
 use crate::nameresolution::NameResolver;
 use crate::parser::ast::{Ast, Definition, TraitDefinition, TraitImpl, TypeAnnotation};
-use crate::types::traits::{RequiredImpl, RequiredTrait};
-use crate::types::{Kind, LetBindingLevel, TypeBinding};
+use crate::types::traits::{ConstraintSignature, RequiredImpl, RequiredTrait, TraitConstraintId};
+use crate::types::{GeneralizedType, Kind, LetBindingLevel, TypeBinding};
 use crate::types::{Type, TypeInfo, TypeInfoBody, TypeInfoId, TypeVariableId};
 
 use std::collections::HashMap;
@@ -64,7 +64,7 @@ pub struct ModuleCache<'a> {
     /// codegening the variable's definition. These impls are filled out
     /// during type inference (see typechecker::find_impl). Unlike
     /// DefinitionInfos, VariableInfos are per usage of the variable.
-    pub trait_bindings: Vec<TraitBinding<'a>>,
+    pub variable_infos: Vec<VariableInfo<'a>>,
 
     /// Maps TypeVariableId -> Type
     /// Unique TypeVariableIds are generated during name
@@ -95,13 +95,12 @@ pub struct ModuleCache<'a> {
     /// that is generated for each new field name used globally.
     pub member_access_traits: HashMap<String, TraitInfoId>,
 
+    /// A monotonically-increasing counter to uniquely identify trait constraints.
+    pub current_trait_constraint_id: u32,
+
     /// The builtin `Int a` trait that arises when using polymorphic
     /// integer literals.
     pub int_trait: TraitInfoId,
-
-    /// Used to give a unique ID to each node so they can later be
-    /// used during static trait dispatch.
-    pub variable_nodes: Vec</* name: */ String>,
 
     /// The filepath to ante's stdlib/prelude.an file to be automatically
     /// included when defining a new ante module.
@@ -167,9 +166,9 @@ pub struct DefinitionInfo<'a> {
     /// True if this definition can be reassigned to.
     pub mutable: bool,
 
-    /// Some(trait_id) if this is a definition from a trait. Note that
-    /// this is still None for definitions from trait impls.
-    pub trait_info: Option<TraitInfoId>,
+    /// Some((trait_id, trait_args)) if this is a definition from a trait.
+    /// Note that this is still None for definitions from trait impls.
+    pub trait_info: Option<(TraitInfoId, Vec<Type>)>,
 
     /// For a given definition like:
     /// foo (a: a) -> a
@@ -177,9 +176,12 @@ pub struct DefinitionInfo<'a> {
     /// required_traits is the "given ..." part of the signature
     pub required_traits: Vec<RequiredTrait>,
 
+    /// True if this definition is from a trait impl
+    pub trait_impl: bool,
+
     /// The type of this definition. Filled out during type inference,
     /// and is guarenteed to be Some afterward.
-    pub typ: Option<Type>,
+    pub typ: Option<GeneralizedType>,
 
     /// A count of how many times was this variable referenced in the program.
     /// Used primarily for issuing unused warnings.
@@ -192,14 +194,20 @@ impl<'a> Locatable<'a> for DefinitionInfo<'a> {
     }
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub struct TraitBindingId(pub usize);
+/// Each `ast::Variable` node corresponds to a VariableId that identifies it,
+/// filled out during name resolution. These are currently used to identify the
+/// origin/callsites of traits for trait dispatch.
+/// `TraitConstraints` are passed around during type inference carrying these so
+/// that once they're finally resolved, the correct variable can be linked to the
+/// correct impl definition.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, PartialOrd, Ord, Hash)]
+pub struct VariableId(pub usize);
 
-/// TraitBindingIds are stored on ast::Variables and detail any
-/// required_impls needed to compile the definitions
-/// of these variables. These are filled out during type inference.
-pub struct TraitBinding<'a> {
+/// Contains extra information for each variable node.
+/// Used to map specific variable instances to trait impls.
+pub struct VariableInfo<'a> {
     pub required_impls: Vec<RequiredImpl>,
+    pub name: String,
     pub location: Location<'a>,
 }
 
@@ -286,18 +294,13 @@ pub struct ImplInfo<'a> {
     pub typeargs: Vec<Type>,
     pub location: Location<'a>,
     pub definitions: Vec<DefinitionInfoId>,
-    pub given: Vec<RequiredTrait>,
+
+    /// These constraints are from the 'given' clause of a trait impl.
+    /// They contain a unique TraitConstraintId that is used to map the
+    /// constraints inside the impl's definitions.
+    pub given: Vec<ConstraintSignature>,
     pub trait_impl: &'a mut TraitImpl<'a>,
 }
-
-/// Each `ast::Variable` node corresponds to a VariableId that identifies it,
-/// filled out during name resolution. These are currently used to identify the
-/// origin/callsites of traits for trait dispatch.
-/// `TraitConstraints` are passed around during type inference carrying these so
-/// that once they're finally resolved, the correct variable can be linked to the
-/// correct impl definition.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, PartialOrd, Ord, Hash)]
-pub struct VariableId(pub usize);
 
 impl<'a> ModuleCache<'a> {
     pub fn new(project_directory: &'a Path) -> ModuleCache<'a> {
@@ -311,14 +314,14 @@ impl<'a> ModuleCache<'a> {
             name_resolvers: UnsafeCache::default(),
             filepaths: Vec::default(),
             definition_infos: Vec::default(),
-            trait_bindings: Vec::default(),
+            variable_infos: Vec::default(),
             type_bindings: Vec::default(),
             type_infos: Vec::default(),
             trait_infos: Vec::default(),
             impl_infos: Vec::default(),
             impl_scopes: Vec::default(),
             member_access_traits: HashMap::default(),
-            variable_nodes: Vec::default(),
+            current_trait_constraint_id: 0,
         };
 
         let new_typevar = cache.next_type_variable_id(LetBindingLevel(std::usize::MAX));
@@ -344,6 +347,7 @@ impl<'a> ModuleCache<'a> {
             location,
             typ: None,
             uses: 0,
+            trait_impl: false,
         });
         DefinitionInfoId(id)
     }
@@ -394,7 +398,7 @@ impl<'a> ModuleCache<'a> {
 
     pub fn push_trait_impl(
         &mut self, trait_id: TraitInfoId, typeargs: Vec<Type>, definitions: Vec<DefinitionInfoId>,
-        trait_impl: &'a mut TraitImpl<'a>, given: Vec<RequiredTrait>, location: Location<'a>,
+        trait_impl: &'a mut TraitImpl<'a>, given: Vec<ConstraintSignature>, location: Location<'a>,
     ) -> ImplInfoId {
         let id = self.impl_infos.len();
         self.impl_infos.push(ImplInfo { trait_id, typeargs, definitions, location, given, trait_impl });
@@ -407,10 +411,10 @@ impl<'a> ModuleCache<'a> {
         ImplScopeId(id)
     }
 
-    pub fn push_trait_binding(&mut self, location: Location<'a>) -> TraitBindingId {
-        let id = self.trait_bindings.len();
-        self.trait_bindings.push(TraitBinding { required_impls: vec![], location });
-        TraitBindingId(id)
+    pub fn push_variable(&mut self, name: String, location: Location<'a>) -> VariableId {
+        let id = self.variable_infos.len();
+        self.variable_infos.push(VariableInfo { required_impls: vec![], name, location });
+        VariableId(id)
     }
 
     /// Get or create an instance of the '.' trait family for the given field name
@@ -434,10 +438,22 @@ impl<'a> ModuleCache<'a> {
         }
     }
 
-    pub fn push_variable_node(&mut self, name: &str) -> VariableId {
-        let id = VariableId(self.variable_nodes.len());
-        self.variable_nodes.push(name.to_string());
-        id
+    pub fn next_trait_constraint_id(&mut self) -> TraitConstraintId {
+        let id = self.current_trait_constraint_id;
+        self.current_trait_constraint_id += 1;
+        TraitConstraintId(id)
+    }
+
+    pub fn find_method_in_impl(&self, callsite: VariableId, binding: ImplInfoId) -> DefinitionInfoId {
+        let name = &self[callsite].name;
+
+        for definition in &self[binding].definitions {
+            if self[*definition].name == *name {
+                return *definition;
+            }
+        }
+
+        unreachable!("No definition for '{}' found in trait impl {}", name, binding.0)
     }
 }
 
@@ -463,7 +479,7 @@ impl_index_for!(DefinitionInfoId, DefinitionInfo, definition_infos);
 impl_index_for!(TypeInfoId, TypeInfo, type_infos);
 impl_index_for!(TraitInfoId, TraitInfo, trait_infos);
 impl_index_for!(ImplInfoId, ImplInfo, impl_infos);
-impl_index_for!(TraitBindingId, TraitBinding, trait_bindings);
+impl_index_for!(VariableId, VariableInfo, variable_infos);
 
 impl<'c> std::ops::Index<ImplScopeId> for ModuleCache<'c> {
     type Output = Vec<ImplInfoId>;

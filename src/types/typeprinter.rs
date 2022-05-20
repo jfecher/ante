@@ -3,8 +3,8 @@
 //! printing out a bound type requires using the cache as well. Resultingly,
 //! types/traits are displayed via `type.display(cache)` rather than directly having
 //! a Display impl.
-use crate::cache::ModuleCache;
-use crate::types::traits::{RequiredTrait, RequiredTraitPrinter};
+use crate::cache::{ModuleCache, TraitInfoId};
+use crate::types::traits::{ConstraintSignature, ConstraintSignaturePrinter, RequiredTrait, TraitConstraintId};
 use crate::types::typechecker::find_all_typevars;
 use crate::types::{FunctionType, PrimitiveType, Type, TypeBinding, TypeInfoId, TypeVariableId};
 use crate::util::join_with;
@@ -15,9 +15,11 @@ use std::fmt::{Debug, Display, Formatter};
 
 use colored::*;
 
+use super::GeneralizedType;
+
 /// Wrapper containing the information needed to print out a type
 pub struct TypePrinter<'a, 'b> {
-    typ: &'a Type,
+    typ: GeneralizedType,
 
     /// Maps unique type variable IDs to human readable names like a, b, c, etc.
     typevar_names: HashMap<TypeVariableId, String>,
@@ -30,13 +32,13 @@ pub struct TypePrinter<'a, 'b> {
 
 impl<'a, 'b> Display for TypePrinter<'a, 'b> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        self.fmt_type(self.typ, f)
+        self.fmt_generalized_type(&self.typ, f)
     }
 }
 
 impl<'a, 'b> Debug for TypePrinter<'a, 'b> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        self.fmt_type(self.typ, f)
+        self.fmt_generalized_type(&self.typ, f)
     }
 }
 
@@ -58,24 +60,47 @@ fn fill_typevar_map(map: &mut HashMap<TypeVariableId, String>, typevars: Vec<Typ
 /// and any traits are given the same name in both. Printing out the type separately from the
 /// traits would cause type variable naming to restart at `a` which may otherwise give them
 /// different names.
-pub fn show_type_and_traits<'b>(typ: &Type, traits: &[RequiredTrait], cache: &ModuleCache<'b>) {
+pub fn show_type_and_traits<'b>(
+    typ: &GeneralizedType, traits: &[RequiredTrait], trait_info: &Option<(TraitInfoId, Vec<Type>)>,
+    cache: &ModuleCache<'b>,
+) {
     let mut map = HashMap::new();
     let mut current = 'a';
 
-    let typevars = find_all_typevars(typ, false, cache);
+    let typevars = typ.find_all_typevars(false, cache);
     fill_typevar_map(&mut map, typevars, &mut current);
 
     let debug = true;
+    let typ = typ.clone();
     print!("{}", TypePrinter { typ, cache, debug, typevar_names: map.clone() });
 
     let mut traits = traits
         .iter()
         .map(|required_trait| {
             fill_typevar_map(&mut map, required_trait.find_all_typevars(cache), &mut current);
-            RequiredTraitPrinter { required_trait: required_trait.clone(), cache, debug, typevar_names: map.clone() }
-                .to_string()
+            ConstraintSignaturePrinter {
+                signature: required_trait.signature.clone(),
+                cache,
+                debug,
+                typevar_names: map.clone(),
+            }
+            .to_string()
         })
         .collect::<Vec<String>>();
+
+    // If this is a trait function, we must add the trait it originates from manually
+    if let Some((trait_id, args)) = trait_info {
+        for arg in args {
+            fill_typevar_map(&mut map, find_all_typevars(arg, false, cache), &mut current);
+        }
+        let signature = ConstraintSignature {
+            trait_id: *trait_id,
+            args: args.clone(),
+            id: TraitConstraintId(0), // Dummy value
+        };
+        let p = ConstraintSignaturePrinter { signature, cache, debug, typevar_names: map.clone() };
+        traits.push(p.to_string());
+    }
 
     // Remove "duplicate" traits so users don't see `given Add a, Add a`.
     // These contain usage information that is different within them but this
@@ -92,9 +117,45 @@ pub fn show_type_and_traits<'b>(typ: &Type, traits: &[RequiredTrait], cache: &Mo
 
 impl<'a, 'b> TypePrinter<'a, 'b> {
     pub fn new(
-        typ: &'a Type, typevar_names: HashMap<TypeVariableId, String>, debug: bool, cache: &'a ModuleCache<'b>,
-    ) -> TypePrinter<'a, 'b> {
+        typ: GeneralizedType, typevar_names: HashMap<TypeVariableId, String>, debug: bool, cache: &'a ModuleCache<'b>,
+    ) -> Self {
         TypePrinter { typ, typevar_names, debug, cache }
+    }
+
+    pub fn debug_type(typ: GeneralizedType, cache: &'a ModuleCache<'b>) -> Self {
+        let typevars = typ.find_all_typevars(false, cache);
+        let mut typevar_names = HashMap::new();
+
+        for typevar in typevars {
+            if typevar_names.get(&typevar).is_none() {
+                typevar_names.insert(typevar, typevar.0.to_string());
+            }
+        }
+
+        Self::new(typ, typevar_names, true, cache)
+    }
+
+    pub fn display_type(typ: GeneralizedType, cache: &'a ModuleCache<'b>) -> Self {
+        let typevars = typ.find_all_typevars(false, cache);
+        let mut typevar_names = HashMap::new();
+        let mut current = 'a';
+
+        for typevar in typevars {
+            if typevar_names.get(&typevar).is_none() {
+                typevar_names.insert(typevar, current.to_string());
+                current = (current as u8 + 1) as char;
+                assert!(current != 'z'); // TODO: wrap to aa, ab, ac...
+            }
+        }
+
+        Self::new(typ, typevar_names, true, cache)
+    }
+
+    fn fmt_generalized_type(&self, typ: &GeneralizedType, f: &mut Formatter) -> std::fmt::Result {
+        match typ {
+            GeneralizedType::MonoType(typ) => self.fmt_type(typ, f),
+            GeneralizedType::PolyType(typevars, typ) => self.fmt_forall(typevars, typ, f),
+        }
     }
 
     fn fmt_type(&self, typ: &Type, f: &mut Formatter) -> std::fmt::Result {
@@ -105,7 +166,6 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             Type::UserDefined(id) => self.fmt_user_defined_type(*id, f),
             Type::TypeApplication(constructor, args) => self.fmt_type_application(constructor, args, f),
             Type::Ref(lifetime) => self.fmt_ref(*lifetime, f),
-            Type::ForAll(typevars, typ) => self.fmt_forall(typevars, typ, f),
         }
     }
 

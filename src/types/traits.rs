@@ -28,15 +28,34 @@
 //!
 //! These types are mostly useful for their data they hold - they only have a few simple
 //! methods on them for displaying them or converting between them.
-use crate::cache::{DefinitionInfoId, ImplScopeId, ModuleCache, TraitBindingId, TraitInfoId, VariableId};
+use colored::Colorize;
+
+use crate::cache::{ImplInfoId, ImplScopeId, ModuleCache, TraitInfoId, VariableId};
 use crate::error::location::Location;
 use crate::types::typechecker::find_all_typevars;
-use crate::types::{typeprinter::TypePrinter, PrimitiveType, Type, TypeVariableId};
-
-use colored::Colorize;
+use crate::types::{typeprinter::TypePrinter, Type, TypeVariableId};
 
 use std::collections::HashMap;
 use std::fmt::Display;
+
+use super::GeneralizedType;
+
+/// Trait constraints do not map to anything. Instead,
+/// they provide a way to map an impl through multiple
+/// functions as if it were passed as arguments.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct TraitConstraintId(pub u32);
+
+/// A (trait) ConstraintSignature contains the signature
+/// of a trait constraint - the trait it refers to and the type
+/// arguments it requires - in addition to a unique ID identifying
+/// this constraint.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ConstraintSignature {
+    pub trait_id: TraitInfoId,
+    pub args: Vec<Type>,
+    pub id: TraitConstraintId,
+}
 
 /// A trait required for a Definition to be compiled.
 /// The specific impl to use is unknown to the definition since
@@ -44,41 +63,39 @@ use std::fmt::Display;
 /// RequiredImpls are the callsite version of this.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct RequiredTrait {
-    pub trait_id: TraitInfoId,
-    pub args: Vec<Type>,
+    pub signature: ConstraintSignature,
 
-    /// The original _callsite_ that this constraint arose from.
-    /// Not the variable id from the name of the definition of the trait!
-    /// This is None if stored in the original definition of the trait
-    /// since there is no callsite yet in that case.
-    pub origin: Option<VariableId>,
+    pub callsite: Callsite,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Callsite {
+    /// This required trait originates from the given variable inside the function.
+    /// That variable's definition should be replaced with the selected impl's.
+    Direct(VariableId),
+
+    /// This required trait originates from a definition outside of the current
+    /// function where it has the given TraitConstraintId. It is required transitively
+    /// to the current function by the given variable callsite.
+    Indirect(VariableId, TraitConstraintId),
+}
+
+impl Callsite {
+    pub fn id(self) -> VariableId {
+        match self {
+            Callsite::Direct(callsite) => callsite,
+            Callsite::Indirect(callsite, _) => callsite,
+        }
+    }
 }
 
 /// An instantiated version of a RequiredTrait that is stored
 /// in ast::Variable nodes. These point to specific impls to use.
 #[derive(Debug, Clone)]
 pub struct RequiredImpl {
-    /// The ast::Variable the Impl constraint arises from.
-    /// This is not the Variable this RequiredImpl is
-    /// contained within, it refers to the original variable the constraint
-    /// arose from within the definition of the current variable. For example, in:
-    ///
-    /// 1| foo x =
-    /// 2|    x + x
-    /// 3|
-    /// 4| foo 1
-    ///
-    /// The RequiredImpl is stored within the callsite variable (the `foo` on line 4)
-    /// and the constraint origin is the `+` on line 2. In this example, the trait was
-    /// generalized to be in foo's signature. If it were not (e.g. `1 + 2`) then the
-    /// origin and callsite variables will be equal.
-    pub origin: VariableId,
-
-    pub args: Vec<Type>,
-
-    /// The DefinitionInfoId (within a selected impl) to
-    /// map the above VariableId to.
-    pub binding: DefinitionInfoId,
+    /// The specific trait impl to map the callsite to
+    pub binding: ImplInfoId,
+    pub callsite: Callsite,
 }
 
 /// The trait/impl constrait passed around during type inference.
@@ -93,53 +110,29 @@ pub struct RequiredImpl {
 ///   - If an impl is not found a compile error for no matching impl is issued.
 #[derive(Debug, Clone)]
 pub struct TraitConstraint {
-    pub trait_id: TraitInfoId,
-    pub args: Vec<Type>,
+    pub required: RequiredTrait,
     pub scope: ImplScopeId,
-
-    /// The ast::Variable to store the RequiredImpl within.
-    /// This is different from RequiredImpl::origin which refers to the original
-    /// variable the constraint arose from. The later is usually within the definition
-    /// of the callsite variable. For example, in
-    ///
-    /// 1| foo x =
-    /// 2|    x + x
-    /// 3|
-    /// 4| foo 1
-    ///
-    /// The callsite variable is the `foo` on line 4 and the constraint arises from
-    /// the `+` on line 2. Callsites are where the compiler stores the trait information
-    /// needed to continue compiling that definition with the given types.
-    pub callsite: TraitBindingId,
-
-    /// The origin of this TraitConstraint, to be stored in RequiredImpl::origin
-    pub origin: VariableId,
 }
 
 pub type TraitConstraints = Vec<TraitConstraint>;
 
 impl RequiredTrait {
-    pub fn as_constraint(
-        &self, scope: ImplScopeId, callsite_id: VariableId, callsite: TraitBindingId,
-    ) -> TraitConstraint {
-        TraitConstraint {
-            trait_id: self.trait_id,
-            args: self.args.clone(),
-            scope,
-            callsite,
-            origin: self.origin.unwrap_or(callsite_id),
-        }
+    pub fn as_constraint(&self, scope: ImplScopeId, callsite: VariableId, id: TraitConstraintId) -> TraitConstraint {
+        let mut required = self.clone();
+        required.callsite = Callsite::Indirect(callsite, self.signature.id);
+        required.signature.id = id;
+        TraitConstraint { required, scope }
     }
 
     pub fn find_all_typevars<'b>(&self, cache: &ModuleCache<'b>) -> Vec<TypeVariableId> {
         let mut typevars = vec![];
-        for typ in self.args.iter() {
+        for typ in &self.signature.args {
             typevars.append(&mut find_all_typevars(typ, false, cache));
         }
         typevars
     }
 
-    pub fn display<'a, 'b>(&self, cache: &'a ModuleCache<'b>) -> RequiredTraitPrinter<'a, 'b> {
+    pub fn display<'a, 'b>(&self, cache: &'a ModuleCache<'b>) -> ConstraintSignaturePrinter<'a, 'b> {
         let mut typevar_names = HashMap::new();
         let mut current = 'a';
         let typevars = self.find_all_typevars(cache);
@@ -152,14 +145,14 @@ impl RequiredTrait {
             }
         }
 
-        RequiredTraitPrinter { required_trait: self.clone(), typevar_names, debug: false, cache }
+        ConstraintSignaturePrinter { signature: self.signature.clone(), typevar_names, debug: false, cache }
     }
 
     #[allow(dead_code)]
-    pub fn debug<'a, 'b>(&self, cache: &'a ModuleCache<'b>) -> RequiredTraitPrinter<'a, 'b> {
+    pub fn debug<'a, 'b>(&self, cache: &'a ModuleCache<'b>) -> ConstraintSignaturePrinter<'a, 'b> {
         let mut typevar_names = HashMap::new();
 
-        for typ in self.args.iter() {
+        for typ in &self.signature.args {
             let typevars = find_all_typevars(typ, false, cache);
 
             for typevar in typevars {
@@ -169,12 +162,16 @@ impl RequiredTrait {
             }
         }
 
-        RequiredTraitPrinter { required_trait: self.clone(), typevar_names, debug: true, cache }
+        ConstraintSignaturePrinter { signature: self.signature.clone(), typevar_names, debug: true, cache }
+    }
+
+    pub fn is_builtin(&self, cache: &ModuleCache) -> bool {
+        self.signature.trait_id == cache.int_trait || cache[self.signature.trait_id].is_member_access()
     }
 }
 
-pub struct RequiredTraitPrinter<'a, 'b> {
-    pub required_trait: RequiredTrait,
+pub struct ConstraintSignaturePrinter<'a, 'b> {
+    pub signature: ConstraintSignature,
 
     /// Maps unique type variable IDs to human readable names like a, b, c, etc.
     pub typevar_names: HashMap<TypeVariableId, String>,
@@ -185,13 +182,14 @@ pub struct RequiredTraitPrinter<'a, 'b> {
     pub cache: &'a ModuleCache<'b>,
 }
 
-impl<'a, 'b> Display for RequiredTraitPrinter<'a, 'b> {
+impl<'a, 'b> Display for ConstraintSignaturePrinter<'a, 'b> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
-        let trait_info = &self.cache.trait_infos[self.required_trait.trait_id.0];
+        let trait_info = &self.cache[self.signature.trait_id];
 
         write!(f, "{}", trait_info.name.blue())?;
-        for arg in self.required_trait.args.iter() {
-            let arg_printer = TypePrinter::new(arg, self.typevar_names.clone(), self.debug, self.cache);
+        for arg in &self.signature.args {
+            let typ = GeneralizedType::MonoType(arg.clone());
+            let arg_printer = TypePrinter::new(typ, self.typevar_names.clone(), self.debug, self.cache);
             write!(f, " {}", arg_printer)?;
         }
         Ok(())
@@ -205,62 +203,74 @@ impl TraitConstraint {
     /// care must be taken inside find_impl and Variable::codegen to avoid referring
     /// to these invalid values.
     pub fn member_access_constraint(
-        trait_id: TraitInfoId, args: Vec<Type>, callsite: TraitBindingId,
+        trait_id: TraitInfoId, args: Vec<Type>, callsite: VariableId, cache: &mut ModuleCache,
     ) -> TraitConstraint {
-        TraitConstraint { trait_id, args, scope: ImplScopeId(0), callsite, origin: VariableId(0) }
+        TraitConstraint {
+            required: RequiredTrait {
+                signature: ConstraintSignature { trait_id, args, id: cache.next_trait_constraint_id() },
+                callsite: Callsite::Direct(callsite),
+            },
+            scope: ImplScopeId(0),
+        }
+    }
+
+    pub fn trait_id(&self) -> TraitInfoId {
+        self.required.signature.trait_id
+    }
+
+    pub fn args(&self) -> &[Type] {
+        &self.required.signature.args
+    }
+
+    pub fn args_mut(&mut self) -> &mut [Type] {
+        &mut self.required.signature.args
     }
 
     pub fn is_member_access<'c>(&self, cache: &ModuleCache<'c>) -> bool {
-        cache.trait_infos[self.trait_id.0].is_member_access()
+        cache[self.required.signature.trait_id].is_member_access()
     }
 
     /// Each integer literal without a type suffix is given the generic type
     /// "a given Int a". This function returns a TraitConstraint for this
     /// builtin Int trait to be resolved later in typechecking to a specific
     /// integer type or propagataed to the function signature to take any Int.
-    pub fn int_constraint(arg: TypeVariableId, callsite: TraitBindingId, cache: &ModuleCache) -> TraitConstraint {
+    pub fn int_constraint(arg: TypeVariableId, callsite: VariableId, cache: &mut ModuleCache) -> TraitConstraint {
         TraitConstraint {
-            trait_id: cache.int_trait,
-            args: vec![Type::TypeVariable(arg)],
+            required: RequiredTrait {
+                signature: ConstraintSignature {
+                    trait_id: cache.int_trait,
+                    args: vec![Type::TypeVariable(arg)],
+                    id: cache.next_trait_constraint_id(),
+                },
+                callsite: Callsite::Direct(callsite),
+            },
             scope: ImplScopeId(0),
-            callsite,
-            origin: VariableId(0),
         }
     }
 
     pub fn is_int_constraint<'c>(&self, cache: &ModuleCache<'c>) -> bool {
-        self.trait_id == cache.int_trait
+        self.required.signature.trait_id == cache.int_trait
     }
 
     pub fn into_required_trait(self) -> RequiredTrait {
-        RequiredTrait { trait_id: self.trait_id, args: self.args, origin: Some(self.origin) }
+        self.required
     }
 
-    pub fn into_required_impl(self, binding: DefinitionInfoId) -> RequiredImpl {
-        RequiredImpl { args: self.args, origin: self.origin, binding }
+    pub fn into_required_impl(self, binding: ImplInfoId) -> RequiredImpl {
+        RequiredImpl { binding, callsite: self.required.callsite }
     }
 
     /// Get the location of the callsite where this TraitConstraint arose from
     pub fn locate<'c>(&self, cache: &ModuleCache<'c>) -> Location<'c> {
-        cache.trait_bindings[self.callsite.0].location
+        cache[self.required.callsite.id()].location
     }
 
-    pub fn display<'a, 'c>(&self, cache: &'a ModuleCache<'c>) -> RequiredTraitPrinter<'a, 'c> {
+    pub fn display<'a, 'c>(&self, cache: &'a ModuleCache<'c>) -> ConstraintSignaturePrinter<'a, 'c> {
         self.clone().into_required_trait().display(cache)
     }
 
     #[allow(dead_code)]
-    pub fn debug<'a, 'c>(&self, cache: &'a ModuleCache<'c>) -> RequiredTraitPrinter<'a, 'c> {
+    pub fn debug<'a, 'c>(&self, cache: &'a ModuleCache<'c>) -> ConstraintSignaturePrinter<'a, 'c> {
         self.clone().into_required_trait().debug(cache)
-    }
-}
-
-impl RequiredImpl {
-    #[allow(dead_code)]
-    pub fn debug<'c>(&self, cache: &ModuleCache<'c>) -> String {
-        let name = &cache.definition_infos[self.binding.0].name;
-        let unit = Type::Primitive(PrimitiveType::UnitType);
-        let args = Type::TypeApplication(Box::new(unit), self.args.clone());
-        format!("{} with args {}", name, args.display(cache))
     }
 }

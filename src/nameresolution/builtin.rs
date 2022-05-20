@@ -8,7 +8,9 @@ use crate::cache::{DefinitionInfoId, DefinitionKind, ModuleCache};
 use crate::error::location::Location;
 use crate::lexer::token::{IntegerKind, Token};
 use crate::nameresolution::{declare_module, define_module, NameResolver};
-use crate::types::{Field, FunctionType, LetBindingLevel, PrimitiveType, Type, TypeInfoBody, PAIR_TYPE, STRING_TYPE};
+use crate::types::{
+    Field, FunctionType, GeneralizedType, LetBindingLevel, PrimitiveType, Type, TypeInfoBody, PAIR_TYPE, STRING_TYPE,
+};
 
 use std::path::PathBuf;
 
@@ -51,7 +53,7 @@ pub fn define_builtins(cache: &mut ModuleCache) {
         is_varargs: true,
     });
 
-    let builtin_type = Type::ForAll(vec![a], Box::new(builtin_fn_type));
+    let builtin_type = GeneralizedType::PolyType(vec![a], builtin_fn_type);
     info.typ = Some(builtin_type);
 }
 
@@ -117,7 +119,7 @@ fn define_string(cache: &mut ModuleCache) -> Type {
         is_varargs: false,
     });
 
-    cache.definition_infos[constructor.0].typ = Some(constructor_type);
+    cache.definition_infos[constructor.0].typ = Some(GeneralizedType::MonoType(constructor_type));
     cache.definition_infos[constructor.0].definition = Some(DefinitionKind::TypeConstructor { name, tag: None });
 
     cache.type_infos[string_id.0].body = fields;
@@ -150,14 +152,14 @@ fn define_pair(cache: &mut ModuleCache) {
     let pair = Box::new(Type::UserDefined(pair));
     let pair_a_b = Box::new(Type::TypeApplication(pair, parameters.clone()));
 
-    let constructor_type = Box::new(Type::Function(FunctionType {
+    let constructor_type = Type::Function(FunctionType {
         parameters,
         return_type: pair_a_b,
         environment: Box::new(Type::Primitive(PrimitiveType::UnitType)),
         is_varargs: false,
-    }));
+    });
 
-    let constructor_type = Type::ForAll(vec![a, b], constructor_type);
+    let constructor_type = GeneralizedType::PolyType(vec![a, b], constructor_type);
 
     // and now register a new type constructor in the cache with the given type
     let id = cache.push_definition(&name, false, location);

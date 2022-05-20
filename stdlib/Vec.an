@@ -3,7 +3,7 @@ type Vec t =
     len: usz
     cap: usz
 
-empty () = Vec null 0 0
+empty () = Vec (null ()) 0 0
 
 of iterable =
     v = mut empty ()
@@ -28,7 +28,7 @@ reserve (v: mut Vec t) (numElems: usz) : unit =
         size = (v.cap + numElems) * size_of (MkType: Type t)
         ptr = realloc (v.data) size
 
-        if ptr == null then
+        if ptr == null () then
             printne "Error in reserving "
             printne numElems
             print " elements for Vec"
@@ -41,10 +41,10 @@ reserve (v: mut Vec t) (numElems: usz) : unit =
 //resizes if necessary
 push (v: mut Vec t) (elem: t) : unit =
     if v.len >= v.cap then
-        reserve v (if v.cap == 0 then 1 else v.cap)
+        reserve v (if v.cap == 0usz then 1 else v.cap)
 
     v.data#v.len := elem
-    v.len := v.len + 1
+    v.len := v.len + 1usz
 
 //pop the last element off if it exists
 //this will never resize the vector.

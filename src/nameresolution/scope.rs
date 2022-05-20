@@ -15,6 +15,7 @@ use crate::error::location::{Locatable, Location};
 use crate::parser::ast;
 use crate::types::{TypeInfoId, TypeVariableId};
 use std::collections::HashMap;
+use std::rc::Rc;
 
 /// A scope represents all symbols defined in a given scope.
 ///
@@ -207,12 +208,16 @@ impl FunctionScopes {
     /// Within the current function, map an existing variable to a parameter variable
     /// that is part of the closure's environment. This mapping is remembered for codegen
     /// so we can store the existing variable along with the closure as part of its environment.
-    pub fn add_closure_environment_variable_mapping(
-        &mut self, existing: DefinitionInfoId, parameter: DefinitionInfoId,
+    pub fn add_closure_environment_variable_mapping<'c>(
+        &mut self, existing: DefinitionInfoId, parameter: DefinitionInfoId, location: Location<'c>,
+        cache: &mut ModuleCache<'c>,
     ) {
         let function =
             self.function.expect("Internal compiler error: attempted to create a closure without a current function");
         let function = unsafe { function.as_mut().unwrap() };
-        function.closure_environment.insert(existing, parameter);
+
+        let name = cache[existing].name.clone();
+        let fake_var = cache.push_variable(name, location);
+        function.closure_environment.insert(existing, (fake_var, parameter, Rc::new(HashMap::new())));
     }
 }

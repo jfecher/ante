@@ -60,10 +60,13 @@ fn print_definition_types(cache: &ModuleCache) {
 
     for (name, definition_id) in definitions {
         let info = &cache[*definition_id];
-        let typ = info.typ.clone().unwrap_or(types::Type::Primitive(types::PrimitiveType::UnitType));
 
         print!("{} : ", name);
-        types::typeprinter::show_type_and_traits(&typ, &info.required_traits, cache);
+        if let Some(typ) = &info.typ {
+            types::typeprinter::show_type_and_traits(typ, &info.required_traits, &info.trait_info, cache);
+        } else {
+            println!("(none)");
+        }
     }
 }
 

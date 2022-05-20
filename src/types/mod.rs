@@ -9,7 +9,7 @@ use crate::error::location::{Locatable, Location};
 use crate::lexer::token::IntegerKind;
 use crate::lifetimes;
 
-use std::collections::HashMap;
+use self::typeprinter::TypePrinter;
 
 pub mod pattern;
 pub mod traitchecker;
@@ -96,14 +96,21 @@ pub enum Type {
     /// Contains a region variable that is unified with other refs during type
     /// inference. All these refs will be allocated in the same region.
     Ref(lifetimes::LifetimeVariableId),
+}
 
-    /// These are currently used internally to indicate polymorphic
+#[derive(Debug, Clone)]
+pub enum GeneralizedType {
+    /// A non-generic type
+    MonoType(Type),
+
+    /// A generic type in the form `forall vars. typ`.
+    /// These are used internally to indicate polymorphic
     /// type variables for let-polymorphism. There is no syntax to
     /// specify these explicitly in ante code. Each type variable in
     /// the Vec is polymorphic in the Box<Type>. This differentiates
-    /// generic functions from normal functions whose arguments are
+    /// generic terms from normal terms whose types are
     /// just type variables of unknown types yet to be inferenced.
-    ForAll(Vec<TypeVariableId>, Box<Type>),
+    PolyType(Vec<TypeVariableId>, Type),
 }
 
 impl Type {
@@ -136,42 +143,76 @@ impl Type {
             Ref(_) => None,
             Function(function) => function.return_type.union_constructor_variants(cache),
             TypeApplication(typ, _) => typ.union_constructor_variants(cache),
-            ForAll(_, typ) => typ.union_constructor_variants(cache),
             UserDefined(id) => cache.type_infos[id.0].union_variants(),
             TypeVariable(_) => unreachable!("Constructors should always have concrete types"),
         }
     }
 
     /// Pretty-print each type with each typevar substituted for a, b, c, etc.
-    pub fn display<'a, 'b>(&'a self, cache: &'a ModuleCache<'b>) -> typeprinter::TypePrinter<'a, 'b> {
-        let typevars = typechecker::find_all_typevars(self, false, cache);
-        let mut typevar_names = HashMap::new();
-        let mut current = 'a';
-
-        for typevar in typevars {
-            if typevar_names.get(&typevar).is_none() {
-                typevar_names.insert(typevar, current.to_string());
-                current = (current as u8 + 1) as char;
-                assert!(current != 'z'); // TODO: wrap to aa, ab, ac...
-            }
-        }
-
-        typeprinter::TypePrinter::new(self, typevar_names, false, cache)
+    pub fn display<'a, 'b>(&self, cache: &'a ModuleCache<'b>) -> typeprinter::TypePrinter<'a, 'b> {
+        let typ = GeneralizedType::MonoType(self.clone());
+        TypePrinter::display_type(typ, cache)
     }
 
     /// Like display but show the real unique TypeVariableId for each typevar instead
     #[allow(dead_code)]
-    pub fn debug<'a, 'b>(&'a self, cache: &'a ModuleCache<'b>) -> typeprinter::TypePrinter<'a, 'b> {
-        let typevars = typechecker::find_all_typevars(self, false, cache);
-        let mut typevar_names = HashMap::new();
+    pub fn debug<'a, 'b>(&self, cache: &'a ModuleCache<'b>) -> typeprinter::TypePrinter<'a, 'b> {
+        let typ = GeneralizedType::MonoType(self.clone());
+        TypePrinter::debug_type(typ, cache)
+    }
+}
 
-        for typevar in typevars {
-            if typevar_names.get(&typevar).is_none() {
-                typevar_names.insert(typevar, typevar.0.to_string());
-            }
+impl GeneralizedType {
+    /// Pretty-print each type with each typevar substituted for a, b, c, etc.
+    #[allow(dead_code)]
+    pub fn display<'a, 'b>(&self, cache: &'a ModuleCache<'b>) -> typeprinter::TypePrinter<'a, 'b> {
+        TypePrinter::display_type(self.clone(), cache)
+    }
+
+    /// Like display but show the real unique TypeVariableId for each typevar instead
+    #[allow(dead_code)]
+    pub fn debug<'a, 'b>(&self, cache: &'a ModuleCache<'b>) -> typeprinter::TypePrinter<'a, 'b> {
+        TypePrinter::debug_type(self.clone(), cache)
+    }
+
+    pub fn find_all_typevars(&self, polymorphic_only: bool, cache: &ModuleCache) -> Vec<TypeVariableId> {
+        match self {
+            GeneralizedType::MonoType(typ) => typechecker::find_all_typevars(typ, polymorphic_only, cache),
+            GeneralizedType::PolyType(typevars, typ) => {
+                if polymorphic_only {
+                    typevars.clone()
+                } else {
+                    let mut vars = typevars.clone();
+                    vars.append(&mut typechecker::find_all_typevars(typ, polymorphic_only, cache));
+                    vars
+                }
+            },
         }
+    }
 
-        typeprinter::TypePrinter::new(self, typevar_names, true, cache)
+    pub fn is_union_constructor<'a, 'c>(&'a self, cache: &'a ModuleCache<'c>) -> bool {
+        self.remove_forall().is_union_constructor(cache)
+    }
+
+    pub fn remove_forall(&self) -> &Type {
+        match self {
+            GeneralizedType::MonoType(typ) => typ,
+            GeneralizedType::PolyType(_, typ) => typ,
+        }
+    }
+
+    pub fn into_monotype(self) -> Type {
+        match self {
+            GeneralizedType::MonoType(typ) => typ,
+            GeneralizedType::PolyType(_, _) => unreachable!(),
+        }
+    }
+
+    pub fn as_monotype(&self) -> &Type {
+        match self {
+            GeneralizedType::MonoType(typ) => typ,
+            GeneralizedType::PolyType(_, _) => unreachable!(),
+        }
     }
 }
 

@@ -23,15 +23,16 @@
 //!
 //! - Type inference fills out:
 //!   `typ: Option<Type>` for all nodes,
-//!   `trait_binding: Option<TraitBindingId>` for `ast::Variable`s,
 //!   `decision_tree: Option<DecisionTree>` for `ast::Match`s
-use crate::cache::{DefinitionInfoId, ImplScopeId, ModuleId, TraitBindingId, TraitInfoId, VariableId};
+use crate::cache::{DefinitionInfoId, ImplScopeId, ModuleId, TraitInfoId, VariableId};
 use crate::error::location::{Locatable, Location};
 use crate::lexer::token::{IntegerKind, Token};
 use crate::types::pattern::DecisionTree;
 use crate::types::traits::RequiredTrait;
+use crate::types::typechecker::TypeBindings;
 use crate::types::{self, LetBindingLevel, TypeInfoId};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
+use std::rc::Rc;
 
 #[derive(Clone, Debug, Eq, PartialOrd, Ord)]
 pub enum LiteralKind {
@@ -68,23 +69,37 @@ pub struct Variable<'a> {
     /// out - becoming Some(id)
     pub definition: Option<DefinitionInfoId>,
 
-    /// If the variable's definition refers to some trait value,
-    /// then this variable is generic over any matching
-    /// value in any impl of its trait since it may need to
-    /// be monomorphised to refer to any such impl.
-    /// This field is used during codegen to map this variable to
-    /// a given impl definition for static dispatch of traits.
-    pub trait_binding: Option<TraitBindingId>,
-
     /// The module this Variable is contained in. Determines which
     /// impls are visible to it during type inference.
     pub impl_scope: Option<ImplScopeId>,
+
+    /// The mapping used to instantiate the definition type of this
+    /// variable into a monotype, if any.
+    pub instantiation_mapping: Rc<TypeBindings>,
 
     /// A unique ID that can be used to identify this variable node
     pub id: Option<VariableId>,
 
     pub typ: Option<types::Type>,
 }
+
+/// Maps DefinitionInfoIds closed over in the environment to their new
+/// IDs within the closure which shadow their previous definition.
+/// These new IDs may be instantiations of a type that was generalized
+/// (but is now bound to a concrete type as a function parameter as the new id),
+/// so we need to remember these instatiation bindings as well.
+///
+/// Needed because closure environment variables are converted to
+/// parameters of the function which need separate IDs.
+pub type ClosureEnvironment = BTreeMap<
+    DefinitionInfoId,
+    (
+        /*Confusing: This is a variable id for the DefinitionInfoId key, used for trait dispatch.*/
+        VariableId,
+        DefinitionInfoId,
+        Rc<TypeBindings>,
+    ),
+>;
 
 /// \a b. expr
 /// Function definitions are also desugared to a ast::Definition with a ast::Lambda as its body
@@ -94,11 +109,7 @@ pub struct Lambda<'a> {
     pub body: Box<Ast<'a>>,
     pub return_type: Option<Type<'a>>,
 
-    /// Maps DefinitionInfoIds closed over in the environment to their new
-    /// IDs within the closure which shadow their previous definition.
-    /// Needed because closure environment variables are converted to
-    /// parameters of the function which need separate IDs.
-    pub closure_environment: BTreeMap<DefinitionInfoId, DefinitionInfoId>,
+    pub closure_environment: ClosureEnvironment,
 
     pub required_traits: Vec<RequiredTrait>,
 
@@ -428,7 +439,7 @@ impl<'a> Ast<'a> {
             definition: None,
             id: None,
             impl_scope: None,
-            trait_binding: None,
+            instantiation_mapping: Rc::new(HashMap::new()),
             typ: None,
         })
     }
@@ -438,9 +449,9 @@ impl<'a> Ast<'a> {
             kind: VariableKind::Operator(operator),
             location,
             definition: None,
-            trait_binding: None,
             id: None,
             impl_scope: None,
+            instantiation_mapping: Rc::new(HashMap::new()),
             typ: None,
         })
     }
@@ -450,9 +461,9 @@ impl<'a> Ast<'a> {
             kind: VariableKind::TypeConstructor(name),
             location,
             definition: None,
-            trait_binding: None,
             id: None,
             impl_scope: None,
+            instantiation_mapping: Rc::new(HashMap::new()),
             typ: None,
         })
     }
