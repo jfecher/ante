@@ -27,7 +27,6 @@ use crate::util::{fmap, trustme};
 
 use colored::Colorize;
 
-use super::traits::ConstraintSignature;
 use super::typechecker::UnificationBindings;
 
 /// Arbitrary impl requirements can result in arbitrary recursion
@@ -377,18 +376,7 @@ fn check_given_constraints<'c>(
             typechecker::replace_all_typevars_with_bindings(&typ, &mut impl_bindings, cache)
         });
 
-        let constraint = TraitConstraint {
-            required: RequiredTrait {
-                signature: ConstraintSignature {
-                    trait_id: signature.trait_id,
-                    args,
-                    id: cache.next_trait_constraint_id(),
-                },
-                // Is copying the original callsite correct here?
-                callsite: constraint.required.callsite,
-            },
-            scope: constraint.scope,
-        };
+        let constraint = TraitConstraint::impl_given_constraint(signature.id, signature.trait_id, args, constraint, cache);
 
         let mut matching_impls = find_matching_impls(&constraint, &unification_bindings, fuel, cache);
 

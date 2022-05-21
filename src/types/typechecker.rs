@@ -918,13 +918,33 @@ fn bind_irrefutable_pattern<'c>(
 fn lookup_definition_type_in_trait<'a>(
     name: &str, trait_id: TraitInfoId, cache: &mut ModuleCache<'a>,
 ) -> GeneralizedType {
-    let trait_info = &mut cache.trait_infos[trait_id.0];
+    let trait_info = &cache.trait_infos[trait_id.0];
     for definition_id in trait_info.definitions.iter() {
         let definition_info = &cache.definition_infos[definition_id.0];
         if definition_info.name == name {
             match definition_info.typ.as_ref() {
                 Some(typ) => return typ.clone(),
                 None => return infer_trait_definition(name, trait_id, cache),
+            }
+        }
+    }
+    unreachable!()
+}
+
+fn lookup_definition_traits_in_trait<'a, 'c>(
+    name: &str, trait_id: TraitInfoId, cache: &'a mut ModuleCache<'c>,
+) -> Vec<RequiredTrait> {
+    let trait_info = &cache.trait_infos[trait_id.0];
+    for definition_id in trait_info.definitions.iter() {
+        let definition_info = &cache.definition_infos[definition_id.0];
+        if definition_info.name == name {
+            // Check if this trait definition has already been type-checked
+            if definition_info.typ.is_some() {
+                // TODO: Shouldn't need to clone here. Seems to be a limitation of the current
+                // borrow checker.
+                return definition_info.required_traits.clone();
+            } else {
+                return infer_trait_definition_traits(name, trait_id, cache);
             }
         }
     }
@@ -939,6 +959,17 @@ fn infer_trait_definition<'c>(name: &str, trait_id: TraitInfoId, cache: &mut Mod
         Some(node) => {
             infer(trustme::extend_lifetime(*node), cache);
             lookup_definition_type_in_trait(name, trait_id, cache)
+        },
+        None => unreachable!("Type for {} has not been filled in yet", name),
+    }
+}
+
+fn infer_trait_definition_traits<'a, 'c>(name: &str, trait_id: TraitInfoId, cache: &'a mut ModuleCache<'c>) -> Vec<RequiredTrait> {
+    let trait_info = &mut cache.trait_infos[trait_id.0];
+    match &mut trait_info.trait_node {
+        Some(node) => {
+            infer(trustme::extend_lifetime(*node), cache);
+            lookup_definition_traits_in_trait(name, trait_id, cache)
         },
         None => unreachable!("Type for {} has not been filled in yet", name),
     }
@@ -979,13 +1010,102 @@ fn bind_irrefutable_pattern_in_impl<'a>(
         TypeAnnotation(annotation) => {
             bind_irrefutable_pattern_in_impl(annotation.lhs.as_ref(), trait_id, bindings, cache);
         },
+        FunctionCall(call) => {
+            for arg in &call.args {
+                bind_irrefutable_pattern_in_impl(arg, trait_id, bindings, cache);
+            }
+        },
         _ => {
-            error!(
-                ast.locate(),
-                "Invalid syntax in irrefutable pattern in trait impl, expected a name or a tuple of names"
-            );
+            error!(ast.locate(), "Invalid syntax in irrefutable pattern in trait impl, expected a pattern of some kind (a name, type annotation, or type constructor)");
         },
     }
+}
+
+/// Checks that the traits used in `pattern` are a subset of traits used in the `given` list of
+/// an impl or in the `given` list of the corresponding function in the trait declaration.
+fn check_impl_propagated_traits(pattern: &ast::Ast, trait_id: TraitInfoId, given: &[ConstraintSignature], cache: &mut ModuleCache) {
+    use ast::Ast::*;
+    match pattern {
+        Variable(variable) => {
+            let name = variable.to_string();
+
+            // Given a trait: 
+            // ```
+            // trait Foo a with 
+            //     foo : a -> a
+            //         given Bar a, Baz a
+            // ```
+            // This list will contain [Bar a, Baz a]
+            let useable_traits = lookup_definition_traits_in_trait(&name, trait_id, cache);
+
+            let definition_id = variable.definition.unwrap();
+            let used_traits = cache[definition_id].required_traits.clone();
+            let mut new_ids = Vec::with_capacity(used_traits.len());
+
+            for used in used_traits {
+                if let Some(id) = find_matching_trait(&used, &useable_traits, given, cache) {
+                    new_ids.push(id);
+                } else {
+                    // TODO: Should issue this error earlier to give a better callsite for the error
+                    error!(variable.location, "This definition requires {}, but the trait isn't given in the impl or the type signature for {} in the trait that defines it.",
+                           used.display(cache), variable);
+                }
+            }
+
+            // Must loop over again because cache is already borrowed mutably in the above loop
+            for (used, new_id) in cache[definition_id].required_traits.iter_mut().zip(new_ids) {
+                used.signature.id = new_id;
+            }
+        },
+        TypeAnnotation(annotation) => {
+            check_impl_propagated_traits(&annotation.lhs, trait_id, given, cache)
+        },
+        FunctionCall(call) => {
+            for arg in &call.args {
+                check_impl_propagated_traits(arg, trait_id, given, cache)
+            }
+        },
+        _ => {
+            error!(pattern.locate(), "Invalid syntax in irrefutable pattern in trait impl, expected a pattern of some kind (a name, type annotation, or type constructor)");
+        },
+    }
+}
+
+// TODO: `useable_traits` here is always going to be empty. We'll likely need a
+// `Vec<ConstraintSignature>` field on each definition to account for trait definitions
+// with no body.
+fn find_matching_trait(used: &RequiredTrait, useable_traits: &[RequiredTrait], given: &[ConstraintSignature], cache: &mut ModuleCache) -> Option<TraitConstraintId> {
+    for useable in useable_traits {
+        if useable.signature.trait_id == used.signature.trait_id {
+            if let Ok(bindings) = try_unify_all_with_bindings(
+                &used.signature.args,
+                &useable.signature.args,
+                UnificationBindings::empty(),
+                Location::builtin(),
+                cache,
+            ) {
+                bindings.perform(cache);
+                return Some(useable.signature.id);
+            }
+        }
+    }
+
+    for useable in given {
+        if useable.trait_id == used.signature.trait_id {
+            if let Ok(bindings) = try_unify_all_with_bindings(
+                &used.signature.args,
+                &useable.args,
+                UnificationBindings::empty(),
+                Location::builtin(),
+                cache,
+            ) {
+                bindings.perform(cache);
+                return Some(useable.id);
+            }
+        }
+    }
+
+    None
 }
 
 pub trait Inferable<'a> {
@@ -1376,9 +1496,23 @@ impl<'a> Inferable<'a> for ast::TraitImpl<'a> {
                 cache,
             );
 
-            // TODO: Ensure no traits are propogated up that aren't required by the impl
             let (_, traits) = infer(definition, cache);
-            assert_eq!(traits.len(), 0, "unimplemented: trait impls that return traits");
+
+            // Need to check we only use traits that are `given` by the definition
+            // in question or by the overall impl.
+            check_impl_propagated_traits(
+                definition.pattern.as_ref(),
+                self.trait_info.unwrap(),
+                &cache[self.impl_id.unwrap()].given.clone(),
+                cache
+            );
+
+            // No traits should be propagated outside of the impl. The only way this can happen
+            // is if the definition is not generalized and traits are used.
+            for trait_ in traits {
+                error!(definition.location, "Definition requires {}, but it needs to be a function to add this trait",
+                       trait_.display(cache));
+            }
         }
 
         (Type::Primitive(PrimitiveType::UnitType), vec![])

@@ -468,7 +468,8 @@ impl Cast string (Ptr char) with
 impl Eq (ref t) given Eq t with
     (==) l r = deref l == deref r
 
-impl Eq (Ptr t) with
+// This `given` clause is required by the current trait checker since t is generalized
+impl Eq (Ptr t) given Cast (Ptr t) usz with
     (==) l r = (cast l : usz) == cast r
 
 

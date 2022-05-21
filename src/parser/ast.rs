@@ -24,7 +24,7 @@
 //! - Type inference fills out:
 //!   `typ: Option<Type>` for all nodes,
 //!   `decision_tree: Option<DecisionTree>` for `ast::Match`s
-use crate::cache::{DefinitionInfoId, ImplScopeId, ModuleId, TraitInfoId, VariableId};
+use crate::cache::{DefinitionInfoId, ImplScopeId, ModuleId, TraitInfoId, VariableId, ImplInfoId};
 use crate::error::location::{Locatable, Location};
 use crate::lexer::token::{IntegerKind, Token};
 use crate::types::pattern::DecisionTree;
@@ -280,6 +280,7 @@ pub struct TraitImpl<'a> {
     pub definitions: Vec<Definition<'a>>,
     pub location: Location<'a>,
     pub trait_info: Option<TraitInfoId>,
+    pub impl_id: Option<ImplInfoId>,
     pub typ: Option<types::Type>,
     pub trait_arg_types: Vec<types::Type>, // = fmap(trait_args, convert_type)
 }
@@ -570,6 +571,7 @@ impl<'a> Ast<'a> {
             definitions,
             location,
             trait_arg_types: vec![],
+            impl_id: None,
             trait_info: None,
             typ: None,
         })

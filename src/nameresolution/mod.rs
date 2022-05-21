@@ -35,6 +35,7 @@
 //!   - `info: Option<DefinitionInfoId>` for `ast::Definition`s,
 //!   - `type_info: Option<TypeInfoId>` for `ast::TypeDefinition`s,
 //!   - `trait_info: Option<TraitInfoId>` for `ast::TraitDefinition`s and `ast::TraitImpl`s
+//!   - `impl_id: Option<ImplInfoId>` for `ast::TraitImpl`s
 //!   - `module_id: Option<ModuleId>` for `ast::Import`s,
 use crate::cache::{DefinitionInfoId, ModuleCache, ModuleId};
 use crate::cache::{DefinitionKind, ImplInfoId, TraitInfoId};
@@ -1266,7 +1267,7 @@ impl<'c> Resolvable<'c> for ast::TraitImpl<'c> {
         resolver.pop_type_variable_scope();
 
         let trait_impl = trustme::extend_lifetime(self);
-        resolver.push_trait_impl(
+        self.impl_id = Some(resolver.push_trait_impl(
             trait_id,
             self.trait_arg_types.clone(),
             definitions,
@@ -1274,7 +1275,7 @@ impl<'c> Resolvable<'c> for ast::TraitImpl<'c> {
             given,
             cache,
             self.locate(),
-        );
+        ));
     }
 }
 
