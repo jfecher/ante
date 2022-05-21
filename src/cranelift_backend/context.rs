@@ -11,7 +11,7 @@ use cranelift::frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use cranelift::prelude::isa::CallConv;
 use cranelift::prelude::{
     settings, AbiParam, Block, ExtFuncData, ExternalName, InstBuilder, Signature, StackSlotData, StackSlotKind,
-    Value as CraneliftValue,
+    Value as CraneliftValue, MemFlags,
 };
 use cranelift_module::{DataContext, DataId, FuncId, Linkage, Module};
 
@@ -63,11 +63,12 @@ impl FuncData {
 pub enum Value {
     Normal(CraneliftValue),
     Function(FuncData),
-    Variable(Variable),
     Global(DataId),
-
-    /// Invariant: No element should be a Value::Tuple
     Tuple(Vec<Value>),
+
+    /// A loadable is a pointer value that should be loaded before it is used.
+    /// Mutable definitions usually translate to these.
+    Loadable(CraneliftValue, cranelift_types::Type),
 
     /// Lazily inserting unit values helps prevent cluttering the IR with too many
     /// unit literals.
@@ -97,7 +98,9 @@ impl Value {
     pub fn eval_single(self, context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
         match self {
             Value::Normal(value) => value,
-            Value::Variable(variable) => builder.use_var(variable),
+            Value::Loadable(ptr, typ) => {
+                builder.ins().load(typ, MemFlags::new(), ptr, 0)
+            },
             Value::Unit => {
                 let unit_type = cranelift_types::B1;
                 builder.ins().bconst(unit_type, false)
@@ -115,9 +118,11 @@ impl Value {
         }
     }
 
-    pub fn eval_variables(self) -> Vec<cranelift::frontend::Variable> {
+    /// Returns a Vec of all the Loadable values within this value.
+    /// Intended to be values that can be mutated
+    pub fn eval_variables(self) -> Vec<(CraneliftValue, cranelift_types::Type)> {
         match self {
-            Value::Variable(variable) => vec![variable],
+            Value::Loadable(ptr, typ) => vec![(ptr, typ)],
             Value::Global(_) => todo!("globals"), // Are globals valid here? Probably.
             Value::Tuple(values) => {
                 let mut results = Vec::with_capacity(values.len());
@@ -293,7 +298,10 @@ impl<'local> Context<'local> {
         match value {
             Value::Function(data) => FunctionValue::Direct(data),
             Value::Normal(value) => FunctionValue::Indirect(value),
-            Value::Variable(var) => FunctionValue::Indirect(builder.use_var(var)),
+            Value::Loadable(ptr, typ) => {
+                let value = builder.ins().load(typ, MemFlags::new(), ptr, 0);
+                FunctionValue::Indirect(value)
+            },
             Value::Global(_) => {
                 todo!("Is this case reachable? Can we have function-value Value::Globals that are not Value::Function?")
             },
@@ -525,16 +533,20 @@ impl<'local> Context<'local> {
         }
     }
 
-    pub fn define_variables(&mut self, value: Value, builder: &mut FunctionBuilder) -> Value {
+    pub fn create_stores(&mut self, value: Value, builder: &mut FunctionBuilder) -> Value {
         match value {
-            Value::Tuple(elems) => Value::Tuple(fmap(elems, |elem| self.define_variables(elem, builder))),
+            Value::Tuple(elems) => Value::Tuple(fmap(elems, |elem| self.create_stores(elem, builder))),
             other => {
                 let value = other.eval_single(self, builder);
-                let var = self.new_variable();
                 let typ = builder.func.dfg.value_type(value);
-                builder.declare_var(var, typ);
-                builder.def_var(var, value);
-                Value::Variable(var)
+
+                let data = StackSlotData::new(StackSlotKind::ExplicitSlot, typ.bytes());
+                let slot = builder.create_stack_slot(data);
+                let offset = 0;
+
+                builder.ins().stack_store(value, slot, offset);
+                let addr = builder.ins().stack_addr(pointer_type(), slot, offset);
+                Value::Loadable(addr, typ)
             },
         }
     }
