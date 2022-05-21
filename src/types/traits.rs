@@ -164,10 +164,6 @@ impl RequiredTrait {
 
         ConstraintSignaturePrinter { signature: self.signature.clone(), typevar_names, debug: true, cache }
     }
-
-    pub fn is_builtin(&self, cache: &ModuleCache) -> bool {
-        self.signature.trait_id == cache.int_trait || cache[self.signature.trait_id].is_member_access()
-    }
 }
 
 pub struct ConstraintSignaturePrinter<'a, 'b> {

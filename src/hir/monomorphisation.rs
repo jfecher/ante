@@ -614,13 +614,12 @@ impl<'c> Context<'c> {
         let mut new_direct = HashMap::new();
         let mut new_indirect = HashMap::new();
         for required_trait in &definition.required_traits {
-            let key = (variable, required_trait.signature.id);
-
-            // TODO: Need a better system for impls with 0 definitions
-            if required_trait.is_builtin(&self.cache) {
+            // If the impl has 0 definitions we can't attach it to any variables
+            if self.cache[required_trait.signature.trait_id].definitions.is_empty() {
                 continue;
             }
 
+            let key = (variable, required_trait.signature.id);
             let binding = self.indirect_impl_mappings.last().unwrap()[&key];
 
             match required_trait.callsite {
