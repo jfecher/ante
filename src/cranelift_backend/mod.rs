@@ -13,7 +13,7 @@ mod module;
 
 use context::{Context, FunctionValue, Value};
 use cranelift::frontend::FunctionBuilder;
-use cranelift::prelude::InstBuilder;
+use cranelift::prelude::{InstBuilder, MemFlags};
 
 pub fn run(path: &Path, hir: Ast, args: &Args) {
     timing::start_time("Cranelift codegen");
@@ -33,7 +33,7 @@ pub trait CodeGen {
 
     fn eval_variables<'a>(
         &'a self, context: &mut Context<'a>, builder: &mut FunctionBuilder,
-    ) -> Vec<cranelift::frontend::Variable> {
+    ) -> Vec<(CraneliftValue, cranelift_types::Type)> {
         self.codegen(context, builder).eval_variables()
     }
 }
@@ -127,7 +127,7 @@ impl CodeGen for hir::Definition {
 
             let mut value = self.expr.codegen(context, builder);
             if self.mutable {
-                value = context.define_variables(value, builder);
+                value = context.create_stores(value, builder);
             }
             context.definitions.insert(self.variable, value);
         }
@@ -223,8 +223,8 @@ impl CodeGen for hir::Assignment {
         let rhs = self.rhs.eval_all(context, builder);
         assert_eq!(lhs.len(), rhs.len());
 
-        for (var, value) in lhs.into_iter().zip(rhs) {
-            builder.def_var(var, value);
+        for ((addr, _), value) in lhs.into_iter().zip(rhs) {
+            builder.ins().store(MemFlags::new(), value, addr, 0);
         }
 
         Value::Unit
