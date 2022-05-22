@@ -7,7 +7,7 @@ use crate::util::fmap;
 
 use cranelift::codegen::ir::{types as cranelift_types, FuncRef, Function, StackSlot};
 use cranelift::codegen::verify_function;
-use cranelift::frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
+use cranelift::frontend::{FunctionBuilder, FunctionBuilderContext};
 use cranelift::prelude::isa::CallConv;
 use cranelift::prelude::{
     settings, AbiParam, Block, ExtFuncData, ExternalName, InstBuilder, Signature, StackSlotData, StackSlotKind,
@@ -29,7 +29,6 @@ pub struct Context<'ast> {
 
     pub current_function_name: Option<DefinitionId>,
     next_func_id: u32,
-    next_variable_id: u32,
 }
 
 #[derive(Debug)]
@@ -117,23 +116,6 @@ impl Value {
             Value::Tuple(elems) => panic!("Value::Tuple found in eval_single: {:?}", elems),
         }
     }
-
-    /// Returns a Vec of all the Loadable values within this value.
-    /// Intended to be values that can be mutated
-    pub fn eval_variables(self) -> Vec<(CraneliftValue, cranelift_types::Type)> {
-        match self {
-            Value::Loadable(ptr, typ) => vec![(ptr, typ)],
-            Value::Global(_) => todo!("globals"), // Are globals valid here? Probably.
-            Value::Tuple(values) => {
-                let mut results = Vec::with_capacity(values.len());
-                for value in values {
-                    results.append(&mut value.eval_variables());
-                }
-                results
-            },
-            other => unreachable!("Tried to eval non-variable {:?}", other),
-        }
-    }
 }
 
 enum FunctionOrGlobal {
@@ -151,7 +133,6 @@ impl<'local> Context<'local> {
                 definitions: HashMap::new(),
                 module,
                 next_func_id: 0,
-                next_variable_id: 0,
                 data_context: DataContext::new(),
                 function_queue: vec![],
                 current_function_name: None,
@@ -223,12 +204,6 @@ impl<'local> Context<'local> {
         self.next_func_id
     }
 
-    fn new_variable(&mut self) -> Variable {
-        let var = Variable::with_u32(self.next_variable_id);
-        self.next_variable_id += 1;
-        var
-    }
-
     fn codegen_main(
         &mut self, ast: &'local Ast, builder_context: &mut FunctionBuilderContext,
         module_context: &mut cranelift::codegen::Context, args: &Args,
@@ -276,11 +251,12 @@ impl<'local> Context<'local> {
 
         // all_parameters flattens structs into 1 parameter per field, so we must
         // un-flatten them here to bind names to multiple parameters
-        for (parameter, param_type) in lambda.args.iter().zip(&lambda.typ.parameters) {
+        for ((parameter, _), param_type) in lambda.args.iter().zip(&lambda.typ.parameters) {
             let arg = self.fmap_type(param_type, &mut |_, _| {
                 i += 1;
                 all_parameters[i - 1]
             });
+
             self.definitions.insert(parameter.definition_id, arg);
         }
 
@@ -323,8 +299,8 @@ impl<'local> Context<'local> {
     // Need to pass around the function by mutable ref to use it in the for loop
     fn for_each_helper<F: FnMut(&mut Self, cranelift_types::Type)>(&mut self, typ: &Type, f: &mut F) {
         match typ {
-            Type::Primitive(p) => f(self, self.convert_primitive_type(p)),
-            Type::Function(_) => f(self, Context::function_type()),
+            Type::Primitive(p) => f(self, convert_primitive_type(p)),
+            Type::Function(_) => f(self, function_type()),
             Type::Tuple(elems) => {
                 for elem in elems {
                     self.for_each_helper(elem, f);
@@ -346,8 +322,8 @@ impl<'local> Context<'local> {
     ) -> Value {
         use Value::*;
         match typ {
-            Type::Primitive(p) => Normal(f(self, self.convert_primitive_type(p))),
-            Type::Function(_) => Normal(f(self, Self::function_type())),
+            Type::Primitive(p) => Normal(f(self, convert_primitive_type(p))),
+            Type::Function(_) => Normal(f(self, function_type())),
             Type::Tuple(elems) => Value::Tuple(fmap(elems, |elem| self.fmap_type(elem, f))),
         }
     }
@@ -358,37 +334,6 @@ impl<'local> Context<'local> {
             builder.append_block_param(block, typ);
         });
         block
-    }
-
-    fn function_type() -> cranelift_types::Type {
-        pointer_type()
-    }
-
-    fn convert_primitive_type(&self, typ: &PrimitiveType) -> cranelift_types::Type {
-        match typ {
-            PrimitiveType::Integer(kind) => self.convert_integer_kind(*kind),
-            PrimitiveType::Float => cranelift_types::F64,
-            PrimitiveType::Char => cranelift_types::I8,
-            PrimitiveType::Boolean => cranelift_types::B1,
-            PrimitiveType::Unit => cranelift_types::B1,
-            PrimitiveType::Pointer => pointer_type(),
-        }
-    }
-
-    pub fn convert_integer_kind(&self, kind: hir::IntegerKind) -> cranelift_types::Type {
-        use hir::IntegerKind;
-        match kind {
-            IntegerKind::I8 => cranelift_types::I8,
-            IntegerKind::I16 => cranelift_types::I16,
-            IntegerKind::I32 => cranelift_types::I32,
-            IntegerKind::I64 => cranelift_types::I64,
-            IntegerKind::Isz => int_pointer_type(),
-            IntegerKind::U8 => cranelift_types::I8,
-            IntegerKind::U16 => cranelift_types::I16,
-            IntegerKind::U32 => cranelift_types::I32,
-            IntegerKind::U64 => cranelift_types::I64,
-            IntegerKind::Usz => int_pointer_type(),
-        }
     }
 
     pub fn convert_signature(&mut self, f: &hir::FunctionType) -> Signature {
@@ -484,29 +429,20 @@ impl<'local> Context<'local> {
         builder.ins().symbol_value(pointer_type(), global)
     }
 
-    /// Returns the size of the given type in bytes
-    pub fn size_of(&mut self, typ: &Type) -> u32 {
-        match typ {
-            Type::Primitive(p) => self.convert_primitive_type(p).bytes(),
-            Type::Function(_) => Self::function_type().bytes(),
-            Type::Tuple(types) => types.iter().map(|typ| self.size_of(typ)).sum(),
-        }
-    }
-
     pub fn reinterpret_cast(&mut self, value: Value, target_type: &Type, builder: &mut FunctionBuilder) -> Value {
-        let size = self.size_of(target_type);
+        let size = size_of(target_type);
         let data = StackSlotData::new(StackSlotKind::ExplicitSlot, size);
         let slot = builder.create_stack_slot(data);
 
-        self.store_value(value, slot, &mut 0, builder);
-        self.load_value(target_type, slot, &mut 0, builder)
+        self.store_stack_value(value, slot, &mut 0, builder);
+        self.load_stack_value(target_type, slot, &mut 0, builder)
     }
 
-    fn store_value(&mut self, value: Value, slot: StackSlot, offset: &mut u32, builder: &mut FunctionBuilder) {
+    fn store_stack_value(&mut self, value: Value, slot: StackSlot, offset: &mut u32, builder: &mut FunctionBuilder) {
         match value {
             Value::Tuple(elems) => {
                 for elem in elems {
-                    self.store_value(elem, slot, offset, builder);
+                    self.store_stack_value(elem, slot, offset, builder);
                 }
             },
             value => {
@@ -517,7 +453,22 @@ impl<'local> Context<'local> {
         }
     }
 
-    fn load_value(
+    pub fn store_value(&mut self, addr: CraneliftValue, value: Value, offset: &mut u32, builder: &mut FunctionBuilder) {
+        match value {
+            Value::Tuple(elems) => {
+                for elem in elems {
+                    self.store_value(addr, elem, offset, builder);
+                }
+            },
+            value => {
+                let value = value.eval_single(self, builder);
+                builder.ins().store(MemFlags::new(), value, addr, *offset as i32);
+                *offset += builder.func.dfg.value_type(value).bytes();
+            },
+        }
+    }
+
+    fn load_stack_value(
         &mut self, target_type: &Type, slot: StackSlot, offset: &mut u32, builder: &mut FunctionBuilder,
     ) -> Value {
         let mut load_single = |typ| {
@@ -527,27 +478,25 @@ impl<'local> Context<'local> {
         };
 
         match target_type {
-            Type::Tuple(elems) => Value::Tuple(fmap(elems, |elem| self.load_value(elem, slot, offset, builder))),
-            Type::Primitive(p) => load_single(self.convert_primitive_type(p)),
-            Type::Function(_) => load_single(Self::function_type()),
+            Type::Tuple(elems) => Value::Tuple(fmap(elems, |elem| self.load_stack_value(elem, slot, offset, builder))),
+            Type::Primitive(p) => load_single(convert_primitive_type(p)),
+            Type::Function(_) => load_single(function_type()),
         }
     }
 
-    pub fn create_stores(&mut self, value: Value, builder: &mut FunctionBuilder) -> Value {
-        match value {
-            Value::Tuple(elems) => Value::Tuple(fmap(elems, |elem| self.create_stores(elem, builder))),
-            other => {
-                let value = other.eval_single(self, builder);
-                let typ = builder.func.dfg.value_type(value);
+    pub fn load_value(
+        &mut self, target_type: &Type, addr: CraneliftValue, offset: &mut i32, builder: &mut FunctionBuilder,
+    ) -> Value {
+        let mut load_single = |typ| {
+            let value = builder.ins().load(typ, MemFlags::new(), addr, *offset);
+            *offset += typ.bytes() as i32;
+            Value::Normal(value)
+        };
 
-                let data = StackSlotData::new(StackSlotKind::ExplicitSlot, typ.bytes());
-                let slot = builder.create_stack_slot(data);
-                let offset = 0;
-
-                builder.ins().stack_store(value, slot, offset);
-                let addr = builder.ins().stack_addr(pointer_type(), slot, offset);
-                Value::Loadable(addr, typ)
-            },
+        match target_type {
+            Type::Tuple(elems) => Value::Tuple(fmap(elems, |elem| self.load_value(elem, addr, offset, builder))),
+            Type::Primitive(p) => load_single(convert_primitive_type(p)),
+            Type::Function(_) => load_single(function_type()),
         }
     }
 }
@@ -578,5 +527,45 @@ pub fn int_pointer_type() -> cranelift_types::Type {
         cranelift_types::I32
     } else {
         panic!("Unsupported pointer size: {} bytes", size)
+    }
+}
+
+/// Returns the size of the given type in bytes
+pub fn size_of(typ: &Type) -> u32 {
+    match typ {
+        Type::Primitive(p) => convert_primitive_type(p).bytes(),
+        Type::Function(_) => function_type().bytes(),
+        Type::Tuple(types) => types.iter().map(size_of).sum(),
+    }
+}
+
+fn function_type() -> cranelift_types::Type {
+    pointer_type()
+}
+
+fn convert_primitive_type(typ: &PrimitiveType) -> cranelift_types::Type {
+    match typ {
+        PrimitiveType::Integer(kind) => convert_integer_kind(*kind),
+        PrimitiveType::Float => cranelift_types::F64,
+        PrimitiveType::Char => cranelift_types::I8,
+        PrimitiveType::Boolean => cranelift_types::B1,
+        PrimitiveType::Unit => cranelift_types::B1,
+        PrimitiveType::Pointer => pointer_type(),
+    }
+}
+
+pub fn convert_integer_kind(kind: hir::IntegerKind) -> cranelift_types::Type {
+    use hir::IntegerKind;
+    match kind {
+        IntegerKind::I8 => cranelift_types::I8,
+        IntegerKind::I16 => cranelift_types::I16,
+        IntegerKind::I32 => cranelift_types::I32,
+        IntegerKind::I64 => cranelift_types::I64,
+        IntegerKind::Isz => int_pointer_type(),
+        IntegerKind::U8 => cranelift_types::I8,
+        IntegerKind::U16 => cranelift_types::I16,
+        IntegerKind::U32 => cranelift_types::I32,
+        IntegerKind::U64 => cranelift_types::I64,
+        IntegerKind::Usz => int_pointer_type(),
     }
 }

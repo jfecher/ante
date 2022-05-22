@@ -119,9 +119,15 @@ impl FmtAst for Lambda {
     fn fmt_ast(&self, printer: &mut AstPrinter, f: &mut Formatter) -> fmt::Result {
         write!(f, "(fn")?;
 
-        for arg in &self.args {
-            write!(f, " ")?;
-            arg.fmt_ast(printer, f)?;
+        for (arg, mutable) in &self.args {
+            if *mutable {
+                write!(f, " (mut ")?;
+                arg.fmt_ast(printer, f)?;
+                write!(f, ")")?;
+            } else {
+                write!(f, " ")?;
+                arg.fmt_ast(printer, f)?;
+            }
         }
 
         write!(f, " : {} = ", self.typ)?;
@@ -141,9 +147,6 @@ impl FmtAst for Definition {
         printer.already_printed.insert(self.variable);
 
         write!(f, "v{} = ", self.variable.0)?;
-        if self.mutable {
-            write!(f, "mut ")?;
-        }
         printer.block(self.expr.as_ref(), f)
     }
 }
@@ -262,6 +265,7 @@ impl FmtAst for Builtin {
             Builtin::Deref(a, b) => printer.fmt_cast("#Deref", a, b, f),
             Builtin::Offset(a, b, size) => printer.fmt_offset(a, b, *size, f),
             Builtin::Transmute(a, b) => printer.fmt_cast("#Transmute", a, b, f),
+            Builtin::StackAlloc(value) => printer.fmt_call("#StackAlloc", &[value], f),
         }
     }
 }

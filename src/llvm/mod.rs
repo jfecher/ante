@@ -494,7 +494,7 @@ impl<'g> CodeGen<'g> for hir::Lambda {
         let (function, function_value) = generator.function("lambda", &self.typ);
 
         // Bind each parameter node to the nth parameter of `function`
-        for (i, parameter) in self.args.iter().enumerate() {
+        for (i, (parameter, _)) in self.args.iter().enumerate() {
             let value = function.get_nth_param(i as u32).unwrap();
             generator.definitions.insert(parameter.definition_id, value);
         }
@@ -523,7 +523,7 @@ fn should_auto_deref(definition: &hir::Definition) -> bool {
         return !matches!(&ext.typ, hir::Type::Function(_));
     }
 
-    definition.mutable
+    false
 }
 
 impl<'g> CodeGen<'g> for hir::Definition {
@@ -534,14 +534,7 @@ impl<'g> CodeGen<'g> for hir::Definition {
             }
 
             generator.current_function_info = Some(self.variable);
-            let mut value = self.expr.codegen(generator);
-
-            if self.mutable {
-                let alloca = generator.builder.build_alloca(value.get_type(), "");
-                generator.builder.build_store(alloca, value);
-                value = alloca.as_basic_value_enum();
-            }
-
+            let value = self.expr.codegen(generator);
             generator.definitions.insert(self.variable, value);
         }
 

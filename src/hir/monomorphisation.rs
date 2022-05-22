@@ -56,13 +56,22 @@ pub enum Definition {
     /// would be less efficient than recreating the value 0 on each use.
     Macro(hir::Ast),
     Normal(hir::DefinitionInfo),
+
+    /// A mutable definition must loaded from memory each time it is
+    /// referenced by a variable. Thus, the given Ast must compile
+    /// to a pointer value of some kind.
+    Mutable(hir::DefinitionInfo),
 }
 
-impl From<Definition> for hir::Ast {
-    fn from(def: Definition) -> Self {
-        match def {
+impl Definition {
+    fn reference(self, context: &mut Context, typ: &types::Type) -> hir::Ast {
+        match self {
             Definition::Macro(ast) => ast,
             Definition::Normal(def) => hir::Ast::Variable(def),
+            Definition::Mutable(def) => {
+                let typ = context.convert_type(typ);
+                hir::Ast::Builtin(hir::Builtin::Deref(Box::new(def.into()), typ))
+            },
         }
     }
 }
@@ -560,7 +569,7 @@ impl<'c> Context<'c> {
         let definition =
             self.monomorphise_definition_id(definition_id, variable_id, typ, &variable.instantiation_mapping);
 
-        definition.into()
+        definition.reference(self, typ)
     }
 
     pub fn lookup_definition(&self, id: DefinitionInfoId, typ: &types::Type) -> Option<Definition> {
@@ -699,10 +708,10 @@ impl<'c> Context<'c> {
             return value;
         }
 
-        let extern_ = hir::Ast::Extern(hir::Extern { name: self.cache[id].name.clone(), typ: self.convert_type(typ) });
+        let name = self.cache[id].name.clone();
+        let extern_ = hir::Ast::Extern(hir::Extern { name, typ: self.convert_type(typ) });
 
-        let mutable = self.cache[id].mutable;
-        let definition = self.make_definition(extern_, mutable);
+        let definition = self.make_definition(extern_);
 
         // Insert the global for both the current type and the unit type
         let definition = Definition::Normal(definition);
@@ -716,9 +725,11 @@ impl<'c> Context<'c> {
         &mut self, definition_rhs: hir::Ast, original_id: DefinitionInfoId, typ: types::Type,
     ) -> Definition {
         let def = if matches!(&definition_rhs, hir::Ast::Lambda(_)) {
-            let definition =
-                hir::Definition { variable: self.next_unique_id(), expr: Box::new(definition_rhs), mutable: false };
+            let variable = self.next_unique_id();
+            let expr = Box::new(definition_rhs);
 
+            let definition =
+                hir::Definition { variable, expr };
             Definition::Normal(hir::DefinitionInfo::from(definition))
         } else {
             Definition::Macro(definition_rhs)
@@ -732,14 +743,15 @@ impl<'c> Context<'c> {
         hir::Variable { definition: None, definition_id: self.next_unique_id() }
     }
 
-    pub fn fresh_definition(&mut self, definition_rhs: hir::Ast, mutable: bool) -> (hir::Ast, hir::DefinitionId) {
+    pub fn fresh_definition(&mut self, definition_rhs: hir::Ast) -> (hir::Ast, hir::DefinitionId) {
         let variable = self.next_unique_id();
-        let definition = hir::Ast::Definition(hir::Definition { variable, expr: Box::new(definition_rhs), mutable });
+        let expr = Box::new(definition_rhs);
+        let definition = hir::Ast::Definition(hir::Definition { variable, expr });
         (definition, variable)
     }
 
-    fn make_definition(&mut self, definition_rhs: hir::Ast, mutable: bool) -> hir::DefinitionInfo {
-        let (definition, definition_id) = self.fresh_definition(definition_rhs, mutable);
+    fn make_definition(&mut self, definition_rhs: hir::Ast) -> hir::DefinitionInfo {
+        let (definition, definition_id) = self.fresh_definition(definition_rhs);
         hir::DefinitionInfo { definition_id, definition: Some(Rc::new(definition)) }
     }
 
@@ -750,15 +762,16 @@ impl<'c> Context<'c> {
         &mut self, definition: &ast::Definition<'c>, definition_id: hir::DefinitionId,
     ) -> Definition {
         let value = self.monomorphise(&*definition.expr);
+
         let new_definition = hir::Ast::Definition(hir::Definition {
             variable: definition_id,
             expr: Box::new(value),
-            mutable: definition.mutable,
         });
 
         let mut nested_definitions = vec![new_definition];
         let typ = self.follow_all_bindings(definition.pattern.get_type().unwrap());
-        self.desugar_pattern(&definition.pattern, definition_id, typ, &mut nested_definitions);
+
+        self.desugar_pattern(&definition.pattern, definition_id, typ, definition.mutable, &mut nested_definitions);
 
         let definition = if nested_definitions.len() == 1 {
             nested_definitions.remove(0)
@@ -783,6 +796,7 @@ impl<'c> Context<'c> {
     /// PRE-REQUISITE: `typ` must equal `self.follow_all_bindings(typ)`
     fn desugar_pattern(
         &mut self, pattern: &ast::Ast<'c>, definition_id: hir::DefinitionId, typ: types::Type,
+        mutable: bool,
         definitions: &mut Vec<hir::Ast>,
     ) {
         use {
@@ -796,23 +810,38 @@ impl<'c> Context<'c> {
                 let id = variable_pattern.definition.unwrap();
 
                 let variable = hir::Variable { definition_id, definition: None };
-                self.definitions.insert((id, typ), Definition::Normal(variable));
+                let definition = if mutable {
+                    Definition::Mutable(variable)
+                } else {
+                    Definition::Normal(variable)
+                };
+
+                self.definitions.insert((id, typ), definition);
             },
             TypeAnnotation(annotation) => {
-                self.desugar_pattern(annotation.lhs.as_ref(), definition_id, typ, definitions)
+                let mutable = mutable || annotation.mutable;
+                self.desugar_pattern(annotation.lhs.as_ref(), definition_id, typ, mutable, definitions)
             },
-            // Match a pair pattern
+            // Match a struct pattern
             FunctionCall(call) if call.is_pair_constructor() => {
                 let variable = hir::Variable { definition_id, definition: None };
+                let mut offset = 0;
 
                 for (i, arg_pattern) in call.args.iter().enumerate() {
-                    let extract = extract(variable.clone().into(), i as u32);
-                    let (definition, id) = self.fresh_definition(extract, false);
+                    let arg_type = self.follow_all_bindings(arg_pattern.get_type().unwrap());
+
+                    let extract = if mutable {
+                        let new_ptr = offset_ptr(variable.clone().into(), offset as u64);
+                        offset += self.size_of_type(&arg_type);
+                        new_ptr
+                    } else {
+                        self.extract(variable.clone().into(), i as u32)
+                    };
+
+                    let (definition, id) = self.fresh_definition(extract);
                     definitions.push(definition);
 
-                    // Sanity check the expected type exactly matches that of the actual variable
-                    let arg_type = self.follow_all_bindings(arg_pattern.get_type().unwrap());
-                    self.desugar_pattern(arg_pattern, id, arg_type, definitions)
+                    self.desugar_pattern(arg_pattern, id, arg_type, mutable, definitions)
                 }
             },
             _ => {
@@ -826,7 +855,7 @@ impl<'c> Context<'c> {
         let typ = self.convert_type(typ);
         match typ {
             Function(function_type) => {
-                let args = fmap(&function_type.parameters, |_| self.fresh_variable());
+                let args = fmap(&function_type.parameters, |_| (self.fresh_variable(), false));
 
                 let mut tuple_args = Vec::with_capacity(args.len() + 1);
                 let mut tuple_size =
@@ -837,7 +866,7 @@ impl<'c> Context<'c> {
                     tuple_size += self.size_of_monomorphised_type(&Self::tag_type());
                 }
 
-                tuple_args.extend(args.iter().map(|arg| arg.clone().into()));
+                tuple_args.extend(args.iter().map(|arg| arg.0.clone().into()));
 
                 let tuple = hir::Ast::Tuple(hir::Tuple { fields: tuple_args });
 
@@ -883,7 +912,7 @@ impl<'c> Context<'c> {
 
         for (int_kind, size) in type_tower {
             while arg_type_size + size <= target_size {
-                padded.push(hir::Ast::Literal(hir::Literal::Integer(0, int_kind)));
+                padded.push(int_literal(0, int_kind));
                 arg_type_size += size;
             }
         }
@@ -917,14 +946,14 @@ impl<'c> Context<'c> {
         }
     }
 
-    fn get_function_type(&mut self, typ: &types::Type) -> hir::FunctionType {
+    fn get_function_type(&mut self, typ: &types::Type, args: &[ast::Ast]) -> hir::FunctionType {
         match self.convert_type(typ) {
-            Type::Function(f) => f,
+            Type::Function(f) => self.change_mutable_args_to_pointers(f, args),
             Type::Tuple(mut values) => {
                 // Closure
                 assert!(values.len() >= 1);
                 match values.swap_remove(0) {
-                    Type::Function(f) => f,
+                    Type::Function(f) => self.change_mutable_args_to_pointers(f, args),
                     other => unreachable!("Lambda has a non-function type: {}", other),
                 }
             },
@@ -932,10 +961,30 @@ impl<'c> Context<'c> {
         }
     }
 
+    fn change_mutable_args_to_pointers(&self, mut f: hir::FunctionType, args: &[ast::Ast]) -> hir::FunctionType {
+        assert!(f.parameters.len() >= args.len());
+
+        for (param, arg) in f.parameters.iter_mut().zip(args) {
+            if self.pattern_is_mutable(arg) {
+                *param = Type::Primitive(hir::PrimitiveType::Pointer);
+            }
+        }
+
+        f
+    }
+
+    fn pattern_is_mutable(&self, pattern: &ast::Ast) -> bool {
+        match pattern {
+            ast::Ast::TypeAnnotation(ast) => ast.mutable,
+            ast::Ast::Variable(var) => self.cache[var.definition.unwrap()].mutable,
+            _ => false,
+        }
+    }
+
     fn monomorphise_lambda(&mut self, lambda: &ast::Lambda<'c>) -> hir::Ast {
         let t = lambda.typ.as_ref().unwrap();
         let t = self.follow_all_bindings(t);
-        let typ = self.get_function_type(&t);
+        let typ = self.get_function_type(&t, &lambda.args);
         let mut body_prelude = vec![];
 
         // Bind each parameter node to the nth parameter of `function`
@@ -944,17 +993,20 @@ impl<'c> Context<'c> {
         let mut args = fmap(&lambda.args, |arg| {
             let typ = self.follow_all_bindings(arg.get_type().unwrap());
             let param = self.fresh_variable();
-            self.desugar_pattern(arg, param.definition_id, typ, &mut body_prelude);
-            param
+            let mutable = self.pattern_is_mutable(arg);
+            self.desugar_pattern(arg, param.definition_id, typ, mutable, &mut body_prelude);
+
+            (param, mutable)
         });
 
         args.extend(lambda.closure_environment.values().map(|(_, inner_var, _)| {
             let param = self.fresh_variable();
-            let typ = self.cache[*inner_var].typ.as_ref().unwrap().as_monotype();
+            let info = &self.cache[*inner_var];
+            let typ = info.typ.as_ref().unwrap().as_monotype();
             let typ = self.follow_all_bindings(typ);
             self.definitions.insert((*inner_var, typ), Definition::Normal(param.clone()));
 
-            param.into()
+            (param.into(), info.mutable)
         }));
 
         let body = self.monomorphise(&lambda.body);
@@ -977,7 +1029,7 @@ impl<'c> Context<'c> {
             for (outer_var, (id, _, bindings)) in &lambda.closure_environment {
                 let typ = self.cache[*outer_var].typ.as_ref().unwrap().clone().into_monotype();
                 let definition = self.monomorphise_definition_id(*outer_var, *id, &typ, bindings);
-                values.push(definition.into());
+                values.push(definition.reference(self, &typ));
             }
 
             self.tuple(values)
@@ -1062,7 +1114,7 @@ impl<'c> Context<'c> {
             "SizeOf" => {
                 // We expect (size_of : Type t -> usz), so get the size of t
                 let size = self.size_of_type_arg0(&args[1].get_type().unwrap());
-                return hir::Ast::Literal(hir::Literal::Integer(size as u64, IntegerKind::Usz));
+                return int_literal(size as u64, IntegerKind::Usz);
             },
 
             _ => unreachable!("Unknown builtin '{}'", arg),
@@ -1079,8 +1131,12 @@ impl<'c> Context<'c> {
                 // they contain polymorphic integer literals which still need to be defaulted
                 // to i32. This can happen if a top-level definition like `a = Some 2` is
                 // generalized.
+                // TODO: Review this restriction. `a = Some 2` is no longer generalized due to the
+                // value restriction.
                 let mut args = fmap(&call.args, |arg| self.monomorphise(arg));
                 let function = self.monomorphise(&call.function);
+
+                args = self.fix_arg_mutability(args, &function);
 
                 // We could use a new convert_type_shallow here in the future since all we need
                 // is to check if it is a tuple type or not
@@ -1094,10 +1150,10 @@ impl<'c> Context<'c> {
                         };
 
                         // Extract the function from the closure
-                        let (function_definition, id) = self.fresh_definition(function, false);
+                        let (function_definition, id) = self.fresh_definition(function);
                         let function_variable = id.to_variable();
-                        let function = Box::new(extract(function_variable.clone(), 0));
-                        let environment = extract(function_variable, 1);
+                        let function = Box::new(self.extract(function_variable.clone(), 0));
+                        let environment = self.extract(function_variable, 1);
                         args.push(environment);
 
                         hir::Ast::Sequence(hir::Sequence {
@@ -1121,10 +1177,18 @@ impl<'c> Context<'c> {
         match definition.expr.as_ref() {
             // If the value is a function we can skip it and come back later to only
             // monomorphise it when we know what types it should be instantiated with.
+            // TODO: Do we need a check for Variables as well since they can also be generalized?
             ast::Ast::Lambda(_) => unit_literal(),
             _ => {
-                let expr = self.monomorphise(&definition.expr);
-                let (new_definition, id) = self.fresh_definition(expr, definition.mutable);
+                let mut expr = self.monomorphise(&definition.expr);
+                if definition.mutable {
+                    expr = hir::Ast::Builtin(hir::Builtin::StackAlloc(Box::new(expr)));
+                }
+
+                let (new_definition, id) = self.fresh_definition(expr);
+
+                let mut nested_definitions = vec![new_definition];
+                let typ = self.follow_all_bindings(definition.pattern.get_type().unwrap());
 
                 // Used to desugar definitions like `(a, (b, c)) = ...` into
                 // id = ...
@@ -1132,9 +1196,7 @@ impl<'c> Context<'c> {
                 // fresh = extract 1 id
                 // b = extract 0 fresh
                 // c = extract 1 fresh
-                let mut nested_definitions = vec![new_definition];
-                let typ = self.follow_all_bindings(definition.pattern.get_type().unwrap());
-                self.desugar_pattern(&definition.pattern, id, typ, &mut nested_definitions);
+                self.desugar_pattern(&definition.pattern, id, typ, definition.mutable, &mut nested_definitions);
 
                 if nested_definitions.len() == 1 {
                     nested_definitions.remove(0)
@@ -1180,14 +1242,97 @@ impl<'c> Context<'c> {
     fn monomorphise_member_access(&mut self, member_access: &ast::MemberAccess<'c>) -> hir::Ast {
         let index = self.get_field_index(&member_access.field, member_access.lhs.get_type().unwrap());
         let lhs = self.monomorphise(&member_access.lhs);
-        extract(lhs, index)
+        self.extract(lhs, index)
     }
 
     fn monomorphise_assignment(&mut self, assignment: &ast::Assignment<'c>) -> hir::Ast {
+        let lhs = match self.monomorphise(&assignment.lhs) {
+            hir::Ast::Builtin(hir::Builtin::Deref(value, _)) => *value,
+            // TODO: Refactor mutability semantics to make this more resiliant
+            other => other,
+        };
+
         hir::Ast::Assignment(hir::Assignment {
-            lhs: Box::new(self.monomorphise(&assignment.lhs)),
+            lhs: Box::new(lhs),
             rhs: Box::new(self.monomorphise(&assignment.rhs)),
         })
+    }
+
+    fn fix_arg_mutability(&self, mut args: Vec<hir::Ast>, function: &hir::Ast) -> Vec<hir::Ast> {
+        let expected = self.get_function_args(function);
+
+        for (arg, (_, mutable)) in args.iter_mut().zip(expected) {
+            if *mutable {
+                match arg {
+                    hir::Ast::Builtin(hir::Builtin::Deref(inner, _)) => {
+                        // Dummy value so we can swap out of the deref
+                        let mut dest = hir::Ast::Literal(hir::Literal::Unit);
+                        std::mem::swap(inner.as_mut(), &mut dest);
+                        *arg = dest;
+                    },
+                    other => unreachable!("Expected deref for mutable arg, found {}", other),
+                }
+            }
+        }
+
+        args
+    }
+
+    /// TODO: This function is a hack, we can't track mutability through the ast in general.
+    /// Need a better solution for this when mutability semantics are re-done.
+    fn get_function_args<'a>(&self, function: &'a hir::Ast) -> &'a [(hir::DefinitionInfo, bool)] {
+        match function {
+            hir::Ast::Variable(variable) => {
+                match variable.definition.as_ref() {
+                    Some(def) => self.get_function_args(def),
+                    None => &[],
+                }
+            },
+            hir::Ast::Lambda(lambda) => &lambda.args,
+            hir::Ast::FunctionCall(_) => &[],
+            hir::Ast::Sequence(seq) => self.get_function_args(seq.statements.last().unwrap()),
+            hir::Ast::Definition(def) => self.get_function_args(&def.expr),
+            hir::Ast::Extern(_) => &[],
+
+            hir::Ast::If(_) => &[],
+            hir::Ast::Match(_) => &[],
+
+            _ => &[],
+        }
+    }
+
+    pub fn extract(&self, ast: hir::Ast, member_index: u32) -> hir::Ast {
+        use hir::{Ast, Builtin::{ Deref, Offset }};
+        match ast {
+            // Try to delay load as long as possible to make valid l-values easier to detect
+            Ast::Builtin(Deref(addr, typ)) => {
+                let mut elems = match typ {
+                    Type::Tuple(elems) => elems,
+                    other => unreachable!("Tried to extract from non-tuple type: {}", other),
+                };
+
+                let field_type = elems.swap_remove(member_index as usize);
+
+                // The element order was changed by swap_remove above, but we only
+                // take the elements that are strictly less than that index
+                let offset: u32 = elems.into_iter()
+                    .take(member_index as usize)
+                    .map(|typ| self.size_of_monomorphised_type(&typ))
+                    .sum();
+
+                if offset == 0 {
+                    Ast::Builtin(Deref(addr, field_type))
+                } else {
+                    let offset_int = Box::new(int_literal(offset as u64, IntegerKind::Usz));
+                    let offset_ast = Ast::Builtin(Offset(addr, offset_int, 1));
+                    Ast::Builtin(Deref(Box::new(offset_ast), field_type))
+                }
+            },
+            other => {
+                let lhs = Box::new(other);
+                Ast::MemberAccess(hir::MemberAccess { lhs, member_index })
+            }
+        }
     }
 }
 
@@ -1195,11 +1340,16 @@ fn unit_literal() -> hir::Ast {
     hir::Ast::Literal(hir::Literal::Unit)
 }
 
-fn tag_value(tag: u8) -> hir::Ast {
-    let kind = IntegerKind::U8;
-    hir::Ast::Literal(hir::Literal::Integer(tag as u64, kind))
+fn int_literal(value: u64, kind: IntegerKind) -> hir::Ast {
+    hir::Ast::Literal(hir::Literal::Integer(value, kind))
 }
 
-pub fn extract(ast: hir::Ast, index: u32) -> hir::Ast {
-    hir::Ast::MemberAccess(hir::MemberAccess { lhs: Box::new(ast), member_index: index })
+fn tag_value(tag: u8) -> hir::Ast {
+    int_literal(tag as u64, IntegerKind::U8)
+}
+
+pub fn offset_ptr(addr: hir::Ast, offset: u64) -> hir::Ast {
+    let addr = Box::new(addr.into());
+    let offset = int_literal(offset, IntegerKind::Usz);
+    hir::Ast::Builtin(hir::Builtin::Offset(addr, Box::new(offset), 1))
 }

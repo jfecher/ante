@@ -7,7 +7,7 @@ use crate::{
     util::fmap,
 };
 
-use super::monomorphisation::{extract, Context, Definition};
+use super::monomorphisation::{Context, Definition};
 use crate::hir;
 
 impl<'c> Context<'c> {
@@ -28,7 +28,7 @@ impl<'c> Context<'c> {
         let value = self.monomorphise(match_.expression.as_ref());
 
         if let Some(DecisionTree::Switch(id, _)) = &match_.decision_tree {
-            let (def, new_id) = self.fresh_definition(value, false);
+            let (def, new_id) = self.fresh_definition(value);
             let typ = self.follow_all_bindings(self.cache[*id].typ.as_ref().unwrap().as_monotype());
             self.definitions.insert((*id, typ), new_id.into());
             def
@@ -77,10 +77,10 @@ impl<'c> Context<'c> {
         let tree = if case.fields.is_empty() {
             self.monomorphise_tree(&case.branch)
         } else {
-            // fresh_id = value = reinterpret match_value as variant_type
+            // variable = value = reinterpret match_value as variant_type
             let value = self.cast_to_variant_type(match_value, case);
-            let fresh_id = self.next_unique_id();
-            let field_bindings = self.bind_patterns(fresh_id, case);
+            let variable = self.next_unique_id();
+            let field_bindings = self.bind_patterns(variable, case);
 
             let mut tree = self.monomorphise_tree(&case.branch);
 
@@ -88,7 +88,8 @@ impl<'c> Context<'c> {
                 tree = hir::DecisionTree::Definition(definition, Box::new(tree));
             }
 
-            let cast_definition = hir::Definition { variable: fresh_id, expr: Box::new(value), mutable: false };
+            let expr = Box::new(value);
+            let cast_definition = hir::Definition { variable, expr };
 
             hir::DecisionTree::Definition(cast_definition, Box::new(tree))
         };
@@ -115,7 +116,7 @@ impl<'c> Context<'c> {
                 hir::types::PrimitiveType::Integer(_) => value.into(),
                 _ => unreachable!(),
             },
-            hir::types::Type::Tuple(_) => extract(value.into(), 0),
+            hir::types::Type::Tuple(_) => self.extract(value.into(), 0),
             _ => unreachable!(),
         }
     }
@@ -179,8 +180,7 @@ impl<'c> Context<'c> {
 
                         hir::Definition {
                             variable: field_variable,
-                            expr: Box::new(extract(variant_variable.into(), field_index)),
-                            mutable: false,
+                            expr: Box::new(self.extract(variant_variable.into(), field_index)),
                         }
                     })
                 } else {

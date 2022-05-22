@@ -13,7 +13,9 @@ mod module;
 
 use context::{Context, FunctionValue, Value};
 use cranelift::frontend::FunctionBuilder;
-use cranelift::prelude::{InstBuilder, MemFlags};
+use cranelift::prelude::InstBuilder;
+
+use self::context::convert_integer_kind;
 
 pub fn run(path: &Path, hir: Ast, args: &Args) {
     timing::start_time("Cranelift codegen");
@@ -29,12 +31,6 @@ pub trait CodeGen {
 
     fn eval_single<'a>(&'a self, context: &mut Context<'a>, builder: &mut FunctionBuilder) -> CraneliftValue {
         self.codegen(context, builder).eval_single(context, builder)
-    }
-
-    fn eval_variables<'a>(
-        &'a self, context: &mut Context<'a>, builder: &mut FunctionBuilder,
-    ) -> Vec<(CraneliftValue, cranelift_types::Type)> {
-        self.codegen(context, builder).eval_variables()
     }
 }
 
@@ -54,7 +50,7 @@ impl CodeGen for hir::Literal {
     fn codegen<'a>(&'a self, context: &mut Context<'a>, builder: &mut FunctionBuilder) -> Value {
         Value::Normal(match self {
             hir::Literal::Integer(value, kind) => {
-                let typ = context.convert_integer_kind(*kind);
+                let typ = convert_integer_kind(*kind);
                 builder.ins().iconst(typ, *value as i64)
             },
             hir::Literal::Float(float) => {
@@ -125,10 +121,7 @@ impl CodeGen for hir::Definition {
                 context.current_function_name = Some(self.variable);
             }
 
-            let mut value = self.expr.codegen(context, builder);
-            if self.mutable {
-                value = context.create_stores(value, builder);
-            }
+            let value = self.expr.codegen(context, builder);
             context.definitions.insert(self.variable, value);
         }
         Value::unit()
@@ -219,14 +212,10 @@ impl CodeGen for hir::MemberAccess {
 
 impl CodeGen for hir::Assignment {
     fn codegen<'a>(&'a self, context: &mut Context<'a>, builder: &mut FunctionBuilder) -> Value {
-        let lhs = self.lhs.eval_variables(context, builder);
-        let rhs = self.rhs.eval_all(context, builder);
-        assert_eq!(lhs.len(), rhs.len());
+        let lhs = self.lhs.eval_single(context, builder);
+        let rhs = self.rhs.codegen(context, builder);
 
-        for ((addr, _), value) in lhs.into_iter().zip(rhs) {
-            builder.ins().store(MemFlags::new(), value, addr, 0);
-        }
-
+        context.store_value(lhs, rhs, &mut 0, builder);
         Value::Unit
     }
 }

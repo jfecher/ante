@@ -70,7 +70,7 @@ impl DefinitionId {
 /// Function definitions are also desugared to a ast::Definition with a ast::Lambda as its body
 #[derive(Debug, Clone)]
 pub struct Lambda {
-    pub args: Vec<Variable>,
+    pub args: Vec<(Variable, /*mutable?*/ bool)>,
     pub body: Box<Ast>,
     pub typ: FunctionType,
 }
@@ -90,7 +90,6 @@ pub struct FunctionCall {
 pub struct Definition {
     pub variable: DefinitionId,
     pub expr: Box<Ast>,
-    pub mutable: bool,
 }
 
 impl From<Definition> for DefinitionInfo {
@@ -241,6 +240,9 @@ pub enum Builtin {
     Deref(Box<Ast>, Type),
     Offset(Box<Ast>, Box<Ast>, u32), // u32 is the pointer element size in bytes
     Transmute(Box<Ast>, Type),
+
+    /// Allocate space for the given value on the stack, and store it there. Return the stack address
+    StackAlloc(Box<Ast>),
 }
 
 #[derive(Debug, Clone)]

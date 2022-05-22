@@ -3,7 +3,18 @@ print num
 num := 7
 print num
 
+mutate num
+print num
+
+mutate (n: mut i32) =
+    // Test `mut i32` -> `i32` conversion
+    x = double n
+    n := x
+
+double x = x * 2
+
 // args: --delete-binary
 // expected stdout:
 // 32
 // 7
+// 14

@@ -1,5 +1,5 @@
 use cranelift::frontend::FunctionBuilder;
-use cranelift::prelude::{FloatCC, InstBuilder, IntCC, MemFlags, Value as CraneliftValue};
+use cranelift::prelude::{FloatCC, InstBuilder, IntCC, Value as CraneliftValue, StackSlotKind, StackSlotData};
 
 use crate::hir::{Ast, Builtin};
 
@@ -46,9 +46,10 @@ pub fn call_builtin<'ast>(builtin: &'ast Builtin, context: &mut Context<'ast>, b
 
         Builtin::Truncate(a, _typ) => truncate(value(a), builder),
 
-        Builtin::Deref(a, _typ) => deref(value(a), builder),
+        Builtin::Deref(a, typ) => return deref(context, typ, a, builder),
         Builtin::Offset(a, b, elem_size) => offset(value(a), value(b), *elem_size, builder),
         Builtin::Transmute(a, _typ) => transmute(value(a), builder),
+        Builtin::StackAlloc(a) => stack_alloc(a, context, builder),
     };
 
     Value::Normal(result)
@@ -124,11 +125,6 @@ fn eq_char(param1: CraneliftValue, param2: CraneliftValue, builder: &mut Functio
 
 fn eq_bool(param1: CraneliftValue, param2: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
     builder.ins().icmp(IntCC::Equal, param1, param2)
-}
-
-fn deref(param1: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
-    let target_type = builder.func.signature.returns[0].value_type;
-    builder.ins().load(target_type, MemFlags::new(), param1, 0)
 }
 
 fn transmute(param1: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
@@ -213,4 +209,28 @@ fn truncate(param1: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftV
     } else {
         param1
     }
+}
+
+fn deref<'a>(context: &mut Context<'a>, typ: &crate::hir::Type, addr: &'a Ast, builder: &mut FunctionBuilder) -> Value {
+    let addr = addr.eval_single(context, builder);
+    context.load_value(typ, addr, &mut 0, builder)
+}
+
+fn stack_alloc<'a>(param1: &'a Ast, context: &mut Context<'a>, builder: &mut FunctionBuilder) -> CraneliftValue {
+    let values = param1.eval_all(context, builder);
+
+    let size = values.iter()
+        .map(|value| builder.func.dfg.value_type(*value).bytes())
+        .sum();
+
+    let data = StackSlotData::new(StackSlotKind::ExplicitSlot, size);
+    let slot = builder.create_stack_slot(data);
+
+    let mut offset: u32 = 0;
+    for value in values {
+        builder.ins().stack_store(value, slot, offset as i32);
+        offset += builder.func.dfg.value_type(value).bytes();
+    }
+
+    builder.ins().stack_addr(pointer_type(), slot, 0)
 }

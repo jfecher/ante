@@ -64,6 +64,7 @@ pub fn call_builtin<'g, 'c>(builtin: &Builtin, generator: &mut Generator<'g>) ->
         Builtin::Deref(a, _typ) => deref_ptr(a, generator),
         Builtin::Offset(a, b, size) => offset(a, int(b), *size, generator),
         Builtin::Transmute(a, _typ) => transmute_value(a, generator),
+        Builtin::StackAlloc(a) => stack_alloc(a, generator),
     }
 }
 
@@ -228,4 +229,11 @@ fn truncate<'g>(x: IntValue<'g>, generator: &mut Generator<'g>) -> BasicValueEnu
     let current_function = generator.current_function();
     let ret = current_function.get_type().get_return_type().unwrap().into_int_type();
     generator.builder.build_int_truncate(x, ret, "sign_extend").as_basic_value_enum()
+}
+
+fn stack_alloc<'g>(x: &Box<Ast>, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+    let value = x.codegen(generator);
+    let alloca = generator.builder.build_alloca(value.get_type(), "alloca");
+    generator.builder.build_store(alloca, value);
+    alloca.as_basic_value_enum()
 }
