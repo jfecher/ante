@@ -10,8 +10,8 @@ use cranelift::codegen::verify_function;
 use cranelift::frontend::{FunctionBuilder, FunctionBuilderContext};
 use cranelift::prelude::isa::CallConv;
 use cranelift::prelude::{
-    settings, AbiParam, Block, ExtFuncData, ExternalName, InstBuilder, Signature, StackSlotData, StackSlotKind,
-    Value as CraneliftValue, MemFlags,
+    settings, AbiParam, Block, ExtFuncData, ExternalName, InstBuilder, MemFlags, Signature, StackSlotData,
+    StackSlotKind, Value as CraneliftValue,
 };
 use cranelift_module::{DataContext, DataId, FuncId, Linkage, Module};
 
@@ -97,9 +97,7 @@ impl Value {
     pub fn eval_single(self, context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
         match self {
             Value::Normal(value) => value,
-            Value::Loadable(ptr, typ) => {
-                builder.ins().load(typ, MemFlags::new(), ptr, 0)
-            },
+            Value::Loadable(ptr, typ) => builder.ins().load(typ, MemFlags::new(), ptr, 0),
             Value::Unit => {
                 let unit_type = cranelift_types::B1;
                 builder.ins().bconst(unit_type, false)

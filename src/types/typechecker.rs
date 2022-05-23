@@ -964,7 +964,9 @@ fn infer_trait_definition<'c>(name: &str, trait_id: TraitInfoId, cache: &mut Mod
     }
 }
 
-fn infer_trait_definition_traits<'a, 'c>(name: &str, trait_id: TraitInfoId, cache: &'a mut ModuleCache<'c>) -> Vec<RequiredTrait> {
+fn infer_trait_definition_traits<'a, 'c>(
+    name: &str, trait_id: TraitInfoId, cache: &'a mut ModuleCache<'c>,
+) -> Vec<RequiredTrait> {
     let trait_info = &mut cache.trait_infos[trait_id.0];
     match &mut trait_info.trait_node {
         Some(node) => {
@@ -1023,15 +1025,17 @@ fn bind_irrefutable_pattern_in_impl<'a>(
 
 /// Checks that the traits used in `pattern` are a subset of traits used in the `given` list of
 /// an impl or in the `given` list of the corresponding function in the trait declaration.
-fn check_impl_propagated_traits(pattern: &ast::Ast, trait_id: TraitInfoId, given: &[ConstraintSignature], cache: &mut ModuleCache) {
+fn check_impl_propagated_traits(
+    pattern: &ast::Ast, trait_id: TraitInfoId, given: &[ConstraintSignature], cache: &mut ModuleCache,
+) {
     use ast::Ast::*;
     match pattern {
         Variable(variable) => {
             let name = variable.to_string();
 
-            // Given a trait: 
+            // Given a trait:
             // ```
-            // trait Foo a with 
+            // trait Foo a with
             //     foo : a -> a
             //         given Bar a, Baz a
             // ```
@@ -1057,9 +1061,7 @@ fn check_impl_propagated_traits(pattern: &ast::Ast, trait_id: TraitInfoId, given
                 used.signature.id = new_id;
             }
         },
-        TypeAnnotation(annotation) => {
-            check_impl_propagated_traits(&annotation.lhs, trait_id, given, cache)
-        },
+        TypeAnnotation(annotation) => check_impl_propagated_traits(&annotation.lhs, trait_id, given, cache),
         FunctionCall(call) => {
             for arg in &call.args {
                 check_impl_propagated_traits(arg, trait_id, given, cache)
@@ -1074,7 +1076,9 @@ fn check_impl_propagated_traits(pattern: &ast::Ast, trait_id: TraitInfoId, given
 // TODO: `useable_traits` here is always going to be empty. We'll likely need a
 // `Vec<ConstraintSignature>` field on each definition to account for trait definitions
 // with no body.
-fn find_matching_trait(used: &RequiredTrait, useable_traits: &[RequiredTrait], given: &[ConstraintSignature], cache: &mut ModuleCache) -> Option<TraitConstraintId> {
+fn find_matching_trait(
+    used: &RequiredTrait, useable_traits: &[RequiredTrait], given: &[ConstraintSignature], cache: &mut ModuleCache,
+) -> Option<TraitConstraintId> {
     for useable in useable_traits {
         if useable.signature.trait_id == used.signature.trait_id {
             if let Ok(bindings) = try_unify_all_with_bindings(
@@ -1352,6 +1356,7 @@ impl<'a> Inferable<'a> for ast::Definition<'a> {
             let exposed_traits = traitchecker::resolve_traits(traits, &typevars_in_fn, cache);
 
             bind_irrefutable_pattern(self.pattern.as_mut(), &t, &exposed_traits, true, cache);
+
             vec![]
         } else {
             traits
@@ -1504,14 +1509,17 @@ impl<'a> Inferable<'a> for ast::TraitImpl<'a> {
                 definition.pattern.as_ref(),
                 self.trait_info.unwrap(),
                 &cache[self.impl_id.unwrap()].given.clone(),
-                cache
+                cache,
             );
 
             // No traits should be propagated outside of the impl. The only way this can happen
             // is if the definition is not generalized and traits are used.
             for trait_ in traits {
-                error!(definition.location, "Definition requires {}, but it needs to be a function to add this trait",
-                       trait_.display(cache));
+                error!(
+                    definition.location,
+                    "Definition requires {}, but it needs to be a function to add this trait",
+                    trait_.display(cache)
+                );
             }
         }
 

@@ -662,7 +662,11 @@ impl<'c> NameResolver {
     fn resolve_extern_definitions(&mut self, declaration: &mut ast::TypeAnnotation<'c>, cache: &mut ModuleCache<'c>) {
         self.definitions_collected.clear();
         self.auto_declare = true;
+        self.push_type_variable_scope();
+
         declaration.define(self, cache);
+
+        self.pop_type_variable_scope();
         self.auto_declare = false;
         for id in self.definitions_collected.iter() {
             let declaration = trustme::extend_lifetime(declaration);

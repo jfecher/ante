@@ -24,7 +24,7 @@
 //! - Type inference fills out:
 //!   `typ: Option<Type>` for all nodes,
 //!   `decision_tree: Option<DecisionTree>` for `ast::Match`s
-use crate::cache::{DefinitionInfoId, ImplScopeId, ModuleId, TraitInfoId, VariableId, ImplInfoId};
+use crate::cache::{DefinitionInfoId, ImplInfoId, ImplScopeId, ModuleId, TraitInfoId, VariableId};
 use crate::error::location::{Locatable, Location};
 use crate::lexer::token::{IntegerKind, Token};
 use crate::types::pattern::DecisionTree;

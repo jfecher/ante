@@ -728,8 +728,7 @@ impl<'c> Context<'c> {
             let variable = self.next_unique_id();
             let expr = Box::new(definition_rhs);
 
-            let definition =
-                hir::Definition { variable, expr };
+            let definition = hir::Definition { variable, expr };
             Definition::Normal(hir::DefinitionInfo::from(definition))
         } else {
             Definition::Macro(definition_rhs)
@@ -763,10 +762,7 @@ impl<'c> Context<'c> {
     ) -> Definition {
         let value = self.monomorphise(&*definition.expr);
 
-        let new_definition = hir::Ast::Definition(hir::Definition {
-            variable: definition_id,
-            expr: Box::new(value),
-        });
+        let new_definition = hir::Ast::Definition(hir::Definition { variable: definition_id, expr: Box::new(value) });
 
         let mut nested_definitions = vec![new_definition];
         let typ = self.follow_all_bindings(definition.pattern.get_type().unwrap());
@@ -795,8 +791,7 @@ impl<'c> Context<'c> {
     ///
     /// PRE-REQUISITE: `typ` must equal `self.follow_all_bindings(typ)`
     fn desugar_pattern(
-        &mut self, pattern: &ast::Ast<'c>, definition_id: hir::DefinitionId, typ: types::Type,
-        mutable: bool,
+        &mut self, pattern: &ast::Ast<'c>, definition_id: hir::DefinitionId, typ: types::Type, mutable: bool,
         definitions: &mut Vec<hir::Ast>,
     ) {
         use {
@@ -810,11 +805,7 @@ impl<'c> Context<'c> {
                 let id = variable_pattern.definition.unwrap();
 
                 let variable = hir::Variable { definition_id, definition: None };
-                let definition = if mutable {
-                    Definition::Mutable(variable)
-                } else {
-                    Definition::Normal(variable)
-                };
+                let definition = if mutable { Definition::Mutable(variable) } else { Definition::Normal(variable) };
 
                 self.definitions.insert((id, typ), definition);
             },
@@ -1252,10 +1243,7 @@ impl<'c> Context<'c> {
             other => other,
         };
 
-        hir::Ast::Assignment(hir::Assignment {
-            lhs: Box::new(lhs),
-            rhs: Box::new(self.monomorphise(&assignment.rhs)),
-        })
+        hir::Ast::Assignment(hir::Assignment { lhs: Box::new(lhs), rhs: Box::new(self.monomorphise(&assignment.rhs)) })
     }
 
     fn fix_arg_mutability(&self, mut args: Vec<hir::Ast>, function: &hir::Ast) -> Vec<hir::Ast> {
@@ -1282,11 +1270,9 @@ impl<'c> Context<'c> {
     /// Need a better solution for this when mutability semantics are re-done.
     fn get_function_args<'a>(&self, function: &'a hir::Ast) -> &'a [(hir::DefinitionInfo, bool)] {
         match function {
-            hir::Ast::Variable(variable) => {
-                match variable.definition.as_ref() {
-                    Some(def) => self.get_function_args(def),
-                    None => &[],
-                }
+            hir::Ast::Variable(variable) => match variable.definition.as_ref() {
+                Some(def) => self.get_function_args(def),
+                None => &[],
             },
             hir::Ast::Lambda(lambda) => &lambda.args,
             hir::Ast::FunctionCall(_) => &[],
@@ -1302,7 +1288,10 @@ impl<'c> Context<'c> {
     }
 
     pub fn extract(&self, ast: hir::Ast, member_index: u32) -> hir::Ast {
-        use hir::{Ast, Builtin::{ Deref, Offset }};
+        use hir::{
+            Ast,
+            Builtin::{Deref, Offset},
+        };
         match ast {
             // Try to delay load as long as possible to make valid l-values easier to detect
             Ast::Builtin(Deref(addr, typ)) => {
@@ -1315,7 +1304,8 @@ impl<'c> Context<'c> {
 
                 // The element order was changed by swap_remove above, but we only
                 // take the elements that are strictly less than that index
-                let offset: u32 = elems.into_iter()
+                let offset: u32 = elems
+                    .into_iter()
                     .take(member_index as usize)
                     .map(|typ| self.size_of_monomorphised_type(&typ))
                     .sum();
@@ -1331,7 +1321,7 @@ impl<'c> Context<'c> {
             other => {
                 let lhs = Box::new(other);
                 Ast::MemberAccess(hir::MemberAccess { lhs, member_index })
-            }
+            },
         }
     }
 }

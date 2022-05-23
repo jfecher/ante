@@ -661,11 +661,15 @@ impl<'g> CodeGen<'g> for hir::MemberAccess {
 impl<'g> CodeGen<'g> for hir::Assignment {
     fn codegen(&self, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
         let lhs = self.lhs.codegen(generator);
-        let lhs_instruction = lhs.as_instruction_value().unwrap();
 
-        assert_eq!(lhs_instruction.get_opcode(), InstructionOpcode::Load);
+        let lhs = match lhs.as_instruction_value() {
+            Some(instruction) if instruction.get_opcode() == InstructionOpcode::Load => {
+                instruction.get_operand(0).unwrap().left().unwrap().into_pointer_value()
+            },
+            // TODO: This can result in silent failures. Need better mutability semantics.
+            _ => lhs.into_pointer_value(),
+        };
 
-        let lhs = lhs_instruction.get_operand(0).unwrap().left().unwrap().into_pointer_value();
         let rhs = self.rhs.codegen(generator);
         generator.builder.build_store(lhs, rhs);
         generator.unit_value()

@@ -1,5 +1,5 @@
 use cranelift::frontend::FunctionBuilder;
-use cranelift::prelude::{FloatCC, InstBuilder, IntCC, Value as CraneliftValue, StackSlotKind, StackSlotData};
+use cranelift::prelude::{FloatCC, InstBuilder, IntCC, StackSlotData, StackSlotKind, Value as CraneliftValue};
 
 use crate::hir::{Ast, Builtin};
 
@@ -219,9 +219,7 @@ fn deref<'a>(context: &mut Context<'a>, typ: &crate::hir::Type, addr: &'a Ast, b
 fn stack_alloc<'a>(param1: &'a Ast, context: &mut Context<'a>, builder: &mut FunctionBuilder) -> CraneliftValue {
     let values = param1.eval_all(context, builder);
 
-    let size = values.iter()
-        .map(|value| builder.func.dfg.value_type(*value).bytes())
-        .sum();
+    let size = values.iter().map(|value| builder.func.dfg.value_type(*value).bytes()).sum();
 
     let data = StackSlotData::new(StackSlotKind::ExplicitSlot, size);
     let slot = builder.create_stack_slot(data);

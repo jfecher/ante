@@ -376,7 +376,8 @@ fn check_given_constraints<'c>(
             typechecker::replace_all_typevars_with_bindings(&typ, &mut impl_bindings, cache)
         });
 
-        let constraint = TraitConstraint::impl_given_constraint(signature.id, signature.trait_id, args, constraint, cache);
+        let constraint =
+            TraitConstraint::impl_given_constraint(signature.id, signature.trait_id, args, constraint, cache);
 
         let mut matching_impls = find_matching_impls(&constraint, &unification_bindings, fuel, cache);
 

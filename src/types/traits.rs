@@ -212,7 +212,10 @@ impl TraitConstraint {
 
     /// Creates a TraitConstraint from the ConstraintSignature of the 'given' clause
     /// of a trait impl and the constraint from the impl itself. These constraints are always Callsite::Indirect.
-    pub fn impl_given_constraint(inner_id: TraitConstraintId, trait_id: TraitInfoId, args: Vec<Type>, impl_constraint: &TraitConstraint, cache: &mut ModuleCache) -> TraitConstraint {
+    pub fn impl_given_constraint(
+        inner_id: TraitConstraintId, trait_id: TraitInfoId, args: Vec<Type>, impl_constraint: &TraitConstraint,
+        cache: &mut ModuleCache,
+    ) -> TraitConstraint {
         let id = cache.next_trait_constraint_id();
         let signature = ConstraintSignature { trait_id, args, id };
 

@@ -43,7 +43,7 @@ push (v: mut Vec t) (elem: t) : unit =
     if v.len >= v.cap then
         reserve v (if v.cap == 0usz then 1 else v.cap)
 
-    v.data#v.len := elem
+    offset v.data v.len := elem
     v.len := v.len + 1usz
 
 //pop the last element off if it exists
