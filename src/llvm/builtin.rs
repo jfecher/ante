@@ -7,7 +7,7 @@
 //! to get the corresponding builtin operation. Since these operations
 //! expect the llvm::Function to have a certain signature, the `builtin`
 //! function is prevented from being used outside the prelude.
-use crate::hir::{Ast, Builtin, PrimitiveType};
+use crate::hir::{Ast, Builtin, PrimitiveType, Type};
 use crate::llvm::{CodeGen, Generator};
 
 use inkwell::attributes::{Attribute, AttributeLoc};
@@ -61,7 +61,7 @@ pub fn call_builtin<'g>(builtin: &Builtin, generator: &mut Generator<'g>) -> Bas
 
         Builtin::Truncate(a, _typ) => truncate(int(a), generator),
 
-        Builtin::Deref(a, _typ) => deref_ptr(a, generator),
+        Builtin::Deref(a, typ) => deref_ptr(a, typ, generator),
         Builtin::Offset(a, b, size) => offset(a, int(b), *size, generator),
         Builtin::Transmute(a, _typ) => transmute_value(a, generator),
         Builtin::StackAlloc(a) => stack_alloc(a, generator),
@@ -159,9 +159,9 @@ fn eq_bool<'g>(a: IntValue<'g>, b: IntValue<'g>, generator: &mut Generator<'g>) 
     generator.builder.build_int_compare(IntPredicate::EQ, a, b, "eq").as_basic_value_enum()
 }
 
-fn deref_ptr<'g>(ptr: &Ast, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
-    let current_function = generator.current_function();
-    let ret = current_function.get_type().get_return_type().unwrap().ptr_type(AddressSpace::Generic);
+fn deref_ptr<'g>(ptr: &Ast, typ: &Type, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+    let ret = generator.convert_type(typ).ptr_type(AddressSpace::Generic);
+
     let ptr = ptr.codegen(generator).into_pointer_value();
     let ptr = generator.builder.build_pointer_cast(ptr, ret, "bitcast");
     generator.builder.build_load(ptr, "deref").as_basic_value_enum()

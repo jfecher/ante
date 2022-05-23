@@ -673,6 +673,10 @@ impl<'g> CodeGen<'g> for hir::Assignment {
         };
 
         let rhs = self.rhs.codegen(generator);
+
+        let rhs_ptr = rhs.get_type().ptr_type(AddressSpace::Generic);
+        let lhs = generator.builder.build_pointer_cast(lhs, rhs_ptr, "bitcast");
+
         generator.builder.build_store(lhs, rhs);
         generator.unit_value()
     }
