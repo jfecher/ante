@@ -138,7 +138,7 @@ impl<'c> Context<'c> {
         let fuel = fuel - 1;
         match &self.cache.type_bindings[id.0] {
             Bound(TypeVariable(id2) | Ref(id2)) => self.find_binding(*id2, fuel),
-            Bound(binding) => Ok(&binding),
+            Bound(binding) => Ok(binding),
             Unbound(..) => {
                 for bindings in self.monomorphisation_bindings.iter().rev() {
                     match bindings.get(&id) {
@@ -410,7 +410,7 @@ impl<'c> Context<'c> {
             Primitive(primitive) => self.convert_primitive_type(primitive),
 
             Function(function) => {
-                let mut parameters = fmap(&function.parameters, |typ| self.convert_type_inner(typ, fuel).into());
+                let mut parameters = fmap(&function.parameters, |typ| self.convert_type_inner(typ, fuel));
 
                 let return_type = Box::new(self.convert_type_inner(&function.return_type, fuel));
 
@@ -562,7 +562,7 @@ impl<'c> Context<'c> {
 
         // The definition to compile is either the corresponding impl definition if this
         // variable refers to a trait function, or otherwise it is the regular definition of this variable.
-        let definition_id = self.get_definition_id(&variable);
+        let definition_id = self.get_definition_id(variable);
 
         let variable_id = variable.id.unwrap();
         let typ = variable.typ.as_ref().unwrap();
@@ -587,7 +587,7 @@ impl<'c> Context<'c> {
 
         if definition.trait_impl {
             let definition_type = definition.typ.as_ref().unwrap().remove_forall();
-            let bindings = typechecker::try_unify(&typ, &definition_type, definition.location, &mut self.cache)
+            let bindings = typechecker::try_unify(typ, definition_type, definition.location, &mut self.cache)
                 .map_err(|error| eprintln!("{}", error))
                 .expect("Unification error during monomorphisation");
 
@@ -611,7 +611,7 @@ impl<'c> Context<'c> {
         &mut self, id: DefinitionInfoId, variable: VariableId, typ: &types::Type,
         instantiation_mapping: &Rc<TypeBindings>,
     ) -> Definition {
-        if let Some(value) = self.lookup_definition(id, &typ) {
+        if let Some(value) = self.lookup_definition(id, typ) {
             return value;
         }
 
@@ -703,7 +703,7 @@ impl<'c> Context<'c> {
     fn make_extern(&mut self, id: DefinitionInfoId, typ: &types::Type) -> Definition {
         // extern definitions should only be declared once - never duplicated & monomorphised.
         // For this reason their value is always stored with the Unit type in the definitions map.
-        if let Some(value) = self.lookup_definition(id, &UNBOUND_TYPE).clone() {
+        if let Some(value) = self.lookup_definition(id, &UNBOUND_TYPE) {
             self.definitions.insert((id, typ.clone()), value.clone());
             return value;
         }
@@ -942,7 +942,7 @@ impl<'c> Context<'c> {
             Type::Function(f) => self.change_mutable_args_to_pointers(f, args),
             Type::Tuple(mut values) => {
                 // Closure
-                assert!(values.len() >= 1);
+                assert!(!values.is_empty());
                 match values.swap_remove(0) {
                     Type::Function(f) => self.change_mutable_args_to_pointers(f, args),
                     other => unreachable!("Lambda has a non-function type: {}", other),
@@ -997,7 +997,7 @@ impl<'c> Context<'c> {
             let typ = self.follow_all_bindings(typ);
             self.definitions.insert((*inner_var, typ), Definition::Normal(param.clone()));
 
-            (param.into(), info.mutable)
+            (param, info.mutable)
         }));
 
         let body = self.monomorphise(&lambda.body);
@@ -1104,7 +1104,7 @@ impl<'c> Context<'c> {
             // We know the result of SizeOf now, so replace it with a constant
             "SizeOf" => {
                 // We expect (size_of : Type t -> usz), so get the size of t
-                let size = self.size_of_type_arg0(&args[1].get_type().unwrap());
+                let size = self.size_of_type_arg0(args[1].get_type().unwrap());
                 return int_literal(size as u64, IntegerKind::Usz);
             },
 
@@ -1201,7 +1201,7 @@ impl<'c> Context<'c> {
     fn monomorphise_if(&mut self, if_: &ast::If<'c>) -> hir::Ast {
         let condition = Box::new(self.monomorphise(&if_.condition));
         let then = Box::new(self.monomorphise(&if_.then));
-        let otherwise = if_.otherwise.as_ref().map(|e| Box::new(self.monomorphise(&e)));
+        let otherwise = if_.otherwise.as_ref().map(|e| Box::new(self.monomorphise(e)));
         let result_type = self.convert_type(if_.typ.as_ref().unwrap());
 
         hir::Ast::If(hir::If { condition, then, otherwise, result_type })
@@ -1339,7 +1339,7 @@ fn tag_value(tag: u8) -> hir::Ast {
 }
 
 pub fn offset_ptr(addr: hir::Ast, offset: u64) -> hir::Ast {
-    let addr = Box::new(addr.into());
+    let addr = Box::new(addr);
     let offset = int_literal(offset, IntegerKind::Usz);
     hir::Ast::Builtin(hir::Builtin::Offset(addr, Box::new(offset), 1))
 }

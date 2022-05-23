@@ -78,7 +78,7 @@ impl UnificationBindings {
         UnificationBindings { bindings, level_bindings }
     }
 
-    pub fn perform<'c>(self, cache: &mut ModuleCache<'c>) {
+    pub fn perform(self, cache: &mut ModuleCache) {
         perform_type_bindings(self.bindings, cache);
 
         for (id, level) in self.level_bindings {
@@ -481,7 +481,7 @@ pub fn follow_bindings_in_cache_and_map<'b>(
 pub fn follow_bindings_in_cache<'b>(typ: &Type, cache: &ModuleCache<'b>) -> Type {
     match typ {
         TypeVariable(id) | Ref(id) => match &cache.type_bindings[id.0] {
-            Bound(typ) => follow_bindings_in_cache(&typ, cache),
+            Bound(typ) => follow_bindings_in_cache(typ, cache),
             Unbound(..) => typ.clone(),
         },
         _ => typ.clone(),
@@ -931,9 +931,7 @@ fn lookup_definition_type_in_trait<'a>(
     unreachable!()
 }
 
-fn lookup_definition_traits_in_trait<'a, 'c>(
-    name: &str, trait_id: TraitInfoId, cache: &'a mut ModuleCache<'c>,
-) -> Vec<RequiredTrait> {
+fn lookup_definition_traits_in_trait(name: &str, trait_id: TraitInfoId, cache: &mut ModuleCache) -> Vec<RequiredTrait> {
     let trait_info = &cache.trait_infos[trait_id.0];
     for definition_id in trait_info.definitions.iter() {
         let definition_info = &cache.definition_infos[definition_id.0];
@@ -964,9 +962,7 @@ fn infer_trait_definition<'c>(name: &str, trait_id: TraitInfoId, cache: &mut Mod
     }
 }
 
-fn infer_trait_definition_traits<'a, 'c>(
-    name: &str, trait_id: TraitInfoId, cache: &'a mut ModuleCache<'c>,
-) -> Vec<RequiredTrait> {
+fn infer_trait_definition_traits(name: &str, trait_id: TraitInfoId, cache: &mut ModuleCache) -> Vec<RequiredTrait> {
     let trait_info = &mut cache.trait_infos[trait_id.0];
     match &mut trait_info.trait_node {
         Some(node) => {

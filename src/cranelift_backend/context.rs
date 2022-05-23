@@ -374,15 +374,13 @@ impl<'local> Context<'local> {
     pub fn codegen_extern(&mut self, name: &str, typ: &Type) -> Value {
         match self.convert_extern_signature(typ) {
             FunctionOrGlobal::Global => {
-                let data_id = self.module.declare_data(&name, Linkage::Import, true, false).unwrap();
-
+                let data_id = self.module.declare_data(name, Linkage::Import, true, false).unwrap();
                 self.data_context.clear();
                 Value::Global(data_id)
             },
             FunctionOrGlobal::Function(signature) => {
                 // Don't mangle extern names
-                let id = self.module.declare_function(&name, Linkage::Import, &signature).unwrap();
-
+                let id = self.module.declare_function(name, Linkage::Import, &signature).unwrap();
                 Value::Function(FuncData { name: ExternalName::user(0, id.as_u32()), signature, colocated: false })
             },
         }

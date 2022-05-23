@@ -7,7 +7,7 @@ use super::context::{int_pointer_type, pointer_type};
 use super::{CodeGen, Context, Value};
 
 pub fn call_builtin<'ast>(builtin: &'ast Builtin, context: &mut Context<'ast>, builder: &mut FunctionBuilder) -> Value {
-    let mut value = |ast: &'ast Box<Ast>| ast.eval_single(context, builder);
+    let mut value = |ast: &'ast Ast| ast.eval_single(context, builder);
 
     let result = match builtin {
         Builtin::AddInt(a, b) => add_int(value(a), value(b), builder),

@@ -116,6 +116,8 @@ impl CodeGen for hir::FunctionCall {
 
 impl CodeGen for hir::Definition {
     fn codegen<'a>(&'a self, context: &mut Context<'a>, builder: &mut FunctionBuilder) -> Value {
+        // Cannot use entry here, need to borrow context mutably for self.expr.codegen
+        #[allow(clippy::map_entry)]
         if !context.definitions.contains_key(&self.variable) {
             if matches!(self.expr.as_ref(), hir::Ast::Lambda(_)) {
                 context.current_function_name = Some(self.variable);

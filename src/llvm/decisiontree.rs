@@ -43,7 +43,7 @@ impl<'g> Generator<'g> {
     /// Recurse on the given DecisionTree, codegening each switch and remembering
     /// all the Leaf nodes that have already been compiled, since these may be
     /// repeated in the same DecisionTree.
-    fn codegen_subtree<'c>(&mut self, tree: &hir::DecisionTree, branches: &[BasicBlock<'g>]) {
+    fn codegen_subtree(&mut self, tree: &hir::DecisionTree, branches: &[BasicBlock<'g>]) {
         match tree {
             hir::DecisionTree::Leaf(n) => {
                 self.builder.build_unconditional_branch(branches[*n]);

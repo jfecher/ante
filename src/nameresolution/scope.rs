@@ -108,7 +108,7 @@ impl Scope {
         for (name, id) in &self.definitions {
             if id_to_ignore != Some(*id) {
                 let definition = &cache.definition_infos[id.0];
-                if definition.uses == 0 && definition.name.chars().next() != Some('_') {
+                if definition.uses == 0 && !definition.name.starts_with('_') {
                     warnings.push(make_warning!(
                         definition.location,
                         "{} is unused (prefix name with _ to silence this warning)",
@@ -120,7 +120,7 @@ impl Scope {
 
         for (name, id) in &self.types {
             let definition = &cache.type_infos[id.0];
-            if definition.uses == 0 && definition.name.chars().next() != Some('_') {
+            if definition.uses == 0 && !definition.name.starts_with('_') {
                 warnings.push(make_warning!(
                     definition.location,
                     "{} is unused (prefix name with _ to silence this warning)",

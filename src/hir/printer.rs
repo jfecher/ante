@@ -22,7 +22,7 @@ impl AstPrinter {
     }
 
     fn newline(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "\n")?;
+        writeln!(f)?;
         for _ in 0..self.indent_level {
             write!(f, "    ")?;
         }
@@ -184,7 +184,7 @@ impl FmtAst for Sequence {
             }
         }
 
-        write!(f, "\n")
+        writeln!(f)
     }
 }
 

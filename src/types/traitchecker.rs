@@ -254,8 +254,8 @@ fn find_field<'c>(
 /// Search and bind a specific impl to the given TraitConstraint, erroring if 0
 /// or >1 matching impls are found.
 fn solve_normal_constraint<'c>(constraint: &TraitConstraint, cache: &mut ModuleCache<'c>) {
-    let mut bindings = UnificationBindings::empty();
-    let mut matching_impls = find_matching_impls(constraint, &mut bindings, RECURSION_LIMIT, cache);
+    let bindings = UnificationBindings::empty();
+    let mut matching_impls = find_matching_impls(constraint, &bindings, RECURSION_LIMIT, cache);
 
     #[allow(clippy::comparison_chain)]
     if matching_impls.len() == 1 {
@@ -373,7 +373,7 @@ fn check_given_constraints<'c>(
         // manually since we don't want to insert them into the catch if this impl doesn't
         // get selected to be used for the TraitConstraint.
         let args = fmap(&signature.args, |typ| {
-            typechecker::replace_all_typevars_with_bindings(&typ, &mut impl_bindings, cache)
+            typechecker::replace_all_typevars_with_bindings(typ, &mut impl_bindings, cache)
         });
 
         let constraint =

@@ -215,7 +215,7 @@ impl<'g> Generator<'g> {
     /// its entry block as the current insert point. Returns the
     /// pointer to the function.
     fn function(&mut self, name: &str, typ: &hir::FunctionType) -> (FunctionValue<'g>, BasicValueEnum<'g>) {
-        let raw_function_type = self.convert_function_type(&typ).get_element_type().into_function_type();
+        let raw_function_type = self.convert_function_type(typ).get_element_type().into_function_type();
 
         let function = self.module.add_function(name, raw_function_type, Some(Linkage::Internal));
 
@@ -528,6 +528,8 @@ fn should_auto_deref(definition: &hir::Definition) -> bool {
 
 impl<'g> CodeGen<'g> for hir::Definition {
     fn codegen(&self, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+        // Cannot use HashMap::entry here, generator is borrowed mutably in self.expr.codegen
+        #[allow(clippy::map_entry)]
         if !generator.definitions.contains_key(&self.variable) {
             if should_auto_deref(self) {
                 generator.auto_derefs.insert(self.variable);

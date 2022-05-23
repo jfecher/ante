@@ -111,12 +111,10 @@ impl<'c> Context<'c> {
     }
 
     fn extract_tag(&mut self, value: hir::DefinitionInfo, typ: &hir::Type) -> hir::Ast {
+        use hir::types::*;
         match typ {
-            hir::types::Type::Primitive(p) => match p {
-                hir::types::PrimitiveType::Integer(_) => value.into(),
-                _ => unreachable!(),
-            },
-            hir::types::Type::Tuple(_) => self.extract(value.into(), 0),
+            Type::Primitive(PrimitiveType::Integer(_)) => value.into(),
+            Type::Tuple(_) => self.extract(value.into(), 0),
             _ => unreachable!(),
         }
     }
@@ -164,7 +162,7 @@ impl<'c> Context<'c> {
 
                 // Note: should not use function_type for any bindings, it is from a generalized
                 // info_type that makes it only useful for checking if it is a function or not.
-                let function_type = self.convert_type(&info_type.remove_forall()).into_function();
+                let function_type = self.convert_type(info_type.remove_forall()).into_function();
 
                 if function_type.is_some() {
                     fmap(case.fields.iter().enumerate(), |(i, field_aliases)| {
