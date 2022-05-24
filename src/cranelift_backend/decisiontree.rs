@@ -19,10 +19,10 @@ impl<'ast> Context<'ast> {
         self.codegen_subtree(&match_.decision_tree, &branches, builder);
 
         for (branch, block) in match_.branches.iter().zip(branches) {
-            builder.switch_to_block(block);
             builder.seal_block(block);
-            let values = branch.eval_all(self, builder);
-            builder.ins().jump(end_block, &values);
+            if let Some(values) = self.eval_all_in_block(branch, block, builder) {
+                builder.ins().jump(end_block, &values);
+            }
         }
 
         builder.switch_to_block(end_block);

@@ -355,15 +355,15 @@ impl<'g> Generator<'g> {
     /// a then/else branch, pattern match, or looping construct.
     fn codegen_branch(
         &mut self, branch: &hir::Ast, end_block: BasicBlock<'g>,
-    ) -> (BasicTypeEnum<'g>, Option<(BasicBlock<'g>, BasicValueEnum<'g>)>) {
+    ) -> (BasicTypeEnum<'g>, Option<(BasicValueEnum<'g>, BasicBlock<'g>)>) {
         let branch_value = branch.codegen(self);
-        let branch_block = self.current_block();
 
         if self.current_instruction_is_block_terminator() {
             (branch_value.get_type(), None)
         } else {
+            let branch_block = self.current_block();
             self.builder.build_unconditional_branch(end_block);
-            (branch_value.get_type(), Some((branch_block, branch_value)))
+            (branch_value.get_type(), Some((branch_value, branch_block)))
         }
     }
 
@@ -569,13 +569,13 @@ impl<'g> CodeGen<'g> for hir::If {
             // Some of the branches may have terminated early. We need to check each case to
             // determine which we should add to the phi or if we should even create a phi at all.
             match (then_option, else_option) {
-                (Some((then_branch, then_value)), Some((else_branch, else_value))) => {
+                (Some((then_value, then_branch)), Some((else_value, else_branch))) => {
                     let phi = generator.builder.build_phi(then_value.get_type(), "if_result");
                     phi.add_incoming(&[(&then_value, then_branch), (&else_value, else_branch)]);
                     phi.as_basic_value()
                 },
-                (Some((_, then_value)), None) => then_value,
-                (None, Some((_, else_value))) => else_value,
+                (Some((then_value, _)), None) => then_value,
+                (None, Some((else_value, _))) => else_value,
                 (None, None) => {
                     generator.builder.build_unreachable();
 

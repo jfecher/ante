@@ -139,19 +139,21 @@ impl CodeGen for hir::If {
         builder.ins().brnz(cond, then, &[]);
         builder.ins().jump(if_false, &[]);
 
-        builder.switch_to_block(then);
-
-        let then_values = self.then.eval_all(context, builder);
+        let then_values = context.eval_all_in_block(&self.then, then, builder);
 
         let ret = if let Some(otherwise) = self.otherwise.as_ref() {
             // If we have an 'else' then the if_false branch is our else branch
             let end = context.new_block_with_arg(&self.result_type, builder);
 
-            builder.ins().jump(end, &then_values);
+            if let Some(then_values) = then_values {
+                builder.ins().jump(end, &then_values);
+            }
 
-            builder.switch_to_block(if_false);
-            let else_values = otherwise.eval_all(context, builder);
-            builder.ins().jump(end, &else_values);
+            let else_values = context.eval_all_in_block(otherwise, if_false, builder);
+
+            if let Some(else_values) = else_values {
+                builder.ins().jump(end, &else_values);
+            }
 
             builder.seal_block(end);
             builder.switch_to_block(end);
@@ -159,7 +161,10 @@ impl CodeGen for hir::If {
             context.array_to_value(end_values, &self.result_type)
         } else {
             // If there is no 'else', then our if_false branch is the block after the if
-            builder.ins().jump(if_false, &[]);
+            if then_values.is_some() {
+                builder.ins().jump(if_false, &[]);
+            }
+
             builder.switch_to_block(if_false);
             Value::unit()
         };

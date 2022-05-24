@@ -495,6 +495,19 @@ impl<'local> Context<'local> {
             Type::Function(_) => load_single(function_type()),
         }
     }
+
+    pub fn eval_all_in_block(
+        &mut self, ast: &'local impl CodeGen, block: Block, builder: &mut FunctionBuilder,
+    ) -> Option<Vec<CraneliftValue>> {
+        builder.switch_to_block(block);
+        let value = ast.codegen(self, builder);
+
+        if builder.is_filled() {
+            None
+        } else {
+            Some(value.eval_all(self, builder))
+        }
+    }
 }
 
 /// Returns the size of a pointer in bytes.

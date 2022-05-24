@@ -11,23 +11,21 @@ use inkwell::values::BasicValueEnum;
 impl<'g> Generator<'g> {
     pub fn codegen_tree(&mut self, match_expr: &hir::Match) -> BasicValueEnum<'g> {
         let current_function = self.current_function();
-        let ending_block = self.context.append_basic_block(current_function, "match_end");
+        let end_block = self.context.append_basic_block(current_function, "match_end");
 
         let branch_blocks = fmap(&match_expr.branches, |_| self.context.append_basic_block(current_function, ""));
 
         self.codegen_subtree(&match_expr.decision_tree, &branch_blocks);
 
         let mut typ = None;
-        let incoming = fmap(branch_blocks.into_iter().zip(match_expr.branches.iter()), |(block, branch)| {
+        let incoming = branch_blocks.into_iter().zip(match_expr.branches.iter()).filter_map(|(block, branch)| {
             self.builder.position_at_end(block);
-            let value = branch.codegen(self);
-            self.builder.build_unconditional_branch(ending_block);
+            let (value_type, result) = self.codegen_branch(branch, end_block);
+            typ = Some(value_type);
+            result
+        }).collect::<Vec<_>>();
 
-            typ = Some(value.get_type());
-            (value, self.current_block())
-        });
-
-        self.builder.position_at_end(ending_block);
+        self.builder.position_at_end(end_block);
         let phi = self.builder.build_phi(typ.unwrap(), "match_result");
 
         // Inkwell forces us to pass a &[(&dyn BasicValue, _)] which prevents us from
