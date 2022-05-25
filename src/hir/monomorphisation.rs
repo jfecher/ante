@@ -41,11 +41,18 @@ pub struct Context<'c> {
     /// Compile-time mapping of variable -> definition for impls that were resolved
     /// after type inference. This is needed for definitions that are polymorphic in
     /// the impls they may use within.
-    direct_impl_mappings: Vec<HashMap<VariableId, DefinitionInfoId>>,
-    indirect_impl_mappings: Vec<HashMap<(VariableId, TraitConstraintId), ImplInfoId>>,
+    direct_impl_mappings: Vec<DirectImpls>,
+    indirect_impl_mappings: Vec<IndirectImpls>,
+    direct_given_impl_mappings: Vec<DirectGivenImpls>,
+    indirect_given_impl_mappings: Vec<IndirectGivenImpls>,
 
     next_id: usize,
 }
+
+type DirectImpls = HashMap<VariableId, DefinitionInfoId>;
+type IndirectImpls = HashMap<(VariableId, TraitConstraintId), ImplInfoId>;
+type DirectGivenImpls = HashMap<VariableId, Vec<(TraitConstraintId, ImplInfoId)>>;
+type IndirectGivenImpls = HashMap<TraitConstraintId, Vec<(VariableId, TraitConstraintId, ImplInfoId)>>;
 
 #[derive(Debug, Clone)]
 pub enum Definition {
@@ -90,6 +97,8 @@ impl<'c> Context<'c> {
             types: HashMap::new(),
             direct_impl_mappings: vec![HashMap::new()],
             indirect_impl_mappings: vec![HashMap::new()],
+            direct_given_impl_mappings: vec![HashMap::new()],
+            indirect_given_impl_mappings: vec![HashMap::new()],
             next_id: 0,
             cache,
         }
@@ -524,9 +533,19 @@ impl<'c> Context<'c> {
         }
     }
 
-    fn add_required_impls(&mut self, required_impls: &[RequiredImpl]) {
+    fn add_required_impls(&mut self, required_impls: &[RequiredImpl], from: VariableId) {
         let new_direct = self.direct_impl_mappings.last_mut().unwrap();
         let new_indirect = self.indirect_impl_mappings.last_mut().unwrap();
+        let new_direct_given = self.direct_given_impl_mappings.last_mut().unwrap();
+        let new_indirect_given = self.indirect_given_impl_mappings.last_mut().unwrap();
+
+        for (callsite, impls) in new_direct_given.iter() {
+            if *callsite == from {
+                for (constraint_id, impl_id) in impls {
+                    new_indirect.insert((from, *constraint_id), *impl_id);
+                }
+            }
+        }
 
         for required_impl in required_impls {
             match required_impl.callsite {
@@ -536,6 +555,17 @@ impl<'c> Context<'c> {
                 },
                 Callsite::Indirect(callsite, id) => {
                     new_indirect.insert((callsite, id), required_impl.binding);
+                },
+                Callsite::GivenDirect(callsite, origin) => {
+                    // TODO: Review this
+                    if callsite == from {
+                        new_indirect.insert((callsite, origin), required_impl.binding);
+                    } else {
+                        new_direct_given.entry(callsite).or_default().push((origin, required_impl.binding));
+                    }
+                },
+                Callsite::GivenIndirect(callsite, key, origin) => {
+                    new_indirect_given.entry(key).or_default().push((callsite, origin, required_impl.binding));
                 },
             }
         }
@@ -558,16 +588,15 @@ impl<'c> Context<'c> {
     fn monomorphise_variable(&mut self, variable: &ast::Variable<'c>) -> hir::Ast {
         let required_impls = self.cache[variable.id.unwrap()].required_impls.clone();
 
-        self.add_required_impls(&required_impls);
+        let id = variable.id.unwrap();
+        self.add_required_impls(&required_impls, id);
 
         // The definition to compile is either the corresponding impl definition if this
         // variable refers to a trait function, or otherwise it is the regular definition of this variable.
         let definition_id = self.get_definition_id(variable);
 
-        let variable_id = variable.id.unwrap();
         let typ = variable.typ.as_ref().unwrap();
-        let definition =
-            self.monomorphise_definition_id(definition_id, variable_id, typ, &variable.instantiation_mapping);
+        let definition = self.monomorphise_definition_id(definition_id, id, typ, &variable.instantiation_mapping);
 
         definition.reference(self, typ)
     }
@@ -585,7 +614,7 @@ impl<'c> Context<'c> {
             self.monomorphisation_bindings.push(instantiation_mapping.clone());
         }
 
-        if definition.trait_impl {
+        if definition.trait_impl.is_some() {
             let definition_type = definition.typ.as_ref().unwrap().remove_forall();
             let bindings = typechecker::try_unify(typ, definition_type, definition.location, &mut self.cache)
                 .map_err(|error| eprintln!("{}", error))
@@ -602,13 +631,71 @@ impl<'c> Context<'c> {
             self.monomorphisation_bindings.pop();
         }
 
-        if definition.trait_impl {
+        if definition.trait_impl.is_some() {
             self.monomorphisation_bindings.pop();
         }
     }
 
+    fn add_required_traits(&mut self, definition: &crate::cache::DefinitionInfo, variable_id: VariableId) {
+        let mut new_direct = HashMap::new();
+        let mut new_indirect = HashMap::new();
+        let mut new_given_direct: DirectGivenImpls = HashMap::new();
+        let mut new_given_indirect: IndirectGivenImpls = HashMap::new();
+
+        for required_trait in &definition.required_traits {
+            // If the impl has 0 definitions we can't attach it to any variables
+            if self.cache[required_trait.signature.trait_id].definitions.is_empty() {
+                continue;
+            }
+
+            let key = (variable_id, required_trait.signature.id);
+            let binding = match self.indirect_impl_mappings.last().unwrap().get(&key) {
+                Some(binding) => *binding,
+                None => {
+                    let trait_ = required_trait.display(&self.cache);
+                    panic!("Monomorphisation: no entry found for indirect impl key {:?} for trait {}", key, trait_)
+                },
+            };
+
+            match required_trait.callsite {
+                Callsite::Direct(callsite) => {
+                    let binding = self.cache.find_method_in_impl(callsite, binding);
+                    new_direct.insert(callsite, binding);
+                },
+                Callsite::Indirect(callsite, id) => {
+                    new_indirect.insert((callsite, id), binding);
+                },
+                Callsite::GivenDirect(_, _) => unreachable!(),
+                Callsite::GivenIndirect(_, _, _) => unreachable!(),
+            }
+
+            for (id, impls) in self.indirect_given_impl_mappings.last().unwrap() {
+                if *id == key.1 {
+                    for given_impl in impls {
+                        match required_trait.callsite {
+                            Callsite::Direct(callsite) => {
+                                let id_and_impl = (given_impl.1, given_impl.2);
+                                new_given_direct.entry(callsite).or_default().push(id_and_impl);
+                            },
+                            Callsite::Indirect(_, id) => {
+                                new_given_indirect.entry(id).or_default().push(*given_impl);
+                            },
+                            Callsite::GivenDirect(..) => unreachable!(),
+                            Callsite::GivenIndirect(..) => unreachable!(),
+                        }
+                    }
+                }
+            }
+        }
+
+        self.direct_impl_mappings.push(new_direct);
+        self.indirect_impl_mappings.push(new_indirect);
+        self.direct_given_impl_mappings.push(new_given_direct);
+        self.indirect_given_impl_mappings.push(new_given_indirect);
+    }
+
     fn monomorphise_definition_id(
-        &mut self, id: DefinitionInfoId, variable: VariableId, typ: &types::Type,
+        &mut self, id: DefinitionInfoId, variable_id: VariableId, typ: &types::Type,
         instantiation_mapping: &Rc<TypeBindings>,
     ) -> Definition {
         if let Some(value) = self.lookup_definition(id, typ) {
@@ -619,31 +706,7 @@ impl<'c> Context<'c> {
 
         let definition = trustme::extend_lifetime(&mut self.cache[id]);
         self.push_monomorphisation_bindings(instantiation_mapping, &typ, definition);
-
-        let mut new_direct = HashMap::new();
-        let mut new_indirect = HashMap::new();
-        for required_trait in &definition.required_traits {
-            // If the impl has 0 definitions we can't attach it to any variables
-            if self.cache[required_trait.signature.trait_id].definitions.is_empty() {
-                continue;
-            }
-
-            let key = (variable, required_trait.signature.id);
-            let binding = self.indirect_impl_mappings.last().unwrap()[&key];
-
-            match required_trait.callsite {
-                Callsite::Direct(callsite) => {
-                    let binding = self.cache.find_method_in_impl(callsite, binding);
-                    new_direct.insert(callsite, binding);
-                },
-                Callsite::Indirect(callsite, id) => {
-                    new_indirect.insert((callsite, id), binding);
-                },
-            }
-        }
-
-        self.direct_impl_mappings.push(new_direct);
-        self.indirect_impl_mappings.push(new_indirect);
+        self.add_required_traits(definition, variable_id);
 
         // Compile the definition with the bindings in scope. Each definition is expected to
         // add itself to Generator.definitions
@@ -693,6 +756,8 @@ impl<'c> Context<'c> {
 
         self.direct_impl_mappings.pop();
         self.indirect_impl_mappings.pop();
+        self.direct_given_impl_mappings.pop();
+        self.indirect_given_impl_mappings.pop();
 
         self.pop_monomorphisation_bindings(instantiation_mapping, definition);
         value
@@ -1017,9 +1082,9 @@ impl<'c> Context<'c> {
             let mut values = Vec::with_capacity(lambda.closure_environment.len() + 1);
             values.push(function);
 
-            for (outer_var, (id, _, bindings)) in &lambda.closure_environment {
+            for (outer_var, (var_id, _, bindings)) in &lambda.closure_environment {
                 let typ = self.cache[*outer_var].typ.as_ref().unwrap().clone().into_monotype();
-                let definition = self.monomorphise_definition_id(*outer_var, *id, &typ, bindings);
+                let definition = self.monomorphise_definition_id(*outer_var, *var_id, &typ, bindings);
                 values.push(definition.reference(self, &typ));
             }
 

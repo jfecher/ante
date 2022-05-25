@@ -25,6 +25,7 @@ use crate::types::{Type, TypeInfo, TypeInfoBody, TypeInfoId, TypeVariableId};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+mod counter;
 mod unsafecache;
 
 /// The ModuleCache is for information needed until compilation is completely finished
@@ -96,7 +97,7 @@ pub struct ModuleCache<'a> {
     pub member_access_traits: HashMap<String, TraitInfoId>,
 
     /// A monotonically-increasing counter to uniquely identify trait constraints.
-    pub current_trait_constraint_id: u32,
+    pub current_trait_constraint_id: counter::TraitConstraintCounter,
 
     /// The builtin `Int a` trait that arises when using polymorphic
     /// integer literals.
@@ -177,7 +178,7 @@ pub struct DefinitionInfo<'a> {
     pub required_traits: Vec<RequiredTrait>,
 
     /// True if this definition is from a trait impl
-    pub trait_impl: bool,
+    pub trait_impl: Option<ImplInfoId>,
 
     /// The type of this definition. Filled out during type inference,
     /// and is guarenteed to be Some afterward.
@@ -321,7 +322,7 @@ impl<'a> ModuleCache<'a> {
             impl_infos: Vec::default(),
             impl_scopes: Vec::default(),
             member_access_traits: HashMap::default(),
-            current_trait_constraint_id: 0,
+            current_trait_constraint_id: Default::default(),
         };
 
         let new_typevar = cache.next_type_variable_id(LetBindingLevel(std::usize::MAX));
@@ -347,7 +348,7 @@ impl<'a> ModuleCache<'a> {
             location,
             typ: None,
             uses: 0,
-            trait_impl: false,
+            trait_impl: None,
         });
         DefinitionInfoId(id)
     }
@@ -401,6 +402,14 @@ impl<'a> ModuleCache<'a> {
         trait_impl: &'a mut TraitImpl<'a>, given: Vec<ConstraintSignature>, location: Location<'a>,
     ) -> ImplInfoId {
         let id = self.impl_infos.len();
+
+        // Mark each definition as part of this impl.
+        // This is used during type inference to retrieve the `given` constraints from this
+        // impl for any definition within it.
+        for definition in &definitions {
+            self[*definition].trait_impl = Some(ImplInfoId(id));
+        }
+
         self.impl_infos.push(ImplInfo { trait_id, typeargs, definitions, location, given, trait_impl });
         ImplInfoId(id)
     }
@@ -439,9 +448,7 @@ impl<'a> ModuleCache<'a> {
     }
 
     pub fn next_trait_constraint_id(&mut self) -> TraitConstraintId {
-        let id = self.current_trait_constraint_id;
-        self.current_trait_constraint_id += 1;
-        TraitConstraintId(id)
+        self.current_trait_constraint_id.next()
     }
 
     pub fn find_method_in_impl(&self, callsite: VariableId, binding: ImplInfoId) -> DefinitionInfoId {

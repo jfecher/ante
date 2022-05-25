@@ -711,7 +711,7 @@ impl<'c> NameResolver {
     fn resolve_required_traits(
         &mut self, given: &[ast::Trait<'c>], cache: &mut ModuleCache<'c>,
     ) -> Vec<ConstraintSignature> {
-        let mut required_traits = vec![];
+        let mut required_traits = Vec::with_capacity(given.len());
         for trait_ in given {
             if let Some(trait_id) = self.lookup_trait(&trait_.name, cache) {
                 required_traits.push(ConstraintSignature {

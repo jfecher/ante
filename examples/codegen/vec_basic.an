@@ -1,9 +1,11 @@
 import Vec
 
-v: Vec i32 = mut empty ()
+v = mut empty ()
 
 push v 3
+push v 4
 
-// print v
+print v
 
 // args: --delete-binary
+// expected stdout: [3, 4]

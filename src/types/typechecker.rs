@@ -288,19 +288,19 @@ fn next_type_variable(cache: &mut ModuleCache) -> Type {
 }
 
 fn to_trait_constraints(
-    required_traits: &[RequiredTrait], scope: ImplScopeId, callsite: VariableId,
-    trait_info: &Option<(TraitInfoId, Vec<Type>)>, next_id: &mut u32,
+    id: DefinitionInfoId, scope: ImplScopeId, callsite: VariableId, cache: &mut ModuleCache,
 ) -> TraitConstraints {
-    let mut traits = fmap(required_traits, |required_trait| {
-        let id = TraitConstraintId(*next_id);
-        *next_id += 1;
+    let info = &cache.definition_infos[id.0];
+    let current_constraint_id = &mut cache.current_trait_constraint_id;
+
+    let mut traits = fmap(&info.required_traits, |required_trait| {
+        let id = current_constraint_id.next();
         required_trait.as_constraint(scope, callsite, id)
     });
 
     // If this definition is from a trait, we must add the initial constraint directly
-    if let Some((trait_id, args)) = trait_info {
-        let id = TraitConstraintId(*next_id);
-        *next_id += 1;
+    if let Some((trait_id, args)) = &info.trait_info {
+        let id = current_constraint_id.next();
 
         traits.push(TraitConstraint {
             required: RequiredTrait {
@@ -774,15 +774,9 @@ fn infer_nested_definition(
         DefinitionKind::TypeConstructor { .. } => {},
     };
 
-    let info = &mut cache.definition_infos[definition_id.0];
-    let constraints = to_trait_constraints(
-        &info.required_traits,
-        impl_scope,
-        callsite,
-        &info.trait_info,
-        &mut cache.current_trait_constraint_id,
-    );
+    let constraints = to_trait_constraints(definition_id, impl_scope, callsite, cache);
 
+    let info = &mut cache.definition_infos[definition_id.0];
     (info.typ.clone().unwrap(), constraints)
 }
 
@@ -1002,7 +996,6 @@ fn bind_irrefutable_pattern_in_impl<'a>(
 
             let definition_id = variable.definition.unwrap();
             let info = &mut cache[definition_id];
-            info.trait_impl = true;
             info.typ = Some(trait_type);
         },
         TypeAnnotation(annotation) => {
@@ -1175,23 +1168,19 @@ impl<'a> Inferable<'a> for ast::Literal<'a> {
  */
 impl<'a> Inferable<'a> for ast::Variable<'a> {
     fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
-        let info = &cache.definition_infos[self.definition.unwrap().0];
-
+        let definition_id = self.definition.unwrap();
         let impl_scope = self.impl_scope.unwrap();
         let id = self.id.unwrap();
+
+        let info = &cache[definition_id];
 
         // Lookup the type of the definition.
         // We'll need to recursively infer the type if it is not found
         let (s, traits) = match &info.typ {
             Some(typ) => {
-                let constraints = to_trait_constraints(
-                    &info.required_traits,
-                    impl_scope,
-                    id,
-                    &info.trait_info,
-                    &mut cache.current_trait_constraint_id,
-                );
-                (typ.clone(), constraints)
+                let typ = typ.clone();
+                let constraints = to_trait_constraints(definition_id, impl_scope, id, cache);
+                (typ, constraints)
             },
             None => {
                 // If the variable has a definition we can infer from then use that
@@ -1352,7 +1341,6 @@ impl<'a> Inferable<'a> for ast::Definition<'a> {
             let exposed_traits = traitchecker::resolve_traits(traits, &typevars_in_fn, cache);
 
             bind_irrefutable_pattern(self.pattern.as_mut(), &t, &exposed_traits, true, cache);
-
             vec![]
         } else {
             traits

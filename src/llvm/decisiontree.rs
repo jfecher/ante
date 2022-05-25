@@ -18,12 +18,16 @@ impl<'g> Generator<'g> {
         self.codegen_subtree(&match_expr.decision_tree, &branch_blocks);
 
         let mut typ = None;
-        let incoming = branch_blocks.into_iter().zip(match_expr.branches.iter()).filter_map(|(block, branch)| {
-            self.builder.position_at_end(block);
-            let (value_type, result) = self.codegen_branch(branch, end_block);
-            typ = Some(value_type);
-            result
-        }).collect::<Vec<_>>();
+        let incoming = branch_blocks
+            .into_iter()
+            .zip(match_expr.branches.iter())
+            .filter_map(|(block, branch)| {
+                self.builder.position_at_end(block);
+                let (value_type, result) = self.codegen_branch(branch, end_block);
+                typ = Some(value_type);
+                result
+            })
+            .collect::<Vec<_>>();
 
         self.builder.position_at_end(end_block);
         let phi = self.builder.build_phi(typ.unwrap(), "match_result");

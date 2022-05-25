@@ -78,6 +78,15 @@ pub enum Callsite {
     /// function where it has the given TraitConstraintId. It is required transitively
     /// to the current function by the given variable callsite.
     Indirect(VariableId, TraitConstraintId),
+
+    /// This required trait originates from a `given` constraint of a trait impl which
+    /// may have been solved close to the impl (from another Direct trait constraint) or
+    /// far away (from another Indirect constraint). The TraitConstraintId here will match
+    /// that of the RequiredTrait this was solved from and the expectation is that this
+    /// Given constraint should be threaded through the program along with that constraint.
+    GivenDirect(VariableId, /*origin:*/ TraitConstraintId),
+
+    GivenIndirect(VariableId, /*copied callsite id:*/ TraitConstraintId, /*origin:*/ TraitConstraintId),
 }
 
 impl Callsite {
@@ -85,6 +94,8 @@ impl Callsite {
         match self {
             Callsite::Direct(callsite) => callsite,
             Callsite::Indirect(callsite, _) => callsite,
+            Callsite::GivenDirect(callsite, ..) => callsite,
+            Callsite::GivenIndirect(callsite, ..) => callsite,
         }
     }
 }
@@ -219,8 +230,13 @@ impl TraitConstraint {
         let id = cache.next_trait_constraint_id();
         let signature = ConstraintSignature { trait_id, args, id };
 
-        let callsite_id = impl_constraint.required.callsite.id();
-        let callsite = Callsite::Indirect(callsite_id, inner_id);
+        let callsite = match impl_constraint.required.callsite {
+            Callsite::Direct(var) | Callsite::GivenDirect(var, _) => Callsite::GivenDirect(var, inner_id),
+
+            Callsite::Indirect(var, id) | Callsite::GivenIndirect(var, id, _) => {
+                Callsite::GivenIndirect(var, id, inner_id)
+            },
+        };
 
         let required = RequiredTrait { signature, callsite };
         TraitConstraint { required, scope: impl_constraint.scope }

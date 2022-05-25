@@ -7,7 +7,7 @@
 //! to get the corresponding builtin operation. Since these operations
 //! expect the llvm::Function to have a certain signature, the `builtin`
 //! function is prevented from being used outside the prelude.
-use crate::hir::{Ast, Builtin, PrimitiveType, Type};
+use crate::hir::{Ast, Builtin, PrimitiveType, Type, IntegerKind};
 use crate::llvm::{CodeGen, Generator};
 
 use inkwell::attributes::{Attribute, AttributeLoc};
@@ -170,8 +170,13 @@ fn deref_ptr<'g>(ptr: &Ast, typ: &Type, generator: &mut Generator<'g>) -> BasicV
 /// offset (p: Ptr t) (offset: usz) = (p as usize + offset * size_of t) as Ptr t
 ///
 // This builtin is unnecessary once we replace it with size_of
-fn offset<'g>(ptr: &Ast, offset: IntValue<'g>, _type_size: u32, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+fn offset<'g>(ptr: &Ast, offset: IntValue<'g>, type_size: u32, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
     let ptr = ptr.codegen(generator).into_pointer_value();
+    // expect ptr to be an i8* so we must multiply offset by type_size manually
+    let bits = generator.integer_bit_count(IntegerKind::Usz);
+    let type_size = generator.context.custom_width_int_type(bits).const_int(type_size as u64, true);
+
+    let offset = generator.builder.build_int_mul(offset, type_size, "offset_adjustment");
     unsafe { generator.builder.build_gep(ptr, &[offset], "offset").as_basic_value_enum() }
 }
 

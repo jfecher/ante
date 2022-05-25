@@ -143,20 +143,19 @@ swap_last (v: mut Vec t) (idx:usz) : bool =
 //     has_next v = v.idx < v.len
 // 
 // 
-// impl Print (Vec t) given Print t with
-//     printne v =
-//         printne "["
-// 
-//         helper (v: Vec t) (i: usz) =
-//             if i < v.len then
-//                 printne (v.data#i)
-//                 if i + 1 != v.len then
-//                     printne ", "
-// 
-//                 helper v (i + 1)
-// 
-//         helper v 0
-//         printne "]"
+impl Print (Vec t) given Print t with
+    printne v =
+        printne "["
+        print_helper v 0
+        printne "]"
+
+print_helper (v: Vec q) (i: usz) : unit =
+    if i < v.len then
+        printne ((v.data#i) : q)
+        if i + 1 != v.len then
+            printne ", "
+
+        print_helper v (i + 1)
 // 
 // impl Extract (Vec t) usz t with
 //     (#) v i = v.data#i
