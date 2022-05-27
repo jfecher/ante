@@ -145,12 +145,16 @@ fn offset(
     let usize_type = int_pointer_type();
     let pointer_type = pointer_type();
 
-    let size = builder.ins().iconst(int_pointer_type(), elem_size as i64);
+    let size = builder.ins().iconst(usize_type, elem_size as i64);
     let offset = builder.ins().imul(offset, size);
 
-    let address = builder.ins().bitcast(usize_type, address);
-    let new_address = builder.ins().iadd(address, offset);
-    builder.ins().bitcast(pointer_type, new_address)
+    if usize_type != pointer_type {
+        let address = builder.ins().bitcast(usize_type, address);
+        let new_address = builder.ins().iadd(address, offset);
+        builder.ins().bitcast(pointer_type, new_address)
+    } else {
+        builder.ins().iadd(address, offset)
+    }
 }
 
 // All integers are boxed as an i64, so this is a no-op in this backend
