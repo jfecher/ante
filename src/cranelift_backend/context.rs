@@ -249,7 +249,7 @@ impl<'local> Context<'local> {
 
         // all_parameters flattens structs into 1 parameter per field, so we must
         // un-flatten them here to bind names to multiple parameters
-        for ((parameter, _), param_type) in lambda.args.iter().zip(&lambda.typ.parameters) {
+        for (parameter, param_type) in lambda.args.iter().zip(&lambda.typ.parameters) {
             let arg = self.fmap_type(param_type, &mut |_, _| {
                 i += 1;
                 all_parameters[i - 1]

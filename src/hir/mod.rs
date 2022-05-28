@@ -15,7 +15,6 @@ mod types;
 pub use monomorphisation::monomorphise;
 pub use types::{FunctionType, IntegerKind, PrimitiveType, Type};
 
-use self::printer::FmtAst;
 use std::rc::Rc;
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
@@ -44,6 +43,10 @@ pub struct DefinitionInfo {
     pub definition: Option<Rc<Ast>>,
 
     pub definition_id: DefinitionId,
+
+    // This field isn't needed, it is used only to make the output
+    // of --show-hir more human readable for debugging.
+    pub name: Option<String>,
 }
 
 pub type Variable = DefinitionInfo;
@@ -56,7 +59,7 @@ impl From<Variable> for Ast {
 
 impl From<DefinitionId> for Variable {
     fn from(definition_id: DefinitionId) -> Variable {
-        Variable { definition_id, definition: None }
+        Variable { definition_id, definition: None, name: None }
     }
 }
 
@@ -70,7 +73,7 @@ impl DefinitionId {
 /// Function definitions are also desugared to a ast::Definition with a ast::Lambda as its body
 #[derive(Debug, Clone)]
 pub struct Lambda {
-    pub args: Vec<(Variable, /*mutable?*/ bool)>,
+    pub args: Vec<Variable>,
     pub body: Box<Ast>,
     pub typ: FunctionType,
 }
@@ -89,12 +92,14 @@ pub struct FunctionCall {
 #[derive(Debug, Clone)]
 pub struct Definition {
     pub variable: DefinitionId,
+    pub name: Option<String>,
     pub expr: Box<Ast>,
 }
 
 impl From<Definition> for DefinitionInfo {
     fn from(def: Definition) -> Self {
-        DefinitionInfo { definition_id: def.variable, definition: Some(Rc::new(Ast::Definition(def))) }
+        let name = def.name.clone();
+        DefinitionInfo { definition_id: def.variable, definition: Some(Rc::new(Ast::Definition(def))), name }
     }
 }
 
@@ -264,20 +269,6 @@ pub enum Ast {
     Builtin(Builtin),
 }
 
-impl std::fmt::Display for Ast {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut printer = printer::AstPrinter::default();
-        self.fmt_ast(&mut printer, f)?;
-
-        while let Some(ast) = printer.queue.pop_front() {
-            write!(f, "\n\n")?;
-            ast.fmt_ast(&mut printer, f)?;
-        }
-
-        Ok(())
-    }
-}
-
 impl std::fmt::Display for DefinitionId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "v{}", self.0)
@@ -307,3 +298,29 @@ macro_rules! dispatch_on_hir {
 }
 
 pub(crate) use dispatch_on_hir;
+
+// Rust won't let us impl<T: FmtAst> Display for T
+macro_rules! impl_display {($typ:ty) => (
+    impl std::fmt::Display for $typ {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            printer::AstPrinter::default().start(self, f)
+        }
+    }
+);}
+
+impl_display!(Ast);
+impl_display!(Literal);
+impl_display!(Variable);
+impl_display!(Lambda);
+impl_display!(FunctionCall);
+impl_display!(Definition);
+impl_display!(If);
+impl_display!(Match);
+impl_display!(Return);
+impl_display!(Sequence);
+impl_display!(Extern);
+impl_display!(Assignment);
+impl_display!(MemberAccess);
+impl_display!(Tuple);
+impl_display!(ReinterpretCast);
+impl_display!(Builtin);

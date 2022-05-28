@@ -1,10 +1,11 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::rc::Rc;
 
 use crate::cache::{DefinitionInfoId, DefinitionKind, ImplInfoId, ModuleCache, VariableId};
 use crate::hir;
 use crate::nameresolution::builtin::BUILTIN_ID;
 use crate::parser::ast;
+use crate::parser::ast::ClosureEnvironment;
 use crate::types::traits::{Callsite, RequiredImpl, TraitConstraintId};
 use crate::types::typechecker::{self, TypeBindings};
 use crate::types::typed::Typed;
@@ -63,22 +64,13 @@ pub enum Definition {
     /// would be less efficient than recreating the value 0 on each use.
     Macro(hir::Ast),
     Normal(hir::DefinitionInfo),
-
-    /// A mutable definition must loaded from memory each time it is
-    /// referenced by a variable. Thus, the given Ast must compile
-    /// to a pointer value of some kind.
-    Mutable(hir::DefinitionInfo),
 }
 
 impl Definition {
-    fn reference(self, context: &mut Context, typ: &types::Type) -> hir::Ast {
+    fn reference(self) -> hir::Ast {
         match self {
             Definition::Macro(ast) => ast,
             Definition::Normal(def) => hir::Ast::Variable(def),
-            Definition::Mutable(def) => {
-                let typ = context.convert_type(typ);
-                hir::Ast::Builtin(hir::Builtin::Deref(Box::new(def.into()), typ))
-            },
         }
     }
 }
@@ -212,7 +204,7 @@ impl<'c> Context<'c> {
     }
 
     fn size_of_struct_type(&mut self, info: &types::TypeInfo, fields: &[types::Field], args: &[types::Type]) -> usize {
-        let bindings = typechecker::type_application_bindings(info, args);
+        let bindings = typechecker::type_application_bindings(info, args, &self.cache);
 
         fields
             .iter()
@@ -226,7 +218,7 @@ impl<'c> Context<'c> {
     fn size_of_union_type(
         &mut self, info: &types::TypeInfo, variants: &[types::TypeConstructor<'c>], args: &[types::Type],
     ) -> usize {
-        let bindings = typechecker::type_application_bindings(info, args);
+        let bindings = typechecker::type_application_bindings(info, args, &self.cache);
 
         match self.find_largest_union_variant(variants, &bindings) {
             None => 0, // Void type
@@ -320,7 +312,7 @@ impl<'c> Context<'c> {
     fn convert_struct_type(
         &mut self, id: TypeInfoId, info: &types::TypeInfo, fields: &[types::Field<'c>], args: Vec<types::Type>,
     ) -> Type {
-        let bindings = typechecker::type_application_bindings(info, &args);
+        let bindings = typechecker::type_application_bindings(info, &args, &self.cache);
 
         let t = Type::Tuple(vec![]);
         self.types.insert((id, args.clone()), t);
@@ -356,7 +348,7 @@ impl<'c> Context<'c> {
         &mut self, id: TypeInfoId, info: &types::TypeInfo, variants: &[types::TypeConstructor<'c>],
         args: Vec<types::Type>,
     ) -> Type {
-        let bindings = typechecker::type_application_bindings(info, &args);
+        let bindings = typechecker::type_application_bindings(info, &args, &self.cache);
 
         let mut t = Type::Tuple(vec![]);
 
@@ -598,7 +590,7 @@ impl<'c> Context<'c> {
         let typ = variable.typ.as_ref().unwrap();
         let definition = self.monomorphise_definition_id(definition_id, id, typ, &variable.instantiation_mapping);
 
-        definition.reference(self, typ)
+        definition.reference()
     }
 
     pub fn lookup_definition(&self, id: DefinitionInfoId, typ: &types::Type) -> Option<Definition> {
@@ -704,20 +696,21 @@ impl<'c> Context<'c> {
 
         let typ = self.follow_all_bindings(typ);
 
-        let definition = trustme::extend_lifetime(&mut self.cache[id]);
-        self.push_monomorphisation_bindings(instantiation_mapping, &typ, definition);
-        self.add_required_traits(definition, variable_id);
+        let info = trustme::extend_lifetime(&mut self.cache[id]);
+        self.push_monomorphisation_bindings(instantiation_mapping, &typ, info);
+        self.add_required_traits(info, variable_id);
 
         // Compile the definition with the bindings in scope. Each definition is expected to
         // add itself to Generator.definitions
-        let value = match &definition.definition {
+        let value = match &info.definition {
             Some(DefinitionKind::Definition(definition)) => {
                 // Any recursive calls to this variable will refer to this binding
                 let definition_id = self.next_unique_id();
-                let info = hir::DefinitionInfo { definition: None, definition_id };
+                let name = info.name.clone();
+                let info = hir::DefinitionInfo { definition: None, definition_id, name: Some(name.clone()) };
                 self.definitions.insert((id, typ.clone()), Definition::Normal(info));
 
-                let def = self.monomorphise_nonlocal_definition(definition, definition_id);
+                let def = self.monomorphise_nonlocal_definition(definition, definition_id, name);
                 self.definitions.insert((id, typ), def.clone());
                 def
             },
@@ -729,7 +722,7 @@ impl<'c> Context<'c> {
             Some(DefinitionKind::TraitDefinition(_)) => {
                 unreachable!(
                     "Cannot monomorphise from a TraitDefinition.\nNo cached impl for {} {}: {}",
-                    definition.name,
+                    info.name,
                     id.0,
                     typ.debug(&self.cache)
                 )
@@ -737,7 +730,7 @@ impl<'c> Context<'c> {
             Some(DefinitionKind::Parameter) => {
                 unreachable!(
                     "Parameters should already be defined.\nEncountered while compiling {} {}: {}, {:?}",
-                    definition.name,
+                    info.name,
                     id.0,
                     typ.debug(&self.cache),
                     typ
@@ -746,12 +739,12 @@ impl<'c> Context<'c> {
             Some(DefinitionKind::MatchPattern) => {
                 unreachable!(
                     "MatchPatterns should already be defined.\n Encountered while compiling {} {}: {}",
-                    definition.name,
+                    info.name,
                     id.0,
                     typ.debug(&self.cache)
                 )
             },
-            None => unreachable!("No definition for {} {}", definition.name, id.0),
+            None => unreachable!("No definition for {} {}", info.name, id.0),
         };
 
         self.direct_impl_mappings.pop();
@@ -759,7 +752,7 @@ impl<'c> Context<'c> {
         self.direct_given_impl_mappings.pop();
         self.indirect_given_impl_mappings.pop();
 
-        self.pop_monomorphisation_bindings(instantiation_mapping, definition);
+        self.pop_monomorphisation_bindings(instantiation_mapping, info);
         value
     }
 
@@ -774,9 +767,9 @@ impl<'c> Context<'c> {
         }
 
         let name = self.cache[id].name.clone();
-        let extern_ = hir::Ast::Extern(hir::Extern { name, typ: self.convert_type(typ) });
+        let extern_ = hir::Ast::Extern(hir::Extern { name: name.clone(), typ: self.convert_type(typ) });
 
-        let definition = self.make_definition(extern_);
+        let definition = self.make_definition(extern_, Some(name));
 
         // Insert the global for both the current type and the unit type
         let definition = Definition::Normal(definition);
@@ -793,7 +786,8 @@ impl<'c> Context<'c> {
             let variable = self.next_unique_id();
             let expr = Box::new(definition_rhs);
 
-            let definition = hir::Definition { variable, expr };
+            let name = Some(self.cache[original_id].name.clone());
+            let definition = hir::Definition { variable, expr, name };
             Definition::Normal(hir::DefinitionInfo::from(definition))
         } else {
             Definition::Macro(definition_rhs)
@@ -804,35 +798,39 @@ impl<'c> Context<'c> {
     }
 
     fn fresh_variable(&mut self) -> hir::Variable {
-        hir::Variable { definition: None, definition_id: self.next_unique_id() }
+        hir::Variable { definition: None, definition_id: self.next_unique_id(), name: None }
     }
 
-    pub fn fresh_definition(&mut self, definition_rhs: hir::Ast) -> (hir::Ast, hir::DefinitionId) {
+    pub fn fresh_definition(
+        &mut self, definition_rhs: hir::Ast, name: Option<String>,
+    ) -> (hir::Ast, hir::DefinitionId) {
         let variable = self.next_unique_id();
         let expr = Box::new(definition_rhs);
-        let definition = hir::Ast::Definition(hir::Definition { variable, expr });
+        let definition = hir::Ast::Definition(hir::Definition { variable, expr, name });
         (definition, variable)
     }
 
-    fn make_definition(&mut self, definition_rhs: hir::Ast) -> hir::DefinitionInfo {
-        let (definition, definition_id) = self.fresh_definition(definition_rhs);
-        hir::DefinitionInfo { definition_id, definition: Some(Rc::new(definition)) }
+    fn make_definition(&mut self, definition_rhs: hir::Ast, name: Option<String>) -> hir::DefinitionInfo {
+        let (definition, definition_id) = self.fresh_definition(definition_rhs, name.clone());
+        hir::DefinitionInfo { definition_id, definition: Some(Rc::new(definition)), name }
     }
 
     /// Monomorphise a definition defined elsewhere
     ///
     /// TODO: This may be a clone of monomorphise_definition now
     fn monomorphise_nonlocal_definition(
-        &mut self, definition: &ast::Definition<'c>, definition_id: hir::DefinitionId,
+        &mut self, definition: &ast::Definition<'c>, definition_id: hir::DefinitionId, name: String,
     ) -> Definition {
         let value = self.monomorphise(&*definition.expr);
 
-        let new_definition = hir::Ast::Definition(hir::Definition { variable: definition_id, expr: Box::new(value) });
+        let expr = Box::new(value);
+        let variable = definition_id;
+        let new_definition = hir::Ast::Definition(hir::Definition { variable, expr, name: Some(name.clone()) });
 
         let mut nested_definitions = vec![new_definition];
         let typ = self.follow_all_bindings(definition.pattern.get_type().unwrap());
 
-        self.desugar_pattern(&definition.pattern, definition_id, typ, definition.mutable, &mut nested_definitions);
+        self.desugar_pattern(&definition.pattern, definition_id, typ, &mut nested_definitions);
 
         let definition = if nested_definitions.len() == 1 {
             nested_definitions.remove(0)
@@ -840,8 +838,8 @@ impl<'c> Context<'c> {
             hir::Ast::Sequence(hir::Sequence { statements: nested_definitions })
         };
 
-        let var = hir::Variable { definition_id, definition: Some(Rc::new(definition)) };
-        Definition::Normal(var)
+        let definition = Some(Rc::new(definition));
+        Definition::Normal(hir::Variable { definition_id, definition, name: Some(name) })
     }
 
     /// Simplifies a pattern and expression like `(a, b) = foo ()`
@@ -856,7 +854,7 @@ impl<'c> Context<'c> {
     ///
     /// PRE-REQUISITE: `typ` must equal `self.follow_all_bindings(typ)`
     fn desugar_pattern(
-        &mut self, pattern: &ast::Ast<'c>, definition_id: hir::DefinitionId, typ: types::Type, mutable: bool,
+        &mut self, pattern: &ast::Ast<'c>, definition_id: hir::DefinitionId, typ: types::Type,
         definitions: &mut Vec<hir::Ast>,
     ) {
         use {
@@ -869,35 +867,28 @@ impl<'c> Context<'c> {
             Variable(variable_pattern) => {
                 let id = variable_pattern.definition.unwrap();
 
-                let variable = hir::Variable { definition_id, definition: None };
-                let definition = if mutable { Definition::Mutable(variable) } else { Definition::Normal(variable) };
+                let name = Some(variable_pattern.to_string());
+                let variable = hir::Variable { definition_id, definition: None, name };
+                let definition = Definition::Normal(variable);
 
                 self.definitions.insert((id, typ), definition);
             },
             TypeAnnotation(annotation) => {
-                let mutable = mutable || annotation.mutable;
-                self.desugar_pattern(annotation.lhs.as_ref(), definition_id, typ, mutable, definitions)
+                self.desugar_pattern(annotation.lhs.as_ref(), definition_id, typ, definitions)
             },
             // Match a struct pattern
             FunctionCall(call) if call.is_pair_constructor() => {
-                let variable = hir::Variable { definition_id, definition: None };
-                let mut offset = 0;
+                let variable = hir::Variable { definition_id, definition: None, name: None };
 
                 for (i, arg_pattern) in call.args.iter().enumerate() {
                     let arg_type = self.follow_all_bindings(arg_pattern.get_type().unwrap());
 
-                    let extract = if mutable {
-                        let new_ptr = offset_ptr(variable.clone().into(), offset as u64);
-                        offset += self.size_of_type(&arg_type);
-                        new_ptr
-                    } else {
-                        self.extract(variable.clone().into(), i as u32)
-                    };
+                    let extract = self.extract(variable.clone().into(), i as u32);
 
-                    let (definition, id) = self.fresh_definition(extract);
+                    let (definition, id) = self.fresh_definition(extract, None);
                     definitions.push(definition);
 
-                    self.desugar_pattern(arg_pattern, id, arg_type, mutable, definitions)
+                    self.desugar_pattern(arg_pattern, id, arg_type, definitions)
                 }
             },
             _ => {
@@ -911,7 +902,7 @@ impl<'c> Context<'c> {
         let typ = self.convert_type(typ);
         match typ {
             Function(function_type) => {
-                let args = fmap(&function_type.parameters, |_| (self.fresh_variable(), false));
+                let args = fmap(&function_type.parameters, |_| self.fresh_variable());
 
                 let mut tuple_args = Vec::with_capacity(args.len() + 1);
                 let mut tuple_size =
@@ -922,7 +913,7 @@ impl<'c> Context<'c> {
                     tuple_size += self.size_of_monomorphised_type(&Self::tag_type());
                 }
 
-                tuple_args.extend(args.iter().map(|arg| arg.0.clone().into()));
+                tuple_args.extend(args.iter().cloned().map(Into::into));
 
                 let tuple = hir::Ast::Tuple(hir::Tuple { fields: tuple_args });
 
@@ -1002,14 +993,14 @@ impl<'c> Context<'c> {
         }
     }
 
-    fn get_function_type(&mut self, typ: &types::Type, args: &[ast::Ast]) -> hir::FunctionType {
+    fn get_function_type(&mut self, typ: &types::Type) -> hir::FunctionType {
         match self.convert_type(typ) {
-            Type::Function(f) => self.change_mutable_args_to_pointers(f, args),
+            Type::Function(f) => f,
             Type::Tuple(mut values) => {
                 // Closure
                 assert!(!values.is_empty());
                 match values.swap_remove(0) {
-                    Type::Function(f) => self.change_mutable_args_to_pointers(f, args),
+                    Type::Function(f) => f,
                     other => unreachable!("Lambda has a non-function type: {}", other),
                 }
             },
@@ -1017,30 +1008,10 @@ impl<'c> Context<'c> {
         }
     }
 
-    fn change_mutable_args_to_pointers(&self, mut f: hir::FunctionType, args: &[ast::Ast]) -> hir::FunctionType {
-        assert!(f.parameters.len() >= args.len());
-
-        for (param, arg) in f.parameters.iter_mut().zip(args) {
-            if self.pattern_is_mutable(arg) {
-                *param = Type::Primitive(hir::PrimitiveType::Pointer);
-            }
-        }
-
-        f
-    }
-
-    fn pattern_is_mutable(&self, pattern: &ast::Ast) -> bool {
-        match pattern {
-            ast::Ast::TypeAnnotation(ast) => ast.mutable,
-            ast::Ast::Variable(var) => self.cache[var.definition.unwrap()].mutable,
-            _ => false,
-        }
-    }
-
     fn monomorphise_lambda(&mut self, lambda: &ast::Lambda<'c>) -> hir::Ast {
         let t = lambda.typ.as_ref().unwrap();
         let t = self.follow_all_bindings(t);
-        let typ = self.get_function_type(&t, &lambda.args);
+        let typ = self.get_function_type(&t);
         let mut body_prelude = vec![];
 
         // Bind each parameter node to the nth parameter of `function`
@@ -1049,21 +1020,14 @@ impl<'c> Context<'c> {
         let mut args = fmap(&lambda.args, |arg| {
             let typ = self.follow_all_bindings(arg.get_type().unwrap());
             let param = self.fresh_variable();
-            let mutable = self.pattern_is_mutable(arg);
-            self.desugar_pattern(arg, param.definition_id, typ, mutable, &mut body_prelude);
-
-            (param, mutable)
+            self.desugar_pattern(arg, param.definition_id, typ, &mut body_prelude);
+            param
         });
 
-        args.extend(lambda.closure_environment.values().map(|(_, inner_var, _)| {
-            let param = self.fresh_variable();
-            let info = &self.cache[*inner_var];
-            let typ = info.typ.as_ref().unwrap().as_monotype();
-            let typ = self.follow_all_bindings(typ);
-            self.definitions.insert((*inner_var, typ), Definition::Normal(param.clone()));
-
-            (param, info.mutable)
-        }));
+        if !lambda.closure_environment.is_empty() {
+            let env = self.unpack_environment(&lambda.closure_environment, &mut body_prelude);
+            args.push(env);
+        }
 
         let body = self.monomorphise(&lambda.body);
 
@@ -1079,16 +1043,70 @@ impl<'c> Context<'c> {
         if lambda.closure_environment.is_empty() {
             function
         } else {
-            let mut values = Vec::with_capacity(lambda.closure_environment.len() + 1);
-            values.push(function);
+            self.pack_closure_environment(function, &lambda.closure_environment)
+        }
+    }
 
-            for (outer_var, (var_id, _, bindings)) in &lambda.closure_environment {
+    fn unpack_environment(&mut self, closure_environment: &ClosureEnvironment, definitions: &mut Vec<hir::Ast>) -> hir::DefinitionInfo {
+        let mut env = self.fresh_variable();
+        env.name = Some("env".to_string()); // Not named in source code, but oh well
+        let first_env = env.clone();
+
+        for (i, (_, (_, inner_var, _))) in closure_environment.iter().enumerate() {
+            let name = self.cache[*inner_var].name.clone();
+
+            let value = if i == closure_environment.len() - 1 {
+                env.name = Some(name);
+                env.clone()
+            } else {
+                let param_ast: hir::Ast = env.clone().into();
+                let extract_var_in_env = self.extract(param_ast.clone(), 0);
+                let extract_rest_of_env = self.extract(param_ast, 1);
+
+                let (definition, definition_id) = self.fresh_definition(extract_var_in_env, Some(name.clone()));
+                let (rest_env_def, rest_env_var) = self.fresh_definition(extract_rest_of_env, None);
+
+                definitions.push(definition);
+                definitions.push(rest_env_def);
+
+                env = hir::Variable { definition_id: rest_env_var, definition: None, name: None }.into();
+                hir::Variable { definition_id, definition: None, name: None }
+            };
+            
+            let info = &self.cache[*inner_var];
+            let typ = info.typ.as_ref().unwrap().as_monotype();
+            let typ = self.follow_all_bindings(typ);
+
+            self.definitions.insert((*inner_var, typ), Definition::Normal(value));
+        }
+
+        first_env
+    }
+
+    fn pack_closure_environment(&mut self, function: hir::Ast, env: &ClosureEnvironment) -> hir::Ast {
+        let env = env
+            .iter()
+            .map(|(outer_var, (var_id, _, bindings))| {
                 let typ = self.cache[*outer_var].typ.as_ref().unwrap().clone().into_monotype();
                 let definition = self.monomorphise_definition_id(*outer_var, *var_id, &typ, bindings);
-                values.push(definition.reference(self, &typ));
-            }
+                definition.reference()
+            })
+            .collect();
 
-            self.tuple(values)
+        let env = self.make_closure_environment(env);
+        self.tuple(vec![function, env])
+    }
+
+    // This needs to match the packing done in typechecker::infer_closure_environment
+    fn make_closure_environment(&mut self, mut env: VecDeque<hir::Ast>) -> hir::Ast {
+        if env.is_empty() {
+            unit_literal()
+        } else if env.len() == 1 {
+            env.pop_back().unwrap()
+        } else {
+            let first = env.pop_front().unwrap();
+            let rest = self.make_closure_environment(env);
+            self.tuple(vec![first, rest])
         }
     }
 
@@ -1192,8 +1210,6 @@ impl<'c> Context<'c> {
                 let mut args = fmap(&call.args, |arg| self.monomorphise(arg));
                 let function = self.monomorphise(&call.function);
 
-                args = self.fix_arg_mutability(args, &function);
-
                 // We could use a new convert_type_shallow here in the future since all we need
                 // is to check if it is a tuple type or not
                 let function_type = self.convert_type(call.function.get_type().unwrap());
@@ -1206,7 +1222,7 @@ impl<'c> Context<'c> {
                         };
 
                         // Extract the function from the closure
-                        let (function_definition, id) = self.fresh_definition(function);
+                        let (function_definition, id) = self.fresh_definition(function, None);
                         let function_variable = id.to_variable();
                         let function = Box::new(self.extract(function_variable.clone(), 0));
                         let environment = self.extract(function_variable, 1);
@@ -1229,6 +1245,14 @@ impl<'c> Context<'c> {
         }
     }
 
+    fn try_get_pattern_name(pattern: &ast::Ast) -> Option<String> {
+        match pattern {
+            ast::Ast::Variable(var) => Some(var.to_string()),
+            ast::Ast::TypeAnnotation(annotation) => Self::try_get_pattern_name(&annotation.lhs),
+            _ => None,
+        }
+    }
+
     fn monomorphise_definition(&mut self, definition: &ast::Definition<'c>) -> hir::Ast {
         match definition.expr.as_ref() {
             // If the value is a function we can skip it and come back later to only
@@ -1241,7 +1265,8 @@ impl<'c> Context<'c> {
                     expr = hir::Ast::Builtin(hir::Builtin::StackAlloc(Box::new(expr)));
                 }
 
-                let (new_definition, id) = self.fresh_definition(expr);
+                let name = Self::try_get_pattern_name(definition.pattern.as_ref());
+                let (new_definition, id) = self.fresh_definition(expr, name);
 
                 let mut nested_definitions = vec![new_definition];
                 let typ = self.follow_all_bindings(definition.pattern.get_type().unwrap());
@@ -1252,7 +1277,7 @@ impl<'c> Context<'c> {
                 // fresh = extract 1 id
                 // b = extract 0 fresh
                 // c = extract 1 fresh
-                self.desugar_pattern(&definition.pattern, id, typ, definition.mutable, &mut nested_definitions);
+                self.desugar_pattern(&definition.pattern, id, typ, &mut nested_definitions);
 
                 if nested_definitions.len() == 1 {
                     nested_definitions.remove(0)
@@ -1295,10 +1320,42 @@ impl<'c> Context<'c> {
         }
     }
 
+    fn get_field_offset(&self, collection_type: &hir::Type, field_index: u32) -> u32 {
+        match collection_type {
+            Type::Primitive(_)
+            | Type::Function(_) => unreachable!(),
+            Type::Tuple(fields) => {
+                fields.iter()
+                    .map(|field| self.size_of_monomorphised_type(field))
+                    .take(field_index as usize)
+                    .sum()
+            },
+        }
+    }
+
     fn monomorphise_member_access(&mut self, member_access: &ast::MemberAccess<'c>) -> hir::Ast {
-        let index = self.get_field_index(&member_access.field, member_access.lhs.get_type().unwrap());
         let lhs = self.monomorphise(&member_access.lhs);
-        self.extract(lhs, index)
+        let lhs_type = self.follow_all_bindings(member_access.lhs.get_type().unwrap());
+        let index = self.get_field_index(&member_access.field, &lhs_type);
+
+        let ref_type = match lhs_type {
+            types::Type::TypeApplication(constructor, mut args) => {
+                match constructor.as_ref() {
+                    types::Type::Ref(_) => Some(args.remove(0)),
+                    _ => None,
+                }
+            }
+            _ => None,
+        };
+
+        // If our collection type is a ref we do a ptr offset instead of a direct access
+        if let Some(ref_type) = ref_type {
+            let ref_type = self.convert_type(&ref_type);
+            let offset = self.get_field_offset(&ref_type, index);
+            offset_ptr(lhs, offset as u64)
+        } else {
+            self.extract(lhs, index)
+        }
     }
 
     fn monomorphise_assignment(&mut self, assignment: &ast::Assignment<'c>) -> hir::Ast {
@@ -1309,47 +1366,6 @@ impl<'c> Context<'c> {
         };
 
         hir::Ast::Assignment(hir::Assignment { lhs: Box::new(lhs), rhs: Box::new(self.monomorphise(&assignment.rhs)) })
-    }
-
-    fn fix_arg_mutability(&self, mut args: Vec<hir::Ast>, function: &hir::Ast) -> Vec<hir::Ast> {
-        let expected = self.get_function_args(function);
-
-        for (arg, (_, mutable)) in args.iter_mut().zip(expected) {
-            if *mutable {
-                match arg {
-                    hir::Ast::Builtin(hir::Builtin::Deref(inner, _)) => {
-                        // Dummy value so we can swap out of the deref
-                        let mut dest = hir::Ast::Literal(hir::Literal::Unit);
-                        std::mem::swap(inner.as_mut(), &mut dest);
-                        *arg = dest;
-                    },
-                    other => unreachable!("Expected deref for mutable arg, found {}", other),
-                }
-            }
-        }
-
-        args
-    }
-
-    /// TODO: This function is a hack, we can't track mutability through the ast in general.
-    /// Need a better solution for this when mutability semantics are re-done.
-    fn get_function_args<'a>(&self, function: &'a hir::Ast) -> &'a [(hir::DefinitionInfo, bool)] {
-        match function {
-            hir::Ast::Variable(variable) => match variable.definition.as_ref() {
-                Some(def) => self.get_function_args(def),
-                None => &[],
-            },
-            hir::Ast::Lambda(lambda) => &lambda.args,
-            hir::Ast::FunctionCall(_) => &[],
-            hir::Ast::Sequence(seq) => self.get_function_args(seq.statements.last().unwrap()),
-            hir::Ast::Definition(def) => self.get_function_args(&def.expr),
-            hir::Ast::Extern(_) => &[],
-
-            hir::Ast::If(_) => &[],
-            hir::Ast::Match(_) => &[],
-
-            _ => &[],
-        }
     }
 
     pub fn extract(&self, ast: hir::Ast, member_index: u32) -> hir::Ast {

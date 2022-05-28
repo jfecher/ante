@@ -5,7 +5,7 @@
 //! `DefinitionInfo` struct and a `DefinitionInfoId` key that can be used on the
 //! cache to access this struct. The `DefinitionInfo` struct stores additional information
 //! about a definition like the `ast::Definition` node it was defined in, its name,
-//! whether it is mutable, and how many times it is referenced in the program.
+//! and how many times it is referenced in the program.
 //! This XXXInfo and XXXInfoId pattern is also used for TraitDefinitions, TraitImpls, and Types.
 //! See the corresponding structs further down in this file for more information.
 //!
@@ -164,8 +164,8 @@ pub struct DefinitionInfo<'a> {
     /// this Definition kind should result in self.typ being filled out.
     pub definition: Option<DefinitionKind<'a>>,
 
-    /// True if this definition can be reassigned to.
-    pub mutable: bool,
+    // True if this definition can be reassigned to.
+    // pub mutable: bool,
 
     /// Some((trait_id, trait_args)) if this is a definition from a trait.
     /// Note that this is still None for definitions from trait impls.
@@ -337,14 +337,13 @@ impl<'a> ModuleCache<'a> {
         unsafe { std::mem::transmute(path) }
     }
 
-    pub fn push_definition(&mut self, name: &str, mutable: bool, location: Location<'a>) -> DefinitionInfoId {
+    pub fn push_definition(&mut self, name: &str, location: Location<'a>) -> DefinitionInfoId {
         let id = self.definition_infos.len();
         self.definition_infos.push(DefinitionInfo {
             name: name.to_string(),
             definition: None,
             trait_info: None,
             required_traits: vec![],
-            mutable,
             location,
             typ: None,
             uses: 0,

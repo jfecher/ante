@@ -28,7 +28,8 @@ impl<'c> Context<'c> {
         let value = self.monomorphise(match_.expression.as_ref());
 
         if let Some(DecisionTree::Switch(id, _)) = &match_.decision_tree {
-            let (def, new_id) = self.fresh_definition(value);
+            let name = Some(self.cache[*id].name.clone());
+            let (def, new_id) = self.fresh_definition(value, name);
             let typ = self.follow_all_bindings(self.cache[*id].typ.as_ref().unwrap().as_monotype());
             self.definitions.insert((*id, typ), new_id.into());
             def
@@ -89,7 +90,7 @@ impl<'c> Context<'c> {
             }
 
             let expr = Box::new(value);
-            let cast_definition = hir::Definition { variable, expr };
+            let cast_definition = hir::Definition { variable, expr, name: None };
 
             hir::DecisionTree::Definition(cast_definition, Box::new(tree))
         };
@@ -179,6 +180,7 @@ impl<'c> Context<'c> {
                         hir::Definition {
                             variable: field_variable,
                             expr: Box::new(self.extract(variant_variable.into(), field_index)),
+                            name: None,
                         }
                     })
                 } else {

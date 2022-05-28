@@ -131,14 +131,6 @@ pub struct NameResolver {
     /// of looked up in the symbol table.
     auto_declare: bool,
 
-    /// True if we're recursing with the pattern clause of a mutable definition.
-    /// E.g. (a, b) = mut ...
-    in_mutable_context: bool,
-
-    /// True if we're recursing within the lhs of an assignment.
-    /// In this case, we need to assert all variables we find are mutable.
-    in_assignment_context: bool,
-
     /// The trait we're currently declaring. While this is Some(id) all
     /// declarations will be declared as part of the trait.
     current_trait: Option<TraitInfoId>,
@@ -243,7 +235,6 @@ impl NameResolver {
     ) -> DefinitionInfoId {
         let mut ret = None;
         cache.definition_infos[environment.0].uses += 1;
-        let mutable = cache.definition_infos[environment.0].mutable;
 
         // Traverse through each function from where the environment variable is defined
         // to the closure that uses it, and add the environment variable to each closure.
@@ -257,7 +248,7 @@ impl NameResolver {
         for origin_fn in environment_function_index..self.scopes.len() - 1 {
             let next_fn = origin_fn + 1;
 
-            let to = self.add_closure_parameter_definition(environment_name, mutable, next_fn, location, cache);
+            let to = self.add_closure_parameter_definition(environment_name, next_fn, location, cache);
             self.scopes[next_fn].add_closure_environment_variable_mapping(environment, to, location, cache);
             environment = to;
             ret = Some(to);
@@ -267,14 +258,13 @@ impl NameResolver {
     }
 
     fn add_closure_parameter_definition<'c>(
-        &mut self, parameter: &str, mutable: bool, function_scope_index: usize, location: Location<'c>,
+        &mut self, parameter: &str, function_scope_index: usize, location: Location<'c>,
         cache: &mut ModuleCache<'c>,
     ) -> DefinitionInfoId {
         let function_scope = &mut self.scopes[function_scope_index];
         let scope = function_scope.first_mut();
 
-        // TODO: set this to true for mutable closure parameters
-        let id = cache.push_definition(parameter, mutable, location);
+        let id = cache.push_definition(parameter, location);
         cache.definition_infos[id.0].definition = Some(DefinitionKind::Parameter);
         cache.definition_infos[id.0].uses = 1;
 
@@ -404,9 +394,9 @@ impl NameResolver {
 
     /// Push a new Definition onto the current scope.
     fn push_definition<'c>(
-        &mut self, name: &str, mutable: bool, cache: &mut ModuleCache<'c>, location: Location<'c>,
+        &mut self, name: &str, cache: &mut ModuleCache<'c>, location: Location<'c>,
     ) -> DefinitionInfoId {
-        let id = cache.push_definition(name, mutable, location);
+        let id = cache.push_definition(name, location);
 
         if let Some(existing_definition) = self.current_scope().definitions.get(name) {
             error!(location, "{} is already in scope", name);
@@ -529,8 +519,6 @@ impl<'c> NameResolver {
             type_variable_scopes: vec![scope::TypeVariableScope::default()],
             state: NameResolutionState::DeclareInProgress,
             auto_declare: false,
-            in_mutable_context: false,
-            in_assignment_context: false,
             current_trait: None,
             required_definitions: None,
             current_function: None,
@@ -781,7 +769,7 @@ impl<'c> Resolvable<'c> for ast::Variable<'c> {
             };
 
             if should_declare {
-                let id = resolver.push_definition(&name, resolver.in_mutable_context, cache, self.location);
+                let id = resolver.push_definition(&name, cache, self.location);
                 resolver.definitions_collected.push(id);
                 self.definition = Some(id);
             } else {
@@ -813,8 +801,6 @@ impl<'c> Resolvable<'c> for ast::Variable<'c> {
             // If it is still not declared, print an error
             if self.definition.is_none() {
                 error!(self.location, "No declaration for {} was found in scope", self);
-            } else if resolver.in_assignment_context && !cache.definition_infos[self.definition.unwrap().0].mutable {
-                error!(self.location, "Variable {} must be mutable to be assigned to", self);
             }
         }
     }
@@ -844,16 +830,11 @@ impl<'c> Resolvable<'c> for ast::FunctionCall<'c> {
     fn declare(&mut self, _resolver: &mut NameResolver, _cache: &mut ModuleCache<'c>) {}
 
     fn define(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'c>) {
-        let old_context = resolver.in_assignment_context;
-        resolver.in_assignment_context = false;
-
         self.function.define(resolver, cache);
 
         for arg in self.args.iter_mut() {
             arg.define(resolver, cache)
         }
-
-        resolver.in_assignment_context = old_context;
     }
 }
 
@@ -864,11 +845,9 @@ impl<'c> Resolvable<'c> for ast::Definition<'c> {
 
         resolver.push_let_binding_level();
         resolver.push_type_variable_scope();
-        resolver.in_mutable_context = self.mutable;
 
         resolver.resolve_declarations(self.pattern.as_mut(), cache, definition);
 
-        resolver.in_mutable_context = false;
         self.level = Some(resolver.let_binding_level);
         resolver.pop_type_variable_scope();
         resolver.pop_let_binding_level();
@@ -882,11 +861,9 @@ impl<'c> Resolvable<'c> for ast::Definition<'c> {
 
         resolver.push_let_binding_level();
         resolver.push_type_variable_scope();
-        resolver.in_mutable_context = self.mutable;
 
         resolver.resolve_definitions(self.pattern.as_mut(), cache, definition);
 
-        resolver.in_mutable_context = false;
         self.level = Some(resolver.let_binding_level);
 
         resolver.try_set_current_function(self);
@@ -976,7 +953,7 @@ fn create_variants<'c>(
     fmap(vec, |(name, types, location)| {
         let args = fmap(types, |t| resolver.convert_type(cache, t));
 
-        let id = resolver.push_definition(name, false, cache, *location);
+        let id = resolver.push_definition(name, cache, *location);
         cache.definition_infos[id.0].typ = Some(create_variant_constructor_type(parent_type_id, args.clone(), cache));
         cache.definition_infos[id.0].definition =
             Some(DefinitionKind::TypeConstructor { name: name.clone(), tag: Some(index) });
@@ -1036,7 +1013,7 @@ impl<'c> Resolvable<'c> for ast::TypeDefinition<'c> {
 
                 // Create the constructor for this type.
                 // This is done inside create_variants for tagged union types
-                let id = resolver.push_definition(&self.name, false, cache, self.location);
+                let id = resolver.push_definition(&self.name, cache, self.location);
                 cache.definition_infos[id.0].typ = Some(create_variant_constructor_type(type_id, field_types, cache));
                 cache.definition_infos[id.0].definition =
                     Some(DefinitionKind::TypeConstructor { name: self.name.clone(), tag: None });
@@ -1056,10 +1033,7 @@ impl<'c> Resolvable<'c> for ast::TypeAnnotation<'c> {
     fn declare(&mut self, _resolver: &mut NameResolver, _cache: &mut ModuleCache<'c>) {}
 
     fn define(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'c>) {
-        let old_context = resolver.in_mutable_context;
-        resolver.in_mutable_context = self.mutable;
         self.lhs.define(resolver, cache);
-        resolver.in_mutable_context = old_context;
 
         let rhs = resolver.convert_type(cache, &self.rhs);
         self.typ = Some(rhs);
@@ -1341,9 +1315,7 @@ impl<'c> Resolvable<'c> for ast::Assignment<'c> {
     fn declare(&mut self, _resolver: &mut NameResolver, _cache: &mut ModuleCache<'c>) {}
 
     fn define(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'c>) {
-        resolver.in_assignment_context = true;
         self.lhs.define(resolver, cache);
-        resolver.in_assignment_context = false;
         self.rhs.define(resolver, cache);
     }
 }

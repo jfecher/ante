@@ -196,26 +196,52 @@ fn find_int_constraint_impl<'c>(
 fn find_member_access_impl<'c>(
     constraint: &TraitConstraint, bindings: &UnificationBindings, cache: &mut ModuleCache<'c>,
 ) -> UnificationResult<'c> {
-    let collection = typechecker::follow_bindings_in_cache_and_map(&constraint.args()[0], bindings, cache);
     let field_name = cache[constraint.trait_id()].get_field_name().to_string();
     let expected_field_type = &constraint.args()[1];
     let location = constraint.locate(cache);
 
-    match &collection {
-        Type::UserDefined(id) => find_field(*id, &[], &field_name, expected_field_type, location, cache),
-        Type::TypeApplication(typ, args) => match typ.as_ref() {
-            Type::UserDefined(id) => find_field(*id, args, &field_name, expected_field_type, location, cache),
-            _ => Err(make_error!(
-                location,
-                "Type {} is not a struct type and has no field named {}",
-                collection.display(cache),
-                field_name
-            )),
+    let collection = &constraint.args()[0];
+    find_member_access_impl_recursive(&collection, &field_name, expected_field_type, location, bindings, cache)
+}
+
+fn find_member_access_impl_recursive<'c>(
+    typ: &Type, field_name: &str, expected_field_type: &Type,
+    location: Location<'c>, bindings: &UnificationBindings, cache: &mut ModuleCache<'c>,
+) -> UnificationResult<'c> {
+    let typ = typechecker::follow_bindings_in_cache_and_map(typ, bindings, cache);
+    match typ {
+        Type::UserDefined(id) => find_field(id, &[], &field_name, expected_field_type, location, cache),
+        Type::TypeApplication(typ, args) => {
+            let typ = typechecker::follow_bindings_in_cache_and_map(&typ, bindings, cache);
+            match &typ {
+                Type::UserDefined(_) => find_member_access_impl_recursive(&typ, field_name, expected_field_type, location, bindings, cache),
+                // member acccess on refs yields a ref to the field
+                Type::Ref(_) => {
+                    let lifetime = typechecker::next_type_variable_id(cache);
+                    let typevariable = typechecker::next_type_variable(cache);
+                    let mutref = Type::TypeApplication(Box::new(Type::Ref(lifetime)), vec![typevariable]);
+                    let new_bindings = typechecker::try_unify(
+                        &mutref,
+                        &expected_field_type,
+                        location,
+                        cache,
+                    )?;
+
+                    find_member_access_impl_recursive(&args[0], field_name, expected_field_type, location, bindings, cache)
+                        .map(|mut bindings| { bindings.extend(new_bindings); bindings })
+                }
+                other => Err(make_error!(
+                    location,
+                    "Type {} is not a struct type and has no field named {}",
+                    other.display(cache),
+                    field_name
+                )),
+            }
         },
-        _ => Err(make_error!(
+        other => Err(make_error!(
             location,
             "Type {} is not a struct type and has no field named {}",
-            collection.display(cache),
+            other.display(cache),
             field_name
         )),
     }
@@ -226,7 +252,7 @@ fn find_field<'c>(
     cache: &mut ModuleCache<'c>,
 ) -> UnificationResult<'c> {
     let type_info = &cache[id];
-    let bindings = typechecker::type_application_bindings(type_info, args);
+    let bindings = typechecker::type_application_bindings(type_info, args, cache);
     let mut result_bindings = UnificationBindings::new(bindings.clone(), vec![]);
 
     let field_type = type_info.find_field(field_name).map(|(_, field)| field.field_type.clone());

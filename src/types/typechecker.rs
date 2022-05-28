@@ -63,6 +63,10 @@ pub type UnificationResult<'c> = Result<UnificationBindings, ErrorMessage<'c>>;
 
 type LevelBindings = Vec<(TypeVariableId, LetBindingLevel)>;
 
+/// Arbitrary limit of maximum recursive calls to functions like find_binding.
+/// Expected not to happen but leads to better errors than a stack overflow when it does.
+const RECURSION_LIMIT: u32 = 15;
+
 #[derive(Debug, Clone)]
 pub struct UnificationBindings {
     pub bindings: TypeBindings,
@@ -103,8 +107,20 @@ impl UnificationBindings {
 /// was one of the variables given in the definition of the user-defined-type:
 /// `type Foo var1 var2 ... varN = ...` and each `arg` corresponds to the generic argument
 /// of the type somewhere in the program, e.g: `foo : Foo arg1 arg2 ... argN`
-pub fn type_application_bindings<'c>(info: &TypeInfo<'c>, typeargs: &[Type]) -> TypeBindings {
-    info.args.iter().copied().zip(typeargs.iter().cloned()).collect()
+pub fn type_application_bindings<'c>(info: &TypeInfo<'c>, typeargs: &[Type], cache: &ModuleCache) -> TypeBindings {
+    info.args
+        .iter()
+        .copied()
+        .zip(typeargs.iter().cloned())
+        .filter_map(|(a, b)| {
+            let b = follow_bindings_in_cache(&b, cache);
+            if TypeVariable(a) != b {
+                Some((a, b))
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 
 /// Replace any typevars found in typevars_to_replace with the
@@ -277,12 +293,12 @@ fn type_variable_contains_any_typevars_from_list<'c>(
 }
 
 /// Helper function for getting the next type variable at the current level
-fn next_type_variable_id(cache: &mut ModuleCache) -> TypeVariableId {
+pub fn next_type_variable_id(cache: &mut ModuleCache) -> TypeVariableId {
     let level = LetBindingLevel(CURRENT_LEVEL.load(Ordering::SeqCst));
     cache.next_type_variable_id(level)
 }
 
-fn next_type_variable(cache: &mut ModuleCache) -> Type {
+pub fn next_type_variable(cache: &mut ModuleCache) -> Type {
     let level = LetBindingLevel(CURRENT_LEVEL.load(Ordering::SeqCst));
     cache.next_type_variable(level)
 }
@@ -430,21 +446,25 @@ impl OccursResult {
 /// track of which type variables to generalize later on. It also means
 /// that occurs should only be called during unification however.
 fn occurs<'b>(
-    id: TypeVariableId, level: LetBindingLevel, typ: &Type, bindings: &mut UnificationBindings,
+    id: TypeVariableId, level: LetBindingLevel, typ: &Type, bindings: &mut UnificationBindings, fuel: u32,
     cache: &mut ModuleCache<'b>,
 ) -> OccursResult {
+    if fuel == 0 {
+        panic!("Recursion limit reached in occurs");
+    }
+
+    let fuel = fuel - 1;
     match typ {
         Primitive(_) => OccursResult::does_not_occur(),
         UserDefined(_) => OccursResult::does_not_occur(),
 
-        TypeVariable(var_id) => typevars_match(id, level, *var_id, bindings, cache),
-        Function(function) => occurs(id, level, &function.return_type, bindings, cache)
-            .then(|| occurs(id, level, &function.environment, bindings, cache))
-            .then_all(&function.parameters, |param| occurs(id, level, param, bindings, cache)),
-        TypeApplication(typ, args) => {
-            occurs(id, level, typ, bindings, cache).then_all(args, |arg| occurs(id, level, arg, bindings, cache))
-        },
-        Ref(lifetime) => typevars_match(id, level, *lifetime, bindings, cache),
+        TypeVariable(var_id) => typevars_match(id, level, *var_id, bindings, fuel, cache),
+        Function(function) => occurs(id, level, &function.return_type, bindings, fuel, cache)
+            .then(|| occurs(id, level, &function.environment, bindings, fuel, cache))
+            .then_all(&function.parameters, |param| occurs(id, level, param, bindings, fuel, cache)),
+        TypeApplication(typ, args) => occurs(id, level, typ, bindings, fuel, cache)
+            .then_all(args, |arg| occurs(id, level, arg, bindings, fuel, cache)),
+        Ref(lifetime) => typevars_match(id, level, *lifetime, bindings, fuel, cache),
     }
 }
 
@@ -454,10 +474,10 @@ fn occurs<'b>(
 /// has the same Id as the needle TypeVariableId.
 fn typevars_match<'c>(
     needle: TypeVariableId, level: LetBindingLevel, haystack: TypeVariableId, bindings: &mut UnificationBindings,
-    cache: &mut ModuleCache<'c>,
+    fuel: u32, cache: &mut ModuleCache<'c>,
 ) -> OccursResult {
     match find_binding(haystack, bindings, cache) {
-        Bound(binding) => occurs(needle, level, &binding, bindings, cache),
+        Bound(binding) => occurs(needle, level, &binding, bindings, fuel, cache),
         Unbound(original_level, _) => {
             let binding = if level < original_level { vec![(needle, level)] } else { vec![] };
             OccursResult::new(needle == haystack, binding)
@@ -584,7 +604,7 @@ fn try_unify_type_variable_with_bindings<'c>(
             // Ensure not to create recursive bindings to the same variable
             let b = follow_bindings_in_cache_and_map(b, bindings, cache);
             if *a != b {
-                let result = occurs(id, a_level, &b, bindings, cache);
+                let result = occurs(id, a_level, &b, bindings, RECURSION_LIMIT, cache);
                 if result.occurs {
                     Err(make_error!(
                         location,
@@ -1317,7 +1337,11 @@ impl<'a> Inferable<'a> for ast::Definition<'a> {
 
         // The rhs of a Definition must be inferred at a greater LetBindingLevel than
         // the lhs below. Here we use level for the rhs and level - 1 for the lhs
-        let (t, traits) = infer(self.expr.as_mut(), cache);
+        let (mut t, traits) = infer(self.expr.as_mut(), cache);
+        if self.mutable {
+            let lifetime = next_type_variable_id(cache);
+            t = Type::TypeApplication(Box::new(Type::Ref(lifetime)), vec![t]);
+        }
 
         CURRENT_LEVEL.store(level.0 - 1, Ordering::SeqCst);
 
@@ -1579,8 +1603,14 @@ impl<'a> Inferable<'a> for ast::MemberAccess<'a> {
 
 impl<'a> Inferable<'a> for ast::Assignment<'a> {
     fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
-        let mut traits = infer(self.lhs.as_mut(), cache).1;
-        traits.append(&mut infer(self.rhs.as_mut(), cache).1);
+        let (lhs, mut traits) = infer(self.lhs.as_mut(), cache);
+        let (rhs, mut rhs_traits) = infer(self.rhs.as_mut(), cache);
+        traits.append(&mut rhs_traits);
+
+        let lifetime = next_type_variable_id(cache);
+        let mutref = Type::TypeApplication(Box::new(Type::Ref(lifetime)), vec![rhs]);
+        unify(&lhs, &mutref, self.location, cache);
+
         (Type::Primitive(PrimitiveType::UnitType), traits)
     }
 }

@@ -148,7 +148,7 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             }
         }
 
-        Self::new(typ, typevar_names, true, cache)
+        Self::new(typ, typevar_names, false, cache)
     }
 
     fn fmt_generalized_type(&self, typ: &GeneralizedType, f: &mut Formatter) -> std::fmt::Result {

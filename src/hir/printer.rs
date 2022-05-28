@@ -14,6 +14,17 @@ pub struct AstPrinter {
 }
 
 impl AstPrinter {
+    pub fn start(&mut self, ast: &impl FmtAst, f: &mut Formatter) -> fmt::Result {
+        ast.fmt_ast(self, f)?;
+
+        while let Some(ast) = self.queue.pop_front() {
+            write!(f, "\n\n")?;
+            ast.fmt_ast(self, f)?;
+        }
+
+        Ok(())
+    }
+
     fn block(&mut self, ast: &impl FmtAst, f: &mut Formatter) -> fmt::Result {
         self.indent_level += 1;
         ast.fmt_ast(self, f)?;
@@ -111,7 +122,11 @@ impl FmtAst for Variable {
             }
         }
 
-        write!(f, "v{}", self.definition_id.0)
+        if let Some(name) = &self.name {
+            write!(f, "{}_v{}", name, self.definition_id.0)
+        } else {
+            write!(f, "v{}", self.definition_id.0)
+        }
     }
 }
 
@@ -119,15 +134,9 @@ impl FmtAst for Lambda {
     fn fmt_ast(&self, printer: &mut AstPrinter, f: &mut Formatter) -> fmt::Result {
         write!(f, "(fn")?;
 
-        for (arg, mutable) in &self.args {
-            if *mutable {
-                write!(f, " (mut ")?;
-                arg.fmt_ast(printer, f)?;
-                write!(f, ")")?;
-            } else {
-                write!(f, " ")?;
-                arg.fmt_ast(printer, f)?;
-            }
+        for arg in &self.args {
+            write!(f, " ")?;
+            arg.fmt_ast(printer, f)?;
         }
 
         write!(f, " : {} = ", self.typ)?;
@@ -146,7 +155,12 @@ impl FmtAst for Definition {
     fn fmt_ast(&self, printer: &mut AstPrinter, f: &mut Formatter) -> fmt::Result {
         printer.already_printed.insert(self.variable);
 
-        write!(f, "v{} = ", self.variable.0)?;
+        if let Some(name) = &self.name {
+            write!(f, "{}_v{} = ", name, self.variable.0)?;
+        } else {
+            write!(f, "v{} = ", self.variable.0)?;
+        }
+
         printer.block(self.expr.as_ref(), f)
     }
 }
@@ -204,9 +218,9 @@ impl FmtAst for Assignment {
 
 impl FmtAst for MemberAccess {
     fn fmt_ast(&self, printer: &mut AstPrinter, f: &mut Formatter) -> fmt::Result {
-        write!(f, "(extract_field {} from ", self.member_index)?;
+        write!(f, "(")?;
         self.lhs.fmt_ast(printer, f)?;
-        write!(f, ")")
+        write!(f, " . {})", self.member_index)
     }
 }
 

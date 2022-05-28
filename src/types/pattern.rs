@@ -266,7 +266,7 @@ impl PatternStack {
 }
 
 fn new_pattern_variable<'c>(name: &str, location: Location<'c>, cache: &mut ModuleCache<'c>) -> DefinitionInfoId {
-    let id = cache.push_definition(name, false, location);
+    let id = cache.push_definition(name, location);
     cache.definition_infos[id.0].definition = Some(DefinitionKind::Parameter);
     id
 }

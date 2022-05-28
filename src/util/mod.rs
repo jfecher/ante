@@ -69,3 +69,10 @@ pub fn binary_name(module_name: &str) -> String {
         PathBuf::from(module_name).with_extension("").to_string_lossy().into()
     }
 }
+
+macro_rules! expect_opt {( $result:expr , $fmt_string:expr $( , $($msg:tt)* )? ) => ({
+    match $result {
+        Some(t) => t,
+        None => panic!($fmt_string $( , $($msg)* )? ),
+    }
+});}

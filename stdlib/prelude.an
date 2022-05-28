@@ -14,6 +14,7 @@ extern
     getchar: unit -> char
     exit: i32 -> never_returns
     malloc: usz -> Ptr a
+    calloc: /*items:*/usz - /*size:*/usz -> Ptr a
     realloc: Ptr a - usz -> Ptr a
     free: Ptr a -> i32
     memcpy: Ptr a - Ptr b - i32 -> Ptr a //dest
@@ -287,6 +288,8 @@ deref (x: ref t) : t =
 deref_ptr (p: Ptr t) : t =
     deref <| transmute p
 
+(@) = deref
+
 null (): Ptr a = transmute 0usz
 
 transmute (x: a) : b =
@@ -481,17 +484,23 @@ iter iterable f =
     | None -> ()
     | Some (rest, elem) ->
         f elem
-        iter rest
+        iter rest f
 
 type Range t = start: t, end: t
 
-impl Iterator (Range t) t given Int t with
+impl Iterator (Range usz) usz with
     next range =
         if range.start >= range.end
         then None
         else
             next = Range (range.start + 1) range.end
             Some (next, range.start)
+
+iter_range (from: usz) (to: usz) f : unit =
+    iter (Range from to) f
+
+repeat (count: usz) f : unit =
+    iter (Range 0 count) f
 
 // Iterating through an InFile iterates through each line
 // impl Iterator InFile string

@@ -1,0 +1,132 @@
+// A linear-scan mutable HashMap using a resize factor of 2.0
+type HashMap k v =
+    len: usz
+    capacity: usz
+    entries: Ptr (Entry k v)
+
+type Entry k v =
+    key: k
+    value: v
+    occupied: bool
+    tombstone: bool
+
+trait Hash t with
+    hash: t -> u64
+ 
+empty () = HashMap 0 0 (null ())
+ 
+clear (map: ref (HashMap k v)) : unit =
+    if map.capacity != 0 then
+        repeat map.capacity fn i ->
+            entry = mut deref_ptr <| offset map.entries i
+            entry.occupied := false
+            entry.tombstone := false
+
+resize (map: ref (HashMap k v)) (new_capacity: usz) : unit =
+    if new_capacity > @map.capacity then
+        new_memory = calloc new_capacity (size_of (MkType : Type (Entry k v)))
+
+        if new_memory == null () then
+            panic "Ran out of memory while resizing HashMap"
+
+        new_map = mut HashMap (@map.len) new_capacity new_memory
+
+        repeat (@map.capacity) fn i ->
+            entry: Entry k v = @map.entries#i
+            if entry.occupied then
+                insert new_map entry.key entry.value
+
+        map.capacity := new_capacity
+        map.entries := new_memory
+
+// Should we resize this map when pushing another element?
+should_resize (map: HashMap k v) : bool =
+    scale_factor: usz = 2
+    (map.len + 1) * scale_factor > map.capacity
+
+insert (map: ref (HashMap k v)) (key: k) (value: v) : unit =
+    if should_resize @map then
+        resize map (@map.capacity * 2 + 1)
+
+    h = cast (hash key) : usz % @map.capacity
+
+    iter_until (map: ref (HashMap k v)) (key: k) (value: v) (start: usz) (end: usz) : bool =
+        if start >= end then
+            false
+        else
+            entry_ptr = offset (@map.entries) start
+            entry_ref = transmute entry_ptr : ref (Entry k v)
+            entry = @entry_ref
+            if entry.occupied then
+                iter_until map key value (start + 1) end
+            else
+                entry_ref := Entry key value true false
+                true
+
+    if not iter_until map key value h (@map.capacity) then
+        if not iter_until map key value 0 h then
+            panic "Failed to insert entry into map"
+
+    map.len := @map.len + 1usz
+
+get_entry (map: HashMap k v) (key: k) : Maybe (Ptr (Entry k v)) =
+    // Return whether to continue by wrapping around the end, and the value if found
+    iter_until (map: HashMap k v) (key: k) (start: usz) (end: usz) : (bool, Maybe (Ptr (Entry k v))) =
+        if start >= end then
+            (true, None)
+        else
+            entry_ptr = offset map.entries start
+            entry = deref_ptr entry_ptr
+            if entry.occupied and entry.key == key then
+                (false, Some entry_ptr)
+            else if entry.tombstone then
+                iter_until map key (start + 1) end
+            else
+                (false, None)
+
+    h = cast (hash key) : usz % map.capacity
+    match iter_until map key h map.capacity
+    | (_, Some value) -> Some value
+    | (false, _) -> None
+    | (true, _) ->
+        match iter_until map key 0 h
+        | (_, Some value) -> Some value
+        | (false, _) -> None
+        | (true, _) -> None
+
+get (map: HashMap k v) (key: k) : Maybe v =
+    match get_entry map key
+    | Some entry -> Some (deref_ptr entry).value
+    | None -> None
+
+
+remove (map: ref (HashMap k v)) (key: k) : Maybe v =
+    match get_entry map key
+    | None -> None
+    | Some e2 ->
+        entry = mut e2
+        e = deref entry
+        entry := Entry e.value e.key false true
+        map.len := map.len - 1
+        Some e.value
+
+impl Print (HashMap k v) given Print k, Print v with
+    printne map =
+        putchar '['
+
+        helper (map: HashMap k v) (did_first: bool) (i: usz) =
+            if i < map.capacity then
+                entry = map.entries#i
+                if entry.occupied then
+                    if did_first then
+                        printne ", "
+
+                    printne entry.key
+                    printne " -> "
+                    printne entry.value
+
+                printed = did_first or entry.occupied
+                helper map printed (i + 1)
+
+        helper map false
+        putchar ']'

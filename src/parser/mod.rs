@@ -158,9 +158,8 @@ parser!(pattern_pair loc =
 parser!(type_annotation_pattern loc =
     lhs <- or(&[pattern_function_call, pattern_argument], "pattern");
     _ <- expect(Token::Colon);
-    mutable <- maybe(expect(Token::Mut));
     rhs !<- parse_type;
-    Ast::type_annotation(lhs, rhs, mutable.is_some(), loc)
+    Ast::type_annotation(lhs, rhs, loc)
 );
 
 fn parenthesized_irrefutable_pattern<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
@@ -269,7 +268,7 @@ parser!(declaration loc -> 'b ast::TypeAnnotation<'b> =
     lhs <- pattern_argument;
     _ <- expect(Token::Colon);
     rhs !<- parse_type;
-    ast::TypeAnnotation { lhs: Box::new(lhs), rhs, mutable: false, location: loc, typ: None }
+    ast::TypeAnnotation { lhs: Box::new(lhs), rhs, location: loc, typ: None }
 );
 
 parser!(trait_impl loc =
@@ -489,9 +488,8 @@ parser!(at_expr loc =
 parser!(type_annotation loc =
     lhs <- or(&[function_call, function_argument], "term");
     _ <- expect(Token::Colon);
-    mutable <- maybe(expect(Token::Mut));
     rhs <- parse_type;
-    Ast::type_annotation(lhs, rhs, mutable.is_some(), loc)
+    Ast::type_annotation(lhs, rhs, loc)
 );
 
 fn parse_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
