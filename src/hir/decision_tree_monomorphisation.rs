@@ -139,7 +139,10 @@ impl<'c> Context<'c> {
                 ast::LiteralKind::Integer(x, _) => (*x).try_into().unwrap(), // TODO: larger tags
                 ast::LiteralKind::Float(_) => todo!(),
                 ast::LiteralKind::String(_) => todo!(),
-                ast::LiteralKind::Char(x) => (*x).try_into().unwrap(),
+                ast::LiteralKind::Char(x) => {
+                    let codepoint: u32 = (*x).into();
+                    codepoint.try_into().unwrap()
+                },
                 ast::LiteralKind::Bool(_) => unreachable!(),
                 ast::LiteralKind::Unit => unreachable!(),
             },
