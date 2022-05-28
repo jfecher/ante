@@ -8,7 +8,7 @@ plus4 = foo 2 2 _
 print <| plus4 2
 print <| plus2 38 2
 
-4 |> ((+) _ 2) |> print
+4 |> (_ + 2) |> print
 
 // args: --delete-binary
 // expected stdout:

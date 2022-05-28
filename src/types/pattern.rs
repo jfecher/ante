@@ -489,7 +489,7 @@ impl PatternMatrix {
                 let arity = fields[0].len();
                 let mut fields = collect_fields(fields);
 
-                let branch = self.specialize(tag, arity, &mut fields, cache, location).compile(cache, location);
+                let branch = self.specialize(&tag, arity, &mut fields, cache, location).compile(cache, location);
 
                 // PatternStacks store patterns in reverse order for faster prepending.
                 // Reversing fields here undoes this so that only the natural order is
@@ -863,7 +863,13 @@ fn set_type<'c>(id: DefinitionInfoId, expected: &Type, location: Location<'c>, c
     match &definition.typ {
         Some(definition_type) => {
             let definition_type = definition_type.as_monotype().clone();
-            typechecker::unify(&definition_type, expected, location, cache);
+            typechecker::unify(
+                &definition_type,
+                expected,
+                location,
+                cache,
+                "Pattern type $2 does not match the definition's type $1",
+            );
         },
         None => {
             definition.typ = Some(GeneralizedType::MonoType(expected.clone()));
@@ -884,7 +890,13 @@ fn unify_constructor_type<'c, 'a>(
     // If it is not a function, there are no arguments, so there's no need to unify the type with
     // the expected type. We could unify to assert they're equal but this would incur a runtime cost.
     if let Type::Function(function) = constructor {
-        typechecker::unify(&function.return_type, expected, location, cache);
+        typechecker::unify(
+            &function.return_type,
+            expected,
+            location,
+            cache,
+            "Expected type $2 does not match the pattern's return type $1",
+        );
     }
 }
 

@@ -144,7 +144,7 @@ impl<'c> Context<'c> {
                 for bindings in self.monomorphisation_bindings.iter().rev() {
                     match bindings.get(&id) {
                         Some(TypeVariable(id2) | Ref(id2)) => return self.find_binding(*id2, fuel),
-                        Some(binding) => return Ok(binding),
+                        Some(binding) => return Ok(&binding),
                         None => (),
                     }
                 }
@@ -608,9 +608,15 @@ impl<'c> Context<'c> {
 
         if definition.trait_impl.is_some() {
             let definition_type = definition.typ.as_ref().unwrap().remove_forall();
-            let bindings = typechecker::try_unify(typ, definition_type, definition.location, &mut self.cache)
-                .map_err(|error| eprintln!("{}", error))
-                .expect("Unification error during monomorphisation");
+            let bindings = typechecker::try_unify(
+                typ,
+                definition_type,
+                definition.location,
+                &mut self.cache,
+                "Unification error during monomorphisation: Could not unify definition $2 with instantiation $1",
+            )
+            .map_err(|error| eprintln!("{}", error))
+            .expect("Unification error during monomorphisation");
 
             self.monomorphisation_bindings.push(Rc::new(bindings.bindings));
         }
@@ -1047,7 +1053,9 @@ impl<'c> Context<'c> {
         }
     }
 
-    fn unpack_environment(&mut self, closure_environment: &ClosureEnvironment, definitions: &mut Vec<hir::Ast>) -> hir::DefinitionInfo {
+    fn unpack_environment(
+        &mut self, closure_environment: &ClosureEnvironment, definitions: &mut Vec<hir::Ast>,
+    ) -> hir::DefinitionInfo {
         let mut env = self.fresh_variable();
         env.name = Some("env".to_string()); // Not named in source code, but oh well
         let first_env = env.clone();
@@ -1072,7 +1080,7 @@ impl<'c> Context<'c> {
                 env = hir::Variable { definition_id: rest_env_var, definition: None, name: None }.into();
                 hir::Variable { definition_id, definition: None, name: None }
             };
-            
+
             let info = &self.cache[*inner_var];
             let typ = info.typ.as_ref().unwrap().as_monotype();
             let typ = self.follow_all_bindings(typ);
@@ -1322,13 +1330,9 @@ impl<'c> Context<'c> {
 
     fn get_field_offset(&self, collection_type: &hir::Type, field_index: u32) -> u32 {
         match collection_type {
-            Type::Primitive(_)
-            | Type::Function(_) => unreachable!(),
+            Type::Primitive(_) | Type::Function(_) => unreachable!(),
             Type::Tuple(fields) => {
-                fields.iter()
-                    .map(|field| self.size_of_monomorphised_type(field))
-                    .take(field_index as usize)
-                    .sum()
+                fields.iter().map(|field| self.size_of_monomorphised_type(field)).take(field_index as usize).sum()
             },
         }
     }
@@ -1339,12 +1343,10 @@ impl<'c> Context<'c> {
         let index = self.get_field_index(&member_access.field, &lhs_type);
 
         let ref_type = match lhs_type {
-            types::Type::TypeApplication(constructor, mut args) => {
-                match constructor.as_ref() {
-                    types::Type::Ref(_) => Some(args.remove(0)),
-                    _ => None,
-                }
-            }
+            types::Type::TypeApplication(constructor, mut args) => match constructor.as_ref() {
+                types::Type::Ref(_) => Some(args.remove(0)),
+                _ => None,
+            },
             _ => None,
         };
 

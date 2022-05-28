@@ -6,9 +6,8 @@ print num
 mutate num
 print num
 
-mutate (n: mut i32) =
-    // Test `mut i32` -> `i32` conversion
-    x = double n
+mutate (n: ref i32) =
+    x = double @n
     n := x
 
 double x = x * 2

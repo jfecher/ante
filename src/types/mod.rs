@@ -17,6 +17,7 @@ pub mod traits;
 pub mod typechecker;
 pub mod typed;
 pub mod typeprinter;
+mod error;
 
 /// The type to default any Inferred integer types to that were
 /// not bound to any other concrete integer type (e.g. via `1 + 2u8`).

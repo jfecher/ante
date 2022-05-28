@@ -370,6 +370,9 @@ impl Print (Maybe a) given Print a with
         | Some a -> printne a
         | None -> printne "None"
 
+impl Print (ref a) given Print a with
+    printne r = printne @r
+
 unwrap (m: Maybe t) : t =
     match m
     | Some x -> x

@@ -12,7 +12,7 @@ main () =
     // Making this mutable helps prevent inlining
     offset = mut 1
     count_down 3 fn x ->
-        print (x + offset)
+        print (x + @offset)
 
     print_offset _ = print offset
     closure = count_down _ print_offset

@@ -179,7 +179,7 @@ fn find_int_constraint_impl<'c>(
             // unbound, bind it to the default integer type (i32) here.
             // try_unify is used here to avoid performing the binding in case this impl isn't
             // selected to be used.
-            typechecker::try_unify(&typ, &DEFAULT_INTEGER_TYPE, constraint.locate(cache), cache)
+            typechecker::try_unify(&typ, &DEFAULT_INTEGER_TYPE, constraint.locate(cache), cache, "never shown")
         },
         _ => Err(make_error!(
             constraint.locate(cache),
@@ -205,8 +205,8 @@ fn find_member_access_impl<'c>(
 }
 
 fn find_member_access_impl_recursive<'c>(
-    typ: &Type, field_name: &str, expected_field_type: &Type,
-    location: Location<'c>, bindings: &UnificationBindings, cache: &mut ModuleCache<'c>,
+    typ: &Type, field_name: &str, expected_field_type: &Type, location: Location<'c>, bindings: &UnificationBindings,
+    cache: &mut ModuleCache<'c>,
 ) -> UnificationResult<'c> {
     let typ = typechecker::follow_bindings_in_cache_and_map(typ, bindings, cache);
     match typ {
@@ -214,7 +214,9 @@ fn find_member_access_impl_recursive<'c>(
         Type::TypeApplication(typ, args) => {
             let typ = typechecker::follow_bindings_in_cache_and_map(&typ, bindings, cache);
             match &typ {
-                Type::UserDefined(_) => find_member_access_impl_recursive(&typ, field_name, expected_field_type, location, bindings, cache),
+                Type::UserDefined(_) => {
+                    find_member_access_impl_recursive(&typ, field_name, expected_field_type, location, bindings, cache)
+                },
                 // member acccess on refs yields a ref to the field
                 Type::Ref(_) => {
                     let lifetime = typechecker::next_type_variable_id(cache);
@@ -225,11 +227,22 @@ fn find_member_access_impl_recursive<'c>(
                         &expected_field_type,
                         location,
                         cache,
+                        "Expected a reference to a field $1, but found $2 instead",
                     )?;
 
-                    find_member_access_impl_recursive(&args[0], field_name, expected_field_type, location, bindings, cache)
-                        .map(|mut bindings| { bindings.extend(new_bindings); bindings })
-                }
+                    find_member_access_impl_recursive(
+                        &args[0],
+                        field_name,
+                        expected_field_type,
+                        location,
+                        bindings,
+                        cache,
+                    )
+                    .map(|mut bindings| {
+                        bindings.extend(new_bindings);
+                        bindings
+                    })
+                },
                 other => Err(make_error!(
                     location,
                     "Type {} is not a struct type and has no field named {}",
@@ -265,6 +278,7 @@ fn find_field<'c>(
                 &mut result_bindings,
                 location,
                 cache,
+                "Expected field of type $2, but found $1",
             )?;
 
             // Filter out only the new bindings we did not start with since we started with
@@ -372,6 +386,7 @@ fn find_matching_normal_impls<'c>(
                 bindings.clone(),
                 location,
                 cache,
+                "never shown",
             )
             .ok()?;
 

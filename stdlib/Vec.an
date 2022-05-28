@@ -7,7 +7,7 @@ empty () = Vec (null ()) 0 0
 
 of iterable =
     v = mut empty ()
-    fill v iterable
+    @fill v iterable
 
 is_empty v = v.len == 0
 
@@ -18,12 +18,12 @@ len v = v.len
 capacity v = v.cap
 
 //Fill Vec with items from the iterable
-fill (v: mut Vec t) iterable : Vec t =
+fill (v: ref Vec t) iterable : ref Vec t =
     iter iterable (push v _)
     v
 
 //reserve numElements in Vec v, elements will be uninitialized
-reserve (v: mut Vec t) (numElems: usz) : unit =
+reserve (v: ref (Vec t)) (numElems: usz) : unit =
     if v.len + numElems > v.cap then
         size = (v.cap + numElems) * size_of (MkType: Type t)
         ptr = realloc (v.data) size
@@ -37,7 +37,7 @@ reserve (v: mut Vec t) (numElems: usz) : unit =
 
 //push an element onto the end of the vector.
 //resizes if necessary
-push (v: mut Vec t) (elem: t) : unit =
+push (v: ref (Vec t)) (elem: t) : unit =
     if v.len >= v.cap then
         reserve v (if v.cap == 0usz then 1 else v.cap)
 
@@ -46,7 +46,7 @@ push (v: mut Vec t) (elem: t) : unit =
 
 //pop the last element off if it exists
 //this will never resize the vector.
-pop (v: mut Vec t) : Maybe t =
+pop (v: ref (Vec t)) : Maybe t =
     if is_empty v then None
     else
         v.len := v.len - 1
@@ -54,7 +54,7 @@ pop (v: mut Vec t) : Maybe t =
 
 //remove the element at the given index and return it.
 //will error if the index is out of bounds.
-remove_index (v: mut Vec t) (idx:usz) : t =
+remove_index (v: ref (Vec t)) (idx:usz) : t =
     if idx == v.len - 1 then
         v.len := v.len - 1
     else if idx >= 0 and idx < v.len - 1 then
@@ -71,7 +71,7 @@ remove_index (v: mut Vec t) (idx:usz) : t =
 //the vector or none if the element was not found.
 //Uses == to determine element equality.
 //returns the index where the element was found.
-remove_first (v: mut Vec t) (elem: t) : Maybe usz =
+remove_first (v: ref (Vec t)) (elem: t) : Maybe usz =
     go i =
         if i >= v.len then None
         else if elem == v.data#i then
@@ -84,7 +84,7 @@ remove_first (v: mut Vec t) (elem: t) : Maybe usz =
 //Remove the given indices from the vector
 //Expects the indices to be in sorted order.
 //Will error if any index is out of bounds.
-remove_indices (v: mut Vec t) (idxs: Vec usz) : unit =
+remove_indices (v: ref (Vec t)) (idxs: Vec usz) : unit =
     moved = mut 0
     iter (indices idxs) fn i ->
         cur = idxs#i
@@ -92,21 +92,21 @@ remove_indices (v: mut Vec t) (idxs: Vec usz) : unit =
         if cur < 0 or cur >= v.len then
             panic "Vec.remove: index $cur out of bounds for Vec of length ${v.len}"
 
-        moved := moved + 1
+        moved := @moved + 1
         if i != idxs.len - 1 then
             nxt = idxs#(i + 1)
             iter_range (cur + 1) nxt fn j ->
-                v.data#(j - moved) := v.data#j
+                v.data#(j - @moved) := v.data#j
         else
             iter_range (cur + 1) v.len fn j ->
-                v.data#(j - moved) := v.data#j
+                v.data#(j - @moved) := v.data#j
 
-    v.len := v.len - moved
+    v.len := v.len - @moved
 
 //remove all matching elements from the vector and
 //return the number of elements removed.
 //Uses = to determine element equality.
-remove_all (v: mut Vec t) (elem: t) : usz =
+remove_all (v: ref (Vec t)) (elem: t) : usz =
     idxs = mut empty ()
     iter (indices v) fn i ->
         if elem == v.data#i then
@@ -119,7 +119,7 @@ remove_all (v: mut Vec t) (elem: t) : usz =
 //Remove an element by swapping it with the last element in O(1) time.
 //Returns true if a swap was performed or false otherwise.
 //Will not swap if the given index is the index of the last element.
-swap_last (v: mut Vec t) (idx:usz) : bool =
+swap_last (v: ref (Vec t)) (idx:usz) : bool =
     if idx >= v.len or idx + 1 == v.len then false
     else
         v.len := v.len - 1
