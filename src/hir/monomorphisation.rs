@@ -42,18 +42,28 @@ pub struct Context<'c> {
     /// Compile-time mapping of variable -> definition for impls that were resolved
     /// after type inference. This is needed for definitions that are polymorphic in
     /// the impls they may use within.
-    direct_impl_mappings: Vec<DirectImpls>,
-    indirect_impl_mappings: Vec<IndirectImpls>,
-    direct_given_impl_mappings: Vec<DirectGivenImpls>,
-    indirect_given_impl_mappings: Vec<IndirectGivenImpls>,
+    impl_mappings: Vec<Impls>,
+    // direct_given_impl_mappings: Vec<DirectGivenImpls>,
+    // indirect_given_impl_mappings: Vec<IndirectGivenImpls>,
 
     next_id: usize,
 }
 
-type DirectImpls = HashMap<VariableId, DefinitionInfoId>;
-type IndirectImpls = HashMap<(VariableId, TraitConstraintId), ImplInfoId>;
-type DirectGivenImpls = HashMap<VariableId, Vec<(TraitConstraintId, ImplInfoId)>>;
-type IndirectGivenImpls = HashMap<TraitConstraintId, Vec<(VariableId, TraitConstraintId, ImplInfoId)>>;
+type Impls = HashMap<VariableId, Impl>;
+// type DirectGivenImpls = HashMap<VariableId, Vec<(TraitConstraintId, ImplInfoId)>>;
+// type IndirectGivenImpls = HashMap<TraitConstraintId, Vec<(VariableId, TraitConstraintId, ImplInfoId)>>;
+
+#[derive(Debug, Default)]
+struct Impl {
+    direct_binding: Option<DefinitionInfoId>,
+    indirect: HashMap<TraitConstraintId, Vec<(Vec<TraitConstraintId>, ImplInfoId)>>,
+}
+
+impl Impl {
+    fn find_indirect(&self, id: TraitConstraintId) -> &[(Vec<TraitConstraintId>, ImplInfoId)] {
+        expect_opt!(self.indirect.get(&id), "No impl for key {:?}. Current mapping:\n{:?}", id, self)
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum Definition {
@@ -87,10 +97,7 @@ impl<'c> Context<'c> {
             monomorphisation_bindings: vec![],
             definitions: HashMap::new(),
             types: HashMap::new(),
-            direct_impl_mappings: vec![HashMap::new()],
-            indirect_impl_mappings: vec![HashMap::new()],
-            direct_given_impl_mappings: vec![HashMap::new()],
-            indirect_given_impl_mappings: vec![HashMap::new()],
+            impl_mappings: vec![HashMap::new()],
             next_id: 0,
             cache,
         }
@@ -138,12 +145,12 @@ impl<'c> Context<'c> {
 
         let fuel = fuel - 1;
         match &self.cache.type_bindings[id.0] {
-            Bound(TypeVariable(id2) | Ref(id2)) => self.find_binding(*id2, fuel),
+            Bound(TypeVariable(id2) | Ref(id2) | Int(id2)) => self.find_binding(*id2, fuel),
             Bound(binding) => Ok(binding),
             Unbound(..) => {
                 for bindings in self.monomorphisation_bindings.iter().rev() {
                     match bindings.get(&id) {
-                        Some(TypeVariable(id2) | Ref(id2)) => return self.find_binding(*id2, fuel),
+                        Some(TypeVariable(id2) | Ref(id2) | Int(id2)) => return self.find_binding(*id2, fuel),
                         Some(binding) => return Ok(&binding),
                         None => (),
                     }
@@ -200,6 +207,24 @@ impl<'c> Context<'c> {
                 TypeApplication(Box::new(con), args)
             },
             Ref(_) => typ.clone(),
+            Struct(fields, id) => {
+                match self.find_binding(*id, fuel) {
+                    Ok(binding) => self.follow_all_bindings_inner(binding, fuel),
+                    Err(_) => {
+                        let fields = fields.iter().map(|(name, typ)| {
+                            (name.clone(), self.follow_all_bindings_inner(typ, fuel))
+                        }).collect();
+
+                        Struct(fields, *id)
+                    },
+                }
+            },
+            Int(id) => {
+                match self.find_binding(*id, fuel) {
+                    Ok(binding) => self.follow_all_bindings_inner(binding, fuel),
+                    Err(id) => Int(id),
+                }
+            }
         }
     }
 
@@ -291,6 +316,23 @@ impl<'c> Context<'c> {
             },
 
             Ref(_) => Self::ptr_size(),
+            Struct(fields, rest) => {
+                if let Ok(binding) = self.find_binding(*rest, RECURSION_LIMIT) {
+                    let binding = binding.clone();
+                    self.size_of_type(&binding)
+                } else {
+                    fields.iter().map(|(_, field)| self.size_of_type(field)).sum()
+                }
+            },
+            Int(id) => {
+                if let Ok(binding) = self.find_binding(*id, RECURSION_LIMIT) {
+                    let binding = binding.clone();
+                    self.size_of_type(&binding)
+                } else {
+                    // Default to i32
+                    32 / 8
+                }
+            }
         }
     }
 
@@ -471,6 +513,23 @@ impl<'c> Context<'c> {
                     "Kind error during monomorphisation. Attempted to translate a `ref` without a type argument"
                 )
             },
+            Struct(fields, rest) => {
+                if let Ok(binding) = self.find_binding(*rest, fuel) {
+                    let binding = binding.clone();
+                    return self.convert_type_inner(&binding, fuel);
+                }
+                
+                Type::Tuple(fmap(fields, |(_, field)| self.convert_type_inner(field, fuel)))
+            },
+            Int(id) => {
+                if let Ok(binding) = self.find_binding(*id, fuel) {
+                    let binding = binding.clone();
+                    return self.convert_type_inner(&binding, fuel);
+                }
+
+                // Default ints to i32 if needed
+                Type::Primitive(hir::PrimitiveType::Integer(IntegerKind::I32))
+            }
         }
     }
 
@@ -525,39 +584,27 @@ impl<'c> Context<'c> {
         }
     }
 
-    fn add_required_impls(&mut self, required_impls: &[RequiredImpl], from: VariableId) {
-        let new_direct = self.direct_impl_mappings.last_mut().unwrap();
-        let new_indirect = self.indirect_impl_mappings.last_mut().unwrap();
-        let new_direct_given = self.direct_given_impl_mappings.last_mut().unwrap();
-        let new_indirect_given = self.indirect_given_impl_mappings.last_mut().unwrap();
-
-        for (callsite, impls) in new_direct_given.iter() {
-            if *callsite == from {
-                for (constraint_id, impl_id) in impls {
-                    new_indirect.insert((from, *constraint_id), *impl_id);
-                }
-            }
-        }
+    fn add_required_impls(&mut self, required_impls: &[RequiredImpl]) {
+        let new_impls = self.impl_mappings.last_mut().unwrap();
 
         for required_impl in required_impls {
-            match required_impl.callsite {
+            match &required_impl.callsite {
                 Callsite::Direct(callsite) => {
-                    let binding = self.cache.find_method_in_impl(callsite, required_impl.binding);
-                    new_direct.insert(callsite, binding);
+                    let binding = self.cache.find_method_in_impl(*callsite, required_impl.binding);
+                    new_impls.entry(*callsite)
+                        .or_default()
+                        .direct_binding = Some(binding);
                 },
-                Callsite::Indirect(callsite, id) => {
-                    new_indirect.insert((callsite, id), required_impl.binding);
-                },
-                Callsite::GivenDirect(callsite, origin) => {
-                    // TODO: Review this
-                    if callsite == from {
-                        new_indirect.insert((callsite, origin), required_impl.binding);
-                    } else {
-                        new_direct_given.entry(callsite).or_default().push((origin, required_impl.binding));
-                    }
-                },
-                Callsite::GivenIndirect(callsite, key, origin) => {
-                    new_indirect_given.entry(key).or_default().push((callsite, origin, required_impl.binding));
+                Callsite::Indirect(callsite, ids) => {
+                    let mut ids = ids.clone();
+                    let top = ids.remove(0);
+
+                    new_impls.entry(*callsite)
+                        .or_default()
+                        .indirect
+                        .entry(top)
+                        .or_default()
+                        .push((ids, required_impl.binding));
                 },
             }
         }
@@ -569,11 +616,11 @@ impl<'c> Context<'c> {
     /// definition. This is currently only done for trait functions/values to
     /// point them to impls that actually have definitions.
     fn get_definition_id(&self, variable: &ast::Variable<'c>) -> DefinitionInfoId {
-        self.direct_impl_mappings
+        self.impl_mappings
             .last()
             .unwrap()
             .get(&variable.id.unwrap())
-            .copied()
+            .and_then(|impl_| impl_.direct_binding)
             .unwrap_or_else(|| variable.definition.unwrap())
     }
 
@@ -581,7 +628,7 @@ impl<'c> Context<'c> {
         let required_impls = self.cache[variable.id.unwrap()].required_impls.clone();
 
         let id = variable.id.unwrap();
-        self.add_required_impls(&required_impls, id);
+        self.add_required_impls(&required_impls);
 
         // The definition to compile is either the corresponding impl definition if this
         // variable refers to a trait function, or otherwise it is the regular definition of this variable.
@@ -635,10 +682,7 @@ impl<'c> Context<'c> {
     }
 
     fn add_required_traits(&mut self, definition: &crate::cache::DefinitionInfo, variable_id: VariableId) {
-        let mut new_direct = HashMap::new();
-        let mut new_indirect = HashMap::new();
-        let mut new_given_direct: DirectGivenImpls = HashMap::new();
-        let mut new_given_indirect: IndirectGivenImpls = HashMap::new();
+        let mut new_impls = Impls::new();
 
         for required_trait in &definition.required_traits {
             // If the impl has 0 definitions we can't attach it to any variables
@@ -646,50 +690,65 @@ impl<'c> Context<'c> {
                 continue;
             }
 
-            let key = (variable_id, required_trait.signature.id);
-            let binding = match self.indirect_impl_mappings.last().unwrap().get(&key) {
-                Some(binding) => *binding,
+            let impls = self.impl_mappings.last().unwrap().get(&variable_id);
+
+            let impls = match impls {
+                Some(binding) => binding,
                 None => {
                     let trait_ = required_trait.display(&self.cache);
-                    panic!("Monomorphisation: no entry found for indirect impl key {:?} for trait {}", key, trait_)
+                    panic!("Monomorphisation: no entry found for impl key {:?} for trait {}", variable_id, trait_)
                 },
             };
 
-            match required_trait.callsite {
-                Callsite::Direct(callsite) => {
-                    let binding = self.cache.find_method_in_impl(callsite, binding);
-                    new_direct.insert(callsite, binding);
-                },
-                Callsite::Indirect(callsite, id) => {
-                    new_indirect.insert((callsite, id), binding);
-                },
-                Callsite::GivenDirect(_, _) => unreachable!(),
-                Callsite::GivenIndirect(_, _, _) => unreachable!(),
-            }
+            let mut bindings = impls.find_indirect(required_trait.signature.id).to_vec();
 
-            for (id, impls) in self.indirect_given_impl_mappings.last().unwrap() {
-                if *id == key.1 {
-                    for given_impl in impls {
-                        match required_trait.callsite {
-                            Callsite::Direct(callsite) => {
-                                let id_and_impl = (given_impl.1, given_impl.2);
-                                new_given_direct.entry(callsite).or_default().push(id_and_impl);
-                            },
-                            Callsite::Indirect(_, id) => {
-                                new_given_indirect.entry(id).or_default().push(*given_impl);
-                            },
-                            Callsite::GivenDirect(..) => unreachable!(),
-                            Callsite::GivenIndirect(..) => unreachable!(),
+            match &required_trait.callsite {
+                Callsite::Direct(callsite) => {
+                    for (mut path, impl_) in bindings.to_vec() {
+                        if let Some(top) = (!path.is_empty()).then(|| path.remove(0)) {
+                            new_impls.entry(*callsite)
+                                .or_default()
+                                .indirect 
+                                .entry(top)
+                                .or_default()
+                                .push((path, impl_));
+                        } else {
+                            let binding = self.cache.find_method_in_impl(*callsite, impl_);
+                            new_impls.entry(*callsite)
+                                .or_default()
+                                .direct_binding = Some(binding);
                         }
                     }
-                }
+                },
+                Callsite::Indirect(callsite, ids) => {
+                    if ids.len() == 1 {
+                        let top = ids.last().cloned().unwrap();
+                        new_impls.entry(*callsite)
+                            .or_default()
+                            .indirect
+                            .entry(top)
+                            .or_default()
+                            .append(&mut bindings);
+                    } else {
+                        let mut ids = ids.clone();
+                        let top = ids.remove(0);
+
+                        for (path, _) in &mut bindings {
+                            path.append(&mut ids.clone());
+                        }
+
+                        new_impls.entry(*callsite)
+                            .or_default()
+                            .indirect
+                            .entry(top)
+                            .or_default()
+                            .append(&mut bindings.to_vec());
+                    }
+                },
             }
         }
 
-        self.direct_impl_mappings.push(new_direct);
-        self.indirect_impl_mappings.push(new_indirect);
-        self.direct_given_impl_mappings.push(new_given_direct);
-        self.indirect_given_impl_mappings.push(new_given_indirect);
+        self.impl_mappings.push(new_impls);
     }
 
     fn monomorphise_definition_id(
@@ -753,10 +812,7 @@ impl<'c> Context<'c> {
             None => unreachable!("No definition for {} {}", info.name, id.0),
         };
 
-        self.direct_impl_mappings.pop();
-        self.indirect_impl_mappings.pop();
-        self.direct_given_impl_mappings.pop();
-        self.indirect_given_impl_mappings.pop();
+        self.impl_mappings.pop();
 
         self.pop_monomorphisation_bindings(instantiation_mapping, info);
         value
@@ -829,7 +885,12 @@ impl<'c> Context<'c> {
     ) -> Definition {
         let value = self.monomorphise(&*definition.expr);
 
-        let expr = Box::new(value);
+        let mut expr = Box::new(value);
+
+        if definition.mutable {
+            expr = Box::new(hir::Ast::Builtin(hir::Builtin::StackAlloc(expr)));
+        }
+
         let variable = definition_id;
         let new_definition = hir::Ast::Definition(hir::Definition { variable, expr, name: Some(name.clone()) });
 
@@ -1319,7 +1380,15 @@ impl<'c> Context<'c> {
 
         match self.follow_bindings_shallow(typ) {
             Ok(UserDefined(id)) => self.cache[*id].find_field(field_name).unwrap().0,
-            Ok(TypeApplication(typ, _)) => self.get_field_index(field_name, typ),
+            Ok(TypeApplication(typ, args)) => {
+                match self.follow_bindings_shallow(typ) {
+                    // Pass through ref types transparently
+                    Ok(types::Type::Ref(_)) => self.get_field_index(field_name, &args[0]),
+                    // These last 2 cases are the same. They're duplicated to avoid another follow_bindings_shallow call.
+                    Ok(typ) => self.get_field_index(field_name, typ),
+                    _ => self.get_field_index(field_name, typ),
+                }
+            }
             _ => unreachable!(
                 "get_field_index called with type {} that doesn't have a '{}' field",
                 typ.display(&self.cache),
@@ -1343,20 +1412,27 @@ impl<'c> Context<'c> {
         let index = self.get_field_index(&member_access.field, &lhs_type);
 
         let ref_type = match lhs_type {
-            types::Type::TypeApplication(constructor, mut args) => match constructor.as_ref() {
-                types::Type::Ref(_) => Some(args.remove(0)),
+            types::Type::TypeApplication(constructor, args) => match constructor.as_ref() {
+                types::Type::Ref(_) => Some(self.convert_type(&args[0])),
                 _ => None,
             },
             _ => None,
         };
 
         // If our collection type is a ref we do a ptr offset instead of a direct access
-        if let Some(ref_type) = ref_type {
-            let ref_type = self.convert_type(&ref_type);
-            let offset = self.get_field_offset(&ref_type, index);
-            offset_ptr(lhs, offset as u64)
-        } else {
-            self.extract(lhs, index)
+        match (ref_type, member_access.is_offset) {
+            (Some(elem_type), true) => {
+                let offset = self.get_field_offset(&elem_type, index);
+                offset_ptr(lhs, offset as u64)
+            },
+            (Some(elem_type), false) => {
+                let lhs = hir::Ast::Builtin(hir::Builtin::Deref(Box::new(lhs), elem_type));
+                self.extract(lhs, index)
+            },
+            _ => {
+                assert!(!member_access.is_offset);
+                self.extract(lhs, index)
+            }
         }
     }
 

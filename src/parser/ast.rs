@@ -183,6 +183,7 @@ pub struct Match<'a> {
 #[allow(clippy::enum_variant_names)]
 pub enum Type<'a> {
     Integer(IntegerKind, Location<'a>),
+    PolymorphicInt(Location<'a>),
     Float(Location<'a>),
     Char(Location<'a>),
     String(Location<'a>),
@@ -324,6 +325,8 @@ pub struct MemberAccess<'a> {
     pub lhs: Box<Ast<'a>>,
     pub field: String,
     pub location: Location<'a>,
+    /// True if this is an offset .& operation
+    pub is_offset: bool,
     pub typ: Option<types::Type>,
 }
 
@@ -589,8 +592,8 @@ impl<'a> Ast<'a> {
         Ast::Extern(Extern { declarations, location, level: None, typ: None })
     }
 
-    pub fn member_access(lhs: Ast<'a>, field: String, location: Location<'a>) -> Ast<'a> {
-        Ast::MemberAccess(MemberAccess { lhs: Box::new(lhs), field, location, typ: None })
+    pub fn member_access(lhs: Ast<'a>, field: String, is_offset: bool, location: Location<'a>) -> Ast<'a> {
+        Ast::MemberAccess(MemberAccess { lhs: Box::new(lhs), field, is_offset, location, typ: None })
     }
 
     pub fn assignment(lhs: Ast<'a>, rhs: Ast<'a>, location: Location<'a>) -> Ast<'a> {

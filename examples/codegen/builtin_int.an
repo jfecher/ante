@@ -1,10 +1,10 @@
 
-test_int int =
-    print (int + int)
-    print (int - int - int)
-    print (int * int)
-    print (int / int)
-    print (int % int)
+test_int x =
+    print (x + x)
+    print (x - x - x)
+    print (x * x)
+    print (x / x)
+    print (x % x)
 
 test_int 3_i8
 test_int 3_u8

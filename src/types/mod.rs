@@ -4,6 +4,8 @@
 //! the representation of `Type`s - which represent any Type in ante's
 //! type system - and `TypeInfo`s - which hold more information about the
 //! definition of a user-defined type.
+use std::collections::BTreeMap;
+
 use crate::cache::{DefinitionInfoId, ModuleCache};
 use crate::error::location::{Locatable, Location};
 use crate::lexer::token::IntegerKind;
@@ -18,10 +20,6 @@ pub mod typechecker;
 pub mod typed;
 pub mod typeprinter;
 mod error;
-
-/// The type to default any Inferred integer types to that were
-/// not bound to any other concrete integer type (e.g. via `1 + 2u8`).
-pub const DEFAULT_INTEGER_TYPE: Type = Type::Primitive(PrimitiveType::IntegerType(IntegerKind::I32));
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct TypeVariableId(pub usize);
@@ -97,6 +95,15 @@ pub enum Type {
     /// Contains a region variable that is unified with other refs during type
     /// inference. All these refs will be allocated in the same region.
     Ref(lifetimes::LifetimeVariableId),
+
+    /// A (row-polymorphic) struct type. Unlike normal rho variables,
+    /// the type variable used here replaces the entire type if bound.
+    /// This makes it so we don't have to remember previous types to combine
+    /// when traversing bindings.
+    Struct(BTreeMap<String, Type>, TypeVariableId),
+
+    /// A type variable that may only bind to a primitive integer type
+    Int(TypeVariableId),
 }
 
 #[derive(Debug, Clone)]
@@ -146,6 +153,8 @@ impl Type {
             TypeApplication(typ, _) => typ.union_constructor_variants(cache),
             UserDefined(id) => cache.type_infos[id.0].union_variants(),
             TypeVariable(_) => unreachable!("Constructors should always have concrete types"),
+            Struct(_, _) => None,
+            Int(_) => None,
         }
     }
 

@@ -92,20 +92,25 @@ pub struct ModuleCache<'a> {
     /// impls that should be in scope and select an instance.
     pub impl_scopes: Vec<Vec<ImplInfoId>>,
 
-    /// Ante represents each member access (foo.bar) as a trait (.foo)
-    /// that is generated for each new field name used globally.
-    pub member_access_traits: HashMap<String, TraitInfoId>,
-
     /// A monotonically-increasing counter to uniquely identify trait constraints.
     pub current_trait_constraint_id: counter::TraitConstraintCounter,
 
-    /// The builtin `Int a` trait that arises when using polymorphic
-    /// integer literals.
-    pub int_trait: TraitInfoId,
+    /// A constant referring to the ID of the builtin trait int. Should always be 0
+    pub int_trait_id: TraitInfoId,
 
     /// The filepath to ante's stdlib/prelude.an file to be automatically
     /// included when defining a new ante module.
     pub prelude_path: PathBuf,
+
+    /// Call stack of functions traversed during type inference. Used to find
+    /// mutually recursive functions and delay generalization of them until after
+    /// all the functions in the mutually recursive set are finished.
+    pub call_stack: Vec<DefinitionInfoId>,
+
+    /// Map from the first function reachable in a mutually recursive set of functions
+    /// to all functions in that set. Once the key'd function finishes compiling we can
+    /// generalize all the functions in the set and add trait constraints at once.
+    pub mutually_recursive_definitions: HashMap<DefinitionInfoId, Vec<DefinitionInfoId>>,
 }
 
 /// The key for accessing parse trees or `NameResolver`s
@@ -177,8 +182,14 @@ pub struct DefinitionInfo<'a> {
     /// required_traits is the "given ..." part of the signature
     pub required_traits: Vec<RequiredTrait>,
 
-    /// True if this definition is from a trait impl
+    /// The trait impl, if any, that this definition belongs to.
     pub trait_impl: Option<ImplInfoId>,
+
+    /// If this definition is in a mutually recursive set of functions,
+    /// this will be set to Some(key) where key is the first reachable
+    /// of functions (from main) in this set and the key in the
+    /// mutually_recursive_definitions HashMap in the cache.
+    pub mutually_recursive_set: Option<DefinitionInfoId>,
 
     /// The type of this definition. Filled out during type inference,
     /// and is guarenteed to be Some afterward.
@@ -252,23 +263,6 @@ pub struct TraitInfo<'a> {
     pub uses: u32,
 }
 
-impl<'a> TraitInfo<'a> {
-    /// Member access traits are special in that they're automatically
-    /// defined and implemented by the compiler.
-    pub fn is_member_access(&self) -> bool {
-        self.name.starts_with('.')
-    }
-
-    /// The `name` of a member access trait is `.field`
-    /// where `field` is the name of the described field.
-    /// E.g. `.name Person string` is a trait constraining
-    /// the `Person` type to have a `name` field of type `string`.
-    pub fn get_field_name(&self) -> &str {
-        assert!(self.is_member_access());
-        &self.name[1..]
-    }
-}
-
 impl<'a> Locatable<'a> for TraitInfo<'a> {
     fn locate(&self) -> Location<'a> {
         self.location
@@ -307,7 +301,6 @@ impl<'a> ModuleCache<'a> {
     pub fn new(project_directory: &'a Path) -> ModuleCache<'a> {
         let mut cache = ModuleCache {
             relative_roots: vec![project_directory.to_owned(), dirs::config_dir().unwrap().join("ante/stdlib")],
-            int_trait: TraitInfoId(0), // Dummy value since we must have the cache to push a trait
             prelude_path: dirs::config_dir().unwrap().join("stdlib/prelude"),
             // Really wish you could do ..Default::default() for the remaining fields
             modules: HashMap::default(),
@@ -321,12 +314,21 @@ impl<'a> ModuleCache<'a> {
             trait_infos: Vec::default(),
             impl_infos: Vec::default(),
             impl_scopes: Vec::default(),
-            member_access_traits: HashMap::default(),
+            int_trait_id: TraitInfoId(0),
             current_trait_constraint_id: Default::default(),
+            call_stack: Vec::default(),
+            mutually_recursive_definitions: HashMap::default(),
         };
 
+        // The Int constraint is used internally to default polymorphic integer literals
+        // to i32 when they are not used in the signature of a function
         let new_typevar = cache.next_type_variable_id(LetBindingLevel(std::usize::MAX));
-        cache.push_trait_definition("Int".to_string(), vec![new_typevar], vec![], None, Location::builtin());
+        let id = cache.push_trait_definition("Int".to_string(), vec![new_typevar], vec![], None, Location::builtin());
+        assert_eq!(id, cache.int_trait_id);
+
+        // The Int trait uses variable id 0 as a dummy callsite that is never used
+        cache.push_variable("".into(), Location::builtin());
+
         cache
     }
 
@@ -348,6 +350,7 @@ impl<'a> ModuleCache<'a> {
             typ: None,
             uses: 0,
             trait_impl: None,
+            mutually_recursive_set: None,
         });
         DefinitionInfoId(id)
     }
@@ -423,27 +426,6 @@ impl<'a> ModuleCache<'a> {
         let id = self.variable_infos.len();
         self.variable_infos.push(VariableInfo { required_impls: vec![], name, location });
         VariableId(id)
-    }
-
-    /// Get or create an instance of the '.' trait family for the given field name
-    pub fn get_member_access_trait(&mut self, field_name: &str, level: LetBindingLevel) -> TraitInfoId {
-        match self.member_access_traits.get(field_name) {
-            Some(id) => *id,
-            None => {
-                let trait_name = ".".to_string() + field_name;
-                let collection_type = self.next_type_variable_id(level);
-                let field_type = self.next_type_variable_id(level);
-                let id = self.push_trait_definition(
-                    trait_name,
-                    vec![collection_type],
-                    vec![field_type],
-                    None,
-                    Location::builtin(),
-                );
-                self.member_access_traits.insert(field_name.to_string(), id);
-                id
-            },
-        }
     }
 
     pub fn next_trait_constraint_id(&mut self) -> TraitConstraintId {

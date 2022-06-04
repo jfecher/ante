@@ -40,12 +40,12 @@ use crate::types::{
 };
 use crate::util::*;
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use super::traits::{Callsite, ConstraintSignature, TraitConstraintId};
-use super::{error, GeneralizedType};
+use super::{error, GeneralizedType, TypeInfoBody};
 
 /// The current LetBindingLevel we are at.
 /// This increases by 1 whenever we enter the rhs of a `ast::Definition` and decreases
@@ -76,10 +76,6 @@ pub struct UnificationBindings {
 impl UnificationBindings {
     pub fn empty() -> UnificationBindings {
         UnificationBindings { bindings: HashMap::new(), level_bindings: vec![] }
-    }
-
-    pub fn new(bindings: TypeBindings, level_bindings: LevelBindings) -> UnificationBindings {
-        UnificationBindings { bindings, level_bindings }
     }
 
     pub fn perform(self, cache: &mut ModuleCache) {
@@ -121,6 +117,13 @@ pub fn type_application_bindings<'c>(info: &TypeInfo<'c>, typeargs: &[Type], cac
             }
         })
         .collect()
+}
+
+/// Given `a` returns `ref a`
+fn ref_of(typ: Type, cache: &mut ModuleCache) -> Type {
+    let new_var = next_type_variable_id(cache);
+    let constructor = Box::new(Type::Ref(new_var));
+    TypeApplication(constructor, vec![typ])
 }
 
 /// Replace any typevars found in typevars_to_replace with the
@@ -179,6 +182,22 @@ pub fn replace_all_typevars_with_bindings<'c>(
             let args = fmap(args, |arg| replace_all_typevars_with_bindings(arg, new_bindings, cache));
             TypeApplication(Box::new(typ), args)
         },
+        Struct(fields, id) => {
+            if let Some(binding) = new_bindings.get(id) {
+                binding.clone()
+            } else {
+                let fields = fields
+                    .iter()
+                    .map(|(name, typ)| {
+                        let typ = replace_all_typevars_with_bindings(typ, new_bindings, cache);
+                        (name.clone(), typ)
+                    })
+                    .collect();
+
+                Struct(fields, *id)
+            }
+        },
+        Int(id) => replace_typevar_with_binding(*id, new_bindings, Int, cache),
     }
 }
 
@@ -233,6 +252,38 @@ pub fn bind_typevars<'c>(typ: &Type, type_bindings: &TypeBindings, cache: &Modul
             let args = fmap(args, |arg| bind_typevars(arg, type_bindings, cache));
             TypeApplication(Box::new(typ), args)
         },
+        Struct(fields, id) => {
+            match type_bindings.get(&id) {
+                Some(TypeVariable(binding_id)) => {
+                    let fields = fields
+                        .iter()
+                        .map(|(name, field)| (name.clone(), bind_typevars(field, type_bindings, cache)))
+                        .collect();
+                    Struct(fields, *binding_id)
+                },
+                // TODO: Should we follow all typevars here?
+                Some(binding) => binding.clone(),
+                None => {
+                    if let Bound(typ) = &cache.type_bindings[id.0] {
+                        bind_typevars(&typ.clone(), type_bindings, cache)
+                    } else {
+                        let fields = fields
+                            .iter()
+                            .map(|(name, typ)| {
+                                let typ = bind_typevars(typ, type_bindings, cache);
+                                (name.clone(), typ)
+                            })
+                            .collect();
+
+                        Struct(fields, *id)
+                    }
+                },
+            }
+        },
+        Int(id) => match bind_typevar(*id, type_bindings, Int, cache) {
+            TypeVariable(new_id) => Int(new_id),
+            other => other,
+        },
     }
 }
 
@@ -279,6 +330,11 @@ pub fn contains_any_typevars_from_list<'c>(typ: &Type, list: &[TypeVariableId], 
             contains_any_typevars_from_list(typ, list, cache)
                 || args.iter().any(|arg| contains_any_typevars_from_list(arg, list, cache))
         },
+        Struct(fields, id) => {
+            type_variable_contains_any_typevars_from_list(*id, list, cache)
+                || fields.iter().any(|(_, field)| contains_any_typevars_from_list(field, list, cache))
+        },
+        Int(id) => type_variable_contains_any_typevars_from_list(*id, list, cache),
     }
 }
 
@@ -425,7 +481,9 @@ impl OccursResult {
         self
     }
 
-    fn then_all(mut self, types: &[Type], mut f: impl FnMut(&Type) -> OccursResult) -> OccursResult {
+    fn then_all<'a>(
+        mut self, types: impl IntoIterator<Item = &'a Type>, mut f: impl FnMut(&'a Type) -> OccursResult,
+    ) -> OccursResult {
         if !self.occurs {
             for typ in types {
                 let mut other = f(typ);
@@ -465,6 +523,9 @@ fn occurs<'b>(
         TypeApplication(typ, args) => occurs(id, level, typ, bindings, fuel, cache)
             .then_all(args, |arg| occurs(id, level, arg, bindings, fuel, cache)),
         Ref(lifetime) => typevars_match(id, level, *lifetime, bindings, fuel, cache),
+        Struct(fields, var_id) => typevars_match(id, level, *var_id, bindings, fuel, cache)
+            .then_all(fields.iter().map(|(_, typ)| typ), |field| occurs(id, level, field, bindings, fuel, cache)),
+        Int(var_id) => typevars_match(id, level, *var_id, bindings, fuel, cache),
     }
 }
 
@@ -490,7 +551,7 @@ pub fn follow_bindings_in_cache_and_map<'b>(
     typ: &Type, bindings: &UnificationBindings, cache: &ModuleCache<'b>,
 ) -> Type {
     match typ {
-        TypeVariable(id) | Ref(id) => match find_binding(*id, bindings, cache) {
+        TypeVariable(id) | Ref(id) | Int(id) => match find_binding(*id, bindings, cache) {
             Bound(typ) => follow_bindings_in_cache_and_map(&typ, bindings, cache),
             Unbound(..) => typ.clone(),
         },
@@ -576,6 +637,170 @@ pub fn try_unify_with_bindings_inner<'b>(
             try_unify_type_variable_with_bindings(*a_lifetime, t1, t2, bindings, location, cache)
         },
 
+        // Follow any bindings here for convenience so we don't have to check if a or b
+        // are bound in all the Int or Struct cases below.
+        (Struct(_, var), t2) | (t2, Struct(_, var)) | (Int(var), t2) | (t2, Int(var))
+            if matches!(&cache.type_bindings[var.0], Bound(_)) =>
+        {
+            match &cache.type_bindings[var.0] {
+                Bound(bound) => try_unify_with_bindings_inner(&bound.clone(), t2, bindings, location, cache),
+                _ => unreachable!(),
+            }
+        },
+
+        (Int(a), Int(b)) => try_unify_type_variable_with_bindings(*a, &Int(*a), &Int(*b), bindings, location, cache),
+
+        (Int(a), b @ Primitive(PrimitiveType::IntegerType(_)))
+        | (b @ Primitive(PrimitiveType::IntegerType(_)), Int(a)) => {
+            bindings.bindings.insert(*a, b.clone());
+            Ok(())
+        },
+
+        (Struct(fields1, rest1), Struct(fields2, rest2)) => {
+            bind_struct_fields(fields1, fields2, *rest1, *rest2, bindings, location, cache)
+        },
+
+        (Struct(fields1, rest), other) | (other, Struct(fields1, rest)) => {
+            let fields2 = get_fields(other, &[], bindings, cache)?;
+            bind_struct_fields_subset(fields1, &fields2, bindings, location, cache)?;
+            bindings.bindings.insert(*rest, other.clone());
+            Ok(())
+        },
+
+        _ => Err(()),
+    }
+}
+
+fn bind_struct_fields<'c>(
+    fields1: &BTreeMap<String, Type>, fields2: &BTreeMap<String, Type>, rest1: TypeVariableId, rest2: TypeVariableId,
+    bindings: &mut UnificationBindings, location: Location<'c>, cache: &mut ModuleCache<'c>,
+) -> Result<(), ()> {
+    let mut new_fields = fields1.clone();
+    for (name, typ2) in fields2 {
+        if let Some(typ1) = new_fields.get(name) {
+            try_unify_with_bindings_inner(typ1, typ2, bindings, location, cache)?;
+        } else {
+            new_fields.insert(name.clone(), typ2.clone());
+        }
+    }
+
+    if new_fields.len() != fields1.len() && new_fields.len() != fields2.len() {
+        try_unify_type_variable_with_bindings(
+            rest1,
+            &TypeVariable(rest1),
+            &TypeVariable(rest2),
+            bindings,
+            location,
+            cache,
+        )?;
+        let new_rest = new_row_variable(rest1, rest2, cache);
+        let new_struct = Struct(new_fields, new_rest);
+        // We set rest1 := rest2 above, so we should insert into rest2 to bind both structs
+        bindings.bindings.insert(rest2, new_struct);
+    } else if new_fields.len() != fields1.len() {
+        // Set 1 := 2
+        let struct2 = Struct(new_fields, rest2);
+        try_unify_type_variable_with_bindings(rest1, &TypeVariable(rest1), &struct2, bindings, location, cache)?;
+    } else if new_fields.len() != fields2.len() {
+        // Set 2 := 1
+        let struct1 = Struct(new_fields, rest1);
+        try_unify_type_variable_with_bindings(rest2, &TypeVariable(rest2), &struct1, bindings, location, cache)?;
+    }
+
+    Ok(())
+}
+
+/// Create a new row variable with a LetBindingLevel of the min of the
+/// levels of the two given row variables. Expects both given variables
+/// to be unbound.
+fn new_row_variable(row1: TypeVariableId, row2: TypeVariableId, cache: &mut ModuleCache) -> TypeVariableId {
+    match (&cache.type_bindings[row1.0], &cache.type_bindings[row2.0]) {
+        (Unbound(level1, _), Unbound(level2, _)) => {
+            let new_level = std::cmp::min(*level1, *level2);
+            cache.next_type_variable_id(new_level)
+        },
+        _ => unreachable!(),
+    }
+}
+
+/// Like bind_struct_fields but enforces `fields` must be a subset of the fields in the template.
+fn bind_struct_fields_subset<'c>(
+    fields: &BTreeMap<String, Type>, template: &BTreeMap<String, Type>, bindings: &mut UnificationBindings,
+    location: Location<'c>, cache: &mut ModuleCache<'c>,
+) -> Result<(), ()> {
+    // FIXME: Enforcing a struct type's fields are a subset of
+    // a data type's fields works for cases like
+    // ```
+    // foo bar = bar.x
+    //
+    // type T = x: i32, y: i32
+    // foo (T 2)
+    // ```
+    // But for the following case it'd be unsound if we ever allowed struct literals:
+    // ```
+    // baz (t: T) = t.x + t.y
+    //
+    // baz { x: 3 }
+    // ```
+    // Since the struct has a subset of T's fields this would currently pass.
+    if fields.len() > template.len() {
+        return Err(());
+    }
+
+    for (name, field) in fields {
+        match template.get(name) {
+            Some(template_field) => {
+                try_unify_with_bindings_inner(template_field, field, bindings, location, cache)?;
+            },
+            None => return Err(()),
+        }
+    }
+
+    Ok(())
+}
+
+fn get_fields<'c>(
+    typ: &Type, args: &[Type], bindings: &mut UnificationBindings, cache: &mut ModuleCache<'c>,
+) -> Result<BTreeMap<String, Type>, ()> {
+    match typ {
+        UserDefined(id) => {
+            let info = &cache[*id];
+            match &info.body {
+                TypeInfoBody::Alias(typ) => get_fields(&typ.clone(), args, bindings, cache),
+                TypeInfoBody::Union(_) => Err(()),
+                TypeInfoBody::Unknown => unreachable!(),
+                TypeInfoBody::Struct(fields) => {
+                    let mut more_bindings = HashMap::new();
+                    if !args.is_empty() {
+                        more_bindings = type_application_bindings(info, args, cache);
+                    }
+                    Ok(fields
+                        .iter()
+                        .map(|field| {
+                            let typ = if more_bindings.is_empty() {
+                                field.field_type.clone()
+                            } else {
+                                bind_typevars(&field.field_type, &more_bindings, cache)
+                            };
+
+                            (field.name.clone(), typ)
+                        })
+                        .collect())
+                },
+            }
+        },
+        TypeApplication(constructor, args) => match follow_bindings_in_cache_and_map(constructor, bindings, cache) {
+            Ref(_) => get_fields(&args[0], &[], bindings, cache),
+            other => get_fields(&other, args, bindings, cache),
+        },
+        Struct(fields, rest) => match &cache.type_bindings[rest.0] {
+            Bound(binding) => get_fields(&binding.clone(), args, bindings, cache),
+            Unbound(_, _) => Ok(fields.clone()),
+        },
+        TypeVariable(id) => match &cache.type_bindings[id.0] {
+            Bound(binding) => get_fields(&binding.clone(), args, bindings, cache),
+            Unbound(_, _) => Err(()),
+        },
         _ => Err(()),
     }
 }
@@ -610,7 +835,7 @@ fn try_unify_type_variable_with_bindings<'c>(
 
 pub fn try_unify_with_bindings<'b>(
     t1: &Type, t2: &Type, bindings: &mut UnificationBindings, location: Location<'b>, cache: &mut ModuleCache<'b>,
-    error_message: &'static str,
+    error_message: &str,
 ) -> Result<(), ErrorMessage<'b>> {
     match try_unify_with_bindings_inner(t1, t2, bindings, location, cache) {
         Ok(()) => Ok(()),
@@ -622,7 +847,7 @@ pub fn try_unify_with_bindings<'b>(
 /// set of type bindings, and returning all the newly-created bindings on success,
 /// or the unification error message on error.
 pub fn try_unify<'c>(
-    t1: &Type, t2: &Type, location: Location<'c>, cache: &mut ModuleCache<'c>, error_message: &'static str,
+    t1: &Type, t2: &Type, location: Location<'c>, cache: &mut ModuleCache<'c>, error_message: &str,
 ) -> UnificationResult<'c> {
     let mut bindings = UnificationBindings::empty();
     try_unify_with_bindings(t1, t2, &mut bindings, location, cache, error_message).map(|()| bindings)
@@ -662,9 +887,7 @@ fn concat_type_strings<'c>(types: &[Type], cache: &ModuleCache<'c>) -> String {
 
 /// Unifies the two given types, remembering the unification results in the cache.
 /// If this operation fails, a user-facing error message is emitted.
-pub fn unify<'c>(
-    t1: &Type, t2: &Type, location: Location<'c>, cache: &mut ModuleCache<'c>, error_message: &'static str,
-) {
+pub fn unify<'c>(t1: &Type, t2: &Type, location: Location<'c>, cache: &mut ModuleCache<'c>, error_message: &str) {
     perform_bindings_or_print_error(try_unify(t1, t2, location, cache, error_message), cache);
 }
 
@@ -718,6 +941,17 @@ pub fn find_all_typevars<'a>(typ: &Type, polymorphic_only: bool, cache: &ModuleC
             type_variables
         },
         Ref(lifetime) => find_typevars_in_typevar_binding(*lifetime, polymorphic_only, cache),
+        Struct(fields, id) => match &cache.type_bindings[id.0] {
+            Bound(t) => find_all_typevars(t, polymorphic_only, cache),
+            Unbound(..) => {
+                let mut vars = find_typevars_in_typevar_binding(*id, polymorphic_only, cache);
+                for (_, field) in fields {
+                    vars.append(&mut find_all_typevars(field, polymorphic_only, cache));
+                }
+                vars
+            },
+        },
+        Int(id) => find_typevars_in_typevar_binding(*id, polymorphic_only, cache),
     }
 }
 
@@ -1068,22 +1302,20 @@ fn check_impl_propagated_traits(
 
             let definition_id = variable.definition.unwrap();
             let used_traits = cache[definition_id].required_traits.clone();
-            let mut new_ids = Vec::with_capacity(used_traits.len());
 
-            for used in used_traits {
+            cache[definition_id].required_traits = used_traits.into_iter().filter_map(|mut used | {
                 if let Some(id) = find_matching_trait(&used, &useable_traits, given, cache) {
-                    new_ids.push(id);
+                    used.signature.id = id;
+                    Some(used)
                 } else {
+                    let constraint = TraitConstraint { required: used, scope: variable.impl_scope.unwrap() };
+                    traitchecker::force_resolve_trait(constraint, cache);
                     // TODO: Should issue this error earlier to give a better callsite for the error
-                    error!(variable.location, "This definition requires {}, but the trait isn't given in the impl or the type signature for {} in the trait that defines it.",
-                           used.display(cache), variable);
+                    // error!(variable.location, "This definition requires {}, but the trait isn't given in the impl or the type signature for {} in the trait that defines it.",
+                    //        used.display(cache), variable);
+                    None
                 }
-            }
-
-            // Must loop over again because cache is already borrowed mutably in the above loop
-            for (used, new_id) in cache[definition_id].required_traits.iter_mut().zip(new_ids) {
-                used.signature.id = new_id;
-            }
+            }).collect();
         },
         TypeAnnotation(annotation) => check_impl_propagated_traits(&annotation.lhs, trait_id, given, cache),
         FunctionCall(call) => {
@@ -1177,13 +1409,10 @@ impl<'a> Inferable<'a> for ast::Literal<'a> {
             Integer(x, kind) => {
                 if kind == IntegerKind::Unknown {
                     // Mutate this unknown integer literal to an IntegerKind::Inferred(int_type).
-                    // Also add `Int int_type` constraint to restrict this type variable to one
-                    // of the native integer types.
                     let int_type = next_type_variable_id(cache);
-                    let callsite = cache.push_variable(x.to_string(), self.location);
-                    let trait_impl = TraitConstraint::int_constraint(int_type, callsite, cache);
                     self.kind = Integer(x, IntegerKind::Inferred(int_type));
-                    (Type::TypeVariable(int_type), vec![trait_impl])
+                    let int_trait = TraitConstraint::int_constraint(int_type, cache);
+                    (Type::Int(int_type), vec![int_trait])
                 } else {
                     (Type::Primitive(PrimitiveType::IntegerType(kind)), vec![])
                 }
@@ -1283,11 +1512,6 @@ impl<'a> Inferable<'a> for ast::Lambda<'a> {
             is_varargs: false,
         });
 
-        // let typevars_in_fn = find_all_typevars(&typ, false, cache);
-        // let exposed_traits = traitchecker::resolve_traits(traits.clone(), &typevars_in_fn, cache);
-        // self.required_traits = exposed_traits;
-
-        // TODO: should we return exposed traits instead?
         (typ, traits)
     }
 }
@@ -1665,32 +1889,45 @@ impl<'a> Inferable<'a> for ast::Extern<'a> {
 }
 
 impl<'a> Inferable<'a> for ast::MemberAccess<'a> {
-    /// Member access (e.g. foo.bar) in ante implies a corresponding trait constraint
-    /// that is automatically implemented by the compiler. This is to allow multiple
-    /// conflicting field names in a scope. For example a function:
-    ///
-    /// foo bar =
-    ///    bar.x + 2
-    ///
-    /// Has the type
-    ///
-    /// bar : a -> int
-    ///   given .x a int
-    ///
-    /// This given trait constraint is a member access constraint denoting that
-    /// type a must have a field x of type int.
     fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
-        let (collection_type, mut traits) = infer(self.lhs.as_mut(), cache);
+        let (mut collection_type, traits) = infer(self.lhs.as_mut(), cache);
 
         let level = LetBindingLevel(CURRENT_LEVEL.load(Ordering::SeqCst));
-        let trait_id = cache.get_member_access_trait(&self.field, level);
+        let mut field_type = cache.next_type_variable(level);
 
-        let field_type = cache.next_type_variable(level);
+        if self.is_offset {
+            let collection_variable = next_type_variable(cache);
+            let expected = ref_of(collection_variable.clone(), cache);
+            unify(
+                &collection_type,
+                &expected,
+                self.lhs.locate(),
+                cache,
+                "Expected a struct reference but found $1 instead",
+            );
 
-        let typeargs = vec![collection_type, field_type.clone()];
-        let callsite = cache.push_variable(format!(".{}", self.field), self.location);
-        let trait_impl = TraitConstraint::member_access_constraint(trait_id, typeargs, callsite, cache);
-        traits.push(trait_impl);
+            collection_type = collection_variable;
+        }
+
+        let mut fields = BTreeMap::new();
+        fields.insert(self.field.clone(), field_type.clone());
+
+        // The '..' or 'rest of the struct' stand-in variable
+        let rho = cache.next_type_variable_id(level);
+        let struct_type = Type::Struct(fields, rho);
+
+        // TODO: Make this error more specific, e.g. 'no such field', or wrong type for field
+        unify(
+            &collection_type,
+            &struct_type,
+            self.location,
+            cache,
+            &format!("$1 has no field {} of type $2", self.field),
+        );
+
+        if self.is_offset {
+            field_type = ref_of(field_type, cache);
+        }
 
         (field_type, traits)
     }

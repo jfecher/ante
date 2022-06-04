@@ -80,7 +80,6 @@ pub fn import_prelude<'a>(resolver: &mut NameResolver, cache: &mut ModuleCache<'
     }
 
     // Manually insert some builtins as if they were defined in the prelude
-    resolver.current_scope().traits.insert("Int".into(), cache.int_trait);
     resolver.current_scope().types.insert(Token::Comma.to_string(), PAIR_TYPE);
     resolver.current_scope().definitions.insert(Token::Comma.to_string(), PAIR_ID);
 }

@@ -2,7 +2,7 @@ import Vec
 
 v = mut empty ()
 
-push v 3
+push v 3i32
 push v 4
 
 print v

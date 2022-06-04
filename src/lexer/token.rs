@@ -78,6 +78,7 @@ pub enum Token {
     // Types
     TypeName(String),
     IntegerType(IntegerKind),
+    PolymorphicIntType,
     FloatType,
     CharType,
     StringType,
@@ -140,6 +141,7 @@ pub enum Token {
     Semicolon,          // ;
     Comma,              // ,
     MemberAccess,       // .
+    MemberReference,    // .&
     LessThan,           // <
     GreaterThan,        // >
     LessThanOrEqual,    // <=
@@ -248,6 +250,7 @@ impl Display for Token {
             // Types
             TypeName(_) => write!(f, "a typename"),
             IntegerType(kind) => write!(f, "'{}'", kind),
+            PolymorphicIntType => write!(f, "'Int'"),
             FloatType => write!(f, "'float'"),
             CharType => write!(f, "'char'"),
             StringType => write!(f, "'string'"),
@@ -310,6 +313,7 @@ impl Display for Token {
             Semicolon => write!(f, "';'"),
             Comma => write!(f, "','"),
             MemberAccess => write!(f, "'.'"),
+            MemberReference => write!(f, "'.&'"),
             LessThan => write!(f, "'<'"),
             GreaterThan => write!(f, "'>'"),
             LessThanOrEqual => write!(f, "'<='"),

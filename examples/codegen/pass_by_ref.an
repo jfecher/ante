@@ -8,18 +8,17 @@ impl Print S with
 //    ...
 // }
 // which can mutate x when x == y if not careful
-// foo (x: S) (y: S) =
-printne "x before: "
-print x
-z = mut S "original y string"
-z.message := "modifying y"
-printne "x after:  "
-// print x
+foo (x: S) (y: S) =
+    printne "x before: "
+    print x
+    z = mut y
+    z.&message := "modifying y"
+    printne "x after:  "
+    print x
 
 x = mut S "original x string"
-
-// TODO: Lower precedence of @
-// foo (@x) @x
+// TODO: Raise precedence of @
+foo (@x) (@x)
 
 // args: --delete-binary
 // expected stdout:

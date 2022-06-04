@@ -17,22 +17,22 @@
 //! impl to the `ast::Variable` the TraitConstraint originated from, so that variable
 //! has the correct definition to compile during codegen. For any impl it fails to solve,
 //! a compile-time error will be issued.
+use std::sync::atomic::AtomicBool;
+
 use crate::cache::{ImplInfoId, ModuleCache};
-use crate::error::location::Location;
-use crate::lexer::token::IntegerKind;
 use crate::types::traits::{RequiredTrait, TraitConstraint, TraitConstraints};
-use crate::types::typechecker::{self, TypeBindings, UnificationResult};
-use crate::types::{PrimitiveType, Type, TypeInfoId, TypeVariableId, DEFAULT_INTEGER_TYPE};
+use crate::types::typechecker::{self, TypeBindings};
+use crate::types::TypeVariableId;
 use crate::util::{fmap, trustme};
 
-use colored::Colorize;
-
-use super::typechecker::UnificationBindings;
+use super::typechecker::{UnificationBindings, UnificationResult};
 
 /// Arbitrary impl requirements can result in arbitrary recursion
 /// when attempting to solve impl constraints. To prevent infinitely
 /// recursing on bad inputs, a limit of 10 recursive calls is arbitrarily chosen.
 const RECURSION_LIMIT: u32 = 10;
+
+static RECURSION_WARNING_PRINTED: AtomicBool = AtomicBool::new(false);
 
 /// Go through the given list of traits and determine if they should
 /// be propogated upward or if an impl should be searched for now.
@@ -42,7 +42,7 @@ const RECURSION_LIMIT: u32 = 10;
 pub fn resolve_traits<'a>(
     constraints: TraitConstraints, typevars_in_fn_signature: &[TypeVariableId], cache: &mut ModuleCache<'a>,
 ) -> Vec<RequiredTrait> {
-    let (propagated_traits, int_constraints, member_access_constraints, other_constraints) =
+    let (propagated_traits, int_constraints, other_constraints) =
         sort_traits(constraints, typevars_in_fn_signature, cache);
 
     let empty_bindings = UnificationBindings::empty();
@@ -58,16 +58,6 @@ pub fn resolve_traits<'a>(
         );
     }
 
-    // Member access constraints don't need to be searched for before normal constraints, but
-    // they're separated out anyway since searching for them is done differently since they're
-    // automatically impl'd by the compiler.
-    for constraint in member_access_constraints.iter() {
-        typechecker::perform_bindings_or_print_error(
-            find_member_access_impl(constraint, &empty_bindings, cache),
-            cache,
-        );
-    }
-
     for constraint in other_constraints.iter() {
         // Searching for an impl for normal constraints may require recursively searching for
         // more impls (due to `impl A given B` constraints) before finding a matching one.
@@ -77,27 +67,35 @@ pub fn resolve_traits<'a>(
     propagated_traits
 }
 
+/// Attempt to solve every trait given, propagating none
+pub fn force_resolve_trait<'a>(constraint: TraitConstraint, cache: &mut ModuleCache<'a>) {
+    if constraint.is_int_constraint(cache) {
+        let empty_bindings = UnificationBindings::empty();
+        typechecker::perform_bindings_or_print_error(
+            find_int_constraint_impl(&constraint, &empty_bindings, cache),
+            cache,
+        );
+    } else {
+        solve_normal_constraint(&constraint, cache);
+    }
+}
+
 /// These just make the signature of sort_traits read better.
 type PropagatedTraits = Vec<RequiredTrait>;
-type IntTraits = Vec<TraitConstraint>;
-type MemberAccessTraits = Vec<TraitConstraint>;
 
-/// Sort the given list of TraitConstraints into 4 categories:
+/// Sort the given list of TraitConstraints into 3 categories:
 /// - Constraints that shouldn't be solved here because they contain type variables that escape
 ///   into an outer scope. Propagate these up as RequiredTraits.
-/// - `Int a` constraints. These should be solved first since they can default their argument
-///   to an i32 if it is not yet decided, which can influence subsequent trait selections.
-/// - Member-access constraints e.g. `a.b`. These can be solved anytime after Int constraints
-///   but are filtered out because they're required to be solved via find_member_access_impl.
+/// - `Int a` constraints. These should be solved first since they can default their argument                                              ..
+///   to an i32 if it is not yet decided, which can influence subsequent trait selections.                                                 ..
 /// - All other constraints. This includes all other normal trait constraints like `Print a`
 ///   or `Cast a b` which should have an impl searched for now. Traits like this that shouldn't
 ///   have an impl searched for belong to the first category of propogated traits.
 fn sort_traits<'c>(
     constraints: TraitConstraints, typevars_in_fn_signature: &[TypeVariableId], cache: &ModuleCache<'c>,
-) -> (PropagatedTraits, IntTraits, MemberAccessTraits, TraitConstraints) {
+) -> (PropagatedTraits, TraitConstraints, TraitConstraints) {
     let mut propogated_traits = vec![];
     let mut int_constraints = vec![];
-    let mut member_access_constraints = vec![];
     let mut other_constraints = Vec::with_capacity(constraints.len());
 
     for constraint in constraints {
@@ -105,14 +103,12 @@ fn sort_traits<'c>(
             propogated_traits.push(constraint.into_required_trait());
         } else if constraint.is_int_constraint(cache) {
             int_constraints.push(constraint);
-        } else if constraint.is_member_access(cache) {
-            member_access_constraints.push(constraint);
         } else {
             other_constraints.push(constraint);
         }
     }
 
-    (propogated_traits, int_constraints, member_access_constraints, other_constraints)
+    (propogated_traits, int_constraints, other_constraints)
 }
 
 /// A trait should be propogated to the public signature of a Definition if any of its contained
@@ -127,29 +123,11 @@ fn should_propagate<'a>(
     // Don't check the fundeps since only the typeargs proper are used to find impls
     let arg_count = cache[constraint.trait_id()].typeargs.len();
 
-    let mut propagate = constraint
+    constraint
         .args()
         .iter()
         .take(arg_count)
-        .any(|arg| typechecker::contains_any_typevars_from_list(arg, typevars_in_fn_signature, cache));
-
-    if constraint.is_member_access(cache) {
-        propagate = propagate && !is_datatype(&constraint.args()[0], cache);
-    }
-
-    propagate
-}
-
-fn is_datatype(typ: &Type, cache: &ModuleCache) -> bool {
-    match typ {
-        Type::TypeVariable(id) => match &cache.type_bindings[id.0] {
-            super::TypeBinding::Bound(binding) => is_datatype(binding, cache),
-            super::TypeBinding::Unbound(_, _) => false,
-        },
-        Type::UserDefined(_) => true,
-        Type::TypeApplication(constructor, _) => is_datatype(constructor, cache),
-        _ => false,
-    }
+        .any(|arg| typechecker::contains_any_typevars_from_list(arg, typevars_in_fn_signature, cache))
 }
 
 /// Checks if the given `Int a` constraint is satisfied. These impls don't correspond
@@ -162,132 +140,24 @@ fn find_int_constraint_impl<'c>(
 ) -> UnificationResult<'c> {
     let typ = typechecker::follow_bindings_in_cache_and_map(&constraint.args()[0], bindings, cache);
 
+    use super::{IntegerKind, PrimitiveType, Type};
     match &typ {
-        Type::Primitive(PrimitiveType::IntegerType(kind)) => {
-            // Any integer literal impl Int by default, though none should
-            // be Unknown or Inferred at this point in type inference. Any Unknown literal
-            // is translated to Inferred in LiteralKind::infer_impl and the type of such
-            // a literal is always a TypeVariable rather than remaining an Inferred IntegerType.
-            match kind {
-                IntegerKind::Unknown => unreachable!(),
-                IntegerKind::Inferred(_) => unreachable!(),
-                _ => Ok(UnificationBindings::empty()),
-            }
-        },
-        Type::TypeVariable(_) => {
+        Type::Primitive(PrimitiveType::IntegerType(_)) => Ok(UnificationBindings::empty()),
+        Type::TypeVariable(_) | Type::Int(_) => {
             // The `Int a` constraint has special defaulting rules - since we know this typevar is
             // unbound, bind it to the default integer type (i32) here.
             // try_unify is used here to avoid performing the binding in case this impl isn't
             // selected to be used.
-            typechecker::try_unify(&typ, &DEFAULT_INTEGER_TYPE, constraint.locate(cache), cache, "never shown")
-        },
-        _ => Err(make_error!(
-            constraint.locate(cache),
-            "Expected a primitive integer type, but found {}",
-            typ.display(cache)
-        )),
-    }
-}
-
-/// Check if the given `.` family trait constraint is satisfied.
-/// A constraint `a.field: b` is satisfied iff the type `a` has a
-/// field named `field` which unifies with type `b`.
-/// If this is not the case, an appropriate error message is returned.
-fn find_member_access_impl<'c>(
-    constraint: &TraitConstraint, bindings: &UnificationBindings, cache: &mut ModuleCache<'c>,
-) -> UnificationResult<'c> {
-    let field_name = cache[constraint.trait_id()].get_field_name().to_string();
-    let expected_field_type = &constraint.args()[1];
-    let location = constraint.locate(cache);
-
-    let collection = &constraint.args()[0];
-    find_member_access_impl_recursive(&collection, &field_name, expected_field_type, location, bindings, cache)
-}
-
-fn find_member_access_impl_recursive<'c>(
-    typ: &Type, field_name: &str, expected_field_type: &Type, location: Location<'c>, bindings: &UnificationBindings,
-    cache: &mut ModuleCache<'c>,
-) -> UnificationResult<'c> {
-    let typ = typechecker::follow_bindings_in_cache_and_map(typ, bindings, cache);
-    match typ {
-        Type::UserDefined(id) => find_field(id, &[], &field_name, expected_field_type, location, cache),
-        Type::TypeApplication(typ, args) => {
-            let typ = typechecker::follow_bindings_in_cache_and_map(&typ, bindings, cache);
-            match &typ {
-                Type::UserDefined(_) => {
-                    find_member_access_impl_recursive(&typ, field_name, expected_field_type, location, bindings, cache)
-                },
-                // member acccess on refs yields a ref to the field
-                Type::Ref(_) => {
-                    let lifetime = typechecker::next_type_variable_id(cache);
-                    let typevariable = typechecker::next_type_variable(cache);
-                    let mutref = Type::TypeApplication(Box::new(Type::Ref(lifetime)), vec![typevariable]);
-                    let new_bindings = typechecker::try_unify(
-                        &mutref,
-                        &expected_field_type,
-                        location,
-                        cache,
-                        "Expected a reference to a field $1, but found $2 instead",
-                    )?;
-
-                    find_member_access_impl_recursive(
-                        &args[0],
-                        field_name,
-                        expected_field_type,
-                        location,
-                        bindings,
-                        cache,
-                    )
-                    .map(|mut bindings| {
-                        bindings.extend(new_bindings);
-                        bindings
-                    })
-                },
-                other => Err(make_error!(
-                    location,
-                    "Type {} is not a struct type and has no field named {}",
-                    other.display(cache),
-                    field_name
-                )),
-            }
-        },
-        other => Err(make_error!(
-            location,
-            "Type {} is not a struct type and has no field named {}",
-            other.display(cache),
-            field_name
-        )),
-    }
-}
-
-fn find_field<'c>(
-    id: TypeInfoId, args: &[Type], field_name: &str, expected_field_type: &Type, location: Location<'c>,
-    cache: &mut ModuleCache<'c>,
-) -> UnificationResult<'c> {
-    let type_info = &cache[id];
-    let bindings = typechecker::type_application_bindings(type_info, args, cache);
-    let mut result_bindings = UnificationBindings::new(bindings.clone(), vec![]);
-
-    let field_type = type_info.find_field(field_name).map(|(_, field)| field.field_type.clone());
-
-    match field_type {
-        Some(field_type) => {
-            typechecker::try_unify_with_bindings(
-                expected_field_type,
-                &field_type,
-                &mut result_bindings,
-                location,
+            let default_int_type = Type::Primitive(PrimitiveType::IntegerType(IntegerKind::I32));
+            typechecker::try_unify(
+                &typ,
+                &default_int_type,
+                constraint.locate(cache),
                 cache,
-                "Expected field of type $2, but found $1",
-            )?;
-
-            // Filter out only the new bindings we did not start with since we started with
-            // local type bindings from the type arguments that should not be bound globally.
-            result_bindings.bindings =
-                result_bindings.bindings.into_iter().filter(|(id, _)| !bindings.contains_key(id)).collect();
-            Ok(result_bindings)
+                "Could not default $1 to $2",
+            )
         },
-        None => Err(make_error!(location, "Type {} has no field named {}", type_info.name.blue(), field_name)),
+        _ => unreachable!(),
     }
 }
 
@@ -340,14 +210,13 @@ fn find_matching_impls<'c>(
     constraint: &TraitConstraint, bindings: &UnificationBindings, fuel: u32, cache: &mut ModuleCache<'c>,
 ) -> Vec<(Vec<(ImplInfoId, TraitConstraint)>, UnificationBindings)> {
     if fuel == 0 {
+        if !RECURSION_WARNING_PRINTED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+            eprintln!("WARNING: Recursion limit reached when searching for impls for {}", constraint.display(cache));
+        }
+
         vec![]
     } else if constraint.is_int_constraint(cache) {
         match find_int_constraint_impl(constraint, bindings, cache) {
-            Ok(bindings) => vec![(vec![], bindings)],
-            Err(_) => vec![],
-        }
-    } else if constraint.is_member_access(cache) {
-        match find_member_access_impl(constraint, bindings, cache) {
             Ok(bindings) => vec![(vec![], bindings)],
             Err(_) => vec![],
         }

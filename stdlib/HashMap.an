@@ -19,25 +19,25 @@ clear (map: ref (HashMap k v)) : unit =
     if map.capacity != 0 then
         repeat map.capacity fn i ->
             entry = mut deref_ptr <| offset map.entries i
-            entry.occupied := false
-            entry.tombstone := false
+            entry.&occupied := false
+            entry.&tombstone := false
 
 resize (map: ref (HashMap k v)) (new_capacity: usz) : unit =
-    if new_capacity > @map.capacity then
+    if new_capacity > map.capacity then
         new_memory = calloc new_capacity (size_of (MkType : Type (Entry k v)))
 
         if new_memory == null () then
             panic "Ran out of memory while resizing HashMap"
 
-        new_map = mut HashMap (@map.len) new_capacity new_memory
+        new_map = mut HashMap (map.len) new_capacity new_memory
 
-        repeat (@map.capacity) fn i ->
-            entry: Entry k v = @map.entries#i
+        repeat (map.capacity) fn i ->
+            entry: Entry k v = map.entries#i
             if entry.occupied then
                 insert new_map entry.key entry.value
 
-        map.capacity := new_capacity
-        map.entries := new_memory
+        map.&capacity := new_capacity
+        map.&entries := new_memory
 
 // Should we resize this map when pushing another element?
 should_resize (map: HashMap k v) : bool =
@@ -46,15 +46,15 @@ should_resize (map: HashMap k v) : bool =
 
 insert (map: ref (HashMap k v)) (key: k) (value: v) : unit =
     if should_resize @map then
-        resize map (@map.capacity * 2 + 1)
+        resize map (map.capacity * 2 + 1)
 
-    h = cast (hash key) : usz % @map.capacity
+    h = cast (hash key) : usz % map.capacity
 
     iter_until (map: ref (HashMap k v)) (key: k) (value: v) (start: usz) (end: usz) : bool =
         if start >= end then
             false
         else
-            entry_ptr = offset (@map.entries) start
+            entry_ptr = offset (map.entries) start
             entry_ref = transmute entry_ptr : ref (Entry k v)
             entry = @entry_ref
             if entry.occupied then
@@ -63,11 +63,11 @@ insert (map: ref (HashMap k v)) (key: k) (value: v) : unit =
                 entry_ref := Entry key value true false
                 true
 
-    if not iter_until map key value h (@map.capacity) then
+    if not iter_until map key value h (map.capacity) then
         if not iter_until map key value 0 h then
             panic "Failed to insert entry into map"
 
-    map.len := @map.len + 1usz
+    map.&len := map.len + 1usz
 
 get_entry (map: HashMap k v) (key: k) : Maybe (Ptr (Entry k v)) =
     // Return whether to continue by wrapping around the end, and the value if found
@@ -107,7 +107,7 @@ remove (map: ref (HashMap k v)) (key: k) : Maybe v =
         entry = mut e2
         e = deref entry
         entry := Entry e.value e.key false true
-        map.len := map.len - 1
+        map.&len := map.len - 1
         Some e.value
 
 impl Print (HashMap k v) given Print k, Print v with

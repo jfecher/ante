@@ -17,7 +17,7 @@ foo_and_bar foo bar
 
 // args: --check --show-types
 // expected stderr:
-// examples/typechecking/member_access.an: 16,1	error: Type mismatch between string and char
+// examples/typechecking/member_access.an: 16,17	error: Expected argument of type { bar: string, .. }, but found Bar
 // foo_and_bar foo bar
 // 
 
@@ -27,7 +27,6 @@ foo_and_bar foo bar
 // FooBar : (i32 - string -> FooBar)
 // bar : Bar
 // foo : Foo
-// foo_and_bar : (forall a b. (a - b -> string))
-//   given .bar b string, .foo a c
+// foo_and_bar : (forall a b c. ({ foo: a, ..b } - { bar: string, ..c } -> string))
 // foobar : FooBar
 // stringify : (string -> string)

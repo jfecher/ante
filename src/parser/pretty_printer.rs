@@ -90,6 +90,7 @@ impl<'a> Display for ast::Type<'a> {
         use ast::Type::*;
         match self {
             Integer(kind, _) => write!(f, "{}", kind),
+            PolymorphicInt(_) => write!(f, "int"),
             Float(_) => write!(f, "float"),
             Char(_) => write!(f, "char"),
             String(_) => write!(f, "string"),

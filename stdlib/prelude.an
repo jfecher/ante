@@ -181,17 +181,17 @@ impl TryCast a b given Cast a b with
 
 // Huge block of builtin numeric operators incoming
 trait Add n with (+): n - n -> n
-impl Add a given Int a with (+) x y = builtin "AddInt" x y
+impl Add int with (+) x y = builtin "AddInt" x y
 impl Add float with (+) (x: float) (y: float) : float = builtin "AddFloat" x y
 impl Add char with (+) (x: char) (y: char) : char = builtin "AddInt" x y
 
 trait Sub n with (-): n - n -> n
-impl Sub a given Int a with (-) x y = builtin "SubInt" x y
+impl Sub int with (-) x y = builtin "SubInt" x y
 impl Sub float with (-) (x: float) (y: float) : float = builtin "SubFloat" x y
 impl Sub char with (-) (x: char) (y: char) : char = builtin "SubInt" x y
 
 trait Mul n with (*): n - n -> n
-impl Mul a given Int a with (*) x y = builtin "MulInt" x y
+impl Mul int with (*) x y = builtin "MulInt" x y
 impl Mul float with (*) (x: float) (y: float) : float = builtin "MulFloat" x y
 
 trait Div n with (/): n - n -> n
@@ -223,7 +223,7 @@ impl Mod usz with (%) x y = builtin "ModUnsigned" x y
 // impl Mod float with (%) (_: float) (_: float) : float = builtin "ModFloat"
 
 trait Eq t with (==): t - t -> bool
-impl Eq a given Int a with (==) x y = builtin "EqInt" x y
+impl Eq int with (==) x y = builtin "EqInt" x y
 impl Eq float with (==) (x: float) (y: float) : bool = builtin "EqFloat" x y
 
 impl Eq char with (==) (x: char) (y: char) : bool = builtin "EqChar" x y
@@ -287,6 +287,13 @@ deref (x: ref t) : t =
 
 deref_ptr (p: Ptr t) : t =
     deref <| transmute p
+
+ptr_store (p: Ptr a) (value: a) : unit =
+    addr: ref a = transmute p
+    addr := value
+
+array_insert (p: Ptr a) (index: usz) (value: a) : unit =
+    offset p index |> ptr_store value
 
 (@) = deref
 
@@ -476,7 +483,7 @@ impl Eq (ref t) given Eq t with
 
 // This `given` clause is required by the current trait checker since t is generalized
 impl Eq (Ptr t) given Cast (Ptr t) usz with
-    (==) l r = (cast l : usz) == cast r
+    (==) l r = (transmute l : usz) == transmute r
 
 
 trait Iterator it -> elem with

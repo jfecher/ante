@@ -103,6 +103,7 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
             ("u32", Token::IntegerType(IntegerKind::U32)),
             ("u64", Token::IntegerType(IntegerKind::U64)),
             ("usz", Token::IntegerType(IntegerKind::Usz)),
+            ("int", Token::PolymorphicIntType),
             ("float", Token::FloatType),
             ("char", Token::CharType),
             ("string", Token::StringType),
@@ -510,8 +511,10 @@ impl<'cache, 'contents> Iterator for Lexer<'cache, 'contents> {
                 self.previous_token_expects_indent = true;
                 self.advance2_with(Token::RightArrow)
             },
+            ('.', '&') => {
+                self.advance2_with(Token::MemberReference)
+            },
             ('.', _) => {
-                self.previous_token_expects_indent = true;
                 self.advance_with(Token::MemberAccess)
             },
             ('-', _) => self.lex_negative(),

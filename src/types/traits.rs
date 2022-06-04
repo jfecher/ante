@@ -68,7 +68,7 @@ pub struct RequiredTrait {
     pub callsite: Callsite,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Callsite {
     /// This required trait originates from the given variable inside the function.
     /// That variable's definition should be replaced with the selected impl's.
@@ -77,25 +77,14 @@ pub enum Callsite {
     /// This required trait originates from a definition outside of the current
     /// function where it has the given TraitConstraintId. It is required transitively
     /// to the current function by the given variable callsite.
-    Indirect(VariableId, TraitConstraintId),
-
-    /// This required trait originates from a `given` constraint of a trait impl which
-    /// may have been solved close to the impl (from another Direct trait constraint) or
-    /// far away (from another Indirect constraint). The TraitConstraintId here will match
-    /// that of the RequiredTrait this was solved from and the expectation is that this
-    /// Given constraint should be threaded through the program along with that constraint.
-    GivenDirect(VariableId, /*origin:*/ TraitConstraintId),
-
-    GivenIndirect(VariableId, /*copied callsite id:*/ TraitConstraintId, /*origin:*/ TraitConstraintId),
+    Indirect(VariableId, Vec<TraitConstraintId>),
 }
 
 impl Callsite {
-    pub fn id(self) -> VariableId {
+    pub fn id(&self) -> VariableId {
         match self {
-            Callsite::Direct(callsite) => callsite,
-            Callsite::Indirect(callsite, _) => callsite,
-            Callsite::GivenDirect(callsite, ..) => callsite,
-            Callsite::GivenIndirect(callsite, ..) => callsite,
+            Callsite::Direct(callsite) => *callsite,
+            Callsite::Indirect(callsite, _) => *callsite,
         }
     }
 }
@@ -130,7 +119,7 @@ pub type TraitConstraints = Vec<TraitConstraint>;
 impl RequiredTrait {
     pub fn as_constraint(&self, scope: ImplScopeId, callsite: VariableId, id: TraitConstraintId) -> TraitConstraint {
         let mut required = self.clone();
-        required.callsite = Callsite::Indirect(callsite, self.signature.id);
+        required.callsite = Callsite::Indirect(callsite, vec![self.signature.id]);
         required.signature.id = id;
         TraitConstraint { required, scope }
     }
@@ -204,23 +193,6 @@ impl<'a, 'b> Display for ConstraintSignaturePrinter<'a, 'b> {
 }
 
 impl TraitConstraint {
-    /// Member access traits are handled a bit differently, they are all implemented
-    /// automatically so they don't need anything other than standard type inference
-    /// to compile. Since they essentially don't have scopes, callsites, or origins
-    /// care must be taken inside find_impl and Variable::codegen to avoid referring
-    /// to these invalid values.
-    pub fn member_access_constraint(
-        trait_id: TraitInfoId, args: Vec<Type>, callsite: VariableId, cache: &mut ModuleCache,
-    ) -> TraitConstraint {
-        TraitConstraint {
-            required: RequiredTrait {
-                signature: ConstraintSignature { trait_id, args, id: cache.next_trait_constraint_id() },
-                callsite: Callsite::Direct(callsite),
-            },
-            scope: ImplScopeId(0),
-        }
-    }
-
     /// Creates a TraitConstraint from the ConstraintSignature of the 'given' clause
     /// of a trait impl and the constraint from the impl itself. These constraints are always Callsite::Indirect.
     pub fn impl_given_constraint(
@@ -230,16 +202,31 @@ impl TraitConstraint {
         let id = cache.next_trait_constraint_id();
         let signature = ConstraintSignature { trait_id, args, id };
 
-        let callsite = match impl_constraint.required.callsite {
-            Callsite::Direct(var) | Callsite::GivenDirect(var, _) => Callsite::GivenDirect(var, inner_id),
-
-            Callsite::Indirect(var, id) | Callsite::GivenIndirect(var, id, _) => {
-                Callsite::GivenIndirect(var, id, inner_id)
-            },
+        let callsite = match &impl_constraint.required.callsite {
+            Callsite::Direct(var) => Callsite::Indirect(*var, vec![inner_id]),
+            Callsite::Indirect(var, ids) => {
+                let mut ids = ids.clone();
+                ids.push(inner_id);
+                Callsite::Indirect(*var, ids)
+            }
         };
 
         let required = RequiredTrait { signature, callsite };
         TraitConstraint { required, scope: impl_constraint.scope }
+    }
+
+    pub fn is_int_constraint(&self, cache: &ModuleCache) -> bool {
+        self.required.signature.trait_id == cache.int_trait_id
+    }
+
+    pub fn int_constraint(int_type: TypeVariableId, cache: &mut ModuleCache) -> TraitConstraint {
+        let args = vec![Type::TypeVariable(int_type)];
+        let id = cache.next_trait_constraint_id();
+        let callsite = Callsite::Direct(VariableId(0));
+        TraitConstraint {
+            required: RequiredTrait { signature: ConstraintSignature { trait_id: cache.int_trait_id, args, id }, callsite },
+            scope: ImplScopeId(0),
+        }
     }
 
     pub fn trait_id(&self) -> TraitInfoId {
@@ -252,32 +239,6 @@ impl TraitConstraint {
 
     pub fn args_mut(&mut self) -> &mut [Type] {
         &mut self.required.signature.args
-    }
-
-    pub fn is_member_access<'c>(&self, cache: &ModuleCache<'c>) -> bool {
-        cache[self.required.signature.trait_id].is_member_access()
-    }
-
-    /// Each integer literal without a type suffix is given the generic type
-    /// "a given Int a". This function returns a TraitConstraint for this
-    /// builtin Int trait to be resolved later in typechecking to a specific
-    /// integer type or propagataed to the function signature to take any Int.
-    pub fn int_constraint(arg: TypeVariableId, callsite: VariableId, cache: &mut ModuleCache) -> TraitConstraint {
-        TraitConstraint {
-            required: RequiredTrait {
-                signature: ConstraintSignature {
-                    trait_id: cache.int_trait,
-                    args: vec![Type::TypeVariable(arg)],
-                    id: cache.next_trait_constraint_id(),
-                },
-                callsite: Callsite::Direct(callsite),
-            },
-            scope: ImplScopeId(0),
-        }
-    }
-
-    pub fn is_int_constraint<'c>(&self, cache: &ModuleCache<'c>) -> bool {
-        self.required.signature.trait_id == cache.int_trait
     }
 
     pub fn into_required_trait(self) -> RequiredTrait {

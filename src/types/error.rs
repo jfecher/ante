@@ -6,7 +6,7 @@ use crate::{
 use super::Type;
 
 pub fn from_template<'c>(
-    template: &'static str, location: Location<'c>, t1: &Type, t2: &Type, cache: &ModuleCache<'c>,
+    template: &str, location: Location<'c>, t1: &Type, t2: &Type, cache: &ModuleCache<'c>,
 ) -> ErrorMessage<'c> {
     let mut msg = String::new();
     let t1 = t1.display(cache);
