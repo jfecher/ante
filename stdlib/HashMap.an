@@ -101,7 +101,7 @@ get (map: HashMap k v) (key: k) : Maybe v =
 
 
 remove (map: ref (HashMap k v)) (key: k) : Maybe v =
-    match get_entry map key
+    match get_entry (@map) key
     | None -> None
     | Some e2 ->
         entry = mut e2
@@ -128,5 +128,5 @@ impl Print (HashMap k v) given Print k, Print v with
                 printed = did_first or entry.occupied
                 helper map printed (i + 1)
 
-        helper map false
+        helper map false 0
         putchar ']'

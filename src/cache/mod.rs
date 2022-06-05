@@ -191,6 +191,11 @@ pub struct DefinitionInfo<'a> {
     /// mutually_recursive_definitions HashMap in the cache.
     pub mutually_recursive_set: Option<DefinitionInfoId>,
 
+    /// Flag for whether we're currently inferring the type of this definition.
+    /// Used to find mutual recursion sets. Technically unneeded since we can also
+    /// check the call_graph, but this is faster and more readable.
+    pub undergoing_type_inference: bool,
+
     /// The type of this definition. Filled out during type inference,
     /// and is guarenteed to be Some afterward.
     pub typ: Option<GeneralizedType>,
@@ -351,6 +356,7 @@ impl<'a> ModuleCache<'a> {
             uses: 0,
             trait_impl: None,
             mutually_recursive_set: None,
+            undergoing_type_inference: false,
         });
         DefinitionInfoId(id)
     }
@@ -442,6 +448,33 @@ impl<'a> ModuleCache<'a> {
         }
 
         unreachable!("No definition for '{}' found in trait impl {}", name, binding.0)
+    }
+
+    pub fn update_mutual_recursion_sets(&mut self, definition_id: DefinitionInfoId) {
+        if self[definition_id].undergoing_type_inference {
+            let mut mutually_recursive_functions = Vec::with_capacity(2);
+
+            for id in self.call_stack.iter().copied().rev() {
+                mutually_recursive_functions.push(id);
+
+                if id == definition_id {
+                    break;
+                }
+            }
+
+            // Don't push if a function just references itself
+            if mutually_recursive_functions.len() < 2 {
+                return;
+            }
+
+            // Mark all the definitions in the set as recursive
+            for id in &mutually_recursive_functions {
+                self[*id].mutually_recursive_set = Some(definition_id);
+            }
+
+            let old = self.mutually_recursive_definitions.insert(definition_id, mutually_recursive_functions);
+            assert_eq!(old, None);
+        }
     }
 }
 

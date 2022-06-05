@@ -68,6 +68,14 @@ fn print_definition_types(cache: &ModuleCache) {
             println!("(none)");
         }
     }
+
+    println!("Mutually recursive definitions:");
+    for (key, defs) in &cache.mutually_recursive_definitions {
+        println!("{} {:?}:", cache[*key].name, key);
+        for id in defs {
+            println!("- {} {:?}", cache[*id].name, id);
+        }
+    }
 }
 
 /// Convenience macro for unwrapping a Result or printing an error message and returning () on Err.

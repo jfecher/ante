@@ -1002,6 +1002,9 @@ fn infer_nested_definition(
     let level = LetBindingLevel(CURRENT_LEVEL.load(Ordering::SeqCst));
     let typevar = cache.next_type_variable(level);
     let info = &mut cache.definition_infos[definition_id.0];
+
+    cache.call_stack.push(definition_id);
+    info.undergoing_type_inference = true;
     let definition = info.definition.as_mut().unwrap();
 
     // Mark the definition with a fresh typevar for recursive references
@@ -1025,9 +1028,12 @@ fn infer_nested_definition(
         DefinitionKind::TypeConstructor { .. } => {},
     };
 
+    cache.call_stack.pop();
+
     let constraints = to_trait_constraints(definition_id, impl_scope, callsite, cache);
 
     let info = &mut cache.definition_infos[definition_id.0];
+    info.undergoing_type_inference = false;
     (info.typ.clone().unwrap(), constraints)
 }
 
@@ -1445,6 +1451,13 @@ impl<'a> Inferable<'a> for ast::Variable<'a> {
         let (s, traits) = match &info.typ {
             Some(typ) => {
                 let typ = typ.clone();
+
+                // If the type is already filled in, check if it is still undergoing inference.
+                // If so then it is below us on the call stack somewhere and we need to avoid
+                // generalizing the current definition until all definitions in the mutual recursion
+                // set can be generalized at once.
+                cache.update_mutual_recursion_sets(definition_id);
+
                 let constraints = to_trait_constraints(definition_id, impl_scope, id, cache);
                 (typ, constraints)
             },
@@ -1592,6 +1605,99 @@ fn should_generalize(ast: &ast::Ast) -> bool {
     }
 }
 
+enum MutualRecursionResult {
+    No,
+    YesGeneralizeLater,
+    YesGeneralizeNow(DefinitionInfoId),
+}
+
+impl MutualRecursionResult {
+    fn combine(self, other: Self) -> Self {
+        use MutualRecursionResult::*;
+        match (self, other) {
+            (No, other)
+            | (other, No) => other,
+
+            (YesGeneralizeNow(id1), YesGeneralizeNow(id2)) => {
+                assert_eq!(id1, id2);
+                YesGeneralizeNow(id1)
+            },
+            (YesGeneralizeNow(id), _)
+            | (_, YesGeneralizeNow(id)) => YesGeneralizeNow(id),
+
+            (YesGeneralizeLater, YesGeneralizeLater) => YesGeneralizeLater,
+        }
+    }
+}
+
+fn is_mutually_recursive(pattern: &ast::Ast, cache: &ModuleCache) -> MutualRecursionResult {
+    use ast::Ast::*;
+    match pattern {
+        Literal(_) => MutualRecursionResult::No,
+        Variable(variable) => {
+            let definition_id = variable.definition.unwrap();
+            let info = &cache.definition_infos[definition_id.0];
+            match info.mutually_recursive_set {
+                None => MutualRecursionResult::No,
+                Some(id) if id == variable.definition.unwrap() => MutualRecursionResult::YesGeneralizeNow(id),
+                Some(_) => MutualRecursionResult::YesGeneralizeLater,
+            }
+        },
+        TypeAnnotation(annotation) => is_mutually_recursive(&annotation.lhs, cache),
+        FunctionCall(call) =>
+            call.args.iter()
+                .fold(MutualRecursionResult::No, |a, b| a.combine(is_mutually_recursive(b, cache))),
+        _ => {
+            error!(pattern.locate(), "Invalid syntax in irrefutable pattern");
+            MutualRecursionResult::No
+        },
+    }
+}
+
+fn try_generalize_definition<'c>(definition: &mut ast::Definition<'c>, t: Type, traits: TraitConstraints, cache: &mut ModuleCache<'c>) -> TraitConstraints {
+    if !should_generalize(&definition.expr) {
+        return traits;
+    }
+    
+    let pattern = definition.pattern.as_mut();
+    match is_mutually_recursive(pattern, cache) {
+        MutualRecursionResult::No => {
+            let typevars_in_fn = find_all_typevars(pattern.get_type().unwrap(), false, cache);
+            let exposed_traits = traitchecker::resolve_traits(traits, &typevars_in_fn, cache);
+            bind_irrefutable_pattern(pattern, &t, &exposed_traits, true, cache);
+            vec![]
+        },
+        MutualRecursionResult::YesGeneralizeLater => traits, // Do nothing
+        MutualRecursionResult::YesGeneralizeNow(root) => {
+            // Generalize all the mutually recursive definitions at once
+            let mut ids = cache.mutually_recursive_definitions[&root].clone();
+            ids.pop();
+
+            for id in ids {
+                let info = &mut cache.definition_infos[id.0];
+                let t = info.typ.as_ref().unwrap().as_monotype().clone();
+
+                let definition = match &mut info.definition {
+                    Some(DefinitionKind::Definition(definition)) => trustme::extend_lifetime(*definition),
+                    _ => unreachable!(),
+                };
+
+                let pattern = &mut definition.pattern.as_mut();
+
+                let typevars_in_fn = find_all_typevars(pattern.get_type().unwrap(), false, cache);
+                let exposed_traits = traitchecker::resolve_traits(traits.clone(), &typevars_in_fn, cache);
+                bind_irrefutable_pattern(pattern, &t, &exposed_traits, true, cache);
+            }
+
+            let typevars_in_fn = find_all_typevars(pattern.get_type().unwrap(), false, cache);
+            let exposed_traits = traitchecker::resolve_traits(traits.clone(), &typevars_in_fn, cache);
+            bind_irrefutable_pattern(pattern, &t, &exposed_traits, true, cache);
+
+            vec![]
+        },
+    }
+}
+
 /* Let
  *   infer cache expr = t
  *   infer (pattern:(generalize t) :: cache) rest = t'
@@ -1639,16 +1745,8 @@ impl<'a> Inferable<'a> for ast::Definition<'a> {
 
         // If this definition is of a lambda or variable we try to generalize it,
         // which entails wrapping type variables in a forall, and finding which traits
-        // usages of this definitio require.
-        let traits = if should_generalize(self.expr.as_ref()) {
-            let typevars_in_fn = find_all_typevars(self.pattern.get_type().unwrap(), false, cache);
-            let exposed_traits = traitchecker::resolve_traits(traits, &typevars_in_fn, cache);
-
-            bind_irrefutable_pattern(self.pattern.as_mut(), &t, &exposed_traits, true, cache);
-            vec![]
-        } else {
-            traits
-        };
+        // usages of this definition require.
+        let traits = try_generalize_definition(self, t, traits, cache);
 
         // TODO: Can these operations on the LetBindingLevel be simplified?
         CURRENT_LEVEL.store(previous_level, Ordering::SeqCst);
