@@ -41,14 +41,12 @@ resize (map: ref (HashMap k v)) (new_capacity: usz) : unit =
 
 // Should we resize this map when pushing another element?
 should_resize (map: HashMap k v) : bool =
-    scale_factor: usz = 2
+    scale_factor = 2
     (map.len + 1) * scale_factor > map.capacity
 
 insert (map: ref (HashMap k v)) (key: k) (value: v) : unit =
     if should_resize @map then
         resize map (map.capacity * 2 + 1)
-
-    h = cast (hash key) : usz % map.capacity
 
     iter_until (map: ref (HashMap k v)) (key: k) (value: v) (start: usz) (end: usz) : bool =
         if start >= end then
@@ -63,6 +61,8 @@ insert (map: ref (HashMap k v)) (key: k) (value: v) : unit =
                 entry_ref := Entry key value true false
                 true
 
+    h = cast (hash key) : usz % map.capacity
+
     if not iter_until map key value h (map.capacity) then
         if not iter_until map key value 0 h then
             panic "Failed to insert entry into map"
@@ -73,26 +73,26 @@ get_entry (map: HashMap k v) (key: k) : Maybe (Ptr (Entry k v)) =
     // Return whether to continue by wrapping around the end, and the value if found
     iter_until (map: HashMap k v) (key: k) (start: usz) (end: usz) : (bool, Maybe (Ptr (Entry k v))) =
         if start >= end then
-            (true, None)
+            true, None
         else
             entry_ptr = offset map.entries start
             entry = deref_ptr entry_ptr
             if entry.occupied and entry.key == key then
-                (false, Some entry_ptr)
+                false, Some entry_ptr
             else if entry.tombstone then
                 iter_until map key (start + 1) end
             else
-                (false, None)
+                false, None
 
     h = cast (hash key) : usz % map.capacity
     match iter_until map key h map.capacity
-    | (_, Some value) -> Some value
-    | (false, _) -> None
-    | (true, _) ->
+    | _, Some value -> Some value
+    | false, _ -> None
+    | true, _ ->
         match iter_until map key 0 h
-        | (_, Some value) -> Some value
-        | (false, _) -> None
-        | (true, _) -> None
+        | _, Some value -> Some value
+        | false, _ -> None
+        | true, _ -> None
 
 get (map: HashMap k v) (key: k) : Maybe v =
     match get_entry map key
@@ -104,8 +104,8 @@ remove (map: ref (HashMap k v)) (key: k) : Maybe v =
     match get_entry (@map) key
     | None -> None
     | Some e2 ->
-        entry = mut e2
-        e = deref entry
+        entry = ptr_to_ref e2
+        e = @entry
         entry := Entry e.value e.key false true
         map.&len := map.len - 1
         Some e.value
@@ -113,20 +113,19 @@ remove (map: ref (HashMap k v)) (key: k) : Maybe v =
 impl Print (HashMap k v) given Print k, Print v with
     printne map =
         putchar '['
-
-        helper (map: HashMap k v) (did_first: bool) (i: usz) =
-            if i < map.capacity then
-                entry = map.entries#i
-                if entry.occupied then
-                    if did_first then
-                        printne ", "
-
-                    printne entry.key
-                    printne " -> "
-                    printne entry.value
-
-                printed = did_first or entry.occupied
-                helper map printed (i + 1)
-
-        helper map false 0
+        print_helper map false 0
         putchar ']'
+
+print_helper (map: HashMap k v) (did_first: bool) (i: usz) =
+    if i < map.capacity then
+        entry: Entry k v = map.entries#i
+        if entry.occupied then
+            if did_first then
+                printne ", "
+
+            printne entry.key
+            printne " -> "
+            printne entry.value
+
+        printed = did_first or entry.occupied
+        print_helper map printed (i + 1)

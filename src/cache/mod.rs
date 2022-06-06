@@ -22,7 +22,7 @@ use crate::types::traits::{ConstraintSignature, RequiredImpl, RequiredTrait, Tra
 use crate::types::{GeneralizedType, Kind, LetBindingLevel, TypeBinding};
 use crate::types::{Type, TypeInfo, TypeInfoBody, TypeInfoId, TypeVariableId};
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 mod counter;
@@ -110,7 +110,7 @@ pub struct ModuleCache<'a> {
     /// Map from the first function reachable in a mutually recursive set of functions
     /// to all functions in that set. Once the key'd function finishes compiling we can
     /// generalize all the functions in the set and add trait constraints at once.
-    pub mutually_recursive_definitions: HashMap<DefinitionInfoId, Vec<DefinitionInfoId>>,
+    pub mutually_recursive_definitions: HashMap<DefinitionInfoId, HashSet<DefinitionInfoId>>,
 }
 
 /// The key for accessing parse trees or `NameResolver`s
@@ -169,9 +169,6 @@ pub struct DefinitionInfo<'a> {
     /// this Definition kind should result in self.typ being filled out.
     pub definition: Option<DefinitionKind<'a>>,
 
-    // True if this definition can be reassigned to.
-    // pub mutable: bool,
-
     /// Some((trait_id, trait_args)) if this is a definition from a trait.
     /// Note that this is still None for definitions from trait impls.
     pub trait_info: Option<(TraitInfoId, Vec<Type>)>,
@@ -190,6 +187,11 @@ pub struct DefinitionInfo<'a> {
     /// of functions (from main) in this set and the key in the
     /// mutually_recursive_definitions HashMap in the cache.
     pub mutually_recursive_set: Option<DefinitionInfoId>,
+
+    /// Remember which variable links lead to mutually recursive calls.
+    /// Since traits need to be solved all at once for mutually recursive
+    /// definitions, we need to remember where to link them to later.
+    pub mutually_recursive_variables: Vec<VariableId>,
 
     /// Flag for whether we're currently inferring the type of this definition.
     /// Used to find mutual recursion sets. Technically unneeded since we can also
@@ -357,6 +359,7 @@ impl<'a> ModuleCache<'a> {
             trait_impl: None,
             mutually_recursive_set: None,
             undergoing_type_inference: false,
+            mutually_recursive_variables: vec![],
         });
         DefinitionInfoId(id)
     }
@@ -450,30 +453,37 @@ impl<'a> ModuleCache<'a> {
         unreachable!("No definition for '{}' found in trait impl {}", name, binding.0)
     }
 
-    pub fn update_mutual_recursion_sets(&mut self, definition_id: DefinitionInfoId) {
+    pub fn update_mutual_recursion_sets(&mut self, definition_id: DefinitionInfoId, variable_id: VariableId) {
+        // Type inference checks in depth-first search order, so if a given id is currently
+        // undergoing type inference then we can assume it is below us on the callstack somewhere.
         if self[definition_id].undergoing_type_inference {
-            let mut mutually_recursive_functions = Vec::with_capacity(2);
+            let mut pushed = false;
 
             for id in self.call_stack.iter().copied().rev() {
-                mutually_recursive_functions.push(id);
-
                 if id == definition_id {
+                    // Dont mark this definition as mutually recursive if it only recurs with itself
+                    if pushed {
+                        // This is the 'root' of our recursion. When we later type check we will avoid
+                        // generalizing for all ids in this set until this root (and thus every other id)
+                        // are finished.
+                        self.definition_infos[id.0].mutually_recursive_set = Some(definition_id);
+                    }
                     break;
                 }
+
+                // Mark all the definitions in the set as recursive
+                pushed = true;
+                self.definition_infos[id.0].mutually_recursive_set = Some(definition_id);
+                self.mutually_recursive_definitions.entry(definition_id).or_default().insert(id);
             }
 
-            // Don't push if a function just references itself
-            if mutually_recursive_functions.len() < 2 {
-                return;
+            // Don't do anything if we only have 1 recursive function, we don't need any special
+            // machinary to infer multiple mutually recursive functions together in that case.
+            if pushed {
+                // Remember which variable created the call so we know where to add trait constraints to later.
+                let top = *self.call_stack.last().unwrap();
+                self[top].mutually_recursive_variables.push(variable_id);
             }
-
-            // Mark all the definitions in the set as recursive
-            for id in &mutually_recursive_functions {
-                self[*id].mutually_recursive_set = Some(definition_id);
-            }
-
-            let old = self.mutually_recursive_definitions.insert(definition_id, mutually_recursive_functions);
-            assert_eq!(old, None);
         }
     }
 }

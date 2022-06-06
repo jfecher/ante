@@ -181,9 +181,16 @@ fn solve_normal_constraint<'c>(constraint: &TraitConstraint, cache: &mut ModuleC
             matching_impls.len(),
             constraint.display(cache)
         );
-        for (i, (impls, _)) in matching_impls.iter().enumerate() {
+
+        let max_shown_impls = 3;
+        for (i, (impls, _)) in matching_impls.iter().enumerate().take(max_shown_impls) {
             let impl_id = impls[0].0;
-            note!(cache[impl_id].location, "Candidate {}", i + 1);
+            if i == 2 && matching_impls.len() > max_shown_impls {
+                let rest = matching_impls.len() - max_shown_impls;
+                note!(cache[impl_id].location, "Candidate {} ({} more hidden)", i + 1, rest);
+            } else {
+                note!(cache[impl_id].location, "Candidate {}", i + 1);
+            }
         }
     } else {
         error!(constraint.locate(cache), "No impl found for {}", constraint.display(cache))

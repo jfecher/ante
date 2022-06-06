@@ -20,6 +20,7 @@ pub mod typechecker;
 pub mod typed;
 pub mod typeprinter;
 mod error;
+mod mutual_recursion;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct TypeVariableId(pub usize);

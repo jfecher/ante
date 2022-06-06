@@ -295,6 +295,8 @@ ptr_store (p: Ptr a) (value: a) : unit =
 array_insert (p: Ptr a) (index: usz) (value: a) : unit =
     offset p index |> ptr_store value
 
+ptr_to_ref: Ptr a -> ref a = transmute
+
 (@) = deref
 
 null (): Ptr a = transmute 0usz

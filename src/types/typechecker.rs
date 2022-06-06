@@ -44,6 +44,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use super::mutual_recursion::try_generalize_definition;
 use super::traits::{Callsite, ConstraintSignature, TraitConstraintId};
 use super::{error, GeneralizedType, TypeInfoBody};
 
@@ -996,19 +997,45 @@ fn generalize<'a>(typ: &Type, cache: &ModuleCache<'a>) -> GeneralizedType {
     }
 }
 
+/// Mark a given DefinitionInfoId as currently being type checked
+fn mark_id_in_progress(id: DefinitionInfoId, cache: &mut ModuleCache) {
+    cache.call_stack.push(id);
+
+    let info = &mut cache.definition_infos[id.0];
+
+    // Should this be under the typ.is_none check?
+    // It seems to only differ for trait impl definitions
+    info.undergoing_type_inference = true;
+
+    if info.typ.is_none() {
+        let level = LetBindingLevel(CURRENT_LEVEL.load(Ordering::SeqCst));
+        let typevar = cache.next_type_variable(level);
+
+        // Mark the definition with a fresh typevar for recursive references
+        let info = &mut cache.definition_infos[id.0];
+        info.typ = Some(GeneralizedType::MonoType(typevar));
+    }
+}
+
+fn mark_id_finished(id: DefinitionInfoId, cache: &mut ModuleCache) {
+    cache.call_stack.pop();
+    cache.definition_infos[id.0].undergoing_type_inference = false;
+}
+
 fn infer_nested_definition(
     definition_id: DefinitionInfoId, impl_scope: ImplScopeId, callsite: VariableId, cache: &mut ModuleCache,
 ) -> (GeneralizedType, TraitConstraints) {
-    let level = LetBindingLevel(CURRENT_LEVEL.load(Ordering::SeqCst));
-    let typevar = cache.next_type_variable(level);
-    let info = &mut cache.definition_infos[definition_id.0];
+    let definition = cache[definition_id].definition.as_mut().unwrap();
 
-    cache.call_stack.push(definition_id);
-    info.undergoing_type_inference = true;
-    let definition = info.definition.as_mut().unwrap();
+    // DefinitionKind::Definition marks its ids internally when we call infer(definition, _).
+    // We need to avoid doing it twice.
+    let need_to_mark_definition = !matches!(definition, DefinitionKind::Definition(_));
 
-    // Mark the definition with a fresh typevar for recursive references
-    info.typ = Some(GeneralizedType::MonoType(typevar));
+    if need_to_mark_definition {
+        mark_id_in_progress(definition_id, cache);
+    }
+
+    let definition = cache[definition_id].definition.as_mut().unwrap();
 
     match definition {
         DefinitionKind::Definition(definition) => {
@@ -1028,12 +1055,13 @@ fn infer_nested_definition(
         DefinitionKind::TypeConstructor { .. } => {},
     };
 
-    cache.call_stack.pop();
+    if need_to_mark_definition {
+        mark_id_finished(definition_id, cache);
+    }
 
     let constraints = to_trait_constraints(definition_id, impl_scope, callsite, cache);
 
     let info = &mut cache.definition_infos[definition_id.0];
-    info.undergoing_type_inference = false;
     (info.typ.clone().unwrap(), constraints)
 }
 
@@ -1090,7 +1118,7 @@ fn make_tuple_type(mut types: Vec<Type>) -> Type {
 /// that it is indeed irrefutable. If should_generalize is true, this generalizes the type given
 /// to any variable encountered. Appends the given required_traits list in the DefinitionInfo's
 /// required_traits field.
-fn bind_irrefutable_pattern<'c>(
+pub(super) fn bind_irrefutable_pattern<'c>(
     ast: &mut ast::Ast<'c>, typ: &Type, required_traits: &[RequiredTrait], should_generalize: bool,
     cache: &mut ModuleCache<'c>,
 ) {
@@ -1242,6 +1270,25 @@ fn infer_trait_definition_traits(name: &str, trait_id: TraitInfoId, cache: &mut 
     }
 }
 
+/// Perform some action for each variable within a pattern
+pub(super) fn fold_pattern<T>(pattern: &ast::Ast, mut init: T, f: &mut impl FnMut(&ast::Variable, T) -> T) -> T {
+    use ast::Ast::*;
+    match pattern {
+        Variable(variable) => f(variable, init),
+        TypeAnnotation(annotation) => fold_pattern(annotation.lhs.as_ref(), init, f),
+        FunctionCall(call) => {
+            for arg in &call.args {
+                init = fold_pattern(arg, init, f);
+            }
+            init
+        },
+        _ => {
+            error!(pattern.locate(), "Invalid syntax in irrefutable pattern in trait impl, expected a pattern of some kind (a name, type annotation, or type constructor)");
+            init
+        },
+    }
+}
+
 /// Both this function and bind_irrefutable_pattern traverse an irrefutable pattern.
 /// The former traverses the pattern along with a type and unifies them. This one traverses
 /// the pattern and unifies any names it finds with matching names in the given TraitInfo.
@@ -1261,30 +1308,13 @@ fn infer_trait_definition_traits(name: &str, trait_id: TraitInfoId, cache: &mut 
 fn bind_irrefutable_pattern_in_impl<'a>(
     ast: &ast::Ast<'a>, trait_id: TraitInfoId, bindings: &mut TypeBindings, cache: &mut ModuleCache<'a>,
 ) {
-    use ast::Ast::*;
-    match ast {
-        Variable(variable) => {
-            let name = variable.to_string();
-            let trait_type = lookup_definition_type_in_trait(&name, trait_id, cache);
+    fold_pattern(ast, (), &mut |variable, _| {
+        let name = variable.to_string();
+        let trait_type = lookup_definition_type_in_trait(&name, trait_id, cache);
 
-            let trait_type = instantiate_impl_with_bindings(&trait_type, bindings, cache);
-
-            let definition_id = variable.definition.unwrap();
-            let info = &mut cache[definition_id];
-            info.typ = Some(trait_type);
-        },
-        TypeAnnotation(annotation) => {
-            bind_irrefutable_pattern_in_impl(annotation.lhs.as_ref(), trait_id, bindings, cache);
-        },
-        FunctionCall(call) => {
-            for arg in &call.args {
-                bind_irrefutable_pattern_in_impl(arg, trait_id, bindings, cache);
-            }
-        },
-        _ => {
-            error!(ast.locate(), "Invalid syntax in irrefutable pattern in trait impl, expected a pattern of some kind (a name, type annotation, or type constructor)");
-        },
-    }
+        let trait_type = instantiate_impl_with_bindings(&trait_type, bindings, cache);
+        cache[variable.definition.unwrap()].typ = Some(trait_type);
+    });
 }
 
 /// Checks that the traits used in `pattern` are a subset of traits used in the `given` list of
@@ -1292,24 +1322,24 @@ fn bind_irrefutable_pattern_in_impl<'a>(
 fn check_impl_propagated_traits(
     pattern: &ast::Ast, trait_id: TraitInfoId, given: &[ConstraintSignature], cache: &mut ModuleCache,
 ) {
-    use ast::Ast::*;
-    match pattern {
-        Variable(variable) => {
-            let name = variable.to_string();
+    fold_pattern(pattern, (), &mut |variable, _| {
+        let name = variable.to_string();
 
-            // Given a trait:
-            // ```
-            // trait Foo a with
-            //     foo : a -> a
-            //         given Bar a, Baz a
-            // ```
-            // This list will contain [Bar a, Baz a]
-            let useable_traits = lookup_definition_traits_in_trait(&name, trait_id, cache);
+        // Given a trait:
+        // ```
+        // trait Foo a with
+        //     foo : a -> a
+        //         given Bar a, Baz a
+        // ```
+        // This list will contain [Bar a, Baz a]
+        let useable_traits = lookup_definition_traits_in_trait(&name, trait_id, cache);
 
-            let definition_id = variable.definition.unwrap();
-            let used_traits = cache[definition_id].required_traits.clone();
+        let definition_id = variable.definition.unwrap();
+        let used_traits = cache[definition_id].required_traits.clone();
 
-            cache[definition_id].required_traits = used_traits.into_iter().filter_map(|mut used | {
+        cache[definition_id].required_traits = used_traits
+            .into_iter()
+            .filter_map(|mut used| {
                 if let Some(id) = find_matching_trait(&used, &useable_traits, given, cache) {
                     used.signature.id = id;
                     Some(used)
@@ -1321,18 +1351,9 @@ fn check_impl_propagated_traits(
                     //        used.display(cache), variable);
                     None
                 }
-            }).collect();
-        },
-        TypeAnnotation(annotation) => check_impl_propagated_traits(&annotation.lhs, trait_id, given, cache),
-        FunctionCall(call) => {
-            for arg in &call.args {
-                check_impl_propagated_traits(arg, trait_id, given, cache)
-            }
-        },
-        _ => {
-            error!(pattern.locate(), "Invalid syntax in irrefutable pattern in trait impl, expected a pattern of some kind (a name, type annotation, or type constructor)");
-        },
-    }
+            })
+            .collect();
+    });
 }
 
 // TODO: `useable_traits` here is always going to be empty. We'll likely need a
@@ -1374,6 +1395,18 @@ fn find_matching_trait(
     }
 
     None
+}
+
+fn initialize_pattern_types(pattern: &ast::Ast, cache: &mut ModuleCache) {
+    fold_pattern(pattern, (), &mut |variable, _| {
+        mark_id_in_progress(variable.definition.unwrap(), cache);
+    });
+}
+
+fn finish_pattern(pattern: &ast::Ast, cache: &mut ModuleCache) {
+    fold_pattern(pattern, (), &mut |variable, _| {
+        mark_id_finished(variable.definition.unwrap(), cache);
+    });
 }
 
 pub trait Inferable<'a> {
@@ -1456,7 +1489,7 @@ impl<'a> Inferable<'a> for ast::Variable<'a> {
                 // If so then it is below us on the call stack somewhere and we need to avoid
                 // generalizing the current definition until all definitions in the mutual recursion
                 // set can be generalized at once.
-                cache.update_mutual_recursion_sets(definition_id);
+                cache.update_mutual_recursion_sets(definition_id, self.id.unwrap());
 
                 let constraints = to_trait_constraints(definition_id, impl_scope, id, cache);
                 (typ, constraints)
@@ -1593,111 +1626,6 @@ fn unwrap_functions(f: Type, new_function: Type, cache: &ModuleCache) -> (Functi
     }
 }
 
-/// True if the expression can be generalized. Generalizing expressions
-/// will cause them to be re-evaluated whenever they're used with new types,
-/// so generalization should be limited to when this would be expected by
-/// users (functions) or when it would not be noticeable (variables).
-fn should_generalize(ast: &ast::Ast) -> bool {
-    match ast {
-        ast::Ast::Variable(_) => true,
-        ast::Ast::Lambda(lambda) => lambda.closure_environment.is_empty(),
-        _ => false,
-    }
-}
-
-enum MutualRecursionResult {
-    No,
-    YesGeneralizeLater,
-    YesGeneralizeNow(DefinitionInfoId),
-}
-
-impl MutualRecursionResult {
-    fn combine(self, other: Self) -> Self {
-        use MutualRecursionResult::*;
-        match (self, other) {
-            (No, other)
-            | (other, No) => other,
-
-            (YesGeneralizeNow(id1), YesGeneralizeNow(id2)) => {
-                assert_eq!(id1, id2);
-                YesGeneralizeNow(id1)
-            },
-            (YesGeneralizeNow(id), _)
-            | (_, YesGeneralizeNow(id)) => YesGeneralizeNow(id),
-
-            (YesGeneralizeLater, YesGeneralizeLater) => YesGeneralizeLater,
-        }
-    }
-}
-
-fn is_mutually_recursive(pattern: &ast::Ast, cache: &ModuleCache) -> MutualRecursionResult {
-    use ast::Ast::*;
-    match pattern {
-        Literal(_) => MutualRecursionResult::No,
-        Variable(variable) => {
-            let definition_id = variable.definition.unwrap();
-            let info = &cache.definition_infos[definition_id.0];
-            match info.mutually_recursive_set {
-                None => MutualRecursionResult::No,
-                Some(id) if id == variable.definition.unwrap() => MutualRecursionResult::YesGeneralizeNow(id),
-                Some(_) => MutualRecursionResult::YesGeneralizeLater,
-            }
-        },
-        TypeAnnotation(annotation) => is_mutually_recursive(&annotation.lhs, cache),
-        FunctionCall(call) =>
-            call.args.iter()
-                .fold(MutualRecursionResult::No, |a, b| a.combine(is_mutually_recursive(b, cache))),
-        _ => {
-            error!(pattern.locate(), "Invalid syntax in irrefutable pattern");
-            MutualRecursionResult::No
-        },
-    }
-}
-
-fn try_generalize_definition<'c>(definition: &mut ast::Definition<'c>, t: Type, traits: TraitConstraints, cache: &mut ModuleCache<'c>) -> TraitConstraints {
-    if !should_generalize(&definition.expr) {
-        return traits;
-    }
-    
-    let pattern = definition.pattern.as_mut();
-    match is_mutually_recursive(pattern, cache) {
-        MutualRecursionResult::No => {
-            let typevars_in_fn = find_all_typevars(pattern.get_type().unwrap(), false, cache);
-            let exposed_traits = traitchecker::resolve_traits(traits, &typevars_in_fn, cache);
-            bind_irrefutable_pattern(pattern, &t, &exposed_traits, true, cache);
-            vec![]
-        },
-        MutualRecursionResult::YesGeneralizeLater => traits, // Do nothing
-        MutualRecursionResult::YesGeneralizeNow(root) => {
-            // Generalize all the mutually recursive definitions at once
-            let mut ids = cache.mutually_recursive_definitions[&root].clone();
-            ids.pop();
-
-            for id in ids {
-                let info = &mut cache.definition_infos[id.0];
-                let t = info.typ.as_ref().unwrap().as_monotype().clone();
-
-                let definition = match &mut info.definition {
-                    Some(DefinitionKind::Definition(definition)) => trustme::extend_lifetime(*definition),
-                    _ => unreachable!(),
-                };
-
-                let pattern = &mut definition.pattern.as_mut();
-
-                let typevars_in_fn = find_all_typevars(pattern.get_type().unwrap(), false, cache);
-                let exposed_traits = traitchecker::resolve_traits(traits.clone(), &typevars_in_fn, cache);
-                bind_irrefutable_pattern(pattern, &t, &exposed_traits, true, cache);
-            }
-
-            let typevars_in_fn = find_all_typevars(pattern.get_type().unwrap(), false, cache);
-            let exposed_traits = traitchecker::resolve_traits(traits.clone(), &typevars_in_fn, cache);
-            bind_irrefutable_pattern(pattern, &t, &exposed_traits, true, cache);
-
-            vec![]
-        },
-    }
-}
-
 /* Let
  *   infer cache expr = t
  *   infer (pattern:(generalize t) :: cache) rest = t'
@@ -1710,25 +1638,26 @@ impl<'a> Inferable<'a> for ast::Definition<'a> {
 
         if self.typ.is_some() {
             return (unit, vec![]);
-        } else {
-            // Without this self.typ wouldn't be set yet while inferring the type of self.expr
-            // if this definition is recursive. If this is removed we would recursively infer
-            // this definition repeatedly until eventually reaching an error when the previous type
-            // is generalized but the new one is not.
-            self.typ = Some(unit.clone());
         }
+
+        // Without this self.typ wouldn't be set yet while inferring the type of self.expr
+        // if this definition is recursive. If this is removed we would recursively infer
+        // this definition repeatedly until eventually reaching an error when the previous type
+        // is generalized but the new one is not.
+        self.typ = Some(unit.clone());
+        initialize_pattern_types(&self.pattern, cache);
 
         let level = self.level.unwrap();
         let previous_level = CURRENT_LEVEL.swap(level.0, Ordering::SeqCst);
 
-        // The rhs of a Definition must be inferred at a greater LetBindingLevel than
-        // the lhs below. Here we use level for the rhs and level - 1 for the lhs
         let (mut t, traits) = infer(self.expr.as_mut(), cache);
         if self.mutable {
             let lifetime = next_type_variable_id(cache);
             t = Type::TypeApplication(Box::new(Type::Ref(lifetime)), vec![t]);
         }
 
+        // The rhs of a Definition must be inferred at a greater LetBindingLevel than
+        // the lhs below. Here we use level for the rhs and level - 1 for the lhs
         CURRENT_LEVEL.store(level.0 - 1, Ordering::SeqCst);
 
         // TODO: the inferred type t needs to be unified with the patterns type before
@@ -1750,6 +1679,11 @@ impl<'a> Inferable<'a> for ast::Definition<'a> {
 
         // TODO: Can these operations on the LetBindingLevel be simplified?
         CURRENT_LEVEL.store(previous_level, Ordering::SeqCst);
+
+        // Done with this definition, remove it from callstack and mark each variable
+        // definied within its pattern as no longer undergoing type inference
+        finish_pattern(&self.pattern, cache);
+
         (unit, traits)
     }
 }
