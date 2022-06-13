@@ -45,7 +45,6 @@ pub struct Context<'c> {
     impl_mappings: Vec<Impls>,
     // direct_given_impl_mappings: Vec<DirectGivenImpls>,
     // indirect_given_impl_mappings: Vec<IndirectGivenImpls>,
-
     next_id: usize,
 }
 
@@ -207,24 +206,21 @@ impl<'c> Context<'c> {
                 TypeApplication(Box::new(con), args)
             },
             Ref(_) => typ.clone(),
-            Struct(fields, id) => {
-                match self.find_binding(*id, fuel) {
-                    Ok(binding) => self.follow_all_bindings_inner(binding, fuel),
-                    Err(_) => {
-                        let fields = fields.iter().map(|(name, typ)| {
-                            (name.clone(), self.follow_all_bindings_inner(typ, fuel))
-                        }).collect();
+            Struct(fields, id) => match self.find_binding(*id, fuel) {
+                Ok(binding) => self.follow_all_bindings_inner(binding, fuel),
+                Err(_) => {
+                    let fields = fields
+                        .iter()
+                        .map(|(name, typ)| (name.clone(), self.follow_all_bindings_inner(typ, fuel)))
+                        .collect();
 
-                        Struct(fields, *id)
-                    },
-                }
+                    Struct(fields, *id)
+                },
             },
-            Int(id) => {
-                match self.find_binding(*id, fuel) {
-                    Ok(binding) => self.follow_all_bindings_inner(binding, fuel),
-                    Err(id) => Int(id),
-                }
-            }
+            Int(id) => match self.find_binding(*id, fuel) {
+                Ok(binding) => self.follow_all_bindings_inner(binding, fuel),
+                Err(id) => Int(id),
+            },
         }
     }
 
@@ -332,7 +328,7 @@ impl<'c> Context<'c> {
                     // Default to i32
                     32 / 8
                 }
-            }
+            },
         }
     }
 
@@ -518,7 +514,7 @@ impl<'c> Context<'c> {
                     let binding = binding.clone();
                     return self.convert_type_inner(&binding, fuel);
                 }
-                
+
                 Type::Tuple(fmap(fields, |(_, field)| self.convert_type_inner(field, fuel)))
             },
             Int(id) => {
@@ -529,7 +525,7 @@ impl<'c> Context<'c> {
 
                 // Default ints to i32 if needed
                 Type::Primitive(hir::PrimitiveType::Integer(IntegerKind::I32))
-            }
+            },
         }
     }
 
@@ -591,15 +587,14 @@ impl<'c> Context<'c> {
             match &required_impl.callsite {
                 Callsite::Direct(callsite) => {
                     let binding = self.cache.find_method_in_impl(*callsite, required_impl.binding);
-                    new_impls.entry(*callsite)
-                        .or_default()
-                        .direct_binding = Some(binding);
+                    new_impls.entry(*callsite).or_default().direct_binding = Some(binding);
                 },
                 Callsite::Indirect(callsite, ids) => {
                     let mut ids = ids.clone();
                     let top = ids.remove(0);
 
-                    new_impls.entry(*callsite)
+                    new_impls
+                        .entry(*callsite)
                         .or_default()
                         .indirect
                         .entry(top)
@@ -696,7 +691,10 @@ impl<'c> Context<'c> {
                 Some(binding) => binding,
                 None => {
                     let trait_ = required_trait.display(&self.cache);
-                    panic!("Monomorphisation: no entry found for impl key {:?} for trait {}", variable_id, trait_)
+                    panic!(
+                        "Monomorphisation: no entry found for impl key {:?} ({}) for trait {} in definition {}.\nimpl_mappings.last() = {:?}",
+                        variable_id, self.cache[variable_id].name, trait_, definition.name, self.impl_mappings.last().unwrap(),
+                    )
                 },
             };
 
@@ -706,29 +704,23 @@ impl<'c> Context<'c> {
                 Callsite::Direct(callsite) => {
                     for (mut path, impl_) in bindings.to_vec() {
                         if let Some(top) = (!path.is_empty()).then(|| path.remove(0)) {
-                            new_impls.entry(*callsite)
+                            new_impls
+                                .entry(*callsite)
                                 .or_default()
-                                .indirect 
+                                .indirect
                                 .entry(top)
                                 .or_default()
                                 .push((path, impl_));
                         } else {
                             let binding = self.cache.find_method_in_impl(*callsite, impl_);
-                            new_impls.entry(*callsite)
-                                .or_default()
-                                .direct_binding = Some(binding);
+                            new_impls.entry(*callsite).or_default().direct_binding = Some(binding);
                         }
                     }
                 },
                 Callsite::Indirect(callsite, ids) => {
                     if ids.len() == 1 {
                         let top = ids.last().cloned().unwrap();
-                        new_impls.entry(*callsite)
-                            .or_default()
-                            .indirect
-                            .entry(top)
-                            .or_default()
-                            .append(&mut bindings);
+                        new_impls.entry(*callsite).or_default().indirect.entry(top).or_default().append(&mut bindings);
                     } else {
                         let mut ids = ids.clone();
                         let top = ids.remove(0);
@@ -737,7 +729,8 @@ impl<'c> Context<'c> {
                             path.append(&mut ids.clone());
                         }
 
-                        new_impls.entry(*callsite)
+                        new_impls
+                            .entry(*callsite)
                             .or_default()
                             .indirect
                             .entry(top)
@@ -764,6 +757,11 @@ impl<'c> Context<'c> {
         let info = trustme::extend_lifetime(&mut self.cache[id]);
         self.push_monomorphisation_bindings(instantiation_mapping, &typ, info);
         self.add_required_traits(info, variable_id);
+
+        println!("on variable id {} {}, mappings = {:?}", 
+                 self.cache[variable_id].name,
+                 variable_id.0,
+                 &self.impl_mappings);
 
         // Compile the definition with the bindings in scope. Each definition is expected to
         // add itself to Generator.definitions
@@ -1388,7 +1386,7 @@ impl<'c> Context<'c> {
                     Ok(typ) => self.get_field_index(field_name, typ),
                     _ => self.get_field_index(field_name, typ),
                 }
-            }
+            },
             _ => unreachable!(
                 "get_field_index called with type {} that doesn't have a '{}' field",
                 typ.display(&self.cache),
@@ -1432,7 +1430,7 @@ impl<'c> Context<'c> {
             _ => {
                 assert!(!member_access.is_offset);
                 self.extract(lhs, index)
-            }
+            },
         }
     }
 

@@ -61,11 +61,14 @@ fn print_definition_types(cache: &ModuleCache) {
     for (name, definition_id) in definitions {
         let info = &cache[*definition_id];
 
-        print!("{} : ", name);
         if let Some(typ) = &info.typ {
-            types::typeprinter::show_type_and_traits(typ, &info.required_traits, &info.trait_info, cache);
+            let (t, traits) = types::typeprinter::show_type_and_traits(typ, &info.required_traits, &info.trait_info, cache);
+            println!("{} : {}", name, t);
+            if !traits.is_empty() {
+                println!("  given {}", traits.join(", "));
+            }
         } else {
-            println!("(none)");
+            println!("{} : (none)", name);
         }
     }
 }

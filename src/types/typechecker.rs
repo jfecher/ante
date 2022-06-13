@@ -44,7 +44,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use super::mutual_recursion::try_generalize_definition;
+use super::mutual_recursion::{definition_is_mutually_recursive, try_generalize_definition};
 use super::traits::{Callsite, ConstraintSignature, TraitConstraintId};
 use super::{error, GeneralizedType, TypeInfoBody};
 
@@ -1019,7 +1019,9 @@ fn mark_id_in_progress(id: DefinitionInfoId, cache: &mut ModuleCache) {
 
 fn mark_id_finished(id: DefinitionInfoId, cache: &mut ModuleCache) {
     cache.call_stack.pop();
-    cache.definition_infos[id.0].undergoing_type_inference = false;
+    if !definition_is_mutually_recursive(id, cache) {
+        cache[id].undergoing_type_inference = false;
+    }
 }
 
 fn infer_nested_definition(
@@ -1037,29 +1039,29 @@ fn infer_nested_definition(
 
     let definition = cache[definition_id].definition.as_mut().unwrap();
 
-    match definition {
+    let mut constraints = match definition {
         DefinitionKind::Definition(definition) => {
             let definition = trustme::extend_lifetime(*definition);
-            infer(definition, cache);
+            infer(definition, cache).1
         },
         DefinitionKind::TraitDefinition(definition) => {
             let definition = trustme::extend_lifetime(*definition);
-            infer(definition, cache);
+            infer(definition, cache).1
         },
         DefinitionKind::Extern(declaration) => {
             let definition = trustme::extend_lifetime(*declaration);
-            infer(definition, cache);
+            infer(definition, cache).1
         },
-        DefinitionKind::Parameter => {},
-        DefinitionKind::MatchPattern => {},
-        DefinitionKind::TypeConstructor { .. } => {},
+        DefinitionKind::Parameter => vec![],
+        DefinitionKind::MatchPattern => vec![],
+        DefinitionKind::TypeConstructor { .. } => vec![],
     };
 
     if need_to_mark_definition {
         mark_id_finished(definition_id, cache);
     }
 
-    let constraints = to_trait_constraints(definition_id, impl_scope, callsite, cache);
+    constraints.append(&mut to_trait_constraints(definition_id, impl_scope, callsite, cache));
 
     let info = &mut cache.definition_infos[definition_id.0];
     (info.typ.clone().unwrap(), constraints)
@@ -1485,12 +1487,6 @@ impl<'a> Inferable<'a> for ast::Variable<'a> {
             Some(typ) => {
                 let typ = typ.clone();
 
-                // If the type is already filled in, check if it is still undergoing inference.
-                // If so then it is below us on the call stack somewhere and we need to avoid
-                // generalizing the current definition until all definitions in the mutual recursion
-                // set can be generalized at once.
-                cache.update_mutual_recursion_sets(definition_id, self.id.unwrap());
-
                 let constraints = to_trait_constraints(definition_id, impl_scope, id, cache);
                 (typ, constraints)
             },
@@ -1508,6 +1504,11 @@ impl<'a> Inferable<'a> for ast::Variable<'a> {
                 (typ, traits)
             },
         };
+
+        // Check if the definition is still undergoing inference to see if it is mutually recursive.
+        // If so we need to avoid generalizing the current definition until all definitions in the
+        // mutual recursion set can be generalized at once.
+        cache.update_mutual_recursion_sets(definition_id, self.id.unwrap());
 
         let (t, traits, mapping) = s.instantiate(traits, cache);
         self.instantiation_mapping = Rc::new(mapping);

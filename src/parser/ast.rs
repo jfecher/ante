@@ -83,6 +83,11 @@ pub struct Variable<'a> {
     pub typ: Option<types::Type>,
 }
 
+// TODO: Remove. This is only used for experimenting with ante-lsp
+// which does not refer to the instantiation_mapping field at all.
+unsafe impl<'c> Send for Variable<'c> {}
+unsafe impl<'c> Sync for Variable<'c> {}
+
 /// Maps DefinitionInfoIds closed over in the environment to their new
 /// IDs within the closure which shadow their previous definition.
 /// These new IDs may be instantiations of a type that was generalized
@@ -116,6 +121,11 @@ pub struct Lambda<'a> {
     pub location: Location<'a>,
     pub typ: Option<types::Type>,
 }
+
+// TODO: Remove. This is only used for experimenting with ante-lsp
+// which does not refer to the instantiation_mapping field at all.
+unsafe impl<'c> Send for Lambda<'c> {}
+unsafe impl<'c> Sync for Lambda<'c> {}
 
 /// foo a b c
 #[derive(Debug)]
@@ -359,6 +369,8 @@ pub enum Ast<'a> {
     MemberAccess(MemberAccess<'a>),
     Assignment(Assignment<'a>),
 }
+
+unsafe impl<'c> Send for Ast<'c> {}
 
 impl PartialEq for LiteralKind {
     /// Ignoring any type tags, are these literals equal?
@@ -661,3 +673,24 @@ impl_locatable_for!(Sequence);
 impl_locatable_for!(Extern);
 impl_locatable_for!(MemberAccess);
 impl_locatable_for!(Assignment);
+
+impl<'a> Locatable<'a> for Type<'a> {
+    fn locate(&self) -> Location<'a> {
+        match self {
+            Type::Integer(_, location) => *location,
+            Type::PolymorphicInt(location) => *location,
+            Type::Float(location) => *location,
+            Type::Char(location) => *location,
+            Type::String(location) => *location,
+            Type::Pointer(location) => *location,
+            Type::Boolean(location) => *location,
+            Type::Unit(location) => *location,
+            Type::Reference(location) => *location,
+            Type::Function(_, _, _, location) => *location,
+            Type::TypeVariable(_, location) => *location,
+            Type::UserDefined(_, location) => *location,
+            Type::TypeApplication(_, _, location) => *location,
+            Type::Pair(_, _, location) => *location,
+        }
+    }
+}

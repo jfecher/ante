@@ -12,7 +12,7 @@ type Entry k v =
 
 trait Hash t with
     hash: t -> u64
- 
+
 empty () = HashMap 0 0 (null ())
  
 clear (map: ref (HashMap k v)) : unit =

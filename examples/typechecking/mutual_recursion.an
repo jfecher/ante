@@ -9,6 +9,8 @@ is_odd n =
     if n == 1 then true else
         not is_even (n - 1)
 
+is_even 4
+
 // args: --check --show-types
 
 // Both of these definitions should have the `Print (int a)` constraint:

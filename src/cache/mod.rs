@@ -35,6 +35,7 @@ mod unsafecache;
 /// of various passes. For example, name resolution will fill in the `definition: Option<DefinitionInfoId>`
 /// field of each `ast::Variable` node, which has the effect of pointing each variable to
 /// where it was defined.
+#[derive(Debug)]
 pub struct ModuleCache<'a> {
     /// All the 'root' directories for imports. In practice this will contain
     /// the directory of the driver module as well as all directories containing
@@ -110,8 +111,25 @@ pub struct ModuleCache<'a> {
     /// Map from the first function reachable in a mutually recursive set of functions
     /// to all functions in that set. Once the key'd function finishes compiling we can
     /// generalize all the functions in the set and add trait constraints at once.
-    pub mutually_recursive_definitions: HashMap<DefinitionInfoId, HashSet<DefinitionInfoId>>,
+    pub mutual_recursion_sets: Vec<MutualRecursionSet>,
 }
+
+#[derive(Debug)]
+pub struct MutualRecursionSet {
+    pub root_definition: DefinitionInfoId,
+    pub definitions: HashSet<DefinitionInfoId>,
+
+    /// Index in ModuleCache.call_stack of the root_definition.
+    /// While we are collecting mutually recursive definitions,
+    /// the definition with the lowest place in the callstack is
+    /// chosen as the root. This can change if more recursion is
+    /// found later on in a function after creating the initial
+    /// MutualRecursionSet.
+    call_stack_index_of_root: usize,
+}
+
+/// TODO: Remove. This is used for experimenting with ante-lsp
+unsafe impl<'c> Send for ModuleCache<'c> {}
 
 /// The key for accessing parse trees or `NameResolver`s
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -186,7 +204,7 @@ pub struct DefinitionInfo<'a> {
     /// this will be set to Some(key) where key is the first reachable
     /// of functions (from main) in this set and the key in the
     /// mutually_recursive_definitions HashMap in the cache.
-    pub mutually_recursive_set: Option<DefinitionInfoId>,
+    pub mutually_recursive_set: Option<MutualRecursionId>,
 
     /// Remember which variable links lead to mutually recursive calls.
     /// Since traits need to be solved all at once for mutually recursive
@@ -213,6 +231,9 @@ impl<'a> Locatable<'a> for DefinitionInfo<'a> {
     }
 }
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq, PartialOrd, Ord, Hash)]
+pub struct MutualRecursionId(pub usize);
+
 /// Each `ast::Variable` node corresponds to a VariableId that identifies it,
 /// filled out during name resolution. These are currently used to identify the
 /// origin/callsites of traits for trait dispatch.
@@ -224,6 +245,7 @@ pub struct VariableId(pub usize);
 
 /// Contains extra information for each variable node.
 /// Used to map specific variable instances to trait impls.
+#[derive(Debug)]
 pub struct VariableInfo<'a> {
     pub required_impls: Vec<RequiredImpl>,
     pub name: String,
@@ -305,7 +327,7 @@ pub struct ImplInfo<'a> {
 }
 
 impl<'a> ModuleCache<'a> {
-    pub fn new(project_directory: &'a Path) -> ModuleCache<'a> {
+    pub fn new(project_directory: &Path) -> ModuleCache<'a> {
         let mut cache = ModuleCache {
             relative_roots: vec![project_directory.to_owned(), dirs::config_dir().unwrap().join("ante/stdlib")],
             prelude_path: dirs::config_dir().unwrap().join("stdlib/prelude"),
@@ -324,7 +346,7 @@ impl<'a> ModuleCache<'a> {
             int_trait_id: TraitInfoId(0),
             current_trait_constraint_id: Default::default(),
             call_stack: Vec::default(),
-            mutually_recursive_definitions: HashMap::default(),
+            mutual_recursion_sets: Vec::default(),
         };
 
         // The Int constraint is used internally to default polymorphic integer literals
@@ -453,36 +475,98 @@ impl<'a> ModuleCache<'a> {
         unreachable!("No definition for '{}' found in trait impl {}", name, binding.0)
     }
 
+    fn new_recursion_set(
+        &mut self, root_definition: DefinitionInfoId, call_stack_index_of_root: usize,
+    ) -> MutualRecursionId {
+        let id = self.mutual_recursion_sets.len();
+        let set = MutualRecursionSet { root_definition, definitions: HashSet::new(), call_stack_index_of_root };
+        self.mutual_recursion_sets.push(set);
+        let id = MutualRecursionId(id);
+        self[root_definition].mutually_recursive_set = Some(id);
+        id
+    }
+
+    fn find_mutual_recursion_root(&mut self, definition_id: DefinitionInfoId) -> Option<MutualRecursionId> {
+        let root = self[definition_id].mutually_recursive_set;
+        if self.call_stack.last() == Some(&definition_id) {
+            return root;
+        }
+
+        let call_stack_index = self.call_stack.iter().position(|id| *id == definition_id);
+
+        let mut root = root.unwrap_or_else(|| self.new_recursion_set(definition_id, call_stack_index.unwrap()));
+
+        let count = call_stack_index.map_or(0, |n| self.call_stack.len() - n);
+        for id in self.call_stack.iter().rev().copied().take(count) {
+            if id == definition_id {
+                break;
+            }
+
+            // Mark all the definitions in the set as recursive
+            let info = &mut self.definition_infos[id.0];
+            match info.mutually_recursive_set {
+                Some(set) if set != root => {
+                    let (all_sets, all_infos) = (&mut self.mutual_recursion_sets, &mut self.definition_infos);
+                    root = Self::merge_recursion_sets(root, set, all_sets, all_infos);
+                },
+                Some(_root) => (),
+                None => {
+                    info.mutually_recursive_set = Some(root);
+                    self.mutual_recursion_sets[root.0].definitions.insert(id);
+                },
+            }
+        }
+
+        Some(root)
+    }
+
+    /// Merge two recursion sets together, returning the dominant one that subsumes both
+    fn merge_recursion_sets(
+        id1: MutualRecursionId, id2: MutualRecursionId, mutual_recursion_sets: &mut Vec<MutualRecursionSet>,
+        definition_infos: &mut Vec<DefinitionInfo<'a>>,
+    ) -> MutualRecursionId {
+        let set1 = &mutual_recursion_sets[id1.0];
+        let set2 = &mutual_recursion_sets[id2.0];
+
+        assert_ne!(set1.call_stack_index_of_root, set2.call_stack_index_of_root);
+
+        let (dominant_id, other_set) =
+            if set1.call_stack_index_of_root < set2.call_stack_index_of_root { (id1, set2) } else { (id2, set1) };
+
+        // Merge all definitions from the other set into the set with the root that is lower on the call stack
+        for definition_id in other_set.definitions.iter() {
+            definition_infos[definition_id.0].mutually_recursive_set = Some(dominant_id);
+        }
+
+        let other_definitions = other_set.definitions.clone();
+        let old_root = other_set.root_definition;
+
+        let dominant_set = &mut mutual_recursion_sets[dominant_id.0];
+        let new_root = dominant_set.root_definition;
+        let definitions = &mut dominant_set.definitions;
+
+        definitions.extend(other_definitions);
+        definitions.insert(old_root);
+        definitions.remove(&new_root);
+
+        dominant_id
+    }
+
     pub fn update_mutual_recursion_sets(&mut self, definition_id: DefinitionInfoId, variable_id: VariableId) {
         // Type inference checks in depth-first search order, so if a given id is currently
         // undergoing type inference then we can assume it is below us on the callstack somewhere.
         if self[definition_id].undergoing_type_inference {
-            let mut pushed = false;
+            self.find_mutual_recursion_root(definition_id);
 
-            for id in self.call_stack.iter().copied().rev() {
-                if id == definition_id {
-                    // Dont mark this definition as mutually recursive if it only recurs with itself
-                    if pushed {
-                        // This is the 'root' of our recursion. When we later type check we will avoid
-                        // generalizing for all ids in this set until this root (and thus every other id)
-                        // are finished.
-                        self.definition_infos[id.0].mutually_recursive_set = Some(definition_id);
-                    }
-                    break;
-                }
-
-                // Mark all the definitions in the set as recursive
-                pushed = true;
-                self.definition_infos[id.0].mutually_recursive_set = Some(definition_id);
-                self.mutually_recursive_definitions.entry(definition_id).or_default().insert(id);
-            }
-
-            // Don't do anything if we only have 1 recursive function, we don't need any special
-            // machinary to infer multiple mutually recursive functions together in that case.
-            if pushed {
-                // Remember which variable created the call so we know where to add trait constraints to later.
-                let top = *self.call_stack.last().unwrap();
-                self[top].mutually_recursive_variables.push(variable_id);
+            // Remember recursive variables regardless of whether this is a mutually recursive set or not.
+            // These may be needed if it becomes a mutually recursive set later.
+            match self.call_stack.last().copied() {
+                Some(top) => {
+                    self[top].mutually_recursive_variables.push(variable_id);
+                },
+                None => {
+                    eprintln!("WARNING: {} is used recursively, but callstack is empty", self[variable_id].name);
+                },
             }
         }
     }
