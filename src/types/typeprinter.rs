@@ -161,7 +161,6 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             Type::TypeApplication(constructor, args) => self.fmt_type_application(constructor, args, f),
             Type::Ref(lifetime) => self.fmt_ref(*lifetime, f),
             Type::Struct(fields, rest) => self.fmt_struct(fields, *rest, f),
-            Type::Int(int) => self.fmt_int(*int, f),
         }
     }
 
@@ -292,21 +291,6 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
                     write!(f, "{}{}{}", "..".blue(), name, " }".blue())
                 } else {
                     write!(f, "{}", ".. }".blue())
-                }
-            },
-        }
-    }
-
-    fn fmt_int(&self, int: TypeVariableId, f: &mut Formatter) -> Result<(), std::fmt::Error> {
-        match &self.cache.type_bindings[int.0] {
-            TypeBinding::Bound(typ) => self.fmt_type(typ, f),
-            TypeBinding::Unbound(..) => {
-                if self.debug {
-                    let default = "?".to_string();
-                    let name = self.typevar_names.get(&int).unwrap_or(&default).blue();
-                    write!(f, "{}{}{}", "(int ".blue(), name, ")".blue())
-                } else {
-                    write!(f, "{}", "int".blue())
                 }
             },
         }

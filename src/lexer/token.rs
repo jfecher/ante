@@ -78,7 +78,6 @@ pub enum Token {
     // Types
     TypeName(String),
     IntegerType(IntegerKind),
-    PolymorphicIntType,
     FloatType,
     CharType,
     StringType,
@@ -250,7 +249,6 @@ impl Display for Token {
             // Types
             TypeName(_) => write!(f, "a typename"),
             IntegerType(kind) => write!(f, "'{}'", kind),
-            PolymorphicIntType => write!(f, "'Int'"),
             FloatType => write!(f, "'float'"),
             CharType => write!(f, "'char'"),
             StringType => write!(f, "'string'"),

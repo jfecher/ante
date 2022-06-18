@@ -143,7 +143,7 @@ fn find_int_constraint_impl<'c>(
     use super::{IntegerKind, PrimitiveType, Type};
     match &typ {
         Type::Primitive(PrimitiveType::IntegerType(_)) => Ok(UnificationBindings::empty()),
-        Type::TypeVariable(_) | Type::Int(_) => {
+        Type::TypeVariable(_) => {
             // The `Int a` constraint has special defaulting rules - since we know this typevar is
             // unbound, bind it to the default integer type (i32) here.
             // try_unify is used here to avoid performing the binding in case this impl isn't
@@ -157,7 +157,9 @@ fn find_int_constraint_impl<'c>(
                 "Could not default $1 to $2",
             )
         },
-        _ => unreachable!(),
+        other => {
+            Err(make_error!(constraint.locate(cache), "Expected a primitive integer type, but found {}", other.display(cache)))
+        },
     }
 }
 
@@ -204,7 +206,7 @@ fn solve_normal_constraint<'c>(constraint: &TraitConstraint, cache: &mut ModuleC
 /// For example, if our constraint is `Print i32` and we have the impls
 /// `impl Print a given Cast a string` and
 /// `impl Print i32` in scope then our returned set of matching impls will be
-/// ```
+/// ```ante
 /// vec![
 ///     (vec![(43, Print a), (123, Cast a string)], { a => i32 }),
 ///     (vec![(21, Print i32)], {})

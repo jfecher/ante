@@ -507,7 +507,6 @@ fn parse_type_no_pair<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<
 fn basic_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
     match input[0].0 {
         Token::IntegerType(_) => int_type(input),
-        Token::PolymorphicIntType => polymorphic_int_type(input),
         Token::FloatType => float_type(input),
         Token::CharType => char_type(input),
         Token::StringType => string_type(input),
@@ -691,11 +690,6 @@ parser!(pair_type loc -> 'b Type<'b> =
 parser!(int_type loc -> 'b Type<'b> =
     kind <- int_type_token;
     Type::Integer(kind, loc)
-);
-
-parser!(polymorphic_int_type loc -> 'b Type<'b> =
-    _ <- expect(Token::PolymorphicIntType);
-    Type::PolymorphicInt(loc)
 );
 
 parser!(float_type loc -> 'b Type<'b> =

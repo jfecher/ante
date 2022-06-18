@@ -53,12 +53,11 @@ insert (map: ref (HashMap k v)) (key: k) (value: v) : unit =
             false
         else
             entry_ptr = offset (map.entries) start
-            entry_ref = transmute entry_ptr : ref (Entry k v)
-            entry = @entry_ref
+            entry = transmute entry_ptr : ref (Entry k v)
             if entry.occupied then
                 iter_until map key value (start + 1) end
             else
-                entry_ref := Entry key value true false
+                entry := Entry key value true false
                 true
 
     h = cast (hash key) : usz % map.capacity
@@ -69,30 +68,36 @@ insert (map: ref (HashMap k v)) (key: k) (value: v) : unit =
 
     map.&len := map.len + 1usz
 
+// TODO: Name resolution issue preventing this from being visible to iter_until
+// if it is defined within get_entry
+type EntryResult k v =
+    | Found (Ptr (Entry k v))
+    | NotFound
+    | NotFinished
+
 get_entry (map: HashMap k v) (key: k) : Maybe (Ptr (Entry k v)) =
     // Return whether to continue by wrapping around the end, and the value if found
-    iter_until (map: HashMap k v) (key: k) (start: usz) (end: usz) : (bool, Maybe (Ptr (Entry k v))) =
+    iter_until (map: HashMap k v) (key: k) (start: usz) (end: usz) : EntryResult k v =
         if start >= end then
-            true, None
+            NotFinished
         else
             entry_ptr = offset map.entries start
             entry = deref_ptr entry_ptr
             if entry.occupied and entry.key == key then
-                false, Some entry_ptr
+                Found entry_ptr
             else if entry.tombstone then
                 iter_until map key (start + 1) end
             else
-                false, None
+                NotFound
 
     h = cast (hash key) : usz % map.capacity
     match iter_until map key h map.capacity
-    | _, Some value -> Some value
-    | false, _ -> None
-    | true, _ ->
+    | Found value -> Some value
+    | NotFound -> None
+    | NotFinished ->
         match iter_until map key 0 h
-        | _, Some value -> Some value
-        | false, _ -> None
-        | true, _ -> None
+        | Found value -> Some value
+        | _ -> None
 
 get (map: HashMap k v) (key: k) : Maybe v =
     match get_entry map key
@@ -105,10 +110,10 @@ remove (map: ref (HashMap k v)) (key: k) : Maybe v =
     | None -> None
     | Some e2 ->
         entry = ptr_to_ref e2
-        e = @entry
-        entry := Entry e.value e.key false true
+        entry.&occupied := false
+        entry.&tombstone := true
         map.&len := map.len - 1
-        Some e.value
+        Some entry.value
 
 impl Print (HashMap k v) given Print k, Print v with
     printne map =

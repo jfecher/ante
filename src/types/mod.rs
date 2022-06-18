@@ -102,9 +102,6 @@ pub enum Type {
     /// This makes it so we don't have to remember previous types to combine
     /// when traversing bindings.
     Struct(BTreeMap<String, Type>, TypeVariableId),
-
-    /// A type variable that may only bind to a primitive integer type
-    Int(TypeVariableId),
 }
 
 #[derive(Debug, Clone)]
@@ -155,7 +152,6 @@ impl Type {
             UserDefined(id) => cache.type_infos[id.0].union_variants(),
             TypeVariable(_) => unreachable!("Constructors should always have concrete types"),
             Struct(_, _) => None,
-            Int(_) => None,
         }
     }
 
@@ -240,7 +236,7 @@ pub struct LetBindingLevel(pub usize);
 /// at each ast::Definition the current LetBindingLevel is incremented when recursing
 /// inside and decremented after finishing, this distinction is equivalent to if we
 /// manually forced users to wrap their program in the following:
-/// ```
+/// ```ante
 /// main () = ...
 /// ```
 /// See okmij.org/ftp/ML/generalization.html for more information on the levels

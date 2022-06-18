@@ -216,15 +216,18 @@ impl TraitConstraint {
     }
 
     pub fn is_int_constraint(&self, cache: &ModuleCache) -> bool {
-        self.required.signature.trait_id == cache.int_trait_id
+        self.required.signature.trait_id == cache.int_trait
     }
 
-    pub fn int_constraint(int_type: TypeVariableId, cache: &mut ModuleCache) -> TraitConstraint {
+    pub fn int_constraint<'c>(int_type: TypeVariableId, location: Location<'c>, cache: &mut ModuleCache<'c>) -> TraitConstraint {
         let args = vec![Type::TypeVariable(int_type)];
         let id = cache.next_trait_constraint_id();
-        let callsite = Callsite::Direct(VariableId(0));
+
+        // Push a fake variable just to remember the location of this literal for error messages
+        let callsite = Callsite::Direct(cache.push_variable("".into(), location));
+
         TraitConstraint {
-            required: RequiredTrait { signature: ConstraintSignature { trait_id: cache.int_trait_id, args, id }, callsite },
+            required: RequiredTrait { signature: ConstraintSignature { trait_id: cache.int_trait, args, id }, callsite },
             scope: ImplScopeId(0),
         }
     }

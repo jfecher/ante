@@ -181,17 +181,17 @@ impl TryCast a b given Cast a b with
 
 // Huge block of builtin numeric operators incoming
 trait Add n with (+): n - n -> n
-impl Add int with (+) x y = builtin "AddInt" x y
+impl Add t given Int t with (+) x y = builtin "AddInt" x y
 impl Add float with (+) (x: float) (y: float) : float = builtin "AddFloat" x y
 impl Add char with (+) (x: char) (y: char) : char = builtin "AddInt" x y
 
 trait Sub n with (-): n - n -> n
-impl Sub int with (-) x y = builtin "SubInt" x y
+impl Sub t given Int t with (-) x y = builtin "SubInt" x y
 impl Sub float with (-) (x: float) (y: float) : float = builtin "SubFloat" x y
 impl Sub char with (-) (x: char) (y: char) : char = builtin "SubInt" x y
 
 trait Mul n with (*): n - n -> n
-impl Mul int with (*) x y = builtin "MulInt" x y
+impl Mul t given Int t with (*) x y = builtin "MulInt" x y
 impl Mul float with (*) (x: float) (y: float) : float = builtin "MulFloat" x y
 
 trait Div n with (/): n - n -> n
@@ -223,7 +223,7 @@ impl Mod usz with (%) x y = builtin "ModUnsigned" x y
 // impl Mod float with (%) (_: float) (_: float) : float = builtin "ModFloat"
 
 trait Eq t with (==): t - t -> bool
-impl Eq int with (==) x y = builtin "EqInt" x y
+impl Eq t given Int t with (==) x y = builtin "EqInt" x y
 impl Eq float with (==) (x: float) (y: float) : bool = builtin "EqFloat" x y
 
 impl Eq char with (==) (x: char) (y: char) : bool = builtin "EqChar" x y
@@ -500,7 +500,7 @@ iter iterable f =
 
 type Range t = start: t, end: t
 
-impl Iterator (Range usz) usz with
+impl Iterator (Range a) a given Int a, Cmp a, Add a with
     next range =
         if range.start >= range.end
         then None

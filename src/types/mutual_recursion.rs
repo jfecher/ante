@@ -49,11 +49,11 @@ pub(super) fn try_generalize_definition<'c>(
                 let pattern = &mut definition.pattern.as_mut();
 
                 let typevars_in_fn = find_all_typevars(pattern.get_type().unwrap(), false, cache);
-                let exposed_traits = traitchecker::resolve_traits(traits.clone(), &typevars_in_fn, cache);
+                let mut exposed_traits = traitchecker::resolve_traits(traits.clone(), &typevars_in_fn, cache);
 
                 let callsites = &cache[id].mutually_recursive_variables;
 
-                let exposed_traits = update_callsites(exposed_traits, callsites);
+                exposed_traits.append(&mut update_callsites(exposed_traits.clone(), callsites));
                 bind_irrefutable_pattern(pattern, &t, &exposed_traits, true, cache);
             }
 

@@ -96,8 +96,8 @@ pub struct ModuleCache<'a> {
     /// A monotonically-increasing counter to uniquely identify trait constraints.
     pub current_trait_constraint_id: counter::TraitConstraintCounter,
 
-    /// A constant referring to the ID of the builtin trait int. Should always be 0
-    pub int_trait_id: TraitInfoId,
+    /// A constant referring to the ID of the builtin Int trait. Should always be 0
+    pub int_trait: TraitInfoId,
 
     /// The filepath to ante's stdlib/prelude.an file to be automatically
     /// included when defining a new ante module.
@@ -343,7 +343,7 @@ impl<'a> ModuleCache<'a> {
             trait_infos: Vec::default(),
             impl_infos: Vec::default(),
             impl_scopes: Vec::default(),
-            int_trait_id: TraitInfoId(0),
+            int_trait: TraitInfoId(0),
             current_trait_constraint_id: Default::default(),
             call_stack: Vec::default(),
             mutual_recursion_sets: Vec::default(),
@@ -353,7 +353,7 @@ impl<'a> ModuleCache<'a> {
         // to i32 when they are not used in the signature of a function
         let new_typevar = cache.next_type_variable_id(LetBindingLevel(std::usize::MAX));
         let id = cache.push_trait_definition("Int".to_string(), vec![new_typevar], vec![], None, Location::builtin());
-        assert_eq!(id, cache.int_trait_id);
+        assert_eq!(id, cache.int_trait);
 
         // The Int trait uses variable id 0 as a dummy callsite that is never used
         cache.push_variable("".into(), Location::builtin());

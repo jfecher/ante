@@ -144,12 +144,12 @@ impl<'c> Context<'c> {
 
         let fuel = fuel - 1;
         match &self.cache.type_bindings[id.0] {
-            Bound(TypeVariable(id2) | Ref(id2) | Int(id2)) => self.find_binding(*id2, fuel),
+            Bound(TypeVariable(id2) | Ref(id2)) => self.find_binding(*id2, fuel),
             Bound(binding) => Ok(binding),
             Unbound(..) => {
                 for bindings in self.monomorphisation_bindings.iter().rev() {
                     match bindings.get(&id) {
-                        Some(TypeVariable(id2) | Ref(id2) | Int(id2)) => return self.find_binding(*id2, fuel),
+                        Some(TypeVariable(id2) | Ref(id2)) => return self.find_binding(*id2, fuel),
                         Some(binding) => return Ok(&binding),
                         None => (),
                     }
@@ -216,10 +216,6 @@ impl<'c> Context<'c> {
 
                     Struct(fields, *id)
                 },
-            },
-            Int(id) => match self.find_binding(*id, fuel) {
-                Ok(binding) => self.follow_all_bindings_inner(binding, fuel),
-                Err(id) => Int(id),
             },
         }
     }
@@ -318,15 +314,6 @@ impl<'c> Context<'c> {
                     self.size_of_type(&binding)
                 } else {
                     fields.iter().map(|(_, field)| self.size_of_type(field)).sum()
-                }
-            },
-            Int(id) => {
-                if let Ok(binding) = self.find_binding(*id, RECURSION_LIMIT) {
-                    let binding = binding.clone();
-                    self.size_of_type(&binding)
-                } else {
-                    // Default to i32
-                    32 / 8
                 }
             },
         }
@@ -517,15 +504,6 @@ impl<'c> Context<'c> {
 
                 Type::Tuple(fmap(fields, |(_, field)| self.convert_type_inner(field, fuel)))
             },
-            Int(id) => {
-                if let Ok(binding) = self.find_binding(*id, fuel) {
-                    let binding = binding.clone();
-                    return self.convert_type_inner(&binding, fuel);
-                }
-
-                // Default ints to i32 if needed
-                Type::Primitive(hir::PrimitiveType::Integer(IntegerKind::I32))
-            },
         }
     }
 
@@ -620,9 +598,9 @@ impl<'c> Context<'c> {
     }
 
     fn monomorphise_variable(&mut self, variable: &ast::Variable<'c>) -> hir::Ast {
-        let required_impls = self.cache[variable.id.unwrap()].required_impls.clone();
-
         let id = variable.id.unwrap();
+        let required_impls = self.cache[id].required_impls.clone();
+
         self.add_required_impls(&required_impls);
 
         // The definition to compile is either the corresponding impl definition if this
@@ -703,7 +681,8 @@ impl<'c> Context<'c> {
             match &required_trait.callsite {
                 Callsite::Direct(callsite) => {
                     for (mut path, impl_) in bindings.to_vec() {
-                        if let Some(top) = (!path.is_empty()).then(|| path.remove(0)) {
+                        if !path.is_empty() {
+                            let top = path.remove(0);
                             new_impls
                                 .entry(*callsite)
                                 .or_default()
@@ -719,7 +698,7 @@ impl<'c> Context<'c> {
                 },
                 Callsite::Indirect(callsite, ids) => {
                     if ids.len() == 1 {
-                        let top = ids.last().cloned().unwrap();
+                        let top = *ids.last().unwrap();
                         new_impls.entry(*callsite).or_default().indirect.entry(top).or_default().append(&mut bindings);
                     } else {
                         let mut ids = ids.clone();
@@ -758,11 +737,6 @@ impl<'c> Context<'c> {
         self.push_monomorphisation_bindings(instantiation_mapping, &typ, info);
         self.add_required_traits(info, variable_id);
 
-        println!("on variable id {} {}, mappings = {:?}", 
-                 self.cache[variable_id].name,
-                 variable_id.0,
-                 &self.impl_mappings);
-
         // Compile the definition with the bindings in scope. Each definition is expected to
         // add itself to Generator.definitions
         let value = match &info.definition {
@@ -771,9 +745,11 @@ impl<'c> Context<'c> {
                 let definition_id = self.next_unique_id();
                 let name = info.name.clone();
                 let info = hir::DefinitionInfo { definition: None, definition_id, name: Some(name.clone()) };
+
                 self.definitions.insert((id, typ.clone()), Definition::Normal(info));
 
                 let def = self.monomorphise_nonlocal_definition(definition, definition_id, name);
+
                 self.definitions.insert((id, typ), def.clone());
                 def
             },
@@ -833,6 +809,7 @@ impl<'c> Context<'c> {
 
         // Insert the global for both the current type and the unit type
         let definition = Definition::Normal(definition);
+
         self.definitions.insert((id, typ.clone()), definition.clone());
         self.definitions.insert((id, UNBOUND_TYPE.clone()), definition.clone());
         definition
@@ -909,7 +886,7 @@ impl<'c> Context<'c> {
 
     /// Simplifies a pattern and expression like `(a, b) = foo ()`
     /// into multiple successive bindings:
-    /// ```
+    /// ```ante
     /// new_var = foo ()
     /// a = extract 0 new_var
     /// b = extract 1 new_var

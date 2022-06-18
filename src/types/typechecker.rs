@@ -198,7 +198,6 @@ pub fn replace_all_typevars_with_bindings<'c>(
                 Struct(fields, *id)
             }
         },
-        Int(id) => replace_typevar_with_binding(*id, new_bindings, Int, cache),
     }
 }
 
@@ -281,10 +280,6 @@ pub fn bind_typevars<'c>(typ: &Type, type_bindings: &TypeBindings, cache: &Modul
                 },
             }
         },
-        Int(id) => match bind_typevar(*id, type_bindings, Int, cache) {
-            TypeVariable(new_id) => Int(new_id),
-            other => other,
-        },
     }
 }
 
@@ -335,7 +330,6 @@ pub fn contains_any_typevars_from_list<'c>(typ: &Type, list: &[TypeVariableId], 
             type_variable_contains_any_typevars_from_list(*id, list, cache)
                 || fields.iter().any(|(_, field)| contains_any_typevars_from_list(field, list, cache))
         },
-        Int(id) => type_variable_contains_any_typevars_from_list(*id, list, cache),
     }
 }
 
@@ -526,7 +520,6 @@ fn occurs<'b>(
         Ref(lifetime) => typevars_match(id, level, *lifetime, bindings, fuel, cache),
         Struct(fields, var_id) => typevars_match(id, level, *var_id, bindings, fuel, cache)
             .then_all(fields.iter().map(|(_, typ)| typ), |field| occurs(id, level, field, bindings, fuel, cache)),
-        Int(var_id) => typevars_match(id, level, *var_id, bindings, fuel, cache),
     }
 }
 
@@ -552,7 +545,7 @@ pub fn follow_bindings_in_cache_and_map<'b>(
     typ: &Type, bindings: &UnificationBindings, cache: &ModuleCache<'b>,
 ) -> Type {
     match typ {
-        TypeVariable(id) | Ref(id) | Int(id) => match find_binding(*id, bindings, cache) {
+        TypeVariable(id) | Ref(id) => match find_binding(*id, bindings, cache) {
             Bound(typ) => follow_bindings_in_cache_and_map(&typ, bindings, cache),
             Unbound(..) => typ.clone(),
         },
@@ -639,22 +632,14 @@ pub fn try_unify_with_bindings_inner<'b>(
         },
 
         // Follow any bindings here for convenience so we don't have to check if a or b
-        // are bound in all the Int or Struct cases below.
-        (Struct(_, var), t2) | (t2, Struct(_, var)) | (Int(var), t2) | (t2, Int(var))
+        // are bound in all Struct cases below.
+        (Struct(_, var), t2) | (t2, Struct(_, var))
             if matches!(&cache.type_bindings[var.0], Bound(_)) =>
         {
             match &cache.type_bindings[var.0] {
                 Bound(bound) => try_unify_with_bindings_inner(&bound.clone(), t2, bindings, location, cache),
                 _ => unreachable!(),
             }
-        },
-
-        (Int(a), Int(b)) => try_unify_type_variable_with_bindings(*a, &Int(*a), &Int(*b), bindings, location, cache),
-
-        (Int(a), b @ Primitive(PrimitiveType::IntegerType(_)))
-        | (b @ Primitive(PrimitiveType::IntegerType(_)), Int(a)) => {
-            bindings.bindings.insert(*a, b.clone());
-            Ok(())
         },
 
         (Struct(fields1, rest1), Struct(fields2, rest2)) => {
@@ -952,7 +937,6 @@ pub fn find_all_typevars<'a>(typ: &Type, polymorphic_only: bool, cache: &ModuleC
                 vars
             },
         },
-        Int(id) => find_typevars_in_typevar_binding(*id, polymorphic_only, cache),
     }
 }
 
@@ -1452,8 +1436,8 @@ impl<'a> Inferable<'a> for ast::Literal<'a> {
                     // Mutate this unknown integer literal to an IntegerKind::Inferred(int_type).
                     let int_type = next_type_variable_id(cache);
                     self.kind = Integer(x, IntegerKind::Inferred(int_type));
-                    let int_trait = TraitConstraint::int_constraint(int_type, cache);
-                    (Type::Int(int_type), vec![int_trait])
+                    let int_trait = TraitConstraint::int_constraint(int_type, self.location, cache);
+                    (Type::TypeVariable(int_type), vec![int_trait])
                 } else {
                     (Type::Primitive(PrimitiveType::IntegerType(kind)), vec![])
                 }

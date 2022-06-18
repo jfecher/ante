@@ -103,7 +103,6 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
             ("u32", Token::IntegerType(IntegerKind::U32)),
             ("u64", Token::IntegerType(IntegerKind::U64)),
             ("usz", Token::IntegerType(IntegerKind::Usz)),
-            ("int", Token::PolymorphicIntType),
             ("float", Token::FloatType),
             ("char", Token::CharType),
             ("string", Token::StringType),

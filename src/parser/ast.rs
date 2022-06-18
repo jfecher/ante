@@ -193,7 +193,6 @@ pub struct Match<'a> {
 #[allow(clippy::enum_variant_names)]
 pub enum Type<'a> {
     Integer(IntegerKind, Location<'a>),
-    PolymorphicInt(Location<'a>),
     Float(Location<'a>),
     Char(Location<'a>),
     String(Location<'a>),
@@ -678,7 +677,6 @@ impl<'a> Locatable<'a> for Type<'a> {
     fn locate(&self) -> Location<'a> {
         match self {
             Type::Integer(_, location) => *location,
-            Type::PolymorphicInt(location) => *location,
             Type::Float(location) => *location,
             Type::Char(location) => *location,
             Type::String(location) => *location,

@@ -15,7 +15,7 @@ is_even 4
 
 // Both of these definitions should have the `Print (int a)` constraint:
 // expected stdout:
-// is_even : (forall a. ((int a) -> bool))
-//   given Eq (int a), Int (int a), Int a, Print (int a), Sub (int a)
-// is_odd : (forall a. ((int a) -> bool))
-//   given Eq (int a), Int (int a), Int a, Print (int a), Sub (int a)
+// is_even : (forall a. (a -> bool))
+//   given Eq a, Int a, Print a, Sub a
+// is_odd : (forall a. (a -> bool))
+//   given Eq a, Int a, Print a, Sub a

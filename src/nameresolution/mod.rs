@@ -561,7 +561,6 @@ impl<'c> NameResolver {
     pub fn convert_type(&mut self, cache: &mut ModuleCache<'c>, ast_type: &ast::Type<'c>) -> Type {
         match ast_type {
             ast::Type::Integer(kind, _) => Type::Primitive(PrimitiveType::IntegerType(*kind)),
-            ast::Type::PolymorphicInt(_) => Type::Int(cache.next_type_variable_id(self.let_binding_level)),
             ast::Type::Float(_) => Type::Primitive(PrimitiveType::FloatType),
             ast::Type::Char(_) => Type::Primitive(PrimitiveType::CharType),
             ast::Type::String(_) => Type::UserDefined(STRING_TYPE),
