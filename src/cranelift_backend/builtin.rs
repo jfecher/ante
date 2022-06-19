@@ -44,6 +44,11 @@ pub fn call_builtin<'ast>(builtin: &'ast Builtin, context: &mut Context<'ast>, b
         Builtin::FloatToSigned(a, _typ) => float_to_signed(value(a), builder),
         Builtin::FloatToUnsigned(a, _typ) => float_to_unsigned(value(a), builder),
 
+        Builtin::BitwiseAnd(a, b) => bitwise_and(value(a), value(b), builder),
+        Builtin::BitwiseOr(a, b) => bitwise_or(value(a), value(b), builder),
+        Builtin::BitwiseXor(a, b) => bitwise_xor(value(a), value(b), builder),
+        Builtin::BitwiseNot(a) => bitwise_not(value(a), builder),
+
         Builtin::Truncate(a, _typ) => truncate(value(a), builder),
 
         Builtin::Deref(a, typ) => return deref(context, typ, a, builder),
@@ -201,6 +206,22 @@ fn float_to_signed(param1: CraneliftValue, builder: &mut FunctionBuilder) -> Cra
 fn float_to_unsigned(param1: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
     let target_type = builder.func.signature.returns[0].value_type;
     builder.ins().fcvt_to_uint(target_type, param1)
+}
+
+fn bitwise_and(param1: CraneliftValue, param2: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
+    builder.ins().band(param1, param2)
+}
+
+fn bitwise_or(param1: CraneliftValue, param2: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
+    builder.ins().bor(param1, param2)
+}
+
+fn bitwise_xor(param1: CraneliftValue, param2: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
+    builder.ins().bxor(param1, param2)
+}
+
+fn bitwise_not(param1: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
+    builder.ins().bnot(param1)
 }
 
 fn truncate(param1: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {

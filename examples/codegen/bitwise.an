@@ -1,0 +1,15 @@
+
+x = 3
+y = 5
+
+print (band x y)
+print (bor x y)
+print (bxor x y)
+print (bnot x)
+
+// args: --delete-binary
+// expected stdout:
+// 1
+// 7
+// 6
+// -4

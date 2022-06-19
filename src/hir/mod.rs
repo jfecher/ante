@@ -241,6 +241,11 @@ pub enum Builtin {
     FloatToSigned(Box<Ast>, Type),
     FloatToUnsigned(Box<Ast>, Type),
 
+    BitwiseAnd(Box<Ast>, Box<Ast>),
+    BitwiseOr(Box<Ast>, Box<Ast>),
+    BitwiseXor(Box<Ast>, Box<Ast>),
+    BitwiseNot(Box<Ast>),
+
     Truncate(Box<Ast>, Type),
     Deref(Box<Ast>, Type),
     Offset(Box<Ast>, Box<Ast>, u32), // u32 is the pointer element size in bytes
