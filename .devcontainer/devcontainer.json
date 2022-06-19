@@ -5,7 +5,10 @@
 
     "customizations": {
         "vscode": {
-            "extensions": [ "rust-lang.rust-analyzer" ]
+            "extensions": [
+                "rust-lang.rust-analyzer",
+                "jfecher.ante"
+            ]
         }
     }
 }
