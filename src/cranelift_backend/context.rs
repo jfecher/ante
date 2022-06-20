@@ -99,8 +99,8 @@ impl Value {
             Value::Normal(value) => value,
             Value::Loadable(ptr, typ) => builder.ins().load(typ, MemFlags::new(), ptr, 0),
             Value::Unit => {
-                let unit_type = cranelift_types::B1;
-                builder.ins().bconst(unit_type, false)
+                let unit_type = cranelift_types::I8;
+                builder.ins().iconst(unit_type, 0)
             },
             Value::Global(data_id) => {
                 let _global = context.module.declare_data_in_func(data_id, builder.func);
@@ -557,8 +557,8 @@ fn convert_primitive_type(typ: &PrimitiveType) -> cranelift_types::Type {
         PrimitiveType::Integer(kind) => convert_integer_kind(*kind),
         PrimitiveType::Float => cranelift_types::F64,
         PrimitiveType::Char => cranelift_types::I8,
-        PrimitiveType::Boolean => cranelift_types::B1,
-        PrimitiveType::Unit => cranelift_types::B1,
+        PrimitiveType::Boolean => cranelift_types::I8,
+        PrimitiveType::Unit => cranelift_types::I8,
         PrimitiveType::Pointer => pointer_type(),
     }
 }

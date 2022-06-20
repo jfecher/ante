@@ -60,7 +60,7 @@ impl CodeGen for hir::Literal {
             // TODO: C strings should probably be wrapped in a global value
             hir::Literal::CString(s) => context.c_string_value(s, builder),
             hir::Literal::Char(c) => builder.ins().iconst(cranelift_types::I8, *c as i64),
-            hir::Literal::Bool(b) => builder.ins().bconst(cranelift_types::B1, *b),
+            hir::Literal::Bool(b) => builder.ins().iconst(cranelift_types::I8, *b as i64),
             hir::Literal::Unit => return Value::unit(),
         })
     }

@@ -1,4 +1,5 @@
 use cranelift::frontend::FunctionBuilder;
+use cranelift::prelude::types::I8;
 use cranelift::prelude::{FloatCC, InstBuilder, IntCC, StackSlotData, StackSlotKind, Value as CraneliftValue};
 
 use crate::hir::{Ast, Builtin};
@@ -104,32 +105,37 @@ fn mod_unsigned(param1: CraneliftValue, param2: CraneliftValue, builder: &mut Fu
     builder.ins().urem(param1, param2)
 }
 
+fn b1_to_i8(value: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
+    // Does this cast preserve the round-trip?
+    builder.ins().raw_bitcast(I8, value)
+}
+
 fn less_signed(param1: CraneliftValue, param2: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
-    builder.ins().icmp(IntCC::SignedLessThan, param1, param2)
+    b1_to_i8(builder.ins().icmp(IntCC::SignedLessThan, param1, param2), builder)
 }
 
 fn less_unsigned(param1: CraneliftValue, param2: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
-    builder.ins().icmp(IntCC::UnsignedLessThan, param1, param2)
+    b1_to_i8(builder.ins().icmp(IntCC::UnsignedLessThan, param1, param2), builder)
 }
 
 fn less_float(param1: CraneliftValue, param2: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
-    builder.ins().fcmp(FloatCC::LessThan, param1, param2)
+    b1_to_i8(builder.ins().fcmp(FloatCC::LessThan, param1, param2), builder)
 }
 
 fn eq_int(param1: CraneliftValue, param2: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
-    builder.ins().icmp(IntCC::Equal, param1, param2)
+    b1_to_i8(builder.ins().icmp(IntCC::Equal, param1, param2), builder)
 }
 
 fn eq_float(param1: CraneliftValue, param2: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
-    builder.ins().fcmp(FloatCC::Equal, param1, param2)
+    b1_to_i8(builder.ins().fcmp(FloatCC::Equal, param1, param2), builder)
 }
 
 fn eq_char(param1: CraneliftValue, param2: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
-    builder.ins().icmp(IntCC::Equal, param1, param2)
+    b1_to_i8(builder.ins().icmp(IntCC::Equal, param1, param2), builder)
 }
 
 fn eq_bool(param1: CraneliftValue, param2: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
-    builder.ins().icmp(IntCC::Equal, param1, param2)
+    b1_to_i8(builder.ins().icmp(IntCC::Equal, param1, param2), builder)
 }
 
 fn transmute(param1: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
