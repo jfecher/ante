@@ -1218,6 +1218,11 @@ impl<'c> Context<'c> {
             "FloatToSigned" => cast(self, FloatToSigned),
             "FloatToUnsigned" => cast(self, FloatToUnsigned),
 
+            "BitwiseAnd" => binary(self, BitwiseAnd),
+            "BitwiseOr" => binary(self, BitwiseOr),
+            "BitwiseXor" => binary(self, BitwiseXor),
+            "BitwiseNot" => BitwiseNot(Box::new(self.monomorphise(&args[1]))),
+
             "Truncate" => cast(self, Truncate),
 
             "Deref" => cast(self, Deref),

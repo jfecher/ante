@@ -272,6 +272,33 @@ trait Extract collection index -> elem with
 impl Extract (Ptr t) usz t with
     (#) ptr index = deref_ptr <| offset ptr index
 
+
+// Bitwise functions
+// TODO: Move these to separate module
+//       Currently this is prevented by the use of 'builtin'
+//       which is limited to the prelude.
+
+// Should these be traits instead?
+band (x: t) (y: t) : t =
+    // Workaround: explicit 'given' clauses on functions are unimplemented
+    // currently so this will manually add the desired `Int t` restriction.
+    // Alternatively we could move this to a trait and only impl for Int t
+    x + 0
+    builtin "BitwiseAnd" x y
+
+bor (x: t) (y: t) : t =
+    x + 0
+    builtin "BitwiseOr" x y
+
+bxor (x: t) (y: t) : t =
+    x + 0
+    builtin "BitwiseXor" x y
+
+bnot (x: t) : t =
+    x + 0
+    builtin "BitwiseNot" x
+
+
 type Type t = | MkType
 
 size_of (v: Type t) : usz = builtin "SizeOf" v

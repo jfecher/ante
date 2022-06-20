@@ -59,6 +59,11 @@ pub fn call_builtin<'g>(builtin: &Builtin, generator: &mut Generator<'g>) -> Bas
         Builtin::FloatToSigned(a, _typ) => float_to_signed(a, generator),
         Builtin::FloatToUnsigned(a, _typ) => float_to_unsigned(a, generator),
 
+        Builtin::BitwiseAnd(a, b) => bitwise_and(int(a), int(b), generator),
+        Builtin::BitwiseOr(a, b) => bitwise_or(int(a), int(b), generator),
+        Builtin::BitwiseXor(a, b) => bitwise_xor(int(a), int(b), generator),
+        Builtin::BitwiseNot(a) => bitwise_not(int(a), generator),
+
         Builtin::Truncate(a, _typ) => truncate(int(a), generator),
 
         Builtin::Deref(a, typ) => deref_ptr(a, typ, generator),
@@ -226,6 +231,22 @@ fn float_to_unsigned<'g>(x: &Ast, generator: &mut Generator<'g>) -> BasicValueEn
     let ret = current_function.get_type().get_return_type().unwrap().into_int_type();
     let x = x.codegen(generator).into_float_value();
     generator.builder.build_float_to_unsigned_int(x, ret, "float_to_unsigned").as_basic_value_enum()
+}
+
+fn bitwise_and<'g>(a: IntValue<'g>, b: IntValue<'g>, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+    generator.builder.build_and(a, b, "bitwise_and").as_basic_value_enum()
+}
+
+fn bitwise_or<'g>(a: IntValue<'g>, b: IntValue<'g>, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+    generator.builder.build_or(a, b, "bitwise_or").as_basic_value_enum()
+}
+
+fn bitwise_xor<'g>(a: IntValue<'g>, b: IntValue<'g>, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+    generator.builder.build_xor(a, b, "bitwise_xor").as_basic_value_enum()
+}
+
+fn bitwise_not<'g>(a: IntValue<'g>, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+    generator.builder.build_not(a, "bitwise_not").as_basic_value_enum()
 }
 
 fn truncate<'g>(x: IntValue<'g>, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
