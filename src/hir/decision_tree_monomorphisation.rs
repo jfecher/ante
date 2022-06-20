@@ -31,7 +31,7 @@ impl<'c> Context<'c> {
             let name = Some(self.cache[*id].name.clone());
             let (def, new_id) = self.fresh_definition(value, name);
             let typ = self.follow_all_bindings(self.cache[*id].typ.as_ref().unwrap().as_monotype());
-            self.definitions.insert((*id, typ), new_id.into());
+            self.definitions.insert(*id, typ, new_id.into());
             def
         } else {
             value
@@ -177,7 +177,7 @@ impl<'c> Context<'c> {
                         for field_alias in field_aliases {
                             let alias_type = self.cache[*field_alias].typ.as_ref().unwrap().as_monotype();
                             let field_type = self.follow_all_bindings(alias_type);
-                            self.definitions.insert((*field_alias, field_type), field_variable.into());
+                            self.definitions.insert(*field_alias, field_type, field_variable.into());
                         }
 
                         hir::Definition {
@@ -196,7 +196,7 @@ impl<'c> Context<'c> {
                     for field_alias in field_aliases {
                         let alias_type = self.cache[*field_alias].typ.as_ref().unwrap().as_monotype();
                         let field_type = self.follow_all_bindings(alias_type);
-                        self.definitions.insert((*field_alias, field_type), variant.into());
+                        self.definitions.insert(*field_alias, field_type, variant.into());
                     }
                 }
                 // We've aliased everything this pattern was bound to and did not

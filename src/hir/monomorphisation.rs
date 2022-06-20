@@ -12,6 +12,7 @@ use crate::types::typed::Typed;
 use crate::types::{self, TypeInfoId, TypeVariableId};
 use crate::util::{fmap, trustme};
 
+use super::definitions::Definitions;
 use super::types::{IntegerKind, Type};
 
 const DEFAULT_INTEGER_KIND: IntegerKind = IntegerKind::I32;
@@ -35,7 +36,7 @@ pub struct Context<'c> {
 
     /// Monomorphisation can result in what was 1 DefinitionInfoId being split into
     /// many different monomorphised variants, each represented by a unique hir::DefinitionId.
-    pub definitions: HashMap<(DefinitionInfoId, types::Type), Definition>,
+    pub definitions: Definitions,
 
     types: HashMap<(types::TypeInfoId, Vec<types::Type>), Type>,
 
@@ -43,14 +44,11 @@ pub struct Context<'c> {
     /// after type inference. This is needed for definitions that are polymorphic in
     /// the impls they may use within.
     impl_mappings: Vec<Impls>,
-    // direct_given_impl_mappings: Vec<DirectGivenImpls>,
-    // indirect_given_impl_mappings: Vec<IndirectGivenImpls>,
+
     next_id: usize,
 }
 
 type Impls = HashMap<VariableId, Impl>;
-// type DirectGivenImpls = HashMap<VariableId, Vec<(TraitConstraintId, ImplInfoId)>>;
-// type IndirectGivenImpls = HashMap<TraitConstraintId, Vec<(VariableId, TraitConstraintId, ImplInfoId)>>;
 
 #[derive(Debug, Default)]
 struct Impl {
@@ -94,7 +92,7 @@ impl<'c> Context<'c> {
     fn new(cache: ModuleCache) -> Context {
         Context {
             monomorphisation_bindings: vec![],
-            definitions: HashMap::new(),
+            definitions: Definitions::new(),
             types: HashMap::new(),
             impl_mappings: vec![HashMap::new()],
             next_id: 0,
@@ -616,7 +614,7 @@ impl<'c> Context<'c> {
 
     pub fn lookup_definition(&self, id: DefinitionInfoId, typ: &types::Type) -> Option<Definition> {
         let typ = self.follow_all_bindings(typ);
-        self.definitions.get(&(id, typ)).cloned()
+        self.definitions.get(id, typ).cloned()
     }
 
     fn push_monomorphisation_bindings(
@@ -747,11 +745,11 @@ impl<'c> Context<'c> {
                 let name = info.name.clone();
                 let info = hir::DefinitionInfo { definition: None, definition_id, name: Some(name.clone()) };
 
-                self.definitions.insert((id, typ.clone()), Definition::Normal(info));
+                self.definitions.insert(id, typ.clone(), Definition::Normal(info));
 
                 let def = self.monomorphise_nonlocal_definition(definition, definition_id, name);
 
-                self.definitions.insert((id, typ), def.clone());
+                self.definitions.insert(id, typ, def.clone());
                 def
             },
             Some(DefinitionKind::Extern(_)) => self.make_extern(id, &typ),
@@ -799,7 +797,7 @@ impl<'c> Context<'c> {
         // extern definitions should only be declared once - never duplicated & monomorphised.
         // For this reason their value is always stored with the Unit type in the definitions map.
         if let Some(value) = self.lookup_definition(id, &UNBOUND_TYPE) {
-            self.definitions.insert((id, typ.clone()), value.clone());
+            self.definitions.insert(id, typ.clone(), value.clone());
             return value;
         }
 
@@ -811,8 +809,14 @@ impl<'c> Context<'c> {
         // Insert the global for both the current type and the unit type
         let definition = Definition::Normal(definition);
 
-        self.definitions.insert((id, typ.clone()), definition.clone());
-        self.definitions.insert((id, UNBOUND_TYPE.clone()), definition.clone());
+        // TODO: Perhaps we should have a DefinitionKind (not cache::DefinitionKind)
+        // to differentiate over the required keys for a given Definition.
+        // - Id for extern
+        // - (Id, Type) for globals
+        // - (Id, Type, ParentId) for locals, to get rid of "all" and "local" fields within
+        //   self.definitions and the duplication it requires.
+        self.definitions.insert(id, typ.clone(), definition.clone());
+        self.definitions.insert(id, UNBOUND_TYPE.clone(), definition.clone());
         definition
     }
 
@@ -831,7 +835,7 @@ impl<'c> Context<'c> {
             Definition::Macro(definition_rhs)
         };
 
-        self.definitions.insert((original_id, typ), def.clone());
+        self.definitions.insert(original_id, typ, def.clone());
         def
     }
 
@@ -914,7 +918,7 @@ impl<'c> Context<'c> {
                 let variable = hir::Variable { definition_id, definition: None, name };
                 let definition = Definition::Normal(variable);
 
-                self.definitions.insert((id, typ), definition);
+                self.definitions.insert(id, typ, definition);
             },
             TypeAnnotation(annotation) => {
                 self.desugar_pattern(annotation.lhs.as_ref(), definition_id, typ, definitions)
@@ -1052,6 +1056,8 @@ impl<'c> Context<'c> {
     }
 
     fn monomorphise_lambda(&mut self, lambda: &ast::Lambda<'c>) -> hir::Ast {
+        self.definitions.push_local_scope();
+
         let t = lambda.typ.as_ref().unwrap();
         let t = self.follow_all_bindings(t);
         let typ = self.get_function_type(&t);
@@ -1081,13 +1087,14 @@ impl<'c> Context<'c> {
             hir::Ast::Sequence(hir::Sequence { statements: body_prelude })
         });
 
-        let function = hir::Ast::Lambda(hir::Lambda { args, body, typ });
+        let mut function = hir::Ast::Lambda(hir::Lambda { args, body, typ });
 
-        if lambda.closure_environment.is_empty() {
-            function
-        } else {
-            self.pack_closure_environment(function, &lambda.closure_environment)
-        }
+        if !lambda.closure_environment.is_empty() {
+            function = self.pack_closure_environment(function, &lambda.closure_environment);
+        };
+
+        self.definitions.pop_local_scope();
+        function
     }
 
     fn unpack_environment(
@@ -1122,7 +1129,7 @@ impl<'c> Context<'c> {
             let typ = info.typ.as_ref().unwrap().as_monotype();
             let typ = self.follow_all_bindings(typ);
 
-            self.definitions.insert((*inner_var, typ), Definition::Normal(value));
+            self.definitions.insert(*inner_var, typ, Definition::Normal(value));
         }
 
         first_env

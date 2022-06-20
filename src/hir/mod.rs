@@ -11,6 +11,7 @@ mod decision_tree_monomorphisation;
 mod monomorphisation;
 mod printer;
 mod types;
+mod definitions;
 
 pub use monomorphisation::monomorphise;
 pub use types::{FunctionType, IntegerKind, PrimitiveType, Type};
