@@ -9,7 +9,7 @@ use crate::types::typechecker::find_all_typevars;
 use crate::types::{FunctionType, PrimitiveType, Type, TypeBinding, TypeInfoId, TypeVariableId};
 
 use std::collections::hash_map::Entry;
-use std::collections::{HashMap, BTreeMap};
+use std::collections::{BTreeMap, HashMap};
 use std::fmt::{Debug, Display, Formatter};
 
 use colored::*;
@@ -54,10 +54,10 @@ fn fill_typevar_map(map: &mut HashMap<TypeVariableId, String>, typevars: Vec<Typ
     }
 }
 
-/// Returns a string of the given type along with a Vec of strings of each trait it requires. 
-/// The type and traits are all taken in together so that any repeated typevariables e.g. 
-/// `TypeVariableId(55)` that may be used in both the type and any traits are given the same 
-/// name in both. Printing out the type separately from the traits would cause type variable 
+/// Returns a string of the given type along with a Vec of strings of each trait it requires.
+/// The type and traits are all taken in together so that any repeated typevariables e.g.
+/// `TypeVariableId(55)` that may be used in both the type and any traits are given the same
+/// name in both. Printing out the type separately from the traits would cause type variable
 /// naming to restart at `a` which may otherwise give them different names.
 pub fn show_type_and_traits<'b>(
     typ: &GeneralizedType, traits: &[RequiredTrait], trait_info: &Option<(TraitInfoId, Vec<Type>)>,
@@ -273,7 +273,9 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
         write!(f, "{}", ")".blue())
     }
 
-    fn fmt_struct(&self, fields: &BTreeMap<String, Type>, rest: TypeVariableId, f: &mut Formatter) -> Result<(), std::fmt::Error> {
+    fn fmt_struct(
+        &self, fields: &BTreeMap<String, Type>, rest: TypeVariableId, f: &mut Formatter,
+    ) -> Result<(), std::fmt::Error> {
         match &self.cache.type_bindings[rest.0] {
             TypeBinding::Bound(typ) => self.fmt_type(typ, f),
             TypeBinding::Unbound(..) => {

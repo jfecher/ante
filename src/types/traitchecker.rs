@@ -157,9 +157,11 @@ fn find_int_constraint_impl<'c>(
                 "Could not default $1 to $2",
             )
         },
-        other => {
-            Err(make_error!(constraint.locate(cache), "Expected a primitive integer type, but found {}", other.display(cache)))
-        },
+        other => Err(make_error!(
+            constraint.locate(cache),
+            "Expected a primitive integer type, but found {}",
+            other.display(cache)
+        )),
     }
 }
 

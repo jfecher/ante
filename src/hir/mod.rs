@@ -8,10 +8,10 @@
 //!   function to call statically (monomorphisation) or are passed in as
 //!   arguments to calling functions (boxing).
 mod decision_tree_monomorphisation;
+mod definitions;
 mod monomorphisation;
 mod printer;
 mod types;
-mod definitions;
 
 pub use monomorphisation::monomorphise;
 pub use types::{FunctionType, IntegerKind, PrimitiveType, Type};
@@ -306,13 +306,15 @@ macro_rules! dispatch_on_hir {
 pub(crate) use dispatch_on_hir;
 
 // Rust won't let us impl<T: FmtAst> Display for T
-macro_rules! impl_display {($typ:ty) => (
-    impl std::fmt::Display for $typ {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            printer::AstPrinter::default().start(self, f)
+macro_rules! impl_display {
+    ($typ:ty) => {
+        impl std::fmt::Display for $typ {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                printer::AstPrinter::default().start(self, f)
+            }
         }
-    }
-);}
+    };
+}
 
 impl_display!(Ast);
 impl_display!(Literal);

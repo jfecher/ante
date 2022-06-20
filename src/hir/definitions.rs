@@ -4,7 +4,6 @@ use crate::{cache::DefinitionInfoId, types};
 
 use super::monomorphisation::Definition;
 
-
 pub struct Definitions {
     // This is a rather inefficient representation with duplication
     // to prevent locals of one type overwriting locals of the same type
@@ -20,11 +19,8 @@ type DefinitionKey = (DefinitionInfoId, types::Type);
 
 impl Definitions {
     pub fn new() -> Self {
-        Self {
-            all: HashMap::new(),
-            local: vec![HashMap::new()],
-        }
-    } 
+        Self { all: HashMap::new(), local: vec![HashMap::new()] }
+    }
 
     pub fn get(&self, id: DefinitionInfoId, typ: types::Type) -> Option<&Definition> {
         let locals = self.local.last().unwrap();

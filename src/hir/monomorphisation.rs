@@ -300,9 +300,12 @@ impl<'c> Context<'c> {
 
             UserDefined(id) => self.size_of_user_defined_type(*id, &[]),
 
-            TypeApplication(typ, args) => match typ.as_ref() {
-                UserDefined(id) => self.size_of_user_defined_type(*id, args),
-                Primitive(Ptr) => Self::ptr_size(),
+            TypeApplication(typ, args) => match self.follow_bindings_shallow(typ.as_ref()) {
+                Ok(UserDefined(id)) => {
+                    let id = *id;
+                    self.size_of_user_defined_type(id, args)
+                },
+                Ok(Primitive(Ptr)) => Self::ptr_size(),
                 _ => unreachable!("Kind error inside size_of_type"),
             },
 
@@ -1400,8 +1403,9 @@ impl<'c> Context<'c> {
         let index = self.get_field_index(&member_access.field, &lhs_type);
 
         let ref_type = match lhs_type {
-            types::Type::TypeApplication(constructor, args) => match constructor.as_ref() {
-                types::Type::Ref(_) => Some(self.convert_type(&args[0])),
+            types::Type::TypeApplication(constructor, args) => match self.follow_bindings_shallow(constructor.as_ref())
+            {
+                Ok(types::Type::Ref(_)) => Some(self.convert_type(&args[0])),
                 _ => None,
             },
             _ => None,

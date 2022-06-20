@@ -208,7 +208,7 @@ impl TraitConstraint {
                 let mut ids = ids.clone();
                 ids.push(inner_id);
                 Callsite::Indirect(*var, ids)
-            }
+            },
         };
 
         let required = RequiredTrait { signature, callsite };
@@ -219,7 +219,9 @@ impl TraitConstraint {
         self.required.signature.trait_id == cache.int_trait
     }
 
-    pub fn int_constraint<'c>(int_type: TypeVariableId, location: Location<'c>, cache: &mut ModuleCache<'c>) -> TraitConstraint {
+    pub fn int_constraint<'c>(
+        int_type: TypeVariableId, location: Location<'c>, cache: &mut ModuleCache<'c>,
+    ) -> TraitConstraint {
         let args = vec![Type::TypeVariable(int_type)];
         let id = cache.next_trait_constraint_id();
 
@@ -227,7 +229,10 @@ impl TraitConstraint {
         let callsite = Callsite::Direct(cache.push_variable("".into(), location));
 
         TraitConstraint {
-            required: RequiredTrait { signature: ConstraintSignature { trait_id: cache.int_trait, args, id }, callsite },
+            required: RequiredTrait {
+                signature: ConstraintSignature { trait_id: cache.int_trait, args, id },
+                callsite,
+            },
             scope: ImplScopeId(0),
         }
     }

@@ -633,9 +633,7 @@ pub fn try_unify_with_bindings_inner<'b>(
 
         // Follow any bindings here for convenience so we don't have to check if a or b
         // are bound in all Struct cases below.
-        (Struct(_, var), t2) | (t2, Struct(_, var))
-            if matches!(&cache.type_bindings[var.0], Bound(_)) =>
-        {
+        (Struct(_, var), t2) | (t2, Struct(_, var)) if matches!(&cache.type_bindings[var.0], Bound(_)) => {
             match &cache.type_bindings[var.0] {
                 Bound(bound) => try_unify_with_bindings_inner(&bound.clone(), t2, bindings, location, cache),
                 _ => unreachable!(),

@@ -258,8 +258,7 @@ impl NameResolver {
     }
 
     fn add_closure_parameter_definition<'c>(
-        &mut self, parameter: &str, function_scope_index: usize, location: Location<'c>,
-        cache: &mut ModuleCache<'c>,
+        &mut self, parameter: &str, function_scope_index: usize, location: Location<'c>, cache: &mut ModuleCache<'c>,
     ) -> DefinitionInfoId {
         let function_scope = &mut self.scopes[function_scope_index];
         let scope = function_scope.first_mut();

@@ -495,7 +495,8 @@ impl<'g> CodeGen<'g> for hir::Lambda {
 
         // Bind each parameter node to the nth parameter of `function`
         for (i, parameter) in self.args.iter().enumerate() {
-            let value = expect_opt!(function.get_nth_param(i as u32), "Could not get parameter {} of function {}", i, self);
+            let value =
+                expect_opt!(function.get_nth_param(i as u32), "Could not get parameter {} of function {}", i, self);
             generator.definitions.insert(parameter.definition_id, value);
         }
 

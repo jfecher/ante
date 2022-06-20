@@ -11,6 +11,6 @@ pub mod cache;
 
 #[macro_use]
 pub mod hir;
+mod lifetimes;
 pub mod nameresolution;
 pub mod types;
-mod lifetimes;
