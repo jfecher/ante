@@ -1,0 +1,6 @@
+
+boom () : Maybe (Ptr char) = None
+_ = boom ()
+
+// args: --delete-binary
+// expected stdout:

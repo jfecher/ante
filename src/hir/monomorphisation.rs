@@ -304,6 +304,7 @@ impl<'c> Context<'c> {
 
             TypeApplication(typ, args) => match typ.as_ref() {
                 UserDefined(id) => self.size_of_user_defined_type(*id, args),
+                Primitive(Ptr) => Self::ptr_size(),
                 _ => unreachable!("Kind error inside size_of_type"),
             },
 
