@@ -140,7 +140,7 @@ impl<'local> Context<'local> {
     }
 
     pub fn codegen_all(path: &Path, hir: &'local Ast, args: &Args) {
-        let output_path = path.with_extension("");
+        let output_path = path.with_extension("o");
         let (mut context, mut builder_context) = Context::new(&output_path, !args.build);
         let mut module_context = context.module.make_context();
 
