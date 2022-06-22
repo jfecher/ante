@@ -1,5 +1,5 @@
-a = "Hello,"
-print (a ++ " World!")
+a = "你好"
+print (a ++ "，世界")
 
 // args: --delete-binary
-// expected stdout: Hello, World!
+// expected stdout: 你好，世界
