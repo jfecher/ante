@@ -21,6 +21,7 @@ use crate::parser::ast::{Ast, Definition, TraitDefinition, TraitImpl, TypeAnnota
 use crate::types::traits::{ConstraintSignature, RequiredImpl, RequiredTrait, TraitConstraintId};
 use crate::types::{GeneralizedType, Kind, LetBindingLevel, TypeBinding};
 use crate::types::{Type, TypeInfo, TypeInfoBody, TypeInfoId, TypeVariableId};
+use crate::util::stdlib_dir;
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -98,10 +99,6 @@ pub struct ModuleCache<'a> {
 
     /// A constant referring to the ID of the builtin Int trait. Should always be 0
     pub int_trait: TraitInfoId,
-
-    /// The filepath to ante's stdlib/prelude.an file to be automatically
-    /// included when defining a new ante module.
-    pub prelude_path: PathBuf,
 
     /// Call stack of functions traversed during type inference. Used to find
     /// mutually recursive functions and delay generalization of them until after
@@ -329,8 +326,7 @@ pub struct ImplInfo<'a> {
 impl<'a> ModuleCache<'a> {
     pub fn new(project_directory: &Path) -> ModuleCache<'a> {
         let mut cache = ModuleCache {
-            relative_roots: vec![project_directory.to_owned(), dirs::config_dir().unwrap().join("ante/stdlib")],
-            prelude_path: dirs::config_dir().unwrap().join("stdlib/prelude"),
+            relative_roots: vec![project_directory.to_owned(), stdlib_dir()],
             // Really wish you could do ..Default::default() for the remaining fields
             modules: HashMap::default(),
             parse_trees: UnsafeCache::default(),

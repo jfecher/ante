@@ -70,6 +70,20 @@ pub fn binary_name(module_name: &str) -> String {
     }
 }
 
+pub fn stdlib_dir() -> PathBuf {
+    match option_env!("ANTE_STDLIB_DIR") {
+        Some(env) => std::fs::canonicalize(env).unwrap(),
+        None => {
+            let mut path = PathBuf::from(file!());
+            path.pop();
+            path.pop();
+            path.pop();
+            path.push("stdlib");
+            path.canonicalize().unwrap()
+        }
+    }
+}
+
 macro_rules! expect_opt {( $result:expr , $fmt_string:expr $( , $($msg:tt)* )? ) => ({
     match $result {
         Some(t) => t,

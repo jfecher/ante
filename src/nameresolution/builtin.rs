@@ -61,7 +61,7 @@ pub fn define_builtins(cache: &mut ModuleCache) {
 /// user's config directory since it is a cross-platform concept that doesn't
 /// require administrator priviledges.
 pub fn prelude_path() -> PathBuf {
-    dirs::config_dir().unwrap().join("ante/stdlib/prelude.an")
+    crate::util::stdlib_dir().join("prelude.an")
 }
 
 pub fn import_prelude<'a>(resolver: &mut NameResolver, cache: &mut ModuleCache<'a>) {
@@ -71,8 +71,6 @@ pub fn import_prelude<'a>(resolver: &mut NameResolver, cache: &mut ModuleCache<'
     } else {
         // Otherwise, import the prelude itself
         let prelude_dir = prelude_path();
-        cache.prelude_path = prelude_dir.clone();
-
         if let Some(id) = declare_module(&prelude_dir, cache, Location::builtin()) {
             let exports = define_module(id, cache, Location::builtin()).unwrap();
             resolver.current_scope().import(exports, cache, Location::builtin());
