@@ -1,0 +1,8 @@
+import StringBuilder
+
+s: ref StringBuilder = mut empty ()
+reserve s 10
+append s "Hello "
+append s "world!"
+
+print (to_string s)

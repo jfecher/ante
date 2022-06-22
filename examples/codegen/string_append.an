@@ -1,0 +1,5 @@
+a = "Hello"
+print "${a}, World!"
+
+// args: --delete-binary
+// expected stdout: Hello, World!

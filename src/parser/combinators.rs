@@ -359,6 +359,7 @@ where
 // Basic combinators for extracting the contents of a given token
 pub fn identifier<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, String> {
     match &input[0] {
+        (Token::StringType, location) => Ok((&input[1..], "string".to_owned(), *location)),
         (Token::Identifier(name), location) => Ok((&input[1..], name.clone(), *location)),
         (Token::Invalid(c), location) => Err(ParseError::Fatal(Box::new(ParseError::LexerError(*c, *location)))),
         (_, location) => Err(ParseError::Expected(vec![Token::Identifier("identifier".to_owned())], *location)),
