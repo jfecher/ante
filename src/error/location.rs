@@ -25,14 +25,14 @@ impl Position {
     }
 
     /// Increment the position 1 character forward
-    pub fn advance(&mut self, passed_newline: bool) {
+    pub fn advance(&mut self, char_len: usize, passed_newline: bool) {
         if passed_newline {
             self.line += 1;
             self.column = 1;
         } else {
             self.column += 1;
         }
-        self.index += 1;
+        self.index += char_len;
     }
 }
 
