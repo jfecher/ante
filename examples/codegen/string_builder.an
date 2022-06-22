@@ -1,8 +1,8 @@
 import StringBuilder
 
-s: ref StringBuilder = mut empty ()
-reserve s 10
-append s "Hello "
-append s "world!"
+sb: ref StringBuilder = mut empty ()
+reserve sb 10
+append sb "Hello "
+append sb "world!"
 
-print (to_string s)
+print (to_string sb)

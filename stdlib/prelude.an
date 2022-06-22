@@ -16,7 +16,7 @@ extern
     malloc: usz -> Ptr a
     calloc: /*items:*/usz - /*size:*/usz -> Ptr a
     realloc: Ptr a - usz -> Ptr a
-    free: Ptr a -> ()
+    free: Ptr a -> unit
     memcpy: Ptr a - Ptr b - usz -> Ptr a //dest
     system: Ptr char -> i32
     strlen: Ptr char -> usz
