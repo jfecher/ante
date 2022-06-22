@@ -2,7 +2,10 @@ import StringBuilder
 
 sb: ref StringBuilder = mut empty ()
 reserve sb 10
-append sb "Hello "
-append sb "world!"
+append sb "Hello,"
+append sb " World!"
 
 print (to_string sb)
+
+// args: --delete-binary
+// expected stdout: Hello, World!
