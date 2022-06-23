@@ -631,13 +631,13 @@ fn parenthesized_expression<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
 }
 
 parser!(variant loc =
-    module_prefix <- maybe(delimited_trailing(identifier, expect(Token::Namespace)));
+    module_prefix <- maybe(delimited_trailing(typename, expect(Token::MemberAccess)));
     name <- typename;
     Ast::type_constructor(module_prefix, name, loc)
 );
 
 parser!(variable loc =
-    module_prefix <- maybe(delimited_trailing(identifier, expect(Token::Namespace)));
+    module_prefix <- maybe(delimited_trailing(typename, expect(Token::MemberAccess)));
     name <- identifier;
     Ast::variable(module_prefix, name, loc)
 );
