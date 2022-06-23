@@ -27,3 +27,7 @@ append (s: ref StringBuilder) (new_str: string) : unit =
 // convert to string
 to_string (s: ref StringBuilder) : string =
     string (s.data) (s.length)
+
+impl Print StringBuilder with
+    printne (s: ref StringBuilder) : unit =
+        print (to_string s)
