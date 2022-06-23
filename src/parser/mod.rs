@@ -234,8 +234,8 @@ parser!(struct_inline_body _loc -> 'b ast::TypeDefinitionBody<'b> =
 
 parser!(import loc =
     _ <- expect(Token::Import);
-    path !<- delimited_trailing(typename, expect(Token::MemberAccess));
-    symbols !<- many1(identifier);
+    path <- delimited_trailing(typename, expect(Token::MemberAccess));
+    symbols <- many1(imported_defs);
     Ast::import(path, loc, HashSet::from_iter(symbols))
 );
 
