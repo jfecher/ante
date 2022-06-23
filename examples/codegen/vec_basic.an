@@ -2,7 +2,7 @@ import Vec.empty Vec push
 
 v: (ref (Vec i32)) = mut Vec.empty ()
 
-push v 3i32
+Vec.push v 3i32
 push v 4
 
 print v

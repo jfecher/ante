@@ -799,12 +799,15 @@ impl<'c> Resolvable<'c> for ast::Variable<'c> {
                 if !self.module_prefix.is_empty() {
                     let relative_path = self.module_prefix.join("/");
                     if let Some(module_id) = resolver.current_scope().modules.get(&relative_path).copied() {
-                        let module_scope = &resolver.module_scopes[&module_id];
-                        if let Some(id) = module_scope.definitions.get(name.as_ref()) {
-                            self.impl_scope = Some(module_scope.impl_scope);
-                            self.definition = Some(*id);
-                            self.id = Some(cache.push_variable(name.into_owned(), self.location));
+                        let def = if let Some(id) = resolver.module_scopes[&module_id].definitions.get(name.as_ref()).to_owned() {
+                            Some(*id)
                         }
+                        else {
+                            None
+                        };
+                        self.impl_scope = Some(resolver.current_scope().impl_scope);
+                        self.definition = def;
+                        self.id = Some(cache.push_variable(name.into_owned(), self.location));
                     }
                     else {
                         error!(self.location, "Could not find module '{}'", relative_path);

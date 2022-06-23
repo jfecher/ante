@@ -74,9 +74,9 @@ impl Scope {
     /// Helper for `import` which imports all non-impl symbols.
     fn import_definitions_types_and_traits(&mut self, other: &Scope, cache: &mut ModuleCache, location: Location, symbols: &HashSet<String>) {
         macro_rules! merge_table {
-            ( $field:tt , $cache_field:tt , $errors:tt ) => {{
+            ( $field:tt , $cache_field:tt , $errors:tt, $symbols:expr ) => {{
                 for (k, v) in other.$field.iter() {
-                    if !symbols.is_empty() && !symbols.contains(k) {
+                    if !$symbols.is_empty() && !$symbols.contains(k) {
                         continue;
                     }
                     if let Some(existing) = self.$field.get(k) {
@@ -92,9 +92,9 @@ impl Scope {
         }
 
         let mut errors = vec![];
-        merge_table!(definitions, definition_infos, errors);
-        merge_table!(types, type_infos, errors);
-        merge_table!(traits, trait_infos, errors);
+        merge_table!(definitions, definition_infos, errors, symbols);
+        merge_table!(types, type_infos, errors, symbols);
+        merge_table!(traits, trait_infos, errors, symbols);
 
         if !errors.is_empty() {
             // Using sort_by instead of sort_by_key here avoids cloning the ErrorMessage
