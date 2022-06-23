@@ -23,6 +23,8 @@ pub mod ast;
 mod desugar;
 pub mod pretty_printer;
 
+use std::{collections::HashSet, iter::FromIterator};
+
 use crate::error::location::Location;
 use crate::lexer::token::Token;
 use ast::{Ast, Trait, Type, TypeDefinitionBody};
@@ -232,8 +234,9 @@ parser!(struct_inline_body _loc -> 'b ast::TypeDefinitionBody<'b> =
 
 parser!(import loc =
     _ <- expect(Token::Import);
-    path <- delimited(typename, expect(Token::MemberAccess));
-    Ast::import(path, loc)
+    path !<- delimited_trailing(typename, expect(Token::MemberAccess));
+    symbols !<- many1(identifier);
+    Ast::import(path, loc, HashSet::from_iter(symbols))
 );
 
 parser!(trait_definition loc =
@@ -627,13 +630,15 @@ fn parenthesized_expression<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
 }
 
 parser!(variant loc =
+    module_prefix <- maybe(delimited_trailing(identifier, expect(Token::Namespace)));
     name <- typename;
-    Ast::type_constructor(name, loc)
+    Ast::type_constructor(module_prefix, name, loc)
 );
 
 parser!(variable loc =
+    module_prefix <- maybe(delimited_trailing(identifier, expect(Token::Namespace)));
     name <- identifier;
-    Ast::variable(name, loc)
+    Ast::variable(module_prefix, name, loc)
 );
 
 parser!(string loc =

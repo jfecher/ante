@@ -1,4 +1,4 @@
-import Library
+import Library.(library_int, library_fn)
 
 foo = fn _ b -> b
 

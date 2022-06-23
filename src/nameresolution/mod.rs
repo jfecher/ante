@@ -57,6 +57,7 @@ use crate::util::{fmap, timing, trustme};
 use colored::Colorize;
 
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
@@ -106,6 +107,8 @@ pub struct NameResolver {
     /// all modules used in the program. The exported symbols need not
     /// be defined until the 'define' pass later however.
     pub exports: Scope,
+
+    pub module_scopes: HashMap<ModuleId, Scope>,
 
     /// Type variable scopes are separate from other scopes since in general
     /// type variables do not follow normal scoping rules. For example, in the trait:
@@ -512,6 +515,7 @@ impl<'c> NameResolver {
         cache.modules.insert(filepath.to_owned(), module_id);
 
         let mut resolver = NameResolver {
+            module_scopes: HashMap::new(),
             filepath: filepath.to_owned(),
             scopes: vec![FunctionScopes::new()],
             exports: Scope::new(cache),
@@ -792,13 +796,30 @@ impl<'c> Resolvable<'c> for ast::Variable<'c> {
                     TypeConstructor(name) => Cow::Borrowed(name),
                 };
 
-                self.impl_scope = Some(resolver.current_scope().impl_scope);
-                self.definition = resolver.reference_definition(&name, self.location, cache);
-                self.id = Some(cache.push_variable(name.into_owned(), self.location));
+                if let Some(module_prefix) = &self.module_prefix {
+                    let relative_path = module_prefix.clone().join("/");
+                    if let Some(module_id) = resolver.current_scope().modules.get(&relative_path).copied() {
+                        let module_scope = &resolver.module_scopes[&module_id];
+                        if let Some(id) = module_scope.definitions.get(name.as_ref()) {
+                            self.impl_scope = Some(module_scope.impl_scope);
+                            self.definition = Some(*id);
+                            self.id = Some(cache.push_variable(name.into_owned(), self.location));
+                        }
+                    }
+                    else {
+                        error!(self.location, "Could not find module {}", relative_path);
+                    }
+                }
+                else {
+                    self.impl_scope = Some(resolver.current_scope().impl_scope);
+                    self.definition = resolver.reference_definition(&name, self.location, cache);
+                    self.id = Some(cache.push_variable(name.into_owned(), self.location));
+                }
             }
 
             // If it is still not declared, print an error
             if self.definition.is_none() {
+                dbg!(&self.kind);
                 error!(self.location, "No declaration for {} was found in scope", self);
             }
         }
@@ -1097,7 +1118,7 @@ pub fn declare_module<'a>(path: &Path, cache: &mut ModuleCache<'a>, error_locati
 }
 
 pub fn define_module<'a>(
-    module_id: ModuleId, cache: &mut ModuleCache<'a>, error_location: Location,
+    module_id: ModuleId, cache: &mut ModuleCache<'a>, error_location: Location
 ) -> Option<&'a Scope> {
     let import = cache.name_resolvers.get_mut(module_id.0).unwrap();
     match import.state {
@@ -1116,15 +1137,19 @@ pub fn define_module<'a>(
 }
 
 impl<'c> Resolvable<'c> for ast::Import<'c> {
-    fn declare(&mut self, _resolver: &mut NameResolver, cache: &mut ModuleCache<'c>) {
+    fn declare(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'c>) {
         let relative_path = self.path.clone().join("/");
         self.module_id = declare_module(Path::new(&relative_path), cache, self.location);
+        if let Some(module_id) = self.module_id {
+            resolver.current_scope().modules.insert(relative_path, module_id);
+        }
     }
 
     fn define(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'c>) {
         if let Some(module_id) = self.module_id {
             if let Some(exports) = define_module(module_id, cache, self.location) {
-                resolver.current_scope().import(exports, cache, self.location);
+                resolver.current_scope().import(exports, cache, self.location, &self.symbols);
+                resolver.module_scopes.insert(module_id, exports.to_owned());
             }
         }
     }

@@ -31,7 +31,7 @@ use crate::types::pattern::DecisionTree;
 use crate::types::traits::RequiredTrait;
 use crate::types::typechecker::TypeBindings;
 use crate::types::{self, LetBindingLevel, TypeInfoId};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::Rc;
 
 #[derive(Clone, Debug, Eq, PartialOrd, Ord)]
@@ -63,6 +63,9 @@ pub enum VariableKind {
 pub struct Variable<'a> {
     pub kind: VariableKind,
     pub location: Location<'a>,
+
+    /// module prefix path
+    pub module_prefix: Option<Vec<String>>,
 
     /// A variable's definition is initially undefined.
     /// During name resolution, every definition is filled
@@ -251,6 +254,7 @@ pub struct Import<'a> {
     pub location: Location<'a>,
     pub typ: Option<types::Type>,
     pub module_id: Option<ModuleId>,
+    pub symbols: HashSet<String>,
 }
 
 /// trait Name arg1 arg2 ... argN -> fundep1 fundep2 ... fundepN
@@ -446,9 +450,10 @@ impl<'a> Ast<'a> {
         Ast::Literal(Literal { kind: LiteralKind::Unit, location, typ: None })
     }
 
-    pub fn variable(name: String, location: Location<'a>) -> Ast<'a> {
+    pub fn variable(module_prefix: Option<Vec<String>>, name: String, location: Location<'a>) -> Ast<'a> {
         Ast::Variable(Variable {
             kind: VariableKind::Identifier(name),
+            module_prefix,
             location,
             definition: None,
             id: None,
@@ -461,6 +466,7 @@ impl<'a> Ast<'a> {
     pub fn operator(operator: Token, location: Location<'a>) -> Ast<'a> {
         Ast::Variable(Variable {
             kind: VariableKind::Operator(operator),
+            module_prefix: None,
             location,
             definition: None,
             id: None,
@@ -470,10 +476,11 @@ impl<'a> Ast<'a> {
         })
     }
 
-    pub fn type_constructor(name: String, location: Location<'a>) -> Ast<'a> {
+    pub fn type_constructor(module_prefix: Option<Vec<String>>, name: String, location: Location<'a>) -> Ast<'a> {
         Ast::Variable(Variable {
             kind: VariableKind::TypeConstructor(name),
             location,
+            module_prefix,
             definition: None,
             id: None,
             impl_scope: None,
@@ -550,9 +557,9 @@ impl<'a> Ast<'a> {
         Ast::TypeAnnotation(TypeAnnotation { lhs: Box::new(lhs), rhs, location, typ: None })
     }
 
-    pub fn import(path: Vec<String>, location: Location<'a>) -> Ast<'a> {
+    pub fn import(path: Vec<String>, location: Location<'a>, symbols: HashSet<String>) -> Ast<'a> {
         assert!(!path.is_empty());
-        Ast::Import(Import { path, location, typ: None, module_id: None })
+        Ast::Import(Import { path, location, typ: None, module_id: None, symbols })
     }
 
     pub fn trait_definition(

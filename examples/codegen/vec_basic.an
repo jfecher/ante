@@ -1,4 +1,4 @@
-import Vec
+import Vec.push
 
 v = mut empty ()
 

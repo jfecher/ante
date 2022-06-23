@@ -10,11 +10,11 @@
 //! is significant because a type variable's scope is different
 //! than the general Scope for other symbols. See the TypeVariableScope
 //! struct for more details on this.
-use crate::cache::{DefinitionInfoId, ImplInfoId, ImplScopeId, ModuleCache, TraitInfoId};
+use crate::cache::{DefinitionInfoId, ImplInfoId, ImplScopeId, ModuleCache, TraitInfoId, ModuleId};
 use crate::error::location::{Locatable, Location};
 use crate::parser::ast;
 use crate::types::{TypeInfoId, TypeVariableId};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 /// A scope represents all symbols defined in a given scope.
@@ -28,13 +28,14 @@ use std::rc::Rc;
 /// DefinitionInfoId afterward. The main exception are the ImplScopeId
 /// keys which can be used to retrieve which impls were in scope for
 /// a given variable later during type inference.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Scope {
     pub definitions: HashMap<String, DefinitionInfoId>,
     pub types: HashMap<String, TypeInfoId>,
     pub traits: HashMap<String, TraitInfoId>,
     pub impls: HashMap<TraitInfoId, Vec<ImplInfoId>>,
     pub impl_scope: ImplScopeId,
+    pub modules: HashMap<String, ModuleId>,
 }
 
 impl Scope {
@@ -45,6 +46,7 @@ impl Scope {
             types: HashMap::new(),
             traits: HashMap::new(),
             impls: HashMap::new(),
+            modules: HashMap::new(),
         }
     }
 
@@ -54,8 +56,8 @@ impl Scope {
     /// symbols are exported are determined in the "declare" pass. This is because since
     /// the other Scope's symbols are mutably added to self, they cannot be easily distinguished
     /// from definitions originating in this scope.
-    pub fn import(&mut self, other: &Scope, cache: &mut ModuleCache, location: Location) {
-        self.import_definitions_types_and_traits(other, cache, location);
+    pub fn import(&mut self, other: &Scope, cache: &mut ModuleCache, location: Location, symbols: &HashSet<String>) {
+        self.import_definitions_types_and_traits(other, cache, location, symbols);
 
         for (k, v) in other.impls.iter() {
             if let Some(existing) = self.impls.get_mut(k) {
@@ -70,10 +72,13 @@ impl Scope {
     }
 
     /// Helper for `import` which imports all non-impl symbols.
-    fn import_definitions_types_and_traits(&mut self, other: &Scope, cache: &mut ModuleCache, location: Location) {
+    fn import_definitions_types_and_traits(&mut self, other: &Scope, cache: &mut ModuleCache, location: Location, symbols: &HashSet<String>) {
         macro_rules! merge_table {
             ( $field:tt , $cache_field:tt , $errors:tt ) => {{
                 for (k, v) in other.$field.iter() {
+                    if !symbols.is_empty() && !symbols.contains(k) {
+                        continue;
+                    }
                     if let Some(existing) = self.$field.get(k) {
                         let prev_loc = cache.$cache_field[existing.0].locate();
                         let error = make_error!(location, "import shadows previous definition of {}", k);
