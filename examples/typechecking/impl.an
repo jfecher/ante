@@ -15,7 +15,7 @@ c = foo "one" "two"
 
 // args: --check --show-types
 // expected stderr:
-// examples/typechecking/impl.an: 14,5	error: No impl found for Foo string
+// examples/typechecking/impl.an:14:5	error: No impl found for Foo string
 // c = foo "one" "two"
 // 
 

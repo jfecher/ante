@@ -28,23 +28,23 @@ match (1, 2, 3, 4)
 // args: --check
 // TODO: First error can be improved. Should be "Missing case Some _"
 // expected stderr:
-// examples/typechecking/completeness_checking.an: 2,1	error: Missing case _
+// examples/typechecking/completeness_checking.an:2:1	error: Missing case _
 // match None
 // 
-// examples/typechecking/completeness_checking.an: 5,1	error: Missing case (_, None)
+// examples/typechecking/completeness_checking.an:5:1	error: Missing case (_, None)
 // match (2, None)
 // 
-// examples/typechecking/completeness_checking.an: 18,4	warning: Unreachable pattern
+// examples/typechecking/completeness_checking.an:18:4	warning: Unreachable pattern
 // | (1, 2) -> 1
 // 
-// examples/typechecking/completeness_checking.an: 16,1	error: Missing case (_ : Int, _)
+// examples/typechecking/completeness_checking.an:16:1	error: Missing case (_ : Int, _)
 // match (1, 2)
 // 
-// examples/typechecking/completeness_checking.an: 20,1	error: Missing case (true, true)
+// examples/typechecking/completeness_checking.an:20:1	error: Missing case (true, true)
 // match (true, true)
 // 
-// examples/typechecking/completeness_checking.an: 20,1	error: Missing case (false, false)
+// examples/typechecking/completeness_checking.an:20:1	error: Missing case (false, false)
 // match (true, true)
 // 
-// examples/typechecking/completeness_checking.an: 25,7	error: Expected a primitive integer type, but found (i32, (i32, i32))
+// examples/typechecking/completeness_checking.an:25:7	error: Expected a primitive integer type, but found (i32, (i32, i32))
 // | (1, 2) -> 1
