@@ -582,6 +582,7 @@ fn member_access<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
 
 fn argument<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
     match input[0].0 {
+        Token::StringType => variable(input),
         Token::Identifier(_) => variable(input),
         Token::StringLiteral(_) => string(input),
         Token::IntegerLiteral(_, _) => integer(input),

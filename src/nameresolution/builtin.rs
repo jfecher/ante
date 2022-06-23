@@ -82,6 +82,7 @@ pub fn import_prelude<'a>(resolver: &mut NameResolver, cache: &mut ModuleCache<'
     resolver.current_scope().traits.insert("Int".into(), cache.int_trait);
     resolver.current_scope().types.insert(Token::Comma.to_string(), PAIR_TYPE);
     resolver.current_scope().definitions.insert(Token::Comma.to_string(), PAIR_ID);
+    resolver.current_scope().definitions.insert("string".into(), STRING_ID);
 }
 
 /// Defining the 'string' type is a bit different than most other builtins. Since 'string' has
@@ -109,7 +110,7 @@ fn define_string(cache: &mut ModuleCache) -> Type {
         Field { name: "length".into(), field_type: length_type.clone(), location },
     ]);
 
-    let constructor = cache.push_definition(&name, Location::builtin());
+    let constructor = cache.push_definition(&name, location);
     assert_eq!(constructor, STRING_ID);
     let constructor_type = Type::Function(FunctionType {
         parameters: vec![c_string_type, length_type],

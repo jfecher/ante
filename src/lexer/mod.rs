@@ -190,7 +190,7 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
         let ret = self.current;
         self.current = self.next;
         self.next = self.chars.next().unwrap_or('\0');
-        self.current_position.advance(ret == '\n');
+        self.current_position.advance(ret.len_utf8(), ret == '\n');
         ret
     }
 

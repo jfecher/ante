@@ -26,5 +26,5 @@ bar "four" "five"
 
 // args: --check --show-types
 // expected stderr:
-// examples/typechecking/trait_impls.an: 12,1	error: impl has 5 type arguments but Bar requires 2
+// examples/typechecking/trait_impls.an:12:1	error: impl has 5 type arguments but Bar requires 2
 // impl Bar int char string float unit with
