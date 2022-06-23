@@ -397,10 +397,13 @@ impl NameResolver {
     ) -> DefinitionInfoId {
         let id = cache.push_definition(name, location);
 
-        if let Some(existing_definition) = self.current_scope().definitions.get(name) {
-            error!(location, "{} is already in scope", name);
-            let previous_location = cache.definition_infos[existing_definition.0].location;
-            note!(previous_location, "{} previously defined here", name);
+        // allow shadowing in non-global scopes
+        if self.in_global_scope() {
+            if let Some(existing_definition) = self.current_scope().definitions.get(name) {
+                error!(location, "{} is already in scope", name);
+                let previous_location = cache.definition_infos[existing_definition.0].location;
+                note!(previous_location, "{} previously defined here", name);
+            }
         }
 
         if self.required_definitions.is_some() {
