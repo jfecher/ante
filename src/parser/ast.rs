@@ -65,7 +65,7 @@ pub struct Variable<'a> {
     pub location: Location<'a>,
 
     /// module prefix path
-    pub module_prefix: Option<Vec<String>>,
+    pub module_prefix: Vec<String>,
 
     /// A variable's definition is initially undefined.
     /// During name resolution, every definition is filled
@@ -450,7 +450,7 @@ impl<'a> Ast<'a> {
         Ast::Literal(Literal { kind: LiteralKind::Unit, location, typ: None })
     }
 
-    pub fn variable(module_prefix: Option<Vec<String>>, name: String, location: Location<'a>) -> Ast<'a> {
+    pub fn variable(module_prefix: Vec<String>, name: String, location: Location<'a>) -> Ast<'a> {
         Ast::Variable(Variable {
             kind: VariableKind::Identifier(name),
             module_prefix,
@@ -466,7 +466,7 @@ impl<'a> Ast<'a> {
     pub fn operator(operator: Token, location: Location<'a>) -> Ast<'a> {
         Ast::Variable(Variable {
             kind: VariableKind::Operator(operator),
-            module_prefix: None,
+            module_prefix: vec![],
             location,
             definition: None,
             id: None,
@@ -476,7 +476,7 @@ impl<'a> Ast<'a> {
         })
     }
 
-    pub fn type_constructor(module_prefix: Option<Vec<String>>, name: String, location: Location<'a>) -> Ast<'a> {
+    pub fn type_constructor(module_prefix: Vec<String>, name: String, location: Location<'a>) -> Ast<'a> {
         Ast::Variable(Variable {
             kind: VariableKind::TypeConstructor(name),
             location,

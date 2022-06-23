@@ -1,6 +1,6 @@
-import Vec.push empty
+import Vec.empty Vec push
 
-v = mut empty ()
+v: (ref (Vec i32)) = mut Vec.empty ()
 
 push v 3i32
 push v 4

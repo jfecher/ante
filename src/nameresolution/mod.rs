@@ -796,8 +796,8 @@ impl<'c> Resolvable<'c> for ast::Variable<'c> {
                     TypeConstructor(name) => Cow::Borrowed(name),
                 };
 
-                if let Some(module_prefix) = &self.module_prefix {
-                    let relative_path = module_prefix.clone().join("/");
+                if !self.module_prefix.is_empty() {
+                    let relative_path = self.module_prefix.join("/");
                     if let Some(module_id) = resolver.current_scope().modules.get(&relative_path).copied() {
                         let module_scope = &resolver.module_scopes[&module_id];
                         if let Some(id) = module_scope.definitions.get(name.as_ref()) {
@@ -807,7 +807,7 @@ impl<'c> Resolvable<'c> for ast::Variable<'c> {
                         }
                     }
                     else {
-                        error!(self.location, "Could not find module {}", relative_path);
+                        error!(self.location, "Could not find module '{}'", relative_path);
                     }
                 }
                 else {
@@ -819,7 +819,6 @@ impl<'c> Resolvable<'c> for ast::Variable<'c> {
 
             // If it is still not declared, print an error
             if self.definition.is_none() {
-                dbg!(&self.kind);
                 error!(self.location, "No declaration for {} was found in scope", self);
             }
         }

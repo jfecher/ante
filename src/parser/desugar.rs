@@ -26,8 +26,8 @@ where
         if matches_underscore(&arg) {
             curried_arg_count += 1;
             let curried_arg = format!("${}", curried_arg_count);
-            curried_args.push(Ast::variable(None, curried_arg.clone(), arg.locate()));
-            Ast::variable(None, curried_arg, arg.locate())
+            curried_args.push(Ast::variable(vec![], curried_arg.clone(), arg.locate()));
+            Ast::variable(vec![], curried_arg, arg.locate()) // TODO: add correct module prefix
         } else {
             arg
         }
