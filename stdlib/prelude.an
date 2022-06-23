@@ -16,10 +16,10 @@ extern
     malloc: usz -> Ptr a
     calloc: /*items:*/usz - /*size:*/usz -> Ptr a
     realloc: Ptr a - usz -> Ptr a
-    free: Ptr a -> i32
-    memcpy: Ptr a - Ptr b - i32 -> Ptr a //dest
+    free: Ptr a -> unit
+    memcpy: Ptr a - Ptr b - usz -> Ptr a //dest
     system: Ptr char -> i32
-    strlen: Ptr char -> i32
+    strlen: Ptr char -> usz
 
 //C stdio
 type File = f: Ptr unit
@@ -561,21 +561,20 @@ repeat (count: usz) f : unit =
 //                 return false
 //         true
 
-// TODO: manually construct a string from parts
-// impl Append string with
-//     (++) s1 s2 =
-//         if s1.len == 0 then return s2
-//         if s2.len == 0 then return s1
-// 
-//         len = s1.len + s2.len
-//         buf = mut malloc (len + 1)
-// 
-//         memcpy buf (s1.c_string) (s1.len)
-// 
-//         buf_offset = cast (cast buf + s1.len)
-//         memcpy buf_offset (s2.c_string) (s2.len + 1) //copy terminating null too
-// 
-//         string buf len
+impl Append string with
+    (++) s1 s2 =
+        if s1.length == 0 then return s2
+        if s2.length == 0 then return s1
+
+        len = s1.length + s2.length
+        buf = malloc (len + 1)
+
+        memcpy buf (s1.c_string) (cast s1.length)
+
+        buf_offset = cast (cast buf + s1.length)
+        memcpy buf_offset (s2.c_string) (cast s2.length + 1) //copy terminating null too
+
+        string buf len
 
 panic msg =
     print msg
