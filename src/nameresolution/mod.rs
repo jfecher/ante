@@ -108,6 +108,7 @@ pub struct NameResolver {
     /// be defined until the 'define' pass later however.
     pub exports: Scope,
 
+    /// contains scope of imported modules, contains definitions, impls, etc.
     pub module_scopes: HashMap<ModuleId, Scope>,
 
     /// Type variable scopes are separate from other scopes since in general
@@ -748,7 +749,7 @@ impl<'c> Resolvable<'c> for Ast<'c> {
 }
 
 impl<'c> Resolvable<'c> for ast::Literal<'c> {
-    /// Purpose of the declare pass is to collect all the names of publically exported symbols
+    /// Purpose of the declare pass is to collect all the names of publicly exported symbols
     /// so the define pass can work in the presense of mutually recursive modules.
     fn declare(&mut self, _: &mut NameResolver, _: &mut ModuleCache) {}
 
@@ -775,6 +776,7 @@ impl<'c> Resolvable<'c> for ast::Variable<'c> {
                 let id = resolver.push_definition(&name, cache, self.location);
                 resolver.definitions_collected.push(id);
                 self.definition = Some(id);
+
             } else {
                 self.definition = resolver.reference_definition(&name, self.location, cache);
             }
@@ -796,33 +798,40 @@ impl<'c> Resolvable<'c> for ast::Variable<'c> {
                     TypeConstructor(name) => Cow::Borrowed(name),
                 };
 
-                if !self.module_prefix.is_empty() {
-                    let relative_path = self.module_prefix.join("/");
-                    if let Some(module_id) = resolver.current_scope().modules.get(&relative_path).copied() {
-                        let def = if let Some(id) = resolver.module_scopes[&module_id].definitions.get(name.as_ref()).to_owned() {
-                            Some(*id)
-                        }
-                        else {
-                            None
-                        };
-                        self.impl_scope = Some(resolver.current_scope().impl_scope);
-                        self.definition = def;
-                        self.id = Some(cache.push_variable(name.into_owned(), self.location));
-                    }
-                    else {
-                        error!(self.location, "Could not find module '{}'", relative_path);
-                    }
-                }
-                else {
+                if self.module_prefix.is_empty() {
                     self.impl_scope = Some(resolver.current_scope().impl_scope);
                     self.definition = resolver.reference_definition(&name, self.location, cache);
                     self.id = Some(cache.push_variable(name.into_owned(), self.location));
+                }
+                else {
+                    // resolve module
+                    let relative_path = self.module_prefix.join("/");
+                    let module_id = resolver.current_scope().modules.get(&relative_path);
+                    if module_id.is_none() {
+                        if let Some(module_id) = declare_module(Path::new(&relative_path), cache, self.location) {
+                            resolver.current_scope().modules.insert(relative_path.clone(), module_id);
+                            if let Some(exports) = define_module(module_id, cache, self.location) {
+                                resolver.current_scope().import_impls(exports, cache);
+                                resolver.module_scopes.insert(module_id, exports.to_owned());
+                            }
+                        }
+                    }
+
+                    let module_id = resolver.current_scope().modules.get(&relative_path);
+                    if let Some(module_id) = module_id.copied() {
+                        self.definition = resolver.module_scopes[&module_id].definitions.get(name.as_ref()).copied();
+                        self.impl_scope = Some(resolver.current_scope().impl_scope);
+                        self.id = Some(cache.push_variable(name.into_owned(), self.location));
+                    }
+                    else {
+                        error!(self.location, "Could not find module `{}`", relative_path);
+                    }
                 }
             }
 
             // If it is still not declared, print an error
             if self.definition.is_none() {
-                error!(self.location, "No declaration for {} was found in scope", self);
+                error!(self.location, "No declaration for `{}` was found in scope", self);
             }
         }
     }
@@ -1150,7 +1159,9 @@ impl<'c> Resolvable<'c> for ast::Import<'c> {
     fn define(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'c>) {
         if let Some(module_id) = self.module_id {
             if let Some(exports) = define_module(module_id, cache, self.location) {
+                // import only the imported symbols
                 resolver.current_scope().import(exports, cache, self.location, &self.symbols);
+                // add the module scope itself
                 resolver.module_scopes.insert(module_id, exports.to_owned());
             }
         }

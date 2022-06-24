@@ -58,7 +58,10 @@ impl Scope {
     /// from definitions originating in this scope.
     pub fn import(&mut self, other: &Scope, cache: &mut ModuleCache, location: Location, symbols: &HashSet<String>) {
         self.import_definitions_types_and_traits(other, cache, location, symbols);
+        self.import_impls(other, cache);
+    }
 
+    pub fn import_impls(&mut self, other: &Scope, cache: &mut ModuleCache) {
         for (k, v) in other.impls.iter() {
             if let Some(existing) = self.impls.get_mut(k) {
                 existing.append(&mut v.clone());

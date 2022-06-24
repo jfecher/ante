@@ -32,10 +32,14 @@ impl<'a> Display for ast::Literal<'a> {
 impl<'a> Display for ast::Variable<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         use ast::VariableKind::*;
+        let mut prefix = self.module_prefix.join(".");
+        if !prefix.is_empty() {
+            prefix += ".";
+        }
         match &self.kind {
-            Identifier(name) => write!(f, "{}", name),
+            Identifier(name) => write!(f, "{}{}", prefix, name),
             Operator(token) => write!(f, "{}", token),
-            TypeConstructor(name) => write!(f, "{}", name),
+            TypeConstructor(name) => write!(f, "{}{}", prefix, name),
         }
     }
 }
