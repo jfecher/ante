@@ -74,7 +74,7 @@ pub fn import_prelude<'a>(resolver: &mut NameResolver, cache: &mut ModuleCache<'
         let prelude_dir = prelude_path();
         if let Some(id) = declare_module(&prelude_dir, cache, Location::builtin()) {
             let exports = define_module(id, cache, Location::builtin()).unwrap();
-            resolver.current_scope().import(exports, cache, &HashSet::new());
+            resolver.current_scope().import(exports, cache, Location::builtin(), &HashSet::new());
         }
     }
 

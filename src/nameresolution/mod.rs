@@ -487,7 +487,7 @@ impl NameResolver {
         if let Some(module_id) = declare_module(Path::new(&relative_path), cache, location) {
             self.current_scope().modules.insert(relative_path.to_owned(), module_id);
             if let Some(exports) = define_module(module_id, cache, location) {
-                self.current_scope().import_impls(exports, cache);
+                self.current_scope().import_impls(exports, cache, );
                 self.module_scopes.insert(module_id, exports.to_owned());
                 return Some(module_id);
             }
@@ -1167,7 +1167,7 @@ impl<'c> Resolvable<'c> for ast::Import<'c> {
         if let Some(module_id) = self.module_id {
             if let Some(exports) = define_module(module_id, cache, self.location) {
                 // import only the imported symbols
-                resolver.current_scope().import(exports, cache, &self.symbols);
+                resolver.current_scope().import(exports, cache, self.location, &self.symbols);
                 // add the module scope itself
                 resolver.module_scopes.insert(module_id, exports.to_owned());
             }

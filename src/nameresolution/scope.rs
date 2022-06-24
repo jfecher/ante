@@ -11,7 +11,7 @@
 //! than the general Scope for other symbols. See the TypeVariableScope
 //! struct for more details on this.
 use crate::cache::{DefinitionInfoId, ImplInfoId, ImplScopeId, ModuleCache, TraitInfoId, ModuleId};
-use crate::error::location::Location;
+use crate::error::location::{Location, Locatable};
 use crate::parser::ast;
 use crate::types::{TypeInfoId, TypeVariableId};
 use std::collections::{HashMap, HashSet};
@@ -56,11 +56,12 @@ impl Scope {
     /// symbols are exported are determined in the "declare" pass. This is because since
     /// the other Scope's symbols are mutably added to self, they cannot be easily distinguished
     /// from definitions originating in this scope.
-    pub fn import(&mut self, other: &Scope, cache: &mut ModuleCache, symbols: &HashSet<String>) {
-        self.import_definitions_types_and_traits(other, symbols);
+    pub fn import(&mut self, other: &Scope, cache: &mut ModuleCache, location: Location, symbols: &HashSet<String>) {
+        self.import_definitions_types_and_traits(other, cache, location, symbols);
         self.import_impls(other, cache);
     }
 
+    /// Helper for `import` which imports all non-impl symbols.
     pub fn import_impls(&mut self, other: &Scope, cache: &mut ModuleCache) {
         for (k, v) in other.impls.iter() {
             if let Some(existing) = self.impls.get_mut(k) {
@@ -74,25 +75,36 @@ impl Scope {
         }
     }
 
-    /// Helper for `import` which imports all non-impl symbols.
-    fn import_definitions_types_and_traits(&mut self, other: &Scope, symbols: &HashSet<String>) {
+    fn import_definitions_types_and_traits(&mut self, other: &Scope, cache: &mut ModuleCache, location: Location, symbols: &HashSet<String>) {
         macro_rules! merge_table {
-            ( $field:tt , $cache_field:tt , $errors:tt, $symbols:expr ) => {{
+            ( $field:tt , $cache_field:tt , $errors:tt ) => {{
                 for (k, v) in other.$field.iter() {
-                    if !$symbols.is_empty() && !$symbols.contains(k) {
+                    if !symbols.is_empty() && !symbols.contains(k) {
                         continue;
                     }
 
-                    if self.$field.get(k).is_none() {
+                    if let Some(existing) = self.$field.get(k) {
+                        let prev_loc = cache.$cache_field[existing.0].locate();
+                        let error = make_error!(location, "import shadows previous definition of {}", k);
+                        let note = make_note!(prev_loc, "{} was previously defined here", k);
+                        $errors.push((error, note));
+                    } else {
                         self.$field.insert(k.clone(), *v);
                     }
                 }
             }};
         }
 
-        merge_table!(definitions, definition_infos, errors, symbols);
-        merge_table!(types, type_infos, errors, symbols);
-        merge_table!(traits, trait_infos, errors, symbols);
+        let mut errors = vec![];
+        merge_table!(definitions, definition_infos, errors);
+        merge_table!(types, type_infos, errors);
+        merge_table!(traits, trait_infos, errors);
+
+        if !errors.is_empty() {
+            // Using sort_by instead of sort_by_key here avoids cloning the ErrorMessage
+            errors.sort_by(|x, y| x.0.cmp(&y.0));
+            errors.into_iter().for_each(|(error, note)| eprintln!("{}\n{}", error, note));
+        }
     }
 
     /// Check for any unused definitions and issue the appropriate warnings if found.
