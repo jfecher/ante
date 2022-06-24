@@ -21,5 +21,11 @@ foo _ =
 // examples/nameresolution/redeclare.an:2:1	note: a previously defined here
 // a = 2
 // 
+// examples/nameresolution/redeclare.an:5:1	warning: foo is unused (prefix name with _ to silence this warning)
+// foo _ =
+// 
+// examples/nameresolution/redeclare.an:6:5	warning: a is unused (prefix name with _ to silence this warning)
+//     a = 4
+// 
 // examples/nameresolution/redeclare.an:7:5	warning: a is unused (prefix name with _ to silence this warning)
 //     a = 5
