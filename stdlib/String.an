@@ -1,0 +1,18 @@
+import Vec
+
+type String = 
+    vec: Vec char
+
+empty () =
+    String (Vec.empty ())
+
+reserve (sb: ref String) s =
+    Vec.reserve sb.&vec s.length
+
+append (sb: ref String) s =  // TODO: broken
+    reserve sb s
+    memcpy sb.vec.data s.c_string s.length
+
+impl Print String with
+    printne (s: String) =
+        print (string s.vec.data s.vec.len)

@@ -82,28 +82,17 @@ impl Scope {
                     if !$symbols.is_empty() && !$symbols.contains(k) {
                         continue;
                     }
-                    if let Some(existing) = self.$field.get(k) {
-                        let prev_loc = cache.$cache_field[existing.0].locate();
-                        let error = make_error!(location, "import shadows previous definition of {}", k);
-                        let note = make_note!(prev_loc, "{} was previously defined here", k);
-                        $errors.push((error, note));
-                    } else {
+
+                    if self.$field.get(k).is_none() {
                         self.$field.insert(k.clone(), *v);
                     }
                 }
             }};
         }
 
-        let mut errors = vec![];
         merge_table!(definitions, definition_infos, errors, symbols);
         merge_table!(types, type_infos, errors, symbols);
         merge_table!(traits, trait_infos, errors, symbols);
-
-        if !errors.is_empty() {
-            // Using sort_by instead of sort_by_key here avoids cloning the ErrorMessage
-            errors.sort_by(|x, y| x.0.cmp(&y.0));
-            errors.into_iter().for_each(|(error, note)| eprintln!("{}\n{}", error, note));
-        }
     }
 
     /// Check for any unused definitions and issue the appropriate warnings if found.
