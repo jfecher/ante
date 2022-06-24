@@ -151,7 +151,12 @@ impl<'a> Display for ast::TypeAnnotation<'a> {
 
 impl<'a> Display for ast::Import<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "(import {})", join_with(&self.path, "."))
+        let mut import_path = join_with(&self.path, ".");
+        let symbols = join_with(&self.symbols, " ");
+        if !symbols.is_empty() {
+            import_path.push('.');
+        }
+        write!(f, "(import {}{})", import_path, symbols)
     }
 }
 

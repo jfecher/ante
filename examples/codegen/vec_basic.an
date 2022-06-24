@@ -1,8 +1,8 @@
-import Vec.empty Vec push
+import Vec.empty push
 
-v: (ref (Vec i32)) = mut Vec.empty ()
+v = mut empty ()
 
-Vec.push v 3i32
+push v 3i32
 push v 4
 
 print v

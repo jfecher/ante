@@ -1,12 +1,8 @@
 import Library
 
-Library.library_fn
-
 foo = fn _ b -> b
 
 foo 4 library_int
-
 foo 5 (library_fn ())
-
 // args: --check
 // expected stdout:

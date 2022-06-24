@@ -28,6 +28,12 @@ macro_rules! seq {
         let ($input, $name, start) = $y($input)?;
         seq!($input start start $location => $($rest)*)
     });
+    // This rule specifically is the first bind that occurs, hence why
+    // the location here is forwarded to the rest of the macro as the start location.
+    ( $input:ident $location:tt => mut $name:tt <- $y:expr ; $($rest:tt)* ) => ({
+        let ($input, mut $name, start) = $y($input)?;
+        seq!($input start start $location => $($rest)*)
+    });
     // This rule is the nth+1 monadic bind which shadows the previous _end location
     // with a new _end location.
     ( $input:ident $start:ident $e:ident $location:tt => $name:tt <- $y:expr ; $($rest:tt)* ) => ({
@@ -214,9 +220,9 @@ where
     }
 }
 
-/// Match delimited(f, g) followed by a required trailing g
-pub fn delimited_trailing1<'a, 'b: 'a, F, G, FResult, GResult>(
-    f: F, g: G,
+/// Match delimited(f, g) followed by a trailing g(optional or required)
+pub fn delimited_trailing<'a, 'b: 'a, F, G, FResult, GResult>(
+    f: F, g: G, required_g: bool,
 ) -> impl Fn(Input<'a, 'b>) -> ParseResult<'a, 'b, Vec<FResult>>
 where
     F: Fn(Input<'a, 'b>) -> ParseResult<'a, 'b, FResult>,
@@ -240,51 +246,7 @@ where
             match g(input) {
                 Ok((new_input, _, _)) => input = new_input,
                 Err(ParseError::Fatal(token)) => return Err(ParseError::Fatal(token)),
-                Err(e) => return Err(e),
-            }
-            match f(input) {
-                Ok((new_input, t, location)) => {
-                    input = new_input;
-                    end = location;
-                    results.push(t);
-                },
-                Err(ParseError::Fatal(token)) => return Err(ParseError::Fatal(token)),
-                Err(_) => break,
-            }
-        }
-
-        let location = start.union(end);
-        Ok((input, results, location))
-    }
-}
-
-/// Match delimited(f, g) followed by an optional trailing g
-pub fn delimited_trailing0<'a, 'b: 'a, F, G, FResult, GResult>(
-    f: F, g: G,
-) -> impl Fn(Input<'a, 'b>) -> ParseResult<'a, 'b, Vec<FResult>>
-where
-    F: Fn(Input<'a, 'b>) -> ParseResult<'a, 'b, FResult>,
-    G: Fn(Input<'a, 'b>) -> ParseResult<'a, 'b, GResult>,
-{
-    move |mut input| {
-        let mut results = Vec::new();
-        let start = input[0].1;
-        let mut end;
-
-        match f(input) {
-            Ok((new_input, t, location)) => {
-                input = new_input;
-                end = location;
-                results.push(t);
-            },
-            Err(e) => return Err(e),
-        }
-
-        loop {
-            match g(input) {
-                Ok((new_input, _, _)) => input = new_input,
-                Err(ParseError::Fatal(token)) => return Err(ParseError::Fatal(token)),
-                Err(_) => break,
+                Err(e) => if required_g { return Err(e) } else { break },
             }
             match f(input) {
                 Ok((new_input, t, location)) => {
@@ -401,12 +363,12 @@ where
 }
 
 // Basic combinators for extracting the contents of a given token
-pub fn imported_defs<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, String> {
+pub fn imported_item<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, String> {
     match &input[0] {
         (Token::TypeName(name), location) => Ok((&input[1..], name.clone(), *location)),
         (Token::Identifier(name), location) => Ok((&input[1..], name.clone(), *location)),
         (Token::Invalid(c), location) => Err(ParseError::Fatal(Box::new(ParseError::LexerError(*c, *location)))),
-        (_, location) => Err(ParseError::Expected(vec![Token::Identifier("imported_defs".to_owned())], *location)),
+        (_, location) => Err(ParseError::Expected(vec![Token::Identifier("imported_item".to_owned())], *location)),
     }
 }
 

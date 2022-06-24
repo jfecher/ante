@@ -1,7 +1,0 @@
-import String
-
-s = mut empty ()
-Vec.push s.&vec 'a'
-String.append s " test"
-
-print s

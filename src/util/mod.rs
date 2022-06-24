@@ -39,7 +39,7 @@ pub fn unwrap_clone<T: Clone>(option: &Option<T>) -> T {
 }
 
 /// Convert each element to a String and join them with the given delimiter
-pub fn join_with<T: Display>(vec: &[T], delimiter: &str) -> String {
+pub fn join_with<T: Display>(vec: impl IntoIterator<Item = T> , delimiter: &str) -> String {
     fmap(vec, |t| format!("{}", t)).join(delimiter)
 }
 

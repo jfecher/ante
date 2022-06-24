@@ -108,7 +108,7 @@ pub struct NameResolver {
     /// be defined until the 'define' pass later however.
     pub exports: Scope,
 
-    /// contains scope of imported modules, contains definitions, impls, etc.
+    /// module scopes to look up definitions and types from
     pub module_scopes: HashMap<ModuleId, Scope>,
 
     /// Type variable scopes are separate from other scopes since in general
@@ -482,6 +482,19 @@ impl NameResolver {
         cache.impl_scopes[self.current_scope().impl_scope.0].push(id);
         id
     }
+
+    fn add_module_scope_and_import_impls<'c>(&mut self, relative_path: &str, location: Location<'c>, cache: &mut ModuleCache<'c>) -> Option<ModuleId> {
+        if let Some(module_id) = declare_module(Path::new(&relative_path), cache, location) {
+            self.current_scope().modules.insert(relative_path.to_owned(), module_id);
+            if let Some(exports) = define_module(module_id, cache, location) {
+                self.current_scope().import_impls(exports, cache);
+                self.module_scopes.insert(module_id, exports.to_owned());
+                return Some(module_id);
+            }
+        }
+
+        None
+    }
 }
 
 impl<'c> NameResolver {
@@ -806,19 +819,13 @@ impl<'c> Resolvable<'c> for ast::Variable<'c> {
                 else {
                     // resolve module
                     let relative_path = self.module_prefix.join("/");
-                    let module_id = resolver.current_scope().modules.get(&relative_path);
+
+                    let mut module_id = resolver.current_scope().modules.get(&relative_path).copied();
                     if module_id.is_none() {
-                        if let Some(module_id) = declare_module(Path::new(&relative_path), cache, self.location) {
-                            resolver.current_scope().modules.insert(relative_path.clone(), module_id);
-                            if let Some(exports) = define_module(module_id, cache, self.location) {
-                                resolver.current_scope().import_impls(exports, cache);
-                                resolver.module_scopes.insert(module_id, exports.to_owned());
-                            }
-                        }
+                        module_id = resolver.add_module_scope_and_import_impls(&relative_path, self.location, cache);
                     }
 
-                    let module_id = resolver.current_scope().modules.get(&relative_path);
-                    if let Some(module_id) = module_id.copied() {
+                    if let Some(module_id) = module_id {
                         self.definition = resolver.module_scopes[&module_id].definitions.get(name.as_ref()).copied();
                         self.impl_scope = Some(resolver.current_scope().impl_scope);
                         self.id = Some(cache.push_variable(name.into_owned(), self.location));
@@ -1160,7 +1167,7 @@ impl<'c> Resolvable<'c> for ast::Import<'c> {
         if let Some(module_id) = self.module_id {
             if let Some(exports) = define_module(module_id, cache, self.location) {
                 // import only the imported symbols
-                resolver.current_scope().import(exports, cache, self.location, &self.symbols);
+                resolver.current_scope().import(exports, cache, &self.symbols);
                 // add the module scope itself
                 resolver.module_scopes.insert(module_id, exports.to_owned());
             }

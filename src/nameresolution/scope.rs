@@ -11,7 +11,7 @@
 //! than the general Scope for other symbols. See the TypeVariableScope
 //! struct for more details on this.
 use crate::cache::{DefinitionInfoId, ImplInfoId, ImplScopeId, ModuleCache, TraitInfoId, ModuleId};
-use crate::error::location::{Locatable, Location};
+use crate::error::location::Location;
 use crate::parser::ast;
 use crate::types::{TypeInfoId, TypeVariableId};
 use std::collections::{HashMap, HashSet};
@@ -56,8 +56,8 @@ impl Scope {
     /// symbols are exported are determined in the "declare" pass. This is because since
     /// the other Scope's symbols are mutably added to self, they cannot be easily distinguished
     /// from definitions originating in this scope.
-    pub fn import(&mut self, other: &Scope, cache: &mut ModuleCache, location: Location, symbols: &HashSet<String>) {
-        self.import_definitions_types_and_traits(other, cache, location, symbols);
+    pub fn import(&mut self, other: &Scope, cache: &mut ModuleCache, symbols: &HashSet<String>) {
+        self.import_definitions_types_and_traits(other, symbols);
         self.import_impls(other, cache);
     }
 
@@ -75,7 +75,7 @@ impl Scope {
     }
 
     /// Helper for `import` which imports all non-impl symbols.
-    fn import_definitions_types_and_traits(&mut self, other: &Scope, cache: &mut ModuleCache, location: Location, symbols: &HashSet<String>) {
+    fn import_definitions_types_and_traits(&mut self, other: &Scope, symbols: &HashSet<String>) {
         macro_rules! merge_table {
             ( $field:tt , $cache_field:tt , $errors:tt, $symbols:expr ) => {{
                 for (k, v) in other.$field.iter() {
