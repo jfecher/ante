@@ -39,8 +39,8 @@ pub fn unwrap_clone<T: Clone>(option: &Option<T>) -> T {
 }
 
 /// Convert each element to a String and join them with the given delimiter
-pub fn join_with<T: Display>(vec: impl IntoIterator<Item = T> , delimiter: &str) -> String {
-    fmap(vec, |t| format!("{}", t)).join(delimiter)
+pub fn join_with<T: Display>(items: impl IntoIterator<Item = T> , delimiter: &str) -> String {
+    fmap(items, |t| format!("{}", t)).join(delimiter)
 }
 
 pub fn link(object_filename: &str, binary_filename: &str) {

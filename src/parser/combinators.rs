@@ -28,8 +28,7 @@ macro_rules! seq {
         let ($input, $name, start) = $y($input)?;
         seq!($input start start $location => $($rest)*)
     });
-    // This rule specifically is the first bind that occurs, hence why
-    // the location here is forwarded to the rest of the macro as the start location.
+    // mutable version of previous rule
     ( $input:ident $location:tt => mut $name:tt <- $y:expr ; $($rest:tt)* ) => ({
         let ($input, mut $name, start) = $y($input)?;
         seq!($input start start $location => $($rest)*)
