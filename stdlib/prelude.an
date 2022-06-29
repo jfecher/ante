@@ -263,8 +263,8 @@ impl TryCast u64 i64 with
         if x > 9_223_372_036_854_775_807 then None
         else Some (transmute x)
 
-trait Append t with
-    (++): t - t -> t
+trait Append a with
+    (++): a - a -> a
 
 trait Extract collection index -> elem with
     (#): collection - index -> elem

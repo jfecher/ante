@@ -28,6 +28,11 @@ macro_rules! seq {
         let ($input, $name, start) = $y($input)?;
         seq!($input start start $location => $($rest)*)
     });
+    // mutable version of previous rule
+    ( $input:ident $location:tt => mut $name:tt <- $y:expr ; $($rest:tt)* ) => ({
+        let ($input, mut $name, start) = $y($input)?;
+        seq!($input start start $location => $($rest)*)
+    });
     // This rule is the nth+1 monadic bind which shadows the previous _end location
     // with a new _end location.
     ( $input:ident $start:ident $e:ident $location:tt => $name:tt <- $y:expr ; $($rest:tt)* ) => ({
@@ -214,9 +219,9 @@ where
     }
 }
 
-/// Match delimited(f, g) followed by an optional trailing g
+/// Match delimited(f, g) followed by a trailing g(optional or required)
 pub fn delimited_trailing<'a, 'b: 'a, F, G, FResult, GResult>(
-    f: F, g: G,
+    f: F, g: G, required_g: bool,
 ) -> impl Fn(Input<'a, 'b>) -> ParseResult<'a, 'b, Vec<FResult>>
 where
     F: Fn(Input<'a, 'b>) -> ParseResult<'a, 'b, FResult>,
@@ -240,7 +245,7 @@ where
             match g(input) {
                 Ok((new_input, _, _)) => input = new_input,
                 Err(ParseError::Fatal(token)) => return Err(ParseError::Fatal(token)),
-                Err(_) => break,
+                Err(e) => if required_g { return Err(e) } else { break },
             }
             match f(input) {
                 Ok((new_input, t, location)) => {
@@ -357,6 +362,15 @@ where
 }
 
 // Basic combinators for extracting the contents of a given token
+pub fn imported_item<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, String> {
+    match &input[0] {
+        (Token::TypeName(name), location) => Ok((&input[1..], name.clone(), *location)),
+        (Token::Identifier(name), location) => Ok((&input[1..], name.clone(), *location)),
+        (Token::Invalid(c), location) => Err(ParseError::Fatal(Box::new(ParseError::LexerError(*c, *location)))),
+        (_, location) => Err(ParseError::Expected(vec![Token::Identifier("imported_item".to_owned())], *location)),
+    }
+}
+
 pub fn identifier<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, String> {
     match &input[0] {
         (Token::StringType, location) => Ok((&input[1..], "string".to_owned(), *location)),

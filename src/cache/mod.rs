@@ -129,7 +129,7 @@ pub struct MutualRecursionSet {
 unsafe impl<'c> Send for ModuleCache<'c> {}
 
 /// The key for accessing parse trees or `NameResolver`s
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct ModuleId(pub usize);
 
 #[derive(Copy, Clone, Eq, PartialEq, PartialOrd, Ord, Hash)]

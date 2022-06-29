@@ -23,6 +23,8 @@ pub mod ast;
 mod desugar;
 pub mod pretty_printer;
 
+use std::{collections::HashSet, iter::FromIterator};
+
 use crate::error::location::Location;
 use crate::lexer::token::Token;
 use ast::{Ast, Trait, Type, TypeDefinitionBody};
@@ -201,7 +203,7 @@ parser!(union_variant loc -> 'b (String, Vec<Type<'b>>, Location<'b>) =
 
 parser!(union_block_body _loc -> 'b ast::TypeDefinitionBody<'b> =
     _ <- expect(Token::Indent);
-    variants <- delimited_trailing(union_variant, expect(Token::Newline));
+    variants <- delimited_trailing(union_variant, expect(Token::Newline), false);
     _ !<- expect(Token::Unindent);
     TypeDefinitionBody::Union(variants)
 );
@@ -220,7 +222,7 @@ parser!(struct_field loc -> 'b (String, Type<'b>, Location<'b>) =
 
 parser!(struct_block_body _loc -> 'b ast::TypeDefinitionBody<'b> =
     _ <- expect(Token::Indent);
-    fields <- delimited_trailing(struct_field, expect(Token::Newline));
+    fields <- delimited_trailing(struct_field, expect(Token::Newline), false);
     _ !<- expect(Token::Unindent);
     TypeDefinitionBody::Struct(fields)
 );
@@ -232,8 +234,9 @@ parser!(struct_inline_body _loc -> 'b ast::TypeDefinitionBody<'b> =
 
 parser!(import loc =
     _ <- expect(Token::Import);
-    path <- delimited(typename, expect(Token::MemberAccess));
-    Ast::import(path, loc)
+    path !<- delimited_trailing(typename, expect(Token::MemberAccess), false);
+    symbols !<- many0(imported_item);
+    Ast::import(path, loc, HashSet::from_iter(symbols))
 );
 
 parser!(trait_definition loc =
@@ -259,7 +262,7 @@ parser!(trait_body_single loc -> 'b Vec<ast::TypeAnnotation<'b>> =
 
 parser!(trait_body_block loc -> 'b Vec<ast::TypeAnnotation<'b>> =
     _ <- expect(Token::Indent);
-    body !<- delimited_trailing(declaration, expect(Token::Newline));
+    body !<- delimited_trailing(declaration, expect(Token::Newline), false);
     _ !<- expect(Token::Unindent);
     body
 );
@@ -293,7 +296,7 @@ parser!(impl_body_single loc -> 'b Vec<ast::Definition<'b>> =
 
 parser!(impl_body_block loc -> 'b Vec<ast::Definition<'b>> =
     _ <- expect(Token::Indent);
-    definitions !<- delimited_trailing(raw_definition, expect(Token::Newline));
+    definitions !<- delimited_trailing(raw_definition, expect(Token::Newline), false);
     _ !<- expect(Token::Unindent);
     definitions
 );
@@ -324,7 +327,7 @@ parser!(parse_extern loc =
 
 parser!(extern_block _loc -> 'b Vec<ast::TypeAnnotation<'b>>=
     _ <- expect(Token::Indent);
-    declarations !<- delimited_trailing(declaration, expect(Token::Newline));
+    declarations !<- delimited_trailing(declaration, expect(Token::Newline), false);
     _ !<- expect(Token::Unindent);
     declarations
 );
@@ -581,6 +584,7 @@ fn argument<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
     match input[0].0 {
         Token::StringType => variable(input),
         Token::Identifier(_) => variable(input),
+        Token::TypeName(_) => or(&[variable, variant], "argument")(input),
         Token::StringLiteral(_) => string(input),
         Token::IntegerLiteral(_, _) => integer(input),
         Token::FloatLiteral(_) => float(input),
@@ -589,7 +593,6 @@ fn argument<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
         Token::UnitLiteral => unit(input),
         Token::Fn => lambda(input),
         Token::ParenthesisLeft => parenthesized_expression(input),
-        Token::TypeName(_) => variant(input),
         _ => Err(ParseError::InRule("argument", input[0].1)),
     }
 }
@@ -628,13 +631,17 @@ fn parenthesized_expression<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
 }
 
 parser!(variant loc =
-    name <- typename;
-    Ast::type_constructor(name, loc)
+    mut module_prefix <- delimited(typename, expect(Token::MemberAccess));
+    {
+        let name = module_prefix.pop().unwrap();
+        Ast::type_constructor(module_prefix, name, loc)
+    }
 );
 
 parser!(variable loc =
+    module_prefix <- maybe(delimited_trailing(typename, expect(Token::MemberAccess), true));
     name <- identifier;
-    Ast::variable(name, loc)
+    Ast::variable(module_prefix.unwrap_or_default(), name, loc)
 );
 
 parser!(string loc =
@@ -668,7 +675,7 @@ parser!(unit loc =
 );
 
 parser!(function_type loc -> 'b Type<'b> =
-    args <- delimited_trailing(function_arg_type, expect(Token::Subtract));
+    args <- delimited_trailing(function_arg_type, expect(Token::Subtract), false);
     varargs <- maybe(varargs);
     _ <- expect(Token::RightArrow);
     return_type <- parse_type;

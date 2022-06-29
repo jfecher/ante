@@ -32,10 +32,14 @@ impl<'a> Display for ast::Literal<'a> {
 impl<'a> Display for ast::Variable<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         use ast::VariableKind::*;
+        let mut prefix = self.module_prefix.join(".");
+        if !prefix.is_empty() {
+            prefix += ".";
+        }
         match &self.kind {
-            Identifier(name) => write!(f, "{}", name),
+            Identifier(name) => write!(f, "{}{}", prefix, name),
             Operator(token) => write!(f, "{}", token),
-            TypeConstructor(name) => write!(f, "{}", name),
+            TypeConstructor(name) => write!(f, "{}{}", prefix, name),
         }
     }
 }
@@ -147,7 +151,12 @@ impl<'a> Display for ast::TypeAnnotation<'a> {
 
 impl<'a> Display for ast::Import<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "(import {})", join_with(&self.path, "."))
+        let mut import_path = join_with(&self.path, ".");
+        let symbols = join_with(&self.symbols, " ");
+        if !symbols.is_empty() {
+            import_path.push('.');
+        }
+        write!(f, "(import {}{})", import_path, symbols)
     }
 }
 
