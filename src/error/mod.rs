@@ -200,7 +200,7 @@ impl<'a> Display for ErrorMessage<'a> {
         writeln!(f, "{}\t{} {}", self.location, self.marker(), self.msg)?;
 
         let file_contents = read_file_or_panic(self.location.filename);
-        let line = file_contents.lines().nth(max(1, start.line) as usize - 1).unwrap();
+        let line = file_contents.lines().nth(max(1, start.line) as usize - 1).unwrap_or("");
 
         let start_column = max(1, start.column) as usize - 1;
         let actual_len = min(self.location.len(), line.len() - start_column);
