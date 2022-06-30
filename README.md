@@ -26,37 +26,8 @@ In general, ante is low-level (no GC, values aren't boxed by default) while also
 be as readable as possible by encouraging high-level approaches that can be optimized with
 low-level details later on.
 
-See the [website](https://antelang.org) and [language tour](https://antelang.org/docs/language/) for more information.
-
----
-
-### Roadmap
-
-- [x] Whitespace-sensitive lexer
-- [x] Parser
-- [x] Name Resolution
-- [x] Full type inference
-    - [x] Traits with multiple parameters and limited functional dependencies
-    - [ ] Compiler option to write inferred types into program source after successful compilation
-- [x] LLVM Codegen
-- [x] No Garbage Collector
-    - [ ] Region Inference for `ref`s
-    - [ ] RAII to allow `Rc t` or `Box t` when necessary
-- [x] Language [Documentation](https://antelang.org/docs/language/):
-    - [x] [Article on Ante's use of whitespace for line continuations](https://antelang.org/docs/language/#line-continuations)
-    - [x] [Article on the sugar for immediately invoked recursive functions (loop/recur)](https://antelang.org/docs/language/#loops)
-    - [ ] Article on interactions between `mut`, `ref`, and passing by reference
-    - [ ] Article on autoboxing recursive types for polymorphic pointer types
-- [~] Refinement Types (in progress)
-- [x] Cranelift backend for faster debug builds
-- [ ] Algebraic Effects
-- [ ] Incremental compilation metadata
-- [ ] REPL
-
-Nice to have but not currently required:
-- [ ] Reasonable automatic C/C++ interop with clang api
-- [ ] Build system built into standard library
-    - Ante should always be able to build itself along with any required libraries, the main question is how should a build system facilitate the more complex tasks of building other languages or running arbitrary programs like yacc/bison.
+See the [website](https://antelang.org), [language tour](https://antelang.org/docs/language/),
+and [roadmap](https://antelang.org/docs/roadmap) for more information.
 
 ---
 

@@ -1,0 +1,23 @@
+import HashMap
+
+impl Hash u8 with
+    hash x = cast x
+
+map = mut empty ()
+
+// Test several inserts. HashMap is linear-scan so it 
+// should keep resizing so that it is at least half-empty 
+// (ie. its capacity should be >= 2 * its length).
+insert map 1u8 3u16
+insert map 2 6
+insert map 3 9
+insert map 4 12
+insert map 5 15
+insert map 6 18
+insert map 7 21
+
+print map
+
+// args: --delete-binary
+// expected stdout:
+// [1 -> 3, 2 -> 6, 3 -> 9, 4 -> 12, 5 -> 15, 6 -> 18, 7 -> 21]

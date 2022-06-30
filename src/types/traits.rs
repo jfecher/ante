@@ -125,8 +125,23 @@ impl RequiredTrait {
     }
 
     pub fn find_all_typevars<'b>(&self, cache: &ModuleCache<'b>) -> Vec<TypeVariableId> {
+        self.signature.find_all_typevars(cache)
+    }
+
+    pub fn display<'a, 'b>(&self, cache: &'a ModuleCache<'b>) -> ConstraintSignaturePrinter<'a, 'b> {
+        self.signature.display(cache)
+    }
+
+    #[allow(dead_code)]
+    pub fn debug<'a, 'b>(&self, cache: &'a ModuleCache<'b>) -> ConstraintSignaturePrinter<'a, 'b> {
+        self.signature.debug(cache)
+    }
+}
+
+impl ConstraintSignature {
+    pub fn find_all_typevars<'b>(&self, cache: &ModuleCache<'b>) -> Vec<TypeVariableId> {
         let mut typevars = vec![];
-        for typ in &self.signature.args {
+        for typ in &self.args {
             typevars.append(&mut find_all_typevars(typ, false, cache));
         }
         typevars
@@ -145,14 +160,14 @@ impl RequiredTrait {
             }
         }
 
-        ConstraintSignaturePrinter { signature: self.signature.clone(), typevar_names, debug: false, cache }
+        ConstraintSignaturePrinter { signature: self.clone(), typevar_names, debug: false, cache }
     }
 
     #[allow(dead_code)]
     pub fn debug<'a, 'b>(&self, cache: &'a ModuleCache<'b>) -> ConstraintSignaturePrinter<'a, 'b> {
         let mut typevar_names = HashMap::new();
 
-        for typ in &self.signature.args {
+        for typ in &self.args {
             let typevars = find_all_typevars(typ, false, cache);
 
             for typevar in typevars {
@@ -162,7 +177,7 @@ impl RequiredTrait {
             }
         }
 
-        ConstraintSignaturePrinter { signature: self.signature.clone(), typevar_names, debug: true, cache }
+        ConstraintSignaturePrinter { signature: self.clone(), typevar_names, debug: true, cache }
     }
 }
 

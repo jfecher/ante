@@ -1329,10 +1329,9 @@ fn check_impl_propagated_traits(
                     Some(used)
                 } else {
                     let constraint = TraitConstraint { required: used, scope: variable.impl_scope.unwrap() };
-                    traitchecker::force_resolve_trait(constraint, cache);
+                    // Any traits used that are not in the 'given' clause must be resolved
                     // TODO: Should issue this error earlier to give a better callsite for the error
-                    // error!(variable.location, "This definition requires {}, but the trait isn't given in the impl or the type signature for {} in the trait that defines it.",
-                    //        used.display(cache), variable);
+                    traitchecker::force_resolve_trait(constraint, cache);
                     None
                 }
             })
@@ -1356,8 +1355,10 @@ fn find_matching_trait(
                 cache,
                 "error never shown",
             ) {
-                bindings.perform(cache);
-                return Some(useable.signature.id);
+                if bindings.bindings.is_empty() {
+                    // bindings.perform(cache);
+                    return Some(useable.signature.id);
+                }
             }
         }
     }
@@ -1372,8 +1373,10 @@ fn find_matching_trait(
                 cache,
                 "error never shown",
             ) {
-                bindings.perform(cache);
-                return Some(useable.id);
+                if bindings.bindings.is_empty() {
+                    // bindings.perform(cache);
+                    return Some(useable.id);
+                }
             }
         }
     }
@@ -1824,7 +1827,13 @@ impl<'a> Inferable<'a> for ast::TraitImpl<'a> {
 
         // Need to replace all typevars here so we do not rebind over them.
         // E.g. an impl for `Cmp a given Int a` could be accidentally bound to `Cmp usz`
-        let (trait_arg_types, _) = replace_all_typevars(&self.trait_arg_types, cache);
+        // TODO: Is the above comment correct? replace_all_typevars causes `impl Print (HashMap a b)`
+        //       in the stdlib to fail (the given list would need to use the same type bindings) 
+        //       and removing it still lets all tests pass, despite builtin_int.an
+        //       testing several traits like `Add a given Int a` for several integer types.
+        // let (trait_arg_types, _) = replace_all_typevars(&self.trait_arg_types, cache);
+
+        let trait_arg_types = self.trait_arg_types.clone();
 
         // Instantiate the typevars in the parent trait to bind their definition
         // types against the types in this trait impl. This needs to be done once
