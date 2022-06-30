@@ -1106,7 +1106,12 @@ fn find_file(relative_path: &Path, cache: &mut ModuleCache) -> Option<(File, Pat
 
 pub fn declare_module<'a>(path: &Path, cache: &mut ModuleCache<'a>, error_location: Location<'a>) -> Option<ModuleId> {
     let (file, path) = match find_file(path, cache) {
-        Some((f, p)) => (f, p),
+        Some((f, p)) => {
+            if let Ok(0) = f.metadata().map(|data| data.len()) {
+                return None;
+            }
+            (f, p)
+        },
         _ => {
             error!(error_location, "Couldn't open file for import: {}.an", path.display());
             return None;
