@@ -92,6 +92,9 @@ pub fn main() {
     let filename = Path::new(&args.file);
     let file = File::open(filename);
     let file = expect!(file, "Could not open file {}\n", filename.display());
+    if let Ok(0) = file.metadata().map(|data| data.len()) {
+        return;
+    }
 
     let mut cache = ModuleCache::new(filename.parent().unwrap());
 
