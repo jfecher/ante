@@ -436,6 +436,7 @@ fn expression<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
 fn term<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
     match input[0].0 {
         Token::If => if_expr(input),
+        Token::Loop => loop_expr(input),
         Token::Match => match_expr(input),
         _ => or(&[type_annotation, function_call, function_argument], "term")(input),
     }
@@ -468,6 +469,38 @@ parser!(match_expr loc =
     expression !<- block_or_statement;
     branches !<- many0(match_branch);
     Ast::match_expr(expression, branches, loc)
+);
+
+/// Parse `identifier = expression`, the default value optionally
+fn param_maybe_default_value<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, (Ast<'b>, Option<Ast<'b>>)> {
+    parser!(default_value loc =
+        _ <- expect(Token::Equal);
+        expr !<- expression;
+        expr
+    );
+
+    fn inside_parens<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, (Ast<'b>, Option<Ast<'b>>)> {
+        match input[0].0 {
+            Token::Identifier(_) => pair(variable, maybe(default_value))(input),
+            Token::ParenthesisLeft => parenthesized(inside_parens)(input),
+            _ => Err(ParseError::InRule("parameter with default value", input[0].1)),
+        }
+    }
+
+    // Default value is not allowed unless the whole expression is inside parens
+    match input[0].0 {
+        Token::Identifier(_) => variable(input).map(|(input, res, loc)| (input, (res, None), loc)),
+        Token::ParenthesisLeft => parenthesized(inside_parens)(input),
+        _ => Err(ParseError::InRule("parameter with default value", input[0].1)),
+    }
+}
+
+parser!(loop_expr loc =
+    _ <- expect(Token::Loop);
+    args !<- many1(param_maybe_default_value);
+    _ !<- expect(Token::RightArrow);
+    body !<- block_or_statement;
+    desugar::desugar_loop(args, body, loc)
 );
 
 parser!(not_expr loc =

@@ -1,9 +1,3 @@
-
-loop n f =
-    if n > 0 then
-        f ()
-        loop (n - 1) f
-
 type List a = | Nil | Cons a (List a)
 
 map l f =

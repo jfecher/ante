@@ -130,6 +130,7 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
             ("in", Token::In),
             ("is", Token::Is),
             ("isnt", Token::Isnt),
+            ("loop", Token::Loop),
             ("match", Token::Match),
             ("module", Token::Module),
             ("not", Token::Not),

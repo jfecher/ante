@@ -1,0 +1,28 @@
+start = 10
+seq_sum =
+    loop start (sum = 0) ->
+        if start == 0 then sum
+        else recur (start - 1) (sum + start)
+print seq_sum
+
+collatz = 7
+loop collatz ->
+    if collatz == 1 then return ()
+    printne collatz
+    printne " "
+    if collatz % 2 == 0 then recur (collatz / 2)
+    else recur (collatz * 3 + 1)
+
+()
+
+// currently doesn't compile 
+// row = 0
+// col = 0
+// loop row ->
+//     loop col ->
+//         print col
+
+// args: --delete-binary
+// expected stdout: 
+// 55
+// 7 22 11 34 17 52 26 13 40 20 10 5 16 8 4 2 
