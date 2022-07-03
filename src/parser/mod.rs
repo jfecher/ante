@@ -471,17 +471,31 @@ parser!(match_expr loc =
     Ast::match_expr(expression, branches, loc)
 );
 
-/// Parse `identifier = expression`, the default value optionally
-fn param_maybe_default_value<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, (Ast<'b>, Option<Ast<'b>>)> {
+/// Parse `identifier: type = expression`, type annotation and/or default value optionally
+fn param_maybe_default_value<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, (Ast<'b>, Option<Type<'b>>, Option<Ast<'b>>)> {
+    
     parser!(default_value loc =
         _ <- expect(Token::Equal);
         expr !<- expression;
         expr
     );
 
-    fn inside_parens<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, (Ast<'b>, Option<Ast<'b>>)> {
+    parser!(just_type_annot loc -> 'b Type<'b> =
+        _ <- expect(Token::Colon);
+        typ !<- parse_type;
+        typ
+    );
+
+    parser!(name_typ_val loc -> 'b (Ast<'b>, Option<Type<'b>>, Option<Ast<'b>>) =
+        name <- variable;
+        typ !<- maybe(just_type_annot);
+        default !<- maybe(default_value);
+        (name, typ, default)
+    );
+
+    fn inside_parens<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, (Ast<'b>, Option<Type<'b>>, Option<Ast<'b>>)> {
         match input[0].0 {
-            Token::Identifier(_) => pair(variable, maybe(default_value))(input),
+            Token::Identifier(_) => name_typ_val(input),            
             Token::ParenthesisLeft => parenthesized(inside_parens)(input),
             _ => Err(ParseError::InRule("parameter with default value", input[0].1)),
         }
@@ -489,7 +503,7 @@ fn param_maybe_default_value<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b
 
     // Default value is not allowed unless the whole expression is inside parens
     match input[0].0 {
-        Token::Identifier(_) => variable(input).map(|(input, res, loc)| (input, (res, None), loc)),
+        Token::Identifier(_) => variable(input).map(|(input, res, loc)| (input, (res, None, None), loc)),
         Token::ParenthesisLeft => parenthesized(inside_parens)(input),
         _ => Err(ParseError::InRule("parameter with default value", input[0].1)),
     }

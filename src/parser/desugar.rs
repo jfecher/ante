@@ -1,5 +1,6 @@
 use crate::error::location::Location;
 use crate::parser::ast::Ast;
+use crate::parser::ast::Type;
 use crate::{error::location::Locatable, lexer::token::Token, parser::ast, util::fmap};
 
 /// Turns `(foo _  _ 2)` into `(fn $1 $2 -> (foo $1 $2 2))`
@@ -81,21 +82,19 @@ fn prepend_argument_to_function<'a>(f: Ast<'a>, arg: Ast<'a>, location: Location
 }
 
 pub fn desugar_loop<'a>(
-    params_defaults: Vec<(Ast<'a>, Option<Ast<'a>>)>, body: Ast<'a>, location: Location<'a>,
+    params_defaults: Vec<(Ast<'a>, Option<Type<'a>>, Option<Ast<'a>>)>, body: Ast<'a>, location: Location<'a>,
 ) -> Ast<'a> {
-    let mut params = Vec::with_capacity(params_defaults.len());
-    let mut args = Vec::with_capacity(params_defaults.len());
-    for (param, default) in params_defaults {
-        match default {
-            Some(def) => args.push(def),
-            None => args.push(param.clone()),
-        }
-        params.push(param);
-    }
-
+    let (params, args): (Vec<_>, Vec<_>) =
+        params_defaults.into_iter().map(|(param, maybe_typ, maybe_default)| {
+            let arg = maybe_default.unwrap_or_else(|| param.clone());
+            let typed_param = match maybe_typ {
+                Some(typ) => Ast::type_annotation(param, typ, location),
+                None => param,
+            };
+            (typed_param, arg)
+        }).unzip();
     let recur_name = || Ast::variable(vec![], "recur".to_owned(), location);
     let recur_def = Ast::definition(recur_name(), Ast::lambda(params, None, body, location), location);
     let recur_call = Ast::function_call(recur_name(), args, location);
-
     Ast::new_scope(Ast::sequence(vec![recur_def, recur_call], location), location)
 }
