@@ -3,7 +3,7 @@ effect Log with log: string -> unit
 
 effect Use a with
     get: unit -> a
-    set: a -> unit
+    set: a - i32 -> unit
 
 
 handle log "test1"
@@ -16,9 +16,9 @@ handle log "test2"
 | log _   -> print "case 3"
 
 handle foo + bar
+| set 0 a -> resume ()
 | get () -> foo resume 1 // test 'resume' is parsed as a normal identifier
-| set 0 -> resume ()
-| set _ -> resume ()
+| set _ b -> resume ()
 
 handle ()
 | return _ -> "foo"
@@ -31,9 +31,18 @@ handle ()
 // );
 // (effect Use a with
 //     (: get (unit -> a))
-//     (: set (a -> unit))
+//     (: set (a i32 -> unit))
 // );
-// (handle (log "test1") ((log s) (print s)));
-// (handle (log "test2") ((log "a") (print "case 1")) ((log "b") (print "case 2")) ((log _) (print "case 3")));
-// (handle ('+' foo bar) ((get ()) (foo resume 1)) ((set 0) (resume ())) ((set _) (resume ())));
-// (handle () ((return _) "foo") ((log _) "impossible"))
+// (handle (log "test1") ((log _$0) 
+//     (s = _$0);
+//     (print s)
+// ));
+// (handle (log "test2") ((log _$0) (match _$0 ("a" (print "case 1")) ("b" (print "case 2")) (_ (print "case 3")))));
+// (handle ('+' foo bar) ((get _$0) (match _$0 (() (foo resume 1)))) ((set _$0 _$1) (match (',' _$0 _$1) ((',' 0 a) (resume ())) ((',' _ b) (resume ())))));
+// (handle () ((return _$0) 
+//     (_ = _$0);
+//     "foo"
+// ) ((log _$0) 
+//     (_ = _$0);
+//     "impossible"
+// ))

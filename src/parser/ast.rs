@@ -669,8 +669,8 @@ impl<'a> Ast<'a> {
         })
     }
 
-    pub fn handle(expression: Ast<'a>, mut branches: Vec<(Ast<'a>, Ast<'a>)>, location: Location<'a>) -> Ast<'a> {
-        // TODO: Desugar handle into handle + nested match
+    pub fn handle(expression: Ast<'a>, branches: Vec<(Ast<'a>, Ast<'a>)>, location: Location<'a>) -> Ast<'a> {
+        let branches = super::desugar::desugar_handle_branches_into_matches(branches);
         Ast::Handle(Handle { expression: Box::new(expression), branches, location, typ: None })
     }
 }
