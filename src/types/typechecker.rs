@@ -34,6 +34,7 @@ use crate::lexer::token::IntegerKind;
 use crate::parser::ast::{self, ClosureEnvironment};
 use crate::types::traits::{RequiredTrait, TraitConstraint, TraitConstraints};
 use crate::types::typed::Typed;
+use crate::types::Effects;
 use crate::types::{
     pattern, traitchecker, FunctionType, LetBindingLevel, PrimitiveType, Type, Type::*, TypeBinding, TypeBinding::*,
     TypeInfo, TypeVariableId, INITIAL_LEVEL, PAIR_TYPE, STRING_TYPE,
@@ -167,7 +168,7 @@ pub fn replace_all_typevars_with_bindings<'c>(
             let return_type = Box::new(replace_all_typevars_with_bindings(&function.return_type, new_bindings, cache));
             let environment = Box::new(replace_all_typevars_with_bindings(&function.environment, new_bindings, cache));
             let is_varargs = function.is_varargs;
-            Function(FunctionType { parameters, return_type, environment, is_varargs })
+            Function(FunctionType { parameters, return_type, environment, is_varargs, effects: todo!() })
         },
         UserDefined(id) => UserDefined(*id),
 
@@ -237,7 +238,7 @@ pub fn bind_typevars<'c>(typ: &Type, type_bindings: &TypeBindings, cache: &Modul
             let return_type = Box::new(bind_typevars(&function.return_type, type_bindings, cache));
             let environment = Box::new(bind_typevars(&function.environment, type_bindings, cache));
             let is_varargs = function.is_varargs;
-            Function(FunctionType { parameters, return_type, environment, is_varargs })
+            Function(FunctionType { parameters, return_type, environment, is_varargs, effects: todo!() })
         },
         UserDefined(id) => UserDefined(*id),
 
@@ -1175,6 +1176,7 @@ pub(super) fn bind_irrefutable_pattern<'c>(
                 parameters: args,
                 return_type: Box::new(pair_type.clone()),
                 environment: Box::new(Type::Primitive(PrimitiveType::UnitType)),
+                effects: todo!(),
                 is_varargs: false,
             });
 
@@ -1541,6 +1543,7 @@ impl<'a> Inferable<'a> for ast::Lambda<'a> {
             parameters: parameter_types,
             return_type: Box::new(return_type),
             environment: Box::new(infer_closure_environment(&self.closure_environment, cache)),
+            effects: todo!(),
             is_varargs: false,
         });
 
@@ -1571,6 +1574,7 @@ impl<'a> Inferable<'a> for ast::FunctionCall<'a> {
             parameters,
             return_type: Box::new(return_type.clone()),
             environment: Box::new(next_type_variable(cache)),
+            effects: Effects::any(cache),
             is_varargs: false,
         });
 
@@ -2003,5 +2007,17 @@ impl<'a> Inferable<'a> for ast::Assignment<'a> {
         }
 
         (Type::Primitive(PrimitiveType::UnitType), traits)
+    }
+}
+
+impl<'a> Inferable<'a> for ast::EffectDefinition<'a> {
+    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
+        (Type::Primitive(PrimitiveType::UnitType), vec![])
+    }
+}
+
+impl<'a> Inferable<'a> for ast::Handle<'a> {
+    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
+        (Type::Primitive(PrimitiveType::UnitType), vec![])
     }
 }

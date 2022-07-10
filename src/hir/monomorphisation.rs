@@ -126,6 +126,8 @@ impl<'c> Context<'c> {
             Extern(_) => unit_literal(),
             MemberAccess(member_access) => self.monomorphise_member_access(member_access),
             Assignment(assignment) => self.monomorphise_assignment(assignment),
+            EffectDefinition(_) => todo!(),
+            Handle(_) => todo!(),
         }
     }
 
@@ -193,6 +195,7 @@ impl<'c> Context<'c> {
                     parameters: fmap(&f.parameters, |param| self.follow_all_bindings_inner(param, fuel)),
                     return_type: Box::new(self.follow_all_bindings_inner(&f.return_type, fuel)),
                     environment: Box::new(self.follow_all_bindings_inner(&f.environment, fuel)),
+                    effects: todo!(),
                     is_varargs: f.is_varargs,
                 };
                 Function(f)

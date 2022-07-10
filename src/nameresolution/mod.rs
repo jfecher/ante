@@ -50,7 +50,7 @@ use crate::types::traits::ConstraintSignature;
 use crate::types::typed::Typed;
 use crate::types::{
     Field, FunctionType, GeneralizedType, LetBindingLevel, PrimitiveType, Type, TypeConstructor, TypeInfoBody,
-    TypeInfoId, TypeVariableId, INITIAL_LEVEL, STRING_TYPE,
+    TypeInfoId, TypeVariableId, INITIAL_LEVEL, STRING_TYPE, Effects,
 };
 use crate::util::{fmap, timing, trustme};
 
@@ -598,8 +598,9 @@ impl<'c> NameResolver {
                 let parameters = fmap(args, |arg| self.convert_type(cache, arg));
                 let return_type = Box::new(self.convert_type(cache, ret));
                 let environment = Box::new(Type::Primitive(PrimitiveType::UnitType));
+                let effects = Effects::any(cache);
                 let is_varargs = *is_varargs;
-                Type::Function(FunctionType { parameters, return_type, environment, is_varargs })
+                Type::Function(FunctionType { parameters, return_type, environment, is_varargs, effects })
             },
             ast::Type::TypeVariable(name, location) => match self.lookup_type_variable(name) {
                 Some(id) => Type::TypeVariable(id),
@@ -977,6 +978,7 @@ fn create_variant_constructor_type(
             parameters: args,
             return_type: Box::new(result),
             environment: Box::new(Type::Primitive(PrimitiveType::UnitType)),
+            effects: Effects::none(),
             is_varargs: false,
         });
     }
@@ -1371,5 +1373,19 @@ impl<'c> Resolvable<'c> for ast::Assignment<'c> {
     fn define(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'c>) {
         self.lhs.define(resolver, cache);
         self.rhs.define(resolver, cache);
+    }
+}
+
+impl<'c> Resolvable<'c> for ast::EffectDefinition<'c> {
+    fn declare(&mut self, _resolver: &mut NameResolver, _cache: &mut ModuleCache<'c>) {}
+
+    fn define(&mut self, _resolver: &mut NameResolver, _cache: &mut ModuleCache<'c>) {
+    }
+}
+
+impl<'c> Resolvable<'c> for ast::Handle<'c> {
+    fn declare(&mut self, _resolver: &mut NameResolver, _cache: &mut ModuleCache<'c>) {}
+
+    fn define(&mut self, _resolver: &mut NameResolver, _cache: &mut ModuleCache<'c>) {
     }
 }

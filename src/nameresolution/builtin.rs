@@ -9,7 +9,7 @@ use crate::error::location::Location;
 use crate::lexer::token::{IntegerKind, Token};
 use crate::nameresolution::{declare_module, define_module, NameResolver};
 use crate::types::{
-    Field, FunctionType, GeneralizedType, LetBindingLevel, PrimitiveType, Type, TypeInfoBody, PAIR_TYPE, STRING_TYPE,
+    Field, FunctionType, GeneralizedType, LetBindingLevel, PrimitiveType, Type, TypeInfoBody, PAIR_TYPE, STRING_TYPE, Effects,
 };
 
 use std::collections::HashSet;
@@ -51,6 +51,7 @@ pub fn define_builtins(cache: &mut ModuleCache) {
         parameters: vec![string_type],
         return_type: Box::new(Type::TypeVariable(a)),
         environment: Box::new(Type::Primitive(PrimitiveType::UnitType)),
+        effects: Effects::none(),
         is_varargs: true,
     });
 
@@ -116,6 +117,7 @@ fn define_string(cache: &mut ModuleCache) -> Type {
         parameters: vec![c_string_type, length_type],
         return_type: Box::new(string.clone()),
         environment: Box::new(Type::Primitive(PrimitiveType::UnitType)),
+        effects: Effects::none(),
         is_varargs: false,
     });
 
@@ -156,6 +158,7 @@ fn define_pair(cache: &mut ModuleCache) {
         parameters,
         return_type: pair_a_b,
         environment: Box::new(Type::Primitive(PrimitiveType::UnitType)),
+        effects: Effects::none(),
         is_varargs: false,
     });
 
