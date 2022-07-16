@@ -771,6 +771,14 @@ impl<'c> Context<'c> {
                     typ.debug(&self.cache)
                 )
             },
+            Some(DefinitionKind::EffectDefinition(_)) => {
+                unreachable!(
+                    "Cannot monomorphise from a EffectDefinition.\nNo cached handle for {} {}: {}",
+                    info.name,
+                    id.0,
+                    typ.debug(&self.cache)
+                )
+            },
             Some(DefinitionKind::Parameter) => {
                 unreachable!(
                     "Parameters should already be defined.\nEncountered while compiling {} {}: {}, {:?}",

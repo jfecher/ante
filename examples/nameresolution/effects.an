@@ -1,0 +1,31 @@
+
+effect Three with
+    one: unit -> unit
+    two: i32 -> i32
+    three: i32 - i32 -> i32
+
+effect State a with
+    get: unit -> a
+    put: a -> unit
+
+
+handle ()
+| one () -> ()
+| one () -> ()
+
+
+handle ()
+| get () -> resume ()
+| put () -> ()
+
+handle ()
+| put () -> ()
+| three 0 1 -> ()
+
+
+// args: --check
+// examples/nameresolution/effects.an:12:1	error: Missing cases: two, three
+// handle ()
+// 
+// examples/nameresolution/effects.an:21:1	error: Missing cases: one, two, get
+// handle ()

@@ -39,10 +39,10 @@ handle ()
 // ));
 // (handle (log "test2") ((log _$0) (match _$0 ("a" (print "case 1")) ("b" (print "case 2")) (_ (print "case 3")))));
 // (handle ('+' foo bar) ((get _$0) (match _$0 (() (foo resume 1)))) ((set _$0 _$1) (match (',' _$0 _$1) ((',' 0 a) (resume ())) ((',' _ b) (resume ())))));
-// (handle () ((return _$0) 
-//     (_ = _$0);
-//     "foo"
-// ) ((log _$0) 
+// (handle () ((log _$0) 
 //     (_ = _$0);
 //     "impossible"
+// ) ((return _$0) 
+//     (_ = _$0);
+//     "foo"
 // ))

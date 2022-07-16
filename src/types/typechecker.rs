@@ -1031,6 +1031,10 @@ fn infer_nested_definition(
             let definition = trustme::extend_lifetime(*definition);
             infer(definition, cache).1
         },
+        DefinitionKind::EffectDefinition(definition) => {
+            let definition = trustme::extend_lifetime(*definition);
+            infer(definition, cache).1
+        },
         DefinitionKind::Extern(declaration) => {
             let definition = trustme::extend_lifetime(*declaration);
             infer(definition, cache).1

@@ -37,7 +37,7 @@
 //!   - `trait_info: Option<TraitInfoId>` for `ast::TraitDefinition`s and `ast::TraitImpl`s
 //!   - `impl_id: Option<ImplInfoId>` for `ast::TraitImpl`s
 //!   - `module_id: Option<ModuleId>` for `ast::Import`s,
-use crate::cache::{DefinitionInfoId, ModuleCache, ModuleId};
+use crate::cache::{DefinitionInfoId, ModuleCache, ModuleId, EffectInfoId};
 use crate::cache::{DefinitionKind, ImplInfoId, TraitInfoId};
 use crate::error::{
     self,
@@ -57,7 +57,7 @@ use crate::util::{fmap, timing, trustme};
 use colored::Colorize;
 
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{HashMap, BTreeSet};
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
@@ -388,6 +388,7 @@ impl NameResolver {
         let trait_info = &mut cache.trait_infos[trait_id.0];
         trait_info.definitions.push(id);
 
+        // TODO: Is this still necessary? Can we remove the args field of trait_info below?
         let args =
             trait_info.typeargs.iter().chain(trait_info.fundeps.iter()).map(|id| Type::TypeVariable(*id)).collect();
 
@@ -410,9 +411,8 @@ impl NameResolver {
                 error!(location, "{} is already in scope", name);
                 let previous_location = cache.definition_infos[existing_definition.0].location;
                 note!(previous_location, "{} previously defined here", name);
-            }
-            // allow shadowing in local scopes
-            else {
+            } else {
+                // allow shadowing in local scopes
                 self.current_scope().check_for_unused_definitions(cache, None);
             }
         }
@@ -472,6 +472,24 @@ impl NameResolver {
             self.exports.traits.insert(name.clone(), id);
         }
         self.current_scope().traits.insert(name, id);
+        id
+    }
+
+    fn push_effect<'c>(
+        &mut self, name: String, args: Vec<TypeVariableId>,
+        node: &'c mut ast::EffectDefinition<'c>, cache: &mut ModuleCache<'c>, location: Location<'c>,
+    ) -> EffectInfoId {
+        if let Some(existing_definition) = self.current_scope().effects.get(&name) {
+            error!(location, "{} is already in scope", name);
+            let previous_location = cache.effect_infos[existing_definition.0].locate();
+            note!(previous_location, "{} previously defined here", name);
+        }
+
+        let id = cache.push_effect_definition(name.clone(), args, node, location);
+        if self.in_global_scope() {
+            self.exports.effects.insert(name.clone(), id);
+        }
+        self.current_scope().effects.insert(name, id);
         id
     }
 
@@ -800,7 +818,6 @@ impl<'c> Resolvable<'c> for ast::Variable<'c> {
                 let id = resolver.push_definition(&name, cache, self.location);
                 resolver.definitions_collected.push(id);
                 self.definition = Some(id);
-
             } else {
                 self.definition = resolver.reference_definition(&name, self.location, cache);
             }
@@ -879,7 +896,11 @@ impl<'c> Resolvable<'c> for ast::FunctionCall<'c> {
     fn declare(&mut self, _resolver: &mut NameResolver, _cache: &mut ModuleCache<'c>) {}
 
     fn define(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'c>) {
+        // Don't auto-declare functions in patterns, only arguments
+        let prev_auto_declare = resolver.auto_declare;
+        resolver.auto_declare = false;
         self.function.define(resolver, cache);
+        resolver.auto_declare = prev_auto_declare;
 
         for arg in self.args.iter_mut() {
             arg.define(resolver, cache)
@@ -1377,15 +1398,112 @@ impl<'c> Resolvable<'c> for ast::Assignment<'c> {
 }
 
 impl<'c> Resolvable<'c> for ast::EffectDefinition<'c> {
-    fn declare(&mut self, _resolver: &mut NameResolver, _cache: &mut ModuleCache<'c>) {}
+    fn declare(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'c>) {
+        resolver.push_type_variable_scope();
 
-    fn define(&mut self, _resolver: &mut NameResolver, _cache: &mut ModuleCache<'c>) {
+        // An effect definition's level is the outer level. The `let_binding_level + 1` is
+        // only used while recurring _inside_ definitions, and effect definition's only
+        // contain declarations which have no rhs to recur into. Changing this to
+        // `let_binding_level + 1` will cause all effect functions to not be generalized.
+        self.level = Some(resolver.let_binding_level);
+        resolver.push_let_binding_level();
+
+        let args = fmap(&self.args, |arg| resolver.push_new_type_variable(arg.clone(), cache));
+
+        let effect_id =
+            resolver.push_effect(self.name.clone(), args, trustme::extend_lifetime(self), cache, self.location);
+
+        let self_pointer = self as *const _;
+        for declaration in self.declarations.iter_mut() {
+            let definition = || DefinitionKind::EffectDefinition(trustme::make_mut(self_pointer));
+
+            println!("Declaring: {}", declaration.lhs);
+            resolver.resolve_declarations(declaration.lhs.as_mut(), cache, definition);
+
+            for definition in &resolver.definitions_collected {
+                cache[effect_id].declarations.push(*definition);
+            }
+
+            resolver.auto_declare = true;
+            let rhs = resolver.convert_type(cache, &declaration.rhs);
+            resolver.auto_declare = false;
+            declaration.typ = Some(rhs);
+        }
+
+        self.effect_info = Some(effect_id);
+        resolver.pop_type_variable_scope();
+        resolver.pop_let_binding_level();
+    }
+
+    fn define(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'c>) {
+        if self.effect_info.is_none() {
+            self.declare(resolver, cache);
+        }
+    }
+}
+
+fn get_handled_effect_function(pattern: &ast::Ast) -> Option<DefinitionInfoId> {
+    match pattern {
+        Ast::FunctionCall(call) => {
+            match call.function.as_ref() {
+                Ast::Variable(variable) => variable.definition,
+                _ => {
+                    error!(call.function.locate(), "Invalid pattern in function position, expected a variable for an effect function");
+                    None
+                }
+            }
+        },
+        Ast::Return(_) => None,
+        _ => {
+            error!(pattern.locate(), "Invalid handle pattern. Handle patterns must be an effect function call or a return expression");
+            None
+        }
     }
 }
 
 impl<'c> Resolvable<'c> for ast::Handle<'c> {
     fn declare(&mut self, _resolver: &mut NameResolver, _cache: &mut ModuleCache<'c>) {}
 
-    fn define(&mut self, _resolver: &mut NameResolver, _cache: &mut ModuleCache<'c>) {
+    fn define(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'c>) {
+        self.expression.define(resolver, cache);
+
+        // A BTreeSet is used here over a HashSet to maintain a consistent
+        // ordering for the error message issued at the end.
+        let mut remaining_cases = BTreeSet::new();
+
+        for (pattern, rhs) in self.branches.iter_mut() {
+            resolver.push_scope(cache);
+            resolver.resolve_definitions(pattern, cache, || DefinitionKind::MatchPattern);
+
+            // Define an implicit 'resume' variable
+            let resume = resolver.push_definition("resume", cache, pattern.locate());
+            cache[resume].ignore_unused_warning = true;
+
+            rhs.define(resolver, cache);
+            resolver.pop_scope(cache, true, None);
+
+            if let Some(case) = get_handled_effect_function(pattern) {
+                // Remove the case from the remaining cases that we need to handle.
+                // If it was not in the list then it is part of a new effect for
+                // which we need to add the functions of to our remaining cases.
+                if !remaining_cases.remove(&case) {
+                    let info = &cache.definition_infos[case.0];
+
+                    match &info.definition {
+                        Some(DefinitionKind::EffectDefinition(effect)) => {
+                            let id = effect.effect_info.unwrap();
+                            remaining_cases.extend(cache[id].declarations.iter().copied());
+                            remaining_cases.remove(&case);
+                        },
+                        other => error!(pattern.locate(), "{} is not an effect: {:?}", info.name, other),
+                    }
+                }
+            }
+        }
+
+        if !remaining_cases.is_empty() {
+            let missing_cases = fmap(remaining_cases, |id| cache[id].name.clone()).join(", ");
+            error!(self.location, "Missing cases: {}", missing_cases);
+        }
     }
 }

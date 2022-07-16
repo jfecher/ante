@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use crate::error::location::Location;
 use crate::parser::ast::Ast;
@@ -99,7 +99,8 @@ fn prepend_argument_to_function<'a>(f: Ast<'a>, arg: Ast<'a>, location: Location
 ///
 /// So that we do not need to duplicate pattern matching logic inside Ast::Handle
 pub fn desugar_handle_branches_into_matches<'a>(branches: Vec<(Ast<'a>, Ast<'a>)>) -> Vec<(Ast<'a>, Ast<'a>)> {
-    let mut cases = HashMap::new();
+    // BTreeMap is used here for a deterministic ordering for tests
+    let mut cases = BTreeMap::new();
 
     for (pattern, branch) in branches {
         let (name, match_pattern, args_len, location) = match pattern {

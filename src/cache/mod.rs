@@ -17,7 +17,7 @@
 use crate::cache::unsafecache::UnsafeCache;
 use crate::error::location::{Locatable, Location};
 use crate::nameresolution::NameResolver;
-use crate::parser::ast::{Ast, Definition, TraitDefinition, TraitImpl, TypeAnnotation};
+use crate::parser::ast::{Ast, Definition, TraitDefinition, TraitImpl, TypeAnnotation, EffectDefinition};
 use crate::types::traits::{ConstraintSignature, RequiredImpl, RequiredTrait, TraitConstraintId};
 use crate::types::{GeneralizedType, Kind, LetBindingLevel, TypeBinding, EffectBinding};
 use crate::types::{Type, TypeInfo, TypeInfoBody, TypeInfoId, TypeVariableId};
@@ -156,6 +156,9 @@ pub enum DefinitionKind<'a> {
     /// A trait definition in the form `trait A a with ...`
     TraitDefinition(&'a mut TraitDefinition<'a>),
 
+    /// An effect definition in the form `effect E with ...`
+    EffectDefinition(&'a mut EffectDefinition<'a>),
+
     /// An extern FFI definition with no body
     Extern(&'a mut TypeAnnotation<'a>),
 
@@ -219,6 +222,10 @@ pub struct DefinitionInfo<'a> {
     /// Used to find mutual recursion sets. Technically unneeded since we can also
     /// check the call_graph, but this is faster and more readable.
     pub undergoing_type_inference: bool,
+
+    /// If true, avoid issuing a 'variable x is unused' warning
+    /// False by default.
+    pub ignore_unused_warning: bool,
 
     /// The type of this definition. Filled out during type inference,
     /// and is guarenteed to be Some afterward.
@@ -330,10 +337,10 @@ pub struct ImplInfo<'a> {
     pub trait_impl: &'a mut TraitImpl<'a>,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct EffectInfoId(pub usize);
 
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct EffectBindingId(pub usize);
 
 /// Corresponds to a `ast::EffectDefinition` node, carrying extra information
@@ -342,6 +349,8 @@ pub struct EffectBindingId(pub usize);
 pub struct EffectInfo<'a> {
     pub name: String,
 
+    pub effect_node: &'a mut EffectDefinition<'a>,
+
     /// Type variables on the effect declaration itself.
     /// Unlike traits, this may be empty.
     pub typeargs: Vec<TypeVariableId>,
@@ -349,6 +358,12 @@ pub struct EffectInfo<'a> {
     pub location: Location<'a>,
 
     pub declarations: Vec<DefinitionInfoId>,
+}
+
+impl<'a> Locatable<'a> for EffectInfo<'a> {
+    fn locate(&self) -> Location<'a> {
+        self.location
+    }
 }
 
 impl<'a> ModuleCache<'a> {
@@ -408,6 +423,7 @@ impl<'a> ModuleCache<'a> {
             mutually_recursive_set: None,
             undergoing_type_inference: false,
             mutually_recursive_variables: vec![],
+            ignore_unused_warning: name.starts_with('_'),
         });
         DefinitionInfoId(id)
     }
@@ -474,13 +490,14 @@ impl<'a> ModuleCache<'a> {
     }
 
     pub fn push_effect_definition(
-        &mut self, name: String, typeargs: Vec<TypeVariableId>,
+        &mut self, name: String, typeargs: Vec<TypeVariableId>, effect_node: &'a mut EffectDefinition<'a>,
         location: Location<'a>,
     ) -> EffectInfoId {
         let id = self.effect_infos.len();
         self.effect_infos.push(EffectInfo {
             name,
             typeargs,
+            effect_node,
             declarations: vec![],
             location,
         });
@@ -639,6 +656,7 @@ macro_rules! impl_index_for {
 impl_index_for!(DefinitionInfoId, DefinitionInfo, definition_infos);
 impl_index_for!(TypeInfoId, TypeInfo, type_infos);
 impl_index_for!(TraitInfoId, TraitInfo, trait_infos);
+impl_index_for!(EffectInfoId, EffectInfo, effect_infos);
 impl_index_for!(ImplInfoId, ImplInfo, impl_infos);
 impl_index_for!(VariableId, VariableInfo, variable_infos);
 
