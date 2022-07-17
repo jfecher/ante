@@ -471,50 +471,30 @@ parser!(match_expr loc =
     Ast::match_expr(expression, branches, loc)
 );
 
-/// Parse `identifier: type = expression`, type annotation and/or default value optionally
-fn param_maybe_default_value<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, (Ast<'b>, Option<Type<'b>>, Option<Ast<'b>>)> {
-    
-    parser!(default_value loc =
-        _ <- expect(Token::Equal);
-        expr !<- expression;
-        expr
-    );
-
-    parser!(just_type_annot loc -> 'b Type<'b> =
-        _ <- expect(Token::Colon);
-        typ !<- parse_type;
-        typ
-    );
-
-    parser!(name_typ_val loc -> 'b (Ast<'b>, Option<Type<'b>>, Option<Ast<'b>>) =
-        name <- variable;
-        typ !<- maybe(just_type_annot);
-        default !<- maybe(default_value);
-        (name, typ, default)
-    );
-
-    fn inside_parens<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, (Ast<'b>, Option<Type<'b>>, Option<Ast<'b>>)> {
-        match input[0].0 {
-            Token::Identifier(_) => name_typ_val(input),            
-            Token::ParenthesisLeft => parenthesized(inside_parens)(input),
-            _ => Err(ParseError::InRule("parameter with default value", input[0].1)),
-        }
-    }
-
-    // Default value is not allowed unless the whole expression is inside parens
-    match input[0].0 {
-        Token::Identifier(_) => variable(input).map(|(input, res, loc)| (input, (res, None, None), loc)),
-        Token::ParenthesisLeft => parenthesized(inside_parens)(input),
-        _ => Err(ParseError::InRule("parameter with default value", input[0].1)),
-    }
-}
-
 parser!(loop_expr loc =
     _ <- expect(Token::Loop);
-    args !<- many1(param_maybe_default_value);
+    args !<- many1(loop_param);
     _ !<- expect(Token::RightArrow);
     body !<- block_or_statement;
     desugar::desugar_loop(args, body, loc)
+);
+
+fn loop_param<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, (Ast<'b>, Ast<'b>)> {
+    or(&[loop_param_shorthand, loop_param_longform], "loop parameter")(input)
+}
+
+parser!(loop_param_shorthand loc -> 'b (Ast<'b>, Ast<'b>) =
+    arg <- pattern_argument;
+    (arg.clone(), arg)
+);
+
+parser!(loop_param_longform loc -> 'b (Ast<'b>, Ast<'b>) =
+    _ <- expect(Token::ParenthesisLeft);
+    parameter !<- pattern;
+    _ !<- expect(Token::Equal);
+    argument !<- expression;
+    _ !<- expect(Token::ParenthesisRight);
+    (parameter, argument)
 );
 
 parser!(not_expr loc =

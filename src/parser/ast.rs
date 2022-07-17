@@ -618,6 +618,8 @@ impl<'a> Ast<'a> {
         Ast::Assignment(Assignment { lhs: Box::new(lhs), rhs: Box::new(rhs), location, typ: None })
     }
 
+    /// This is a bit of a hack.
+    /// Create a new 'scope' by wrapping body in `match () | () -> body`
     pub fn new_scope(body: Ast<'a>, location: Location<'a>) -> Ast<'a> {
         Ast::match_expr(Ast::unit_literal(location), vec![(Ast::unit_literal(location), body)], location)
     }

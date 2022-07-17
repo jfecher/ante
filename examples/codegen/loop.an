@@ -1,12 +1,11 @@
 start = 10
-seq_sum =
-    loop start (sum = 0) ->
-        if start == 0 then sum
-        else recur (start - 1) (sum + start)
+seq_sum = loop start (sum = 0) ->
+    if start == 0 then sum
+    else recur (start - 1) (sum + start)
+
 print seq_sum
 
-collatz = 7
-loop collatz ->
+loop (collatz = 7) ->
     if collatz == 1 then 
         print ""
         return ()
@@ -16,20 +15,11 @@ loop collatz ->
     else recur (collatz * 3 + 1)
 
 s = 0
-loop (s: int) (t: int = 0) ->
+loop (s: i32) (t: i32 = 0) ->
     printne s
     printne t
     if s == 3 then return ()
     else recur (s + 1) (t + 1)
-
-()
-
-// currently doesn't compile 
-// row = 0
-// col = 0
-// loop row ->
-//     loop col ->
-//         print col
 
 // args: --delete-binary
 // expected stdout: 

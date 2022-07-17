@@ -1,0 +1,14 @@
+
+a = 0
+b = 1
+loop a (b: i32) (c: i32 = 2) (d = 3) ->
+    recur a b c d
+
+// args: --parse
+// expected stdout:
+// (a = 0);
+// (b = 1);
+// (match () (() 
+//     (recur = (fn a (: b i32) (: c i32) d -> (recur a b c d)));
+//     (recur a (: b i32) 2 3)
+// ))

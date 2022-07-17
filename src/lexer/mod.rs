@@ -487,7 +487,10 @@ impl<'cache, 'contents> Iterator for Lexer<'cache, 'contents> {
             (c, _) if c.is_digit(10) => self.lex_number(),
             (c, _) if c.is_alphanumeric() || c == '_' => self.lex_alphanumeric(),
             ('\0', _) => {
-                if self.current_position.index > self.file_contents.len() {
+                if self.current_indent_level != 0 {
+                    // Issue any pending unindent tokens before EndOfInput
+                    self.lex_unindent(0)
+                } else if self.current_position.index > self.file_contents.len() {
                     None
                 } else {
                     self.advance_with(Token::EndOfInput)
