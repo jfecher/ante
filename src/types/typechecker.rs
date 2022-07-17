@@ -100,6 +100,19 @@ impl UnificationBindings {
     }
 }
 
+struct TypeResult {
+    typ: Type,
+    traits: TraitConstraints,
+    effects: Effects,
+}
+
+impl TypeResult {
+    fn combine(&mut self, other: &mut Self) {
+        self.traits.append(&mut other.traits);
+        self.effects.append(&mut other.effects);
+    }
+}
+
 /// Convert a TypeApplication(UserDefinedType(id), args) into the set of TypeBindings
 /// so that each mapping in the bindings is in the form `var -> arg` where each variable
 /// was one of the variables given in the definition of the user-defined-type:
@@ -168,7 +181,8 @@ pub fn replace_all_typevars_with_bindings<'c>(
             let return_type = Box::new(replace_all_typevars_with_bindings(&function.return_type, new_bindings, cache));
             let environment = Box::new(replace_all_typevars_with_bindings(&function.environment, new_bindings, cache));
             let is_varargs = function.is_varargs;
-            Function(FunctionType { parameters, return_type, environment, is_varargs, effects: todo!() })
+            let effects = function.effects.replace_all_typevars_with_bindings(new_bindings, cache);
+            Function(FunctionType { parameters, return_type, environment, is_varargs, effects })
         },
         UserDefined(id) => UserDefined(*id),
 
@@ -238,7 +252,8 @@ pub fn bind_typevars<'c>(typ: &Type, type_bindings: &TypeBindings, cache: &Modul
             let return_type = Box::new(bind_typevars(&function.return_type, type_bindings, cache));
             let environment = Box::new(bind_typevars(&function.environment, type_bindings, cache));
             let is_varargs = function.is_varargs;
-            Function(FunctionType { parameters, return_type, environment, is_varargs, effects: todo!() })
+            let effects = function.effects.bind_typevars(type_bindings, cache);
+            Function(FunctionType { parameters, return_type, environment, is_varargs, effects })
         },
         UserDefined(id) => UserDefined(*id),
 
@@ -609,7 +624,7 @@ pub fn try_unify_with_bindings_inner<'b>(
 
             try_unify_with_bindings_inner(&function1.return_type, &function2.return_type, bindings, location, cache)?;
             try_unify_with_bindings_inner(&function1.environment, &function2.environment, bindings, location, cache)?;
-            Ok(())
+            function1.effects.try_unify_with_bindings(&function2.effects, bindings, location, cache)
         },
 
         (TypeApplication(a_constructor, a_args), TypeApplication(b_constructor, b_args)) => {
@@ -1169,6 +1184,7 @@ pub(super) fn bind_irrefutable_pattern<'c>(
             );
             bind_irrefutable_pattern(annotation.lhs.as_mut(), typ, required_traits, should_generalize, cache);
         },
+        // TODO: All struct patterns
         FunctionCall(call) if call.is_pair_constructor() => {
             let args = fmap(&call.args, |_| next_type_variable(cache));
             let pair_type = Box::new(Type::UserDefined(PAIR_TYPE));
@@ -1180,7 +1196,7 @@ pub(super) fn bind_irrefutable_pattern<'c>(
                 parameters: args,
                 return_type: Box::new(pair_type.clone()),
                 environment: Box::new(Type::Primitive(PrimitiveType::UnitType)),
-                effects: todo!(),
+                effects: Effects::none(),
                 is_varargs: false,
             });
 
@@ -1547,7 +1563,8 @@ impl<'a> Inferable<'a> for ast::Lambda<'a> {
             parameters: parameter_types,
             return_type: Box::new(return_type),
             environment: Box::new(infer_closure_environment(&self.closure_environment, cache)),
-            effects: todo!(),
+            // TODO: Insert effects from body
+            effects: Effects::any(cache),
             is_varargs: false,
         });
 
@@ -2015,13 +2032,13 @@ impl<'a> Inferable<'a> for ast::Assignment<'a> {
 }
 
 impl<'a> Inferable<'a> for ast::EffectDefinition<'a> {
-    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
+    fn infer_impl(&mut self, _cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
         (Type::Primitive(PrimitiveType::UnitType), vec![])
     }
 }
 
 impl<'a> Inferable<'a> for ast::Handle<'a> {
-    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
+    fn infer_impl(&mut self, _cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
         (Type::Primitive(PrimitiveType::UnitType), vec![])
     }
 }

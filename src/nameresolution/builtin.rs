@@ -8,8 +8,9 @@ use crate::cache::{DefinitionInfoId, DefinitionKind, ModuleCache};
 use crate::error::location::Location;
 use crate::lexer::token::{IntegerKind, Token};
 use crate::nameresolution::{declare_module, define_module, NameResolver};
+use crate::types::effects::Effects;
 use crate::types::{
-    Field, FunctionType, GeneralizedType, LetBindingLevel, PrimitiveType, Type, TypeInfoBody, PAIR_TYPE, STRING_TYPE, Effects,
+    Field, FunctionType, GeneralizedType, LetBindingLevel, PrimitiveType, Type, TypeInfoBody, PAIR_TYPE, STRING_TYPE,
 };
 
 use std::collections::HashSet;

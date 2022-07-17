@@ -46,11 +46,12 @@ use crate::error::{
 use crate::lexer::{token::Token, Lexer};
 use crate::nameresolution::scope::{FunctionScopes, Scope};
 use crate::parser::{self, ast, ast::Ast};
+use crate::types::effects::Effects;
 use crate::types::traits::ConstraintSignature;
 use crate::types::typed::Typed;
 use crate::types::{
     Field, FunctionType, GeneralizedType, LetBindingLevel, PrimitiveType, Type, TypeConstructor, TypeInfoBody,
-    TypeInfoId, TypeVariableId, INITIAL_LEVEL, STRING_TYPE, Effects,
+    TypeInfoId, TypeVariableId, INITIAL_LEVEL, STRING_TYPE,
 };
 use crate::util::{fmap, timing, trustme};
 

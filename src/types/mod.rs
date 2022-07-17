@@ -6,15 +6,17 @@
 //! definition of a user-defined type.
 use std::collections::BTreeMap;
 
-use crate::cache::{DefinitionInfoId, ModuleCache, EffectInfoId, EffectBindingId};
+use crate::cache::{DefinitionInfoId, ModuleCache};
 use crate::error::location::{Locatable, Location};
 use crate::lexer::token::IntegerKind;
 use crate::lifetimes;
 
+use crate::types::effects::Effects;
 use self::typeprinter::TypePrinter;
 
 mod error;
 mod mutual_recursion;
+pub mod effects;
 pub mod pattern;
 pub mod traitchecker;
 pub mod traits;
@@ -220,47 +222,6 @@ impl GeneralizedType {
         match self {
             GeneralizedType::MonoType(typ) => typ,
             GeneralizedType::PolyType(_, _) => unreachable!(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct Effects {
-    pub effects: Vec<Effect>,
-    pub rest: EffectEnd,
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub enum Effect {
-    Known(EffectInfoId, Vec<Type>),
-    Variable(TypeVariableId),
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub enum EffectEnd {
-    Open(EffectBindingId),
-    Closed,
-}
-
-#[derive(Debug)]
-pub enum EffectBinding {
-    Bound(Effects),
-    Unbound
-}
-
-impl Effects {
-    /// Create a new polymorphic effect set
-    pub fn any(cache: &mut ModuleCache) -> Effects {
-        Effects {
-            effects: vec![],
-            rest: EffectEnd::Open(cache.next_effect_binding_id()),
-        }
-    }
-
-    pub fn none() -> Effects {
-        Effects {
-            effects: vec![],
-            rest: EffectEnd::Closed,
         }
     }
 }

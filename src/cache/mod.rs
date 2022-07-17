@@ -18,8 +18,9 @@ use crate::cache::unsafecache::UnsafeCache;
 use crate::error::location::{Locatable, Location};
 use crate::nameresolution::NameResolver;
 use crate::parser::ast::{Ast, Definition, TraitDefinition, TraitImpl, TypeAnnotation, EffectDefinition};
+use crate::types::effects::EffectBinding;
 use crate::types::traits::{ConstraintSignature, RequiredImpl, RequiredTrait, TraitConstraintId};
-use crate::types::{GeneralizedType, Kind, LetBindingLevel, TypeBinding, EffectBinding};
+use crate::types::{GeneralizedType, Kind, LetBindingLevel, TypeBinding};
 use crate::types::{Type, TypeInfo, TypeInfoBody, TypeInfoId, TypeVariableId};
 use crate::util::stdlib_dir;
 
