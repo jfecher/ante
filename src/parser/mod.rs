@@ -436,6 +436,7 @@ fn expression<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
 fn term<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
     match input[0].0 {
         Token::If => if_expr(input),
+        Token::Loop => loop_expr(input),
         Token::Match => match_expr(input),
         _ => or(&[type_annotation, function_call, function_argument], "term")(input),
     }
@@ -468,6 +469,32 @@ parser!(match_expr loc =
     expression !<- block_or_statement;
     branches !<- many0(match_branch);
     Ast::match_expr(expression, branches, loc)
+);
+
+parser!(loop_expr loc =
+    _ <- expect(Token::Loop);
+    args !<- many1(loop_param);
+    _ !<- expect(Token::RightArrow);
+    body !<- block_or_statement;
+    desugar::desugar_loop(args, body, loc)
+);
+
+fn loop_param<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, (Ast<'b>, Ast<'b>)> {
+    or(&[loop_param_shorthand, loop_param_longform], "loop parameter")(input)
+}
+
+parser!(loop_param_shorthand loc -> 'b (Ast<'b>, Ast<'b>) =
+    arg <- pattern_argument;
+    (arg.clone(), arg)
+);
+
+parser!(loop_param_longform loc -> 'b (Ast<'b>, Ast<'b>) =
+    _ <- expect(Token::ParenthesisLeft);
+    parameter !<- pattern;
+    _ !<- expect(Token::Equal);
+    argument !<- expression;
+    _ !<- expect(Token::ParenthesisRight);
+    (parameter, argument)
 );
 
 parser!(not_expr loc =

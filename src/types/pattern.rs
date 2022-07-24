@@ -728,6 +728,7 @@ impl DecisionTreeResult {
 /// exhaustiveness and redundancy checking may occur. Additionally, codegen uses
 /// the resulting tree to efficiently compile pattern matching with the guarentee
 /// that no constructor is ever checked twice.
+#[derive(Clone)]
 pub enum DecisionTree {
     /// Success! run the code at the given branch index in the `ast::Match::branches`
     Leaf(usize),
@@ -743,6 +744,7 @@ pub enum DecisionTree {
 
 /// One Case of a DecisionTree::Switch, along with the branch of the DecisionTree to
 /// continue onto after this case is matched.
+#[derive(Clone)]
 pub struct Case {
     /// The constructor's tag to match on. If this is a match-all case, it is None.
     pub tag: Option<VariantTag>,
