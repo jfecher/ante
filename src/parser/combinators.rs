@@ -66,17 +66,16 @@ macro_rules! seq {
 /// the input at each step and unwrapping the result with `?`.
 /// In addition to `lhs <- rhs;` performing the monadic bind, there
 /// is `lhs !<- rhs;` which is equivalent to `lhs <- no_backtracking(rhs);`.
-/// The final expression given is wrapped in an `Ok((input, expr))`
+/// The final expression given is wrapped in an `Ok((input, expr, location))`
 ///
 /// for example:
-/// ```
+///
 /// parser!(basic_definition loc =
 ///     name <- variable;
 ///     _ <- expect(Token::Equal);
 ///     value !<- expression;
 ///     Expr::definition(name, value, loc, ())
 /// )
-/// ```
 macro_rules! parser {
     ( $name:ident $location:tt -> $lt:tt $return_type:ty = $($body:tt )* ) => {
         fn $name<'a, $lt>(input: $crate::parser::combinators::Input<'a, $lt>) -> error::ParseResult<'a, $lt, $return_type> {
