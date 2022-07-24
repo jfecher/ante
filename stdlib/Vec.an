@@ -72,14 +72,13 @@ remove_index (v: ref (Vec t)) (idx:usz) : t =
 //Uses == to determine element equality.
 //returns the index where the element was found.
 remove_first (v: ref (Vec t)) (elem: t) : Maybe usz =
-    go i =
-        if i >= v.len then None
+    loop (i = 0) ->
+        if i >= v.len then
+            None
         else if elem == v.data#i then
             remove_index v i
             Some i
-        else go (i + 1)
-
-    go 0
+        else recur (i + 1)
 
 //Remove the given indices from the vector
 //Expects the indices to be in sorted order.

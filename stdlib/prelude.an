@@ -6,7 +6,7 @@
 */
 
 //C functions
-extern 
+extern
     // varargs is not supported by the cranelift backend
     // printf: Ptr char - ... -> unit
     puts: Ptr char -> i32
@@ -379,7 +379,7 @@ impl Print isz with
 
 impl Print char with printne x = putchar x
 
-impl Print float with 
+impl Print float with
     printne = print_float
 
 // TODO: temporary, very inaccurate
@@ -431,23 +431,19 @@ print_signed (x: i64) (min: i64) (min_string: string) : unit =
         print_unsigned <| unwrap <| try_cast x
 
 print_string (s: string) : unit =
-    go (s2: string) i =
-        if i < s2.length then
-            off = offset (s2.c_string) i
+    loop s (i = 0) ->
+        if i < s.length then
+            off = offset (s.c_string) i
             c = deref_ptr off
             putchar c
-            go s2 (i + 1)
-
-    go s 0
+            recur s (i + 1)
 
 print_c_string (s: Ptr char) : unit =
-    go (s: Ptr char) i =
+    loop s (i = 0) ->
         c = deref_ptr (offset s i)
         if c != '\0' then
             putchar c
-            go s (i + 1)
-
-    go s 0
+            recur s (i + 1)
 
 impl Print bool with
     printne b =
@@ -633,7 +629,7 @@ impl Cast string OutFile with
 input msg : string =
     printne msg
 
-    go buffer len =
+    buffer, len = loop (buffer = null ()) (len = 0) ->
         c = getchar ()
         buffer2 = if len % 32 == 0
             then realloc buffer (len + 32)
@@ -642,11 +638,8 @@ input msg : string =
         buffer2#len := c
 
         if c != '\n'
-        then go buffer2 (len + 1) 
+        then recur buffer2 (len + 1)
         else buffer2, len
 
-    buffer, len = go (null ()) 0
-
     buffer#len := '\0'
-    ""
-    // string buffer len
+    string buffer len
