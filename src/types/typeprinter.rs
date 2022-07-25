@@ -14,6 +14,7 @@ use std::fmt::{Debug, Display, Formatter};
 
 use colored::*;
 
+use super::effects::{EffectBinding, EffectSet};
 use super::GeneralizedType;
 
 /// Wrapper containing the information needed to print out a type
@@ -197,6 +198,11 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
         }
 
         self.fmt_type(function.return_type.as_ref(), f)?;
+
+        write!(f, " {} ", "can".blue())?;
+
+        self.fmt_effects(&function.effects, f)?;
+
         write!(f, "{}", ")".blue())
     }
 
@@ -296,5 +302,26 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
                 }
             },
         }
+    }
+
+    fn fmt_effects(&self, effects: &EffectSet, f: &mut Formatter) -> std::fmt::Result {
+        let end = match &self.cache.effect_bindings[effects.replacement.0] {
+            EffectBinding::Bound(effects) => return self.fmt_effects(effects, f),
+            EffectBinding::Unbound => format!("e{}", effects.replacement.0),
+        };
+
+        for (effect_id, effect_args) in &effects.effects {
+            let name = &self.cache.effect_infos[effect_id.0].name;
+            write!(f, "{}", name.blue())?;
+
+            for arg in effect_args {
+                write!(f, " ")?;
+                self.fmt_type(arg, f)?;
+            }
+
+            write!(f, "{}", ", ".blue())?;
+        }
+
+        write!(f, "{}", end)
     }
 }

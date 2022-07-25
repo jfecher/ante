@@ -8,7 +8,7 @@ use crate::cache::{DefinitionInfoId, DefinitionKind, ModuleCache};
 use crate::error::location::Location;
 use crate::lexer::token::{IntegerKind, Token};
 use crate::nameresolution::{declare_module, define_module, NameResolver};
-use crate::types::effects::Effects;
+use crate::types::effects::EffectSet;
 use crate::types::{
     Field, FunctionType, GeneralizedType, LetBindingLevel, PrimitiveType, Type, TypeInfoBody, PAIR_TYPE, STRING_TYPE,
 };
@@ -46,18 +46,17 @@ pub fn define_builtins(cache: &mut ModuleCache) {
     define_pair(cache);
 
     let a = cache.next_type_variable_id(LetBindingLevel(1));
-    let info = &mut cache.definition_infos[id.0];
 
     let builtin_fn_type = Type::Function(FunctionType {
         parameters: vec![string_type],
         return_type: Box::new(Type::TypeVariable(a)),
-        environment: Box::new(Type::Primitive(PrimitiveType::UnitType)),
-        effects: Effects::none(),
+        environment: Box::new(Type::UNIT),
+        effects: EffectSet::any(cache),
         is_varargs: true,
     });
 
     let builtin_type = GeneralizedType::PolyType(vec![a], builtin_fn_type);
-    info.typ = Some(builtin_type);
+    cache.definition_infos[id.0].typ = Some(builtin_type);
 }
 
 /// The prelude is currently stored (along with the rest of the stdlib) in the
@@ -117,8 +116,8 @@ fn define_string(cache: &mut ModuleCache) -> Type {
     let constructor_type = Type::Function(FunctionType {
         parameters: vec![c_string_type, length_type],
         return_type: Box::new(string.clone()),
-        environment: Box::new(Type::Primitive(PrimitiveType::UnitType)),
-        effects: Effects::none(),
+        environment: Box::new(Type::UNIT),
+        effects: EffectSet::any(cache),
         is_varargs: false,
     });
 
@@ -158,8 +157,8 @@ fn define_pair(cache: &mut ModuleCache) {
     let constructor_type = Type::Function(FunctionType {
         parameters,
         return_type: pair_a_b,
-        environment: Box::new(Type::Primitive(PrimitiveType::UnitType)),
-        effects: Effects::none(),
+        environment: Box::new(Type::UNIT),
+        effects: EffectSet::any(cache),
         is_varargs: false,
     });
 

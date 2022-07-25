@@ -1,0 +1,14 @@
+effect Log with
+    log: string -> unit
+
+effect Use a with
+    get: unit -> a
+    set: a -> unit
+
+handle_basic () = 
+    handle log "test1"
+    | log s -> print s
+
+does_use x =
+    y = get ()
+    set (y + x)

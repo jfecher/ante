@@ -37,7 +37,7 @@
 //!   - `trait_info: Option<TraitInfoId>` for `ast::TraitDefinition`s and `ast::TraitImpl`s
 //!   - `impl_id: Option<ImplInfoId>` for `ast::TraitImpl`s
 //!   - `module_id: Option<ModuleId>` for `ast::Import`s,
-use crate::cache::{DefinitionInfoId, ModuleCache, ModuleId, EffectInfoId};
+use crate::cache::{DefinitionInfoId, EffectInfoId, ModuleCache, ModuleId};
 use crate::cache::{DefinitionKind, ImplInfoId, TraitInfoId};
 use crate::error::{
     self,
@@ -46,7 +46,7 @@ use crate::error::{
 use crate::lexer::{token::Token, Lexer};
 use crate::nameresolution::scope::{FunctionScopes, Scope};
 use crate::parser::{self, ast, ast::Ast};
-use crate::types::effects::Effects;
+use crate::types::effects::EffectSet;
 use crate::types::traits::ConstraintSignature;
 use crate::types::typed::Typed;
 use crate::types::{
@@ -58,7 +58,7 @@ use crate::util::{fmap, timing, trustme};
 use colored::Colorize;
 
 use std::borrow::Cow;
-use std::collections::{HashMap, BTreeSet};
+use std::collections::{BTreeSet, HashMap};
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
@@ -477,8 +477,8 @@ impl NameResolver {
     }
 
     fn push_effect<'c>(
-        &mut self, name: String, args: Vec<TypeVariableId>,
-        node: &'c mut ast::EffectDefinition<'c>, cache: &mut ModuleCache<'c>, location: Location<'c>,
+        &mut self, name: String, args: Vec<TypeVariableId>, node: &'c mut ast::EffectDefinition<'c>,
+        cache: &mut ModuleCache<'c>, location: Location<'c>,
     ) -> EffectInfoId {
         if let Some(existing_definition) = self.current_scope().effects.get(&name) {
             error!(location, "{} is already in scope", name);
@@ -512,11 +512,13 @@ impl NameResolver {
         id
     }
 
-    fn add_module_scope_and_import_impls<'c>(&mut self, relative_path: &str, location: Location<'c>, cache: &mut ModuleCache<'c>) -> Option<ModuleId> {
+    fn add_module_scope_and_import_impls<'c>(
+        &mut self, relative_path: &str, location: Location<'c>, cache: &mut ModuleCache<'c>,
+    ) -> Option<ModuleId> {
         if let Some(module_id) = declare_module(Path::new(&relative_path), cache, location) {
             self.current_scope().modules.insert(relative_path.to_owned(), module_id);
             if let Some(exports) = define_module(module_id, cache, location) {
-                self.current_scope().import_impls(exports, cache, );
+                self.current_scope().import_impls(exports, cache);
                 self.module_scopes.insert(module_id, exports.to_owned());
                 return Some(module_id);
             }
@@ -612,12 +614,12 @@ impl<'c> NameResolver {
             ast::Type::String(_) => Type::UserDefined(STRING_TYPE),
             ast::Type::Pointer(_) => Type::Primitive(PrimitiveType::Ptr),
             ast::Type::Boolean(_) => Type::Primitive(PrimitiveType::BooleanType),
-            ast::Type::Unit(_) => Type::Primitive(PrimitiveType::UnitType),
+            ast::Type::Unit(_) => Type::UNIT,
             ast::Type::Function(args, ret, is_varargs, _) => {
                 let parameters = fmap(args, |arg| self.convert_type(cache, arg));
                 let return_type = Box::new(self.convert_type(cache, ret));
-                let environment = Box::new(Type::Primitive(PrimitiveType::UnitType));
-                let effects = Effects::any(cache);
+                let environment = Box::new(Type::UNIT);
+                let effects = EffectSet::any(cache);
                 let is_varargs = *is_varargs;
                 Type::Function(FunctionType { parameters, return_type, environment, is_varargs, effects })
             },
@@ -629,7 +631,7 @@ impl<'c> NameResolver {
                         Type::TypeVariable(id)
                     } else {
                         error!(*location, "Type variable {} was not found in scope", name);
-                        Type::Primitive(PrimitiveType::UnitType)
+                        Type::UNIT
                     }
                 },
             },
@@ -637,7 +639,7 @@ impl<'c> NameResolver {
                 Some(id) => Type::UserDefined(id),
                 None => {
                     error!(*location, "Type {} was not found in scope", name);
-                    Type::Primitive(PrimitiveType::UnitType)
+                    Type::UNIT
                 },
             },
             ast::Type::TypeApplication(constructor, args, _) => {
@@ -652,7 +654,7 @@ impl<'c> NameResolver {
                     Some(id) => Type::UserDefined(id),
                     None => {
                         error!(*location, "The pair type (`,`) was not found in scope, there may have been a problem while importing the prelude");
-                        Type::Primitive(PrimitiveType::UnitType)
+                        Type::UNIT
                     },
                 };
 
@@ -844,8 +846,7 @@ impl<'c> Resolvable<'c> for ast::Variable<'c> {
                     self.impl_scope = Some(resolver.current_scope().impl_scope);
                     self.definition = resolver.reference_definition(&name, self.location, cache);
                     self.id = Some(cache.push_variable(name.into_owned(), self.location));
-                }
-                else {
+                } else {
                     // resolve module
                     let relative_path = self.module_prefix.join("/");
 
@@ -858,8 +859,7 @@ impl<'c> Resolvable<'c> for ast::Variable<'c> {
                         self.definition = resolver.module_scopes[&module_id].definitions.get(name.as_ref()).copied();
                         self.impl_scope = Some(resolver.current_scope().impl_scope);
                         self.id = Some(cache.push_variable(name.into_owned(), self.location));
-                    }
-                    else {
+                    } else {
                         error!(self.location, "Could not find module `{}`", relative_path);
                     }
                 }
@@ -983,7 +983,7 @@ impl<'c> Resolvable<'c> for ast::Match<'c> {
 /// Given "type T a b c = ..." return
 /// forall a b c. args -> T a b c
 fn create_variant_constructor_type(
-    parent_type_id: TypeInfoId, args: Vec<Type>, cache: &ModuleCache,
+    parent_type_id: TypeInfoId, args: Vec<Type>, cache: &mut ModuleCache,
 ) -> GeneralizedType {
     let info = &cache.type_infos[parent_type_id.0];
     let mut result = Type::UserDefined(parent_type_id);
@@ -999,13 +999,14 @@ fn create_variant_constructor_type(
         result = Type::Function(FunctionType {
             parameters: args,
             return_type: Box::new(result),
-            environment: Box::new(Type::Primitive(PrimitiveType::UnitType)),
-            effects: Effects::none(),
+            environment: Box::new(Type::UNIT),
+            effects: EffectSet::any(cache),
             is_varargs: false,
         });
     }
 
     // finally, wrap the type in a forall if it has type variables
+    let info = &cache.type_infos[parent_type_id.0];
     if !info.args.is_empty() {
         GeneralizedType::PolyType(info.args.clone(), result)
     } else {
@@ -1170,7 +1171,7 @@ pub fn declare_module<'a>(path: &Path, cache: &mut ModuleCache<'a>, error_locati
 }
 
 pub fn define_module<'a>(
-    module_id: ModuleId, cache: &mut ModuleCache<'a>, error_location: Location
+    module_id: ModuleId, cache: &mut ModuleCache<'a>, error_location: Location,
 ) -> Option<&'a Scope> {
     let import = cache.name_resolvers.get_mut(module_id.0).unwrap();
     match import.state {
@@ -1418,11 +1419,14 @@ impl<'c> Resolvable<'c> for ast::EffectDefinition<'c> {
         for declaration in self.declarations.iter_mut() {
             let definition = || DefinitionKind::EffectDefinition(trustme::make_mut(self_pointer));
 
-            println!("Declaring: {}", declaration.lhs);
             resolver.resolve_declarations(declaration.lhs.as_mut(), cache, definition);
 
             for definition in &resolver.definitions_collected {
                 cache[effect_id].declarations.push(*definition);
+            }
+
+            if !matches!(&declaration.rhs, ast::Type::Function(..)) {
+                error!(declaration.rhs.locate(), "Only function types are allowed in effect declarations");
             }
 
             resolver.auto_declare = true;
@@ -1445,20 +1449,24 @@ impl<'c> Resolvable<'c> for ast::EffectDefinition<'c> {
 
 fn get_handled_effect_function(pattern: &ast::Ast) -> Option<DefinitionInfoId> {
     match pattern {
-        Ast::FunctionCall(call) => {
-            match call.function.as_ref() {
-                Ast::Variable(variable) => variable.definition,
-                _ => {
-                    error!(call.function.locate(), "Invalid pattern in function position, expected a variable for an effect function");
-                    None
-                }
-            }
+        Ast::FunctionCall(call) => match call.function.as_ref() {
+            Ast::Variable(variable) => variable.definition,
+            _ => {
+                error!(
+                    call.function.locate(),
+                    "Invalid pattern in function position, expected a variable for an effect function"
+                );
+                None
+            },
         },
         Ast::Return(_) => None,
         _ => {
-            error!(pattern.locate(), "Invalid handle pattern. Handle patterns must be an effect function call or a return expression");
+            error!(
+                pattern.locate(),
+                "Invalid handle pattern. Handle patterns must be an effect function call or a return expression"
+            );
             None
-        }
+        },
     }
 }
 

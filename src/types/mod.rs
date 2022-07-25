@@ -11,12 +11,12 @@ use crate::error::location::{Locatable, Location};
 use crate::lexer::token::IntegerKind;
 use crate::lifetimes;
 
-use crate::types::effects::Effects;
 use self::typeprinter::TypePrinter;
+use crate::types::effects::EffectSet;
 
+pub mod effects;
 mod error;
 mod mutual_recursion;
-pub mod effects;
 pub mod pattern;
 pub mod traitchecker;
 pub mod traits;
@@ -55,7 +55,7 @@ pub struct FunctionType {
     pub parameters: Vec<Type>,
     pub return_type: Box<Type>,
     pub environment: Box<Type>,
-    pub effects: Effects,
+    pub effects: EffectSet,
     pub is_varargs: bool,
 }
 
@@ -123,6 +123,8 @@ pub enum GeneralizedType {
 }
 
 impl Type {
+    pub const UNIT: Type = Type::Primitive(PrimitiveType::UnitType);
+
     pub fn is_pair_type(&self) -> bool {
         self == &Type::UserDefined(PAIR_TYPE)
     }

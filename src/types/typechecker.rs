@@ -26,7 +26,7 @@
 //! - `typ: Option<Type>` for all nodes,
 //! - `trait_binding: Option<TraitBindingId>` for `ast::Variable`s,
 //! - `decision_tree: Option<DecisionTree>` for `ast::Match`s
-use crate::cache::{DefinitionInfoId, DefinitionKind, ModuleCache, TraitInfoId};
+use crate::cache::{DefinitionInfoId, DefinitionKind, EffectBindingId, EffectInfoId, ModuleCache, TraitInfoId};
 use crate::cache::{ImplScopeId, VariableId};
 use crate::error::location::{Locatable, Location};
 use crate::error::{get_error_count, ErrorMessage};
@@ -34,7 +34,7 @@ use crate::lexer::token::IntegerKind;
 use crate::parser::ast::{self, ClosureEnvironment};
 use crate::types::traits::{RequiredTrait, TraitConstraint, TraitConstraints};
 use crate::types::typed::Typed;
-use crate::types::Effects;
+use crate::types::EffectSet;
 use crate::types::{
     pattern, traitchecker, FunctionType, LetBindingLevel, PrimitiveType, Type, Type::*, TypeBinding, TypeBinding::*,
     TypeInfo, TypeVariableId, INITIAL_LEVEL, PAIR_TYPE, STRING_TYPE,
@@ -45,6 +45,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use super::effects::EffectBinding;
 use super::mutual_recursion::{definition_is_mutually_recursive, try_generalize_definition};
 use super::traits::{Callsite, ConstraintSignature, TraitConstraintId};
 use super::{error, GeneralizedType, TypeInfoBody};
@@ -65,6 +66,8 @@ pub type UnificationResult<'c> = Result<UnificationBindings, ErrorMessage<'c>>;
 
 type LevelBindings = Vec<(TypeVariableId, LetBindingLevel)>;
 
+type EffectBindings = HashMap<EffectBindingId, EffectSet>;
+
 /// Arbitrary limit of maximum recursive calls to functions like find_binding.
 /// Expected not to happen but leads to better errors than a stack overflow when it does.
 const RECURSION_LIMIT: u32 = 15;
@@ -73,11 +76,12 @@ const RECURSION_LIMIT: u32 = 15;
 pub struct UnificationBindings {
     pub bindings: TypeBindings,
     level_bindings: LevelBindings,
+    pub effect_bindings: EffectBindings,
 }
 
 impl UnificationBindings {
     pub fn empty() -> UnificationBindings {
-        UnificationBindings { bindings: HashMap::new(), level_bindings: vec![] }
+        UnificationBindings { bindings: HashMap::new(), level_bindings: vec![], effect_bindings: HashMap::new() }
     }
 
     pub fn perform(self, cache: &mut ModuleCache) {
@@ -92,6 +96,15 @@ impl UnificationBindings {
                 },
             }
         }
+
+        for (id, effects) in self.effect_bindings {
+            match &cache.effect_bindings[id.0] {
+                EffectBinding::Bound(_) => unreachable!(),
+                EffectBinding::Unbound => {
+                    cache.effect_bindings[id.0] = EffectBinding::Bound(effects);
+                },
+            }
+        }
     }
 
     pub fn extend(&mut self, mut other: UnificationBindings) {
@@ -100,16 +113,29 @@ impl UnificationBindings {
     }
 }
 
-struct TypeResult {
+pub struct TypeResult {
     typ: Type,
     traits: TraitConstraints,
-    effects: Effects,
+    effects: EffectSet,
 }
 
 impl TypeResult {
-    fn combine(&mut self, other: &mut Self) {
+    fn new(typ: Type, traits: TraitConstraints, cache: &mut ModuleCache) -> TypeResult {
+        Self { typ, traits, effects: EffectSet::any(cache) }
+    }
+
+    fn of(typ: Type, cache: &mut ModuleCache) -> TypeResult {
+        Self { typ, traits: vec![], effects: EffectSet::any(cache) }
+    }
+
+    fn with_type(mut self, typ: Type) -> TypeResult {
+        self.typ = typ;
+        self
+    }
+
+    fn combine(&mut self, other: &mut Self, cache: &mut ModuleCache) {
         self.traits.append(&mut other.traits);
-        self.effects.append(&mut other.effects);
+        self.effects = self.effects.combine(&other.effects, cache);
     }
 }
 
@@ -624,7 +650,8 @@ pub fn try_unify_with_bindings_inner<'b>(
 
             try_unify_with_bindings_inner(&function1.return_type, &function2.return_type, bindings, location, cache)?;
             try_unify_with_bindings_inner(&function1.environment, &function2.environment, bindings, location, cache)?;
-            function1.effects.try_unify_with_bindings(&function2.effects, bindings, location, cache)
+            function1.effects.try_unify_with_bindings(&function2.effects, bindings, cache);
+            Ok(())
         },
 
         (TypeApplication(a_constructor, a_args), TypeApplication(b_constructor, b_args)) => {
@@ -1040,19 +1067,19 @@ fn infer_nested_definition(
     let mut constraints = match definition {
         DefinitionKind::Definition(definition) => {
             let definition = trustme::extend_lifetime(*definition);
-            infer(definition, cache).1
+            infer(definition, cache).traits
         },
         DefinitionKind::TraitDefinition(definition) => {
             let definition = trustme::extend_lifetime(*definition);
-            infer(definition, cache).1
+            infer(definition, cache).traits
         },
         DefinitionKind::EffectDefinition(definition) => {
             let definition = trustme::extend_lifetime(*definition);
-            infer(definition, cache).1
+            infer(definition, cache).traits
         },
         DefinitionKind::Extern(declaration) => {
             let definition = trustme::extend_lifetime(*declaration);
-            infer(definition, cache).1
+            infer(definition, cache).traits
         },
         DefinitionKind::Parameter => vec![],
         DefinitionKind::MatchPattern => vec![],
@@ -1093,7 +1120,7 @@ fn infer_closure_environment<'c>(environment: &ClosureEnvironment, cache: &mut M
 
     if environment.is_empty() {
         // Non-closure functions have an environment of type unit
-        Primitive(PrimitiveType::UnitType)
+        Type::UNIT
     } else if environment.len() == 1 {
         environment.pop().unwrap()
     } else {
@@ -1132,14 +1159,9 @@ pub(super) fn bind_irrefutable_pattern<'c>(
     match ast {
         Literal(literal) => match literal.kind {
             LiteralKind::Unit => {
-                literal.set_type(Type::Primitive(PrimitiveType::UnitType));
-                unify(
-                    typ,
-                    &Type::Primitive(PrimitiveType::UnitType),
-                    ast.locate(),
-                    cache,
-                    "Expected a unit type from this pattern, but the corresponding value has the type $1",
-                );
+                literal.set_type(Type::UNIT);
+                let msg = "Expected a unit type from this pattern, but the corresponding value has the type $1";
+                unify(typ, &Type::UNIT, ast.locate(), cache, msg);
             },
             _ => error!(ast.locate(), "Pattern is not irrefutable"),
         },
@@ -1152,13 +1174,8 @@ pub(super) fn bind_irrefutable_pattern<'c>(
             if let Some(existing_type) = &info.typ {
                 match existing_type {
                     GeneralizedType::MonoType(existing_type) => {
-                        unify(
-                            &existing_type.clone(),
-                            typ,
-                            variable.location,
-                            cache,
-                            "variable type $2 does not match its declared type of $1",
-                        );
+                        let msg = "variable type $2 does not match its declared type of $1";
+                        unify(&existing_type.clone(), typ, variable.location, cache, msg);
                     },
                     GeneralizedType::PolyType(_, _) => {
                         unreachable!("Cannot unify a polytype: {}", existing_type.debug(cache))
@@ -1175,13 +1192,8 @@ pub(super) fn bind_irrefutable_pattern<'c>(
             info.typ = Some(typ);
         },
         TypeAnnotation(annotation) => {
-            unify(
-                typ,
-                annotation.typ.as_ref().unwrap(),
-                annotation.location,
-                cache,
-                "Pattern type $1 does not match the annotated type $2",
-            );
+            let msg = "Pattern type $1 does not match the annotated type $2";
+            unify(typ, annotation.typ.as_ref().unwrap(), annotation.location, cache, msg);
             bind_irrefutable_pattern(annotation.lhs.as_mut(), typ, required_traits, should_generalize, cache);
         },
         // TODO: All struct patterns
@@ -1195,8 +1207,8 @@ pub(super) fn bind_irrefutable_pattern<'c>(
             let function_type = Type::Function(FunctionType {
                 parameters: args,
                 return_type: Box::new(pair_type.clone()),
-                environment: Box::new(Type::Primitive(PrimitiveType::UnitType)),
-                effects: Effects::none(),
+                environment: Box::new(Type::UNIT),
+                effects: EffectSet::any(cache),
                 is_varargs: false,
             });
 
@@ -1277,20 +1289,18 @@ fn infer_trait_definition_traits(name: &str, trait_id: TraitInfoId, cache: &mut 
 }
 
 /// Perform some action for each variable within a pattern
-pub(super) fn fold_pattern<T>(pattern: &ast::Ast, mut init: T, f: &mut impl FnMut(&ast::Variable, T) -> T) -> T {
+pub(super) fn foreach_variable(pattern: &ast::Ast, f: &mut impl FnMut(&ast::Variable)) {
     use ast::Ast::*;
     match pattern {
-        Variable(variable) => f(variable, init),
-        TypeAnnotation(annotation) => fold_pattern(annotation.lhs.as_ref(), init, f),
+        Variable(variable) => f(variable),
+        TypeAnnotation(annotation) => foreach_variable(annotation.lhs.as_ref(), f),
         FunctionCall(call) => {
             for arg in &call.args {
-                init = fold_pattern(arg, init, f);
+                foreach_variable(arg, f);
             }
-            init
         },
         _ => {
             error!(pattern.locate(), "Invalid syntax in irrefutable pattern in trait impl, expected a pattern of some kind (a name, type annotation, or type constructor)");
-            init
         },
     }
 }
@@ -1314,7 +1324,7 @@ pub(super) fn fold_pattern<T>(pattern: &ast::Ast, mut init: T, f: &mut impl FnMu
 fn bind_irrefutable_pattern_in_impl<'a>(
     ast: &ast::Ast<'a>, trait_id: TraitInfoId, bindings: &mut TypeBindings, cache: &mut ModuleCache<'a>,
 ) {
-    fold_pattern(ast, (), &mut |variable, _| {
+    foreach_variable(ast, &mut |variable| {
         let name = variable.to_string();
         let trait_type = lookup_definition_type_in_trait(&name, trait_id, cache);
 
@@ -1328,7 +1338,7 @@ fn bind_irrefutable_pattern_in_impl<'a>(
 fn check_impl_propagated_traits(
     pattern: &ast::Ast, trait_id: TraitInfoId, given: &[ConstraintSignature], cache: &mut ModuleCache,
 ) {
-    fold_pattern(pattern, (), &mut |variable, _| {
+    foreach_variable(pattern, &mut |variable| {
         let name = variable.to_string();
 
         // Given a trait:
@@ -1407,51 +1417,54 @@ fn find_matching_trait(
 }
 
 fn initialize_pattern_types(pattern: &ast::Ast, cache: &mut ModuleCache) {
-    fold_pattern(pattern, (), &mut |variable, _| {
+    foreach_variable(pattern, &mut |variable| {
         mark_id_in_progress(variable.definition.unwrap(), cache);
     });
 }
 
 fn finish_pattern(pattern: &ast::Ast, cache: &mut ModuleCache) {
-    fold_pattern(pattern, (), &mut |variable, _| {
+    foreach_variable(pattern, &mut |variable| {
         mark_id_finished(variable.definition.unwrap(), cache);
     });
 }
 
 pub trait Inferable<'a> {
-    fn infer_impl(&mut self, checker: &mut ModuleCache<'a>) -> (Type, TraitConstraints);
+    fn infer_impl(&mut self, checker: &mut ModuleCache<'a>) -> TypeResult;
 }
 
 /// Compile an entire program, starting from main then lazily compiling
 /// each used function as it is called.
 pub fn infer_ast<'a>(ast: &mut ast::Ast<'a>, cache: &mut ModuleCache<'a>) {
     CURRENT_LEVEL.store(INITIAL_LEVEL, Ordering::SeqCst);
-    let (_, traits) = infer(ast, cache);
+    let result = infer(ast, cache);
     CURRENT_LEVEL.store(INITIAL_LEVEL - 1, Ordering::SeqCst);
 
-    let exposed_traits = traitchecker::resolve_traits(traits, &[], cache);
+    let exposed_traits = traitchecker::resolve_traits(result.traits, &[], cache);
     // No traits should be propogated above the top-level main function
     assert!(exposed_traits.is_empty());
+
+    // TODO: Better error message, check for IO effect
+    assert!(result.effects.effects.is_empty());
 }
 
-pub fn infer<'a, T>(ast: &mut T, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints)
+pub fn infer<'a, T>(ast: &mut T, cache: &mut ModuleCache<'a>) -> TypeResult
 where
     T: Inferable<'a> + Typed + std::fmt::Display,
 {
-    let (typ, traits) = ast.infer_impl(cache);
-    ast.set_type(typ.clone());
-    (typ, traits)
+    let result = ast.infer_impl(cache);
+    ast.set_type(result.typ.clone());
+    result
 }
 
 /// Note: each Ast's inference rule is given above the impl if available.
 impl<'a> Inferable<'a> for ast::Ast<'a> {
-    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
+    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> TypeResult {
         dispatch_on_expr!(self, Inferable::infer_impl, cache)
     }
 }
 
 impl<'a> Inferable<'a> for ast::Literal<'a> {
-    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
+    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> TypeResult {
         use ast::LiteralKind::*;
         match self.kind {
             Integer(x, kind) => {
@@ -1460,28 +1473,30 @@ impl<'a> Inferable<'a> for ast::Literal<'a> {
                     let int_type = next_type_variable_id(cache);
                     self.kind = Integer(x, IntegerKind::Inferred(int_type));
                     let int_trait = TraitConstraint::int_constraint(int_type, self.location, cache);
-                    (Type::TypeVariable(int_type), vec![int_trait])
+                    let mut result = TypeResult::of(Type::TypeVariable(int_type), cache);
+                    result.traits = vec![int_trait];
+                    result
                 } else {
-                    (Type::Primitive(PrimitiveType::IntegerType(kind)), vec![])
+                    TypeResult::of(Type::Primitive(PrimitiveType::IntegerType(kind)), cache)
                 }
             },
-            Float(_) => (Type::Primitive(PrimitiveType::FloatType), vec![]),
-            String(_) => (Type::UserDefined(STRING_TYPE), vec![]),
-            Char(_) => (Type::Primitive(PrimitiveType::CharType), vec![]),
-            Bool(_) => (Type::Primitive(PrimitiveType::BooleanType), vec![]),
-            Unit => (Type::Primitive(PrimitiveType::UnitType), vec![]),
+            Float(_) => TypeResult::of(Type::Primitive(PrimitiveType::FloatType), cache),
+            String(_) => TypeResult::of(Type::UserDefined(STRING_TYPE), cache),
+            Char(_) => TypeResult::of(Type::Primitive(PrimitiveType::CharType), cache),
+            Bool(_) => TypeResult::of(Type::Primitive(PrimitiveType::BooleanType), cache),
+            Unit => TypeResult::of(Type::UNIT, cache),
         }
     }
 }
 
-/* Var
- *   x : s ∊ cache
- *   t = instantiate s
- *   -----------
- *   infer cache x = t
+/*
+ *  x : s ∊ cache
+ *  t = instantiate s
+ *  --------------------- [Var]
+ *  infer cache x = t | ε
  */
 impl<'a> Inferable<'a> for ast::Variable<'a> {
-    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
+    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> TypeResult {
         let definition_id = self.definition.unwrap();
         let impl_scope = self.impl_scope.unwrap();
         let id = self.id.unwrap();
@@ -1519,21 +1534,17 @@ impl<'a> Inferable<'a> for ast::Variable<'a> {
 
         let (t, traits, mapping) = s.instantiate(traits, cache);
         self.instantiation_mapping = Rc::new(mapping);
-        (t, traits)
+        TypeResult::new(t, traits, cache)
     }
 }
 
-/* Abs
- *   arg_type1 = newvar ()
- *   arg_type2 = newvar ()
- *   ...
- *   arg_typeN = newvar ()
- *   infer body (x1:arg_type1 x2:arg_type2 ... xN:arg_typeN :: cache) = return_type
- *   -------------
- *   infer (fn arg1 arg2 ... argN -> body) cache = arg_type1 arg_type2 ... arg_typeN : return_type
+/*
+ * Γ, x:t1 ⊢ e:t2 | ε′
+ * -------------------------- [Lam]
+ * Γ ⊢ λx. e : t1 → t2 can ε′ | ε
  */
 impl<'a> Inferable<'a> for ast::Lambda<'a> {
-    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
+    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> TypeResult {
         // The newvars for the parameters are filled out during name resolution
         let parameter_types = fmap(&self.args, |_| next_type_variable(cache));
 
@@ -1543,70 +1554,64 @@ impl<'a> Inferable<'a> for ast::Lambda<'a> {
 
         bind_closure_environment(&mut self.closure_environment, cache);
 
-        let (return_type, traits) = if let Some(typ) = self.body.get_type() {
+        // return_type, traits
+        let body = if let Some(typ) = self.body.get_type() {
             // Check if user specified a return type
             let typ = typ.clone();
-            let (return_type, traits) = self.body.infer_impl(cache);
-            unify(
-                &typ,
-                &return_type,
-                self.location,
-                cache,
-                "Function body type $1 does not match declared return type of $2",
-            );
-            (typ, traits)
+            let body = self.body.infer_impl(cache);
+            let msg = "Function body type $1 does not match declared return type of $2";
+            unify(&typ, &body.typ, self.location, cache, msg);
+            body
         } else {
             infer(self.body.as_mut(), cache)
         };
 
         let typ = Function(FunctionType {
             parameters: parameter_types,
-            return_type: Box::new(return_type),
+            return_type: Box::new(body.typ),
             environment: Box::new(infer_closure_environment(&self.closure_environment, cache)),
-            // TODO: Insert effects from body
-            effects: Effects::any(cache),
+            effects: body.effects,
             is_varargs: false,
         });
 
-        (typ, traits)
+        TypeResult::new(typ, body.traits, cache)
     }
 }
 
-/* App
- *   infer cache function = f
- *   infer cache arg1 = t1
- *   infer cache arg2 = t2
- *   ...
- *   infer cache argN = tN
- *   return_type = newvar ()
- *   unify f (t1 t2 ... tN -> return_type)
- *   ---------------
- *   infer cache (function args) = return_type
+/*
+ * Γ ⊢ f: t2 → t can ε | ε    Γ ⊢ x: t2 | ε
+ * ----------------------------------------- [App]
+ *             Γ ⊢ f x : t | ε
  */
 impl<'a> Inferable<'a> for ast::FunctionCall<'a> {
-    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
-        let (f, mut traits) = infer(self.function.as_mut(), cache);
-        let (parameters, mut arg_traits) = fmap_mut_pair_flatten_second(&mut self.args, |arg| infer(arg, cache));
+    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> TypeResult {
+        let mut f = infer(self.function.as_mut(), cache);
+
+        let parameters = fmap(&mut self.args, |arg| {
+            let mut arg_result = infer(arg, cache);
+            f.combine(&mut arg_result, cache);
+            arg_result.typ
+        });
 
         let return_type = next_type_variable(cache);
-        traits.append(&mut arg_traits);
+        let new_effect = EffectSet::any(cache);
 
         let new_function = Function(FunctionType {
             parameters,
             return_type: Box::new(return_type.clone()),
             environment: Box::new(next_type_variable(cache)),
-            effects: Effects::any(cache),
+            effects: new_effect.clone(),
             is_varargs: false,
         });
 
         // Don't need a match here, but if we already know f is a function type
         // it improves error messages to unify parameter by parameter.
-        match try_unify(&f, &new_function, self.location, cache, "this error is never shown") {
+        match try_unify(&f.typ, &new_function, self.location, cache, "this error is never shown") {
             Ok(bindings) => bindings.perform(cache),
-            Err(_) => issue_argument_types_error(self, f, new_function, cache),
+            Err(_) => issue_argument_types_error(self, f.typ.clone(), new_function, cache),
         }
 
-        (return_type, traits)
+        f.with_type(return_type)
     }
 }
 
@@ -1644,11 +1649,11 @@ fn unwrap_functions(f: Type, new_function: Type, cache: &ModuleCache) -> (Functi
  *   infer cache (let pattern = expr in rest) = t'
  */
 impl<'a> Inferable<'a> for ast::Definition<'a> {
-    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
-        let unit = Type::Primitive(PrimitiveType::UnitType);
+    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> TypeResult {
+        let unit = Type::UNIT;
 
         if self.typ.is_some() {
-            return (unit, vec![]);
+            return TypeResult::of(unit, cache);
         }
 
         // Without this self.typ wouldn't be set yet while inferring the type of self.expr
@@ -1661,10 +1666,11 @@ impl<'a> Inferable<'a> for ast::Definition<'a> {
         let level = self.level.unwrap();
         let previous_level = CURRENT_LEVEL.swap(level.0, Ordering::SeqCst);
 
-        let (mut t, traits) = infer(self.expr.as_mut(), cache);
+        // t, traits
+        let mut result = infer(self.expr.as_mut(), cache);
         if self.mutable {
             let lifetime = next_type_variable_id(cache);
-            t = Type::TypeApplication(Box::new(Type::Ref(lifetime)), vec![t]);
+            result.typ = Type::TypeApplication(Box::new(Type::Ref(lifetime)), vec![result.typ]);
         }
 
         // The rhs of a Definition must be inferred at a greater LetBindingLevel than
@@ -1675,18 +1681,18 @@ impl<'a> Inferable<'a> for ast::Definition<'a> {
         // resolve_traits is called. For now it is sufficient to call bind_irrefutable_pattern
         // twice - the first time with no traits, however in the future bind_irrefutable_pattern
         // should be split up into two parts.
-        bind_irrefutable_pattern(self.pattern.as_mut(), &t, &[], false, cache);
+        bind_irrefutable_pattern(self.pattern.as_mut(), &result.typ, &[], false, cache);
 
         // TODO investigate this check, should be unneeded. It is breaking on the `input` function
         // in the stdlib.
         if self.pattern.get_type().is_none() {
-            self.pattern.set_type(t.clone());
+            self.pattern.set_type(result.typ.clone());
         }
 
         // If this definition is of a lambda or variable we try to generalize it,
         // which entails wrapping type variables in a forall, and finding which traits
         // usages of this definition require.
-        let traits = try_generalize_definition(self, t, traits, cache);
+        let traits = try_generalize_definition(self, result.typ, result.traits, cache);
 
         // TODO: Can these operations on the LetBindingLevel be simplified?
         CURRENT_LEVEL.store(previous_level, Ordering::SeqCst);
@@ -1695,90 +1701,66 @@ impl<'a> Inferable<'a> for ast::Definition<'a> {
         // definied within its pattern as no longer undergoing type inference
         finish_pattern(&self.pattern, cache);
 
-        (unit, traits)
+        TypeResult::new(unit, traits, cache)
     }
 }
 
 impl<'a> Inferable<'a> for ast::If<'a> {
-    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
-        let (condition, mut traits) = infer(self.condition.as_mut(), cache);
+    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> TypeResult {
+        let mut result = infer(self.condition.as_mut(), cache);
         let bool_type = Type::Primitive(PrimitiveType::BooleanType);
-        unify(
-            &condition,
-            &bool_type,
-            self.condition.locate(),
-            cache,
-            "$1 should be a bool to be used in an if condition",
-        );
 
-        let (then, mut then_traits) = infer(self.then.as_mut(), cache);
-        traits.append(&mut then_traits);
+        let msg = "$1 should be a bool to be used in an if condition";
+        unify(&result.typ, &bool_type, self.condition.locate(), cache, msg);
+
+        let mut then = infer(self.then.as_mut(), cache);
+        result.combine(&mut then, cache);
 
         if let Some(otherwise) = &mut self.otherwise {
-            let (otherwise, mut otherwise_traits) = infer(otherwise.as_mut(), cache);
-            traits.append(&mut otherwise_traits);
+            let mut otherwise = infer(otherwise.as_mut(), cache);
+            result.combine(&mut otherwise, cache);
 
-            unify(
-                &then,
-                &otherwise,
-                self.location,
-                cache,
-                "Expected 'then' and 'else' branch types to match, but found $1 and $2 respectively",
-            );
-            (then, traits)
+            let msg = "Expected 'then' and 'else' branch types to match, but found $1 and $2 respectively";
+            unify(&then.typ, &otherwise.typ, self.location, cache, msg);
+            result.with_type(then.typ)
         } else {
-            (Type::Primitive(PrimitiveType::UnitType), traits)
+            result.with_type(Type::UNIT)
         }
     }
 }
 
 impl<'a> Inferable<'a> for ast::Match<'a> {
-    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
+    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> TypeResult {
         let error_count = get_error_count();
 
-        let (expression, mut traits) = infer(self.expression.as_mut(), cache);
-        let mut return_type = Type::Primitive(PrimitiveType::UnitType);
+        let mut result = infer(self.expression.as_mut(), cache);
+        let mut return_type = Type::UNIT;
 
         if !self.branches.is_empty() {
             // Unroll the first iteration of inferring (pattern, branch) types so each
             // subsequent (pattern, branch) types can be unified against the first.
-            let (pattern_type, mut pattern_traits) = infer(&mut self.branches[0].0, cache);
+            let mut pattern = infer(&mut self.branches[0].0, cache);
+            result.combine(&mut pattern, cache);
 
-            traits.append(&mut pattern_traits);
-            unify(
-                &expression,
-                &pattern_type,
-                self.branches[0].0.locate(),
-                cache,
-                "This pattern of type $2 does not match the type $1 that is being matched on",
-            );
+            let msg = "This pattern of type $2 does not match the type $1 that is being matched on";
+            unify(&result.typ, &pattern.typ, self.branches[0].0.locate(), cache, msg);
 
-            let (branch, mut branch_traits) = infer(&mut self.branches[0].1, cache);
-            return_type = branch;
-            traits.append(&mut branch_traits);
+            let mut branch = infer(&mut self.branches[0].1, cache);
+            result.combine(&mut branch, cache);
+            return_type = branch.typ;
 
             for (pattern, branch) in self.branches.iter_mut().skip(1) {
-                let (pattern_type, mut pattern_traits) = infer(pattern, cache);
-                let (branch_type, mut branch_traits) = infer(branch, cache);
+                let mut pattern_result = infer(pattern, cache);
+                let mut branch_result = infer(branch, cache);
 
-                unify(
-                    &expression,
-                    &pattern_type,
-                    pattern.locate(),
-                    cache,
-                    "This pattern of type $2 does not match the type $1 that is being matched on",
-                );
+                let msg = "This pattern of type $2 does not match the type $1 that is being matched on";
+                unify(&result.typ, &pattern_result.typ, pattern.locate(), cache, msg);
 
-                unify(
-                    &return_type,
-                    &branch_type,
-                    branch.locate(),
-                    cache,
-                    "This branch's return type $2 does not match the previous branches which return $1",
-                );
+                let msg = "This branch's return type $2 does not match the previous branches which return $1";
+                unify(&return_type, &branch_result.typ, branch.locate(), cache, msg);
 
-                traits.append(&mut pattern_traits);
-                traits.append(&mut branch_traits);
+                result.combine(&mut pattern_result, cache);
+                result.combine(&mut branch_result, cache);
             }
         }
 
@@ -1792,57 +1774,52 @@ impl<'a> Inferable<'a> for ast::Match<'a> {
             self.decision_tree = Some(tree);
         }
 
-        (return_type, traits)
+        result.with_type(return_type)
     }
 }
 
 impl<'a> Inferable<'a> for ast::TypeDefinition<'a> {
-    fn infer_impl(&mut self, _cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
-        (Type::Primitive(PrimitiveType::UnitType), vec![])
+    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> TypeResult {
+        TypeResult::of(Type::UNIT, cache)
     }
 }
 
 impl<'a> Inferable<'a> for ast::TypeAnnotation<'a> {
-    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
-        let (typ, traits) = infer(self.lhs.as_mut(), cache);
-        unify(
-            &typ,
-            self.typ.as_mut().unwrap(),
-            self.location,
-            cache,
-            "Expression of type $1 does not match its annotated type $2",
-        );
-        (typ, traits)
+    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> TypeResult {
+        let lhs = infer(self.lhs.as_mut(), cache);
+
+        let msg = "Expression of type $1 does not match its annotated type $2";
+        unify(&lhs.typ, self.typ.as_mut().unwrap(), self.location, cache, msg);
+        lhs
     }
 }
 
 impl<'a> Inferable<'a> for ast::Import<'a> {
     /// Type checker doesn't need to follow imports.
     /// It typechecks definitions as-needed when it finds a variable whose type is still unknown.
-    fn infer_impl(&mut self, _cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
-        (Type::Primitive(PrimitiveType::UnitType), vec![])
+    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> TypeResult {
+        TypeResult::of(Type::UNIT, cache)
     }
 }
 
 impl<'a> Inferable<'a> for ast::TraitDefinition<'a> {
-    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
+    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> TypeResult {
         let previous_level = CURRENT_LEVEL.swap(self.level.unwrap().0, Ordering::SeqCst);
 
         for declaration in self.declarations.iter_mut() {
             let rhs = declaration.typ.as_ref().unwrap();
-
             bind_irrefutable_pattern(declaration.lhs.as_mut(), rhs, &[], true, cache);
         }
 
         CURRENT_LEVEL.store(previous_level, Ordering::SeqCst);
-        (Type::Primitive(PrimitiveType::UnitType), vec![])
+        TypeResult::of(Type::UNIT, cache)
     }
 }
 
 impl<'a> Inferable<'a> for ast::TraitImpl<'a> {
-    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
+    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> TypeResult {
         if self.typ.is_some() {
-            return (Type::Primitive(PrimitiveType::UnitType), vec![]);
+            return TypeResult::of(Type::UNIT, cache);
         }
 
         let trait_info = &cache.trait_infos[self.trait_info.unwrap().0];
@@ -1853,7 +1830,7 @@ impl<'a> Inferable<'a> for ast::TraitImpl<'a> {
         // Need to replace all typevars here so we do not rebind over them.
         // E.g. an impl for `Cmp a given Int a` could be accidentally bound to `Cmp usz`
         // TODO: Is the above comment correct? replace_all_typevars causes `impl Print (HashMap a b)`
-        //       in the stdlib to fail (the given list would need to use the same type bindings) 
+        //       in the stdlib to fail (the given list would need to use the same type bindings)
         //       and removing it still lets all tests pass, despite builtin_int.an
         //       testing several traits like `Add a given Int a` for several integer types.
         // let (trait_arg_types, _) = replace_all_typevars(&self.trait_arg_types, cache);
@@ -1877,7 +1854,8 @@ impl<'a> Inferable<'a> for ast::TraitImpl<'a> {
                 cache,
             );
 
-            let (_, traits) = infer(definition, cache);
+            // TODO: Check effects for trait impls
+            let definition_result = infer(definition, cache);
 
             // Need to check we only use traits that are `given` by the definition
             // in question or by the overall impl.
@@ -1890,7 +1868,7 @@ impl<'a> Inferable<'a> for ast::TraitImpl<'a> {
 
             // No traits should be propagated outside of the impl. The only way this can happen
             // is if the definition is not generalized and traits are used.
-            for trait_ in traits {
+            for trait_ in definition_result.traits {
                 error!(
                     definition.location,
                     "Definition requires {}, but it needs to be a function to add this trait",
@@ -1899,47 +1877,46 @@ impl<'a> Inferable<'a> for ast::TraitImpl<'a> {
             }
         }
 
-        (Type::Primitive(PrimitiveType::UnitType), vec![])
+        TypeResult::of(Type::UNIT, cache)
     }
 }
 
 impl<'a> Inferable<'a> for ast::Return<'a> {
-    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
-        let traits = infer(self.expression.as_mut(), cache).1;
-        (next_type_variable(cache), traits)
+    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> TypeResult {
+        let result = infer(self.expression.as_mut(), cache);
+        result.with_type(next_type_variable(cache))
     }
 }
 
 impl<'a> Inferable<'a> for ast::Sequence<'a> {
-    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
+    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> TypeResult {
         let ignore_len = self.statements.len() - 1;
-        let mut traits = vec![];
+        let mut result = TypeResult::of(Type::UNIT, cache);
 
         for statement in self.statements.iter_mut().take(ignore_len) {
-            let (_, mut statement_traits) = infer(statement, cache);
-            traits.append(&mut statement_traits);
+            result.combine(&mut infer(statement, cache), cache);
         }
 
-        let (last_statement_type, mut statement_traits) = infer(self.statements.last_mut().unwrap(), cache);
-        traits.append(&mut statement_traits);
-        (last_statement_type, traits)
+        let mut last = infer(self.statements.last_mut().unwrap(), cache);
+        result.combine(&mut last, cache);
+        result.with_type(last.typ)
     }
 }
 
 impl<'a> Inferable<'a> for ast::Extern<'a> {
-    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
+    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> TypeResult {
         let previous_level = CURRENT_LEVEL.swap(self.level.unwrap().0, Ordering::SeqCst);
         for declaration in self.declarations.iter_mut() {
             bind_irrefutable_pattern(declaration.lhs.as_mut(), declaration.typ.as_ref().unwrap(), &[], true, cache);
         }
         CURRENT_LEVEL.store(previous_level, Ordering::SeqCst);
-        (Type::Primitive(PrimitiveType::UnitType), vec![])
+        TypeResult::of(Type::UNIT, cache)
     }
 }
 
 impl<'a> Inferable<'a> for ast::MemberAccess<'a> {
-    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
-        let (mut collection_type, traits) = infer(self.lhs.as_mut(), cache);
+    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> TypeResult {
+        let mut result = infer(self.lhs.as_mut(), cache);
 
         let level = LetBindingLevel(CURRENT_LEVEL.load(Ordering::SeqCst));
         let mut field_type = cache.next_type_variable(level);
@@ -1947,15 +1924,9 @@ impl<'a> Inferable<'a> for ast::MemberAccess<'a> {
         if self.is_offset {
             let collection_variable = next_type_variable(cache);
             let expected = ref_of(collection_variable.clone(), cache);
-            unify(
-                &collection_type,
-                &expected,
-                self.lhs.locate(),
-                cache,
-                "Expected a struct reference but found $1 instead",
-            );
-
-            collection_type = collection_variable;
+            let msg = "Expected a struct reference but found $1 instead";
+            unify(&result.typ, &expected, self.lhs.locate(), cache, msg);
+            result.typ = collection_variable;
         }
 
         let mut fields = BTreeMap::new();
@@ -1965,80 +1936,95 @@ impl<'a> Inferable<'a> for ast::MemberAccess<'a> {
         let rho = cache.next_type_variable_id(level);
         let struct_type = Type::Struct(fields, rho);
 
-        // TODO: Make this error more specific, e.g. 'no such field', or wrong type for field
-        unify(
-            &collection_type,
-            &struct_type,
-            self.location,
-            cache,
-            &format!("$1 has no field {} of type $2", self.field),
-        );
+        let msg = &format!("$1 has no field {} of type $2", self.field);
+        unify(&result.typ, &struct_type, self.location, cache, msg);
 
         if self.is_offset {
             field_type = ref_of(field_type, cache);
         }
 
-        (field_type, traits)
+        result.with_type(field_type)
     }
 }
 
 impl<'a> Inferable<'a> for ast::Assignment<'a> {
-    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
-        let (lhs, mut traits) = infer(self.lhs.as_mut(), cache);
-        let (rhs, mut rhs_traits) = infer(self.rhs.as_mut(), cache);
-        traits.append(&mut rhs_traits);
+    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> TypeResult {
+        let mut result = infer(self.lhs.as_mut(), cache);
+        let mut rhs = infer(self.rhs.as_mut(), cache);
+        result.combine(&mut rhs, cache);
 
         let lifetime = next_type_variable_id(cache);
-        let mutref = Type::TypeApplication(Box::new(Type::Ref(lifetime)), vec![rhs.clone()]);
+        let mutref = Type::TypeApplication(Box::new(Type::Ref(lifetime)), vec![rhs.typ.clone()]);
 
-        match try_unify(&lhs, &mutref, self.location, cache, "never shown") {
+        match try_unify(&result.typ, &mutref, self.location, cache, "never shown") {
             Ok(bindings) => bindings.perform(cache),
-            Err(_) => {
-                // Try to offer a more specific error message
-                let lifetime = next_type_variable_id(cache);
-                let var = next_type_variable(cache);
-                let mutref = Type::TypeApplication(Box::new(Type::Ref(lifetime)), vec![var]);
-
-                if let Err(msg) = try_unify(
-                    &lhs,
-                    &mutref,
-                    self.lhs.locate(),
-                    cache,
-                    "Expression of type $1 must be a `ref a` type to be assigned to",
-                ) {
-                    eprintln!("{}", msg);
-                } else {
-                    let inner_type = match follow_bindings_in_cache(&lhs, cache) {
-                        TypeApplication(_, mut args) => args.remove(0),
-                        _ => unreachable!(),
-                    };
-
-                    let msg = try_unify(
-                        &inner_type,
-                        &rhs,
-                        self.location,
-                        cache,
-                        "Cannot assign expression of type $2 to a ref of type $1",
-                    )
-                    .unwrap_err();
-
-                    eprintln!("{}", msg);
-                }
-            },
+            Err(_) => issue_assignment_error(&result.typ, self.lhs.locate(), &rhs.typ, self.location, cache),
         }
 
-        (Type::Primitive(PrimitiveType::UnitType), traits)
+        result.with_type(Type::UNIT)
+    }
+}
+
+fn issue_assignment_error<'c>(
+    lhs: &Type, lhs_loc: Location<'c>, rhs: &Type, location: Location<'c>, cache: &mut ModuleCache<'c>,
+) {
+    // Try to offer a more specific error message
+    let lifetime = next_type_variable_id(cache);
+    let var = next_type_variable(cache);
+    let mutref = Type::TypeApplication(Box::new(Type::Ref(lifetime)), vec![var]);
+
+    let msg = "Expression of type $1 must be a `ref a` type to be assigned to";
+    if let Err(msg) = try_unify(&lhs, &mutref, lhs_loc, cache, msg) {
+        eprintln!("{}", msg);
+    } else {
+        let inner_type = match follow_bindings_in_cache(&lhs, cache) {
+            TypeApplication(_, mut args) => args.remove(0),
+            _ => unreachable!(),
+        };
+
+        let msg = "Cannot assign expression of type $2 to a ref of type $1";
+        let msg = try_unify(&inner_type, &rhs, location, cache, msg).unwrap_err();
+        eprintln!("{}", msg);
     }
 }
 
 impl<'a> Inferable<'a> for ast::EffectDefinition<'a> {
-    fn infer_impl(&mut self, _cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
-        (Type::Primitive(PrimitiveType::UnitType), vec![])
+    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> TypeResult {
+        let previous_level = CURRENT_LEVEL.swap(self.level.unwrap().0, Ordering::SeqCst);
+
+        let effect_id = self.effect_info.unwrap();
+        let effect_args = fmap(&cache[effect_id].typeargs, |id| TypeVariable(*id));
+
+        for declaration in self.declarations.iter_mut() {
+            let rhs = declaration.typ.as_ref().unwrap();
+            bind_irrefutable_pattern(declaration.lhs.as_mut(), rhs, &[], true, cache);
+
+            foreach_variable(&declaration.lhs, &mut |var| {
+                let info = &mut cache.definition_infos[var.definition.unwrap().0];
+                inject_effect(info, effect_id, effect_args.clone());
+            });
+        }
+
+        CURRENT_LEVEL.store(previous_level, Ordering::SeqCst);
+        TypeResult::of(Type::UNIT, cache)
+    }
+}
+
+fn inject_effect(info: &mut crate::cache::DefinitionInfo, effect_id: EffectInfoId, effect_args: Vec<Type>) {
+    match info.typ.as_mut().unwrap() {
+        GeneralizedType::MonoType(Type::Function(f)) => {
+            f.effects.effects.push((effect_id, effect_args));
+        },
+        GeneralizedType::PolyType(_, Type::Function(f)) => {
+            f.effects.effects.push((effect_id, effect_args));
+        },
+        // Name resolution should verify all effect declarations must have a function type
+        _ => (),
     }
 }
 
 impl<'a> Inferable<'a> for ast::Handle<'a> {
-    fn infer_impl(&mut self, _cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
-        (Type::Primitive(PrimitiveType::UnitType), vec![])
+    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> TypeResult {
+        TypeResult::of(Type::UNIT, cache)
     }
 }

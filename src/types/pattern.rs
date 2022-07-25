@@ -925,7 +925,7 @@ impl Case {
             Some(Literal(LiteralKind::Unit)) => unreachable!(),
             Some(True) => Type::Primitive(PrimitiveType::BooleanType),
             Some(False) => Type::Primitive(PrimitiveType::BooleanType),
-            Some(VariantTag::Unit) => Type::Primitive(PrimitiveType::UnitType),
+            Some(VariantTag::Unit) => Type::UNIT,
             None => expected_type.clone(),
         }
     }
