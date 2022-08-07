@@ -566,7 +566,7 @@ pub(super) fn occurs<'b>(
 ///
 /// Recurse within `haystack` to try to find an Unbound typevar and check if it
 /// has the same Id as the needle TypeVariableId.
-fn typevars_match<'c>(
+pub(super) fn typevars_match<'c>(
     needle: TypeVariableId, level: LetBindingLevel, haystack: TypeVariableId, bindings: &mut UnificationBindings,
     fuel: u32, cache: &mut ModuleCache<'c>,
 ) -> OccursResult {
@@ -1097,8 +1097,6 @@ fn infer_nested_definition(
     constraints.append(&mut to_trait_constraints(definition_id, impl_scope, callsite, cache));
 
     let info = &cache.definition_infos[definition_id.0];
-    println!("Inferred {} : {}", info.name, info.typ.as_ref().unwrap().debug(cache));
-
     (info.typ.clone().unwrap(), constraints)
 }
 
@@ -2009,9 +2007,6 @@ impl<'a> Inferable<'a> for ast::EffectDefinition<'a> {
             foreach_variable(&declaration.lhs, &mut |var| {
                 let info = &mut cache[var.definition.unwrap()];
                 inject_effect(info, effect_id, effect_args.clone());
-
-                let info = &cache[var.definition.unwrap()];
-                println!("In effect - {} : {}", info.name, info.typ.as_ref().unwrap().debug(cache));
             });
         }
 

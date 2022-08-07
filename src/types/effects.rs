@@ -39,18 +39,21 @@ impl EffectSet {
         }
     }
 
-    /// Since we map only from TypeVariableId to Type, this will always
-    /// instantiate the EffectEnd with a new type variable, is this desired?
     pub fn replace_all_typevars_with_bindings(
         &self, new_bindings: &mut TypeBindings, cache: &mut ModuleCache,
     ) -> EffectSet {
-        let new_id = typechecker::next_type_variable_id(cache);
-        let this = self.follow_bindings(cache);
+        if let TypeBinding::Bound(Type::Effects(effects)) = &cache.type_bindings[self.replacement.0] {
+            return effects.clone().replace_all_typevars_with_bindings(new_bindings, cache);
+        }
 
-        let replacement = new_id;
+        if let Some(Type::Effects(effects)) = new_bindings.get(&self.replacement) {
+            return effects.clone();
+        }
 
-        let effects = fmap(this.effects.clone(), |(id, args)| {
-            (id, fmap(args, |arg| typechecker::replace_all_typevars_with_bindings(&arg, new_bindings, cache)))
+        let replacement = typechecker::next_type_variable_id(cache);
+
+        let effects = fmap(&self.effects, |(id, args)| {
+            (*id, fmap(args, |arg| typechecker::replace_all_typevars_with_bindings(&arg, new_bindings, cache)))
         });
 
         EffectSet { effects, replacement }
@@ -62,11 +65,18 @@ impl EffectSet {
     /// unbound type variables that were not in type_bindings. Thus if type_bindings is empty,
     /// this function will just clone the original EffectSet.
     pub fn bind_typevars(&self, type_bindings: &TypeBindings, cache: &ModuleCache) -> EffectSet {
-        let this = self.follow_bindings(cache);
-        let effects = fmap(&this.effects, |(id, args)| {
+        if let TypeBinding::Bound(Type::Effects(effects)) = &cache.type_bindings[self.replacement.0] {
+            return effects.clone().bind_typevars(type_bindings, cache);
+        }
+
+        if let Some(Type::Effects(effects)) = type_bindings.get(&self.replacement) {
+            return effects.clone();
+        }
+
+        let effects = fmap(&self.effects, |(id, args)| {
             (*id, fmap(args, |arg| typechecker::bind_typevars(arg, type_bindings, cache)))
         });
-        EffectSet { effects, replacement: this.replacement }
+        EffectSet { effects, replacement: self.replacement }
     }
 
     pub fn try_unify_with_bindings(
@@ -113,7 +123,7 @@ impl EffectSet {
 
     pub fn find_all_typevars(&self, polymorphic_only: bool, cache: &ModuleCache) -> Vec<super::TypeVariableId> {
         let this = self.follow_bindings(cache);
-        let mut vars = vec![];
+        let mut vars = vec![this.replacement];
 
         for (_, args) in &this.effects {
             for arg in args {
@@ -125,6 +135,7 @@ impl EffectSet {
 
     pub fn contains_any_typevars_from_list(&self, list: &[super::TypeVariableId], cache: &ModuleCache) -> bool {
         let this = self.follow_bindings(cache);
+        list.contains(&this.replacement) ||
         this.effects
             .iter()
             .any(|(_, args)| args.iter().any(|arg| typechecker::contains_any_typevars_from_list(arg, list, cache)))
@@ -135,7 +146,7 @@ impl EffectSet {
         cache: &mut ModuleCache,
     ) -> OccursResult {
         let this = self.follow_bindings(cache).clone();
-        let mut result = OccursResult::does_not_occur();
+        let mut result = typechecker::typevars_match(id, level, this.replacement, bindings, fuel, cache);
 
         for (_, args) in &this.effects {
             result = result.then_all(args, |arg| typechecker::occurs(id, level, arg, bindings, fuel, cache));
