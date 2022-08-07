@@ -17,8 +17,7 @@
 use crate::cache::unsafecache::UnsafeCache;
 use crate::error::location::{Locatable, Location};
 use crate::nameresolution::NameResolver;
-use crate::parser::ast::{Ast, Definition, TraitDefinition, TraitImpl, TypeAnnotation, EffectDefinition};
-use crate::types::effects::EffectBinding;
+use crate::parser::ast::{Ast, Definition, EffectDefinition, TraitDefinition, TraitImpl, TypeAnnotation};
 use crate::types::traits::{ConstraintSignature, RequiredImpl, RequiredTrait, TraitConstraintId};
 use crate::types::{GeneralizedType, Kind, LetBindingLevel, TypeBinding};
 use crate::types::{Type, TypeInfo, TypeInfoBody, TypeInfoId, TypeVariableId};
@@ -74,9 +73,6 @@ pub struct ModuleCache<'a> {
     /// Unique TypeVariableIds are generated during name
     /// resolution and are unified during type inference
     pub type_bindings: Vec<TypeBinding>,
-
-    /// Maps EffectBindingId -> EffectBinding
-    pub effect_bindings: Vec<EffectBinding>,
 
     /// Maps TypeInfoId -> TypeInfo
     /// Filled out during name resolution
@@ -341,9 +337,6 @@ pub struct ImplInfo<'a> {
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct EffectInfoId(pub usize);
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct EffectBindingId(pub usize);
-
 /// Corresponds to a `ast::EffectDefinition` node, carrying extra information
 /// on it. These are filled out during name resolution.
 #[derive(Debug)]
@@ -388,7 +381,6 @@ impl<'a> ModuleCache<'a> {
             call_stack: vec![],
             mutual_recursion_sets: vec![],
             effect_infos: vec![],
-            effect_bindings: vec![],
         };
 
         // The Int constraint is used internally to default polymorphic integer literals
@@ -495,20 +487,8 @@ impl<'a> ModuleCache<'a> {
         location: Location<'a>,
     ) -> EffectInfoId {
         let id = self.effect_infos.len();
-        self.effect_infos.push(EffectInfo {
-            name,
-            typeargs,
-            effect_node,
-            declarations: vec![],
-            location,
-        });
+        self.effect_infos.push(EffectInfo { name, typeargs, effect_node, declarations: vec![], location });
         EffectInfoId(id)
-    }
-
-    pub fn next_effect_binding_id(&mut self) -> EffectBindingId {
-        let id = self.effect_bindings.len();
-        self.effect_bindings.push(EffectBinding::Unbound);
-        EffectBindingId(id)
     }
 
     pub fn push_impl_scope(&mut self) -> ImplScopeId {

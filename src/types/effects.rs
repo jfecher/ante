@@ -1,45 +1,40 @@
-use crate::cache::{EffectBindingId, EffectInfoId, ModuleCache};
+use crate::cache::{EffectInfoId, ModuleCache};
 use crate::types::typechecker::TypeBindings;
 use crate::types::Type;
 use crate::util::fmap;
 
-use super::typechecker::{self, UnificationBindings};
+use super::typechecker::{self, OccursResult, UnificationBindings};
+use super::{TypeVariableId, TypeBinding};
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct EffectSet {
     pub effects: Vec<Effect>,
-    pub replacement: EffectBindingId,
+    pub replacement: TypeVariableId,
 }
 
 pub type Effect = (EffectInfoId, Vec<Type>);
 
-#[derive(Debug)]
-pub enum EffectBinding {
-    Bound(EffectSet),
-    Unbound,
-}
-
 impl EffectSet {
     /// Create a new polymorphic effect set
     pub fn any(cache: &mut ModuleCache) -> EffectSet {
-        EffectSet { effects: vec![], replacement: cache.next_effect_binding_id() }
+        EffectSet { effects: vec![], replacement: typechecker::next_type_variable_id(cache) }
     }
 
     pub fn follow_bindings<'a>(&'a self, cache: &'a ModuleCache) -> &'a Self {
-        match &cache.effect_bindings[self.replacement.0] {
-            EffectBinding::Bound(effects) => effects.follow_bindings(cache),
-            EffectBinding::Unbound => self,
+        match &cache.type_bindings[self.replacement.0] {
+            TypeBinding::Bound(Type::Effects(effects)) => effects.follow_bindings(cache),
+            _ => self,
         }
     }
 
     pub fn follow_unification_bindings<'a>(
         &'a self, bindings: &'a UnificationBindings, cache: &'a ModuleCache,
     ) -> &'a Self {
-        match &cache.effect_bindings[self.replacement.0] {
-            EffectBinding::Bound(effects) => effects.follow_unification_bindings(bindings, cache),
-            EffectBinding::Unbound => match bindings.effect_bindings.get(&self.replacement) {
-                Some(effects) => effects.follow_unification_bindings(bindings, cache),
-                None => self,
+        match &cache.type_bindings[self.replacement.0] {
+            TypeBinding::Bound(Type::Effects(effects)) => effects.follow_unification_bindings(bindings, cache),
+            _ => match bindings.bindings.get(&self.replacement) {
+                Some(Type::Effects(effects)) => effects.follow_unification_bindings(bindings, cache),
+                _ => self,
             },
         }
     }
@@ -49,7 +44,7 @@ impl EffectSet {
     pub fn replace_all_typevars_with_bindings(
         &self, new_bindings: &mut TypeBindings, cache: &mut ModuleCache,
     ) -> EffectSet {
-        let new_id = cache.next_effect_binding_id();
+        let new_id = typechecker::next_type_variable_id(cache);
         let this = self.follow_bindings(cache);
 
         let replacement = new_id;
@@ -91,8 +86,8 @@ impl EffectSet {
         let mut new_effect = EffectSet::any(cache);
         new_effect.effects = new_effects;
 
-        bindings.effect_bindings.insert(a_id, new_effect.clone());
-        bindings.effect_bindings.insert(b_id, new_effect);
+        bindings.bindings.insert(a_id, Type::Effects(new_effect.clone()));
+        bindings.bindings.insert(b_id, Type::Effects(new_effect));
     }
 
     pub fn combine(&self, other: &EffectSet, cache: &mut ModuleCache) -> EffectSet {
@@ -110,9 +105,41 @@ impl EffectSet {
         let mut new_effect = EffectSet::any(cache);
         new_effect.effects = new_effects;
 
-        cache.effect_bindings[a_id.0] = EffectBinding::Bound(new_effect.clone());
-        cache.effect_bindings[b_id.0] = EffectBinding::Bound(new_effect.clone());
+        cache.type_bindings[a_id.0] = TypeBinding::Bound(Type::Effects(new_effect.clone()));
+        cache.type_bindings[b_id.0] = TypeBinding::Bound(Type::Effects(new_effect.clone()));
 
         new_effect
+    }
+
+    pub fn find_all_typevars(&self, polymorphic_only: bool, cache: &ModuleCache) -> Vec<super::TypeVariableId> {
+        let this = self.follow_bindings(cache);
+        let mut vars = vec![];
+
+        for (_, args) in &this.effects {
+            for arg in args {
+                vars.append(&mut typechecker::find_all_typevars(arg, polymorphic_only, cache));
+            }
+        }
+        vars
+    }
+
+    pub fn contains_any_typevars_from_list(&self, list: &[super::TypeVariableId], cache: &ModuleCache) -> bool {
+        let this = self.follow_bindings(cache);
+        this.effects
+            .iter()
+            .any(|(_, args)| args.iter().any(|arg| typechecker::contains_any_typevars_from_list(arg, list, cache)))
+    }
+
+    pub(super) fn occurs(
+        &self, id: super::TypeVariableId, level: super::LetBindingLevel, bindings: &mut UnificationBindings, fuel: u32,
+        cache: &mut ModuleCache,
+    ) -> OccursResult {
+        let this = self.follow_bindings(cache).clone();
+        let mut result = OccursResult::does_not_occur();
+
+        for (_, args) in &this.effects {
+            result = result.then_all(args, |arg| typechecker::occurs(id, level, arg, bindings, fuel, cache));
+        }
+        result
     }
 }

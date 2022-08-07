@@ -105,6 +105,11 @@ pub enum Type {
     /// This makes it so we don't have to remember previous types to combine
     /// when traversing bindings.
     Struct(BTreeMap<String, Type>, TypeVariableId),
+
+    /// Effects are not the same kind (*) as most Type variants, but
+    /// are included in it since they are still valid in a type position
+    /// most notably when substituting type variables for effects.
+    Effects(EffectSet),
 }
 
 #[derive(Debug, Clone)]
@@ -157,6 +162,7 @@ impl Type {
             UserDefined(id) => cache.type_infos[id.0].union_variants(),
             TypeVariable(_) => unreachable!("Constructors should always have concrete types"),
             Struct(_, _) => None,
+            Effects(_) => None,
         }
     }
 

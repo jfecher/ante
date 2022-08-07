@@ -14,7 +14,7 @@ use std::fmt::{Debug, Display, Formatter};
 
 use colored::*;
 
-use super::effects::{EffectBinding, EffectSet};
+use super::effects::EffectSet;
 use super::GeneralizedType;
 
 /// Wrapper containing the information needed to print out a type
@@ -162,6 +162,7 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             Type::TypeApplication(constructor, args) => self.fmt_type_application(constructor, args, f),
             Type::Ref(lifetime) => self.fmt_ref(*lifetime, f),
             Type::Struct(fields, rest) => self.fmt_struct(fields, *rest, f),
+            Type::Effects(effects) => self.fmt_effects(effects, f),
         }
     }
 
@@ -198,8 +199,6 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
         }
 
         self.fmt_type(function.return_type.as_ref(), f)?;
-
-        write!(f, " {} ", "can".blue())?;
 
         self.fmt_effects(&function.effects, f)?;
 
@@ -305,10 +304,12 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
     }
 
     fn fmt_effects(&self, effects: &EffectSet, f: &mut Formatter) -> std::fmt::Result {
-        let end = match &self.cache.effect_bindings[effects.replacement.0] {
-            EffectBinding::Bound(effects) => return self.fmt_effects(effects, f),
-            EffectBinding::Unbound => format!("e{}", effects.replacement.0),
-        };
+        match &self.cache.type_bindings[effects.replacement.0] {
+            TypeBinding::Bound(Type::Effects(effects)) => return self.fmt_effects(effects, f),
+            _ => (),
+        }
+
+        write!(f, "{}", " can ".blue())?;
 
         for (effect_id, effect_args) in &effects.effects {
             let name = &self.cache.effect_infos[effect_id.0].name;
@@ -322,6 +323,6 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             write!(f, "{}", ", ".blue())?;
         }
 
-        write!(f, "{}", end)
+        self.fmt_type_variable(effects.replacement, f)
     }
 }

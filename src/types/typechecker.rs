@@ -26,7 +26,7 @@
 //! - `typ: Option<Type>` for all nodes,
 //! - `trait_binding: Option<TraitBindingId>` for `ast::Variable`s,
 //! - `decision_tree: Option<DecisionTree>` for `ast::Match`s
-use crate::cache::{DefinitionInfoId, DefinitionKind, EffectBindingId, EffectInfoId, ModuleCache, TraitInfoId};
+use crate::cache::{DefinitionInfoId, DefinitionKind, EffectInfoId, ModuleCache, TraitInfoId};
 use crate::cache::{ImplScopeId, VariableId};
 use crate::error::location::{Locatable, Location};
 use crate::error::{get_error_count, ErrorMessage};
@@ -45,7 +45,6 @@ use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use super::effects::EffectBinding;
 use super::mutual_recursion::{definition_is_mutually_recursive, try_generalize_definition};
 use super::traits::{Callsite, ConstraintSignature, TraitConstraintId};
 use super::{error, GeneralizedType, TypeInfoBody};
@@ -66,8 +65,6 @@ pub type UnificationResult<'c> = Result<UnificationBindings, ErrorMessage<'c>>;
 
 type LevelBindings = Vec<(TypeVariableId, LetBindingLevel)>;
 
-type EffectBindings = HashMap<EffectBindingId, EffectSet>;
-
 /// Arbitrary limit of maximum recursive calls to functions like find_binding.
 /// Expected not to happen but leads to better errors than a stack overflow when it does.
 const RECURSION_LIMIT: u32 = 15;
@@ -76,12 +73,11 @@ const RECURSION_LIMIT: u32 = 15;
 pub struct UnificationBindings {
     pub bindings: TypeBindings,
     level_bindings: LevelBindings,
-    pub effect_bindings: EffectBindings,
 }
 
 impl UnificationBindings {
     pub fn empty() -> UnificationBindings {
-        UnificationBindings { bindings: HashMap::new(), level_bindings: vec![], effect_bindings: HashMap::new() }
+        UnificationBindings { bindings: HashMap::new(), level_bindings: vec![] }
     }
 
     pub fn perform(self, cache: &mut ModuleCache) {
@@ -93,15 +89,6 @@ impl UnificationBindings {
                 Unbound(original_level, kind) => {
                     let min_level = std::cmp::min(level, *original_level);
                     cache.type_bindings[id.0] = Unbound(min_level, kind.clone());
-                },
-            }
-        }
-
-        for (id, effects) in self.effect_bindings {
-            match &cache.effect_bindings[id.0] {
-                EffectBinding::Bound(_) => unreachable!(),
-                EffectBinding::Unbound => {
-                    cache.effect_bindings[id.0] = EffectBinding::Bound(effects);
                 },
             }
         }
@@ -239,6 +226,9 @@ pub fn replace_all_typevars_with_bindings<'c>(
                 Struct(fields, *id)
             }
         },
+        Effects(effects) => {
+            Effects(effects.replace_all_typevars_with_bindings(new_bindings, cache))
+        }
     }
 }
 
@@ -322,6 +312,9 @@ pub fn bind_typevars<'c>(typ: &Type, type_bindings: &TypeBindings, cache: &Modul
                 },
             }
         },
+        Effects(effects) => {
+            Effects(effects.bind_typevars(type_bindings, cache))
+        }
     }
 }
 
@@ -360,6 +353,7 @@ pub fn contains_any_typevars_from_list<'c>(typ: &Type, list: &[TypeVariableId], 
             function.parameters.iter().any(|parameter| contains_any_typevars_from_list(parameter, list, cache))
                 || contains_any_typevars_from_list(&function.return_type, list, cache)
                 || contains_any_typevars_from_list(&function.environment, list, cache)
+                || function.effects.contains_any_typevars_from_list(list, cache)
         },
 
         Ref(lifetime) => type_variable_contains_any_typevars_from_list(*lifetime, list, cache),
@@ -372,6 +366,7 @@ pub fn contains_any_typevars_from_list<'c>(typ: &Type, list: &[TypeVariableId], 
             type_variable_contains_any_typevars_from_list(*id, list, cache)
                 || fields.iter().any(|(_, field)| contains_any_typevars_from_list(field, list, cache))
         },
+        Effects(effects) => effects.contains_any_typevars_from_list(list, cache),
     }
 }
 
@@ -495,13 +490,13 @@ fn find_binding<'b>(id: TypeVariableId, map: &UnificationBindings, cache: &Modul
     }
 }
 
-struct OccursResult {
+pub(super) struct OccursResult {
     occurs: bool,
     level_bindings: LevelBindings,
 }
 
 impl OccursResult {
-    fn does_not_occur() -> OccursResult {
+    pub(super) fn does_not_occur() -> OccursResult {
         OccursResult { occurs: false, level_bindings: vec![] }
     }
 
@@ -518,7 +513,7 @@ impl OccursResult {
         self
     }
 
-    fn then_all<'a>(
+    pub(super) fn then_all<'a>(
         mut self, types: impl IntoIterator<Item = &'a Type>, mut f: impl FnMut(&'a Type) -> OccursResult,
     ) -> OccursResult {
         if !self.occurs {
@@ -540,7 +535,7 @@ impl OccursResult {
 /// Doing so increases the lifetime of the typevariable and lets us keep
 /// track of which type variables to generalize later on. It also means
 /// that occurs should only be called during unification however.
-fn occurs<'b>(
+pub(super) fn occurs<'b>(
     id: TypeVariableId, level: LetBindingLevel, typ: &Type, bindings: &mut UnificationBindings, fuel: u32,
     cache: &mut ModuleCache<'b>,
 ) -> OccursResult {
@@ -556,12 +551,14 @@ fn occurs<'b>(
         TypeVariable(var_id) => typevars_match(id, level, *var_id, bindings, fuel, cache),
         Function(function) => occurs(id, level, &function.return_type, bindings, fuel, cache)
             .then(|| occurs(id, level, &function.environment, bindings, fuel, cache))
+            .then(|| function.effects.occurs(id, level, bindings, fuel, cache))
             .then_all(&function.parameters, |param| occurs(id, level, param, bindings, fuel, cache)),
         TypeApplication(typ, args) => occurs(id, level, typ, bindings, fuel, cache)
             .then_all(args, |arg| occurs(id, level, arg, bindings, fuel, cache)),
         Ref(lifetime) => typevars_match(id, level, *lifetime, bindings, fuel, cache),
         Struct(fields, var_id) => typevars_match(id, level, *var_id, bindings, fuel, cache)
             .then_all(fields.iter().map(|(_, typ)| typ), |field| occurs(id, level, field, bindings, fuel, cache)),
+        Effects(effects) => effects.occurs(id, level, bindings, fuel, cache),
     }
 }
 
@@ -693,6 +690,11 @@ pub fn try_unify_with_bindings_inner<'b>(
             bindings.bindings.insert(*rest, other.clone());
             Ok(())
         },
+
+        (Effects(effects1), Effects(effects2)) => {
+            effects1.try_unify_with_bindings(effects2, bindings, cache);
+            Ok(())
+        }
 
         _ => Err(()),
     }
@@ -958,6 +960,7 @@ pub fn find_all_typevars<'a>(typ: &Type, polymorphic_only: bool, cache: &ModuleC
             }
             type_variables.append(&mut find_all_typevars(&function.environment, polymorphic_only, cache));
             type_variables.append(&mut find_all_typevars(&function.return_type, polymorphic_only, cache));
+            type_variables.append(&mut function.effects.find_all_typevars(polymorphic_only, cache));
             type_variables
         },
         TypeApplication(constructor, args) => {
@@ -978,6 +981,7 @@ pub fn find_all_typevars<'a>(typ: &Type, polymorphic_only: bool, cache: &ModuleC
                 vars
             },
         },
+        Effects(effects) => effects.find_all_typevars(polymorphic_only, cache),
     }
 }
 
@@ -1092,7 +1096,9 @@ fn infer_nested_definition(
 
     constraints.append(&mut to_trait_constraints(definition_id, impl_scope, callsite, cache));
 
-    let info = &mut cache.definition_infos[definition_id.0];
+    let info = &cache.definition_infos[definition_id.0];
+    println!("Inferred {} : {}", info.name, info.typ.as_ref().unwrap().debug(cache));
+
     (info.typ.clone().unwrap(), constraints)
 }
 
@@ -1594,13 +1600,13 @@ impl<'a> Inferable<'a> for ast::FunctionCall<'a> {
         });
 
         let return_type = next_type_variable(cache);
-        let new_effect = EffectSet::any(cache);
+        let new_effect = f.effects.clone();
 
         let new_function = Function(FunctionType {
             parameters,
             return_type: Box::new(return_type.clone()),
             environment: Box::new(next_type_variable(cache)),
-            effects: new_effect.clone(),
+            effects: new_effect,
             is_varargs: false,
         });
 
@@ -1997,11 +2003,15 @@ impl<'a> Inferable<'a> for ast::EffectDefinition<'a> {
 
         for declaration in self.declarations.iter_mut() {
             let rhs = declaration.typ.as_ref().unwrap();
+
             bind_irrefutable_pattern(declaration.lhs.as_mut(), rhs, &[], true, cache);
 
             foreach_variable(&declaration.lhs, &mut |var| {
-                let info = &mut cache.definition_infos[var.definition.unwrap().0];
+                let info = &mut cache[var.definition.unwrap()];
                 inject_effect(info, effect_id, effect_args.clone());
+
+                let info = &cache[var.definition.unwrap()];
+                println!("In effect - {} : {}", info.name, info.typ.as_ref().unwrap().debug(cache));
             });
         }
 
