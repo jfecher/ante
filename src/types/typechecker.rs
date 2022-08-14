@@ -1735,7 +1735,7 @@ impl<'a> Inferable<'a> for ast::Match<'a> {
         let error_count = get_error_count();
 
         let mut result = infer(self.expression.as_mut(), cache);
-        let mut return_type = Type::UNIT;
+        let mut return_type = next_type_variable(cache);
 
         if !self.branches.is_empty() {
             // Unroll the first iteration of inferring (pattern, branch) types so each
@@ -2033,6 +2033,37 @@ fn inject_effect(id: DefinitionInfoId, effect_id: EffectInfoId, effect_args: Vec
 
 impl<'a> Inferable<'a> for ast::Handle<'a> {
     fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> TypeResult {
-        TypeResult::of(Type::UNIT, cache)
+        let mut result = infer(self.expression.as_mut(), cache);
+        let mut return_type = next_type_variable(cache);
+
+        if !self.branches.is_empty() {
+            // Unroll the first iteration of inferring (pattern, branch) types so each
+            // subsequent (pattern, branch) types can be unified against the first.
+            let mut pattern = infer(&mut self.branches[0].0, cache);
+            result.combine(&mut pattern, cache);
+
+            let msg = "This pattern of type $2 does not match the type $1 that is being matched on";
+            unify(&result.typ, &pattern.typ, self.branches[0].0.locate(), cache, msg);
+
+            let mut branch = infer(&mut self.branches[0].1, cache);
+            result.combine(&mut branch, cache);
+            return_type = branch.typ;
+
+            for (pattern, branch) in self.branches.iter_mut().skip(1) {
+                let mut pattern_result = infer(pattern, cache);
+                let mut branch_result = infer(branch, cache);
+
+                let msg = "This pattern of type $2 does not match the type $1 that is being matched on";
+                unify(&result.typ, &pattern_result.typ, pattern.locate(), cache, msg);
+
+                let msg = "This branch's return type $2 does not match the previous branches which return $1";
+                unify(&return_type, &branch_result.typ, branch.locate(), cache, msg);
+
+                result.combine(&mut pattern_result, cache);
+                result.combine(&mut branch_result, cache);
+            }
+        }
+
+        result.with_type(return_type)
     }
 }
