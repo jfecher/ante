@@ -6,7 +6,6 @@ use crate::hir;
 use crate::nameresolution::builtin::BUILTIN_ID;
 use crate::parser::ast;
 use crate::parser::ast::ClosureEnvironment;
-use crate::types::effects::EffectSet;
 use crate::types::traits::{Callsite, RequiredImpl, TraitConstraintId};
 use crate::types::typechecker::{self, TypeBindings};
 use crate::types::typed::Typed;
@@ -196,7 +195,7 @@ impl<'c> Context<'c> {
                     parameters: fmap(&f.parameters, |param| self.follow_all_bindings_inner(param, fuel)),
                     return_type: Box::new(self.follow_all_bindings_inner(&f.return_type, fuel)),
                     environment: Box::new(self.follow_all_bindings_inner(&f.environment, fuel)),
-                    effects: self.follow_all_effect_bindings_inner(&f.effects, fuel),
+                    effects: Box::new(self.follow_all_bindings_inner(&f.effects, fuel)),
                     is_varargs: f.is_varargs,
                 };
                 Function(f)
@@ -219,18 +218,13 @@ impl<'c> Context<'c> {
                     Struct(fields, *id)
                 },
             },
-            Effects(effects) => Effects(self.follow_all_effect_bindings_inner(effects, fuel)),
+            Effects(effects) => self.follow_all_effect_bindings_inner(effects, fuel),
         }
     }
 
-    fn follow_all_effect_bindings_inner<'a>(&'a self, effects: &'a types::effects::EffectSet, fuel: u32) -> EffectSet {
+    fn follow_all_effect_bindings_inner<'a>(&'a self, effects: &'a types::effects::EffectSet, fuel: u32) -> types::Type {
         let replacement = match self.find_binding(effects.replacement, fuel) {
-            Ok(binding) => {
-                match self.follow_all_bindings_inner(binding, fuel) {
-                    types::Type::Effects(effects) => return effects,
-                    other => unreachable!("Unexpected {:?}", other),
-                }
-            }
+            Ok(binding) => return self.follow_all_bindings_inner(binding, fuel),
             Err(id) => id,
         };
 
@@ -239,7 +233,7 @@ impl<'c> Context<'c> {
             (*id, args)
         });
 
-        types::effects::EffectSet { effects, replacement }
+        types::Type::Effects(types::effects::EffectSet { effects, replacement })
     }
 
     fn size_of_struct_type(&mut self, info: &types::TypeInfo, fields: &[types::Field], args: &[types::Type]) -> usize {

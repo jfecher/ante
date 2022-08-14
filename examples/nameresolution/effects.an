@@ -22,8 +22,8 @@ handle ()
 | put () -> ()
 | three 0 1 -> ()
 
-
 // args: --check
+// expected stderr:
 // examples/nameresolution/effects.an:12:1	error: Missing cases: two, three
 // handle ()
 // 

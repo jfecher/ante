@@ -614,6 +614,10 @@ impl<'a> ModuleCache<'a> {
             }
         }
     }
+
+    pub fn bind(&mut self, id: TypeVariableId, binding: Type) {
+        self.type_bindings[id.0] = TypeBinding::Bound(binding);
+    }
 }
 
 macro_rules! impl_index_for {

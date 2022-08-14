@@ -22,8 +22,8 @@ puts2
 // 
 
 // expected stdout:
-// bar : (i32 - i32 -> i32)
-// baz : (forall a. (usz -> (Ptr a)))
-// exit2 : (forall a. (i32 -> a))
-// foo : (i32 - string -> char)
-// puts2 : ((Ptr char) -> i32)
+// bar : (forall a. (i32 - i32 -> i32 can a))
+// baz : (forall a b. (usz -> (Ptr a) can b))
+// exit2 : (forall a b. (i32 -> a can b))
+// foo : (forall a. (i32 - string -> char can a))
+// puts2 : (forall a. ((Ptr char) -> i32 can a))

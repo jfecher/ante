@@ -46,7 +46,6 @@ use crate::error::{
 use crate::lexer::{token::Token, Lexer};
 use crate::nameresolution::scope::{FunctionScopes, Scope};
 use crate::parser::{self, ast, ast::Ast};
-use crate::types::effects::EffectSet;
 use crate::types::traits::ConstraintSignature;
 use crate::types::typed::Typed;
 use crate::types::{
@@ -619,7 +618,7 @@ impl<'c> NameResolver {
                 let parameters = fmap(args, |arg| self.convert_type(cache, arg));
                 let return_type = Box::new(self.convert_type(cache, ret));
                 let environment = Box::new(Type::UNIT);
-                let effects = EffectSet::any(cache);
+                let effects = Box::new(cache.next_type_variable(self.let_binding_level));
                 let is_varargs = *is_varargs;
                 Type::Function(FunctionType { parameters, return_type, environment, is_varargs, effects })
             },
@@ -982,7 +981,7 @@ impl<'c> Resolvable<'c> for ast::Match<'c> {
 
 /// Given "type T a b c = ..." return
 /// forall a b c. args -> T a b c
-fn create_variant_constructor_type(
+fn create_variant_constructor_type(resolver: &mut NameResolver,
     parent_type_id: TypeInfoId, args: Vec<Type>, cache: &mut ModuleCache,
 ) -> GeneralizedType {
     let info = &cache.type_infos[parent_type_id.0];
@@ -994,21 +993,26 @@ fn create_variant_constructor_type(
         result = Type::TypeApplication(Box::new(result), type_variables);
     }
 
+    let mut type_args = info.args.clone();
+
     // Create the arguments to the function type if this type has arguments
     if !args.is_empty() {
+        let effect_id = cache.next_type_variable_id(resolver.let_binding_level);
+        type_args.push(effect_id);
+        let effects = Box::new(Type::TypeVariable(effect_id));
+
         result = Type::Function(FunctionType {
             parameters: args,
             return_type: Box::new(result),
             environment: Box::new(Type::UNIT),
-            effects: EffectSet::any(cache),
+            effects,
             is_varargs: false,
         });
     }
 
     // finally, wrap the type in a forall if it has type variables
-    let info = &cache.type_infos[parent_type_id.0];
-    if !info.args.is_empty() {
-        GeneralizedType::PolyType(info.args.clone(), result)
+    if !type_args.is_empty() {
+        GeneralizedType::PolyType(type_args, result)
     } else {
         GeneralizedType::MonoType(result)
     }
@@ -1022,15 +1026,18 @@ type Variants<'c> = Vec<(String, Vec<ast::Type<'c>>, Location<'c>)>;
 fn create_variants<'c>(
     vec: &Variants<'c>, parent_type_id: TypeInfoId, resolver: &mut NameResolver, cache: &mut ModuleCache<'c>,
 ) -> Vec<TypeConstructor<'c>> {
-    let mut index = 0;
+    let mut tag = 0;
     fmap(vec, |(name, types, location)| {
         let args = fmap(types, |t| resolver.convert_type(cache, t));
 
         let id = resolver.push_definition(name, cache, *location);
-        cache.definition_infos[id.0].typ = Some(create_variant_constructor_type(parent_type_id, args.clone(), cache));
+        let constructor_type = create_variant_constructor_type(resolver, parent_type_id, args.clone(), cache);
+
+        cache.definition_infos[id.0].typ = Some(constructor_type);
         cache.definition_infos[id.0].definition =
-            Some(DefinitionKind::TypeConstructor { name: name.clone(), tag: Some(index) });
-        index += 1;
+            Some(DefinitionKind::TypeConstructor { name: name.clone(), tag: Some(tag) });
+
+        tag += 1;
         TypeConstructor { name: name.clone(), args, id, location: *location }
     })
 }
@@ -1087,7 +1094,9 @@ impl<'c> Resolvable<'c> for ast::TypeDefinition<'c> {
                 // Create the constructor for this type.
                 // This is done inside create_variants for tagged union types
                 let id = resolver.push_definition(&self.name, cache, self.location);
-                cache.definition_infos[id.0].typ = Some(create_variant_constructor_type(type_id, field_types, cache));
+                let constructor_type = create_variant_constructor_type(resolver, type_id, field_types, cache);
+
+                cache.definition_infos[id.0].typ = Some(constructor_type);
                 cache.definition_infos[id.0].definition =
                     Some(DefinitionKind::TypeConstructor { name: self.name.clone(), tag: None });
             },

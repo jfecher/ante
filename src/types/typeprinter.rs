@@ -200,7 +200,8 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
 
         self.fmt_type(function.return_type.as_ref(), f)?;
 
-        self.fmt_effects(&function.effects, f)?;
+        write!(f, "{}", " can ".blue())?;
+        self.fmt_type(&function.effects, f)?;
 
         write!(f, "{}", ")".blue())
     }
@@ -309,7 +310,9 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             _ => (),
         }
 
-        write!(f, "{}", " can ".blue())?;
+        if !effects.effects.is_empty() {
+            write!(f, "{}", "(".blue())?;
+        }
 
         for (effect_id, effect_args) in &effects.effects {
             let name = &self.cache.effect_infos[effect_id.0].name;
@@ -323,6 +326,12 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             write!(f, "{}", ", ".blue())?;
         }
 
-        self.fmt_type_variable(effects.replacement, f)
+        self.fmt_type_variable(effects.replacement, f)?;
+
+        if !effects.effects.is_empty() {
+            write!(f, "{}", ")".blue())?;
+        }
+
+        Ok(())
     }
 }

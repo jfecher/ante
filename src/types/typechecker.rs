@@ -194,7 +194,7 @@ pub fn replace_all_typevars_with_bindings<'c>(
             let return_type = Box::new(replace_all_typevars_with_bindings(&function.return_type, new_bindings, cache));
             let environment = Box::new(replace_all_typevars_with_bindings(&function.environment, new_bindings, cache));
             let is_varargs = function.is_varargs;
-            let effects = function.effects.replace_all_typevars_with_bindings(new_bindings, cache);
+            let effects = Box::new(replace_all_typevars_with_bindings(&function.effects, new_bindings, cache));
             Function(FunctionType { parameters, return_type, environment, is_varargs, effects })
         },
         UserDefined(id) => UserDefined(*id),
@@ -268,7 +268,7 @@ pub fn bind_typevars<'c>(typ: &Type, type_bindings: &TypeBindings, cache: &Modul
             let return_type = Box::new(bind_typevars(&function.return_type, type_bindings, cache));
             let environment = Box::new(bind_typevars(&function.environment, type_bindings, cache));
             let is_varargs = function.is_varargs;
-            let effects = function.effects.bind_typevars(type_bindings, cache);
+            let effects = Box::new(bind_typevars(&function.effects, type_bindings, cache));
             Function(FunctionType { parameters, return_type, environment, is_varargs, effects })
         },
         UserDefined(id) => UserDefined(*id),
@@ -312,9 +312,7 @@ pub fn bind_typevars<'c>(typ: &Type, type_bindings: &TypeBindings, cache: &Modul
                 },
             }
         },
-        Effects(effects) => {
-            Effects(effects.bind_typevars(type_bindings, cache))
-        }
+        Effects(effects) => effects.bind_typevars(type_bindings, cache),
     }
 }
 
@@ -353,7 +351,7 @@ pub fn contains_any_typevars_from_list<'c>(typ: &Type, list: &[TypeVariableId], 
             function.parameters.iter().any(|parameter| contains_any_typevars_from_list(parameter, list, cache))
                 || contains_any_typevars_from_list(&function.return_type, list, cache)
                 || contains_any_typevars_from_list(&function.environment, list, cache)
-                || function.effects.contains_any_typevars_from_list(list, cache)
+                || contains_any_typevars_from_list(&function.effects, list, cache)
         },
 
         Ref(lifetime) => type_variable_contains_any_typevars_from_list(*lifetime, list, cache),
@@ -551,7 +549,7 @@ pub(super) fn occurs<'b>(
         TypeVariable(var_id) => typevars_match(id, level, *var_id, bindings, fuel, cache),
         Function(function) => occurs(id, level, &function.return_type, bindings, fuel, cache)
             .then(|| occurs(id, level, &function.environment, bindings, fuel, cache))
-            .then(|| function.effects.occurs(id, level, bindings, fuel, cache))
+            .then(|| occurs(id, level, &function.effects, bindings, fuel, cache))
             .then_all(&function.parameters, |param| occurs(id, level, param, bindings, fuel, cache)),
         TypeApplication(typ, args) => occurs(id, level, typ, bindings, fuel, cache)
             .then_all(args, |arg| occurs(id, level, arg, bindings, fuel, cache)),
@@ -647,8 +645,7 @@ pub fn try_unify_with_bindings_inner<'b>(
 
             try_unify_with_bindings_inner(&function1.return_type, &function2.return_type, bindings, location, cache)?;
             try_unify_with_bindings_inner(&function1.environment, &function2.environment, bindings, location, cache)?;
-            function1.effects.try_unify_with_bindings(&function2.effects, bindings, cache);
-            Ok(())
+            try_unify_with_bindings_inner(&function1.effects, &function2.effects, bindings, location, cache)
         },
 
         (TypeApplication(a_constructor, a_args), TypeApplication(b_constructor, b_args)) => {
@@ -934,12 +931,12 @@ pub fn perform_bindings_or_print_error<'c>(unification_result: UnificationResult
 /// permanently binding the given type variables to the given bindings.
 fn perform_type_bindings(bindings: TypeBindings, cache: &mut ModuleCache) {
     for (id, binding) in bindings.into_iter() {
-        cache.type_bindings[id.0] = Bound(binding);
+        cache.bind(id, binding);
     }
 }
 
 fn level_is_polymorphic(level: LetBindingLevel) -> bool {
-    level.0 > CURRENT_LEVEL.load(Ordering::SeqCst)
+    level.0 >= CURRENT_LEVEL.load(Ordering::SeqCst)
 }
 
 /// Collects all the type variables contained within typ into a Vec.
@@ -960,7 +957,7 @@ pub fn find_all_typevars<'a>(typ: &Type, polymorphic_only: bool, cache: &ModuleC
             }
             type_variables.append(&mut find_all_typevars(&function.environment, polymorphic_only, cache));
             type_variables.append(&mut find_all_typevars(&function.return_type, polymorphic_only, cache));
-            type_variables.append(&mut function.effects.find_all_typevars(polymorphic_only, cache));
+            type_variables.append(&mut find_all_typevars(&function.effects, polymorphic_only, cache));
             type_variables
         },
         TypeApplication(constructor, args) => {
@@ -987,13 +984,13 @@ pub fn find_all_typevars<'a>(typ: &Type, polymorphic_only: bool, cache: &ModuleC
 
 /// Helper for find_all_typevars which gets the TypeBinding for a given
 /// TypeVariableId and either recurses on it if it is bound or returns it.
-fn find_typevars_in_typevar_binding(
+pub(super) fn find_typevars_in_typevar_binding(
     id: TypeVariableId, polymorphic_only: bool, cache: &ModuleCache,
 ) -> Vec<TypeVariableId> {
     match &cache.type_bindings[id.0] {
         Bound(t) => find_all_typevars(t, polymorphic_only, cache),
         Unbound(level, _) => {
-            if level_is_polymorphic(*level) || !polymorphic_only {
+            if !polymorphic_only || level_is_polymorphic(*level) {
                 vec![id]
             } else {
                 vec![]
@@ -1212,7 +1209,7 @@ pub(super) fn bind_irrefutable_pattern<'c>(
                 parameters: args,
                 return_type: Box::new(pair_type.clone()),
                 environment: Box::new(Type::UNIT),
-                effects: EffectSet::any(cache),
+                effects: Box::new(next_type_variable(cache)),
                 is_varargs: false,
             });
 
@@ -1574,7 +1571,7 @@ impl<'a> Inferable<'a> for ast::Lambda<'a> {
             parameters: parameter_types,
             return_type: Box::new(body.typ),
             environment: Box::new(infer_closure_environment(&self.closure_environment, cache)),
-            effects: body.effects,
+            effects: Box::new(Type::Effects(body.effects)),
             is_varargs: false,
         });
 
@@ -1604,7 +1601,7 @@ impl<'a> Inferable<'a> for ast::FunctionCall<'a> {
             parameters,
             return_type: Box::new(return_type.clone()),
             environment: Box::new(next_type_variable(cache)),
-            effects: new_effect,
+            effects: Box::new(Type::Effects(new_effect)),
             is_varargs: false,
         });
 
@@ -2002,11 +1999,11 @@ impl<'a> Inferable<'a> for ast::EffectDefinition<'a> {
         for declaration in self.declarations.iter_mut() {
             let rhs = declaration.typ.as_ref().unwrap();
 
-            bind_irrefutable_pattern(declaration.lhs.as_mut(), rhs, &[], true, cache);
+            // Avoid generalizing until we inject the effect into each pattern's type
+            bind_irrefutable_pattern(declaration.lhs.as_mut(), rhs, &[], false, cache);
 
             foreach_variable(&declaration.lhs, &mut |var| {
-                let info = &mut cache[var.definition.unwrap()];
-                inject_effect(info, effect_id, effect_args.clone());
+                inject_effect(var.definition.unwrap(), effect_id, effect_args.clone(), cache);
             });
         }
 
@@ -2015,16 +2012,22 @@ impl<'a> Inferable<'a> for ast::EffectDefinition<'a> {
     }
 }
 
-fn inject_effect(info: &mut crate::cache::DefinitionInfo, effect_id: EffectInfoId, effect_args: Vec<Type>) {
-    match info.typ.as_mut().unwrap() {
-        GeneralizedType::MonoType(Type::Function(f)) => {
-            f.effects.effects.push((effect_id, effect_args));
-        },
-        GeneralizedType::PolyType(_, Type::Function(f)) => {
-            f.effects.effects.push((effect_id, effect_args));
+fn inject_effect(id: DefinitionInfoId, effect_id: EffectInfoId, effect_args: Vec<Type>, cache: &mut ModuleCache) {
+    let info = &mut cache[id];
+    let typ = info.typ.take().unwrap().into_monotype();
+
+    match &typ {
+        Type::Function(f) => {
+            let current_effects = f.effects.as_ref();
+            let location = info.location;
+            let extra_effect = Type::Effects(EffectSet::single(effect_id, effect_args, cache));
+            unify(current_effects, &extra_effect, location, cache, "ICE: This error should never be shown");
+
+            let generalized = generalize(&typ, cache);
+            cache[id].typ = Some(generalized);
         },
         // Name resolution should verify all effect declarations must have a function type
-        _ => (),
+        _ => unreachable!(),
     }
 }
 

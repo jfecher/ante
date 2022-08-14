@@ -1,6 +1,6 @@
 //! util/mod.rs - Various utility functions used throughout the compiler.
 //! Mostly consists of convenience functions for iterators such as `fmap`.
-use std::{fmt::Display, path::PathBuf, process::Command};
+use std::{fmt::Display, path::PathBuf, process::Command, collections::BTreeSet};
 
 #[macro_use]
 pub mod logging;
@@ -24,6 +24,23 @@ pub fn unwrap_clone<T: Clone>(option: &Option<T>) -> T {
 /// Convert each element to a String and join them with the given delimiter
 pub fn join_with<T: Display>(items: impl IntoIterator<Item = T>, delimiter: &str) -> String {
     fmap(items, |t| format!("{}", t)).join(delimiter)
+}
+
+/// Deduplicate the vec without changing the ordering of its elements
+pub fn dedup<T: Ord + Copy>(vec: Vec<T>) -> Vec<T> {
+    if vec.len() <= 1 {
+        vec
+    } else {
+        let mut seen = BTreeSet::new();
+        let mut result = Vec::with_capacity(vec.len());
+        for value in vec {
+            if !seen.contains(&value) {
+                seen.insert(value);
+                result.push(value);
+            }
+        }
+        result
+    }
 }
 
 pub fn link(object_filename: &str, binary_filename: &str) {

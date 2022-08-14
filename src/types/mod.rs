@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use crate::cache::{DefinitionInfoId, ModuleCache};
 use crate::error::location::{Locatable, Location};
 use crate::lexer::token::IntegerKind;
-use crate::lifetimes;
+use crate::{lifetimes, util};
 
 use self::typeprinter::TypePrinter;
 use crate::types::effects::EffectSet;
@@ -55,7 +55,9 @@ pub struct FunctionType {
     pub parameters: Vec<Type>,
     pub return_type: Box<Type>,
     pub environment: Box<Type>,
-    pub effects: EffectSet,
+
+    /// Expected to be a Type::Effects or Type::TypeVariable only
+    pub effects: Box<Type>,
     pub is_varargs: bool,
 }
 
@@ -195,14 +197,14 @@ impl GeneralizedType {
 
     pub fn find_all_typevars(&self, polymorphic_only: bool, cache: &ModuleCache) -> Vec<TypeVariableId> {
         match self {
-            GeneralizedType::MonoType(typ) => typechecker::find_all_typevars(typ, polymorphic_only, cache),
+            GeneralizedType::MonoType(typ) => util::dedup(typechecker::find_all_typevars(typ, polymorphic_only, cache)),
             GeneralizedType::PolyType(typevars, typ) => {
                 if polymorphic_only {
                     typevars.clone()
                 } else {
                     let mut vars = typevars.clone();
                     vars.append(&mut typechecker::find_all_typevars(typ, polymorphic_only, cache));
-                    vars
+                    util::dedup(vars)
                 }
             },
         }
