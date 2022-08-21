@@ -15,11 +15,11 @@ colored = "2.0.0"
 mimalloc = { version = "0.1.29", default-features = false }
 difference = "2.0.0"
 inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm13-0"], optional = true }
-cranelift = "0.82"
-cranelift-module = "0.82"
-cranelift-jit = "0.82"
-cranelift-object = "0.82"
-target-lexicon = "0.12.3"
+cranelift = "0.86.1"
+cranelift-module = "0.86.1"
+cranelift-jit = "0.86.1"
+cranelift-object = "0.86.1"
+target-lexicon = "0.12.4"
 
 [dev-dependencies]
 goldentests = "1.1.0"
