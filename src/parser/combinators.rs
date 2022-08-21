@@ -69,7 +69,7 @@ macro_rules! seq {
 /// The final expression given is wrapped in an `Ok((input, expr))`
 ///
 /// for example:
-/// ```
+/// ```txt
 /// parser!(basic_definition loc =
 ///     name <- variable;
 ///     _ <- expect(Token::Equal);
@@ -245,7 +245,13 @@ where
             match g(input) {
                 Ok((new_input, _, _)) => input = new_input,
                 Err(ParseError::Fatal(token)) => return Err(ParseError::Fatal(token)),
-                Err(e) => if required_g { return Err(e) } else { break },
+                Err(e) => {
+                    if required_g {
+                        return Err(e);
+                    } else {
+                        break;
+                    }
+                },
             }
             match f(input) {
                 Ok((new_input, t, location)) => {

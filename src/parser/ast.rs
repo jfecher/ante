@@ -24,7 +24,7 @@
 //! - Type inference fills out:
 //!   `typ: Option<Type>` for all nodes,
 //!   `decision_tree: Option<DecisionTree>` for `ast::Match`s
-use crate::cache::{DefinitionInfoId, ImplInfoId, ImplScopeId, ModuleId, TraitInfoId, VariableId, EffectInfoId};
+use crate::cache::{DefinitionInfoId, EffectInfoId, ImplInfoId, ImplScopeId, ModuleId, TraitInfoId, VariableId};
 use crate::error::location::{Locatable, Location};
 use crate::lexer::token::{IntegerKind, Token};
 use crate::types::pattern::DecisionTree;
@@ -655,8 +655,7 @@ impl<'a> Ast<'a> {
     }
 
     pub fn effect_definition(
-        name: String, args: Vec<String>, declarations: Vec<TypeAnnotation<'a>>,
-        location: Location<'a>,
+        name: String, args: Vec<String>, declarations: Vec<TypeAnnotation<'a>>, location: Location<'a>,
     ) -> Ast<'a> {
         Ast::EffectDefinition(EffectDefinition {
             name,

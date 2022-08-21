@@ -222,7 +222,9 @@ impl<'c> Context<'c> {
         }
     }
 
-    fn follow_all_effect_bindings_inner<'a>(&'a self, effects: &'a types::effects::EffectSet, fuel: u32) -> types::Type {
+    fn follow_all_effect_bindings_inner<'a>(
+        &'a self, effects: &'a types::effects::EffectSet, fuel: u32,
+    ) -> types::Type {
         let replacement = match self.find_binding(effects.replacement, fuel) {
             Ok(binding) => return self.follow_all_bindings_inner(binding, fuel),
             Err(id) => id,

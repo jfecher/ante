@@ -124,6 +124,11 @@ impl TypeResult {
         self.traits.append(&mut other.traits);
         self.effects = self.effects.combine(&other.effects, cache);
     }
+
+    fn handle_effects_from(&mut self, mut pattern: TypeResult, cache: &mut ModuleCache) {
+        self.traits.append(&mut pattern.traits);
+        self.effects.handle_effects_from(pattern.effects, cache);
+    }
 }
 
 /// Convert a TypeApplication(UserDefinedType(id), args) into the set of TypeBindings
@@ -226,9 +231,7 @@ pub fn replace_all_typevars_with_bindings<'c>(
                 Struct(fields, *id)
             }
         },
-        Effects(effects) => {
-            Effects(effects.replace_all_typevars_with_bindings(new_bindings, cache))
-        }
+        Effects(effects) => effects.replace_all_typevars_with_bindings(new_bindings, cache),
     }
 }
 
@@ -691,7 +694,7 @@ pub fn try_unify_with_bindings_inner<'b>(
         (Effects(effects1), Effects(effects2)) => {
             effects1.try_unify_with_bindings(effects2, bindings, cache);
             Ok(())
-        }
+        },
 
         _ => Err(()),
     }
@@ -2033,24 +2036,28 @@ fn inject_effect(id: DefinitionInfoId, effect_id: EffectInfoId, effect_args: Vec
 
 impl<'a> Inferable<'a> for ast::Handle<'a> {
     fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> TypeResult {
+        // TODO: Selectively remove effects from result
         let mut result = infer(self.expression.as_mut(), cache);
+
         let mut return_type = next_type_variable(cache);
 
         if !self.branches.is_empty() {
             // Unroll the first iteration of inferring (pattern, branch) types so each
             // subsequent (pattern, branch) types can be unified against the first.
-            let mut pattern = infer(&mut self.branches[0].0, cache);
-            result.combine(&mut pattern, cache);
+            let pattern = infer(&mut self.branches[0].0, cache);
 
             let msg = "This pattern of type $2 does not match the type $1 that is being matched on";
             unify(&result.typ, &pattern.typ, self.branches[0].0.locate(), cache, msg);
+
+            // Don't .combine to avoid propagating the effects from the pattern!
+            result.handle_effects_from(pattern, cache);
 
             let mut branch = infer(&mut self.branches[0].1, cache);
             result.combine(&mut branch, cache);
             return_type = branch.typ;
 
             for (pattern, branch) in self.branches.iter_mut().skip(1) {
-                let mut pattern_result = infer(pattern, cache);
+                let pattern_result = infer(pattern, cache);
                 let mut branch_result = infer(branch, cache);
 
                 let msg = "This pattern of type $2 does not match the type $1 that is being matched on";
@@ -2059,8 +2066,8 @@ impl<'a> Inferable<'a> for ast::Handle<'a> {
                 let msg = "This branch's return type $2 does not match the previous branches which return $1";
                 unify(&return_type, &branch_result.typ, branch.locate(), cache, msg);
 
-                result.combine(&mut pattern_result, cache);
                 result.combine(&mut branch_result, cache);
+                result.handle_effects_from(pattern_result, cache);
             }
         }
 

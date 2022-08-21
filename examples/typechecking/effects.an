@@ -19,6 +19,6 @@ does_use x =
 // does_use : (forall a b. (a -> unit can (Use a, b)))
 //   given Add a
 // get : (forall a b. (unit -> a can (Use a, b)))
-// handle_basic : (forall a. (unit -> unit can (Use unit, a)))
+// handle_basic : (forall a. (unit -> unit can (Use string, a)))
 // log : (forall a. (string -> unit can (Log, a)))
 // set : (forall a b. (a -> unit can (Use a, b)))

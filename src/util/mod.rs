@@ -1,6 +1,6 @@
 //! util/mod.rs - Various utility functions used throughout the compiler.
 //! Mostly consists of convenience functions for iterators such as `fmap`.
-use std::{fmt::Display, path::PathBuf, process::Command, collections::BTreeSet};
+use std::{collections::BTreeSet, fmt::Display, path::PathBuf, process::Command};
 
 #[macro_use]
 pub mod logging;

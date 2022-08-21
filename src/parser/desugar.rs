@@ -88,7 +88,7 @@ fn prepend_argument_to_function<'a>(f: Ast<'a>, arg: Ast<'a>, location: Location
 /// | set 0 a -> resume ()
 /// | get () -> foo resume 1 // test 'resume' is parsed as a normal identifier
 /// | set _ b -> resume ()
-/// 
+///
 /// To:
 /// handle foo + bar
 /// | set _$1 _$2 ->
@@ -104,24 +104,19 @@ pub fn desugar_handle_branches_into_matches<'a>(branches: Vec<(Ast<'a>, Ast<'a>)
 
     for (pattern, branch) in branches {
         let (name, match_pattern, args_len, location) = match pattern {
-            Ast::FunctionCall(call) => {
-                match call.function.as_ref() {
-                    Ast::Variable(name) => {
-                        let arg_len = call.args.len();
-                        let args = tuplify(call.args, call.location);
-                        (name.to_string(), args, arg_len, call.location)
-                    }
-                    _ => unreachable!("Invalid syntax in pattern of 'handle' expression"),
-                }
+            Ast::FunctionCall(call) => match call.function.as_ref() {
+                Ast::Variable(name) => {
+                    let arg_len = call.args.len();
+                    let args = tuplify(call.args, call.location);
+                    (name.to_string(), args, arg_len, call.location)
+                },
+                _ => unreachable!("Invalid syntax in pattern of 'handle' expression"),
             },
             Ast::Return(return_) => ("return".into(), *return_.expression, 1, return_.location),
             _ => unreachable!("Invalid syntax in pattern of 'handle' expression"),
         };
 
-        cases.entry((name, args_len))
-            .or_insert((vec![], location))
-            .0
-            .push((match_pattern, branch))
+        cases.entry((name, args_len)).or_insert((vec![], location)).0.push((match_pattern, branch))
     }
 
     fmap(cases, |((name, args_len), (branches, location))| {

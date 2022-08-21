@@ -10,8 +10,8 @@
 //! is significant because a type variable's scope is different
 //! than the general Scope for other symbols. See the TypeVariableScope
 //! struct for more details on this.
-use crate::cache::{DefinitionInfoId, ImplInfoId, ImplScopeId, ModuleCache, TraitInfoId, ModuleId, EffectInfoId};
-use crate::error::location::{Location, Locatable};
+use crate::cache::{DefinitionInfoId, EffectInfoId, ImplInfoId, ImplScopeId, ModuleCache, ModuleId, TraitInfoId};
+use crate::error::location::{Locatable, Location};
 use crate::parser::ast;
 use crate::types::{TypeInfoId, TypeVariableId};
 use std::collections::{HashMap, HashSet};
@@ -77,7 +77,9 @@ impl Scope {
         }
     }
 
-    fn import_definitions_types_and_traits(&mut self, other: &Scope, cache: &mut ModuleCache, location: Location, symbols: &HashSet<String>) {
+    fn import_definitions_types_and_traits(
+        &mut self, other: &Scope, cache: &mut ModuleCache, location: Location, symbols: &HashSet<String>,
+    ) {
         macro_rules! merge_table {
             ( $field:tt , $cache_field:tt , $errors:tt ) => {{
                 for (k, v) in other.$field.iter() {

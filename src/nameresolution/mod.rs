@@ -981,8 +981,8 @@ impl<'c> Resolvable<'c> for ast::Match<'c> {
 
 /// Given "type T a b c = ..." return
 /// forall a b c. args -> T a b c
-fn create_variant_constructor_type(resolver: &mut NameResolver,
-    parent_type_id: TypeInfoId, args: Vec<Type>, cache: &mut ModuleCache,
+fn create_variant_constructor_type(
+    resolver: &mut NameResolver, parent_type_id: TypeInfoId, args: Vec<Type>, cache: &mut ModuleCache,
 ) -> GeneralizedType {
     let info = &cache.type_infos[parent_type_id.0];
     let mut result = Type::UserDefined(parent_type_id);
