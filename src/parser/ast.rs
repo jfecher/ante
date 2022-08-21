@@ -24,7 +24,7 @@
 //! - Type inference fills out:
 //!   `typ: Option<Type>` for all nodes,
 //!   `decision_tree: Option<DecisionTree>` for `ast::Match`s
-use crate::cache::{DefinitionInfoId, ImplInfoId, ImplScopeId, ModuleId, TraitInfoId, VariableId};
+use crate::cache::{DefinitionInfoId, EffectInfoId, ImplInfoId, ImplScopeId, ModuleId, TraitInfoId, VariableId};
 use crate::error::location::{Locatable, Location};
 use crate::lexer::token::{IntegerKind, Token};
 use crate::types::pattern::DecisionTree;
@@ -172,7 +172,7 @@ pub struct If<'a> {
     pub typ: Option<types::Type>,
 }
 
-/// match expression with
+/// match expression
 /// | pattern1 -> branch1
 /// | pattern2 -> branch2
 /// ...
@@ -257,7 +257,7 @@ pub struct Import<'a> {
     pub symbols: HashSet<String>,
 }
 
-/// trait Name arg1 arg2 ... argN -> fundep1 fundep2 ... fundepN
+/// trait Name arg1 arg2 ... argN -> fundep1 fundep2 ... fundepN with
 ///     declaration1
 ///     declaration2
 ///     ...
@@ -352,6 +352,40 @@ pub struct Assignment<'a> {
     pub typ: Option<types::Type>,
 }
 
+/// effect Name arg1 arg2 ... argN with
+///     declaration1
+///     declaration2
+///     ...
+///     declarationN
+#[derive(Debug, Clone)]
+pub struct EffectDefinition<'a> {
+    pub name: String,
+    pub args: Vec<String>,
+
+    pub declarations: Vec<TypeAnnotation<'a>>,
+    pub level: Option<LetBindingLevel>,
+    pub location: Location<'a>,
+    pub effect_info: Option<EffectInfoId>,
+    pub typ: Option<types::Type>,
+}
+
+/// handle expression
+/// | pattern1 -> branch1
+/// | pattern2 -> branch2
+/// ...
+/// | patternN -> branchN
+///
+/// Handle expressions desugar to 1 case per
+/// effect or `return`, with any nested patterns
+/// deferring to match expressions.
+#[derive(Debug, Clone)]
+pub struct Handle<'a> {
+    pub expression: Box<Ast<'a>>,
+    pub branches: Vec<(Ast<'a>, Ast<'a>)>,
+    pub location: Location<'a>,
+    pub typ: Option<types::Type>,
+}
+
 #[derive(Debug, Clone)]
 pub enum Ast<'a> {
     Literal(Literal<'a>),
@@ -371,6 +405,8 @@ pub enum Ast<'a> {
     Extern(Extern<'a>),
     MemberAccess(MemberAccess<'a>),
     Assignment(Assignment<'a>),
+    EffectDefinition(EffectDefinition<'a>),
+    Handle(Handle<'a>),
 }
 
 unsafe impl<'c> Send for Ast<'c> {}
@@ -618,6 +654,25 @@ impl<'a> Ast<'a> {
         Ast::Assignment(Assignment { lhs: Box::new(lhs), rhs: Box::new(rhs), location, typ: None })
     }
 
+    pub fn effect_definition(
+        name: String, args: Vec<String>, declarations: Vec<TypeAnnotation<'a>>, location: Location<'a>,
+    ) -> Ast<'a> {
+        Ast::EffectDefinition(EffectDefinition {
+            name,
+            args,
+            declarations,
+            location,
+            level: None,
+            typ: None,
+            effect_info: None,
+        })
+    }
+
+    pub fn handle(expression: Ast<'a>, branches: Vec<(Ast<'a>, Ast<'a>)>, location: Location<'a>) -> Ast<'a> {
+        let branches = super::desugar::desugar_handle_branches_into_matches(branches);
+        Ast::Handle(Handle { expression: Box::new(expression), branches, location, typ: None })
+    }
+
     /// This is a bit of a hack.
     /// Create a new 'scope' by wrapping body in `match () | () -> body`
     pub fn new_scope(body: Ast<'a>, location: Location<'a>) -> Ast<'a> {
@@ -631,23 +686,25 @@ impl<'a> Ast<'a> {
 macro_rules! dispatch_on_expr {
     ( $expr_name:expr, $function:expr $(, $($args:expr),* )? ) => ({
         match $expr_name {
-            $crate::parser::ast::Ast::Literal(inner) =>         $function(inner $(, $($args),* )? ),
-            $crate::parser::ast::Ast::Variable(inner) =>        $function(inner $(, $($args),* )? ),
-            $crate::parser::ast::Ast::Lambda(inner) =>          $function(inner $(, $($args),* )? ),
-            $crate::parser::ast::Ast::FunctionCall(inner) =>    $function(inner $(, $($args),* )? ),
-            $crate::parser::ast::Ast::Definition(inner) =>      $function(inner $(, $($args),* )? ),
-            $crate::parser::ast::Ast::If(inner) =>              $function(inner $(, $($args),* )? ),
-            $crate::parser::ast::Ast::Match(inner) =>           $function(inner $(, $($args),* )? ),
-            $crate::parser::ast::Ast::TypeDefinition(inner) =>  $function(inner $(, $($args),* )? ),
-            $crate::parser::ast::Ast::TypeAnnotation(inner) =>  $function(inner $(, $($args),* )? ),
-            $crate::parser::ast::Ast::Import(inner) =>          $function(inner $(, $($args),* )? ),
-            $crate::parser::ast::Ast::TraitDefinition(inner) => $function(inner $(, $($args),* )? ),
-            $crate::parser::ast::Ast::TraitImpl(inner) =>       $function(inner $(, $($args),* )? ),
-            $crate::parser::ast::Ast::Return(inner) =>          $function(inner $(, $($args),* )? ),
-            $crate::parser::ast::Ast::Sequence(inner) =>        $function(inner $(, $($args),* )? ),
-            $crate::parser::ast::Ast::Extern(inner) =>          $function(inner $(, $($args),* )? ),
-            $crate::parser::ast::Ast::MemberAccess(inner) =>    $function(inner $(, $($args),* )? ),
-            $crate::parser::ast::Ast::Assignment(inner) =>      $function(inner $(, $($args),* )? ),
+            $crate::parser::ast::Ast::Literal(inner) =>          $function(inner $(, $($args),* )? ),
+            $crate::parser::ast::Ast::Variable(inner) =>         $function(inner $(, $($args),* )? ),
+            $crate::parser::ast::Ast::Lambda(inner) =>           $function(inner $(, $($args),* )? ),
+            $crate::parser::ast::Ast::FunctionCall(inner) =>     $function(inner $(, $($args),* )? ),
+            $crate::parser::ast::Ast::Definition(inner) =>       $function(inner $(, $($args),* )? ),
+            $crate::parser::ast::Ast::If(inner) =>               $function(inner $(, $($args),* )? ),
+            $crate::parser::ast::Ast::Match(inner) =>            $function(inner $(, $($args),* )? ),
+            $crate::parser::ast::Ast::TypeDefinition(inner) =>   $function(inner $(, $($args),* )? ),
+            $crate::parser::ast::Ast::TypeAnnotation(inner) =>   $function(inner $(, $($args),* )? ),
+            $crate::parser::ast::Ast::Import(inner) =>           $function(inner $(, $($args),* )? ),
+            $crate::parser::ast::Ast::TraitDefinition(inner) =>  $function(inner $(, $($args),* )? ),
+            $crate::parser::ast::Ast::TraitImpl(inner) =>        $function(inner $(, $($args),* )? ),
+            $crate::parser::ast::Ast::Return(inner) =>           $function(inner $(, $($args),* )? ),
+            $crate::parser::ast::Ast::Sequence(inner) =>         $function(inner $(, $($args),* )? ),
+            $crate::parser::ast::Ast::Extern(inner) =>           $function(inner $(, $($args),* )? ),
+            $crate::parser::ast::Ast::MemberAccess(inner) =>     $function(inner $(, $($args),* )? ),
+            $crate::parser::ast::Ast::Assignment(inner) =>       $function(inner $(, $($args),* )? ),
+            $crate::parser::ast::Ast::EffectDefinition(inner) => $function(inner $(, $($args),* )? ),
+            $crate::parser::ast::Ast::Handle(inner) =>           $function(inner $(, $($args),* )? ),
         }
     });
 }
@@ -685,6 +742,8 @@ impl_locatable_for!(Sequence);
 impl_locatable_for!(Extern);
 impl_locatable_for!(MemberAccess);
 impl_locatable_for!(Assignment);
+impl_locatable_for!(EffectDefinition);
+impl_locatable_for!(Handle);
 
 impl<'a> Locatable<'a> for Type<'a> {
     fn locate(&self) -> Location<'a> {

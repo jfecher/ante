@@ -1,0 +1,24 @@
+effect Log with
+    log: string -> unit
+
+effect Use a with
+    get: unit -> a
+    set: a -> unit
+
+// Expect `can Use unit` and not `can Log`
+handle_basic () = 
+    handle log "test1"
+    | log v -> set v
+
+does_use x =
+    y = get ()
+    set (y + x)
+
+// args: --check --show-types
+// expected stdout:
+// does_use : (forall a b. (a -> unit can (Use a, b)))
+//   given Add a
+// get : (forall a b. (unit -> a can (Use a, b)))
+// handle_basic : (forall a. (unit -> unit can (Use string, a)))
+// log : (forall a. (string -> unit can (Log, a)))
+// set : (forall a b. (a -> unit can (Use a, b)))

@@ -14,6 +14,7 @@ use std::fmt::{Debug, Display, Formatter};
 
 use colored::*;
 
+use super::effects::EffectSet;
 use super::GeneralizedType;
 
 /// Wrapper containing the information needed to print out a type
@@ -161,6 +162,7 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             Type::TypeApplication(constructor, args) => self.fmt_type_application(constructor, args, f),
             Type::Ref(lifetime) => self.fmt_ref(*lifetime, f),
             Type::Struct(fields, rest) => self.fmt_struct(fields, *rest, f),
+            Type::Effects(effects) => self.fmt_effects(effects, f),
         }
     }
 
@@ -197,6 +199,10 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
         }
 
         self.fmt_type(function.return_type.as_ref(), f)?;
+
+        write!(f, "{}", " can ".blue())?;
+        self.fmt_type(&function.effects, f)?;
+
         write!(f, "{}", ")".blue())
     }
 
@@ -296,5 +302,36 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
                 }
             },
         }
+    }
+
+    fn fmt_effects(&self, effects: &EffectSet, f: &mut Formatter) -> std::fmt::Result {
+        match &self.cache.type_bindings[effects.replacement.0] {
+            TypeBinding::Bound(Type::Effects(effects)) => return self.fmt_effects(effects, f),
+            _ => (),
+        }
+
+        if !effects.effects.is_empty() {
+            write!(f, "{}", "(".blue())?;
+        }
+
+        for (effect_id, effect_args) in &effects.effects {
+            let name = &self.cache.effect_infos[effect_id.0].name;
+            write!(f, "{}", name.blue())?;
+
+            for arg in effect_args {
+                write!(f, " ")?;
+                self.fmt_type(arg, f)?;
+            }
+
+            write!(f, "{}", ", ".blue())?;
+        }
+
+        self.fmt_type_variable(effects.replacement, f)?;
+
+        if !effects.effects.is_empty() {
+            write!(f, "{}", ")".blue())?;
+        }
+
+        Ok(())
     }
 }

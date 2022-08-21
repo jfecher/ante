@@ -126,6 +126,8 @@ impl<'c> Context<'c> {
             Extern(_) => unit_literal(),
             MemberAccess(member_access) => self.monomorphise_member_access(member_access),
             Assignment(assignment) => self.monomorphise_assignment(assignment),
+            EffectDefinition(_) => todo!(),
+            Handle(_) => todo!(),
         }
     }
 
@@ -193,6 +195,7 @@ impl<'c> Context<'c> {
                     parameters: fmap(&f.parameters, |param| self.follow_all_bindings_inner(param, fuel)),
                     return_type: Box::new(self.follow_all_bindings_inner(&f.return_type, fuel)),
                     environment: Box::new(self.follow_all_bindings_inner(&f.environment, fuel)),
+                    effects: Box::new(self.follow_all_bindings_inner(&f.effects, fuel)),
                     is_varargs: f.is_varargs,
                 };
                 Function(f)
@@ -215,7 +218,24 @@ impl<'c> Context<'c> {
                     Struct(fields, *id)
                 },
             },
+            Effects(effects) => self.follow_all_effect_bindings_inner(effects, fuel),
         }
+    }
+
+    fn follow_all_effect_bindings_inner<'a>(
+        &'a self, effects: &'a types::effects::EffectSet, fuel: u32,
+    ) -> types::Type {
+        let replacement = match self.find_binding(effects.replacement, fuel) {
+            Ok(binding) => return self.follow_all_bindings_inner(binding, fuel),
+            Err(id) => id,
+        };
+
+        let effects = fmap(&effects.effects, |(id, args)| {
+            let args = fmap(args, |arg| self.follow_all_bindings_inner(arg, fuel));
+            (*id, args)
+        });
+
+        types::Type::Effects(types::effects::EffectSet { effects, replacement })
     }
 
     fn size_of_struct_type(&mut self, info: &types::TypeInfo, fields: &[types::Field], args: &[types::Type]) -> usize {
@@ -318,6 +338,7 @@ impl<'c> Context<'c> {
                     fields.iter().map(|(_, field)| self.size_of_type(field)).sum()
                 }
             },
+            Effects(_) => unreachable!(),
         }
     }
 
@@ -506,6 +527,7 @@ impl<'c> Context<'c> {
 
                 Type::Tuple(fmap(fields, |(_, field)| self.convert_type_inner(field, fuel)))
             },
+            Effects(_) => unreachable!(),
         }
     }
 
@@ -763,6 +785,14 @@ impl<'c> Context<'c> {
             Some(DefinitionKind::TraitDefinition(_)) => {
                 unreachable!(
                     "Cannot monomorphise from a TraitDefinition.\nNo cached impl for {} {}: {}",
+                    info.name,
+                    id.0,
+                    typ.debug(&self.cache)
+                )
+            },
+            Some(DefinitionKind::EffectDefinition(_)) => {
+                unreachable!(
+                    "Cannot monomorphise from a EffectDefinition.\nNo cached handle for {} {}: {}",
                     info.name,
                     id.0,
                     typ.debug(&self.cache)

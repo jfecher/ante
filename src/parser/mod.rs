@@ -77,6 +77,7 @@ fn statement<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
         Token::Type => or(&[type_definition, type_alias], "statement")(input),
         Token::Import => import(input),
         Token::Trait => trait_definition(input),
+        Token::Effect => effect_definition(input),
         Token::Impl => trait_impl(input),
         Token::Return => return_expr(input),
         Token::Extern => parse_extern(input),
@@ -255,6 +256,14 @@ parser!(trait_body loc -> 'b Vec<ast::TypeAnnotation<'b>> =
     body
 );
 
+parser!(effect_definition loc =
+    _ <- expect(Token::Effect);
+    name !<- typename;
+    args !<- many0(identifier);
+    body <- trait_body;
+    Ast::effect_definition(name, args, body, loc)
+);
+
 parser!(trait_body_single loc -> 'b Vec<ast::TypeAnnotation<'b>> =
     body <- declaration;
     vec![body]
@@ -325,7 +334,7 @@ parser!(parse_extern loc =
     Ast::extern_expr(declarations, loc)
 );
 
-parser!(extern_block _loc -> 'b Vec<ast::TypeAnnotation<'b>>=
+parser!(extern_block _loc -> 'b Vec<ast::TypeAnnotation<'b>> =
     _ <- expect(Token::Indent);
     declarations !<- delimited_trailing(declaration, expect(Token::Newline), false);
     _ !<- expect(Token::Unindent);
@@ -438,6 +447,7 @@ fn term<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
         Token::If => if_expr(input),
         Token::Loop => loop_expr(input),
         Token::Match => match_expr(input),
+        Token::Handle => handle_expr(input),
         _ => or(&[type_annotation, function_call, function_argument], "term")(input),
     }
 }
@@ -496,6 +506,27 @@ parser!(loop_param_longform loc -> 'b (Ast<'b>, Ast<'b>) =
     _ !<- expect(Token::ParenthesisRight);
     (parameter, argument)
 );
+
+parser!(handle_expr loc =
+    _ <- expect(Token::Handle);
+    expression !<- block_or_statement;
+    branches !<- many1(handle_branch);
+    Ast::handle(expression, branches, loc)
+);
+
+parser!(handle_branch _loc -> 'b (Ast<'b>, Ast<'b>) =
+    _ <- maybe_newline;
+    _ <- expect(Token::Pipe);
+    pattern !<- handle_pattern;
+    _ !<- expect(Token::RightArrow);
+    branch !<- block_or_statement;
+    (pattern, branch)
+);
+
+// This gives a type error when inlined into handle_branch for some reason
+fn handle_pattern<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
+    or(&[pattern, return_expr], "pattern")(input)
+}
 
 parser!(not_expr loc =
     not <- expect(Token::Not);

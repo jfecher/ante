@@ -9,10 +9,12 @@ use std::collections::BTreeMap;
 use crate::cache::{DefinitionInfoId, ModuleCache};
 use crate::error::location::{Locatable, Location};
 use crate::lexer::token::IntegerKind;
-use crate::lifetimes;
+use crate::{lifetimes, util};
 
 use self::typeprinter::TypePrinter;
+use crate::types::effects::EffectSet;
 
+pub mod effects;
 mod error;
 mod mutual_recursion;
 pub mod pattern;
@@ -53,6 +55,9 @@ pub struct FunctionType {
     pub parameters: Vec<Type>,
     pub return_type: Box<Type>,
     pub environment: Box<Type>,
+
+    /// Expected to be a Type::Effects or Type::TypeVariable only
+    pub effects: Box<Type>,
     pub is_varargs: bool,
 }
 
@@ -102,6 +107,11 @@ pub enum Type {
     /// This makes it so we don't have to remember previous types to combine
     /// when traversing bindings.
     Struct(BTreeMap<String, Type>, TypeVariableId),
+
+    /// Effects are not the same kind (*) as most Type variants, but
+    /// are included in it since they are still valid in a type position
+    /// most notably when substituting type variables for effects.
+    Effects(EffectSet),
 }
 
 #[derive(Debug, Clone)]
@@ -120,6 +130,8 @@ pub enum GeneralizedType {
 }
 
 impl Type {
+    pub const UNIT: Type = Type::Primitive(PrimitiveType::UnitType);
+
     pub fn is_pair_type(&self) -> bool {
         self == &Type::UserDefined(PAIR_TYPE)
     }
@@ -152,6 +164,7 @@ impl Type {
             UserDefined(id) => cache.type_infos[id.0].union_variants(),
             TypeVariable(_) => unreachable!("Constructors should always have concrete types"),
             Struct(_, _) => None,
+            Effects(_) => None,
         }
     }
 
@@ -184,14 +197,14 @@ impl GeneralizedType {
 
     pub fn find_all_typevars(&self, polymorphic_only: bool, cache: &ModuleCache) -> Vec<TypeVariableId> {
         match self {
-            GeneralizedType::MonoType(typ) => typechecker::find_all_typevars(typ, polymorphic_only, cache),
+            GeneralizedType::MonoType(typ) => util::dedup(typechecker::find_all_typevars(typ, polymorphic_only, cache)),
             GeneralizedType::PolyType(typevars, typ) => {
                 if polymorphic_only {
                     typevars.clone()
                 } else {
                     let mut vars = typevars.clone();
                     vars.append(&mut typechecker::find_all_typevars(typ, polymorphic_only, cache));
-                    vars
+                    util::dedup(vars)
                 }
             },
         }

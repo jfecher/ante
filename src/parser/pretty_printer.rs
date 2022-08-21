@@ -252,3 +252,23 @@ impl<'a> Display for ast::Assignment<'a> {
         write!(f, "({} := {})", self.lhs, self.rhs)
     }
 }
+
+impl<'a> Display for ast::EffectDefinition<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "(effect {} ", self.name)?;
+        if !self.args.is_empty() {
+            write!(f, "{} ", join_with(&self.args, " "))?;
+        }
+        write!(f, "with\n    {}\n)", join_with(&self.declarations, "\n    "))
+    }
+}
+
+impl<'a> Display for ast::Handle<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "(handle {}", self.expression)?;
+        for (pattern, branch) in self.branches.iter() {
+            write!(f, " ({} {})", pattern, branch)?;
+        }
+        write!(f, ")")
+    }
+}

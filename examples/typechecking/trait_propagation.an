@@ -12,9 +12,9 @@ foo () = baz bar
 // args: --check --show-types
 // expected stdout:
 // bar : (forall a. a)
-// baz : (forall a. (a -> unit))
+// baz : (forall a b. (a -> unit can b))
 //   given Baz a
-// foo : (unit -> unit)
+// foo : (forall a. (unit -> unit can a))
 
 // expected stderr:
 // examples/typechecking/trait_propagation.an:6:10	error: No impl found for Baz a

@@ -45,17 +45,18 @@ pub fn define_builtins(cache: &mut ModuleCache) {
     define_pair(cache);
 
     let a = cache.next_type_variable_id(LetBindingLevel(1));
-    let info = &mut cache.definition_infos[id.0];
+    let e = cache.next_type_variable_id(LetBindingLevel(1));
 
     let builtin_fn_type = Type::Function(FunctionType {
         parameters: vec![string_type],
         return_type: Box::new(Type::TypeVariable(a)),
-        environment: Box::new(Type::Primitive(PrimitiveType::UnitType)),
+        environment: Box::new(Type::UNIT),
+        effects: Box::new(Type::TypeVariable(e)),
         is_varargs: true,
     });
 
-    let builtin_type = GeneralizedType::PolyType(vec![a], builtin_fn_type);
-    info.typ = Some(builtin_type);
+    let builtin_type = GeneralizedType::PolyType(vec![a, e], builtin_fn_type);
+    cache.definition_infos[id.0].typ = Some(builtin_type);
 }
 
 /// The prelude is currently stored (along with the rest of the stdlib) in the
@@ -112,14 +113,20 @@ fn define_string(cache: &mut ModuleCache) -> Type {
 
     let constructor = cache.push_definition(&name, location);
     assert_eq!(constructor, STRING_ID);
+
+    let effects = cache.next_type_variable_id(LetBindingLevel(1));
+
     let constructor_type = Type::Function(FunctionType {
         parameters: vec![c_string_type, length_type],
         return_type: Box::new(string.clone()),
-        environment: Box::new(Type::Primitive(PrimitiveType::UnitType)),
+        environment: Box::new(Type::UNIT),
+        effects: Box::new(Type::TypeVariable(effects)),
         is_varargs: false,
     });
 
-    cache.definition_infos[constructor.0].typ = Some(GeneralizedType::MonoType(constructor_type));
+    let polytype = GeneralizedType::PolyType(vec![effects], constructor_type);
+
+    cache.definition_infos[constructor.0].typ = Some(polytype);
     cache.definition_infos[constructor.0].definition = Some(DefinitionKind::TypeConstructor { name, tag: None });
 
     cache.type_infos[string_id.0].body = fields;
@@ -152,14 +159,17 @@ fn define_pair(cache: &mut ModuleCache) {
     let pair = Box::new(Type::UserDefined(pair));
     let pair_a_b = Box::new(Type::TypeApplication(pair, parameters.clone()));
 
+    let e = cache.next_type_variable_id(level);
+
     let constructor_type = Type::Function(FunctionType {
         parameters,
         return_type: pair_a_b,
-        environment: Box::new(Type::Primitive(PrimitiveType::UnitType)),
+        environment: Box::new(Type::UNIT),
+        effects: Box::new(Type::TypeVariable(e)),
         is_varargs: false,
     });
 
-    let constructor_type = GeneralizedType::PolyType(vec![a, b], constructor_type);
+    let constructor_type = GeneralizedType::PolyType(vec![a, b, e], constructor_type);
 
     // and now register a new type constructor in the cache with the given type
     let id = cache.push_definition(&name, location);

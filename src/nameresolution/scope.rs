@@ -10,8 +10,8 @@
 //! is significant because a type variable's scope is different
 //! than the general Scope for other symbols. See the TypeVariableScope
 //! struct for more details on this.
-use crate::cache::{DefinitionInfoId, ImplInfoId, ImplScopeId, ModuleCache, TraitInfoId, ModuleId};
-use crate::error::location::{Location, Locatable};
+use crate::cache::{DefinitionInfoId, EffectInfoId, ImplInfoId, ImplScopeId, ModuleCache, ModuleId, TraitInfoId};
+use crate::error::location::{Locatable, Location};
 use crate::parser::ast;
 use crate::types::{TypeInfoId, TypeVariableId};
 use std::collections::{HashMap, HashSet};
@@ -33,6 +33,7 @@ pub struct Scope {
     pub definitions: HashMap<String, DefinitionInfoId>,
     pub types: HashMap<String, TypeInfoId>,
     pub traits: HashMap<String, TraitInfoId>,
+    pub effects: HashMap<String, EffectInfoId>,
     pub impls: HashMap<TraitInfoId, Vec<ImplInfoId>>,
     pub impl_scope: ImplScopeId,
     pub modules: HashMap<String, ModuleId>,
@@ -45,6 +46,7 @@ impl Scope {
             definitions: HashMap::new(),
             types: HashMap::new(),
             traits: HashMap::new(),
+            effects: HashMap::new(),
             impls: HashMap::new(),
             modules: HashMap::new(),
         }
@@ -75,7 +77,9 @@ impl Scope {
         }
     }
 
-    fn import_definitions_types_and_traits(&mut self, other: &Scope, cache: &mut ModuleCache, location: Location, symbols: &HashSet<String>) {
+    fn import_definitions_types_and_traits(
+        &mut self, other: &Scope, cache: &mut ModuleCache, location: Location, symbols: &HashSet<String>,
+    ) {
         macro_rules! merge_table {
             ( $field:tt , $cache_field:tt , $errors:tt ) => {{
                 for (k, v) in other.$field.iter() {
@@ -99,6 +103,7 @@ impl Scope {
         merge_table!(definitions, definition_infos, errors);
         merge_table!(types, type_infos, errors);
         merge_table!(traits, trait_infos, errors);
+        merge_table!(effects, effect_infos, errors);
 
         if !errors.is_empty() {
             // Using sort_by instead of sort_by_key here avoids cloning the ErrorMessage
@@ -117,7 +122,7 @@ impl Scope {
         for (name, id) in &self.definitions {
             if id_to_ignore != Some(*id) {
                 let definition = &cache.definition_infos[id.0];
-                if definition.uses == 0 && !definition.name.starts_with('_') {
+                if definition.uses == 0 && !definition.ignore_unused_warning {
                     warnings.push(make_warning!(
                         definition.location,
                         "{} is unused (prefix name with _ to silence this warning)",

@@ -17,7 +17,7 @@
 use crate::cache::unsafecache::UnsafeCache;
 use crate::error::location::{Locatable, Location};
 use crate::nameresolution::NameResolver;
-use crate::parser::ast::{Ast, Definition, TraitDefinition, TraitImpl, TypeAnnotation};
+use crate::parser::ast::{Ast, Definition, EffectDefinition, TraitDefinition, TraitImpl, TypeAnnotation};
 use crate::types::traits::{ConstraintSignature, RequiredImpl, RequiredTrait, TraitConstraintId};
 use crate::types::{GeneralizedType, Kind, LetBindingLevel, TypeBinding};
 use crate::types::{Type, TypeInfo, TypeInfoBody, TypeInfoId, TypeVariableId};
@@ -87,6 +87,10 @@ pub struct ModuleCache<'a> {
     /// definitions within impls aren't publically exposed.
     pub impl_infos: Vec<ImplInfo<'a>>,
 
+    /// Maps EffectInfoId -> EffectInfo
+    /// Filled out during name resolution
+    pub effect_infos: Vec<EffectInfo<'a>>,
+
     /// Maps ModuleId -> Vec<ImplInfo>
     /// Name resolution needs to store the impls visible to
     /// each variable so when impls are resolved
@@ -148,6 +152,9 @@ pub enum DefinitionKind<'a> {
 
     /// A trait definition in the form `trait A a with ...`
     TraitDefinition(&'a mut TraitDefinition<'a>),
+
+    /// An effect definition in the form `effect E with ...`
+    EffectDefinition(&'a mut EffectDefinition<'a>),
 
     /// An extern FFI definition with no body
     Extern(&'a mut TypeAnnotation<'a>),
@@ -212,6 +219,10 @@ pub struct DefinitionInfo<'a> {
     /// Used to find mutual recursion sets. Technically unneeded since we can also
     /// check the call_graph, but this is faster and more readable.
     pub undergoing_type_inference: bool,
+
+    /// If true, avoid issuing a 'variable x is unused' warning
+    /// False by default.
+    pub ignore_unused_warning: bool,
 
     /// The type of this definition. Filled out during type inference,
     /// and is guarenteed to be Some afterward.
@@ -323,6 +334,32 @@ pub struct ImplInfo<'a> {
     pub trait_impl: &'a mut TraitImpl<'a>,
 }
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct EffectInfoId(pub usize);
+
+/// Corresponds to a `ast::EffectDefinition` node, carrying extra information
+/// on it. These are filled out during name resolution.
+#[derive(Debug)]
+pub struct EffectInfo<'a> {
+    pub name: String,
+
+    pub effect_node: &'a mut EffectDefinition<'a>,
+
+    /// Type variables on the effect declaration itself.
+    /// Unlike traits, this may be empty.
+    pub typeargs: Vec<TypeVariableId>,
+
+    pub location: Location<'a>,
+
+    pub declarations: Vec<DefinitionInfoId>,
+}
+
+impl<'a> Locatable<'a> for EffectInfo<'a> {
+    fn locate(&self) -> Location<'a> {
+        self.location
+    }
+}
+
 impl<'a> ModuleCache<'a> {
     pub fn new(project_directory: &Path) -> ModuleCache<'a> {
         let mut cache = ModuleCache {
@@ -331,18 +368,19 @@ impl<'a> ModuleCache<'a> {
             modules: HashMap::default(),
             parse_trees: UnsafeCache::default(),
             name_resolvers: UnsafeCache::default(),
-            filepaths: Vec::default(),
-            definition_infos: Vec::default(),
-            variable_infos: Vec::default(),
-            type_bindings: Vec::default(),
-            type_infos: Vec::default(),
-            trait_infos: Vec::default(),
-            impl_infos: Vec::default(),
-            impl_scopes: Vec::default(),
+            filepaths: vec![],
+            definition_infos: vec![],
+            variable_infos: vec![],
+            type_bindings: vec![],
+            type_infos: vec![],
+            trait_infos: vec![],
+            impl_infos: vec![],
+            impl_scopes: vec![],
             int_trait: TraitInfoId(0),
             current_trait_constraint_id: Default::default(),
-            call_stack: Vec::default(),
-            mutual_recursion_sets: Vec::default(),
+            call_stack: vec![],
+            mutual_recursion_sets: vec![],
+            effect_infos: vec![],
         };
 
         // The Int constraint is used internally to default polymorphic integer literals
@@ -378,6 +416,7 @@ impl<'a> ModuleCache<'a> {
             mutually_recursive_set: None,
             undergoing_type_inference: false,
             mutually_recursive_variables: vec![],
+            ignore_unused_warning: name.starts_with('_'),
         });
         DefinitionInfoId(id)
     }
@@ -441,6 +480,15 @@ impl<'a> ModuleCache<'a> {
 
         self.impl_infos.push(ImplInfo { trait_id, typeargs, definitions, location, given, trait_impl });
         ImplInfoId(id)
+    }
+
+    pub fn push_effect_definition(
+        &mut self, name: String, typeargs: Vec<TypeVariableId>, effect_node: &'a mut EffectDefinition<'a>,
+        location: Location<'a>,
+    ) -> EffectInfoId {
+        let id = self.effect_infos.len();
+        self.effect_infos.push(EffectInfo { name, typeargs, effect_node, declarations: vec![], location });
+        EffectInfoId(id)
     }
 
     pub fn push_impl_scope(&mut self) -> ImplScopeId {
@@ -566,6 +614,10 @@ impl<'a> ModuleCache<'a> {
             }
         }
     }
+
+    pub fn bind(&mut self, id: TypeVariableId, binding: Type) {
+        self.type_bindings[id.0] = TypeBinding::Bound(binding);
+    }
 }
 
 macro_rules! impl_index_for {
@@ -589,6 +641,7 @@ macro_rules! impl_index_for {
 impl_index_for!(DefinitionInfoId, DefinitionInfo, definition_infos);
 impl_index_for!(TypeInfoId, TypeInfo, type_infos);
 impl_index_for!(TraitInfoId, TraitInfo, trait_infos);
+impl_index_for!(EffectInfoId, EffectInfo, effect_infos);
 impl_index_for!(ImplInfoId, ImplInfo, impl_infos);
 impl_index_for!(VariableId, VariableInfo, variable_infos);
 

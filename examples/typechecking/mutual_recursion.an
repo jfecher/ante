@@ -6,16 +6,17 @@ is_even n =
         not is_odd (n - 1)
 
 is_odd n =
-    if n == 1 then true else
-        not is_even (n - 1)
+    n == 1 or not is_even (n - 1)
 
 is_even 4
 
 // args: --check --show-types
 
-// Both of these definitions should have the `Print (int a)` constraint:
+// Both of these definitions should have the `Print (int a)` constraint.
+// TODO: is_odd here uses `forall a c.` instead of `forall a b.`
+
 // expected stdout:
-// is_even : (forall a. (a -> bool))
+// is_even : (forall a b. (a -> bool can b))
 //   given Eq a, Int a, Print a, Sub a
-// is_odd : (forall a. (a -> bool))
+// is_odd : (forall a c. (a -> bool can c))
 //   given Eq a, Int a, Print a, Sub a
