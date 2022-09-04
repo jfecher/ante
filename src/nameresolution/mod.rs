@@ -1496,6 +1496,7 @@ impl<'c> Resolvable<'c> for ast::Handle<'c> {
             // Define an implicit 'resume' variable
             let resume = resolver.push_definition("resume", cache, pattern.locate());
             cache[resume].ignore_unused_warning = true;
+            self.resumes.push(resume);
 
             rhs.define(resolver, cache);
             resolver.pop_scope(cache, true, None);

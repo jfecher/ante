@@ -168,8 +168,7 @@ impl EffectSet {
         result
     }
 
-    /// The dual of 'combine', where combine takes two EffectSets and returns their union,
-    /// this function will return the difference between self and other.
+    /// Returns the set difference between self and other.
     pub(super) fn handle_effects_from(&self, other: EffectSet, cache: &mut ModuleCache) {
         let a = self.follow_bindings(cache).clone();
         let b = other.follow_bindings(cache).clone();

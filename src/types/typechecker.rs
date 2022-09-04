@@ -125,9 +125,9 @@ impl TypeResult {
         self.effects = self.effects.combine(&other.effects, cache);
     }
 
-    fn handle_effects_from(&mut self, mut pattern: TypeResult, cache: &mut ModuleCache) {
-        self.traits.append(&mut pattern.traits);
-        self.effects.handle_effects_from(pattern.effects, cache);
+    fn handle_effects_from(&mut self, mut traits: TraitConstraints, effects: EffectSet, cache: &mut ModuleCache) {
+        self.traits.append(&mut traits);
+        self.effects.handle_effects_from(effects, cache);
     }
 }
 
@@ -2039,38 +2039,42 @@ impl<'a> Inferable<'a> for ast::Handle<'a> {
         // TODO: Selectively remove effects from result
         let mut result = infer(self.expression.as_mut(), cache);
 
-        let mut return_type = next_type_variable(cache);
+        let mut pattern_results = Vec::with_capacity(self.branches.len());
+        let mut branch_results = Vec::with_capacity(self.branches.len());
 
-        if !self.branches.is_empty() {
-            // Unroll the first iteration of inferring (pattern, branch) types so each
-            // subsequent (pattern, branch) types can be unified against the first.
-            let pattern = infer(&mut self.branches[0].0, cache);
+        for ((pattern, branch), resume) in self.branches.iter_mut().zip(&self.resumes) {
+            let pattern_type = infer(pattern, cache);
+            pattern_results.push((pattern_type.traits, pattern_type.effects));
 
-            let msg = "This pattern of type $2 does not match the type $1 that is being matched on";
-            unify(&result.typ, &pattern.typ, self.branches[0].0.locate(), cache, msg);
+            let expected_resume_type = Type::Function(FunctionType {
+                parameters: vec![pattern_type.typ],
+                return_type: Box::new(result.typ.clone()),
+                environment: Box::new(next_type_variable(cache)),
+                effects: Box::new(next_type_variable(cache)),
+                is_varargs: false,
+            });
 
-            // Don't .combine to avoid propagating the effects from the pattern!
-            result.handle_effects_from(pattern, cache);
+            let resume_info = &mut cache[*resume];
+            assert!(resume_info.typ.is_none());
+            resume_info.typ = Some(GeneralizedType::MonoType(expected_resume_type));
 
-            let mut branch = infer(&mut self.branches[0].1, cache);
-            result.combine(&mut branch, cache);
-            return_type = branch.typ;
+            let branch_type = infer(branch, cache);
+            let msg = "The type of this branch $2 should match the type of the expression being handled: $1";
+            unify(&result.typ, &branch_type.typ, branch.locate(), cache, msg);
 
-            for (pattern, branch) in self.branches.iter_mut().skip(1) {
-                let pattern_result = infer(pattern, cache);
-                let mut branch_result = infer(branch, cache);
-
-                let msg = "This pattern of type $2 does not match the type $1 that is being matched on";
-                unify(&result.typ, &pattern_result.typ, pattern.locate(), cache, msg);
-
-                let msg = "This branch's return type $2 does not match the previous branches which return $1";
-                unify(&return_type, &branch_result.typ, branch.locate(), cache, msg);
-
-                result.combine(&mut branch_result, cache);
-                result.handle_effects_from(pattern_result, cache);
-            }
+            branch_results.push(branch_type);
         }
 
-        result.with_type(return_type)
+        // Must remove all the handled effects from each pattern first
+        for (traits, effects) in pattern_results {
+            result.handle_effects_from(traits, effects, cache);
+        }
+
+        // So that we can later add the effects from the branches without accidentally removing them
+        for mut branch in branch_results {
+            result.combine(&mut branch, cache)
+        }
+
+        result
     }
 }

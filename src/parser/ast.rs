@@ -382,6 +382,11 @@ pub struct EffectDefinition<'a> {
 pub struct Handle<'a> {
     pub expression: Box<Ast<'a>>,
     pub branches: Vec<(Ast<'a>, Ast<'a>)>,
+
+    /// IDs for each 'resume' variable (1 per branch) of this handle expression.
+    /// This is filled out during name resolution.
+    pub resumes: Vec<DefinitionInfoId>,
+
     pub location: Location<'a>,
     pub typ: Option<types::Type>,
 }
@@ -670,7 +675,7 @@ impl<'a> Ast<'a> {
 
     pub fn handle(expression: Ast<'a>, branches: Vec<(Ast<'a>, Ast<'a>)>, location: Location<'a>) -> Ast<'a> {
         let branches = super::desugar::desugar_handle_branches_into_matches(branches);
-        Ast::Handle(Handle { expression: Box::new(expression), branches, location, typ: None })
+        Ast::Handle(Handle { expression: Box::new(expression), branches, location, resumes: vec![], typ: None })
     }
 
     /// This is a bit of a hack.

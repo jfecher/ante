@@ -175,6 +175,7 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
                 | Token::Do
                 | Token::Else
                 | Token::Extern
+                | Token::Handle
                 | Token::If
                 | Token::Match
                 | Token::Then
