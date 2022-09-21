@@ -1,0 +1,18 @@
+debug str =
+  print <|
+    "string: " ++
+    str ++
+    " len: " ++
+    cast str.length
+
+debug <| cast (255: u8)
+
+debug <| cast -1024
+
+debug <| cast 0
+
+// args: --delete-binary
+// expected stdout:
+// string: 255 len: 3
+// string: -1024 len: 5
+// string: 0 len: 1

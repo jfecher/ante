@@ -458,29 +458,29 @@ impl Print bool with
 impl Cast string (Ptr char) with
     cast s = s.c_string
 
-// TODO: loops
-// impl Cast int string
-//     cast i =
-//         if i == 0 then return "0"
-//         len = mut 0
-//         alloc_size = 20
-//         buf = mut malloc (alloc_size + 1)
-//         buf#alloc_size := '\0'
-// 
-//         x = mut i
-//         isNeg = i < 0 and ((x *= -1); true)
-// 
-//         while x != 0 do
-//             len += 1
-//             buf#(alloc_size - len) := '0' + cast (x % 10)
-//             x /= 10
-// 
-//         if isNeg then
-//             len += 1
-//             buf#(alloc_size - len) := '-'
-// 
-//         offset = cast buf + (alloc_size - len)
-//         string (cast offset) len
+impl Cast int string given
+  Int int, Cmp int, Eq int, Mul int, Div int, Mod int with
+    cast i =
+      abs, sign_off = if i < 0 then (i * -1, 1) else (i, 0)
+      len = loop abs (cmp = 10) ->
+        next = cmp * 10 // Here to check for overflow
+        if abs > cmp and next > cmp
+        then 1 + recur abs next
+        else 1
+
+      size = len + sign_off + 1
+      buf = malloc size
+      if sign_off == 1
+      then ptr_to_ref <| offset buf 0 := '-'
+      ptr_to_ref <| offset buf (size - 1) := '\0'
+
+      loop (pos = len - 1) (buf = offset buf sign_off) abs ->
+        char_offset = builtin "Truncate" (abs % 10)
+        ptr_to_ref <| offset buf pos := '0' + char_offset
+        if pos > 0
+        then recur (pos - 1) buf (abs / 10)
+
+      string buf (size - 1)
 
 
 // TODO: mut
