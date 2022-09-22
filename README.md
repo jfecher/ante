@@ -62,7 +62,7 @@ than development updates. You can also feel to file issues or ask questions on t
 
 Ante currently optionally requires llvm 13.0 while building. If you already have this installed with
 sources, you may be fine building with `cargo install --path .` alone. If cargo complains
-about not finding any suitable llvm version, you can either choose to build ante without 
+about not finding any suitable llvm version, you can either choose to build ante without
 the llvm backend via `cargo install --path . --no-default-features` or you can build llvm from
 source, either via `llvmenv` or `cmake` as covered in the next sections.
 
@@ -81,6 +81,20 @@ If `llvmenv prefix` defaults to a path with spaces in it, you may get an error d
 complaining it cannot find the path to llvm. If this happens, try manually moving the installation
 in `llvmenv prefix` to a new directory without spaces, updating `LLVM_SYS_130_PREFIX` to this new
 location and re-running `cargo build`.
+
+##### Nix
+
+Ante is available in the unstable branch of the [nixpkgs repository](https://search.nixos.org/packages?channel=unstable&show=ante&type=packages&query=ante).
+
+The project itself provides build instructions for the [Nix package manager](https://nixos.org/).
+Those can be used for the most recent version of the compiler, or for working on it.
+
+To enter the development environment, run either `nix-shell` or `nix develop` depending on whether you are using nix
+with [flakes](https://nixos.wiki/wiki/Flakes) and [nix command](https://nixos.wiki/wiki/Nix_command) enabled or not.
+Then you can build and run the project with `cargo` as described at the top of this section.
+
+Beyond that, the project will also build with `nix-build` / `nix build`, meaning you can install it on your system using
+the provided overlay or play around with the compiler via `nix shell github:jfecher/ante`.
 
 #### Windows
 
