@@ -1,0 +1,19 @@
+shout x = "${x}!"
+
+bar = "nested interpolations"
+
+print
+  "I can do line breaks${
+    shout "\nAny expressions"
+  }${
+    shout "\nEven ${bar}"
+  }"
+
+// args: --parse
+// expected stdout:
+// (shout = (fn x -> ('++' "" ('++' (cast x) "!"))));
+// (bar = "nested interpolations");
+// (print ('++' ('++' "I can do line breaks" (cast (shout "
+// Any expressions"))) (cast (shout ('++' "
+// Even " (cast bar))))))
+

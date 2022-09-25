@@ -143,6 +143,23 @@ pub fn desugar_handle_branches_into_matches<'a>(branches: Vec<(Ast<'a>, Ast<'a>)
     })
 }
 
+pub fn interpolate<'a>(lhs: Ast<'a>, rhs: Ast<'a>, location: Location<'a>) -> Ast<'a> {
+    let cast = Ast::variable(vec![], String::from("cast"), location);
+    let lhs = Ast::function_call(cast, vec![lhs], location);
+    match rhs {
+        Ast::Literal(super::ast::Literal { kind: ast::LiteralKind::String(s), .. }) if s.is_empty() => lhs,
+        _ => Ast::function_call(Ast::operator(Token::Append, location), vec![lhs, rhs], location),
+    }
+}
+
+pub fn concatenate_strings<'a>(head: Ast<'a>, tail: Vec<Ast<'a>>, location: Location<'a>) -> Ast<'a> {
+    let mut ret = head;
+    for expr in tail {
+        ret = Ast::function_call(Ast::operator(Token::Append, location), vec![ret, expr], location)
+    }
+    ret
+}
+
 /// Wrap all arguments in a tuple of nested pairs.
 /// This could be more efficient, using e.g. a VecDeque
 fn tuplify<'a>(mut args: Vec<Ast<'a>>, location: Location<'a>) -> Ast<'a> {

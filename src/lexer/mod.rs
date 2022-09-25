@@ -323,22 +323,26 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
     fn lex_string(&mut self) -> IterElem<'cache> {
         self.advance();
         let mut contents = String::new();
-        while self.current != '"' {
-            let current_char = if self.current == '\\' {
-                self.advance();
-                match self.current {
-                    '\\' | '\'' => self.current,
-                    'n' => '\n',
-                    'r' => '\r',
-                    't' => '\t',
-                    '0' => '\0',
-                    _ => {
-                        let error = LexerError::InvalidEscapeSequence(self.current);
-                        return self.advance2_with(Token::Invalid(error));
-                    },
-                }
-            } else {
-                self.current
+        while !(self.current == '"' || self.at_end_of_input()) {
+            let current_char = match (self.current, self.next) {
+                ('$', '{') => {
+                    return Some((Token::StringLiteral(contents), self.locate()));
+                },
+                ('\\', c) => {
+                    self.advance();
+                    match c {
+                        '\\' | '"' | '$' => c,
+                        'n' => '\n',
+                        'r' => '\r',
+                        't' => '\t',
+                        '0' => '\0',
+                        _ => {
+                            let error = LexerError::InvalidEscapeSequence(self.current);
+                            return self.advance2_with(Token::Invalid(error));
+                        },
+                    }
+                },
+                (c, _) => c,
             };
             contents.push(current_char);
             self.advance();
@@ -500,6 +504,11 @@ impl<'cache, 'contents> Iterator for Lexer<'cache, 'contents> {
                 }
             },
             ('"', _) => self.lex_string(),
+            ('}', _) => {
+                self.current = '"';
+                Some((Token::InterpolateRight, self.locate()))
+            },
+            ('$', '{') => self.advance2_with(Token::InterpolateLeft),
             ('\'', _) => self.lex_char_literal(),
             ('/', '/') => self.lex_singleline_comment(),
             ('/', '*') => self.lex_multiline_comment(),
