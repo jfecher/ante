@@ -320,28 +320,124 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
         }
     }
 
+    /// Returns true untill it encounters a sequence ending an interpolation
+    pub fn continue_interpolation() -> Box<dyn FnMut(char, char) -> bool> {
+        let mut open_parens = 0;
+        let mut paren_stack = Vec::new();
+
+        let mut nested_string = false;
+        let mut escaped = false;
+        let mut expects_open = true;
+
+        Box::new(move |current, next| -> bool {
+            match (current, next) {
+                ('$', '{') if nested_string && !escaped => {
+                    nested_string = false;
+                    expects_open = true;
+                    true
+                },
+                ('{', _) if !nested_string => {
+                    if expects_open {
+                        paren_stack.push(open_parens);
+                        expects_open = false;
+                        true
+                    } else {
+                        open_parens += 1;
+                        true
+                    }
+                },
+                ('}', _) if !nested_string => match paren_stack.last() {
+                    Some(open) => {
+                        if open == &open_parens {
+                            paren_stack.pop();
+                            nested_string = true;
+                            !paren_stack.is_empty()
+                        } else {
+                            open_parens -= 1;
+                            true
+                        }
+                    },
+                    None => false,
+                },
+                ('\\', _) => {
+                    escaped = !escaped;
+                    true
+                },
+                ('"', _) => {
+                    nested_string = !nested_string || escaped;
+                    escaped = false;
+                    true
+                },
+                _ => {
+                    escaped = false;
+                    true
+                },
+            }
+        })
+    }
+
+    /// Returns false unti it encounters a sequence starting an interpolation
+    pub fn begin_interpolation() -> Box<dyn FnMut(char, char) -> bool> {
+        let mut ignore_next = false;
+
+        Box::new(move |current, next| -> bool {
+            match (current, next) {
+                ('$', '{') if !ignore_next => true,
+                ('\\', _) => {
+                    ignore_next = !ignore_next;
+                    false
+                },
+                _ => {
+                    ignore_next = false;
+                    false
+                },
+            }
+        })
+    }
+
     fn lex_string(&mut self) -> IterElem<'cache> {
         self.advance();
         let mut contents = String::new();
-        while self.current != '"' {
-            let current_char = if self.current == '\\' {
+        let mut begin_interpolation = Lexer::begin_interpolation();
+        while !(self.current == '"' || self.at_end_of_input()) {
+            if begin_interpolation(self.current, self.next) {
+                // Include '$' and '{' in the string'
+                contents.push(self.current);
+                contents.push(self.next);
                 self.advance();
-                match self.current {
-                    '\\' | '\'' => self.current,
-                    'n' => '\n',
-                    'r' => '\r',
-                    't' => '\t',
-                    '0' => '\0',
-                    _ => {
-                        let error = LexerError::InvalidEscapeSequence(self.current);
-                        return self.advance2_with(Token::Invalid(error));
-                    },
-                }
+
+                self.token_start_position.index = self.current_position.index;
+                let raw_interpolation = self.advance_while(Lexer::continue_interpolation());
+                contents.push_str(&raw_interpolation[1..raw_interpolation.len()]);
+                begin_interpolation = Lexer::begin_interpolation();
             } else {
-                self.current
+                let current_char = match (self.current, self.next) {
+                    ('\\', c) => {
+                        self.advance();
+                        // Update the so that it does not go out of sync
+                        begin_interpolation(self.current, self.next);
+                        match c {
+                            '\\' | '"' => c,
+                            'n' => '\n',
+                            'r' => '\r',
+                            't' => '\t',
+                            '0' => '\0',
+                            // Keeps the "\${" sequences for the second pass when interpolating
+                            '$' if self.next == '{' => {
+                                contents.push('\\');
+                                '$'
+                            },
+                            _ => {
+                                let error = LexerError::InvalidEscapeSequence(self.current);
+                                return self.advance2_with(Token::Invalid(error));
+                            },
+                        }
+                    },
+                    (c, _) => c,
+                };
+                contents.push(current_char);
+                self.advance();
             };
-            contents.push(current_char);
-            self.advance();
         }
         self.expect('"', Token::StringLiteral(contents))
     }

@@ -464,7 +464,7 @@ impl Cast int string given
       abs, sign_off = if i < 0 then (i * -1, 1) else (i, 0)
       len = loop abs (cmp = 10) ->
         next = cmp * 10 // Here to check for overflow
-        if abs > cmp and next > cmp
+        if abs >= cmp and next > cmp
         then 1 + recur abs next
         else 1
 

@@ -704,7 +704,7 @@ parser!(variable loc =
 
 parser!(string loc =
     contents <- string_literal_token;
-    Ast::string(contents, loc)
+    desugar::interpolate(contents, loc)?
 );
 
 parser!(integer loc =

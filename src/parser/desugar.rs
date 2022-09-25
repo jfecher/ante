@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::error::location::Location;
+use crate::lexer::Lexer;
 use crate::parser::ast::Ast;
 use crate::{error::location::Locatable, lexer::token::Token, parser::ast, util::fmap};
 
@@ -141,6 +142,109 @@ pub fn desugar_handle_branches_into_matches<'a>(branches: Vec<(Ast<'a>, Ast<'a>)
         let handle_pattern = Ast::function_call(handle_effect, new_args2, location);
         (handle_pattern, match_expr)
     })
+}
+
+fn append<'a>(lhs: Ast<'a>, rhs: Ast<'a>, location: Location<'a>) -> Ast<'a> {
+    let append = Ast::operator(Token::Append, location);
+    Ast::function_call(append, vec![lhs, rhs], location)
+}
+
+/// Helper function for splitting a string with a binary predicate
+fn split_with<F>(literal: &str, mut f: F, expect: bool) -> (&str, &str)
+where
+    F: FnMut(char, char) -> bool,
+{
+    let mut it = literal.chars().enumerate();
+    let (_, mut current) = it.next().unwrap_or((0, '\0'));
+    for (i, next) in it {
+        if f(current, next) == expect {
+            return literal.split_at(i);
+        } else {
+            current = next;
+        }
+    }
+    (literal, "")
+}
+
+/// Extracts a string and a stack of string pairs.
+/// In each pair, the first string is the interpolation expressions,
+/// and ths second is the string that follows it.
+/// ```compile_fail
+/// let literal = "foo: ${foo}, ${bar}";
+/// let val = ("foo", vec![("bar", ""), ("foo", ", ")]);
+///
+/// assert_eq!(val, extract_interpolations(literal));
+/// ```
+fn extract_interpolations(literal: String) -> (String, Vec<(String, String)>) {
+    let (head, tail) = split_with(&literal, Lexer::begin_interpolation(), true);
+
+    if tail.is_empty() {
+        (head.replace("\\$", "$"), Vec::new())
+    } else {
+        // Excludes the '$' prefixing the interpolation
+        ((&head[0..head.len() - 1]).replace("\\$", "$"), {
+            let (expr, tail) = split_with(tail, Lexer::continue_interpolation(), false);
+            let (tail, mut tails) = extract_interpolations(tail.into());
+            // Excludes the opening '{' and closing '}'
+            tails.push(((&expr[1..expr.len() - 1]).into(), tail));
+            tails
+        })
+    }
+}
+
+/// Fold a string and a queue of ASTs into a single AST by calling append on each pair.
+fn fold_interpolations<'a>(head: String, expr_queue: Vec<Ast<'a>>, location: Location<'a>) -> Ast<'a> {
+    let mut expr_queue = expr_queue.into_iter();
+    match expr_queue.next() {
+        Some(expr) => {
+            // Use first value from the iterator in case the head is an empty string.
+            // Explicitly using the iterator rather than recursion,
+            // since this optimisation can only apply to the head
+            let mut ret = {
+                if head.is_empty() {
+                    Ast::type_annotation(expr, ast::Type::String(location), location)
+                } else {
+                    append(Ast::string(head, location), expr, location)
+                }
+            };
+            for expr in expr_queue {
+                ret = append(ret, expr, location);
+            }
+            ret
+        },
+        None => Ast::string(head, location),
+    }
+}
+
+fn eval(expression: String, location: Location) -> Result<Ast, super::error::ParseError> {
+    // TODO: Properly parsing the loactions of errors inside interpolations.
+    // Trimming leading and trailing whitespaces because the Lexer would crash
+    // if the interpolation was after a line break.
+    // TODO: Investigate why that happens, and whether that should be fixed.
+    let tokens = Lexer::new(location.filename, expression.trim()).collect::<Vec<_>>();
+    super::parse(&tokens)
+}
+
+/// Interpolates a string literal by searching for interpolation tokens in the string
+/// Then re-invokes the Lexer and Parser on found interpolated expressions
+pub fn interpolate<'a>(literal: String, location: Location<'a>) -> Result<Ast<'a>, super::error::ParseError> {
+    let (head, mut tails) = extract_interpolations(literal);
+    let mut expr_queue = Vec::new();
+    loop {
+        match tails.pop() {
+            Some((expr, tail)) => {
+                let cast = Ast::variable(vec![], String::from("cast"), location);
+                let expr = Ast::function_call(cast, vec![eval(expr, location)?], location);
+                // Skip concatenating expressions with empty strings.
+                expr_queue.push(if !tail.is_empty() {
+                    append(expr, Ast::string(tail, location), location)
+                } else {
+                    expr
+                })
+            },
+            None => return Ok(fold_interpolations(head, expr_queue, location)),
+        }
+    }
 }
 
 /// Wrap all arguments in a tuple of nested pairs.
