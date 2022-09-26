@@ -173,7 +173,7 @@ pub fn concatenate_strings<'a>(head: Ast<'a>, tail: Vec<Ast<'a>>, location: Loca
             // Explicitly using the iterator rather than recursion,
             // since this optimisation can only apply to the head
             let mut ret = match head {
-                ast if empty_string_literal(&ast) => expr,
+                ast if empty_string_literal(&ast) => Ast::type_annotation(expr, ast::Type::String(location), location),
                 _ => append(head, expr, location),
             };
             for expr in tail {
