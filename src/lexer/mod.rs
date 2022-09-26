@@ -45,6 +45,13 @@ use std::str::Chars;
 use token::{IntegerKind, LexerError, Token};
 
 #[derive(Clone)]
+struct OpenBraces {
+    parenthesis: usize,
+    curly: usize,
+    square: usize,
+}
+
+#[derive(Clone)]
 pub struct Lexer<'cache, 'contents> {
     current: char,
     next: char,
@@ -58,6 +65,8 @@ pub struct Lexer<'cache, 'contents> {
     previous_token_expects_indent: bool,
     chars: Chars<'contents>,
     keywords: HashMap<&'static str, Token>,
+    open_braces: OpenBraces,
+    pending_interpolations: Vec<usize>,
 }
 
 /// The lexer maintains a stack of IndentLevels to remember
@@ -165,6 +174,8 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
             previous_token_expects_indent: false,
             chars,
             keywords: Lexer::get_keywords(),
+            open_braces: OpenBraces { parenthesis: 0, curly: 0, square: 0 },
+            pending_interpolations: Vec::new(),
         }
     }
 
@@ -490,6 +501,12 @@ impl<'cache, 'contents> Iterator for Lexer<'cache, 'contents> {
 
         self.previous_token_expects_indent = false;
 
+        // Checks if there is the same number of open parenthesis as when interpolation last began
+        let matched_interpolation = match self.pending_interpolations.last() {
+            Some(open_braces) => open_braces == &self.open_braces.curly,
+            None => false,
+        };
+
         match (self.current, self.next) {
             (c, _) if c.is_digit(10) => self.lex_number(),
             (c, _) if c.is_alphanumeric() || c == '_' => self.lex_alphanumeric(),
@@ -504,11 +521,15 @@ impl<'cache, 'contents> Iterator for Lexer<'cache, 'contents> {
                 }
             },
             ('"', _) => self.lex_string(),
-            ('}', _) => {
+            ('}', _) if matched_interpolation => {
                 self.current = '"';
+                self.pending_interpolations.pop();
                 Some((Token::InterpolateRight, self.locate()))
             },
-            ('$', '{') => self.advance2_with(Token::InterpolateLeft),
+            ('$', '{') => {
+                self.pending_interpolations.push(self.open_braces.curly);
+                self.advance2_with(Token::InterpolateLeft)
+            },
             ('\'', _) => self.lex_char_literal(),
             ('/', '/') => self.lex_singleline_comment(),
             ('/', '*') => self.lex_multiline_comment(),
@@ -539,11 +560,26 @@ impl<'cache, 'contents> Iterator for Lexer<'cache, 'contents> {
             ('#', _) => self.advance_with(Token::Index),
             ('%', _) => self.advance_with(Token::Modulus),
             ('*', _) => self.advance_with(Token::Multiply),
-            ('(', _) => self.advance_with(Token::ParenthesisLeft),
-            (')', _) => self.advance_with(Token::ParenthesisRight),
+            ('(', _) => {
+                self.open_braces.parenthesis += 1;
+                self.advance_with(Token::ParenthesisLeft)
+            },
+            (')', _) => {
+                // This will overflow if there are mismatched parenthesis,
+                // should we handle this inside the lexer,
+                // or leave that to the parsing stage?
+                self.open_braces.parenthesis -= 1;
+                self.advance_with(Token::ParenthesisRight)
+            },
             ('+', _) => self.advance_with(Token::Add),
-            ('[', _) => self.advance_with(Token::BracketLeft),
-            (']', _) => self.advance_with(Token::BracketRight),
+            ('[', _) => {
+                self.open_braces.square += 1;
+                self.advance_with(Token::BracketLeft)
+            },
+            (']', _) => {
+                self.open_braces.square -= 1;
+                self.advance_with(Token::BracketRight)
+            },
             ('|', _) => self.advance_with(Token::Pipe),
             (':', _) => self.advance_with(Token::Colon),
             (';', _) => self.advance_with(Token::Semicolon),
