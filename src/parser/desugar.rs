@@ -143,6 +143,48 @@ pub fn desugar_handle_branches_into_matches<'a>(branches: Vec<(Ast<'a>, Ast<'a>)
     })
 }
 
+fn empty_string_literal(ast: &Ast) -> bool {
+    match ast {
+        Ast::Literal(super::ast::Literal { kind: ast::LiteralKind::String(s), .. }) => s.is_empty(),
+        _ => false,
+    }
+}
+
+fn append<'a>(lhs: Ast<'a>, rhs: Ast<'a>, location: Location<'a>) -> Ast<'a> {
+    let append = Ast::operator(Token::Append, location);
+    Ast::function_call(append, vec![lhs, rhs], location)
+}
+
+pub fn interpolate<'a>(lhs: Ast<'a>, rhs: Ast<'a>, location: Location<'a>) -> Ast<'a> {
+    let cast = Ast::variable(vec![], String::from("cast"), location);
+    let lhs = Ast::function_call(cast, vec![lhs], location);
+    match rhs {
+        // Don't append empty strings
+        ast if empty_string_literal(&ast) => lhs,
+        _ => append(lhs, rhs, location),
+    }
+}
+
+pub fn concatenate_strings<'a>(head: Ast<'a>, tail: Vec<Ast<'a>>, location: Location<'a>) -> Ast<'a> {
+    let mut tail = tail.into_iter();
+    match tail.next() {
+        Some(expr) => {
+            // Use first value from the iterator in case the head is an empty string.
+            // Explicitly using the iterator rather than recursion,
+            // since this optimisation can only apply to the head
+            let mut ret = match head {
+                ast if empty_string_literal(&ast) => Ast::type_annotation(expr, ast::Type::String(location), location),
+                _ => append(head, expr, location),
+            };
+            for expr in tail {
+                ret = append(ret, expr, location);
+            }
+            ret
+        },
+        None => head,
+    }
+}
+
 /// Wrap all arguments in a tuple of nested pairs.
 /// This could be more efficient, using e.g. a VecDeque
 fn tuplify<'a>(mut args: Vec<Ast<'a>>, location: Location<'a>) -> Ast<'a> {

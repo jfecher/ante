@@ -138,6 +138,8 @@ pub enum Token {
     Add,                // +
     BracketLeft,        // [
     BracketRight,       // ]
+    InterpolateLeft,    // ${
+    InterpolateRight,   // }
     Pipe,               // |
     Colon,              // :
     Semicolon,          // ;
@@ -312,6 +314,8 @@ impl Display for Token {
             Add => write!(f, "'+'"),
             BracketLeft => write!(f, "'['"),
             BracketRight => write!(f, "']'"),
+            InterpolateLeft => write!(f, "'${{'"),
+            InterpolateRight => write!(f, "'}}'"),
             Pipe => write!(f, "'|'"),
             Colon => write!(f, "':'"),
             Semicolon => write!(f, "';'"),

@@ -702,9 +702,25 @@ parser!(variable loc =
     Ast::variable(module_prefix.unwrap_or_default(), name, loc)
 );
 
-parser!(string loc =
+parser!(string_literal loc =
     contents <- string_literal_token;
     Ast::string(contents, loc)
+);
+
+fn interpolated_expression<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
+    bounded(Token::InterpolateLeft, expression, Token::InterpolateRight)(input)
+}
+
+parser!(interpolation loc =
+    lhs <- interpolated_expression;
+    rhs <- string_literal;
+    desugar::interpolate(lhs, rhs, loc)
+);
+
+parser!(string loc =
+    head <- string_literal;
+    tail <- many0(interpolation);
+    desugar::concatenate_strings(head, tail, loc)
 );
 
 parser!(integer loc =
