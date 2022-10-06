@@ -21,8 +21,8 @@ mod util;
 
 #[macro_use]
 mod error;
-mod args;
 mod cache;
+mod cli;
 
 #[macro_use]
 mod hir;
@@ -38,12 +38,13 @@ use cache::ModuleCache;
 use lexer::Lexer;
 use nameresolution::NameResolver;
 
-use clap::StructOpt;
+use clap::{CommandFactory, Parser};
+use clap_complete as clap_cmp;
 use std::fs::File;
-use std::io::{BufReader, Read};
+use std::io::{stdout, BufReader, Read};
 use std::path::Path;
 
-use crate::args::Backend;
+use crate::cli::{Backend, Cli};
 
 #[global_allocator]
 static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
@@ -74,6 +75,12 @@ fn print_definition_types(cache: &ModuleCache) {
     }
 }
 
+fn print_completions<G: clap_cmp::Generator>(gen: G) {
+    let mut cmd = Cli::command();
+    let name = cmd.get_name().to_string();
+    clap_cmp::generate(gen, &mut cmd, name, &mut stdout());
+}
+
 /// Convenience macro for unwrapping a Result or printing an error message and returning () on Err.
 macro_rules! expect {( $result:expr , $fmt_string:expr $( , $($msg:tt)* )? ) => ({
     match $result {
@@ -86,10 +93,18 @@ macro_rules! expect {( $result:expr , $fmt_string:expr $( , $($msg:tt)* )? ) => 
 });}
 
 pub fn main() {
-    let args = args::Args::parse();
+    let args = Cli::parse();
+    if let Some(shell) = args.shell_completion {
+        print_completions(shell);
+    } else {
+        compile(args)
+    }
+}
 
+fn compile(args: Cli) {
     // Setup the cache and read from the first file
-    let filename = Path::new(&args.file);
+    let filename = if let Some(filename) = &args.file { filename } else { "" };
+    let filename = Path::new(filename);
     let file = File::open(filename);
     let file = expect!(file, "Could not open file {}\n", filename.display());
 

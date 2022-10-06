@@ -18,7 +18,7 @@
 //! The reccomended starting point while reading through this pass is the `run`
 //! function which is called directly from `main`. This function sets up the
 //! Generator, walks the Ast, then optimizes and links the resulting Module.
-use crate::args::Args;
+use crate::cli::Cli;
 use crate::hir::{self, DefinitionId};
 use crate::util::{self, fmap, timing};
 
@@ -61,7 +61,7 @@ pub struct Generator<'context> {
 }
 
 /// Codegen the given Ast, producing a binary file at the given path.
-pub fn run(path: &Path, ast: hir::Ast, args: &Args) {
+pub fn run(path: &Path, ast: hir::Ast, args: &Cli) {
     timing::start_time("LLVM codegen");
 
     let context = Context::create();

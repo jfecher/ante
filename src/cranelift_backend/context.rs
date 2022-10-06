@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use crate::args::Args;
+use crate::cli::Cli;
 use crate::hir::{self, Ast, DefinitionId, PrimitiveType, Type};
 use crate::util::fmap;
 
@@ -139,7 +139,7 @@ impl<'local> Context<'local> {
         )
     }
 
-    pub fn codegen_all(path: &Path, hir: &'local Ast, args: &Args) {
+    pub fn codegen_all(path: &Path, hir: &'local Ast, args: &Cli) {
         let output_path = path.with_extension("o");
         let (mut context, mut builder_context) = Context::new(&output_path, !args.build);
         let mut module_context = context.module.make_context();
@@ -162,7 +162,7 @@ impl<'local> Context<'local> {
     /// compile the actual body of the function?
     fn codegen_function_body(
         &mut self, function: &'local hir::Lambda, context: &mut FunctionBuilderContext,
-        module_context: &mut cranelift::codegen::Context, signature: Signature, function_id: FuncId, args: &Args,
+        module_context: &mut cranelift::codegen::Context, signature: Signature, function_id: FuncId, args: &Cli,
     ) {
         module_context.func = Function::with_name_signature(ExternalName::user(0, function_id.as_u32()), signature);
         let mut builder = FunctionBuilder::new(&mut module_context.func, context);
@@ -204,7 +204,7 @@ impl<'local> Context<'local> {
 
     fn codegen_main(
         &mut self, ast: &'local Ast, builder_context: &mut FunctionBuilderContext,
-        module_context: &mut cranelift::codegen::Context, args: &Args,
+        module_context: &mut cranelift::codegen::Context, args: &Cli,
     ) -> FuncId {
         let func = &mut module_context.func;
         func.signature.returns.push(AbiParam::new(cranelift_types::I32));

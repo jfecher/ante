@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use crate::args::Args;
+use crate::cli::Cli;
 use crate::hir::{self, Ast};
 use crate::util::{fmap, timing};
 
@@ -17,7 +17,7 @@ use cranelift::prelude::InstBuilder;
 
 use self::context::convert_integer_kind;
 
-pub fn run(path: &Path, hir: Ast, args: &Args) {
+pub fn run(path: &Path, hir: Ast, args: &Cli) {
     timing::start_time("Cranelift codegen");
     Context::codegen_all(path, &hir, args);
 }
