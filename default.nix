@@ -1,6 +1,7 @@
 let
   ante =
-    { lib
+    { installShellFiles
+    , lib
     , libffi
     , libxml2
     , llvmPackages
@@ -19,9 +20,9 @@ let
       pname = "ante";
       src = ./.;
       inherit (toml.package) version;
-      cargoSha256 = "WVNBk/5Q4tpMMQDNgRSSD4WFTOqgCPxa1YkBezqTaRI=";
+      cargoSha256 = "CsWiTDzXMWtnbNBLVSxH0YmXez3YZ+i/W+uPcpgIRDo=";
 
-      nativeBuildInputs = [ llvmPackages.llvm ];
+      nativeBuildInputs = [ llvmPackages.llvm installShellFiles ];
       buildInputs = [ libffi libxml2 ncurses ];
 
       postPatch = ''
@@ -38,6 +39,13 @@ let
         export ANTE_STDLIB_DIR=$out/lib
         mkdir -p $ANTE_STDLIB_DIR
         cp -r $src/stdlib/* $ANTE_STDLIB_DIR
+      '';
+
+      postInstall = ''
+        installShellCompletion --cmd ante \
+          --bash <($out/bin/ante --shell-completion bash) \
+          --fish <($out/bin/ante --shell-completion fish) \
+          --zsh <($out/bin/ante --shell-completion zsh)
       '';
     };
 in
