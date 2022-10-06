@@ -554,7 +554,7 @@ parser!(type_annotation loc =
 );
 
 fn parse_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
-    or(&[function_type, type_application, pair_type, basic_type], "type")(input)
+    or(&[function_type, pair_type, type_application, basic_type], "type")(input)
 }
 
 fn function_arg_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
@@ -763,7 +763,7 @@ parser!(type_application loc -> 'b Type<'b> =
 );
 
 parser!(pair_type loc -> 'b Type<'b> =
-    first <- basic_type;
+    first <- or(&[type_application, basic_type], "type");
     _ <- expect(Token::Comma);
     rest !<- parse_type;
     Type::Pair(Box::new(first), Box::new(rest), loc)

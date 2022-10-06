@@ -1873,11 +1873,7 @@ impl<'a> Inferable<'a> for ast::TraitImpl<'a> {
             // No traits should be propagated outside of the impl. The only way this can happen
             // is if the definition is not generalized and traits are used.
             for trait_ in definition_result.traits {
-                error!(
-                    definition.location,
-                    "Definition requires {}, but it needs to be a function to add this trait",
-                    trait_.display(cache)
-                );
+                traitchecker::force_resolve_trait(trait_, cache);
             }
         }
 
