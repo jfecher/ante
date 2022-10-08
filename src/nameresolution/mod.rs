@@ -215,10 +215,26 @@ impl NameResolver {
             }
         }
 
-        // Otherwise, check globals/imports
-        if let Some(id) = self.global_scope().definitions.get(name) {
-            cache.definition_infos[id.0].uses += 1;
-            return Some(*id);
+        // Otherwise, check globals/imports.
+        // We must be careful here to separate items within this final FunctionScope:
+        // - True globals are at the first scope and shouldn't create closures
+        // - Anything after is local to a block, e.g. in a top-level if-then.
+        //   These items should create a closure if referenced.
+        let global_index = 0;
+        let function_scope = &self.scopes[global_index];
+
+        for (i, stack) in function_scope.iter().enumerate().rev() {
+            if i == 0 {
+                // Definition is globally visible, no need to create a closure
+                if let Some(id) = self.global_scope().definitions.get(name) {
+                    cache.definition_infos[id.0].uses += 1;
+                    return Some(*id);
+                }
+            } else {
+                if let Some(&from) = stack.definitions.get(name) {
+                    return Some(self.create_closure(from, name, global_index, location, cache));
+                }
+            }
         }
 
         None
