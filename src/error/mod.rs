@@ -203,7 +203,7 @@ impl<'a> Display for ErrorMessage<'a> {
         let line = file_contents.lines().nth(max(1, start.line) as usize - 1).unwrap_or("");
 
         let start_column = max(1, start.column) as usize - 1;
-        let actual_len = min(self.location.len(), line.len() - start_column);
+        let actual_len = min(self.location.length(), line.len() - start_column);
 
         // In case we have an odd Location that has start.index = end.index,
         // we show a minimum of one indicator (^) to show where the error is.

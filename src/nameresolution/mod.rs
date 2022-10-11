@@ -230,10 +230,8 @@ impl NameResolver {
                     cache.definition_infos[id.0].uses += 1;
                     return Some(*id);
                 }
-            } else {
-                if let Some(&from) = stack.definitions.get(name) {
-                    return Some(self.create_closure(from, name, global_index, location, cache));
-                }
+            } else if let Some(&from) = stack.definitions.get(name) {
+                return Some(self.create_closure(from, name, global_index, location, cache));
             }
         }
 

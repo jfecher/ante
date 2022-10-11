@@ -47,11 +47,14 @@ pub fn resolve_traits<'a>(
 
     let empty_bindings = UnificationBindings::empty();
 
-    let mut failing_constraints = other_constraints.iter().filter_map(|constraint| {
-        // Searching for an impl for normal constraints may require recursively searching for
-        // more impls (due to `impl A given B` constraints) before finding a matching one.
-        try_solve_normal_constraint(constraint, cache)
-    }).collect::<Vec<_>>();
+    let mut failing_constraints = other_constraints
+        .iter()
+        .filter_map(|constraint| {
+            // Searching for an impl for normal constraints may require recursively searching for
+            // more impls (due to `impl A given B` constraints) before finding a matching one.
+            try_solve_normal_constraint(constraint, cache)
+        })
+        .collect::<Vec<_>>();
 
     // Check int constraints strictly after trying to solve normal constraints first. Other
     // Int constraints may cause defaulting to `i32` which may break some constraints that try
@@ -67,11 +70,14 @@ pub fn resolve_traits<'a>(
 
     let mut prev_len = 0;
     loop {
-        failing_constraints = failing_constraints.into_iter().filter_map(|constraint| {
-            // Searching for an impl for normal constraints may require recursively searching for
-            // more impls (due to `impl A given B` constraints) before finding a matching one.
-            try_solve_normal_constraint(&constraint, cache)
-        }).collect::<Vec<_>>();
+        failing_constraints = failing_constraints
+            .into_iter()
+            .filter_map(|constraint| {
+                // Searching for an impl for normal constraints may require recursively searching for
+                // more impls (due to `impl A given B` constraints) before finding a matching one.
+                try_solve_normal_constraint(constraint, cache)
+            })
+            .collect::<Vec<_>>();
 
         if failing_constraints.is_empty() || failing_constraints.len() == prev_len {
             break;
@@ -82,14 +88,14 @@ pub fn resolve_traits<'a>(
 
     // Issue errors for any remaining failing constraints
     for constraint in failing_constraints {
-        solve_normal_constraint(&constraint, cache);
+        solve_normal_constraint(constraint, cache);
     }
 
     propagated_traits
 }
 
 /// Attempt to solve every trait given, propagating none
-pub fn force_resolve_trait<'a>(constraint: TraitConstraint, cache: &mut ModuleCache<'a>) {
+pub fn force_resolve_trait(constraint: TraitConstraint, cache: &mut ModuleCache) {
     if constraint.is_int_constraint(cache) {
         let empty_bindings = UnificationBindings::empty();
         typechecker::perform_bindings_or_print_error(
@@ -188,7 +194,9 @@ fn find_int_constraint_impl<'c>(
 
 /// Try to solve a normal constraint, but avoid issuing an error if it fails.
 /// Returns Some(constraint) on error.
-fn try_solve_normal_constraint<'a, 'c>(constraint: &'a TraitConstraint, cache: &mut ModuleCache<'c>) -> Option<&'a TraitConstraint> {
+fn try_solve_normal_constraint<'a, 'c>(
+    constraint: &'a TraitConstraint, cache: &mut ModuleCache<'c>,
+) -> Option<&'a TraitConstraint> {
     let bindings = UnificationBindings::empty();
     let mut matching_impls = find_matching_impls(constraint, &bindings, RECURSION_LIMIT, cache);
 

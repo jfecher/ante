@@ -288,7 +288,7 @@ pub fn bind_typevars<'c>(typ: &Type, type_bindings: &TypeBindings, cache: &Modul
             TypeApplication(Box::new(typ), args)
         },
         Struct(fields, id) => {
-            match type_bindings.get(&id) {
+            match type_bindings.get(id) {
                 Some(TypeVariable(binding_id)) => {
                     let fields = fields
                         .iter()
@@ -975,7 +975,7 @@ pub fn find_all_typevars<'a>(typ: &Type, polymorphic_only: bool, cache: &ModuleC
             Bound(t) => find_all_typevars(t, polymorphic_only, cache),
             Unbound(..) => {
                 let mut vars = find_typevars_in_typevar_binding(*id, polymorphic_only, cache);
-                for (_, field) in fields {
+                for field in fields.values() {
                     vars.append(&mut find_all_typevars(field, polymorphic_only, cache));
                 }
                 vars
@@ -1974,16 +1974,16 @@ fn issue_assignment_error<'c>(
     let mutref = Type::TypeApplication(Box::new(Type::Ref(lifetime)), vec![var]);
 
     let msg = "Expression of type $1 must be a `ref a` type to be assigned to";
-    if let Err(msg) = try_unify(&lhs, &mutref, lhs_loc, cache, msg) {
+    if let Err(msg) = try_unify(lhs, &mutref, lhs_loc, cache, msg) {
         eprintln!("{}", msg);
     } else {
-        let inner_type = match follow_bindings_in_cache(&lhs, cache) {
+        let inner_type = match follow_bindings_in_cache(lhs, cache) {
             TypeApplication(_, mut args) => args.remove(0),
             _ => unreachable!(),
         };
 
         let msg = "Cannot assign expression of type $2 to a ref of type $1";
-        let msg = try_unify(&inner_type, &rhs, location, cache, msg).unwrap_err();
+        let msg = try_unify(&inner_type, rhs, location, cache, msg).unwrap_err();
         eprintln!("{}", msg);
     }
 }

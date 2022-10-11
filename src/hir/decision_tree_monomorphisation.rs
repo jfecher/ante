@@ -69,7 +69,7 @@ impl<'c> Context<'c> {
             let else_case =
                 match_all_case.map(|case| Box::new(self.monomorphise_case_no_tag_value(case, value.definition_id)));
 
-            let tag = self.extract_tag(value, &monomorphised_type);
+            let tag = Self::extract_tag(value, &monomorphised_type);
             hir::DecisionTree::Switch { int_to_switch_on: Box::new(tag), cases, else_case }
         }
     }
@@ -111,11 +111,11 @@ impl<'c> Context<'c> {
         tree
     }
 
-    fn extract_tag(&mut self, value: hir::DefinitionInfo, typ: &hir::Type) -> hir::Ast {
+    fn extract_tag(value: hir::DefinitionInfo, typ: &hir::Type) -> hir::Ast {
         use hir::types::*;
         match typ {
             Type::Primitive(PrimitiveType::Integer(_)) => value.into(),
-            Type::Tuple(_) => self.extract(value.into(), 0),
+            Type::Tuple(_) => Self::extract(value.into(), 0),
             _ => unreachable!(),
         }
     }
@@ -123,7 +123,7 @@ impl<'c> Context<'c> {
     /// Groups the given cases into an optional match-all case and a list of the other cases.
     fn split_cases<'a>(&self, cases: &'a [Case]) -> (&'a [Case], Option<&'a Case>) {
         let last = cases.last().unwrap();
-        if last.tag == None {
+        if last.tag.is_none() {
             (&cases[0..cases.len() - 1], Some(last))
         } else {
             (cases, None)
@@ -160,7 +160,7 @@ impl<'c> Context<'c> {
             Some(VariantTag::UserDefined(id)) => {
                 let info_type = self.cache.definition_infos[id.0].typ.as_ref().unwrap();
                 // Skip the tag value for unions when extracting fields
-                let start_index = if info_type.is_union_constructor(&self.cache) { 1 } else { 0 };
+                let start_index = u32::from(info_type.is_union_constructor(&self.cache));
 
                 let info_type = info_type.clone();
 
@@ -182,7 +182,7 @@ impl<'c> Context<'c> {
 
                         hir::Definition {
                             variable: field_variable,
-                            expr: Box::new(self.extract(variant_variable.into(), field_index)),
+                            expr: Box::new(Self::extract(variant_variable.into(), field_index)),
                             name: None,
                         }
                     })

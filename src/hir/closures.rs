@@ -9,7 +9,9 @@ impl<'c> Context<'c> {
     /// to be the parameter environment rather than that of the callsite.
     ///
     /// If the given argument is not a closure this will do nothing
-    pub fn fix_recursive_closure_calls(&mut self, expr: Ast, definition: &ast::Definition<'c>, definition_id: hir::DefinitionId) -> Ast {
+    pub fn fix_recursive_closure_calls(
+        &mut self, expr: Ast, definition: &ast::Definition<'c>, definition_id: hir::DefinitionId,
+    ) -> Ast {
         match definition.expr.as_ref() {
             ast::Ast::Lambda(lambda) if !lambda.closure_environment.is_empty() => {
                 let (f, outer_env) = unwrap_closure(expr);
@@ -25,7 +27,7 @@ impl<'c> Context<'c> {
 
                 let seq = Ast::Sequence(hir::Sequence { statements: vec![def, inner_f.into()] });
                 Ast::Tuple(hir::Tuple { fields: vec![seq, outer_env] })
-            }
+            },
             _ => expr,
         }
     }

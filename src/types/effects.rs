@@ -64,7 +64,7 @@ impl EffectSet {
         };
 
         let effects = fmap(&self.effects, |(id, args)| {
-            (*id, fmap(args, |arg| typechecker::replace_all_typevars_with_bindings(&arg, new_bindings, cache)))
+            (*id, fmap(args, |arg| typechecker::replace_all_typevars_with_bindings(arg, new_bindings, cache)))
         });
 
         Type::Effects(EffectSet { effects, replacement })
@@ -197,9 +197,10 @@ fn find_matching_effect(effect: &Effect, set: &[Effect], cache: &mut ModuleCache
             let no_loc = Location::builtin();
             let no_error = "";
 
-            match typechecker::try_unify_all_with_bindings(effect_args, other_args, bindings, no_loc, cache, no_error) {
-                Ok(bindings) => return Ok(bindings),
-                Err(_) => (),
+            if let Ok(bindings) =
+                typechecker::try_unify_all_with_bindings(effect_args, other_args, bindings, no_loc, cache, no_error)
+            {
+                return Ok(bindings);
             }
         }
     }

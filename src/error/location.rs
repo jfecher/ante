@@ -96,7 +96,7 @@ impl<'c> Location<'c> {
         Location::new(Path::new("stdlib/prelude.an"), start, end)
     }
 
-    pub fn len(&self) -> usize {
+    pub fn length(&self) -> usize {
         self.end.index - self.start.index
     }
 

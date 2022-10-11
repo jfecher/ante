@@ -60,7 +60,7 @@ pub(super) fn try_generalize_definition<'c>(
             let root = cache.mutual_recursion_sets[id.0].root_definition;
             cache[root].undergoing_type_inference = false;
             let typevars_in_fn = find_all_typevars(pattern.get_type().unwrap(), false, cache);
-            let mut exposed_traits = traitchecker::resolve_traits(traits.clone(), &typevars_in_fn, cache);
+            let mut exposed_traits = traitchecker::resolve_traits(traits, &typevars_in_fn, cache);
 
             let callsites = &cache[root].mutually_recursive_variables;
 

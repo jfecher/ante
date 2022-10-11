@@ -244,7 +244,7 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
     fn lex_integer(&mut self) -> String {
         let start = self.current_position.index;
 
-        while !self.at_end_of_input() && (self.current.is_digit(10) || self.current == '_') {
+        while !self.at_end_of_input() && (self.current.is_ascii_digit() || self.current == '_') {
             self.advance();
         }
 
@@ -278,7 +278,7 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
     fn lex_number(&mut self) -> IterElem<'cache> {
         let integer_string = self.lex_integer();
 
-        if self.current == '.' && self.next.is_digit(10) {
+        if self.current == '.' && self.next.is_ascii_digit() {
             self.advance();
             let float_string = integer_string + "." + &self.lex_integer();
 
@@ -508,7 +508,7 @@ impl<'cache, 'contents> Iterator for Lexer<'cache, 'contents> {
         };
 
         match (self.current, self.next) {
-            (c, _) if c.is_digit(10) => self.lex_number(),
+            (c, _) if c.is_ascii_digit() => self.lex_number(),
             (c, _) if c.is_alphanumeric() || c == '_' => self.lex_alphanumeric(),
             ('\0', _) => {
                 if self.current_indent_level != 0 {

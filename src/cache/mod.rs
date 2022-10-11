@@ -566,8 +566,8 @@ impl<'a> ModuleCache<'a> {
 
     /// Merge two recursion sets together, returning the dominant one that subsumes both
     fn merge_recursion_sets(
-        id1: MutualRecursionId, id2: MutualRecursionId, mutual_recursion_sets: &mut Vec<MutualRecursionSet>,
-        definition_infos: &mut Vec<DefinitionInfo<'a>>,
+        id1: MutualRecursionId, id2: MutualRecursionId, mutual_recursion_sets: &mut [MutualRecursionSet],
+        definition_infos: &mut [DefinitionInfo<'a>],
     ) -> MutualRecursionId {
         let set1 = &mutual_recursion_sets[id1.0];
         let set2 = &mutual_recursion_sets[id2.0];

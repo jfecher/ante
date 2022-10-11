@@ -150,7 +150,7 @@ impl<'c> Context<'c> {
                 for bindings in self.monomorphisation_bindings.iter().rev() {
                     match bindings.get(&id) {
                         Some(TypeVariable(id2) | Ref(id2)) => return self.find_binding(*id2, fuel),
-                        Some(binding) => return Ok(&binding),
+                        Some(binding) => return Ok(binding),
                         None => (),
                     }
                 }
@@ -704,7 +704,7 @@ impl<'c> Context<'c> {
 
             match &required_trait.callsite {
                 Callsite::Direct(callsite) => {
-                    for (mut path, impl_) in bindings.to_vec() {
+                    for (mut path, impl_) in bindings.iter().cloned() {
                         if !path.is_empty() {
                             let top = path.remove(0);
                             new_impls
@@ -895,7 +895,7 @@ impl<'c> Context<'c> {
     fn monomorphise_nonlocal_definition(
         &mut self, definition: &ast::Definition<'c>, definition_id: hir::DefinitionId, name: String,
     ) -> Definition {
-        let value = self.monomorphise(&*definition.expr);
+        let value = self.monomorphise(&definition.expr);
         let value = self.fix_recursive_closure_calls(value, definition, definition_id);
 
         let mut expr = Box::new(value);
@@ -963,7 +963,7 @@ impl<'c> Context<'c> {
                 for (i, arg_pattern) in call.args.iter().enumerate() {
                     let arg_type = self.follow_all_bindings(arg_pattern.get_type().unwrap());
 
-                    let extract = self.extract(variable.clone().into(), i as u32);
+                    let extract = Self::extract(variable.clone().into(), i as u32);
 
                     let (definition, id) = self.fresh_definition(extract, None);
                     definitions.push(definition);
@@ -985,12 +985,11 @@ impl<'c> Context<'c> {
                 let args = fmap(&function_type.parameters, |_| self.fresh_variable());
 
                 let mut tuple_args = Vec::with_capacity(args.len() + 1);
-                let mut tuple_size =
-                    function_type.parameters.iter().map(|parameter| self.size_of_monomorphised_type(parameter)).sum();
+                let mut tuple_size = function_type.parameters.iter().map(Self::size_of_monomorphised_type).sum();
 
                 if let Some(tag) = tag {
                     tuple_args.push(tag_value(*tag));
-                    tuple_size += self.size_of_monomorphised_type(&Self::tag_type());
+                    tuple_size += Self::size_of_monomorphised_type(&Self::tag_type());
                 }
 
                 tuple_args.extend(args.iter().cloned().map(Into::into));
@@ -1014,7 +1013,7 @@ impl<'c> Context<'c> {
                 None => unit_literal(),
                 Some(tag) => {
                     let value = tag_value(*tag);
-                    let size = self.size_of_monomorphised_type(&Self::tag_type());
+                    let size = Self::size_of_monomorphised_type(&Self::tag_type());
                     self.make_reinterpret_cast(value, size, typ)
                 },
             },
@@ -1027,7 +1026,7 @@ impl<'c> Context<'c> {
     /// Create a reinterpret_cast instruction for the given Ast value.
     /// arg_type_size is the size of the value represented by the given ast, in bytes.
     fn make_reinterpret_cast(&mut self, ast: hir::Ast, mut arg_type_size: u32, target_type: Type) -> hir::Ast {
-        let target_size = self.size_of_monomorphised_type(&target_type);
+        let target_size = Self::size_of_monomorphised_type(&target_type);
         assert!(arg_type_size <= target_size);
 
         if arg_type_size == target_size {
@@ -1047,7 +1046,7 @@ impl<'c> Context<'c> {
         hir::Ast::ReinterpretCast(hir::ReinterpretCast { lhs: Box::new(tuple(padded)), target_type })
     }
 
-    fn size_of_monomorphised_type(&self, typ: &Type) -> u32 {
+    fn size_of_monomorphised_type(typ: &Type) -> u32 {
         match typ {
             Type::Primitive(p) => {
                 match p {
@@ -1069,7 +1068,7 @@ impl<'c> Context<'c> {
                 }
             },
             Type::Function(_) => Self::ptr_size() as u32, // Closures would be represented as tuples
-            Type::Tuple(fields) => fields.iter().map(|f| self.size_of_monomorphised_type(f)).sum(),
+            Type::Tuple(fields) => fields.iter().map(Self::size_of_monomorphised_type).sum(),
         }
     }
 
@@ -1145,8 +1144,8 @@ impl<'c> Context<'c> {
                 env.clone()
             } else {
                 let param_ast: hir::Ast = env.clone().into();
-                let extract_var_in_env = self.extract(param_ast.clone(), 0);
-                let extract_rest_of_env = self.extract(param_ast, 1);
+                let extract_var_in_env = Self::extract(param_ast.clone(), 0);
+                let extract_rest_of_env = Self::extract(param_ast, 1);
 
                 let (definition, definition_id) = self.fresh_definition(extract_var_in_env, Some(name.clone()));
                 let (rest_env_def, rest_env_var) = self.fresh_definition(extract_rest_of_env, None);
@@ -1154,7 +1153,7 @@ impl<'c> Context<'c> {
                 definitions.push(definition);
                 definitions.push(rest_env_def);
 
-                env = hir::Variable { definition_id: rest_env_var, definition: None, name: None }.into();
+                env = hir::Variable { definition_id: rest_env_var, definition: None, name: None };
                 hir::Variable { definition_id, definition: None, name: None }
             };
 
@@ -1178,19 +1177,19 @@ impl<'c> Context<'c> {
             })
             .collect();
 
-        let env = self.make_closure_environment(env);
+        let env = Self::make_closure_environment(env);
         tuple(vec![function, env])
     }
 
     // This needs to match the packing done in typechecker::infer_closure_environment
-    fn make_closure_environment(&mut self, mut env: VecDeque<hir::Ast>) -> hir::Ast {
+    fn make_closure_environment(mut env: VecDeque<hir::Ast>) -> hir::Ast {
         if env.is_empty() {
             unit_literal()
         } else if env.len() == 1 {
             env.pop_back().unwrap()
         } else {
             let first = env.pop_front().unwrap();
-            let rest = self.make_closure_environment(env);
+            let rest = Self::make_closure_environment(env);
             tuple(vec![first, rest])
         }
     }
@@ -1310,8 +1309,8 @@ impl<'c> Context<'c> {
                         // Extract the function from the closure
                         let (function_definition, id) = self.fresh_definition(function, None);
                         let function_variable = id.to_variable();
-                        let function = Box::new(self.extract(function_variable.clone(), 0));
-                        let environment = self.extract(function_variable, 1);
+                        let function = Box::new(Self::extract(function_variable.clone(), 0));
+                        let environment = Self::extract(function_variable, 1);
                         args.push(environment);
 
                         hir::Ast::Sequence(hir::Sequence {
@@ -1414,12 +1413,10 @@ impl<'c> Context<'c> {
         }
     }
 
-    fn get_field_offset(&self, collection_type: &hir::Type, field_index: u32) -> u32 {
+    fn get_field_offset(collection_type: &hir::Type, field_index: u32) -> u32 {
         match collection_type {
             Type::Primitive(_) | Type::Function(_) => unreachable!(),
-            Type::Tuple(fields) => {
-                fields.iter().map(|field| self.size_of_monomorphised_type(field)).take(field_index as usize).sum()
-            },
+            Type::Tuple(fields) => fields.iter().map(Self::size_of_monomorphised_type).take(field_index as usize).sum(),
         }
     }
 
@@ -1440,16 +1437,16 @@ impl<'c> Context<'c> {
         // If our collection type is a ref we do a ptr offset instead of a direct access
         match (ref_type, member_access.is_offset) {
             (Some(elem_type), true) => {
-                let offset = self.get_field_offset(&elem_type, index);
+                let offset = Self::get_field_offset(&elem_type, index);
                 offset_ptr(lhs, offset as u64)
             },
             (Some(elem_type), false) => {
                 let lhs = hir::Ast::Builtin(hir::Builtin::Deref(Box::new(lhs), elem_type));
-                self.extract(lhs, index)
+                Self::extract(lhs, index)
             },
             _ => {
                 assert!(!member_access.is_offset);
-                self.extract(lhs, index)
+                Self::extract(lhs, index)
             },
         }
     }
@@ -1464,7 +1461,7 @@ impl<'c> Context<'c> {
         hir::Ast::Assignment(hir::Assignment { lhs: Box::new(lhs), rhs: Box::new(self.monomorphise(&assignment.rhs)) })
     }
 
-    pub fn extract(&self, ast: hir::Ast, member_index: u32) -> hir::Ast {
+    pub fn extract(ast: hir::Ast, member_index: u32) -> hir::Ast {
         use hir::{
             Ast,
             Builtin::{Deref, Offset},
@@ -1484,7 +1481,7 @@ impl<'c> Context<'c> {
                 let offset: u32 = elems
                     .into_iter()
                     .take(member_index as usize)
-                    .map(|typ| self.size_of_monomorphised_type(&typ))
+                    .map(|typ| Self::size_of_monomorphised_type(&typ))
                     .sum();
 
                 if offset == 0 {

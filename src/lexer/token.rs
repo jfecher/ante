@@ -16,7 +16,7 @@ use std::fmt::{self, Display};
 /// when it finds these tokens but in the future it may be able
 /// to issue the error then continue on to output as many errors
 /// as possible.
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum LexerError {
     InvalidCharacterInSignificantWhitespace(char), // Only spaces are allowed in significant whitespace
     InvalidEscapeSequence(char),

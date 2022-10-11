@@ -469,14 +469,14 @@ impl PatternMatrix {
     /// Handles exhaustiveness checking for the union internally.
     fn switch_on_pattern<'c>(&mut self, cache: &mut ModuleCache<'c>, location: Location<'c>) -> DecisionTreeResult {
         // Generate the set of constructors appearing in the column
-        let mut matched_variants = BTreeMap::new();
+        let mut matched_variants: BTreeMap<_, Vec<_>> = BTreeMap::new();
         let mut switching_on = None;
 
         for (row, _) in self.rows.iter() {
             if let Some((Variant(tag, fields), var)) = row.head() {
                 switching_on = Some(*var);
 
-                matched_variants.entry(tag).or_insert(vec![]).push(fields);
+                matched_variants.entry(tag).or_default().push(fields);
             }
         }
 
@@ -489,7 +489,7 @@ impl PatternMatrix {
                 let arity = fields[0].len();
                 let mut fields = collect_fields(fields);
 
-                let branch = self.specialize(&tag, arity, &mut fields, cache, location).compile(cache, location);
+                let branch = self.specialize(tag, arity, &mut fields, cache, location).compile(cache, location);
 
                 // PatternStacks store patterns in reverse order for faster prepending.
                 // Reversing fields here undoes this so that only the natural order is

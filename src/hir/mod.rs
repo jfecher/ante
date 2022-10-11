@@ -7,12 +7,12 @@
 //! - All trait function calls are replaced with references to the exact
 //!   function to call statically (monomorphisation) or are passed in as
 //!   arguments to calling functions (boxing).
+mod closures;
 mod decision_tree_monomorphisation;
 mod definitions;
 mod monomorphisation;
 mod printer;
 mod types;
-mod closures;
 
 pub use monomorphisation::monomorphise;
 pub use types::{FunctionType, IntegerKind, PrimitiveType, Type};

@@ -305,9 +305,8 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
     }
 
     fn fmt_effects(&self, effects: &EffectSet, f: &mut Formatter) -> std::fmt::Result {
-        match &self.cache.type_bindings[effects.replacement.0] {
-            TypeBinding::Bound(Type::Effects(effects)) => return self.fmt_effects(effects, f),
-            _ => (),
+        if let TypeBinding::Bound(Type::Effects(effects)) = &self.cache.type_bindings[effects.replacement.0] {
+            return self.fmt_effects(effects, f);
         }
 
         if !effects.effects.is_empty() {
