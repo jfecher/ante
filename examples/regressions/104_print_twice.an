@@ -1,0 +1,15 @@
+import HashMap
+
+impl Hash u8 with
+    hash x = cast x
+
+map = mut empty ()
+insert map 1u8 3u16
+
+print map
+print map
+
+// args: --delete-binary
+// expected stdout:
+// [1 -> 3]
+// [1 -> 3]

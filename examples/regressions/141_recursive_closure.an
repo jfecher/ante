@@ -1,0 +1,16 @@
+f (v: float) : float =
+  loop (x = v / 2.0) ->
+    if x < 2.0 then x
+    else
+      print v
+      recur (x / 2.0)
+
+x = f 123.0
+
+// args: --delete-binary
+// expected stdout:
+// 123.0
+// 123.0
+// 123.0
+// 123.0
+// 123.0

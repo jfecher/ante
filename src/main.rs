@@ -3,7 +3,7 @@
 //! each compiler phase. The compiler as a whole is separated into
 //! the following phases (in order):
 //!
-//! lexing -> parsing -> name resolution -> type inference -> lifetime inference -> codegen
+//! lexing -> parsing -> name resolution -> type inference -> monomorphisation -> codegen
 //!
 //! Each phase corresponds to a source folder with roughly the same name (though the codegen
 //! folder is named "llvm"), and each phase after parsing operates by traversing the AST.

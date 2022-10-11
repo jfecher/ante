@@ -819,7 +819,6 @@ impl<'c> Context<'c> {
         };
 
         self.impl_mappings.pop();
-
         self.pop_monomorphisation_bindings(instantiation_mapping, info);
         value
     }
@@ -872,7 +871,7 @@ impl<'c> Context<'c> {
         def
     }
 
-    fn fresh_variable(&mut self) -> hir::Variable {
+    pub fn fresh_variable(&mut self) -> hir::Variable {
         hir::Variable { definition: None, definition_id: self.next_unique_id(), name: None }
     }
 
@@ -897,6 +896,7 @@ impl<'c> Context<'c> {
         &mut self, definition: &ast::Definition<'c>, definition_id: hir::DefinitionId, name: String,
     ) -> Definition {
         let value = self.monomorphise(&*definition.expr);
+        let value = self.fix_recursive_closure_calls(value, definition, definition_id);
 
         let mut expr = Box::new(value);
 
@@ -1044,7 +1044,7 @@ impl<'c> Context<'c> {
             }
         }
 
-        hir::Ast::ReinterpretCast(hir::ReinterpretCast { lhs: Box::new(self.tuple(padded)), target_type })
+        hir::Ast::ReinterpretCast(hir::ReinterpretCast { lhs: Box::new(tuple(padded)), target_type })
     }
 
     fn size_of_monomorphised_type(&self, typ: &Type) -> u32 {
@@ -1179,7 +1179,7 @@ impl<'c> Context<'c> {
             .collect();
 
         let env = self.make_closure_environment(env);
-        self.tuple(vec![function, env])
+        tuple(vec![function, env])
     }
 
     // This needs to match the packing done in typechecker::infer_closure_environment
@@ -1191,12 +1191,8 @@ impl<'c> Context<'c> {
         } else {
             let first = env.pop_front().unwrap();
             let rest = self.make_closure_environment(env);
-            self.tuple(vec![first, rest])
+            tuple(vec![first, rest])
         }
-    }
-
-    fn tuple(&self, fields: Vec<hir::Ast>) -> hir::Ast {
-        hir::Ast::Tuple(hir::Tuple { fields })
     }
 
     fn size_of_type_arg0(&mut self, ptr_type: &types::Type) -> u32 {
@@ -1505,6 +1501,10 @@ impl<'c> Context<'c> {
             },
         }
     }
+}
+
+fn tuple(fields: Vec<hir::Ast>) -> hir::Ast {
+    hir::Ast::Tuple(hir::Tuple { fields })
 }
 
 fn unit_literal() -> hir::Ast {

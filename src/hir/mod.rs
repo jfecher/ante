@@ -12,6 +12,7 @@ mod definitions;
 mod monomorphisation;
 mod printer;
 mod types;
+mod closures;
 
 pub use monomorphisation::monomorphise;
 pub use types::{FunctionType, IntegerKind, PrimitiveType, Type};
