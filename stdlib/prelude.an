@@ -34,6 +34,8 @@ extern
 
     fputs: Ptr char - OutFile -> i32
     fputc: i32 - OutFile -> i32
+    fwrite: Ptr u8 - usz - usz - OutFile -> usz
+
     fgetc: InFile -> i32
     fgets: Ptr char - i32 - InFile -> Ptr char
     ungetc: i32 - InFile -> i32
@@ -170,6 +172,9 @@ impl Cast float usz with cast x = builtin "FloatToUnsigned" x
 
 // Other casts: TODO fill in
 impl Cast u64 char with cast x = builtin "Truncate" x
+impl Cast i32 usz with cast x =
+    // TODO: Review. Does this match C?
+    transmute (cast x : isz)
 
 /// Represents a failable type cast from a to b
 trait TryCast a b with
