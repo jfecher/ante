@@ -3,6 +3,7 @@ use std::rc::Rc;
 
 use crate::cache::{DefinitionInfoId, DefinitionKind, ImplInfoId, ModuleCache, VariableId};
 use crate::hir;
+use crate::lexer::token::FloatKind;
 use crate::nameresolution::builtin::BUILTIN_ID;
 use crate::parser::ast;
 use crate::parser::ast::ClosureEnvironment;
@@ -305,7 +306,8 @@ impl<'c> Context<'c> {
         use types::Type::*;
         match typ {
             Primitive(IntegerType(kind)) => self.integer_bit_count(*kind) as usize / 8,
-            Primitive(FloatType) => 8,
+            Primitive(FloatType(FloatKind::F32)) => 4,
+            Primitive(FloatType(FloatKind::F64)) => 8,
             Primitive(CharType) => 1,
             Primitive(BooleanType) => 1,
             Primitive(UnitType) => 1,
@@ -349,7 +351,7 @@ impl<'c> Context<'c> {
                 let kind = self.convert_integer_kind(*kind);
                 hir::types::PrimitiveType::Integer(kind)
             },
-            FloatType => hir::types::PrimitiveType::Float,
+            FloatType(kind) => hir::types::PrimitiveType::Float(*kind),
             CharType => hir::types::PrimitiveType::Char,
             BooleanType => hir::types::PrimitiveType::Boolean,
             UnitType => hir::types::PrimitiveType::Unit,
@@ -569,7 +571,7 @@ impl<'c> Context<'c> {
                 let kind = self.convert_integer_kind(*kind);
                 Literal(Integer(*n, kind))
             },
-            ast::LiteralKind::Float(f) => Literal(Float(*f)),
+            ast::LiteralKind::Float(f, kind) => Literal(Float(*f, *kind)),
             ast::LiteralKind::String(s) => {
                 let len = Literal(Integer(s.len() as u64, IntegerKind::Usz));
                 let c_string = Literal(CString(s.clone()));
@@ -1047,10 +1049,11 @@ impl<'c> Context<'c> {
     }
 
     fn size_of_monomorphised_type(typ: &Type) -> u32 {
+        use hir::types::PrimitiveType;
         match typ {
             Type::Primitive(p) => {
                 match p {
-                    hir::types::PrimitiveType::Integer(kind) => {
+                    PrimitiveType::Integer(kind) => {
                         use IntegerKind::*;
                         match kind {
                             I8 | U8 => 1,
@@ -1060,11 +1063,12 @@ impl<'c> Context<'c> {
                             Isz | Usz => Self::ptr_size() as u32,
                         }
                     },
-                    hir::types::PrimitiveType::Float => 8,
-                    hir::types::PrimitiveType::Char => 1,
-                    hir::types::PrimitiveType::Boolean => 1,
-                    hir::types::PrimitiveType::Unit => 1, // TODO: this can depend on the backend
-                    hir::types::PrimitiveType::Pointer => Self::ptr_size() as u32,
+                    PrimitiveType::Float(FloatKind::F32) => 4,
+                    PrimitiveType::Float(FloatKind::F64) => 8,
+                    PrimitiveType::Char => 1,
+                    PrimitiveType::Boolean => 1,
+                    PrimitiveType::Unit => 1, // TODO: this can depend on the backend
+                    PrimitiveType::Pointer => Self::ptr_size() as u32,
                 }
             },
             Type::Function(_) => Self::ptr_size() as u32, // Closures would be represented as tuples
@@ -1253,6 +1257,8 @@ impl<'c> Context<'c> {
             "UnsignedToFloat" => cast(self, UnsignedToFloat),
             "FloatToSigned" => cast(self, FloatToSigned),
             "FloatToUnsigned" => cast(self, FloatToUnsigned),
+            "FloatPromote" => FloatPromote(Box::new(self.monomorphise(&args[1]))),
+            "FloatDemote" => FloatDemote(Box::new(self.monomorphise(&args[1]))),
 
             "BitwiseAnd" => binary(self, BitwiseAnd),
             "BitwiseOr" => binary(self, BitwiseOr),

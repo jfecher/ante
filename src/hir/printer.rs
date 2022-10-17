@@ -104,7 +104,7 @@ impl FmtAst for Literal {
             Literal::Integer(x, kind) => {
                 write!(f, "{}_{}", x, kind)
             },
-            Literal::Float(x) => write!(f, "{}", f64::from_bits(*x)),
+            Literal::Float(x, kind) => write!(f, "{}_{}", f64::from_bits(*x), kind),
             Literal::CString(cstr) => write!(f, "\"{}\"", cstr),
             Literal::Char(c) => write!(f, "'{}'", c),
             Literal::Bool(b) => write!(f, "{}", if *b { "true" } else { "false" }),
@@ -275,6 +275,8 @@ impl FmtAst for Builtin {
             Builtin::UnsignedToFloat(a, b) => printer.fmt_cast("#UnsignedToFloat", a, b, f),
             Builtin::FloatToSigned(a, b) => printer.fmt_cast("#FloatToSigned", a, b, f),
             Builtin::FloatToUnsigned(a, b) => printer.fmt_cast("#FloatToUnsigned", a, b, f),
+            Builtin::FloatPromote(a) => printer.fmt_call("#FloatPromote", &[a], f),
+            Builtin::FloatDemote(a) => printer.fmt_call("#FloatDemote", &[a], f),
             Builtin::BitwiseAnd(a, b) => printer.fmt_call("#BitwiseAnd", &[a, b], f),
             Builtin::BitwiseOr(a, b) => printer.fmt_call("#BitwiseOr", &[a, b], f),
             Builtin::BitwiseXor(a, b) => printer.fmt_call("#BitwiseXor", &[a, b], f),

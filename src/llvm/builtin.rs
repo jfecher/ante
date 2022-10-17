@@ -58,6 +58,8 @@ pub fn call_builtin<'g>(builtin: &Builtin, generator: &mut Generator<'g>) -> Bas
         Builtin::UnsignedToFloat(a, _typ) => unsigned_to_float(int(a), generator),
         Builtin::FloatToSigned(a, _typ) => float_to_signed(a, generator),
         Builtin::FloatToUnsigned(a, _typ) => float_to_unsigned(a, generator),
+        Builtin::FloatPromote(a) => float_to_float_cast(a, generator),
+        Builtin::FloatDemote(a) => float_to_float_cast(a, generator),
 
         Builtin::BitwiseAnd(a, b) => bitwise_and(int(a), int(b), generator),
         Builtin::BitwiseOr(a, b) => bitwise_or(int(a), int(b), generator),
@@ -231,6 +233,13 @@ fn float_to_unsigned<'g>(x: &Ast, generator: &mut Generator<'g>) -> BasicValueEn
     let ret = current_function.get_type().get_return_type().unwrap().into_int_type();
     let x = x.codegen(generator).into_float_value();
     generator.builder.build_float_to_unsigned_int(x, ret, "float_to_unsigned").as_basic_value_enum()
+}
+
+fn float_to_float_cast<'g>(x: &Ast, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+    let current_function = generator.current_function();
+    let ret = current_function.get_type().get_return_type().unwrap().into_float_type();
+    let x = x.codegen(generator).into_float_value();
+    generator.builder.build_float_cast(x, ret, "float_cast").as_basic_value_enum()
 }
 
 fn bitwise_and<'g>(a: IntValue<'g>, b: IntValue<'g>, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {

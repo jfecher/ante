@@ -20,6 +20,7 @@
 //! Generator, walks the Ast, then optimizes and links the resulting Module.
 use crate::cli::Cli;
 use crate::hir::{self, DefinitionId};
+use crate::lexer::token::FloatKind;
 use crate::util::{self, fmap, timing};
 
 use inkwell::basic_block::BasicBlock;
@@ -251,7 +252,8 @@ impl<'g> Generator<'g> {
                     PrimitiveType::Integer(kind) => {
                         self.context.custom_width_int_type(self.integer_bit_count(*kind)).into()
                     },
-                    PrimitiveType::Float => self.context.f64_type().into(),
+                    PrimitiveType::Float(FloatKind::F32) => self.context.f32_type().into(),
+                    PrimitiveType::Float(FloatKind::F64) => self.context.f64_type().into(),
                     PrimitiveType::Char => self.context.i8_type().into(),
                     PrimitiveType::Boolean => self.context.bool_type().into(),
                     PrimitiveType::Unit => self.context.bool_type().into(),
@@ -308,8 +310,11 @@ impl<'g> Generator<'g> {
         self.context.bool_type().const_int(value as u64, true).into()
     }
 
-    fn float_value(&self, value: f64) -> BasicValueEnum<'g> {
-        self.context.f64_type().const_float(value).into()
+    fn float_value(&self, value: f64, kind: FloatKind) -> BasicValueEnum<'g> {
+        match kind {
+            FloatKind::F32 => self.context.f32_type().const_float(value).into(),
+            FloatKind::F64 => self.context.f64_type().const_float(value).into(),
+        }
     }
 
     /// Perform codegen for a string literal. This will create a global
@@ -459,7 +464,7 @@ impl<'g> CodeGen<'g> for hir::Literal {
         match self {
             hir::Literal::Char(c) => generator.char_value(*c as u64),
             hir::Literal::Bool(b) => generator.bool_value(*b),
-            hir::Literal::Float(f) => generator.float_value(f64::from_bits(*f)),
+            hir::Literal::Float(f, kind) => generator.float_value(f64::from_bits(*f), *kind),
             hir::Literal::Integer(i, kind) => generator.integer_value(*i, *kind),
             hir::Literal::CString(s) => generator.cstring_value(s),
             hir::Literal::Unit => generator.unit_value(),

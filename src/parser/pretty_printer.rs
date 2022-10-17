@@ -20,7 +20,7 @@ impl<'a> Display for ast::Literal<'a> {
         use ast::LiteralKind::*;
         match &self.kind {
             Integer(x, _) => write!(f, "{}", x),
-            Float(x) => write!(f, "{}", f64::from_bits(*x)),
+            Float(x, _) => write!(f, "{}", f64::from_bits(*x)),
             String(s) => write!(f, "\"{}\"", s),
             Char(c) => write!(f, "'{}'", c),
             Bool(b) => write!(f, "{}", if *b { "true" } else { "false" }),
@@ -94,7 +94,7 @@ impl<'a> Display for ast::Type<'a> {
         use ast::Type::*;
         match self {
             Integer(kind, _) => write!(f, "{}", kind),
-            Float(_) => write!(f, "float"),
+            Float(kind, _) => write!(f, "{}", kind),
             Char(_) => write!(f, "char"),
             String(_) => write!(f, "string"),
             Pointer(_) => write!(f, "Ptr"),

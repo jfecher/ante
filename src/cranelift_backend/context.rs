@@ -3,6 +3,7 @@ use std::path::Path;
 
 use crate::cli::Cli;
 use crate::hir::{self, Ast, DefinitionId, PrimitiveType, Type};
+use crate::lexer::token::FloatKind;
 use crate::util::fmap;
 
 use cranelift::codegen::ir::{types as cranelift_types, FuncRef, Function, StackSlot};
@@ -555,7 +556,8 @@ fn function_type() -> cranelift_types::Type {
 fn convert_primitive_type(typ: &PrimitiveType) -> cranelift_types::Type {
     match typ {
         PrimitiveType::Integer(kind) => convert_integer_kind(*kind),
-        PrimitiveType::Float => cranelift_types::F64,
+        PrimitiveType::Float(FloatKind::F32) => cranelift_types::F32,
+        PrimitiveType::Float(FloatKind::F64) => cranelift_types::F64,
         PrimitiveType::Char => cranelift_types::I8,
         PrimitiveType::Boolean => cranelift_types::I8,
         PrimitiveType::Unit => cranelift_types::I8,

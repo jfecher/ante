@@ -25,7 +25,7 @@ pub struct DefinitionId(usize);
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Literal {
     Integer(u64, IntegerKind),
-    Float(u64),
+    Float(u64, FloatKind),
     CString(String),
     Char(char),
     Bool(bool),
@@ -242,6 +242,8 @@ pub enum Builtin {
     UnsignedToFloat(Box<Ast>, Type),
     FloatToSigned(Box<Ast>, Type),
     FloatToUnsigned(Box<Ast>, Type),
+    FloatPromote(Box<Ast>),
+    FloatDemote(Box<Ast>),
 
     BitwiseAnd(Box<Ast>, Box<Ast>),
     BitwiseOr(Box<Ast>, Box<Ast>),
@@ -305,6 +307,8 @@ macro_rules! dispatch_on_hir {
 }
 
 pub(crate) use dispatch_on_hir;
+
+use crate::lexer::token::FloatKind;
 
 // Rust won't let us impl<T: FmtAst> Display for T
 macro_rules! impl_display {

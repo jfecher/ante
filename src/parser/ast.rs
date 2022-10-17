@@ -26,7 +26,7 @@
 //!   `decision_tree: Option<DecisionTree>` for `ast::Match`s
 use crate::cache::{DefinitionInfoId, EffectInfoId, ImplInfoId, ImplScopeId, ModuleId, TraitInfoId, VariableId};
 use crate::error::location::{Locatable, Location};
-use crate::lexer::token::{IntegerKind, Token};
+use crate::lexer::token::{FloatKind, IntegerKind, Token};
 use crate::types::pattern::DecisionTree;
 use crate::types::traits::RequiredTrait;
 use crate::types::typechecker::TypeBindings;
@@ -37,7 +37,7 @@ use std::rc::Rc;
 #[derive(Clone, Debug, Eq, PartialOrd, Ord)]
 pub enum LiteralKind {
     Integer(u64, IntegerKind),
-    Float(u64),
+    Float(u64, FloatKind),
     String(String),
     Char(char),
     Bool(bool),
@@ -196,7 +196,7 @@ pub struct Match<'a> {
 #[allow(clippy::enum_variant_names)]
 pub enum Type<'a> {
     Integer(IntegerKind, Location<'a>),
-    Float(Location<'a>),
+    Float(FloatKind, Location<'a>),
     Char(Location<'a>),
     String(Location<'a>),
     Pointer(Location<'a>),
@@ -422,7 +422,7 @@ impl PartialEq for LiteralKind {
         use LiteralKind::*;
         match (self, other) {
             (Integer(x, _), Integer(y, _)) => x == y,
-            (Float(x), Float(y)) => x == y,
+            (Float(x, _), Float(y, _)) => x == y,
             (String(x), String(y)) => x == y,
             (Char(x), Char(y)) => x == y,
             (Bool(x), Bool(y)) => x == y,
@@ -437,7 +437,7 @@ impl std::hash::Hash for LiteralKind {
         core::mem::discriminant(self).hash(state);
         match self {
             LiteralKind::Integer(x, _) => x.hash(state),
-            LiteralKind::Float(x) => x.hash(state),
+            LiteralKind::Float(x, _) => x.hash(state),
             LiteralKind::String(x) => x.hash(state),
             LiteralKind::Char(x) => x.hash(state),
             LiteralKind::Bool(x) => x.hash(state),
@@ -471,8 +471,8 @@ impl<'a> Ast<'a> {
         Ast::Literal(Literal { kind: LiteralKind::Integer(x, kind), location, typ: None })
     }
 
-    pub fn float(x: f64, location: Location<'a>) -> Ast<'a> {
-        Ast::Literal(Literal { kind: LiteralKind::Float(x.to_bits()), location, typ: None })
+    pub fn float(x: f64, kind: FloatKind, location: Location<'a>) -> Ast<'a> {
+        Ast::Literal(Literal { kind: LiteralKind::Float(x.to_bits(), kind), location, typ: None })
     }
 
     pub fn string(x: String, location: Location<'a>) -> Ast<'a> {
@@ -754,7 +754,7 @@ impl<'a> Locatable<'a> for Type<'a> {
     fn locate(&self) -> Location<'a> {
         match self {
             Type::Integer(_, location) => *location,
-            Type::Float(location) => *location,
+            Type::Float(_, location) => *location,
             Type::Char(location) => *location,
             Type::String(location) => *location,
             Type::Pointer(location) => *location,

@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 
 use crate::cache::{DefinitionInfoId, ModuleCache};
 use crate::error::location::{Locatable, Location};
-use crate::lexer::token::IntegerKind;
+use crate::lexer::token::{FloatKind, IntegerKind};
 use crate::{lifetimes, util};
 
 use self::typeprinter::TypePrinter;
@@ -38,7 +38,7 @@ pub struct TypeVariableId(pub usize);
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum PrimitiveType {
     IntegerType(IntegerKind), // : *
-    FloatType,                // : *
+    FloatType(FloatKind),     // : *
     CharType,                 // : *
     BooleanType,              // : *
     UnitType,                 // : *

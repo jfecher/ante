@@ -1,15 +1,32 @@
 
-add_float = 3.0 + 4.0
-sub_float = 7.0 - 8.0
-mul_float = 11.0 * 12.0
-div_float = 15.0 / 16.0
+////////// f64 ////////
+
+add_f64 = 3.0 + 4.0
+sub_f64 = 7.0 - 8.0
+mul_f64 = 11.0 * 12.0
+div_f64 = 15.0 / 16.0
 // mod_float = 10.0 % 3.0
 
-print add_float
-print sub_float
-print mul_float
-print div_float
+print add_f64
+print sub_f64
+print mul_f64
+print div_f64
 // print mod_float
+
+////////// f32 ////////
+add_f32 = 3.0f + 4.0f
+sub_f32 = 7.0f - 8.0f
+mul_f32 = 11.0f * 12.0f
+div_f32 = 15.0f / 16.0f
+print add_f32
+print sub_f32
+print mul_f32
+print div_f32
+
+// f32 -> f64 -> f32 roundtrip cast should preserve the original value
+x = 1.0f / 7.0f
+print x
+print (cast (cast x : f64) : f32)
 
 // args: --delete-binary
 // expected stdout:
@@ -17,6 +34,12 @@ print div_float
 // -1.0
 // 132.0
 // 0.9375
+// 7.0
+// -1.0
+// 132.0
+// 0.9375
+// 0.1428
+// 0.1428
 
 // We used to check 1.0 for print mod_float but
 // cranelift does not support modulus for floats

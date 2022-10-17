@@ -5,7 +5,7 @@ trait Foo a with
 impl Foo i32 with
     foo _a b = b
 
-impl Foo float with
+impl Foo f64 with
     foo _a b = b
 
 
@@ -21,7 +21,7 @@ c = foo "one" "two"
 
 // expected stdout:
 // a : i32
-// b : float
+// b : f64
 // c : string
 // foo : (forall a b. (a - a -> a can b))
 //   given Foo a

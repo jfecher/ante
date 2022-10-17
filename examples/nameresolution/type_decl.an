@@ -1,5 +1,5 @@
 
-type Struct1 = a:i32, b:float, c:string
+type Struct1 = a:i32, b:f64, c:string
 
 type Thingy is Struct1
 

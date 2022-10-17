@@ -1484,7 +1484,7 @@ impl<'a> Inferable<'a> for ast::Literal<'a> {
                     TypeResult::of(Type::Primitive(PrimitiveType::IntegerType(kind)), cache)
                 }
             },
-            Float(_) => TypeResult::of(Type::Primitive(PrimitiveType::FloatType), cache),
+            Float(_, kind) => TypeResult::of(Type::Primitive(PrimitiveType::FloatType(kind)), cache),
             String(_) => TypeResult::of(Type::UserDefined(STRING_TYPE), cache),
             Char(_) => TypeResult::of(Type::Primitive(PrimitiveType::CharType), cache),
             Bool(_) => TypeResult::of(Type::Primitive(PrimitiveType::BooleanType), cache),
@@ -1610,7 +1610,8 @@ impl<'a> Inferable<'a> for ast::FunctionCall<'a> {
 
         // Don't need a match here, but if we already know f is a function type
         // it improves error messages to unify parameter by parameter.
-        match try_unify(&f.typ, &new_function, self.location, cache, "Value being called is not a function, it is a $1") {
+        match try_unify(&f.typ, &new_function, self.location, cache, "Value being called is not a function, it is a $1")
+        {
             Ok(bindings) => bindings.perform(cache),
             Err(error) => issue_argument_types_error(self, f.typ.clone(), new_function, error, cache),
         }
@@ -1619,7 +1620,9 @@ impl<'a> Inferable<'a> for ast::FunctionCall<'a> {
     }
 }
 
-fn issue_argument_types_error<'c>(call: &ast::FunctionCall<'c>, f: Type, args: Type, original_error: ErrorMessage, cache: &mut ModuleCache<'c>) {
+fn issue_argument_types_error<'c>(
+    call: &ast::FunctionCall<'c>, f: Type, args: Type, original_error: ErrorMessage, cache: &mut ModuleCache<'c>,
+) {
     match try_unwrap_functions(f, args, cache) {
         Some((expected, actual)) => {
             if expected.parameters.len() != actual.parameters.len() && !expected.is_varargs && !actual.is_varargs {
@@ -1635,8 +1638,8 @@ fn issue_argument_types_error<'c>(call: &ast::FunctionCall<'c>, f: Type, args: T
             for ((arg, param), arg_ast) in actual.parameters.into_iter().zip(expected.parameters).zip(&call.args) {
                 unify(&arg, &param, arg_ast.locate(), cache, "Expected argument of type $2, but found $1");
             }
-        }
-        None => eprintln!("{}", original_error)
+        },
+        None => eprintln!("{}", original_error),
     }
 }
 

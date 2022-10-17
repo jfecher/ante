@@ -44,6 +44,8 @@ pub fn call_builtin<'ast>(builtin: &'ast Builtin, context: &mut Context<'ast>, b
         Builtin::UnsignedToFloat(a, _typ) => unsigned_to_float(value(a), builder),
         Builtin::FloatToSigned(a, _typ) => float_to_signed(value(a), builder),
         Builtin::FloatToUnsigned(a, _typ) => float_to_unsigned(value(a), builder),
+        Builtin::FloatPromote(a) => float_promote(value(a), builder),
+        Builtin::FloatDemote(a) => float_demote(value(a), builder),
 
         Builtin::BitwiseAnd(a, b) => bitwise_and(value(a), value(b), builder),
         Builtin::BitwiseOr(a, b) => bitwise_or(value(a), value(b), builder),
@@ -212,6 +214,16 @@ fn float_to_signed(param1: CraneliftValue, builder: &mut FunctionBuilder) -> Cra
 fn float_to_unsigned(param1: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
     let target_type = builder.func.signature.returns[0].value_type;
     builder.ins().fcvt_to_uint(target_type, param1)
+}
+
+fn float_promote(param1: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
+    let target_type = builder.func.signature.returns[0].value_type;
+    builder.ins().fpromote(target_type, param1)
+}
+
+fn float_demote(param1: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
+    let target_type = builder.func.signature.returns[0].value_type;
+    builder.ins().fdemote(target_type, param1)
 }
 
 fn bitwise_and(param1: CraneliftValue, param2: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {

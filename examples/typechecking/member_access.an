@@ -1,5 +1,5 @@
 type FooBar = foo:i32, bar:string
-type Foo = foo:float
+type Foo = foo:f64
 type Bar = bar:char
 
 stringify (s: string) = s
@@ -23,7 +23,7 @@ foo_and_bar foo bar
 
 // expected stdout:
 // Bar : (forall a. (char -> Bar can a))
-// Foo : (forall a. (float -> Foo can a))
+// Foo : (forall a. (f64 -> Foo can a))
 // FooBar : (forall a. (i32 - string -> FooBar can a))
 // bar : Bar
 // foo : Foo

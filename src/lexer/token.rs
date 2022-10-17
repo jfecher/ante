@@ -21,6 +21,7 @@ pub enum LexerError {
     InvalidCharacterInSignificantWhitespace(char), // Only spaces are allowed in significant whitespace
     InvalidEscapeSequence(char),
     InvalidIntegerSuffx,
+    InvalidFloatSuffx,
     IndentChangeTooSmall, // All indentation changes must be >= 2 spaces in size difference relative to the previous level
     UnindentToNewLevel,   // Unindented to a new indent level rather than returning to a previous one
     Expected(char),
@@ -57,6 +58,14 @@ pub enum IntegerKind {
     Usz,
 }
 
+/// The specific type of a float value. No unknown or inferred kinds,
+/// as there is no float polymorphism currently.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum FloatKind {
+    F32,
+    F64,
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum Token {
     // Lexer sends an end of input token before stopping so we get a proper error location when
@@ -70,7 +79,7 @@ pub enum Token {
     Identifier(String),
     StringLiteral(String),
     IntegerLiteral(u64, IntegerKind),
-    FloatLiteral(f64),
+    FloatLiteral(f64, FloatKind),
     CharLiteral(char),
     BooleanLiteral(bool),
     UnitLiteral,
@@ -78,7 +87,7 @@ pub enum Token {
     // Types
     TypeName(String),
     IntegerType(IntegerKind),
-    FloatType,
+    FloatType(FloatKind),
     CharType,
     StringType,
     PointerType,
@@ -202,7 +211,8 @@ impl Display for LexerError {
                 write!(f, "Only spaces are allowed in significant whitespace, {} is not allowed here", char_str)
             },
             InvalidEscapeSequence(c) => write!(f, "Invalid character in escape sequence: '{}' (U+{:x})", c, *c as u32),
-            InvalidIntegerSuffx => write!(f, "Invalid suffix after integer literal (expected an integer type like i32 or a non-alphanumeric character)"),
+            InvalidIntegerSuffx => write!(f, "Invalid suffix after integer literal. Expected an integer type like i32 or a space to separate the two tokens"),
+            InvalidFloatSuffx => write!(f, "Invalid suffix after float literal. Expected either 'f', 'f32', 'f64', or a space to separate the two tokens"),
             IndentChangeTooSmall => write!(f, "This indent/unindent is too small, it should be at least 2 spaces apart from the previous indentation level"),
             UnindentToNewLevel => write!(f, "This unindent doesn't return to any previous indentation level"),
             Expected(c) => write!(f, "Expected {} (U+{:x}) while lexing", *c, *c as u32),
@@ -231,6 +241,15 @@ impl Display for IntegerKind {
     }
 }
 
+impl Display for FloatKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            FloatKind::F32 => write!(f, "f32"),
+            FloatKind::F64 => write!(f, "f64"),
+        }
+    }
+}
+
 impl Display for Token {
     /// This formatting is shown when the parser outputs its
     /// "expected one of ..." tokens list after finding a syntax error.
@@ -246,7 +265,7 @@ impl Display for Token {
             Identifier(_) => write!(f, "an identifier"),
             StringLiteral(_) => write!(f, "a string literal"),
             IntegerLiteral(_, _) => write!(f, "an integer literal"),
-            FloatLiteral(_) => write!(f, "a float literal"),
+            FloatLiteral(_, _) => write!(f, "a float literal"),
             CharLiteral(_) => write!(f, "a char literal"),
             BooleanLiteral(_) => write!(f, "a boolean literal"),
             UnitLiteral => write!(f, "'()'"),
@@ -254,7 +273,7 @@ impl Display for Token {
             // Types
             TypeName(_) => write!(f, "a typename"),
             IntegerType(kind) => write!(f, "'{}'", kind),
-            FloatType => write!(f, "'float'"),
+            FloatType(kind) => write!(f, "'{}'", kind),
             CharType => write!(f, "'char'"),
             StringType => write!(f, "'string'"),
             PointerType => write!(f, "'Ptr'"),

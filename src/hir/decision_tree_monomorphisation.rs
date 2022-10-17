@@ -137,7 +137,7 @@ impl<'c> Context<'c> {
             VariantTag::Unit => 0,
             VariantTag::Literal(literal) => match literal {
                 ast::LiteralKind::Integer(x, _) => (*x).try_into().unwrap(), // TODO: larger tags
-                ast::LiteralKind::Float(_) => todo!(),
+                ast::LiteralKind::Float(_, _) => todo!(),
                 ast::LiteralKind::String(_) => todo!(),
                 ast::LiteralKind::Char(x) => {
                     let codepoint: u32 = (*x).into();

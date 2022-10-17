@@ -2,6 +2,7 @@ use std::path::Path;
 
 use crate::cli::Cli;
 use crate::hir::{self, Ast};
+use crate::lexer::token::FloatKind;
 use crate::util::{fmap, timing};
 
 use cranelift::codegen::ir::{types as cranelift_types, Value as CraneliftValue};
@@ -53,10 +54,8 @@ impl CodeGen for hir::Literal {
                 let typ = convert_integer_kind(*kind);
                 builder.ins().iconst(typ, *value as i64)
             },
-            hir::Literal::Float(float) => {
-                let ins = builder.ins();
-                ins.f64const(f64::from_bits(*float))
-            },
+            hir::Literal::Float(float, FloatKind::F32) => builder.ins().f32const(f64::from_bits(*float) as f32),
+            hir::Literal::Float(float, FloatKind::F64) => builder.ins().f64const(f64::from_bits(*float)),
             // TODO: C strings should probably be wrapped in a global value
             hir::Literal::CString(s) => context.c_string_value(s, builder),
             hir::Literal::Char(c) => builder.ins().iconst(cranelift_types::I8, *c as i64),

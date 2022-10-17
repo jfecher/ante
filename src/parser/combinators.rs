@@ -10,7 +10,7 @@
 //!   encompasses the whole rule. Most usages of parser! in the parser module
 //!   store this Location in the Ast node they create.
 use crate::error::location::Location;
-use crate::lexer::token::{IntegerKind, Token};
+use crate::lexer::token::{FloatKind, IntegerKind, Token};
 use crate::parser::error::{ParseError, ParseResult};
 
 pub type Input<'local, 'cache> = &'local [(Token, Location<'cache>)];
@@ -408,11 +408,11 @@ pub fn integer_literal_token<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b
     }
 }
 
-pub fn float_literal_token<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, f64> {
+pub fn float_literal_token<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, (f64, FloatKind)> {
     match input[0] {
-        (Token::FloatLiteral(float), location) => Ok((&input[1..], float, location)),
+        (Token::FloatLiteral(float, kind), location) => Ok((&input[1..], (float, kind), location)),
         (Token::Invalid(c), location) => Err(ParseError::Fatal(Box::new(ParseError::LexerError(c, location)))),
-        (_, location) => Err(ParseError::Expected(vec![Token::FloatLiteral(0.0)], location)),
+        (_, location) => Err(ParseError::Expected(vec![Token::FloatLiteral(0.0, FloatKind::F64)], location)),
     }
 }
 
@@ -435,6 +435,14 @@ pub fn bool_literal_token<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, b
 pub fn int_type_token<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, IntegerKind> {
     match input[0] {
         (Token::IntegerType(kind), location) => Ok((&input[1..], kind, location)),
+        (Token::Invalid(c), location) => Err(ParseError::Fatal(Box::new(ParseError::LexerError(c, location)))),
+        (_, location) => Err(ParseError::Expected(vec![Token::BooleanLiteral(true)], location)),
+    }
+}
+
+pub fn float_type_token<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, FloatKind> {
+    match input[0] {
+        (Token::FloatType(kind), location) => Ok((&input[1..], kind, location)),
         (Token::Invalid(c), location) => Err(ParseError::Fatal(Box::new(ParseError::LexerError(c, location)))),
         (_, location) => Err(ParseError::Expected(vec![Token::BooleanLiteral(true)], location)),
     }

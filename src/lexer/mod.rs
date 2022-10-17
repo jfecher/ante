@@ -42,7 +42,7 @@ use crate::error::location::{EndPosition, Locatable, Location, Position};
 use std::collections::HashMap;
 use std::path::Path;
 use std::str::Chars;
-use token::{IntegerKind, LexerError, Token};
+use token::{FloatKind, IntegerKind, LexerError, Token};
 
 #[derive(Clone)]
 struct OpenBraces {
@@ -112,7 +112,8 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
             ("u32", Token::IntegerType(IntegerKind::U32)),
             ("u64", Token::IntegerType(IntegerKind::U64)),
             ("usz", Token::IntegerType(IntegerKind::Usz)),
-            ("float", Token::FloatType),
+            ("f32", Token::FloatType(FloatKind::F32)),
+            ("f64", Token::FloatType(FloatKind::F64)),
             ("char", Token::CharType),
             ("string", Token::StringType),
             ("Ptr", Token::PointerType),
@@ -275,15 +276,35 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
         }
     }
 
+    fn lex_float_suffix(&mut self) -> Result<FloatKind, Token> {
+        let start = self.current_position.index;
+        while self.current.is_alphanumeric() || self.current == '_' {
+            self.advance();
+        }
+
+        let word = &self.file_contents[start..self.current_position.index];
+        match word {
+            "f" => Ok(FloatKind::F32),
+            "f32" => Ok(FloatKind::F32),
+            "f64" => Ok(FloatKind::F64),
+            "" => Ok(FloatKind::F64),
+            _ => Err(Token::Invalid(LexerError::InvalidFloatSuffx)),
+        }
+    }
+
     fn lex_number(&mut self) -> IterElem<'cache> {
         let integer_string = self.lex_integer();
 
         if self.current == '.' && self.next.is_ascii_digit() {
             self.advance();
             let float_string = integer_string + "." + &self.lex_integer();
-
             let float = float_string.parse().unwrap();
-            Some((Token::FloatLiteral(float), self.locate()))
+            let location = self.locate();
+
+            match self.lex_float_suffix() {
+                Ok(suffix) => Some((Token::FloatLiteral(float, suffix), location)),
+                Err(lexer_error) => Some((lexer_error, location)),
+            }
         } else {
             let integer = integer_string.parse().unwrap();
             let location = self.locate();
@@ -299,17 +320,15 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
 
         if self.current.is_numeric() {
             self.lex_number().map(|(token, location)| {
-                (
-                    match token {
-                        Token::IntegerLiteral(x, kind) => {
-                            let x = format!("-{}", x).parse::<i64>().unwrap();
-                            Token::IntegerLiteral(x as u64, kind)
-                        },
-                        Token::FloatLiteral(x) => Token::FloatLiteral(-x),
-                        _ => unreachable!(),
+                let token = match token {
+                    Token::IntegerLiteral(x, kind) => {
+                        let x = format!("-{}", x).parse::<i64>().unwrap();
+                        Token::IntegerLiteral(x as u64, kind)
                     },
-                    location,
-                )
+                    Token::FloatLiteral(x, kind) => Token::FloatLiteral(-x, kind),
+                    _ => unreachable!(),
+                };
+                (token, location)
             })
         } else {
             Some((Token::Subtract, self.locate()))

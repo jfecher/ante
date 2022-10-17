@@ -169,7 +169,7 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
     fn fmt_primitive(&self, primitive: &PrimitiveType, f: &mut Formatter) -> std::fmt::Result {
         match primitive {
             PrimitiveType::IntegerType(kind) => write!(f, "{}", kind.to_string().blue()),
-            PrimitiveType::FloatType => write!(f, "{}", "float".blue()),
+            PrimitiveType::FloatType(kind) => write!(f, "{}", kind.to_string().blue()),
             PrimitiveType::CharType => write!(f, "{}", "char".blue()),
             PrimitiveType::BooleanType => write!(f, "{}", "bool".blue()),
             PrimitiveType::UnitType => write!(f, "{}", "unit".blue()),
