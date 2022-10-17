@@ -1610,39 +1610,42 @@ impl<'a> Inferable<'a> for ast::FunctionCall<'a> {
 
         // Don't need a match here, but if we already know f is a function type
         // it improves error messages to unify parameter by parameter.
-        match try_unify(&f.typ, &new_function, self.location, cache, "this error is never shown") {
+        match try_unify(&f.typ, &new_function, self.location, cache, "Value being called is not a function, it is a $1") {
             Ok(bindings) => bindings.perform(cache),
-            Err(_) => issue_argument_types_error(self, f.typ.clone(), new_function, cache),
+            Err(error) => issue_argument_types_error(self, f.typ.clone(), new_function, error, cache),
         }
 
         f.with_type(return_type)
     }
 }
 
-fn issue_argument_types_error<'c>(call: &ast::FunctionCall<'c>, f: Type, args: Type, cache: &mut ModuleCache<'c>) {
-    let (expected, actual) = unwrap_functions(f, args, cache);
+fn issue_argument_types_error<'c>(call: &ast::FunctionCall<'c>, f: Type, args: Type, original_error: ErrorMessage, cache: &mut ModuleCache<'c>) {
+    match try_unwrap_functions(f, args, cache) {
+        Some((expected, actual)) => {
+            if expected.parameters.len() != actual.parameters.len() && !expected.is_varargs && !actual.is_varargs {
+                error!(
+                    call.location,
+                    "Function {} declared to take {} parameter(s), but {} were supplied",
+                    Function(expected.clone()).display(cache),
+                    expected.parameters.len(),
+                    actual.parameters.len()
+                )
+            }
 
-    if expected.parameters.len() != actual.parameters.len() && !expected.is_varargs && !actual.is_varargs {
-        error!(
-            call.location,
-            "Function {} declared to take {} parameter(s), but {} were supplied",
-            Function(expected.clone()).display(cache),
-            expected.parameters.len(),
-            actual.parameters.len()
-        )
-    }
-
-    for ((arg, param), arg_ast) in actual.parameters.into_iter().zip(expected.parameters).zip(&call.args) {
-        unify(&arg, &param, arg_ast.locate(), cache, "Expected argument of type $2, but found $1");
+            for ((arg, param), arg_ast) in actual.parameters.into_iter().zip(expected.parameters).zip(&call.args) {
+                unify(&arg, &param, arg_ast.locate(), cache, "Expected argument of type $2, but found $1");
+            }
+        }
+        None => eprintln!("{}", original_error)
     }
 }
 
-fn unwrap_functions(f: Type, new_function: Type, cache: &ModuleCache) -> (FunctionType, FunctionType) {
+fn try_unwrap_functions(f: Type, new_function: Type, cache: &ModuleCache) -> Option<(FunctionType, FunctionType)> {
     let f = follow_bindings_in_cache(&f, cache);
 
     match (f, new_function) {
-        (Type::Function(f1), Type::Function(f2)) => (f1, f2),
-        _ => unreachable!(),
+        (Type::Function(f1), Type::Function(f2)) => Some((f1, f2)),
+        _ => None,
     }
 }
 
