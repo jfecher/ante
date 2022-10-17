@@ -48,11 +48,6 @@ extern
     feof: InFile -> i32
     ferror: File -> i32
 
-//Convenience function for using fgetc, and feof with better types
-// TODO: builtin casting between primitives
-// fgetchar f = fgetc f as char
-// feofb f = feof f as bool
-
 type Maybe t =
    | None
    | Some t
@@ -170,11 +165,25 @@ impl Cast float u32 with cast x = builtin "FloatToUnsigned" x
 impl Cast float u64 with cast x = builtin "FloatToUnsigned" x
 impl Cast float usz with cast x = builtin "FloatToUnsigned" x
 
-// Other casts: TODO fill in
+// x -> char casts
+impl Cast i8 char with cast = transmute
+impl Cast i16 char with cast x = builtin "Truncate" x
+impl Cast i32 char with cast x = builtin "Truncate" x
+impl Cast i64 char with cast x = builtin "Truncate" x
+impl Cast isz char with cast x = builtin "Truncate" x
+
+impl Cast u8 char with cast = transmute
+impl Cast u16 char with cast x = builtin "Truncate" x
+impl Cast u32 char with cast x = builtin "Truncate" x
 impl Cast u64 char with cast x = builtin "Truncate" x
+impl Cast usz char with cast x = builtin "Truncate" x
+
+// Other casts: TODO fill in
 impl Cast i32 usz with cast x =
     // TODO: Review. Does this match C?
     transmute (cast x : isz)
+
+impl Cast char i32 with cast x = builtin "SignExtend" x
 
 /// Represents a failable type cast from a to b
 trait TryCast a b with
@@ -543,10 +552,11 @@ repeat (count: usz) f : unit =
     iter (Range 0 count) f
 
 // Iterating through an InFile iterates through each line
-// impl Iterator InFile string
-//     has_next f = not feofb f
-//     cur_elem f = InFile.next_line f
-//     advance f = f
+impl Iterator InFile string with
+    next infile =
+        if eof infile
+        then None
+        else Some (infile, next_line infile)
 
 // TODO: manually construct a string from parts
 // impl Cast (ref char) string with
@@ -588,47 +598,48 @@ impl Extract string usz char with
 //     insert str index char =
 //         str.c_string#index := char
 
-impl Cast string InFile with
-    cast fName = InFile (fopen fName.c_string "r".c_string)
+open_infile (path: string) : InFile =
+    InFile (fopen path.c_string "r".c_string)
+
+open_outfile (path: string) : OutFile =
+    OutFile (fopen path.c_string "w".c_string)
+
+//Convenience function for using feof with better types
+eof (f: InFile) : bool =
+    feof f != 0
+
+next_char (f: InFile) : char =
+    cast (fgetc f)
+
+// TODO: Why is this being monomorphised twice?
+next_line (f: InFile) : string =
+    if eof f then return ""
+    eof = cast 255 : char
+
+    capacity = mut 32
+    cstr = mut malloc @capacity
+
+    len = loop (len = 0) ->
+        c = next_char f
+        if c == eof then return len
+
+        //Flag feof if eof occurs after terminating newline
+        if c == '\n' then
+            peek = next_char f
+            if peek != eof then ungetc (cast peek) f
+            return len
+
+        if len + 1 >= @capacity then
+            capacity := @capacity * 2
+            cstr := realloc (@cstr) (@capacity)
+
+        array_insert (@cstr) len c
+        recur (len + 1)
+
+    array_insert (@cstr) len '\0'
+    string (@cstr) len
 
 
-impl Cast string OutFile with
-    cast fName = OutFile (fopen fName.c_string "w".c_string)
-
-
-// module InFile
-//     next_line (f:InFile) -> string =
-//         if feofb f then return ""
-//         eof = cast 255
-// 
-//         len = mut 0int
-//         cap = mut 64int
-//         cstr = mut malloc cap
-// 
-//         while
-//             c = fgetchar f
-// 
-//             if c == eof then break
-// 
-//             //Flag feof if eof occurs after terminating newline
-//             if c == '\n' then
-//                 peek = fgetchar f
-//                 if peek != eof then ungetc (cast peek) f
-//                 break
-// 
-//             if len+1int >= cap then
-//                 cap *= 2int
-//                 cstr := realloc cstr cap
-// 
-//             cstr#len := c
-//             len += 1int
-//             true
-//         do ()
-// 
-//         cstr#len := '\0'
-//         string cstr len
-// 
-// 
 
 /// Print a message then return user input
 input msg : string =
