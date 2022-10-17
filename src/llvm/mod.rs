@@ -59,6 +59,7 @@ pub struct Generator<'context> {
     auto_derefs: HashSet<DefinitionId>,
 
     current_function_info: Option<DefinitionId>,
+    current_definition_name: Option<String>,
 }
 
 /// Codegen the given Ast, producing a binary file at the given path.
@@ -79,6 +80,7 @@ pub fn run(path: &Path, ast: hir::Ast, args: &Cli) {
         definitions: HashMap::new(),
         auto_derefs: HashSet::new(),
         current_function_info: None,
+        current_definition_name: None,
     };
 
     // Codegen main, and all functions reachable from it
@@ -496,7 +498,9 @@ impl<'g> CodeGen<'g> for hir::Variable {
 impl<'g> CodeGen<'g> for hir::Lambda {
     fn codegen(&self, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
         let caller_block = generator.current_block();
-        let (function, function_value) = generator.function("lambda", &self.typ);
+        let name = generator.current_definition_name.take().unwrap_or_else(|| "lambda".into());
+
+        let (function, function_value) = generator.function(&name, &self.typ);
 
         // Bind each parameter node to the nth parameter of `function`
         for (i, parameter) in self.args.iter().enumerate() {
@@ -542,6 +546,7 @@ impl<'g> CodeGen<'g> for hir::Definition {
             }
 
             generator.current_function_info = Some(self.variable);
+            generator.current_definition_name = self.name.clone();
             let value = self.expr.codegen(generator);
             generator.definitions.insert(self.variable, value);
         }
