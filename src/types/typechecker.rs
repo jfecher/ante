@@ -37,7 +37,7 @@ use crate::types::typed::Typed;
 use crate::types::EffectSet;
 use crate::types::{
     pattern, traitchecker, FunctionType, LetBindingLevel, PrimitiveType, Type, Type::*, TypeBinding, TypeBinding::*,
-    TypeInfo, TypeVariableId, INITIAL_LEVEL, PAIR_TYPE, STRING_TYPE,
+    TypeInfo, TypeVariableId, INITIAL_LEVEL, MAYBE_TYPE, PAIR_TYPE, STRING_TYPE,
 };
 use crate::util::*;
 
@@ -1734,7 +1734,7 @@ impl<'a> Inferable<'a> for ast::If<'a> {
             unify(&then.typ, &otherwise.typ, self.location, cache, msg);
             result.with_type(then.typ)
         } else {
-            result.with_type(Type::UNIT)
+            result.with_type(Type::UserDefined(MAYBE_TYPE))
         }
     }
 }

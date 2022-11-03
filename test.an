@@ -1,0 +1,6 @@
+print_float1 f =
+    if f < 0.0 then
+        0.0
+
+a = print_float1 1.0
+a

@@ -295,6 +295,11 @@ pub const STRING_TYPE: TypeInfoId = TypeInfoId(0);
 /// an operator for its name, but it is otherwise a normal struct type.
 pub const PAIR_TYPE: TypeInfoId = TypeInfoId(1);
 
+// The Maybe type is a semi builtin. It's constructor Maybe(a) is
+// visible whether or note the prelude is imported. It effectively
+// replicates the pair type such that it is in scope even if not imported
+pub const MAYBE_TYPE: TypeInfoId = TypeInfoId(2);
+
 #[derive(Debug)]
 pub enum TypeInfoBody<'a> {
     Union(Vec<TypeConstructor<'a>>),

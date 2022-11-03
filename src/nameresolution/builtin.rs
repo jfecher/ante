@@ -9,7 +9,7 @@ use crate::error::location::Location;
 use crate::lexer::token::{IntegerKind, Token};
 use crate::nameresolution::{declare_module, define_module, NameResolver};
 use crate::types::{
-    Field, FunctionType, GeneralizedType, LetBindingLevel, PrimitiveType, Type, TypeInfoBody, PAIR_TYPE, STRING_TYPE,
+    Field, FunctionType, GeneralizedType, LetBindingLevel, PrimitiveType, Type, TypeInfoBody, MAYBE_TYPE, PAIR_TYPE, STRING_TYPE,
 };
 
 use std::collections::HashSet;
@@ -27,6 +27,9 @@ pub const STRING_ID: DefinitionInfoId = DefinitionInfoId(1);
 /// DefinitionInfoId for the pair constructor `,` to construct values like (1, 2)
 pub const PAIR_ID: DefinitionInfoId = DefinitionInfoId(2);
 
+/// DefinitionInfoId for the Maybe to construct values like Maybe a
+pub const MAYBE_ID: DefinitionInfoId = DefinitionInfoId(2);
+
 /// Defines the builtin symbols:
 /// - `type string = c_string: ptr char, len: usz`
 /// - `builtin : string -> a` used by the codegen pass to implement
@@ -43,7 +46,7 @@ pub fn define_builtins(cache: &mut ModuleCache) {
 
     let string_type = define_string(cache);
     define_pair(cache);
-
+    define_maybe(cache);
     let a = cache.next_type_variable_id(LetBindingLevel(1));
     let e = cache.next_type_variable_id(LetBindingLevel(1));
 
@@ -81,7 +84,9 @@ pub fn import_prelude<'a>(resolver: &mut NameResolver, cache: &mut ModuleCache<'
 
     // Manually insert some builtins as if they were defined in the prelude
     resolver.current_scope().traits.insert("Int".into(), cache.int_trait);
+    resolver.current_scope().types.insert("Maybe".into(), MAYBE_TYPE);
     resolver.current_scope().types.insert(Token::Comma.to_string(), PAIR_TYPE);
+    resolver.current_scope().definitions.insert("Maybe".into(), MAYBE_ID);
     resolver.current_scope().definitions.insert(Token::Comma.to_string(), PAIR_ID);
     resolver.current_scope().definitions.insert("string".into(), STRING_ID);
 }
@@ -179,3 +184,51 @@ fn define_pair(cache: &mut ModuleCache) {
     cache.definition_infos[id.0].typ = Some(constructor_type);
     cache.definition_infos[id.0].definition = Some(constructor);
 }
+
+/// The builtin Maybe type is defined here as:
+///
+/// type Maybe a = 
+///    | Some a
+///    | None
+fn define_maybe(cache: &mut ModuleCache) {
+    let location = Location::builtin();
+
+    let level = LetBindingLevel(0);
+    let a = cache.next_type_variable_id(level);
+
+    let name = "Maybe".to_string();
+    let maybe = cache.push_type_info(name.clone(), vec![], location);
+    assert_eq!(maybe, MAYBE_TYPE);
+
+    cache.type_infos[maybe.0].body = TypeInfoBody::Struct(vec![
+        Field { name: "value".into(), field_type: Type::TypeVariable(a), location },
+    ]);
+
+    cache.type_infos[maybe.0].args = vec![a];
+
+    // The type is defined, now we define the constructor
+    let parameters = vec![Type::TypeVariable(a)];
+    let maybe = Box::new(Type::UserDefined(maybe));
+    let maybe_a = Box::new(Type::TypeApplication(maybe, parameters.clone()));
+
+    let e = cache.next_type_variable_id(level);
+
+    let constructor_type = Type::Function(FunctionType {
+        parameters,
+        return_type: maybe_a,
+        environment: Box::new(Type::UNIT),
+        effects: Box::new(Type::TypeVariable(e)),
+        is_varargs: false,
+    });
+
+    let constructor_type = GeneralizedType::PolyType(vec![a, e], constructor_type);
+
+    // and now register a new type constructor in the cache with the given type
+    let id = cache.push_definition(&name, location);
+    assert_eq!(id, MAYBE_ID);
+    let constructor = DefinitionKind::TypeConstructor { name, tag: None };
+
+    cache.definition_infos[id.0].typ = Some(constructor_type);
+    cache.definition_infos[id.0].definition = Some(constructor);
+}
+
