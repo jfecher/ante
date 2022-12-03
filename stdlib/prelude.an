@@ -684,7 +684,7 @@ read_line : string =
 
         array_insert buffer2 len c
 
-        if c != '\n'
+        if c != '\n' and (transmute c : i8) >= 0
         then recur buffer2 (len + 1)
         else buffer2, len
 
