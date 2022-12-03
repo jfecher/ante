@@ -674,23 +674,24 @@ next_line (f: InFile) : string =
     array_insert (@cstr) len '\0'
     string (@cstr) len
 
-
-
-/// Print a message then return user input
-input msg : string =
-    printne msg
-
+// Read a single line from stdin
+read_line : string =
     buffer, len = loop (buffer = null ()) (len = 0) ->
         c = getchar ()
         buffer2 = if len % 32 == 0
             then realloc buffer (len + 32)
             else buffer
 
-        buffer2#len := c
+        array_insert buffer2 len c
 
         if c != '\n'
         then recur buffer2 (len + 1)
         else buffer2, len
 
-    buffer#len := '\0'
+    array_insert buffer len '\0'
     string buffer len
+
+/// Print a message then return user input
+input_with_prompt msg : string =
+    printne msg
+    read_line
