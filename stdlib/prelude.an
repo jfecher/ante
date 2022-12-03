@@ -675,7 +675,7 @@ next_line (f: InFile) : string =
     string (@cstr) len
 
 // Read a single line from stdin
-read_line : string =
+read_line () : string =
     buffer, len = loop (buffer = null ()) (len = 0) ->
         c = getchar ()
         buffer2 = if len % 32 == 0
@@ -692,6 +692,6 @@ read_line : string =
     string buffer len
 
 /// Print a message then return user input
-input_with_prompt msg : string =
+input msg : string =
     printne msg
     read_line
