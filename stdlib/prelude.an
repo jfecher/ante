@@ -11,7 +11,7 @@ extern
     // printf: Ptr char - ... -> unit
     puts: Ptr char -> i32
     putchar: char -> unit
-    getchar: unit -> char
+    getchar: unit -> i32
     exit: i32 -> never_returns
     malloc: usz -> Ptr a
     calloc: /*items:*/usz - /*size:*/usz -> Ptr a
@@ -649,19 +649,18 @@ next_char (f: InFile) : char =
 // TODO: Why is this being monomorphised twice?
 next_line (f: InFile) : string =
     if eof f then return ""
-    eof = cast 255 : char
 
     capacity = mut 32
     cstr = mut malloc @capacity
 
     len = loop (len = 0) ->
         c = next_char f
-        if c == eof then return len
+        if c < 0 then return len
 
         //Flag feof if eof occurs after terminating newline
         if c == '\n' then
             peek = next_char f
-            if peek != eof then ungetc (cast peek) f
+            if peek >= 0 then ungetc (cast peek) f
             return len
 
         if len + 1 >= @capacity then
@@ -674,19 +673,29 @@ next_line (f: InFile) : string =
     array_insert (@cstr) len '\0'
     string (@cstr) len
 
+read_char () : Maybe char =
+    c = getchar ()
+    if c < 0
+        then None
+        else Some (transmute c : char)
+
 // Read a single line from stdin
 read_line () : string =
     buffer, len = loop (buffer = null ()) (len = 0) ->
-        c = getchar ()
         buffer2 = if len % 32 == 0
             then realloc buffer (len + 32)
             else buffer
 
-        array_insert buffer2 len c
+        match read_char ()
+            | Some ch ->
+                array_insert buffer2 len ch
 
-        if c != '\n' and (transmute c : i8) >= 0
-        then recur buffer2 (len + 1)
-        else buffer2, len
+                if ch != '\n'
+                    then recur buffer2 (len + 1)
+                    else buffer2, len
+
+            | _ -> buffer2, len
+
 
     array_insert buffer len '\0'
     string buffer len
