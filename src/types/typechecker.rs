@@ -1726,15 +1726,18 @@ impl<'a> Inferable<'a> for ast::If<'a> {
         let mut then = infer(self.then.as_mut(), cache);
         result.combine(&mut then, cache);
 
-        if let Some(otherwise) = &mut self.otherwise {
+        if let Some(otherwise) = &mut self.otherwise { 
             let mut otherwise = infer(otherwise.as_mut(), cache);
             result.combine(&mut otherwise, cache);
+            if otherwise.typ.is_unit(cache) {
+                return result.with_type(Type::TypeApplication(Box::new(Type::UserDefined(MAYBE_TYPE)), vec![then.typ]))
+            }
 
             let msg = "Expected 'then' and 'else' branch types to match, but found $1 and $2 respectively";
             unify(&then.typ, &otherwise.typ, self.location, cache, msg);
             result.with_type(then.typ)
         } else {
-            result.with_type(Type::UserDefined(MAYBE_TYPE))
+            result.with_type(Type::TypeApplication(Box::new(Type::UserDefined(MAYBE_TYPE)), vec![then.typ]))
         }
     }
 }

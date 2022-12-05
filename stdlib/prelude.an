@@ -48,9 +48,9 @@ extern
     feof: InFile -> i32
     ferror: File -> i32
 
-type Maybe t =
-   | None
-   | Some t
+type Some a = a: Maybe a
+
+type None a = a: unit
 
 type Result t e =
    | Ok t

@@ -9,7 +9,7 @@ use crate::error::location::Location;
 use crate::lexer::token::{IntegerKind, Token};
 use crate::nameresolution::{declare_module, define_module, NameResolver};
 use crate::types::{
-    Field, FunctionType, GeneralizedType, LetBindingLevel, PrimitiveType, Type, TypeInfoBody, MAYBE_TYPE, PAIR_TYPE, STRING_TYPE,
+    Field, FunctionType, GeneralizedType, LetBindingLevel, PrimitiveType, Type, TypeConstructor, TypeInfoBody, MAYBE_TYPE, PAIR_TYPE, STRING_TYPE,
 };
 
 use std::collections::HashSet;
@@ -28,7 +28,7 @@ pub const STRING_ID: DefinitionInfoId = DefinitionInfoId(1);
 pub const PAIR_ID: DefinitionInfoId = DefinitionInfoId(2);
 
 /// DefinitionInfoId for the Maybe to construct values like Maybe a
-pub const MAYBE_ID: DefinitionInfoId = DefinitionInfoId(2);
+pub const MAYBE_ID: DefinitionInfoId = DefinitionInfoId(3);
 
 /// Defines the builtin symbols:
 /// - `type string = c_string: ptr char, len: usz`
@@ -200,8 +200,8 @@ fn define_maybe(cache: &mut ModuleCache) {
     let maybe = cache.push_type_info(name.clone(), vec![], location);
     assert_eq!(maybe, MAYBE_TYPE);
 
-    cache.type_infos[maybe.0].body = TypeInfoBody::Struct(vec![
-        Field { name: "value".into(), field_type: Type::TypeVariable(a), location },
+    cache.type_infos[maybe.0].body = TypeInfoBody::Union(vec![
+        TypeConstructor { name: "value".into(), args: vec![Type::TypeVariable(a), Type::UNIT], id: MAYBE_ID, location },
     ]);
 
     cache.type_infos[maybe.0].args = vec![a];
@@ -226,7 +226,7 @@ fn define_maybe(cache: &mut ModuleCache) {
     // and now register a new type constructor in the cache with the given type
     let id = cache.push_definition(&name, location);
     assert_eq!(id, MAYBE_ID);
-    let constructor = DefinitionKind::TypeConstructor { name, tag: None };
+    let constructor = DefinitionKind::TypeConstructor { name, tag: Some(0) };
 
     cache.definition_infos[id.0].typ = Some(constructor_type);
     cache.definition_infos[id.0].definition = Some(constructor);

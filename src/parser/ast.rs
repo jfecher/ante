@@ -549,13 +549,19 @@ impl<'a> Ast<'a> {
     }
 
     pub fn if_expr(condition: Ast<'a>, then: Ast<'a>, otherwise: Option<Ast<'a>>, location: Location<'a>) -> Ast<'a> {
-        Ast::If(If {
+        
+ 
+        match &otherwise{
+            Some(_ast) => Ast::If(If {
             condition: Box::new(condition),
             then: Box::new(then),
             otherwise: otherwise.map(Box::new),
             location,
             typ: None,
-        })
+        }),
+            None => Ast::if_expr(condition,then, Some(Ast::unit_literal(location)), location)
+        }
+        //super::desugar::desugar_if(if_ast)
     }
 
     pub fn definition(pattern: Ast<'a>, expr: Ast<'a>, location: Location<'a>) -> Ast<'a> {
