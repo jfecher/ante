@@ -679,9 +679,9 @@ read_char () : Maybe char =
         then None
         else Some (transmute c : char)
 
-// Read a single line from stdin
-read_line () : string =
-    buffer, len = loop (buffer = null ()) (len = 0) ->
+// Read a single line from stdin, returning (Some s) if we got at least 1 character or None otherwise
+read_line () : Maybe string =
+    line = loop (buffer = null ()) (len = 0) ->
         buffer2 = if len % 32 == 0
             then realloc buffer (len + 32)
             else buffer
@@ -692,13 +692,18 @@ read_line () : string =
 
                 if ch != '\n'
                     then recur buffer2 (len + 1)
-                    else buffer2, len
+                    else Some (buffer2, len)
 
-            | _ -> buffer2, len
+            | _ -> if len > 0
+                        then Some (buffer2, len)
+                        else None
 
 
-    array_insert buffer len '\0'
-    string buffer len
+    match line
+        | Some (buffer, len) ->
+            array_insert buffer len '\0'
+            Some (string buffer len)
+        | _ -> None
 
 /// Print a message then return user input
 input msg : string =
