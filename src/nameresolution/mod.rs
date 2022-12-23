@@ -630,10 +630,14 @@ impl<'c> NameResolver {
             ast::Type::Pointer(_) => Type::Primitive(PrimitiveType::Ptr),
             ast::Type::Boolean(_) => Type::Primitive(PrimitiveType::BooleanType),
             ast::Type::Unit(_) => Type::UNIT,
-            ast::Type::Function(args, ret, is_varargs, _) => {
+            ast::Type::Function(args, ret, is_varargs, is_closure, _) => {
                 let parameters = fmap(args, |arg| self.convert_type(cache, arg));
                 let return_type = Box::new(self.convert_type(cache, ret));
-                let environment = Box::new(Type::UNIT);
+                let environment = Box::new(if *is_closure {
+                    cache.next_type_variable(self.let_binding_level)
+                } else {
+                    Type::UNIT
+                });
                 let effects = Box::new(cache.next_type_variable(self.let_binding_level));
                 let is_varargs = *is_varargs;
                 Type::Function(FunctionType { parameters, return_type, environment, is_varargs, effects })

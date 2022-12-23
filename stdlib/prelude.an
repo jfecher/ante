@@ -540,10 +540,10 @@ impl Iterator (Range (Int a)) (Int a) given Cmp (Int a) with
             next = Range (range.start + 1) range.end
             Some (next, range.start)
 
-iter_range (from: usz) (to: usz) f : unit =
+iter_range (from: usz) (to: usz) (f: usz => unit) : unit =
     iter (Range from to) f
 
-repeat (count: usz) (f: usz -> unit) : unit =
+repeat (count: usz) (f: usz => unit) : unit =
     iter (Range 0 count) f
 
 // Iterating through an InFile iterates through each line

@@ -127,6 +127,7 @@ pub enum Token {
     NotEqual,           // !=
     Range,              // ...
     RightArrow,         // ->
+    FatArrow,           // =>
     ApplyLeft,          // <|
     ApplyRight,         // |>
     Append,             // ++
@@ -312,6 +313,7 @@ impl Display for Token {
             Token::NotEqual => write!(f, "'!='"),
             Token::Range => write!(f, "'..'"),
             Token::RightArrow => write!(f, "'->'"),
+            Token::FatArrow => write!(f, "'=>'"),
             Token::ApplyLeft => write!(f, "'<|'"),
             Token::ApplyRight => write!(f, "'|>'"),
             Token::Append => write!(f, "'++'"),

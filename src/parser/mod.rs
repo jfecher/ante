@@ -753,10 +753,19 @@ parser!(unit loc =
 parser!(function_type loc -> 'b Type<'b> =
     args <- delimited_trailing(function_arg_type, expect(Token::Subtract), false);
     varargs <- maybe(varargs);
-    _ <- expect(Token::RightArrow);
+    is_closure <- function_arrow;
     return_type <- parse_type;
-    Type::Function(args, Box::new(return_type), varargs.is_some(), loc)
+    Type::Function(args, Box::new(return_type), varargs.is_some(), is_closure, loc)
 );
+
+// Returns true if this function is a closure
+fn function_arrow<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, bool> {
+    match input[0].0 {
+        Token::RightArrow => Ok((&input[1..], false, input[0].1)),
+        Token::FatArrow => Ok((&input[1..], true, input[0].1)),
+        _ => Err(ParseError::InRule("function type", input[0].1)),
+    }
+}
 
 parser!(type_application loc -> 'b Type<'b> =
     type_constructor <- basic_type;

@@ -105,8 +105,10 @@ impl<'a> Display for ast::Type<'a> {
             Reference(_) => write!(f, "ref"),
             TypeVariable(name, _) => write!(f, "{}", name),
             UserDefined(name, _) => write!(f, "{}", name),
-            Function(params, return_type, varargs, _) => {
-                write!(f, "({} {}-> {})", join_with(params, " "), if *varargs { "... " } else { "" }, return_type)
+            Function(params, return_type, varargs, is_closure, _) => {
+                let arrow = if *is_closure { "=>" } else { "->" };
+                let varargs = if *varargs { "... " } else { "" };
+                write!(f, "({} {}{} {})", join_with(params, " "), varargs, arrow, return_type)
             },
             TypeApplication(constructor, args, _) => {
                 write!(f, "({} {})", constructor, join_with(args, " "))

@@ -555,6 +555,7 @@ impl<'cache, 'contents> Iterator for Lexer<'cache, 'contents> {
             ('/', '/') => self.lex_singleline_comment(),
             ('/', '*') => self.lex_multiline_comment(),
             ('=', '=') => self.advance2_with(Token::EqualEqual),
+            ('=', '>') => self.advance2_with(Token::FatArrow),
             ('.', '.') => self.advance2_with(Token::Range),
             (':', '=') => {
                 self.previous_token_expects_indent = true;
