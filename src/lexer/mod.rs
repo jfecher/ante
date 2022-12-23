@@ -114,6 +114,8 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
             ("usz", Token::IntegerType(IntegerKind::Usz)),
             ("f32", Token::FloatType(FloatKind::F32)),
             ("f64", Token::FloatType(FloatKind::F64)),
+            ("Int", Token::PolymorphicIntType),
+            ("Float", Token::PolymorphicFloatType),
             ("char", Token::CharType),
             ("string", Token::StringType),
             ("Ptr", Token::PointerType),
@@ -253,30 +255,30 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
         self.file_contents[start..end].replace('_', "")
     }
 
-    fn lex_integer_suffix(&mut self) -> Result<IntegerKind, Token> {
+    fn lex_integer_suffix(&mut self) -> Result<Option<IntegerKind>, Token> {
         let start = self.current_position.index;
         while self.current.is_alphanumeric() || self.current == '_' {
             self.advance();
         }
 
         let word = &self.file_contents[start..self.current_position.index];
-        match word {
-            "i8" => Ok(IntegerKind::I8),
-            "u8" => Ok(IntegerKind::U8),
-            "i16" => Ok(IntegerKind::I16),
-            "u16" => Ok(IntegerKind::U16),
-            "i32" => Ok(IntegerKind::I32),
-            "u32" => Ok(IntegerKind::U32),
-            "i64" => Ok(IntegerKind::I64),
-            "u64" => Ok(IntegerKind::U64),
-            "isz" => Ok(IntegerKind::Isz),
-            "usz" => Ok(IntegerKind::Usz),
-            "" => Ok(IntegerKind::Unknown),
-            _ => Err(Token::Invalid(LexerError::InvalidIntegerSuffx)),
-        }
+        Ok(Some(match word {
+            "i8" => IntegerKind::I8,
+            "u8" => IntegerKind::U8,
+            "i16" => IntegerKind::I16,
+            "u16" => IntegerKind::U16,
+            "i32" => IntegerKind::I32,
+            "u32" => IntegerKind::U32,
+            "i64" => IntegerKind::I64,
+            "u64" => IntegerKind::U64,
+            "isz" => IntegerKind::Isz,
+            "usz" => IntegerKind::Usz,
+            "" => return Ok(None),
+            _ => return Err(Token::Invalid(LexerError::InvalidIntegerSuffx)),
+        }))
     }
 
-    fn lex_float_suffix(&mut self) -> Result<FloatKind, Token> {
+    fn lex_float_suffix(&mut self) -> Result<Option<FloatKind>, Token> {
         let start = self.current_position.index;
         while self.current.is_alphanumeric() || self.current == '_' {
             self.advance();
@@ -284,10 +286,10 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
 
         let word = &self.file_contents[start..self.current_position.index];
         match word {
-            "f" => Ok(FloatKind::F32),
-            "f32" => Ok(FloatKind::F32),
-            "f64" => Ok(FloatKind::F64),
-            "" => Ok(FloatKind::F64),
+            "f" => Ok(Some(FloatKind::F32)),
+            "f32" => Ok(Some(FloatKind::F32)),
+            "f64" => Ok(Some(FloatKind::F64)),
+            "" => Ok(None),
             _ => Err(Token::Invalid(LexerError::InvalidFloatSuffx)),
         }
     }

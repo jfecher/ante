@@ -80,7 +80,6 @@ pub fn import_prelude<'a>(resolver: &mut NameResolver, cache: &mut ModuleCache<'
     }
 
     // Manually insert some builtins as if they were defined in the prelude
-    resolver.current_scope().traits.insert("Int".into(), cache.int_trait);
     resolver.current_scope().types.insert(Token::Comma.to_string(), PAIR_TYPE);
     resolver.current_scope().definitions.insert(Token::Comma.to_string(), PAIR_ID);
     resolver.current_scope().definitions.insert("string".into(), STRING_ID);
@@ -99,7 +98,7 @@ fn define_string(cache: &mut ModuleCache) -> Type {
     let char_type = Type::Primitive(PrimitiveType::CharType);
     let c_string_type = Type::TypeApplication(Box::new(ptr_type), vec![char_type]);
 
-    let length_type = Type::Primitive(PrimitiveType::IntegerType(IntegerKind::Usz));
+    let length_type = Type::int(IntegerKind::Usz);
 
     let name = "string".to_string();
     let string_id = cache.push_type_info(name.clone(), vec![], location);
@@ -144,15 +143,13 @@ fn define_pair(cache: &mut ModuleCache) {
     let b = cache.next_type_variable_id(level);
 
     let name = Token::Comma.to_string();
-    let pair = cache.push_type_info(name.clone(), vec![], location);
+    let pair = cache.push_type_info(name.clone(), vec![a, b], location);
     assert_eq!(pair, PAIR_TYPE);
 
     cache.type_infos[pair.0].body = TypeInfoBody::Struct(vec![
         Field { name: "first".into(), field_type: Type::TypeVariable(a), location },
         Field { name: "second".into(), field_type: Type::TypeVariable(b), location },
     ]);
-
-    cache.type_infos[pair.0].args = vec![a, b];
 
     // The type is defined, now we define the constructor
     let parameters = vec![Type::TypeVariable(a), Type::TypeVariable(b)];

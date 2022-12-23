@@ -93,8 +93,10 @@ impl<'a> Display for ast::Type<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         use ast::Type::*;
         match self {
-            Integer(kind, _) => write!(f, "{}", kind),
-            Float(kind, _) => write!(f, "{}", kind),
+            Integer(Some(kind), _) => write!(f, "{}", kind),
+            Integer(None, _) => write!(f, "Int"),
+            Float(Some(kind), _) => write!(f, "{}", kind),
+            Float(None, _) => write!(f, "Float"),
             Char(_) => write!(f, "char"),
             String(_) => write!(f, "string"),
             Pointer(_) => write!(f, "Ptr"),

@@ -36,8 +36,8 @@ use std::rc::Rc;
 
 #[derive(Clone, Debug, Eq, PartialOrd, Ord)]
 pub enum LiteralKind {
-    Integer(u64, IntegerKind),
-    Float(u64, FloatKind),
+    Integer(u64, Option<IntegerKind>),
+    Float(u64, Option<FloatKind>),
     String(String),
     Char(char),
     Bool(bool),
@@ -195,8 +195,10 @@ pub struct Match<'a> {
 #[derive(Debug, Clone)]
 #[allow(clippy::enum_variant_names)]
 pub enum Type<'a> {
-    Integer(IntegerKind, Location<'a>),
-    Float(FloatKind, Location<'a>),
+    // Optional IntegerKind, None = polymorphic int
+    Integer(Option<IntegerKind>, Location<'a>),
+    // Optional FloatKind, None = polymorphic float
+    Float(Option<FloatKind>, Location<'a>),
     Char(Location<'a>),
     String(Location<'a>),
     Pointer(Location<'a>),
@@ -467,11 +469,11 @@ impl<'a> Ast<'a> {
         }
     }
 
-    pub fn integer(x: u64, kind: IntegerKind, location: Location<'a>) -> Ast<'a> {
+    pub fn integer(x: u64, kind: Option<IntegerKind>, location: Location<'a>) -> Ast<'a> {
         Ast::Literal(Literal { kind: LiteralKind::Integer(x, kind), location, typ: None })
     }
 
-    pub fn float(x: f64, kind: FloatKind, location: Location<'a>) -> Ast<'a> {
+    pub fn float(x: f64, kind: Option<FloatKind>, location: Location<'a>) -> Ast<'a> {
         Ast::Literal(Literal { kind: LiteralKind::Float(x.to_bits(), kind), location, typ: None })
     }
 

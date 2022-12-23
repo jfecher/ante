@@ -1,0 +1,7 @@
+if true then
+    f () = print "hi"
+    g () = f ()
+    g ()
+
+// args: --delete-binary
+// expected stdout: hi

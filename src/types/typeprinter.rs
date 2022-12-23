@@ -168,8 +168,10 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
 
     fn fmt_primitive(&self, primitive: &PrimitiveType, f: &mut Formatter) -> std::fmt::Result {
         match primitive {
-            PrimitiveType::IntegerType(kind) => write!(f, "{}", kind.to_string().blue()),
-            PrimitiveType::FloatType(kind) => write!(f, "{}", kind.to_string().blue()),
+            PrimitiveType::IntegerTag(kind) => write!(f, "{}", kind.to_string().blue()),
+            PrimitiveType::FloatTag(kind) => write!(f, "{}", kind.to_string().blue()),
+            PrimitiveType::IntegerType => write!(f, "{}", "Int".blue()),
+            PrimitiveType::FloatType => write!(f, "{}", "Float".blue()),
             PrimitiveType::CharType => write!(f, "{}", "char".blue()),
             PrimitiveType::BooleanType => write!(f, "{}", "bool".blue()),
             PrimitiveType::UnitType => write!(f, "{}", "unit".blue()),
@@ -223,19 +225,25 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
     }
 
     fn fmt_type_application(&self, constructor: &Type, args: &[Type], f: &mut Formatter) -> std::fmt::Result {
-        write!(f, "{}", "(".blue())?;
-
-        if constructor.is_pair_type() {
-            self.fmt_pair(args, f)?;
+        if constructor.is_polymorphic_int_type() {
+            self.fmt_polymorphic_numeral(args, f, "Int")
+        } else if constructor.is_polymorphic_float_type() {
+            self.fmt_polymorphic_numeral(args, f, "Float")
         } else {
-            self.fmt_type(constructor, f)?;
-            for arg in args.iter() {
-                write!(f, " ")?;
-                self.fmt_type(arg, f)?;
-            }
-        }
+            write!(f, "{}", "(".blue())?;
 
-        write!(f, "{}", ")".blue())
+            if constructor.is_pair_type() {
+                self.fmt_pair(args, f)?;
+            } else {
+                self.fmt_type(constructor, f)?;
+                for arg in args.iter() {
+                    write!(f, " ")?;
+                    self.fmt_type(arg, f)?;
+                }
+            }
+
+            write!(f, "{}", ")".blue())
+        }
     }
 
     fn fmt_pair(&self, args: &[Type], f: &mut Formatter) -> std::fmt::Result {
@@ -248,6 +256,19 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
         match &args[1] {
             Type::TypeApplication(constructor, args) if constructor.is_pair_type() => self.fmt_pair(args, f),
             other => self.fmt_type(other, f),
+        }
+    }
+
+    fn fmt_polymorphic_numeral(&self, args: &[Type], f: &mut Formatter, kind: &str) -> std::fmt::Result {
+        assert_eq!(args.len(), 1);
+
+        match self.cache.follow_typebindings_shallow(&args[0]) {
+            Type::TypeVariable(_) => {
+                write!(f, "{}{} ", "(".blue(), kind.blue())?;
+                self.fmt_type(&args[0], f)?;
+                write!(f, "{}", ")".blue())
+            },
+            other => self.fmt_type(other, f)
         }
     }
 

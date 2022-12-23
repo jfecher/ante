@@ -140,58 +140,32 @@ impl Cast isz i16 with cast x = builtin "Truncate" x
 impl Cast isz i32 with cast x = builtin "Truncate" x
 impl Cast isz i64 with cast x = builtin "SignExtend" x
 
-// f64 casts
-impl Cast i8  f64 with cast x = builtin "SignedToFloat" x
-impl Cast i16 f64 with cast x = builtin "SignedToFloat" x
-impl Cast i32 f64 with cast x = builtin "SignedToFloat" x
-impl Cast i64 f64 with cast x = builtin "SignedToFloat" x
-impl Cast isz f64 with cast x = builtin "SignedToFloat" x
+// Float casts
+impl Cast i8  (Float a) with cast x = builtin "SignedToFloat" x
+impl Cast i16 (Float a) with cast x = builtin "SignedToFloat" x
+impl Cast i32 (Float a) with cast x = builtin "SignedToFloat" x
+impl Cast i64 (Float a) with cast x = builtin "SignedToFloat" x
+impl Cast isz (Float a) with cast x = builtin "SignedToFloat" x
 
-impl Cast u8  f64 with cast x = builtin "UnsignedToFloat" x
-impl Cast u16 f64 with cast x = builtin "UnsignedToFloat" x
-impl Cast u32 f64 with cast x = builtin "UnsignedToFloat" x
-impl Cast u64 f64 with cast x = builtin "UnsignedToFloat" x
-impl Cast usz f64 with cast x = builtin "UnsignedToFloat" x
+impl Cast u8  (Float a) with cast x = builtin "UnsignedToFloat" x
+impl Cast u16 (Float a) with cast x = builtin "UnsignedToFloat" x
+impl Cast u32 (Float a) with cast x = builtin "UnsignedToFloat" x
+impl Cast u64 (Float a) with cast x = builtin "UnsignedToFloat" x
+impl Cast usz (Float a) with cast x = builtin "UnsignedToFloat" x
 
-impl Cast f64 i8  with cast x = builtin "FloatToSigned" x
-impl Cast f64 i16 with cast x = builtin "FloatToSigned" x
-impl Cast f64 i32 with cast x = builtin "FloatToSigned" x
-impl Cast f64 i64 with cast x = builtin "FloatToSigned" x
-impl Cast f64 isz with cast x = builtin "FloatToSigned" x
+impl Cast (Float a) i8  with cast x = builtin "FloatToSigned" x
+impl Cast (Float a) i16 with cast x = builtin "FloatToSigned" x
+impl Cast (Float a) i32 with cast x = builtin "FloatToSigned" x
+impl Cast (Float a) i64 with cast x = builtin "FloatToSigned" x
+impl Cast (Float a) isz with cast x = builtin "FloatToSigned" x
 
-impl Cast f64 u8  with cast x = builtin "FloatToUnsigned" x
-impl Cast f64 u16 with cast x = builtin "FloatToUnsigned" x
-impl Cast f64 u32 with cast x = builtin "FloatToUnsigned" x
-impl Cast f64 u64 with cast x = builtin "FloatToUnsigned" x
-impl Cast f64 usz with cast x = builtin "FloatToUnsigned" x
+impl Cast (Float a) u8  with cast x = builtin "FloatToUnsigned" x
+impl Cast (Float a) u16 with cast x = builtin "FloatToUnsigned" x
+impl Cast (Float a) u32 with cast x = builtin "FloatToUnsigned" x
+impl Cast (Float a) u64 with cast x = builtin "FloatToUnsigned" x
+impl Cast (Float a) usz with cast x = builtin "FloatToUnsigned" x
 
 impl Cast f64 f32 with cast x = builtin "FloatDemote" x
-
-// f32
-impl Cast i8  f32 with cast x = builtin "SignedToFloat" x
-impl Cast i16 f32 with cast x = builtin "SignedToFloat" x
-impl Cast i32 f32 with cast x = builtin "SignedToFloat" x
-impl Cast i64 f32 with cast x = builtin "SignedToFloat" x
-impl Cast isz f32 with cast x = builtin "SignedToFloat" x
-
-impl Cast u8  f32 with cast x = builtin "UnsignedToFloat" x
-impl Cast u16 f32 with cast x = builtin "UnsignedToFloat" x
-impl Cast u32 f32 with cast x = builtin "UnsignedToFloat" x
-impl Cast u64 f32 with cast x = builtin "UnsignedToFloat" x
-impl Cast usz f32 with cast x = builtin "UnsignedToFloat" x
-
-impl Cast f32 i8  with cast x = builtin "FloatToSigned" x
-impl Cast f32 i16 with cast x = builtin "FloatToSigned" x
-impl Cast f32 i32 with cast x = builtin "FloatToSigned" x
-impl Cast f32 i64 with cast x = builtin "FloatToSigned" x
-impl Cast f32 isz with cast x = builtin "FloatToSigned" x
-
-impl Cast f32 u8  with cast x = builtin "FloatToUnsigned" x
-impl Cast f32 u16 with cast x = builtin "FloatToUnsigned" x
-impl Cast f32 u32 with cast x = builtin "FloatToUnsigned" x
-impl Cast f32 u64 with cast x = builtin "FloatToUnsigned" x
-impl Cast f32 usz with cast x = builtin "FloatToUnsigned" x
-
 impl Cast f32 f64 with cast x = builtin "FloatPromote" x
 
 // x -> char casts
@@ -224,21 +198,18 @@ impl TryCast a b given Cast a b with
 
 // Huge block of builtin numeric operators incoming
 trait Add n with (+): n - n -> n
-impl Add t given Int t with (+) x y = builtin "AddInt" x y
-impl Add f64 with (+) (x: f64) (y: f64) : f64 = builtin "AddFloat" x y
-impl Add f32 with (+) (x: f32) (y: f32) : f32 = builtin "AddFloat" x y
+impl Add (Int a) with (+) x y = builtin "AddInt" x y
+impl Add (Float a) with (+) x y = builtin "AddFloat" x y
 impl Add char with (+) (x: char) (y: char) : char = builtin "AddInt" x y
 
 trait Sub n with (-): n - n -> n
-impl Sub t given Int t with (-) x y = builtin "SubInt" x y
-impl Sub f64 with (-) (x: f64) (y: f64) : f64 = builtin "SubFloat" x y
-impl Sub f32 with (-) (x: f32) (y: f32) : f32 = builtin "SubFloat" x y
+impl Sub (Int a) with (-) x y = builtin "SubInt" x y
+impl Sub (Float a) with (-) x y = builtin "SubFloat" x y
 impl Sub char with (-) (x: char) (y: char) : char = builtin "SubInt" x y
 
 trait Mul n with (*): n - n -> n
-impl Mul t given Int t with (*) x y = builtin "MulInt" x y
-impl Mul f64 with (*) (x: f64) (y: f64) : f64 = builtin "MulFloat" x y
-impl Mul f32 with (*) (x: f32) (y: f32) : f32 = builtin "MulFloat" x y
+impl Mul (Int a) with (*) x y = builtin "MulInt" x y
+impl Mul (Float a) with (*) x y = builtin "MulFloat" x y
 
 trait Div n with (/): n - n -> n
 impl Div i8  with (/) x y = builtin "DivSigned" x y
@@ -251,8 +222,7 @@ impl Div u16 with (/) x y = builtin "DivUnsigned" x y
 impl Div u32 with (/) x y = builtin "DivUnsigned" x y
 impl Div u64 with (/) x y = builtin "DivUnsigned" x y
 impl Div usz with (/) x y = builtin "DivUnsigned" x y
-impl Div f64 with (/) (x: f64) (y: f64) : f64 = builtin "DivFloat" x y
-impl Div f32 with (/) (x: f32) (y: f32) : f32 = builtin "DivFloat" x y
+impl Div (Float a) with (/) x y = builtin "DivFloat" x y
 
 trait Mod n with (%): n - n -> n
 impl Mod i8  with (%) x y = builtin "ModSigned" x y
@@ -270,9 +240,8 @@ impl Mod usz with (%) x y = builtin "ModUnsigned" x y
 // impl Mod f64 with (%) (_: f64) (_: f64) : f64 = builtin "ModFloat"
 
 trait Eq t with (==): t - t -> bool
-impl Eq t given Int t with (==) x y = builtin "EqInt" x y
-impl Eq f64 with (==) (x: f64) (y: f64) : bool = builtin "EqFloat" x y
-impl Eq f32 with (==) (x: f32) (y: f32) : bool = builtin "EqFloat" x y
+impl Eq (Int a) with (==) x y = builtin "EqInt" x y
+impl Eq (Float a) with (==) x y = builtin "EqFloat" x y
 
 impl Eq char with (==) (x: char) (y: char) : bool = builtin "EqChar" x y
 impl Eq bool with (==) (x: bool) (y: bool) : bool = builtin "EqBool" x y
@@ -299,8 +268,7 @@ impl Cmp u32 with (<) x y = builtin "LessUnsigned" x y
 impl Cmp u64 with (<) x y = builtin "LessUnsigned" x y
 impl Cmp usz with (<) x y = builtin "LessUnsigned" x y
 
-impl Cmp f64 with (<) x y = builtin "LessFloat" x y
-impl Cmp f32 with (<) x y = builtin "LessFloat" x y
+impl Cmp (Float a) with (<) x y = builtin "LessFloat" x y
 
 impl TryCast i64 u64 with
     try_cast x =
@@ -328,23 +296,16 @@ impl Extract (Ptr t) usz t with
 //       which is limited to the prelude.
 
 // Should these be traits instead?
-band (x: t) (y: t) : t =
-    // Workaround: explicit 'given' clauses on functions are unimplemented
-    // currently so this will manually add the desired `Int t` restriction.
-    // Alternatively we could move this to a trait and only impl for Int t
-    x + 0
+band (x: Int a) (y: Int a) : Int a =
     builtin "BitwiseAnd" x y
 
-bor (x: t) (y: t) : t =
-    x + 0
+bor (x: Int a) (y: Int a) : Int a =
     builtin "BitwiseOr" x y
 
-bxor (x: t) (y: t) : t =
-    x + 0
+bxor (x: Int a) (y: Int a) : Int a =
     builtin "BitwiseXor" x y
 
-bnot (x: t) : t =
-    x + 0
+bnot (x: Int a) : Int a =
     builtin "BitwiseNot" x
 
 
@@ -507,8 +468,7 @@ impl Print bool with
 impl Cast string (Ptr char) with
     cast s = s.c_string
 
-impl Cast int string given
-  Int int, Cmp int, Eq int, Mul int, Div int, Mod int with
+impl Cast (Int a) string given Div (Int a), Mod (Int a), Cmp (Int a) with
     cast i =
       abs, sign_off = if i < 0 then (i * -1, 1) else (i, 0)
       len = loop abs (cmp = 10) ->
@@ -572,7 +532,7 @@ iter iterable f =
 
 type Range t = start: t, end: t
 
-impl Iterator (Range a) a given Int a, Cmp a, Add a with
+impl Iterator (Range (Int a)) (Int a) given Cmp (Int a) with
     next range =
         if range.start >= range.end
         then None
@@ -583,7 +543,7 @@ impl Iterator (Range a) a given Int a, Cmp a, Add a with
 iter_range (from: usz) (to: usz) f : unit =
     iter (Range from to) f
 
-repeat (count: usz) f : unit =
+repeat (count: usz) (f: usz -> unit) : unit =
     iter (Range 0 count) f
 
 // Iterating through an InFile iterates through each line
@@ -682,15 +642,17 @@ input msg : string =
 
     buffer, len = loop (buffer = null ()) (len = 0) ->
         c = getchar ()
+        print (cast c : i32)
+
         buffer2 = if len % 32 == 0
             then realloc buffer (len + 32)
             else buffer
 
-        buffer2#len := c
+        array_insert buffer2 len c
 
-        if c != '\n'
+        if c != '\n' and c != cast (255:i32)
         then recur buffer2 (len + 1)
         else buffer2, len
 
-    buffer#len := '\0'
+    array_insert buffer len '\0'
     string buffer len

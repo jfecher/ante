@@ -101,9 +101,6 @@ pub struct ModuleCache<'a> {
     /// A monotonically-increasing counter to uniquely identify trait constraints.
     pub current_trait_constraint_id: counter::TraitConstraintCounter,
 
-    /// A constant referring to the ID of the builtin Int trait. Should always be 0
-    pub int_trait: TraitInfoId,
-
     /// Call stack of functions traversed during type inference. Used to find
     /// mutually recursive functions and delay generalization of them until after
     /// all the functions in the mutually recursive set are finished.
@@ -267,8 +264,7 @@ pub struct TraitInfoId(pub usize);
 /// The corresponding TraitInfoId is attatched to each
 /// `ast::TraitDefinition` during name resolution.
 ///
-/// Note that the builtin `Int a` trait as well as the builtin
-/// member access family of traits also have their own TraitInfo.
+/// Note that the builtin member access family of traits have their own TraitInfo.
 #[derive(Debug)]
 pub struct TraitInfo<'a> {
     pub name: String,
@@ -362,7 +358,7 @@ impl<'a> Locatable<'a> for EffectInfo<'a> {
 
 impl<'a> ModuleCache<'a> {
     pub fn new(project_directory: &Path) -> ModuleCache<'a> {
-        let mut cache = ModuleCache {
+        ModuleCache {
             relative_roots: vec![project_directory.to_owned(), stdlib_dir()],
             // Really wish you could do ..Default::default() for the remaining fields
             modules: HashMap::default(),
@@ -376,23 +372,11 @@ impl<'a> ModuleCache<'a> {
             trait_infos: vec![],
             impl_infos: vec![],
             impl_scopes: vec![],
-            int_trait: TraitInfoId(0),
             current_trait_constraint_id: Default::default(),
             call_stack: vec![],
             mutual_recursion_sets: vec![],
             effect_infos: vec![],
-        };
-
-        // The Int constraint is used internally to default polymorphic integer literals
-        // to i32 when they are not used in the signature of a function
-        let new_typevar = cache.next_type_variable_id(LetBindingLevel(std::usize::MAX));
-        let id = cache.push_trait_definition("Int".to_string(), vec![new_typevar], vec![], None, Location::builtin());
-        assert_eq!(id, cache.int_trait);
-
-        // The Int trait uses variable id 0 as a dummy callsite that is never used
-        cache.push_variable("".into(), Location::builtin());
-
-        cache
+        }
     }
 
     pub fn push_filepath(&mut self, path: PathBuf) -> &'a Path {
@@ -617,6 +601,18 @@ impl<'a> ModuleCache<'a> {
 
     pub fn bind(&mut self, id: TypeVariableId, binding: Type) {
         self.type_bindings[id.0] = TypeBinding::Bound(binding);
+    }
+
+    pub fn follow_typebindings_shallow<'b>(&'b self, typ: &'b Type) -> &'b Type {
+        match typ {
+            Type::TypeVariable(id) => {
+                match &self.type_bindings[id.0] {
+                    TypeBinding::Bound(typ) => self.follow_typebindings_shallow(typ),
+                    TypeBinding::Unbound(_, _) => typ,
+                }
+            },
+            other => other,
+        }
     }
 }
 

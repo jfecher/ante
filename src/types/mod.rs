@@ -9,6 +9,7 @@ use std::collections::BTreeMap;
 use crate::cache::{DefinitionInfoId, ModuleCache};
 use crate::error::location::{Locatable, Location};
 use crate::lexer::token::{FloatKind, IntegerKind};
+use crate::util::fmap;
 use crate::{lifetimes, util};
 
 use self::typeprinter::TypePrinter;
@@ -37,12 +38,14 @@ pub struct TypeVariableId(pub usize);
 /// unboxed when all other values are boxed.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum PrimitiveType {
-    IntegerType(IntegerKind), // : *
-    FloatType(FloatKind),     // : *
-    CharType,                 // : *
-    BooleanType,              // : *
-    UnitType,                 // : *
-    Ptr,                      // : * -> *
+    IntegerType,             // : IntegerTag -> *
+    IntegerTag(IntegerKind), // : IntegerTag
+    FloatType,               // : FloatTag -> *
+    FloatTag(FloatKind),     // : FloatTag
+    CharType,                // : *
+    BooleanType,             // : *
+    UnitType,                // : *
+    Ptr,                     // : * -> *
 }
 
 /// Function or closure types.
@@ -132,8 +135,40 @@ pub enum GeneralizedType {
 impl Type {
     pub const UNIT: Type = Type::Primitive(PrimitiveType::UnitType);
 
+    pub fn polymorphic_int(variable: TypeVariableId) -> Type {
+        let int = Box::new(Type::Primitive(PrimitiveType::IntegerType));
+        let kind = Type::TypeVariable(variable);
+        Type::TypeApplication(int, vec![kind])
+    }
+
+    pub fn int(kind: IntegerKind) -> Type {
+        let int = Box::new(Type::Primitive(PrimitiveType::IntegerType));
+        let kind = Type::Primitive(PrimitiveType::IntegerTag(kind));
+        Type::TypeApplication(int, vec![kind])
+    }
+
+    pub fn polymorphic_float(variable: TypeVariableId) -> Type {
+        let int = Box::new(Type::Primitive(PrimitiveType::FloatType));
+        let kind = Type::TypeVariable(variable);
+        Type::TypeApplication(int, vec![kind])
+    }
+
+    pub fn float(kind: FloatKind) -> Type {
+        let int = Box::new(Type::Primitive(PrimitiveType::FloatType));
+        let kind = Type::Primitive(PrimitiveType::FloatTag(kind));
+        Type::TypeApplication(int, vec![kind])
+    }
+
     pub fn is_pair_type(&self) -> bool {
         self == &Type::UserDefined(PAIR_TYPE)
+    }
+
+    pub fn is_polymorphic_int_type(&self) -> bool {
+        self == &Type::Primitive(PrimitiveType::IntegerType)
+    }
+
+    pub fn is_polymorphic_float_type(&self) -> bool {
+        self == &Type::Primitive(PrimitiveType::FloatType)
     }
 
     pub fn is_unit<'c>(&self, cache: &ModuleCache<'c>) -> bool {
@@ -179,6 +214,136 @@ impl Type {
     pub fn debug<'a, 'b>(&self, cache: &'a ModuleCache<'b>) -> typeprinter::TypePrinter<'a, 'b> {
         let typ = GeneralizedType::MonoType(self.clone());
         TypePrinter::debug_type(typ, cache)
+    }
+
+    /// Apply a function recursively to this type
+    pub fn traverse(&self, cache: &ModuleCache, mut f: impl FnMut(&Type)) {
+        self.traverse_rec(cache, &mut f)
+    }
+
+    fn traverse_rec(&self, cache: &ModuleCache, f: &mut impl FnMut(&Type)) {
+        f(self);
+        match self {
+            Type::Primitive(_) => (),
+            Type::UserDefined(_) => (),
+
+            Type::Function(function) => {
+                for parameter in &function.parameters {
+                    parameter.traverse_rec(cache, f)
+                }
+                function.environment.traverse_rec(cache, f);
+                function.return_type.traverse_rec(cache, f);
+            },
+            Type::TypeVariable(id) | Type::Ref(id) => match &cache.type_bindings[id.0] {
+                TypeBinding::Bound(binding) => binding.traverse_rec(cache, f),
+                TypeBinding::Unbound(_, _) => (),
+            },
+            Type::TypeApplication(constructor, args) => {
+                constructor.traverse_rec(cache, f);
+                for arg in args {
+                    arg.traverse_rec(cache, f);
+                }
+            },
+            Type::Effects(effects) => {
+                if let TypeBinding::Bound(binding) = &cache.type_bindings[effects.replacement.0] {
+                    return binding.traverse_rec(cache, f);
+                }
+                for (_, effect_args) in &effects.effects {
+                    for arg in effect_args {
+                        arg.traverse_rec(cache, f);
+                    }
+                }
+            },
+            Type::Struct(fields, id) => {
+                if let TypeBinding::Bound(binding) = &cache.type_bindings[id.0] {
+                    return binding.traverse_rec(cache, f);
+                }
+                for (_, typ) in fields {
+                    typ.traverse_rec(cache, f);
+                }
+            },
+        }
+    }
+
+    // Like traverse, but do not follow type variable links
+    pub fn traverse_no_follow(&self, mut f: impl FnMut(&Type)) {
+        self.traverse_no_follow_rec(&mut f)
+    }
+
+    fn traverse_no_follow_rec(&self, f: &mut impl FnMut(&Type)) {
+        f(self);
+        match self {
+            Type::Primitive(_) => (),
+            Type::UserDefined(_) => (),
+            Type::TypeVariable(_) => (),
+            Type::Ref(_) => (),
+
+            Type::Function(function) => {
+                for parameter in &function.parameters {
+                    parameter.traverse_no_follow_rec(f)
+                }
+                function.environment.traverse_no_follow_rec(f);
+                function.return_type.traverse_no_follow_rec(f);
+            },
+            Type::TypeApplication(constructor, args) => {
+                constructor.traverse_no_follow_rec(f);
+                for arg in args {
+                    arg.traverse_no_follow_rec(f);
+                }
+            },
+            Type::Effects(effects) => {
+                for (_, effect_args) in &effects.effects {
+                    for arg in effect_args {
+                        arg.traverse_no_follow_rec(f);
+                    }
+                }
+            },
+            Type::Struct(fields, _) => {
+                for (_, typ) in fields {
+                    typ.traverse_no_follow_rec(f);
+                }
+            },
+        }
+    }
+
+    /// Try to create a string from this type without following any type variables
+    /// or referencing any names of UserDefined types (as both of these would require a ModuleCache).
+    /// This should be used for debugging only when you have no access to a ModuleCache
+    #[allow(unused)]
+    pub fn approx_to_string(&self) -> String {
+        match self {
+            Type::Primitive(p) => format!("{}", p),
+            Type::Function(f) => {
+                let params = fmap(&f.parameters, |param| param.approx_to_string());
+                let env = f.environment.approx_to_string();
+                let effects = f.effects.approx_to_string();
+                let ret = f.return_type.approx_to_string();
+                format!("({} ={}> {} {})", params.join(" -> "), env, ret, effects)
+            },
+            Type::TypeVariable(id) => format!("tv{}", id.0),
+            Type::UserDefined(id) => format!("T{}", id.0),
+            Type::TypeApplication(constructor, args) => {
+                let constructor = constructor.approx_to_string();
+                let args = fmap(args, |arg| arg.approx_to_string());
+                format!("({} {})", constructor, args.join(" "))
+            },
+            Type::Ref(id) => format!("(ref tv{})", id.0),
+            Type::Struct(fields, id) => {
+                let fields = fmap(fields, |(name, typ)| format!("{}: {}", name, typ.approx_to_string()));
+                format!("{{ {}, ..tv{} }}", fields.join(", "), id.0)
+            },
+            Type::Effects(set) => {
+                if set.effects.is_empty() {
+                    format!("can tv{}", set.replacement.0)
+                } else {
+                    let effects = fmap(&set.effects, |(id, args)| {
+                        let args = fmap(args, |arg| arg.approx_to_string());
+                        format!("e{} {}", id.0, args.join(" "))
+                    });
+                    format!("can {}, ..tv{}", effects.join(", "), set.replacement.0)
+                }
+            },
+        }
     }
 }
 
@@ -350,4 +515,19 @@ pub enum Kind {
     /// has kind: * -> (* -> (* -> *)) -> (* -> *)
     #[allow(dead_code)]
     HigherOrder(Vec<Kind>),
+}
+
+impl std::fmt::Display for PrimitiveType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PrimitiveType::IntegerType => write!(f, "Int"),
+            PrimitiveType::IntegerTag(tag) => write!(f, "{}", tag),
+            PrimitiveType::FloatType => write!(f, "Float"),
+            PrimitiveType::FloatTag(tag) => write!(f, "{}", tag),
+            PrimitiveType::CharType => write!(f, "char"),
+            PrimitiveType::BooleanType => write!(f, "bool"),
+            PrimitiveType::UnitType => write!(f, "unit"),
+            PrimitiveType::Ptr => write!(f, "Ptr"),
+        }
+    }
 }

@@ -400,19 +400,19 @@ pub fn string_literal_token<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b,
     }
 }
 
-pub fn integer_literal_token<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, (u64, IntegerKind)> {
+pub fn integer_literal_token<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, (u64, Option<IntegerKind>)> {
     match input[0] {
         (Token::IntegerLiteral(int, kind), location) => Ok((&input[1..], (int, kind), location)),
         (Token::Invalid(c), location) => Err(ParseError::Fatal(Box::new(ParseError::LexerError(c, location)))),
-        (_, location) => Err(ParseError::Expected(vec![Token::IntegerLiteral(0, IntegerKind::Unknown)], location)),
+        (_, location) => Err(ParseError::Expected(vec![Token::IntegerLiteral(0, None)], location)),
     }
 }
 
-pub fn float_literal_token<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, (f64, FloatKind)> {
+pub fn float_literal_token<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, (f64, Option<FloatKind>)> {
     match input[0] {
         (Token::FloatLiteral(float, kind), location) => Ok((&input[1..], (float, kind), location)),
         (Token::Invalid(c), location) => Err(ParseError::Fatal(Box::new(ParseError::LexerError(c, location)))),
-        (_, location) => Err(ParseError::Expected(vec![Token::FloatLiteral(0.0, FloatKind::F64)], location)),
+        (_, location) => Err(ParseError::Expected(vec![Token::FloatLiteral(0.0, None)], location)),
     }
 }
 

@@ -1,0 +1,9 @@
+a = 1, 2
+b = a
+c = b
+
+// args: --check --show-types
+// expected stdout:
+// a : (i32, i32)
+// b : (i32, i32)
+// c : (i32, i32)

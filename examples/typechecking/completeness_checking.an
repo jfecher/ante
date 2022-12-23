@@ -46,5 +46,5 @@ match (1, 2, 3, 4)
 // examples/typechecking/completeness_checking.an:20:1	error: Missing case (false, false)
 // match (true, true)
 // 
-// examples/typechecking/completeness_checking.an:25:7	error: Expected a primitive integer type, but found (i32, (i32, i32))
+// examples/typechecking/completeness_checking.an:25:4	error: This pattern of type ((Int a), (Int b)) does not match the type ((Int a), ((Int b), ((Int c), (Int d)))) that is being matched on
 // | (1, 2) -> 1

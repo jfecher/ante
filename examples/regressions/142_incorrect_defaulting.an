@@ -1,0 +1,10 @@
+s : u32 = 8
+
+g () =
+  Range 0 s
+
+r = g ()
+print r.end
+
+// args: --delete-binary
+// expected stdout: 8

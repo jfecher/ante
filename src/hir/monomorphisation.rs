@@ -16,7 +16,8 @@ use crate::util::{fmap, trustme};
 use super::definitions::Definitions;
 use super::types::{IntegerKind, Type};
 
-const DEFAULT_INTEGER_KIND: IntegerKind = IntegerKind::I32;
+const DEFAULT_INTEGER: hir::Type = hir::Type::Primitive(hir::types::PrimitiveType::Integer(IntegerKind::I32));
+const DEFAULT_FLOAT: hir::Type = hir::Type::Primitive(hir::types::PrimitiveType::Float(FloatKind::F64));
 
 /// The type to bind most typevars to if they are still unbound when we codegen them.
 const UNBOUND_TYPE: types::Type = types::Type::Primitive(types::PrimitiveType::UnitType);
@@ -110,7 +111,7 @@ impl<'c> Context<'c> {
     pub fn monomorphise(&mut self, ast: &ast::Ast<'c>) -> hir::Ast {
         use ast::Ast::*;
         match ast {
-            Literal(literal) => self.monomorphise_literal(literal),
+            Literal(literal) => self.monomorphise_literal(literal, literal.typ.as_ref().unwrap()),
             Variable(variable) => self.monomorphise_variable(variable),
             Lambda(lambda) => self.monomorphise_lambda(lambda),
             FunctionCall(call) => self.monomorphise_call(call),
@@ -305,13 +306,19 @@ impl<'c> Context<'c> {
         use types::PrimitiveType::*;
         use types::Type::*;
         match typ {
-            Primitive(IntegerType(kind)) => self.integer_bit_count(*kind) as usize / 8,
-            Primitive(FloatType(FloatKind::F32)) => 4,
-            Primitive(FloatType(FloatKind::F64)) => 8,
+            Primitive(IntegerTag(kind)) => self.integer_bit_count(*kind) as usize / 8,
+            Primitive(FloatTag(FloatKind::F32)) => 4,
+            Primitive(FloatTag(FloatKind::F64)) => 8,
             Primitive(CharType) => 1,
             Primitive(BooleanType) => 1,
             Primitive(UnitType) => 1,
             Primitive(Ptr) => Self::ptr_size(),
+            Primitive(IntegerType) => {
+                unreachable!("'Int' type constructor without arguments found during size_of_type")
+            },
+            Primitive(FloatType) => {
+                unreachable!("'Float' type constructor without arguments found during size_of_type")
+            },
 
             Function(..) => Self::ptr_size(),
 
@@ -328,6 +335,18 @@ impl<'c> Context<'c> {
                     self.size_of_user_defined_type(id, args)
                 },
                 Ok(Primitive(Ptr)) => Self::ptr_size(),
+                Ok(Primitive(IntegerType)) => {
+                    match self.follow_bindings_shallow(&args[0]) {
+                        Ok(typ) => self.size_of_type(&typ.clone()),
+                        Err(_) => 4, // size_of DEFAULT_INTEGER
+                    }
+                },
+                Ok(Primitive(FloatType)) => {
+                    match self.follow_bindings_shallow(&args[0]) {
+                        Ok(typ) => self.size_of_type(&typ.clone()),
+                        Err(_) => 8, // size_of DEFAULT_FLOAT
+                    }
+                },
                 _ => unreachable!("Kind error inside size_of_type"),
             },
 
@@ -347,11 +366,13 @@ impl<'c> Context<'c> {
     fn convert_primitive_type(&mut self, typ: &types::PrimitiveType) -> Type {
         use types::PrimitiveType::*;
         Type::Primitive(match typ {
-            IntegerType(kind) => {
+            IntegerTag(kind) => {
                 let kind = self.convert_integer_kind(*kind);
                 hir::types::PrimitiveType::Integer(kind)
             },
-            FloatType(kind) => hir::types::PrimitiveType::Float(*kind),
+            FloatTag(kind) => hir::types::PrimitiveType::Float(*kind),
+            IntegerType => unreachable!("Unbound Int type in convert_primitive_type"),
+            FloatType => unreachable!("Unbound Float type in convert_primitive_type"),
             CharType => hir::types::PrimitiveType::Char,
             BooleanType => hir::types::PrimitiveType::Boolean,
             UnitType => hir::types::PrimitiveType::Unit,
@@ -448,8 +469,12 @@ impl<'c> Context<'c> {
         self.convert_type_inner(typ, RECURSION_LIMIT)
     }
 
+    fn is_type_variable(&self, typ: &types::Type) -> bool {
+        self.follow_bindings_shallow(typ).is_err()
+    }
+
     pub fn convert_type_inner(&mut self, typ: &types::Type, fuel: u32) -> Type {
-        use types::PrimitiveType::Ptr;
+        use types::PrimitiveType;
         use types::Type::*;
 
         if fuel == 0 {
@@ -498,7 +523,23 @@ impl<'c> Context<'c> {
                 let typ = self.follow_bindings_shallow(typ);
 
                 match typ {
-                    Ok(Primitive(Ptr) | Ref(_)) => Type::Primitive(hir::PrimitiveType::Pointer),
+                    Ok(Primitive(PrimitiveType::Ptr) | Ref(_)) => Type::Primitive(hir::PrimitiveType::Pointer),
+                    Ok(Primitive(PrimitiveType::IntegerType)) => {
+                        if self.is_type_variable(&args[0]) {
+                            // Default to i32
+                            DEFAULT_INTEGER
+                        } else {
+                            self.convert_type_inner(&args[0], fuel)
+                        }
+                    },
+                    Ok(Primitive(PrimitiveType::FloatType)) => {
+                        if self.is_type_variable(&args[0]) {
+                            // Default to f64
+                            DEFAULT_FLOAT
+                        } else {
+                            self.convert_type_inner(&args[0], fuel)
+                        }
+                    },
                     Ok(UserDefined(id)) => {
                         let id = *id;
                         self.convert_user_defined_type(id, args)
@@ -536,19 +577,6 @@ impl<'c> Context<'c> {
     fn convert_integer_kind(&self, kind: crate::lexer::token::IntegerKind) -> IntegerKind {
         use crate::lexer::token::IntegerKind;
         match kind {
-            IntegerKind::Unknown => DEFAULT_INTEGER_KIND,
-            IntegerKind::Inferred(id) => {
-                use types::PrimitiveType;
-                use types::Type::*;
-
-                match self.find_binding(id, RECURSION_LIMIT) {
-                    Ok(Primitive(PrimitiveType::IntegerType(kind))) => self.convert_integer_kind(*kind),
-                    Err(_) => DEFAULT_INTEGER_KIND,
-                    Ok(other) => {
-                        unreachable!("convert_integer_kind called with non-integer type {}", other.display(&self.cache))
-                    },
-                }
-            },
             IntegerKind::I8 => hir::IntegerKind::I8,
             IntegerKind::I16 => hir::IntegerKind::I16,
             IntegerKind::I32 => hir::IntegerKind::I32,
@@ -562,16 +590,25 @@ impl<'c> Context<'c> {
         }
     }
 
-    fn monomorphise_literal(&mut self, literal: &ast::Literal) -> hir::Ast {
+    fn monomorphise_literal(&mut self, literal: &ast::Literal, typ: &types::Type) -> hir::Ast {
         use hir::Ast::*;
         use hir::Literal::*;
 
         match &literal.kind {
-            ast::LiteralKind::Integer(n, kind) => {
-                let kind = self.convert_integer_kind(*kind);
+            ast::LiteralKind::Integer(n, _) => {
+                let kind = match self.convert_type(typ) {
+                    Type::Primitive(hir::PrimitiveType::Integer(kind)) => kind,
+                    other => unreachable!("monomorphise_literal: expected integer type, found {}", other),
+                };
                 Literal(Integer(*n, kind))
             },
-            ast::LiteralKind::Float(f, kind) => Literal(Float(*f, *kind)),
+            ast::LiteralKind::Float(f, _) => {
+                let kind = match self.convert_type(typ) {
+                    Type::Primitive(hir::PrimitiveType::Float(kind)) => kind,
+                    other => unreachable!("monomorphise_literal: expected float type, found {}", other),
+                };
+                Literal(Float(*f, kind))
+            },
             ast::LiteralKind::String(s) => {
                 let len = Literal(Integer(s.len() as u64, IntegerKind::Usz));
                 let c_string = Literal(CString(s.clone()));
@@ -1174,8 +1211,9 @@ impl<'c> Context<'c> {
     fn pack_closure_environment(&mut self, function: hir::Ast, env: &ClosureEnvironment) -> hir::Ast {
         let env = env
             .iter()
-            .map(|(outer_var, (var_id, _, bindings))| {
-                let typ = self.cache[*outer_var].typ.as_ref().unwrap().clone().into_monotype();
+            .map(|(outer_var, (var_id, inner_var, bindings))| {
+                // use the type from the inner variable. The outer one may be generalized
+                let typ = self.cache[*inner_var].typ.as_ref().unwrap().clone().into_monotype();
                 let definition = self.monomorphise_definition_id(*outer_var, *var_id, &typ, bindings);
                 definition.reference()
             })

@@ -777,8 +777,10 @@ impl DebugConstructor {
         use VariantTag::*;
         let tag = match &tag {
             Some(UserDefined(id)) => cache.definition_infos[id.0].name.clone(),
-            Some(Literal(LiteralKind::Integer(_, kind))) => format!("_ : {}", kind),
-            Some(Literal(LiteralKind::Float(_, kind))) => format!("_ : {}", kind),
+            Some(Literal(LiteralKind::Integer(_, Some(kind)))) => format!("_ : {}", kind),
+            Some(Literal(LiteralKind::Integer(_, None))) => format!("_ : Int"),
+            Some(Literal(LiteralKind::Float(_, Some(kind)))) => format!("_ : {}", kind),
+            Some(Literal(LiteralKind::Float(_, None))) => format!("_ : Float"),
             Some(Literal(LiteralKind::String(_))) => "_ : string".to_string(),
             Some(Literal(LiteralKind::Char(_))) => "_ : char".to_string(),
 
@@ -919,8 +921,10 @@ impl Case {
                 let constructor_type = unwrap_clone(&cache.definition_infos[id.0].typ);
                 constructor_type.instantiate(vec![], cache).0
             },
-            Some(Literal(LiteralKind::Integer(_, kind))) => Type::Primitive(PrimitiveType::IntegerType(*kind)),
-            Some(Literal(LiteralKind::Float(_, kind))) => Type::Primitive(PrimitiveType::FloatType(*kind)),
+            Some(Literal(LiteralKind::Integer(_, Some(kind)))) => Type::int(*kind),
+            Some(Literal(LiteralKind::Integer(_, None))) => Type::polymorphic_int(typechecker::next_type_variable_id(cache)),
+            Some(Literal(LiteralKind::Float(_, Some(kind)))) => Type::float(*kind),
+            Some(Literal(LiteralKind::Float(_, None))) => Type::polymorphic_float(typechecker::next_type_variable_id(cache)),
             Some(Literal(LiteralKind::String(_))) => Type::UserDefined(STRING_TYPE),
             Some(Literal(LiteralKind::Char(_))) => Type::Primitive(PrimitiveType::CharType),
             Some(Literal(LiteralKind::Bool(_))) => unreachable!(),

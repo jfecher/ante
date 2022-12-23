@@ -569,6 +569,8 @@ fn basic_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
     match input[0].0 {
         Token::IntegerType(_) => int_type(input),
         Token::FloatType(_) => float_type(input),
+        Token::PolymorphicIntType => polymorphic_int_type(input),
+        Token::PolymorphicFloatType => polymorphic_float_type(input),
         Token::CharType => char_type(input),
         Token::StringType => string_type(input),
         Token::PointerType => pointer_type(input),
@@ -771,12 +773,22 @@ parser!(pair_type loc -> 'b Type<'b> =
 
 parser!(int_type loc -> 'b Type<'b> =
     kind <- int_type_token;
-    Type::Integer(kind, loc)
+    Type::Integer(Some(kind), loc)
 );
 
 parser!(float_type loc -> 'b Type<'b> =
     kind <- float_type_token;
-    Type::Float(kind, loc)
+    Type::Float(Some(kind), loc)
+);
+
+parser!(polymorphic_int_type loc -> 'b Type<'b> =
+    _ <- expect(Token::PolymorphicIntType);
+    Type::Integer(None, loc)
+);
+
+parser!(polymorphic_float_type loc -> 'b Type<'b> =
+    _ <- expect(Token::PolymorphicFloatType);
+    Type::Float(None, loc)
 );
 
 parser!(char_type loc -> 'b Type<'b> =

@@ -621,8 +621,10 @@ impl<'c> NameResolver {
     /// Converts an ast::Type to a types::Type, expects all typevars to be in scope
     pub fn convert_type(&mut self, cache: &mut ModuleCache<'c>, ast_type: &ast::Type<'c>) -> Type {
         match ast_type {
-            ast::Type::Integer(kind, _) => Type::Primitive(PrimitiveType::IntegerType(*kind)),
-            ast::Type::Float(kind, _) => Type::Primitive(PrimitiveType::FloatType(*kind)),
+            ast::Type::Integer(Some(kind), _) => Type::int(*kind),
+            ast::Type::Integer(None, _) => Type::Primitive(PrimitiveType::IntegerType),
+            ast::Type::Float(Some(kind), _) => Type::float(*kind),
+            ast::Type::Float(None, _) => Type::Primitive(PrimitiveType::FloatType),
             ast::Type::Char(_) => Type::Primitive(PrimitiveType::CharType),
             ast::Type::String(_) => Type::UserDefined(STRING_TYPE),
             ast::Type::Pointer(_) => Type::Primitive(PrimitiveType::Ptr),

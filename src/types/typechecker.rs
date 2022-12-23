@@ -30,7 +30,6 @@ use crate::cache::{DefinitionInfoId, DefinitionKind, EffectInfoId, ModuleCache, 
 use crate::cache::{ImplScopeId, VariableId};
 use crate::error::location::{Locatable, Location};
 use crate::error::{get_error_count, ErrorMessage};
-use crate::lexer::token::IntegerKind;
 use crate::parser::ast::{self, ClosureEnvironment};
 use crate::types::traits::{RequiredTrait, TraitConstraint, TraitConstraints};
 use crate::types::typed::Typed;
@@ -1471,20 +1470,22 @@ impl<'a> Inferable<'a> for ast::Literal<'a> {
     fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> TypeResult {
         use ast::LiteralKind::*;
         match self.kind {
-            Integer(x, kind) => {
-                if kind == IntegerKind::Unknown {
-                    // Mutate this unknown integer literal to an IntegerKind::Inferred(int_type).
-                    let int_type = next_type_variable_id(cache);
-                    self.kind = Integer(x, IntegerKind::Inferred(int_type));
-                    let int_trait = TraitConstraint::int_constraint(int_type, self.location, cache);
-                    let mut result = TypeResult::of(Type::TypeVariable(int_type), cache);
-                    result.traits = vec![int_trait];
-                    result
+            Integer(_, kind) => {
+                let t = if let Some(kind) = kind {
+                    Type::int(kind)
                 } else {
-                    TypeResult::of(Type::Primitive(PrimitiveType::IntegerType(kind)), cache)
-                }
-            },
-            Float(_, kind) => TypeResult::of(Type::Primitive(PrimitiveType::FloatType(kind)), cache),
+                    Type::polymorphic_int(next_type_variable_id(cache))
+                };
+                TypeResult::of(t, cache)
+            }
+            Float(_, kind) => {
+                let t = if let Some(kind) = kind {
+                    Type::float(kind)
+                } else {
+                    Type::polymorphic_float(next_type_variable_id(cache))
+                };
+                TypeResult::of(t, cache)
+            }
             String(_) => TypeResult::of(Type::UserDefined(STRING_TYPE), cache),
             Char(_) => TypeResult::of(Type::Primitive(PrimitiveType::CharType), cache),
             Bool(_) => TypeResult::of(Type::Primitive(PrimitiveType::BooleanType), cache),

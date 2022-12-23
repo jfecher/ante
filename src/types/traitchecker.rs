@@ -20,12 +20,14 @@
 use std::sync::atomic::AtomicBool;
 
 use crate::cache::{ImplInfoId, ModuleCache};
+use crate::lexer::token::{IntegerKind, FloatKind};
 use crate::types::traits::{RequiredTrait, TraitConstraint, TraitConstraints};
 use crate::types::typechecker::{self, TypeBindings};
 use crate::types::TypeVariableId;
 use crate::util::{fmap, trustme};
 
-use super::typechecker::{UnificationBindings, UnificationResult};
+use super::{Type, PrimitiveType};
+use super::typechecker::UnificationBindings;
 
 /// Arbitrary impl requirements can result in arbitrary recursion
 /// when attempting to solve impl constraints. To prevent infinitely
@@ -33,6 +35,11 @@ use super::typechecker::{UnificationBindings, UnificationResult};
 const RECURSION_LIMIT: u32 = 10;
 
 static RECURSION_WARNING_PRINTED: AtomicBool = AtomicBool::new(true);
+
+/// The type to default polymorphic integer literals to in the absense of other constraints.
+const DEFAULT_INT_TYPE: Type = Type::Primitive(PrimitiveType::IntegerTag(IntegerKind::I32));
+
+const DEFAULT_FLOAT_TYPE: Type = Type::Primitive(PrimitiveType::FloatTag(FloatKind::F64));
 
 /// Go through the given list of traits and determine if they should
 /// be propogated upward or if an impl should be searched for now.
@@ -42,42 +49,16 @@ static RECURSION_WARNING_PRINTED: AtomicBool = AtomicBool::new(true);
 pub fn resolve_traits<'a>(
     constraints: TraitConstraints, typevars_in_fn_signature: &[TypeVariableId], cache: &mut ModuleCache<'a>,
 ) -> Vec<RequiredTrait> {
-    let (propagated_traits, int_constraints, other_constraints) =
+    let (propagated_traits, other_constraints) =
         sort_traits(constraints, typevars_in_fn_signature, cache);
 
-    let empty_bindings = UnificationBindings::empty();
+    let mut failing_constraints = try_solve_constraints(other_constraints.iter(), cache, false);
 
-    let mut failing_constraints = other_constraints
-        .iter()
-        .filter_map(|constraint| {
-            // Searching for an impl for normal constraints may require recursively searching for
-            // more impls (due to `impl A given B` constraints) before finding a matching one.
-            try_solve_normal_constraint(constraint, cache)
-        })
-        .collect::<Vec<_>>();
-
-    // Check int constraints strictly after trying to solve normal constraints first. Other
-    // Int constraints may cause defaulting to `i32` which may break some constraints that try
-    // to bind to other integer types. Similarly, we need to retry failing constraints later
-    // for any constraints that may now succeed once they see a concrete i32 instead of a type
-    // variable.
-    for constraint in int_constraints.iter() {
-        typechecker::perform_bindings_or_print_error(
-            find_int_constraint_impl(constraint, &empty_bindings, cache),
-            cache,
-        );
-    }
-
+    // Solving a constraint can yield type bindings, so keep trying until we either solve
+    // everything or make no progress.
     let mut prev_len = 0;
     loop {
-        failing_constraints = failing_constraints
-            .into_iter()
-            .filter_map(|constraint| {
-                // Searching for an impl for normal constraints may require recursively searching for
-                // more impls (due to `impl A given B` constraints) before finding a matching one.
-                try_solve_normal_constraint(constraint, cache)
-            })
-            .collect::<Vec<_>>();
+        failing_constraints = try_solve_constraints(failing_constraints, cache, false);
 
         if failing_constraints.is_empty() || failing_constraints.len() == prev_len {
             break;
@@ -85,6 +66,9 @@ pub fn resolve_traits<'a>(
 
         prev_len = failing_constraints.len();
     }
+
+    // Try one last time, this time defaulting any `Int a` types to `i32`.
+    failing_constraints = try_solve_constraints(failing_constraints, cache, true);
 
     // Issue errors for any remaining failing constraints
     for constraint in failing_constraints {
@@ -94,17 +78,54 @@ pub fn resolve_traits<'a>(
     propagated_traits
 }
 
+/// Attempt to solve each trait, returning each trait that failed to be solved
+fn try_solve_constraints<'a>(constraints: impl IntoIterator<Item = &'a TraitConstraint>, cache: &mut ModuleCache, default_to_i32: bool) -> Vec<&'a TraitConstraint> {
+    constraints
+        .into_iter()
+        .filter_map(|constraint| {
+            // Searching for an impl for normal constraints may require recursively searching for
+            // more impls (due to `impl A given B` constraints) before finding a matching one.
+            let bindings = if default_to_i32 {
+                default_polymorphic_literals(constraint.args(), cache)
+            } else {
+                UnificationBindings::empty()
+            };
+
+            try_solve_normal_constraint(constraint, bindings, cache)
+        })
+        .collect::<Vec<_>>()
+}
+
+fn default_polymorphic_literals(args: &[super::Type], cache: &ModuleCache) -> UnificationBindings {
+    let mut bindings = UnificationBindings::empty();
+    for arg in args {
+        default_literals(arg, &mut bindings, cache);
+    }
+    bindings
+}
+
+fn default_literals(arg: &Type, bindings: &mut UnificationBindings, cache: &ModuleCache) {
+    // Check for every type application of the `Int` or `Float` type and an unbound type variable.
+    arg.traverse(cache, |typ| if let Type::TypeApplication(constructor, args) = typ {
+        let constructor = cache.follow_typebindings_shallow(constructor);
+        if let Type::Primitive(PrimitiveType::IntegerType) = &constructor {
+            let arg = cache.follow_typebindings_shallow(&args[0]);
+            if let Type::TypeVariable(id) = arg {
+                // bind id to i32
+                bindings.bindings.insert(*id, DEFAULT_INT_TYPE);
+            }
+        } else if let Type::Primitive(PrimitiveType::FloatType) = &constructor {
+            let arg = cache.follow_typebindings_shallow(&args[0]);
+            if let Type::TypeVariable(id) = arg {
+                bindings.bindings.insert(*id, DEFAULT_FLOAT_TYPE);
+            }
+        }
+    })
+}
+
 /// Attempt to solve every trait given, propagating none
 pub fn force_resolve_trait(constraint: TraitConstraint, cache: &mut ModuleCache) {
-    if constraint.is_int_constraint(cache) {
-        let empty_bindings = UnificationBindings::empty();
-        typechecker::perform_bindings_or_print_error(
-            find_int_constraint_impl(&constraint, &empty_bindings, cache),
-            cache,
-        );
-    } else {
-        solve_normal_constraint(&constraint, cache);
-    }
+    solve_normal_constraint(&constraint, cache);
 }
 
 /// These just make the signature of sort_traits read better.
@@ -120,22 +141,19 @@ type PropagatedTraits = Vec<RequiredTrait>;
 ///   have an impl searched for belong to the first category of propogated traits.
 fn sort_traits<'c>(
     constraints: TraitConstraints, typevars_in_fn_signature: &[TypeVariableId], cache: &ModuleCache<'c>,
-) -> (PropagatedTraits, TraitConstraints, TraitConstraints) {
+) -> (PropagatedTraits, TraitConstraints) {
     let mut propogated_traits = vec![];
-    let mut int_constraints = vec![];
     let mut other_constraints = Vec::with_capacity(constraints.len());
 
     for constraint in constraints {
         if should_propagate(&constraint, typevars_in_fn_signature, cache) {
             propogated_traits.push(constraint.into_required_trait());
-        } else if constraint.is_int_constraint(cache) {
-            int_constraints.push(constraint);
         } else {
             other_constraints.push(constraint);
         }
     }
 
-    (propogated_traits, int_constraints, other_constraints)
+    (propogated_traits, other_constraints)
 }
 
 /// A trait should be propogated to the public signature of a Definition if any of its contained
@@ -157,47 +175,11 @@ fn should_propagate<'a>(
         .any(|arg| typechecker::contains_any_typevars_from_list(arg, typevars_in_fn_signature, cache))
 }
 
-/// Checks if the given `Int a` constraint is satisfied. These impls don't correspond
-/// to actual impls in the source code since it is a builtin trait that describes primitive
-/// integer types. So instead of searching for an impl here, we simply check that the arg
-/// type `a` is a primitive integer type. If `a` is an unbound type variable, this will
-/// also bind `a` to `i32` by default.
-fn find_int_constraint_impl<'c>(
-    constraint: &TraitConstraint, bindings: &UnificationBindings, cache: &mut ModuleCache<'c>,
-) -> UnificationResult<'c> {
-    let typ = typechecker::follow_bindings_in_cache_and_map(&constraint.args()[0], bindings, cache);
-
-    use super::{IntegerKind, PrimitiveType, Type};
-    match &typ {
-        Type::Primitive(PrimitiveType::IntegerType(_)) => Ok(UnificationBindings::empty()),
-        Type::TypeVariable(_) => {
-            // The `Int a` constraint has special defaulting rules - since we know this typevar is
-            // unbound, bind it to the default integer type (i32) here.
-            // try_unify is used here to avoid performing the binding in case this impl isn't
-            // selected to be used.
-            let default_int_type = Type::Primitive(PrimitiveType::IntegerType(IntegerKind::I32));
-            typechecker::try_unify(
-                &typ,
-                &default_int_type,
-                constraint.locate(cache),
-                cache,
-                "Could not default $1 to $2",
-            )
-        },
-        other => Err(make_error!(
-            constraint.locate(cache),
-            "Expected a primitive integer type, but found {}",
-            other.display(cache)
-        )),
-    }
-}
-
 /// Try to solve a normal constraint, but avoid issuing an error if it fails.
 /// Returns Some(constraint) on error.
 fn try_solve_normal_constraint<'a, 'c>(
-    constraint: &'a TraitConstraint, cache: &mut ModuleCache<'c>,
+    constraint: &'a TraitConstraint, bindings: UnificationBindings, cache: &mut ModuleCache<'c>,
 ) -> Option<&'a TraitConstraint> {
-    let bindings = UnificationBindings::empty();
     let mut matching_impls = find_matching_impls(constraint, &bindings, RECURSION_LIMIT, cache);
 
     if matching_impls.len() == 1 {
@@ -273,11 +255,6 @@ fn find_matching_impls<'c>(
         }
 
         vec![]
-    } else if constraint.is_int_constraint(cache) {
-        match find_int_constraint_impl(constraint, bindings, cache) {
-            Ok(bindings) => vec![(vec![], bindings)],
-            Err(_) => vec![],
-        }
     } else {
         find_matching_normal_impls(constraint, bindings, fuel - 1, cache)
     }
