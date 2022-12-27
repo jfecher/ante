@@ -1,4 +1,4 @@
-impl Iterator u64 u64 with
+impl Iterator U64 U64 with
     next x =
         if x <= 0
         then None
@@ -6,7 +6,7 @@ impl Iterator u64 u64 with
 
 type TakeWhile i a =
     iter: i
-    pred: a -> bool
+    pred: a -> Bool
 
 impl Iterator (TakeWhile i a) a given Iterator i a with
     next tw =

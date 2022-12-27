@@ -1,9 +1,9 @@
 
-effect Log with log: string -> unit
+effect Log with log: String -> Unit
 
 effect Use a with
-    get: unit -> a
-    set: a - i32 -> unit
+    get: Unit -> a
+    set: a - i32 -> Unit
 
 
 handle log "test1"
@@ -27,11 +27,11 @@ handle ()
 // args: --parse
 // expected stdout:
 // (effect Log with
-//     (: log (string -> unit))
+//     (: log (String -> Unit))
 // );
 // (effect Use a with
-//     (: get (unit -> a))
-//     (: set (a i32 -> unit))
+//     (: get (Unit -> a))
+//     (: set (a i32 -> Unit))
 // );
 // (handle (log "test1") ((log _$0) 
 //     (s = _$0);

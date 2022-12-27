@@ -1,6 +1,6 @@
 
 trait Show a with
-    show: a -> string
+    show: a -> String
 
 trait Cast a b -> c with
     cast: a -> b
@@ -13,10 +13,10 @@ trait Collection c -> e with
     empty: c
 
 
-impl Show string with
+impl Show String with
     show s = s
 
-impl Cast string string string given Show string with
+impl Cast String String String given Show String with
     cast s = show s
 
 impl Collection (a -> a) unit with
@@ -27,7 +27,7 @@ impl Collection (a -> a) unit with
 // args: --parse
 // expected stdout:
 // (trait Show a with
-//     (: show (a -> string))
+//     (: show (a -> String))
 // );
 // (trait Cast a b -> c with
 //     (: cast (a -> b))
@@ -37,10 +37,10 @@ impl Collection (a -> a) unit with
 //     (: pop (c -> (Maybe e)))
 //     (: empty c)
 // );
-// (impl Show string with
+// (impl Show String with
 //     (show = (fn s -> s))
 // );
-// (impl Cast string string string given (Show string) with
+// (impl Cast String String String given (Show String) with
 //     (cast = (fn s -> (show s)))
 // );
 // (impl Collection (a -> a) unit with

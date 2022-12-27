@@ -1,6 +1,6 @@
 import HashMap
 
-impl Hash u8 with
+impl Hash U8 with
     hash x = cast x
 
 map = mut empty ()

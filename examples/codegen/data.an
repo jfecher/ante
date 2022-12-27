@@ -1,4 +1,4 @@
-type T = a: i32, b: string
+type T = a: I32, b: String
 
 t = T 1 "one"
 printne "t = "

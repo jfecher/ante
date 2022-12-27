@@ -1,5 +1,5 @@
 
-////////// f64 ////////
+////////// F64 ////////
 
 add_f64 = 3.0 + 4.0
 sub_f64 = 7.0 - 8.0
@@ -13,7 +13,7 @@ print mul_f64
 print div_f64
 // print mod_float
 
-////////// f32 ////////
+////////// F32 ////////
 add_f32 = 3.0f + 4.0f
 sub_f32 = 7.0f - 8.0f
 mul_f32 = 11.0f * 12.0f
@@ -23,10 +23,10 @@ print sub_f32
 print mul_f32
 print div_f32
 
-// f32 -> f64 -> f32 roundtrip cast should preserve the original value
+// F32 -> F64 -> F32 roundtrip cast should preserve the original value
 x = 1.0f / 7.0f
 print x
-print (cast (cast x : f64) : f32)
+print (cast (cast x : F64) : F32)
 
 // args: --delete-binary
 // expected stdout:

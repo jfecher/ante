@@ -1,9 +1,8 @@
-f (v: float) : float =
-  loop (x = v / 2.0) ->
+f v = loop (x = v / 2.0) ->
     if x < 2.0 then x
     else
-      print v
-      recur (x / 2.0)
+        print v
+        recur (x / 2.0)
 
 x = f 123.0
 

@@ -1,12 +1,12 @@
 type StringBuilder =
-    data: Ptr char
-    length: usz
-    cap: usz
+    data: Ptr Char
+    length: Usz
+    cap: Usz
 
 empty () = StringBuilder (null ()) 0 0
 
 // reserve space for at least n additional characters
-reserve (s: ref StringBuilder) (n: usz) : unit =
+reserve (s: Ref StringBuilder) (n: Usz) : Unit =
     if s.length + n > s.cap then
         new_size = s.cap + n
         ptr = realloc s.data new_size
@@ -19,15 +19,15 @@ reserve (s: ref StringBuilder) (n: usz) : unit =
         s.&cap := new_size
 
 // append a string
-append (s: ref StringBuilder) (new_str: string) : unit =
+append (s: Ref StringBuilder) (new_str: String) : Unit =
     reserve s new_str.length
     memcpy (cast (cast s.data + s.length)) new_str.c_string (cast (new_str.length+1))
     s.&length := s.length + new_str.length
 
 // convert to string
-to_string (s: ref StringBuilder) : string =
-    string (s.data) (s.length)
+to_string (s: Ref StringBuilder) : String =
+    String (s.data) (s.length)
 
 impl Print StringBuilder with
-    printne (s: ref StringBuilder) : unit =
+    printne (s: Ref StringBuilder) : Unit =
         print (to_string s)

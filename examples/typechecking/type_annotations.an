@@ -1,14 +1,14 @@
 
-foo (_: i32) (_: string) : char = 'a'
+foo (_: I32) (_: String) : Char = 'a'
 
-bar: a - a -> i32 =
+bar: a - a -> I32 =
     fn _ b -> b
 
-baz (a: usz) : Ptr a =
+baz (a: Usz) : Ptr a =
     transmute a
 
 exit2 = exit
-puts2: (Ptr char) -> i32 = puts
+puts2: (Ptr Char) -> I32 = puts
 
 exit2 "test"
 puts2
@@ -17,13 +17,13 @@ puts2
 // TODO: bar should probably error that its annotated
 //       type is more general than its actual type
 // expected stderr:
-// examples/typechecking/type_annotations.an:13:7	error: Expected argument of type i32, but found string
+// examples/typechecking/type_annotations.an:13:7	error: Expected argument of type I32, but found String
 // exit2 "test"
 // 
 
 // expected stdout:
-// bar : (forall a. (i32 - i32 -> i32 can a))
-// baz : (forall a b. (usz -> (Ptr a) can b))
-// exit2 : (forall a b. (i32 -> a can b))
-// foo : (forall a. (i32 - string -> char can a))
-// puts2 : (forall a. ((Ptr char) -> i32 can a))
+// bar : (forall a. (I32 - I32 -> I32 can a))
+// baz : (forall a b. (Usz -> (Ptr a) can b))
+// exit2 : (forall a b. (I32 -> a can b))
+// foo : (forall a. (I32 - String -> Char can a))
+// puts2 : (forall a. ((Ptr Char) -> I32 can a))

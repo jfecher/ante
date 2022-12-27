@@ -1,6 +1,6 @@
 import Vec
 
-reverse (s: string) -> string =
+reverse (s: String) -> String =
     buf = mut malloc (s.len + 1usz)
 
     loop (i = 0) ->
@@ -9,10 +9,10 @@ reverse (s: string) -> string =
             recur (i + 1)
 
     buf#i := '\0'
-    string buf i
+    String buf i
 
 
-split (s: string) (c: char) -> Vec string =
+split (s: String) (c: String) -> Vec String =
     v = mut Vec.empty ()
 
     i, j = loop (subend = 0) (substart = 0) ->
@@ -31,7 +31,7 @@ split (s: string) (c: char) -> Vec string =
     push v (substr s j i)
     v
 
-substr (s: string) (begin: usz) (end: usz) -> string =
+substr (s: String) (begin: Usz) (end: Usz) -> String =
     if end > s.len or begin >= s.len then
         return ""
 
@@ -45,4 +45,4 @@ substr (s: string) (begin: usz) (end: usz) -> string =
             buf#i := s#b
             recur (i + 1)
 
-    string buf len
+    String buf len

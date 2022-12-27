@@ -1,28 +1,28 @@
 // A linear-scan mutable HashMap using a resize factor of 2.0
 type HashMap k v =
-    len: usz
-    capacity: usz
+    len: Usz
+    capacity: Usz
     entries: Ptr (Entry k v)
 
 type Entry k v =
     key: k
     value: v
-    occupied: bool
-    tombstone: bool
+    occupied: Bool
+    tombstone: Bool
 
 trait Hash t with
-    hash: t -> u64
+    hash: t -> U64
 
 empty () = HashMap 0 0 (null ())
  
-clear (map: ref (HashMap k v)) : unit =
+clear (map: Ref (HashMap k v)) : Unit =
     if map.capacity != 0 then
         repeat map.capacity fn i ->
             entry = mut deref_ptr <| offset map.entries i
             entry.&occupied := false
             entry.&tombstone := false
 
-resize (map: ref (HashMap k v)) (new_capacity: usz) : unit =
+resize (map: Ref (HashMap k v)) (new_capacity: Usz) : Unit =
     if new_capacity > map.capacity then
         new_memory = calloc new_capacity (size_of (MkType : Type (Entry k v)))
 
@@ -40,27 +40,27 @@ resize (map: ref (HashMap k v)) (new_capacity: usz) : unit =
         map.&entries := new_memory
 
 // Should we resize this map when pushing another element?
-should_resize (map: HashMap k v) : bool =
+should_resize (map: HashMap k v) : Bool =
     scale_factor = 2
     (map.len + 1) * scale_factor > map.capacity
 
-insert (map: ref (HashMap k v)) (key: k) (value: v) : unit =
+insert (map: Ref (HashMap k v)) (key: k) (value: v) : Unit =
     if should_resize @map then
         resize map ((map.capacity + 1) * 2)
 
-    iter_until (map: ref (HashMap k v)) (key: k) (value: v) (start: usz) (end: usz) : bool =
+    iter_until (map: Ref (HashMap k v)) (key: k) (value: v) (start: Usz) (end: Usz) : Bool =
         if start >= end then
             false
         else
             entry_ptr = offset (map.entries) start
-            entry = transmute entry_ptr : ref (Entry k v)
+            entry = transmute entry_ptr : Ref (Entry k v)
             if entry.occupied then
                 iter_until map key value (start + 1) end
             else
                 entry := Entry key value true false
                 true
 
-    h = cast (hash key) : usz % map.capacity
+    h = cast (hash key) : Usz % map.capacity
 
     if not iter_until map key value h (map.capacity) then
         if not iter_until map key value 0 h then
@@ -77,7 +77,7 @@ type EntryResult k v =
 
 get_entry (map: HashMap k v) (key: k) : Maybe (Ptr (Entry k v)) =
     // Return whether to continue by wrapping around the end, and the value if found
-    iter_until (map: HashMap k v) (key: k) (start: usz) (end: usz) : EntryResult k v =
+    iter_until (map: HashMap k v) (key: k) (start: Usz) (end: Usz) : EntryResult k v =
         if start >= end then
             NotFinished
         else
@@ -90,7 +90,7 @@ get_entry (map: HashMap k v) (key: k) : Maybe (Ptr (Entry k v)) =
             else
                 NotFound
 
-    h = cast (hash key) : usz % map.capacity
+    h = cast (hash key) : Usz % map.capacity
     match iter_until map key h map.capacity
     | Found value -> Some value
     | NotFound -> None
@@ -123,7 +123,7 @@ printne_map (map: HashMap k v) =
     print_helper map false 0
     putchar ']'
 
-print_helper (map: HashMap k v) (did_first: bool) (i: usz) =
+print_helper (map: HashMap k v) (did_first: Bool) (i: Usz) =
     if i < map.capacity then
         entry: Entry k v = map.entries#i
         if entry.occupied then

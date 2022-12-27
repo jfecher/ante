@@ -218,16 +218,16 @@ impl Display for IntegerKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use IntegerKind::*;
         match self {
-            I8 => write!(f, "i8"),
-            I16 => write!(f, "i16"),
-            I32 => write!(f, "i32"),
-            I64 => write!(f, "i64"),
-            Isz => write!(f, "isz"),
-            U8 => write!(f, "u8"),
-            U16 => write!(f, "u16"),
-            U32 => write!(f, "u32"),
-            U64 => write!(f, "u64"),
-            Usz => write!(f, "usz"),
+            I8 => write!(f, "I8"),
+            I16 => write!(f, "I16"),
+            I32 => write!(f, "I32"),
+            I64 => write!(f, "I64"),
+            Isz => write!(f, "Isz"),
+            U8 => write!(f, "U8"),
+            U16 => write!(f, "U16"),
+            U32 => write!(f, "U32"),
+            U64 => write!(f, "U64"),
+            Usz => write!(f, "Usz"),
         }
     }
 }
@@ -235,8 +235,8 @@ impl Display for IntegerKind {
 impl Display for FloatKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            FloatKind::F32 => write!(f, "f32"),
-            FloatKind::F64 => write!(f, "f64"),
+            FloatKind::F32 => write!(f, "F32"),
+            FloatKind::F64 => write!(f, "F64"),
         }
     }
 }

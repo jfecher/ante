@@ -1,14 +1,14 @@
 
-type Thing = nothing: unit
+type Thing = nothing: Unit
 
 trait Foo a with
-    foo : a -> unit
+    foo: a -> Unit
 
 trait Bar a with
-    bar : a -> unit
+    bar: a -> Unit
 
 trait Baz a with
-    baz : a -> unit
+    baz: a -> Unit
 
 // The call from which the `Foo a` constraint arises
 foo (Thing ())

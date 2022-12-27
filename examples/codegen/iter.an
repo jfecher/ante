@@ -2,8 +2,8 @@
 trait MyIterable it -> elem with
     mynext : it -> Maybe (elem, it)
 
-// Define iterating on i32s as counting down until 0
-impl MyIterable i32 i32 with
+// Define iterating on I32s as counting down until 0
+impl MyIterable I32 I32 with
     mynext x =
         if x <= 0 then None
         else Some (x, x - 1)

@@ -1,8 +1,8 @@
-type FooBar = foo:i32, bar:string
-type Foo = foo:f64
-type Bar = bar:char
+type FooBar = foo:I32, bar:String
+type Foo = foo:F64
+type Bar = bar:Char
 
-stringify (s: string) = s
+stringify (s: String) = s
 
 foo_and_bar a b =
     a.foo
@@ -17,16 +17,16 @@ foo_and_bar foo bar
 
 // args: --check --show-types
 // expected stderr:
-// examples/typechecking/member_access.an:16:17	error: Expected argument of type { bar: string, .. }, but found Bar
+// examples/typechecking/member_access.an:16:17	error: Expected argument of type { bar: String, .. }, but found Bar
 // foo_and_bar foo bar
 // 
 
 // expected stdout:
-// Bar : (forall a. (char -> Bar can a))
-// Foo : (forall a. (f64 -> Foo can a))
-// FooBar : (forall a. (i32 - string -> FooBar can a))
+// Bar : (forall a. (Char -> Bar can a))
+// Foo : (forall a. (F64 -> Foo can a))
+// FooBar : (forall a. (I32 - String -> FooBar can a))
 // bar : Bar
 // foo : Foo
-// foo_and_bar : (forall a b c d. ({ foo: a, ..b } - { bar: string, ..c } -> string can d))
+// foo_and_bar : (forall a b c d. ({ foo: a, ..b } - { bar: String, ..c } -> String can d))
 // foobar : FooBar
-// stringify : (forall a. (string -> string can a))
+// stringify : (forall a. (String -> String can a))

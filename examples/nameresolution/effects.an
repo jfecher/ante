@@ -1,12 +1,12 @@
 
 effect Three with
-    one: unit -> unit
-    two: i32 -> i32
-    three: i32 - i32 -> i32
+    one: Unit -> Unit
+    two: I32 -> I32
+    three: I32 - I32 -> I32
 
 effect State a with
-    get: unit -> a
-    put: a -> unit
+    get: Unit -> a
+    put: a -> Unit
 
 
 handle ()

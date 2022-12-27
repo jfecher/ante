@@ -11,7 +11,7 @@ print
 
 // args: --parse
 // expected stdout:
-// (shout = (fn x -> (: ('++' (cast x) "!") string)));
+// (shout = (fn x -> (: ('++' (cast x) "!") String)));
 // (bar = "nested interpolations");
 // (print ('++' ('++' "I can do line breaks" (cast (shout "
 // Any expressions"))) (cast (shout ('++' "

@@ -59,10 +59,10 @@ impl std::fmt::Display for Type {
             Type::Primitive(p) => match p {
                 PrimitiveType::Integer(kind) => kind.fmt(f),
                 PrimitiveType::Float(kind) => kind.fmt(f),
-                PrimitiveType::Char => write!(f, "char"),
-                PrimitiveType::Boolean => write!(f, "bool"),
-                PrimitiveType::Unit => write!(f, "unit"),
-                PrimitiveType::Pointer => write!(f, "ptr"),
+                PrimitiveType::Char => write!(f, "Char"),
+                PrimitiveType::Boolean => write!(f, "Bool"),
+                PrimitiveType::Unit => write!(f, "Unit"),
+                PrimitiveType::Pointer => write!(f, "Ptr"),
             },
             Type::Function(function) => write!(f, "({})", function),
             Type::Tuple(elems) => {

@@ -1,5 +1,5 @@
 
-type Struct1 = a:i32, b:f64, c:string
+type Struct1 = a:I32, b:F64, c:String
 
 type Thingy is Struct1
 
@@ -17,7 +17,7 @@ type Option a =
 
 t = Just 1
 
-type UniquePtr a is ref a
+type UniquePtr a is Ref a
 
 // args: --check
 // expected stdout:

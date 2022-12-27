@@ -1,5 +1,5 @@
 
-boom () : Maybe (Ptr char) = None
+boom () : Maybe (Ptr Char) = None
 _ = boom ()
 
 // args: --delete-binary

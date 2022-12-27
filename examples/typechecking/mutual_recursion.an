@@ -16,7 +16,7 @@ is_even 4
 // TODO: is_odd here uses `forall a c.` instead of `forall a b.`
 
 // expected stdout:
-// is_even : (forall a b. ((Int a) -> bool can b))
+// is_even : (forall a b. ((Int a) -> Bool can b))
 //   given Eq (Int a), Print (Int a), Sub (Int a)
-// is_odd : (forall a c. ((Int a) -> bool can c))
+// is_odd : (forall a c. ((Int a) -> Bool can c))
 //   given Eq (Int a), Print (Int a), Sub (Int a)

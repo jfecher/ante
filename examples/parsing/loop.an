@@ -1,7 +1,7 @@
 
 a = 0
 b = 1
-loop a (b: i32) (c: i32 = 2) (d = 3) ->
+loop a (b: I32) (c: I32 = 2) (d = 3) ->
     recur a b c d
 
 // args: --parse
@@ -9,6 +9,6 @@ loop a (b: i32) (c: i32 = 2) (d = 3) ->
 // (a = 0);
 // (b = 1);
 // (match () (() 
-//     (recur = (fn a (: b i32) (: c i32) d -> (recur a b c d)));
-//     (recur a (: b i32) 2 3)
+//     (recur = (fn a (: b I32) (: c I32) d -> (recur a b c d)));
+//     (recur a (: b I32) 2 3)
 // ))

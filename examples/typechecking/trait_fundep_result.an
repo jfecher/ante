@@ -2,7 +2,7 @@
 trait Foo a -> b with
     foo: a -> b
 
-impl Foo int string with
+impl Foo I32 String with
     foo _ = "hi"
 
 str = foo 0i32
@@ -11,4 +11,4 @@ str = foo 0i32
 // expected stdout:
 // foo : (forall a b c. (a -> b can c))
 //   given Foo a b
-// str : string
+// str : String

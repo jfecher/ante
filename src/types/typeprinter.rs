@@ -172,9 +172,9 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             PrimitiveType::FloatTag(kind) => write!(f, "{}", kind.to_string().blue()),
             PrimitiveType::IntegerType => write!(f, "{}", "Int".blue()),
             PrimitiveType::FloatType => write!(f, "{}", "Float".blue()),
-            PrimitiveType::CharType => write!(f, "{}", "char".blue()),
-            PrimitiveType::BooleanType => write!(f, "{}", "bool".blue()),
-            PrimitiveType::UnitType => write!(f, "{}", "unit".blue()),
+            PrimitiveType::CharType => write!(f, "{}", "Char".blue()),
+            PrimitiveType::BooleanType => write!(f, "{}", "Bool".blue()),
+            PrimitiveType::UnitType => write!(f, "{}", "Unit".blue()),
             PrimitiveType::Ptr => write!(f, "{}", "Ptr".blue()),
         }
     }

@@ -82,7 +82,7 @@ pub fn import_prelude<'a>(resolver: &mut NameResolver, cache: &mut ModuleCache<'
     // Manually insert some builtins as if they were defined in the prelude
     resolver.current_scope().types.insert(Token::Comma.to_string(), PAIR_TYPE);
     resolver.current_scope().definitions.insert(Token::Comma.to_string(), PAIR_ID);
-    resolver.current_scope().definitions.insert("string".into(), STRING_ID);
+    resolver.current_scope().definitions.insert("String".into(), STRING_ID);
 }
 
 /// Defining the 'string' type is a bit different than most other builtins. Since 'string' has
@@ -100,7 +100,7 @@ fn define_string(cache: &mut ModuleCache) -> Type {
 
     let length_type = Type::int(IntegerKind::Usz);
 
-    let name = "string".to_string();
+    let name = "String".to_string();
     let string_id = cache.push_type_info(name.clone(), vec![], location);
     assert_eq!(string_id, STRING_TYPE);
     let string = Type::UserDefined(STRING_TYPE);

@@ -15,7 +15,7 @@ loop (collatz = 7) ->
     else recur (collatz * 3 + 1)
 
 s = 0
-loop (s: i32) (t: i32 = 0) ->
+loop (s: I32) (t: I32 = 0) ->
     printne s
     printne t
     if s == 3 then return ()

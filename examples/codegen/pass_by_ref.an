@@ -1,4 +1,4 @@
-type S = message: string
+type S = message: String
 
 impl Print S with
     printne s = printne s.message

@@ -2,10 +2,10 @@
 trait Foo a with
     foo: a - a -> a
 
-impl Foo i32 with
+impl Foo I32 with
     foo _a b = b
 
-impl Foo f64 with
+impl Foo F64 with
     foo _a b = b
 
 
@@ -15,13 +15,13 @@ c = foo "one" "two"
 
 // args: --check --show-types
 // expected stderr:
-// examples/typechecking/impl.an:14:5	error: No impl found for Foo string
+// examples/typechecking/impl.an:14:5	error: No impl found for Foo String
 // c = foo "one" "two"
 // 
 
 // expected stdout:
-// a : i32
-// b : f64
-// c : string
+// a : I32
+// b : F64
+// c : String
 // foo : (forall a b. (a - a -> a can b))
 //   given Foo a

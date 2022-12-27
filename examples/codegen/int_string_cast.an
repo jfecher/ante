@@ -5,7 +5,7 @@ debug str =
     " len: " ++
     cast str.length
 
-debug <| cast (255: u8)
+debug <| cast (255: U8)
 
 debug <| cast -1024
 

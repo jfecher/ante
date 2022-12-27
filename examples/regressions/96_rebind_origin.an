@@ -1,6 +1,6 @@
 
 origin foo =
-    cast foo : u64
+    cast foo : U64
 
 twice foo bar =
     origin foo
