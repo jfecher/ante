@@ -15,7 +15,8 @@
           inherit system;
           overlays = [ self.overlays.default ];
         };
-        inherit (pkgs) ante mkShell;
+        inherit (pkgs)
+          ante mkShell rust-analyzer clippy rustfmt;
       in
       {
         packages = {
@@ -25,6 +26,7 @@
         devShells.default = mkShell {
           name = "ante-dev";
           inputsFrom = [ ante ];
+          packages = [ rust-analyzer clippy rustfmt ];
           shellHook = ante.shellHook + ''
             export PATH=$PWD/target/debug:$PATH
           '';
