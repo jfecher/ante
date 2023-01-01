@@ -1,20 +1,18 @@
-use clap::{ArgGroup, Parser, ValueEnum, ValueHint};
+use clap::{Parser, ValueEnum, ValueHint};
 use clap_complete::Shell;
 
 #[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
-#[command(group(
-        ArgGroup::new("complete_compile")
-        .required(true),
-))]
-pub struct Cli {
-    /// Generate shell completion for a given shell
-    #[arg(long, group = "complete_compile")]
-    pub shell_completion: Option<Shell>,
+pub struct Completions {
+    #[arg(long)]
+    pub shell_completion: Shell,
+}
 
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+pub struct Cli {
     /// Path to the source file
-    #[arg(group = "complete_compile", value_hint=ValueHint::FilePath)]
-    pub file: Option<String>,
+    #[arg(value_hint=ValueHint::FilePath)]
+    pub file: String,
 
     /// Print out the input file annotated with inferred lifetimes of heap allocations
     #[arg(long, short = 'L')]
