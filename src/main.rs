@@ -44,7 +44,7 @@ use std::fs::File;
 use std::io::{stdout, BufReader, Read};
 use std::path::Path;
 
-use crate::cli::{Backend, Cli};
+use crate::cli::{Backend, Cli, Completions};
 
 #[global_allocator]
 static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
@@ -93,18 +93,16 @@ macro_rules! expect {( $result:expr , $fmt_string:expr $( , $($msg:tt)* )? ) => 
 });}
 
 pub fn main() {
-    let args = Cli::parse();
-    if let Some(shell) = args.shell_completion {
-        print_completions(shell);
+    if let Ok(Completions { shell_completion }) = Completions::try_parse() {
+        print_completions(shell_completion);
     } else {
-        compile(args)
+        compile(Cli::parse())
     }
 }
 
 fn compile(args: Cli) {
     // Setup the cache and read from the first file
-    let filename = if let Some(filename) = &args.file { filename } else { "" };
-    let filename = Path::new(filename);
+    let filename = Path::new(&args.file);
     let file = File::open(filename);
     let file = expect!(file, "Could not open file {}\n", filename.display());
 
