@@ -539,6 +539,49 @@ impl NameResolver {
 
         None
     }
+
+    fn validate_type_application<'c>(&self, constructor: &Type, args: &[Type], location: Location<'c>, cache: &mut ModuleCache<'c>) {
+        let expected = self.get_expected_type_argument_count(constructor, cache);
+        if args.len() != expected && !matches!(constructor, Type::TypeVariable(_)) {
+            let plural_s = if expected == 1 { "" } else { "s" };
+            let is_are = if args.len() == 1 { "is" } else { "are" };
+            error!(location, "Type {} expects {} argument{}, but {} {} given here", constructor.display(cache), expected, plural_s, args.len(), is_are);
+        }
+
+        // Check argument is an integer/float type (issue #146)
+        if let Some(first_arg) = args.get(0) {
+            match constructor {
+                Type::Primitive(PrimitiveType::IntegerType) => {
+                    if !matches!(first_arg, Type::Primitive(PrimitiveType::IntegerTag(_)) | Type::TypeVariable(_)) {
+                        error!(location, "Type {} is not an integer type", first_arg.display(cache));
+                    }
+                },
+                Type::Primitive(PrimitiveType::FloatType) => {
+                    if !matches!(first_arg, Type::Primitive(PrimitiveType::FloatTag(_)) | Type::TypeVariable(_)) {
+                        error!(location, "Type {} is not a float type", first_arg.display(cache));
+                    }
+                }
+                _ => (),
+            }
+        }
+    }
+
+    fn get_expected_type_argument_count(&self, constructor: &Type, cache: &ModuleCache) -> usize {
+        match constructor {
+            Type::Primitive(PrimitiveType::Ptr) => 1,
+            Type::Primitive(PrimitiveType::IntegerType) => 1,
+            Type::Primitive(PrimitiveType::FloatType) => 1,
+            Type::Primitive(_) => 0,
+            Type::Function(_) => 0,
+            // Type variables should be unbound before type checking
+            Type::TypeVariable(_) => 0,
+            Type::UserDefined(id) => cache[*id].args.len(),
+            Type::TypeApplication(_, _) => 0,
+            Type::Ref(_) => 1,
+            Type::Struct(_, _) => 0,
+            Type::Effects(_) => 0,
+        }
+    }
 }
 
 impl<'c> NameResolver {
@@ -664,6 +707,7 @@ impl<'c> NameResolver {
             ast::Type::TypeApplication(constructor, args, _) => {
                 let constructor = Box::new(self.convert_type(cache, constructor));
                 let args = fmap(args, |arg| self.convert_type(cache, arg));
+                self.validate_type_application(&constructor, &args, ast_type.locate(), cache);
                 Type::TypeApplication(constructor, args)
             },
             ast::Type::Pair(first, rest, location) => {

@@ -1,0 +1,6 @@
+a: Int String = 3
+
+// args: --check
+// expected stderr:
+// examples/regressions/146_invalid_int_type.an:1:4	error: Type String is not an integer type
+// a: Int String = 3
