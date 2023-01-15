@@ -759,18 +759,21 @@ impl<'c> NameResolver {
         self.resolve_all_definitions(vec![ast].into_iter(), cache, definition);
     }
 
-    fn resolve_extern_definitions(&mut self, declaration: &mut ast::TypeAnnotation<'c>, cache: &mut ModuleCache<'c>) {
+    fn resolve_extern_definitions(&mut self, extern_: &mut ast::Extern<'c>, cache: &mut ModuleCache<'c>) {
         self.definitions_collected.clear();
         self.auto_declare = true;
-        self.push_type_variable_scope();
 
-        declaration.define(self, cache);
+        for declaration in &mut extern_.declarations {
+            self.push_type_variable_scope();
+            declaration.define(self, cache);
+            self.pop_type_variable_scope();
+        }
 
-        self.pop_type_variable_scope();
         self.auto_declare = false;
+
         for id in self.definitions_collected.iter() {
-            let declaration = trustme::extend_lifetime(declaration);
-            cache.definition_infos[id.0].definition = Some(DefinitionKind::Extern(declaration));
+            let extern_ = trustme::extend_lifetime(extern_);
+            cache.definition_infos[id.0].definition = Some(DefinitionKind::Extern(extern_));
         }
     }
 
@@ -1439,11 +1442,7 @@ impl<'c> Resolvable<'c> for ast::Extern<'c> {
         // `let_binding_level + 1` will cause all trait functions to not be generalized.
         self.level = Some(resolver.let_binding_level);
         resolver.push_let_binding_level();
-
-        for declaration in self.declarations.iter_mut() {
-            resolver.resolve_extern_definitions(declaration, cache);
-        }
-
+        resolver.resolve_extern_definitions(self, cache);
         resolver.pop_let_binding_level();
     }
 

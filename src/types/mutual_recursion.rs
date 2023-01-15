@@ -1,5 +1,6 @@
 use crate::cache::MutualRecursionId;
 
+use crate::types::GeneralizedType;
 use crate::{
     cache::{DefinitionInfoId, DefinitionKind, ModuleCache, VariableId},
     error::location::Locatable,
@@ -20,7 +21,7 @@ use super::{
 pub(super) fn try_generalize_definition<'c>(
     definition: &mut ast::Definition<'c>, t: Type, traits: TraitConstraints, cache: &mut ModuleCache<'c>,
 ) -> TraitConstraints {
-    if !should_generalize(&definition.expr) {
+    if !should_generalize(&definition.expr, cache) {
         return traits;
     }
 
@@ -97,9 +98,15 @@ fn update_callsites(exposed_traits: Vec<RequiredTrait>, callsites: &Vec<Variable
 /// will cause them to be re-evaluated whenever they're used with new types,
 /// so generalization should be limited to when this would be expected by
 /// users (functions) or when it would not be noticeable (variables).
-fn should_generalize(ast: &ast::Ast) -> bool {
+fn should_generalize(ast: &ast::Ast, cache: &ModuleCache) -> bool {
     match ast {
-        ast::Ast::Variable(_) => true,
+        ast::Ast::Variable(variable) => {
+            // Don't generalize definitions only referring to variables unless the variable
+            // is polymorphic. This prevents generalization of 'weak' type variables which would
+            // be resolved to a concrete type later. See issue #129
+            let info = &cache[variable.definition.unwrap()];
+            matches!(info.typ.as_ref(), Some(GeneralizedType::PolyType(..)))
+        },
         ast::Ast::Lambda(lambda) => lambda.closure_environment.is_empty(),
         _ => false,
     }

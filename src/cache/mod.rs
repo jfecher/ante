@@ -17,7 +17,7 @@
 use crate::cache::unsafecache::UnsafeCache;
 use crate::error::location::{Locatable, Location};
 use crate::nameresolution::NameResolver;
-use crate::parser::ast::{Ast, Definition, EffectDefinition, TraitDefinition, TraitImpl, TypeAnnotation};
+use crate::parser::ast::{Ast, Definition, EffectDefinition, TraitDefinition, TraitImpl, Extern};
 use crate::types::traits::{ConstraintSignature, RequiredImpl, RequiredTrait, TraitConstraintId};
 use crate::types::{GeneralizedType, Kind, LetBindingLevel, TypeBinding};
 use crate::types::{Type, TypeInfo, TypeInfoBody, TypeInfoId, TypeVariableId};
@@ -154,7 +154,7 @@ pub enum DefinitionKind<'a> {
     EffectDefinition(&'a mut EffectDefinition<'a>),
 
     /// An extern FFI definition with no body
-    Extern(&'a mut TypeAnnotation<'a>),
+    Extern(&'a mut Extern<'a>),
 
     /// A TypeConstructor function to construct a type.
     /// If the constructed type is a tagged union, tag will

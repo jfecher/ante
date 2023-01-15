@@ -1158,7 +1158,6 @@ pub(super) fn bind_irrefutable_pattern<'c>(
 ) {
     use ast::Ast::*;
     use ast::LiteralKind;
-
     match ast {
         Literal(literal) => match literal.kind {
             LiteralKind::Unit => {
@@ -1913,6 +1912,7 @@ impl<'a> Inferable<'a> for ast::Sequence<'a> {
 impl<'a> Inferable<'a> for ast::Extern<'a> {
     fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> TypeResult {
         let previous_level = CURRENT_LEVEL.swap(self.level.unwrap().0, Ordering::SeqCst);
+
         for declaration in self.declarations.iter_mut() {
             bind_irrefutable_pattern(declaration.lhs.as_mut(), declaration.typ.as_ref().unwrap(), &[], true, cache);
         }
