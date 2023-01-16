@@ -11,7 +11,7 @@ extern
     // printf: Ptr Char - ... -> Unit
     puts: Ptr Char -> I32
     putchar: Char -> Unit
-    getchar: Unit -> Char
+    getchar: Unit -> I32
     exit: I32 -> never_returns
     malloc: Usz -> Ptr a
     calloc: /*items:*/Usz - /*size:*/Usz -> Ptr a
@@ -608,19 +608,19 @@ next_char (f: InFile) : Char =
 // TODO: Why is this being monomorphised twice?
 next_line (f: InFile) : String =
     if eof f then return ""
-    eof = cast 255 : Char
 
     capacity = mut 32
     cstr = mut malloc @capacity
 
     len = loop (len = 0) ->
-        c = next_char f
-        if c == eof then return len
+        next = next_char f
+        if next < 0 then return len
+        c: Char = cast next
 
         //Flag feof if eof occurs after terminating newline
         if c == '\n' then
             peek = next_char f
-            if peek != eof then ungetc (cast peek) f
+            if peek >= 0 then ungetc (cast peek) f
             return len
 
         if len + 1 >= @capacity then
@@ -633,25 +633,25 @@ next_line (f: InFile) : String =
     array_insert (@cstr) len '\0'
     String (@cstr) len
 
-
-
-/// Print a message then return user input
-input msg : String =
-    printne msg
-
+// Read a line from stdin, ending with (and not including) a terminating '\n'
+read_line () : String =
     buffer, len = loop (buffer = null ()) (len = 0) ->
         c = getchar ()
-        print (cast c : I32)
+        c_char = cast c : Char
 
         buffer2 = if len % 32 == 0
             then realloc buffer (len + 32)
             else buffer
 
-        array_insert buffer2 len c
+        array_insert buffer2 len c_char
 
-        if c != '\n' and c != cast (255:I32)
+        if c_char != '\n' and c >= 0
         then recur buffer2 (len + 1)
         else buffer2, len
 
     array_insert buffer len '\0'
     String buffer len
+
+input msg =
+    printne msg
+    read_line ()
