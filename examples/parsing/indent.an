@@ -25,8 +25,23 @@ when5 condition expr =
 // args: --parse
 // expected stdout:
 // (foo = (fn a b -> (fn c d -> 3)));
-// (when1 = (fn condition expr -> (if condition then expr)));
-// (when2 = (fn condition expr -> (if condition then expr)));
-// (when3 = (fn condition expr -> (if condition then expr)));
-// (when4 = (fn condition expr -> (if condition then expr)));
-// (when5 = (fn condition expr -> (if condition then expr)))
+// (when1 = (fn condition expr -> (if condition then 
+//     expr;
+//     ()
+//  else ())));
+// (when2 = (fn condition expr -> (if condition then 
+//     expr;
+//     ()
+//  else ())));
+// (when3 = (fn condition expr -> (if condition then 
+//     expr;
+//     ()
+//  else ())));
+// (when4 = (fn condition expr -> (if condition then 
+//     expr;
+//     ()
+//  else ())));
+// (when5 = (fn condition expr -> (if condition then 
+//     expr;
+//     ()
+//  else ())))

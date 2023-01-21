@@ -1420,7 +1420,7 @@ impl<'c> Context<'c> {
     fn monomorphise_if(&mut self, if_: &ast::If<'c>) -> hir::Ast {
         let condition = Box::new(self.monomorphise(&if_.condition));
         let then = Box::new(self.monomorphise(&if_.then));
-        let otherwise = if_.otherwise.as_ref().map(|e| Box::new(self.monomorphise(e)));
+        let otherwise = Box::new(self.monomorphise(&if_.otherwise));
         let result_type = self.convert_type(if_.typ.as_ref().unwrap());
 
         hir::Ast::If(hir::If { condition, then, otherwise, result_type })

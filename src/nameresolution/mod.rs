@@ -1021,11 +1021,9 @@ impl<'c> Resolvable<'c> for ast::If<'c> {
         self.then.define(resolver, cache);
         resolver.pop_scope(cache, true, None);
 
-        if let Some(otherwise) = &mut self.otherwise {
-            resolver.push_scope(cache);
-            otherwise.define(resolver, cache);
-            resolver.pop_scope(cache, true, None);
-        }
+        resolver.push_scope(cache);
+        self.otherwise.define(resolver, cache);
+        resolver.pop_scope(cache, true, None);
     }
 }
 

@@ -199,3 +199,16 @@ fn tuplify<'a>(mut args: Vec<Ast<'a>>, location: Location<'a>) -> Ast<'a> {
         Ast::function_call(function, vec![first, rest], location)
     }
 }
+
+pub fn desugar_if_with_no_else<'a>(condition: Ast<'a>, then: Ast<'a>, location: Location<'a>) -> Ast<'a> {
+    let then = Box::new(Ast::sequence(vec![then, Ast::unit_literal(location)], location));
+    let otherwise = Box::new(Ast::unit_literal(location));
+
+    Ast::If(ast::If {
+        condition: Box::new(condition),
+        then,
+        otherwise,
+        location,
+        typ: None,
+    })
+}

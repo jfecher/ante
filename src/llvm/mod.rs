@@ -563,47 +563,37 @@ impl<'g> CodeGen<'g> for hir::If {
         let then_block = generator.context.append_basic_block(current_function, "then");
         let end_block = generator.context.append_basic_block(current_function, "end_if");
 
-        if let Some(otherwise) = &self.otherwise {
-            // Setup conditional jump
-            let else_block = generator.context.append_basic_block(current_function, "else");
-            generator.builder.build_conditional_branch(condition.into_int_value(), then_block, else_block);
+        // Setup conditional jump
+        let else_block = generator.context.append_basic_block(current_function, "else");
+        generator.builder.build_conditional_branch(condition.into_int_value(), then_block, else_block);
 
-            generator.builder.position_at_end(then_block);
-            let (if_type, then_option) = generator.codegen_branch(&self.then, end_block);
+        generator.builder.position_at_end(then_block);
+        let (if_type, then_option) = generator.codegen_branch(&self.then, end_block);
 
-            generator.builder.position_at_end(else_block);
-            let (_, else_option) = generator.codegen_branch(otherwise, end_block);
+        generator.builder.position_at_end(else_block);
+        let (_, else_option) = generator.codegen_branch(&self.otherwise, end_block);
 
-            // Create phi at the end of the if beforehand
-            generator.builder.position_at_end(end_block);
+        // Create phi at the end of the if beforehand
+        generator.builder.position_at_end(end_block);
 
-            // Some of the branches may have terminated early. We need to check each case to
-            // determine which we should add to the phi or if we should even create a phi at all.
-            match (then_option, else_option) {
-                (Some((then_value, then_branch)), Some((else_value, else_branch))) => {
-                    let phi = generator.builder.build_phi(then_value.get_type(), "if_result");
-                    phi.add_incoming(&[(&then_value, then_branch), (&else_value, else_branch)]);
-                    phi.as_basic_value()
-                },
-                (Some((then_value, _)), None) => then_value,
-                (None, Some((else_value, _))) => else_value,
-                (None, None) => {
-                    generator.builder.build_unreachable();
+        // Some of the branches may have terminated early. We need to check each case to
+        // determine which we should add to the phi or if we should even create a phi at all.
+        match (then_option, else_option) {
+            (Some((then_value, then_branch)), Some((else_value, else_branch))) => {
+                let phi = generator.builder.build_phi(then_value.get_type(), "if_result");
+                phi.add_incoming(&[(&then_value, then_branch), (&else_value, else_branch)]);
+                phi.as_basic_value()
+            },
+            (Some((then_value, _)), None) => then_value,
+            (None, Some((else_value, _))) => else_value,
+            (None, None) => {
+                generator.builder.build_unreachable();
 
-                    // Block is unreachable but we still need to return an undef value.
-                    // If we return None the compiler would crash while compiling
-                    // `2 + if true return "uh" else return "oh"`
-                    Generator::undef_value(if_type)
-                },
-            }
-        } else {
-            generator.builder.build_conditional_branch(condition.into_int_value(), then_block, end_block);
-
-            generator.builder.position_at_end(then_block);
-            generator.codegen_branch(&self.then, end_block);
-
-            generator.builder.position_at_end(end_block);
-            generator.unit_value()
+                // Block is unreachable but we still need to return an undef value.
+                // If we return None the compiler would crash while compiling
+                // `2 + if true return "uh" else return "oh"`
+                Generator::undef_value(if_type)
+            },
         }
     }
 }

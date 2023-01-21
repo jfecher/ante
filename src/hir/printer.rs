@@ -171,12 +171,8 @@ impl FmtAst for If {
         printer.block(self.condition.as_ref(), f)?;
         write!(f, " then ")?;
         printer.block(self.then.as_ref(), f)?;
-
-        if let Some(otherwise) = &self.otherwise {
-            write!(f, " else ")?;
-            printer.block(otherwise.as_ref(), f)?;
-        }
-
+        write!(f, " else ")?;
+        printer.block(self.otherwise.as_ref(), f)?;
         write!(f, " endif")
     }
 }

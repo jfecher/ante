@@ -82,9 +82,7 @@ fn replace_env(expr: Ast, env: &Ast, definition_id: hir::DefinitionId, f: &hir::
         Ast::If(mut if_expr) => {
             if_expr.condition = Box::new(replace_env(*if_expr.condition, env, definition_id, f));
             if_expr.then = Box::new(replace_env(*if_expr.then, env, definition_id, f));
-            if let Some(otherwise) = if_expr.otherwise {
-                if_expr.otherwise = Some(Box::new(replace_env(*otherwise, env, definition_id, f)));
-            }
+            if_expr.otherwise = Box::new(replace_env(*if_expr.otherwise, env, definition_id, f));
             Ast::If(if_expr)
         },
         Ast::Sequence(mut seq) => {

@@ -167,7 +167,7 @@ pub struct Definition<'a> {
 pub struct If<'a> {
     pub condition: Box<Ast<'a>>,
     pub then: Box<Ast<'a>>,
-    pub otherwise: Option<Box<Ast<'a>>>,
+    pub otherwise: Box<Ast<'a>>,
     pub location: Location<'a>,
     pub typ: Option<types::Type>,
 }
@@ -551,13 +551,17 @@ impl<'a> Ast<'a> {
     }
 
     pub fn if_expr(condition: Ast<'a>, then: Ast<'a>, otherwise: Option<Ast<'a>>, location: Location<'a>) -> Ast<'a> {
-        Ast::If(If {
-            condition: Box::new(condition),
-            then: Box::new(then),
-            otherwise: otherwise.map(Box::new),
-            location,
-            typ: None,
-        })
+        if let Some(otherwise) = otherwise {
+            Ast::If(If {
+                condition: Box::new(condition),
+                then: Box::new(then),
+                otherwise: Box::new(otherwise),
+                location,
+                typ: None,
+            })
+        } else {
+            super::desugar::desugar_if_with_no_else(condition, then, location)
+        }
     }
 
     pub fn definition(pattern: Ast<'a>, expr: Ast<'a>, location: Location<'a>) -> Ast<'a> {

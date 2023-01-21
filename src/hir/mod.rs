@@ -110,7 +110,7 @@ impl From<Definition> for DefinitionInfo {
 pub struct If {
     pub condition: Box<Ast>,
     pub then: Box<Ast>,
-    pub otherwise: Option<Box<Ast>>,
+    pub otherwise: Box<Ast>,
     pub result_type: Type,
 }
 

@@ -71,11 +71,7 @@ impl<'a> Display for ast::Definition<'a> {
 
 impl<'a> Display for ast::If<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        if let Some(ref otherwise) = self.otherwise {
-            write!(f, "(if {} then {} else {})", self.condition, self.then, otherwise)
-        } else {
-            write!(f, "(if {} then {})", self.condition, self.then)
-        }
+        write!(f, "(if {} then {} else {})", self.condition, self.then, self.otherwise)
     }
 }
 
