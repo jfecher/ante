@@ -243,7 +243,7 @@ impl<'g> Generator<'g> {
     fn convert_function_type(&mut self, f: &hir::FunctionType) -> PointerType<'g> {
         let parameters = fmap(&f.parameters, |param| self.convert_type(param).into());
         let ret = self.convert_type(&f.return_type);
-        ret.fn_type(&parameters, false).ptr_type(AddressSpace::Generic)
+        ret.fn_type(&parameters, false).ptr_type(AddressSpace::default())
     }
 
     fn convert_type(&mut self, typ: &hir::Type) -> BasicTypeEnum<'g> {
@@ -259,7 +259,7 @@ impl<'g> Generator<'g> {
                     PrimitiveType::Char => self.context.i8_type().into(),
                     PrimitiveType::Boolean => self.context.bool_type().into(),
                     PrimitiveType::Unit => self.context.bool_type().into(),
-                    PrimitiveType::Pointer => self.context.i8_type().ptr_type(AddressSpace::Generic).into(),
+                    PrimitiveType::Pointer => self.context.i8_type().ptr_type(AddressSpace::default()).into(),
                 }
             },
             hir::Type::Function(f) => self.convert_function_type(f).into(),
@@ -330,7 +330,7 @@ impl<'g> Generator<'g> {
 
         let value = global.as_pointer_value();
 
-        let cstring_type = self.context.i8_type().ptr_type(AddressSpace::Generic);
+        let cstring_type = self.context.i8_type().ptr_type(AddressSpace::default());
 
         let cast = self.builder.build_pointer_cast(value, cstring_type, "string_cast");
 
@@ -379,7 +379,7 @@ impl<'g> Generator<'g> {
         let alloca = self.builder.build_alloca(source_type, "alloca");
         self.builder.build_store(alloca, value);
 
-        let target_type = target_type.ptr_type(AddressSpace::Generic);
+        let target_type = target_type.ptr_type(AddressSpace::default());
         let cast = self.builder.build_pointer_cast(alloca, target_type, "cast");
         self.builder.build_load(cast, "union_cast")
     }
@@ -675,7 +675,7 @@ impl<'g> CodeGen<'g> for hir::Assignment {
 
         let rhs = self.rhs.codegen(generator);
 
-        let rhs_ptr = rhs.get_type().ptr_type(AddressSpace::Generic);
+        let rhs_ptr = rhs.get_type().ptr_type(AddressSpace::default());
         let lhs = generator.builder.build_pointer_cast(lhs, rhs_ptr, "bitcast");
 
         generator.builder.build_store(lhs, rhs);
