@@ -1,2 +1,4 @@
 /target
 .vscode
+/examples/codegen/fib
+/examples/codegen/hello

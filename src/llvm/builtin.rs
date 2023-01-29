@@ -167,7 +167,7 @@ fn eq_bool<'g>(a: IntValue<'g>, b: IntValue<'g>, generator: &mut Generator<'g>) 
 }
 
 fn deref_ptr<'g>(ptr: &Ast, typ: &Type, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
-    let ret = generator.convert_type(typ).ptr_type(AddressSpace::Generic);
+    let ret = generator.convert_type(typ).ptr_type(AddressSpace::default());
 
     let ptr = ptr.codegen(generator).into_pointer_value();
     let ptr = generator.builder.build_pointer_cast(ptr, ret, "bitcast");
@@ -193,7 +193,7 @@ fn transmute_value<'g>(x: &Ast, generator: &mut Generator<'g>) -> BasicValueEnum
     let ret = current_function.get_type().get_return_type().unwrap();
     let alloca = generator.builder.build_alloca(x.get_type(), "transmute");
     generator.builder.build_store(alloca, x);
-    let casted = generator.builder.build_pointer_cast(alloca, ret.ptr_type(AddressSpace::Generic), "bitcast");
+    let casted = generator.builder.build_pointer_cast(alloca, ret.ptr_type(AddressSpace::default()), "bitcast");
     generator.builder.build_load(casted, "transmute_load")
 }
 
