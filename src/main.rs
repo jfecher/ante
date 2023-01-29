@@ -44,7 +44,7 @@ use std::fs::File;
 use std::io::{stdout, BufReader, Read};
 use std::path::Path;
 
-use crate::cli::{Backend, Cli, Completions};
+use crate::cli::{Backend, Cli, Completions, EmitTarget};
 
 #[global_allocator]
 static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
@@ -152,8 +152,9 @@ fn compile(args: Cli) {
     }
 
     let hir = hir::monomorphise(ast, cache);
-    if args.show_hir {
+    if args.emit == Some(EmitTarget::Hir) {
         println!("{}", hir);
+        return;
     }
 
     // Phase 5: Lifetime inference

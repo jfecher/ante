@@ -18,7 +18,7 @@
 //! The reccomended starting point while reading through this pass is the `run`
 //! function which is called directly from `main`. This function sets up the
 //! Generator, walks the Ast, then optimizes and links the resulting Module.
-use crate::cli::Cli;
+use crate::cli::{Cli, EmitTarget};
 use crate::hir::{self, DefinitionId};
 use crate::lexer::token::FloatKind;
 use crate::util::{self, fmap, timing};
@@ -100,8 +100,9 @@ pub fn run(path: &Path, ast: hir::Ast, args: &Cli) {
 
     // --show-ir: Dump the LLVM-IR of the generated module to stderr.
     // Useful to debug codegen
-    if args.show_ir {
+    if args.emit == Some(EmitTarget::Ir) {
         codegen.module.print_to_stderr();
+        return;
     }
 
     let binary_name = util::binary_name(&module_name);

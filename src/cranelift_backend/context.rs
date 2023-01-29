@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use crate::cli::Cli;
+use crate::cli::{Cli, EmitTarget};
 use crate::hir::{self, Ast, DefinitionId, PrimitiveType, Type};
 use crate::lexer::token::FloatKind;
 use crate::util::fmap;
@@ -178,7 +178,7 @@ impl<'local> Context<'local> {
 
         builder.finalize();
 
-        if args.show_ir {
+        if args.emit == Some(EmitTarget::Ir) {
             let name = match module_context.func.name {
                 ExternalName::User { index, .. } => index,
                 ExternalName::TestCase { .. } => unreachable!(),
@@ -229,7 +229,7 @@ impl<'local> Context<'local> {
         let func = &module_context.func;
         let res = verify_function(func, &flags);
 
-        if args.show_ir {
+        if args.emit == Some(EmitTarget::Ir) {
             println!("main =\n{}", func.display());
         }
 

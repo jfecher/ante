@@ -34,6 +34,10 @@ pub struct Cli {
     #[arg(long, short, group = "compile_mode")]
     pub build: bool,
 
+    /// Tells the compiler to create something other than an executable
+    #[arg(long, short, group = "compile_mode")]
+    pub emit: Option<EmitTarget>,
+
     /// Specify the backend to use ('llvm' or 'cranelift'). Note that cranelift is only for debug builds.
     /// Ante will use cranelift by default for debug builds and llvm by default for optimized builds,
     /// unless overridden by this flag
@@ -49,14 +53,6 @@ pub struct Cli {
     #[arg(long)]
     pub no_color: bool,
 
-    /// Print out the LLVM-IR or Cranelift IR of the compiled program
-    #[arg(long, short = 'i')]
-    pub show_ir: bool,
-
-    /// Print out the HIR, Ante's post-monomorphisation IR
-    #[arg(long, short = 'H')]
-    pub show_hir: bool,
-
     /// Delete the resulting binary after compiling
     #[arg(long, short, group = "compile_mode")]
     pub delete_binary: bool,
@@ -68,6 +64,15 @@ pub struct Cli {
     /// Print out the type of each definition
     #[arg(long, short = 't')]
     pub show_types: bool,
+}
+
+#[derive(Debug, PartialEq, Eq, Copy, Clone, ValueEnum)]
+pub enum EmitTarget {
+    /// LLVM-IR or Cranelift IR depending on the selected backend
+    Ir,
+
+    /// Ante's post-monomorphisation HIR representation
+    Hir,
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone, ValueEnum)]
