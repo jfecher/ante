@@ -64,23 +64,30 @@ Ante currently optionally requires llvm 13.0 while building. If you already have
 sources, you may be fine building with `cargo install --path .` alone. If cargo complains
 about not finding any suitable llvm version, you can either choose to build ante without
 the llvm backend via `cargo install --path . --no-default-features` or you can build llvm from
-source, either via `llvmenv` or `cmake` as covered in the next sections.
+source via `cmake` as covered in the next sections.
 
 #### Linux and Mac
 
+The easiest method to install llvm would be through your package manager, making sure to install any `-dev` packages
+if they are available for your distro. Once installed, make sure to set the `LLVM_SYS_130_PREFIX` to the path llvm
+was installed to:
+
 ```bash
-$ cargo install llvmenv
-$ llvmenv init
-$ llvmenv build-entry -G Makefile -j7 13.0.0
-$ llvmenv global 13.0.0
-$ LLVM_SYS_130_PREFIX=$(llvmenv prefix)
-$ cargo build
+$ LLVM_SYS_130_PREFIX=$(llvm-config --obj-root)
 ```
 
-If `llvmenv prefix` defaults to a path with spaces in it, you may get an error during `cargo build`
-complaining it cannot find the path to llvm. If this happens, try manually moving the installation
-in `llvmenv prefix` to a new directory without spaces, updating `LLVM_SYS_130_PREFIX` to this new
-location and re-running `cargo build`.
+If your distro ships a version other than llvm 13.0 you can try changing the inkwell dependency Ante's Cargo.toml.
+This dependency controls the llvm version expected and by default it is:
+
+```toml
+inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm13-0"], optional = true }
+```
+
+Change the quoted llvm portion to `"llvm-12-0"` for example to build with llvm 12.0. Also don't forget that after changing
+this version the environment variable's name will be different, using llvm 12.0 for example it would be `LLVM_SYS_120_PREFIX`.
+
+If this method does not work you will have to try building llvm from source via cmake. See the [CMake](#CMake) section below.
+Alternatively, you can build with only cranelift as a backend via `cargo install --path . --no-default-features`.
 
 ##### Nix
 
@@ -100,21 +107,8 @@ the provided overlay or play around with the compiler via `nix shell github:jfec
 
 Note: LLVM is notoriously difficult to build on windows. If you're a windows user who has tried
 the following and still cannot build llvm, I highly recommend trying out ante without the llvm
-backend via `cargo install --path . --no-default-features`.
-
-That being said, here is one way to build llvm via llvmenv on windows:
-
-```shell
-$ cargo install llvmenv
-$ llvmenv init
-$ llvmenv build-entry -G VisualStudio -j7 13.0.0
-$ llvmenv global 13.0.0
-$ for /f "tokens=*" %a in ('llvmenv prefix') do (set LLVM_SYS_130_PREFIX=%a)
-$ cargo build
-```
-
-You can confirm your current version of llvm by running `llvmenv version`
-or `llvm-config`
+backend via `cargo install --path . --no-default-features`. Since the llvm binaries do not ship
+with the appropriate library files on windows, you will have to build from source via [CMake](#CMake)
 
 ##### CMake
 
