@@ -20,7 +20,7 @@ let
       pname = "ante";
       src = ./.;
       inherit (toml.package) version;
-      cargoSha256 = "CsWiTDzXMWtnbNBLVSxH0YmXez3YZ+i/W+uPcpgIRDo=";
+      cargoHash = "sha256-Mn5LukLn9bz8Z4YTNEk4CK5ItYFRngoB7Zp9XJVhM74=";
 
       nativeBuildInputs = [ llvmPackages.llvm installShellFiles ];
       buildInputs = [ libffi libxml2 ncurses ];

@@ -1,2 +1,5 @@
 /target
 .vscode
+
+# Nix build artifacts
+/result
