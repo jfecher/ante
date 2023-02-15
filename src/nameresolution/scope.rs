@@ -167,10 +167,14 @@ pub struct TypeVariableScope {
 }
 
 impl TypeVariableScope {
-    pub fn push_existing_type_variable(&mut self, key: String, id: TypeVariableId) -> TypeVariableId {
+    /// Push a type variable with the given name and id into scope.
+    /// Returns None if a type variable with the same name is already in scope.
+    pub fn push_existing_type_variable(&mut self, key: String, id: TypeVariableId) -> Option<TypeVariableId> {
         let prev = self.type_variables.insert(key, id);
-        assert!(prev.is_none());
-        id
+        if !prev.is_none() {
+            return None;
+        }
+        Some(id)
     }
 
     pub fn get(&self, key: &str) -> Option<&TypeVariableId> {

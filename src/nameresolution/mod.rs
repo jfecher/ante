@@ -326,14 +326,18 @@ impl NameResolver {
         self.type_variable_scopes.push(scope::TypeVariableScope::default());
     }
 
-    fn push_existing_type_variable(&mut self, key: String, id: TypeVariableId) -> TypeVariableId {
+    fn push_existing_type_variable(&mut self, key: &str, id: TypeVariableId, location: Location) -> TypeVariableId {
         let top = self.type_variable_scopes.len() - 1;
-        self.type_variable_scopes[top].push_existing_type_variable(key, id)
+
+        if self.type_variable_scopes[top].push_existing_type_variable(key.to_owned(), id).is_none() {
+            error!(location, "Type variable '{}' is already in scope", key);
+        }
+        id
     }
 
-    fn push_new_type_variable<'c>(&mut self, key: String, cache: &mut ModuleCache<'c>) -> TypeVariableId {
+    fn push_new_type_variable<'c>(&mut self, key: &str, location: Location<'c>, cache: &mut ModuleCache<'c>) -> TypeVariableId {
         let id = cache.next_type_variable_id(self.let_binding_level);
-        self.push_existing_type_variable(key, id)
+        self.push_existing_type_variable(key, id, location)
     }
 
     fn pop_scope<'c>(
@@ -586,12 +590,12 @@ impl NameResolver {
     /// Re-insert the given type variables into the current scope.
     /// Currently used for remembering type variables from type and trait definitions that
     /// were created in the declare pass and need to be used later in the define pass.
-    fn add_existing_type_variables_to_scope(&mut self, existing_typevars: &[String], ids: &[TypeVariableId]) {
+    fn add_existing_type_variables_to_scope(&mut self, existing_typevars: &[String], ids: &[TypeVariableId], location: Location) {
         // re-insert the typevars into scope.
         // These names are guarenteed to not collide since we just pushed a new scope.
         assert_eq!(existing_typevars.len(), ids.len());
         for (key, id) in existing_typevars.iter().zip(ids) {
-            self.push_existing_type_variable(key.clone(), *id);
+            self.push_existing_type_variable(key, *id, location);
         }
     }
 }
@@ -701,7 +705,7 @@ impl<'c> NameResolver {
                 Some(id) => Type::TypeVariable(id),
                 None => {
                     if self.auto_declare {
-                        let id = self.push_new_type_variable(name.clone(), cache);
+                        let id = self.push_new_type_variable(name, *location, cache);
                         Type::TypeVariable(id)
                     } else {
                         error!(*location, "Type variable {} was not found in scope", name);
@@ -1146,7 +1150,7 @@ impl<'c> Resolvable<'c> for ast::TypeDefinition<'c> {
 
         // Re-add the typevariables we created in TypeDefinition::declare back into scope
         let existing_ids = &cache.type_infos[id.0].args;
-        resolver.add_existing_type_variables_to_scope(&self.args, existing_ids);
+        resolver.add_existing_type_variables_to_scope(&self.args, existing_ids, self.location);
 
         let type_id = self.type_info.unwrap();
         match &self.definition {
@@ -1330,8 +1334,8 @@ impl<'c> Resolvable<'c> for ast::TraitDefinition<'c> {
 
             // Re-add the typevariables we created in TraitDefinition::declare back into scope
             let trait_info = &cache.trait_infos[self.trait_info.unwrap().0];
-            resolver.add_existing_type_variables_to_scope(&self.args, &trait_info.typeargs);
-            resolver.add_existing_type_variables_to_scope(&self.fundeps, &trait_info.fundeps);
+            resolver.add_existing_type_variables_to_scope(&self.args, &trait_info.typeargs, self.location);
+            resolver.add_existing_type_variables_to_scope(&self.fundeps, &trait_info.fundeps, self.location);
 
             for declaration in self.declarations.iter_mut() {
                 resolver.auto_declare = true;
@@ -1494,7 +1498,7 @@ impl<'c> Resolvable<'c> for ast::EffectDefinition<'c> {
         self.level = Some(resolver.let_binding_level);
         resolver.push_let_binding_level();
 
-        let args = fmap(&self.args, |arg| resolver.push_new_type_variable(arg.clone(), cache));
+        let args = fmap(&self.args, |_| cache.next_type_variable_id(resolver.let_binding_level));
 
         let effect_id =
             resolver.push_effect(self.name.clone(), args, trustme::extend_lifetime(self), cache, self.location);
@@ -1512,11 +1516,6 @@ impl<'c> Resolvable<'c> for ast::EffectDefinition<'c> {
             if !matches!(&declaration.rhs, ast::Type::Function(..)) {
                 error!(declaration.rhs.locate(), "Only function types are allowed in effect declarations");
             }
-
-            resolver.auto_declare = true;
-            let rhs = resolver.convert_type(cache, &declaration.rhs);
-            resolver.auto_declare = false;
-            declaration.typ = Some(rhs);
         }
 
         self.effect_info = Some(effect_id);
@@ -1527,6 +1526,22 @@ impl<'c> Resolvable<'c> for ast::EffectDefinition<'c> {
     fn define(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'c>) {
         if self.effect_info.is_none() {
             self.declare(resolver, cache);
+        }
+
+        if self.declarations.get(0).map_or(false, |decl| decl.typ.is_none()) {
+            resolver.push_type_variable_scope();
+
+            // Re-add the typevariables we created in TraitDefinition::declare back into scope
+            let effect_info = &cache.effect_infos[self.effect_info.unwrap().0];
+            resolver.add_existing_type_variables_to_scope(&self.args, &effect_info.typeargs, self.location);
+
+            for declaration in self.declarations.iter_mut() {
+                resolver.auto_declare = true;
+                let rhs = resolver.convert_type(cache, &declaration.rhs);
+                resolver.auto_declare = false;
+                declaration.typ = Some(rhs);
+            }
+            resolver.pop_type_variable_scope();
         }
     }
 }
