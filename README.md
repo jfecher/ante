@@ -117,7 +117,7 @@ with cmake](https://www.llvm.org/docs/CMake.html). If you're on windows, this
 requires you to have Visual Studio 2017 or later installed already.
 
 ```
-$ git clone https://github.com/llvm/llvm-project --branch=release/10.x
+$ git clone https://github.com/llvm/llvm-project --branch=release/13.x
 $ mkdir llvm-build
 $ cd llvm-build
 $ cmake ../llvm-project/llvm
