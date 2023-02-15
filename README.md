@@ -64,7 +64,7 @@ Ante currently optionally requires llvm 13.0 while building. If you already have
 sources, you may be fine building with `cargo install --path .` alone. If cargo complains
 about not finding any suitable llvm version, you can either choose to build ante without
 the llvm backend via `cargo install --path . --no-default-features` or you can build llvm from
-source via `cmake` as covered in the next sections.
+source via [CMake](#CMake) as covered in the next sections.
 
 #### Linux and Mac
 
