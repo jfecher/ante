@@ -1438,17 +1438,24 @@ impl<'c> Context<'c> {
     fn get_field_index(&self, field_name: &str, typ: &types::Type) -> u32 {
         use types::Type::*;
 
-        match self.follow_bindings_shallow(typ) {
-            Ok(UserDefined(id)) => self.cache[*id].find_field(field_name).unwrap().0,
-            Ok(TypeApplication(typ, args)) => {
-                match self.follow_bindings_shallow(typ) {
+        let typ = self.follow_all_bindings(typ);
+        match &typ {
+            UserDefined(id) => self.cache[*id].find_field(field_name).unwrap().0,
+            TypeApplication(typ, args) => {
+                match typ.as_ref() {
                     // Pass through ref types transparently
-                    Ok(types::Type::Ref(_)) => self.get_field_index(field_name, &args[0]),
+                    types::Type::Ref(_) => self.get_field_index(field_name, &args[0]),
                     // These last 2 cases are the same. They're duplicated to avoid another follow_bindings_shallow call.
-                    Ok(typ) => self.get_field_index(field_name, typ),
-                    _ => self.get_field_index(field_name, typ),
+                    typ => self.get_field_index(field_name, &typ),
                 }
             },
+            // This case should only happen when a bottom type is unified with an anonymous field
+            // type. Default to alphabetically ordered fields, but it should never actually be
+            // accessed anyway.
+            Struct(fields, _binding) => {
+                fields.keys().position(|name| name == field_name)
+                    .expect(&format!("Expected type {} to have a field named '{}'", typ.display(&self.cache), field_name)) as u32
+            }
             _ => unreachable!(
                 "get_field_index called with type {} that doesn't have a '{}' field",
                 typ.display(&self.cache),
