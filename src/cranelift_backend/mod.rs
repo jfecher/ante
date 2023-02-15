@@ -224,7 +224,7 @@ impl CodeGen for hir::Tuple {
 impl CodeGen for hir::ReinterpretCast {
     fn codegen<'a>(&'a self, context: &mut Context<'a>, builder: &mut FunctionBuilder) -> Value {
         let value = self.lhs.codegen(context, builder);
-        context.reinterpret_cast(value, &self.target_type, builder)
+        context.transmute(value, &self.target_type, builder)
     }
 }
 

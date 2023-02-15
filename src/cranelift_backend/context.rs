@@ -426,7 +426,34 @@ impl<'local> Context<'local> {
         builder.ins().symbol_value(pointer_type(), global)
     }
 
-    pub fn reinterpret_cast(&mut self, value: Value, target_type: &Type, builder: &mut FunctionBuilder) -> Value {
+    pub fn transmute(&mut self, value: Value, target_type: &Type, builder: &mut FunctionBuilder) -> Value {
+        match value {
+            value @ Value::Tuple(_) => self.transmute_multiple_values(value, target_type, builder),
+            single => self.transmute_single_value(single, target_type, builder),
+        }
+    }
+
+    fn transmute_single_value(&mut self, value: Value, target_type: &Type, builder: &mut FunctionBuilder) -> Value {
+        let value = value.eval_single(self, builder);
+        let start_type = builder.func.dfg.value_type(value);
+
+        let mut target = None;
+        self.for_each_type_in(target_type, |_, typ| {
+            assert!(target.is_none());
+            target = Some(typ);
+        });
+        let target = target.unwrap_or_else(|| {
+            unreachable!("Expected type {} to contain exactly 1 cranelift value, but it had 0", target_type)
+        });
+
+        if start_type != target {
+            Value::Normal(builder.ins().bitcast(target, value))
+        } else {
+            Value::Normal(value)
+        }
+    }
+
+    fn transmute_multiple_values(&mut self, value: Value, target_type: &Type, builder: &mut FunctionBuilder) -> Value {
         let size = size_of(target_type);
         let data = StackSlotData::new(StackSlotKind::ExplicitSlot, size);
         let slot = builder.create_stack_slot(data);

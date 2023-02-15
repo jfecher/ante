@@ -189,12 +189,9 @@ fn offset<'g>(ptr: &Ast, offset: IntValue<'g>, type_size: u32, generator: &mut G
 
 fn transmute_value<'g>(x: &Ast, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
     let current_function = generator.current_function();
-    let x = x.codegen(generator);
+    let value = x.codegen(generator);
     let ret = current_function.get_type().get_return_type().unwrap();
-    let alloca = generator.builder.build_alloca(x.get_type(), "transmute");
-    generator.builder.build_store(alloca, x);
-    let casted = generator.builder.build_pointer_cast(alloca, ret.ptr_type(AddressSpace::default()), "bitcast");
-    generator.builder.build_load(casted, "transmute_load")
+    generator.reinterpret_cast(value, ret)
 }
 
 fn sign_extend<'g>(x: IntValue<'g>, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {

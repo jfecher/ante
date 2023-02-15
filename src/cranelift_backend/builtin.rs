@@ -56,7 +56,7 @@ pub fn call_builtin<'ast>(builtin: &'ast Builtin, context: &mut Context<'ast>, b
 
         Builtin::Deref(a, typ) => return deref(context, typ, a, builder),
         Builtin::Offset(a, b, elem_size) => offset(value(a), value(b), *elem_size, builder),
-        Builtin::Transmute(a, _typ) => transmute(value(a), builder),
+        Builtin::Transmute(a, typ) => return transmute(context, a, typ, builder),
         Builtin::StackAlloc(a) => stack_alloc(a, context, builder),
     };
 
@@ -140,16 +140,9 @@ fn eq_bool(param1: CraneliftValue, param2: CraneliftValue, builder: &mut Functio
     b1_to_i8(builder.ins().icmp(IntCC::Equal, param1, param2), builder)
 }
 
-fn transmute(param1: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftValue {
-    // TODO: struct types
-    let target_type = builder.func.signature.returns[0].value_type;
-    let start_type = builder.func.dfg.value_type(param1);
-
-    if start_type != target_type {
-        builder.ins().bitcast(target_type, param1)
-    } else {
-        param1
-    }
+fn transmute<'a>(context: &mut Context<'a>, param: &'a Ast, typ: &crate::hir::Type, builder: &mut FunctionBuilder) -> Value {
+    let value = param.codegen(context, builder);
+    context.transmute(value, typ, builder)
 }
 
 fn offset(
