@@ -793,20 +793,35 @@ impl<'c> NameResolver {
         }
     }
 
-    fn resolve_trait_impl_declarations<'a, T: 'a, It>(
-        &mut self, patterns: It, cache: &mut ModuleCache<'c>,
-    ) -> Vec<DefinitionInfoId>
-    where
-        It: Iterator<Item = &'a mut T>,
-        T: Resolvable<'c>,
-    {
+    fn resolve_trait_impl_declarations(
+        &mut self, definitions: &mut [ast::Definition<'c>], cache: &mut ModuleCache<'c>,
+    ) -> Vec<DefinitionInfoId> {
         self.definitions_collected.clear();
         self.auto_declare = true;
-        for pattern in patterns {
-            pattern.declare(self, cache);
+
+        let mut all_definitions = vec![];
+
+        for definition in definitions {
+            // This chunk is largely taken from Definition::declare, but altered
+            // slightly so that we can collect all self.definitions_collected instead
+            // of clearing them after each Definition
+            self.push_let_binding_level();
+            self.push_type_variable_scope();
+            definition.pattern.declare(self, cache);
+            self.pop_let_binding_level();
+            self.pop_type_variable_scope();
+
+            for id in std::mem::take(&mut self.definitions_collected) {
+                let definition = definition as *const ast::Definition;
+                let definition = || DefinitionKind::Definition(trustme::make_mut(definition));
+                cache.definition_infos[id.0].definition = Some(definition());
+                all_definitions.push(id);
+            }
         }
+
+        self.definitions_collected.clear();
         self.auto_declare = false;
-        self.definitions_collected.clone()
+        all_definitions
     }
 
     fn resolve_all_definitions<'a, T: 'a, It, F>(
@@ -1388,7 +1403,7 @@ impl<'c> Resolvable<'c> for ast::TraitImpl<'c> {
         resolver.push_let_binding_level();
 
         // Declare the names first so we can check them all against the required_definitions
-        let definitions = resolver.resolve_trait_impl_declarations(self.definitions.iter_mut(), cache);
+        let definitions = resolver.resolve_trait_impl_declarations(&mut self.definitions, cache);
 
         // TODO cleanup: is required_definitions still required since we can
         // resolve_all_definitions now? The checks in push_definition can probably
