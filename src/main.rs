@@ -166,13 +166,19 @@ fn compile(args: Cli) {
     // }
 
     // Phase 6: Codegen
-    if args.opt_level == '0' && args.backend != Some(Backend::Llvm) {
-        cranelift_backend::run(filename, hir, &args);
-    } else if cfg!(feature = "llvm") {
-        #[cfg(feature = "llvm")]
-        llvm::run(filename, hir, &args);
-    } else {
-        eprintln!("The llvm backend is required for non-debug builds. Recompile ante with --features 'llvm' to enable optimized builds.");
+    let backend =
+        args.backend.unwrap_or_else(|| if args.opt_level == '0' { Backend::Cranelift } else { Backend::Llvm });
+
+    match backend {
+        Backend::Cranelift => cranelift_backend::run(filename, hir, &args),
+        Backend::Llvm => {
+            if cfg!(feature = "llvm") {
+                #[cfg(feature = "llvm")]
+                llvm::run(filename, hir, &args);
+            } else {
+                eprintln!("The llvm backend is required for non-debug builds. Recompile ante with --features 'llvm' to enable optimized builds.");
+            }
+        },
     }
 
     // Print out the time each compiler pass took to complete if the --show-time flag was passed
