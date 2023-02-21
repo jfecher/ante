@@ -40,10 +40,19 @@ impl DynModule {
         }
     }
 
-    pub fn finish(self, main_id: FuncId, output_file: &Path) {
+    pub fn finish(&mut self) {
         match self {
-            DynModule::Jit(mut module) => {
+            DynModule::Jit(module) => {
                 module.finalize_definitions();
+            },
+            DynModule::Static(_module) => {
+            },
+        }
+    }
+
+    pub fn run(self, main_id: FuncId, output_file: &Path) {
+        match self {
+            DynModule::Jit(module) => {
                 let main = module.get_finalized_function(main_id);
                 let main: fn() -> i32 = unsafe { std::mem::transmute(main) };
                 main();

@@ -152,7 +152,10 @@ impl<'local> Context<'local> {
             context.codegen_function_body(function, &mut builder_context, &mut module_context, signature, id, args);
         }
 
-        context.module.finish(main, &output_path);
+        context.module.finish();
+        if args.emit.is_none() {
+            context.module.run(main, &output_path);
+        }
     }
 
     /// Codegens an entire function. Cranelift enforces we must finish compiling the
