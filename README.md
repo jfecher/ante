@@ -8,7 +8,7 @@ Ante is a low-level functional language for exploring refinement types, lifetime
 other fun features. Here's a quick taste:
 
 ```scala
-type Person = name: string, job: ref string
+type Person = name: String, job: Ref String
 
 // Infer that the data referenced via `&` should not be freed inside this function
 make_person name =
