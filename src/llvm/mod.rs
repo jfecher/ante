@@ -101,7 +101,8 @@ pub fn run(path: &Path, ast: hir::Ast, args: &Cli) {
     // --show-ir: Dump the LLVM-IR of the generated module to stderr.
     // Useful to debug codegen
     if args.emit == Some(EmitTarget::Ir) {
-        codegen.module.print_to_stderr();
+        let llvm_ir = codegen.module.print_to_string();
+        print!("{}", llvm_ir);
         return;
     }
 
