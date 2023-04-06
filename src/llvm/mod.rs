@@ -15,7 +15,7 @@
 //! Any libraries need to have their source code included anyway since ante does
 //! not have a stable ABI.
 //!
-//! The reccomended starting point while reading through this pass is the `run`
+//! The recommended starting point while reading through this pass is the `run`
 //! function which is called directly from `main`. This function sets up the
 //! Generator, walks the Ast, then optimizes and links the resulting Module.
 use crate::cli::{Cli, EmitTarget};
