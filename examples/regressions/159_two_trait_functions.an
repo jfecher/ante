@@ -1,0 +1,12 @@
+
+trait MultiTrait a with 
+    one: Unit -> Unit
+    two: Unit -> Unit
+
+impl MultiTrait Unit with 
+    one _ = ()
+    two _ = ()
+
+one ()
+
+// args: --delete-binary
