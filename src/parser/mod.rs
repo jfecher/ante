@@ -448,7 +448,7 @@ fn term<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
         Token::Loop => loop_expr(input),
         Token::Match => match_expr(input),
         Token::Handle => handle_expr(input),
-        _ => or(&[type_annotation, function_call, function_argument], "term")(input),
+        _ => or(&[type_annotation, named_constructor_expr, function_call, function_argument], "term")(input),
     }
 }
 
@@ -457,6 +457,41 @@ parser!(function_call loc =
     args <- many1(function_argument);
     desugar::desugar_explicit_currying(function, args, Ast::function_call, loc)
 );
+
+parser!(named_constructor_expr loc =
+    constructor <- variant;
+    _ <- expect(Token::With);
+    args !<- named_constructor_args;
+    Ast::named_constructor(constructor, args, loc)
+);
+
+fn named_constructor_args<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Vec<(String, Ast<'b>)>> {
+    if let Token::Indent = input[0].0 {
+        named_constructor_block_args(input)
+    } else {
+        named_constructor_inline_args(input)
+    }
+}
+
+parser!(named_constructor_block_args loc -> 'b Vec<(String, Ast<'b>)> =
+    _ <- expect(Token::Indent);
+    args <- delimited_trailing(named_constructor_arg, expect(Token::Newline), false);
+    _ !<- expect(Token::Unindent);
+    args
+);
+
+parser!(named_constructor_inline_args loc -> 'b Vec<(String, Ast<'b>)> =
+    args <- delimited(named_constructor_arg, expect(Token::Comma));
+    args
+);
+
+fn named_constructor_arg<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, (String, Ast<'b>)> {
+    let (input, ident, start) = identifier(input)?;
+    let (input, maybe_expr, end) = maybe(pair(expect(Token::Equal), function_argument))(input)?;
+    // Desugar bar, baz into bar = bar, baz = baz
+    let expr = maybe_expr.map_or_else(|| Ast::variable(vec![], ident.clone(), start), |(_, expr)| expr);
+    Ok((input, (ident, expr), start.union(end)))
+}
 
 parser!(pattern_function_call loc =
     function <- pattern_function_argument;

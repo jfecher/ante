@@ -17,7 +17,7 @@
 use crate::cache::unsafecache::UnsafeCache;
 use crate::error::location::{Locatable, Location};
 use crate::nameresolution::NameResolver;
-use crate::parser::ast::{Ast, Definition, EffectDefinition, TraitDefinition, TraitImpl, Extern};
+use crate::parser::ast::{Ast, Definition, EffectDefinition, Extern, TraitDefinition, TraitImpl};
 use crate::types::traits::{ConstraintSignature, RequiredImpl, RequiredTrait, TraitConstraintId};
 use crate::types::{GeneralizedType, Kind, LetBindingLevel, TypeBinding};
 use crate::types::{Type, TypeInfo, TypeInfoBody, TypeInfoId, TypeVariableId};
@@ -605,11 +605,9 @@ impl<'a> ModuleCache<'a> {
 
     pub fn follow_typebindings_shallow<'b>(&'b self, typ: &'b Type) -> &'b Type {
         match typ {
-            Type::TypeVariable(id) => {
-                match &self.type_bindings[id.0] {
-                    TypeBinding::Bound(typ) => self.follow_typebindings_shallow(typ),
-                    TypeBinding::Unbound(_, _) => typ,
-                }
+            Type::TypeVariable(id) => match &self.type_bindings[id.0] {
+                TypeBinding::Bound(typ) => self.follow_typebindings_shallow(typ),
+                TypeBinding::Unbound(_, _) => typ,
             },
             other => other,
         }

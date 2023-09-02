@@ -335,7 +335,9 @@ impl NameResolver {
         id
     }
 
-    fn push_new_type_variable<'c>(&mut self, key: &str, location: Location<'c>, cache: &mut ModuleCache<'c>) -> TypeVariableId {
+    fn push_new_type_variable<'c>(
+        &mut self, key: &str, location: Location<'c>, cache: &mut ModuleCache<'c>,
+    ) -> TypeVariableId {
         let id = cache.next_type_variable_id(self.let_binding_level);
         self.push_existing_type_variable(key, id, location)
     }
@@ -544,12 +546,22 @@ impl NameResolver {
         None
     }
 
-    fn validate_type_application<'c>(&self, constructor: &Type, args: &[Type], location: Location<'c>, cache: &mut ModuleCache<'c>) {
+    fn validate_type_application<'c>(
+        &self, constructor: &Type, args: &[Type], location: Location<'c>, cache: &mut ModuleCache<'c>,
+    ) {
         let expected = self.get_expected_type_argument_count(constructor, cache);
         if args.len() != expected && !matches!(constructor, Type::TypeVariable(_)) {
             let plural_s = if expected == 1 { "" } else { "s" };
             let is_are = if args.len() == 1 { "is" } else { "are" };
-            error!(location, "Type {} expects {} argument{}, but {} {} given here", constructor.display(cache), expected, plural_s, args.len(), is_are);
+            error!(
+                location,
+                "Type {} expects {} argument{}, but {} {} given here",
+                constructor.display(cache),
+                expected,
+                plural_s,
+                args.len(),
+                is_are
+            );
         }
 
         // Check argument is an integer/float type (issue #146)
@@ -564,7 +576,7 @@ impl NameResolver {
                     if !matches!(first_arg, Type::Primitive(PrimitiveType::FloatTag(_)) | Type::TypeVariable(_)) {
                         error!(location, "Type {} is not a float type", first_arg.display(cache));
                     }
-                }
+                },
                 _ => (),
             }
         }
@@ -590,7 +602,9 @@ impl NameResolver {
     /// Re-insert the given type variables into the current scope.
     /// Currently used for remembering type variables from type and trait definitions that
     /// were created in the declare pass and need to be used later in the define pass.
-    fn add_existing_type_variables_to_scope(&mut self, existing_typevars: &[String], ids: &[TypeVariableId], location: Location) {
+    fn add_existing_type_variables_to_scope(
+        &mut self, existing_typevars: &[String], ids: &[TypeVariableId], location: Location,
+    ) {
         // re-insert the typevars into scope.
         // These names are guarenteed to not collide since we just pushed a new scope.
         assert_eq!(existing_typevars.len(), ids.len());
@@ -692,11 +706,8 @@ impl<'c> NameResolver {
             ast::Type::Function(args, ret, is_varargs, is_closure, _) => {
                 let parameters = fmap(args, |arg| self.convert_type(cache, arg));
                 let return_type = Box::new(self.convert_type(cache, ret));
-                let environment = Box::new(if *is_closure {
-                    cache.next_type_variable(self.let_binding_level)
-                } else {
-                    Type::UNIT
-                });
+                let environment =
+                    Box::new(if *is_closure { cache.next_type_variable(self.let_binding_level) } else { Type::UNIT });
                 let effects = Box::new(cache.next_type_variable(self.let_binding_level));
                 let is_varargs = *is_varargs;
                 Type::Function(FunctionType { parameters, return_type, environment, is_varargs, effects })
@@ -1629,5 +1640,13 @@ impl<'c> Resolvable<'c> for ast::Handle<'c> {
             let missing_cases = fmap(remaining_cases, |id| cache[id].name.clone()).join(", ");
             error!(self.location, "Missing cases: {}", missing_cases);
         }
+    }
+}
+
+impl<'c> Resolvable<'c> for ast::NamedConstructor<'c> {
+    fn declare(&mut self, _resolver: &mut NameResolver, _cache: &mut ModuleCache<'c>) {}
+
+    fn define(&mut self, _resolver: &mut NameResolver, _cache: &mut ModuleCache<'c>) {
+        todo!()
     }
 }

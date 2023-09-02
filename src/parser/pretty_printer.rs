@@ -272,3 +272,10 @@ impl<'a> Display for ast::Handle<'a> {
         write!(f, ")")
     }
 }
+
+impl<'a> Display for ast::NamedConstructor<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let args = fmap(self.args.iter(), |(name, expr)| format!("{name} = {expr}"));
+        write!(f, "({} with {})", self.constructor, args.join(", "))
+    }
+}

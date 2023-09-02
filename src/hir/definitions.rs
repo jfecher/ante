@@ -91,8 +91,7 @@ fn definition_type_eq(a: &types::Type, b: &types::Type) -> bool {
     match (a, b) {
         (Type::Primitive(primitive1), Type::Primitive(primitive2)) => primitive1 == primitive2,
         (Type::UserDefined(id1), Type::UserDefined(id2)) => id1 == id2,
-        (Type::TypeVariable(_), Type::TypeVariable(_))
-        | (Type::Ref(_), Type::Ref(_)) => true, // Do nothing
+        (Type::TypeVariable(_), Type::TypeVariable(_)) | (Type::Ref(_), Type::Ref(_)) => true, // Do nothing
         (Type::Function(f1), Type::Function(f2)) => {
             if f1.parameters.len() != f2.parameters.len() {
                 return false;
@@ -113,7 +112,10 @@ fn definition_type_eq(a: &types::Type, b: &types::Type) -> bool {
             if field_names1.len() != field_names2.len() {
                 return false;
             }
-            field_names1.iter().zip(field_names2).all(|((name1, t1), (name2, t2))| name1 == name2 && definition_type_eq(t1, t2))
+            field_names1
+                .iter()
+                .zip(field_names2)
+                .all(|((name1, t1), (name2, t2))| name1 == name2 && definition_type_eq(t1, t2))
         },
         (Type::Effects(set1), Type::Effects(set2)) => {
             if set1.effects.len() != set2.effects.len() {
@@ -123,13 +125,12 @@ fn definition_type_eq(a: &types::Type, b: &types::Type) -> bool {
                 if args1.len() != args2.len() {
                     return false;
                 }
-                id1 == id2 &&
-                    args1.iter().zip(args2).all(|(t1, t2)| definition_type_eq(t1, t2))
+                id1 == id2 && args1.iter().zip(args2).all(|(t1, t2)| definition_type_eq(t1, t2))
             })
         },
         (othera, otherb) => {
             assert_ne!(std::mem::discriminant(othera), std::mem::discriminant(otherb), "ICE: Missing match case");
             false
-        }
+        },
     }
 }

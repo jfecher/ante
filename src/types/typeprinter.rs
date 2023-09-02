@@ -268,7 +268,7 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
                 self.fmt_type(&args[0], f)?;
                 write!(f, "{}", ")".blue())
             },
-            other => self.fmt_type(other, f)
+            other => self.fmt_type(other, f),
         }
     }
 

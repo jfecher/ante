@@ -922,9 +922,13 @@ impl Case {
                 constructor_type.instantiate(vec![], cache).0
             },
             Some(Literal(LiteralKind::Integer(_, Some(kind)))) => Type::int(*kind),
-            Some(Literal(LiteralKind::Integer(_, None))) => Type::polymorphic_int(typechecker::next_type_variable_id(cache)),
+            Some(Literal(LiteralKind::Integer(_, None))) => {
+                Type::polymorphic_int(typechecker::next_type_variable_id(cache))
+            },
             Some(Literal(LiteralKind::Float(_, Some(kind)))) => Type::float(*kind),
-            Some(Literal(LiteralKind::Float(_, None))) => Type::polymorphic_float(typechecker::next_type_variable_id(cache)),
+            Some(Literal(LiteralKind::Float(_, None))) => {
+                Type::polymorphic_float(typechecker::next_type_variable_id(cache))
+            },
             Some(Literal(LiteralKind::String(_))) => Type::UserDefined(STRING_TYPE),
             Some(Literal(LiteralKind::Char(_))) => Type::Primitive(PrimitiveType::CharType),
             Some(Literal(LiteralKind::Bool(_))) => unreachable!(),

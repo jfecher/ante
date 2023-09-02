@@ -140,7 +140,9 @@ fn eq_bool(param1: CraneliftValue, param2: CraneliftValue, builder: &mut Functio
     b1_to_i8(builder.ins().icmp(IntCC::Equal, param1, param2), builder)
 }
 
-fn transmute<'a>(context: &mut Context<'a>, param: &'a Ast, typ: &crate::hir::Type, builder: &mut FunctionBuilder) -> Value {
+fn transmute<'a>(
+    context: &mut Context<'a>, param: &'a Ast, typ: &crate::hir::Type, builder: &mut FunctionBuilder,
+) -> Value {
     let value = param.codegen(context, builder);
     context.transmute(value, typ, builder)
 }

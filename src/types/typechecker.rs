@@ -1476,7 +1476,7 @@ impl<'a> Inferable<'a> for ast::Literal<'a> {
                     Type::polymorphic_int(next_type_variable_id(cache))
                 };
                 TypeResult::of(t, cache)
-            }
+            },
             Float(_, kind) => {
                 let t = if let Some(kind) = kind {
                     Type::float(kind)
@@ -1484,7 +1484,7 @@ impl<'a> Inferable<'a> for ast::Literal<'a> {
                     Type::polymorphic_float(next_type_variable_id(cache))
                 };
                 TypeResult::of(t, cache)
-            }
+            },
             String(_) => TypeResult::of(Type::UserDefined(STRING_TYPE), cache),
             Char(_) => TypeResult::of(Type::Primitive(PrimitiveType::CharType), cache),
             Bool(_) => TypeResult::of(Type::Primitive(PrimitiveType::BooleanType), cache),
@@ -2075,5 +2075,11 @@ impl<'a> Inferable<'a> for ast::Handle<'a> {
         }
 
         result
+    }
+}
+
+impl<'a> Inferable<'a> for ast::NamedConstructor<'a> {
+    fn infer_impl(&mut self, _checker: &mut ModuleCache<'a>) -> TypeResult {
+        todo!()
     }
 }

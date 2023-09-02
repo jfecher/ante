@@ -1,0 +1,50 @@
+// Explicit names
+T with b = "one", a = 1
+
+T with
+    b = "one"
+    a = 1
+
+// Implicit names
+T with b, a
+
+T with
+    foo
+    bar
+
+// Path names
+T.U.V with a, b
+
+// Tuples and exotic indentation
+T with a = (1, 2)
+
+T with a = 1,
+    b = 3
+
+T with a = (1, 2),
+    b = (3, 4), c = 5,
+    d = 6
+
+T with foo,
+       bar,
+       baz
+
+T with
+    foo = ( 1
+          , 2
+          , 3
+          )
+    bar = "bar"
+
+// args: --parse
+// expected stdout:
+// (T with b = "one", a = 1);
+// (T with b = "one", a = 1);
+// (T with b = b, a = a);
+// (T with foo = foo, bar = bar);
+// (T.U.V with a = a, b = b);
+// (T with a = (',' 1 2));
+// (T with a = 1, b = 3);
+// (T with a = (',' 1 2), b = (',' 3 4), c = 5, d = 6);
+// (T with foo = foo, bar = bar, baz = baz);
+// (T with foo = (',' 1 (',' 2 3)), bar = "bar")

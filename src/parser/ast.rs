@@ -393,6 +393,18 @@ pub struct Handle<'a> {
     pub typ: Option<types::Type>,
 }
 
+/// MyStruct with
+///     field1 = expr1
+///     field2 = expr2
+#[derive(Debug, Clone)]
+pub struct NamedConstructor<'a> {
+    pub constructor: Box<Ast<'a>>,
+    pub args: Vec<(String, Ast<'a>)>,
+
+    pub location: Location<'a>,
+    pub typ: Option<types::Type>,
+}
+
 #[derive(Debug, Clone)]
 pub enum Ast<'a> {
     Literal(Literal<'a>),
@@ -414,6 +426,7 @@ pub enum Ast<'a> {
     Assignment(Assignment<'a>),
     EffectDefinition(EffectDefinition<'a>),
     Handle(Handle<'a>),
+    NamedConstructor(NamedConstructor<'a>),
 }
 
 unsafe impl<'c> Send for Ast<'c> {}
@@ -684,6 +697,10 @@ impl<'a> Ast<'a> {
         Ast::Handle(Handle { expression: Box::new(expression), branches, location, resumes: vec![], typ: None })
     }
 
+    pub fn named_constructor(constructor: Ast<'a>, args: Vec<(String, Ast<'a>)>, location: Location<'a>) -> Ast<'a> {
+        Ast::NamedConstructor(NamedConstructor { constructor: Box::new(constructor), args, location, typ: None })
+    }
+
     /// This is a bit of a hack.
     /// Create a new 'scope' by wrapping body in `match () | () -> body`
     pub fn new_scope(body: Ast<'a>, location: Location<'a>) -> Ast<'a> {
@@ -716,6 +733,7 @@ macro_rules! dispatch_on_expr {
             $crate::parser::ast::Ast::Assignment(inner) =>       $function(inner $(, $($args),* )? ),
             $crate::parser::ast::Ast::EffectDefinition(inner) => $function(inner $(, $($args),* )? ),
             $crate::parser::ast::Ast::Handle(inner) =>           $function(inner $(, $($args),* )? ),
+            $crate::parser::ast::Ast::NamedConstructor(inner) => $function(inner $(, $($args),* )? ),
         }
     });
 }
@@ -755,6 +773,7 @@ impl_locatable_for!(MemberAccess);
 impl_locatable_for!(Assignment);
 impl_locatable_for!(EffectDefinition);
 impl_locatable_for!(Handle);
+impl_locatable_for!(NamedConstructor);
 
 impl<'a> Locatable<'a> for Type<'a> {
     fn locate(&self) -> Location<'a> {
