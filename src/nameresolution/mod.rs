@@ -1642,3 +1642,11 @@ impl<'c> Resolvable<'c> for ast::Handle<'c> {
         }
     }
 }
+
+impl<'c> Resolvable<'c> for ast::NamedConstructor<'c> {
+    fn declare(&mut self, _resolver: &mut NameResolver, _cache: &mut ModuleCache<'c>) {}
+
+    fn define(&mut self, _resolver: &mut NameResolver, _cache: &mut ModuleCache<'c>) {
+        todo!()
+    }
+}

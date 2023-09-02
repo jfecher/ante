@@ -130,6 +130,7 @@ impl<'c> Context<'c> {
             Assignment(assignment) => self.monomorphise_assignment(assignment),
             EffectDefinition(_) => todo!(),
             Handle(_) => todo!(),
+            NamedConstructor(_) => todo!(),
         }
     }
 

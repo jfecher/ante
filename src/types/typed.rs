@@ -52,3 +52,4 @@ impl_typed_for!(MemberAccess);
 impl_typed_for!(Assignment);
 impl_typed_for!(EffectDefinition);
 impl_typed_for!(Handle);
+impl_typed_for!(NamedConstructor);

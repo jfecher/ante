@@ -2077,3 +2077,9 @@ impl<'a> Inferable<'a> for ast::Handle<'a> {
         result
     }
 }
+
+impl<'a> Inferable<'a> for ast::NamedConstructor<'a> {
+    fn infer_impl(&mut self, _checker: &mut ModuleCache<'a>) -> TypeResult {
+        todo!()
+    }
+}
