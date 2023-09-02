@@ -45,8 +45,7 @@ impl DynModule {
             DynModule::Jit(module) => {
                 module.finalize_definitions();
             },
-            DynModule::Static(_module) => {
-            },
+            DynModule::Static(_module) => {},
         }
     }
 

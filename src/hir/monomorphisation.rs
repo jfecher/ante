@@ -1452,10 +1452,11 @@ impl<'c> Context<'c> {
             // This case should only happen when a bottom type is unified with an anonymous field
             // type. Default to alphabetically ordered fields, but it should never actually be
             // accessed anyway.
-            Struct(fields, _binding) => {
-                fields.keys().position(|name| name == field_name)
-                    .expect(&format!("Expected type {} to have a field named '{}'", typ.display(&self.cache), field_name)) as u32
-            }
+            Struct(fields, _binding) => fields.keys().position(|name| name == field_name).expect(&format!(
+                "Expected type {} to have a field named '{}'",
+                typ.display(&self.cache),
+                field_name
+            )) as u32,
             _ => unreachable!(
                 "get_field_index called with type {} that doesn't have a '{}' field",
                 typ.display(&self.cache),

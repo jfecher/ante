@@ -167,8 +167,7 @@ fn compile(args: Cli) {
 
     // Phase 6: Codegen
     let default_backend = if args.opt_level == '0' { Backend::Cranelift } else { Backend::Llvm };
-    let backend =
-        args.backend.unwrap_or(default_backend);
+    let backend = args.backend.unwrap_or(default_backend);
 
     match backend {
         Backend::Cranelift => cranelift_backend::run(filename, hir, &args),
