@@ -34,8 +34,8 @@ and [roadmap](https://antelang.org/docs/roadmap) for more information.
 ### Contributing
 
 The compiler is still in a rather early state so any contributors are greatly welcome.
-Feel free to contribute to either any known issues/improvements (some are listed in the
-"Quick Tasks" list below) or any standard library functions you think may be useful.
+Feel free to contribute to either any known issues/improvements or any standard library
+additions you think may be useful.
 
 Each file in the codebase is prefixed with a module comment explaining the purpose of
 the file and any algorithms used. `src/main.rs` is a good place to start reading.
@@ -45,7 +45,7 @@ in them which the [goldentests](https://github.com/jfecher/golden-tests) library
 to run the ante compiler and check its output for each file against the expected output
 contained within comments of that file.
 
-[**Quick Tasks**](https://github.com/jfecher/ante/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
+[**Good first issues**](https://github.com/jfecher/ante/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
 to contribute to
 
 ---
