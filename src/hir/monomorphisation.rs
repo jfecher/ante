@@ -84,12 +84,6 @@ impl Definition {
     }
 }
 
-impl From<hir::DefinitionId> for Definition {
-    fn from(id: hir::DefinitionId) -> Self {
-        Definition::Normal(id.into())
-    }
-}
-
 impl<'c> Context<'c> {
     fn new(cache: ModuleCache) -> Context {
         Context {
@@ -808,7 +802,13 @@ impl<'c> Context<'c> {
                 // Any recursive calls to this variable will refer to this binding
                 let definition_id = self.next_unique_id();
                 let name = info.name.clone();
-                let info = hir::DefinitionInfo { definition: None, definition_id, name: Some(name.clone()) };
+                let monomorphized_type = Rc::new(self.convert_type(&typ));
+                let info = hir::DefinitionInfo { 
+                    definition: None, 
+                    definition_id, 
+                    name: Some(name.clone()), 
+                    typ: monomorphized_type,
+                };
 
                 self.definitions.insert(id, typ.clone(), Definition::Normal(info));
 
@@ -874,9 +874,10 @@ impl<'c> Context<'c> {
         }
 
         let name = self.cache[id].name.clone();
-        let extern_ = hir::Ast::Extern(hir::Extern { name: name.clone(), typ: self.convert_type(typ) });
+        let monomorphized_type = self.convert_type(typ);
+        let extern_ = hir::Ast::Extern(hir::Extern { name: name.clone(), typ: monomorphized_type.clone() });
 
-        let definition = self.make_definition(extern_, Some(name));
+        let definition = self.make_definition(extern_, Some(name), Rc::new(monomorphized_type));
 
         // Insert the global for both the current type and the unit type
         let definition = Definition::Normal(definition);
@@ -902,7 +903,8 @@ impl<'c> Context<'c> {
 
             let name = Some(self.cache[original_id].name.clone());
             let definition = hir::Definition { variable, expr, name };
-            Definition::Normal(hir::DefinitionInfo::from(definition))
+            let typ = Rc::new(self.convert_type(&typ));
+            Definition::Normal(hir::Variable::with_definition(definition, typ))
         } else {
             Definition::Macro(definition_rhs)
         };
@@ -911,8 +913,8 @@ impl<'c> Context<'c> {
         def
     }
 
-    pub fn fresh_variable(&mut self) -> hir::Variable {
-        hir::Variable { definition: None, definition_id: self.next_unique_id(), name: None }
+    pub fn fresh_variable(&mut self, typ: Type) -> hir::Variable {
+        hir::Variable { definition: None, definition_id: self.next_unique_id(), name: None, typ: Rc::new(typ) }
     }
 
     pub fn fresh_definition(
@@ -924,9 +926,14 @@ impl<'c> Context<'c> {
         (definition, variable)
     }
 
-    fn make_definition(&mut self, definition_rhs: hir::Ast, name: Option<String>) -> hir::DefinitionInfo {
+    fn make_definition(&mut self, definition_rhs: hir::Ast, name: Option<String>, typ: Rc<Type>) -> hir::DefinitionInfo {
         let (definition, definition_id) = self.fresh_definition(definition_rhs, name.clone());
-        hir::DefinitionInfo { definition_id, definition: Some(Rc::new(definition)), name }
+        hir::DefinitionInfo { 
+            definition_id, 
+            definition: Some(Rc::new(definition)), 
+            name,
+            typ
+        }
     }
 
     /// Monomorphise a definition defined elsewhere
@@ -950,7 +957,7 @@ impl<'c> Context<'c> {
         let mut nested_definitions = vec![new_definition];
         let typ = self.follow_all_bindings(definition.pattern.get_type().unwrap());
 
-        self.desugar_pattern(&definition.pattern, definition_id, typ, &mut nested_definitions);
+        self.desugar_pattern(&definition.pattern, definition_id, typ.clone(), &mut nested_definitions);
 
         let definition = if nested_definitions.len() == 1 {
             nested_definitions.remove(0)
@@ -959,7 +966,13 @@ impl<'c> Context<'c> {
         };
 
         let definition = Some(Rc::new(definition));
-        Definition::Normal(hir::Variable { definition_id, definition, name: Some(name) })
+        let typ = Rc::new(self.convert_type(&typ));
+        Definition::Normal(hir::Variable {
+            definition_id, 
+            definition, 
+            name: Some(name),
+            typ,
+        })
     }
 
     /// Simplifies a pattern and expression like `(a, b) = foo ()`
@@ -988,7 +1001,8 @@ impl<'c> Context<'c> {
                 let id = variable_pattern.definition.unwrap();
 
                 let name = Some(variable_pattern.to_string());
-                let variable = hir::Variable { definition_id, definition: None, name };
+                let monomorphized_type = Rc::new(self.convert_type(&typ)); 
+                let variable = hir::Variable { definition_id, definition: None, name, typ: monomorphized_type };
                 let definition = Definition::Normal(variable);
 
                 self.definitions.insert(id, typ, definition);
@@ -998,7 +1012,8 @@ impl<'c> Context<'c> {
             },
             // Match a struct pattern
             FunctionCall(call) if call.is_pair_constructor() => {
-                let variable = hir::Variable { definition_id, definition: None, name: None };
+                let monomorphized_type = Rc::new(self.convert_type(&typ)); 
+                let variable = hir::Variable { definition_id, definition: None, name: None, typ: monomorphized_type };
 
                 for (i, arg_pattern) in call.args.iter().enumerate() {
                     let arg_type = self.follow_all_bindings(arg_pattern.get_type().unwrap());
@@ -1022,7 +1037,7 @@ impl<'c> Context<'c> {
         let typ = self.convert_type(typ);
         match typ {
             Function(function_type) => {
-                let args = fmap(&function_type.parameters, |_| self.fresh_variable());
+                let args = fmap(&function_type.parameters, |param| self.fresh_variable(param.clone()));
 
                 let mut tuple_args = Vec::with_capacity(args.len() + 1);
                 let mut tuple_size = function_type.parameters.iter().map(Self::size_of_monomorphised_type).sum();
@@ -1142,7 +1157,8 @@ impl<'c> Context<'c> {
         // statements to the function body to extract the relevant fields.
         let mut args = fmap(&lambda.args, |arg| {
             let typ = self.follow_all_bindings(arg.get_type().unwrap());
-            let param = self.fresh_variable();
+            let monomorphized_type = self.convert_type(&typ);
+            let param = self.fresh_variable(monomorphized_type);
             self.desugar_pattern(arg, param.definition_id, typ, &mut body_prelude);
             param
         });
@@ -1171,15 +1187,24 @@ impl<'c> Context<'c> {
         function
     }
 
+    /// A closure's environment is structured as (a, (b, (c, ...))) while each variable {a, b, c, ...}
+    /// are used directly in the function body. This function is needed at the beginning of a
+    /// function to extract each variable from the environment tuple and bind it to the correct value.
     fn unpack_environment(
         &mut self, closure_environment: &ClosureEnvironment, definitions: &mut Vec<hir::Ast>,
     ) -> hir::DefinitionInfo {
-        let mut env = self.fresh_variable();
-        env.name = Some("env".to_string()); // Not named in source code, but oh well
+        assert!(!closure_environment.is_empty());
+
+        let mut env_type = self.make_env_type(closure_environment);
+        let mut env = self.fresh_variable(env_type.clone());
+        env.name = Some("env".to_string()); // Not named in source code, but this is only for debugging
         let first_env = env.clone();
 
         for (i, (_, (_, inner_var, _))) in closure_environment.iter().enumerate() {
-            let name = self.cache[*inner_var].name.clone();
+            let info = &self.cache[*inner_var];
+            let name = info.name.clone();
+            let typ = info.typ.as_ref().unwrap().as_monotype();
+            let typ = self.follow_all_bindings(typ);
 
             let value = if i == closure_environment.len() - 1 {
                 env.name = Some(name);
@@ -1195,13 +1220,12 @@ impl<'c> Context<'c> {
                 definitions.push(definition);
                 definitions.push(rest_env_def);
 
-                env = hir::Variable { definition_id: rest_env_var, definition: None, name: None };
-                hir::Variable { definition_id, definition: None, name: None }
-            };
+                env_type = Self::extract_second_type(env_type);
+                env = hir::Variable { definition_id: rest_env_var, definition: None, name: None, typ: Rc::new(env_type.clone()) };
 
-            let info = &self.cache[*inner_var];
-            let typ = info.typ.as_ref().unwrap().as_monotype();
-            let typ = self.follow_all_bindings(typ);
+                let monomorphized_type = Rc::new(self.convert_type(&typ));
+                hir::Variable { definition_id, definition: None, name: None, typ: monomorphized_type }
+            };
 
             self.definitions.insert(*inner_var, typ, Definition::Normal(value));
         }
@@ -1224,6 +1248,38 @@ impl<'c> Context<'c> {
         tuple(vec![function, env])
     }
 
+    fn make_env_type(&mut self, env: &ClosureEnvironment) -> Type {
+        if env.is_empty() {
+            Type::Primitive(hir::PrimitiveType::Unit)
+        } else if env.len() == 1 {
+            let inner_var = env.first_key_value().unwrap().1.1;
+            let info = &self.cache[inner_var];
+            let typ = info.typ.as_ref().unwrap().as_monotype().clone();
+            self.convert_type(&typ)
+        } else {
+            let mut ids = fmap(env, |(_, (_, id, _))| *id);
+
+            let info = &self.cache[ids.pop().unwrap()];
+            let typ = info.typ.as_ref().unwrap().as_monotype().clone();
+            let mut typ = self.convert_type(&typ);
+
+            for id in ids.into_iter().rev() {
+                let info = &self.cache[id];
+                let mtyp = info.typ.as_ref().unwrap().as_monotype().clone();
+                typ = Type::Tuple(vec![self.convert_type(&mtyp), typ]);
+            }
+
+            typ
+        }
+    }
+
+    fn extract_second_type(typ: Type) -> Type {
+        match typ {
+            Type::Tuple(mut elements) => elements.swap_remove(1),
+            other => panic!("extract_second_type: expected tuple, found {}", other),
+        }
+    }
+
     // This needs to match the packing done in typechecker::infer_closure_environment
     fn make_closure_environment(mut env: VecDeque<hir::Ast>) -> hir::Ast {
         if env.is_empty() {
@@ -1234,6 +1290,16 @@ impl<'c> Context<'c> {
             let first = env.pop_front().unwrap();
             let rest = Self::make_closure_environment(env);
             tuple(vec![first, rest])
+        }
+    }
+
+    fn convert_type_arg0(&mut self, ptr_type: &types::Type) -> hir::Type {
+        match self.follow_all_bindings(ptr_type) {
+            types::Type::TypeApplication(_, arg_types) => {
+                assert_eq!(arg_types.len(), 1);
+                self.convert_type(&arg_types[0])
+            },
+            _ => unreachable!(),
         }
     }
 
@@ -1310,7 +1376,7 @@ impl<'c> Context<'c> {
             "Offset" => Offset(
                 Box::new(self.monomorphise(&args[1])),
                 Box::new(self.monomorphise(&args[2])),
-                self.size_of_type_arg0(result_type),
+                self.convert_type_arg0(result_type),
             ),
             "Transmute" => cast(self, Transmute),
 
@@ -1353,7 +1419,9 @@ impl<'c> Context<'c> {
 
                         // Extract the function from the closure
                         let (function_definition, id) = self.fresh_definition(function, None);
-                        let function_variable = id.to_variable();
+                        let typ = Type::Function(function_type.clone());
+                        let function_variable = hir::Ast::Variable(hir::Variable::new(id, Rc::new(typ)));
+
                         let function = Box::new(Self::extract(function_variable.clone(), 0));
                         let environment = Self::extract(function_variable, 1);
                         args.push(environment);
@@ -1541,7 +1609,8 @@ impl<'c> Context<'c> {
                     Ast::Builtin(Deref(addr, field_type))
                 } else {
                     let offset_int = Box::new(int_literal(offset as u64, IntegerKind::Usz));
-                    let offset_ast = Ast::Builtin(Offset(addr, offset_int, 1));
+                    let u8 = Type::Primitive(hir::PrimitiveType::Integer(IntegerKind::U8));
+                    let offset_ast = Ast::Builtin(Offset(addr, offset_int, u8));
                     Ast::Builtin(Deref(Box::new(offset_ast), field_type))
                 }
             },
@@ -1572,5 +1641,6 @@ fn tag_value(tag: u8) -> hir::Ast {
 pub fn offset_ptr(addr: hir::Ast, offset: u64) -> hir::Ast {
     let addr = Box::new(addr);
     let offset = int_literal(offset, IntegerKind::Usz);
-    hir::Ast::Builtin(hir::Builtin::Offset(addr, Box::new(offset), 1))
+    let u8 = Type::Primitive(hir::PrimitiveType::Integer(IntegerKind::U8));
+    hir::Ast::Builtin(hir::Builtin::Offset(addr, Box::new(offset), u8))
 }

@@ -1,4 +1,4 @@
-use std::convert::TryInto;
+use std::{convert::TryInto, rc::Rc};
 
 use crate::{
     cache::{DefinitionInfoId, DefinitionKind},
@@ -7,7 +7,7 @@ use crate::{
     util::fmap,
 };
 
-use super::monomorphisation::{Context, Definition};
+use super::{monomorphisation::{Context, Definition}, Variable};
 use crate::hir;
 
 impl<'c> Context<'c> {
@@ -29,9 +29,11 @@ impl<'c> Context<'c> {
 
         if let Some(DecisionTree::Switch(id, _)) = &match_.decision_tree {
             let name = Some(self.cache[*id].name.clone());
-            let (def, new_id) = self.fresh_definition(value, name);
+            let (def, new_id) = self.fresh_definition(value, name.clone());
             let typ = self.follow_all_bindings(self.cache[*id].typ.as_ref().unwrap().as_monotype());
-            self.definitions.insert(*id, typ, new_id.into());
+            let monomorphized_type = Rc::new(self.convert_type(&typ));
+            let definition = Definition::Normal(Variable::new(new_id, monomorphized_type));
+            self.definitions.insert(*id, typ, definition);
             def
         } else {
             value
@@ -168,21 +170,28 @@ impl<'c> Context<'c> {
                 // info_type that makes it only useful for checking if it is a function or not.
                 let function_type = self.convert_type(info_type.remove_forall()).into_function();
 
-                if function_type.is_some() {
+                if let Some(function_type) = function_type {
+                    let variant_type = Rc::new(hir::Type::Function(function_type));
+                    let variant_variable = hir::Variable::new(variant, variant_type);
+
                     fmap(case.fields.iter().enumerate(), |(i, field_aliases)| {
                         let field_index = start_index + i as u32;
-                        let variant_variable: hir::Variable = variant.into();
-                        let field_variable = self.next_unique_id();
+                        let field_variable_id = self.next_unique_id();
 
                         for field_alias in field_aliases {
                             let alias_type = self.cache[*field_alias].typ.as_ref().unwrap().as_monotype();
                             let field_type = self.follow_all_bindings(alias_type);
-                            self.definitions.insert(*field_alias, field_type, field_variable.into());
+
+                            let monomorphized_field_type = Rc::new(self.convert_type(&field_type));
+                            let field_variable = hir::Variable::new(self.next_unique_id(), monomorphized_field_type);
+
+                            let field_definition = Definition::Normal(field_variable);
+                            self.definitions.insert(*field_alias, field_type, field_definition);
                         }
 
                         hir::Definition {
-                            variable: field_variable,
-                            expr: Box::new(Self::extract(variant_variable.into(), field_index)),
+                            variable: field_variable_id,
+                            expr: Box::new(Self::extract(variant_variable.clone().into(), field_index)),
                             name: None,
                         }
                     })
@@ -196,7 +205,11 @@ impl<'c> Context<'c> {
                     for field_alias in field_aliases {
                         let alias_type = self.cache[*field_alias].typ.as_ref().unwrap().as_monotype();
                         let field_type = self.follow_all_bindings(alias_type);
-                        self.definitions.insert(*field_alias, field_type, variant.into());
+
+                        let monomorphized_field_type = Rc::new(self.convert_type(&field_type));
+                        let variant_variable = hir::Variable::new(variant, monomorphized_field_type);
+                        let definition = Definition::Normal(variant_variable);
+                        self.definitions.insert(*field_alias, field_type, definition);
                     }
                 }
                 // We've aliased everything this pattern was bound to and did not

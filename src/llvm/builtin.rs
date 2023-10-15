@@ -12,7 +12,7 @@ use crate::llvm::{CodeGen, Generator};
 
 use inkwell::attributes::{Attribute, AttributeLoc};
 use inkwell::types::BasicType;
-use inkwell::values::{BasicValue, BasicValueEnum, IntValue};
+use inkwell::values::{BasicValueEnum, IntValue};
 use inkwell::{AddressSpace, FloatPredicate, IntPredicate};
 
 pub fn call_builtin<'g>(builtin: &Builtin, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
@@ -69,122 +69,126 @@ pub fn call_builtin<'g>(builtin: &Builtin, generator: &mut Generator<'g>) -> Bas
         Builtin::Truncate(a, _typ) => truncate(int(a), generator),
 
         Builtin::Deref(a, typ) => deref_ptr(a, typ, generator),
-        Builtin::Offset(a, b, size) => offset(a, int(b), *size, generator),
+        Builtin::Offset(a, b, typ) => offset(a, int(b), typ, generator),
         Builtin::Transmute(a, _typ) => transmute_value(a, generator),
         Builtin::StackAlloc(a) => stack_alloc(a, generator),
     }
 }
 
 fn add_int<'g>(a: IntValue<'g>, b: IntValue<'g>, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
-    generator.builder.build_int_add(a, b, "add").as_basic_value_enum()
+    generator.builder.build_int_add(a, b, "add").unwrap().into()
 }
 
 fn add_float<'g>(a: &Ast, b: &Ast, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
     let a = a.codegen(generator).into_float_value();
     let b = b.codegen(generator).into_float_value();
-    generator.builder.build_float_add(a, b, "add").as_basic_value_enum()
+    generator.builder.build_float_add(a, b, "add").unwrap().into()
 }
 
 fn sub_int<'g>(a: IntValue<'g>, b: IntValue<'g>, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
-    generator.builder.build_int_sub(a, b, "sub").as_basic_value_enum()
+    generator.builder.build_int_sub(a, b, "sub").unwrap().into()
 }
 
 fn sub_float<'g>(a: &Ast, b: &Ast, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
     let a = a.codegen(generator).into_float_value();
     let b = b.codegen(generator).into_float_value();
-    generator.builder.build_float_sub(a, b, "sub").as_basic_value_enum()
+    generator.builder.build_float_sub(a, b, "sub").unwrap().into()
 }
 
 fn mul_int<'g>(a: IntValue<'g>, b: IntValue<'g>, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
-    generator.builder.build_int_mul(a, b, "mul").as_basic_value_enum()
+    generator.builder.build_int_mul(a, b, "mul").unwrap().into()
 }
 
 fn mul_float<'g>(a: &Ast, b: &Ast, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
     let a = a.codegen(generator).into_float_value();
     let b = b.codegen(generator).into_float_value();
-    generator.builder.build_float_mul(a, b, "mul").as_basic_value_enum()
+    generator.builder.build_float_mul(a, b, "mul").unwrap().into()
 }
 
 fn div_signed<'g>(a: IntValue<'g>, b: IntValue<'g>, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
-    generator.builder.build_int_signed_div(a, b, "div").as_basic_value_enum()
+    generator.builder.build_int_signed_div(a, b, "div").unwrap().into()
 }
 
 fn div_unsigned<'g>(a: IntValue<'g>, b: IntValue<'g>, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
-    generator.builder.build_int_unsigned_div(a, b, "div").as_basic_value_enum()
+    generator.builder.build_int_unsigned_div(a, b, "div").unwrap().into()
 }
 
 fn div_float<'g>(a: &Ast, b: &Ast, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
     let a = a.codegen(generator).into_float_value();
     let b = b.codegen(generator).into_float_value();
-    generator.builder.build_float_div(a, b, "div").as_basic_value_enum()
+    generator.builder.build_float_div(a, b, "div").unwrap().into()
 }
 
 fn mod_signed<'g>(a: IntValue<'g>, b: IntValue<'g>, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
-    generator.builder.build_int_signed_rem(a, b, "mod").as_basic_value_enum()
+    generator.builder.build_int_signed_rem(a, b, "mod").unwrap().into()
 }
 
 fn mod_unsigned<'g>(a: IntValue<'g>, b: IntValue<'g>, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
-    generator.builder.build_int_unsigned_rem(a, b, "mod").as_basic_value_enum()
+    generator.builder.build_int_unsigned_rem(a, b, "mod").unwrap().into()
 }
 
 // Cranelift doesn't support this, perhaps we should remove support altogether for float mod
 fn mod_float<'g>(a: &Ast, b: &Ast, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
     let a = a.codegen(generator).into_float_value();
     let b = b.codegen(generator).into_float_value();
-    generator.builder.build_float_rem(a, b, "mod").as_basic_value_enum()
+    generator.builder.build_float_rem(a, b, "mod").unwrap().into()
 }
 
 fn less_signed<'g>(a: IntValue<'g>, b: IntValue<'g>, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
-    generator.builder.build_int_compare(IntPredicate::SLT, a, b, "less").as_basic_value_enum()
+    generator.builder.build_int_compare(IntPredicate::SLT, a, b, "less").unwrap().into()
 }
 
 fn less_unsigned<'g>(a: IntValue<'g>, b: IntValue<'g>, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
-    generator.builder.build_int_compare(IntPredicate::ULT, a, b, "less").as_basic_value_enum()
+    generator.builder.build_int_compare(IntPredicate::ULT, a, b, "less").unwrap().into()
 }
 
 fn less_float<'g>(a: &Ast, b: &Ast, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
     let a = a.codegen(generator).into_float_value();
     let b = b.codegen(generator).into_float_value();
-    generator.builder.build_float_compare(FloatPredicate::OLT, a, b, "less").as_basic_value_enum()
+    generator.builder.build_float_compare(FloatPredicate::OLT, a, b, "less").unwrap().into()
 }
 
 fn eq_int<'g>(a: IntValue<'g>, b: IntValue<'g>, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
-    generator.builder.build_int_compare(IntPredicate::EQ, a, b, "eq").as_basic_value_enum()
+    generator.builder.build_int_compare(IntPredicate::EQ, a, b, "eq").unwrap().into()
 }
 
 fn eq_float<'g>(a: &Ast, b: &Ast, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
     let a = a.codegen(generator).into_float_value();
     let b = b.codegen(generator).into_float_value();
-    generator.builder.build_float_compare(FloatPredicate::OEQ, a, b, "eq").as_basic_value_enum()
+    generator.builder.build_float_compare(FloatPredicate::OEQ, a, b, "eq").unwrap().into()
 }
 
 fn eq_char<'g>(a: IntValue<'g>, b: IntValue<'g>, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
-    generator.builder.build_int_compare(IntPredicate::EQ, a, b, "eq").as_basic_value_enum()
+    generator.builder.build_int_compare(IntPredicate::EQ, a, b, "eq").unwrap().into()
 }
 
 fn eq_bool<'g>(a: IntValue<'g>, b: IntValue<'g>, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
-    generator.builder.build_int_compare(IntPredicate::EQ, a, b, "eq").as_basic_value_enum()
+    generator.builder.build_int_compare(IntPredicate::EQ, a, b, "eq").unwrap().into()
 }
 
 fn deref_ptr<'g>(ptr: &Ast, typ: &Type, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
-    let ret = generator.convert_type(typ).ptr_type(AddressSpace::default());
+    let element_type = generator.convert_type(typ);
+    let ret = element_type.ptr_type(AddressSpace::default());
 
     let ptr = ptr.codegen(generator).into_pointer_value();
-    let ptr = generator.builder.build_pointer_cast(ptr, ret, "bitcast");
-    generator.builder.build_load(ptr, "deref").as_basic_value_enum()
+    let ptr = generator.builder.build_pointer_cast(ptr, ret, "bitcast").unwrap();
+    generator.builder.build_load(element_type, ptr, "deref").unwrap().into()
 }
 
 /// offset (p: Ptr t) (offset: usz) = (p as usize + offset * size_of t) as Ptr t
 ///
 // This builtin is unnecessary once we replace it with size_of
-fn offset<'g>(ptr: &Ast, offset: IntValue<'g>, type_size: u32, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+fn offset<'g>(ptr: &Ast, offset: IntValue<'g>, element_type: &Type, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
     let ptr = ptr.codegen(generator).into_pointer_value();
     // expect ptr to be an i8* so we must multiply offset by type_size manually
     let bits = generator.integer_bit_count(IntegerKind::Usz);
+
+    let type_size = element_type.size_in_bytes();
     let type_size = generator.context.custom_width_int_type(bits).const_int(type_size as u64, true);
 
-    let offset = generator.builder.build_int_mul(offset, type_size, "offset_adjustment");
-    unsafe { generator.builder.build_gep(ptr, &[offset], "offset").as_basic_value_enum() }
+    let offset = generator.builder.build_int_mul(offset, type_size, "offset_adjustment").unwrap();
+    let element_type = generator.convert_type(element_type);
+    unsafe { generator.builder.build_gep(element_type, ptr, &[offset], "offset").unwrap().into() }
 }
 
 fn transmute_value<'g>(x: &Ast, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
@@ -197,77 +201,78 @@ fn transmute_value<'g>(x: &Ast, generator: &mut Generator<'g>) -> BasicValueEnum
 fn sign_extend<'g>(x: IntValue<'g>, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
     let current_function = generator.current_function();
     let ret = current_function.get_type().get_return_type().unwrap().into_int_type();
-    generator.builder.build_int_s_extend(x, ret, "sign_extend").as_basic_value_enum()
+    generator.builder.build_int_s_extend(x, ret, "sign_extend").unwrap().into()
 }
 
 fn zero_extend<'g>(x: IntValue<'g>, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
     let current_function = generator.current_function();
     let ret = current_function.get_type().get_return_type().unwrap().into_int_type();
-    generator.builder.build_int_z_extend(x, ret, "zero_extend").as_basic_value_enum()
+    generator.builder.build_int_z_extend(x, ret, "zero_extend").unwrap().into()
 }
 
 fn signed_to_float<'g>(x: IntValue<'g>, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
     let current_function = generator.current_function();
     let ret = current_function.get_type().get_return_type().unwrap().into_float_type();
-    generator.builder.build_signed_int_to_float(x, ret, "signed_to_float").as_basic_value_enum()
+    generator.builder.build_signed_int_to_float(x, ret, "signed_to_float").unwrap().into()
 }
 
 fn unsigned_to_float<'g>(x: IntValue<'g>, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
     let current_function = generator.current_function();
     let ret = current_function.get_type().get_return_type().unwrap().into_float_type();
-    generator.builder.build_unsigned_int_to_float(x, ret, "unsigned_to_float").as_basic_value_enum()
+    generator.builder.build_unsigned_int_to_float(x, ret, "unsigned_to_float").unwrap().into()
 }
 
 fn float_to_signed<'g>(x: &Ast, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
     let current_function = generator.current_function();
     let ret = current_function.get_type().get_return_type().unwrap().into_int_type();
     let x = x.codegen(generator).into_float_value();
-    generator.builder.build_float_to_signed_int(x, ret, "float_to_signed").as_basic_value_enum()
+    generator.builder.build_float_to_signed_int(x, ret, "float_to_signed").unwrap().into()
 }
 
 fn float_to_unsigned<'g>(x: &Ast, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
     let current_function = generator.current_function();
     let ret = current_function.get_type().get_return_type().unwrap().into_int_type();
     let x = x.codegen(generator).into_float_value();
-    generator.builder.build_float_to_unsigned_int(x, ret, "float_to_unsigned").as_basic_value_enum()
+    generator.builder.build_float_to_unsigned_int(x, ret, "float_to_unsigned").unwrap().into()
 }
 
 fn float_to_float_cast<'g>(x: &Ast, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
     let current_function = generator.current_function();
     let ret = current_function.get_type().get_return_type().unwrap().into_float_type();
     let x = x.codegen(generator).into_float_value();
-    generator.builder.build_float_cast(x, ret, "float_cast").as_basic_value_enum()
+    generator.builder.build_float_cast(x, ret, "float_cast").unwrap().into()
 }
 
 fn bitwise_and<'g>(a: IntValue<'g>, b: IntValue<'g>, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
-    generator.builder.build_and(a, b, "bitwise_and").as_basic_value_enum()
+    generator.builder.build_and(a, b, "bitwise_and").unwrap().into()
 }
 
 fn bitwise_or<'g>(a: IntValue<'g>, b: IntValue<'g>, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
-    generator.builder.build_or(a, b, "bitwise_or").as_basic_value_enum()
+    generator.builder.build_or(a, b, "bitwise_or").unwrap().into()
 }
 
 fn bitwise_xor<'g>(a: IntValue<'g>, b: IntValue<'g>, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
-    generator.builder.build_xor(a, b, "bitwise_xor").as_basic_value_enum()
+    generator.builder.build_xor(a, b, "bitwise_xor").unwrap().into()
 }
 
 fn bitwise_not<'g>(a: IntValue<'g>, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
-    generator.builder.build_not(a, "bitwise_not").as_basic_value_enum()
+    generator.builder.build_not(a, "bitwise_not").unwrap().into()
 }
 
 fn truncate<'g>(x: IntValue<'g>, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
     let current_function = generator.current_function();
     let ret = current_function.get_type().get_return_type().unwrap().into_int_type();
-    generator.builder.build_int_truncate(x, ret, "sign_extend").as_basic_value_enum()
+    generator.builder.build_int_truncate(x, ret, "sign_extend").unwrap().into()
 }
 
 fn stack_alloc<'g>(x: &Ast, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
     let value = x.codegen(generator);
-    let alloca = generator.builder.build_alloca(value.get_type(), "alloca");
-    generator.builder.build_store(alloca, value);
+    let alloca = generator.builder.build_alloca(value.get_type(), "alloca").unwrap();
+    generator.builder.build_store(alloca, value)
+        .expect("Could not build store in stack_alloc");
 
     let ptr_type = &crate::hir::Type::Primitive(PrimitiveType::Pointer);
     let opaque_ptr_type = generator.convert_type(ptr_type).into_pointer_type();
 
-    generator.builder.build_pointer_cast(alloca, opaque_ptr_type, "bitcast").as_basic_value_enum()
+    generator.builder.build_pointer_cast(alloca, opaque_ptr_type, "bitcast").unwrap().into()
 }

@@ -60,13 +60,13 @@ impl AstPrinter {
         write!(f, " {})", typ)
     }
 
-    fn fmt_offset(&mut self, ptr: impl FmtAst, offset: impl FmtAst, size: u32, f: &mut Formatter) -> fmt::Result {
+    fn fmt_offset(&mut self, ptr: impl FmtAst, offset: impl FmtAst, typ: &Type, f: &mut Formatter) -> fmt::Result {
         write!(f, "(#Offset")?;
         write!(f, " ")?;
         ptr.fmt_ast(self, f)?;
         write!(f, " ")?;
         offset.fmt_ast(self, f)?;
-        write!(f, " {})", size)
+        write!(f, " {})", typ)
     }
 }
 
@@ -279,7 +279,7 @@ impl FmtAst for Builtin {
             Builtin::BitwiseNot(a) => printer.fmt_call("#BitwiseNot", &[a], f),
             Builtin::Truncate(a, b) => printer.fmt_cast("#Truncate", a, b, f),
             Builtin::Deref(a, b) => printer.fmt_cast("#Deref", a, b, f),
-            Builtin::Offset(a, b, size) => printer.fmt_offset(a, b, *size, f),
+            Builtin::Offset(a, b, typ) => printer.fmt_offset(a, b, typ, f),
             Builtin::Transmute(a, b) => printer.fmt_cast("#Transmute", a, b, f),
             Builtin::StackAlloc(value) => printer.fmt_call("#StackAlloc", &[value], f),
         }

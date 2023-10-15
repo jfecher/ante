@@ -17,7 +17,12 @@ impl<'c> Context<'c> {
             ast::Ast::Lambda(lambda) if !lambda.closure_environment.is_empty() => {
                 let (f, outer_env) = unwrap_closure(expr);
                 let inner_env = get_env_parameter(&f);
-                let inner_f = self.fresh_variable();
+
+                let function_type = match self.convert_type(lambda.typ.as_ref().unwrap()) {
+                    hir::Type::Tuple(mut tuple) => tuple.swap_remove(0),
+                    other => other,
+                };
+                let inner_f = self.fresh_variable(function_type);
 
                 let new_f = replace_env(f, &inner_env, definition_id, &inner_f);
                 let def = Ast::Definition(hir::Definition {

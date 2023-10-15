@@ -46,6 +46,8 @@ pub struct DefinitionInfo {
 
     pub definition_id: DefinitionId,
 
+    pub typ: Rc<Type>,
+
     // This field isn't needed, it is used only to make the output
     // of --show-hir more human readable for debugging.
     pub name: Option<String>,
@@ -59,15 +61,14 @@ impl From<Variable> for Ast {
     }
 }
 
-impl From<DefinitionId> for Variable {
-    fn from(definition_id: DefinitionId) -> Variable {
-        Variable { definition_id, definition: None, name: None }
+impl Variable {
+    fn new(definition_id: DefinitionId, typ: Rc<Type>) -> Variable {
+        Variable { definition_id, typ, definition: None, name: None }
     }
-}
 
-impl DefinitionId {
-    fn to_variable(self) -> Ast {
-        Ast::Variable(self.into())
+    fn with_definition(def: Definition, typ: Rc<Type>) -> Self {
+        let name = def.name.clone();
+        DefinitionInfo { definition_id: def.variable, typ, definition: Some(Rc::new(Ast::Definition(def))), name }
     }
 }
 
@@ -96,13 +97,6 @@ pub struct Definition {
     pub variable: DefinitionId,
     pub name: Option<String>,
     pub expr: Box<Ast>,
-}
-
-impl From<Definition> for DefinitionInfo {
-    fn from(def: Definition) -> Self {
-        let name = def.name.clone();
-        DefinitionInfo { definition_id: def.variable, definition: Some(Rc::new(Ast::Definition(def))), name }
-    }
 }
 
 /// if condition then expression else expression
@@ -252,7 +246,7 @@ pub enum Builtin {
 
     Truncate(Box<Ast>, Type),
     Deref(Box<Ast>, Type),
-    Offset(Box<Ast>, Box<Ast>, u32), // u32 is the pointer element size in bytes
+    Offset(Box<Ast>, Box<Ast>, Type),
     Transmute(Box<Ast>, Type),
 
     /// Allocate space for the given value on the stack, and store it there. Return the stack address

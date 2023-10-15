@@ -14,6 +14,19 @@ pub enum IntegerKind {
     Usz,
 }
 
+impl IntegerKind {
+    pub fn size_in_bits(self) -> u64 {
+        use IntegerKind::*;
+        match self {
+            I8 | U8 => 8,
+            I16 | U16 => 16,
+            I32 | U32 => 32,
+            I64 | U64 => 64,
+            Isz | Usz => std::mem::size_of::<*const i8>() as u64 * 8,
+        }
+    }
+}
+
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum PrimitiveType {
     Integer(IntegerKind),
@@ -49,6 +62,24 @@ impl Type {
         match self {
             Type::Function(f) => Some(f),
             _ => None,
+        }
+    }
+
+    pub fn size_in_bytes(&self) -> u64 {
+        match self {
+            Type::Primitive(p) => match p {
+                PrimitiveType::Integer(integer) => integer.size_in_bits() / 8,
+                PrimitiveType::Float(float) => match float {
+                    FloatKind::F32 => 4,
+                    FloatKind::F64 => 8,
+                },
+                PrimitiveType::Char => 1,
+                PrimitiveType::Boolean => 1,
+                PrimitiveType::Unit => 1,
+                PrimitiveType::Pointer => std::mem::size_of::<*const i8>() as u64,
+            },
+            Type::Function(_) => panic!("Tried to take size of a function type"), // Functions technically do not have a size, only pointers do
+            Type::Tuple(elements) => elements.iter().map(|element| element.size_in_bytes()).sum(),
         }
     }
 }

@@ -55,7 +55,7 @@ pub fn call_builtin<'ast>(builtin: &'ast Builtin, context: &mut Context<'ast>, b
         Builtin::Truncate(a, _typ) => truncate(value(a), builder),
 
         Builtin::Deref(a, typ) => return deref(context, typ, a, builder),
-        Builtin::Offset(a, b, elem_size) => offset(value(a), value(b), *elem_size, builder),
+        Builtin::Offset(a, b, elem_size) => offset(value(a), value(b), elem_size, builder),
         Builtin::Transmute(a, typ) => return transmute(context, a, typ, builder),
         Builtin::StackAlloc(a) => stack_alloc(a, context, builder),
     };
@@ -148,11 +148,12 @@ fn transmute<'a>(
 }
 
 fn offset(
-    address: CraneliftValue, offset: CraneliftValue, elem_size: u32, builder: &mut FunctionBuilder,
+    address: CraneliftValue, offset: CraneliftValue, elem_type: &crate::hir::Type, builder: &mut FunctionBuilder,
 ) -> CraneliftValue {
     let usize_type = int_pointer_type();
     let pointer_type = pointer_type();
 
+    let elem_size = elem_type.size_in_bytes();
     let size = builder.ins().iconst(usize_type, elem_size as i64);
     let offset = builder.ins().imul(offset, size);
 
