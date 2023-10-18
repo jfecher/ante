@@ -183,7 +183,7 @@ impl<'c> Context<'c> {
                             let field_type = self.follow_all_bindings(alias_type);
 
                             let monomorphized_field_type = Rc::new(self.convert_type(&field_type));
-                            let field_variable = hir::Variable::new(self.next_unique_id(), monomorphized_field_type);
+                            let field_variable = hir::Variable::new(field_variable_id, monomorphized_field_type);
 
                             let field_definition = Definition::Normal(field_variable);
                             self.definitions.insert(*field_alias, field_type, field_definition);
