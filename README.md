@@ -60,7 +60,7 @@ than development updates. You can also feel free to file issues or ask questions
 
 ### Building
 
-Ante currently optionally requires llvm 13.0 while building. If you already have this installed with
+Ante currently optionally requires llvm 16.0 while building. If you already have this installed with
 sources, you may be fine building with `cargo install --path .` alone. If cargo complains
 about not finding any suitable llvm version, you can either choose to build ante without
 the llvm backend via `cargo install --path . --no-default-features` or you can build llvm from
@@ -68,23 +68,25 @@ source via [CMake](#CMake) as covered in the next sections.
 
 #### Linux and Mac
 
-The easiest method to install llvm would be through your package manager, making sure to install any `-dev` packages
-if they are available for your distro. Once installed, make sure to set the `LLVM_SYS_130_PREFIX` to the path llvm
-was installed to:
+The easiest method to install llvm 16.0 would be through your package manager, making sure to install any `-dev` packages
+if they are available for your distro. Once installed, if `cargo b` still cannot find the right version of llvm, you may
+need to make sure to set the `LLVM_SYS_160_PREFIX` to the path llvm was installed to:
 
 ```bash
-$ LLVM_SYS_130_PREFIX=$(llvm-config --obj-root)
+$ LLVM_SYS_160_PREFIX=$(llvm-config --obj-root)
 ```
 
-If your distro ships a version other than llvm 13.0 you can try changing the inkwell dependency Ante's Cargo.toml.
+If your distro ships a version other than llvm 16.0 you can try changing the inkwell dependency Ante's Cargo.toml.
 This dependency controls the llvm version expected and by default it is:
 
 ```toml
-inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm13-0"], optional = true }
+inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm16-0"], optional = true }
 ```
 
-Change the quoted llvm portion to `"llvm-12-0"` for example to build with llvm 12.0. Also don't forget that after changing
-this version the environment variable's name will be different, using llvm 12.0 for example it would be `LLVM_SYS_120_PREFIX`.
+Change the quoted llvm portion to `"llvm-15-0"` for example to build with llvm 15.0. Also don't forget that after changing
+this version the environment variable's name will be different, using llvm 15.0 for example it would be `LLVM_SYS_150_PREFIX`.
+It is likely that versions older than this will not work since there have been API changes in LLVM itself and inkwell. 15.0 itself
+is also unverified.
 
 If this method does not work you will have to try building llvm from source via cmake. See the [CMake](#CMake) section below.
 Alternatively, you can build with only cranelift as a backend via `cargo install --path . --no-default-features`.
@@ -117,7 +119,7 @@ with cmake](https://www.llvm.org/docs/CMake.html). If you're on windows, this
 requires you to have Visual Studio 2017 or later installed already.
 
 ```
-$ git clone https://github.com/llvm/llvm-project --branch=release/13.x
+$ git clone https://github.com/llvm/llvm-project --branch=release/16.x
 $ mkdir llvm-build
 $ cd llvm-build
 $ cmake ../llvm-project/llvm
@@ -134,6 +136,6 @@ done, move on to compiling llvm and ante:
 $ cmake --build .
 $ cmake --build . --target install
 $ cd ..
-$ set LLVM_SYS_130_PREFIX=/absolute/path/to/llvm-build
+$ set LLVM_SYS_160_PREFIX=/absolute/path/to/llvm-build
 $ cargo build
 ```
