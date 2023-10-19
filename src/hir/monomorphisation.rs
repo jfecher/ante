@@ -1018,7 +1018,8 @@ impl<'c> Context<'c> {
                 for (i, arg_pattern) in call.args.iter().enumerate() {
                     let arg_type = self.follow_all_bindings(arg_pattern.get_type().unwrap());
 
-                    let extract = Self::extract(variable.clone().into(), i as u32);
+                    let extract_result_type = self.convert_type(&arg_type);
+                    let extract = Self::extract(variable.clone().into(), i as u32, extract_result_type);
 
                     let (definition, id) = self.fresh_definition(extract, None);
                     definitions.push(definition);
@@ -1211,8 +1212,10 @@ impl<'c> Context<'c> {
                 env.clone()
             } else {
                 let param_ast: hir::Ast = env.clone().into();
-                let extract_var_in_env = Self::extract(param_ast.clone(), 0);
-                let extract_rest_of_env = Self::extract(param_ast, 1);
+                env_type = Self::extract_second_type(env_type);
+
+                let extract_var_in_env = Self::extract(param_ast.clone(), 0, self.convert_type(&typ));
+                let extract_rest_of_env = Self::extract(param_ast, 1, env_type.clone());
 
                 let (definition, definition_id) = self.fresh_definition(extract_var_in_env, Some(name.clone()));
                 let (rest_env_def, rest_env_var) = self.fresh_definition(extract_rest_of_env, None);
@@ -1220,7 +1223,6 @@ impl<'c> Context<'c> {
                 definitions.push(definition);
                 definitions.push(rest_env_def);
 
-                env_type = Self::extract_second_type(env_type);
                 env = hir::Variable { definition_id: rest_env_var, definition: None, name: None, typ: Rc::new(env_type.clone()) };
 
                 let monomorphized_type = Rc::new(self.convert_type(&typ));
@@ -1412,6 +1414,11 @@ impl<'c> Context<'c> {
 
                 match function_type {
                     Type::Tuple(mut params) => {
+                        // Expect (function, env)
+                        assert_eq!(params.len(), 2);
+
+                        let env_type = params.pop().unwrap();
+
                         let function_type = match params.swap_remove(0) {
                             Type::Function(f) => f,
                             _ => unreachable!(),
@@ -1420,10 +1427,10 @@ impl<'c> Context<'c> {
                         // Extract the function from the closure
                         let (function_definition, id) = self.fresh_definition(function, None);
                         let typ = Type::Function(function_type.clone());
-                        let function_variable = hir::Ast::Variable(hir::Variable::new(id, Rc::new(typ)));
+                        let function_variable = hir::Ast::Variable(hir::Variable::new(id, Rc::new(typ.clone())));
 
-                        let function = Box::new(Self::extract(function_variable.clone(), 0));
-                        let environment = Self::extract(function_variable, 1);
+                        let function = Box::new(Self::extract(function_variable.clone(), 0, typ));
+                        let environment = Self::extract(function_variable, 1, env_type);
                         args.push(environment);
 
                         hir::Ast::Sequence(hir::Sequence {
@@ -1555,6 +1562,8 @@ impl<'c> Context<'c> {
             _ => None,
         };
 
+        let result_type = self.convert_type(member_access.typ.as_ref().unwrap());
+
         // If our collection type is a ref we do a ptr offset instead of a direct access
         match (ref_type, member_access.is_offset) {
             (Some(elem_type), true) => {
@@ -1563,11 +1572,11 @@ impl<'c> Context<'c> {
             },
             (Some(elem_type), false) => {
                 let lhs = hir::Ast::Builtin(hir::Builtin::Deref(Box::new(lhs), elem_type));
-                Self::extract(lhs, index)
+                Self::extract(lhs, index, result_type)
             },
             _ => {
                 assert!(!member_access.is_offset);
-                Self::extract(lhs, index)
+                Self::extract(lhs, index, result_type)
             },
         }
     }
@@ -1582,7 +1591,7 @@ impl<'c> Context<'c> {
         hir::Ast::Assignment(hir::Assignment { lhs: Box::new(lhs), rhs: Box::new(self.monomorphise(&assignment.rhs)) })
     }
 
-    pub fn extract(ast: hir::Ast, member_index: u32) -> hir::Ast {
+    pub fn extract(ast: hir::Ast, member_index: u32, result_type: Type) -> hir::Ast {
         use hir::{
             Ast,
             Builtin::{Deref, Offset},
@@ -1616,7 +1625,7 @@ impl<'c> Context<'c> {
             },
             other => {
                 let lhs = Box::new(other);
-                Ast::MemberAccess(hir::MemberAccess { lhs, member_index })
+                Ast::MemberAccess(hir::MemberAccess { lhs, member_index, typ: result_type })
             },
         }
     }

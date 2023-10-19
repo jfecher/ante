@@ -183,6 +183,7 @@ pub struct Assignment {
 pub struct MemberAccess {
     pub lhs: Box<Ast>,
     pub member_index: u32,
+    pub typ: Type,
 }
 
 #[derive(Debug, Clone)]

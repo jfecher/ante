@@ -117,7 +117,7 @@ impl<'c> Context<'c> {
         use hir::types::*;
         match typ {
             Type::Primitive(PrimitiveType::Integer(_)) => value.into(),
-            Type::Tuple(_) => Self::extract(value.into(), 0),
+            Type::Tuple(fields) => Self::extract(value.into(), 0, fields[0].clone()),
             _ => unreachable!(),
         }
     }
@@ -177,10 +177,15 @@ impl<'c> Context<'c> {
                     fmap(case.fields.iter().enumerate(), |(i, field_aliases)| {
                         let field_index = start_index + i as u32;
                         let field_variable_id = self.next_unique_id();
+                        let mut monomorphized_field_type = None;
 
                         for field_alias in field_aliases {
                             let alias_type = self.cache[*field_alias].typ.as_ref().unwrap().as_monotype();
                             let field_type = self.follow_all_bindings(alias_type);
+
+                            if monomorphized_field_type.is_none() {
+                                monomorphized_field_type = Some(self.convert_type(&field_type));
+                            }
 
                             let monomorphized_field_type = Rc::new(self.convert_type(&field_type));
                             let field_variable = hir::Variable::new(field_variable_id, monomorphized_field_type);
@@ -191,7 +196,7 @@ impl<'c> Context<'c> {
 
                         hir::Definition {
                             variable: field_variable_id,
-                            expr: Box::new(Self::extract(variant_variable.clone().into(), field_index)),
+                            expr: Box::new(Self::extract(variant_variable.clone().into(), field_index, monomorphized_field_type.unwrap())),
                             name: None,
                         }
                     })

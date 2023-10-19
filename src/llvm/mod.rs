@@ -387,8 +387,8 @@ impl<'g> Generator<'g> {
 
         self.builder.build_store(alloca, value).expect("Could not create store during cast");
 
-        let target_type = target_type.ptr_type(AddressSpace::default());
-        let cast = self.builder.build_pointer_cast(alloca, target_type, "cast")
+        let target_pointer_type = target_type.ptr_type(AddressSpace::default());
+        let cast = self.builder.build_pointer_cast(alloca, target_pointer_type, "cast")
             .expect("Error creating pointer cast");
 
         self.builder.build_load(target_type, cast, "union_cast")
@@ -451,31 +451,18 @@ impl<'g> Generator<'g> {
 
     /// Creates a GEP instruction and Load which emulate a single Extract instruction but
     /// delays the Load as long as possible to make assigning to this as an l-value easier later on.
-    fn gep_at_index(&mut self, load: BasicValueEnum<'g>, field_index: u32, field_name: &str) -> BasicValueEnum<'g> {
+    fn gep_at_index(&mut self, load: BasicValueEnum<'g>, field_index: u32, field_type: &hir::Type, field_name: &str) -> BasicValueEnum<'g> {
         let instruction = load.as_instruction_value().unwrap();
         assert_eq!(instruction.get_opcode(), InstructionOpcode::Load);
 
-        let element_type = Self::any_type_to_basic_type(instruction.get_type());
         let pointer = instruction.get_operand(0).unwrap().left().unwrap().into_pointer_value();
 
-        let gep = self.builder.build_struct_gep(element_type, pointer, field_index, field_name)
-            .expect("Error creating struct GEP");
+        let gep = self.builder.build_struct_gep(load.get_type(), pointer, field_index, field_name)
+            .expect("Error creating GEP");
 
-        self.builder.build_load(element_type, gep, field_name)
+        let field_type = self.convert_type(field_type);
+        self.builder.build_load(field_type, gep, field_name)
             .expect("Error creating load")
-    }
-
-    fn any_type_to_basic_type(typ: inkwell::types::AnyTypeEnum) -> BasicTypeEnum {
-        match typ {
-            inkwell::types::AnyTypeEnum::ArrayType(typ) => BasicTypeEnum::ArrayType(typ),
-            inkwell::types::AnyTypeEnum::FloatType(typ) => BasicTypeEnum::FloatType(typ),
-            inkwell::types::AnyTypeEnum::IntType(typ) => BasicTypeEnum::IntType(typ),
-            inkwell::types::AnyTypeEnum::PointerType(typ) => BasicTypeEnum::PointerType(typ),
-            inkwell::types::AnyTypeEnum::StructType(typ) => BasicTypeEnum::StructType(typ),
-            inkwell::types::AnyTypeEnum::VectorType(typ) => BasicTypeEnum::VectorType(typ),
-            inkwell::types::AnyTypeEnum::FunctionType(typ) => panic!("Cannot convert function type {} to basic typ", typ),
-            inkwell::types::AnyTypeEnum::VoidType(_) => panic!("Cannot convert void type to basic typ"),
-        }
     }
 }
 
@@ -691,7 +678,9 @@ impl<'g> CodeGen<'g> for hir::MemberAccess {
         // This will delay the load as long as possible which makes this easier to detect
         // as a valid l-value in hir::Assignment::codegen.
         match lhs.as_instruction_value().map(|instr| instr.get_opcode()) {
-            Some(InstructionOpcode::Load) => generator.gep_at_index(lhs, index, ""),
+            Some(InstructionOpcode::Load) => {
+                generator.gep_at_index(lhs, index, &self.typ, "")
+            }
             _ => {
                 let collection = lhs.into_struct_value();
                 generator.builder.build_extract_value(collection, index, "").unwrap()

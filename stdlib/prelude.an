@@ -471,7 +471,7 @@ impl Cast (Int a) String given Div (Int a), Mod (Int a), Cmp (Int a) with
     cast i =
       abs, sign_off = if i < 0 then (i * -1, 1) else (i, 0)
       len = loop abs (cmp = 10) ->
-        next = cmp * 10 // Here to check for overflow
+        next = cmp * 10 // Need to check for overflow here
         if abs >= cmp and next > cmp
         then 1 + recur abs next
         else 1
