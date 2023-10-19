@@ -66,7 +66,7 @@ pub fn call_builtin<'g>(builtin: &Builtin, generator: &mut Generator<'g>) -> Bas
         Builtin::BitwiseXor(a, b) => bitwise_xor(int(a), int(b), generator),
         Builtin::BitwiseNot(a) => bitwise_not(int(a), generator),
 
-        Builtin::Truncate(a, _typ) => truncate(int(a), generator),
+        Builtin::Truncate(a, typ) => truncate(int(a), typ, generator),
 
         Builtin::Deref(a, typ) => deref_ptr(a, typ, generator),
         Builtin::Offset(a, b, typ) => offset(a, int(b), typ, generator),
@@ -259,9 +259,8 @@ fn bitwise_not<'g>(a: IntValue<'g>, generator: &mut Generator<'g>) -> BasicValue
     generator.builder.build_not(a, "bitwise_not").unwrap().into()
 }
 
-fn truncate<'g>(x: IntValue<'g>, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
-    let current_function = generator.current_function();
-    let ret = current_function.get_type().get_return_type().unwrap().into_int_type();
+fn truncate<'g>(x: IntValue<'g>, typ: &Type, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+    let ret = generator.convert_type(typ).into_int_type();
     generator.builder.build_int_truncate(x, ret, "sign_extend").unwrap().into()
 }
 

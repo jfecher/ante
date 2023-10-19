@@ -293,6 +293,7 @@ parser!(trait_impl loc =
 );
 
 parser!(impl_body loc -> 'b Vec<ast::Definition<'b>> =
+    _ <- maybe(expect(Token::Newline));
     _ <- expect(Token::With);
     definitions <- or(&[impl_body_block, impl_body_single], "impl body");
     definitions

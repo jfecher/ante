@@ -1,4 +1,5 @@
 // builtin function
+// ^ Location 0 in the prelude is used as the default location for errors in builtin functions.
 /*
         prelude.an
     Standard functions and datatypes pre-imported
@@ -467,7 +468,12 @@ impl Print Bool with
 impl Cast String (Ptr Char) with
     cast s = s.c_string
 
-impl Cast (Int a) String given Div (Int a), Mod (Int a), Cmp (Int a) with
+impl Cast (Int a) String given
+    Div (Int a),
+    Mod (Int a),
+    Cmp (Int a),
+    Cast (Int a) Char
+with
     cast i =
       abs, sign_off = if i < 0 then (i * -1, 1) else (i, 0)
       len = loop abs (cmp = 10) ->
@@ -483,7 +489,7 @@ impl Cast (Int a) String given Div (Int a), Mod (Int a), Cmp (Int a) with
       ptr_to_ref <| offset buf (size - 1) := '\0'
 
       loop (pos = len - 1) (buf = offset buf sign_off) abs ->
-        char_offset = builtin "Truncate" (abs % 10)
+        char_offset = cast (abs % 10) : Char
         ptr_to_ref <| offset buf pos := '0' + char_offset
         if pos > 0
         then recur (pos - 1) buf (abs / 10)
@@ -498,7 +504,7 @@ impl Cast (Int a) String given Div (Int a), Mod (Int a), Cmp (Int a) with
 //     isNeg =
 //         if s.len == 0 or s.c_string#0 == '-' then false
 //         else ((i += 1); true)
-// 
+//
 //     while s.c_string#i != '\0' do
 //         c = s.c_string#i
 //         if c >= '0' and c <= '9' then
@@ -508,7 +514,7 @@ impl Cast (Int a) String given Div (Int a), Mod (Int a), Cmp (Int a) with
 //             None
 //         else
 //             return None
-// 
+//
 //     Some (if isNeg then -1 * sum else sum)
 
 impl Eq (Ref t) given Eq t with
@@ -560,7 +566,7 @@ impl Iterator InFile String with
 //     (==) l r =
 //         if l.len != r.len then
 //             return false
-// 
+//
 //         for i in 0 .. l.len do
 //             if l.c_string#i != r.c_string#i then
 //                 return false
