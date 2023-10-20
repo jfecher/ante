@@ -2,7 +2,7 @@ a = 1, 2
 b = a
 c = b
 
-// The original bug can still be trigerred using functions
+// The original bug can still be triggered using functions
 // f () = b
 // e = f ()
 
