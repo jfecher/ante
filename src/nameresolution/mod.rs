@@ -197,7 +197,6 @@ impl NameResolver {
         for stack in current_function_scope.iter().rev() {
             if let Some(&id) = stack.definitions.get(name) {
                 cache.definition_infos[id.0].uses += 1;
-                eprintln!("{} referenced in case 1", cache[id].name);
 
                 if self.in_global_scope() && matches!(self.state, NameResolutionState::DefineInProgress) {
                     cache.global_dependency_graph.add_edge(id);
@@ -236,7 +235,6 @@ impl NameResolver {
                     cache.definition_infos[id.0].uses += 1;
 
                     if matches!(self.state, NameResolutionState::DefineInProgress) {
-                        eprintln!("  referencing {}, case 2", cache[id].name);
                         cache.global_dependency_graph.add_edge(id);
                     }
                     return Some(id);
@@ -990,7 +988,6 @@ impl<'c> Resolvable<'c> for ast::Variable<'c> {
             }
         } else if resolver.in_global_scope() {
             let id = self.definition.unwrap();
-            eprintln!("{} is global, setting definition", cache[id].name);
             cache.global_dependency_graph.set_definition(id);
         }
     }
@@ -1054,8 +1051,6 @@ impl<'c> Resolvable<'c> for ast::Definition<'c> {
         let definition = || DefinitionKind::Definition(trustme::make_mut(definition));
 
         let old_graph_state = cache.global_dependency_graph.enter_definition();
-        let n = old_graph_state.map(|id| &cache[id].name);
-        eprintln!("Grabbed current def {:?}", n);
 
         resolver.push_let_binding_level();
         resolver.push_type_variable_scope();
@@ -1070,8 +1065,6 @@ impl<'c> Resolvable<'c> for ast::Definition<'c> {
         resolver.pop_type_variable_scope();
         resolver.pop_let_binding_level();
 
-        let n = old_graph_state.map(|id| &cache[id].name);
-        eprintln!("set def back to {:?}", n);
         cache.global_dependency_graph.exit_definition(old_graph_state);
     }
 }

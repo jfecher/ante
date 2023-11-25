@@ -1,18 +1,19 @@
 use std::collections::HashMap;
 
 use crate::cache::DefinitionInfoId;
-
+use petgraph::dot::{ Dot, Config };
+use petgraph::graph::{ DiGraph, NodeIndex };
 use super::ModuleCache;
 
 #[derive(Default, Debug)]
 pub struct DependencyGraph {
     current_definition: Option<DefinitionInfoId>,
-    graph: petgraph::graph::DiGraph<DefinitionInfoId, ()>,
-    node_map: HashMap<DefinitionInfoId, petgraph::graph::NodeIndex>,
+    graph: DiGraph<DefinitionInfoId, ()>,
+    node_map: HashMap<DefinitionInfoId, NodeIndex>,
 }
 
 impl DependencyGraph {
-    fn get_or_add_node(&mut self, id: DefinitionInfoId) -> petgraph::graph::NodeIndex {
+    fn get_or_add_node(&mut self, id: DefinitionInfoId) -> NodeIndex {
         if let Some(index) = self.node_map.get(&id) {
             *index
         } else {
@@ -22,8 +23,12 @@ impl DependencyGraph {
         }
     }
 
-    pub fn into_dbg_petgraph(&self, cache: &ModuleCache) -> petgraph::graph::DiGraph<String, ()> {
-        self.graph.map(|_, node| cache[*node].name.clone(), |_, edge| *edge)
+    // Prints the graph in graphviz format
+    #[allow(unused)]
+    pub fn dbg_print(&self, cache: &ModuleCache) {
+        let named = self.graph.map(|_, node| cache[*node].name.clone(), |_, edge| *edge);
+        let dot = Dot::with_config(&named, &[Config::EdgeNoLabel]);
+        println!("{dot:?}");
     }
 
     pub fn set_definition<'c>(&mut self, definition: DefinitionInfoId) {

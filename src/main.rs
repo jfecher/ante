@@ -138,16 +138,6 @@ fn compile(args: Cli) {
     // break up the declare and define passes
     expect!(NameResolver::start(root, &mut cache), "");
 
-
-
-    let graph = cache.global_dependency_graph.into_dbg_petgraph(&cache);
-    let output = petgraph::dot::Dot::with_config(&graph, &[petgraph::dot::Config::EdgeNoLabel]);
-    println!("{output:?}");
-    return;
-
-    
-
-
     // Phase 4: Type inference
     util::timing::start_time("Type Inference");
     let ast = cache.parse_trees.get_mut(0).unwrap();
