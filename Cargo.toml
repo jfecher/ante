@@ -21,6 +21,7 @@ cranelift-jit = "0.86.1"
 cranelift-object = "0.86.1"
 target-lexicon = "0.12.4"
 clap_complete = "4"
+petgraph = "0.6.4"
 
 [dev-dependencies]
 goldentests = "1.1.0"

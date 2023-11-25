@@ -62,11 +62,8 @@ use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 
-use self::dependency_graph::DependencyGraph;
-
 pub mod builtin;
 mod scope;
-mod dependency_graph;
 
 /// Specifies how far a particular module is in name resolution.
 /// Keeping this properly up to date for each module is the
@@ -154,10 +151,6 @@ pub struct NameResolver {
     /// Keeps track of all the definitions collected within a pattern so they
     /// can all be tagged with the expression they were defined as later
     definitions_collected: Vec<DefinitionInfoId>,
-
-    /// Dependency graph for all global dependencies - this does not track any
-    /// local variables within a function.
-    dependency_graph: DependencyGraph,
 }
 
 impl PartialEq for NameResolver {
@@ -204,6 +197,12 @@ impl NameResolver {
         for stack in current_function_scope.iter().rev() {
             if let Some(&id) = stack.definitions.get(name) {
                 cache.definition_infos[id.0].uses += 1;
+                eprintln!("{} referenced in case 1", cache[id].name);
+
+                if self.in_global_scope() && matches!(self.state, NameResolutionState::DefineInProgress) {
+                    cache.global_dependency_graph.add_edge(id);
+                }
+
                 return Some(id);
             }
         }
@@ -235,7 +234,11 @@ impl NameResolver {
                 // Definition is globally visible, no need to create a closure
                 if let Some(id) = self.global_scope().definitions.get(name).copied() {
                     cache.definition_infos[id.0].uses += 1;
-                    self.dependency_graph.add_edge(id, cache);
+
+                    if matches!(self.state, NameResolutionState::DefineInProgress) {
+                        eprintln!("  referencing {}, case 2", cache[id].name);
+                        cache.global_dependency_graph.add_edge(id);
+                    }
                     return Some(id);
                 }
             } else if let Some(&from) = stack.definitions.get(name) {
@@ -634,8 +637,6 @@ impl<'c> NameResolver {
         timing::start_time("Name Resolution (Define)");
         resolver.define(cache);
 
-        println!("Dependencies: {:?}", resolver.dependency_graph);
-
         if error::get_error_count() != 0 {
             Err(())
         } else {
@@ -668,7 +669,6 @@ impl<'c> NameResolver {
             current_function: None,
             definitions_collected: vec![],
             let_binding_level: LetBindingLevel(INITIAL_LEVEL),
-            dependency_graph: DependencyGraph::default(),
             module_id,
         };
 
@@ -939,7 +939,6 @@ impl<'c> Resolvable<'c> for ast::Variable<'c> {
             if should_declare {
                 let id = resolver.push_definition(&name, cache, self.location);
                 resolver.definitions_collected.push(id);
-                resolver.dependency_graph.set_definition(id);
                 self.definition = Some(id);
             } else {
                 self.definition = resolver.reference_definition(&name, self.location, cache);
@@ -989,6 +988,10 @@ impl<'c> Resolvable<'c> for ast::Variable<'c> {
             if self.definition.is_none() {
                 error!(self.location, "No declaration for `{}` was found in scope", self);
             }
+        } else if resolver.in_global_scope() {
+            let id = self.definition.unwrap();
+            eprintln!("{} is global, setting definition", cache[id].name);
+            cache.global_dependency_graph.set_definition(id);
         }
     }
 }
@@ -1050,7 +1053,9 @@ impl<'c> Resolvable<'c> for ast::Definition<'c> {
         let definition = self as *const Self;
         let definition = || DefinitionKind::Definition(trustme::make_mut(definition));
 
-        let old_graph_state = resolver.dependency_graph.enter_definition();
+        let old_graph_state = cache.global_dependency_graph.enter_definition();
+        let n = old_graph_state.map(|id| &cache[id].name);
+        eprintln!("Grabbed current def {:?}", n);
 
         resolver.push_let_binding_level();
         resolver.push_type_variable_scope();
@@ -1065,7 +1070,9 @@ impl<'c> Resolvable<'c> for ast::Definition<'c> {
         resolver.pop_type_variable_scope();
         resolver.pop_let_binding_level();
 
-        resolver.dependency_graph.exit_definition(old_graph_state);
+        let n = old_graph_state.map(|id| &cache[id].name);
+        eprintln!("set def back to {:?}", n);
+        cache.global_dependency_graph.exit_definition(old_graph_state);
     }
 }
 

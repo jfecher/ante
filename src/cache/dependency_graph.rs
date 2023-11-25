@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
-use crate::cache::{ModuleCache, DefinitionInfoId};
+use crate::cache::DefinitionInfoId;
+
+use super::ModuleCache;
 
 #[derive(Default, Debug)]
 pub struct DependencyGraph {
@@ -20,33 +22,28 @@ impl DependencyGraph {
         }
     }
 
+    pub fn into_dbg_petgraph(&self, cache: &ModuleCache) -> petgraph::graph::DiGraph<String, ()> {
+        self.graph.map(|_, node| cache[*node].name.clone(), |_, edge| *edge)
+    }
+
     pub fn set_definition<'c>(&mut self, definition: DefinitionInfoId) {
         self.current_definition = Some(definition);
     }
 
     // add an edge when a global is referenced
-    pub fn add_edge<'c>(&mut self, dependency: DefinitionInfoId, cache: &ModuleCache<'c>) {
+    pub fn add_edge<'c>(&mut self, dependency: DefinitionInfoId) {
         if let Some(dependent) = self.current_definition {
-            let cdef = &cache[dependent].name;
-            let new = &cache[dependency].name;
-            println!("{} references {}", cdef, new);
-
             let dependent = self.get_or_add_node(dependent);
             let dependency = self.get_or_add_node(dependency);
-
-            self.graph.add_edge(dependency, dependent, ());
-        } else {
-            println!("Tried to add edge but current_definition = None");
+            self.graph.update_edge(dependent, dependency, ());
         }
     }
 
-    pub fn enter_definition(&mut self) -> bool {
-        self.current_definition.is_none()
+    pub fn enter_definition(&mut self) -> Option<DefinitionInfoId> {
+        self.current_definition
     }
 
-    pub fn exit_definition(&mut self, reset_definition: bool) {
-        if reset_definition {
-            self.current_definition = None;
-        }
+    pub fn exit_definition(&mut self, reset_definition: Option<DefinitionInfoId>) {
+        self.current_definition = reset_definition;
     }
 }

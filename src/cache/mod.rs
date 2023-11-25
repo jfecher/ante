@@ -26,8 +26,11 @@ use crate::util::stdlib_dir;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
+use self::dependency_graph::DependencyGraph;
+
 mod counter;
 mod unsafecache;
+mod dependency_graph;
 
 /// The ModuleCache is for information needed until compilation is completely finished
 /// (ie. not just for one phase). Accessing each `Vec` inside the `ModuleCache` is done
@@ -110,6 +113,12 @@ pub struct ModuleCache<'a> {
     /// to all functions in that set. Once the key'd function finishes compiling we can
     /// generalize all the functions in the set and add trait constraints at once.
     pub mutual_recursion_sets: Vec<MutualRecursionSet>,
+
+    /// Dependency graph for all global definitions.
+    ///
+    /// This is generally rather lax, the only variant that is enforced is that
+    /// there is no dependency cycle between two non-function globals.
+    pub global_dependency_graph: DependencyGraph,
 }
 
 #[derive(Debug)]
@@ -376,6 +385,7 @@ impl<'a> ModuleCache<'a> {
             call_stack: vec![],
             mutual_recursion_sets: vec![],
             effect_infos: vec![],
+            global_dependency_graph: DependencyGraph::default(),
         }
     }
 
