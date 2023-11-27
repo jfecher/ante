@@ -13,26 +13,27 @@
 //! Note that sometimes "phases" are sometimes called "passes" and vice-versa - the terms are
 //! interchangeable.
 #[macro_use]
-mod parser;
-mod lexer;
-
-#[macro_use]
 mod util;
-
-#[macro_use]
-mod error;
 mod cache;
 mod cli;
 
 #[macro_use]
-mod hir;
-mod cranelift_backend;
-mod lifetimes;
+mod error;
+mod lexer;
+
+#[macro_use]
+mod parser;
 mod nameresolution;
 mod types;
 
+#[macro_use]
+mod hir;
+mod mir;
+mod lifetimes;
+
 #[cfg(feature = "llvm")]
 mod llvm;
+mod cranelift_backend;
 
 use cache::ModuleCache;
 use lexer::Lexer;
@@ -157,29 +158,29 @@ fn compile(args: Cli) {
         return;
     }
 
-    // Phase 5: Lifetime inference
-    // util::timing::start_time("Lifetime Inference");
-    // lifetimes::infer(ast, &mut cache);
+    // Phase 5: CPS Conversion
+    let mir = mir::convert_to_mir(hir);
+    println!("{mir}");
 
-    // if args.show_lifetimes {
-    //     println!("{}", ast);
-    // }
+    if true {
+        return;
+    }
 
     // Phase 6: Codegen
-    let default_backend = if args.opt_level == '0' { Backend::Cranelift } else { Backend::Llvm };
-    let backend = args.backend.unwrap_or(default_backend);
+    // let default_backend = if args.opt_level == '0' { Backend::Cranelift } else { Backend::Llvm };
+    // let backend = args.backend.unwrap_or(default_backend);
 
-    match backend {
-        Backend::Cranelift => cranelift_backend::run(filename, hir, &args),
-        Backend::Llvm => {
-            if cfg!(feature = "llvm") {
-                #[cfg(feature = "llvm")]
-                llvm::run(filename, hir, &args);
-            } else {
-                eprintln!("The llvm backend is required for non-debug builds. Recompile ante with --features 'llvm' to enable optimized builds.");
-            }
-        },
-    }
+    // match backend {
+    //     Backend::Cranelift => cranelift_backend::run(filename, hir, &args),
+    //     Backend::Llvm => {
+    //         if cfg!(feature = "llvm") {
+    //             #[cfg(feature = "llvm")]
+    //             llvm::run(filename, hir, &args);
+    //         } else {
+    //             eprintln!("The llvm backend is required for non-debug builds. Recompile ante with --features 'llvm' to enable optimized builds.");
+    //         }
+    //     },
+    // }
 
     // Print out the time each compiler pass took to complete if the --show-time flag was passed
     util::timing::show_timings();

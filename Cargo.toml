@@ -5,10 +5,6 @@ authors = ["Jake Fecher <jfecher11@gmail.com>"]
 edition = "2018"
 build = "build.rs"
 
-[lib]
-name = "ante"
-edition = "2018"
-
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 colored = "2.0.0"
