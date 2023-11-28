@@ -39,3 +39,16 @@ impl PartialEq for ParameterId {
         self.function == other.function && self.parameter_index == other.parameter_index
     }
 }
+
+// Forward Debug => Display for FunctionId & ParameterId
+impl std::fmt::Debug for FunctionId {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        std::fmt::Display::fmt(self, f)
+    }
+}
+
+impl std::fmt::Debug for ParameterId {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        std::fmt::Display::fmt(self, f)
+    }
+}

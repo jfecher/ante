@@ -87,19 +87,25 @@ impl Type {
 impl std::fmt::Display for Type {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Type::Primitive(p) => match p {
-                PrimitiveType::Integer(kind) => kind.fmt(f),
-                PrimitiveType::Float(kind) => kind.fmt(f),
-                PrimitiveType::Char => write!(f, "Char"),
-                PrimitiveType::Boolean => write!(f, "Bool"),
-                PrimitiveType::Unit => write!(f, "Unit"),
-                PrimitiveType::Pointer => write!(f, "Ptr"),
-            },
+            Type::Primitive(p) => write!(f, "{p}"),
             Type::Function(function) => write!(f, "({})", function),
             Type::Tuple(elems) => {
                 let elems = fmap(elems, ToString::to_string);
                 write!(f, "{{{}}}", elems.join(", "))
             },
+        }
+    }
+}
+
+impl std::fmt::Display for PrimitiveType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PrimitiveType::Integer(kind) => kind.fmt(f),
+            PrimitiveType::Float(kind) => kind.fmt(f),
+            PrimitiveType::Char => write!(f, "Char"),
+            PrimitiveType::Boolean => write!(f, "Bool"),
+            PrimitiveType::Unit => write!(f, "Unit"),
+            PrimitiveType::Pointer => write!(f, "Ptr"),
         }
     }
 }

@@ -1,7 +1,7 @@
 use std::{rc::Rc, collections::{HashMap, VecDeque}};
 
-use self::ir::{Mir, Atom, FunctionId, Function, ParameterId};
-use crate::{hir::{self, Literal, Variable}, util::fmap};
+use self::ir::{Mir, Atom, FunctionId, Function, ParameterId, Type};
+use crate::{hir::{self, Literal, Variable, PrimitiveType}, util::fmap};
 
 pub mod ir;
 mod printer;
@@ -14,20 +14,15 @@ pub fn convert_to_mir(hir: hir::Ast) -> Mir {
         context.terminate_function_with_call(continuation, vec![ret]);
     }
 
-    while let Some((function_id, variable)) = context.definition_queue.pop_front() {
-        let new_function = ir::Function::empty(function_id.clone());
-        context.mir.functions.insert(function_id.clone(), new_function);
-        context.current_function_id = function_id;
-
-        let ret = match &variable.definition {
+    while let Some((_, variable)) = context.definition_queue.pop_front() {
+        match &variable.definition {
             Some(definition) => {
                 println!("Working on {definition}");
-                definition.to_atom(&mut context)
+                let result = definition.to_mir(&mut context);
+                assert!(matches!(result, AtomOrCall::Atom(Atom::Literal(Literal::Unit))));
             },
             None => unreachable!("No definition for {}", variable),
-        };
-
-        context.terminate_function_with_call(Atom::Literal(Literal::Unit), vec![ret]);
+        }
     }
 
     context.mir
@@ -45,6 +40,12 @@ struct Context {
     current_function_id: FunctionId,
 
     next_function_id: u32,
+
+    /// If this is set, this tells the Context to use this ID as the next
+    /// function id when creating a new function. This is set when a global
+    /// function is queued and is expected to be created with an existing ID
+    /// so that it can be referenced before it is actually translated.
+    expected_function_id: Option<FunctionId>,
 
     continuation: Option<Atom>,
 
@@ -66,6 +67,7 @@ impl Context {
             id: main_id.clone(),
             body_continuation: Atom::Literal(Literal::Unit),
             body_args: Vec::new(),
+            argument_types: vec![Type::Function(vec![Type::Primitive(PrimitiveType::Unit)])],
         };
 
         mir.functions.insert(main_id.clone(), main);
@@ -77,6 +79,7 @@ impl Context {
             current_function_id: main_id,
             next_function_id: 1, // Since 0 is taken for main
             continuation: None,
+            expected_function_id: None,
             intermediate_result_name: Rc::new("v".into()),
             continuation_name: Rc::new("k".into()),
         }
@@ -113,7 +116,8 @@ impl Context {
 
     /// Move on to a fresh function
     fn next_fresh_function_with_name(&mut self, name: Rc<String>) -> FunctionId {
-        let next_id = self.peek_next_function_id(name);
+        let next_id = self.expected_function_id.take().unwrap_or_else(|| self.peek_next_function_id(name));
+
         let new_function = ir::Function::empty(next_id.clone());
 
         self.mir.functions.insert(next_id.clone(), new_function);
@@ -135,8 +139,45 @@ impl Context {
         };
 
         let next_id = self.peek_next_function_id(name);
-        self.definition_queue.push_back((next_id.clone(), variable));
-        Atom::Function(next_id)
+        let atom = Atom::Function(next_id.clone());
+        self.definitions.insert(variable.definition_id, atom.clone());
+        self.definition_queue.push_back((next_id, variable));
+        atom
+    }
+
+    fn convert_type(typ: &hir::Type) -> Type {
+        match typ {
+            hir::Type::Primitive(primitive) => Type::Primitive(primitive.clone()),
+            hir::Type::Function(function_type) => {
+                let mut args = fmap(&function_type.parameters, Self::convert_type);
+                args.push(Self::convert_type(&function_type.return_type));
+                Type::Function(args)
+            },
+            hir::Type::Tuple(fields) => {
+                Type::Tuple(fmap(fields, Self::convert_type))
+            },
+        }
+    }
+
+    fn add_parameter(&mut self, parameter_type: &hir::Type) {
+        let typ = Self::convert_type(parameter_type);
+        self.current_function_mut().argument_types.push(typ);
+    }
+
+    fn add_continuation_parameter(&mut self, parameter_type: &hir::Type) {
+        let typ = Type::Function(vec![Self::convert_type(parameter_type)]);
+        self.current_function_mut().argument_types.push(typ);
+    }
+
+    fn return_type_of(&self, f: &Atom, args: &[Atom]) -> Type {
+        match f {
+            Atom::Primop => todo!(),
+            Atom::Branch => todo!(),
+            Atom::Literal(_) => todo!(),
+            Atom::Parameter(_) => todo!(),
+            Atom::Function(_) => todo!(),
+            Atom::Tuple(_) => unreachable!("Cannot call a tuple"),
+        }
     }
 }
 
@@ -150,8 +191,12 @@ impl AtomOrCall {
         match self {
             AtomOrCall::Atom(atom) => atom,
             AtomOrCall::Call(f, args) => {
+                // The type of the continuation for the new function we're creating
+                let k_type = Type::Function(vec![context.return_type_of(&f, &args)]);
+
                 let current_function_id = context.current_function_id.clone();
                 let function = context.current_function_mut();
+
                 function.body_continuation = f;
                 function.body_args = args;
 
@@ -159,6 +204,8 @@ impl AtomOrCall {
                 // for the call. Then resume inserting into this new function.
                 // The value of the Atom is the new `rv` parameter holding the result value.
                 let k = context.next_fresh_function();
+                let function = context.current_function_mut();
+                function.argument_types.push(k_type);
 
                 // Make sure to go back to add the continuation argument
                 let prev_function = context.function_mut(&current_function_id);
@@ -223,6 +270,8 @@ impl ToMir for hir::Lambda {
                 parameter_index: i as u16,
                 name: arg.name.as_ref().map_or_else(|| Rc::new(format!("p{i}")), |name| Rc::new(name.to_string())),
             }));
+
+            context.add_parameter(&arg.typ);
         }
 
         let k = Atom::Parameter(ParameterId {
@@ -231,6 +280,7 @@ impl ToMir for hir::Lambda {
             name: context.continuation_name.clone(),
         });
 
+        context.add_continuation_parameter(&self.typ.return_type);
         context.continuation = Some(k.clone());
 
         let lambda_body = self.body.to_atom(context);
@@ -253,8 +303,22 @@ impl ToMir for hir::FunctionCall {
 
 impl ToMir for hir::Definition {
     fn to_mir(&self, context: &mut Context) -> AtomOrCall {
-        let rhs = self.expr.to_atom(context);
-        context.definitions.insert(self.variable, rhs);
+        if let Some(expected) = context.definitions.get(&self.variable).cloned() {
+            let function = match &expected {
+                Atom::Function(function_id) => function_id.clone(),
+                other => unreachable!("Expected Atom::Function, found {:?}", other),
+            };
+
+            let old = context.expected_function_id.take();
+            context.expected_function_id = Some(function);
+            let rhs = self.expr.to_atom(context);
+            assert_eq!(rhs, expected);
+            context.expected_function_id = old;
+        } else {
+            let rhs = self.expr.to_atom(context);
+            context.definitions.insert(self.variable, rhs);
+        }
+
         AtomOrCall::unit()
     }
 }
@@ -264,7 +328,9 @@ impl ToMir for hir::If {
         let cond = self.condition.to_atom(context);
         let original_function = context.current_function_id.clone();
 
+        // needs param
         let end_function_id = context.next_fresh_function();
+        context.add_continuation_parameter(&self.result_type);
         let end_function = Atom::Function(end_function_id.clone());
 
         let then_fn = Atom::Function(context.next_fresh_function()) ;
@@ -339,7 +405,8 @@ impl ToMir for hir::MemberAccess {
 
 impl ToMir for hir::Tuple {
     fn to_mir(&self, context: &mut Context) -> AtomOrCall {
-        todo!()
+        let fields = fmap(&self.fields, |field| field.to_atom(context));
+        AtomOrCall::Atom(Atom::Tuple(fields))
     }
 }
 
