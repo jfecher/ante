@@ -160,9 +160,10 @@ fn compile(args: Cli) {
 
     // Phase 5: CPS Conversion
     let mir = mir::convert_to_mir(hir);
-    println!("{mir}");
+    eprintln!("{mir}");
 
     if true {
+        mir.debug_print_control_flow_graph();
         return;
     }
 

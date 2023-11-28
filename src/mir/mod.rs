@@ -17,7 +17,6 @@ pub fn convert_to_mir(hir: hir::Ast) -> Mir {
     while let Some((_, variable)) = context.definition_queue.pop_front() {
         match &variable.definition {
             Some(definition) => {
-                println!("Working on {definition}");
                 let result = definition.to_mir(&mut context);
                 assert!(matches!(result, AtomOrCall::Atom(Atom::Literal(Literal::Unit))));
             },
