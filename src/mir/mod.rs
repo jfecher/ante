@@ -102,7 +102,7 @@ impl Context {
     }
 
     /// Returns the next available function id but does not set the current id
-    fn peek_next_function_id(&mut self, name: Rc<String>) -> FunctionId {
+    fn next_function_id(&mut self, name: Rc<String>) -> FunctionId {
         let id = self.next_function_id;
         self.next_function_id += 1;
         FunctionId { id, name }
@@ -116,13 +116,15 @@ impl Context {
 
     /// Move on to a fresh function
     fn next_fresh_function_with_name(&mut self, name: Rc<String>) -> FunctionId {
-        let next_id = self.expected_function_id.take().unwrap_or_else(|| self.peek_next_function_id(name));
+        let id = self.expected_function_id.take().unwrap_or_else(|| {
+            let next_id = self.next_function_id(name);
+            let new_function = ir::Function::empty(next_id.clone());
+            self.mir.functions.insert(next_id.clone(), new_function);
+            next_id
+        });
 
-        let new_function = ir::Function::empty(next_id.clone());
-
-        self.mir.functions.insert(next_id.clone(), new_function);
-        self.current_function_id = next_id.clone();
-        next_id
+        self.current_function_id = id.clone();
+        id
     }
 
     /// Terminates the current function by setting its body to a function call
@@ -138,10 +140,20 @@ impl Context {
             None => self.intermediate_result_name.clone(),
         };
 
-        let next_id = self.peek_next_function_id(name);
+        let argument_types = match Self::convert_type(&variable.typ) {
+            Type::Function(argument_types) => argument_types,
+            other => unreachable!("add_global_to_queue: Expected function type for global, found {}", other),
+        };
+
+        let next_id = self.next_function_id(name);
         let atom = Atom::Function(next_id.clone());
         self.definitions.insert(variable.definition_id, atom.clone());
-        self.definition_queue.push_back((next_id, variable));
+        self.definition_queue.push_back((next_id.clone(), variable));
+
+        let mut function = Function::empty(next_id.clone());
+        function.argument_types = argument_types;
+
+        self.mir.functions.insert(next_id, function);
         atom
     }
 
@@ -150,7 +162,8 @@ impl Context {
             hir::Type::Primitive(primitive) => Type::Primitive(primitive.clone()),
             hir::Type::Function(function_type) => {
                 let mut args = fmap(&function_type.parameters, Self::convert_type);
-                args.push(Self::convert_type(&function_type.return_type));
+                // The return type becomes a return continuation
+                args.push(Type::Function(vec![Self::convert_type(&function_type.return_type)]));
                 Type::Function(args)
             },
             hir::Type::Tuple(fields) => {
@@ -169,14 +182,57 @@ impl Context {
         self.current_function_mut().argument_types.push(typ);
     }
 
-    fn return_type_of(&self, f: &Atom, args: &[Atom]) -> Type {
+    fn continuation_types_of(&self, f: &Atom, args: &[Atom]) -> Vec<Type> {
         match f {
-            Atom::Primop => todo!(),
-            Atom::Branch => todo!(),
-            Atom::Literal(_) => todo!(),
-            Atom::Parameter(_) => todo!(),
-            Atom::Function(_) => todo!(),
+            Atom::Primop => todo!("return_type_of primop"),
+            Atom::Branch => vec![self.type_of(&args[0])],
+            Atom::Parameter(parameter_id) => {
+                let function = self.function(&parameter_id.function);
+                match &function.argument_types[parameter_id.parameter_index as usize] {
+                    Type::Function(arguments) => arguments.clone(),
+                    other => unreachable!("Expected function type, found {}", other),
+                }
+            },
+            Atom::Function(function_id) => {
+                let function = self.function(function_id);
+                let continuation_type = function.argument_types.last().unwrap_or_else(|| panic!("Expected at least 1 argument from {}", function_id));
+
+                match continuation_type {
+                    Type::Function(arguments) => arguments.clone(),
+                    other => unreachable!("Expected function type, found {}", other),
+                }
+            },
+            Atom::Literal(_) => unreachable!("Cannot call a literal {}", f),
             Atom::Tuple(_) => unreachable!("Cannot call a tuple"),
+        }
+    }
+
+    fn type_of(&self, atom: &Atom) -> Type {
+        match atom {
+            Atom::Primop => todo!("type_of Primop"),
+            Atom::Branch => unreachable!("Atom::Branch has no type"),
+            Atom::Literal(literal) => {
+                match literal {
+                    Literal::Integer(_, kind) => Type::Primitive(PrimitiveType::Integer(*kind)),
+                    Literal::Float(_, kind) => Type::Primitive(PrimitiveType::Float(*kind)),
+                    Literal::CString(_) => Type::Primitive(PrimitiveType::Pointer),
+                    Literal::Char(_) => Type::Primitive(PrimitiveType::Char),
+                    Literal::Bool(_) => Type::Primitive(PrimitiveType::Boolean),
+                    Literal::Unit => Type::Primitive(PrimitiveType::Unit),
+                }
+            },
+            Atom::Parameter(parameter_id) => {
+                let function = self.function(&parameter_id.function);
+                function.argument_types[parameter_id.parameter_index as usize].clone()
+            },
+            Atom::Function(function_id) => {
+                let function = self.function(function_id);
+                Type::Function(function.argument_types.clone())
+            },
+            Atom::Tuple(fields) => {
+                let field_types = fmap(fields, |field| self.type_of(field));
+                Type::Tuple(field_types)
+            },
         }
     }
 }
@@ -191,8 +247,8 @@ impl AtomOrCall {
         match self {
             AtomOrCall::Atom(atom) => atom,
             AtomOrCall::Call(f, args) => {
-                // The type of the continuation for the new function we're creating
-                let k_type = Type::Function(vec![context.return_type_of(&f, &args)]);
+                // The argument types of the continuation for the new function we're creating
+                let k_types = context.continuation_types_of(&f, &args);
 
                 let current_function_id = context.current_function_id.clone();
                 let function = context.current_function_mut();
@@ -205,7 +261,7 @@ impl AtomOrCall {
                 // The value of the Atom is the new `rv` parameter holding the result value.
                 let k = context.next_fresh_function();
                 let function = context.current_function_mut();
-                function.argument_types.push(k_type);
+                function.argument_types = k_types;
 
                 // Make sure to go back to add the continuation argument
                 let prev_function = context.function_mut(&current_function_id);
@@ -274,13 +330,23 @@ impl ToMir for hir::Lambda {
             context.add_parameter(&arg.typ);
         }
 
+        // If the argument types were not already set, set them now
+        let function = context.current_function_mut();
+        if function.argument_types.is_empty() {
+            function.argument_types.reserve_exact(self.args.len() + 1);
+
+            for arg in &self.args {
+                context.add_parameter(&arg.typ);
+            }
+            context.add_continuation_parameter(&self.typ.return_type);
+        }
+
         let k = Atom::Parameter(ParameterId {
             function: lambda_id.clone(),
             parameter_index: self.args.len() as u16,
             name: context.continuation_name.clone(),
         });
 
-        context.add_continuation_parameter(&self.typ.return_type);
         context.continuation = Some(k.clone());
 
         let lambda_body = self.body.to_atom(context);
@@ -330,7 +396,7 @@ impl ToMir for hir::If {
 
         // needs param
         let end_function_id = context.next_fresh_function();
-        context.add_continuation_parameter(&self.result_type);
+        context.add_parameter(&self.result_type);
         let end_function = Atom::Function(end_function_id.clone());
 
         let then_fn = Atom::Function(context.next_fresh_function()) ;
