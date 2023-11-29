@@ -237,8 +237,8 @@ pub enum Builtin {
     UnsignedToFloat(Box<Ast>, Type),
     FloatToSigned(Box<Ast>, Type),
     FloatToUnsigned(Box<Ast>, Type),
-    FloatPromote(Box<Ast>),
-    FloatDemote(Box<Ast>),
+    FloatPromote(Box<Ast>, Type),
+    FloatDemote(Box<Ast>, Type),
 
     BitwiseAnd(Box<Ast>, Box<Ast>),
     BitwiseOr(Box<Ast>, Box<Ast>),

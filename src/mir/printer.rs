@@ -32,7 +32,6 @@ impl Display for Function {
 impl Display for Atom {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Atom::Primop => write!(f, "primop"),
             Atom::Branch => write!(f, "branch"),
             Atom::Literal(literal) => write!(f, "{literal}"),
             Atom::Parameter(parameter) => write!(f, "{parameter}"),
@@ -41,6 +40,42 @@ impl Display for Atom {
                 let fields = fmap(fields, ToString::to_string).join(", ");
                 write!(f, "({fields})")
             },
+            Atom::AddInt(lhs, rhs) => write!(f, "({lhs} + {rhs})"),
+            Atom::AddFloat(lhs, rhs) => write!(f, "({lhs} + {rhs})"),
+            Atom::SubInt(lhs, rhs) => write!(f, "({lhs} - {rhs})"),
+            Atom::SubFloat(lhs, rhs) => write!(f, "({lhs} - {rhs})"),
+            Atom::MulInt(lhs, rhs) => write!(f, "({lhs} * {rhs})"),
+            Atom::MulFloat(lhs, rhs) => write!(f, "({lhs} * {rhs})"),
+            Atom::DivSigned(lhs, rhs) => write!(f, "({lhs} / {rhs})"),
+            Atom::DivUnsigned(lhs, rhs) => write!(f, "({lhs} / {rhs})"),
+            Atom::DivFloat(lhs, rhs) => write!(f, "({lhs} / {rhs})"),
+            Atom::ModSigned(lhs, rhs) => write!(f, "({lhs} % {rhs})"),
+            Atom::ModUnsigned(lhs, rhs) => write!(f, "({lhs} % {rhs})"),
+            Atom::ModFloat(lhs, rhs) => write!(f, "({lhs} % {rhs})"),
+            Atom::LessSigned(lhs, rhs) => write!(f, "({lhs} < {rhs})"),
+            Atom::LessUnsigned(lhs, rhs) => write!(f, "({lhs} < {rhs})"),
+            Atom::LessFloat(lhs, rhs) => write!(f, "({lhs} < {rhs})"),
+            Atom::EqInt(lhs, rhs) => write!(f, "({lhs} == {rhs})"),
+            Atom::EqFloat(lhs, rhs) => write!(f, "({lhs} == {rhs})"),
+            Atom::EqChar(lhs, rhs) => write!(f, "({lhs} == {rhs})"),
+            Atom::EqBool(lhs, rhs) => write!(f, "({lhs} == {rhs})"),
+            Atom::SignExtend(lhs, rhs) => write!(f, "(sign_extend {lhs} {rhs})"),
+            Atom::ZeroExtend(lhs, rhs) => write!(f, "(zero_extend {lhs} {rhs})"),
+            Atom::SignedToFloat(lhs, rhs) => write!(f, "(signed_to_float {lhs} {rhs})"),
+            Atom::UnsignedToFloat(lhs, rhs) => write!(f, "(unsigned_to_float {lhs} {rhs})"),
+            Atom::FloatToSigned(lhs, rhs) => write!(f, "(float_to_signed {lhs} {rhs})"),
+            Atom::FloatToUnsigned(lhs, rhs) => write!(f, "(float_to_unsigned {lhs} {rhs})"),
+            Atom::FloatPromote(lhs, rhs) => write!(f, "(float_promote {lhs} {rhs})"),
+            Atom::FloatDemote(lhs, rhs) => write!(f, "(float_demote {lhs} {rhs})"),
+            Atom::BitwiseAnd(lhs, rhs) => write!(f, "({lhs} & {rhs})"),
+            Atom::BitwiseOr(lhs, rhs) => write!(f, "({lhs} | {rhs})"),
+            Atom::BitwiseXor(lhs, rhs) => write!(f, "({lhs} ^ {rhs})"),
+            Atom::BitwiseNot(lhs) => write!(f, "(bitwise_not {lhs})"),
+            Atom::Truncate(lhs, rhs) => write!(f, "(truncate {lhs} {rhs})"),
+            Atom::Deref(lhs, rhs) => write!(f, "(deref {lhs} {rhs})"),
+            Atom::Offset(lhs, rhs, typ) => write!(f, "(offset {lhs} {rhs} {typ})"),
+            Atom::Transmute(lhs, rhs) => write!(f, "(transmute {lhs} {rhs})"),
+            Atom::StackAlloc(lhs) => write!(f, "(stack_alloc {lhs})"),
         }
     }
 }
@@ -156,29 +191,22 @@ impl GraphBuilder {
     }
 
     fn add_edges(&mut self, current_function: &FunctionId, atom: &Atom) {
-        match atom {
-            Atom::Primop => (),
-            Atom::Branch => (),
-            Atom::Literal(_) => (),
-            Atom::Parameter(parameter_id) => {
-                if !self.exclude_parameters {
-                    let source_index = self.functions[current_function];
-                    let destination_index = self.parameters[parameter_id];
-                    self.graph.update_edge(source_index, destination_index, ());
-                }
-            },
-            Atom::Function(function_id) => {
-                if !self.exclude_functions {
-                    let source_index = self.functions[current_function];
-                    let destination_index = self.functions[function_id];
-                    self.graph.update_edge(source_index, destination_index, ());
-                }
-            },
-            Atom::Tuple(fields) => {
-                for field in fields {
-                    self.add_edges(current_function, field);
-                }
-            },
-        }
+        let on_function = |this: &mut Self, function_id: &FunctionId| {
+            if !this.exclude_functions {
+                let source_index = this.functions[current_function];
+                let destination_index = this.functions[function_id];
+                this.graph.update_edge(source_index, destination_index, ());
+            }
+        };
+
+        let on_parameter = |this: &mut Self, parameter_id: &ParameterId| {
+            if !this.exclude_parameters {
+                let source_index = this.functions[current_function];
+                let destination_index = this.parameters[parameter_id];
+                this.graph.update_edge(source_index, destination_index, ());
+            }
+        };
+
+        atom.for_each_id(self, on_function, on_parameter);
     }
 }

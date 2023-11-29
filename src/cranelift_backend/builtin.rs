@@ -44,8 +44,8 @@ pub fn call_builtin<'ast>(builtin: &'ast Builtin, context: &mut Context<'ast>, b
         Builtin::UnsignedToFloat(a, _typ) => unsigned_to_float(value(a), builder),
         Builtin::FloatToSigned(a, _typ) => float_to_signed(value(a), builder),
         Builtin::FloatToUnsigned(a, _typ) => float_to_unsigned(value(a), builder),
-        Builtin::FloatPromote(a) => float_promote(value(a), builder),
-        Builtin::FloatDemote(a) => float_demote(value(a), builder),
+        Builtin::FloatPromote(a, _typ) => float_promote(value(a), builder),
+        Builtin::FloatDemote(a, _typ) => float_demote(value(a), builder),
 
         Builtin::BitwiseAnd(a, b) => bitwise_and(value(a), value(b), builder),
         Builtin::BitwiseOr(a, b) => bitwise_or(value(a), value(b), builder),

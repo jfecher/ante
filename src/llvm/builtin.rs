@@ -58,8 +58,8 @@ pub fn call_builtin<'g>(builtin: &Builtin, generator: &mut Generator<'g>) -> Bas
         Builtin::UnsignedToFloat(a, _typ) => unsigned_to_float(int(a), generator),
         Builtin::FloatToSigned(a, _typ) => float_to_signed(a, generator),
         Builtin::FloatToUnsigned(a, _typ) => float_to_unsigned(a, generator),
-        Builtin::FloatPromote(a) => float_to_float_cast(a, generator),
-        Builtin::FloatDemote(a) => float_to_float_cast(a, generator),
+        Builtin::FloatPromote(a, _typ) => float_to_float_cast(a, generator),
+        Builtin::FloatDemote(a, _typ) => float_to_float_cast(a, generator),
 
         Builtin::BitwiseAnd(a, b) => bitwise_and(int(a), int(b), generator),
         Builtin::BitwiseOr(a, b) => bitwise_or(int(a), int(b), generator),

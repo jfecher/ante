@@ -1364,8 +1364,8 @@ impl<'c> Context<'c> {
             "UnsignedToFloat" => cast(self, UnsignedToFloat),
             "FloatToSigned" => cast(self, FloatToSigned),
             "FloatToUnsigned" => cast(self, FloatToUnsigned),
-            "FloatPromote" => FloatPromote(Box::new(self.monomorphise(&args[1]))),
-            "FloatDemote" => FloatDemote(Box::new(self.monomorphise(&args[1]))),
+            "FloatPromote" => cast(self, FloatPromote),
+            "FloatDemote" => cast(self, FloatDemote),
 
             "BitwiseAnd" => binary(self, BitwiseAnd),
             "BitwiseOr" => binary(self, BitwiseOr),
