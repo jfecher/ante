@@ -20,10 +20,7 @@ impl Display for Mir {
 impl Display for Function {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let body_args = fmap(&self.body_args, ToString::to_string).join(", ");
-        let parameters = fmap(self.argument_types.iter().enumerate(), |(i, typ)| {
-            let id = ParameterId { function: self.id.clone(), parameter_index: i as u16, name: Rc::new(String::new()) };
-            format!("{}: {}", id, typ)
-        }).join(", ");
+        let parameters = fmap(&self.argument_types, ToString::to_string).join(", ");
 
         writeln!(f, "{}({}):\n  {}({})", self.id, parameters, self.body_continuation, body_args)
     }
@@ -33,6 +30,14 @@ impl Display for Atom {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Atom::Branch => write!(f, "branch"),
+            Atom::Switch(branches, else_branch) => {
+                let branches = fmap(branches, |(value, branch)| format!("{} -> {}", value, branch)).join(", ");
+                let else_branch = match else_branch {
+                    Some(branch) => format!(", {}", branch),
+                    None => String::new(),
+                };
+                write!(f, "switch[{}{}]", branches, else_branch)
+            },
             Atom::Literal(literal) => write!(f, "{literal}"),
             Atom::Parameter(parameter) => write!(f, "{parameter}"),
             Atom::Function(lambda) => write!(f, "{lambda}"),
@@ -40,6 +45,9 @@ impl Display for Atom {
                 let fields = fmap(fields, ToString::to_string).join(", ");
                 write!(f, "({fields})")
             },
+            Atom::MemberAccess(lhs, index, typ) => {
+                write!(f, "({lhs} . {index} : {typ})")
+            }
             Atom::AddInt(lhs, rhs) => write!(f, "({lhs} + {rhs})"),
             Atom::AddFloat(lhs, rhs) => write!(f, "({lhs} + {rhs})"),
             Atom::SubInt(lhs, rhs) => write!(f, "({lhs} - {rhs})"),

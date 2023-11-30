@@ -159,9 +159,10 @@ impl Context {
         self.current_function_mut().argument_types.push(typ);
     }
 
-    pub fn continuation_types_of(&self, f: &Atom, args: &[Atom]) -> Vec<Type> {
+    pub fn continuation_types_of(&self, f: &Atom, _args: &[Atom]) -> Vec<Type> {
         match f {
-            Atom::Branch => vec![self.type_of(&args[0])],
+            Atom::Branch => panic!("continuation_types_of: Cannot take continuation type of Atom::Branch"),
+            Atom::Switch(_, _) => panic!("continuation_types_of: Cannot take continuation type of Atom::Switch"),
             Atom::Parameter(parameter_id) => {
                 let function = self.function(&parameter_id.function);
                 function.argument_types[parameter_id.parameter_index as usize].get_continuation_types(parameter_id)
@@ -175,7 +176,8 @@ impl Context {
                     other => unreachable!("Expected function type, found {}", other),
                 }
             },
-            Atom::Deref(_, typ)
+            Atom::MemberAccess(_, _, typ)
+            | Atom::Deref(_, typ)
             | Atom::Transmute(_, typ) => typ.get_continuation_types(f),
 
             Atom::Literal(_)
@@ -217,9 +219,11 @@ impl Context {
         }
     }
 
+    /*
     fn type_of(&self, atom: &Atom) -> Type {
         match atom {
             Atom::Branch => unreachable!("Atom::Branch has no type"),
+            Atom::Switch(_, _ )=> unreachable!("Atom::Switch has no type"),
             Atom::Literal(literal) => {
                 match literal {
                     Literal::Integer(_, kind) => Type::Primitive(PrimitiveType::Integer(*kind)),
@@ -280,4 +284,5 @@ impl Context {
             Atom::StackAlloc(_) => Type::Primitive(PrimitiveType::Pointer),
         }
     }
+    */
 }

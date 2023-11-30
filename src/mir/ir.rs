@@ -28,11 +28,23 @@ impl Function {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Atom {
+    /// An if-else branching. Expects 3 arguments: [cond, k_then, k_else]
     Branch,
+
+    /// A switch case (derived from a match expression).
+    /// Expects a list of cases with the value to match for each along
+    /// with the continuation to jump to that case. Also expects an additional
+    /// optional default case continuation.
+    /// 
+    /// This also expects one argument when called: the value to match.
+    Switch(Vec<(u32, FunctionId)>, Option<FunctionId>),
+
     Literal(Literal),
     Parameter(ParameterId),
     Function(FunctionId),
+
     Tuple(Vec<Atom>),
+    MemberAccess(Box<Atom>, u32, Type),
 
     AddInt(Box<Atom>, Box<Atom>),
     AddFloat(Box<Atom>, Box<Atom>),
@@ -104,6 +116,14 @@ impl Atom {
 
         match self {
             Atom::Branch => (),
+            Atom::Switch(cases, else_case) => {
+                for (_, case_continuation) in cases {
+                    on_function(data, case_continuation);
+                }
+                if let Some(else_continuation) = else_case {
+                    on_function(data, else_continuation);
+                }
+            },
             Atom::Literal(_) => (),
             Atom::Parameter(parameter_id) => on_parameter(data, parameter_id),
             Atom::Function(function_id) => on_function(data, function_id),
@@ -112,6 +132,7 @@ impl Atom {
                     field.for_each_id_helper(data, on_function, on_parameter);
                 }
             },
+            Atom::MemberAccess(lhs, _, _) => lhs.for_each_id_helper(data, on_function, on_parameter),
             Atom::AddInt(lhs, rhs) => both(data, lhs, rhs),
             Atom::AddFloat(lhs, rhs) => both(data, lhs, rhs),
             Atom::SubInt(lhs, rhs) => both(data, lhs, rhs),

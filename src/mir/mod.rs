@@ -1,7 +1,8 @@
 use std::rc::Rc;
 
-use self::ir::{Mir, Atom, ParameterId};
+use self::ir::{Mir, Atom, ParameterId, FunctionId};
 use self::context::Context;
+use crate::hir::DecisionTree;
 use crate::{hir::{self, Literal}, util::fmap};
 
 pub mod ir;
@@ -211,7 +212,63 @@ impl ToMir for hir::If {
 
 impl ToMir for hir::Match {
     fn to_mir(&self, context: &mut Context) -> AtomOrCall {
-        todo!()
+        let original_function = context.current_function_id.clone();
+        let leaves = fmap(&self.branches, |_| context.next_fresh_function());
+
+        // Codegen the switches first to eventually jump to each leaf
+        context.current_function_id = original_function;
+        decision_tree_to_mir(&self.decision_tree, &leaves, context);
+
+        let end = context.next_fresh_function();
+        context.add_parameter(&self.result_type);
+
+        // Now codegen each leaf, all jumping to the same end continuation afterward
+        for (leaf_hir, leaf_function) in self.branches.iter().zip(leaves) {
+            context.current_function_id = leaf_function;
+            let result = leaf_hir.to_atom(context);
+            context.terminate_function_with_call(Atom::Function(end.clone()), vec![result]);
+        }
+
+        context.current_function_id = end.clone();
+        AtomOrCall::Atom(Atom::Parameter(ParameterId {
+            function: end,
+            parameter_index: 0,
+            name: context.intermediate_result_name.clone()
+        }))
+    }
+}
+
+fn decision_tree_to_mir(tree: &DecisionTree, leaves: &[FunctionId], context: &mut Context) {
+    match tree {
+        DecisionTree::Leaf(leaf_index) => {
+            let function = Atom::Function(leaves[*leaf_index].clone());
+            context.terminate_function_with_call(function, vec![]);
+        },
+        DecisionTree::Definition(definition, rest) => {
+            definition.to_atom(context);
+            decision_tree_to_mir(&rest, leaves, context);
+        },
+        DecisionTree::Switch { int_to_switch_on, cases, else_case } => {
+            let tag = int_to_switch_on.to_atom(context);
+            let original_function = context.current_function_id.clone();
+
+            let case_functions = fmap(cases, |(tag_to_match, case_tree)| {
+                let function = context.next_fresh_function();
+                decision_tree_to_mir(case_tree, leaves, context);
+                (*tag_to_match, function)
+            });
+
+            let else_function = else_case.as_ref().map(|else_tree| {
+                let function = context.next_fresh_function();
+                decision_tree_to_mir(else_tree, leaves, context);
+                function
+            });
+
+            let switch = Atom::Switch(case_functions, else_function);
+
+            context.current_function_id = original_function;
+            context.terminate_function_with_call(switch, vec![tag]);
+        },
     }
 }
 
@@ -255,7 +312,9 @@ impl ToMir for hir::Assignment {
 
 impl ToMir for hir::MemberAccess {
     fn to_mir(&self, context: &mut Context) -> AtomOrCall {
-        todo!()
+        let lhs = Box::new(self.lhs.to_atom(context));
+        let typ = Context::convert_type(&self.typ);
+        AtomOrCall::Atom(Atom::MemberAccess(lhs, self.member_index, typ))
     }
 }
 
