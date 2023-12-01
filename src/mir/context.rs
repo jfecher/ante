@@ -1,15 +1,15 @@
 use std::{collections::{HashMap, VecDeque}, rc::Rc};
 
-use crate::{hir::{self, Variable, Literal, PrimitiveType}, util::fmap};
+use crate::{hir::{self, Literal, PrimitiveType}, util::fmap};
 
-use super::ir::{Mir, Atom, FunctionId, self, Type, Function};
+use super::{ir::{Mir, Atom, FunctionId, self, Type, Function, ExternId}, ToMir};
 
 
 pub struct Context {
     pub(super) mir: Mir,
     pub(super) definitions: HashMap<hir::DefinitionId, Atom>,
 
-    pub(super) definition_queue: VecDeque<(FunctionId, Variable)>,
+    pub(super) definition_queue: VecDeque<(FunctionId, Rc<hir::Ast>)>,
 
     /// The function currently being translated. It is expected that the
     /// `body_continuation` and `body_args` fields of this function are filler
@@ -112,6 +112,16 @@ impl Context {
     }
 
     pub fn add_global_to_queue(&mut self, variable: hir::Variable) -> Atom {
+        let definition = variable.definition.expect("No definition for hir::Ast global!").clone();
+
+        // If this is an extern we don't need to do any extra work and can just convert it to an atom now.
+        if let hir::Ast::Extern(extern_value) = &*definition {
+            println!("Got extern!");
+            return extern_value.to_atom(self);
+        }
+
+        println!("Not a global, got: {}", definition);
+
         let name = match &variable.name {
             Some(name) => Rc::new(name.to_owned()),
             None => self.intermediate_result_name.clone(),
@@ -125,7 +135,7 @@ impl Context {
         let next_id = self.next_function_id(name);
         let atom = Atom::Function(next_id.clone());
         self.definitions.insert(variable.definition_id, atom.clone());
-        self.definition_queue.push_back((next_id.clone(), variable));
+        self.definition_queue.push_back((next_id.clone(), definition));
 
         let mut function = Function::empty(next_id.clone());
         function.argument_types = argument_types;
@@ -147,6 +157,17 @@ impl Context {
                 Type::Tuple(fmap(fields, Self::convert_type))
             },
         }
+    }
+
+    pub fn import_extern(&mut self, extern_name: &str, extern_type: &hir::Type) -> ExternId {
+        if let Some((_, id)) = self.mir.extern_symbols.get(extern_name) {
+            return *id;
+        }
+
+        let typ = Self::convert_type(extern_type);
+        let id = ExternId(self.mir.extern_symbols.len() as u32);
+        self.mir.extern_symbols.insert(extern_name.to_owned(), (typ, id));
+        id
     }
 
     pub fn add_parameter(&mut self, parameter_type: &hir::Type) {
@@ -179,6 +200,9 @@ impl Context {
             Atom::MemberAccess(_, _, typ)
             | Atom::Deref(_, typ)
             | Atom::Transmute(_, typ) => typ.get_continuation_types(f),
+
+            Atom::Assign => vec![Type::Primitive(PrimitiveType::Unit)],
+            Atom::Extern(_) => vec![Type::Primitive(PrimitiveType::Unit)],
 
             Atom::Literal(_)
             | Atom::Tuple(_)

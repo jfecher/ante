@@ -48,6 +48,8 @@ impl Display for Atom {
             Atom::MemberAccess(lhs, index, typ) => {
                 write!(f, "({lhs} . {index} : {typ})")
             }
+            Atom::Assign => write!(f, ":="),
+            Atom::Extern(extern_id) => write!(f, "extern_{}", extern_id.0),
             Atom::AddInt(lhs, rhs) => write!(f, "({lhs} + {rhs})"),
             Atom::AddFloat(lhs, rhs) => write!(f, "({lhs} + {rhs})"),
             Atom::SubInt(lhs, rhs) => write!(f, "({lhs} - {rhs})"),

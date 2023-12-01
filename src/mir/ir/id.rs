@@ -15,6 +15,9 @@ pub struct ParameterId {
     pub name: Rc<String>,
 }
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub struct ExternId(pub u32);
+
 impl Hash for FunctionId {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.id.hash(state);

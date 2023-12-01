@@ -17,14 +17,9 @@ pub fn convert_to_mir(hir: hir::Ast) -> Mir {
         context.terminate_function_with_call(continuation, vec![ret]);
     }
 
-    while let Some((_, variable)) = context.definition_queue.pop_front() {
-        match &variable.definition {
-            Some(definition) => {
-                let result = definition.to_mir(&mut context);
-                assert!(matches!(result, AtomOrCall::Atom(Atom::Literal(Literal::Unit))));
-            },
-            None => unreachable!("No definition for {}", variable),
-        }
+    while let Some((_, definition)) = context.definition_queue.pop_front() {
+        let result = definition.to_mir(&mut context);
+        assert!(matches!(result, AtomOrCall::Atom(Atom::Literal(Literal::Unit))));
     }
 
     context.mir
@@ -167,9 +162,16 @@ impl ToMir for hir::Definition {
             };
 
             let old = context.expected_function_id.take();
-            context.expected_function_id = Some(function);
+            context.expected_function_id = Some(function.clone());
             let rhs = self.expr.to_atom(context);
-            assert_eq!(rhs, expected);
+
+            // If rhs is an extern symbol it may define a function yet
+            // not actually correspond to an Atom::Function
+            if rhs != expected {
+                assert!(matches!(rhs, Atom::Extern(_)));
+                context.definitions.insert(self.variable, rhs);
+            }
+
             context.expected_function_id = old;
         } else {
             let rhs = self.expr.to_atom(context);
@@ -300,13 +302,16 @@ impl ToMir for hir::Sequence {
 
 impl ToMir for hir::Extern {
     fn to_mir(&self, context: &mut Context) -> AtomOrCall {
-        todo!()
+        let id = context.import_extern(&self.name, &self.typ);
+        AtomOrCall::Atom(Atom::Extern(id))
     }
 }
 
 impl ToMir for hir::Assignment {
     fn to_mir(&self, context: &mut Context) -> AtomOrCall {
-        todo!()
+        let lhs = self.lhs.to_atom(context);
+        let rhs = self.rhs.to_atom(context);
+        AtomOrCall::Call(Atom::Assign, vec![lhs, rhs])
     }
 }
 

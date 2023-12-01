@@ -8,6 +8,8 @@ pub use id::*;
 #[derive(Default)]
 pub struct Mir {
     pub functions: HashMap<FunctionId, Function>,
+
+    pub extern_symbols: HashMap<String, (Type, ExternId)>,
 }
 
 pub struct Function {
@@ -45,6 +47,16 @@ pub enum Atom {
 
     Tuple(Vec<Atom>),
     MemberAccess(Box<Atom>, u32, Type),
+
+    /// Assignment expects 3 arguments: [lvalue, rvalue, k]
+    Assign,
+
+    /// Extern expects 1 argument: [k]
+    ///
+    /// The ExternId can be used to retrieve the name and type
+    /// of the symbol being referenced. An ID is used to ensure
+    /// the same symbol is not imported multiple times.
+    Extern(ExternId),
 
     AddInt(Box<Atom>, Box<Atom>),
     AddFloat(Box<Atom>, Box<Atom>),
@@ -132,6 +144,8 @@ impl Atom {
                     field.for_each_id_helper(data, on_function, on_parameter);
                 }
             },
+            Atom::Assign => (),
+            Atom::Extern(_) => (),
             Atom::MemberAccess(lhs, _, _) => lhs.for_each_id_helper(data, on_function, on_parameter),
             Atom::AddInt(lhs, rhs) => both(data, lhs, rhs),
             Atom::AddFloat(lhs, rhs) => both(data, lhs, rhs),
