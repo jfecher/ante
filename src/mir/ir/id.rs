@@ -12,7 +12,6 @@ pub struct FunctionId {
 pub struct ParameterId {
     pub function: FunctionId,
     pub parameter_index: u16,
-    pub name: Rc<String>,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]

@@ -98,7 +98,7 @@ impl Display for FunctionId {
 
 impl Display for ParameterId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}_{}_{}", self.name, self.function, self.parameter_index)
+        write!(f, "{}_{}", self.function, self.parameter_index)
     }
 }
 
@@ -179,7 +179,7 @@ impl GraphBuilder {
 
             if !self.exclude_parameters {
                 for i in 0 .. function.argument_types.len() {
-                    let parameter = ParameterId { function: function_id.clone(), parameter_index: i as u16, name: Rc::new(String::new()) };
+                    let parameter = ParameterId { function: function_id.clone(), parameter_index: i as u16 };
                     let parameter_index = self.graph.add_node(parameter.to_string());
                     self.parameters.insert(parameter, parameter_index);
 

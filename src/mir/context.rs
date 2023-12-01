@@ -2,7 +2,7 @@ use std::{collections::{HashMap, VecDeque}, rc::Rc};
 
 use crate::{hir::{self, Literal, PrimitiveType}, util::fmap};
 
-use super::{ir::{Mir, Atom, FunctionId, self, Type, Function, ExternId}, ToMir};
+use super::ir::{Mir, Atom, FunctionId, self, Type, Function, ExternId};
 
 
 pub struct Context {
@@ -26,13 +26,10 @@ pub struct Context {
 
     pub(super) continuation: Option<Atom>,
 
-    /// The name of any intermediate result variable when we need to make one up.
+    /// The name of any lambda when we need to make one up.
     /// This is stored here so that we can increment a Rc instead of allocating a new
     /// string for each variable named this way.
-    pub(super) intermediate_result_name: Rc<String>,
-
-    /// Similar to the above, this holds the name for any continuations we have to create
-    pub(super) continuation_name: Rc<String>,
+    pub(super) lambda_name: Rc<String>,
 }
 
 impl Context {
@@ -57,8 +54,7 @@ impl Context {
             next_function_id: 1, // Since 0 is taken for main
             continuation: None,
             expected_function_id: None,
-            intermediate_result_name: Rc::new("v".into()),
-            continuation_name: Rc::new("k".into()),
+            lambda_name: Rc::new("lambda".into()),
         }
     }
 
@@ -112,19 +108,9 @@ impl Context {
     }
 
     pub fn add_global_to_queue(&mut self, variable: hir::Variable) -> Atom {
-        let definition = variable.definition.expect("No definition for hir::Ast global!").clone();
-
-        // If this is an extern we don't need to do any extra work and can just convert it to an atom now.
-        if let hir::Ast::Extern(extern_value) = &*definition {
-            println!("Got extern!");
-            return extern_value.to_atom(self);
-        }
-
-        println!("Not a global, got: {}", definition);
-
         let name = match &variable.name {
             Some(name) => Rc::new(name.to_owned()),
-            None => self.intermediate_result_name.clone(),
+            None => self.lambda_name.clone(),
         };
 
         let argument_types = match Self::convert_type(&variable.typ) {
@@ -135,6 +121,8 @@ impl Context {
         let next_id = self.next_function_id(name);
         let atom = Atom::Function(next_id.clone());
         self.definitions.insert(variable.definition_id, atom.clone());
+
+        let definition = variable.definition.expect("No definition for hir::Ast global!").clone();
         self.definition_queue.push_back((next_id.clone(), definition));
 
         let mut function = Function::empty(next_id.clone());
@@ -241,6 +229,14 @@ impl Context {
             | Atom::Offset(_, _, _)
             | Atom::StackAlloc(_) => unreachable!("Cannot call a {}", f),
         }
+    }
+
+    pub(crate) fn current_parameters(&self) -> Vec<Atom> {
+        let parameter_count = self.current_function().argument_types.len();
+        fmap(0 .. parameter_count, |i| Atom::Parameter(ir::ParameterId {
+            function: self.current_function_id.clone(),
+            parameter_index: i as u16,
+        }))
     }
 
     /*

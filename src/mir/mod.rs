@@ -31,6 +31,15 @@ enum AtomOrCall {
 }
 
 impl AtomOrCall {
+    /// Convert this AtomOrCall into an Atom
+    /// 
+    /// Since each Call terminates a function, this will terminate the current function
+    /// and automatically create and switch to a new function if this is a Call.
+    /// Doing so will also automatically add the new function as a continuation argument
+    /// to the now finished function. As such, this function should be avoided if
+    /// the continuation is already in the Call's arguments. It should also be avoided for
+    /// constructs like Atom::Branch and Atom::Switch that have non-standard continuation
+    /// positions (ie. do not just have 1 continuation at the end of their parameter lists).
     fn into_atom(self, context: &mut Context) -> Atom {
         match self {
             AtomOrCall::Atom(atom) => atom,
@@ -58,7 +67,6 @@ impl AtomOrCall {
                 Atom::Parameter(ParameterId {
                     function: k,
                     parameter_index: 0,
-                    name: Rc::new("rv".into()),
                 })
             },
         }
@@ -112,7 +120,6 @@ impl ToMir for hir::Lambda {
             context.definitions.insert(arg.definition_id, Atom::Parameter(ParameterId {
                 function: lambda_id.clone(),
                 parameter_index: i as u16,
-                name: arg.name.as_ref().map_or_else(|| Rc::new(format!("p{i}")), |name| Rc::new(name.to_string())),
             }));
         }
 
@@ -130,7 +137,6 @@ impl ToMir for hir::Lambda {
         let k = Atom::Parameter(ParameterId {
             function: lambda_id.clone(),
             parameter_index: self.args.len() as u16,
-            name: context.continuation_name.clone(),
         });
 
         context.continuation = Some(k.clone());
@@ -169,7 +175,16 @@ impl ToMir for hir::Definition {
             // not actually correspond to an Atom::Function
             if rhs != expected {
                 assert!(matches!(rhs, Atom::Extern(_)));
-                context.definitions.insert(self.variable, rhs);
+
+                let original_function = context.current_function_id.clone();
+                context.current_function_id = function;
+
+                // The body is still empty in the case of an extern, so
+                // forward all of the arguments to the extern itself
+                let parameters = context.current_parameters();
+                context.terminate_function_with_call(rhs, parameters);
+
+                context.current_function_id = original_function;
             }
 
             context.expected_function_id = old;
@@ -207,7 +222,6 @@ impl ToMir for hir::If {
         AtomOrCall::Atom(Atom::Parameter(ParameterId { 
             function: end_function_id,
             parameter_index: 0,
-            name: context.intermediate_result_name.clone(),
         }))
     }
 }
@@ -235,7 +249,6 @@ impl ToMir for hir::Match {
         AtomOrCall::Atom(Atom::Parameter(ParameterId {
             function: end,
             parameter_index: 0,
-            name: context.intermediate_result_name.clone()
         }))
     }
 }
