@@ -71,23 +71,24 @@ fn replace_env(expr: Ast, env: &Ast, definition_id: hir::DefinitionId, f: &hir::
         Ast::Literal(_) => expr,
         Ast::Variable(_) => expr,
         Ast::Extern(_) => expr,
+        Ast::Effect(_) => expr,
         Ast::Lambda(mut lambda) => {
-            lambda.body = Box::new(replace_env(*lambda.body, env, definition_id, f));
+            *lambda.body = replace_env(*lambda.body, env, definition_id, f);
             Ast::Lambda(lambda)
         },
         Ast::FunctionCall(mut call) => {
-            call.function = Box::new(replace_env(*call.function, env, definition_id, f));
+            *call.function = replace_env(*call.function, env, definition_id, f);
             call.args = fmap(call.args, |arg| replace_env(arg, env, definition_id, f));
             Ast::FunctionCall(call)
         },
         Ast::Definition(mut def) => {
-            def.expr = Box::new(replace_env(*def.expr, env, definition_id, f));
+            *def.expr = replace_env(*def.expr, env, definition_id, f);
             Ast::Definition(def)
         },
         Ast::If(mut if_expr) => {
-            if_expr.condition = Box::new(replace_env(*if_expr.condition, env, definition_id, f));
-            if_expr.then = Box::new(replace_env(*if_expr.then, env, definition_id, f));
-            if_expr.otherwise = Box::new(replace_env(*if_expr.otherwise, env, definition_id, f));
+            *if_expr.condition = replace_env(*if_expr.condition, env, definition_id, f);
+            *if_expr.then = replace_env(*if_expr.then, env, definition_id, f);
+            *if_expr.otherwise = replace_env(*if_expr.otherwise, env, definition_id, f);
             Ast::If(if_expr)
         },
         Ast::Sequence(mut seq) => {
@@ -103,8 +104,8 @@ fn replace_env(expr: Ast, env: &Ast, definition_id: hir::DefinitionId, f: &hir::
             Ast::Tuple(tuple)
         },
         Ast::Assignment(mut assignment) => {
-            assignment.lhs = Box::new(replace_env(*assignment.lhs, env, definition_id, f));
-            assignment.rhs = Box::new(replace_env(*assignment.rhs, env, definition_id, f));
+            *assignment.lhs = replace_env(*assignment.lhs, env, definition_id, f);
+            *assignment.rhs = replace_env(*assignment.rhs, env, definition_id, f);
             Ast::Assignment(assignment)
         },
         Ast::Match(mut match_expr) => {
@@ -121,6 +122,11 @@ fn replace_env(expr: Ast, env: &Ast, definition_id: hir::DefinitionId, f: &hir::
             Ast::ReinterpretCast(cast)
         },
         Ast::Builtin(builtin) => Ast::Builtin(replace_env_builtin(builtin, env, definition_id, f)),
+        Ast::Handle(mut handle) => {
+            *handle.expression = replace_env(*handle.expression, env, definition_id, f);
+            *handle.branch_body.body = replace_env(*handle.branch_body.body, env, definition_id, f);
+            Ast::Handle(handle)
+        },
     }
 }
 

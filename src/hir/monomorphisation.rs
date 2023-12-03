@@ -122,8 +122,8 @@ impl<'c> Context<'c> {
             Extern(_) => unit_literal(),
             MemberAccess(member_access) => self.monomorphise_member_access(member_access),
             Assignment(assignment) => self.monomorphise_assignment(assignment),
-            EffectDefinition(_) => todo!(),
-            Handle(_) => todo!(),
+            EffectDefinition(_) => unit_literal(),
+            Handle(handle) => self.monomorphise_handle(handle),
             NamedConstructor(_) => todo!(),
         }
     }
@@ -456,7 +456,7 @@ impl<'c> Context<'c> {
     }
 
     fn empty_closure_environment(&self, environment: &types::Type) -> bool {
-        self.follow_bindings_shallow(environment).map_or(false, |env| env.is_unit(&self.cache))
+        self.follow_bindings_shallow(environment).map_or(true, |env| env.is_unit(&self.cache))
     }
 
     /// Monomorphise a types::Type into a hir::Type with no generics.
@@ -822,17 +822,13 @@ impl<'c> Context<'c> {
                 let definition = self.monomorphise_type_constructor(tag, &typ);
                 self.define_type_constructor(definition, id, typ)
             },
+            Some(DefinitionKind::EffectDefinition(effect_definition)) => {
+                self.monomorphise_effect_definition(effect_definition);
+                self.definitions.get(id, typ).unwrap().clone()
+            },
             Some(DefinitionKind::TraitDefinition(_)) => {
                 unreachable!(
                     "Cannot monomorphise from a TraitDefinition.\nNo cached impl for {} {}: {}",
-                    info.name,
-                    id.0,
-                    typ.debug(&self.cache)
-                )
-            },
-            Some(DefinitionKind::EffectDefinition(_)) => {
-                unreachable!(
-                    "Cannot monomorphise from a EffectDefinition.\nNo cached handle for {} {}: {}",
                     info.name,
                     id.0,
                     typ.debug(&self.cache)
@@ -1627,6 +1623,115 @@ impl<'c> Context<'c> {
                 let lhs = Box::new(other);
                 Ast::MemberAccess(hir::MemberAccess { lhs, member_index, typ: result_type })
             },
+        }
+    }
+
+    
+    fn monomorphise_handle(&mut self, handle: &ast::Handle<'c>) -> hir::Ast {
+        assert_eq!(handle.branches.len(), handle.resumes.len());
+        let expression = self.monomorphise(&handle.expression);
+
+        let mut f = |pattern: &ast::Ast<'c>, resume: DefinitionInfoId, branch: &ast::Ast<'c>, expr| {
+            let mut parameters = vec![];
+
+            let (effect, args) = match pattern {
+                ast::Ast::FunctionCall(call) => {
+                    let effect = match self.monomorphise(&call.function) {
+                        hir::Ast::Variable(variable) => match variable.definition.as_ref().unwrap().as_ref() {
+                            hir::Ast::Definition(definition) => match definition.expr.as_ref() {
+                                hir::Ast::Effect(effect) => effect.clone(),
+                                other => unreachable!("Unexpected effect definition expr: {}", other),
+                            }
+                            other => unreachable!("Unexpected effect definition: {}", other),
+                        },
+                        other => unreachable!("Unexpected monomorphise result for effect function: {}", other),
+                    };
+
+                    let args = fmap(&call.args, |arg| {
+                        let variable = match arg {
+                            ast::Ast::Variable(variable) => variable,
+                            other => unreachable!("Unexpected variable in effect handler: {}", other),
+                        };
+
+                        let id = variable.definition.unwrap();
+                        let name = Some(variable.to_string());
+                        let definition_id = self.next_unique_id();
+                        let frontend_type = self.follow_all_bindings(self.cache[id].typ.as_ref().unwrap().as_monotype());
+                        let typ = self.convert_type(&frontend_type);
+
+                        parameters.push(typ.clone());
+
+                        let typ = Rc::new(typ);
+                        let variable = hir::Variable { definition_id, definition: None, name, typ };
+                        let definition = Definition::Normal(variable.clone());
+                        self.definitions.insert(id, frontend_type, definition);
+
+                        variable
+                    });
+
+                    (effect, args)
+                },
+                other => unreachable!("Unexpected handler pattern {}", other),
+            };
+
+            // Must define 'resume' before monomorphizing branch
+            let definition_id = self.next_unique_id();
+            let name = Some("resume".to_string());
+            let frontend_type = self.cache[resume].typ.as_ref().unwrap().as_monotype();
+            let frontend_type = self.follow_all_bindings(frontend_type);
+            let typ = Rc::new(self.convert_type(&frontend_type));
+
+            let resume_var = hir::Variable { definition_id, definition: None, name, typ };
+            let definition = Definition::Normal(resume_var.clone());
+            self.definitions.insert(resume, frontend_type, definition);
+
+            let return_type = Box::new(self.convert_type(branch.get_type().unwrap()));
+            let body = Box::new(self.monomorphise(&branch));
+            let branch_type = hir::FunctionType { parameters, return_type, is_varargs: false };
+
+            hir::Ast::Handle(hir::Handle {
+                expression: Box::new(expr),
+                effect,
+                resume: resume_var,
+                branch_body: hir::Lambda { args, body, typ: branch_type },
+            })
+        };
+
+        let mut branches = handle.branches.iter().zip(&handle.resumes);
+
+        let ((pattern, branch), resume) = branches.next().unwrap();
+        let mut ret = f(pattern, *resume, branch, expression);
+
+        for ((pattern, branch), resume) in branches {
+            ret = f(pattern, *resume, branch, ret);
+        }
+
+        ret
+    }
+
+    fn monomorphise_effect_definition(&mut self, effect_definition: &ast::EffectDefinition) {
+        for declaration in &effect_definition.declarations {
+            let declaration_type = declaration.typ.as_ref().unwrap();
+            let original_type = self.follow_all_bindings(declaration_type);
+            let typ = self.convert_type(declaration_type);
+
+            let original_id = match declaration.lhs.as_ref() {
+                ast::Ast::Variable(var) => var.definition.unwrap(),
+                other => unreachable!("Invalid effect function name: {}", other),
+            };
+
+            let id = self.next_unique_id();
+            let effect = hir::Ast::Effect(hir::Effect { id, typ: typ.clone() });
+
+            let name = Some(self.cache[original_id].name.clone());
+
+            let expr = Box::new(effect);
+            let definition = hir::Ast::Definition(hir::Definition { variable: id, expr, name: name.clone() });
+            let definition = Some(Rc::new(definition));
+            let definition = hir::DefinitionInfo { definition_id: id, definition, name, typ: Rc::new(typ) };
+
+            let definition = Definition::Normal(definition);
+            self.definitions.insert(original_id, original_type, definition.clone());
         }
     }
 }

@@ -1,4 +1,4 @@
-use std::{fmt::Display, rc::Rc, collections::HashMap};
+use std::{fmt::Display, collections::HashMap};
 
 use petgraph::prelude::DiGraph;
 
@@ -50,6 +50,8 @@ impl Display for Atom {
             }
             Atom::Assign => write!(f, ":="),
             Atom::Extern(extern_id) => write!(f, "extern_{}", extern_id.0),
+            Atom::Handle(id, branch) => write!(f, "handler_{}[{}]", id.0, branch),
+            Atom::Effect(id, _typ) => write!(f, "effect_{}", id.0),
             Atom::AddInt(lhs, rhs) => write!(f, "({lhs} + {rhs})"),
             Atom::AddFloat(lhs, rhs) => write!(f, "({lhs} + {rhs})"),
             Atom::SubInt(lhs, rhs) => write!(f, "({lhs} - {rhs})"),

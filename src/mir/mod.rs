@@ -139,10 +139,23 @@ impl ToMir for hir::Lambda {
             parameter_index: self.args.len() as u16,
         });
 
-        context.continuation = Some(k.clone());
+        // If we're in a handler branch, define `resume` to be the current continuation
+        if let Some(variable) = context.handler_continuation.take() {
+            context.definitions.insert(variable.definition_id, k.clone());
+            // We must fix the continuation type since `resume` can return a value (and thus also
+            // requires another continuation as an argument) unlike the default `k`
+            let function = context.current_function_mut();
+            *function.argument_types.last_mut().unwrap() = Context::convert_type(&variable.typ);
+        }
+
+        // The continuation to jump to at the end of a function to "return" the final value.
+        // This is usually the implicit k parameter but handle expressions override this.
+        let end_continuation = context.end_continuation.take().unwrap_or_else(|| k.clone());
+
+        context.continuation = Some(k);
 
         let lambda_body = self.body.to_atom(context);
-        context.terminate_function_with_call(k, vec![lambda_body]);
+        context.terminate_function_with_call(end_continuation, vec![lambda_body]);
 
         context.current_function_id = original_function;
         context.continuation = original_continuation;
@@ -174,7 +187,7 @@ impl ToMir for hir::Definition {
             // If rhs is an extern symbol it may define a function yet
             // not actually correspond to an Atom::Function
             if rhs != expected {
-                assert!(matches!(rhs, Atom::Extern(_)));
+                assert!(matches!(rhs, Atom::Extern(_) | Atom::Effect(..)), "{} is not a function, Extern, or Effect", rhs);
 
                 let original_function = context.current_function_id.clone();
                 context.current_function_id = function;
@@ -413,5 +426,44 @@ impl ToMir for hir::Builtin {
                 AtomOrCall::Atom(Atom::Offset(lhs, rhs, typ))
             },
         }
+    }
+}
+
+impl ToMir for hir::Effect {
+    fn to_mir(&self, context: &mut Context) -> AtomOrCall {
+        let effect_id = context.lookup_or_create_effect(self.id);
+        let typ = Context::convert_type(&self.typ);
+        AtomOrCall::Atom(Atom::Effect(effect_id, typ))
+    }
+}
+
+impl ToMir for hir::Handle {
+    fn to_mir(&self, context: &mut Context) -> AtomOrCall {
+        let current_function = context.current_function_id.clone();
+
+        let end_function_id = context.next_fresh_function();
+        let expression_function_id = context.next_fresh_function();
+
+        let result = self.expression.to_atom(context);
+        let end_expression = context.current_function_id.clone();
+
+        let end_function_atom = Atom::Function(end_function_id.clone());
+        context.terminate_function_with_call(end_function_atom.clone(), vec![]);
+
+        context.handler_continuation = Some(self.resume.clone());
+        context.end_continuation = Some(end_function_atom);
+        let handler = Box::new(self.branch_body.to_atom(context));
+
+        context.current_function_id = current_function;
+        let handler_id = context.next_handler_id();
+
+        let start_and_end = vec![
+            Atom::Function(expression_function_id),
+            Atom::Function(end_expression),
+        ];
+        context.terminate_function_with_call(Atom::Handle(handler_id, handler), start_and_end);
+
+        context.current_function_id = end_function_id;
+        AtomOrCall::Atom(result)
     }
 }

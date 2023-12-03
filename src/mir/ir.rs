@@ -58,6 +58,27 @@ pub enum Atom {
     /// the same symbol is not imported multiple times.
     Extern(ExternId),
 
+    /// Expects one argument: [expression]
+    ///
+    /// Where k is the start of the expression being handled.
+    ///
+    /// The HandlerId uniquely identifies this handler node, and the
+    /// Box<Atom> corresponds to the branch to take when the effect
+    /// is performed in the `expression` argument.
+    ///
+    /// Handlers initially correspond to the control-flow:
+    /// fn with Atom::Handle -> `expression` fn -> end function
+    /// When the handler is eventually removed from the Mir, the
+    /// handler branch itself is eventually spliced within `expression`.
+    Handle(HandlerId, Box<Atom>),
+
+    /// Expects a varying number of arguments, depending on the effect
+    /// defined by the user.
+    ///
+    /// Similar to Handle, this node will also be removed when effects
+    /// are specialized away.
+    Effect(EffectId, Type),
+
     AddInt(Box<Atom>, Box<Atom>),
     AddFloat(Box<Atom>, Box<Atom>),
 
@@ -147,6 +168,8 @@ impl Atom {
             Atom::Assign => (),
             Atom::Extern(_) => (),
             Atom::MemberAccess(lhs, _, _) => lhs.for_each_id_helper(data, on_function, on_parameter),
+            Atom::Handle(_, branch) => branch.for_each_id_helper(data, on_function, on_parameter),
+            Atom::Effect(_, _) => (),
             Atom::AddInt(lhs, rhs) => both(data, lhs, rhs),
             Atom::AddFloat(lhs, rhs) => both(data, lhs, rhs),
             Atom::SubInt(lhs, rhs) => both(data, lhs, rhs),
@@ -210,10 +233,10 @@ impl Type {
                 let continuation_type = arguments.last().unwrap_or_else(|| panic!("Expected at least 1 argument from {}", debug_label));
                 match continuation_type {
                     Type::Function(arguments) => arguments.clone(),
-                    other => unreachable!("Expected function type, found {}", other),
+                    other => unreachable!("Expected function type, found {} in {}", other, debug_label),
                 }
             }
-            other => unreachable!("Expected function type, found {}", other),
+            other => unreachable!("Expected function type, found {} in {}", other, debug_label),
         }
     }
 }

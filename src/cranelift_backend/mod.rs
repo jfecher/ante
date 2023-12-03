@@ -233,3 +233,15 @@ impl CodeGen for hir::Builtin {
         builtin::call_builtin(self, context, builder)
     }
 }
+
+impl CodeGen for hir::Handle {
+    fn codegen<'a>(&'a self, _context: &mut Context<'a>, _builder: &mut FunctionBuilder) -> Value {
+        todo!("cranelift codegen for handle (remove)")
+    }
+}
+
+impl CodeGen for hir::Effect {
+    fn codegen<'a>(&'a self, _context: &mut Context<'a>, _builder: &mut FunctionBuilder) -> Value {
+        todo!("cranelift codegen for Effect (remove)")
+    }
+}

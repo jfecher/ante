@@ -17,6 +17,13 @@ pub struct ParameterId {
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct ExternId(pub u32);
 
+/// Each Handler node is given a unique ID for specialization of each
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub struct HandlerId(pub u32);
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub struct EffectId(pub u32);
+
 impl Hash for FunctionId {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.id.hash(state);

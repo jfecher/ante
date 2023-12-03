@@ -740,3 +740,15 @@ impl<'g> CodeGen<'g> for hir::Builtin {
         builtin::call_builtin(self, generator)
     }
 }
+
+impl<'g> CodeGen<'g> for hir::Handle {
+    fn codegen(&self, _: &mut Generator<'g>) -> BasicValueEnum<'g> {
+        todo!("llvm codegen for Handle (remove)")
+    }
+}
+
+impl<'g> CodeGen<'g> for hir::Effect {
+    fn codegen(&self, _: &mut Generator<'g>) -> BasicValueEnum<'g> {
+        todo!("llvm codegen for Effects (remove)")
+    }
+}

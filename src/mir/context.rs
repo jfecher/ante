@@ -2,12 +2,14 @@ use std::{collections::{HashMap, VecDeque}, rc::Rc};
 
 use crate::{hir::{self, Literal, PrimitiveType}, util::fmap};
 
-use super::ir::{Mir, Atom, FunctionId, self, Type, Function, ExternId};
+use super::ir::{Mir, Atom, FunctionId, self, Type, Function, ExternId, HandlerId, EffectId};
 
 
 pub struct Context {
     pub(super) mir: Mir,
     pub(super) definitions: HashMap<hir::DefinitionId, Atom>,
+
+    pub(super) effects: HashMap<hir::DefinitionId, EffectId>,
 
     pub(super) definition_queue: VecDeque<(FunctionId, Rc<hir::Ast>)>,
 
@@ -18,6 +20,8 @@ pub struct Context {
 
     next_function_id: u32,
 
+    next_handler_id: u32,
+
     /// If this is set, this tells the Context to use this ID as the next
     /// function id when creating a new function. This is set when a global
     /// function is queued and is expected to be created with an existing ID
@@ -25,6 +29,18 @@ pub struct Context {
     pub(super) expected_function_id: Option<FunctionId>,
 
     pub(super) continuation: Option<Atom>,
+
+    /// If this is present, this variable gets defined as `self.continuation`
+    /// when the next Lambda is converted. This is used to define `resume` to
+    /// be the automatically-generated continuation parameter of a Lambda.
+    pub(super) handler_continuation: Option<hir::DefinitionInfo>,
+
+    /// If present, this continuation will override the normal continuation
+    /// functions usually call when finished. This is used for Handler expressions
+    /// where the "normal" continuation parameter k is used for the `resume` variable,
+    /// but if the handler branch ends early we should actually jump to the end of the
+    /// handler rather than implicitly call `resume`.
+    pub(super) end_continuation: Option<Atom>,
 
     /// The name of any lambda when we need to make one up.
     /// This is stored here so that we can increment a Rc instead of allocating a new
@@ -50,9 +66,13 @@ impl Context {
             mir,
             definitions: HashMap::new(),
             definition_queue: VecDeque::new(),
+            effects: HashMap::new(),
             current_function_id: main_id,
             next_function_id: 1, // Since 0 is taken for main
+            next_handler_id: 0,
             continuation: None,
+            handler_continuation: None,
+            end_continuation: None,
             expected_function_id: None,
             lambda_name: Rc::new("lambda".into()),
         }
@@ -79,6 +99,12 @@ impl Context {
         let id = self.next_function_id;
         self.next_function_id += 1;
         FunctionId { id, name }
+    }
+
+    pub fn next_handler_id(&mut self) -> HandlerId {
+        let id = self.next_handler_id;
+        self.next_handler_id += 1;
+        HandlerId(id)
     }
 
     /// Move on to a fresh function
@@ -115,7 +141,7 @@ impl Context {
 
         let argument_types = match Self::convert_type(&variable.typ) {
             Type::Function(argument_types) => argument_types,
-            other => unreachable!("add_global_to_queue: Expected function type for global, found {}", other),
+            other => unreachable!("add_global_to_queue: Expected function type for global, found {}: {}", variable, other),
         };
 
         let next_id = self.next_function_id(name);
@@ -168,10 +194,35 @@ impl Context {
         self.current_function_mut().argument_types.push(typ);
     }
 
+    pub fn current_parameters(&self) -> Vec<Atom> {
+        let parameter_count = self.current_function().argument_types.len();
+        fmap(0 .. parameter_count, |i| Atom::Parameter(ir::ParameterId {
+            function: self.current_function_id.clone(),
+            parameter_index: i as u16,
+        }))
+    }
+
+    pub fn lookup_or_create_effect(&mut self, id: hir::DefinitionId) -> EffectId {
+        if let Some(effect_id) = self.effects.get(&id) {
+            return *effect_id;
+        }
+
+        let effect_id = EffectId(self.effects.len() as u32);
+        self.effects.insert(id, effect_id);
+        effect_id
+    }
+
+    /// Returns essentially the return type(s) of `f` applied to `args`.
+    ///
+    /// This function will panic on control-flow constructs like Branch, Switch, and Handle.
+    /// These constructs need to manually create their own end / join-point continuation
+    /// functions in their ToMir impls.
     pub fn continuation_types_of(&self, f: &Atom, _args: &[Atom]) -> Vec<Type> {
         match f {
             Atom::Branch => panic!("continuation_types_of: Cannot take continuation type of Atom::Branch"),
             Atom::Switch(_, _) => panic!("continuation_types_of: Cannot take continuation type of Atom::Switch"),
+            Atom::Handle(_, _) => panic!("continuation_types_of: Cannot take continuation type of Atom::Handle"),
+
             Atom::Parameter(parameter_id) => {
                 let function = self.function(&parameter_id.function);
                 function.argument_types[parameter_id.parameter_index as usize].get_continuation_types(parameter_id)
@@ -187,6 +238,7 @@ impl Context {
             },
             Atom::MemberAccess(_, _, typ)
             | Atom::Deref(_, typ)
+            | Atom::Effect(_, typ)
             | Atom::Transmute(_, typ) => typ.get_continuation_types(f),
 
             Atom::Assign => vec![Type::Primitive(PrimitiveType::Unit)],
@@ -229,14 +281,6 @@ impl Context {
             | Atom::Offset(_, _, _)
             | Atom::StackAlloc(_) => unreachable!("Cannot call a {}", f),
         }
-    }
-
-    pub(crate) fn current_parameters(&self) -> Vec<Atom> {
-        let parameter_count = self.current_function().argument_types.len();
-        fmap(0 .. parameter_count, |i| Atom::Parameter(ir::ParameterId {
-            function: self.current_function_id.clone(),
-            parameter_index: i as u16,
-        }))
     }
 
     /*

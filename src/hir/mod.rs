@@ -202,6 +202,34 @@ pub struct ReinterpretCast {
     pub target_type: Type,
 }
 
+/// handle expression
+/// | pattern -> branch_body   (resume_var in scope)
+///
+/// Handles handling multiple cases are translated into nested handles:
+///
+/// handle 
+///   handle 
+///     ..
+///     handle expression
+///     | patternN -> branch_bodyN   (resume_varN in scope)
+///   | pattern2 -> branch_body2   (resume_var2 in scope)
+/// | pattern1 -> branch_body1   (resume_var1 in scope)
+#[derive(Debug, Clone)]
+pub struct Handle {
+    pub expression: Box<Ast>,
+    pub effect: Effect,
+    pub resume: Variable,
+    pub branch_body: Lambda,
+}
+
+/// A single effect declaration. Effect declarations declaring effects
+/// with multiple functions will be split into multiple hir::Effects.
+#[derive(Debug, Clone)]
+pub struct Effect {
+    pub id: DefinitionId,
+    pub typ: Type,
+}
+
 #[derive(Debug, Clone)]
 pub enum Builtin {
     AddInt(Box<Ast>, Box<Ast>),
@@ -271,6 +299,8 @@ pub enum Ast {
     Tuple(Tuple),
     ReinterpretCast(ReinterpretCast),
     Builtin(Builtin),
+    Effect(Effect),
+    Handle(Handle),
 }
 
 impl std::fmt::Display for DefinitionId {
@@ -297,6 +327,8 @@ macro_rules! dispatch_on_hir {
             $crate::hir::Ast::Tuple(inner) =>           $function(inner $(, $($args),* )? ),
             $crate::hir::Ast::ReinterpretCast(inner) => $function(inner $(, $($args),* )? ),
             $crate::hir::Ast::Builtin(inner) =>         $function(inner $(, $($args),* )? ),
+            $crate::hir::Ast::Effect(inner) =>          $function(inner $(, $($args),* )? ),
+            $crate::hir::Ast::Handle(inner) =>          $function(inner $(, $($args),* )? ),
         }
     });
 }
@@ -332,3 +364,5 @@ impl_display!(MemberAccess);
 impl_display!(Tuple);
 impl_display!(ReinterpretCast);
 impl_display!(Builtin);
+impl_display!(Effect);
+impl_display!(Handle);
