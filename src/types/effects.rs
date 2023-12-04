@@ -169,7 +169,7 @@ impl EffectSet {
     }
 
     /// Returns the set difference between self and other.
-    pub(super) fn handle_effects_from(&self, other: EffectSet, cache: &mut ModuleCache) {
+    pub(super) fn handle_effects_from(&mut self, other: EffectSet, cache: &mut ModuleCache) {
         let a = self.follow_bindings(cache).clone();
         let b = other.follow_bindings(cache).clone();
 
@@ -182,10 +182,10 @@ impl EffectSet {
             }
         }
 
-        let a_id = a.replacement;
-
-        let new_effect = EffectSet::new(new_effects, cache);
-        cache.bind(a_id, Type::Effects(new_effect));
+        // We need to mutate here. If we unified with a.replacement instead, the binding
+        // would be picked up during monomorphization and we'd try to monomorphize an
+        // effectful function its effects removed.
+        *self = EffectSet::new(new_effects, cache);
     }
 }
 

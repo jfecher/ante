@@ -1,6 +1,6 @@
 use std::{collections::{HashMap, VecDeque}, rc::Rc};
 
-use crate::{hir::{self, Literal, PrimitiveType}, util::fmap};
+use crate::{hir::{self, Literal, PrimitiveType}, util::fmap, mir::ir::ParameterId};
 
 use super::ir::{Mir, Atom, FunctionId, self, Type, Function, ExternId, HandlerId, EffectId};
 
@@ -21,6 +21,9 @@ pub struct Context {
     next_function_id: u32,
 
     next_handler_id: u32,
+
+    /// The continuation that corresponds to the given effect id
+    pub(super) handlers: HashMap<EffectId, Atom>,
 
     /// If this is set, this tells the Context to use this ID as the next
     /// function id when creating a new function. This is set when a global
@@ -57,7 +60,7 @@ impl Context {
             id: main_id.clone(),
             body_continuation: Atom::Literal(Literal::Unit),
             body_args: Vec::new(),
-            argument_types: vec![Type::Function(vec![Type::Primitive(PrimitiveType::Unit)])],
+            argument_types: vec![Type::Function(vec![Type::Primitive(PrimitiveType::Unit)], vec![])],
         };
 
         mir.functions.insert(main_id.clone(), main);
@@ -67,6 +70,7 @@ impl Context {
             definitions: HashMap::new(),
             definition_queue: VecDeque::new(),
             effects: HashMap::new(),
+            handlers: HashMap::new(),
             current_function_id: main_id,
             next_function_id: 1, // Since 0 is taken for main
             next_handler_id: 0,
@@ -139,8 +143,13 @@ impl Context {
             None => self.lambda_name.clone(),
         };
 
-        let argument_types = match Self::convert_type(&variable.typ) {
-            Type::Function(argument_types) => argument_types,
+        let argument_types = match self.convert_type(&variable.typ) {
+            Type::Function(mut argument_types, effects) => {
+                let k = argument_types.pop().unwrap();
+                argument_types.extend(effects.into_iter().map(|(_, typ)| typ));
+                argument_types.push(k);
+                argument_types
+            },
             other => unreachable!("add_global_to_queue: Expected function type for global, found {}: {}", variable, other),
         };
 
@@ -158,19 +167,47 @@ impl Context {
         atom
     }
 
-    pub fn convert_type(typ: &hir::Type) -> Type {
+    pub fn register_handlers(&mut self, effects: &[(EffectId, Type)], function_id: &FunctionId, mut starting_index: u16) {
+        eprintln!("Clearing handlers");
+        self.handlers.clear();
+
+        for (effect_id, _) in effects {
+            let handler = Atom::Parameter(ParameterId {
+                function: function_id.clone(),
+                parameter_index: starting_index,
+            });
+
+            eprintln!("Inserting handler for {}", effect_id.0);
+            self.handlers.insert(*effect_id, handler);
+            starting_index += 1;
+        }
+    }
+
+    pub fn convert_type(&mut self, typ: &hir::Type) -> Type {
         match typ {
             hir::Type::Primitive(primitive) => Type::Primitive(primitive.clone()),
             hir::Type::Function(function_type) => {
-                let mut args = fmap(&function_type.parameters, Self::convert_type);
-                // The return type becomes a return continuation
-                args.push(Type::Function(vec![Self::convert_type(&function_type.return_type)]));
-                Type::Function(args)
+                let (args, effects) = self.convert_function_type(&function_type);
+                Type::Function(args, effects)
             },
             hir::Type::Tuple(fields) => {
-                Type::Tuple(fmap(fields, Self::convert_type))
+                Type::Tuple(fmap(fields, |field| self.convert_type(field)))
             },
         }
+    }
+
+    pub fn convert_function_type(&mut self, typ: &hir::FunctionType) -> (Vec<Type>, Vec<(EffectId, Type)>) {
+        let mut args = fmap(&typ.parameters, |param| self.convert_type(param));
+
+        // Each effect becomes an additional function parameter
+        let effects = fmap(&typ.effects, |effect| {
+            let id = self.lookup_or_create_effect(effect.id);
+            (id, self.convert_type(&effect.typ))
+        });
+
+        // The return type becomes a return continuation
+        args.push(Type::Function(vec![self.convert_type(&typ.return_type)], vec![]));
+        (args, effects)
     }
 
     pub fn import_extern(&mut self, extern_name: &str, extern_type: &hir::Type) -> ExternId {
@@ -178,19 +215,19 @@ impl Context {
             return *id;
         }
 
-        let typ = Self::convert_type(extern_type);
+        let typ = self.convert_type(extern_type);
         let id = ExternId(self.mir.extern_symbols.len() as u32);
         self.mir.extern_symbols.insert(extern_name.to_owned(), (typ, id));
         id
     }
 
     pub fn add_parameter(&mut self, parameter_type: &hir::Type) {
-        let typ = Self::convert_type(parameter_type);
+        let typ = self.convert_type(parameter_type);
         self.current_function_mut().argument_types.push(typ);
     }
 
     pub fn add_continuation_parameter(&mut self, parameter_type: &hir::Type) {
-        let typ = Type::Function(vec![Self::convert_type(parameter_type)]);
+        let typ = Type::Function(vec![self.convert_type(parameter_type)], vec![]);
         self.current_function_mut().argument_types.push(typ);
     }
 
@@ -232,7 +269,7 @@ impl Context {
                 let continuation_type = function.argument_types.last().unwrap_or_else(|| panic!("Expected at least 1 argument from {}", function_id));
 
                 match continuation_type {
-                    Type::Function(arguments) => arguments.clone(),
+                    Type::Function(arguments, _effects) => arguments.clone(),
                     other => unreachable!("Expected function type, found {}", other),
                 }
             },

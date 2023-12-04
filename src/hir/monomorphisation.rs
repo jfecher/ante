@@ -1,7 +1,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::rc::Rc;
 
-use crate::cache::{DefinitionInfoId, DefinitionKind, ImplInfoId, ModuleCache, VariableId};
+use crate::cache::{DefinitionInfoId, DefinitionKind, ImplInfoId, ModuleCache, VariableId, EffectInfoId};
 use crate::hir;
 use crate::lexer::token::FloatKind;
 use crate::nameresolution::builtin::BUILTIN_ID;
@@ -47,6 +47,11 @@ pub struct Context<'c> {
     /// the impls they may use within.
     impl_mappings: Vec<Impls>,
 
+    /// Maps (effect_id, effect_args) -> effect functions
+    ///
+    /// The inner hashmap is to avoid cloning effect_args when calling .get().
+    effects: HashMap<EffectInfoId, HashMap<Vec<hir::Type>, Vec<hir::Effect>>>,
+
     next_id: usize,
 }
 
@@ -91,6 +96,7 @@ impl<'c> Context<'c> {
             definitions: Definitions::new(),
             types: HashMap::new(),
             impl_mappings: vec![HashMap::new()],
+            effects: HashMap::new(),
             next_id: 0,
             cache,
         }
@@ -223,7 +229,10 @@ impl<'c> Context<'c> {
         &'a self, effects: &'a types::effects::EffectSet, fuel: u32,
     ) -> types::Type {
         let replacement = match self.find_binding(effects.replacement, fuel) {
-            Ok(binding) => return self.follow_all_bindings_inner(binding, fuel),
+            Ok(types::Type::Effects(effects2)) => {
+                return self.follow_all_effect_bindings_inner(effects2, fuel)
+            }
+            Ok(other) => unreachable!("Expected Type::Effects, found {}", other.debug(&self.cache)),
             Err(id) => id,
         };
 
@@ -480,28 +489,7 @@ impl<'c> Context<'c> {
         match typ {
             Primitive(primitive) => self.convert_primitive_type(primitive),
 
-            Function(function) => {
-                let mut parameters = fmap(&function.parameters, |typ| self.convert_type_inner(typ, fuel));
-
-                let return_type = Box::new(self.convert_type_inner(&function.return_type, fuel));
-
-                let environment = (!self.empty_closure_environment(&function.environment)).then(|| {
-                    let environment_parameter = self.convert_type_inner(&function.environment, fuel);
-                    parameters.push(environment_parameter.clone());
-                    environment_parameter
-                });
-
-                let function = Type::Function(hir::types::FunctionType {
-                    parameters,
-                    return_type,
-                    is_varargs: function.is_varargs,
-                });
-
-                match environment {
-                    None => function,
-                    Some(environment) => Type::Tuple(vec![function, environment]),
-                }
-            },
+            Function(function) => self.convert_function_type(function, fuel),
 
             TypeVariable(id) => match self.find_binding(*id, fuel) {
                 Ok(binding) => {
@@ -567,6 +555,83 @@ impl<'c> Context<'c> {
             },
             Effects(_) => unreachable!(),
         }
+    }
+
+    fn convert_function_type(&mut self, function: &types::FunctionType, fuel: u32) -> Type {
+        let mut parameters = fmap(&function.parameters, |typ| self.convert_type_inner(typ, fuel));
+
+        let return_type = Box::new(self.convert_type_inner(&function.return_type, fuel));
+
+        let environment = (!self.empty_closure_environment(&function.environment)).then(|| {
+            let environment_parameter = self.convert_type_inner(&function.environment, fuel);
+            parameters.push(environment_parameter.clone());
+            environment_parameter
+        });
+
+        let effects = self.convert_effect_type(&function.effects, fuel).unwrap_or_default();
+
+        let function = Type::Function(hir::types::FunctionType {
+            parameters,
+            return_type,
+            effects,
+            is_varargs: function.is_varargs,
+        });
+
+        match environment {
+            None => function,
+            Some(environment) => Type::Tuple(vec![function, environment]),
+        }
+    }
+
+    fn convert_effect_type(&mut self, typ: &types::Type, fuel: u32) -> Option<Vec<hir::Effect>> {
+        let fuel = fuel - 1;
+        match self.follow_bindings_shallow(typ) {
+            Err(_type_variable) => None,
+            Ok(types::Type::Effects(effect_set)) => {
+                match self.find_binding(effect_set.replacement, fuel) {
+                    Ok(binding) => {
+                        let binding = binding.clone();
+                        self.convert_effect_type(&binding, fuel)
+                    }
+                    Err(_) => {
+                        // This is the last EffectSet in the chain
+                        let effect_set = effect_set.clone();
+                        Some(effect_set.effects.iter().flat_map(|(effect_id, effect_args)| 
+                            self.convert_effect_from_id(*effect_id, effect_args, fuel)
+                        ).collect())
+                    },
+                }
+            }
+            Ok(other) => unreachable!("convert_effect_type: Expected Type::Effects, found {}", other.debug(&self.cache)),
+        }
+    }
+
+    fn convert_effect_from_id(&mut self, id: EffectInfoId, _args: &[types::Type], fuel: u32) -> Vec<hir::Effect> {
+        // let _args = fmap(args, |arg| self.convert_type_inner(arg, fuel));
+
+        if let Some(effects) = self.effects.get(&id).and_then(|map| map.get(&Vec::new())) {
+            return effects.clone();
+        }
+
+        self.effects.entry(id).or_default().insert(vec![], vec![]);
+
+        let definition = &self.cache[id];
+
+        // TODO: Use different ids depending on argument types.
+        //       How to match a function `foo : Unit -> a` against
+        //       an Effect `E` if `a` is not in the arguments of `E`?
+        let effects = fmap(definition.declarations.clone(), |declaration| {
+            let id = self.next_unique_id();
+            let declaration_type = &self.cache[declaration].typ.as_ref().unwrap().remove_forall().clone();
+            let typ = self.convert_type_inner(declaration_type, fuel);
+            hir::Effect { id, typ }
+        });
+
+        self.effects.entry(id)
+            .or_default()
+            .insert(Vec::new(), effects.clone());
+
+        effects
     }
 
     fn convert_integer_kind(&self, kind: crate::lexer::token::IntegerKind) -> IntegerKind {
@@ -1146,6 +1211,7 @@ impl<'c> Context<'c> {
 
         let t = lambda.typ.as_ref().unwrap();
         let t = self.follow_all_bindings(t);
+
         let typ = self.get_function_type(&t);
         let mut body_prelude = vec![];
 
@@ -1687,7 +1753,7 @@ impl<'c> Context<'c> {
 
             let return_type = Box::new(self.convert_type(branch.get_type().unwrap()));
             let body = Box::new(self.monomorphise(&branch));
-            let branch_type = hir::FunctionType { parameters, return_type, is_varargs: false };
+            let branch_type = hir::FunctionType { parameters, return_type, effects: vec![], is_varargs: false };
 
             hir::Ast::Handle(hir::Handle {
                 expression: Box::new(expr),
@@ -1710,17 +1776,27 @@ impl<'c> Context<'c> {
     }
 
     fn monomorphise_effect_definition(&mut self, effect_definition: &ast::EffectDefinition) {
-        for declaration in &effect_definition.declarations {
+        for (i, declaration) in effect_definition.declarations.iter().enumerate() {
             let declaration_type = declaration.typ.as_ref().unwrap();
             let original_type = self.follow_all_bindings(declaration_type);
+
             let typ = self.convert_type(declaration_type);
+            println!("Converted effect type: {}", typ);
 
             let original_id = match declaration.lhs.as_ref() {
                 ast::Ast::Variable(var) => var.definition.unwrap(),
                 other => unreachable!("Invalid effect function name: {}", other),
             };
 
-            let id = self.next_unique_id();
+            let effect_info_id = effect_definition.effect_info.unwrap();
+            let id = self.effects.get(&effect_info_id)
+                .and_then(|map| map.get(&vec![]))
+                .map(|effects| { eprintln!("Found id!"); effects[i].id })
+                .unwrap_or_else(|| {
+                    eprintln!("No match for id, generating a new one");
+                    self.next_unique_id()
+                });
+
             let effect = hir::Ast::Effect(hir::Effect { id, typ: typ.clone() });
 
             let name = Some(self.cache[original_id].name.clone());

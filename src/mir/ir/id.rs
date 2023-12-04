@@ -21,7 +21,7 @@ pub struct ExternId(pub u32);
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct HandlerId(pub u32);
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, PartialOrd, Ord)]
 pub struct EffectId(pub u32);
 
 impl Hash for FunctionId {

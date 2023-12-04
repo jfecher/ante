@@ -215,7 +215,7 @@ impl Atom {
 #[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash)]
 pub enum Type {
     Primitive(PrimitiveType),
-    Function(Vec<Type>),
+    Function(/*parameters:*/Vec<Type>, /*effect parameters:*/ Vec<(EffectId, Type)>),
 
     /// Tuples have a TypeId to allow for struct recursion
     Tuple(Vec<Type>),
@@ -229,10 +229,10 @@ impl Type {
     /// Panics if this is not a function type, and prints the given debug_label in the error.
     pub(super) fn get_continuation_types(&self, debug_label: impl Display) -> Vec<Type> {
         match self {
-            Type::Function(arguments) => {
+            Type::Function(arguments, _effect_args) => {
                 let continuation_type = arguments.last().unwrap_or_else(|| panic!("Expected at least 1 argument from {}", debug_label));
                 match continuation_type {
-                    Type::Function(arguments) => arguments.clone(),
+                    Type::Function(arguments, _effect_args) => arguments.clone(),
                     other => unreachable!("Expected function type, found {} in {}", other, debug_label),
                 }
             }

@@ -41,6 +41,7 @@ pub enum PrimitiveType {
 pub struct FunctionType {
     pub parameters: Vec<Type>,
     pub return_type: Box<Type>,
+    pub effects: Vec<super::Effect>,
     pub is_varargs: bool,
 }
 
@@ -118,7 +119,14 @@ impl std::fmt::Display for FunctionType {
         if self.is_varargs {
             write!(f, "... -> ")?;
         }
-        write!(f, "{}", self.return_type)
+        write!(f, "{}", self.return_type)?;
+
+        if !self.effects.is_empty() {
+            let effects = fmap(&self.effects, ToString::to_string);
+            write!(f, " can {}", effects.join(", "))?;
+        }
+
+        Ok(())
     }
 }
 

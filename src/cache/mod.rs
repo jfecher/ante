@@ -610,6 +610,9 @@ impl<'a> ModuleCache<'a> {
     }
 
     pub fn bind(&mut self, id: TypeVariableId, binding: Type) {
+        if id.0 == 189 {
+            eprintln!("!!! Cache binding 189 to: {}", binding.debug(self));
+        }
         self.type_bindings[id.0] = TypeBinding::Bound(binding);
     }
 

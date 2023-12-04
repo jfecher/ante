@@ -224,7 +224,7 @@ pub struct Handle {
 
 /// A single effect declaration. Effect declarations declaring effects
 /// with multiple functions will be split into multiple hir::Effects.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Effect {
     pub id: DefinitionId,
     pub typ: Type,

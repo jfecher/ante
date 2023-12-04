@@ -124,15 +124,22 @@ impl ToMir for hir::Lambda {
         }
 
         // If the argument types were not already set, set them now
+        let (arg_types, effect_types) = context.convert_function_type(&self.typ);
         let function = context.current_function_mut();
-        if function.argument_types.is_empty() {
-            function.argument_types.reserve_exact(self.args.len() + 1);
+        function.argument_types = arg_types;
 
-            for arg in &self.args {
-                context.add_parameter(&arg.typ);
-            }
-            context.add_continuation_parameter(&self.typ.return_type);
+        let k_type = function.argument_types.pop().unwrap();
+
+        // Register each effect continuation we have
+        context.register_handlers(&effect_types, &lambda_id, self.args.len() as u16);
+
+        // Push each handler as an argument. This IR starts in capability-passing style.
+        for (_effect_id, effect_type) in effect_types {
+            context.current_function_mut().argument_types.push(effect_type);
         }
+
+        // move k back to the end
+        context.current_function_mut().argument_types.push(k_type);
 
         let k = Atom::Parameter(ParameterId {
             function: lambda_id.clone(),
@@ -144,8 +151,8 @@ impl ToMir for hir::Lambda {
             context.definitions.insert(variable.definition_id, k.clone());
             // We must fix the continuation type since `resume` can return a value (and thus also
             // requires another continuation as an argument) unlike the default `k`
-            let function = context.current_function_mut();
-            *function.argument_types.last_mut().unwrap() = Context::convert_type(&variable.typ);
+            let resume_type = context.convert_type(&variable.typ);
+            *context.current_function_mut().argument_types.last_mut().unwrap() = resume_type;
         }
 
         // The continuation to jump to at the end of a function to "return" the final value.
@@ -180,15 +187,15 @@ impl ToMir for hir::Definition {
                 other => unreachable!("Expected Atom::Function, found {:?}", other),
             };
 
+            eprintln!("Compiling definition {}", self);
+
             let old = context.expected_function_id.take();
             context.expected_function_id = Some(function.clone());
             let rhs = self.expr.to_atom(context);
 
             // If rhs is an extern symbol it may define a function yet
             // not actually correspond to an Atom::Function
-            if rhs != expected {
-                assert!(matches!(rhs, Atom::Extern(_) | Atom::Effect(..)), "{} is not a function, Extern, or Effect", rhs);
-
+            if rhs != expected && !matches!(self.expr.as_ref(), hir::Ast::Effect(..)) {
                 let original_function = context.current_function_id.clone();
                 context.current_function_id = function;
 
@@ -344,7 +351,7 @@ impl ToMir for hir::Assignment {
 impl ToMir for hir::MemberAccess {
     fn to_mir(&self, context: &mut Context) -> AtomOrCall {
         let lhs = Box::new(self.lhs.to_atom(context));
-        let typ = Context::convert_type(&self.typ);
+        let typ = context.convert_type(&self.typ);
         AtomOrCall::Atom(Atom::MemberAccess(lhs, self.member_index, typ))
     }
 }
@@ -359,7 +366,7 @@ impl ToMir for hir::Tuple {
 impl ToMir for hir::ReinterpretCast {
     fn to_mir(&self, context: &mut Context) -> AtomOrCall {
         let value = Box::new(self.lhs.to_atom(context));
-        let typ = Context::convert_type(&self.target_type);
+        let typ = context.convert_type(&self.target_type);
         AtomOrCall::Atom(Atom::Transmute(value, typ))
     }
 }
@@ -377,9 +384,9 @@ impl ToMir for hir::Builtin {
             AtomOrCall::Atom(f(lhs))
         };
 
-        let unary_fn_with_type = |f: fn(_, _) -> _, context, lhs: &hir::Ast, rhs: &hir::Type| {
+        let unary_fn_with_type = |f: fn(_, _) -> _, context: &mut _, lhs: &hir::Ast, rhs: &hir::Type| {
             let lhs = Box::new(lhs.to_atom(context));
-            let rhs = Context::convert_type(rhs);
+            let rhs = context.convert_type(rhs);
             AtomOrCall::Atom(f(lhs, rhs))
         };
 
@@ -422,7 +429,7 @@ impl ToMir for hir::Builtin {
             hir::Builtin::Offset(lhs, rhs, typ) => {
                 let lhs = Box::new(lhs.to_atom(context));
                 let rhs = Box::new(rhs.to_atom(context));
-                let typ = Context::convert_type(typ);
+                let typ = context.convert_type(typ);
                 AtomOrCall::Atom(Atom::Offset(lhs, rhs, typ))
             },
         }
@@ -430,10 +437,33 @@ impl ToMir for hir::Builtin {
 }
 
 impl ToMir for hir::Effect {
+    // Expect this hir::Effect is wrapped in its own hir::Definition
+    // from monomorphisation
     fn to_mir(&self, context: &mut Context) -> AtomOrCall {
         let effect_id = context.lookup_or_create_effect(self.id);
-        let typ = Context::convert_type(&self.typ);
-        AtomOrCall::Atom(Atom::Effect(effect_id, typ))
+
+        let (args, effects) = match context.convert_type(&self.typ) {
+            ir::Type::Function(args, effects) => (args, effects),
+            other => unreachable!("Expected type of effect to be a function, got {}", other),
+        };
+
+        let offset = args.len() as u16 - 1;
+        let function_id = &context.current_function_id.clone();
+        context.register_handlers(&effects, function_id, offset);
+
+        let handler = context.handlers.get(&effect_id).unwrap().clone();
+
+        let call_parameters = context.current_parameters()
+            .into_iter()
+            .filter(|param| *param != handler)
+            .collect();
+
+        AtomOrCall::Call(handler, call_parameters)
+        // } else {
+        //     eprintln!("No handler for id {}", effect_id.0);
+        //     let typ = context.convert_type(&self.typ);
+        //     AtomOrCall::Atom(Atom::Effect(effect_id, typ))
+        // }
     }
 }
 

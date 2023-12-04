@@ -108,8 +108,13 @@ impl Display for Type {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Type::Primitive(primitive) => write!(f, "{primitive}"),
-            Type::Function(arguments) => {
-                let args = fmap(arguments, ToString::to_string).join(", ");
+            Type::Function(arguments, effect_arguments) => {
+                let mut args = fmap(arguments, ToString::to_string).join(", ");
+                let effects = fmap(effect_arguments, |(_, arg)| format!("{arg}")).join(", ");
+                if !args.is_empty() && !effects.is_empty() {
+                    args += ", ";
+                }
+                args += &effects;
                 write!(f, "fn({args})")
             },
             Type::Tuple(fields) => {
