@@ -18,96 +18,39 @@ pub fn convert_to_mir(hir: hir::Ast) -> Mir {
     }
 
     while let Some((_, definition)) = context.definition_queue.pop_front() {
-        let result = definition.to_mir(&mut context);
-        assert!(matches!(result, AtomOrCall::Atom(Atom::Literal(Literal::Unit))));
+        let result = definition.to_atom(&mut context);
+        assert_eq!(result, Atom::Literal(Literal::Unit));
     }
 
     context.mir
 }
 
-enum AtomOrCall {
-    Atom(Atom),
-    Call(Atom, Vec<Atom>),
-}
-
-impl AtomOrCall {
-    /// Convert this AtomOrCall into an Atom
-    /// 
-    /// Since each Call terminates a function, this will terminate the current function
-    /// and automatically create and switch to a new function if this is a Call.
-    /// Doing so will also automatically add the new function as a continuation argument
-    /// to the now finished function. As such, this function should be avoided if
-    /// the continuation is already in the Call's arguments. It should also be avoided for
-    /// constructs like Atom::Branch and Atom::Switch that have non-standard continuation
-    /// positions (ie. do not just have 1 continuation at the end of their parameter lists).
-    fn into_atom(self, context: &mut Context) -> Atom {
-        match self {
-            AtomOrCall::Atom(atom) => atom,
-            AtomOrCall::Call(f, args) => {
-                // The argument types of the continuation for the new function we're creating
-                let k_types = context.continuation_types_of(&f, &args);
-
-                let current_function_id = context.current_function_id.clone();
-                let function = context.current_function_mut();
-
-                function.body_continuation = f;
-                function.body_args = args;
-
-                // Create a new function `|rv| ...` as the continuation
-                // for the call. Then resume inserting into this new function.
-                // The value of the Atom is the new `rv` parameter holding the result value.
-                let k = context.next_fresh_function();
-                let function = context.current_function_mut();
-                function.argument_types = k_types;
-
-                // Make sure to go back to add the continuation argument
-                let prev_function = context.function_mut(&current_function_id);
-                prev_function.body_args.push(Atom::Function(k.clone()));
-
-                Atom::Parameter(ParameterId {
-                    function: k,
-                    parameter_index: 0,
-                })
-            },
-        }
-    }
-
-    fn unit() -> Self {
-        AtomOrCall::Atom(Atom::Literal(Literal::Unit))
-    }
-}
-
 trait ToMir {
-    fn to_mir(&self, context: &mut Context) -> AtomOrCall;
-
-    fn to_atom(&self, context: &mut Context) -> Atom {
-        self.to_mir(context).into_atom(context)
-    }
+    fn to_atom(&self, context: &mut Context) -> Atom;
 }
 
 impl ToMir for hir::Ast {
-    fn to_mir(&self, context: &mut Context) -> AtomOrCall {
-        dispatch_on_hir!(self, ToMir::to_mir, context)
+    fn to_atom(&self, context: &mut Context) -> Atom {
+        dispatch_on_hir!(self, ToMir::to_atom, context)
     }
 }
 
 impl ToMir for hir::Literal {
-    fn to_mir(&self, _mir: &mut Context) -> AtomOrCall {
-        AtomOrCall::Atom(Atom::Literal(self.clone()))
+    fn to_atom(&self, _mir: &mut Context) -> Atom {
+        Atom::Literal(self.clone())
     }
 }
 
 impl ToMir for hir::Variable {
-    fn to_mir(&self, context: &mut Context) -> AtomOrCall {
-        let atom = context.definitions.get(&self.definition_id).cloned().unwrap_or_else(|| {
+    fn to_atom(&self, context: &mut Context) -> Atom {
+        context.definitions.get(&self.definition_id).cloned().unwrap_or_else(|| {
             context.add_global_to_queue(self.clone())
-        });
-        AtomOrCall::Atom(atom)
+        })
     }
 }
 
 impl ToMir for hir::Lambda {
-    fn to_mir(&self, context: &mut Context) -> AtomOrCall {
+    fn to_atom(&self, context: &mut Context) -> Atom {
         let original_function = context.current_function_id.clone();
         let original_continuation = context.continuation.take();
 
@@ -167,20 +110,29 @@ impl ToMir for hir::Lambda {
         context.current_function_id = original_function;
         context.continuation = original_continuation;
 
-        AtomOrCall::Atom(Atom::Function(lambda_id))
+        Atom::Function(lambda_id)
     }
 }
 
 impl ToMir for hir::FunctionCall {
-    fn to_mir(&self, context: &mut Context) -> AtomOrCall {
+    fn to_atom(&self, context: &mut Context) -> Atom {
         let f = self.function.to_atom(context);
-        let args = fmap(&self.args, |arg| arg.to_atom(context));
-        AtomOrCall::Call(f, args)
+        let mut args = fmap(&self.args, |arg| arg.to_atom(context));
+
+        context.with_next_function(self.function_type.return_type.as_ref(), |context, k| {
+            args.push(k.clone());
+            context.terminate_function_with_call(f, args);
+        });
+
+        // Now that with_next_function advanced us to the next function, the call result
+        // will be the sole parameter of the current function.
+        let function = context.current_function_id.clone();
+        Atom::Parameter(ParameterId { function, parameter_index: 0 })
     }
 }
 
 impl ToMir for hir::Definition {
-    fn to_mir(&self, context: &mut Context) -> AtomOrCall {
+    fn to_atom(&self, context: &mut Context) -> Atom {
         if let Some(expected) = context.definitions.get(&self.variable).cloned() {
             let function = match &expected {
                 Atom::Function(function_id) => function_id.clone(),
@@ -213,12 +165,12 @@ impl ToMir for hir::Definition {
             context.definitions.insert(self.variable, rhs);
         }
 
-        AtomOrCall::unit()
+        Atom::Literal(Literal::Unit)
     }
 }
 
 impl ToMir for hir::If {
-    fn to_mir(&self, context: &mut Context) -> AtomOrCall {
+    fn to_atom(&self, context: &mut Context) -> Atom {
         let cond = self.condition.to_atom(context);
         let original_function = context.current_function_id.clone();
 
@@ -239,15 +191,15 @@ impl ToMir for hir::If {
         context.terminate_function_with_call(Atom::Branch, vec![cond, then_fn, else_fn]);
 
         context.current_function_id = end_function_id.clone();
-        AtomOrCall::Atom(Atom::Parameter(ParameterId { 
+        Atom::Parameter(ParameterId { 
             function: end_function_id,
             parameter_index: 0,
-        }))
+        })
     }
 }
 
 impl ToMir for hir::Match {
-    fn to_mir(&self, context: &mut Context) -> AtomOrCall {
+    fn to_atom(&self, context: &mut Context) -> Atom {
         let original_function = context.current_function_id.clone();
         let leaves = fmap(&self.branches, |_| context.next_fresh_function());
 
@@ -266,10 +218,10 @@ impl ToMir for hir::Match {
         }
 
         context.current_function_id = end.clone();
-        AtomOrCall::Atom(Atom::Parameter(ParameterId {
+        Atom::Parameter(ParameterId {
             function: end,
             parameter_index: 0,
-        }))
+        })
     }
 }
 
@@ -308,15 +260,23 @@ fn decision_tree_to_mir(tree: &DecisionTree, leaves: &[FunctionId], context: &mu
 }
 
 impl ToMir for hir::Return {
-    fn to_mir(&self, context: &mut Context) -> AtomOrCall {
+    fn to_atom(&self, context: &mut Context) -> Atom {
         let continuation = context.continuation.clone().expect("No continuation for hir::Return!");
         let value = self.expression.to_atom(context);
-        AtomOrCall::Call(continuation, vec![value])
+
+        context.terminate_function_with_call(continuation, vec![value]);
+
+        // This is technically not needed but we switch to a new function in case there is
+        // code sequenced after a `return` as otherwise it would overwrite the call above.
+        context.next_fresh_function();
+
+        // TODO: Return some kind of unreachable/uninitialized value
+        Atom::Literal(Literal::Unit)
     }
 }
 
 impl ToMir for hir::Sequence {
-    fn to_mir(&self, context: &mut Context) -> AtomOrCall {
+    fn to_atom(&self, context: &mut Context) -> Atom {
         let count = self.statements.len();
 
         // The first statements must be converted to atoms to
@@ -325,69 +285,73 @@ impl ToMir for hir::Sequence {
             statement.to_atom(context);
         }
 
-        // The last statement is kept as an AtomOrCall since it is directly returned
+        // The last statement is kept as an Atom since it is directly returned
         match self.statements.last() {
-            Some(statement) => statement.to_mir(context),
-            None => AtomOrCall::unit(),
+            Some(statement) => statement.to_atom(context),
+            None => Atom::Literal(Literal::Unit),
         }
     }
 }
 
 impl ToMir for hir::Extern {
-    fn to_mir(&self, context: &mut Context) -> AtomOrCall {
+    fn to_atom(&self, context: &mut Context) -> Atom {
         let id = context.import_extern(&self.name, &self.typ);
-        AtomOrCall::Atom(Atom::Extern(id))
+        Atom::Extern(id)
     }
 }
 
 impl ToMir for hir::Assignment {
-    fn to_mir(&self, context: &mut Context) -> AtomOrCall {
+    fn to_atom(&self, context: &mut Context) -> Atom {
         let lhs = self.lhs.to_atom(context);
         let rhs = self.rhs.to_atom(context);
-        AtomOrCall::Call(Atom::Assign, vec![lhs, rhs])
+
+        let unit = hir::Type::Primitive(hir::PrimitiveType::Unit);
+        context.with_next_function(&unit, |context, k| {
+            context.terminate_function_with_call(Atom::Assign, vec![lhs, rhs, k]);
+            Atom::Literal(Literal::Unit)
+        })
     }
 }
 
 impl ToMir for hir::MemberAccess {
-    fn to_mir(&self, context: &mut Context) -> AtomOrCall {
+    fn to_atom(&self, context: &mut Context) -> Atom {
         let lhs = Box::new(self.lhs.to_atom(context));
         let typ = context.convert_type(&self.typ);
-        AtomOrCall::Atom(Atom::MemberAccess(lhs, self.member_index, typ))
+        Atom::MemberAccess(lhs, self.member_index, typ)
     }
 }
 
 impl ToMir for hir::Tuple {
-    fn to_mir(&self, context: &mut Context) -> AtomOrCall {
+    fn to_atom(&self, context: &mut Context) -> Atom {
         let fields = fmap(&self.fields, |field| field.to_atom(context));
-        AtomOrCall::Atom(Atom::Tuple(fields))
+        Atom::Tuple(fields)
     }
 }
 
 impl ToMir for hir::ReinterpretCast {
-    fn to_mir(&self, context: &mut Context) -> AtomOrCall {
+    fn to_atom(&self, context: &mut Context) -> Atom {
         let value = Box::new(self.lhs.to_atom(context));
         let typ = context.convert_type(&self.target_type);
-        AtomOrCall::Atom(Atom::Transmute(value, typ))
+        Atom::Transmute(value, typ)
     }
 }
 
 impl ToMir for hir::Builtin {
-    fn to_mir(&self, context: &mut Context) -> AtomOrCall {
+    fn to_atom(&self, context: &mut Context) -> Atom {
         let binary_fn = |f: fn(_, _) -> _, context: &mut Context, lhs: &hir::Ast, rhs: &hir::Ast| {
             let lhs = Box::new(lhs.to_atom(context));
             let rhs = Box::new(rhs.to_atom(context));
-            AtomOrCall::Atom(f(lhs, rhs))
+            f(lhs, rhs)
         };
 
         let unary_fn = |f: fn(_) -> _, context, lhs: &hir::Ast| {
-            let lhs = Box::new(lhs.to_atom(context));
-            AtomOrCall::Atom(f(lhs))
+            f(Box::new(lhs.to_atom(context)))
         };
 
         let unary_fn_with_type = |f: fn(_, _) -> _, context: &mut _, lhs: &hir::Ast, rhs: &hir::Type| {
             let lhs = Box::new(lhs.to_atom(context));
             let rhs = context.convert_type(rhs);
-            AtomOrCall::Atom(f(lhs, rhs))
+            f(lhs, rhs)
         };
 
         match self {
@@ -430,7 +394,7 @@ impl ToMir for hir::Builtin {
                 let lhs = Box::new(lhs.to_atom(context));
                 let rhs = Box::new(rhs.to_atom(context));
                 let typ = context.convert_type(typ);
-                AtomOrCall::Atom(Atom::Offset(lhs, rhs, typ))
+                Atom::Offset(lhs, rhs, typ)
             },
         }
     }
@@ -439,7 +403,7 @@ impl ToMir for hir::Builtin {
 impl ToMir for hir::Effect {
     // Expect this hir::Effect is wrapped in its own hir::Definition
     // from monomorphisation
-    fn to_mir(&self, context: &mut Context) -> AtomOrCall {
+    fn to_atom(&self, context: &mut Context) -> Atom {
         let effect_id = context.lookup_or_create_effect(self.id);
 
         let (args, effects) = match context.convert_type(&self.typ) {
@@ -458,17 +422,15 @@ impl ToMir for hir::Effect {
             .filter(|param| *param != handler)
             .collect();
 
-        AtomOrCall::Call(handler, call_parameters)
-        // } else {
-        //     eprintln!("No handler for id {}", effect_id.0);
-        //     let typ = context.convert_type(&self.typ);
-        //     AtomOrCall::Atom(Atom::Effect(effect_id, typ))
-        // }
+        context.terminate_function_with_call(handler, call_parameters);
+
+        // Is this correct?
+        Atom::Literal(Literal::Unit)
     }
 }
 
 impl ToMir for hir::Handle {
-    fn to_mir(&self, context: &mut Context) -> AtomOrCall {
+    fn to_atom(&self, context: &mut Context) -> Atom {
         let current_function = context.current_function_id.clone();
 
         let end_function_id = context.next_fresh_function();
@@ -494,6 +456,6 @@ impl ToMir for hir::Handle {
         context.terminate_function_with_call(Atom::Handle(handler_id, handler), start_and_end);
 
         context.current_function_id = end_function_id;
-        AtomOrCall::Atom(result)
+        result
     }
 }

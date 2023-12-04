@@ -249,141 +249,15 @@ impl Context {
         effect_id
     }
 
-    /// Returns essentially the return type(s) of `f` applied to `args`.
-    ///
-    /// This function will panic on control-flow constructs like Branch, Switch, and Handle.
-    /// These constructs need to manually create their own end / join-point continuation
-    /// functions in their ToMir impls.
-    pub fn continuation_types_of(&self, f: &Atom, _args: &[Atom]) -> Vec<Type> {
-        match f {
-            Atom::Branch => panic!("continuation_types_of: Cannot take continuation type of Atom::Branch"),
-            Atom::Switch(_, _) => panic!("continuation_types_of: Cannot take continuation type of Atom::Switch"),
-            Atom::Handle(_, _) => panic!("continuation_types_of: Cannot take continuation type of Atom::Handle"),
-
-            Atom::Parameter(parameter_id) => {
-                let function = self.function(&parameter_id.function);
-                function.argument_types[parameter_id.parameter_index as usize].get_continuation_types(parameter_id)
-            },
-            Atom::Function(function_id) => {
-                let function = self.function(function_id);
-                let continuation_type = function.argument_types.last().unwrap_or_else(|| panic!("Expected at least 1 argument from {}", function_id));
-
-                match continuation_type {
-                    Type::Function(arguments, _effects) => arguments.clone(),
-                    other => unreachable!("Expected function type, found {}", other),
-                }
-            },
-            Atom::MemberAccess(_, _, typ)
-            | Atom::Deref(_, typ)
-            | Atom::Effect(_, typ)
-            | Atom::Transmute(_, typ) => typ.get_continuation_types(f),
-
-            Atom::Assign => vec![Type::Primitive(PrimitiveType::Unit)],
-            Atom::Extern(_) => vec![Type::Primitive(PrimitiveType::Unit)],
-
-            Atom::Literal(_)
-            | Atom::Tuple(_)
-            | Atom::AddInt(_, _)
-            | Atom::AddFloat(_, _)
-            | Atom::SubInt(_, _)
-            | Atom::SubFloat(_, _)
-            | Atom::MulInt(_, _)
-            | Atom::MulFloat(_, _)
-            | Atom::DivSigned(_, _)
-            | Atom::DivUnsigned(_, _)
-            | Atom::DivFloat(_, _)
-            | Atom::ModSigned(_, _)
-            | Atom::ModUnsigned(_, _)
-            | Atom::ModFloat(_, _)
-            | Atom::LessSigned(_, _)
-            | Atom::LessUnsigned(_, _)
-            | Atom::LessFloat(_, _)
-            | Atom::EqInt(_, _)
-            | Atom::EqFloat(_, _)
-            | Atom::EqChar(_, _)
-            | Atom::EqBool(_, _)
-            | Atom::SignExtend(_, _)
-            | Atom::ZeroExtend(_, _)
-            | Atom::SignedToFloat(_, _)
-            | Atom::UnsignedToFloat(_, _)
-            | Atom::FloatToSigned(_, _)
-            | Atom::FloatToUnsigned(_, _)
-            | Atom::FloatPromote(_, _)
-            | Atom::FloatDemote(_, _)
-            | Atom::BitwiseAnd(_, _)
-            | Atom::BitwiseOr(_, _)
-            | Atom::BitwiseXor(_, _)
-            | Atom::BitwiseNot(_)
-            | Atom::Truncate(_, _)
-            | Atom::Offset(_, _, _)
-            | Atom::StackAlloc(_) => unreachable!("Cannot call a {}", f),
-        }
+    /// Create a fresh function with the given argument type and call `f` with it as an argument.
+    /// After `f` is called, the current function is switched to the new function
+    pub fn with_next_function<T>(&mut self, result_type: &hir::Type, f: impl FnOnce(&mut Self, Atom) -> T) -> T {
+        let old_function = self.current_function_id.clone();
+        let next_function_id = self.next_fresh_function();
+        self.add_parameter(result_type);
+        self.current_function_id = old_function;
+        let result = f(self, Atom::Function(next_function_id.clone()));
+        self.current_function_id = next_function_id;
+        result
     }
-
-    /*
-    fn type_of(&self, atom: &Atom) -> Type {
-        match atom {
-            Atom::Branch => unreachable!("Atom::Branch has no type"),
-            Atom::Switch(_, _ )=> unreachable!("Atom::Switch has no type"),
-            Atom::Literal(literal) => {
-                match literal {
-                    Literal::Integer(_, kind) => Type::Primitive(PrimitiveType::Integer(*kind)),
-                    Literal::Float(_, kind) => Type::Primitive(PrimitiveType::Float(*kind)),
-                    Literal::CString(_) => Type::Primitive(PrimitiveType::Pointer),
-                    Literal::Char(_) => Type::Primitive(PrimitiveType::Char),
-                    Literal::Bool(_) => Type::Primitive(PrimitiveType::Boolean),
-                    Literal::Unit => Type::Primitive(PrimitiveType::Unit),
-                }
-            },
-            Atom::Parameter(parameter_id) => {
-                let function = self.function(&parameter_id.function);
-                function.argument_types[parameter_id.parameter_index as usize].clone()
-            },
-            Atom::Function(function_id) => {
-                let function = self.function(function_id);
-                Type::Function(function.argument_types.clone())
-            },
-            Atom::Tuple(fields) => {
-                let field_types = fmap(fields, |field| self.type_of(field));
-                Type::Tuple(field_types)
-            },
-            Atom::AddInt(lhs, _) => self.type_of(lhs),
-            Atom::AddFloat(lhs, _) => self.type_of(lhs),
-            Atom::SubInt(lhs, _) => self.type_of(lhs),
-            Atom::SubFloat(lhs, _) => self.type_of(lhs),
-            Atom::MulInt(lhs, _) => self.type_of(lhs),
-            Atom::MulFloat(lhs, _) => self.type_of(lhs),
-            Atom::DivSigned(lhs, _) => self.type_of(lhs),
-            Atom::DivUnsigned(lhs, _) => self.type_of(lhs),
-            Atom::DivFloat(lhs, _) => self.type_of(lhs),
-            Atom::ModSigned(lhs, _) => self.type_of(lhs),
-            Atom::ModUnsigned(lhs, _) => self.type_of(lhs),
-            Atom::ModFloat(lhs, _) => self.type_of(lhs),
-            Atom::LessSigned(_, _) => Type::Primitive(PrimitiveType::Boolean),
-            Atom::LessUnsigned(_, _) => Type::Primitive(PrimitiveType::Boolean),
-            Atom::LessFloat(_, _) => Type::Primitive(PrimitiveType::Boolean),
-            Atom::EqInt(_, _) => Type::Primitive(PrimitiveType::Boolean),
-            Atom::EqFloat(_, _) => Type::Primitive(PrimitiveType::Boolean),
-            Atom::EqChar(_, _) => Type::Primitive(PrimitiveType::Boolean),
-            Atom::EqBool(_, _) => Type::Primitive(PrimitiveType::Boolean),
-            Atom::SignExtend(_, typ) => typ.clone(),
-            Atom::ZeroExtend(_, typ) => typ.clone(),
-            Atom::SignedToFloat(_, typ) => typ.clone(),
-            Atom::UnsignedToFloat(_, typ) => typ.clone(),
-            Atom::FloatToSigned(_, typ) => typ.clone(),
-            Atom::FloatToUnsigned(_, typ) => typ.clone(),
-            Atom::FloatPromote(_, typ) => typ.clone(),
-            Atom::FloatDemote(_, typ) => typ.clone(),
-            Atom::BitwiseAnd(lhs, _) => self.type_of(lhs),
-            Atom::BitwiseOr(lhs, _) => self.type_of(lhs),
-            Atom::BitwiseXor(lhs, _) => self.type_of(lhs),
-            Atom::BitwiseNot(lhs) => self.type_of(lhs),
-            Atom::Truncate(_, typ) => typ.clone(),
-            Atom::Deref(_, typ) => typ.clone(),
-            Atom::Offset(_, _, _) => Type::Primitive(PrimitiveType::Pointer),
-            Atom::Transmute(_, typ) => typ.clone(),
-            Atom::StackAlloc(_) => Type::Primitive(PrimitiveType::Pointer),
-        }
-    }
-    */
 }
