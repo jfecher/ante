@@ -149,8 +149,6 @@ impl ToMir for hir::Definition {
                 other => unreachable!("Expected Atom::Function, found {:?}", other),
             };
 
-            eprintln!("Compiling definition {}", self);
-
             let old = context.expected_function_id.take();
             context.expected_function_id = Some(function.clone());
             let rhs = self.expr.to_atom(context);
@@ -414,6 +412,14 @@ impl ToMir for hir::Effect {
     // Expect this hir::Effect is wrapped in its own hir::Definition
     // from monomorphisation
     fn to_atom(&self, context: &mut Context) -> Atom {
+        // Monomorphization wraps effects in a definition node, which populates an
+        // expected function id ahead of time (usually for Lambdas), so we have to
+        // make sure to use that and not insert into the current function.
+        let target_function = context.expected_function_id.take()
+            .expect("Expected `expected_function_id` for hir::Effect::to_atom");
+
+        let old_function = std::mem::replace(&mut context.current_function_id, target_function.clone());
+
         let effect_id = context.lookup_or_create_effect(self.id);
 
         let (args, effects) = match context.convert_type(&self.typ) {
@@ -432,11 +438,10 @@ impl ToMir for hir::Effect {
             .filter(|param| *param != handler)
             .collect();
 
-        eprintln!("Terminating function {}", context.current_function_id);
         context.terminate_function_with_call(handler, call_parameters);
+        context.current_function_id = old_function;
 
-        // Is this correct?
-        Atom::Literal(Literal::Unit)
+        Atom::Function(target_function)
     }
 }
 
@@ -445,10 +450,8 @@ impl ToMir for hir::Handle {
         let current_function = context.current_function_id.clone();
 
         let end_function_id = context.next_fresh_function();
-        let expression_function_id = context.next_fresh_function();
         let end_function_atom = Atom::Function(end_function_id.clone());
 
-        eprintln!("Compiling handle branch");
         let effect_id = context.lookup_or_create_effect(self.effect.id);
 
         context.handler_continuation = Some((effect_id, self.resume.clone()));
@@ -456,22 +459,15 @@ impl ToMir for hir::Handle {
         let handler = self.branch_body.to_atom(context);
 
         // Now compile the handled expression with the new handler
-        eprintln!("Inserting handler effect");
         let old_handler = context.handlers.insert(effect_id, handler.clone());
 
-        context.current_function_id = expression_function_id.clone();
+        context.current_function_id = current_function;
         let result = self.expression.to_atom(context);
-        let end_expression = context.current_function_id.clone();
         context.terminate_function_with_call(end_function_atom, vec![]);
 
-        context.current_function_id = current_function;
-        let handler_id = context.next_handler_id();
-
-        let start_and_end = vec![
-            Atom::Function(expression_function_id),
-            Atom::Function(end_expression),
-        ];
-        context.terminate_function_with_call(Atom::Handle(handler_id, Box::new(handler)), start_and_end);
+        // let handler_id = context.next_handler_id();
+        // let start = vec![Atom::Function(expression_function_id)];
+        // context.terminate_function_with_call(Atom::Handle(handler_id, Box::new(handler)), start);
 
         // We must remember to remove this handler from the context when finished
         match old_handler {

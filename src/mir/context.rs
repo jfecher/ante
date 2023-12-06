@@ -164,7 +164,6 @@ impl Context {
     }
 
     pub fn register_handlers(&mut self, effects: &[(EffectId, Type)], function_id: &FunctionId, mut starting_index: u16) -> HashMap<EffectId, Atom> {
-        eprintln!("Clearing handlers");
         let old_handlers = std::mem::take(&mut self.handlers);
 
         for (effect_id, _) in effects {
@@ -173,7 +172,6 @@ impl Context {
                 parameter_index: starting_index,
             });
 
-            eprintln!("Inserting handler for {}", effect_id.0);
             self.handlers.insert(*effect_id, handler);
             starting_index += 1;
         }
@@ -255,8 +253,6 @@ impl Context {
     }
 
     pub fn lookup_handler(&self, effect_id: EffectId) -> Atom {
-        let atom = self.handlers.get(&effect_id).unwrap().clone();
-        eprintln!("lookup_handler({:?}) = {:?}", effect_id, atom);
-        atom
+        self.handlers.get(&effect_id).unwrap().clone()
     }
 }
