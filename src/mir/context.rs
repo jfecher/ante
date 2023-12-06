@@ -36,7 +36,7 @@ pub struct Context {
     /// If this is present, this variable gets defined as `self.continuation`
     /// when the next Lambda is converted. This is used to define `resume` to
     /// be the automatically-generated continuation parameter of a Lambda.
-    pub(super) handler_continuation: Option<hir::DefinitionInfo>,
+    pub(super) handler_continuation: Option<(EffectId, hir::DefinitionInfo)>,
 
     /// If present, this continuation will override the normal continuation
     /// functions usually call when finished. This is used for Handler expressions
@@ -84,10 +84,6 @@ impl Context {
 
     fn function(&self, id: &FunctionId) -> &Function {
         &self.mir.functions[&id]
-    }
-
-    pub fn function_mut(&mut self, id: &FunctionId) -> &mut Function {
-        self.mir.functions.get_mut(&id).unwrap()
     }
 
     fn current_function(&self) -> &Function {
@@ -167,9 +163,9 @@ impl Context {
         atom
     }
 
-    pub fn register_handlers(&mut self, effects: &[(EffectId, Type)], function_id: &FunctionId, mut starting_index: u16) {
+    pub fn register_handlers(&mut self, effects: &[(EffectId, Type)], function_id: &FunctionId, mut starting_index: u16) -> HashMap<EffectId, Atom> {
         eprintln!("Clearing handlers");
-        self.handlers.clear();
+        let old_handlers = std::mem::take(&mut self.handlers);
 
         for (effect_id, _) in effects {
             let handler = Atom::Parameter(ParameterId {
@@ -181,6 +177,8 @@ impl Context {
             self.handlers.insert(*effect_id, handler);
             starting_index += 1;
         }
+
+        old_handlers
     }
 
     pub fn convert_type(&mut self, typ: &hir::Type) -> Type {
@@ -226,11 +224,6 @@ impl Context {
         self.current_function_mut().argument_types.push(typ);
     }
 
-    pub fn add_continuation_parameter(&mut self, parameter_type: &hir::Type) {
-        let typ = Type::Function(vec![self.convert_type(parameter_type)], vec![]);
-        self.current_function_mut().argument_types.push(typ);
-    }
-
     pub fn current_parameters(&self) -> Vec<Atom> {
         let parameter_count = self.current_function().argument_types.len();
         fmap(0 .. parameter_count, |i| Atom::Parameter(ir::ParameterId {
@@ -259,5 +252,11 @@ impl Context {
         let result = f(self, Atom::Function(next_function_id.clone()));
         self.current_function_id = next_function_id;
         result
+    }
+
+    pub fn lookup_handler(&self, effect_id: EffectId) -> Atom {
+        let atom = self.handlers.get(&effect_id).unwrap().clone();
+        eprintln!("lookup_handler({:?}) = {:?}", effect_id, atom);
+        atom
     }
 }

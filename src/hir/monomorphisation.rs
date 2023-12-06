@@ -1781,7 +1781,6 @@ impl<'c> Context<'c> {
             let original_type = self.follow_all_bindings(declaration_type);
 
             let typ = self.convert_type(declaration_type);
-            println!("Converted effect type: {}", typ);
 
             let original_id = match declaration.lhs.as_ref() {
                 ast::Ast::Variable(var) => var.definition.unwrap(),
@@ -1791,11 +1790,8 @@ impl<'c> Context<'c> {
             let effect_info_id = effect_definition.effect_info.unwrap();
             let id = self.effects.get(&effect_info_id)
                 .and_then(|map| map.get(&vec![]))
-                .map(|effects| { eprintln!("Found id!"); effects[i].id })
-                .unwrap_or_else(|| {
-                    eprintln!("No match for id, generating a new one");
-                    self.next_unique_id()
-                });
+                .map(|effects| effects[i].id)
+                .unwrap_or_else(|| self.next_unique_id());
 
             let effect = hir::Ast::Effect(hir::Effect { id, typ: typ.clone() });
 
