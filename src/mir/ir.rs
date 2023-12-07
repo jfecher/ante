@@ -1,6 +1,6 @@
 mod id;
 
-use std::{collections::HashMap, fmt::Display};
+use std::{collections::HashMap, fmt::Display, rc::Rc};
 
 use crate::hir::{Literal, PrimitiveType};
 pub use id::*;
@@ -8,8 +8,13 @@ pub use id::*;
 #[derive(Default)]
 pub struct Mir {
     pub functions: HashMap<FunctionId, Function>,
-
     pub extern_symbols: HashMap<String, (Type, ExternId)>,
+}
+
+impl Mir {
+    pub fn main_id() -> FunctionId {
+        FunctionId { id: 0, name: Rc::new("main".into()) }
+    }
 }
 
 pub struct Function {
@@ -25,6 +30,15 @@ impl Function {
     /// Return an empty function with the given id that is expected to have its body filled in later
     pub fn empty(id: FunctionId) -> Self {
         Self { id, body_continuation: Atom::Literal(Literal::Unit), body_args: Vec::new(), argument_types: Vec::new() }
+    }
+
+    pub fn parameters(&self) -> impl ExactSizeIterator<Item = ParameterId> {
+        let parameter_count = self.argument_types.len();
+        let function = self.id.clone();
+        (0 .. parameter_count).map(move |i| ParameterId {
+            function: function.clone(),
+            parameter_index: i as u16,
+        })
     }
 }
 

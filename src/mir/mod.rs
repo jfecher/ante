@@ -8,6 +8,7 @@ use crate::{hir::{self, Literal}, util::fmap};
 pub mod ir;
 mod context;
 mod printer;
+mod interpreter;
 
 pub fn convert_to_mir(hir: hir::Ast) -> Mir {
     let mut context = Context::new();
@@ -77,16 +78,18 @@ impl ToMir for hir::Lambda {
         let old_handlers = context.register_handlers(&effect_types, &lambda_id, self.args.len() as u16);
 
         // Push each handler as an argument. This IR starts in capability-passing style.
+        let arguments = &mut context.current_function_mut().argument_types;
+
         for (_effect_id, effect_type) in effect_types {
-            context.current_function_mut().argument_types.push(effect_type);
+            arguments.push(effect_type);
         }
 
         // move k back to the end
-        context.current_function_mut().argument_types.push(k_type);
+        arguments.push(k_type);
 
         let k = Atom::Parameter(ParameterId {
             function: lambda_id.clone(),
-            parameter_index: self.args.len() as u16,
+            parameter_index: arguments.len() as u16 - 1,
         });
 
         // If we're in a handler branch, define `resume` to be the current continuation

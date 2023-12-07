@@ -55,7 +55,7 @@ impl Context {
     pub fn new() -> Self {
         let mut mir = Mir::default();
 
-        let main_id = FunctionId { id: 0, name: Rc::new("main".into()) };
+        let main_id = Mir::main_id();
         let main = ir::Function {
             id: main_id.clone(),
             body_continuation: Atom::Literal(Literal::Unit),
