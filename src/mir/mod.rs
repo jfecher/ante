@@ -453,6 +453,7 @@ impl ToMir for hir::Handle {
         let current_function = context.current_function_id.clone();
 
         let end_function_id = context.next_fresh_function();
+        context.add_parameter(&self.result_type);
         let end_function_atom = Atom::Function(end_function_id.clone());
 
         let effect_id = context.lookup_or_create_effect(self.effect.id);
@@ -466,11 +467,7 @@ impl ToMir for hir::Handle {
 
         context.current_function_id = current_function;
         let result = self.expression.to_atom(context);
-        context.terminate_function_with_call(end_function_atom, vec![]);
-
-        // let handler_id = context.next_handler_id();
-        // let start = vec![Atom::Function(expression_function_id)];
-        // context.terminate_function_with_call(Atom::Handle(handler_id, Box::new(handler)), start);
+        context.terminate_function_with_call(end_function_atom, vec![result]);
 
         // We must remember to remove this handler from the context when finished
         match old_handler {
@@ -478,7 +475,7 @@ impl ToMir for hir::Handle {
             None => context.handlers.remove(&effect_id),
         };
 
-        context.current_function_id = end_function_id;
-        result
+        context.current_function_id = end_function_id.clone();
+        Atom::Parameter(ParameterId { function: end_function_id, parameter_index: 0 })
     }
 }

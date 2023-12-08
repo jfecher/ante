@@ -220,6 +220,7 @@ pub struct Handle {
     pub effect: Effect,
     pub resume: Variable,
     pub branch_body: Lambda,
+    pub result_type: Type,
 }
 
 /// A single effect declaration. Effect declarations declaring effects

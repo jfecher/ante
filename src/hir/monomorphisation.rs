@@ -1760,6 +1760,7 @@ impl<'c> Context<'c> {
                 effect,
                 resume: resume_var,
                 branch_body: hir::Lambda { args, body, typ: branch_type },
+                result_type: self.convert_type(handle.typ.as_ref().unwrap()),
             })
         };
 
