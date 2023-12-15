@@ -1,6 +1,6 @@
 mod id;
 
-use std::{collections::HashMap, fmt::Display, rc::Rc};
+use std::{collections::HashMap, rc::Rc};
 
 use crate::hir::{Literal, PrimitiveType};
 pub use id::*;
@@ -229,28 +229,41 @@ impl Atom {
 #[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash)]
 pub enum Type {
     Primitive(PrimitiveType),
-    Function(/*parameters:*/Vec<Type>, /*effect parameters:*/ Vec<(EffectId, Type)>),
+    Function(Vec<Type>, Vec<EffectIndices>),
+
+    /// The result type of an effect handler.
+    /// The goal of this IR is to eventually specialize this type away entirely.
+    Effect(EffectId),
 
     /// Tuples have a TypeId to allow for struct recursion
     Tuple(Vec<Type>),
 }
 
 impl Type {
-    /// Returns the arguments of the continuation of this function type. E.g:
-    ///
-    /// `fn(A, B, fn(C, D))`.get_continuation_types(..) = `vec![C, D]`
-    ///
-    /// Panics if this is not a function type, and prints the given debug_label in the error.
-    pub(super) fn get_continuation_types(&self, debug_label: impl Display) -> Vec<Type> {
-        match self {
-            Type::Function(arguments, _effect_args) => {
-                let continuation_type = arguments.last().unwrap_or_else(|| panic!("Expected at least 1 argument from {}", debug_label));
-                match continuation_type {
-                    Type::Function(arguments, _effect_args) => arguments.clone(),
-                    other => unreachable!("Expected function type, found {} in {}", other, debug_label),
-                }
-            }
-            other => unreachable!("Expected function type, found {} in {}", other, debug_label),
-        }
+    /// Create a function type with the given arguments and return type
+    pub(super) fn function(mut args: Vec<Type>, return_type: Type) -> Type {
+        args.push(Type::Function(vec![return_type], vec![]));
+        Type::Function(args, vec![])
     }
+}
+
+/// Each effect used modifies a function's type and inserts 3 extra parameters specified in the
+/// comment for each field below. This struct stores the indices of these parameters in a FunctionType
+#[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash)]
+pub struct EffectIndices {
+    pub effect_id: EffectId,
+
+    /// effect: A parameter for the effectful operation itself.
+    ///         An effectful function of type `A -> B` will have the
+    ///         type `fn(A, fn(B, fn(H)), fn(H))` in this IR where `H`
+    ///         is the return type of the effect handler.
+    pub effect_index: u16,
+
+    /// k: All functions in CPS form have a continuation argument normally
+    ///    of type `fn(Ret)`. In effectful functions, the type of this continuation
+    ///    is modified to `fn(Ret, fn(H))` where `H` is the handler type.
+    pub k_index: u16,
+
+    /// effect_k: The effect handler's continuation of type `fn(H)`.
+    pub effect_k_index: u16,
 }

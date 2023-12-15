@@ -1,8 +1,8 @@
 use std::{collections::{HashMap, VecDeque}, rc::Rc};
 
-use crate::{hir::{self, Literal, PrimitiveType}, util::fmap, mir::ir::ParameterId};
+use crate::{hir::{self, Literal, PrimitiveType}, util::fmap, mir::ir::{ParameterId, EffectIndices}};
 
-use super::ir::{Mir, Atom, FunctionId, self, Type, Function, ExternId, HandlerId, EffectId};
+use super::ir::{Mir, Atom, FunctionId, self, Type, Function, ExternId, EffectId};
 
 
 pub struct Context {
@@ -20,10 +20,14 @@ pub struct Context {
 
     next_function_id: u32,
 
-    next_handler_id: u32,
-
-    /// The continuation that corresponds to the given effect id
+    /// Maps an effect id to the parameter that corresponds to an effect to use.
+    /// This is the parameter the handle branch will be passed in through.
+    /// See comment on `EffectIndices` for the implicit parameters effects add to a function.
     pub(super) handlers: HashMap<EffectId, Atom>,
+
+    /// Maps an effect id to the parameter that corresponds to a continuation to a handle branch for an
+    /// effect. See comment on `EffectIndices` for the implicit parameters effects add to a function.
+    pub(super) handler_ks: HashMap<EffectId, Atom>,
 
     /// If this is set, this tells the Context to use this ID as the next
     /// function id when creating a new function. This is set when a global
@@ -51,6 +55,12 @@ pub struct Context {
     pub(super) lambda_name: Rc<String>,
 }
 
+/// Convenience struct for keeping track of handlers returned by register_handlers
+pub struct Handlers {
+    pub(super) handlers: HashMap<EffectId, Atom>,
+    pub(super) handler_ks: HashMap<EffectId, Atom>,
+}
+
 impl Context {
     pub fn new() -> Self {
         let mut mir = Mir::default();
@@ -71,9 +81,9 @@ impl Context {
             definition_queue: VecDeque::new(),
             effects: HashMap::new(),
             handlers: HashMap::new(),
+            handler_ks: HashMap::new(),
             current_function_id: main_id,
             next_function_id: 1, // Since 0 is taken for main
-            next_handler_id: 0,
             continuation: None,
             handler_continuation: None,
             end_continuation: None,
@@ -99,12 +109,6 @@ impl Context {
         let id = self.next_function_id;
         self.next_function_id += 1;
         FunctionId { id, name }
-    }
-
-    pub fn next_handler_id(&mut self) -> HandlerId {
-        let id = self.next_handler_id;
-        self.next_handler_id += 1;
-        HandlerId(id)
     }
 
     /// Move on to a fresh function
@@ -133,6 +137,28 @@ impl Context {
         function.body_args = args;
     }
 
+    /// Terminates the current function by setting its body to a function call.
+    /// This function also automatically inserts any required effect handler parameters.
+    pub fn terminate_function_with_call_and_effects(&mut self, f: Atom, mut args: Vec<Atom>, k: Atom, f_effects: &[EffectIndices]) {
+        for effect in f_effects {
+            let id = effect.effect_id;
+
+            if let Some(handler) = self.handlers.get(&id) {
+                args.insert(effect.effect_index as usize, handler.clone());
+            }
+
+            if let Some(handler_k) = self.handler_ks.get(&id) {
+                args.insert(effect.effect_k_index as usize, handler_k.clone());
+            }
+        }
+
+        args.push(k);
+
+        let function = self.current_function_mut();
+        function.body_continuation = f;
+        function.body_args = args;
+    }
+
     pub fn add_global_to_queue(&mut self, variable: hir::Variable) -> Atom {
         let name = match &variable.name {
             Some(name) => Rc::new(name.to_owned()),
@@ -140,12 +166,7 @@ impl Context {
         };
 
         let argument_types = match self.convert_type(&variable.typ) {
-            Type::Function(mut argument_types, effects) => {
-                let k = argument_types.pop().unwrap();
-                argument_types.extend(effects.into_iter().map(|(_, typ)| typ));
-                argument_types.push(k);
-                argument_types
-            },
+            Type::Function(argument_types, _effects) => argument_types,
             other => unreachable!("add_global_to_queue: Expected function type for global, found {}: {}", variable, other),
         };
 
@@ -163,22 +184,38 @@ impl Context {
         atom
     }
 
-    pub fn register_handlers(&mut self, effects: &[(EffectId, Type)], function_id: &FunctionId, mut starting_index: u16) -> HashMap<EffectId, Atom> {
-        let old_handlers = std::mem::take(&mut self.handlers);
-
-        for (effect_id, _) in effects {
-            let handler = Atom::Parameter(ParameterId {
-                function: function_id.clone(),
-                parameter_index: starting_index,
-            });
-
-            self.handlers.insert(*effect_id, handler);
-            starting_index += 1;
-        }
-
-        old_handlers
+    /// Set the current handlers back to an old set of handlers returned by register_handlers
+    pub fn set_handlers(&mut self, handlers: Handlers) {
+        self.handlers = handlers.handlers;
+        self.handler_ks = handlers.handler_ks;
     }
 
+    pub fn register_handlers(&mut self, effects: &[EffectIndices], function_id: &FunctionId) -> Handlers {
+        let old_handlers = std::mem::take(&mut self.handlers);
+        let old_handler_ks = std::mem::take(&mut self.handler_ks);
+
+        for effect_indices in effects {
+            let handler = Atom::Parameter(ParameterId {
+                function: function_id.clone(),
+                parameter_index: effect_indices.effect_index,
+            });
+
+            let handler_k = Atom::Parameter(ParameterId {
+                function: function_id.clone(),
+                parameter_index: effect_indices.effect_k_index,
+            });
+
+            self.handlers.insert(effect_indices.effect_id, handler);
+            self.handler_ks.insert(effect_indices.effect_id, handler_k);
+        }
+
+        Handlers {
+            handlers: old_handlers,
+            handler_ks: old_handler_ks,
+        }
+    }
+
+    /// Converts a Hir Type to a Mir Type
     pub fn convert_type(&mut self, typ: &hir::Type) -> Type {
         match typ {
             hir::Type::Primitive(primitive) => Type::Primitive(primitive.clone()),
@@ -192,17 +229,53 @@ impl Context {
         }
     }
 
-    pub fn convert_function_type(&mut self, typ: &hir::FunctionType) -> (Vec<Type>, Vec<(EffectId, Type)>) {
+    pub fn convert_function_type(&mut self, typ: &hir::FunctionType) -> (Vec<Type>, Vec<EffectIndices>) {
         let mut args = fmap(&typ.parameters, |param| self.convert_type(param));
 
-        // Each effect becomes an additional function parameter
+        let return_type = self.convert_type(&typ.return_type);
+
         let effects = fmap(&typ.effects, |effect| {
-            let id = self.lookup_or_create_effect(effect.id);
-            (id, self.convert_type(&effect.typ))
+            let start_index = args.len() as u16;
+            let effect_id = self.lookup_or_create_effect(effect.id);
+            let mut effect_type = self.convert_type(&effect.typ);
+            let handler_type = Type::Effect(effect_id);
+
+            println!("Effect type is {}", effect_type);
+
+            // effect
+            match &mut effect_type {
+                Type::Function(arg_types, _) => {
+                    match arg_types.last_mut().unwrap() {
+                        Type::Function(inner_arg_types, _) => {
+                            inner_arg_types.push(handler_type.clone());
+                        },
+                        other => unreachable!("Expected function type while CPS'ing effect, got {}", other),
+                    }
+
+                    arg_types.insert(arg_types.len() - 1, Type::Function(vec![handler_type.clone()], vec![]));
+                }
+                other => unreachable!("Expected function type while CPS'ing effect, got {}", other),
+            }
+            args.push(effect_type);
+
+            // effect_k
+            args.push(Type::Function(vec![handler_type.clone()], vec![]));
+
+            // k
+            args.push(Type::function(vec![return_type.clone()], handler_type));
+
+            EffectIndices {
+                effect_id,
+                effect_index: start_index,
+                effect_k_index: start_index + 1,
+                k_index: start_index + 2,
+            }
         });
 
-        // The return type becomes a return continuation
-        args.push(Type::Function(vec![self.convert_type(&typ.return_type)], vec![]));
+        if effects.is_empty() {
+            args.push(Type::Function(vec![return_type], vec![]));
+        }
+
         (args, effects)
     }
 

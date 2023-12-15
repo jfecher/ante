@@ -59,6 +59,8 @@ impl ToMir for hir::Lambda {
         let name = Rc::new("lambda".to_owned());
         let lambda_id = context.next_fresh_function_with_name(name);
 
+        eprintln!("{} has {} effects", lambda_id, self.typ.effects.len());
+
         // Add args to scope
         for (i, arg) in self.args.iter().enumerate() {
             context.definitions.insert(arg.definition_id, Atom::Parameter(ParameterId {
@@ -68,41 +70,40 @@ impl ToMir for hir::Lambda {
         }
 
         // If the argument types were not already set, set them now
-        let (arg_types, effect_types) = context.convert_function_type(&self.typ);
+        let (arg_types, effects) = context.convert_function_type(&self.typ);
         let function = context.current_function_mut();
         function.argument_types = arg_types;
 
-        let k_type = function.argument_types.pop().unwrap();
-
         // Register each effect continuation we have
-        let old_handlers = context.register_handlers(&effect_types, &lambda_id, self.args.len() as u16);
+        let old_handlers = context.register_handlers(&effects, &lambda_id);
 
-        // Push each handler as an argument. This IR starts in capability-passing style.
-        let arguments = &mut context.current_function_mut().argument_types;
+        let arguments = &mut context.mir.functions.get_mut(&context.current_function_id).unwrap().argument_types;
 
-        for (_effect_id, effect_type) in effect_types {
-            arguments.push(effect_type);
-        }
-
-        // move k back to the end
-        arguments.push(k_type);
-
-        let k = Atom::Parameter(ParameterId {
+        let mut k = ParameterId {
             function: lambda_id.clone(),
             parameter_index: arguments.len() as u16 - 1,
-        });
+        };
 
         // If we're in a handler branch, define `resume` to be the current continuation
         // and define the handler for `effect_id` as the current function
         if let Some((effect_id, variable)) = context.handler_continuation.take() {
-            context.definitions.insert(variable.definition_id, k.clone());
-            context.handlers.insert(effect_id, Atom::Function(lambda_id.clone()));
+            let k_type = arguments.pop().unwrap();
+            let effect_k_type = arguments.pop().unwrap();
+            let _effect_type = arguments.pop().unwrap();
 
-            // We must fix the continuation type since `resume` can return a value (and thus also
-            // requires another continuation as an argument) unlike the default `k`
-            let resume_type = context.convert_type(&variable.typ);
-            *context.current_function_mut().argument_types.last_mut().unwrap() = resume_type;
+            arguments.push(effect_k_type);
+            arguments.push(k_type);
+
+            k = ParameterId {
+                function: lambda_id.clone(),
+                parameter_index: arguments.len() as u16 - 1,
+            };
+
+            context.definitions.insert(variable.definition_id, Atom::Parameter(k.clone()));
+            context.handlers.insert(effect_id, Atom::Function(lambda_id.clone()));
         }
+
+        let k = Atom::Parameter(k);
 
         // The continuation to jump to at the end of a function to "return" the final value.
         // This is usually the implicit k parameter but handle expressions override this.
@@ -113,7 +114,7 @@ impl ToMir for hir::Lambda {
         let lambda_body = self.body.to_atom(context);
         context.terminate_function_with_call(end_continuation, vec![lambda_body]);
 
-        context.handlers = old_handlers;
+        context.set_handlers(old_handlers);
         context.current_function_id = original_function;
         context.continuation = original_continuation;
 
@@ -124,17 +125,11 @@ impl ToMir for hir::Lambda {
 impl ToMir for hir::FunctionCall {
     fn to_atom(&self, context: &mut Context) -> Atom {
         let f = self.function.to_atom(context);
-        let mut args = fmap(&self.args, |arg| arg.to_atom(context));
+        let args = fmap(&self.args, |arg| arg.to_atom(context));
 
         context.with_next_function(self.function_type.return_type.as_ref(), |context, k| {
             let (_, effects) = context.convert_function_type(&self.function_type);
-
-            for (id, _effect) in effects {
-                args.push(context.lookup_handler(id));
-            }
-
-            args.push(k.clone());
-            context.terminate_function_with_call(f, args);
+            context.terminate_function_with_call_and_effects(f, args, k.clone(), &effects);
         });
 
         // Now that with_next_function advanced us to the next function, the call result
@@ -281,7 +276,7 @@ impl ToMir for hir::Return {
         // code sequenced after a `return` as otherwise it would overwrite the call above.
         context.next_fresh_function();
 
-        // TODO: Return some kind of unreachable/uninitialized value
+        // TODO: Return some kind of unreachable/uninitialized value?
         Atom::Literal(Literal::Unit)
     }
 }
@@ -425,14 +420,13 @@ impl ToMir for hir::Effect {
 
         let effect_id = context.lookup_or_create_effect(self.id);
 
-        let (args, effects) = match context.convert_type(&self.typ) {
-            ir::Type::Function(args, effects) => (args, effects),
+        let effects = match context.convert_type(&self.typ) {
+            ir::Type::Function(_, effects) => effects,
             other => unreachable!("Expected type of effect to be a function, got {}", other),
         };
 
-        let offset = args.len() as u16 - 1;
         let function_id = &context.current_function_id.clone();
-        context.register_handlers(&effects, function_id, offset);
+        context.register_handlers(&effects, function_id);
 
         let handler = context.lookup_handler(effect_id);
 
@@ -453,6 +447,7 @@ impl ToMir for hir::Handle {
         let current_function = context.current_function_id.clone();
 
         let end_function_id = context.next_fresh_function();
+        eprintln!("end_function_id = {}", end_function_id);
         context.add_parameter(&self.result_type);
         let end_function_atom = Atom::Function(end_function_id.clone());
 
@@ -460,6 +455,7 @@ impl ToMir for hir::Handle {
 
         context.handler_continuation = Some((effect_id, self.resume.clone()));
         context.end_continuation = Some(end_function_atom.clone());
+
         let handler = self.branch_body.to_atom(context);
 
         // Now compile the handled expression with the new handler

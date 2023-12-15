@@ -1213,6 +1213,7 @@ impl<'c> Context<'c> {
         let t = self.follow_all_bindings(t);
 
         let typ = self.get_function_type(&t);
+        eprintln!("Lambda type = {}", typ);
         let mut body_prelude = vec![];
 
         // Bind each parameter node to the nth parameter of `function`
@@ -1691,7 +1692,6 @@ impl<'c> Context<'c> {
             },
         }
     }
-
     
     fn monomorphise_handle(&mut self, handle: &ast::Handle<'c>) -> hir::Ast {
         assert_eq!(handle.branches.len(), handle.resumes.len());
@@ -1751,9 +1751,15 @@ impl<'c> Context<'c> {
             let definition = Definition::Normal(resume_var.clone());
             self.definitions.insert(resume, frontend_type, definition);
 
-            let return_type = Box::new(self.convert_type(branch.get_type().unwrap()));
+            // A handler branch's type is the same as the effect it handles
+            let branch_type = match &effect.typ {
+                Type::Function(function_type) => function_type.clone(),
+                other => unreachable!("Expected effect to have function type, found {} instead", other),
+            };
+
             let body = Box::new(self.monomorphise(&branch));
-            let branch_type = hir::FunctionType { parameters, return_type, effects: vec![], is_varargs: false };
+            //let return_type = Box::new(self.convert_type(branch.get_type().unwrap()));
+            //let branch_type = hir::FunctionType { parameters, return_type, effects: vec![], is_varargs: false };
 
             hir::Ast::Handle(hir::Handle {
                 expression: Box::new(expr),
