@@ -188,7 +188,14 @@ fn offset<'g>(ptr: &Ast, offset: IntValue<'g>, element_type: &Type, generator: &
 
     let offset = generator.builder.build_int_mul(offset, type_size, "offset_adjustment").unwrap();
     let element_type = generator.convert_type(element_type);
-    unsafe { generator.builder.build_gep(element_type, ptr, &[offset], "offset").unwrap().into() }
+
+    // GEP must be done with a 1-byte sized type. Otherwise it takes into account the size of the
+    // result type which messes with the type size offset calculation.
+    let i8 = generator.context.i8_type();
+    let gep = unsafe { generator.builder.build_gep(i8, ptr, &[offset], "offset").unwrap() };
+
+    let result_pointer = element_type.ptr_type(AddressSpace::default());
+    generator.builder.build_pointer_cast(gep, result_pointer, "gep_cast").unwrap().into()
 }
 
 fn transmute_value<'g>(x: &Ast, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
