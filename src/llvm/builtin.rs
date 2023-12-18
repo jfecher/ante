@@ -7,7 +7,7 @@
 //! to get the corresponding builtin operation. Since these operations
 //! expect the llvm::Function to have a certain signature, the `builtin`
 //! function is prevented from being used outside the prelude.
-use crate::hir::{Ast, Builtin, IntegerKind, PrimitiveType, Type};
+use crate::hir::{Ast, Builtin, PrimitiveType, Type};
 use crate::llvm::{CodeGen, Generator};
 
 use inkwell::attributes::{Attribute, AttributeLoc};
@@ -180,22 +180,8 @@ fn deref_ptr<'g>(ptr: &Ast, typ: &Type, generator: &mut Generator<'g>) -> BasicV
 // This builtin is unnecessary once we replace it with size_of
 fn offset<'g>(ptr: &Ast, offset: IntValue<'g>, element_type: &Type, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
     let ptr = ptr.codegen(generator).into_pointer_value();
-    // expect ptr to be an i8* so we must multiply offset by type_size manually
-    let bits = generator.integer_bit_count(IntegerKind::Usz);
-
-    let type_size = element_type.size_in_bytes();
-    let type_size = generator.context.custom_width_int_type(bits).const_int(type_size as u64, true);
-
-    let offset = generator.builder.build_int_mul(offset, type_size, "offset_adjustment").unwrap();
     let element_type = generator.convert_type(element_type);
-
-    // GEP must be done with a 1-byte sized type. Otherwise it takes into account the size of the
-    // result type which messes with the type size offset calculation.
-    let i8 = generator.context.i8_type();
-    let gep = unsafe { generator.builder.build_gep(i8, ptr, &[offset], "offset").unwrap() };
-
-    let result_pointer = element_type.ptr_type(AddressSpace::default());
-    generator.builder.build_pointer_cast(gep, result_pointer, "gep_cast").unwrap().into()
+    unsafe { generator.builder.build_gep(element_type, ptr, &[offset], "offset").unwrap().into() }
 }
 
 fn transmute_value<'g>(x: &Ast, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
