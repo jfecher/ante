@@ -97,6 +97,10 @@ pub struct Definition {
     pub variable: DefinitionId,
     pub name: Option<String>,
     pub expr: Box<Ast>,
+
+    /// The type of the defined variable.
+    /// The result type of a Definition is always Unit.
+    pub typ: Type,
 }
 
 /// if condition then expression else expression

@@ -29,9 +29,10 @@ impl<'c> Context<'c> {
 
         if let Some(DecisionTree::Switch(id, _)) = &match_.decision_tree {
             let name = Some(self.cache[*id].name.clone());
-            let (def, new_id) = self.fresh_definition(value, name.clone());
             let typ = self.follow_all_bindings(self.cache[*id].typ.as_ref().unwrap().as_monotype());
-            let monomorphized_type = Rc::new(self.convert_type(&typ));
+            let monomorphised_type = self.convert_type(&typ);
+            let (def, new_id) = self.fresh_definition(value, name.clone(), monomorphised_type.clone());
+            let monomorphized_type = Rc::new(monomorphised_type);
             let definition = Definition::Normal(Variable::new(new_id, monomorphized_type));
             self.definitions.insert(*id, typ, definition);
             def
@@ -81,7 +82,7 @@ impl<'c> Context<'c> {
             self.monomorphise_tree(&case.branch)
         } else {
             // variable = value = reinterpret match_value as variant_type
-            let value = self.cast_to_variant_type(match_value, case);
+            let (value, typ) = self.cast_to_variant_type(match_value, case);
             let variable = self.next_unique_id();
             let field_bindings = self.bind_patterns(variable, case);
 
@@ -92,7 +93,7 @@ impl<'c> Context<'c> {
             }
 
             let expr = Box::new(value);
-            let cast_definition = hir::Definition { variable, expr, name: None };
+            let cast_definition = hir::Definition { variable, expr, typ, name: None };
 
             hir::DecisionTree::Definition(cast_definition, Box::new(tree))
         };
@@ -194,9 +195,11 @@ impl<'c> Context<'c> {
                             self.definitions.insert(*field_alias, field_type, field_definition);
                         }
 
+                        let typ = monomorphized_field_type.unwrap();
                         hir::Definition {
                             variable: field_variable_id,
-                            expr: Box::new(Self::extract(variant_variable.clone().into(), field_index, monomorphized_field_type.unwrap())),
+                            expr: Box::new(Self::extract(variant_variable.clone().into(), field_index, typ.clone())),
+                            typ,
                             name: None,
                         }
                     })
@@ -226,7 +229,7 @@ impl<'c> Context<'c> {
         }
     }
 
-    fn cast_to_variant_type(&mut self, value: hir::DefinitionInfo, case: &Case) -> hir::Ast {
+    fn cast_to_variant_type(&mut self, value: hir::DefinitionInfo, case: &Case) -> (hir::Ast, hir::Type) {
         let value = value.into();
         match &case.tag {
             Some(VariantTag::UserDefined(id)) => {
@@ -242,13 +245,13 @@ impl<'c> Context<'c> {
                     elems.push(self.convert_type(&typ));
                 }
 
+                let target_type = hir::Type::Tuple(elems);
+                let cast = hir::ReinterpretCast { lhs: Box::new(value), target_type: target_type.clone() };
+
                 // TODO: Add padding to cast to smaller type in case some backends need it
-                hir::Ast::ReinterpretCast(hir::ReinterpretCast {
-                    lhs: Box::new(value),
-                    target_type: hir::Type::Tuple(elems),
-                })
+                (hir::Ast::ReinterpretCast(cast), target_type)
             },
-            _ => value,
+            other => unreachable!("Expected cast to Some(user defined type), found cast to: {:?}", other),
         }
     }
 }

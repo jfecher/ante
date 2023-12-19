@@ -112,7 +112,6 @@ impl Display for Type {
                 let args = fmap(args, ToString::to_string).join(", ");
                 write!(f, "fn({})", args)
             },
-            Type::Effect(id) => write!(f, "effect_{}", id.0),
             Type::Tuple(fields) => {
                 for (i, arg) in fields.iter().enumerate() {
                     if i != 0 {

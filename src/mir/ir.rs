@@ -231,10 +231,6 @@ pub enum Type {
     Primitive(PrimitiveType),
     Function(Vec<Type>, Vec<EffectIndices>),
 
-    /// The result type of an effect handler.
-    /// The goal of this IR is to eventually specialize this type away entirely.
-    Effect(EffectId),
-
     /// Tuples have a TypeId to allow for struct recursion
     Tuple(Vec<Type>),
 }

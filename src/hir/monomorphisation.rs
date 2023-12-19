@@ -963,9 +963,9 @@ impl<'c> Context<'c> {
             let expr = Box::new(definition_rhs);
 
             let name = Some(self.cache[original_id].name.clone());
-            let definition = hir::Definition { variable, expr, name };
-            let typ = Rc::new(self.convert_type(&typ));
-            Definition::Normal(hir::Variable::with_definition(definition, typ))
+            let typ = self.convert_type(&typ);
+            let definition = hir::Definition { variable, expr, typ: typ.clone(), name };
+            Definition::Normal(hir::Variable::with_definition(definition, Rc::new(typ)))
         } else {
             Definition::Macro(definition_rhs)
         };
@@ -979,16 +979,16 @@ impl<'c> Context<'c> {
     }
 
     pub fn fresh_definition(
-        &mut self, definition_rhs: hir::Ast, name: Option<String>,
+        &mut self, definition_rhs: hir::Ast, name: Option<String>, typ: Type,
     ) -> (hir::Ast, hir::DefinitionId) {
         let variable = self.next_unique_id();
         let expr = Box::new(definition_rhs);
-        let definition = hir::Ast::Definition(hir::Definition { variable, expr, name });
+        let definition = hir::Ast::Definition(hir::Definition { variable, expr, typ, name });
         (definition, variable)
     }
 
     fn make_definition(&mut self, definition_rhs: hir::Ast, name: Option<String>, typ: Rc<Type>) -> hir::DefinitionInfo {
-        let (definition, definition_id) = self.fresh_definition(definition_rhs, name.clone());
+        let (definition, definition_id) = self.fresh_definition(definition_rhs, name.clone(), typ.as_ref().clone());
         hir::DefinitionInfo { 
             definition_id, 
             definition: Some(Rc::new(definition)), 
@@ -1013,12 +1013,14 @@ impl<'c> Context<'c> {
         }
 
         let variable = definition_id;
-        let new_definition = hir::Ast::Definition(hir::Definition { variable, expr, name: Some(name.clone()) });
+        let hir_type = self.follow_all_bindings(definition.pattern.get_type().unwrap());
+        let typ = self.convert_type(&hir_type);
+
+        let new_definition = hir::Ast::Definition(hir::Definition { variable, expr, name: Some(name.clone()), typ });
 
         let mut nested_definitions = vec![new_definition];
-        let typ = self.follow_all_bindings(definition.pattern.get_type().unwrap());
 
-        self.desugar_pattern(&definition.pattern, definition_id, typ.clone(), &mut nested_definitions);
+        self.desugar_pattern(&definition.pattern, definition_id, hir_type.clone(), &mut nested_definitions);
 
         let definition = if nested_definitions.len() == 1 {
             nested_definitions.remove(0)
@@ -1027,7 +1029,7 @@ impl<'c> Context<'c> {
         };
 
         let definition = Some(Rc::new(definition));
-        let typ = Rc::new(self.convert_type(&typ));
+        let typ = Rc::new(self.convert_type(&hir_type));
         Definition::Normal(hir::Variable {
             definition_id, 
             definition, 
@@ -1080,9 +1082,9 @@ impl<'c> Context<'c> {
                     let arg_type = self.follow_all_bindings(arg_pattern.get_type().unwrap());
 
                     let extract_result_type = self.convert_type(&arg_type);
-                    let extract = Self::extract(variable.clone().into(), i as u32, extract_result_type);
+                    let extract = Self::extract(variable.clone().into(), i as u32, extract_result_type.clone());
 
-                    let (definition, id) = self.fresh_definition(extract, None);
+                    let (definition, id) = self.fresh_definition(extract, None, extract_result_type);
                     definitions.push(definition);
 
                     self.desugar_pattern(arg_pattern, id, arg_type, definitions)
@@ -1213,7 +1215,6 @@ impl<'c> Context<'c> {
         let t = self.follow_all_bindings(t);
 
         let typ = self.get_function_type(&t);
-        eprintln!("Lambda type = {}", typ);
         let mut body_prelude = vec![];
 
         // Bind each parameter node to the nth parameter of `function`
@@ -1277,11 +1278,12 @@ impl<'c> Context<'c> {
                 let param_ast: hir::Ast = env.clone().into();
                 env_type = Self::extract_second_type(env_type);
 
-                let extract_var_in_env = Self::extract(param_ast.clone(), 0, self.convert_type(&typ));
+                let var_type = self.convert_type(&typ);
+                let extract_var_in_env = Self::extract(param_ast.clone(), 0, var_type.clone());
                 let extract_rest_of_env = Self::extract(param_ast, 1, env_type.clone());
 
-                let (definition, definition_id) = self.fresh_definition(extract_var_in_env, Some(name.clone()));
-                let (rest_env_def, rest_env_var) = self.fresh_definition(extract_rest_of_env, None);
+                let (definition, definition_id) = self.fresh_definition(extract_var_in_env, Some(name.clone()), var_type);
+                let (rest_env_def, rest_env_var) = self.fresh_definition(extract_rest_of_env, None, env_type.clone());
 
                 definitions.push(definition);
                 definitions.push(rest_env_def);
@@ -1488,8 +1490,8 @@ impl<'c> Context<'c> {
                         };
 
                         // Extract the function from the closure
-                        let (function_definition, id) = self.fresh_definition(function, None);
                         let typ = Type::Function(function_type.clone());
+                        let (function_definition, id) = self.fresh_definition(function, None, typ.clone());
                         let function_variable = hir::Ast::Variable(hir::Variable::new(id, Rc::new(typ.clone())));
 
                         let function = Box::new(Self::extract(function_variable.clone(), 0, typ));
@@ -1534,7 +1536,8 @@ impl<'c> Context<'c> {
                 }
 
                 let name = Self::try_get_pattern_name(definition.pattern.as_ref());
-                let (new_definition, id) = self.fresh_definition(expr, name);
+                let typ = self.convert_type(definition.pattern.get_type().unwrap());
+                let (new_definition, id) = self.fresh_definition(expr, name, typ);
 
                 let mut nested_definitions = vec![new_definition];
                 let typ = self.follow_all_bindings(definition.pattern.get_type().unwrap());
@@ -1805,7 +1808,7 @@ impl<'c> Context<'c> {
             let name = Some(self.cache[original_id].name.clone());
 
             let expr = Box::new(effect);
-            let definition = hir::Ast::Definition(hir::Definition { variable: id, expr, name: name.clone() });
+            let definition = hir::Ast::Definition(hir::Definition { variable: id, expr, name: name.clone(), typ: typ.clone() });
             let definition = Some(Rc::new(definition));
             let definition = hir::DefinitionInfo { definition_id: id, definition, name, typ: Rc::new(typ) };
 

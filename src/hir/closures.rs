@@ -27,6 +27,7 @@ impl<'c> Context<'c> {
                 let new_f = replace_env(f, &inner_env, definition_id, &inner_f);
                 let def = Ast::Definition(hir::Definition {
                     variable: inner_f.definition_id,
+                    typ: inner_f.typ.as_ref().clone(),
                     name: None,
                     expr: Box::new(new_f),
                 });

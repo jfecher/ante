@@ -2,16 +2,18 @@ use std::{collections::{HashMap, VecDeque}, rc::Rc};
 
 use crate::{hir::{self, Literal, PrimitiveType}, util::fmap, mir::ir::{ParameterId, EffectIndices}};
 
-use super::ir::{Mir, Atom, FunctionId, self, Type, Function, ExternId, EffectId};
+use super::ir::{Mir, Atom, FunctionId, self, Type, Function, ExternId, EffectId, HandlerId};
 
 
 pub struct Context {
     pub(super) mir: Mir,
-    pub(super) definitions: HashMap<hir::DefinitionId, Atom>,
+
+    pure_definitions: Definitions,
+    specialized_definitions: HashMap<HandlerId, SpecializedDefinitions>,
 
     pub(super) effects: HashMap<hir::DefinitionId, EffectId>,
 
-    pub(super) definition_queue: VecDeque<(FunctionId, Rc<hir::Ast>)>,
+    pub(super) definition_queue: VecDeque<(FunctionId, Option<HandlerId>, Rc<hir::Ast>)>,
 
     /// The function currently being translated. It is expected that the
     /// `body_continuation` and `body_args` fields of this function are filler
@@ -19,6 +21,9 @@ pub struct Context {
     pub(super) current_function_id: FunctionId,
 
     next_function_id: u32,
+    next_handler_id: u32,
+
+    pub(super) current_handler: Option<HandlerId>,
 
     /// Maps an effect id to the parameter that corresponds to an effect to use.
     /// This is the parameter the handle branch will be passed in through.
@@ -42,17 +47,21 @@ pub struct Context {
     /// be the automatically-generated continuation parameter of a Lambda.
     pub(super) handler_continuation: Option<(EffectId, hir::DefinitionInfo)>,
 
-    /// If present, this continuation will override the normal continuation
-    /// functions usually call when finished. This is used for Handler expressions
-    /// where the "normal" continuation parameter k is used for the `resume` variable,
-    /// but if the handler branch ends early we should actually jump to the end of the
-    /// handler rather than implicitly call `resume`.
-    pub(super) end_continuation: Option<Atom>,
-
     /// The name of any lambda when we need to make one up.
     /// This is stored here so that we can increment a Rc instead of allocating a new
     /// string for each variable named this way.
     pub(super) lambda_name: Rc<String>,
+}
+
+pub(super) type Definitions = HashMap<hir::DefinitionId, Atom>;
+
+pub(super) struct SpecializedDefinitions {
+    pub(super) effect_id: EffectId,
+    pub(super) handler_type: Type,
+    pub(super) definitions: Definitions,
+
+    /// Points to the parent handler in the handler stack if there is more than one handler.
+    pub(super) parent_handler: Option<HandlerId>,
 }
 
 /// Convenience struct for keeping track of handlers returned by register_handlers
@@ -77,16 +86,18 @@ impl Context {
 
         Context {
             mir,
-            definitions: HashMap::new(),
+            pure_definitions: HashMap::new(),
+            specialized_definitions: HashMap::new(),
             definition_queue: VecDeque::new(),
             effects: HashMap::new(),
             handlers: HashMap::new(),
             handler_ks: HashMap::new(),
+            current_handler: None,
             current_function_id: main_id,
             next_function_id: 1, // Since 0 is taken for main
+            next_handler_id: 0,
             continuation: None,
             handler_continuation: None,
-            end_continuation: None,
             expected_function_id: None,
             lambda_name: Rc::new("lambda".into()),
         }
@@ -104,11 +115,43 @@ impl Context {
         self.mir.functions.get_mut(&self.current_function_id).unwrap()
     }
 
+    pub fn get_definition(&self, id: hir::DefinitionId, typ: &hir::Type) -> Option<Atom> {
+        if Self::type_is_pure(typ) {
+            self.pure_definitions.get(&id).cloned()
+        } else {
+            let handler = self.current_handler.unwrap();
+            self.specialized_definitions[&handler].definitions.get(&id).cloned()
+        }
+    }
+
+    pub fn insert_definition(&mut self, id: hir::DefinitionId, typ: &hir::Type, atom: Atom) {
+        if Self::type_is_pure(typ) {
+            self.pure_definitions.insert(id, atom);
+        } else {
+            let handler = self.current_handler.unwrap();
+            self.specialized_definitions.get_mut(&handler).unwrap().definitions.insert(id, atom);
+        }
+    }
+
+    fn type_is_pure(typ: &hir::Type) -> bool {
+        match typ {
+            hir::Type::Function(function) => function.effects.is_empty(),
+            _ => true,
+        }
+    }
+
     /// Returns the next available function id but does not set the current id
     fn next_function_id(&mut self, name: Rc<String>) -> FunctionId {
         let id = self.next_function_id;
         self.next_function_id += 1;
         FunctionId { id, name }
+    }
+
+    /// Returns the next available function id but does not set the current id
+    fn next_handler_id(&mut self) -> HandlerId {
+        let id = self.next_handler_id;
+        self.next_handler_id += 1;
+        HandlerId(id)
     }
 
     /// Move on to a fresh function
@@ -147,7 +190,8 @@ impl Context {
                 args.insert(effect.effect_index as usize, handler.clone());
             }
 
-            if let Some(handler_k) = self.handler_ks.get(&id) {
+            // each handler_k can only be used once
+            if let Some(handler_k) = self.handler_ks.remove(&id) {
                 args.insert(effect.effect_k_index as usize, handler_k.clone());
             }
         }
@@ -165,17 +209,26 @@ impl Context {
             None => self.lambda_name.clone(),
         };
 
-        let argument_types = match self.convert_type(&variable.typ) {
-            Type::Function(argument_types, _effects) => argument_types,
+        let (argument_types, is_pure) = match self.convert_type(&variable.typ) {
+            Type::Function(argument_types, effects) => (argument_types, effects.is_empty()),
             other => unreachable!("add_global_to_queue: Expected function type for global, found {}: {}", variable, other),
         };
 
         let next_id = self.next_function_id(name);
         let atom = Atom::Function(next_id.clone());
-        self.definitions.insert(variable.definition_id, atom.clone());
 
-        let definition = variable.definition.expect("No definition for hir::Ast global!").clone();
-        self.definition_queue.push_back((next_id.clone(), definition));
+        if is_pure {
+            self.pure_definitions.insert(variable.definition_id, atom.clone());
+        } else {
+            let handler = self.current_handler.unwrap();
+            self.specialized_definitions.get_mut(&handler).unwrap()
+                .definitions.insert(variable.definition_id, atom.clone());
+        }
+
+        let definition = variable.definition.clone().unwrap_or_else(|| {
+            panic!("No definition for global '{}'", variable)
+        });
+        self.definition_queue.push_back((next_id.clone(), self.current_handler.clone(), definition));
 
         let mut function = Function::empty(next_id.clone());
         function.argument_types = argument_types;
@@ -238,9 +291,7 @@ impl Context {
             let start_index = args.len() as u16;
             let effect_id = self.lookup_or_create_effect(effect.id);
             let mut effect_type = self.convert_type(&effect.typ);
-            let handler_type = Type::Effect(effect_id);
-
-            println!("Effect type is {}", effect_type);
+            let handler_type = self.lookup_handler_type(effect_id);
 
             // effect
             match &mut effect_type {
@@ -279,6 +330,21 @@ impl Context {
         (args, effects)
     }
 
+    fn lookup_handler_type(&self, effect_id: EffectId) -> Type {
+        fn lookup_handler_type_rec(this: &Context, effect_id: EffectId, handler: HandlerId) -> Type {
+            let definitions = &this.specialized_definitions[&handler];
+
+            if definitions.effect_id == effect_id {
+                definitions.handler_type.clone()
+            } else {
+                let parent = definitions.parent_handler.unwrap();
+                lookup_handler_type_rec(this, effect_id, parent)
+            }
+        }
+
+        lookup_handler_type_rec(self, effect_id, self.current_handler.unwrap())
+    }
+
     pub fn import_extern(&mut self, extern_name: &str, extern_type: &hir::Type) -> ExternId {
         if let Some((_, id)) = self.mir.extern_symbols.get(extern_name) {
             return *id;
@@ -315,17 +381,73 @@ impl Context {
 
     /// Create a fresh function with the given argument type and call `f` with it as an argument.
     /// After `f` is called, the current function is switched to the new function
-    pub fn with_next_function<T>(&mut self, result_type: &hir::Type, f: impl FnOnce(&mut Self, Atom) -> T) -> T {
+    pub fn with_next_function<T>(&mut self, result_type: &hir::Type, effects: &[hir::Effect], f: impl FnOnce(&mut Self, Atom) -> T) -> T {
         let old_function = self.current_function_id.clone();
         let next_function_id = self.next_fresh_function();
         self.add_parameter(result_type);
+
+        let effect_handlers_start = self.current_function().argument_types.len();
+
+        for effect in effects {
+            let effect_id = self.lookup_or_create_effect(effect.id);
+            let handler_type = self.lookup_handler_type(effect_id);
+            let effect_type = Type::Function(vec![handler_type], vec![]);
+            self.current_function_mut().argument_types.push(effect_type);
+        }
+
         self.current_function_id = old_function;
         let result = f(self, Atom::Function(next_function_id.clone()));
+
+        // Insert the new handler continuations into scope
+        for (i, effect) in effects.iter().enumerate() {
+            let parameter_index = (effect_handlers_start + i) as u16;
+            let effect_id = self.lookup_or_create_effect(effect.id);
+            let function = next_function_id.clone();
+            let handler_k = Atom::Parameter(ParameterId { function, parameter_index });
+            self.handler_ks.insert(effect_id, handler_k);
+        }
+
         self.current_function_id = next_function_id;
         result
     }
 
     pub fn lookup_handler(&self, effect_id: EffectId) -> Atom {
         self.handlers.get(&effect_id).unwrap().clone()
+    }
+
+    pub fn enter_handler(&mut self, effect_id: EffectId, handler_type: Type) -> Option<HandlerId> {
+        let new_id = self.next_handler_id();
+        let old_id = self.current_handler.take();
+        self.current_handler = Some(new_id);
+
+        self.specialized_definitions.insert(new_id, SpecializedDefinitions {
+            effect_id,
+            handler_type,
+            parent_handler: old_id,
+            definitions: HashMap::new(),
+        });
+
+        old_id
+    }
+
+    pub fn enter_handler_expression(&mut self, effect_id: EffectId, handler: Atom, handler_k: Atom) -> (Option<Atom>, Option<Atom>) {
+        let old_handler = self.handlers.insert(effect_id, handler);
+        let old_handler_k = self.handler_ks.insert(effect_id, handler_k);
+        (old_handler, old_handler_k)
+    }
+
+    pub fn exit_handler_and_expression(&mut self, effect_id: EffectId, parent_handler: Option<HandlerId>, old_handler: Option<Atom>, old_handler_k: Option<Atom>) {
+        self.current_handler = parent_handler;
+
+        // We must remember to remove this handler from the self when finished
+        match old_handler {
+            Some(old_handler) => self.handlers.insert(effect_id, old_handler),
+            None => self.handlers.remove(&effect_id),
+        };
+
+        match old_handler_k {
+            Some(old_handler_k) => self.handler_ks.insert(effect_id, old_handler_k),
+            None => self.handler_ks.remove(&effect_id),
+        };
     }
 }

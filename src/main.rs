@@ -164,7 +164,7 @@ fn compile(args: Cli) {
 
     if true {
         mir.debug_print_control_flow_graph();
-        mir.interpret();
+        // mir.interpret();
         return;
     }
 
