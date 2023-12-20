@@ -10,8 +10,9 @@ impl Mir {
     #[allow(unused)]
     pub fn interpret(&self) {
         let mut interpreter = Interpreter::new(self);
+        let mut i = 0;
 
-        while !interpreter.done {
+        while !interpreter.done && i < 100 {
             interpreter.call_current_function();
 
             let arg_tys = fmap(&interpreter.current_args, |arg| arg.approx_type(self));
@@ -31,6 +32,12 @@ impl Mir {
                     }
                 }
             }
+
+            i += 1;
+        }
+
+        if i >= 100 {
+            eprintln!("i = 100, early exit");
         }
     }
 }
@@ -113,6 +120,25 @@ impl<'mir> Interpreter<'mir> {
                 }
                 self.current_function = self.evaluate_function(&body_args[2]);
             }
+            Atom::Extern(id) => {
+                let symbol = self.mir.extern_symbols[&id].0.as_str();
+                let args = fmap(body_args, |arg| self.evaluate(arg));
+
+                match symbol {
+                    "putchar" => {
+                        match &args[0] {
+                            Atom::Literal(Literal::Char(c)) => {
+                                print!("{c}");
+                            }
+                            other => unreachable!("putchar: cannot put non-char '{}'", other),
+                        }
+
+                        self.current_function = self.evaluate_function(&args[1]);
+                        self.current_args = vec![Atom::Literal(Literal::Unit)];
+                    }
+                    _ => unimplemented!("Evaluate extern '{symbol}'"),
+                }
+            }
             other => unreachable!("evaluate_call_body expected function, found {}", other),
         }
     }
@@ -123,6 +149,7 @@ impl<'mir> Interpreter<'mir> {
             | Atom::Switch(..)
             | Atom::Literal(_)
             | Atom::Assign
+            | Atom::Extern(_)
             | Atom::Function(_) => atom.clone(),
             Atom::Parameter(parameter_id) => {
                 self.memory.get(parameter_id)
@@ -139,7 +166,6 @@ impl<'mir> Interpreter<'mir> {
                     other => unreachable!("Atom::MemberAccess expected tuple, found {}", other),
                 }
             },
-            Atom::Extern(_) => todo!("evaluate extern"),
             Atom::Handle(_, _) => todo!("Handle"),
             Atom::Effect(_, _) => todo!("Effect"),
             Atom::AddInt(lhs, rhs) => self.int_function(lhs, rhs, "+", |a, b| a + b),

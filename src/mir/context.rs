@@ -51,6 +51,8 @@ pub struct Context {
     /// This is stored here so that we can increment a Rc instead of allocating a new
     /// string for each variable named this way.
     pub(super) lambda_name: Rc<String>,
+
+    pub(super) extern_symbols: HashMap<String, ExternId>,
 }
 
 pub(super) type Definitions = HashMap<hir::DefinitionId, Atom>;
@@ -92,6 +94,7 @@ impl Context {
             effects: HashMap::new(),
             handlers: HashMap::new(),
             handler_ks: HashMap::new(),
+            extern_symbols: HashMap::new(),
             current_handler: None,
             current_function_id: main_id,
             next_function_id: 1, // Since 0 is taken for main
@@ -293,12 +296,14 @@ impl Context {
             let mut effect_type = self.convert_type(&effect.typ);
             let handler_type = self.lookup_handler_type(effect_id);
 
+            let effect_k_type = Type::Function(vec![handler_type.clone()], vec![]);
+
             // effect
             match &mut effect_type {
                 Type::Function(arg_types, _) => {
                     match arg_types.last_mut().unwrap() {
                         Type::Function(inner_arg_types, _) => {
-                            inner_arg_types.push(handler_type.clone());
+                            inner_arg_types.push(effect_k_type.clone());
                         },
                         other => unreachable!("Expected function type while CPS'ing effect, got {}", other),
                     }
@@ -310,7 +315,7 @@ impl Context {
             args.push(effect_type);
 
             // effect_k
-            args.push(Type::Function(vec![handler_type.clone()], vec![]));
+            args.push(effect_k_type);
 
             // k
             args.push(Type::function(vec![return_type.clone()], handler_type));
@@ -346,13 +351,14 @@ impl Context {
     }
 
     pub fn import_extern(&mut self, extern_name: &str, extern_type: &hir::Type) -> ExternId {
-        if let Some((_, id)) = self.mir.extern_symbols.get(extern_name) {
+        if let Some(id) = self.extern_symbols.get(extern_name) {
             return *id;
         }
 
         let typ = self.convert_type(extern_type);
-        let id = ExternId(self.mir.extern_symbols.len() as u32);
-        self.mir.extern_symbols.insert(extern_name.to_owned(), (typ, id));
+        let id = ExternId(self.extern_symbols.len() as u32);
+        self.mir.extern_symbols.insert(id, (extern_name.to_owned(), typ));
+        self.extern_symbols.insert(extern_name.to_owned(), id);
         id
     }
 

@@ -8,7 +8,8 @@ pub use id::*;
 #[derive(Default)]
 pub struct Mir {
     pub functions: HashMap<FunctionId, Function>,
-    pub extern_symbols: HashMap<String, (Type, ExternId)>,
+
+    pub extern_symbols: HashMap<ExternId, (String, Type)>,
 }
 
 impl Mir {

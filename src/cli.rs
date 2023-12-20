@@ -64,6 +64,10 @@ pub struct Cli {
     /// Print out the type of each definition
     #[arg(long, short = 't')]
     pub show_types: bool,
+
+    /// Tells the compiler to create something other than an executable
+    #[arg(long, short, group = "compile_mode")]
+    pub show_cps: Option<EmitTarget>,
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone, ValueEnum)]
@@ -73,6 +77,18 @@ pub enum EmitTarget {
 
     /// Ante's post-monomorphisation HIR representation
     Hir,
+
+    /// Ante's post-CPS conversion MIR representation, free of `handle` and effects
+    Mir,
+
+    /// A control-flow graph representation of the MIR outputted in graphviz format
+    MirCFG,
+
+    /// A data-flow graph representation of the MIR outputted in graphviz format
+    MirDFG,
+
+    /// A control-flow and data-flow graph representation of the MIR outputted in graphviz format
+    MirCDFG,
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone, ValueEnum)]
