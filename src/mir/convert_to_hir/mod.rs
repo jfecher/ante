@@ -10,6 +10,8 @@ mod scope;
 
 impl Mir {
     pub fn convert_to_hir(&mut self) -> hir::Ast {
+        self.lower2cff();
+
         let scopes = self.find_scopes();
 
         for (id, function) in &self.functions {
@@ -17,8 +19,6 @@ impl Mir {
             let bad = if function.is_bad(&scopes) { "bad" } else { "" };
             eprintln!("{}: {:?}    {}", id, kind, bad);
         }
-
-        self.lower2cff();
 
         todo!("Finish convert_to_hir")
     }
@@ -54,10 +54,15 @@ impl Mir {
 
             self.remove_unreachable_functions();
 
-            if no_bad_functions || i >= 10 {
+            if no_bad_functions {
                 break;
             }
         }
+
+        eprintln!("\n=========================================");
+        eprintln!(" lower2cff finished");
+        eprintln!("=========================================");
+        eprintln!("\n{}", self);
     }
 
     // function mangle_uses(p, l, u)
@@ -72,7 +77,7 @@ impl Mir {
     // end
     fn mangle_uses(&mut self, l: &FunctionId, u: FunctionId) {
         let u_body = &self.functions[&u].body_continuation;
-        let u_args = &self.functions[&u].body_args;
+        let u_args = &self.functions[&u].body_args.clone();
 
         if *u_body == Atom::Function(l.clone()) {
             eprintln!("Mangling use of {} in function {}", l, u);
@@ -81,7 +86,7 @@ impl Mir {
             let x = l_function.argument_types.iter().enumerate()
                 .filter(|(_, typ)| matches!(typ, Type::Function(..)))
                 .map(|(i, _)| i)
-                .collect::<Vec<_>>();
+                .collect::<HashSet<_>>();
 
             let t = cut(&l_function.argument_types, &x);
 
@@ -95,8 +100,7 @@ impl Mir {
 
             let l2 = self.mangle(l, t, m);
 
-            let u_args = &self.functions[&u].body_args;
-            let args = cut(u_args, &x);
+            let args = cut(&u_args, &x);
 
             let call_site = self.functions.get_mut(&u).unwrap();
             call_site.body_continuation = Atom::Function(l2);
@@ -120,8 +124,28 @@ impl Mir {
     // end
     fn mangle(&mut self, le: &FunctionId, ts: Vec<Type>, mut m: AtomMap) -> FunctionId {
         // TODO: Avoid re-finding scopes for all functions on each mangle call
+        eprintln!("Mangle: finding scopes");
         let scopes = self.find_scopes();
+        eprintln!("Found scopes:\n{}", scopes);
+
         let scope_le = scopes.get_scope(le);
+
+        // Deviation from the above algorithm: If any parameter of `le` is not
+        // present in the map we need to update it to map to the same parameter
+        // of the new function. Note that we do not update the function itself
+        // so that any recursive calls are left in place.
+        let new_le_id = self.next_function_id(le.name.clone());
+        let mut next_parameter_index = 0;
+
+        for parameter in self.functions[le].parameters() {
+            if !m.parameters.contains_key(&parameter) {
+                m.parameters.insert(parameter, Atom::Parameter(ParameterId {
+                    function: new_le_id.clone(),
+                    parameter_index: next_parameter_index,
+                }));
+                next_parameter_index += 1;
+            }
+        }
 
         for l in &scope_le.functions {
             if l != le {
@@ -144,15 +168,14 @@ impl Mir {
             }
         }
 
-        let new_id = self.next_function_id(le.name.clone());
         let mut new_function = self.functions[le].clone();
-        new_function.id = new_id.clone();
+        new_function.id = new_le_id.clone();
         new_function.argument_types = ts;
         new_function.map_functions(&m);
 
-        println!("Inserting new function {}", new_id);
-        self.functions.insert(new_id.clone(), new_function);
-        new_id
+        println!("Inserting new function {}", new_le_id);
+        self.functions.insert(new_le_id.clone(), new_function);
+        new_le_id
     }
 
     fn uses_of(&self, target: &FunctionId) -> HashSet<FunctionId> {
@@ -199,22 +222,15 @@ impl Mir {
 }
 
 /// Cut out the given indices from the array
-fn cut<T: Clone>(array: &[T], indices: &[usize]) -> Vec<T> {
+fn cut<T: Clone>(array: &[T], indices: &HashSet<usize>) -> Vec<T> {
     let mut result = Vec::with_capacity(indices.len());
-    let mut indices_iter = indices.iter().copied();
-    let mut next_index_to_omit = indices_iter.next();
 
     for (i, elem) in array.iter().enumerate() {
-        match next_index_to_omit {
-            Some(omit) if i == omit => {
-                next_index_to_omit = indices_iter.next();
-            },
-            Some(omit) if i > omit => unreachable!(),
-            _ => {
-                result.push(elem.clone());
-            },
+        if !indices.contains(&i) {
+            result.push(elem.clone());
         }
     }
+
     result
 }
 

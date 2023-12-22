@@ -8,7 +8,7 @@ pub struct FunctionId {
 }
 
 /// A parameter id is just the function it originates from and the index of the parameter
-#[derive(Clone, Eq)]
+#[derive(Clone, Eq, PartialEq, Hash)]
 pub struct ParameterId {
     pub function: FunctionId,
     pub parameter_index: u16,
@@ -30,22 +30,21 @@ impl Hash for FunctionId {
     }
 }
 
-impl Hash for ParameterId {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.function.hash(state);
-        self.parameter_index.hash(state);
-    }
-}
-
 impl PartialEq for FunctionId {
     fn eq(&self, other: &Self) -> bool {
         self.id == other.id
     }
 }
 
-impl PartialEq for ParameterId {
-    fn eq(&self, other: &Self) -> bool {
-        self.function == other.function && self.parameter_index == other.parameter_index
+impl Ord for FunctionId {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.id.cmp(&other.id)
+    }
+}
+
+impl PartialOrd for FunctionId {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
     }
 }
 

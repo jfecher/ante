@@ -86,7 +86,9 @@ impl ToMir for hir::Lambda {
 
         // If we're in a handler branch, define `resume` to be the current continuation
         // and define the handler for `effect_id` as the current function
+        let mut handled_effect = None;
         let end_continuation = if let Some((effect_id, variable)) = context.handler_continuation.take() {
+            handled_effect = Some(effect_id);
             let k_type = arguments.pop().unwrap();
             let effect_k_type = arguments.pop().unwrap();
             let _effect_type = arguments.pop().unwrap();
@@ -113,7 +115,13 @@ impl ToMir for hir::Lambda {
         let mut return_values = vec![self.body.to_atom(context)];
 
         for effect in effects {
+            // Avoid pushing the effect continuation at the end of an effect handler.
+            // Since we've reached the end, there is no continuation (and we'd get a type mismatch).
+            if Some(effect.effect_id) == handled_effect {
+                continue;
+            }
             let handler_k = context.handler_ks[&effect.effect_id].clone();
+            eprintln!("Pushing {handler_k} for {:?}", effect);
             return_values.push(handler_k);
         }
 

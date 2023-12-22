@@ -1,13 +1,13 @@
 mod id;
 
-use std::{collections::HashMap, rc::Rc};
+use std::{collections::{HashMap, BTreeMap}, rc::Rc};
 
 use crate::hir::{Literal, PrimitiveType};
 pub use id::*;
 
 #[derive(Default)]
 pub struct Mir {
-    pub functions: HashMap<FunctionId, Function>,
+    pub functions: BTreeMap<FunctionId, Function>,
 
     pub extern_symbols: HashMap<ExternId, (String, Type)>,
 
