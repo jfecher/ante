@@ -88,6 +88,9 @@ pub enum Token {
     Ref,
     Mut,
 
+    // Effects
+    EffectName(String),
+
     // Keywords
     And,
     As,
@@ -274,6 +277,9 @@ impl Display for Token {
             Token::UnitType => write!(f, "'unit'"),
             Token::Ref => write!(f, "'ref'"),
             Token::Mut => write!(f, "'mut'"),
+
+            // Effects
+            Token::EffectName(_) => write!(f, "an effectname"),
 
             // Keywords
             Token::And => write!(f, "'and'"),
