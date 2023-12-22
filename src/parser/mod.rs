@@ -101,7 +101,7 @@ parser!(function_definition location -> 'b ast::Definition<'b> =
     body !<- block_or_statement;
     ast::Definition {
         pattern: Box::new(name),
-        expr: Box::new(Ast::lambda(args, return_type, body, location)),
+        expr: Box::new(Ast::lambda(args, return_type.map(|(x,_)| x), body, location)),
         mutable: false,
         location,
         level: None,
@@ -116,10 +116,11 @@ parser!(varargs location -> 'b () =
     ()
 );
 
-parser!(function_return_type location -> 'b ast::Type<'b> =
+parser!(function_return_type location -> 'b (ast::Type<'b>, Vec<String>) =
     _ <- expect(Token::Colon);
     typ <- parse_type;
-    typ
+    eff <- maybe(effect_set);
+    (typ, eff.unwrap_or_else(|| vec![]))
 );
 
 parser!(variable_definition location -> 'b ast::Definition<'b> =
@@ -714,7 +715,7 @@ parser!(lambda loc =
     return_type <- maybe(function_return_type);
     _ !<- expect(Token::RightArrow);
     body !<- block_or_statement;
-    Ast::lambda(args, return_type, body, loc)
+    Ast::lambda(args, return_type.map(|(x, _)| x), body, loc)
 );
 
 parser!(operator loc =
@@ -791,7 +792,14 @@ parser!(function_type loc -> 'b Type<'b> =
     varargs <- maybe(varargs);
     is_closure <- function_arrow;
     return_type <- parse_type;
+    eff <- maybe(effect_set);
     Type::Function(args, Box::new(return_type), varargs.is_some(), is_closure, loc)
+);
+
+parser!(effect_set loc -> 'b Vec<String> =
+    _ <- expect(Token::Can);
+    effs !<- delimited_trailing(effectname, expect(Token::Comma), false);
+    effs
 );
 
 // Returns true if this function is a closure
