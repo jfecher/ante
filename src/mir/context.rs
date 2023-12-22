@@ -20,7 +20,6 @@ pub struct Context {
     /// and will be replaced once the function finishes translation.
     pub(super) current_function_id: FunctionId,
 
-    next_function_id: u32,
     next_handler_id: u32,
 
     pub(super) current_handler: Option<HandlerId>,
@@ -75,6 +74,7 @@ pub struct Handlers {
 impl Context {
     pub fn new() -> Self {
         let mut mir = Mir::default();
+        mir.next_function_id = 1; // Since 0 is taken for main
 
         let main_id = Mir::main_id();
         let main = ir::Function {
@@ -97,7 +97,6 @@ impl Context {
             extern_symbols: HashMap::new(),
             current_handler: None,
             current_function_id: main_id,
-            next_function_id: 1, // Since 0 is taken for main
             next_handler_id: 0,
             continuation: None,
             handler_continuation: None,
@@ -145,9 +144,7 @@ impl Context {
 
     /// Returns the next available function id but does not set the current id
     fn next_function_id(&mut self, name: Rc<String>) -> FunctionId {
-        let id = self.next_function_id;
-        self.next_function_id += 1;
-        FunctionId { id, name }
+        self.mir.next_function_id(name)
     }
 
     /// Returns the next available function id but does not set the current id

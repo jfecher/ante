@@ -159,7 +159,7 @@ fn compile(args: Cli) {
     }
 
     // Phase 5: CPS Conversion
-    let mir = mir::convert_to_mir(hir);
+    let mut mir = mir::convert_to_mir(hir);
 
     match &args.emit {
         Some(EmitTarget::Mir) => println!("{mir}"),
@@ -170,7 +170,8 @@ fn compile(args: Cli) {
     }
 
     if true {
-        mir.interpret();
+        // mir.interpret();
+        mir.convert_to_hir();
         return;
     }
 

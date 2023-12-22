@@ -166,8 +166,6 @@ impl<'mir> Interpreter<'mir> {
                     other => unreachable!("Atom::MemberAccess expected tuple, found {}", other),
                 }
             },
-            Atom::Handle(_, _) => todo!("Handle"),
-            Atom::Effect(_, _) => todo!("Effect"),
             Atom::AddInt(lhs, rhs) => self.int_function(lhs, rhs, "+", |a, b| a + b),
             Atom::AddFloat(_, _) => todo!(),
             Atom::SubInt(lhs, rhs) => self.int_function(lhs, rhs, "-", |a, b| a - b),
@@ -293,8 +291,6 @@ impl Atom {
             Atom::MemberAccess(_, _, _) => None,
             Atom::Assign => None,
             Atom::Extern(_) => None,
-            Atom::Handle(_, _) => None,
-            Atom::Effect(_, _) => None,
             Atom::AddInt(_, _) => None,
             Atom::AddFloat(_, _) => None,
             Atom::SubInt(_, _) => None,

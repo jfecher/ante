@@ -22,7 +22,7 @@ use std::rc::Rc;
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct DefinitionId(usize);
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Literal {
     Integer(u64, IntegerKind),
     Float(u64, FloatKind),

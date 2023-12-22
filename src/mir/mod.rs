@@ -9,6 +9,7 @@ pub mod ir;
 mod context;
 mod printer;
 mod interpreter;
+mod convert_to_hir;
 
 pub fn convert_to_mir(hir: hir::Ast) -> Mir {
     let mut context = Context::new();

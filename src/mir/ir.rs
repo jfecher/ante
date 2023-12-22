@@ -10,14 +10,25 @@ pub struct Mir {
     pub functions: HashMap<FunctionId, Function>,
 
     pub extern_symbols: HashMap<ExternId, (String, Type)>,
+
+    pub next_function_id: u32,
 }
 
 impl Mir {
     pub fn main_id() -> FunctionId {
         FunctionId { id: 0, name: Rc::new("main".into()) }
     }
+
+    /// Returns the next available function id but does not set the current id
+    pub fn next_function_id(&mut self, name: Rc<String>) -> FunctionId {
+        let id = self.next_function_id;
+        self.next_function_id += 1;
+        FunctionId { id, name }
+    }
 }
 
+// Functions can be cloned during mangling
+#[derive(Clone)]
 pub struct Function {
     pub id: FunctionId,
     pub argument_types: Vec<Type>,
@@ -41,9 +52,31 @@ impl Function {
             parameter_index: i as u16,
         })
     }
+
+    pub(super) fn for_each_id<T, F, P>(&self, data: &mut T, mut on_function: F, mut on_parameter: P) where
+        F: FnMut(&mut T, &FunctionId),
+        P: FnMut(&mut T, &ParameterId),
+    {
+        self.body_continuation.for_each_id(data, &mut on_function, &mut on_parameter);
+        
+        for arg in &self.body_args {
+            arg.for_each_id(data, &mut on_function, &mut on_parameter);
+        }
+    }
+
+    /// Mutate any FunctionIds in this function's body to a new FunctionId.
+    ///
+    /// Unlike `for_each_id`, this method also applies to FunctionIds within ParameterIds.
+    pub(super) fn map_functions(&mut self, substitutions: &AtomMap) {
+        self.body_continuation.map_functions(substitutions);
+        
+        for arg in &mut self.body_args {
+            arg.map_functions(substitutions);
+        }
+    }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Atom {
     /// An if-else branching. Expects 3 arguments: [cond, k_then, k_else]
     Branch,
@@ -72,27 +105,6 @@ pub enum Atom {
     /// of the symbol being referenced. An ID is used to ensure
     /// the same symbol is not imported multiple times.
     Extern(ExternId),
-
-    /// Expects one argument: [expression]
-    ///
-    /// Where k is the start of the expression being handled.
-    ///
-    /// The HandlerId uniquely identifies this handler node, and the
-    /// Box<Atom> corresponds to the branch to take when the effect
-    /// is performed in the `expression` argument.
-    ///
-    /// Handlers initially correspond to the control-flow:
-    /// fn with Atom::Handle -> `expression` fn -> end function
-    /// When the handler is eventually removed from the Mir, the
-    /// handler branch itself is eventually spliced within `expression`.
-    Handle(HandlerId, Box<Atom>),
-
-    /// Expects a varying number of arguments, depending on the effect
-    /// defined by the user.
-    ///
-    /// Similar to Handle, this node will also be removed when effects
-    /// are specialized away.
-    Effect(EffectId, Type),
 
     AddInt(Box<Atom>, Box<Atom>),
     AddFloat(Box<Atom>, Box<Atom>),
@@ -183,8 +195,6 @@ impl Atom {
             Atom::Assign => (),
             Atom::Extern(_) => (),
             Atom::MemberAccess(lhs, _, _) => lhs.for_each_id_helper(data, on_function, on_parameter),
-            Atom::Handle(_, branch) => branch.for_each_id_helper(data, on_function, on_parameter),
-            Atom::Effect(_, _) => (),
             Atom::AddInt(lhs, rhs) => both(data, lhs, rhs),
             Atom::AddFloat(lhs, rhs) => both(data, lhs, rhs),
             Atom::SubInt(lhs, rhs) => both(data, lhs, rhs),
@@ -223,6 +233,86 @@ impl Atom {
             Atom::StackAlloc(lhs) => lhs.for_each_id_helper(data, on_function, on_parameter),
         }
     }
+
+    fn map_functions(&mut self, substitutions: &AtomMap) {
+        let both = |lhs: &mut Atom, rhs: &mut Atom| {
+            lhs.map_functions(substitutions);
+            rhs.map_functions(substitutions);
+        };
+
+        match self {
+            Atom::Branch => (),
+            Atom::Switch(cases, else_case) => {
+                for (_, case_continuation) in cases {
+                    if let Some(substitution) = substitutions.functions.get(case_continuation) {
+                        *case_continuation = substitution.clone();
+                    }
+                }
+                if let Some(else_continuation) = else_case {
+                    if let Some(substitution) = substitutions.functions.get(else_continuation) {
+                        *else_continuation = substitution.clone();
+                    }
+                }
+            },
+            Atom::Literal(_) => (),
+            Atom::Parameter(parameter_id) => {
+                if let Some(substitution) = substitutions.parameters.get(parameter_id) {
+                    *self = substitution.clone();
+                } else if let Some(substitution) = substitutions.functions.get(&parameter_id.function) {
+                    parameter_id.function = substitution.clone();
+                }
+            },
+            Atom::Function(function_id) => {
+                if let Some(substitution) = substitutions.functions.get(function_id) {
+                    *function_id = substitution.clone();
+                }
+            },
+            Atom::Tuple(fields) => {
+                for field in fields {
+                    field.map_functions(substitutions);
+                }
+            },
+            Atom::Assign => (),
+            Atom::Extern(_) => (),
+            Atom::MemberAccess(lhs, _, _) => lhs.map_functions(substitutions),
+            Atom::AddInt(lhs, rhs) => both(lhs, rhs),
+            Atom::AddFloat(lhs, rhs) => both(lhs, rhs),
+            Atom::SubInt(lhs, rhs) => both(lhs, rhs),
+            Atom::SubFloat(lhs, rhs) => both(lhs, rhs),
+            Atom::MulInt(lhs, rhs) => both(lhs, rhs),
+            Atom::MulFloat(lhs, rhs) => both(lhs, rhs),
+            Atom::DivSigned(lhs, rhs) => both(lhs, rhs),
+            Atom::DivUnsigned(lhs, rhs) => both(lhs, rhs),
+            Atom::DivFloat(lhs, rhs) => both(lhs, rhs),
+            Atom::ModSigned(lhs, rhs) => both(lhs, rhs),
+            Atom::ModUnsigned(lhs, rhs) => both(lhs, rhs),
+            Atom::ModFloat(lhs, rhs) => both(lhs, rhs),
+            Atom::LessSigned(lhs, rhs) => both(lhs, rhs),
+            Atom::LessUnsigned(lhs, rhs) => both(lhs, rhs),
+            Atom::LessFloat(lhs, rhs) => both(lhs, rhs),
+            Atom::EqInt(lhs, rhs) => both(lhs, rhs),
+            Atom::EqFloat(lhs, rhs) => both(lhs, rhs),
+            Atom::EqChar(lhs, rhs) => both(lhs, rhs),
+            Atom::EqBool(lhs, rhs) => both(lhs, rhs),
+            Atom::SignExtend(lhs, _typ) => lhs.map_functions(substitutions),
+            Atom::ZeroExtend(lhs, _typ) => lhs.map_functions(substitutions),
+            Atom::SignedToFloat(lhs, _typ) => lhs.map_functions(substitutions),
+            Atom::UnsignedToFloat(lhs, _typ) => lhs.map_functions(substitutions),
+            Atom::FloatToSigned(lhs, _typ) => lhs.map_functions(substitutions),
+            Atom::FloatToUnsigned(lhs, _typ) => lhs.map_functions(substitutions),
+            Atom::FloatPromote(lhs, _typ) => lhs.map_functions(substitutions),
+            Atom::FloatDemote(lhs, _typ) => lhs.map_functions(substitutions),
+            Atom::BitwiseAnd(lhs, rhs) => both(lhs, rhs),
+            Atom::BitwiseOr(lhs, rhs) => both(lhs, rhs),
+            Atom::BitwiseXor(lhs, rhs) => both(lhs, rhs),
+            Atom::BitwiseNot(lhs) => lhs.map_functions(substitutions),
+            Atom::Truncate(lhs, _typ) => lhs.map_functions(substitutions),
+            Atom::Deref(lhs, _typ) => lhs.map_functions(substitutions),
+            Atom::Offset(lhs, rhs, _typ) => both(lhs, rhs),
+            Atom::Transmute(lhs, _typ) => lhs.map_functions(substitutions),
+            Atom::StackAlloc(lhs) => lhs.map_functions(substitutions),
+        }
+    }
 }
 
 /// This type representation is largely the same as a HIR type
@@ -241,6 +331,15 @@ impl Type {
     pub(super) fn function(mut args: Vec<Type>, return_type: Type) -> Type {
         args.push(Type::Function(vec![return_type], vec![]));
         Type::Function(args, vec![])
+    }
+
+    /// True if this type is a function or indirectly contains one
+    pub(super) fn contains_function(&self) -> bool {
+        match self {
+            Type::Primitive(_) => false,
+            Type::Function(_, _) => true,
+            Type::Tuple(args) => args.iter().any(|arg| arg.contains_function()),
+        }
     }
 }
 
@@ -263,4 +362,10 @@ pub struct EffectIndices {
 
     /// effect_k: The effect handler's continuation of type `fn(H)`.
     pub effect_k_index: u16,
+}
+
+#[derive(Default)]
+pub struct AtomMap {
+    pub parameters: HashMap<ParameterId, Atom>,
+    pub functions: HashMap<FunctionId, FunctionId>,
 }
