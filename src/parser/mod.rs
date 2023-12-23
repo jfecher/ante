@@ -802,7 +802,7 @@ parser!(function_type loc -> 'b Type<'b> =
     is_closure <- function_arrow;
     return_type <- parse_type;
     eff <- maybe(effect_set);
-    Type::Function(args, Box::new(return_type), varargs.is_some(), is_closure, loc)
+    Type::Function(args, Box::new(return_type), eff.unwrap_or_else(|| vec![]), varargs.is_some(), is_closure, loc)
 );
 
 // Parses a list of possible effects that can occur.
