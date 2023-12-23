@@ -116,7 +116,9 @@ parser!(varargs location -> 'b () =
     ()
 );
 
-parser!(function_return_type location -> 'b (ast::Type<'b>, Vec<String>) =
+// Parses the return type of function.
+// This may involve effects.
+parser!(function_return_type location -> 'b (ast::Type<'b>, Vec<ast::Effect<'b>>) =
     _ <- expect(Token::Colon);
     typ <- parse_type;
     eff <- maybe(effect_set);
@@ -621,6 +623,13 @@ fn basic_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
     }
 }
 
+fn basic_effect<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Effect<'b>> {
+    match input[0].0 {
+        Token::TypeName(_) => user_defined_effect(input),
+        _ => Err(ParseError::InRule("type", input[0].1)),
+    }
+}
+
 fn parenthesized_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
     parenthesized(parse_type)(input)
 }
@@ -796,11 +805,19 @@ parser!(function_type loc -> 'b Type<'b> =
     Type::Function(args, Box::new(return_type), varargs.is_some(), is_closure, loc)
 );
 
-parser!(effect_set loc -> 'b Vec<String> =
+// Parses a list of possible effects that can occur.
+// `'can' Eff0 x0 x1..., Eff1 x0 x1..., Eff2...`
+parser!(effect_set loc -> 'b Vec<Effect<'b>> =
     _ <- expect(Token::Can);
-    effs !<- delimited_trailing(effectname, expect(Token::Comma), false);
+    effs !<- delimited_trailing(effect_type, expect(Token::Comma), false);
     effs
 );
+
+// Parses an effect with parameters or an effect without parameters.
+// `Use a b c` or `Log`
+fn effect_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Effect<'b>> {
+    or(&[effect_application, basic_effect], "type")(input)
+}
 
 // Returns true if this function is a closure
 fn function_arrow<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, bool> {
@@ -815,6 +832,13 @@ parser!(type_application loc -> 'b Type<'b> =
     type_constructor <- basic_type;
     args <- many1(basic_type);
     Type::TypeApplication(Box::new(type_constructor), args, loc)
+);
+
+/// Parses effect with one or more parameters.
+parser!(effect_application loc -> 'b Effect<'b> =
+    effect_constructor <- basic_effect;
+    args <- many1(basic_type);
+    Effect::Application(Box::new(effect_constructor), args, loc)
 );
 
 parser!(pair_type loc -> 'b Type<'b> =
@@ -882,4 +906,9 @@ parser!(type_variable loc -> 'b Type<'b> =
 parser!(user_defined_type loc -> 'b Type<'b> =
     name <- typename;
     Type::UserDefined(name, loc)
+);
+
+parser!(user_defined_effect loc -> 'b Effect<'b> =
+    name <- typename;
+    Effect::UserDefined(name, loc)
 );
