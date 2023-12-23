@@ -27,7 +27,7 @@ use std::{collections::HashSet, iter::FromIterator};
 
 use crate::error::location::Location;
 use crate::lexer::token::Token;
-use ast::{Ast, Trait, Type, TypeDefinitionBody};
+use ast::{Ast, Trait, Type, Effect, TypeDefinitionBody};
 use combinators::*;
 use error::{ParseError, ParseResult};
 

@@ -212,6 +212,12 @@ pub enum Type<'a> {
     Pair(Box<Type<'a>>, Box<Type<'a>>, Location<'a>),
 }
 
+#[derive(Debug, Clone)]
+pub enum Effect<'a> {
+    UserDefined(String, Location<'a>),
+    Application(Box<Effect<'a>>, Vec<Type<'a>>, Location<'a>),
+}
+
 /// The AST representation of a trait usage.
 /// A trait's definition would be a TraitDefinition node.
 /// This struct is used in e.g. `given` to list the required traits.
