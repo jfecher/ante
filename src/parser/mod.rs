@@ -101,7 +101,7 @@ parser!(function_definition location -> 'b ast::Definition<'b> =
     body !<- block_or_statement;
     ast::Definition {
         pattern: Box::new(name),
-        expr: Box::new(Ast::lambda(args, return_type.map(|(x,_)| x), body, location)),
+        expr: Box::new(Ast::lambda(args, return_type, body, location)),
         mutable: false,
         location,
         level: None,
@@ -724,7 +724,7 @@ parser!(lambda loc =
     return_type <- maybe(function_return_type);
     _ !<- expect(Token::RightArrow);
     body !<- block_or_statement;
-    Ast::lambda(args, return_type.map(|(x, _)| x), body, loc)
+    Ast::lambda(args, return_type, body, loc)
 );
 
 parser!(operator loc =

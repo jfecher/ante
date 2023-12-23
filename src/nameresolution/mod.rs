@@ -1001,7 +1001,7 @@ impl<'c> Resolvable<'c> for ast::Lambda<'c> {
         resolver.try_add_current_function_to_scope();
         resolver.resolve_all_definitions(self.args.iter_mut(), cache, || DefinitionKind::Parameter);
 
-        if let Some(typ) = &self.return_type {
+        if let Some((typ, _eff)) = &self.return_type {
             // Auto-declare any new type variables within the return type
             resolver.auto_declare = true;
             self.body.set_type(resolver.convert_type(cache, typ));
