@@ -122,7 +122,6 @@ parser!(varargs location -> 'b () =
 parser!(function_return_type location -> 'b ast::Type<'b> =
     _ <- expect(Token::Colon);
     typ <- parse_type;
-    // eff <- maybe(effect_set);
     typ
 );
 
@@ -836,7 +835,7 @@ parser!(type_application loc -> 'b Type<'b> =
     Type::TypeApplication(Box::new(type_constructor), args, loc)
 );
 
-/// Parses effect with one or more parameters.
+// Parses effect with one or more parameters.
 parser!(effect_application loc -> 'b Effect<'b> =
     effect_constructor <- basic_effect;
     args <- many1(basic_type);
