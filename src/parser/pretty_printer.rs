@@ -53,6 +53,9 @@ impl<'a> Display for ast::Lambda<'a> {
         if let Some(typ) = &self.return_type {
             write!(f, " : {}", typ)?;
         }
+        if self.effects.len() > 0 {
+          write!(f, " can {}", join_with(&self.effects, ", "))?;
+        }
         write!(f, " -> {})", self.body)
     }
 }
@@ -101,10 +104,14 @@ impl<'a> Display for ast::Type<'a> {
             Reference(_) => write!(f, "Ref"),
             TypeVariable(name, _) => write!(f, "{}", name),
             UserDefined(name, _) => write!(f, "{}", name),
-            Function(params, return_type, varargs, is_closure, _) => {
+            Function(params, return_type, effs, varargs, is_closure, _) => {
                 let arrow = if *is_closure { "=>" } else { "->" };
                 let varargs = if *varargs { "... " } else { "" };
-                write!(f, "({} {}{} {})", join_with(params, " "), varargs, arrow, return_type)
+                if effs.len() > 0 {
+                    write!(f, "({} {}{} {} can {})", join_with(params, " "), varargs, arrow, return_type, join_with(effs, ","))
+                } else {
+                    write!(f, "({} {}{} {})", join_with(params, " "), varargs, arrow, return_type)
+                }
             },
             TypeApplication(constructor, args, _) => {
                 write!(f, "({} {})", constructor, join_with(args, " "))
@@ -112,6 +119,16 @@ impl<'a> Display for ast::Type<'a> {
             Pair(first, rest, _) => {
                 write!(f, "({}, {})", first, rest)
             },
+        }
+    }
+}
+
+impl<'a> Display for ast::Effect<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        use ast::Effect::*;
+        match self {
+          UserDefined(name, _) => write!(f, "{}", name),
+          Application(name, params, _) => write!(f, "({} {})", name, join_with(params, " ")),
         }
     }
 }

@@ -712,7 +712,7 @@ impl<'c> NameResolver {
             ast::Type::Pointer(_) => Type::Primitive(PrimitiveType::Ptr),
             ast::Type::Boolean(_) => Type::Primitive(PrimitiveType::BooleanType),
             ast::Type::Unit(_) => Type::UNIT,
-            ast::Type::Function(args, ret, is_varargs, is_closure, _) => {
+            ast::Type::Function(args, ret, eff, is_varargs, is_closure, _) => {
                 let parameters = fmap(args, |arg| self.convert_type(cache, arg));
                 let return_type = Box::new(self.convert_type(cache, ret));
                 let environment =

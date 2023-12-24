@@ -129,6 +129,7 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
             ("as", Token::As),
             ("block", Token::Block),
             ("break", Token::Break),
+            ("can", Token::Can),
             ("continue", Token::Continue),
             ("do", Token::Do),
             ("effect", Token::Effect),

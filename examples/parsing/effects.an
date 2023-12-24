@@ -24,6 +24,23 @@ handle ()
 | return _ -> "foo"
 | log _ -> "impossible"
 
+handle_give_int (f: Unit -> a can GiveInt) : a =
+    handle f ()
+    | give_int str ->
+        if str == "zero"
+        then resume 0
+        else resume 123
+
+handle_exception () : Unit can Throw FileError, Throw ParseError, Throw BarError =
+    f = File.open "foo.txt"
+    contents = parse (read f)
+    bar contents
+
+handle_exception_without_return_type () can Throw FileError, Throw ParseError, Throw BarError =
+    f = File.open "foo.txt"
+    contents = parse (read f)
+    bar contents
+
 // args: --parse
 // expected stdout:
 // (effect Log with
@@ -45,4 +62,18 @@ handle ()
 // ) ((return _$0) 
 //     (_ = _$0);
 //     "foo"
+// ));
+// (handle_give_int = (fn (: f (Unit -> a can GiveInt)) : a -> (handle (f ()) ((give_int _$0) 
+//     (str = _$0);
+//     (if ('==' str "zero") then (resume 0) else (resume 123))
+// ))));
+// (handle_exception = (fn () : Unit can (Throw FileError),(Throw ParseError),(Throw BarError) -> 
+//     (f = (File.open "foo.txt"));
+//     (contents = (parse (read f)));
+//     (bar contents)
+// ));
+// (handle_exception_without_return_type = (fn () can (Throw FileError),(Throw ParseError),(Throw BarError) -> 
+//     (f = (File.open "foo.txt"));
+//     (contents = (parse (read f)));
+//     (bar contents)
 // ))

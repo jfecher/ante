@@ -116,6 +116,7 @@ pub struct Lambda<'a> {
     pub args: Vec<Ast<'a>>,
     pub body: Box<Ast<'a>>,
     pub return_type: Option<Type<'a>>,
+    pub effects: Vec<Effect<'a>>,
 
     pub closure_environment: ClosureEnvironment,
 
@@ -205,11 +206,17 @@ pub enum Type<'a> {
     Boolean(Location<'a>),
     Unit(Location<'a>),
     Reference(Location<'a>),
-    Function(Vec<Type<'a>>, Box<Type<'a>>, /*varargs:*/ bool, /*closure*/ bool, Location<'a>),
+    Function(Vec<Type<'a>>, Box<Type<'a>>, Vec<Effect<'a>>, /*varargs:*/ bool, /*closure*/ bool, Location<'a>),
     TypeVariable(String, Location<'a>),
     UserDefined(String, Location<'a>),
     TypeApplication(Box<Type<'a>>, Vec<Type<'a>>, Location<'a>),
     Pair(Box<Type<'a>>, Box<Type<'a>>, Location<'a>),
+}
+
+#[derive(Debug, Clone)]
+pub enum Effect<'a> {
+    UserDefined(String, Location<'a>),
+    Application(Box<Effect<'a>>, Vec<Type<'a>>, Location<'a>),
 }
 
 /// The AST representation of a trait usage.
@@ -545,13 +552,14 @@ impl<'a> Ast<'a> {
         })
     }
 
-    pub fn lambda(args: Vec<Ast<'a>>, return_type: Option<Type<'a>>, body: Ast<'a>, location: Location<'a>) -> Ast<'a> {
+    pub fn lambda(args: Vec<Ast<'a>>, return_type: Option<Type<'a>>, effects: Vec<Effect<'a>>, body: Ast<'a>, location: Location<'a>) -> Ast<'a> {
         assert!(!args.is_empty());
         Ast::Lambda(Lambda {
             args,
             body: Box::new(body),
             closure_environment: BTreeMap::new(),
             return_type,
+            effects,
             location,
             required_traits: vec![],
             typ: None,
@@ -786,7 +794,7 @@ impl<'a> Locatable<'a> for Type<'a> {
             Type::Boolean(location) => *location,
             Type::Unit(location) => *location,
             Type::Reference(location) => *location,
-            Type::Function(_, _, _, _, location) => *location,
+            Type::Function(_, _, _, _, _, location) => *location,
             Type::TypeVariable(_, location) => *location,
             Type::UserDefined(_, location) => *location,
             Type::TypeApplication(_, _, location) => *location,

@@ -27,7 +27,7 @@ use std::{collections::HashSet, iter::FromIterator};
 
 use crate::error::location::Location;
 use crate::lexer::token::Token;
-use ast::{Ast, Trait, Type, TypeDefinitionBody};
+use ast::{Ast, Trait, Type, Effect, TypeDefinitionBody};
 use combinators::*;
 use error::{ParseError, ParseResult};
 
@@ -97,11 +97,12 @@ parser!(function_definition location -> 'b ast::Definition<'b> =
     name <- pattern_argument;
     args <- many1(pattern_argument);
     return_type <- maybe(function_return_type);
+    effects <- maybe(effect_set);
     _ <- expect(Token::Equal);
     body !<- block_or_statement;
     ast::Definition {
         pattern: Box::new(name),
-        expr: Box::new(Ast::lambda(args, return_type, body, location)),
+        expr: Box::new(Ast::lambda(args, return_type, effects.unwrap_or_else(|| vec![]), body, location)),
         mutable: false,
         location,
         level: None,
@@ -620,6 +621,13 @@ fn basic_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
     }
 }
 
+fn basic_effect<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Effect<'b>> {
+    match input[0].0 {
+        Token::TypeName(_) => user_defined_effect(input),
+        _ => Err(ParseError::InRule("type", input[0].1)),
+    }
+}
+
 fn parenthesized_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
     parenthesized(parse_type)(input)
 }
@@ -712,9 +720,10 @@ parser!(lambda loc =
     _ <- expect(Token::Fn);
     args !<- many1(pattern_argument);
     return_type <- maybe(function_return_type);
+    effects <- maybe(effect_set);
     _ !<- expect(Token::RightArrow);
     body !<- block_or_statement;
-    Ast::lambda(args, return_type, body, loc)
+    Ast::lambda(args, return_type, effects.unwrap_or_else(|| vec![]), body, loc)
 );
 
 parser!(operator loc =
@@ -791,8 +800,23 @@ parser!(function_type loc -> 'b Type<'b> =
     varargs <- maybe(varargs);
     is_closure <- function_arrow;
     return_type <- parse_type;
-    Type::Function(args, Box::new(return_type), varargs.is_some(), is_closure, loc)
+    eff <- maybe(effect_set);
+    Type::Function(args, Box::new(return_type), eff.unwrap_or_else(|| vec![]), varargs.is_some(), is_closure, loc)
 );
+
+// Parses a list of possible effects that can occur.
+// `'can' Eff0 x0 x1..., Eff1 x0 x1..., Eff2...`
+parser!(effect_set loc -> 'b Vec<Effect<'b>> =
+    _ <- expect(Token::Can);
+    effs !<- delimited_trailing(effect_type, expect(Token::Comma), false);
+    effs
+);
+
+// Parses an effect with parameters or an effect without parameters.
+// `Use a b c` or `Log`
+fn effect_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Effect<'b>> {
+    or(&[effect_application, basic_effect], "type")(input)
+}
 
 // Returns true if this function is a closure
 fn function_arrow<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, bool> {
@@ -807,6 +831,13 @@ parser!(type_application loc -> 'b Type<'b> =
     type_constructor <- basic_type;
     args <- many1(basic_type);
     Type::TypeApplication(Box::new(type_constructor), args, loc)
+);
+
+// Parses effect with one or more parameters.
+parser!(effect_application loc -> 'b Effect<'b> =
+    effect_constructor <- basic_effect;
+    args <- many1(basic_type);
+    Effect::Application(Box::new(effect_constructor), args, loc)
 );
 
 parser!(pair_type loc -> 'b Type<'b> =
@@ -874,4 +905,9 @@ parser!(type_variable loc -> 'b Type<'b> =
 parser!(user_defined_type loc -> 'b Type<'b> =
     name <- typename;
     Type::UserDefined(name, loc)
+);
+
+parser!(user_defined_effect loc -> 'b Effect<'b> =
+    name <- typename;
+    Effect::UserDefined(name, loc)
 );
