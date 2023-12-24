@@ -50,11 +50,11 @@ impl<'a> Display for ast::Lambda<'a> {
         for arg in self.args.iter() {
             write!(f, " {}", arg)?;
         }
-        if let Some((typ, effs)) = &self.return_type {
+        if let Some(typ) = &self.return_type {
             write!(f, " : {}", typ)?;
-            if effs.len() > 0 {
-              write!(f, " can {}", join_with(effs, ","))?;
-            }
+        }
+        if self.effects.len() > 0 {
+          write!(f, " can {}", join_with(&self.effects, ","))?;
         }
         write!(f, " -> {})", self.body)
     }

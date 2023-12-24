@@ -97,11 +97,12 @@ parser!(function_definition location -> 'b ast::Definition<'b> =
     name <- pattern_argument;
     args <- many1(pattern_argument);
     return_type <- maybe(function_return_type);
+    effects <- maybe(effect_set);
     _ <- expect(Token::Equal);
     body !<- block_or_statement;
     ast::Definition {
         pattern: Box::new(name),
-        expr: Box::new(Ast::lambda(args, return_type, body, location)),
+        expr: Box::new(Ast::lambda(args, return_type, effects.unwrap_or_else(|| vec![]), body, location)),
         mutable: false,
         location,
         level: None,
@@ -118,11 +119,11 @@ parser!(varargs location -> 'b () =
 
 // Parses the return type of function.
 // This may involve effects.
-parser!(function_return_type location -> 'b (ast::Type<'b>, Vec<ast::Effect<'b>>) =
+parser!(function_return_type location -> 'b ast::Type<'b> =
     _ <- expect(Token::Colon);
     typ <- parse_type;
-    eff <- maybe(effect_set);
-    (typ, eff.unwrap_or_else(|| vec![]))
+    // eff <- maybe(effect_set);
+    typ
 );
 
 parser!(variable_definition location -> 'b ast::Definition<'b> =
@@ -722,9 +723,10 @@ parser!(lambda loc =
     _ <- expect(Token::Fn);
     args !<- many1(pattern_argument);
     return_type <- maybe(function_return_type);
+    effects <- maybe(effect_set);
     _ !<- expect(Token::RightArrow);
     body !<- block_or_statement;
-    Ast::lambda(args, return_type, body, loc)
+    Ast::lambda(args, return_type, effects.unwrap_or_else(|| vec![]), body, loc)
 );
 
 parser!(operator loc =

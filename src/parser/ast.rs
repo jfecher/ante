@@ -115,7 +115,8 @@ pub type ClosureEnvironment = BTreeMap<
 pub struct Lambda<'a> {
     pub args: Vec<Ast<'a>>,
     pub body: Box<Ast<'a>>,
-    pub return_type: Option<(Type<'a>, Vec<Effect<'a>>)>,
+    pub return_type: Option<Type<'a>>,
+    pub effects: Vec<Effect<'a>>,
 
     pub closure_environment: ClosureEnvironment,
 
@@ -551,13 +552,14 @@ impl<'a> Ast<'a> {
         })
     }
 
-    pub fn lambda(args: Vec<Ast<'a>>, return_type: Option<(Type<'a>, Vec<Effect<'a>>)>, body: Ast<'a>, location: Location<'a>) -> Ast<'a> {
+    pub fn lambda(args: Vec<Ast<'a>>, return_type: Option<Type<'a>>, effects: Vec<Effect<'a>>, body: Ast<'a>, location: Location<'a>) -> Ast<'a> {
         assert!(!args.is_empty());
         Ast::Lambda(Lambda {
             args,
             body: Box::new(body),
             closure_environment: BTreeMap::new(),
             return_type,
+            effects,
             location,
             required_traits: vec![],
             typ: None,
