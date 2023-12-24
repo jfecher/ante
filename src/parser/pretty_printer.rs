@@ -54,7 +54,7 @@ impl<'a> Display for ast::Lambda<'a> {
             write!(f, " : {}", typ)?;
         }
         if self.effects.len() > 0 {
-          write!(f, " can {}", join_with(&self.effects, ","))?;
+          write!(f, " can {}", join_with(&self.effects, ", "))?;
         }
         write!(f, " -> {})", self.body)
     }
