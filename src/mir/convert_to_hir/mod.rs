@@ -40,6 +40,7 @@ impl Mir {
             eprintln!("=========================================");
             eprintln!("\n{}", self);
             i += 1;
+            break;
 
             let scopes = self.find_scopes();
 
