@@ -117,8 +117,6 @@ parser!(varargs location -> 'b () =
     ()
 );
 
-// Parses the return type of function.
-// This may involve effects.
 parser!(function_return_type location -> 'b ast::Type<'b> =
     _ <- expect(Token::Colon);
     typ <- parse_type;
