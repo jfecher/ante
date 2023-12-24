@@ -102,7 +102,7 @@ parser!(function_definition location -> 'b ast::Definition<'b> =
     body !<- block_or_statement;
     ast::Definition {
         pattern: Box::new(name),
-        expr: Box::new(Ast::lambda(args, return_type, effects.unwrap_or_else(|| vec![]), body, location)),
+        expr: Box::new(Ast::lambda(args, return_type, effects, body, location)),
         mutable: false,
         location,
         level: None,
@@ -723,7 +723,7 @@ parser!(lambda loc =
     effects <- maybe(effect_set);
     _ !<- expect(Token::RightArrow);
     body !<- block_or_statement;
-    Ast::lambda(args, return_type, effects.unwrap_or_else(|| vec![]), body, loc)
+    Ast::lambda(args, return_type, effects, body, loc)
 );
 
 parser!(operator loc =
@@ -801,7 +801,7 @@ parser!(function_type loc -> 'b Type<'b> =
     is_closure <- function_arrow;
     return_type <- parse_type;
     eff <- maybe(effect_set);
-    Type::Function(args, Box::new(return_type), eff.unwrap_or_else(|| vec![]), varargs.is_some(), is_closure, loc)
+    Type::Function(args, Box::new(return_type), eff, varargs.is_some(), is_closure, loc)
 );
 
 // Parses a list of possible effects that can occur.

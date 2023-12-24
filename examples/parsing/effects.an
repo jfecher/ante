@@ -67,12 +67,12 @@ handle_exception_without_return_type () can Throw FileError, Throw ParseError, T
 //     (str = _$0);
 //     (if ('==' str "zero") then (resume 0) else (resume 123))
 // ))));
-// (handle_exception = (fn () : Unit can (Throw FileError),(Throw ParseError),(Throw BarError) -> 
+// (handle_exception = (fn () : Unit can (Throw FileError), (Throw ParseError), (Throw BarError) -> 
 //     (f = (File.open "foo.txt"));
 //     (contents = (parse (read f)));
 //     (bar contents)
 // ));
-// (handle_exception_without_return_type = (fn () can (Throw FileError),(Throw ParseError),(Throw BarError) -> 
+// (handle_exception_without_return_type = (fn () can (Throw FileError), (Throw ParseError), (Throw BarError) -> 
 //     (f = (File.open "foo.txt"));
 //     (contents = (parse (read f)));
 //     (bar contents)

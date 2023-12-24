@@ -53,8 +53,8 @@ impl<'a> Display for ast::Lambda<'a> {
         if let Some(typ) = &self.return_type {
             write!(f, " : {}", typ)?;
         }
-        if self.effects.len() > 0 {
-          write!(f, " can {}", join_with(&self.effects, ", "))?;
+        if let Some(effects) = &self.effects {
+          write!(f, " can {}", join_with(effects, ", "))?;
         }
         write!(f, " -> {})", self.body)
     }
@@ -104,13 +104,15 @@ impl<'a> Display for ast::Type<'a> {
             Reference(_) => write!(f, "Ref"),
             TypeVariable(name, _) => write!(f, "{}", name),
             UserDefined(name, _) => write!(f, "{}", name),
-            Function(params, return_type, effs, varargs, is_closure, _) => {
+            Function(params, return_type, effects, varargs, is_closure, _) => {
                 let arrow = if *is_closure { "=>" } else { "->" };
                 let varargs = if *varargs { "... " } else { "" };
-                if effs.len() > 0 {
-                    write!(f, "({} {}{} {} can {})", join_with(params, " "), varargs, arrow, return_type, join_with(effs, ","))
+                let params = join_with(params, " ");
+
+                if let Some(effects) = effects {
+                    write!(f, "({} {}{} {} can {})", params, varargs, arrow, return_type, join_with(effects, ","))
                 } else {
-                    write!(f, "({} {}{} {})", join_with(params, " "), varargs, arrow, return_type)
+                    write!(f, "({} {}{} {})", params, varargs, arrow, return_type)
                 }
             },
             TypeApplication(constructor, args, _) => {

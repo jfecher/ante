@@ -116,7 +116,7 @@ pub struct Lambda<'a> {
     pub args: Vec<Ast<'a>>,
     pub body: Box<Ast<'a>>,
     pub return_type: Option<Type<'a>>,
-    pub effects: Vec<Effect<'a>>,
+    pub effects: Option<Vec<Effect<'a>>>,
 
     pub closure_environment: ClosureEnvironment,
 
@@ -206,7 +206,7 @@ pub enum Type<'a> {
     Boolean(Location<'a>),
     Unit(Location<'a>),
     Reference(Location<'a>),
-    Function(Vec<Type<'a>>, Box<Type<'a>>, Vec<Effect<'a>>, /*varargs:*/ bool, /*closure*/ bool, Location<'a>),
+    Function(Vec<Type<'a>>, Box<Type<'a>>, Option<Vec<Effect<'a>>>, /*varargs:*/ bool, /*closure*/ bool, Location<'a>),
     TypeVariable(String, Location<'a>),
     UserDefined(String, Location<'a>),
     TypeApplication(Box<Type<'a>>, Vec<Type<'a>>, Location<'a>),
@@ -552,7 +552,7 @@ impl<'a> Ast<'a> {
         })
     }
 
-    pub fn lambda(args: Vec<Ast<'a>>, return_type: Option<Type<'a>>, effects: Vec<Effect<'a>>, body: Ast<'a>, location: Location<'a>) -> Ast<'a> {
+    pub fn lambda(args: Vec<Ast<'a>>, return_type: Option<Type<'a>>, effects: Option<Vec<Effect<'a>>>, body: Ast<'a>, location: Location<'a>) -> Ast<'a> {
         assert!(!args.is_empty());
         Ast::Lambda(Lambda {
             args,
