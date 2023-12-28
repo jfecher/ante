@@ -1569,7 +1569,10 @@ impl<'c> Context<'c> {
     }
 
     fn monomorphise_return(&mut self, return_: &ast::Return<'c>) -> hir::Ast {
-        hir::Ast::Return(hir::Return { expression: Box::new(self.monomorphise(&return_.expression)) })
+        hir::Ast::Return(hir::Return {
+            expression: Box::new(self.monomorphise(&return_.expression)),
+            typ: self.convert_type(return_.typ.as_ref().unwrap()),
+        })
     }
 
     fn monomorphise_sequence(&mut self, sequence: &ast::Sequence<'c>) -> hir::Ast {

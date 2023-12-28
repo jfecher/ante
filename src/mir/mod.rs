@@ -1,9 +1,9 @@
 use std::rc::Rc;
 
-use self::ir::{Mir, Atom, ParameterId, FunctionId};
-use self::context::Context;
-use crate::hir::DecisionTree;
-use crate::{hir::{self, Literal}, util::fmap};
+use self::ir::{Mir, Expr, FunctionId, Type};
+use self::context::{Context, EffectStack};
+use crate::hir::{DecisionTree, PrimitiveType};
+use crate::{hir, util::fmap};
 
 pub mod ir;
 mod context;
@@ -13,475 +13,504 @@ mod convert_to_hir;
 
 pub fn convert_to_mir(hir: hir::Ast) -> Mir {
     let mut context = Context::new();
-    let ret = hir.to_atom(&mut context);
+    context.definition_queue.push_front((Mir::main_id(), Rc::new(hir), Vec::new()));
 
-    if let Some(continuation) = context.continuation.take() {
-        context.terminate_function_with_call(continuation, vec![ret]);
-    }
-
-    while let Some((_, handler, definition)) = context.definition_queue.pop_front() {
-        context.current_handler = handler;
-        let result = definition.to_atom(&mut context);
-        assert_eq!(result, Atom::Literal(Literal::Unit));
+    while let Some((id, ast, effects)) = context.definition_queue.pop_front() {
+        context.expected_function_id = Some(id.clone());
+        context.cps_ast(&ast, &effects);
     }
 
     context.mir
 }
 
-trait ToMir {
-    fn to_atom(&self, context: &mut Context) -> Atom;
-}
-
-impl ToMir for hir::Ast {
-    fn to_atom(&self, context: &mut Context) -> Atom {
-        dispatch_on_hir!(self, ToMir::to_atom, context)
+impl Context {
+    fn cps_ast(&mut self, statement: &hir::Ast, effects: &EffectStack) -> Expr {
+        match statement {
+            hir::Ast::Literal(literal) => Self::cps_literal(literal),
+            hir::Ast::Variable(variable) => self.cps_variable(variable, effects),
+            hir::Ast::Lambda(lambda) => self.cps_lambda(lambda, effects, None),
+            hir::Ast::FunctionCall(call) => self.cps_call(call, effects),
+            hir::Ast::Definition(definition) => self.cps_definition(definition, effects),
+            hir::Ast::If(if_expr) => self.cps_if(if_expr, effects),
+            hir::Ast::Match(match_expr) => self.cps_match(match_expr, effects),
+            hir::Ast::Return(return_expr) => self.cps_return(return_expr, effects),
+            hir::Ast::Sequence(sequence) => self.cps_sequence(sequence, effects),
+            hir::Ast::Extern(extern_reference) => self.cps_extern(extern_reference),
+            hir::Ast::Assignment(assign) => self.cps_assign(assign, effects),
+            hir::Ast::MemberAccess(access) => self.cps_member_access(access, effects),
+            hir::Ast::Tuple(tuple) => self.cps_tuple(tuple, effects),
+            hir::Ast::ReinterpretCast(reinterpret_cast) => self.cps_reinterpret_cast(reinterpret_cast, effects),
+            hir::Ast::Builtin(builtin) => self.cps_builtin(builtin, effects),
+            hir::Ast::Effect(effect) => self.cps_effect(effect, effects),
+            hir::Ast::Handle(handle) => self.cps_handle(handle, effects),
+        }
     }
-}
 
-impl ToMir for hir::Literal {
-    fn to_atom(&self, _mir: &mut Context) -> Atom {
-        Atom::Literal(self.clone())
+    fn cps_literal(literal: &hir::Literal) -> Expr {
+        Expr::Literal(literal.clone())
     }
-}
 
-impl ToMir for hir::Variable {
-    fn to_atom(&self, context: &mut Context) -> Atom {
-        context.get_definition(self.definition_id, &self.typ).unwrap_or_else(|| {
-            context.add_global_to_queue(self.clone())
+    fn cps_variable(&mut self, variable: &hir::Variable, effects: &EffectStack) -> Expr {
+        self.get_definition(variable.definition_id, effects).unwrap_or_else(|| {
+            self.add_global_to_queue(variable.clone(), effects.clone())
         })
     }
-}
 
-impl ToMir for hir::Lambda {
-    fn to_atom(&self, context: &mut Context) -> Atom {
-        let original_function = context.current_function_id.clone();
-        let original_continuation = context.continuation.take();
+    /// E((fn x -> s) : t -> t' can eff) = fn x -> S(s, eff)
+    ///
+    /// Note that effect arguments are on the outside of any letrecs of lambdas.
+    fn cps_lambda(&mut self, lambda: &hir::Lambda, effects: &EffectStack, id: Option<hir::DefinitionId>) -> Expr {
+        let effect_types = fmap(&lambda.typ.effects, |effect| self.convert_type(&effect.typ));
+        let effect_ids = fmap(&lambda.typ.effects, |effect| effect.id);
+        let name = Rc::new("lambda".to_string());
 
-        // make sure to add k parameter
-        let name = Rc::new("lambda".to_owned());
-        let lambda_id = context.next_fresh_function_with_name(name);
-
-        // Add args to scope
-        for (i, arg) in self.args.iter().enumerate() {
-            context.insert_definition(arg.definition_id, &arg.typ, Atom::Parameter(ParameterId {
-                function: lambda_id.clone(),
-                parameter_index: i as u16,
-            }));
-        }
-
-        // If the argument types were not already set, set them now
-        let (arg_types, effects) = context.convert_function_type(&self.typ);
-        let function = context.current_function_mut();
-        function.argument_types = arg_types;
-
-        // Register each effect continuation we have
-        let old_handlers = context.register_handlers(&effects, &lambda_id);
-
-        let arguments = &mut context.mir.functions.get_mut(&context.current_function_id).unwrap().argument_types;
-
-        let mut k = ParameterId {
-            function: lambda_id.clone(),
-            parameter_index: arguments.len() as u16 - 1,
-        };
-
-        // If we're in a handler branch, define `resume` to be the current continuation
-        // and define the handler for `effect_id` as the current function
-        let mut handled_effect = None;
-        let end_continuation = if let Some((effect_id, variable)) = context.handler_continuation.take() {
-            handled_effect = Some(effect_id);
-            let k_type = arguments.pop().unwrap();
-            let effect_k_type = arguments.pop().unwrap();
-            let _effect_type = arguments.pop().unwrap();
-
-            let effect_k_index = arguments.len() as u16;
-            arguments.push(effect_k_type);
-            arguments.push(k_type);
-
-            k = ParameterId {
-                function: lambda_id.clone(),
-                parameter_index: arguments.len() as u16 - 1,
-            };
-
-            context.insert_definition(variable.definition_id, &variable.typ, Atom::Parameter(k.clone()));
-            context.handlers.insert(effect_id, Atom::Function(lambda_id.clone()));
-            Atom::Parameter(ParameterId { function: lambda_id.clone(), parameter_index: effect_k_index })
-        } else {
-            Atom::Parameter(k.clone())
-        };
-
-        let k = Atom::Parameter(k);
-        context.continuation = Some(k.clone());
-
-        let mut return_values = vec![self.body.to_atom(context)];
-
-        for effect in effects {
-            // Avoid pushing the effect continuation at the end of an effect handler.
-            // Since we've reached the end, there is no continuation (and we'd get a type mismatch).
-            if Some(effect.effect_id) == handled_effect {
-                continue;
-            }
-            let handler_k = context.handler_ks[&effect.effect_id].clone();
-            eprintln!("Pushing {handler_k} for {:?}", effect);
-            return_values.push(handler_k);
-        }
-
-        context.terminate_function_with_call(end_continuation, return_values);
-
-        context.set_handlers(old_handlers);
-        context.current_function_id = original_function;
-        context.continuation = original_continuation;
-
-        Atom::Function(lambda_id)
-    }
-}
-
-impl ToMir for hir::FunctionCall {
-    fn to_atom(&self, context: &mut Context) -> Atom {
-        let f = self.function.to_atom(context);
-        let args = fmap(&self.args, |arg| arg.to_atom(context));
-
-        context.with_next_function(self.function_type.return_type.as_ref(), &self.function_type.effects, |context, k| {
-            let (_, effects) = context.convert_function_type(&self.function_type);
-            context.terminate_function_with_call_and_effects(f, args, k.clone(), &effects);
+        // Reorder the effects if needed to match the lambda's effect type ordering
+        let new_effects = fmap(&lambda.typ.effects, |effect| {
+            let handler_type = effects.iter().find(|e| e.0 == effect.id).unwrap().1.clone();
+            (effect.id, handler_type)
         });
 
-        // Now that with_next_function advanced us to the next function, the call result
-        // will be the sole parameter of the current function.
-        let function = context.current_function_id.clone();
-        Atom::Parameter(ParameterId { function, parameter_index: 0 })
-    }
-}
+        let lambda_body = |this: &mut Self| {
+            let parameter_types = fmap(&lambda.args, |arg| this.convert_type(&arg.typ));
+            let parameter_ids = lambda.args.iter().map(|arg| arg.definition_id);
 
-impl ToMir for hir::Definition {
-    fn to_atom(&self, context: &mut Context) -> Atom {
-        if let Some(expected) = context.get_definition(self.variable, &self.typ) {
-            let function = match &expected {
-                Atom::Function(function_id) => function_id.clone(),
-                other => unreachable!("Expected Atom::Function, found {:?}", other),
-            };
+            this.recursive_function(name.clone(), parameter_ids, parameter_types, new_effects.clone(), id, |this| {
+                this.cps_ast(&lambda.body, &new_effects)
+            })
+        };
 
-            let old = context.expected_function_id.take();
-            context.expected_function_id = Some(function.clone());
-            let rhs = self.expr.to_atom(context);
-
-            // If rhs is an extern symbol it may define a function yet
-            // not actually correspond to an Atom::Function
-            if rhs != expected && !matches!(self.expr.as_ref(), hir::Ast::Effect(..)) {
-                let original_function = context.current_function_id.clone();
-                context.current_function_id = function;
-
-                // The body is still empty in the case of an extern, so
-                // forward all of the arguments to the extern itself
-                let parameters = context.current_parameters();
-                context.terminate_function_with_call(rhs, parameters);
-
-                context.current_function_id = original_function;
-            }
-
-            context.expected_function_id = old;
+        if effect_types.is_empty() {
+            lambda_body(self)
         } else {
-            let rhs = self.expr.to_atom(context);
-            context.insert_definition(self.variable, &self.typ, rhs);
-        }
-
-        Atom::Literal(Literal::Unit)
-    }
-}
-
-impl ToMir for hir::If {
-    fn to_atom(&self, context: &mut Context) -> Atom {
-        let cond = self.condition.to_atom(context);
-        let original_function = context.current_function_id.clone();
-
-        // needs param
-        let end_function_id = context.next_fresh_function();
-        context.add_parameter(&self.result_type);
-        let end_function = Atom::Function(end_function_id.clone());
-
-        let then_fn = Atom::Function(context.next_fresh_function()) ;
-        let then_value = self.then.to_atom(context);
-        context.terminate_function_with_call(end_function.clone(), vec![then_value]);
-
-        let else_fn = Atom::Function(context.next_fresh_function()) ;
-        let else_value = self.otherwise.to_atom(context);
-        context.terminate_function_with_call(end_function, vec![else_value]);
-
-        context.current_function_id = original_function;
-        context.terminate_function_with_call(Atom::Branch, vec![cond, then_fn, else_fn]);
-
-        context.current_function_id = end_function_id.clone();
-        Atom::Parameter(ParameterId { 
-            function: end_function_id,
-            parameter_index: 0,
-        })
-    }
-}
-
-impl ToMir for hir::Match {
-    fn to_atom(&self, context: &mut Context) -> Atom {
-        let original_function = context.current_function_id.clone();
-        let leaves = fmap(&self.branches, |_| context.next_fresh_function());
-
-        // Codegen the switches first to eventually jump to each leaf
-        context.current_function_id = original_function;
-        decision_tree_to_mir(&self.decision_tree, &leaves, context);
-
-        let end = context.next_fresh_function();
-        context.add_parameter(&self.result_type);
-
-        // Now codegen each leaf, all jumping to the same end continuation afterward
-        for (leaf_hir, leaf_function) in self.branches.iter().zip(leaves) {
-            context.current_function_id = leaf_function;
-            let result = leaf_hir.to_atom(context);
-            context.terminate_function_with_call(Atom::Function(end.clone()), vec![result]);
-        }
-
-        context.current_function_id = end.clone();
-        Atom::Parameter(ParameterId {
-            function: end,
-            parameter_index: 0,
-        })
-    }
-}
-
-fn decision_tree_to_mir(tree: &DecisionTree, leaves: &[FunctionId], context: &mut Context) {
-    match tree {
-        DecisionTree::Leaf(leaf_index) => {
-            let function = Atom::Function(leaves[*leaf_index].clone());
-            context.terminate_function_with_call(function, vec![]);
-        },
-        DecisionTree::Definition(definition, rest) => {
-            definition.to_atom(context);
-            decision_tree_to_mir(&rest, leaves, context);
-        },
-        DecisionTree::Switch { int_to_switch_on, cases, else_case } => {
-            let tag = int_to_switch_on.to_atom(context);
-            let original_function = context.current_function_id.clone();
-
-            let case_functions = fmap(cases, |(tag_to_match, case_tree)| {
-                let function = context.next_fresh_function();
-                decision_tree_to_mir(case_tree, leaves, context);
-                (*tag_to_match, function)
-            });
-
-            let else_function = else_case.as_ref().map(|else_tree| {
-                let function = context.next_fresh_function();
-                decision_tree_to_mir(else_tree, leaves, context);
-                function
-            });
-
-            let switch = Atom::Switch(case_functions, else_function);
-
-            context.current_function_id = original_function;
-            context.terminate_function_with_call(switch, vec![tag]);
-        },
-    }
-}
-
-impl ToMir for hir::Return {
-    fn to_atom(&self, context: &mut Context) -> Atom {
-        let continuation = context.continuation.clone().expect("No continuation for hir::Return!");
-        let value = self.expression.to_atom(context);
-
-        context.terminate_function_with_call(continuation, vec![value]);
-
-        // This is technically not needed but we switch to a new function in case there is
-        // code sequenced after a `return` as otherwise it would overwrite the call above.
-        context.next_fresh_function();
-
-        // TODO: Return some kind of unreachable/uninitialized value?
-        Atom::Literal(Literal::Unit)
-    }
-}
-
-impl ToMir for hir::Sequence {
-    fn to_atom(&self, context: &mut Context) -> Atom {
-        let count = self.statements.len();
-
-        // The first statements must be converted to atoms to
-        // ensure we create any intermediate continuations needed
-        for statement in self.statements.iter().take(count.saturating_sub(1)) {
-            statement.to_atom(context);
-        }
-
-        // The last statement is kept as an Atom since it is directly returned
-        match self.statements.last() {
-            Some(statement) => statement.to_atom(context),
-            None => Atom::Literal(Literal::Unit),
+            self.new_function(name.clone(), effect_ids.into_iter(), effect_types, new_effects.clone(), |this| {
+                lambda_body(this)
+            })
         }
     }
-}
 
-impl ToMir for hir::Extern {
-    fn to_atom(&self, context: &mut Context) -> Atom {
-        let id = context.import_extern(&self.name, &self.typ);
-        Atom::Extern(id)
+    /// S(e(e'), t') = E(e) @ E(e')
+    ///
+    /// E(e[h] : ts) = E(e) @ H(h, ts)
+    fn cps_call(&mut self, call: &hir::FunctionCall, effects: &EffectStack) -> Expr {
+        let mut result = self.cps_ast(&call.function, effects);
+
+        for effect in &call.function_type.effects {
+            let effect = EffectAst::Variable(effect.id);
+            let handler = self.convert_effect(effect, effects);
+
+            // TODO: Remove this hack
+            if result != handler {
+                result = Expr::Call(Box::new(result), Box::new(handler))
+            }
+        }
+
+        for arg in &call.args {
+            let arg = Box::new(self.cps_ast(arg, effects));
+            result = Expr::Call(Box::new(result), arg)
+        }
+
+        result
     }
-}
 
-impl ToMir for hir::Assignment {
-    fn to_atom(&self, context: &mut Context) -> Atom {
-        let lhs = self.lhs.to_atom(context);
-        let rhs = self.rhs.to_atom(context);
+    /// S(val x <- s; s', []) = let x = S(s, []) in S(s', [])
+    /// S(val x <- s; s', [ts, t]) =
+    ///     fn k -> S(s, [ts, t]) @ (fn x -> S(s', [ts, t]) @ k)
+    fn cps_definition(&mut self, definition: &hir::Definition, effects: &EffectStack) -> Expr {
+        let rhs = match definition.expr.as_ref() {
+            hir::Ast::Lambda(lambda) => self.cps_lambda(lambda, effects, Some(definition.variable)),
+            hir::Ast::Effect(effect) => {
+                // Monomorphization wraps effects in an extra function, which itself is effectful.
+                // So we need to return an `id` lambda since this pass will see the effect and
+                // automatically try to thread the handler to itself.
+                let name = Rc::new("effect".into());
+                let typ = self.convert_type(&effect.typ);
+                let ret = self.intermediate_function(name, typ, |_, arg| arg);
+                eprintln!("!! Inserting id for effect {}", effect.id);
+                ret
+            },
+            other => self.cps_ast(other, effects),
+        };
 
-        let unit = hir::Type::Primitive(hir::PrimitiveType::Unit);
-        context.with_next_function(&unit, &[], |context, k| {
-            context.terminate_function_with_call(Atom::Assign, vec![lhs, rhs, k]);
-            Atom::Literal(Literal::Unit)
-        })
+        self.insert_definition(definition.variable, rhs, effects.clone());
+        Expr::unit()
     }
-}
 
-impl ToMir for hir::MemberAccess {
-    fn to_atom(&self, context: &mut Context) -> Atom {
-        let lhs = Box::new(self.lhs.to_atom(context));
-        let typ = context.convert_type(&self.typ);
-        Atom::MemberAccess(lhs, self.member_index, typ)
+    fn cps_if(&mut self, if_expr: &hir::If, effects: &EffectStack) -> Expr {
+        let cond = self.cps_ast(&if_expr.condition, effects);
+        let then = self.cps_ast(&if_expr.then, effects);
+        let otherwise = self.cps_ast(&if_expr.otherwise, effects);
+        Expr::If(Box::new(cond), Box::new(then), Box::new(otherwise))
     }
-}
 
-impl ToMir for hir::Tuple {
-    fn to_atom(&self, context: &mut Context) -> Atom {
-        let fields = fmap(&self.fields, |field| field.to_atom(context));
-        Atom::Tuple(fields)
+    fn cps_match(&mut self, match_expr: &hir::Match, effects: &EffectStack) -> Expr {
+        todo!("cps_match")
+        // let original_function = self.current_function_id.clone();
+        // let leaves = fmap(&match_expr.branches, |_| self.next_fresh_function());
+
+        // // Codegen the switches first to eventually jump to each leaf
+        // self.current_function_id = original_function;
+        // self.cps_decision_tree(&match_expr.decision_tree, &leaves);
+
+        // let end = self.next_fresh_function();
+        // self.add_parameter(&match_expr.result_type);
+
+        // // Now codegen each leaf, all jumping to the same end continuation afterward
+        // for (leaf_hir, leaf_function) in match_expr.branches.iter().zip(leaves) {
+        //     self.current_function_id = leaf_function;
+        //     let result = self.cps_ast(leaf_hir, effects);
+        //     self.set_function_body(Expr::Function(end.clone()), vec![result]);
+        // }
+
+        // self.current_function_id = end.clone();
+        // Expr::Parameter(ParameterId {
+        //     function: end,
+        //     parameter_index: 0,
+        // })
     }
-}
 
-impl ToMir for hir::ReinterpretCast {
-    fn to_atom(&self, context: &mut Context) -> Atom {
-        let value = Box::new(self.lhs.to_atom(context));
-        let typ = context.convert_type(&self.target_type);
-        Atom::Transmute(value, typ)
+    fn cps_decision_tree(&mut self, tree: &DecisionTree, leaves: &[FunctionId]) {
+        todo!("cps_tree")
+        // match tree {
+        //     DecisionTree::Leaf(leaf_index) => {
+        //         let function = Expr::Function(leaves[*leaf_index].clone());
+        //         self.set_function_body(function, vec![]);
+        //     },
+        //     DecisionTree::Definition(definition, rest) => {
+        //         definition.to_expr(self);
+        //         self.cps_decision_tree(&rest, leaves);
+        //     },
+        //     DecisionTree::Switch { int_to_switch_on, cases, else_case } => {
+        //         let tag = int_to_switch_on.to_expr(self);
+        //         let original_function = self.current_function_id.clone();
+
+        //         let case_functions = fmap(cases, |(tag_to_match, case_tree)| {
+        //             let function = self.next_fresh_function();
+        //             self.cps_decision_tree(case_tree, leaves);
+        //             (*tag_to_match, function)
+        //         });
+
+        //         let else_function = else_case.as_ref().map(|else_tree| {
+        //             let function = self.next_fresh_function();
+        //             self.cps_decision_tree(else_tree, leaves);
+        //             function
+        //         });
+
+        //         let switch = Expr::Switch(case_functions, else_function);
+
+        //         self.current_function_id = original_function;
+        //         self.set_function_body(switch, vec![tag]);
+        //     },
+        // }
     }
-}
 
-impl ToMir for hir::Builtin {
-    fn to_atom(&self, context: &mut Context) -> Atom {
+    /// S(return e, []) = E(e)
+    /// S(return e, [ts, t]) = fn k -> k @ E(e)
+    fn cps_return(&mut self, return_expr: &hir::Return, effects: &EffectStack) -> Expr {
+        let result_type = self.convert_type(&return_expr.typ);
+        let expr = self.cps_ast(&return_expr.expression, effects);
+        self.cps_return_helper(expr, effects, result_type)
+    }
+
+    /// S(return e, []) = E(e)
+    /// S(return e, [ts, t]) = fn k -> k @ E(e)
+    fn cps_return_helper(&mut self, expr: Expr, effects: &EffectStack, result_type: Type) -> Expr {
+        if effects.is_empty() {
+            expr
+        } else {
+            let k_type = Type::Function(Box::new(result_type), None);
+            let name = Rc::new("return_k".into());
+            self.intermediate_function(name, k_type, |this, k| Expr::Call(Box::new(k), Box::new(expr)))
+        }
+    }
+
+    fn cps_sequence(&mut self, sequence: &hir::Sequence, effects: &EffectStack) -> Expr {
+        if effects.is_empty() {
+            self.cps_statements_pure(&sequence.statements)
+        } else {
+            // TODO: Use real type here
+            let result_type = Type::Primitive(PrimitiveType::Unit);
+            self.cps_statements_effectful(&sequence.statements, effects, result_type)
+        }
+    }
+
+    /// The rules for sequencing are somewhat mixed with the rules for let bindings
+    ///
+    /// S(val x <- s; s', [])
+    ///     = (fn x -> S(s', [])) @ S(s, [])
+    ///
+    /// If there is only 1 statement it is interpreted as a return
+    ///
+    /// S(return e, []) = E(e)
+    fn cps_statements_pure(&mut self, statements: &[hir::Ast]) -> Expr {
+        if statements.is_empty() {
+            Expr::unit()
+        } else if statements.len() == 1 {
+            self.cps_ast(&statements[0], &Vec::new())
+        } else {
+            let first = &statements[0];
+            let rest = &statements[1..];
+
+            if let hir::Ast::Definition(definition) = first {
+                let definition_rhs = self.cps_ast(&definition.expr, &Vec::new());
+
+                let argument_types = vec![self.convert_type(&definition.typ)];
+                let parameters = std::iter::once(definition.variable);
+
+                let name = Rc::new("let_statement".to_string());
+
+                let lambda = self.new_function(name, parameters, argument_types, Vec::new(), |this| {
+                    this.cps_statements_pure(rest)
+                });
+
+                Expr::Call(Box::new(lambda), Box::new(definition_rhs))
+            } else {
+                let first = self.cps_ast(&first, &Vec::new());
+
+                let name = Rc::new("statement".into());
+                let lambda = self.intermediate_function(name, Type::Primitive(PrimitiveType::Unit), |this, _| {
+                    this.cps_statements_pure(rest)
+                });
+                Expr::Call(Box::new(lambda), Box::new(first))
+            }
+        }
+    }
+
+    /// The rules for sequencing are somewhat mixed with the rules for let bindings
+    ///
+    /// S(val x <- s; s', [ts, t])
+    ///     = fn k -> S(s, [ts, t]) @ (fn x -> S(s', [ts, t]) @ k)
+    ///
+    /// If there is only 1 statement it is interpreted as a return
+    ///
+    /// S(return e, [ts, t]) = fn k -> k @ E(e)
+    fn cps_statements_effectful(&mut self, statements: &[hir::Ast], effects: &EffectStack, result_type: Type) -> Expr {
+        if statements.is_empty() {
+            Expr::unit()
+        } else if statements.len() == 1 {
+            let k_type = Type::continuation(result_type);
+            let body = self.cps_ast(&statements[0], effects);
+
+            let name = Rc::new("eff_statement_return_k".into());
+            self.intermediate_function(name, k_type, |_, k| {
+                Expr::Call(Box::new(k), Box::new(body))
+            })
+        } else {
+            let first = &statements[0];
+            let rest = &statements[1..];
+
+            if let hir::Ast::Definition(definition) = first {
+                let definition_rhs = self.cps_ast(&definition.expr, effects);
+
+                // TODO: What is the type of 'k' here?
+                let k_type = Type::continuation(Type::Primitive(PrimitiveType::Unit));
+                let x_type = self.convert_type(&definition.typ);
+                let name = Rc::new("eff_let_statement_k".into());
+
+                self.intermediate_function(name, k_type, |this, k| {
+                    let name = Rc::new("eff_let_statement".into());
+                    let inner_lambda = this.intermediate_function(name, x_type, |this, _x| {
+                        let rest = this.cps_statements_effectful(rest, effects, result_type);
+                        Expr::Call(Box::new(rest), Box::new(k))
+                    });
+
+                    Expr::Call(Box::new(definition_rhs), Box::new(inner_lambda))
+                })
+            } else {
+                eprint!("eff_statement: first = {}", first);
+                let first = self.cps_ast(&first, effects);
+                eprintln!("= {}", first);
+                let rest = self.cps_statements_effectful(rest, effects, result_type);
+
+                // TODO: What is the type of 'k' here?
+                let k_type = Type::continuation(Type::Primitive(PrimitiveType::Unit));
+                let x_type = Type::Primitive(PrimitiveType::Unit);
+                let name = Rc::new("eff_statement_k".into());
+
+                self.intermediate_function(name, k_type, |this, k| {
+                    let name = Rc::new("eff_statement".into());
+                    let inner_lambda = this.intermediate_function(name, x_type, |_, _x| {
+                        Expr::Call(Box::new(rest), Box::new(k))
+                    });
+
+                    Expr::Call(Box::new(first), Box::new(inner_lambda))
+                })
+            }
+        }
+    }
+
+    fn cps_extern(&mut self, extern_reference: &hir::Extern) -> Expr {
+        let id = self.import_extern(&extern_reference.name, &extern_reference.typ);
+        Expr::Extern(id)
+    }
+
+    fn cps_assign(&mut self, assign: &hir::Assignment, effects: &EffectStack) -> Expr {
+        todo!("cps_assign")
+        // let lhs = assign.lhs.to_expr(self);
+        // let rhs = assign.rhs.to_expr(self);
+
+        // let unit = hir::Type::Primitive(hir::PrimitiveType::Unit);
+        // self.with_next_function(&unit, &[], |this, k| {
+        //     this.set_function_body(Expr::Assign, vec![lhs, rhs, k]);
+        //     Expr::Literal(Literal::Unit)
+        // })
+    }
+
+    fn cps_member_access(&mut self, access: &hir::MemberAccess, effects: &EffectStack) -> Expr {
+        let lhs = Box::new(self.cps_ast(&access.lhs, effects));
+        let typ = self.convert_type(&access.typ);
+        Expr::MemberAccess(lhs, access.member_index, typ)
+    }
+
+    fn cps_tuple(&mut self, tuple: &hir::Tuple, effects: &EffectStack) -> Expr {
+        Expr::Tuple(fmap(&tuple.fields, |field| self.cps_ast(field, effects)))
+    }
+
+    fn cps_reinterpret_cast(&mut self, reinterpret_cast: &hir::ReinterpretCast, effects: &EffectStack) -> Expr {
+        let value = Box::new(self.cps_ast(&reinterpret_cast.lhs, effects));
+        let typ = self.convert_type(&reinterpret_cast.target_type);
+        Expr::Transmute(value, typ)
+    }
+
+    fn cps_builtin(&mut self, builtin: &hir::Builtin, effects: &EffectStack) -> Expr {
         let binary_fn = |f: fn(_, _) -> _, context: &mut Context, lhs: &hir::Ast, rhs: &hir::Ast| {
-            let lhs = Box::new(lhs.to_atom(context));
-            let rhs = Box::new(rhs.to_atom(context));
+            let lhs = Box::new(context.cps_ast(lhs, effects));
+            let rhs = Box::new(context.cps_ast(rhs, effects));
             f(lhs, rhs)
         };
 
-        let unary_fn = |f: fn(_) -> _, context, lhs: &hir::Ast| {
-            f(Box::new(lhs.to_atom(context)))
+        let unary_fn = |f: fn(_) -> _, context: &mut Self, lhs| {
+            f(Box::new(context.cps_ast(lhs, effects)))
         };
 
-        let unary_fn_with_type = |f: fn(_, _) -> _, context: &mut _, lhs: &hir::Ast, rhs: &hir::Type| {
-            let lhs = Box::new(lhs.to_atom(context));
+        let unary_fn_with_type = |f: fn(_, _) -> _, context: &mut Self, lhs, rhs| {
+            let lhs = Box::new(context.cps_ast(lhs, effects));
             let rhs = context.convert_type(rhs);
             f(lhs, rhs)
         };
 
-        match self {
-            hir::Builtin::AddInt(lhs, rhs) => binary_fn(Atom::AddInt, context, lhs, rhs),
-            hir::Builtin::AddFloat(lhs, rhs) => binary_fn(Atom::AddFloat, context, lhs, rhs),
-            hir::Builtin::SubInt(lhs, rhs) => binary_fn(Atom::SubInt, context, lhs, rhs),
-            hir::Builtin::SubFloat(lhs, rhs) => binary_fn(Atom::SubFloat, context, lhs, rhs),
-            hir::Builtin::MulInt(lhs, rhs) => binary_fn(Atom::MulInt, context, lhs, rhs),
-            hir::Builtin::MulFloat(lhs, rhs) => binary_fn(Atom::MulFloat, context, lhs, rhs),
-            hir::Builtin::DivSigned(lhs, rhs) => binary_fn(Atom::DivSigned, context, lhs, rhs),
-            hir::Builtin::DivUnsigned(lhs, rhs) => binary_fn(Atom::DivUnsigned, context, lhs, rhs),
-            hir::Builtin::DivFloat(lhs, rhs) => binary_fn(Atom::DivFloat, context, lhs, rhs),
-            hir::Builtin::ModSigned(lhs, rhs) => binary_fn(Atom::ModSigned, context, lhs, rhs),
-            hir::Builtin::ModUnsigned(lhs, rhs) => binary_fn(Atom::ModUnsigned, context, lhs, rhs),
-            hir::Builtin::ModFloat(lhs, rhs) => binary_fn(Atom::ModFloat, context, lhs, rhs),
-            hir::Builtin::LessSigned(lhs, rhs) => binary_fn(Atom::LessSigned, context, lhs, rhs),
-            hir::Builtin::LessUnsigned(lhs, rhs) => binary_fn(Atom::LessUnsigned, context, lhs, rhs),
-            hir::Builtin::LessFloat(lhs, rhs) => binary_fn(Atom::LessFloat, context, lhs, rhs),
-            hir::Builtin::EqInt(lhs, rhs) => binary_fn(Atom::EqInt, context, lhs, rhs),
-            hir::Builtin::EqFloat(lhs, rhs) => binary_fn(Atom::EqFloat, context, lhs, rhs),
-            hir::Builtin::EqChar(lhs, rhs) => binary_fn(Atom::EqChar, context, lhs, rhs),
-            hir::Builtin::EqBool(lhs, rhs) => binary_fn(Atom::EqBool, context, lhs, rhs),
-            hir::Builtin::SignExtend(lhs, typ) => unary_fn_with_type(Atom::SignExtend, context, lhs, typ),
-            hir::Builtin::ZeroExtend(lhs, typ) => unary_fn_with_type(Atom::ZeroExtend, context, lhs, typ),
-            hir::Builtin::SignedToFloat(lhs, typ) => unary_fn_with_type(Atom::SignedToFloat, context, lhs, typ),
-            hir::Builtin::UnsignedToFloat(lhs, typ) => unary_fn_with_type(Atom::UnsignedToFloat, context, lhs, typ),
-            hir::Builtin::FloatToSigned(lhs, typ) => unary_fn_with_type(Atom::FloatToSigned, context, lhs, typ),
-            hir::Builtin::FloatToUnsigned(lhs, typ) => unary_fn_with_type(Atom::FloatToUnsigned, context, lhs, typ),
-            hir::Builtin::FloatPromote(value, typ) => unary_fn_with_type(Atom::FloatPromote, context, value, typ),
-            hir::Builtin::FloatDemote(value, typ) => unary_fn_with_type(Atom::FloatDemote, context, value, typ),
-            hir::Builtin::BitwiseAnd(lhs, rhs) => binary_fn(Atom::BitwiseAnd, context, lhs, rhs),
-            hir::Builtin::BitwiseOr(lhs, rhs) => binary_fn(Atom::BitwiseOr, context, lhs, rhs),
-            hir::Builtin::BitwiseXor(lhs, rhs) => binary_fn(Atom::BitwiseXor, context, lhs, rhs),
-            hir::Builtin::BitwiseNot(value) => unary_fn(Atom::BitwiseNot, context, value),
-            hir::Builtin::Truncate(lhs, typ) => unary_fn_with_type(Atom::Truncate, context, lhs, typ),
-            hir::Builtin::Deref(lhs, typ) => unary_fn_with_type(Atom::Deref, context, lhs, typ),
-            hir::Builtin::Transmute(lhs, typ) => unary_fn_with_type(Atom::Transmute, context, lhs, typ),
-            hir::Builtin::StackAlloc(value) => unary_fn(Atom::StackAlloc, context, value),
+        match builtin {
+            hir::Builtin::AddInt(lhs, rhs) => binary_fn(Expr::AddInt, self, lhs, rhs),
+            hir::Builtin::AddFloat(lhs, rhs) => binary_fn(Expr::AddFloat, self, lhs, rhs),
+            hir::Builtin::SubInt(lhs, rhs) => binary_fn(Expr::SubInt, self, lhs, rhs),
+            hir::Builtin::SubFloat(lhs, rhs) => binary_fn(Expr::SubFloat, self, lhs, rhs),
+            hir::Builtin::MulInt(lhs, rhs) => binary_fn(Expr::MulInt, self, lhs, rhs),
+            hir::Builtin::MulFloat(lhs, rhs) => binary_fn(Expr::MulFloat, self, lhs, rhs),
+            hir::Builtin::DivSigned(lhs, rhs) => binary_fn(Expr::DivSigned, self, lhs, rhs),
+            hir::Builtin::DivUnsigned(lhs, rhs) => binary_fn(Expr::DivUnsigned, self, lhs, rhs),
+            hir::Builtin::DivFloat(lhs, rhs) => binary_fn(Expr::DivFloat, self, lhs, rhs),
+            hir::Builtin::ModSigned(lhs, rhs) => binary_fn(Expr::ModSigned, self, lhs, rhs),
+            hir::Builtin::ModUnsigned(lhs, rhs) => binary_fn(Expr::ModUnsigned, self, lhs, rhs),
+            hir::Builtin::ModFloat(lhs, rhs) => binary_fn(Expr::ModFloat, self, lhs, rhs),
+            hir::Builtin::LessSigned(lhs, rhs) => binary_fn(Expr::LessSigned, self, lhs, rhs),
+            hir::Builtin::LessUnsigned(lhs, rhs) => binary_fn(Expr::LessUnsigned, self, lhs, rhs),
+            hir::Builtin::LessFloat(lhs, rhs) => binary_fn(Expr::LessFloat, self, lhs, rhs),
+            hir::Builtin::EqInt(lhs, rhs) => binary_fn(Expr::EqInt, self, lhs, rhs),
+            hir::Builtin::EqFloat(lhs, rhs) => binary_fn(Expr::EqFloat, self, lhs, rhs),
+            hir::Builtin::EqChar(lhs, rhs) => binary_fn(Expr::EqChar, self, lhs, rhs),
+            hir::Builtin::EqBool(lhs, rhs) => binary_fn(Expr::EqBool, self, lhs, rhs),
+            hir::Builtin::SignExtend(lhs, typ) => unary_fn_with_type(Expr::SignExtend, self, lhs, typ),
+            hir::Builtin::ZeroExtend(lhs, typ) => unary_fn_with_type(Expr::ZeroExtend, self, lhs, typ),
+            hir::Builtin::SignedToFloat(lhs, typ) => unary_fn_with_type(Expr::SignedToFloat, self, lhs, typ),
+            hir::Builtin::UnsignedToFloat(lhs, typ) => unary_fn_with_type(Expr::UnsignedToFloat, self, lhs, typ),
+            hir::Builtin::FloatToSigned(lhs, typ) => unary_fn_with_type(Expr::FloatToSigned, self, lhs, typ),
+            hir::Builtin::FloatToUnsigned(lhs, typ) => unary_fn_with_type(Expr::FloatToUnsigned, self, lhs, typ),
+            hir::Builtin::FloatPromote(value, typ) => unary_fn_with_type(Expr::FloatPromote, self, value, typ),
+            hir::Builtin::FloatDemote(value, typ) => unary_fn_with_type(Expr::FloatDemote, self, value, typ),
+            hir::Builtin::BitwiseAnd(lhs, rhs) => binary_fn(Expr::BitwiseAnd, self, lhs, rhs),
+            hir::Builtin::BitwiseOr(lhs, rhs) => binary_fn(Expr::BitwiseOr, self, lhs, rhs),
+            hir::Builtin::BitwiseXor(lhs, rhs) => binary_fn(Expr::BitwiseXor, self, lhs, rhs),
+            hir::Builtin::BitwiseNot(value) => unary_fn(Expr::BitwiseNot, self, value),
+            hir::Builtin::Truncate(lhs, typ) => unary_fn_with_type(Expr::Truncate, self, lhs, typ),
+            hir::Builtin::Deref(lhs, typ) => unary_fn_with_type(Expr::Deref, self, lhs, typ),
+            hir::Builtin::Transmute(lhs, typ) => unary_fn_with_type(Expr::Transmute, self, lhs, typ),
+            hir::Builtin::StackAlloc(value) => unary_fn(Expr::StackAlloc, self, value),
             hir::Builtin::Offset(lhs, rhs, typ) => {
-                let lhs = Box::new(lhs.to_atom(context));
-                let rhs = Box::new(rhs.to_atom(context));
-                let typ = context.convert_type(typ);
-                Atom::Offset(lhs, rhs, typ)
+                let lhs = Box::new(self.cps_ast(lhs, effects));
+                let rhs = Box::new(self.cps_ast(rhs, effects));
+                let typ = self.convert_type(typ);
+                Expr::Offset(lhs, rhs, typ)
+            },
+        }
+    }
+
+    /// The rule for converting effect calls:
+    ///
+    /// S(do h(e), ts) = H(h, ts) @ E(e)
+    ///
+    /// Has been adapted here since this effect node excludes the arguments:
+    ///
+    /// S(h, ts) = H(h, ts)
+    fn cps_effect(&mut self, effect: &hir::Effect, effects: &EffectStack) -> Expr {
+        self.convert_effect(EffectAst::Variable(effect.id), effects)
+    }
+
+    /// S(handle c = h in s : t, ts)
+    ///   = let c = H(h, [Ts, t]) in S(s, [ts, t]) @ (fn x -> S(return x, ts))
+    fn cps_handle(&mut self, handle: &hir::Handle, effects: &EffectStack) -> Expr {
+        let mut new_effects = effects.to_vec();
+        let result_type = self.convert_type(&handle.result_type);
+        new_effects.push((handle.effect.id, result_type.clone()));
+
+        let handler = self.convert_effect(EffectAst::Handle(handle), &new_effects);
+
+        let id = std::iter::once(handle.effect.id);
+        let c_type = self.convert_type(&handle.effect.typ);
+
+        let name = Rc::new("handle_expression".to_string());
+
+        let c_lambda = self.new_function(name, id, vec![c_type], new_effects.clone(), |this| {
+            let expression = this.cps_ast(&handle.expression, &new_effects);
+
+            let name = Rc::new("handle_k".into());
+            let k = this.intermediate_function(name, result_type.clone(), |this, x| {
+                this.cps_return_helper(x, effects, result_type)
+            });
+
+            Expr::Call(Box::new(expression), Box::new(k))
+        });
+
+        Expr::Call(Box::new(c_lambda), Box::new(handler))
+    }
+
+    /// H(c, ts) = c
+    /// H(F(x, k) -> s, [ts, t]) = fn x -> fn k -> S(s, ts)
+    /// H(lift h, [t]) = fn x -> fn k -> k @ (H(h, []) @ x)
+    /// H(lift h, [ts, t, t'])
+    ///   = fn x -> fn k -> fn k' -> H(h, [ts, t]) @ x @ (fn y -> k @ y @ k')
+    fn convert_effect(&mut self, effect: EffectAst, effects: &EffectStack) -> Expr {
+        match effect {
+            // H(c, ts) = c
+            // TODO: implement lift cases
+            EffectAst::Variable(id) => {
+                self.get_definition(id, effects).unwrap_or_else(|| 
+                    panic!("No handler for effect {}", id))
+            },
+            // H(F(x, k) -> s, [ts, t]) = fn x -> fn k -> S(s, ts)
+            EffectAst::Handle(handle) => {
+                let argument_types = fmap(&handle.branch_body.args, |arg| self.convert_type(&arg.typ));
+                let argument_ids = handle.branch_body.args.iter().map(|arg| arg.definition_id);
+
+                // TODO: assert effects.pop() == t
+                let mut effects = effects.to_vec();
+                effects.pop();
+                let name = Rc::new("handle".to_string());
+
+                self.new_function(name, argument_ids, argument_types, effects.clone(), |this| {
+                    let k_id = std::iter::once(handle.resume.definition_id);
+                    let k_type = vec![this.convert_type(&handle.resume.typ)];
+
+                    let name = Rc::new("handle_k".to_string());
+
+                    this.new_function(name, k_id, k_type, effects.clone(), |this| {
+                        this.cps_ast(&handle.branch_body.body, &effects)
+                    })
+                })
             },
         }
     }
 }
 
-impl ToMir for hir::Effect {
-    // Expect this hir::Effect is wrapped in its own hir::Definition
-    // from monomorphisation
-    fn to_atom(&self, context: &mut Context) -> Atom {
-        // Monomorphization wraps effects in a definition node, which populates an
-        // expected function id ahead of time (usually for Lambdas), so we have to
-        // make sure to use that and not insert into the current function.
-        let target_function = context.expected_function_id.take()
-            .expect("Expected `expected_function_id` for hir::Effect::to_atom");
-
-        let old_function = std::mem::replace(&mut context.current_function_id, target_function.clone());
-
-        let effect_id = context.lookup_or_create_effect(self.id);
-
-        let effects = match context.convert_type(&self.typ) {
-            ir::Type::Function(_, effects) => effects,
-            other => unreachable!("Expected type of effect to be a function, got {}", other),
-        };
-
-        let function_id = &context.current_function_id.clone();
-        context.register_handlers(&effects, function_id);
-
-        let handler = context.lookup_handler(effect_id);
-
-        let call_parameters = context.current_parameters()
-            .into_iter()
-            .filter(|param| *param != handler)
-            .collect();
-
-        context.terminate_function_with_call(handler, call_parameters);
-        context.current_function_id = old_function;
-
-        Atom::Function(target_function)
-    }
-}
-
-impl ToMir for hir::Handle {
-    fn to_atom(&self, context: &mut Context) -> Atom {
-        let current_function = context.current_function_id.clone();
-
-        let end_function_id = context.next_fresh_function();
-        context.add_parameter(&self.result_type);
-        let end_function_atom = Atom::Function(end_function_id.clone());
-
-        let effect_id = context.lookup_or_create_effect(self.effect.id);
-
-        context.handler_continuation = Some((effect_id, self.resume.clone()));
-        let handler_type = context.convert_type(&self.result_type);
-        let parent_handler = context.enter_handler(effect_id, handler_type);
-
-        let handler = self.branch_body.to_atom(context);
-
-        // Now compile the handled expression with the new handler
-        let (old_handler, old_handler_k) = context.enter_handler_expression(effect_id, handler.clone(), end_function_atom);
-
-        context.current_function_id = current_function;
-        let result = self.expression.to_atom(context);
-        let handler_k = context.handler_ks[&effect_id].clone();
-        context.terminate_function_with_call(handler_k, vec![result]);
-
-        context.exit_handler_and_expression(effect_id, parent_handler, old_handler, old_handler_k);
-
-        context.current_function_id = end_function_id.clone();
-        Atom::Parameter(ParameterId { function: end_function_id, parameter_index: 0 })
-    }
+enum EffectAst<'ast> {
+    Variable(hir::DefinitionId),
+    Handle(&'ast hir::Handle),
 }

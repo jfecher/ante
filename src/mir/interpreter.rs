@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use crate::{util::fmap, hir::{Literal, IntegerKind, PrimitiveType}, lexer::token::FloatKind};
 
-use super::ir::{Mir, Atom, ParameterId, FunctionId, Type};
+use super::ir::{Mir, Expr, ParameterId, FunctionId, Type};
 
 impl Mir {
     #[allow(unused)]
@@ -17,21 +17,21 @@ impl Mir {
 
             let arg_tys = fmap(&interpreter.current_args, |arg| arg.approx_type(self));
             let function = &interpreter.mir.functions[&interpreter.current_function];
-            let params = &function.argument_types;
+            // let params = &function.argument_types;
 
-            if params.len() != arg_tys.len() {
-                eprintln!("  WARNING: Call to function {} with {} args when it takes {} params", 
-                          interpreter.current_function, arg_tys.len(), params.len());
-            }
+            // if params.len() != arg_tys.len() {
+            //     eprintln!("  WARNING: Call to function {} with {} args when it takes {} params", 
+            //               interpreter.current_function, arg_tys.len(), params.len());
+            // }
             
-            for (i, (param, arg)) in function.argument_types.iter().zip(arg_tys).enumerate() {
-                if let Some(arg) = arg {
-                    if *param != arg {
-                        eprintln!("  WARNING: In function call to {}, parameter {} : {} where the argument : {}",
-                                interpreter.current_function, i, param, arg);
-                    }
-                }
-            }
+            // for (i, (param, arg)) in function.argument_types.iter().zip(arg_tys).enumerate() {
+            //     if let Some(arg) = arg {
+            //         if *param != arg {
+            //             eprintln!("  WARNING: In function call to {}, parameter {} : {} where the argument : {}",
+            //                     interpreter.current_function, i, param, arg);
+            //         }
+            //     }
+            // }
 
             i += 1;
         }
@@ -44,10 +44,10 @@ impl Mir {
 
 struct Interpreter<'mir> {
     mir: &'mir Mir,
-    memory: HashMap<ParameterId, Atom>,
+    memory: HashMap<ParameterId, Expr>,
     done: bool,
     current_function: FunctionId,
-    current_args: Vec<Atom>,
+    current_args: Vec<Expr>,
 }
 
 impl<'mir> Interpreter<'mir> {
@@ -61,9 +61,9 @@ impl<'mir> Interpreter<'mir> {
         }
     }
 
-    fn define(&mut self, parameter: ParameterId, value: Atom) {
+    fn define(&mut self, parameter: ParameterId, value: Expr) {
         let value = match value {
-            Atom::Parameter(value_param_id) => self.memory[&value_param_id].clone(),
+            Expr::Parameter(value_param_id) => self.memory[&value_param_id].clone(),
             other => other,
         };
         eprintln!("{} <- {}", parameter, value);
@@ -78,27 +78,28 @@ impl<'mir> Interpreter<'mir> {
             self.define(parameter, arg);
         }
 
-        self.evaluate_call_body(&function.body_continuation, &function.body_args)
+        // self.evaluate_expression(&function.body)
     }
 
-    fn evaluate_call_body(&mut self, body_continuation: &Atom, body_args: &[Atom]) {
-        match self.evaluate(body_continuation) {
-            Atom::Function(function_id) => {
-                let args = fmap(body_args, |arg| self.evaluate(arg));
-                self.current_function = function_id.clone();
-                self.current_args = args;
-            },
-            Atom::Branch => {
-                let args = fmap(body_args, |arg| self.evaluate(arg));
-                eprintln!("if {} then {} else {}", args[0], args[1], args[2]);
+    fn evaluate_expression(&mut self, body: &Expr) {
+        match self.evaluate(body) {
+            Expr::Function(_function_id) => (),
+            Expr::If(condition, then, otherwise) => {
+                let condition = self.evaluate(&condition);
+                let then = self.evaluate(&then);
+                let otherwise = self.evaluate(&otherwise);
+                eprintln!("if {} then {} else {}", condition, then, otherwise);
 
-                let arg_i = 1 + matches!(args[0], Atom::Literal(Literal::Bool(true))) as usize;
-                self.current_function = self.evaluate_function(&args[arg_i]);
+                let k = if matches!(condition, Expr::Literal(Literal::Bool(true))) {
+                    then
+                } else {
+                    otherwise
+                };
+                self.current_function = self.evaluate_function(&k);
                 self.current_args.clear();
             },
-            Atom::Switch(cases, else_case) => {
-                assert_eq!(body_args.len(), 1);
-                let int = self.evaluate_int(&body_args[0]).0;
+            Expr::Switch(expr, cases, else_case) => {
+                let int = self.evaluate_int(&expr).0;
                 eprintln!("switch to case {}", int);
 
                 if let Some((_, case_fn)) = cases.into_iter().find(|(case_int, _)| *case_int == int as u32) {
@@ -108,165 +109,143 @@ impl<'mir> Interpreter<'mir> {
                 }
                 self.current_args.clear();
             },
-            Atom::Literal(Literal::Unit) => {
+            Expr::Literal(Literal::Unit) => {
                 // The program always ends in a call to ()
                 self.done = true;
             }
-            Atom::Assign => {
+            Expr::Assign => {
                 eprintln!(":=");
-                for arg in body_args {
-                    let arg = self.evaluate(arg);
-                    eprintln!("  {}", arg);
-                }
-                self.current_function = self.evaluate_function(&body_args[2]);
-            }
-            Atom::Extern(id) => {
-                let symbol = self.mir.extern_symbols[&id].0.as_str();
-                let args = fmap(body_args, |arg| self.evaluate(arg));
-
-                match symbol {
-                    "putchar" => {
-                        match &args[0] {
-                            Atom::Literal(Literal::Char(c)) => {
-                                print!("{c}");
-                            }
-                            other => unreachable!("putchar: cannot put non-char '{}'", other),
-                        }
-
-                        self.current_function = self.evaluate_function(&args[1]);
-                        self.current_args = vec![Atom::Literal(Literal::Unit)];
-                    }
-                    _ => unimplemented!("Evaluate extern '{symbol}'"),
-                }
             }
             other => unreachable!("evaluate_call_body expected function, found {}", other),
         }
     }
 
-    fn evaluate(&mut self, atom: &Atom) -> Atom {
+    fn evaluate(&mut self, atom: &Expr) -> Expr {
         match atom {
-            Atom::Branch
-            | Atom::Switch(..)
-            | Atom::Literal(_)
-            | Atom::Assign
-            | Atom::Extern(_)
-            | Atom::Function(_) => atom.clone(),
-            Atom::Parameter(parameter_id) => {
+            Expr::If(..)
+            | Expr::Switch(..)
+            | Expr::Literal(_)
+            | Expr::Assign
+            | Expr::Extern(_)
+            | Expr::Call(..)
+            | Expr::Function(_) => atom.clone(),
+            Expr::Parameter(parameter_id) => {
                 self.memory.get(parameter_id)
                     .cloned()
                     .unwrap_or_else(|| panic!("In function {}, Parameter {} not defined!", self.current_function, parameter_id))
             }
-            Atom::Tuple(fields) => Atom::Tuple(fmap(fields, |field| self.evaluate(field))),
-            Atom::MemberAccess(tuple, index, _typ) => {
+            Expr::Tuple(fields) => Expr::Tuple(fmap(fields, |field| self.evaluate(field))),
+            Expr::MemberAccess(tuple, index, _typ) => {
                 match self.evaluate(tuple) {
-                    Atom::Tuple(fields) => {
+                    Expr::Tuple(fields) => {
                         let result = fields[*index as usize].clone();
                         self.evaluate(&result)
                     }
                     other => unreachable!("Atom::MemberAccess expected tuple, found {}", other),
                 }
             },
-            Atom::AddInt(lhs, rhs) => self.int_function(lhs, rhs, "+", |a, b| a + b),
-            Atom::AddFloat(_, _) => todo!(),
-            Atom::SubInt(lhs, rhs) => self.int_function(lhs, rhs, "-", |a, b| a - b),
-            Atom::SubFloat(_, _) => todo!(),
-            Atom::MulInt(lhs, rhs) => self.int_function(lhs, rhs, "*", |a, b| a * b),
-            Atom::MulFloat(_, _) => todo!(),
-            Atom::DivSigned(lhs, rhs) => self.int_function(lhs, rhs, "/s", |a, b| a / b),
-            Atom::DivUnsigned(lhs, rhs) => self.int_function(lhs, rhs, "/u", |a, b| a / b),
-            Atom::DivFloat(_, _) => todo!(),
-            Atom::ModSigned(lhs, rhs) => self.int_function(lhs, rhs, "%s", |a, b| a + b),
-            Atom::ModUnsigned(lhs, rhs) => self.int_function(lhs, rhs, "%u", |a, b| a + b),
-            Atom::ModFloat(_, _) => todo!(),
-            Atom::LessSigned(lhs, rhs) => self.bool_function(lhs, rhs, "<s", |a, b| a < b),
-            Atom::LessUnsigned(lhs, rhs) => self.bool_function(lhs, rhs, "<u", |a, b| a < b),
-            Atom::LessFloat(_, _) => todo!(),
-            Atom::EqInt(lhs, rhs) => self.bool_function(lhs, rhs, "==", |a, b| a == b),
-            Atom::EqFloat(_, _) => todo!(),
-            Atom::EqChar(_, _) => todo!(),
-            Atom::EqBool(_, _) => todo!(),
-            Atom::SignExtend(atom, _) => self.evaluate(atom),
-            Atom::ZeroExtend(atom, _) => self.evaluate(atom),
-            Atom::SignedToFloat(int, _typ) => {
+            Expr::AddInt(lhs, rhs) => self.int_function(lhs, rhs, "+", |a, b| a + b),
+            Expr::AddFloat(_, _) => todo!(),
+            Expr::SubInt(lhs, rhs) => self.int_function(lhs, rhs, "-", |a, b| a - b),
+            Expr::SubFloat(_, _) => todo!(),
+            Expr::MulInt(lhs, rhs) => self.int_function(lhs, rhs, "*", |a, b| a * b),
+            Expr::MulFloat(_, _) => todo!(),
+            Expr::DivSigned(lhs, rhs) => self.int_function(lhs, rhs, "/s", |a, b| a / b),
+            Expr::DivUnsigned(lhs, rhs) => self.int_function(lhs, rhs, "/u", |a, b| a / b),
+            Expr::DivFloat(_, _) => todo!(),
+            Expr::ModSigned(lhs, rhs) => self.int_function(lhs, rhs, "%s", |a, b| a + b),
+            Expr::ModUnsigned(lhs, rhs) => self.int_function(lhs, rhs, "%u", |a, b| a + b),
+            Expr::ModFloat(_, _) => todo!(),
+            Expr::LessSigned(lhs, rhs) => self.bool_function(lhs, rhs, "<s", |a, b| a < b),
+            Expr::LessUnsigned(lhs, rhs) => self.bool_function(lhs, rhs, "<u", |a, b| a < b),
+            Expr::LessFloat(_, _) => todo!(),
+            Expr::EqInt(lhs, rhs) => self.bool_function(lhs, rhs, "==", |a, b| a == b),
+            Expr::EqFloat(_, _) => todo!(),
+            Expr::EqChar(_, _) => todo!(),
+            Expr::EqBool(_, _) => todo!(),
+            Expr::SignExtend(atom, _) => self.evaluate(atom),
+            Expr::ZeroExtend(atom, _) => self.evaluate(atom),
+            Expr::SignedToFloat(int, _typ) => {
                 self.map_literal(int, |literal| match literal {
                     Literal::Integer(x, _kind) => Literal::Float((x as f64).to_bits(), FloatKind::F64),
                     other => unreachable!("signed_to_float expected int, found {}", other),
                 })
             }
-            Atom::UnsignedToFloat(int, _typ) => {
+            Expr::UnsignedToFloat(int, _typ) => {
                 self.map_literal(int, |literal| match literal {
                     Literal::Integer(x, _kind) => Literal::Float((x as f64).to_bits(), FloatKind::F64),
                     other => unreachable!("signed_to_float expected int, found {}", other),
                 })
             },
-            Atom::FloatToSigned(_, _) => todo!(),
-            Atom::FloatToUnsigned(_, _) => todo!(),
-            Atom::FloatPromote(_, _) => todo!(),
-            Atom::FloatDemote(_, _) => todo!(),
-            Atom::BitwiseAnd(_, _) => todo!(),
-            Atom::BitwiseOr(_, _) => todo!(),
-            Atom::BitwiseXor(_, _) => todo!(),
-            Atom::BitwiseNot(_) => todo!(),
-            Atom::Truncate(atom, _typ) => self.evaluate(atom),
-            Atom::Deref(atom, _typ) => {
+            Expr::FloatToSigned(_, _) => todo!(),
+            Expr::FloatToUnsigned(_, _) => todo!(),
+            Expr::FloatPromote(_, _) => todo!(),
+            Expr::FloatDemote(_, _) => todo!(),
+            Expr::BitwiseAnd(_, _) => todo!(),
+            Expr::BitwiseOr(_, _) => todo!(),
+            Expr::BitwiseXor(_, _) => todo!(),
+            Expr::BitwiseNot(_) => todo!(),
+            Expr::Truncate(atom, _typ) => self.evaluate(atom),
+            Expr::Deref(atom, _typ) => {
                 match self.evaluate(atom) {
-                    Atom::Tuple(mut values) => values.remove(0),
+                    Expr::Tuple(mut values) => values.remove(0),
                     other => unreachable!("Atom::Deref expected Atom::Tuple, found {}", other),
                 }
             },
-            Atom::Offset(_, _, _) => todo!(),
-            Atom::Transmute(_, _) => todo!(),
-            Atom::StackAlloc(value) => {
+            Expr::Offset(_, _, _) => todo!(),
+            Expr::Transmute(_, _) => todo!(),
+            Expr::StackAlloc(value) => {
                 let value = self.evaluate(value);
-                Atom::Tuple(vec![value]) // Use tuples to emulate memory for now
+                Expr::Tuple(vec![value]) // Use tuples to emulate memory for now
             },
         }
     }
 
-    fn map_literal(&mut self, atom: &Atom, f: impl FnOnce(Literal) -> Literal) -> Atom {
+    fn map_literal(&mut self, atom: &Expr, f: impl FnOnce(Literal) -> Literal) -> Expr {
         match self.evaluate(atom) {
-            Atom::Literal(literal) => Atom::Literal(f(literal)),
+            Expr::Literal(literal) => Expr::Literal(f(literal)),
             other => unreachable!("map_literal expected literal, found {}", other),
         }
     }
 
-    fn int_function(&mut self, lhs: &Atom, rhs: &Atom, name: &str, f: impl FnOnce(u64, u64) -> u64) -> Atom {
+    fn int_function(&mut self, lhs: &Expr, rhs: &Expr, name: &str, f: impl FnOnce(u64, u64) -> u64) -> Expr {
         let (lhs, kind) = self.evaluate_int(lhs);
         let (rhs, _) = self.evaluate_int(rhs);
         let result = f(lhs, rhs);
         eprintln!("{} {} {} = {}", lhs, name, rhs, result);
-        Atom::Literal(Literal::Integer(result, kind))
+        Expr::Literal(Literal::Integer(result, kind))
     }
 
-    fn bool_function(&mut self, lhs: &Atom, rhs: &Atom, name: &str, f: impl FnOnce(u64, u64) -> bool) -> Atom {
+    fn bool_function(&mut self, lhs: &Expr, rhs: &Expr, name: &str, f: impl FnOnce(u64, u64) -> bool) -> Expr {
         let (lhs, _) = self.evaluate_int(lhs);
         let (rhs, _) = self.evaluate_int(rhs);
         let result = f(lhs, rhs);
         eprintln!("{} {} {} = {}", lhs, name, rhs, result);
-        Atom::Literal(Literal::Bool(result))
+        Expr::Literal(Literal::Bool(result))
     }
 
-    fn evaluate_int(&mut self, atom: &Atom) -> (u64, IntegerKind) {
+    fn evaluate_int(&mut self, atom: &Expr) -> (u64, IntegerKind) {
         match self.evaluate(atom) {
-            Atom::Literal(Literal::Integer(int, kind)) => (int, kind),
+            Expr::Literal(Literal::Integer(int, kind)) => (int, kind),
             other => unreachable!("evaluate_int expected int, found {}", other),
         }
     }
 
-    fn evaluate_function(&mut self, atom: &Atom) -> FunctionId {
+    fn evaluate_function(&mut self, atom: &Expr) -> FunctionId {
         match self.evaluate(atom) {
-            Atom::Function(function_id) => function_id,
+            Expr::Function(function_id) => function_id,
             other => unreachable!("evaluate_function expected function, found {}", other),
         }
     }
 }
 
-impl Atom {
+impl Expr {
     pub(crate) fn approx_type(&self, mir: &Mir) -> Option<Type> {
         match self {
-            Atom::Branch => None,
-            Atom::Switch(_, _) => None,
-            Atom::Literal(literal) => {
+            Expr::If(..) => None,
+            Expr::Switch(..) => None,
+            Expr::Call(..) => None,
+            Expr::Literal(literal) => {
                 match literal {
                     Literal::Integer(_, kind) => Some(Type::Primitive(PrimitiveType::Integer(*kind))),
                     Literal::Float(_, kind) => Some(Type::Primitive(PrimitiveType::Float(*kind))),
@@ -276,57 +255,59 @@ impl Atom {
                     Literal::Unit => Some(Type::Primitive(PrimitiveType::Unit)),
                 }
             },
-            Atom::Parameter(id) => {
+            Expr::Parameter(id) => {
                 let function = &mir.functions[&id.function];
-                Some(function.argument_types[id.parameter_index as usize].clone())
+                None
+                // Some(function.argument_types[id.parameter_index as usize].clone())
             },
-            Atom::Function(id) => {
+            Expr::Function(id) => {
                 let function = &mir.functions[id];
-                Some(Type::Function(function.argument_types.clone(), vec![]))
+                None
+                // Some(Type::Function(function.argument_types.clone()))
             },
-            Atom::Tuple(fields) => {
+            Expr::Tuple(fields) => {
                 let fields = fields.iter().map(|field| field.approx_type(mir)).collect::<Option<Vec<_>>>()?;
                 Some(Type::Tuple(fields))
             },
-            Atom::MemberAccess(_, _, _) => None,
-            Atom::Assign => None,
-            Atom::Extern(_) => None,
-            Atom::AddInt(_, _) => None,
-            Atom::AddFloat(_, _) => None,
-            Atom::SubInt(_, _) => None,
-            Atom::SubFloat(_, _) => None,
-            Atom::MulInt(_, _) => None,
-            Atom::MulFloat(_, _) => None,
-            Atom::DivSigned(_, _) => None,
-            Atom::DivUnsigned(_, _) => None,
-            Atom::DivFloat(_, _) => None,
-            Atom::ModSigned(_, _) => None,
-            Atom::ModUnsigned(_, _) => None,
-            Atom::ModFloat(_, _) => None,
-            Atom::LessSigned(_, _) => None,
-            Atom::LessUnsigned(_, _) => None,
-            Atom::LessFloat(_, _) => None,
-            Atom::EqInt(_, _) => None,
-            Atom::EqFloat(_, _) => None,
-            Atom::EqChar(_, _) => None,
-            Atom::EqBool(_, _) => None,
-            Atom::SignExtend(_, _) => None,
-            Atom::ZeroExtend(_, _) => None,
-            Atom::SignedToFloat(_, _) => None,
-            Atom::UnsignedToFloat(_, _) => None,
-            Atom::FloatToSigned(_, _) => None,
-            Atom::FloatToUnsigned(_, _) => None,
-            Atom::FloatPromote(_, _) => None,
-            Atom::FloatDemote(_, _) => None,
-            Atom::BitwiseAnd(_, _) => None,
-            Atom::BitwiseOr(_, _) => None,
-            Atom::BitwiseXor(_, _) => None,
-            Atom::BitwiseNot(_) => None,
-            Atom::Truncate(_, _) => None,
-            Atom::Deref(_, _) => None,
-            Atom::Offset(_, _, _) => None,
-            Atom::Transmute(_, _) => None,
-            Atom::StackAlloc(_) => None,
+            Expr::MemberAccess(_, _, _) => None,
+            Expr::Assign => None,
+            Expr::Extern(_) => None,
+            Expr::AddInt(_, _) => None,
+            Expr::AddFloat(_, _) => None,
+            Expr::SubInt(_, _) => None,
+            Expr::SubFloat(_, _) => None,
+            Expr::MulInt(_, _) => None,
+            Expr::MulFloat(_, _) => None,
+            Expr::DivSigned(_, _) => None,
+            Expr::DivUnsigned(_, _) => None,
+            Expr::DivFloat(_, _) => None,
+            Expr::ModSigned(_, _) => None,
+            Expr::ModUnsigned(_, _) => None,
+            Expr::ModFloat(_, _) => None,
+            Expr::LessSigned(_, _) => None,
+            Expr::LessUnsigned(_, _) => None,
+            Expr::LessFloat(_, _) => None,
+            Expr::EqInt(_, _) => None,
+            Expr::EqFloat(_, _) => None,
+            Expr::EqChar(_, _) => None,
+            Expr::EqBool(_, _) => None,
+            Expr::SignExtend(_, _) => None,
+            Expr::ZeroExtend(_, _) => None,
+            Expr::SignedToFloat(_, _) => None,
+            Expr::UnsignedToFloat(_, _) => None,
+            Expr::FloatToSigned(_, _) => None,
+            Expr::FloatToUnsigned(_, _) => None,
+            Expr::FloatPromote(_, _) => None,
+            Expr::FloatDemote(_, _) => None,
+            Expr::BitwiseAnd(_, _) => None,
+            Expr::BitwiseOr(_, _) => None,
+            Expr::BitwiseXor(_, _) => None,
+            Expr::BitwiseNot(_) => None,
+            Expr::Truncate(_, _) => None,
+            Expr::Deref(_, _) => None,
+            Expr::Offset(_, _, _) => None,
+            Expr::Transmute(_, _) => None,
+            Expr::StackAlloc(_) => None,
         }
     }
 }

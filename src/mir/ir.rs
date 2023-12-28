@@ -31,25 +31,21 @@ impl Mir {
 #[derive(Clone)]
 pub struct Function {
     pub id: FunctionId,
-    pub argument_types: Vec<Type>,
-
-    // A function's body is always a function call
-    pub body_continuation: Atom,
-    pub body_args: Vec<Atom>,
+    pub argument_type: Type,
+    pub body: Expr,
 }
 
 impl Function {
     /// Return an empty function with the given id that is expected to have its body filled in later
-    pub fn empty(id: FunctionId) -> Self {
-        Self { id, body_continuation: Atom::Literal(Literal::Unit), body_args: Vec::new(), argument_types: Vec::new() }
+    pub fn empty(id: FunctionId, argument_type: Type) -> Self {
+        Self { id, body: Expr::Literal(Literal::Unit), argument_type }
     }
 
     pub fn parameters(&self) -> impl ExactSizeIterator<Item = ParameterId> {
-        let parameter_count = self.argument_types.len();
         let function = self.id.clone();
-        (0 .. parameter_count).map(move |i| ParameterId {
+        std::iter::once(ParameterId {
             function: function.clone(),
-            parameter_index: i as u16,
+            parameter_index: 0,
         })
     }
 
@@ -57,44 +53,37 @@ impl Function {
         F: FnMut(&mut T, &FunctionId),
         P: FnMut(&mut T, &ParameterId),
     {
-        self.body_continuation.for_each_id(data, &mut on_function, &mut on_parameter);
-        
-        for arg in &self.body_args {
-            arg.for_each_id(data, &mut on_function, &mut on_parameter);
-        }
+        self.body.for_each_id(data, &mut on_function, &mut on_parameter);
     }
 
     /// Mutate any FunctionIds in this function's body to a new FunctionId.
     ///
     /// Unlike `for_each_id`, this method also applies to FunctionIds within ParameterIds.
     pub(super) fn map_functions(&mut self, substitutions: &AtomMap) {
-        self.body_continuation.map_functions(substitutions);
-        
-        for arg in &mut self.body_args {
-            arg.map_functions(substitutions);
-        }
+        self.body.map_functions(substitutions);
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Atom {
-    /// An if-else branching. Expects 3 arguments: [cond, k_then, k_else]
-    Branch,
+pub enum Expr {
+    /// An if-else branching. Expects 3 arguments: (cond, k_then, k_else)
+    If(Box<Expr>, Box<Expr>, Box<Expr>),
 
     /// A switch case (derived from a match expression).
-    /// Expects a list of cases with the value to match for each along
-    /// with the continuation to jump to that case. Also expects an additional
-    /// optional default case continuation.
-    /// 
-    /// This also expects one argument when called: the value to match.
-    Switch(Vec<(u32, FunctionId)>, Option<FunctionId>),
+    /// Expects the value to match along with the list of cases with the value
+    /// to match for each along with the continuation to jump to that case.
+    /// Also expects an additional optional default case continuation.
+    Switch(Box<Expr>, Vec<(u32, FunctionId)>, Option<FunctionId>),
+
+    Call(Box<Expr>, /*arg:*/Box<Expr>),
 
     Literal(Literal),
     Parameter(ParameterId),
+
     Function(FunctionId),
 
-    Tuple(Vec<Atom>),
-    MemberAccess(Box<Atom>, u32, Type),
+    Tuple(Vec<Expr>),
+    MemberAccess(Box<Expr>, u32, Type),
 
     /// Assignment expects 3 arguments: [lvalue, rvalue, k]
     Assign,
@@ -106,57 +95,62 @@ pub enum Atom {
     /// the same symbol is not imported multiple times.
     Extern(ExternId),
 
-    AddInt(Box<Atom>, Box<Atom>),
-    AddFloat(Box<Atom>, Box<Atom>),
+    AddInt(Box<Expr>, Box<Expr>),
+    AddFloat(Box<Expr>, Box<Expr>),
 
-    SubInt(Box<Atom>, Box<Atom>),
-    SubFloat(Box<Atom>, Box<Atom>),
+    SubInt(Box<Expr>, Box<Expr>),
+    SubFloat(Box<Expr>, Box<Expr>),
 
-    MulInt(Box<Atom>, Box<Atom>),
-    MulFloat(Box<Atom>, Box<Atom>),
+    MulInt(Box<Expr>, Box<Expr>),
+    MulFloat(Box<Expr>, Box<Expr>),
 
-    DivSigned(Box<Atom>, Box<Atom>),
-    DivUnsigned(Box<Atom>, Box<Atom>),
-    DivFloat(Box<Atom>, Box<Atom>),
+    DivSigned(Box<Expr>, Box<Expr>),
+    DivUnsigned(Box<Expr>, Box<Expr>),
+    DivFloat(Box<Expr>, Box<Expr>),
 
-    ModSigned(Box<Atom>, Box<Atom>),
-    ModUnsigned(Box<Atom>, Box<Atom>),
-    ModFloat(Box<Atom>, Box<Atom>),
+    ModSigned(Box<Expr>, Box<Expr>),
+    ModUnsigned(Box<Expr>, Box<Expr>),
+    ModFloat(Box<Expr>, Box<Expr>),
 
-    LessSigned(Box<Atom>, Box<Atom>),
-    LessUnsigned(Box<Atom>, Box<Atom>),
-    LessFloat(Box<Atom>, Box<Atom>),
+    LessSigned(Box<Expr>, Box<Expr>),
+    LessUnsigned(Box<Expr>, Box<Expr>),
+    LessFloat(Box<Expr>, Box<Expr>),
 
-    EqInt(Box<Atom>, Box<Atom>),
-    EqFloat(Box<Atom>, Box<Atom>),
-    EqChar(Box<Atom>, Box<Atom>),
-    EqBool(Box<Atom>, Box<Atom>),
+    EqInt(Box<Expr>, Box<Expr>),
+    EqFloat(Box<Expr>, Box<Expr>),
+    EqChar(Box<Expr>, Box<Expr>),
+    EqBool(Box<Expr>, Box<Expr>),
 
-    SignExtend(Box<Atom>, Type),
-    ZeroExtend(Box<Atom>, Type),
+    SignExtend(Box<Expr>, Type),
+    ZeroExtend(Box<Expr>, Type),
 
-    SignedToFloat(Box<Atom>, Type),
-    UnsignedToFloat(Box<Atom>, Type),
-    FloatToSigned(Box<Atom>, Type),
-    FloatToUnsigned(Box<Atom>, Type),
-    FloatPromote(Box<Atom>, Type),
-    FloatDemote(Box<Atom>, Type),
+    SignedToFloat(Box<Expr>, Type),
+    UnsignedToFloat(Box<Expr>, Type),
+    FloatToSigned(Box<Expr>, Type),
+    FloatToUnsigned(Box<Expr>, Type),
+    FloatPromote(Box<Expr>, Type),
+    FloatDemote(Box<Expr>, Type),
 
-    BitwiseAnd(Box<Atom>, Box<Atom>),
-    BitwiseOr(Box<Atom>, Box<Atom>),
-    BitwiseXor(Box<Atom>, Box<Atom>),
-    BitwiseNot(Box<Atom>),
+    BitwiseAnd(Box<Expr>, Box<Expr>),
+    BitwiseOr(Box<Expr>, Box<Expr>),
+    BitwiseXor(Box<Expr>, Box<Expr>),
+    BitwiseNot(Box<Expr>),
 
-    Truncate(Box<Atom>, Type),
-    Deref(Box<Atom>, Type),
-    Offset(Box<Atom>, Box<Atom>, Type),
-    Transmute(Box<Atom>, Type),
+    Truncate(Box<Expr>, Type),
+    Deref(Box<Expr>, Type),
+    Offset(Box<Expr>, Box<Expr>, Type),
+    Transmute(Box<Expr>, Type),
 
     /// Allocate space for the given value on the stack, and store it there. Return the stack address
-    StackAlloc(Box<Atom>),
+    StackAlloc(Box<Expr>),
 }
 
-impl Atom {
+impl Expr {
+    /// Returns a unit literal
+    pub(super) fn unit() -> Self {
+        Self::Literal(Literal::Unit)
+    }
+
     /// Traverse this atom, apply the given functions to each FunctionId and ParameterId
     pub(super) fn for_each_id<T, F, P>(&self, data: &mut T, mut on_function: F, mut on_parameter: P) where
         F: FnMut(&mut T, &FunctionId),
@@ -169,14 +163,19 @@ impl Atom {
         F: FnMut(&mut T, &FunctionId),
         P: FnMut(&mut T, &ParameterId),
     {
-        let mut both = |data: &mut T, lhs: &Atom, rhs: &Atom| {
+        let mut both = |data: &mut T, lhs: &Expr, rhs: &Expr| {
             lhs.for_each_id_helper(data, on_function, on_parameter);
             rhs.for_each_id_helper(data, on_function, on_parameter);
         };
 
         match self {
-            Atom::Branch => (),
-            Atom::Switch(cases, else_case) => {
+            Expr::If(condition, then, otherwise) => {
+                condition.for_each_id_helper(data, on_function, on_parameter);
+                then.for_each_id_helper(data, on_function, on_parameter);
+                otherwise.for_each_id_helper(data, on_function, on_parameter);
+            },
+            Expr::Switch(expr, cases, else_case) => {
+                expr.for_each_id_helper(data, on_function, on_parameter);
                 for (_, case_continuation) in cases {
                     on_function(data, case_continuation);
                 }
@@ -184,65 +183,74 @@ impl Atom {
                     on_function(data, else_continuation);
                 }
             },
-            Atom::Literal(_) => (),
-            Atom::Parameter(parameter_id) => on_parameter(data, parameter_id),
-            Atom::Function(function_id) => on_function(data, function_id),
-            Atom::Tuple(fields) => {
+            Expr::Call(f, arg) => {
+                f.for_each_id_helper(data, on_function, on_parameter);
+                arg.for_each_id_helper(data, on_function, on_parameter);
+            }
+            Expr::Literal(_) => (),
+            Expr::Parameter(parameter_id) => on_parameter(data, parameter_id),
+            Expr::Function(function_id) => on_function(data, function_id),
+            Expr::Tuple(fields) => {
                 for field in fields {
                     field.for_each_id_helper(data, on_function, on_parameter);
                 }
             },
-            Atom::Assign => (),
-            Atom::Extern(_) => (),
-            Atom::MemberAccess(lhs, _, _) => lhs.for_each_id_helper(data, on_function, on_parameter),
-            Atom::AddInt(lhs, rhs) => both(data, lhs, rhs),
-            Atom::AddFloat(lhs, rhs) => both(data, lhs, rhs),
-            Atom::SubInt(lhs, rhs) => both(data, lhs, rhs),
-            Atom::SubFloat(lhs, rhs) => both(data, lhs, rhs),
-            Atom::MulInt(lhs, rhs) => both(data, lhs, rhs),
-            Atom::MulFloat(lhs, rhs) => both(data, lhs, rhs),
-            Atom::DivSigned(lhs, rhs) => both(data, lhs, rhs),
-            Atom::DivUnsigned(lhs, rhs) => both(data, lhs, rhs),
-            Atom::DivFloat(lhs, rhs) => both(data, lhs, rhs),
-            Atom::ModSigned(lhs, rhs) => both(data, lhs, rhs),
-            Atom::ModUnsigned(lhs, rhs) => both(data, lhs, rhs),
-            Atom::ModFloat(lhs, rhs) => both(data, lhs, rhs),
-            Atom::LessSigned(lhs, rhs) => both(data, lhs, rhs),
-            Atom::LessUnsigned(lhs, rhs) => both(data, lhs, rhs),
-            Atom::LessFloat(lhs, rhs) => both(data, lhs, rhs),
-            Atom::EqInt(lhs, rhs) => both(data, lhs, rhs),
-            Atom::EqFloat(lhs, rhs) => both(data, lhs, rhs),
-            Atom::EqChar(lhs, rhs) => both(data, lhs, rhs),
-            Atom::EqBool(lhs, rhs) => both(data, lhs, rhs),
-            Atom::SignExtend(lhs, _typ) => lhs.for_each_id_helper(data, on_function, on_parameter),
-            Atom::ZeroExtend(lhs, _typ) => lhs.for_each_id_helper(data, on_function, on_parameter),
-            Atom::SignedToFloat(lhs, _typ) => lhs.for_each_id_helper(data, on_function, on_parameter),
-            Atom::UnsignedToFloat(lhs, _typ) => lhs.for_each_id_helper(data, on_function, on_parameter),
-            Atom::FloatToSigned(lhs, _typ) => lhs.for_each_id_helper(data, on_function, on_parameter),
-            Atom::FloatToUnsigned(lhs, _typ) => lhs.for_each_id_helper(data, on_function, on_parameter),
-            Atom::FloatPromote(lhs, _typ) => lhs.for_each_id_helper(data, on_function, on_parameter),
-            Atom::FloatDemote(lhs, _typ) => lhs.for_each_id_helper(data, on_function, on_parameter),
-            Atom::BitwiseAnd(lhs, rhs) => both(data, lhs, rhs),
-            Atom::BitwiseOr(lhs, rhs) => both(data, lhs, rhs),
-            Atom::BitwiseXor(lhs, rhs) => both(data, lhs, rhs),
-            Atom::BitwiseNot(lhs) => lhs.for_each_id_helper(data, on_function, on_parameter),
-            Atom::Truncate(lhs, _typ) => lhs.for_each_id_helper(data, on_function, on_parameter),
-            Atom::Deref(lhs, _typ) => lhs.for_each_id_helper(data, on_function, on_parameter),
-            Atom::Offset(lhs, rhs, _typ) => both(data, lhs, rhs),
-            Atom::Transmute(lhs, _typ) => lhs.for_each_id_helper(data, on_function, on_parameter),
-            Atom::StackAlloc(lhs) => lhs.for_each_id_helper(data, on_function, on_parameter),
+            Expr::Assign => (),
+            Expr::Extern(_) => (),
+            Expr::MemberAccess(lhs, _, _) => lhs.for_each_id_helper(data, on_function, on_parameter),
+            Expr::AddInt(lhs, rhs) => both(data, lhs, rhs),
+            Expr::AddFloat(lhs, rhs) => both(data, lhs, rhs),
+            Expr::SubInt(lhs, rhs) => both(data, lhs, rhs),
+            Expr::SubFloat(lhs, rhs) => both(data, lhs, rhs),
+            Expr::MulInt(lhs, rhs) => both(data, lhs, rhs),
+            Expr::MulFloat(lhs, rhs) => both(data, lhs, rhs),
+            Expr::DivSigned(lhs, rhs) => both(data, lhs, rhs),
+            Expr::DivUnsigned(lhs, rhs) => both(data, lhs, rhs),
+            Expr::DivFloat(lhs, rhs) => both(data, lhs, rhs),
+            Expr::ModSigned(lhs, rhs) => both(data, lhs, rhs),
+            Expr::ModUnsigned(lhs, rhs) => both(data, lhs, rhs),
+            Expr::ModFloat(lhs, rhs) => both(data, lhs, rhs),
+            Expr::LessSigned(lhs, rhs) => both(data, lhs, rhs),
+            Expr::LessUnsigned(lhs, rhs) => both(data, lhs, rhs),
+            Expr::LessFloat(lhs, rhs) => both(data, lhs, rhs),
+            Expr::EqInt(lhs, rhs) => both(data, lhs, rhs),
+            Expr::EqFloat(lhs, rhs) => both(data, lhs, rhs),
+            Expr::EqChar(lhs, rhs) => both(data, lhs, rhs),
+            Expr::EqBool(lhs, rhs) => both(data, lhs, rhs),
+            Expr::SignExtend(lhs, _typ) => lhs.for_each_id_helper(data, on_function, on_parameter),
+            Expr::ZeroExtend(lhs, _typ) => lhs.for_each_id_helper(data, on_function, on_parameter),
+            Expr::SignedToFloat(lhs, _typ) => lhs.for_each_id_helper(data, on_function, on_parameter),
+            Expr::UnsignedToFloat(lhs, _typ) => lhs.for_each_id_helper(data, on_function, on_parameter),
+            Expr::FloatToSigned(lhs, _typ) => lhs.for_each_id_helper(data, on_function, on_parameter),
+            Expr::FloatToUnsigned(lhs, _typ) => lhs.for_each_id_helper(data, on_function, on_parameter),
+            Expr::FloatPromote(lhs, _typ) => lhs.for_each_id_helper(data, on_function, on_parameter),
+            Expr::FloatDemote(lhs, _typ) => lhs.for_each_id_helper(data, on_function, on_parameter),
+            Expr::BitwiseAnd(lhs, rhs) => both(data, lhs, rhs),
+            Expr::BitwiseOr(lhs, rhs) => both(data, lhs, rhs),
+            Expr::BitwiseXor(lhs, rhs) => both(data, lhs, rhs),
+            Expr::BitwiseNot(lhs) => lhs.for_each_id_helper(data, on_function, on_parameter),
+            Expr::Truncate(lhs, _typ) => lhs.for_each_id_helper(data, on_function, on_parameter),
+            Expr::Deref(lhs, _typ) => lhs.for_each_id_helper(data, on_function, on_parameter),
+            Expr::Offset(lhs, rhs, _typ) => both(data, lhs, rhs),
+            Expr::Transmute(lhs, _typ) => lhs.for_each_id_helper(data, on_function, on_parameter),
+            Expr::StackAlloc(lhs) => lhs.for_each_id_helper(data, on_function, on_parameter),
         }
     }
 
     fn map_functions(&mut self, substitutions: &AtomMap) {
-        let both = |lhs: &mut Atom, rhs: &mut Atom| {
+        let both = |lhs: &mut Expr, rhs: &mut Expr| {
             lhs.map_functions(substitutions);
             rhs.map_functions(substitutions);
         };
 
         match self {
-            Atom::Branch => (),
-            Atom::Switch(cases, else_case) => {
+            Expr::If(condition, then, otherwise) => {
+                condition.map_functions(substitutions);
+                then.map_functions(substitutions);
+                otherwise.map_functions(substitutions);
+            },
+            Expr::Switch(expr, cases, else_case) => {
+                expr.map_functions(substitutions);
                 for (_, case_continuation) in cases {
                     if let Some(substitution) = substitutions.functions.get(case_continuation) {
                         *case_continuation = substitution.clone();
@@ -254,63 +262,67 @@ impl Atom {
                     }
                 }
             },
-            Atom::Literal(_) => (),
-            Atom::Parameter(parameter_id) => {
+            Expr::Call(f, arg) => {
+                f.map_functions(substitutions);
+                arg.map_functions(substitutions);
+            }
+            Expr::Literal(_) => (),
+            Expr::Parameter(parameter_id) => {
                 if let Some(substitution) = substitutions.parameters.get(parameter_id) {
                     *self = substitution.clone();
                 } else if let Some(substitution) = substitutions.functions.get(&parameter_id.function) {
                     parameter_id.function = substitution.clone();
                 }
             },
-            Atom::Function(function_id) => {
+            Expr::Function(function_id) => {
                 if let Some(substitution) = substitutions.functions.get(function_id) {
                     *function_id = substitution.clone();
                 }
             },
-            Atom::Tuple(fields) => {
+            Expr::Tuple(fields) => {
                 for field in fields {
                     field.map_functions(substitutions);
                 }
             },
-            Atom::Assign => (),
-            Atom::Extern(_) => (),
-            Atom::MemberAccess(lhs, _, _) => lhs.map_functions(substitutions),
-            Atom::AddInt(lhs, rhs) => both(lhs, rhs),
-            Atom::AddFloat(lhs, rhs) => both(lhs, rhs),
-            Atom::SubInt(lhs, rhs) => both(lhs, rhs),
-            Atom::SubFloat(lhs, rhs) => both(lhs, rhs),
-            Atom::MulInt(lhs, rhs) => both(lhs, rhs),
-            Atom::MulFloat(lhs, rhs) => both(lhs, rhs),
-            Atom::DivSigned(lhs, rhs) => both(lhs, rhs),
-            Atom::DivUnsigned(lhs, rhs) => both(lhs, rhs),
-            Atom::DivFloat(lhs, rhs) => both(lhs, rhs),
-            Atom::ModSigned(lhs, rhs) => both(lhs, rhs),
-            Atom::ModUnsigned(lhs, rhs) => both(lhs, rhs),
-            Atom::ModFloat(lhs, rhs) => both(lhs, rhs),
-            Atom::LessSigned(lhs, rhs) => both(lhs, rhs),
-            Atom::LessUnsigned(lhs, rhs) => both(lhs, rhs),
-            Atom::LessFloat(lhs, rhs) => both(lhs, rhs),
-            Atom::EqInt(lhs, rhs) => both(lhs, rhs),
-            Atom::EqFloat(lhs, rhs) => both(lhs, rhs),
-            Atom::EqChar(lhs, rhs) => both(lhs, rhs),
-            Atom::EqBool(lhs, rhs) => both(lhs, rhs),
-            Atom::SignExtend(lhs, _typ) => lhs.map_functions(substitutions),
-            Atom::ZeroExtend(lhs, _typ) => lhs.map_functions(substitutions),
-            Atom::SignedToFloat(lhs, _typ) => lhs.map_functions(substitutions),
-            Atom::UnsignedToFloat(lhs, _typ) => lhs.map_functions(substitutions),
-            Atom::FloatToSigned(lhs, _typ) => lhs.map_functions(substitutions),
-            Atom::FloatToUnsigned(lhs, _typ) => lhs.map_functions(substitutions),
-            Atom::FloatPromote(lhs, _typ) => lhs.map_functions(substitutions),
-            Atom::FloatDemote(lhs, _typ) => lhs.map_functions(substitutions),
-            Atom::BitwiseAnd(lhs, rhs) => both(lhs, rhs),
-            Atom::BitwiseOr(lhs, rhs) => both(lhs, rhs),
-            Atom::BitwiseXor(lhs, rhs) => both(lhs, rhs),
-            Atom::BitwiseNot(lhs) => lhs.map_functions(substitutions),
-            Atom::Truncate(lhs, _typ) => lhs.map_functions(substitutions),
-            Atom::Deref(lhs, _typ) => lhs.map_functions(substitutions),
-            Atom::Offset(lhs, rhs, _typ) => both(lhs, rhs),
-            Atom::Transmute(lhs, _typ) => lhs.map_functions(substitutions),
-            Atom::StackAlloc(lhs) => lhs.map_functions(substitutions),
+            Expr::Assign => (),
+            Expr::Extern(_) => (),
+            Expr::MemberAccess(lhs, _, _) => lhs.map_functions(substitutions),
+            Expr::AddInt(lhs, rhs) => both(lhs, rhs),
+            Expr::AddFloat(lhs, rhs) => both(lhs, rhs),
+            Expr::SubInt(lhs, rhs) => both(lhs, rhs),
+            Expr::SubFloat(lhs, rhs) => both(lhs, rhs),
+            Expr::MulInt(lhs, rhs) => both(lhs, rhs),
+            Expr::MulFloat(lhs, rhs) => both(lhs, rhs),
+            Expr::DivSigned(lhs, rhs) => both(lhs, rhs),
+            Expr::DivUnsigned(lhs, rhs) => both(lhs, rhs),
+            Expr::DivFloat(lhs, rhs) => both(lhs, rhs),
+            Expr::ModSigned(lhs, rhs) => both(lhs, rhs),
+            Expr::ModUnsigned(lhs, rhs) => both(lhs, rhs),
+            Expr::ModFloat(lhs, rhs) => both(lhs, rhs),
+            Expr::LessSigned(lhs, rhs) => both(lhs, rhs),
+            Expr::LessUnsigned(lhs, rhs) => both(lhs, rhs),
+            Expr::LessFloat(lhs, rhs) => both(lhs, rhs),
+            Expr::EqInt(lhs, rhs) => both(lhs, rhs),
+            Expr::EqFloat(lhs, rhs) => both(lhs, rhs),
+            Expr::EqChar(lhs, rhs) => both(lhs, rhs),
+            Expr::EqBool(lhs, rhs) => both(lhs, rhs),
+            Expr::SignExtend(lhs, _typ) => lhs.map_functions(substitutions),
+            Expr::ZeroExtend(lhs, _typ) => lhs.map_functions(substitutions),
+            Expr::SignedToFloat(lhs, _typ) => lhs.map_functions(substitutions),
+            Expr::UnsignedToFloat(lhs, _typ) => lhs.map_functions(substitutions),
+            Expr::FloatToSigned(lhs, _typ) => lhs.map_functions(substitutions),
+            Expr::FloatToUnsigned(lhs, _typ) => lhs.map_functions(substitutions),
+            Expr::FloatPromote(lhs, _typ) => lhs.map_functions(substitutions),
+            Expr::FloatDemote(lhs, _typ) => lhs.map_functions(substitutions),
+            Expr::BitwiseAnd(lhs, rhs) => both(lhs, rhs),
+            Expr::BitwiseOr(lhs, rhs) => both(lhs, rhs),
+            Expr::BitwiseXor(lhs, rhs) => both(lhs, rhs),
+            Expr::BitwiseNot(lhs) => lhs.map_functions(substitutions),
+            Expr::Truncate(lhs, _typ) => lhs.map_functions(substitutions),
+            Expr::Deref(lhs, _typ) => lhs.map_functions(substitutions),
+            Expr::Offset(lhs, rhs, _typ) => both(lhs, rhs),
+            Expr::Transmute(lhs, _typ) => lhs.map_functions(substitutions),
+            Expr::StackAlloc(lhs) => lhs.map_functions(substitutions),
         }
     }
 }
@@ -320,7 +332,7 @@ impl Atom {
 #[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash)]
 pub enum Type {
     Primitive(PrimitiveType),
-    Function(Vec<Type>, Vec<EffectIndices>),
+    Function(/*arg:*/Box<Type>, /*ret:*/ Option<Box<Type>>),
 
     /// Tuples have a TypeId to allow for struct recursion
     Tuple(Vec<Type>),
@@ -329,15 +341,25 @@ pub enum Type {
 impl Type {
     /// Create a function type with the given arguments and return type
     pub(super) fn function(mut args: Vec<Type>, return_type: Type) -> Type {
-        args.push(Type::Function(vec![return_type], vec![]));
-        Type::Function(args, vec![])
+        if args.len() == 1 {
+            let arg = args.pop().unwrap();
+            Type::Function(Box::new(arg), Some(Box::new(return_type)))
+        } else {
+            let first = args.remove(0);
+            let rest = Type::function(args, return_type);
+            Type::Function(Box::new(first), Some(Box::new(rest)))
+        }
+    }
+
+    pub(super) fn continuation(arg: Type) -> Type {
+        Type::Function(Box::new(arg), None)
     }
 
     /// True if this type is a function or indirectly contains one
     pub(super) fn contains_function(&self) -> bool {
         match self {
             Type::Primitive(_) => false,
-            Type::Function(_, _) => true,
+            Type::Function(..) => true,
             Type::Tuple(args) => args.iter().any(|arg| arg.contains_function()),
         }
     }
@@ -366,6 +388,6 @@ pub struct EffectIndices {
 
 #[derive(Default)]
 pub struct AtomMap {
-    pub parameters: HashMap<ParameterId, Atom>,
+    pub parameters: HashMap<ParameterId, Expr>,
     pub functions: HashMap<FunctionId, FunctionId>,
 }

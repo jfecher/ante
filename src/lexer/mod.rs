@@ -591,7 +591,7 @@ impl<'cache, 'contents> Iterator for Lexer<'cache, 'contents> {
                 // This will overflow if there are mismatched parenthesis,
                 // should we handle this inside the lexer,
                 // or leave that to the parsing stage?
-                self.open_braces.parenthesis -= 1;
+                self.open_braces.parenthesis = self.open_braces.parenthesis.saturating_sub(1);
                 self.advance_with(Token::ParenthesisRight)
             },
             ('+', _) => self.advance_with(Token::Add),

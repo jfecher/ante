@@ -152,6 +152,7 @@ pub enum DecisionTree {
 #[derive(Debug, Clone)]
 pub struct Return {
     pub expression: Box<Ast>,
+    pub typ: Type,
 }
 
 /// statement1

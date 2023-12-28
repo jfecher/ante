@@ -4,7 +4,7 @@ use petgraph::prelude::DiGraph;
 
 use crate::util::fmap;
 
-use super::ir::{Mir, Function, FunctionId, Atom, ParameterId, Type};
+use super::ir::{Mir, Function, FunctionId, Expr, ParameterId, Type};
 
 
 impl Display for Mir {
@@ -19,73 +19,73 @@ impl Display for Mir {
 
 impl Display for Function {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let body_args = fmap(&self.body_args, ToString::to_string).join(", ");
-        let parameters = fmap(&self.argument_types, ToString::to_string).join(", ");
-
-        writeln!(f, "{}({}):\n  {}({})", self.id, parameters, self.body_continuation, body_args)
+        writeln!(f, "{}({}):\n  {}", self.id, self.argument_type, self.body)
     }
 }
 
-impl Display for Atom {
+impl Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Atom::Branch => write!(f, "branch"),
-            Atom::Switch(branches, else_branch) => {
+            Expr::If(condition, then, otherwise) => write!(f, "if({condition}, {then}, {otherwise})"),
+            Expr::Switch(expr, branches, else_branch) => {
                 let branches = fmap(branches, |(value, branch)| format!("{} -> {}", value, branch)).join(", ");
                 let else_branch = match else_branch {
                     Some(branch) => format!(", {}", branch),
                     None => String::new(),
                 };
-                write!(f, "switch[{}{}]", branches, else_branch)
+                write!(f, "switch {expr} [{}{}]", branches, else_branch)
             },
-            Atom::Literal(literal) => write!(f, "{literal}"),
-            Atom::Parameter(parameter) => write!(f, "{parameter}"),
-            Atom::Function(lambda) => write!(f, "{lambda}"),
-            Atom::Tuple(fields) => {
+            Expr::Call(function, arg) => {
+                write!(f, "{}({})", function, arg)
+            },
+            Expr::Literal(literal) => write!(f, "{literal}"),
+            Expr::Parameter(parameter) => write!(f, "{parameter}"),
+            Expr::Function(lambda) => write!(f, "{lambda}"),
+            Expr::Tuple(fields) => {
                 let fields = fmap(fields, ToString::to_string).join(", ");
                 write!(f, "({fields})")
             },
-            Atom::MemberAccess(lhs, index, typ) => {
+            Expr::MemberAccess(lhs, index, typ) => {
                 write!(f, "({lhs} . {index} : {typ})")
             }
-            Atom::Assign => write!(f, ":="),
-            Atom::Extern(extern_id) => write!(f, "extern_{}", extern_id.0),
-            Atom::AddInt(lhs, rhs) => write!(f, "({lhs} + {rhs})"),
-            Atom::AddFloat(lhs, rhs) => write!(f, "({lhs} + {rhs})"),
-            Atom::SubInt(lhs, rhs) => write!(f, "({lhs} - {rhs})"),
-            Atom::SubFloat(lhs, rhs) => write!(f, "({lhs} - {rhs})"),
-            Atom::MulInt(lhs, rhs) => write!(f, "({lhs} * {rhs})"),
-            Atom::MulFloat(lhs, rhs) => write!(f, "({lhs} * {rhs})"),
-            Atom::DivSigned(lhs, rhs) => write!(f, "({lhs} / {rhs})"),
-            Atom::DivUnsigned(lhs, rhs) => write!(f, "({lhs} / {rhs})"),
-            Atom::DivFloat(lhs, rhs) => write!(f, "({lhs} / {rhs})"),
-            Atom::ModSigned(lhs, rhs) => write!(f, "({lhs} % {rhs})"),
-            Atom::ModUnsigned(lhs, rhs) => write!(f, "({lhs} % {rhs})"),
-            Atom::ModFloat(lhs, rhs) => write!(f, "({lhs} % {rhs})"),
-            Atom::LessSigned(lhs, rhs) => write!(f, "({lhs} < {rhs})"),
-            Atom::LessUnsigned(lhs, rhs) => write!(f, "({lhs} < {rhs})"),
-            Atom::LessFloat(lhs, rhs) => write!(f, "({lhs} < {rhs})"),
-            Atom::EqInt(lhs, rhs) => write!(f, "({lhs} == {rhs})"),
-            Atom::EqFloat(lhs, rhs) => write!(f, "({lhs} == {rhs})"),
-            Atom::EqChar(lhs, rhs) => write!(f, "({lhs} == {rhs})"),
-            Atom::EqBool(lhs, rhs) => write!(f, "({lhs} == {rhs})"),
-            Atom::SignExtend(lhs, rhs) => write!(f, "(sign_extend {lhs} {rhs})"),
-            Atom::ZeroExtend(lhs, rhs) => write!(f, "(zero_extend {lhs} {rhs})"),
-            Atom::SignedToFloat(lhs, rhs) => write!(f, "(signed_to_float {lhs} {rhs})"),
-            Atom::UnsignedToFloat(lhs, rhs) => write!(f, "(unsigned_to_float {lhs} {rhs})"),
-            Atom::FloatToSigned(lhs, rhs) => write!(f, "(float_to_signed {lhs} {rhs})"),
-            Atom::FloatToUnsigned(lhs, rhs) => write!(f, "(float_to_unsigned {lhs} {rhs})"),
-            Atom::FloatPromote(lhs, rhs) => write!(f, "(float_promote {lhs} {rhs})"),
-            Atom::FloatDemote(lhs, rhs) => write!(f, "(float_demote {lhs} {rhs})"),
-            Atom::BitwiseAnd(lhs, rhs) => write!(f, "({lhs} & {rhs})"),
-            Atom::BitwiseOr(lhs, rhs) => write!(f, "({lhs} | {rhs})"),
-            Atom::BitwiseXor(lhs, rhs) => write!(f, "({lhs} ^ {rhs})"),
-            Atom::BitwiseNot(lhs) => write!(f, "(bitwise_not {lhs})"),
-            Atom::Truncate(lhs, rhs) => write!(f, "(truncate {lhs} {rhs})"),
-            Atom::Deref(lhs, rhs) => write!(f, "(deref {lhs} {rhs})"),
-            Atom::Offset(lhs, rhs, typ) => write!(f, "(offset {lhs} {rhs} {typ})"),
-            Atom::Transmute(lhs, rhs) => write!(f, "(transmute {lhs} {rhs})"),
-            Atom::StackAlloc(lhs) => write!(f, "(stack_alloc {lhs})"),
+            Expr::Assign => write!(f, ":="),
+            Expr::Extern(extern_id) => write!(f, "extern_{}", extern_id.0),
+            Expr::AddInt(lhs, rhs) => write!(f, "({lhs} + {rhs})"),
+            Expr::AddFloat(lhs, rhs) => write!(f, "({lhs} + {rhs})"),
+            Expr::SubInt(lhs, rhs) => write!(f, "({lhs} - {rhs})"),
+            Expr::SubFloat(lhs, rhs) => write!(f, "({lhs} - {rhs})"),
+            Expr::MulInt(lhs, rhs) => write!(f, "({lhs} * {rhs})"),
+            Expr::MulFloat(lhs, rhs) => write!(f, "({lhs} * {rhs})"),
+            Expr::DivSigned(lhs, rhs) => write!(f, "({lhs} / {rhs})"),
+            Expr::DivUnsigned(lhs, rhs) => write!(f, "({lhs} / {rhs})"),
+            Expr::DivFloat(lhs, rhs) => write!(f, "({lhs} / {rhs})"),
+            Expr::ModSigned(lhs, rhs) => write!(f, "({lhs} % {rhs})"),
+            Expr::ModUnsigned(lhs, rhs) => write!(f, "({lhs} % {rhs})"),
+            Expr::ModFloat(lhs, rhs) => write!(f, "({lhs} % {rhs})"),
+            Expr::LessSigned(lhs, rhs) => write!(f, "({lhs} < {rhs})"),
+            Expr::LessUnsigned(lhs, rhs) => write!(f, "({lhs} < {rhs})"),
+            Expr::LessFloat(lhs, rhs) => write!(f, "({lhs} < {rhs})"),
+            Expr::EqInt(lhs, rhs) => write!(f, "({lhs} == {rhs})"),
+            Expr::EqFloat(lhs, rhs) => write!(f, "({lhs} == {rhs})"),
+            Expr::EqChar(lhs, rhs) => write!(f, "({lhs} == {rhs})"),
+            Expr::EqBool(lhs, rhs) => write!(f, "({lhs} == {rhs})"),
+            Expr::SignExtend(lhs, rhs) => write!(f, "(sign_extend {lhs} {rhs})"),
+            Expr::ZeroExtend(lhs, rhs) => write!(f, "(zero_extend {lhs} {rhs})"),
+            Expr::SignedToFloat(lhs, rhs) => write!(f, "(signed_to_float {lhs} {rhs})"),
+            Expr::UnsignedToFloat(lhs, rhs) => write!(f, "(unsigned_to_float {lhs} {rhs})"),
+            Expr::FloatToSigned(lhs, rhs) => write!(f, "(float_to_signed {lhs} {rhs})"),
+            Expr::FloatToUnsigned(lhs, rhs) => write!(f, "(float_to_unsigned {lhs} {rhs})"),
+            Expr::FloatPromote(lhs, rhs) => write!(f, "(float_promote {lhs} {rhs})"),
+            Expr::FloatDemote(lhs, rhs) => write!(f, "(float_demote {lhs} {rhs})"),
+            Expr::BitwiseAnd(lhs, rhs) => write!(f, "({lhs} & {rhs})"),
+            Expr::BitwiseOr(lhs, rhs) => write!(f, "({lhs} | {rhs})"),
+            Expr::BitwiseXor(lhs, rhs) => write!(f, "({lhs} ^ {rhs})"),
+            Expr::BitwiseNot(lhs) => write!(f, "(bitwise_not {lhs})"),
+            Expr::Truncate(lhs, rhs) => write!(f, "(truncate {lhs} {rhs})"),
+            Expr::Deref(lhs, rhs) => write!(f, "(deref {lhs} {rhs})"),
+            Expr::Offset(lhs, rhs, typ) => write!(f, "(offset {lhs} {rhs} {typ})"),
+            Expr::Transmute(lhs, rhs) => write!(f, "(transmute {lhs} {rhs})"),
+            Expr::StackAlloc(lhs) => write!(f, "(stack_alloc {lhs})"),
         }
     }
 }
@@ -106,9 +106,11 @@ impl Display for Type {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Type::Primitive(primitive) => write!(f, "{primitive}"),
-            Type::Function(args, _) => {
-                let args = fmap(args, ToString::to_string).join(", ");
-                write!(f, "fn({})", args)
+            Type::Function(arg, ret) => {
+                match ret {
+                    Some(ret) => write!(f, "(fn({arg}) -> {ret})"),
+                    None => write!(f, "fn({arg})"),
+                }
             },
             Type::Tuple(fields) => {
                 for (i, arg) in fields.iter().enumerate() {
@@ -183,29 +185,25 @@ impl GraphBuilder {
             self.functions.insert(function_id.clone(), function_index);
 
             if !self.exclude_parameters {
-                for i in 0 .. function.argument_types.len() {
-                    let parameter = ParameterId { function: function_id.clone(), parameter_index: i as u16 };
+                // for i in 0 .. function.argument_types.len() {
+                    let parameter = ParameterId { function: function_id.clone(), parameter_index: 0 };
                     let parameter_index = self.graph.add_node(parameter.to_string());
                     self.parameters.insert(parameter, parameter_index);
 
                     // This is easiest to add now instead of later in create_edges
                     self.graph.update_edge(function_index, parameter_index, ());
-                }
+                // }
             }
         }
     }
 
     fn create_edges(&mut self, mir: &Mir) {
         for (function_id, function) in &mir.functions {
-            self.add_edges(function_id, &function.body_continuation);
-
-            for arg in &function.body_args {
-                self.add_edges(function_id, arg);
-            }
+            self.add_edges(function_id, &function.body);
         }
     }
 
-    fn add_edges(&mut self, current_function: &FunctionId, atom: &Atom) {
+    fn add_edges(&mut self, current_function: &FunctionId, atom: &Expr) {
         let on_function = |this: &mut Self, function_id: &FunctionId| {
             if !this.exclude_functions {
                 let source_index = this.functions[current_function];

@@ -1,10 +1,10 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::{hir, util::fmap};
+use crate::{hir::{self, PrimitiveType}, util::fmap};
 
 use self::scope::Scopes;
 
-use super::ir::{Mir, Function, Type, FunctionId, Atom, ParameterId, AtomMap};
+use super::ir::{Mir, Function, Type, FunctionId, Expr, ParameterId, AtomMap};
 
 mod scope;
 
@@ -40,7 +40,6 @@ impl Mir {
             eprintln!("=========================================");
             eprintln!("\n{}", self);
             i += 1;
-            break;
 
             let scopes = self.find_scopes();
 
@@ -55,7 +54,7 @@ impl Mir {
 
             self.remove_unreachable_functions();
 
-            if no_bad_functions {
+            if no_bad_functions || i >= 5 {
                 break;
             }
         }
@@ -77,37 +76,44 @@ impl Mir {
     //   end
     // end
     fn mangle_uses(&mut self, l: &FunctionId, u: FunctionId) {
-        let u_body = &self.functions[&u].body_continuation;
-        let u_args = &self.functions[&u].body_args.clone();
+        if let Expr::Call(u_body, u_args) = &self.functions[&u].body {
+            let u_args = u_args.clone();
 
-        if *u_body == Atom::Function(l.clone()) {
-            eprintln!("Mangling use of {} in function {}", l, u);
+            if **u_body == Expr::Function(l.clone()) {
+                eprintln!("Mangling use of {} in function {}", l, u);
 
-            let l_function = &self.functions[l];
-            let x = l_function.argument_types.iter().enumerate()
-                .filter(|(_, typ)| matches!(typ, Type::Function(..)))
-                .map(|(i, _)| i)
-                .collect::<HashSet<_>>();
+                let l_function = &self.functions[l];
+                let x = std::iter::once(&l_function.argument_type).enumerate()
+                    .filter(|(_, typ)| matches!(typ, Type::Function(..)))
+                    .map(|(i, _)| i)
+                    .collect::<HashSet<_>>();
 
-            let t = cut(&l_function.argument_types, &x);
+                let t = cut(&[l_function.argument_type.clone()], &x);
 
-            let parameter_map = x.iter().map(|i| {
-                let param = ParameterId { function: l.clone(), parameter_index: *i as u16 };
-                (param, u_args[*i].clone())
-            }).collect::<HashMap<_, _>>();
+                let parameter_map = x.iter().map(|i| {
+                    let param = ParameterId { function: l.clone(), parameter_index: *i as u16 };
+                    (param, u_args.as_ref().clone())
+                }).collect::<HashMap<_, _>>();
 
-            let mut m = AtomMap::default();
-            m.parameters = parameter_map;
+                let mut m = AtomMap::default();
+                m.parameters = parameter_map;
 
-            let l2 = self.mangle(l, t, m);
+                let l2 = self.mangle(l, t, m);
 
-            let args = cut(&u_args, &x);
+                let mut args = cut(&[u_args.as_ref().clone()], &x);
 
-            let call_site = self.functions.get_mut(&u).unwrap();
-            call_site.body_continuation = Atom::Function(l2);
-            call_site.body_args = args;
+                let call_site = self.functions.get_mut(&u).unwrap();
 
-            eprintln!("Done mangling use of {} in function {}. New mir is:\n{}", l, u, self);
+                let arg = if args.len() == 1 {
+                    args.pop().unwrap()
+                } else {
+                    Expr::unit()
+                };
+
+                call_site.body = Expr::Call(Box::new(Expr::Function(l2)), Box::new(arg));
+
+                eprintln!("Done mangling use of {} in function {}. New mir is:\n{}", l, u, self);
+            }
         }
     }
 
@@ -123,7 +129,7 @@ impl Mir {
     //   p[l′e] ← t: b′e                  // insert new entry where M, be |> b′e
     //   return l′e                       // return entry to new mangled region
     // end
-    fn mangle(&mut self, le: &FunctionId, ts: Vec<Type>, mut m: AtomMap) -> FunctionId {
+    fn mangle(&mut self, le: &FunctionId, mut ts: Vec<Type>, mut m: AtomMap) -> FunctionId {
         // TODO: Avoid re-finding scopes for all functions on each mangle call
         eprintln!("Mangle: finding scopes");
         let scopes = self.find_scopes();
@@ -140,7 +146,7 @@ impl Mir {
 
         for parameter in self.functions[le].parameters() {
             if !m.parameters.contains_key(&parameter) {
-                m.parameters.insert(parameter, Atom::Parameter(ParameterId {
+                m.parameters.insert(parameter, Expr::Parameter(ParameterId {
                     function: new_le_id.clone(),
                     parameter_index: next_parameter_index,
                 }));
@@ -171,7 +177,10 @@ impl Mir {
 
         let mut new_function = self.functions[le].clone();
         new_function.id = new_le_id.clone();
-        new_function.argument_types = ts;
+
+        let argument_type = ts.pop().unwrap_or(Type::Primitive(PrimitiveType::Unit));
+
+        new_function.argument_type = argument_type;
         new_function.map_functions(&m);
 
         println!("Inserting new function {}", new_le_id);
@@ -258,7 +267,7 @@ enum FunctionLevel {
 
 impl Function {
     fn order(&self) -> Order {
-        let mut function_parameters = self.argument_types.iter()
+        let mut function_parameters = std::iter::once(&self.argument_type)
             .filter_map(|arg| match arg {
                 Type::Function(params, _) => Some(params),
                 _ => None,
@@ -269,7 +278,8 @@ impl Function {
 
         match (first, second) {
             (None, None) => Order::BasicBlock,
-            (Some(args), None) if !args.iter().any(|arg| arg.contains_function()) => Order::Returning,
+            // (Some(args), None) if !args.iter().any(|arg| arg.contains_function()) => Order::Returning,
+            (Some(arg), None) if !arg.contains_function() => Order::Returning,
             _ => Order::HigherOrder,
         }
     }
