@@ -33,12 +33,16 @@ pub struct Function {
     pub id: FunctionId,
     pub argument_type: Type,
     pub body: Expr,
+
+    /// True if this function should be evaluated at compile-time.
+    /// This is used to specialize functions to effect continuations automatically.
+    pub compile_time: bool,
 }
 
 impl Function {
     /// Return an empty function with the given id that is expected to have its body filled in later
     pub fn empty(id: FunctionId, argument_type: Type) -> Self {
-        Self { id, body: Expr::Literal(Literal::Unit), argument_type }
+        Self { id, body: Expr::Literal(Literal::Unit), argument_type, compile_time: false }
     }
 
     pub fn parameters(&self) -> impl ExactSizeIterator<Item = ParameterId> {
@@ -59,7 +63,7 @@ impl Function {
     /// Mutate any FunctionIds in this function's body to a new FunctionId.
     ///
     /// Unlike `for_each_id`, this method also applies to FunctionIds within ParameterIds.
-    pub(super) fn map_functions(&mut self, substitutions: &AtomMap) {
+    pub(super) fn map_functions(&mut self, substitutions: &ExprMap) {
         self.body.map_functions(substitutions);
     }
 }
@@ -75,7 +79,7 @@ pub enum Expr {
     /// Also expects an additional optional default case continuation.
     Switch(Box<Expr>, Vec<(u32, FunctionId)>, Option<FunctionId>),
 
-    Call(Box<Expr>, /*arg:*/Box<Expr>),
+    Call(Box<Expr>, /*arg:*/Box<Expr>, /*compile_time:*/bool),
 
     Literal(Literal),
     Parameter(ParameterId),
@@ -151,6 +155,16 @@ impl Expr {
         Self::Literal(Literal::Unit)
     }
 
+    /// Returns a runtime call `f(arg)`
+    pub(super) fn rt_call(f: Expr, arg: Expr) -> Self {
+        Expr::Call(Box::new(f), Box::new(arg), false)
+    }
+
+    /// Returns a compile-time call `f(arg)`
+    pub(super) fn ct_call(f: Expr, arg: Expr) -> Self {
+        Expr::Call(Box::new(f), Box::new(arg), true)
+    }
+
     /// Traverse this atom, apply the given functions to each FunctionId and ParameterId
     pub(super) fn for_each_id<T, F, P>(&self, data: &mut T, mut on_function: F, mut on_parameter: P) where
         F: FnMut(&mut T, &FunctionId),
@@ -183,7 +197,7 @@ impl Expr {
                     on_function(data, else_continuation);
                 }
             },
-            Expr::Call(f, arg) => {
+            Expr::Call(f, arg, _) => {
                 f.for_each_id_helper(data, on_function, on_parameter);
                 arg.for_each_id_helper(data, on_function, on_parameter);
             }
@@ -237,7 +251,7 @@ impl Expr {
         }
     }
 
-    fn map_functions(&mut self, substitutions: &AtomMap) {
+    fn map_functions(&mut self, substitutions: &ExprMap) {
         let both = |lhs: &mut Expr, rhs: &mut Expr| {
             lhs.map_functions(substitutions);
             rhs.map_functions(substitutions);
@@ -262,7 +276,7 @@ impl Expr {
                     }
                 }
             },
-            Expr::Call(f, arg) => {
+            Expr::Call(f, arg, _) => {
                 f.map_functions(substitutions);
                 arg.map_functions(substitutions);
             }
@@ -332,7 +346,7 @@ impl Expr {
 #[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash)]
 pub enum Type {
     Primitive(PrimitiveType),
-    Function(/*arg:*/Box<Type>, /*ret:*/ Option<Box<Type>>),
+    Function(/*arg:*/Box<Type>, /*ret:*/ Option<Box<Type>>, /*compile_time:*/bool),
 
     /// Tuples have a TypeId to allow for struct recursion
     Tuple(Vec<Type>),
@@ -340,19 +354,23 @@ pub enum Type {
 
 impl Type {
     /// Create a function type with the given arguments and return type
-    pub(super) fn function(mut args: Vec<Type>, return_type: Type) -> Type {
+    pub(super) fn function(mut args: Vec<Type>, return_type: Type, compile_time: bool) -> Type {
         if args.len() == 1 {
             let arg = args.pop().unwrap();
-            Type::Function(Box::new(arg), Some(Box::new(return_type)))
+            Type::Function(Box::new(arg), Some(Box::new(return_type)), compile_time)
         } else {
             let first = args.remove(0);
-            let rest = Type::function(args, return_type);
-            Type::Function(Box::new(first), Some(Box::new(rest)))
+            let rest = Type::function(args, return_type, compile_time);
+            Type::Function(Box::new(first), Some(Box::new(rest)), compile_time)
         }
     }
 
-    pub(super) fn continuation(arg: Type) -> Type {
-        Type::Function(Box::new(arg), None)
+    pub(super) fn continuation(arg: Type, compile_time: bool) -> Type {
+        Type::Function(Box::new(arg), None, compile_time)
+    }
+
+    pub(super) fn unit() -> Type {
+        Type::Primitive(PrimitiveType::Unit)
     }
 
     /// True if this type is a function or indirectly contains one
@@ -387,7 +405,7 @@ pub struct EffectIndices {
 }
 
 #[derive(Default)]
-pub struct AtomMap {
+pub struct ExprMap {
     pub parameters: HashMap<ParameterId, Expr>,
     pub functions: HashMap<FunctionId, FunctionId>,
 }

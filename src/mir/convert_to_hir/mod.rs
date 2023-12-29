@@ -4,22 +4,18 @@ use crate::{hir::{self, PrimitiveType}, util::fmap};
 
 use self::scope::Scopes;
 
-use super::ir::{Mir, Function, Type, FunctionId, Expr, ParameterId, AtomMap};
+use super::ir::{Mir, Function, Type, FunctionId, Expr, ParameterId, ExprMap};
 
 mod scope;
 
 impl Mir {
     pub fn convert_to_hir(&mut self) -> hir::Ast {
-        self.lower2cff();
+        eprintln!("{}", self);
 
-        let scopes = self.find_scopes();
+        self.evaluate();
+        self.remove_unreachable_functions();
 
-        for (id, function) in &self.functions {
-            let kind = function.order();
-            let bad = if function.is_bad(&scopes) { "bad" } else { "" };
-            eprintln!("{}: {:?}    {}", id, kind, bad);
-        }
-
+        eprintln!("{}", self);
         todo!("Finish convert_to_hir")
     }
 
@@ -32,6 +28,7 @@ impl Mir {
     //     remove unreachable functions from p
     //   until |L| = 0
     // end
+    #[allow(unused)]
     fn lower2cff(&mut self) {
         let mut i = 0;
         loop {
@@ -40,6 +37,7 @@ impl Mir {
             eprintln!("=========================================");
             eprintln!("\n{}", self);
             i += 1;
+            break;
 
             let scopes = self.find_scopes();
 
@@ -76,12 +74,10 @@ impl Mir {
     //   end
     // end
     fn mangle_uses(&mut self, l: &FunctionId, u: FunctionId) {
-        if let Expr::Call(u_body, u_args) = &self.functions[&u].body {
+        if let Expr::Call(u_body, u_args, _) = &self.functions[&u].body {
             let u_args = u_args.clone();
 
             if **u_body == Expr::Function(l.clone()) {
-                eprintln!("Mangling use of {} in function {}", l, u);
-
                 let l_function = &self.functions[l];
                 let x = std::iter::once(&l_function.argument_type).enumerate()
                     .filter(|(_, typ)| matches!(typ, Type::Function(..)))
@@ -95,7 +91,7 @@ impl Mir {
                     (param, u_args.as_ref().clone())
                 }).collect::<HashMap<_, _>>();
 
-                let mut m = AtomMap::default();
+                let mut m = ExprMap::default();
                 m.parameters = parameter_map;
 
                 let l2 = self.mangle(l, t, m);
@@ -110,11 +106,53 @@ impl Mir {
                     Expr::unit()
                 };
 
-                call_site.body = Expr::Call(Box::new(Expr::Function(l2)), Box::new(arg));
-
-                eprintln!("Done mangling use of {} in function {}. New mir is:\n{}", l, u, self);
+                call_site.body = Expr::rt_call(Expr::Function(l2), arg);
             }
         }
+    }
+
+    /// Evaluate every argument of a function call
+    pub fn evaluate_call(&mut self, l: &FunctionId, u_arg: Expr) -> Expr {
+        // Each function only has 1 argument
+        eprintln!(" Evaluating call {} @@ {}", l, u_arg);
+        let mut x = HashSet::new();
+        x.insert(0);
+
+        let mut m = ExprMap::default();
+        let param = ParameterId { function: l.clone(), parameter_index: 0 };
+        m.parameters.insert(param, u_arg.clone());
+
+        let result = self.substitute(l, m);
+        eprintln!("  Evaluated call {} @@ {} to {}", l, u_arg, result);
+        result
+    }
+
+    fn substitute(&mut self, le: &FunctionId, mut m: ExprMap) -> Expr {
+        // TODO: Avoid re-finding scopes for all functions on each call
+        let scopes = self.find_scopes();
+        let scope_le = scopes.get_scope(le);
+
+        for l in &scope_le.functions {
+            if l != le {
+                let new_id = self.next_function_id(l.name.clone());
+                m.functions.insert(l.clone(), new_id.clone());
+            }
+        }
+
+        for l in &scope_le.functions {
+            if l != le {
+                let new_id = m.functions[&l].clone();
+
+                let mut new_function = self.functions[l].clone();
+                new_function.id = new_id.clone();
+                new_function.map_functions(&m);
+                self.functions.insert(new_id, new_function);
+            }
+        }
+
+        let mut new_function = self.functions[le].clone();
+        new_function.map_functions(&m);
+        new_function.body
     }
 
     // function mangle(p, le, t, M)
@@ -129,12 +167,9 @@ impl Mir {
     //   p[l′e] ← t: b′e                  // insert new entry where M, be |> b′e
     //   return l′e                       // return entry to new mangled region
     // end
-    fn mangle(&mut self, le: &FunctionId, mut ts: Vec<Type>, mut m: AtomMap) -> FunctionId {
+    fn mangle(&mut self, le: &FunctionId, mut ts: Vec<Type>, mut m: ExprMap) -> FunctionId {
         // TODO: Avoid re-finding scopes for all functions on each mangle call
-        eprintln!("Mangle: finding scopes");
         let scopes = self.find_scopes();
-        eprintln!("Found scopes:\n{}", scopes);
-
         let scope_le = scopes.get_scope(le);
 
         // Deviation from the above algorithm: If any parameter of `le` is not
@@ -165,12 +200,9 @@ impl Mir {
             if l != le {
                 let new_id = m.functions[&l].clone();
 
-                eprintln!("Cloning function {l}");
                 let mut new_function = self.functions[l].clone();
                 new_function.id = new_id.clone();
                 new_function.map_functions(&m);
-
-                println!("Inserting new function {}", new_id);
                 self.functions.insert(new_id, new_function);
             }
         }
@@ -202,7 +234,7 @@ impl Mir {
         uses
     }
 
-    fn remove_unreachable_functions(&mut self) {
+    pub fn remove_unreachable_functions(&mut self) {
         let reachable = self.reachable_functions();
         self.functions.retain(|id, _| {
             let res = reachable.contains(id);
@@ -269,7 +301,7 @@ impl Function {
     fn order(&self) -> Order {
         let mut function_parameters = std::iter::once(&self.argument_type)
             .filter_map(|arg| match arg {
-                Type::Function(params, _) => Some(params),
+                Type::Function(params, _, _) => Some(params),
                 _ => None,
             });
 

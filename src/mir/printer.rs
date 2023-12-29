@@ -19,7 +19,8 @@ impl Display for Mir {
 
 impl Display for Function {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "{}({}):\n  {}", self.id, self.argument_type, self.body)
+        let ct = if self.compile_time { "ct" } else { "" };
+        writeln!(f, "{}({}):    {ct}\n  {}", self.id, self.argument_type, self.body)
     }
 }
 
@@ -35,8 +36,9 @@ impl Display for Expr {
                 };
                 write!(f, "switch {expr} [{}{}]", branches, else_branch)
             },
-            Expr::Call(function, arg) => {
-                write!(f, "{}({})", function, arg)
+            Expr::Call(function, arg, compile_time) => {
+                let ct = if *compile_time { "@" } else { "" };
+                write!(f, "({function} @{ct} {arg})")
             },
             Expr::Literal(literal) => write!(f, "{literal}"),
             Expr::Parameter(parameter) => write!(f, "{parameter}"),
@@ -106,10 +108,11 @@ impl Display for Type {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Type::Primitive(primitive) => write!(f, "{primitive}"),
-            Type::Function(arg, ret) => {
+            Type::Function(arg, ret, ct) => {
+                let arrow = if *ct { "=>" } else { "->" };
                 match ret {
-                    Some(ret) => write!(f, "(fn({arg}) -> {ret})"),
-                    None => write!(f, "fn({arg})"),
+                    Some(ret) => write!(f, "fn({arg}) {arrow} {ret}"),
+                    None => write!(f, "fn({arg}) {arrow} !"),
                 }
             },
             Type::Tuple(fields) => {

@@ -1,3 +1,24 @@
+//! This file implements the Context object used to create the Mir from the Hir.
+//!
+//! Several Context functions (usually those named `convert_*`) use algorithms
+//! from https://se.cs.uni-tuebingen.de/publications/schuster19zero.pdf
+//! These will be marked in comments above the function where appropriate.
+//! Additionally, doc comments cannot use color to distinguish terms, as is done
+//! in the original source to distinguish compile-time and runtime types/values,
+//! a different notation is used:
+//!
+//! For function types, a runtime function type is denoted by `a -> b` where a
+//! compile-time function type uses `a => b`.
+//!
+//! For lambda values, `fn x -> e` is runtime, where `fn x => e` is a compile-time abstraction.
+//!
+//! For the `C` function (`convert_capability_type` in this file), an extra boolean parameter
+//! is added. This parameter is `true` if `C` refers to the compile-time `C` rather than
+//! the runtime version. This parameter is in addition to the change of making the subscript
+//! effect stack a parameter to `C` as well. So a call to (red) `C[t]_ts` will translate to
+//! `C(t, ts, false)`, and a call to (blue) `C[t]_ts` will translate to `C(t, ts, true)`
+//!
+//! Unless the term falls into one of the above cases, it is considered to be a runtime term.
 use std::{collections::{HashMap, VecDeque}, rc::Rc};
 
 use crate::{hir::{self, PrimitiveType}, util::fmap, mir::ir::ParameterId};
@@ -31,7 +52,8 @@ pub struct Context {
 
 pub(super) type Definitions = HashMap<hir::DefinitionId, HashMap<EffectStack, Expr>>;
 
-pub(super) type EffectStack = Vec<(hir::DefinitionId, Type)>;
+pub(super) type Effect = (hir::DefinitionId, Type);
+pub(super) type EffectStack = Vec<Effect>;
 
 impl Context {
     pub fn new() -> Self {
@@ -43,6 +65,7 @@ impl Context {
             id: main_id.clone(),
             body: Expr::unit(),
             argument_type: Type::Primitive(PrimitiveType::Unit),
+            compile_time: false,
         };
 
         mir.functions.insert(main_id.clone(), main);
@@ -87,6 +110,7 @@ impl Context {
         parameters: impl ExactSizeIterator<Item = hir::DefinitionId>,
         argument_types: Vec<Type>,
         effects: EffectStack,
+        compile_time: bool,
         body: impl FnOnce(&mut Self) -> Expr,
     ) -> Expr {
         let argument_count = argument_types.len();
@@ -94,7 +118,8 @@ impl Context {
 
         let function_ids = fmap(parameters.zip(argument_types), |(parameter_id, typ)| {
             let id = self.next_function_id(name.clone());
-            let new_function = ir::Function::empty(id.clone(), typ);
+            let mut new_function = ir::Function::empty(id.clone(), typ);
+            new_function.compile_time = compile_time;
             self.mir.functions.insert(id.clone(), new_function);
 
             let parameter = ParameterId { function: id.clone(), parameter_index: 0 };
@@ -180,16 +205,17 @@ impl Context {
     /// or bind variables.
     pub fn intermediate_function(
         &mut self,
-        name: Rc<String>,
+        name: impl Into<String>,
         argument_type: Type,
+        compile_time: bool,
         body: impl FnOnce(&mut Self, Expr) -> Expr,
     ) -> Expr {
-        let id = self.next_function_id(name);
+        let id = self.next_function_id(Rc::new(name.into()));
         let parameter = Expr::Parameter(ParameterId { function: id.clone(), parameter_index: 0 });
 
         let body = self.in_function(id.clone(), |this| body(this, parameter));
 
-        let new_function = ir::Function { id: id.clone(), argument_type, body };
+        let new_function = ir::Function { id: id.clone(), argument_type, body, compile_time };
         self.mir.functions.insert(id.clone(), new_function);
         Expr::Function(id)
     }
@@ -201,7 +227,7 @@ impl Context {
         };
 
         let argument_type = match self.convert_type(&variable.typ) {
-            Type::Function(argument_types, _) => argument_types,
+            Type::Function(argument_type, ..) => argument_type,
             other => unreachable!("add_global_to_queue: Expected function type for global, found {}: {}", variable, other),
         };
 
@@ -222,10 +248,10 @@ impl Context {
 
     /// Converts a Hir Type to a Mir Type
     ///
-    /// From "Translation of Types" https://ps.informatik.uni-tuebingen.de/publications/schuster19zero.pdf
+    /// From "Translation of Types" https://se.cs.uni-tuebingen.de/publications/schuster19zero.pdf
     ///
     /// T(Int) = Int
-    /// T(t -> t' can t'') = T(t) -> C(t', t'')
+    /// T(t -> t' can t'') = T(t) -> C(t', t'', false)
     ///
     /// Ante currently doesn't separate capability types from other function types so there
     /// are no cases for these.
@@ -239,25 +265,29 @@ impl Context {
         }
     }
 
-    /// T(t -> t' can t'') = T(t) -> C(t', t'')
+    /// T(t -> t' can t'') = T(t) -> C(t', t'', false)
+    ///
+    /// TODO: Need to differentiate handler types from non-handler types
     pub fn convert_function_type(&mut self, typ: &hir::FunctionType) -> Type {
         let params = fmap(&typ.parameters, |param| self.convert_type(param));
-        let result = self.convert_capability_type(&typ.return_type, &typ.effects);
-        Type::function(params, result)
+        let result = self.convert_capability_type(&typ.return_type, &typ.effects, false);
+        Type::function(params, result, false)
     }
 
-    /// From "Translation of Types" https://ps.informatik.uni-tuebingen.de/publications/schuster19zero.pdf
+    /// From "Translation of Types" https://se.cs.uni-tuebingen.de/publications/schuster19zero.pdf
+    /// See note at the top of this file for the notation changes here.
     ///
-    /// C(t, []) = T(t)
-    /// C(t, [t'.., t'']) = (T(t) -> C(t'', t')) -> C(t'', t')
-    fn convert_capability_type(&mut self, typ: &hir::Type, effects: &[hir::Effect]) -> Type {
+    /// C(t, [], _) = T(t)
+    /// C(t, [t'.., t''], false) = (T(t) -> C(t'', t', false)) -> C(t'', t', false)
+    /// C(t, [t'.., t''], true) = (T(t) => C(t'', t', true)) => C(t'', t', true)
+    fn convert_capability_type(&mut self, typ: &hir::Type, effects: &[hir::Effect], compile_time: bool) -> Type {
         if effects.is_empty() {
             self.convert_type(typ)
         } else {
             let (last, rest) = effects.split_last().unwrap();
-            let head = self.convert_type(typ);
-            let result = self.convert_capability_type(&last.typ, rest);
-            Type::function(vec![Type::function(vec![head], result.clone())], result)
+            let head = Box::new(self.convert_type(typ));
+            let result = Some(Box::new(self.convert_capability_type(&last.typ, rest, compile_time)));
+            Type::Function(Box::new(Type::Function(head, result.clone(), compile_time)), result, compile_time)
         }
     }
 
@@ -271,5 +301,55 @@ impl Context {
         self.mir.extern_symbols.insert(id, (extern_name.to_owned(), typ));
         self.extern_symbols.insert(extern_name.to_owned(), id);
         id
+    }
+
+    /// reify converts a compile-time (static) term to a runtime (residual) term.
+    ///
+    /// Reify(ts) : C(t, ts, true) -> C(t, ts, false) 
+    /// Reify([], s) = s
+    /// Reify([ts.., t], s) = fn k -> Reify(ts, s @@ (fn x => Reflect(ts, k @ x)))
+    pub fn reify(&mut self, effects: &[Effect], s: Expr) -> Expr {
+        match effects.split_last() {
+            None => s,
+            Some((t, ts)) => {
+                // What is the type of `k` here?
+                let k_type = Type::Function(Box::new(Type::unit()), None, false);
+                self.intermediate_function("reify", k_type, false, |this, k| {
+                    let x_type = Type::unit();
+                    let reify_inner = this.intermediate_function("reify_inner", x_type, true, |this, x| {
+                        let inner_call = Expr::rt_call(k, x);
+                        this.reflect(ts, inner_call)
+                    });
+
+                    let call = Expr::ct_call(s, reify_inner);
+                    this.reify(ts, call)
+                })
+            },
+        }
+    }
+
+    /// reflect converts a runtime (residual) term to a compile-time (static) term.
+    ///
+    /// Reflect(ts) : C(t, ts, false) -> C(t, ts, true) 
+    /// Reflect([], s) = s
+    /// Reflect([ts.., t], s) = fn k => Reflect(ts, s @ (fn x -> Reify(ts, k @@ x)))
+    pub fn reflect(&mut self, effects: &[Effect], s: Expr) -> Expr {
+        match effects.split_last() {
+            None => s,
+            Some((t, ts)) => {
+                // What is the type of `k` here?
+                let k_type = Type::Function(Box::new(Type::unit()), None, true);
+                self.intermediate_function("reflect", k_type, true, |this, k| {
+                    let x_type = Type::unit();
+                    let reflect_inner = this.intermediate_function("reflect_inner", x_type, false, |this, x| {
+                        let inner_call = Expr::ct_call(k, x);
+                        this.reify(ts, inner_call)
+                    });
+
+                    let call = Expr::rt_call(s, reflect_inner);
+                    this.reflect(ts, call)
+                })
+            },
+        }
     }
 }
