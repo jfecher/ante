@@ -104,26 +104,32 @@ impl Context {
     /// is inserted into the context.
     ///
     /// This will automatically curry functions with multiple parameters
+    ///
+    /// This function allows `parameters` to be a length less than or equal to the
+    /// length of `argument_types`. Where the later determines how many arguments
+    /// are actually needed, each DefinitionId only needs to be specified for parameters
+    /// that will be inserted into scope via `insert_definition`. This is important
+    /// as it allows `new_function` to be used to create intermediate functions with
+    /// parameters not present in the original code (which have no DefinitionId).
     pub fn new_function(
         &mut self,
         name: Rc<String>,
-        parameters: impl ExactSizeIterator<Item = hir::DefinitionId>,
+        mut parameters: impl ExactSizeIterator<Item = hir::DefinitionId>,
         argument_types: Vec<Type>,
         effects: EffectStack,
         compile_time: bool,
         body: impl FnOnce(&mut Self) -> Expr,
     ) -> Expr {
-        let argument_count = argument_types.len();
-        assert_eq!(parameters.len(), argument_count);
-
-        let function_ids = fmap(parameters.zip(argument_types), |(parameter_id, typ)| {
+        let function_ids = fmap(argument_types, |typ| {
             let id = self.next_function_id(name.clone());
             let mut new_function = ir::Function::empty(id.clone(), typ);
             new_function.compile_time = compile_time;
             self.mir.functions.insert(id.clone(), new_function);
 
-            let parameter = ParameterId { function: id.clone(), parameter_index: 0 };
-            self.insert_definition(parameter_id, Expr::Parameter(parameter), effects.clone());
+            if let Some(parameter_id) = parameters.next() {
+                let parameter = ParameterId { function: id.clone(), parameter_index: 0 };
+                self.insert_definition(parameter_id, Expr::Parameter(parameter), effects.clone());
+            }
 
             id
         });

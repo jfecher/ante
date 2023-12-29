@@ -59,6 +59,10 @@ pub enum Type {
 }
 
 impl Type {
+    pub fn unit() -> Self {
+        Type::Primitive(PrimitiveType::Unit)
+    }
+
     pub fn into_function(self) -> Option<FunctionType> {
         match self {
             Type::Function(f) => Some(f),

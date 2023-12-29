@@ -65,11 +65,7 @@ impl Expr {
                         *changed = true;
                         *self = mir.evaluate_call(id, arg.as_ref().clone());
                         self.evaluate(mir, changed);
-                    } else {
-                        eprintln!(" Not evaluating non-ct call {} @ {}", function, arg);
                     }
-                } else {
-                    eprintln!(" Not evaluating non-function call {} @ {}", function, arg);
                 }
             },
             Expr::If(c, t, e) => {

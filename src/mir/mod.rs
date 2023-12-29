@@ -60,17 +60,40 @@ pub fn convert_to_mir(hir: hir::Ast) -> Mir {
     context.mir
 }
 
+/// To match more closely with the syntax in https://se.cs.uni-tuebingen.de/publications/schuster19zero.pdf,
+/// effects and handlers are wrapped in this enum which corresponds to cases of `H` in the link.
+/// The `lift` cases are determined automatically from the shape of the effect stack.
+enum EffectAst<'ast> {
+    Variable(hir::DefinitionId),
+    Handle(&'ast hir::Handle),
+}
+
+/// To match more closely with the syntax in https://se.cs.uni-tuebingen.de/publications/schuster19zero.pdf,
+/// statements within a `hir::Sequence` are wrapped in this enum which corresponds to cases of `S` in the link.
+enum Statement<'ast> {
+    Application(&'ast hir::Ast, &'ast [hir::Ast], &'ast hir::FunctionType),
+    LetBinding(LetBinding<'ast>),
+    Return(&'ast hir::Ast, &'ast hir::Type),
+    Handle(&'ast hir::Handle),
+}
+
+struct LetBinding<'ast> {
+    variable: Option<(hir::DefinitionId, &'ast hir::Type)>,
+    rhs: Box<Statement<'ast>>,
+    body: Box<Statement<'ast>>,
+}
+
 impl Context {
     fn cps_ast(&mut self, statement: &hir::Ast, effects: &EffectStack) -> Expr {
         match statement {
             hir::Ast::Literal(literal) => Self::cps_literal(literal),
             hir::Ast::Variable(variable) => self.cps_variable(variable, effects),
             hir::Ast::Lambda(lambda) => self.cps_lambda(lambda, effects, None),
-            hir::Ast::FunctionCall(call) => self.cps_call(call, effects),
+            hir::Ast::FunctionCall(call) => self.cps_call(&call.function, &call.args, &call.function_type, effects),
             hir::Ast::Definition(definition) => self.cps_definition(definition, effects),
             hir::Ast::If(if_expr) => self.cps_if(if_expr, effects),
             hir::Ast::Match(match_expr) => self.cps_match(match_expr, effects),
-            hir::Ast::Return(return_expr) => self.cps_return(return_expr, effects),
+            hir::Ast::Return(return_expr) => self.cps_return(&return_expr.expression, &return_expr.typ, effects),
             hir::Ast::Sequence(sequence) => self.cps_sequence(sequence, effects),
             hir::Ast::Extern(extern_reference) => self.cps_extern(extern_reference),
             hir::Ast::Assignment(assign) => self.cps_assign(assign, effects),
@@ -132,11 +155,11 @@ impl Context {
     /// S(e(e'), ts) = Reflect(ts, E(e) @ E(e'))
     ///
     /// E(e[h] : ts) = E(e) @@ H(h, ts)
-    fn cps_call(&mut self, call: &hir::FunctionCall, effects: &EffectStack) -> Expr {
-        let mut result = self.cps_ast(&call.function, effects);
+    fn cps_call(&mut self, function: &hir::Ast, args: &[hir::Ast], function_type: &hir::FunctionType, effects: &EffectStack) -> Expr {
+        let mut result = self.cps_ast(function, effects);
 
         // E(e[h] : ts) = E(e) @@ H(h, ts)
-        for effect in &call.function_type.effects {
+        for effect in &function_type.effects {
             let effect = EffectAst::Variable(effect.id);
             let handler = self.convert_effect(effect, effects);
 
@@ -147,10 +170,17 @@ impl Context {
         }
 
         // S(e(e'), ts) = Reflect(ts, E(e) @ E(e'))
-        for arg in &call.args {
+        for arg in args {
             let arg = self.cps_ast(arg, effects);
             result = Expr::rt_call(result, arg);
+
+            if !effects.is_empty() {
+            eprint!("Reflecting {}", result);
+            }
             result = self.reflect(effects, result);
+            if !effects.is_empty() {
+            eprintln!(" = {}", result);
+            }
         }
 
         result
@@ -249,9 +279,9 @@ impl Context {
 
     /// S(return e, []) = E(e)
     /// S(return e, [ts, t]) = fn k -> k @ E(e)
-    fn cps_return(&mut self, return_expr: &hir::Return, effects: &EffectStack) -> Expr {
-        let result_type = self.convert_type(&return_expr.typ);
-        let expr = self.cps_ast(&return_expr.expression, effects);
+    fn cps_return(&mut self, expression: &hir::Ast, result_type: &hir::Type, effects: &EffectStack) -> Expr {
+        let result_type = self.convert_type(result_type);
+        let expr = self.cps_ast(expression, effects);
         self.cps_return_helper(expr, effects, result_type)
     }
 
@@ -267,108 +297,136 @@ impl Context {
     }
 
     fn cps_sequence(&mut self, sequence: &hir::Sequence, effects: &EffectStack) -> Expr {
-        if effects.is_empty() {
-            self.cps_statements_pure(&sequence.statements)
-        } else {
-            // TODO: Use real type here
-            let result_type = Type::unit();
-            self.cps_statements_effectful(&sequence.statements, effects, result_type)
+        // convert to a closer syntax to the original source paper first for a more direct translation
+        let statements = Self::convert_statements(&sequence.statements);
+        self.cps_statement(statements, effects)
+    }
+
+    /// Convert hir::Asts to something closer to the target statement syntax:
+    ///
+    /// s ::= e(e)                application
+    ///     | val x ← s; s        sequence
+    ///     | return e            return
+    ///     | do h(e)             effect call (not included)
+    ///     | handle c = h in s   effect handler
+    fn convert_statements(statements: &[hir::Ast]) -> Statement {
+        match statements {
+            [first, _, ..] => {
+                let rest = &statements[1..];
+                let body = Box::new(Self::convert_statements(rest));
+
+                let (rhs, variable) = if let hir::Ast::Definition(definition) = first {
+                    let rhs = Box::new(Self::convert_statement(&definition.expr));
+                    (rhs, Some((definition.variable, &definition.typ)))
+                } else {
+                    // `val x <- s; s` is the only rule for sequencing statements, so we have
+                    // to create a LetBinding where the argument is ignored in order to keep
+                    // sequencing the remainder of the statements.
+                    (Box::new(Self::convert_statement(first)), None)
+                };
+
+                Statement::LetBinding(LetBinding { variable, rhs, body })
+            },
+            [last] => Self::convert_statement(last),
+
+            // This case can only occur if the statements list is empty
+            [] => Statement::Return(&hir::Ast::Literal(hir::Literal::Unit), &hir::Type::Primitive(hir::PrimitiveType::Unit)),
         }
     }
 
-    /// The rules for sequencing are somewhat mixed with the rules for let bindings
+    /// s ::= e(e)                application
+    ///     | val x ← s; s        sequence
+    ///     | return e            return
+    ///     | do h(e)             effect call (not included)
+    ///     | handle c = h in s   effect handler
+    fn convert_statement(statement: &hir::Ast) -> Statement {
+        match statement {
+            hir::Ast::FunctionCall(call) => Statement::Application(&call.function, &call.args, &call.function_type),
+            hir::Ast::Return(expr) => Statement::Return(&expr.expression, &expr.typ),
+            hir::Ast::Handle(handle) => Statement::Handle(handle),
+            hir::Ast::Sequence(sequence) => Self::convert_statements(&sequence.statements),
+
+            // There's no `rest` here so we translate to `val x <- s; ()`
+            hir::Ast::Definition(definition) => {
+                Statement::LetBinding(LetBinding {
+                    variable: Some((definition.variable, &definition.typ)),
+                    rhs: Box::new(Self::convert_statement(&definition.expr)),
+                    body: Box::new(Statement::Return(&hir::Ast::Literal(hir::Literal::Unit), &hir::Type::Primitive(hir::PrimitiveType::Unit))),
+                })
+            },
+
+            other => Statement::Return(other, &hir::Type::Primitive(hir::PrimitiveType::Unit)),
+        }
+    }
+
+    /// S(e(e'), ts) = Reflect(ts, E(e) @ E(e'))
     ///
     /// S(val x <- s; s', [])
     ///     = (fn x -> S(s', [])) @ S(s, [])
     ///
-    /// If there is only 1 statement it is interpreted as a return
-    ///
-    /// S(return e, []) = E(e)
-    fn cps_statements_pure(&mut self, statements: &[hir::Ast]) -> Expr {
-        if statements.is_empty() {
-            Expr::unit()
-        } else if statements.len() == 1 {
-            self.cps_ast(&statements[0], &Vec::new())
-        } else {
-            let first = &statements[0];
-            let rest = &statements[1..];
-
-            if let hir::Ast::Definition(definition) = first {
-                let definition_rhs = self.cps_ast(&definition.expr, &Vec::new());
-
-                let argument_types = vec![self.convert_type(&definition.typ)];
-                let parameters = std::iter::once(definition.variable);
-
-                let name = Rc::new("let_statement".to_string());
-
-                let lambda = self.new_function(name, parameters, argument_types, Vec::new(), false, |this| {
-                    this.cps_statements_pure(rest)
-                });
-
-                Expr::rt_call(lambda, definition_rhs)
-            } else {
-                let first = self.cps_ast(&first, &Vec::new());
-
-                let lambda = self.intermediate_function("statement", Type::unit(), false, |this, _| {
-                    this.cps_statements_pure(rest)
-                });
-                Expr::rt_call(lambda, first)
-            }
-        }
-    }
-
-    /// The rules for sequencing are somewhat mixed with the rules for let bindings
-    ///
     /// S(val x <- s; s', [ts, t])
     ///     = fn k => S(s, [ts, t]) @@ (fn x => S(s', [ts, t]) @@ k)
     ///
-    /// If there is only 1 statement it is interpreted as a return
-    ///
+    /// S(return e, []) = E(e)
     /// S(return e, [ts, t]) = fn k => k @@ E(e)
-    fn cps_statements_effectful(&mut self, statements: &[hir::Ast], effects: &EffectStack, result_type: Type) -> Expr {
-        if statements.is_empty() {
-            Expr::unit()
-        } else if statements.len() == 1 {
-            let k_type = Type::continuation(result_type, true);
-            let body = self.cps_ast(&statements[0], effects);
-
-            self.intermediate_function("eff_statement_return_k", k_type, true, |_, k| Expr::ct_call(k, body))
-        } else {
-            let first = &statements[0];
-            let rest = &statements[1..];
-
-            if let hir::Ast::Definition(definition) = first {
-                let definition_rhs = self.cps_ast(&definition.expr, effects);
-
-                // TODO: What is the type of 'k' here?
-                let k_type = Type::continuation(Type::unit(), true);
-                let x_type = self.convert_type(&definition.typ);
-
-                self.intermediate_function("eff_let_statement_k", k_type, true, |this, k| {
-                    let inner_lambda = this.intermediate_function("eff_let_statement", x_type, true, |this, _x| {
-                        let rest = this.cps_statements_effectful(rest, effects, result_type);
-                        Expr::ct_call(rest, k)
-                    });
-
-                    Expr::ct_call(definition_rhs, inner_lambda)
-                })
-            } else {
-                let first = self.cps_ast(&first, effects);
-                let rest = self.cps_statements_effectful(rest, effects, result_type);
-
-                // TODO: What is the type of 'k' here?
-                let k_type = Type::continuation(Type::unit(), true);
-                let x_type = Type::unit();
-
-                self.intermediate_function("eff_statement_k", k_type, true, |this, k| {
-                    let inner_lambda = this.intermediate_function("eff_statement", x_type, true, |_, _x| {
-                        Expr::ct_call(rest, k)
-                    });
-
-                    Expr::ct_call(first, inner_lambda)
-                })
-            }
+    ///
+    /// S(handle c = h in s : t, ts)
+    ///   = (fn c => S(s, [ts, t]) @@ (fn x => S(return x, ts))) @@ H(h, [ts, t])
+    fn cps_statement(&mut self, statement: Statement, effects: &EffectStack) -> Expr {
+        match statement {
+            Statement::Application(function, args, function_type) => self.cps_call(function, args, function_type, effects),
+            Statement::LetBinding(let_binding) if effects.is_empty() => self.cps_let_binding_pure(let_binding),
+            Statement::LetBinding(let_binding) => self.cps_let_binding_impure(let_binding, effects),
+            Statement::Return(expression, typ) => self.cps_return(expression, typ, effects),
+            Statement::Handle(handle) => self.cps_handle(handle, effects),
         }
+    }
+
+    /// S(val x <- s; s', [])
+    ///     = (fn x -> S(s', [])) @ S(s, [])
+    fn cps_let_binding_pure(&mut self, let_binding: LetBinding) -> Expr {
+        let definition_rhs = self.cps_statement(*let_binding.rhs, &Vec::new());
+        let body = *let_binding.body;
+
+        let argument_types = vec![let_binding.variable
+            .map(|(_, typ)| self.convert_type(&typ))
+            .unwrap_or_else(|| Type::unit())];
+
+        let parameters = let_binding.variable.map(|(id, _)| id).into_iter();
+
+        let name = Rc::new("let".to_string());
+
+        let lambda = self.new_function(name, parameters, argument_types, Vec::new(), false, |this| {
+            this.cps_statement(body, &Vec::new())
+        });
+
+        Expr::rt_call(lambda, definition_rhs)
+    }
+
+    /// S(val x <- s; s', [ts, t])
+    ///     = fn k => S(s, [ts, t]) @@ (fn x => S(s', [ts, t]) @@ k)
+    fn cps_let_binding_impure(&mut self, let_binding: LetBinding, effects: &EffectStack) -> Expr {
+        let definition_rhs = self.cps_statement(*let_binding.rhs, effects);
+        let body = *let_binding.body;
+
+        // TODO: What is the type of 'k' here?
+        let k_type = Type::continuation(Type::unit(), true);
+
+        let argument_types = vec![let_binding.variable
+            .map(|(_, typ)| self.convert_type(&typ))
+            .unwrap_or_else(|| Type::unit())];
+
+        let parameters = let_binding.variable.map(|(id, _)| id).into_iter();
+
+        self.intermediate_function("let_impure_k", k_type, true, |this, k| {
+            let name = Rc::new("let_impure".into());
+            let inner_lambda = this.new_function(name, parameters, argument_types, effects.clone(), true, |this| {
+                let rest = this.cps_statement(body, effects);
+                Expr::ct_call(rest, k)
+            });
+
+            Expr::ct_call(definition_rhs, inner_lambda)
+        })
     }
 
     fn cps_extern(&mut self, extern_reference: &hir::Extern) -> Expr {
@@ -542,9 +600,4 @@ impl Context {
             },
         }
     }
-}
-
-enum EffectAst<'ast> {
-    Variable(hir::DefinitionId),
-    Handle(&'ast hir::Handle),
 }
