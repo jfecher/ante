@@ -20,7 +20,8 @@ impl Display for Mir {
 impl Display for Function {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let ct = if self.compile_time { "ct" } else { "" };
-        writeln!(f, "{}({}):    {ct}\n  {}", self.id, self.argument_type, self.body)
+        let argument_types = fmap(&self.argument_types, ToString::to_string).join(", ");
+        writeln!(f, "{}({}):    {ct}\n  {}", self.id, argument_types, self.body)
     }
 }
 
@@ -36,9 +37,10 @@ impl Display for Expr {
                 };
                 write!(f, "switch {expr} [{}{}]", branches, else_branch)
             },
-            Expr::Call(function, arg, compile_time) => {
+            Expr::Call(function, args, compile_time) => {
                 let ct = if *compile_time { "@" } else { "" };
-                write!(f, "({function} @{ct} {arg})")
+                let args = fmap(args, ToString::to_string).join(", ");
+                write!(f, "({function} @{ct} ({args}))")
             },
             Expr::Literal(literal) => write!(f, "{literal}"),
             Expr::Parameter(parameter) => write!(f, "{parameter}"),
@@ -108,11 +110,12 @@ impl Display for Type {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Type::Primitive(primitive) => write!(f, "{primitive}"),
-            Type::Function(arg, ret, ct) => {
+            Type::Function(args, ret, ct) => {
                 let arrow = if *ct { "=>" } else { "->" };
+                let args = fmap(args, ToString::to_string).join(", ");
                 match ret {
-                    Some(ret) => write!(f, "fn({arg}) {arrow} {ret}"),
-                    None => write!(f, "fn({arg}) {arrow} !"),
+                    Some(ret) => write!(f, "fn({args}) {arrow} {ret}"),
+                    None => write!(f, "fn({args}) {arrow} !"),
                 }
             },
             Type::Tuple(fields) => {
@@ -188,14 +191,14 @@ impl GraphBuilder {
             self.functions.insert(function_id.clone(), function_index);
 
             if !self.exclude_parameters {
-                // for i in 0 .. function.argument_types.len() {
-                    let parameter = ParameterId { function: function_id.clone(), parameter_index: 0 };
+                for i in 0 .. function.argument_types.len() {
+                    let parameter = ParameterId { function: function_id.clone(), parameter_index: i as u16 };
                     let parameter_index = self.graph.add_node(parameter.to_string());
                     self.parameters.insert(parameter, parameter_index);
 
                     // This is easiest to add now instead of later in create_edges
                     self.graph.update_edge(function_index, parameter_index, ());
-                // }
+                }
             }
         }
     }

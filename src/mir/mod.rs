@@ -1,4 +1,6 @@
-//! This file implements the pass to convert Hir into Mir.
+//! This file implements the pass to convert Hir into the initial Mir in 
+//! capability passing style (not to be confused with continuation passing style).
+//!
 //! This is done following the "Translation of Statements" and "Translation of Expressions"
 //! algorithms in https://se.cs.uni-tuebingen.de/publications/schuster19zero.pdf.
 //!
@@ -44,15 +46,17 @@ use crate::{hir, util::fmap};
 pub mod ir;
 mod context;
 mod printer;
-mod interpreter;
 mod convert_to_hir;
 mod evaluate;
+mod optimizations;
 
 pub fn convert_to_mir(hir: hir::Ast) -> Mir {
     let mut context = Context::new();
     context.definition_queue.push_front((Mir::main_id(), Rc::new(hir), Vec::new()));
 
     while let Some((id, ast, effects)) = context.definition_queue.pop_front() {
+        eprintln!("Codegening new definition with {} effects", effects.len());
+        context.local_definitions.clear();
         context.expected_function_id = Some(id.clone());
         context.cps_ast(&ast, &effects);
     }
@@ -70,6 +74,7 @@ enum EffectAst<'ast> {
 
 /// To match more closely with the syntax in https://se.cs.uni-tuebingen.de/publications/schuster19zero.pdf,
 /// statements within a `hir::Sequence` are wrapped in this enum which corresponds to cases of `S` in the link.
+#[derive(Debug)]
 enum Statement<'ast> {
     Application(&'ast hir::Ast, &'ast [hir::Ast], &'ast hir::FunctionType),
     LetBinding(LetBinding<'ast>),
@@ -77,6 +82,7 @@ enum Statement<'ast> {
     Handle(&'ast hir::Handle),
 }
 
+#[derive(Debug)]
 struct LetBinding<'ast> {
     variable: Option<(hir::DefinitionId, &'ast hir::Type)>,
     rhs: Box<Statement<'ast>>,
@@ -127,6 +133,8 @@ impl Context {
         let effect_ids = fmap(&lambda.typ.effects, |effect| effect.id);
         let name = Rc::new("lambda".to_string());
 
+        eprintln!("In lambda {}", lambda);
+
         // Reorder the effects if needed to match the lambda's effect type ordering
         let new_effects = fmap(&lambda.typ.effects, |effect| {
             let handler_type = effects.iter().find(|e| e.0 == effect.id).unwrap().1.clone();
@@ -146,7 +154,7 @@ impl Context {
         if effect_types.is_empty() {
             lambda_body(self)
         } else {
-            self.new_function(name.clone(), effect_ids.into_iter(), effect_types, new_effects.clone(), true, |this| {
+            self.new_function(name.clone(), effect_ids.into_iter(), effect_types, true, |this| {
                 lambda_body(this)
             })
         }
@@ -165,25 +173,14 @@ impl Context {
 
             // TODO: Remove this hack
             if result != handler {
-                result = Expr::ct_call(result, handler)
+                result = Expr::ct_call1(result, handler)
             }
         }
 
         // S(e(e'), ts) = Reflect(ts, E(e) @ E(e'))
-        for arg in args {
-            let arg = self.cps_ast(arg, effects);
-            result = Expr::rt_call(result, arg);
-
-            if !effects.is_empty() {
-            eprint!("Reflecting {}", result);
-            }
-            result = self.reflect(effects, result);
-            if !effects.is_empty() {
-            eprintln!(" = {}", result);
-            }
-        }
-
-        result
+        let args = fmap(args, |arg| self.cps_ast(arg, effects));
+        result = Expr::rt_call(result, args);
+        self.reflect(effects, result)
     }
 
     /// S(val x <- s; s', []) = let x = S(s, []) in S(s', [])
@@ -198,14 +195,12 @@ impl Context {
                 // automatically try to thread the handler to itself.
                 // TODO: Is this ever needed?
                 let typ = self.convert_type(&effect.typ);
-                let ret = self.intermediate_function("effect", typ, true, |_, arg| arg);
-                eprintln!("!! Inserting id for effect {}", effect.id);
-                ret
+                self.intermediate_function("effect", typ, true, |_, arg| arg)
             },
             other => self.cps_ast(other, effects),
         };
 
-        self.insert_definition(definition.variable, rhs, effects.clone());
+        self.insert_global_definition(definition.variable, rhs, effects.clone());
         Expr::unit()
     }
 
@@ -291,8 +286,8 @@ impl Context {
         if effects.is_empty() {
             expr
         } else {
-            let k_type = Type::Function(Box::new(result_type), None, true);
-            self.intermediate_function("return_k", k_type, true, |this, k| Expr::ct_call(k, expr))
+            let k_type = Type::Function(vec![result_type], None, true);
+            self.intermediate_function("return_k", k_type, true, |_, k| Expr::ct_call1(k, expr))
         }
     }
 
@@ -396,11 +391,11 @@ impl Context {
 
         let name = Rc::new("let".to_string());
 
-        let lambda = self.new_function(name, parameters, argument_types, Vec::new(), false, |this| {
+        let lambda = self.new_function(name, parameters, argument_types, false, |this| {
             this.cps_statement(body, &Vec::new())
         });
 
-        Expr::rt_call(lambda, definition_rhs)
+        Expr::rt_call1(lambda, definition_rhs)
     }
 
     /// S(val x <- s; s', [ts, t])
@@ -420,12 +415,12 @@ impl Context {
 
         self.intermediate_function("let_impure_k", k_type, true, |this, k| {
             let name = Rc::new("let_impure".into());
-            let inner_lambda = this.new_function(name, parameters, argument_types, effects.clone(), true, |this| {
+            let inner_lambda = this.new_function(name, parameters, argument_types, true, |this| {
                 let rest = this.cps_statement(body, effects);
-                Expr::ct_call(rest, k)
+                Expr::ct_call1(rest, k)
             });
 
-            Expr::ct_call(definition_rhs, inner_lambda)
+            Expr::ct_call1(definition_rhs, inner_lambda)
         })
     }
 
@@ -551,17 +546,17 @@ impl Context {
 
         let name = Rc::new("handle_expression".to_string());
 
-        let c_lambda = self.new_function(name, id, vec![c_type], new_effects.clone(), true, |this| {
+        let c_lambda = self.new_function(name, id, vec![c_type], true, |this| {
             let expression = this.cps_ast(&handle.expression, &new_effects);
 
             let k = this.intermediate_function("handle_k", result_type.clone(), true, |this, x| {
                 this.cps_return_helper(x, effects, result_type)
             });
 
-            Expr::ct_call(expression, k)
+            Expr::ct_call1(expression, k)
         });
 
-        Expr::ct_call(c_lambda, handler)
+        Expr::ct_call1(c_lambda, handler)
     }
 
     /// H(c, ts) = c
@@ -587,13 +582,13 @@ impl Context {
                 effects.pop();
                 let name = Rc::new("handle".to_string());
 
-                self.new_function(name, argument_ids, argument_types, effects.clone(), true, |this| {
+                self.new_function(name, argument_ids, argument_types, true, |this| {
                     let k_id = std::iter::once(handle.resume.definition_id);
                     let k_type = vec![this.convert_type(&handle.resume.typ)];
 
                     let name = Rc::new("handle_k".to_string());
 
-                    this.new_function(name, k_id, k_type, effects.clone(), true, |this| {
+                    this.new_function(name, k_id, k_type, true, |this| {
                         this.cps_ast(&handle.branch_body.body, &effects)
                     })
                 })

@@ -12,6 +12,7 @@ pub struct Scopes {
 #[derive(Copy, Clone, Hash, PartialEq, Eq)]
 struct ScopeId(usize);
 
+#[derive(Clone)]
 pub(super) struct Scope {
     pub(super) functions: HashSet<FunctionId>,
     pub(super) entry_point: FunctionId,

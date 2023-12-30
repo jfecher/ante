@@ -169,27 +169,23 @@ fn compile(args: Cli) {
         _ => (),
     }
 
-    if true {
-        // mir.interpret();
-        mir.convert_to_hir();
-        return;
-    }
+    let hir = mir.convert_to_hir();
 
     // Phase 6: Codegen
-    // let default_backend = if args.opt_level == '0' { Backend::Cranelift } else { Backend::Llvm };
-    // let backend = args.backend.unwrap_or(default_backend);
+    let default_backend = if args.opt_level == '0' { Backend::Cranelift } else { Backend::Llvm };
+    let backend = args.backend.unwrap_or(default_backend);
 
-    // match backend {
-    //     Backend::Cranelift => cranelift_backend::run(filename, hir, &args),
-    //     Backend::Llvm => {
-    //         if cfg!(feature = "llvm") {
-    //             #[cfg(feature = "llvm")]
-    //             llvm::run(filename, hir, &args);
-    //         } else {
-    //             eprintln!("The llvm backend is required for non-debug builds. Recompile ante with --features 'llvm' to enable optimized builds.");
-    //         }
-    //     },
-    // }
+    match backend {
+        Backend::Cranelift => cranelift_backend::run(filename, hir, &args),
+        Backend::Llvm => {
+            if cfg!(feature = "llvm") {
+                #[cfg(feature = "llvm")]
+                llvm::run(filename, hir, &args);
+            } else {
+                eprintln!("The llvm backend is required for non-debug builds. Recompile ante with --features 'llvm' to enable optimized builds.");
+            }
+        },
+    }
 
     // Print out the time each compiler pass took to complete if the --show-time flag was passed
     util::timing::show_timings();

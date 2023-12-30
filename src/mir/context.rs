@@ -21,7 +21,7 @@
 //! Unless the term falls into one of the above cases, it is considered to be a runtime term.
 use std::{collections::{HashMap, VecDeque}, rc::Rc};
 
-use crate::{hir::{self, PrimitiveType}, util::fmap, mir::ir::ParameterId};
+use crate::{hir, util::fmap, mir::ir::ParameterId};
 
 use super::ir::{Mir, Expr, FunctionId, self, Type, Function, ExternId};
 
@@ -29,7 +29,8 @@ use super::ir::{Mir, Expr, FunctionId, self, Type, Function, ExternId};
 pub struct Context {
     pub(super) mir: Mir,
 
-    definitions: Definitions,
+    global_definitions: Definitions,
+    pub(super) local_definitions: HashMap<hir::DefinitionId, Expr>,
 
     pub(super) definition_queue: VecDeque<(FunctionId, Rc<hir::Ast>, EffectStack)>,
 
@@ -64,7 +65,7 @@ impl Context {
         let main = ir::Function {
             id: main_id.clone(),
             body: Expr::unit(),
-            argument_type: Type::Primitive(PrimitiveType::Unit),
+            argument_types: vec![],
             compile_time: false,
         };
 
@@ -72,7 +73,8 @@ impl Context {
 
         Context {
             mir,
-            definitions: HashMap::new(),
+            global_definitions: HashMap::new(),
+            local_definitions: HashMap::new(),
             definition_queue: VecDeque::new(),
             extern_symbols: HashMap::new(),
             current_function_id: main_id,
@@ -86,11 +88,17 @@ impl Context {
     }
 
     pub fn get_definition(&self, id: hir::DefinitionId, effects: &EffectStack) -> Option<Expr> {
-        self.definitions.get(&id).and_then(|map| map.get(effects).cloned())
+        self.local_definitions.get(&id).or_else(|| {
+            self.global_definitions.get(&id).and_then(|map| map.get(effects))
+        }).cloned()
     }
 
-    pub fn insert_definition(&mut self, id: hir::DefinitionId, atom: Expr, effects: EffectStack) {
-        self.definitions.entry(id).or_default().insert(effects, atom);
+    pub fn insert_global_definition(&mut self, id: hir::DefinitionId, atom: Expr, effects: EffectStack) {
+        self.global_definitions.entry(id).or_default().insert(effects, atom);
+    }
+
+    pub fn insert_local_definition(&mut self, id: hir::DefinitionId, atom: Expr) {
+        self.local_definitions.insert(id, atom);
     }
 
     /// Returns the next available function id but does not set the current id
@@ -116,19 +124,18 @@ impl Context {
         name: Rc<String>,
         mut parameters: impl ExactSizeIterator<Item = hir::DefinitionId>,
         argument_types: Vec<Type>,
-        effects: EffectStack,
         compile_time: bool,
         body: impl FnOnce(&mut Self) -> Expr,
     ) -> Expr {
         let function_ids = fmap(argument_types, |typ| {
             let id = self.next_function_id(name.clone());
-            let mut new_function = ir::Function::empty(id.clone(), typ);
+            let mut new_function = ir::Function::empty(id.clone(), vec![typ]);
             new_function.compile_time = compile_time;
             self.mir.functions.insert(id.clone(), new_function);
 
             if let Some(parameter_id) = parameters.next() {
-                let parameter = ParameterId { function: id.clone(), parameter_index: 0 };
-                self.insert_definition(parameter_id, Expr::Parameter(parameter), effects.clone());
+                let parameter = ParameterId::new(id.clone(), 0);
+                self.insert_local_definition(parameter_id, Expr::Parameter(parameter));
             }
 
             id
@@ -162,48 +169,36 @@ impl Context {
     ///
     /// The `body` parameter will be run only after each parameter of the function
     /// is inserted into the context.
-    ///
-    /// This will automatically curry functions with multiple parameters
     pub fn recursive_function(
         &mut self,
         name: Rc<String>,
         parameters: impl ExactSizeIterator<Item = hir::DefinitionId>,
         argument_types: Vec<Type>,
         effects: EffectStack,
-        id: Option<hir::DefinitionId>,
+        hir_id: Option<hir::DefinitionId>,
         body: impl FnOnce(&mut Self) -> Expr,
     ) -> Expr {
         let argument_count = argument_types.len();
         assert_eq!(parameters.len(), argument_count);
 
-        let function_ids = fmap(parameters.zip(argument_types), |(parameter_id, typ)| {
-            let id = self.next_function_id(name.clone());
-            let new_function = ir::Function::empty(id.clone(), typ);
-            self.mir.functions.insert(id.clone(), new_function);
+        let new_id = self.next_function_id(name.clone());
+        let new_function = ir::Function::empty(new_id.clone(), argument_types);
 
-            let parameter = ParameterId { function: id.clone(), parameter_index: 0 };
-            self.insert_definition(parameter_id, Expr::Parameter(parameter), effects.clone());
-
-            id
+        parameters.zip(new_function.parameters()).for_each(|(definition_id, parameter)| {
+            self.insert_local_definition(definition_id, Expr::Parameter(parameter));
         });
 
-        let first_id = function_ids[0].clone();
+        self.mir.functions.insert(new_id.clone(), new_function);
 
-        if let Some(id) = id {
-            self.insert_definition(id, Expr::Function(first_id.clone()), effects.clone());
+        if let Some(id) = hir_id {
+            self.insert_global_definition(id, Expr::Function(new_id.clone()), effects.clone());
         }
 
         // Now that the parameters are in scope we can get the function body
-        let mut next = self.in_function(function_ids.last().unwrap().clone(), |this| {
-            body(this)
-        });
+        let body = self.in_function(new_id.clone(), body);
+        self.function_mut(&new_id).body = body;
 
-        for id in function_ids.into_iter().rev() {
-            self.function_mut(&id).body = next;
-            next = Expr::Function(id);
-        }
-
-        Expr::Function(first_id)
+        Expr::Function(new_id)
     }
 
     /// Similar to `new_function` except this does not introduce any DefinitionIds
@@ -217,11 +212,11 @@ impl Context {
         body: impl FnOnce(&mut Self, Expr) -> Expr,
     ) -> Expr {
         let id = self.next_function_id(Rc::new(name.into()));
-        let parameter = Expr::Parameter(ParameterId { function: id.clone(), parameter_index: 0 });
+        let parameter = Expr::Parameter(ParameterId::new(id.clone(), 0));
 
         let body = self.in_function(id.clone(), |this| body(this, parameter));
 
-        let new_function = ir::Function { id: id.clone(), argument_type, body, compile_time };
+        let new_function = ir::Function { id: id.clone(), argument_types: vec![argument_type], body, compile_time };
         self.mir.functions.insert(id.clone(), new_function);
         Expr::Function(id)
     }
@@ -232,22 +227,22 @@ impl Context {
             None => self.lambda_name.clone(),
         };
 
-        let argument_type = match self.convert_type(&variable.typ) {
-            Type::Function(argument_type, ..) => argument_type,
-            other => unreachable!("add_global_to_queue: Expected function type for global, found {}: {}", variable, other),
+        let argument_types = match self.convert_type(&variable.typ) {
+            Type::Function(argument_types, ..) => argument_types,
+            other => unreachable!("add_global_to_queue: Expected function type for global, found {} id {}: {}", variable, variable.definition_id, other),
         };
 
         let next_id = self.next_function_id(name);
         let atom = Expr::Function(next_id.clone());
 
-        self.insert_definition(variable.definition_id, atom.clone(), effects.clone());
+        self.insert_global_definition(variable.definition_id, atom.clone(), effects.clone());
 
         let definition = variable.definition.clone().unwrap_or_else(|| {
             panic!("No definition for global '{}'", variable)
         });
         self.definition_queue.push_back((next_id.clone(), definition, effects));
 
-        let function = Function::empty(next_id.clone(), *argument_type);
+        let function = Function::empty(next_id.clone(), argument_types);
         self.mir.functions.insert(next_id, function);
         atom
     }
@@ -291,9 +286,10 @@ impl Context {
             self.convert_type(typ)
         } else {
             let (last, rest) = effects.split_last().unwrap();
-            let head = Box::new(self.convert_type(typ));
+            let head = vec![self.convert_type(typ)];
             let result = Some(Box::new(self.convert_capability_type(&last.typ, rest, compile_time)));
-            Type::Function(Box::new(Type::Function(head, result.clone(), compile_time)), result, compile_time)
+            let inner_function = Type::Function(head, result.clone(), compile_time);
+            Type::Function(vec![inner_function], result, compile_time)
         }
     }
 
@@ -317,17 +313,18 @@ impl Context {
     pub fn reify(&mut self, effects: &[Effect], s: Expr) -> Expr {
         match effects.split_last() {
             None => s,
-            Some((t, ts)) => {
+            Some(((_, t), ts)) => {
                 // What is the type of `k` here?
-                let k_type = Type::Function(Box::new(Type::unit()), None, false);
+                let k_type = Type::rt_function(Type::unit(), t.clone());
+
                 self.intermediate_function("reify", k_type, false, |this, k| {
                     let x_type = Type::unit();
                     let reify_inner = this.intermediate_function("reify_inner", x_type, true, |this, x| {
-                        let inner_call = Expr::rt_call(k, x);
+                        let inner_call = Expr::rt_call1(k, x);
                         this.reflect(ts, inner_call)
                     });
 
-                    let call = Expr::ct_call(s, reify_inner);
+                    let call = Expr::ct_call1(s, reify_inner);
                     this.reify(ts, call)
                 })
             },
@@ -342,17 +339,18 @@ impl Context {
     pub fn reflect(&mut self, effects: &[Effect], s: Expr) -> Expr {
         match effects.split_last() {
             None => s,
-            Some((t, ts)) => {
+            Some(((_, t), ts)) => {
                 // What is the type of `k` here?
-                let k_type = Type::Function(Box::new(Type::unit()), None, true);
+                let k_type = Type::ct_function(Type::unit(), t.clone());
+
                 self.intermediate_function("reflect", k_type, true, |this, k| {
                     let x_type = Type::unit();
                     let reflect_inner = this.intermediate_function("reflect_inner", x_type, false, |this, x| {
-                        let inner_call = Expr::ct_call(k, x);
+                        let inner_call = Expr::ct_call1(k, x);
                         this.reify(ts, inner_call)
                     });
 
-                    let call = Expr::rt_call(s, reflect_inner);
+                    let call = Expr::rt_call1(s, reflect_inner);
                     this.reflect(ts, call)
                 })
             },

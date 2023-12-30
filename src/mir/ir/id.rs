@@ -7,11 +7,16 @@ pub struct FunctionId {
     pub name: Rc<String>,
 }
 
-/// A parameter id is just the function it originates from and the index of the parameter
 #[derive(Clone, Eq, PartialEq, Hash)]
 pub struct ParameterId {
     pub function: FunctionId,
     pub parameter_index: u16,
+}
+
+impl ParameterId {
+    pub fn new(function: FunctionId, parameter_index: u16) -> ParameterId {
+        ParameterId { function, parameter_index }
+    }
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]

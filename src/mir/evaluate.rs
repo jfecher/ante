@@ -17,6 +17,7 @@ impl Mir {
             eprintln!("==============================================");
             eprintln!("Evaluate iteration {i}");
             eprintln!("{}", self);
+            eprintln!("\nScopes: {}", self.find_scopes());
             i += 1;
 
             done = true;
@@ -29,7 +30,15 @@ impl Mir {
                         let mut body = function.body.clone();
 
                         let mut changed = false;
-                        body.evaluate(self, &mut changed);
+                        let mut modified = HashSet::new();
+                        body.evaluate(self, &mut changed, &mut modified);
+
+                        // evaluate can mutate functions when beta-reducing calls that only have 1
+                        // use. When this happens, these previously simplified functions can have
+                        // more reducible expressions.
+                        for modified_function in modified {
+                            no_progress.remove(&modified_function);
+                        }
 
                         let function = self.functions.get_mut(&id).unwrap();
                         function.body = body;
@@ -49,29 +58,32 @@ impl Mir {
 }
 
 impl Expr {
-    fn evaluate(&mut self, mir: &mut Mir, changed: &mut bool) {
+    fn evaluate(&mut self, mir: &mut Mir, changed: &mut bool, modified: &mut HashSet<FunctionId>) {
         let mut both = |lhs: &mut Expr, rhs: &mut Expr, mir: &mut Mir| {
-            lhs.evaluate(mir, changed);
-            rhs.evaluate(mir, changed);
+            lhs.evaluate(mir, changed, modified);
+            rhs.evaluate(mir, changed, modified);
         };
 
         match self {
-            Expr::Call(function, arg, compile_time) => {
-                function.evaluate(mir, changed);
-                arg.evaluate(mir, changed);
+            Expr::Call(function, args, compile_time) => {
+                function.evaluate(mir, changed, modified);
+
+                for arg in args.iter_mut() {
+                    arg.evaluate(mir, changed, modified);
+                }
 
                 if let Expr::Function(id) = function.as_ref() {
                     if *compile_time || mir.functions[id].compile_time {
                         *changed = true;
-                        *self = mir.evaluate_call(id, arg.as_ref().clone());
-                        self.evaluate(mir, changed);
+                        *self = mir.evaluate_call(id, args.clone(), modified);
+                        self.evaluate(mir, changed, modified);
                     }
                 }
             },
             Expr::If(c, t, e) => {
-                c.evaluate(mir, changed);
-                t.evaluate(mir, changed);
-                e.evaluate(mir, changed);
+                c.evaluate(mir, changed, modified);
+                t.evaluate(mir, changed, modified);
+                e.evaluate(mir, changed, modified);
 
                 if let Expr::Literal(Literal::Bool(value)) = c.as_ref() {
                     let replacement = if *value { t.as_mut() } else { e.as_mut() };
@@ -79,11 +91,11 @@ impl Expr {
                     *changed = true;
 
                     // Must call then/else since they are represented as functions
-                    *self = Expr::rt_call(function, Expr::unit());
+                    *self = Expr::rt_call(function, vec![]);
                 }
             },
             Expr::Switch(expr, cases, else_case) => {
-                expr.evaluate(mir, changed);
+                expr.evaluate(mir, changed, modified);
 
                 if let Expr::Literal(Literal::Integer(value, _)) = expr.as_ref() {
                     let case = cases.iter().find(|(case, _)| *case as u64 == *value).map(|(_, f)| f);
@@ -93,7 +105,7 @@ impl Expr {
                     }).clone();
 
                     *changed = true;
-                    *self = Expr::rt_call(Expr::Function(case), Expr::unit());
+                    *self = Expr::rt_call(Expr::Function(case), vec![]);
                 }
             },
             Expr::Literal(_) => (),
@@ -102,10 +114,10 @@ impl Expr {
             Expr::Extern(_) => (),
             Expr::Tuple(fields) => {
                 for field in fields {
-                    field.evaluate(mir, changed);
+                    field.evaluate(mir, changed, modified);
                 }
             },
-            Expr::MemberAccess(lhs, _, _) => lhs.evaluate(mir, changed),
+            Expr::MemberAccess(lhs, _, _) => lhs.evaluate(mir, changed, modified),
             Expr::Assign => todo!(),
 
             // TODO: We could try to evaluate constants here as well
@@ -128,23 +140,23 @@ impl Expr {
             Expr::EqFloat(lhs, rhs) => both(lhs, rhs, mir),
             Expr::EqChar(lhs, rhs) => both(lhs, rhs, mir),
             Expr::EqBool(lhs, rhs) => both(lhs, rhs, mir),
-            Expr::SignExtend(lhs, _t) => lhs.evaluate(mir, changed),
-            Expr::ZeroExtend(lhs, _t) => lhs.evaluate(mir, changed),
-            Expr::SignedToFloat(lhs, _t) => lhs.evaluate(mir, changed),
-            Expr::UnsignedToFloat(lhs, _t) => lhs.evaluate(mir, changed),
-            Expr::FloatToSigned(lhs, _t) => lhs.evaluate(mir, changed),
-            Expr::FloatToUnsigned(lhs, _t) => lhs.evaluate(mir, changed),
-            Expr::FloatPromote(lhs, _t) => lhs.evaluate(mir, changed),
-            Expr::FloatDemote(lhs, _t) => lhs.evaluate(mir, changed),
+            Expr::SignExtend(lhs, _t) => lhs.evaluate(mir, changed, modified),
+            Expr::ZeroExtend(lhs, _t) => lhs.evaluate(mir, changed, modified),
+            Expr::SignedToFloat(lhs, _t) => lhs.evaluate(mir, changed, modified),
+            Expr::UnsignedToFloat(lhs, _t) => lhs.evaluate(mir, changed, modified),
+            Expr::FloatToSigned(lhs, _t) => lhs.evaluate(mir, changed, modified),
+            Expr::FloatToUnsigned(lhs, _t) => lhs.evaluate(mir, changed, modified),
+            Expr::FloatPromote(lhs, _t) => lhs.evaluate(mir, changed, modified),
+            Expr::FloatDemote(lhs, _t) => lhs.evaluate(mir, changed, modified),
             Expr::BitwiseAnd(lhs, rhs) => both(lhs, rhs, mir),
             Expr::BitwiseOr(lhs, rhs) => both(lhs, rhs, mir),
             Expr::BitwiseXor(lhs, rhs) => both(lhs, rhs, mir),
-            Expr::BitwiseNot(lhs) => lhs.evaluate(mir, changed),
-            Expr::Truncate(lhs, _t) => lhs.evaluate(mir, changed),
-            Expr::Deref(lhs, _t) => lhs.evaluate(mir, changed),
+            Expr::BitwiseNot(lhs) => lhs.evaluate(mir, changed, modified),
+            Expr::Truncate(lhs, _t) => lhs.evaluate(mir, changed, modified),
+            Expr::Deref(lhs, _t) => lhs.evaluate(mir, changed, modified),
             Expr::Offset(lhs, rhs, _) => both(lhs, rhs, mir),
-            Expr::Transmute(lhs, _t) => lhs.evaluate(mir, changed),
-            Expr::StackAlloc(lhs) => lhs.evaluate(mir, changed),
+            Expr::Transmute(lhs, _t) => lhs.evaluate(mir, changed, modified),
+            Expr::StackAlloc(lhs) => lhs.evaluate(mir, changed, modified),
         }
     }
 }

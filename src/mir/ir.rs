@@ -31,7 +31,7 @@ impl Mir {
 #[derive(Clone)]
 pub struct Function {
     pub id: FunctionId,
-    pub argument_type: Type,
+    pub argument_types: Vec<Type>,
     pub body: Expr,
 
     /// True if this function should be evaluated at compile-time.
@@ -41,15 +41,16 @@ pub struct Function {
 
 impl Function {
     /// Return an empty function with the given id that is expected to have its body filled in later
-    pub fn empty(id: FunctionId, argument_type: Type) -> Self {
-        Self { id, body: Expr::Literal(Literal::Unit), argument_type, compile_time: false }
+    pub fn empty(id: FunctionId, argument_types: Vec<Type>) -> Self {
+        Self { id, body: Expr::Literal(Literal::Unit), argument_types, compile_time: false }
     }
 
     pub fn parameters(&self) -> impl ExactSizeIterator<Item = ParameterId> {
+        let parameter_count = self.argument_types.len();
         let function = self.id.clone();
-        std::iter::once(ParameterId {
-            function: function.clone(),
-            parameter_index: 0,
+
+        (0..parameter_count).map(move |i| {
+            ParameterId { function: function.clone(), parameter_index: i as u16 }
         })
     }
 
@@ -79,7 +80,7 @@ pub enum Expr {
     /// Also expects an additional optional default case continuation.
     Switch(Box<Expr>, Vec<(u32, FunctionId)>, Option<FunctionId>),
 
-    Call(Box<Expr>, /*arg:*/Box<Expr>, /*compile_time:*/bool),
+    Call(Box<Expr>, Vec<Expr>, /*compile_time:*/bool),
 
     Literal(Literal),
     Parameter(ParameterId),
@@ -155,14 +156,24 @@ impl Expr {
         Self::Literal(Literal::Unit)
     }
 
+    /// Returns a runtime call `f(args..)`
+    pub(super) fn rt_call(f: Expr, args: Vec<Expr>) -> Self {
+        Expr::Call(Box::new(f), args, false)
+    }
+
+    /// Returns a compile-time call `f(args..)`
+    pub(super) fn ct_call(f: Expr, args: Vec<Expr>) -> Self {
+        Expr::Call(Box::new(f), args, true)
+    }
+
     /// Returns a runtime call `f(arg)`
-    pub(super) fn rt_call(f: Expr, arg: Expr) -> Self {
-        Expr::Call(Box::new(f), Box::new(arg), false)
+    pub(super) fn rt_call1(f: Expr, arg: Expr) -> Self {
+        Expr::Call(Box::new(f), vec![arg], false)
     }
 
     /// Returns a compile-time call `f(arg)`
-    pub(super) fn ct_call(f: Expr, arg: Expr) -> Self {
-        Expr::Call(Box::new(f), Box::new(arg), true)
+    pub(super) fn ct_call1(f: Expr, arg: Expr) -> Self {
+        Expr::Call(Box::new(f), vec![arg], true)
     }
 
     /// Traverse this atom, apply the given functions to each FunctionId and ParameterId
@@ -197,9 +208,12 @@ impl Expr {
                     on_function(data, else_continuation);
                 }
             },
-            Expr::Call(f, arg, _) => {
+            Expr::Call(f, args, _) => {
                 f.for_each_id_helper(data, on_function, on_parameter);
-                arg.for_each_id_helper(data, on_function, on_parameter);
+
+                for arg in args {
+                    arg.for_each_id_helper(data, on_function, on_parameter);
+                }
             }
             Expr::Literal(_) => (),
             Expr::Parameter(parameter_id) => on_parameter(data, parameter_id),
@@ -251,7 +265,7 @@ impl Expr {
         }
     }
 
-    fn map_functions(&mut self, substitutions: &ExprMap) {
+    pub fn map_functions(&mut self, substitutions: &ExprMap) {
         let both = |lhs: &mut Expr, rhs: &mut Expr| {
             lhs.map_functions(substitutions);
             rhs.map_functions(substitutions);
@@ -276,9 +290,12 @@ impl Expr {
                     }
                 }
             },
-            Expr::Call(f, arg, _) => {
+            Expr::Call(f, args, _) => {
                 f.map_functions(substitutions);
-                arg.map_functions(substitutions);
+
+                for arg in args {
+                    arg.map_functions(substitutions);
+                }
             }
             Expr::Literal(_) => (),
             Expr::Parameter(parameter_id) => {
@@ -346,7 +363,7 @@ impl Expr {
 #[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash)]
 pub enum Type {
     Primitive(PrimitiveType),
-    Function(/*arg:*/Box<Type>, /*ret:*/ Option<Box<Type>>, /*compile_time:*/bool),
+    Function(/*args:*/Vec<Type>, /*ret:*/ Option<Box<Type>>, /*compile_time:*/bool),
 
     /// Tuples have a TypeId to allow for struct recursion
     Tuple(Vec<Type>),
@@ -357,16 +374,24 @@ impl Type {
     pub(super) fn function(mut args: Vec<Type>, return_type: Type, compile_time: bool) -> Type {
         if args.len() == 1 {
             let arg = args.pop().unwrap();
-            Type::Function(Box::new(arg), Some(Box::new(return_type)), compile_time)
+            Type::Function(vec![arg], Some(Box::new(return_type)), compile_time)
         } else {
             let first = args.remove(0);
             let rest = Type::function(args, return_type, compile_time);
-            Type::Function(Box::new(first), Some(Box::new(rest)), compile_time)
+            Type::Function(vec![first], Some(Box::new(rest)), compile_time)
         }
     }
 
     pub(super) fn continuation(arg: Type, compile_time: bool) -> Type {
-        Type::Function(Box::new(arg), None, compile_time)
+        Type::Function(vec![arg], None, compile_time)
+    }
+
+    pub(super) fn ct_function(arg: Type, return_type: Type) -> Type {
+        Type::Function(vec![arg], Some(Box::new(return_type)), true)
+    }
+
+    pub(super) fn rt_function(arg: Type, return_type: Type) -> Type {
+        Type::Function(vec![arg], Some(Box::new(return_type)), false)
     }
 
     pub(super) fn unit() -> Type {
@@ -404,7 +429,7 @@ pub struct EffectIndices {
     pub effect_k_index: u16,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct ExprMap {
     pub parameters: HashMap<ParameterId, Expr>,
     pub functions: HashMap<FunctionId, FunctionId>,
