@@ -38,10 +38,9 @@
 //!   Unless the term falls into one of the above cases, it is considered to be a runtime term.
 use std::rc::Rc;
 
-use self::ir::{Mir, Expr, FunctionId, Type};
 use self::context::{Context, EffectStack};
-use crate::hir::DecisionTree;
-use crate::{hir, util::fmap};
+use crate::hir::{DecisionTree, Type};
+use crate::{hir::{self, Ast}, util::fmap};
 
 pub mod ir;
 mod context;
@@ -50,18 +49,18 @@ mod convert_to_hir;
 mod evaluate;
 mod optimizations;
 
-pub fn convert_to_mir(hir: hir::Ast) -> Mir {
-    let mut context = Context::new();
-    context.definition_queue.push_front((Mir::main_id(), Rc::new(hir), Vec::new()));
+pub fn convert_to_mir(hir: Ast, next_id: usize) -> Ast {
+    let mut context = Context::new(next_id);
+    let main = context.cps_ast(&hir, &Vec::new());
 
-    while let Some((id, ast, effects)) = context.definition_queue.pop_front() {
-        eprintln!("Codegening new definition with {} effects", effects.len());
+    while let Some((source, destination, effects)) = context.definition_queue.pop_front() {
         context.local_definitions.clear();
-        context.expected_function_id = Some(id.clone());
-        context.cps_ast(&ast, &effects);
+        let ast = source.borrow();
+        let result = context.cps_ast(&ast, &effects);
+        *destination.borrow_mut() = result;
     }
 
-    context.mir
+    main
 }
 
 /// To match more closely with the syntax in https://se.cs.uni-tuebingen.de/publications/schuster19zero.pdf,
@@ -85,12 +84,13 @@ enum Statement<'ast> {
 #[derive(Debug)]
 struct LetBinding<'ast> {
     variable: Option<(hir::DefinitionId, &'ast hir::Type)>,
+    name: String,
     rhs: Box<Statement<'ast>>,
     body: Box<Statement<'ast>>,
 }
 
 impl Context {
-    fn cps_ast(&mut self, statement: &hir::Ast, effects: &EffectStack) -> Expr {
+    fn cps_ast(&mut self, statement: &hir::Ast, effects: &EffectStack) -> Ast {
         match statement {
             hir::Ast::Literal(literal) => Self::cps_literal(literal),
             hir::Ast::Variable(variable) => self.cps_variable(variable, effects),
@@ -101,7 +101,7 @@ impl Context {
             hir::Ast::Match(match_expr) => self.cps_match(match_expr, effects),
             hir::Ast::Return(return_expr) => self.cps_return(&return_expr.expression, &return_expr.typ, effects),
             hir::Ast::Sequence(sequence) => self.cps_sequence(sequence, effects),
-            hir::Ast::Extern(extern_reference) => self.cps_extern(extern_reference),
+            hir::Ast::Extern(extern_reference) => Self::cps_extern(extern_reference),
             hir::Ast::Assignment(assign) => self.cps_assign(assign, effects),
             hir::Ast::MemberAccess(access) => self.cps_member_access(access, effects),
             hir::Ast::Tuple(tuple) => self.cps_tuple(tuple, effects),
@@ -112,14 +112,15 @@ impl Context {
         }
     }
 
-    fn cps_literal(literal: &hir::Literal) -> Expr {
-        Expr::Literal(literal.clone())
+    fn cps_literal(literal: &hir::Literal) -> Ast {
+        Ast::Literal(literal.clone())
     }
 
-    fn cps_variable(&mut self, variable: &hir::Variable, effects: &EffectStack) -> Expr {
-        self.get_definition(variable.definition_id, effects).unwrap_or_else(|| {
+    fn cps_variable(&mut self, variable: &hir::Variable, effects: &EffectStack) -> Ast {
+        let variable = self.get_definition(variable.definition_id, effects).unwrap_or_else(|| {
             self.add_global_to_queue(variable.clone(), effects.clone())
-        })
+        });
+        Ast::Variable(variable)
     }
 
     /// E((fn x -> s) : t -> t' can eff) = fn x -> Reify(eff, S(s, eff))
@@ -128,7 +129,7 @@ impl Context {
     /// E([c : [F]τ] ⇒ e) = fn c => E(e)
     ///
     /// Note that effect arguments (handler abstractions) are on the outside of any letrecs of lambdas.
-    fn cps_lambda(&mut self, lambda: &hir::Lambda, effects: &EffectStack, id: Option<hir::DefinitionId>) -> Expr {
+    fn cps_lambda(&mut self, lambda: &hir::Lambda, effects: &EffectStack, id: Option<hir::DefinitionId>) -> Ast {
         let effect_types = fmap(&lambda.typ.effects, |effect| self.convert_type(&effect.typ));
         let effect_ids = fmap(&lambda.typ.effects, |effect| effect.id);
         let name = Rc::new("lambda".to_string());
@@ -163,7 +164,7 @@ impl Context {
     /// S(e(e'), ts) = Reflect(ts, E(e) @ E(e'))
     ///
     /// E(e[h] : ts) = E(e) @@ H(h, ts)
-    fn cps_call(&mut self, function: &hir::Ast, args: &[hir::Ast], function_type: &hir::FunctionType, effects: &EffectStack) -> Expr {
+    fn cps_call(&mut self, function: &hir::Ast, args: &[hir::Ast], function_type: &hir::FunctionType, effects: &EffectStack) -> Ast {
         let mut result = self.cps_ast(function, effects);
 
         // E(e[h] : ts) = E(e) @@ H(h, ts)
@@ -172,21 +173,21 @@ impl Context {
             let handler = self.convert_effect(effect, effects);
 
             // TODO: Remove this hack
-            if result != handler {
-                result = Expr::ct_call1(result, handler)
-            }
+            // if result != handler {
+                result = Ast::ct_call1(result, handler)
+            // }
         }
 
         // S(e(e'), ts) = Reflect(ts, E(e) @ E(e'))
         let args = fmap(args, |arg| self.cps_ast(arg, effects));
-        result = Expr::rt_call(result, args);
+        result = Ast::rt_call(result, args, function_type.clone());
         self.reflect(effects, result)
     }
 
     /// S(val x <- s; s', []) = let x = S(s, []) in S(s', [])
     /// S(val x <- s; s', [ts, t]) =
     ///     fn k -> S(s, [ts, t]) @ (fn x -> S(s', [ts, t]) @ k)
-    fn cps_definition(&mut self, definition: &hir::Definition, effects: &EffectStack) -> Expr {
+    fn cps_definition(&mut self, definition: &hir::Definition, effects: &EffectStack) -> Ast {
         let rhs = match definition.expr.as_ref() {
             hir::Ast::Lambda(lambda) => self.cps_lambda(lambda, effects, Some(definition.variable)),
             hir::Ast::Effect(effect) => {
@@ -201,17 +202,23 @@ impl Context {
         };
 
         self.insert_global_definition(definition.variable, rhs, effects.clone());
-        Expr::unit()
+        Ast::unit()
     }
 
-    fn cps_if(&mut self, if_expr: &hir::If, effects: &EffectStack) -> Expr {
+    fn cps_if(&mut self, if_expr: &hir::If, effects: &EffectStack) -> Ast {
         let cond = self.cps_ast(&if_expr.condition, effects);
         let then = self.cps_ast(&if_expr.then, effects);
         let otherwise = self.cps_ast(&if_expr.otherwise, effects);
-        Expr::If(Box::new(cond), Box::new(then), Box::new(otherwise))
+
+        Ast::If(hir::If {
+            condition: Box::new(cond),
+            then: Box::new(then),
+            otherwise: Box::new(otherwise),
+            result_type: if_expr.result_type.clone(),
+        })
     }
 
-    fn cps_match(&mut self, match_expr: &hir::Match, effects: &EffectStack) -> Expr {
+    fn cps_match(&mut self, match_expr: &hir::Match, effects: &EffectStack) -> Ast {
         todo!("cps_match")
         // let original_function = self.current_function_id.clone();
         // let leaves = fmap(&match_expr.branches, |_| self.next_fresh_function());
@@ -227,21 +234,21 @@ impl Context {
         // for (leaf_hir, leaf_function) in match_expr.branches.iter().zip(leaves) {
         //     self.current_function_id = leaf_function;
         //     let result = self.cps_ast(leaf_hir, effects);
-        //     self.set_function_body(Expr::Function(end.clone()), vec![result]);
+        //     self.set_function_body(Ast::Function(end.clone()), vec![result]);
         // }
 
         // self.current_function_id = end.clone();
-        // Expr::Parameter(ParameterId {
+        // Ast::Parameter(ParameterId {
         //     function: end,
         //     parameter_index: 0,
         // })
     }
 
-    fn cps_decision_tree(&mut self, tree: &DecisionTree, leaves: &[FunctionId]) {
+    fn cps_decision_tree(&mut self, tree: &DecisionTree) {
         todo!("cps_tree")
         // match tree {
         //     DecisionTree::Leaf(leaf_index) => {
-        //         let function = Expr::Function(leaves[*leaf_index].clone());
+        //         let function = Ast::Function(leaves[*leaf_index].clone());
         //         self.set_function_body(function, vec![]);
         //     },
         //     DecisionTree::Definition(definition, rest) => {
@@ -264,7 +271,7 @@ impl Context {
         //             function
         //         });
 
-        //         let switch = Expr::Switch(case_functions, else_function);
+        //         let switch = Ast::Switch(case_functions, else_function);
 
         //         self.current_function_id = original_function;
         //         self.set_function_body(switch, vec![tag]);
@@ -274,7 +281,7 @@ impl Context {
 
     /// S(return e, []) = E(e)
     /// S(return e, [ts, t]) = fn k -> k @ E(e)
-    fn cps_return(&mut self, expression: &hir::Ast, result_type: &hir::Type, effects: &EffectStack) -> Expr {
+    fn cps_return(&mut self, expression: &hir::Ast, result_type: &hir::Type, effects: &EffectStack) -> Ast {
         let result_type = self.convert_type(result_type);
         let expr = self.cps_ast(expression, effects);
         self.cps_return_helper(expr, effects, result_type)
@@ -282,16 +289,19 @@ impl Context {
 
     /// S(return e, []) = E(e)
     /// S(return e, [ts, t]) = fn k => k @@ E(e)
-    fn cps_return_helper(&mut self, expr: Expr, effects: &EffectStack, result_type: Type) -> Expr {
+    fn cps_return_helper(&mut self, expr: Ast, effects: &EffectStack, result_type: Type) -> Ast {
         if effects.is_empty() {
             expr
         } else {
-            let k_type = Type::Function(vec![result_type], None, true);
-            self.intermediate_function("return_k", k_type, true, |_, k| Expr::ct_call1(k, expr))
+            let k = self.anonymous_local("k", Type::Function(Context::placeholder_function_type()));
+
+            Context::ct_lambda(vec![k.clone()], {
+                Ast::ct_call1(Ast::Variable(k), expr)
+            })
         }
     }
 
-    fn cps_sequence(&mut self, sequence: &hir::Sequence, effects: &EffectStack) -> Expr {
+    fn cps_sequence(&mut self, sequence: &hir::Sequence, effects: &EffectStack) -> Ast {
         // convert to a closer syntax to the original source paper first for a more direct translation
         let statements = Self::convert_statements(&sequence.statements);
         self.cps_statement(statements, effects)
@@ -310,17 +320,18 @@ impl Context {
                 let rest = &statements[1..];
                 let body = Box::new(Self::convert_statements(rest));
 
-                let (rhs, variable) = if let hir::Ast::Definition(definition) = first {
+                let (rhs, name, variable) = if let hir::Ast::Definition(definition) = first {
                     let rhs = Box::new(Self::convert_statement(&definition.expr));
-                    (rhs, Some((definition.variable, &definition.typ)))
+                    (rhs, definition.name.clone(), Some((definition.variable, &definition.typ)))
                 } else {
                     // `val x <- s; s` is the only rule for sequencing statements, so we have
                     // to create a LetBinding where the argument is ignored in order to keep
                     // sequencing the remainder of the statements.
-                    (Box::new(Self::convert_statement(first)), None)
+                    (Box::new(Self::convert_statement(first)), None, None)
                 };
 
-                Statement::LetBinding(LetBinding { variable, rhs, body })
+                let name = name.unwrap_or_else(|| "_".into());
+                Statement::LetBinding(LetBinding { variable, name, rhs, body })
             },
             [last] => Self::convert_statement(last),
 
@@ -345,6 +356,7 @@ impl Context {
             hir::Ast::Definition(definition) => {
                 Statement::LetBinding(LetBinding {
                     variable: Some((definition.variable, &definition.typ)),
+                    name: definition.name.clone().unwrap_or_else(|| "_".into()),
                     rhs: Box::new(Self::convert_statement(&definition.expr)),
                     body: Box::new(Statement::Return(&hir::Ast::Literal(hir::Literal::Unit), &hir::Type::Primitive(hir::PrimitiveType::Unit))),
                 })
@@ -367,7 +379,7 @@ impl Context {
     ///
     /// S(handle c = h in s : t, ts)
     ///   = (fn c => S(s, [ts, t]) @@ (fn x => S(return x, ts))) @@ H(h, [ts, t])
-    fn cps_statement(&mut self, statement: Statement, effects: &EffectStack) -> Expr {
+    fn cps_statement(&mut self, statement: Statement, effects: &EffectStack) -> Ast {
         match statement {
             Statement::Application(function, args, function_type) => self.cps_call(function, args, function_type, effects),
             Statement::LetBinding(let_binding) if effects.is_empty() => self.cps_let_binding_pure(let_binding),
@@ -379,142 +391,146 @@ impl Context {
 
     /// S(val x <- s; s', [])
     ///     = (fn x -> S(s', [])) @ S(s, [])
-    fn cps_let_binding_pure(&mut self, let_binding: LetBinding) -> Expr {
-        let definition_rhs = self.cps_statement(*let_binding.rhs, &Vec::new());
+    ///
+    /// The above is equivalent to a regular let binding in lambda calculus,
+    /// so cps_let_binding_pure recurs on its arguments but otherwise returns
+    /// the same structure.
+    fn cps_let_binding_pure(&mut self, let_binding: LetBinding) -> Ast {
+        let expr = Box::new(self.cps_statement(*let_binding.rhs, &Vec::new()));
         let body = *let_binding.body;
 
-        let argument_types = vec![let_binding.variable
-            .map(|(_, typ)| self.convert_type(&typ))
-            .unwrap_or_else(|| Type::unit())];
+        let (name, variable, typ) = match let_binding.variable {
+            // In a pure context, the result type is the same as the source type
+            Some((id, typ)) => (Some(let_binding.name), id, typ.clone()),
+            None => todo!("Fresh variable"),
+        };
 
-        let parameters = let_binding.variable.map(|(id, _)| id).into_iter();
+        let definition = Ast::Definition(hir::Definition { variable, name, expr, typ });
+        let body = self.cps_statement(*let_binding.body, &Vec::new());
 
-        let name = Rc::new("let".to_string());
-
-        let lambda = self.new_function(name, parameters, argument_types, false, |this| {
-            this.cps_statement(body, &Vec::new())
-        });
-
-        Expr::rt_call1(lambda, definition_rhs)
+        Ast::Sequence(hir::Sequence { statements: vec![definition, body]})
     }
 
     /// S(val x <- s; s', [ts, t])
     ///     = fn k => S(s, [ts, t]) @@ (fn x => S(s', [ts, t]) @@ k)
-    fn cps_let_binding_impure(&mut self, let_binding: LetBinding, effects: &EffectStack) -> Expr {
+    fn cps_let_binding_impure(&mut self, let_binding: LetBinding, effects: &EffectStack) -> Ast {
         let definition_rhs = self.cps_statement(*let_binding.rhs, effects);
         let body = *let_binding.body;
 
         // TODO: What is the type of 'k' here?
-        let k_type = Type::continuation(Type::unit(), true);
+        let k_type = Type::Function(Context::placeholder_function_type());
 
-        let argument_types = vec![let_binding.variable
-            .map(|(_, typ)| self.convert_type(&typ))
-            .unwrap_or_else(|| Type::unit())];
+        let x_type = let_binding.variable.map(|(_, typ)| typ.clone()).unwrap_or_else(Type::unit);
 
-        let parameters = let_binding.variable.map(|(id, _)| id).into_iter();
+        let k = self.anonymous_local("k", k_type);
+        let x = self.anonymous_local(let_binding.name, x_type);
 
-        self.intermediate_function("let_impure_k", k_type, true, |this, k| {
-            let name = Rc::new("let_impure".into());
-            let inner_lambda = this.new_function(name, parameters, argument_types, true, |this| {
-                let rest = this.cps_statement(body, effects);
-                Expr::ct_call1(rest, k)
+        if let Some((id, _)) = let_binding.variable {
+            self.insert_local_definition(id, x.clone());
+        }
+
+        Context::ct_lambda(vec![k.clone()], {
+            let inner_lambda = Context::ct_lambda(vec![x], {
+                let rest = self.cps_statement(body, effects);
+                Ast::ct_call1(rest, Ast::Variable(k))
             });
 
-            Expr::ct_call1(definition_rhs, inner_lambda)
+            Ast::ct_call1(definition_rhs, inner_lambda)
         })
     }
 
-    fn cps_extern(&mut self, extern_reference: &hir::Extern) -> Expr {
-        let id = self.import_extern(&extern_reference.name, &extern_reference.typ);
-        Expr::Extern(id)
+    fn cps_extern(extern_reference: &hir::Extern) -> Ast {
+        Ast::Extern(extern_reference.clone())
     }
 
-    fn cps_assign(&mut self, assign: &hir::Assignment, effects: &EffectStack) -> Expr {
+    fn cps_assign(&mut self, assign: &hir::Assignment, effects: &EffectStack) -> Ast {
         todo!("cps_assign")
         // let lhs = assign.lhs.to_expr(self);
         // let rhs = assign.rhs.to_expr(self);
 
         // let unit = hir::Type::Primitive(hir::PrimitiveType::Unit);
         // self.with_next_function(&unit, &[], |this, k| {
-        //     this.set_function_body(Expr::Assign, vec![lhs, rhs, k]);
-        //     Expr::Literal(Literal::Unit)
+        //     this.set_function_body(Ast::Assign, vec![lhs, rhs, k]);
+        //     Ast::Literal(Literal::Unit)
         // })
     }
 
-    fn cps_member_access(&mut self, access: &hir::MemberAccess, effects: &EffectStack) -> Expr {
+    fn cps_member_access(&mut self, access: &hir::MemberAccess, effects: &EffectStack) -> Ast {
         let lhs = Box::new(self.cps_ast(&access.lhs, effects));
         let typ = self.convert_type(&access.typ);
-        Expr::MemberAccess(lhs, access.member_index, typ)
+        Ast::MemberAccess(hir::MemberAccess { lhs, typ, member_index: access.member_index })
     }
 
-    fn cps_tuple(&mut self, tuple: &hir::Tuple, effects: &EffectStack) -> Expr {
-        Expr::Tuple(fmap(&tuple.fields, |field| self.cps_ast(field, effects)))
+    fn cps_tuple(&mut self, tuple: &hir::Tuple, effects: &EffectStack) -> Ast {
+        let fields = fmap(&tuple.fields, |field| self.cps_ast(field, effects));
+        Ast::Tuple(hir::Tuple { fields })
     }
 
-    fn cps_reinterpret_cast(&mut self, reinterpret_cast: &hir::ReinterpretCast, effects: &EffectStack) -> Expr {
-        let value = Box::new(self.cps_ast(&reinterpret_cast.lhs, effects));
-        let typ = self.convert_type(&reinterpret_cast.target_type);
-        Expr::Transmute(value, typ)
+    fn cps_reinterpret_cast(&mut self, reinterpret_cast: &hir::ReinterpretCast, effects: &EffectStack) -> Ast {
+        let lhs = Box::new(self.cps_ast(&reinterpret_cast.lhs, effects));
+        let target_type = self.convert_type(&reinterpret_cast.target_type);
+        Ast::ReinterpretCast(hir::ReinterpretCast { lhs, target_type })
     }
 
-    fn cps_builtin(&mut self, builtin: &hir::Builtin, effects: &EffectStack) -> Expr {
+    fn cps_builtin(&mut self, builtin: &hir::Builtin, effects: &EffectStack) -> Ast {
         let binary_fn = |f: fn(_, _) -> _, context: &mut Context, lhs: &hir::Ast, rhs: &hir::Ast| {
             let lhs = Box::new(context.cps_ast(lhs, effects));
             let rhs = Box::new(context.cps_ast(rhs, effects));
-            f(lhs, rhs)
+            Ast::Builtin(f(lhs, rhs))
         };
 
         let unary_fn = |f: fn(_) -> _, context: &mut Self, lhs| {
-            f(Box::new(context.cps_ast(lhs, effects)))
+            Ast::Builtin(f(Box::new(context.cps_ast(lhs, effects))))
         };
 
         let unary_fn_with_type = |f: fn(_, _) -> _, context: &mut Self, lhs, rhs| {
             let lhs = Box::new(context.cps_ast(lhs, effects));
             let rhs = context.convert_type(rhs);
-            f(lhs, rhs)
+            Ast::Builtin(f(lhs, rhs))
         };
 
+        use hir::Builtin::*;
         match builtin {
-            hir::Builtin::AddInt(lhs, rhs) => binary_fn(Expr::AddInt, self, lhs, rhs),
-            hir::Builtin::AddFloat(lhs, rhs) => binary_fn(Expr::AddFloat, self, lhs, rhs),
-            hir::Builtin::SubInt(lhs, rhs) => binary_fn(Expr::SubInt, self, lhs, rhs),
-            hir::Builtin::SubFloat(lhs, rhs) => binary_fn(Expr::SubFloat, self, lhs, rhs),
-            hir::Builtin::MulInt(lhs, rhs) => binary_fn(Expr::MulInt, self, lhs, rhs),
-            hir::Builtin::MulFloat(lhs, rhs) => binary_fn(Expr::MulFloat, self, lhs, rhs),
-            hir::Builtin::DivSigned(lhs, rhs) => binary_fn(Expr::DivSigned, self, lhs, rhs),
-            hir::Builtin::DivUnsigned(lhs, rhs) => binary_fn(Expr::DivUnsigned, self, lhs, rhs),
-            hir::Builtin::DivFloat(lhs, rhs) => binary_fn(Expr::DivFloat, self, lhs, rhs),
-            hir::Builtin::ModSigned(lhs, rhs) => binary_fn(Expr::ModSigned, self, lhs, rhs),
-            hir::Builtin::ModUnsigned(lhs, rhs) => binary_fn(Expr::ModUnsigned, self, lhs, rhs),
-            hir::Builtin::ModFloat(lhs, rhs) => binary_fn(Expr::ModFloat, self, lhs, rhs),
-            hir::Builtin::LessSigned(lhs, rhs) => binary_fn(Expr::LessSigned, self, lhs, rhs),
-            hir::Builtin::LessUnsigned(lhs, rhs) => binary_fn(Expr::LessUnsigned, self, lhs, rhs),
-            hir::Builtin::LessFloat(lhs, rhs) => binary_fn(Expr::LessFloat, self, lhs, rhs),
-            hir::Builtin::EqInt(lhs, rhs) => binary_fn(Expr::EqInt, self, lhs, rhs),
-            hir::Builtin::EqFloat(lhs, rhs) => binary_fn(Expr::EqFloat, self, lhs, rhs),
-            hir::Builtin::EqChar(lhs, rhs) => binary_fn(Expr::EqChar, self, lhs, rhs),
-            hir::Builtin::EqBool(lhs, rhs) => binary_fn(Expr::EqBool, self, lhs, rhs),
-            hir::Builtin::SignExtend(lhs, typ) => unary_fn_with_type(Expr::SignExtend, self, lhs, typ),
-            hir::Builtin::ZeroExtend(lhs, typ) => unary_fn_with_type(Expr::ZeroExtend, self, lhs, typ),
-            hir::Builtin::SignedToFloat(lhs, typ) => unary_fn_with_type(Expr::SignedToFloat, self, lhs, typ),
-            hir::Builtin::UnsignedToFloat(lhs, typ) => unary_fn_with_type(Expr::UnsignedToFloat, self, lhs, typ),
-            hir::Builtin::FloatToSigned(lhs, typ) => unary_fn_with_type(Expr::FloatToSigned, self, lhs, typ),
-            hir::Builtin::FloatToUnsigned(lhs, typ) => unary_fn_with_type(Expr::FloatToUnsigned, self, lhs, typ),
-            hir::Builtin::FloatPromote(value, typ) => unary_fn_with_type(Expr::FloatPromote, self, value, typ),
-            hir::Builtin::FloatDemote(value, typ) => unary_fn_with_type(Expr::FloatDemote, self, value, typ),
-            hir::Builtin::BitwiseAnd(lhs, rhs) => binary_fn(Expr::BitwiseAnd, self, lhs, rhs),
-            hir::Builtin::BitwiseOr(lhs, rhs) => binary_fn(Expr::BitwiseOr, self, lhs, rhs),
-            hir::Builtin::BitwiseXor(lhs, rhs) => binary_fn(Expr::BitwiseXor, self, lhs, rhs),
-            hir::Builtin::BitwiseNot(value) => unary_fn(Expr::BitwiseNot, self, value),
-            hir::Builtin::Truncate(lhs, typ) => unary_fn_with_type(Expr::Truncate, self, lhs, typ),
-            hir::Builtin::Deref(lhs, typ) => unary_fn_with_type(Expr::Deref, self, lhs, typ),
-            hir::Builtin::Transmute(lhs, typ) => unary_fn_with_type(Expr::Transmute, self, lhs, typ),
-            hir::Builtin::StackAlloc(value) => unary_fn(Expr::StackAlloc, self, value),
-            hir::Builtin::Offset(lhs, rhs, typ) => {
+            AddInt(lhs, rhs) => binary_fn(AddInt, self, lhs, rhs),
+            AddFloat(lhs, rhs) => binary_fn(AddFloat, self, lhs, rhs),
+            SubInt(lhs, rhs) => binary_fn(SubInt, self, lhs, rhs),
+            SubFloat(lhs, rhs) => binary_fn(SubFloat, self, lhs, rhs),
+            MulInt(lhs, rhs) => binary_fn(MulInt, self, lhs, rhs),
+            MulFloat(lhs, rhs) => binary_fn(MulFloat, self, lhs, rhs),
+            DivSigned(lhs, rhs) => binary_fn(DivSigned, self, lhs, rhs),
+            DivUnsigned(lhs, rhs) => binary_fn(DivUnsigned, self, lhs, rhs),
+            DivFloat(lhs, rhs) => binary_fn(DivFloat, self, lhs, rhs),
+            ModSigned(lhs, rhs) => binary_fn(ModSigned, self, lhs, rhs),
+            ModUnsigned(lhs, rhs) => binary_fn(ModUnsigned, self, lhs, rhs),
+            ModFloat(lhs, rhs) => binary_fn(ModFloat, self, lhs, rhs),
+            LessSigned(lhs, rhs) => binary_fn(LessSigned, self, lhs, rhs),
+            LessUnsigned(lhs, rhs) => binary_fn(LessUnsigned, self, lhs, rhs),
+            LessFloat(lhs, rhs) => binary_fn(LessFloat, self, lhs, rhs),
+            EqInt(lhs, rhs) => binary_fn(EqInt, self, lhs, rhs),
+            EqFloat(lhs, rhs) => binary_fn(EqFloat, self, lhs, rhs),
+            EqChar(lhs, rhs) => binary_fn(EqChar, self, lhs, rhs),
+            EqBool(lhs, rhs) => binary_fn(EqBool, self, lhs, rhs),
+            SignExtend(lhs, typ) => unary_fn_with_type(SignExtend, self, lhs, typ),
+            ZeroExtend(lhs, typ) => unary_fn_with_type(ZeroExtend, self, lhs, typ),
+            SignedToFloat(lhs, typ) => unary_fn_with_type(SignedToFloat, self, lhs, typ),
+            UnsignedToFloat(lhs, typ) => unary_fn_with_type(UnsignedToFloat, self, lhs, typ),
+            FloatToSigned(lhs, typ) => unary_fn_with_type(FloatToSigned, self, lhs, typ),
+            FloatToUnsigned(lhs, typ) => unary_fn_with_type(FloatToUnsigned, self, lhs, typ),
+            FloatPromote(value, typ) => unary_fn_with_type(FloatPromote, self, value, typ),
+            FloatDemote(value, typ) => unary_fn_with_type(FloatDemote, self, value, typ),
+            BitwiseAnd(lhs, rhs) => binary_fn(BitwiseAnd, self, lhs, rhs),
+            BitwiseOr(lhs, rhs) => binary_fn(BitwiseOr, self, lhs, rhs),
+            BitwiseXor(lhs, rhs) => binary_fn(BitwiseXor, self, lhs, rhs),
+            BitwiseNot(value) => unary_fn(BitwiseNot, self, value),
+            Truncate(lhs, typ) => unary_fn_with_type(Truncate, self, lhs, typ),
+            Deref(lhs, typ) => unary_fn_with_type(Deref, self, lhs, typ),
+            Transmute(lhs, typ) => unary_fn_with_type(Transmute, self, lhs, typ),
+            StackAlloc(value) => unary_fn(StackAlloc, self, value),
+            Offset(lhs, rhs, typ) => {
                 let lhs = Box::new(self.cps_ast(lhs, effects));
                 let rhs = Box::new(self.cps_ast(rhs, effects));
                 let typ = self.convert_type(typ);
-                Expr::Offset(lhs, rhs, typ)
+                Ast::Builtin(Offset(lhs, rhs, typ))
             },
         }
     }
@@ -528,13 +544,13 @@ impl Context {
     /// Has been adapted here since this effect node excludes the arguments:
     ///
     /// S(h, ts) = H(h, ts)
-    fn cps_effect(&mut self, effect: &hir::Effect, effects: &EffectStack) -> Expr {
+    fn cps_effect(&mut self, effect: &hir::Effect, effects: &EffectStack) -> Ast {
         self.convert_effect(EffectAst::Variable(effect.id), effects)
     }
 
     /// S(handle c = h in s : t, ts)
     ///   = (fn c => S(s, [ts, t]) @@ (fn x => S(return x, ts))) @@ H(h, [ts, t])
-    fn cps_handle(&mut self, handle: &hir::Handle, effects: &EffectStack) -> Expr {
+    fn cps_handle(&mut self, handle: &hir::Handle, effects: &EffectStack) -> Ast {
         let mut new_effects = effects.to_vec();
         let result_type = self.convert_type(&handle.result_type);
         new_effects.push((handle.effect.id, result_type.clone()));
@@ -553,10 +569,10 @@ impl Context {
                 this.cps_return_helper(x, effects, result_type)
             });
 
-            Expr::ct_call1(expression, k)
+            Ast::ct_call1(expression, k)
         });
 
-        Expr::ct_call1(c_lambda, handler)
+        Ast::ct_call1(c_lambda, handler)
     }
 
     /// H(c, ts) = c
@@ -564,32 +580,32 @@ impl Context {
     /// H(lift h, [t]) = fn x => fn k => k @@ (H(h, []) @@ x)
     /// H(lift h, [ts, t, t'])
     ///   = fn x => fn k => fn k' => H(h, [ts, t]) @@ x @@ (fn y => k @@ y @@ k')
-    fn convert_effect(&mut self, effect: EffectAst, effects: &EffectStack) -> Expr {
+    fn convert_effect(&mut self, effect: EffectAst, effects: &EffectStack) -> Ast {
         match effect {
             // H(c, ts) = c
             // TODO: implement lift cases
             EffectAst::Variable(id) => {
-                self.get_definition(id, effects).unwrap_or_else(|| 
-                    panic!("No handler for effect {}", id))
+                let c = self.get_definition(id, effects).unwrap_or_else(|| {
+                    panic!("No handler for effect {}", id)
+                });
+                Ast::Variable(c)
             },
             // H(F(x, k) -> s, [ts, t]) = fn x => fn k => S(s, ts)
             EffectAst::Handle(handle) => {
-                let argument_types = fmap(&handle.branch_body.args, |arg| self.convert_type(&arg.typ));
-                let argument_ids = handle.branch_body.args.iter().map(|arg| arg.definition_id);
-
                 // TODO: assert effects.pop() == t
                 let mut effects = effects.to_vec();
                 effects.pop();
-                let name = Rc::new("handle".to_string());
 
-                self.new_function(name, argument_ids, argument_types, true, |this| {
-                    let k_id = std::iter::once(handle.resume.definition_id);
-                    let k_type = vec![this.convert_type(&handle.resume.typ)];
+                let xs = fmap(&handle.branch_body.args, |arg| {
+                    self.new_local(arg.definition_id, Context::name_of(&arg.name), *arg.typ.clone())
+                });
 
-                    let name = Rc::new("handle_k".to_string());
+                let k = self.new_local(handle.resume.definition_id, "k", *handle.resume.typ.clone());
 
-                    this.new_function(name, k_id, k_type, true, |this| {
-                        this.cps_ast(&handle.branch_body.body, &effects)
+                // TODO: Should this be one function with k as the last parameter?
+                Context::ct_lambda(xs, {
+                    Context::ct_lambda(vec![k], {
+                        self.cps_ast(&handle.branch_body.body, &effects)
                     })
                 })
             },

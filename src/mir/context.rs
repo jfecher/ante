@@ -19,209 +19,103 @@
 //! `C(t, ts, false)`, and a call to (blue) `C[t]_ts` will translate to `C(t, ts, true)`
 //!
 //! Unless the term falls into one of the above cases, it is considered to be a runtime term.
-use std::{collections::{HashMap, VecDeque}, rc::Rc};
+use std::{collections::{HashMap, VecDeque}, rc::Rc, cell::RefCell};
 
-use crate::{hir, util::fmap, mir::ir::ParameterId};
-
-use super::ir::{Mir, Expr, FunctionId, self, Type, Function, ExternId};
-
+use crate::{hir::{self, Ast, Variable, Type, DefinitionId, FunctionType}, util::fmap};
 
 pub struct Context {
-    pub(super) mir: Mir,
-
     global_definitions: Definitions,
-    pub(super) local_definitions: HashMap<hir::DefinitionId, Expr>,
+    pub(super) local_definitions: HashMap<hir::DefinitionId, Variable>,
 
-    pub(super) definition_queue: VecDeque<(FunctionId, Rc<hir::Ast>, EffectStack)>,
-
-    /// The function currently being translated. It is expected that the
-    /// `body_continuation` and `body_args` fields of this function are filler
-    /// and will be replaced once the function finishes translation.
-    pub(super) current_function_id: FunctionId,
-
-    /// If this is set, the next function created will be given this id.
-    /// This is used to ensure globals have the same ID as the one assigned to them ahead of time.
-    pub(super) expected_function_id: Option<FunctionId>,
+    pub(super) definition_queue: VecDeque<(Rc<RefCell<Ast>>, Rc<RefCell<Ast>>, EffectStack)>,
 
     /// The name of any lambda when we need to make one up.
     /// This is stored here so that we can increment a Rc instead of allocating a new
     /// string for each variable named this way.
     pub(super) lambda_name: Rc<String>,
 
-    pub(super) extern_symbols: HashMap<String, ExternId>,
+    /// The next free ID unused by the existing Hir.
+    /// This is currently carried on from the monomorphization pass in case their are conflicts,
+    /// but since this pass will create an entirely new Hir, it could start from zero as well.
+    next_id: usize,
 }
 
-pub(super) type Definitions = HashMap<hir::DefinitionId, HashMap<EffectStack, Expr>>;
+pub(super) type Definitions = HashMap<hir::DefinitionId, HashMap<EffectStack, Variable>>;
 
 pub(super) type Effect = (hir::DefinitionId, Type);
 pub(super) type EffectStack = Vec<Effect>;
 
 impl Context {
-    pub fn new() -> Self {
-        let mut mir = Mir::default();
-        mir.next_function_id = 1; // Since 0 is taken for main
-
-        let main_id = Mir::main_id();
-        let main = ir::Function {
-            id: main_id.clone(),
-            body: Expr::unit(),
-            argument_types: vec![],
-            compile_time: false,
-        };
-
-        mir.functions.insert(main_id.clone(), main);
-
+    pub fn new(next_id: usize) -> Self {
         Context {
-            mir,
             global_definitions: HashMap::new(),
             local_definitions: HashMap::new(),
             definition_queue: VecDeque::new(),
-            extern_symbols: HashMap::new(),
-            current_function_id: main_id,
-            expected_function_id: None,
             lambda_name: Rc::new("lambda".into()),
+            next_id,
         }
     }
 
-    pub fn function_mut(&mut self, id: &FunctionId) -> &mut Function {
-        self.mir.functions.get_mut(&id).unwrap()
-    }
-
-    pub fn get_definition(&self, id: hir::DefinitionId, effects: &EffectStack) -> Option<Expr> {
+    pub fn get_definition(&self, id: hir::DefinitionId, effects: &EffectStack) -> Option<Variable> {
         self.local_definitions.get(&id).or_else(|| {
             self.global_definitions.get(&id).and_then(|map| map.get(effects))
         }).cloned()
     }
 
-    pub fn insert_global_definition(&mut self, id: hir::DefinitionId, atom: Expr, effects: EffectStack) {
-        self.global_definitions.entry(id).or_default().insert(effects, atom);
+    pub fn insert_global_definition(&mut self, id: hir::DefinitionId, value: Variable, effects: EffectStack) {
+        self.global_definitions.entry(id).or_default().insert(effects, value);
     }
 
-    pub fn insert_local_definition(&mut self, id: hir::DefinitionId, atom: Expr) {
-        self.local_definitions.insert(id, atom);
+    pub fn insert_local_definition(&mut self, id: hir::DefinitionId, value: Variable) {
+        self.local_definitions.insert(id, value);
     }
 
-    /// Returns the next available function id but does not set the current id
-    fn next_function_id(&mut self, name: Rc<String>) -> FunctionId {
-        self.expected_function_id.take().unwrap_or_else(|| self.mir.next_function_id(name))
+    fn next_id(&mut self) -> DefinitionId {
+        let id = self.next_id;
+        self.next_id += 1;
+        DefinitionId(id)
     }
 
-    /// Create a new function with the given body and return a reference to it
-    ///
-    /// The `body` parameter will be run only after each parameter of the function
-    /// is inserted into the context.
-    ///
-    /// This will automatically curry functions with multiple parameters
-    ///
-    /// This function allows `parameters` to be a length less than or equal to the
-    /// length of `argument_types`. Where the later determines how many arguments
-    /// are actually needed, each DefinitionId only needs to be specified for parameters
-    /// that will be inserted into scope via `insert_definition`. This is important
-    /// as it allows `new_function` to be used to create intermediate functions with
-    /// parameters not present in the original code (which have no DefinitionId).
-    pub fn new_function(
-        &mut self,
-        name: Rc<String>,
-        mut parameters: impl ExactSizeIterator<Item = hir::DefinitionId>,
-        argument_types: Vec<Type>,
-        compile_time: bool,
-        body: impl FnOnce(&mut Self) -> Expr,
-    ) -> Expr {
-        let function_ids = fmap(argument_types, |typ| {
-            let id = self.next_function_id(name.clone());
-            let mut new_function = ir::Function::empty(id.clone(), vec![typ]);
-            new_function.compile_time = compile_time;
-            self.mir.functions.insert(id.clone(), new_function);
-
-            if let Some(parameter_id) = parameters.next() {
-                let parameter = ParameterId::new(id.clone(), 0);
-                self.insert_local_definition(parameter_id, Expr::Parameter(parameter));
-            }
-
-            id
-        });
-
-        let first_id = function_ids[0].clone();
-
-        // Now that the parameters are in scope we can get the function body
-        let mut next = self.in_function(function_ids.last().unwrap().clone(), |this| {
-            body(this)
-        });
-
-        for id in function_ids.into_iter().rev() {
-            self.function_mut(&id).body = next;
-            next = Expr::Function(id);
+    pub fn placeholder_function_type() -> FunctionType {
+        FunctionType {
+            parameters: Vec::new(),
+            return_type: Box::new(Type::unit()),
+            effects: Vec::new(),
+            is_varargs: false,
         }
-
-        Expr::Function(first_id)
     }
 
-    /// Set `self.current_function_id` to the given function and execute `f`.
-    /// Resets `self.current_function_id` to the previous value before returning.
-    fn in_function<T>(&mut self, function: FunctionId, f: impl FnOnce(&mut Self) -> T) -> T {
-        let old_id = std::mem::replace(&mut self.current_function_id, function);
-        let result = f(self);
-        self.current_function_id = old_id;
-        result
+    pub fn lambda(args: Vec<Variable>, typ: FunctionType, body: Ast) -> Ast {
+        Ast::Lambda(hir::Lambda { args, body: Box::new(body), typ })
     }
 
-    /// Create a new function with the given body and return a reference to it
-    ///
-    /// The `body` parameter will be run only after each parameter of the function
-    /// is inserted into the context.
-    pub fn recursive_function(
-        &mut self,
-        name: Rc<String>,
-        parameters: impl ExactSizeIterator<Item = hir::DefinitionId>,
-        argument_types: Vec<Type>,
-        effects: EffectStack,
-        hir_id: Option<hir::DefinitionId>,
-        body: impl FnOnce(&mut Self) -> Expr,
-    ) -> Expr {
-        let argument_count = argument_types.len();
-        assert_eq!(parameters.len(), argument_count);
-
-        let new_id = self.next_function_id(name.clone());
-        let new_function = ir::Function::empty(new_id.clone(), argument_types);
-
-        parameters.zip(new_function.parameters()).for_each(|(definition_id, parameter)| {
-            self.insert_local_definition(definition_id, Expr::Parameter(parameter));
-        });
-
-        self.mir.functions.insert(new_id.clone(), new_function);
-
-        if let Some(id) = hir_id {
-            self.insert_global_definition(id, Expr::Function(new_id.clone()), effects.clone());
-        }
-
-        // Now that the parameters are in scope we can get the function body
-        let body = self.in_function(new_id.clone(), body);
-        self.function_mut(&new_id).body = body;
-
-        Expr::Function(new_id)
+    /// Convenience function for getting the name of a definition which may not have one
+    pub fn name_of(name: &Option<String>) -> String {
+        name.clone().unwrap_or_else(|| "_".into())
     }
 
-    /// Similar to `new_function` except this does not introduce any DefinitionIds
-    /// into scope. As such, this is meant for statements that do not return values
-    /// or bind variables.
-    pub fn intermediate_function(
-        &mut self,
-        name: impl Into<String>,
-        argument_type: Type,
-        compile_time: bool,
-        body: impl FnOnce(&mut Self, Expr) -> Expr,
-    ) -> Expr {
-        let id = self.next_function_id(Rc::new(name.into()));
-        let parameter = Expr::Parameter(ParameterId::new(id.clone(), 0));
-
-        let body = self.in_function(id.clone(), |this| body(this, parameter));
-
-        let new_function = ir::Function { id: id.clone(), argument_types: vec![argument_type], body, compile_time };
-        self.mir.functions.insert(id.clone(), new_function);
-        Expr::Function(id)
+    /// A lambda to be evaluated at compile time.
+    /// Currently these all have placeholder types.
+    pub fn ct_lambda(args: Vec<Variable>, body: Ast) -> Ast {
+        Self::lambda(args, Self::placeholder_function_type(), body)
     }
 
-    pub fn add_global_to_queue(&mut self, variable: hir::Variable, effects: EffectStack) -> Expr {
+    /// Create a new local but do not introduce it into `self.local_definitions`
+    pub fn anonymous_local(&mut self, name: impl Into<String>, typ: Type) -> Variable {
+        let definition_id = self.next_id();
+        let typ = Rc::new(typ);
+        let name = Some(name.into());
+        Variable { definition: None, definition_id, typ, name }
+    }
+
+    /// Create a new local and introduce it into `self.local_definitions`
+    pub fn new_local(&mut self, id: DefinitionId, name: impl Into<String>, typ: Type) -> Variable {
+        let local = self.anonymous_local(name, typ);
+        self.insert_local_definition(id, local.clone());
+        local
+    }
+
+    pub fn add_global_to_queue(&mut self, variable: hir::Variable, effects: EffectStack) -> Variable {
         let name = match &variable.name {
             Some(name) => Rc::new(name.to_owned()),
             None => self.lambda_name.clone(),
@@ -291,18 +185,6 @@ impl Context {
             let inner_function = Type::Function(head, result.clone(), compile_time);
             Type::Function(vec![inner_function], result, compile_time)
         }
-    }
-
-    pub fn import_extern(&mut self, extern_name: &str, extern_type: &hir::Type) -> ExternId {
-        if let Some(id) = self.extern_symbols.get(extern_name) {
-            return *id;
-        }
-
-        let typ = self.convert_type(extern_type);
-        let id = ExternId(self.extern_symbols.len() as u32);
-        self.mir.extern_symbols.insert(id, (extern_name.to_owned(), typ));
-        self.extern_symbols.insert(extern_name.to_owned(), id);
-        id
     }
 
     /// reify converts a compile-time (static) term to a runtime (residual) term.

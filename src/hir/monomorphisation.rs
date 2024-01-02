@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::rc::Rc;
 
@@ -27,9 +28,9 @@ const RECURSION_LIMIT: u32 = 500;
 
 /// Monomorphise this ast, simplifying it by removing all generics, traits,
 /// and unneeded ast constructs.
-pub fn monomorphise<'c>(ast: &ast::Ast<'c>, cache: ModuleCache<'c>) -> hir::Ast {
+pub fn monomorphise<'c>(ast: &ast::Ast<'c>, cache: ModuleCache<'c>) -> (hir::Ast, usize) {
     let mut context = Context::new(cache);
-    context.monomorphise(ast)
+    (context.monomorphise(ast), context.next_id)
 }
 
 pub struct Context<'c> {
@@ -74,7 +75,7 @@ pub enum Definition {
     /// A Macro definition is one that should be substituted for its rhs
     /// each time it is used. An example is non-function type constructors
     /// like 'None'. If 'None' were a Normal definition it would be forced
-    /// to be a global variable to be shared across all funcitons, which
+    /// to be a global variable to be shared across all functions, which
     /// would be less efficient than recreating the value 0 on each use.
     Macro(hir::Ast),
     Normal(hir::DefinitionInfo),
@@ -991,7 +992,7 @@ impl<'c> Context<'c> {
         let (definition, definition_id) = self.fresh_definition(definition_rhs, name.clone(), typ.as_ref().clone());
         hir::DefinitionInfo { 
             definition_id, 
-            definition: Some(Rc::new(definition)), 
+            definition: Some(Rc::new(RefCell::new(definition))), 
             name,
             typ
         }
@@ -1028,7 +1029,7 @@ impl<'c> Context<'c> {
             hir::Ast::Sequence(hir::Sequence { statements: nested_definitions })
         };
 
-        let definition = Some(Rc::new(definition));
+        let definition = Some(Rc::new(RefCell::new(definition)));
         let typ = Rc::new(self.convert_type(&hir_type));
         Definition::Normal(hir::Variable {
             definition_id, 
@@ -1709,12 +1710,15 @@ impl<'c> Context<'c> {
             let (effect, args) = match pattern {
                 ast::Ast::FunctionCall(call) => {
                     let effect = match self.monomorphise(&call.function) {
-                        hir::Ast::Variable(variable) => match variable.definition.as_ref().unwrap().as_ref() {
-                            hir::Ast::Definition(definition) => match definition.expr.as_ref() {
-                                hir::Ast::Effect(effect) => effect.clone(),
-                                other => unreachable!("Unexpected effect definition expr: {}", other),
+                        hir::Ast::Variable(variable) => {
+                            let definition = variable.definition.as_ref().unwrap().borrow();
+                            match &*definition {
+                                hir::Ast::Definition(definition) => match definition.expr.as_ref() {
+                                    hir::Ast::Effect(effect) => effect.clone(),
+                                    other => unreachable!("Unexpected effect definition expr: {}", other),
+                                }
+                                other => unreachable!("Unexpected effect definition: {}", other),
                             }
-                            other => unreachable!("Unexpected effect definition: {}", other),
                         },
                         other => unreachable!("Unexpected monomorphise result for effect function: {}", other),
                     };
@@ -1812,7 +1816,7 @@ impl<'c> Context<'c> {
 
             let expr = Box::new(effect);
             let definition = hir::Ast::Definition(hir::Definition { variable: id, expr, name: name.clone(), typ: typ.clone() });
-            let definition = Some(Rc::new(definition));
+            let definition = Some(Rc::new(RefCell::new(definition)));
             let definition = hir::DefinitionInfo { definition_id: id, definition, name, typ: Rc::new(typ) };
 
             let definition = Definition::Normal(definition);

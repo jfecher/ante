@@ -152,24 +152,24 @@ fn compile(args: Cli) {
         return;
     }
 
-    let hir = hir::monomorphise(ast, cache);
+    let mut (hir, next_id) = hir::monomorphise(ast, cache);
     if args.emit == Some(EmitTarget::Hir) {
         println!("{}", hir);
         return;
     }
 
     // Phase 5: CPS Conversion
-    let mut mir = mir::convert_to_mir(hir);
+    hir = mir::convert_to_mir(hir, next_id);
 
-    match &args.emit {
-        Some(EmitTarget::Mir) => println!("{mir}"),
-        Some(EmitTarget::MirCFG) => mir.debug_print_control_flow_graph(),
-        Some(EmitTarget::MirDFG) => mir.debug_print_data_flow_graph(),
-        Some(EmitTarget::MirCDFG) => mir.debug_print_graph(),
-        _ => (),
+    if matches!(args.emit, Some(EmitTarget::HirCPS)) {
+        println!("{hir}");
     }
 
-    let hir = mir.convert_to_hir();
+    hir.evaluate_static_calls();
+
+    if matches!(args.emit, Some(EmitTarget::HirFinal)) {
+        println!("{hir}");
+    }
 
     // Phase 6: Codegen
     let default_backend = if args.opt_level == '0' { Backend::Cranelift } else { Backend::Llvm };

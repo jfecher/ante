@@ -17,10 +17,10 @@ mod types;
 pub use monomorphisation::monomorphise;
 pub use types::{FunctionType, IntegerKind, PrimitiveType, Type};
 
-use std::rc::Rc;
+use std::{rc::Rc, cell::RefCell};
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct DefinitionId(usize);
+pub struct DefinitionId(pub usize);
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Literal {
@@ -42,7 +42,7 @@ pub struct DefinitionInfo {
     /// `id = expr` where id == self.definition_id. Most definitions will
     /// be exactly this, but others may be a sequence of several definitions
     /// in the case of e.g. tuple unpacking.
-    pub definition: Option<Rc<Ast>>,
+    pub definition: Option<Rc<RefCell<Ast>>>,
 
     pub definition_id: DefinitionId,
 
@@ -68,7 +68,7 @@ impl Variable {
 
     fn with_definition(def: Definition, typ: Rc<Type>) -> Self {
         let name = def.name.clone();
-        DefinitionInfo { definition_id: def.variable, typ, definition: Some(Rc::new(Ast::Definition(def))), name }
+        DefinitionInfo { definition_id: def.variable, typ, definition: Some(Rc::new(RefCell::new(Ast::Definition(def)))), name }
     }
 }
 
@@ -312,6 +312,37 @@ pub enum Ast {
 impl std::fmt::Display for DefinitionId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "v{}", self.0)
+    }
+}
+
+impl Ast {
+    /// Construct the unit literal
+    pub fn unit() -> Ast {
+        Ast::Literal(Literal::Unit)
+    }
+
+    /// Construct a runtime call expression
+    pub fn rt_call(function: Ast, args: Vec<Ast>, function_type: FunctionType) -> Ast {
+        Ast::FunctionCall(FunctionCall {
+            function: Box::new(function),
+            args,
+            function_type,
+        })
+    }
+
+    /// Construct a compile-time call expression with one argument.
+    /// The function type here is unused since we expect this node to be removed anyway.
+    pub fn ct_call1(function: Ast, arg: Ast) -> Ast {
+        Ast::FunctionCall(FunctionCall {
+            function: Box::new(function),
+            args: vec![arg],
+            function_type: FunctionType {
+                parameters: Vec::new(),
+                return_type: Box::new(Type::unit()),
+                effects: Vec::new(),
+                is_varargs: false,
+            },
+        })
     }
 }
 

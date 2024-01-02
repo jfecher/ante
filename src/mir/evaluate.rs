@@ -2,9 +2,15 @@
 //! to remove handler abstractions
 use std::collections::HashSet;
 
-use crate::hir::Literal;
+use crate::hir::{Literal, Ast};
 
 use super::ir::{Mir, Expr, FunctionId};
+
+impl Ast {
+    pub fn evaluate_static_calls(&mut self) {
+        todo!("Evaluate hir")
+    }
+}
 
 impl Mir {
     pub fn evaluate(&mut self) {

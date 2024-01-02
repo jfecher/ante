@@ -78,17 +78,12 @@ pub enum EmitTarget {
     /// Ante's post-monomorphisation HIR representation
     Hir,
 
-    /// Ante's post-CPS conversion MIR representation, free of `handle` and effects
-    Mir,
+    /// Ante's HIR after being converted to capability-passing style
+    HirCPS,
 
-    /// A control-flow graph representation of the MIR outputted in graphviz format
-    MirCFG,
-
-    /// A data-flow graph representation of the MIR outputted in graphviz format
-    MirDFG,
-
-    /// A control-flow and data-flow graph representation of the MIR outputted in graphviz format
-    MirCDFG,
+    /// The final version of Hir after each capability and static function call is evaluated at
+    /// compile-time.
+    HirFinal,
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone, ValueEnum)]
