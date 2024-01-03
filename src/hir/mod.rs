@@ -42,7 +42,7 @@ pub struct DefinitionInfo {
     /// `id = expr` where id == self.definition_id. Most definitions will
     /// be exactly this, but others may be a sequence of several definitions
     /// in the case of e.g. tuple unpacking.
-    pub definition: Option<Rc<RefCell<Ast>>>,
+    pub definition: Option<Rc<RefCell<Option<Ast>>>>,
 
     pub definition_id: DefinitionId,
 
@@ -68,7 +68,12 @@ impl Variable {
 
     fn with_definition(def: Definition, typ: Rc<Type>) -> Self {
         let name = def.name.clone();
-        DefinitionInfo { definition_id: def.variable, typ, definition: Some(Rc::new(RefCell::new(Ast::Definition(def)))), name }
+        DefinitionInfo {
+            definition_id: def.variable,
+            typ,
+            definition: Some(Rc::new(RefCell::new(Some(Ast::Definition(def))))),
+            name,
+        }
     }
 }
 
@@ -326,6 +331,15 @@ impl Ast {
         Ast::FunctionCall(FunctionCall {
             function: Box::new(function),
             args,
+            function_type,
+        })
+    }
+
+    /// Construct a runtime call expression with one argument.
+    pub fn rt_call1(function: Ast, arg: Ast, function_type: FunctionType) -> Ast {
+        Ast::FunctionCall(FunctionCall {
+            function: Box::new(function),
+            args: vec![arg],
             function_type,
         })
     }

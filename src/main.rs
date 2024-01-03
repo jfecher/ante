@@ -152,7 +152,7 @@ fn compile(args: Cli) {
         return;
     }
 
-    let mut (hir, next_id) = hir::monomorphise(ast, cache);
+    let (mut hir, next_id) = hir::monomorphise(ast, cache);
     if args.emit == Some(EmitTarget::Hir) {
         println!("{}", hir);
         return;

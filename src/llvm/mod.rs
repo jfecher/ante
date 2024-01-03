@@ -495,7 +495,13 @@ impl<'g> CodeGen<'g> for hir::Variable {
             Some(definition) => *definition,
             None => {
                 match self.definition.as_ref() {
-                    Some(ast) => ast.codegen(generator),
+                    Some(ast) => {
+                        let ast = ast.borrow();
+                        match &*ast {
+                            Some(ast) => ast.codegen(generator),
+                            None => unreachable!("Definition for {} not yet compiled", self.definition_id),
+                        }
+                    }
                     None => unreachable!("Definition for {} not yet compiled", self.definition_id),
                 };
                 generator.definitions[&self.definition_id]

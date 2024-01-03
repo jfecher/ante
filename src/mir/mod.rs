@@ -36,8 +36,6 @@
 //!     `C[t]_ts` will translate to `C(t, ts, true)`
 //!
 //!   Unless the term falls into one of the above cases, it is considered to be a runtime term.
-use std::rc::Rc;
-
 use self::context::{Context, EffectStack};
 use crate::hir::{DecisionTree, Type};
 use crate::{hir::{self, Ast}, util::fmap};
@@ -56,8 +54,12 @@ pub fn convert_to_mir(hir: Ast, next_id: usize) -> Ast {
     while let Some((source, destination, effects)) = context.definition_queue.pop_front() {
         context.local_definitions.clear();
         let ast = source.borrow();
+        let ast = match ast.as_ref().unwrap() { 
+            Ast::Definition(definition) => definition.expr.as_ref(),
+            other => other,
+        };
         let result = context.cps_ast(&ast, &effects);
-        *destination.borrow_mut() = result;
+        *destination.borrow_mut() = Some(result);
     }
 
     main
@@ -129,35 +131,32 @@ impl Context {
     /// E([c : [F]τ] ⇒ e) = fn c => E(e)
     ///
     /// Note that effect arguments (handler abstractions) are on the outside of any letrecs of lambdas.
-    fn cps_lambda(&mut self, lambda: &hir::Lambda, effects: &EffectStack, id: Option<hir::DefinitionId>) -> Ast {
-        let effect_types = fmap(&lambda.typ.effects, |effect| self.convert_type(&effect.typ));
-        let effect_ids = fmap(&lambda.typ.effects, |effect| effect.id);
-        let name = Rc::new("lambda".to_string());
-
-        eprintln!("In lambda {}", lambda);
-
+    fn cps_lambda(&mut self, lambda: &hir::Lambda, effects: &EffectStack, _id: Option<hir::DefinitionId>) -> Ast {
         // Reorder the effects if needed to match the lambda's effect type ordering
         let new_effects = fmap(&lambda.typ.effects, |effect| {
             let handler_type = effects.iter().find(|e| e.0 == effect.id).unwrap().1.clone();
             (effect.id, handler_type)
         });
 
-        let lambda_body = |this: &mut Self| {
-            let parameter_types = fmap(&lambda.args, |arg| this.convert_type(&arg.typ));
-            let parameter_ids = lambda.args.iter().map(|arg| arg.definition_id);
+        // TODO: Restore old definitions of effect ids
+        let effect_args = fmap(&lambda.typ.effects, |effect| {
+            let effect_type = self.convert_type(&effect.typ);
+            self.new_local(effect.id, "effect", effect_type)
+        });
 
-            this.recursive_function(name.clone(), parameter_ids, parameter_types, new_effects.clone(), id, |this| {
-                let body = this.cps_ast(&lambda.body, &new_effects);
-                this.reify(&new_effects, body)
-            })
-        };
+        let parameters = fmap(&lambda.args, |arg| self.new_local_from_existing(arg));
 
-        if effect_types.is_empty() {
-            lambda_body(self)
+        let body = Context::lambda(parameters, lambda.typ.clone(), {
+            let body = self.cps_ast(&lambda.body, &new_effects);
+            self.reify(&new_effects, body)
+        });
+
+        // TODO: set definition to body for recursive calls (not \effect_args -> body)
+
+        if effect_args.is_empty() {
+            body
         } else {
-            self.new_function(name.clone(), effect_ids.into_iter(), effect_types, true, |this| {
-                lambda_body(this)
-            })
+            Context::ct_lambda(effect_args, body)
         }
     }
 
@@ -188,21 +187,30 @@ impl Context {
     /// S(val x <- s; s', [ts, t]) =
     ///     fn k -> S(s, [ts, t]) @ (fn x -> S(s', [ts, t]) @ k)
     fn cps_definition(&mut self, definition: &hir::Definition, effects: &EffectStack) -> Ast {
-        let rhs = match definition.expr.as_ref() {
-            hir::Ast::Lambda(lambda) => self.cps_lambda(lambda, effects, Some(definition.variable)),
-            hir::Ast::Effect(effect) => {
-                // Monomorphization wraps effects in an extra function, which itself is effectful.
-                // So we need to return an `id` lambda since this pass will see the effect and
-                // automatically try to thread the handler to itself.
-                // TODO: Is this ever needed?
-                let typ = self.convert_type(&effect.typ);
-                self.intermediate_function("effect", typ, true, |_, arg| arg)
-            },
-            other => self.cps_ast(other, effects),
-        };
+        unreachable!("cps_definition is unreachable");
+        // let rhs = match definition.expr.as_ref() {
+        //     hir::Ast::Lambda(lambda) => self.cps_lambda(lambda, effects, Some(definition.variable)),
+        //     hir::Ast::Effect(effect) => {
+        //         // Monomorphization wraps effects in an extra function, which itself is effectful.
+        //         // So we need to return an identity function since this pass will see the effect and
+        //         // automatically try to thread the handler to itself.
+        //         // TODO: Is this ever needed?
+        //         let typ = self.convert_type(&effect.typ);
+        //         let effect = self.anonymous_variable(Context::name_of(&definition.name), typ);
+        //         Context::ct_lambda(vec![effect.clone()], Ast::Variable(effect))
+        //     },
+        //     other => self.cps_ast(other, effects),
+        // };
 
-        self.insert_global_definition(definition.variable, rhs, effects.clone());
-        Ast::unit()
+        // let variable = hir::Variable {
+        //     definition: Some(Rc::new(RefCell::new(Some(rhs)))),
+        //     definition_id: definition.variable,
+        //     typ: Rc::new(definition.typ.clone()),
+        //     name: definition.name.clone(),
+        // };
+
+        // self.insert_global_definition(definition.variable, variable, effects.clone());
+        // Ast::unit()
     }
 
     fn cps_if(&mut self, if_expr: &hir::If, effects: &EffectStack) -> Ast {
@@ -293,7 +301,7 @@ impl Context {
         if effects.is_empty() {
             expr
         } else {
-            let k = self.anonymous_local("k", Type::Function(Context::placeholder_function_type()));
+            let k = self.anonymous_variable("k", Type::Function(Context::placeholder_function_type()));
 
             Context::ct_lambda(vec![k.clone()], {
                 Ast::ct_call1(Ast::Variable(k), expr)
@@ -397,13 +405,14 @@ impl Context {
     /// the same structure.
     fn cps_let_binding_pure(&mut self, let_binding: LetBinding) -> Ast {
         let expr = Box::new(self.cps_statement(*let_binding.rhs, &Vec::new()));
-        let body = *let_binding.body;
 
         let (name, variable, typ) = match let_binding.variable {
             // In a pure context, the result type is the same as the source type
             Some((id, typ)) => (Some(let_binding.name), id, typ.clone()),
             None => todo!("Fresh variable"),
         };
+
+        // TODO: introduce variable into scope?
 
         let definition = Ast::Definition(hir::Definition { variable, name, expr, typ });
         let body = self.cps_statement(*let_binding.body, &Vec::new());
@@ -422,8 +431,8 @@ impl Context {
 
         let x_type = let_binding.variable.map(|(_, typ)| typ.clone()).unwrap_or_else(Type::unit);
 
-        let k = self.anonymous_local("k", k_type);
-        let x = self.anonymous_local(let_binding.name, x_type);
+        let k = self.anonymous_variable("k", k_type);
+        let x = self.anonymous_variable(let_binding.name, x_type);
 
         if let Some((id, _)) = let_binding.variable {
             self.insert_local_definition(id, x.clone());
@@ -557,16 +566,16 @@ impl Context {
 
         let handler = self.convert_effect(EffectAst::Handle(handle), &new_effects);
 
-        let id = std::iter::once(handle.effect.id);
         let c_type = self.convert_type(&handle.effect.typ);
+        let c = self.new_local(handle.effect.id, "c", c_type);
 
-        let name = Rc::new("handle_expression".to_string());
+        let c_lambda = Context::ct_lambda(vec![c], {
+            let expression = self.cps_ast(&handle.expression, &new_effects);
+            let x = self.anonymous_variable("x", result_type.clone());
 
-        let c_lambda = self.new_function(name, id, vec![c_type], true, |this| {
-            let expression = this.cps_ast(&handle.expression, &new_effects);
-
-            let k = this.intermediate_function("handle_k", result_type.clone(), true, |this, x| {
-                this.cps_return_helper(x, effects, result_type)
+            // x: result_type
+            let k = Context::ct_lambda(vec![x.clone()], {
+                self.cps_return_helper(Ast::Variable(x), effects, result_type)
             });
 
             Ast::ct_call1(expression, k)
@@ -596,11 +605,9 @@ impl Context {
                 let mut effects = effects.to_vec();
                 effects.pop();
 
-                let xs = fmap(&handle.branch_body.args, |arg| {
-                    self.new_local(arg.definition_id, Context::name_of(&arg.name), *arg.typ.clone())
-                });
+                let xs = fmap(&handle.branch_body.args, |arg| self.new_local_from_existing(arg));
 
-                let k = self.new_local(handle.resume.definition_id, "k", *handle.resume.typ.clone());
+                let k = self.new_local(handle.resume.definition_id, "k", handle.resume.typ.as_ref().clone());
 
                 // TODO: Should this be one function with k as the last parameter?
                 Context::ct_lambda(xs, {

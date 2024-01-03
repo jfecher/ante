@@ -10,7 +10,7 @@ use crate::hir::Ast;
 pub struct AstPrinter {
     indent_level: u32,
     already_printed: HashSet<DefinitionId>,
-    pub queue: VecDeque<Rc<Ast>>,
+    pub queue: VecDeque<Rc<RefCell<Option<Ast>>>>,
 }
 
 impl AstPrinter {
@@ -18,8 +18,11 @@ impl AstPrinter {
         ast.fmt_ast(self, f)?;
 
         while let Some(ast) = self.queue.pop_front() {
-            write!(f, "\n\n")?;
-            ast.fmt_ast(self, f)?;
+            let ast = ast.borrow();
+            if let Some(ast) = ast.as_ref() {
+                write!(f, "\n\n")?;
+                ast.fmt_ast(self, f)?;
+            }
         }
 
         Ok(())
@@ -117,8 +120,10 @@ impl FmtAst for Variable {
     fn fmt_ast(&self, printer: &mut AstPrinter, f: &mut Formatter) -> fmt::Result {
         if !printer.already_printed.contains(&self.definition_id) {
             if let Some(def) = self.definition.clone() {
-                printer.already_printed.insert(self.definition_id);
-                printer.queue.push_back(def);
+                if def.borrow().is_some() {
+                    printer.already_printed.insert(self.definition_id);
+                    printer.queue.push_back(def);
+                }
             }
         }
 

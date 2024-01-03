@@ -992,7 +992,7 @@ impl<'c> Context<'c> {
         let (definition, definition_id) = self.fresh_definition(definition_rhs, name.clone(), typ.as_ref().clone());
         hir::DefinitionInfo { 
             definition_id, 
-            definition: Some(Rc::new(RefCell::new(definition))), 
+            definition: Some(Rc::new(RefCell::new(Some(definition)))), 
             name,
             typ
         }
@@ -1029,7 +1029,7 @@ impl<'c> Context<'c> {
             hir::Ast::Sequence(hir::Sequence { statements: nested_definitions })
         };
 
-        let definition = Some(Rc::new(RefCell::new(definition)));
+        let definition = Some(Rc::new(RefCell::new(Some(definition))));
         let typ = Rc::new(self.convert_type(&hir_type));
         Definition::Normal(hir::Variable {
             definition_id, 
@@ -1713,11 +1713,11 @@ impl<'c> Context<'c> {
                         hir::Ast::Variable(variable) => {
                             let definition = variable.definition.as_ref().unwrap().borrow();
                             match &*definition {
-                                hir::Ast::Definition(definition) => match definition.expr.as_ref() {
+                                Some(hir::Ast::Definition(definition)) => match definition.expr.as_ref() {
                                     hir::Ast::Effect(effect) => effect.clone(),
                                     other => unreachable!("Unexpected effect definition expr: {}", other),
                                 }
-                                other => unreachable!("Unexpected effect definition: {}", other),
+                                other => unreachable!("Unexpected effect definition: {:?}", other),
                             }
                         },
                         other => unreachable!("Unexpected monomorphise result for effect function: {}", other),
@@ -1816,7 +1816,7 @@ impl<'c> Context<'c> {
 
             let expr = Box::new(effect);
             let definition = hir::Ast::Definition(hir::Definition { variable: id, expr, name: name.clone(), typ: typ.clone() });
-            let definition = Some(Rc::new(RefCell::new(definition)));
+            let definition = Some(Rc::new(RefCell::new(Some(definition))));
             let definition = hir::DefinitionInfo { definition_id: id, definition, name, typ: Rc::new(typ) };
 
             let definition = Definition::Normal(definition);

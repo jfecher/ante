@@ -27,7 +27,7 @@ pub struct Context {
     global_definitions: Definitions,
     pub(super) local_definitions: HashMap<hir::DefinitionId, Variable>,
 
-    pub(super) definition_queue: VecDeque<(Rc<RefCell<Ast>>, Rc<RefCell<Ast>>, EffectStack)>,
+    pub(super) definition_queue: VecDeque<(Rc<RefCell<Option<Ast>>>, Rc<RefCell<Option<Ast>>>, EffectStack)>,
 
     /// The name of any lambda when we need to make one up.
     /// This is stored here so that we can increment a Rc instead of allocating a new
@@ -100,8 +100,8 @@ impl Context {
         Self::lambda(args, Self::placeholder_function_type(), body)
     }
 
-    /// Create a new local but do not introduce it into `self.local_definitions`
-    pub fn anonymous_local(&mut self, name: impl Into<String>, typ: Type) -> Variable {
+    /// Create a new variable but do not introduce it into `self.local_definitions`
+    pub fn anonymous_variable(&mut self, name: impl Into<String>, typ: Type) -> Variable {
         let definition_id = self.next_id();
         let typ = Rc::new(typ);
         let name = Some(name.into());
@@ -110,35 +110,38 @@ impl Context {
 
     /// Create a new local and introduce it into `self.local_definitions`
     pub fn new_local(&mut self, id: DefinitionId, name: impl Into<String>, typ: Type) -> Variable {
-        let local = self.anonymous_local(name, typ);
+        let local = self.anonymous_variable(name, typ);
         self.insert_local_definition(id, local.clone());
         local
     }
 
+    /// Create a new local a new local from an existing one and introduce it into `self.local_definitions`
+    pub fn new_local_from_existing(&mut self, variable: &Variable) -> Variable {
+        let definition_id = self.next_id();
+        let typ = variable.typ.clone();
+        let name = variable.name.clone();
+        let local = Variable { definition: None, definition_id, typ, name };
+
+        self.insert_local_definition(variable.definition_id, local.clone());
+        local
+    }
+
     pub fn add_global_to_queue(&mut self, variable: hir::Variable, effects: EffectStack) -> Variable {
-        let name = match &variable.name {
-            Some(name) => Rc::new(name.to_owned()),
-            None => self.lambda_name.clone(),
-        };
+        let definition_id = self.next_id();
+        let typ = variable.typ.clone();
+        let name = variable.name.clone();
 
-        let argument_types = match self.convert_type(&variable.typ) {
-            Type::Function(argument_types, ..) => argument_types,
-            other => unreachable!("add_global_to_queue: Expected function type for global, found {} id {}: {}", variable, variable.definition_id, other),
-        };
+        let new_definition = Rc::new(RefCell::new(None));
+        let new_variable = Variable { definition: Some(new_definition.clone()), definition_id, typ, name };
 
-        let next_id = self.next_function_id(name);
-        let atom = Expr::Function(next_id.clone());
+        self.insert_global_definition(variable.definition_id, new_variable.clone(), effects.clone());
 
-        self.insert_global_definition(variable.definition_id, atom.clone(), effects.clone());
-
-        let definition = variable.definition.clone().unwrap_or_else(|| {
+        let old_variable = variable.definition.clone().unwrap_or_else(|| {
             panic!("No definition for global '{}'", variable)
         });
-        self.definition_queue.push_back((next_id.clone(), definition, effects));
 
-        let function = Function::empty(next_id.clone(), argument_types);
-        self.mir.functions.insert(next_id, function);
-        atom
+        self.definition_queue.push_back((old_variable, new_definition, effects));
+        new_variable
     }
 
     /// Converts a Hir Type to a Mir Type
@@ -164,9 +167,15 @@ impl Context {
     ///
     /// TODO: Need to differentiate handler types from non-handler types
     pub fn convert_function_type(&mut self, typ: &hir::FunctionType) -> Type {
-        let params = fmap(&typ.parameters, |param| self.convert_type(param));
-        let result = self.convert_capability_type(&typ.return_type, &typ.effects, false);
-        Type::function(params, result, false)
+        let parameters = fmap(&typ.parameters, |param| self.convert_type(param));
+        let return_type = self.convert_capability_type(&typ.return_type, &typ.effects, false);
+
+        Type::Function(hir::FunctionType {
+            parameters,
+            return_type: Box::new(return_type),
+            effects: Vec::new(),
+            is_varargs: typ.is_varargs,
+        })
     }
 
     /// From "Translation of Types" https://se.cs.uni-tuebingen.de/publications/schuster19zero.pdf
@@ -181,9 +190,21 @@ impl Context {
         } else {
             let (last, rest) = effects.split_last().unwrap();
             let head = vec![self.convert_type(typ)];
-            let result = Some(Box::new(self.convert_capability_type(&last.typ, rest, compile_time)));
-            let inner_function = Type::Function(head, result.clone(), compile_time);
-            Type::Function(vec![inner_function], result, compile_time)
+            let return_type = Box::new(self.convert_capability_type(&last.typ, rest, compile_time));
+
+            let inner_function = Type::Function(hir::FunctionType {
+                parameters: head,
+                return_type: return_type.clone(),
+                effects: Vec::new(),
+                is_varargs: false,
+            });
+
+            Type::Function(hir::FunctionType {
+                parameters: vec![inner_function],
+                return_type,
+                effects: Vec::new(),
+                is_varargs: false,
+            })
         }
     }
 
@@ -192,22 +213,27 @@ impl Context {
     /// Reify(ts) : C(t, ts, true) -> C(t, ts, false) 
     /// Reify([], s) = s
     /// Reify([ts.., t], s) = fn k -> Reify(ts, s @@ (fn x => Reflect(ts, k @ x)))
-    pub fn reify(&mut self, effects: &[Effect], s: Expr) -> Expr {
+    pub fn reify(&mut self, effects: &[Effect], s: Ast) -> Ast {
         match effects.split_last() {
             None => s,
-            Some(((_, t), ts)) => {
+            Some(((_, _t), ts)) => {
                 // What is the type of `k` here?
-                let k_type = Type::rt_function(Type::unit(), t.clone());
+                let k_type = Context::placeholder_function_type();
+                let k = self.anonymous_variable("reify_k", Type::Function(k_type.clone()));
 
-                self.intermediate_function("reify", k_type, false, |this, k| {
-                    let x_type = Type::unit();
-                    let reify_inner = this.intermediate_function("reify_inner", x_type, true, |this, x| {
-                        let inner_call = Expr::rt_call1(k, x);
-                        this.reflect(ts, inner_call)
+                let lambda_type = Context::placeholder_function_type();
+
+                Context::lambda(vec![k.clone()], lambda_type, {
+                    // What is the type of 'x' here?
+                    let x = self.anonymous_variable("reify_x", Type::unit());
+
+                    let reify_inner = Context::ct_lambda(vec![x.clone()], {
+                        let inner_call = Ast::rt_call1(Ast::Variable(k), Ast::Variable(x), k_type);
+                        self.reflect(ts, inner_call)
                     });
 
-                    let call = Expr::ct_call1(s, reify_inner);
-                    this.reify(ts, call)
+                    let call = Ast::ct_call1(s, reify_inner);
+                    self.reify(ts, call)
                 })
             },
         }
@@ -218,22 +244,25 @@ impl Context {
     /// Reflect(ts) : C(t, ts, false) -> C(t, ts, true) 
     /// Reflect([], s) = s
     /// Reflect([ts.., t], s) = fn k => Reflect(ts, s @ (fn x -> Reify(ts, k @@ x)))
-    pub fn reflect(&mut self, effects: &[Effect], s: Expr) -> Expr {
+    pub fn reflect(&mut self, effects: &[Effect], s: Ast) -> Ast {
         match effects.split_last() {
             None => s,
-            Some(((_, t), ts)) => {
+            Some(((_, _t), ts)) => {
                 // What is the type of `k` here?
-                let k_type = Type::ct_function(Type::unit(), t.clone());
+                let k_type = Context::placeholder_function_type();
+                let k = self.anonymous_variable("reflect_k", Type::Function(k_type.clone()));
 
-                self.intermediate_function("reflect", k_type, true, |this, k| {
-                    let x_type = Type::unit();
-                    let reflect_inner = this.intermediate_function("reflect_inner", x_type, false, |this, x| {
-                        let inner_call = Expr::ct_call1(k, x);
-                        this.reify(ts, inner_call)
+                Context::ct_lambda(vec![k.clone()], {
+                    let x = self.anonymous_variable("reflect_x", Type::unit());
+                    let lambda_type = Context::placeholder_function_type();
+
+                    let reflect_inner = Context::lambda(vec![x.clone()], lambda_type.clone(), {
+                        let inner_call = Ast::ct_call1(Ast::Variable(k), Ast::Variable(x));
+                        self.reify(ts, inner_call)
                     });
 
-                    let call = Expr::rt_call1(s, reflect_inner);
-                    this.reflect(ts, call)
+                    let call = Ast::rt_call1(s, reflect_inner, lambda_type);
+                    self.reflect(ts, call)
                 })
             },
         }

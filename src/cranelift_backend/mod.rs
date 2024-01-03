@@ -71,7 +71,14 @@ impl CodeGen for hir::Variable {
             Some(definition) => definition.clone(),
             None => {
                 match self.definition.as_ref() {
-                    Some(ast) => ast.codegen(context, builder),
+                    Some(ast) => {
+                        todo!("Resolve cranelift lifetime issues")
+                        // let ast = ast.borrow();
+                        // match &*ast {
+                        //     Some(ast) => ast.codegen(context, builder),
+                        //     None => unreachable!("Definition for {} not yet compiled", self.definition_id),
+                        // }
+                    }
                     None => unreachable!("Definition for {} not yet compiled", self.definition_id),
                 };
                 context.definitions[&self.definition_id].clone()
