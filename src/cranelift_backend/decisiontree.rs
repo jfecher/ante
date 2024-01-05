@@ -11,8 +11,8 @@ use super::{
     CodeGen,
 };
 
-impl<'ast> Context<'ast> {
-    pub fn codegen_match(&mut self, match_: &'ast hir::Match, builder: &mut FunctionBuilder) -> Value {
+impl Context {
+    pub fn codegen_match(&mut self, match_: &hir::Match, builder: &mut FunctionBuilder) -> Value {
         let branches = fmap(&match_.branches, |_| builder.create_block());
         let end_block = self.new_block_with_arg(&match_.result_type, builder);
 
@@ -31,7 +31,7 @@ impl<'ast> Context<'ast> {
         self.array_to_value(end_values, &match_.result_type)
     }
 
-    fn codegen_subtree(&mut self, tree: &'ast hir::DecisionTree, branches: &[Block], builder: &mut FunctionBuilder) {
+    fn codegen_subtree(&mut self, tree: &hir::DecisionTree, branches: &[Block], builder: &mut FunctionBuilder) {
         match tree {
             hir::DecisionTree::Leaf(n) => {
                 builder.ins().jump(branches[*n], &[]);
@@ -48,8 +48,8 @@ impl<'ast> Context<'ast> {
     }
 
     fn build_switch(
-        &mut self, int_to_switch_on: CraneliftValue, cases: &'ast [(u32, hir::DecisionTree)],
-        else_case: &'ast Option<Box<hir::DecisionTree>>, branches: &[Block], builder: &mut FunctionBuilder,
+        &mut self, int_to_switch_on: CraneliftValue, cases: &[(u32, hir::DecisionTree)],
+        else_case: &Option<Box<hir::DecisionTree>>, branches: &[Block], builder: &mut FunctionBuilder,
     ) {
         let mut cases = fmap(cases, |(tag, subtree)| {
             let new_block = builder.create_block();
@@ -67,8 +67,8 @@ impl<'ast> Context<'ast> {
     }
 
     fn codegen_cases(
-        &mut self, else_block: Block, else_case: &'ast Option<Box<hir::DecisionTree>>,
-        cases: Vec<(i64, Block, &'ast hir::DecisionTree)>, branches: &[Block], builder: &mut FunctionBuilder,
+        &mut self, else_block: Block, else_case: &Option<Box<hir::DecisionTree>>,
+        cases: Vec<(i64, Block, &hir::DecisionTree)>, branches: &[Block], builder: &mut FunctionBuilder,
     ) {
         builder.switch_to_block(else_block);
         if let Some(subtree) = else_case {

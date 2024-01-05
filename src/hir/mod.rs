@@ -84,6 +84,11 @@ pub struct Lambda {
     pub args: Vec<Variable>,
     pub body: Box<Ast>,
     pub typ: FunctionType,
+
+    /// True if this lambda should be evaluated at compile-time.
+    /// This is used to create static lambdas and static calls for specializing
+    /// effect handlers at compile-time.
+    pub compile_time: bool,
 }
 
 /// foo a b c
@@ -92,6 +97,11 @@ pub struct FunctionCall {
     pub function: Box<Ast>,
     pub args: Vec<Ast>,
     pub function_type: FunctionType,
+
+    /// True if this function call should be evaluated at compile-time.
+    /// This is used to create static lambdas and static calls for specializing
+    /// effect handlers at compile-time.
+    pub compile_time: bool,
 }
 
 /// Unlike ast::Definition, hir::Definition
@@ -297,7 +307,7 @@ pub enum Builtin {
 pub enum Ast {
     Literal(Literal),
     Variable(Variable),
-    Lambda(Lambda),
+    Lambda(Rc<Lambda>),
     FunctionCall(FunctionCall),
     Definition(Definition),
     If(If),
@@ -332,6 +342,7 @@ impl Ast {
             function: Box::new(function),
             args,
             function_type,
+            compile_time: false,
         })
     }
 
@@ -341,6 +352,7 @@ impl Ast {
             function: Box::new(function),
             args: vec![arg],
             function_type,
+            compile_time: false,
         })
     }
 
@@ -350,6 +362,7 @@ impl Ast {
         Ast::FunctionCall(FunctionCall {
             function: Box::new(function),
             args: vec![arg],
+            compile_time: true,
             function_type: FunctionType {
                 parameters: Vec::new(),
                 return_type: Box::new(Type::unit()),

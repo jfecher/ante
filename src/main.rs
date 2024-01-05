@@ -165,7 +165,7 @@ fn compile(args: Cli) {
         println!("{hir}");
     }
 
-    hir.evaluate_static_calls();
+    hir = hir.evaluate_static_calls();
 
     if matches!(args.emit, Some(EmitTarget::HirFinal)) {
         println!("{hir}");

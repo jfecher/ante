@@ -1124,7 +1124,8 @@ impl<'c> Context<'c> {
                     },
                 };
 
-                hir::Ast::Lambda(hir::Lambda { args, body: Box::new(body), typ: function_type })
+                let body = Box::new(body);
+                hir::Ast::Lambda(Rc::new(hir::Lambda { args, body, typ: function_type, compile_time: false }))
             },
             // Since this is not a function type, we know it has no bundled data and we can
             // thus ignore the additional type arguments, extract the tag value, and
@@ -1243,7 +1244,7 @@ impl<'c> Context<'c> {
             hir::Ast::Sequence(hir::Sequence { statements: body_prelude })
         });
 
-        let mut function = hir::Ast::Lambda(hir::Lambda { args, body, typ });
+        let mut function = hir::Ast::Lambda(Rc::new(hir::Lambda { args, body, typ, compile_time: false }));
 
         if !lambda.closure_environment.is_empty() {
             function = self.pack_closure_environment(function, &lambda.closure_environment);
@@ -1502,13 +1503,13 @@ impl<'c> Context<'c> {
                         hir::Ast::Sequence(hir::Sequence {
                             statements: vec![
                                 function_definition,
-                                hir::Ast::FunctionCall(hir::FunctionCall { function, args, function_type }),
+                                hir::Ast::FunctionCall(hir::FunctionCall { function, args, function_type, compile_time: false }),
                             ],
                         })
                     },
                     Type::Function(function_type) => {
                         let function = Box::new(function);
-                        hir::Ast::FunctionCall(hir::FunctionCall { function, args, function_type })
+                        hir::Ast::FunctionCall(hir::FunctionCall { function, args, function_type, compile_time: false })
                     },
                     _ => unreachable!(),
                 }
@@ -1775,7 +1776,7 @@ impl<'c> Context<'c> {
                 expression: Box::new(expr),
                 effect,
                 resume: resume_var,
-                branch_body: hir::Lambda { args, body, typ: branch_type },
+                branch_body: hir::Lambda { args, body, typ: branch_type, compile_time: false },
                 result_type: self.convert_type(handle.typ.as_ref().unwrap()),
             })
         };

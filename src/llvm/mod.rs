@@ -38,6 +38,7 @@ use inkwell::OptimizationLevel;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::rc::Rc;
 
 mod builtin;
 mod decisiontree;
@@ -518,7 +519,7 @@ impl<'g> CodeGen<'g> for hir::Variable {
     }
 }
 
-impl<'g> CodeGen<'g> for hir::Lambda {
+impl<'g> CodeGen<'g> for Rc<hir::Lambda> {
     fn codegen(&self, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
         let caller_block = generator.current_block();
         let name = generator.current_definition_name.take().unwrap_or_else(|| "lambda".into());

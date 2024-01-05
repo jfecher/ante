@@ -7,8 +7,8 @@ use crate::hir::{Ast, Builtin};
 use super::context::{int_pointer_type, pointer_type};
 use super::{CodeGen, Context, Value};
 
-pub fn call_builtin<'ast>(builtin: &'ast Builtin, context: &mut Context<'ast>, builder: &mut FunctionBuilder) -> Value {
-    let mut value = |ast: &'ast Ast| ast.eval_single(context, builder);
+pub fn call_builtin(builtin: &Builtin, context: &mut Context, builder: &mut FunctionBuilder) -> Value {
+    let mut value = |ast: &Ast| ast.eval_single(context, builder);
 
     let result = match builtin {
         Builtin::AddInt(a, b) => add_int(value(a), value(b), builder),
@@ -140,8 +140,8 @@ fn eq_bool(param1: CraneliftValue, param2: CraneliftValue, builder: &mut Functio
     b1_to_i8(builder.ins().icmp(IntCC::Equal, param1, param2), builder)
 }
 
-fn transmute<'a>(
-    context: &mut Context<'a>, param: &'a Ast, typ: &crate::hir::Type, builder: &mut FunctionBuilder,
+fn transmute(
+    context: &mut Context, param: &Ast, typ: &crate::hir::Type, builder: &mut FunctionBuilder,
 ) -> Value {
     let value = param.codegen(context, builder);
     context.transmute(value, typ, builder)
@@ -250,12 +250,12 @@ fn truncate(param1: CraneliftValue, builder: &mut FunctionBuilder) -> CraneliftV
     }
 }
 
-fn deref<'a>(context: &mut Context<'a>, typ: &crate::hir::Type, addr: &'a Ast, builder: &mut FunctionBuilder) -> Value {
+fn deref(context: &mut Context, typ: &crate::hir::Type, addr: &Ast, builder: &mut FunctionBuilder) -> Value {
     let addr = addr.eval_single(context, builder);
     context.load_value(typ, addr, &mut 0, builder)
 }
 
-fn stack_alloc<'a>(param1: &'a Ast, context: &mut Context<'a>, builder: &mut FunctionBuilder) -> CraneliftValue {
+fn stack_alloc(param1: &Ast, context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
     let values = param1.eval_all(context, builder);
 
     let size = values.iter().map(|value| builder.func.dfg.value_type(*value).bytes()).sum();

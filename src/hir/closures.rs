@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use crate::hir::{self, Ast};
 use crate::parser::ast;
 use crate::util::fmap;
@@ -73,9 +75,12 @@ fn replace_env(expr: Ast, env: &Ast, definition_id: hir::DefinitionId, f: &hir::
         Ast::Variable(_) => expr,
         Ast::Extern(_) => expr,
         Ast::Effect(_) => expr,
-        Ast::Lambda(mut lambda) => {
+        Ast::Lambda(lambda) => {
+            // Try to unwrap the Rc if there is 1 reference (currently guaranteed from the
+            // monomorphisation pass), otherwise we have to clone the entire lambda.
+            let mut lambda = Rc::try_unwrap(lambda).unwrap_or_else(|rc| rc.as_ref().clone());
             *lambda.body = replace_env(*lambda.body, env, definition_id, f);
-            Ast::Lambda(lambda)
+            Ast::Lambda(Rc::new(lambda))
         },
         Ast::FunctionCall(mut call) => {
             *call.function = replace_env(*call.function, env, definition_id, f);

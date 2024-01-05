@@ -70,7 +70,7 @@ impl Context {
         self.local_definitions.insert(id, value);
     }
 
-    fn next_id(&mut self) -> DefinitionId {
+    pub fn next_id(&mut self) -> DefinitionId {
         let id = self.next_id;
         self.next_id += 1;
         DefinitionId(id)
@@ -86,7 +86,7 @@ impl Context {
     }
 
     pub fn lambda(args: Vec<Variable>, typ: FunctionType, body: Ast) -> Ast {
-        Ast::Lambda(hir::Lambda { args, body: Box::new(body), typ })
+        Ast::Lambda(Rc::new(hir::Lambda { args, body: Box::new(body), typ, compile_time: false }))
     }
 
     /// Convenience function for getting the name of a definition which may not have one
@@ -97,7 +97,8 @@ impl Context {
     /// A lambda to be evaluated at compile time.
     /// Currently these all have placeholder types.
     pub fn ct_lambda(args: Vec<Variable>, body: Ast) -> Ast {
-        Self::lambda(args, Self::placeholder_function_type(), body)
+        let typ = Self::placeholder_function_type();
+        Ast::Lambda(Rc::new(hir::Lambda { args, body: Box::new(body), typ, compile_time: true }))
     }
 
     /// Create a new variable but do not introduce it into `self.local_definitions`

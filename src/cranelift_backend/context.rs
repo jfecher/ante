@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::path::Path;
+use std::rc::Rc;
 
 use crate::cli::{Cli, EmitTarget};
 use crate::hir::{self, Ast, DefinitionId, PrimitiveType, Type};
@@ -20,13 +21,13 @@ use super::module::DynModule;
 use super::CodeGen;
 
 // TODO: Make this a threadsafe queue so we can compile functions in parallel
-type FunctionQueue<'ast> = Vec<(&'ast hir::Lambda, Signature, FuncId)>;
+type FunctionQueue = Vec<(Rc<hir::Lambda>, Signature, FuncId)>;
 
-pub struct Context<'ast> {
+pub struct Context {
     pub definitions: HashMap<DefinitionId, Value>,
     module: DynModule,
     data_context: DataContext,
-    function_queue: FunctionQueue<'ast>,
+    function_queue: FunctionQueue,
 
     pub current_function_name: Option<DefinitionId>,
     next_func_id: u32,
@@ -122,7 +123,7 @@ enum FunctionOrGlobal {
     Global,
 }
 
-impl<'local> Context<'local> {
+impl Context {
     fn new(output_path: &Path, use_jit: bool) -> (Self, FunctionBuilderContext) {
         let builder_context = FunctionBuilderContext::new();
         let module = DynModule::new(output_path.to_string_lossy().into_owned(), use_jit);
@@ -140,7 +141,7 @@ impl<'local> Context<'local> {
         )
     }
 
-    pub fn codegen_all(path: &Path, hir: &'local Ast, args: &Cli) {
+    pub fn codegen_all(path: &Path, hir: &Ast, args: &Cli) {
         let output_path = path.with_extension("o");
         let (mut context, mut builder_context) = Context::new(&output_path, !args.build);
         let mut module_context = context.module.make_context();
@@ -149,7 +150,7 @@ impl<'local> Context<'local> {
 
         // Then codegen any functions used by main and so forth
         while let Some((function, signature, id)) = context.function_queue.pop() {
-            context.codegen_function_body(function, &mut builder_context, &mut module_context, signature, id, args);
+            context.codegen_function_body(&function, &mut builder_context, &mut module_context, signature, id, args);
         }
 
         context.module.finish();
@@ -165,7 +166,7 @@ impl<'local> Context<'local> {
     /// Should this be renamed since it delegates to codegen_function_inner to
     /// compile the actual body of the function?
     fn codegen_function_body(
-        &mut self, function: &'local hir::Lambda, context: &mut FunctionBuilderContext,
+        &mut self, function: &hir::Lambda, context: &mut FunctionBuilderContext,
         module_context: &mut cranelift::codegen::Context, signature: Signature, function_id: FuncId, args: &Cli,
     ) {
         module_context.func = Function::with_name_signature(ExternalName::user(0, function_id.as_u32()), signature);
@@ -207,7 +208,7 @@ impl<'local> Context<'local> {
     }
 
     fn codegen_main(
-        &mut self, ast: &'local Ast, builder_context: &mut FunctionBuilderContext,
+        &mut self, ast: &Ast, builder_context: &mut FunctionBuilderContext,
         module_context: &mut cranelift::codegen::Context, args: &Cli,
     ) -> FuncId {
         let func = &mut module_context.func;
@@ -246,7 +247,7 @@ impl<'local> Context<'local> {
         main_id
     }
 
-    fn codegen_lambda(&mut self, lambda: &'local hir::Lambda, builder: &mut FunctionBuilder) -> Value {
+    fn codegen_lambda(&mut self, lambda: &hir::Lambda, builder: &mut FunctionBuilder) -> Value {
         let block = builder.current_block().unwrap();
         let mut i = 0;
         let all_parameters = builder.block_params(block);
@@ -268,7 +269,7 @@ impl<'local> Context<'local> {
     /// Where `codegen_function_body` creates a new function in the IR and codegens
     /// its body, this function essentially codegens the reference to a function at
     /// the callsite.
-    pub fn codegen_function_use(&mut self, ast: &'local hir::Ast, builder: &mut FunctionBuilder) -> FunctionValue {
+    pub fn codegen_function_use(&mut self, ast: &hir::Ast, builder: &mut FunctionBuilder) -> FunctionValue {
         let value = ast.codegen(self, builder);
 
         // If we have a direct call we can return early. Otherwise we need to check the expected
@@ -359,7 +360,7 @@ impl<'local> Context<'local> {
         builder.ins().return_(&values);
     }
 
-    pub fn add_function_to_queue(&mut self, function: &'local hir::Lambda, name: &str) -> Value {
+    pub fn add_function_to_queue(&mut self, function: Rc<hir::Lambda>, name: &str) -> Value {
         let signature = self.convert_signature(&function.typ);
 
         let name = format!("lambda{}", name);
@@ -528,7 +529,7 @@ impl<'local> Context<'local> {
     }
 
     pub fn eval_all_in_block(
-        &mut self, ast: &'local impl CodeGen, block: Block, builder: &mut FunctionBuilder,
+        &mut self, ast: &impl CodeGen, block: Block, builder: &mut FunctionBuilder,
     ) -> Option<Vec<CraneliftValue>> {
         builder.switch_to_block(block);
         let value = ast.codegen(self, builder);

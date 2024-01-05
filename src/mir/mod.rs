@@ -36,16 +36,17 @@
 //!     `C[t]_ts` will translate to `C(t, ts, true)`
 //!
 //!   Unless the term falls into one of the above cases, it is considered to be a runtime term.
+use std::rc::Rc;
+
 use self::context::{Context, EffectStack};
-use crate::hir::{DecisionTree, Type};
+use crate::hir::{DecisionTree, Type, Variable};
 use crate::{hir::{self, Ast}, util::fmap};
 
-pub mod ir;
 mod context;
-mod printer;
-mod convert_to_hir;
 mod evaluate;
-mod optimizations;
+// mod printer;
+// mod convert_to_hir;
+// mod optimizations;
 
 pub fn convert_to_mir(hir: Ast, next_id: usize) -> Ast {
     let mut context = Context::new(next_id);
@@ -404,19 +405,28 @@ impl Context {
     /// so cps_let_binding_pure recurs on its arguments but otherwise returns
     /// the same structure.
     fn cps_let_binding_pure(&mut self, let_binding: LetBinding) -> Ast {
-        let expr = Box::new(self.cps_statement(*let_binding.rhs, &Vec::new()));
+        let expr = self.cps_statement(*let_binding.rhs, &Vec::new());
 
-        let (name, variable, typ) = match let_binding.variable {
+        let definition = match let_binding.variable {
             // In a pure context, the result type is the same as the source type
-            Some((id, typ)) => (Some(let_binding.name), id, typ.clone()),
-            None => todo!("Fresh variable"),
+            Some((old_id, typ)) => {
+                let name = Some(let_binding.name);
+                let typ = typ.clone();
+                let expr = Box::new(expr);
+                let variable = self.next_id();
+                self.insert_local_definition(old_id, Variable {
+                    definition: None,
+                    definition_id: variable,
+                    typ: Rc::new(typ.clone()),
+                    name: name.clone(),
+                });
+                Ast::Definition(hir::Definition { variable, name, expr, typ })
+            },
+            // If the definition has no id, we just need to execute the statement for its side-effects.
+            None => expr,
         };
 
-        // TODO: introduce variable into scope?
-
-        let definition = Ast::Definition(hir::Definition { variable, name, expr, typ });
         let body = self.cps_statement(*let_binding.body, &Vec::new());
-
         Ast::Sequence(hir::Sequence { statements: vec![definition, body]})
     }
 
@@ -453,15 +463,10 @@ impl Context {
     }
 
     fn cps_assign(&mut self, assign: &hir::Assignment, effects: &EffectStack) -> Ast {
-        todo!("cps_assign")
-        // let lhs = assign.lhs.to_expr(self);
-        // let rhs = assign.rhs.to_expr(self);
+        let lhs = Box::new(self.cps_ast(&assign.lhs, effects));
+        let rhs = Box::new(self.cps_ast(&assign.rhs, effects));
 
-        // let unit = hir::Type::Primitive(hir::PrimitiveType::Unit);
-        // self.with_next_function(&unit, &[], |this, k| {
-        //     this.set_function_body(Ast::Assign, vec![lhs, rhs, k]);
-        //     Ast::Literal(Literal::Unit)
-        // })
+        Ast::Assignment(hir::Assignment { lhs, rhs })
     }
 
     fn cps_member_access(&mut self, access: &hir::MemberAccess, effects: &EffectStack) -> Ast {

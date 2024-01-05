@@ -38,13 +38,18 @@ impl AstPrinter {
     fn newline(&self, f: &mut Formatter) -> fmt::Result {
         writeln!(f)?;
         for _ in 0..self.indent_level {
-            write!(f, "    ")?;
+            write!(f, "  ")?;
         }
         Ok(())
     }
 
-    fn fmt_call(&mut self, func: impl FmtAst, args: &[impl FmtAst], f: &mut Formatter) -> fmt::Result {
-        write!(f, "(")?;
+    fn fmt_function_call(&mut self, func: impl FmtAst, args: &[impl FmtAst], compile_time: bool, f: &mut Formatter) -> fmt::Result {
+        if compile_time {
+            write!(f, "{{")?;
+        } else {
+            write!(f, "(")?;
+        }
+
         func.fmt_ast(self, f)?;
 
         for arg in args {
@@ -52,7 +57,15 @@ impl AstPrinter {
             arg.fmt_ast(self, f)?;
         }
 
-        write!(f, ")")
+        if compile_time {
+            write!(f, "}}")
+        } else {
+            write!(f, ")")
+        }
+    }
+
+    fn fmt_call(&mut self, func: impl FmtAst, args: &[impl FmtAst], f: &mut Formatter) -> fmt::Result {
+        self.fmt_function_call(func, args, false, f)
     }
 
     fn fmt_cast(&mut self, func: impl FmtAst, arg: impl FmtAst, typ: &Type, f: &mut Formatter) -> fmt::Result {
@@ -101,6 +114,12 @@ impl<'a> FmtAst for &'a Box<Ast> {
     }
 }
 
+impl<T> FmtAst for Rc<T> where T: FmtAst {
+    fn fmt_ast(&self, printer: &mut AstPrinter, f: &mut Formatter) -> fmt::Result {
+        self.as_ref().fmt_ast(printer, f)
+    }
+}
+
 impl FmtAst for Literal {
     fn fmt_ast(&self, _printer: &mut AstPrinter, f: &mut Formatter) -> fmt::Result {
         match self {
@@ -137,22 +156,36 @@ impl FmtAst for Variable {
 
 impl FmtAst for Lambda {
     fn fmt_ast(&self, printer: &mut AstPrinter, f: &mut Formatter) -> fmt::Result {
-        write!(f, "(fn")?;
+        let start = if self.compile_time { "\\" } else { "fn" };
+        write!(f, "({start}")?;
 
         for arg in &self.args {
             write!(f, " ")?;
             arg.fmt_ast(printer, f)?;
         }
 
-        write!(f, " : {} = ", self.typ)?;
-        printer.block(self.body.as_ref(), f)?;
+        if self.compile_time {
+            write!(f, " -> ")?;
+        } else {
+            write!(f, " : {} = ", self.typ)?;
+        }
+
+        match self.body.as_ref() {
+            Ast::Sequence(_) => printer.block(self.body.as_ref(), f)?,
+            other => {
+                printer.indent_level += 1;
+                printer.newline(f)?;
+                other.fmt_ast(printer, f)?;
+                printer.indent_level -= 1;
+            },
+        }
         write!(f, ")")
     }
 }
 
 impl FmtAst for FunctionCall {
     fn fmt_ast(&self, printer: &mut AstPrinter, f: &mut Formatter) -> fmt::Result {
-        printer.fmt_call(self.function.as_ref(), &self.args, f)
+        printer.fmt_function_call(self.function.as_ref(), &self.args, self.compile_time, f)
     }
 }
 

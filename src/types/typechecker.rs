@@ -1834,7 +1834,7 @@ impl<'a> Inferable<'a> for ast::TraitImpl<'a> {
         typevars_to_replace.append(&mut trait_info.fundeps.clone());
 
         // Need to replace all typevars here so we do not rebind over them.
-        // E.g. an impl for `Cmp a given Int a` could be accidentally bound to `Cmp usz`
+        // E.g. an impl for `Cmp a given Int a` could be accidentally bound to `Cmp Usz`
         // TODO: Is the above comment correct? replace_all_typevars causes `impl Print (HashMap a b)`
         //       in the stdlib to fail (the given list would need to use the same type bindings)
         //       and removing it still lets all tests pass, despite builtin_int.an
@@ -1847,9 +1847,6 @@ impl<'a> Inferable<'a> for ast::TraitImpl<'a> {
         // types against the types in this trait impl. This needs to be done once
         // at the trait level rather than at each definition so that each definition
         // refers to the same type variable instances/bindings.
-        //
-        // This is because only these bindings in trait_to_impl are unified against
-        // the types declared in self.typeargs
         let mut impl_bindings: HashMap<_, _> = typevars_to_replace.into_iter().zip(trait_arg_types).collect();
 
         for definition in self.definitions.iter_mut() {
