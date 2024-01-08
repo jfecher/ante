@@ -19,25 +19,27 @@
 //! `C(t, ts, false)`, and a call to (blue) `C[t]_ts` will translate to `C(t, ts, true)`
 //!
 //! Unless the term falls into one of the above cases, it is considered to be a runtime term.
-use std::{collections::{HashMap, VecDeque}, rc::Rc, cell::RefCell};
+use std::{collections::{HashMap, VecDeque}, rc::Rc};
 
-use crate::{hir::{self, Ast, Variable, Type, DefinitionId, FunctionType}, util::fmap};
+use crate::{hir::{self, Type, DefinitionId, FunctionType}, util::fmap};
+use crate::mir::ir::{ self as mir, Ast, Atom, Variable };
 
 pub struct Context {
     global_definitions: Definitions,
     pub(super) local_definitions: HashMap<hir::DefinitionId, Variable>,
 
-    pub(super) definition_queue: VecDeque<(Rc<RefCell<Option<Ast>>>, Rc<RefCell<Option<Ast>>>, EffectStack)>,
+    pub(super) definition_queue: VecDeque<(DefinitionId, DefinitionId, EffectStack)>,
 
     /// The name of any lambda when we need to make one up.
     /// This is stored here so that we can increment a Rc instead of allocating a new
     /// string for each variable named this way.
     pub(super) lambda_name: Rc<String>,
 
-    /// The next free ID unused by the existing Hir.
-    /// This is currently carried on from the monomorphization pass in case their are conflicts,
-    /// but since this pass will create an entirely new Hir, it could start from zero as well.
-    next_id: usize,
+    /// Default name to give to fresh variables
+    pub(super) default_name: Rc<String>,
+
+    /// The next free DefinitionId to create
+    pub(super) next_id: usize,
 }
 
 pub(super) type Definitions = HashMap<hir::DefinitionId, HashMap<EffectStack, Variable>>;
@@ -52,6 +54,7 @@ impl Context {
             local_definitions: HashMap::new(),
             definition_queue: VecDeque::new(),
             lambda_name: Rc::new("lambda".into()),
+            default_name: Rc::new("_".into()),
             next_id,
         }
     }
@@ -85,8 +88,8 @@ impl Context {
         }
     }
 
-    pub fn lambda(args: Vec<Variable>, typ: FunctionType, body: Ast) -> Ast {
-        Ast::Lambda(Rc::new(hir::Lambda { args, body: Box::new(body), typ, compile_time: false }))
+    pub fn lambda(args: Vec<Variable>, typ: FunctionType, body: Ast) -> Atom {
+        Atom::Lambda(mir::Lambda { args, body: Box::new(body), typ, compile_time: false })
     }
 
     /// Convenience function for getting the name of a definition which may not have one
@@ -96,17 +99,22 @@ impl Context {
 
     /// A lambda to be evaluated at compile time.
     /// Currently these all have placeholder types.
-    pub fn ct_lambda(args: Vec<Variable>, body: Ast) -> Ast {
+    pub fn ct_lambda(args: Vec<Variable>, body: Ast) -> Atom {
         let typ = Self::placeholder_function_type();
-        Ast::Lambda(Rc::new(hir::Lambda { args, body: Box::new(body), typ, compile_time: true }))
+        Atom::Lambda(mir::Lambda { args, body: Box::new(body), typ, compile_time: true })
     }
 
     /// Create a new variable but do not introduce it into `self.local_definitions`
     pub fn anonymous_variable(&mut self, name: impl Into<String>, typ: Type) -> Variable {
-        let definition_id = self.next_id();
         let typ = Rc::new(typ);
-        let name = Some(name.into());
-        Variable { definition: None, definition_id, typ, name }
+        let name = Rc::new(name.into());
+        self.fresh_existing_variable(name, typ)
+    }
+
+    /// Create a fresh variable with the same name and type as an existing variable,
+    /// and do not introduce it into `self.local_definitions`
+    pub fn fresh_existing_variable(&mut self, name: Rc<String>, typ: Rc<Type>) -> Variable {
+        Variable { definition_id: self.next_id(), typ, name }
     }
 
     /// Create a new local and introduce it into `self.local_definitions`
@@ -121,27 +129,22 @@ impl Context {
         let definition_id = self.next_id();
         let typ = variable.typ.clone();
         let name = variable.name.clone();
-        let local = Variable { definition: None, definition_id, typ, name };
+        let local = Variable { definition_id, typ, name };
 
         self.insert_local_definition(variable.definition_id, local.clone());
         local
     }
 
-    pub fn add_global_to_queue(&mut self, variable: hir::Variable, effects: EffectStack) -> Variable {
+    pub fn add_global_to_queue(&mut self, variable: Variable, effects: EffectStack) -> Variable {
         let definition_id = self.next_id();
         let typ = variable.typ.clone();
         let name = variable.name.clone();
 
-        let new_definition = Rc::new(RefCell::new(None));
-        let new_variable = Variable { definition: Some(new_definition.clone()), definition_id, typ, name };
+        let new_variable = Variable { definition_id, typ, name };
 
         self.insert_global_definition(variable.definition_id, new_variable.clone(), effects.clone());
 
-        let old_variable = variable.definition.clone().unwrap_or_else(|| {
-            panic!("No definition for global '{}'", variable)
-        });
-
-        self.definition_queue.push_back((old_variable, new_definition, effects));
+        self.definition_queue.push_back((variable.definition_id, definition_id, effects));
         new_variable
     }
 
@@ -209,12 +212,40 @@ impl Context {
         }
     }
 
+    pub fn let_binding(&mut self, typ: Type, ast: Ast, f: impl FnOnce(&mut Self, Atom) -> Ast) -> Ast {
+        match ast {
+            Ast::Atom(atom) => f(self, atom),
+            ast => {
+                let fresh_id = self.next_id();
+                let typ = Rc::new(typ);
+
+                let variable = Atom::Variable(Variable {
+                    definition_id: fresh_id,
+                    typ: typ.clone(),
+                    name: self.default_name.clone(),
+                });
+
+                Ast::Let(mir::Let {
+                    variable: fresh_id,
+                    name: self.default_name.clone(),
+                    expr: Box::new(ast),
+                    body: Box::new(f(self, variable)),
+                    typ,
+                })
+            }
+        }
+    }
+
+    pub fn let_binding_atom(&mut self, typ: Type, ast: Ast, f: impl FnOnce(&mut Self, Atom) -> Atom) -> Ast {
+        self.let_binding(typ, ast, move |this, atom| Ast::Atom(f(this, atom)))
+    }
+
     /// reify converts a compile-time (static) term to a runtime (residual) term.
     ///
     /// Reify(ts) : C(t, ts, true) -> C(t, ts, false) 
     /// Reify([], s) = s
     /// Reify([ts.., t], s) = fn k -> Reify(ts, s @@ (fn x => Reflect(ts, k @ x)))
-    pub fn reify(&mut self, effects: &[Effect], s: Ast) -> Ast {
+    pub fn reify(&mut self, effects: &[Effect], s: Atom) -> Atom {
         match effects.split_last() {
             None => s,
             Some(((_, _t), ts)) => {
@@ -229,12 +260,17 @@ impl Context {
                     let x = self.anonymous_variable("reify_x", Type::unit());
 
                     let reify_inner = Context::ct_lambda(vec![x.clone()], {
-                        let inner_call = Ast::rt_call1(Ast::Variable(k), Ast::Variable(x), k_type);
-                        self.reflect(ts, inner_call)
+                        let inner_call = Ast::rt_call1(Atom::Variable(k), Atom::Variable(x), k_type);
+                        // What type should `inner_call` have?
+                        self.let_binding_atom(Type::unit(), inner_call, |this, inner_call| {
+                            this.reflect(ts, inner_call)
+                        })
                     });
 
                     let call = Ast::ct_call1(s, reify_inner);
-                    self.reify(ts, call)
+                    self.let_binding_atom(Type::unit(), call, |this, call| {
+                        this.reify(ts, call)
+                    })
                 })
             },
         }
@@ -245,7 +281,7 @@ impl Context {
     /// Reflect(ts) : C(t, ts, false) -> C(t, ts, true) 
     /// Reflect([], s) = s
     /// Reflect([ts.., t], s) = fn k => Reflect(ts, s @ (fn x -> Reify(ts, k @@ x)))
-    pub fn reflect(&mut self, effects: &[Effect], s: Ast) -> Ast {
+    pub fn reflect(&mut self, effects: &[Effect], s: Atom) -> Atom {
         match effects.split_last() {
             None => s,
             Some(((_, _t), ts)) => {
@@ -258,12 +294,19 @@ impl Context {
                     let lambda_type = Context::placeholder_function_type();
 
                     let reflect_inner = Context::lambda(vec![x.clone()], lambda_type.clone(), {
-                        let inner_call = Ast::ct_call1(Ast::Variable(k), Ast::Variable(x));
-                        self.reify(ts, inner_call)
+                        let inner_call = Ast::ct_call1(Atom::Variable(k), Atom::Variable(x));
+
+                        // What type should `inner_call` have?
+                        self.let_binding_atom(Type::unit(), inner_call, |this, inner_call| {
+                            this.reify(ts, inner_call)
+                        })
                     });
 
                     let call = Ast::rt_call1(s, reflect_inner, lambda_type);
-                    self.reflect(ts, call)
+
+                    self.let_binding_atom(Type::unit(), call, |this, call| {
+                        this.reflect(ts, call)
+                    })
                 })
             },
         }

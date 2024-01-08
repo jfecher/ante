@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use crate::{lexer::token::FloatKind, util::fmap};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -148,5 +150,182 @@ impl std::fmt::Display for IntegerKind {
             IntegerKind::U64 => write!(f, "u64"),
             IntegerKind::Usz => write!(f, "usz"),
         }
+    }
+}
+
+pub trait Typed {
+    fn get_type(&self) -> Type;
+}
+
+impl Typed for super::Ast {
+    fn get_type(&self) -> Type {
+        crate::hir::dispatch_on_hir!(self, Typed::get_type)
+    }
+}
+
+impl Typed for super::Literal {
+    fn get_type(&self) -> Type {
+        match self {
+            super::Literal::Integer(_, kind) => kind.get_type(),
+            super::Literal::Float(_, kind) => kind.get_type(),
+            super::Literal::CString(_) => Type::Primitive(PrimitiveType::Pointer),
+            super::Literal::Char(_) => Type::Primitive(PrimitiveType::Char),
+            super::Literal::Bool(_) => Type::Primitive(PrimitiveType::Boolean),
+            super::Literal::Unit => Type::Primitive(PrimitiveType::Unit),
+        }
+    }
+}
+
+impl Typed for super::IntegerKind {
+    fn get_type(&self) -> Type {
+        Type::Primitive(PrimitiveType::Integer(*self))
+    }
+}
+
+impl Typed for super::FloatKind {
+    fn get_type(&self) -> Type {
+        Type::Primitive(PrimitiveType::Float(*self))
+    }
+}
+
+impl Typed for super::Variable {
+    fn get_type(&self) -> Type {
+        self.typ.as_ref().clone()
+    }
+}
+
+impl<T> Typed for Rc<T> where T: Typed {
+    fn get_type(&self) -> Type {
+        self.as_ref().get_type()
+    }
+}
+
+impl Typed for super::Lambda {
+    fn get_type(&self) -> Type {
+        Type::Function(self.typ.clone())
+    }
+}
+
+impl Typed for super::FunctionCall {
+    fn get_type(&self) -> Type {
+        self.function_type.return_type.as_ref().clone()
+    }
+}
+
+impl Typed for super::Definition {
+    fn get_type(&self) -> Type {
+        Type::Primitive(PrimitiveType::Unit)
+    }
+}
+
+impl Typed for super::If {
+    fn get_type(&self) -> Type {
+        self.result_type.clone()
+    }
+}
+
+impl Typed for super::Match {
+    fn get_type(&self) -> Type {
+        self.result_type.clone()
+    }
+}
+
+impl Typed for super::Return {
+    fn get_type(&self) -> Type {
+        self.typ.clone()
+    }
+}
+
+impl Typed for super::Sequence {
+    fn get_type(&self) -> Type {
+        match self.statements.last() {
+            Some(last) => last.get_type(),
+            None => Type::Primitive(PrimitiveType::Unit),
+        }
+    }
+}
+
+impl Typed for super::Extern {
+    fn get_type(&self) -> Type {
+        self.typ.clone()
+    }
+}
+
+impl Typed for super::Assignment {
+    fn get_type(&self) -> Type {
+        Type::Primitive(PrimitiveType::Unit)
+    }
+}
+
+impl Typed for super::MemberAccess {
+    fn get_type(&self) -> Type {
+        self.typ.clone()
+    }
+}
+
+impl Typed for super::Tuple {
+    fn get_type(&self) -> Type {
+        Type::Tuple(fmap(&self.fields, |field| field.get_type()))
+    }
+}
+
+impl Typed for super::ReinterpretCast {
+    fn get_type(&self) -> Type {
+        self.target_type.clone()
+    }
+}
+
+impl Typed for super::Builtin {
+    fn get_type(&self) -> Type {
+        match self {
+            super::Builtin::AddInt(lhs, _) => lhs.get_type(),
+            super::Builtin::AddFloat(lhs, _) => lhs.get_type(),
+            super::Builtin::SubInt(lhs, _) => lhs.get_type(),
+            super::Builtin::SubFloat(lhs, _) => lhs.get_type(),
+            super::Builtin::MulInt(lhs, _) => lhs.get_type(),
+            super::Builtin::MulFloat(lhs, _) => lhs.get_type(),
+            super::Builtin::DivSigned(lhs, _) => lhs.get_type(),
+            super::Builtin::DivUnsigned(lhs, _) => lhs.get_type(),
+            super::Builtin::DivFloat(lhs, _) => lhs.get_type(),
+            super::Builtin::ModSigned(lhs, _) => lhs.get_type(),
+            super::Builtin::ModUnsigned(lhs, _) => lhs.get_type(),
+            super::Builtin::ModFloat(lhs, _) => lhs.get_type(),
+            super::Builtin::LessSigned(lhs, _) => lhs.get_type(),
+            super::Builtin::LessUnsigned(lhs, _) => lhs.get_type(),
+            super::Builtin::LessFloat(lhs, _) => lhs.get_type(),
+            super::Builtin::EqInt(lhs, _) => lhs.get_type(),
+            super::Builtin::EqFloat(lhs, _) => lhs.get_type(),
+            super::Builtin::EqChar(lhs, _) => lhs.get_type(),
+            super::Builtin::EqBool(lhs, _) => lhs.get_type(),
+            super::Builtin::SignExtend(_, typ) => typ.clone(),
+            super::Builtin::ZeroExtend(_, typ) => typ.clone(),
+            super::Builtin::SignedToFloat(_, typ) => typ.clone(),
+            super::Builtin::UnsignedToFloat(_, typ) => typ.clone(),
+            super::Builtin::FloatToSigned(_, typ) => typ.clone(),
+            super::Builtin::FloatToUnsigned(_, typ) => typ.clone(),
+            super::Builtin::FloatPromote(_, typ) => typ.clone(),
+            super::Builtin::FloatDemote(_, typ) => typ.clone(),
+            super::Builtin::BitwiseAnd(lhs, _) => lhs.get_type(),
+            super::Builtin::BitwiseOr(lhs, _) => lhs.get_type(),
+            super::Builtin::BitwiseXor(lhs, _) => lhs.get_type(),
+            super::Builtin::BitwiseNot(lhs) => lhs.get_type(),
+            super::Builtin::Truncate(_, typ) => typ.clone(),
+            super::Builtin::Deref(_, typ) => typ.clone(),
+            super::Builtin::Offset(lhs, _, _) => lhs.get_type(),
+            super::Builtin::Transmute(_, typ) => typ.clone(),
+            super::Builtin::StackAlloc(_) => Type::Primitive(PrimitiveType::Pointer),
+        }
+    }
+}
+
+impl Typed for super::Effect {
+    fn get_type(&self) -> Type {
+        self.typ.clone()
+    }
+}
+
+impl Typed for super::Handle {
+    fn get_type(&self) -> Type {
+        self.result_type.clone()
     }
 }

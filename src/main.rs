@@ -152,40 +152,46 @@ fn compile(args: Cli) {
         return;
     }
 
-    let (mut hir, next_id) = hir::monomorphise(ast, cache);
+    let (hir, next_id) = hir::monomorphise(ast, cache);
     if args.emit == Some(EmitTarget::Hir) {
         println!("{}", hir);
         return;
     }
 
     // Phase 5: CPS Conversion
-    hir = mir::convert_to_mir(hir, next_id);
+    let mut mir = mir::convert_to_mir(hir, next_id);
 
-    if matches!(args.emit, Some(EmitTarget::HirCPS)) {
-        println!("{hir}");
+    if matches!(args.emit, Some(EmitTarget::Mir)) {
+        println!("{mir}");
     }
 
-    hir = hir.evaluate_static_calls();
+    mir = mir.convert_to_cps();
 
-    if matches!(args.emit, Some(EmitTarget::HirFinal)) {
-        println!("{hir}");
+    if matches!(args.emit, Some(EmitTarget::MirCPS)) {
+        println!("{mir}");
     }
 
-    // Phase 6: Codegen
-    let default_backend = if args.opt_level == '0' { Backend::Cranelift } else { Backend::Llvm };
-    let backend = args.backend.unwrap_or(default_backend);
+    // mir = mir.evaluate_static_calls();
 
-    match backend {
-        Backend::Cranelift => cranelift_backend::run(filename, hir, &args),
-        Backend::Llvm => {
-            if cfg!(feature = "llvm") {
-                #[cfg(feature = "llvm")]
-                llvm::run(filename, hir, &args);
-            } else {
-                eprintln!("The llvm backend is required for non-debug builds. Recompile ante with --features 'llvm' to enable optimized builds.");
-            }
-        },
-    }
+    // if matches!(args.emit, Some(EmitTarget::HirFinal)) {
+    //     println!("{hir}");
+    // }
+
+    // // Phase 6: Codegen
+    // let default_backend = if args.opt_level == '0' { Backend::Cranelift } else { Backend::Llvm };
+    // let backend = args.backend.unwrap_or(default_backend);
+
+    // match backend {
+    //     Backend::Cranelift => cranelift_backend::run(filename, hir, &args),
+    //     Backend::Llvm => {
+    //         if cfg!(feature = "llvm") {
+    //             #[cfg(feature = "llvm")]
+    //             llvm::run(filename, hir, &args);
+    //         } else {
+    //             eprintln!("The llvm backend is required for non-debug builds. Recompile ante with --features 'llvm' to enable optimized builds.");
+    //         }
+    //     },
+    // }
 
     // Print out the time each compiler pass took to complete if the --show-time flag was passed
     util::timing::show_timings();

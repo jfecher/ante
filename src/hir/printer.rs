@@ -10,7 +10,7 @@ use crate::hir::Ast;
 pub struct AstPrinter {
     indent_level: u32,
     already_printed: HashSet<DefinitionId>,
-    pub queue: VecDeque<Rc<RefCell<Option<Ast>>>>,
+    pub queue: VecDeque<Rc<Ast>>,
 }
 
 impl AstPrinter {
@@ -18,11 +18,8 @@ impl AstPrinter {
         ast.fmt_ast(self, f)?;
 
         while let Some(ast) = self.queue.pop_front() {
-            let ast = ast.borrow();
-            if let Some(ast) = ast.as_ref() {
-                write!(f, "\n\n")?;
-                ast.fmt_ast(self, f)?;
-            }
+            write!(f, "\n\n")?;
+            ast.fmt_ast(self, f)?;
         }
 
         Ok(())
@@ -43,13 +40,8 @@ impl AstPrinter {
         Ok(())
     }
 
-    fn fmt_function_call(&mut self, func: impl FmtAst, args: &[impl FmtAst], compile_time: bool, f: &mut Formatter) -> fmt::Result {
-        if compile_time {
-            write!(f, "{{")?;
-        } else {
-            write!(f, "(")?;
-        }
-
+    fn fmt_call(&mut self, func: impl FmtAst, args: &[impl FmtAst], f: &mut Formatter) -> fmt::Result {
+        write!(f, "(")?;
         func.fmt_ast(self, f)?;
 
         for arg in args {
@@ -57,15 +49,7 @@ impl AstPrinter {
             arg.fmt_ast(self, f)?;
         }
 
-        if compile_time {
-            write!(f, "}}")
-        } else {
-            write!(f, ")")
-        }
-    }
-
-    fn fmt_call(&mut self, func: impl FmtAst, args: &[impl FmtAst], f: &mut Formatter) -> fmt::Result {
-        self.fmt_function_call(func, args, false, f)
+        write!(f, ")")
     }
 
     fn fmt_cast(&mut self, func: impl FmtAst, arg: impl FmtAst, typ: &Type, f: &mut Formatter) -> fmt::Result {
@@ -139,10 +123,8 @@ impl FmtAst for Variable {
     fn fmt_ast(&self, printer: &mut AstPrinter, f: &mut Formatter) -> fmt::Result {
         if !printer.already_printed.contains(&self.definition_id) {
             if let Some(def) = self.definition.clone() {
-                if def.borrow().is_some() {
-                    printer.already_printed.insert(self.definition_id);
-                    printer.queue.push_back(def);
-                }
+                printer.already_printed.insert(self.definition_id);
+                printer.queue.push_back(def.clone());
             }
         }
 
@@ -156,19 +138,14 @@ impl FmtAst for Variable {
 
 impl FmtAst for Lambda {
     fn fmt_ast(&self, printer: &mut AstPrinter, f: &mut Formatter) -> fmt::Result {
-        let start = if self.compile_time { "\\" } else { "fn" };
-        write!(f, "({start}")?;
+        write!(f, "(fn")?;
 
         for arg in &self.args {
             write!(f, " ")?;
             arg.fmt_ast(printer, f)?;
         }
 
-        if self.compile_time {
-            write!(f, " -> ")?;
-        } else {
-            write!(f, " : {} = ", self.typ)?;
-        }
+        write!(f, " : {} = ", self.typ)?;
 
         match self.body.as_ref() {
             Ast::Sequence(_) => printer.block(self.body.as_ref(), f)?,
@@ -185,7 +162,7 @@ impl FmtAst for Lambda {
 
 impl FmtAst for FunctionCall {
     fn fmt_ast(&self, printer: &mut AstPrinter, f: &mut Formatter) -> fmt::Result {
-        printer.fmt_function_call(self.function.as_ref(), &self.args, self.compile_time, f)
+        printer.fmt_call(self.function.as_ref(), &self.args, f)
     }
 }
 

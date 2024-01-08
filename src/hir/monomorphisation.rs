@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::rc::Rc;
 
@@ -992,7 +991,7 @@ impl<'c> Context<'c> {
         let (definition, definition_id) = self.fresh_definition(definition_rhs, name.clone(), typ.as_ref().clone());
         hir::DefinitionInfo { 
             definition_id, 
-            definition: Some(Rc::new(RefCell::new(Some(definition)))), 
+            definition: Some(Rc::new(definition)), 
             name,
             typ
         }
@@ -1029,7 +1028,7 @@ impl<'c> Context<'c> {
             hir::Ast::Sequence(hir::Sequence { statements: nested_definitions })
         };
 
-        let definition = Some(Rc::new(RefCell::new(Some(definition))));
+        let definition = Some(Rc::new(definition));
         let typ = Rc::new(self.convert_type(&hir_type));
         Definition::Normal(hir::Variable {
             definition_id, 
@@ -1125,7 +1124,7 @@ impl<'c> Context<'c> {
                 };
 
                 let body = Box::new(body);
-                hir::Ast::Lambda(Rc::new(hir::Lambda { args, body, typ: function_type, compile_time: false }))
+                hir::Ast::Lambda(Rc::new(hir::Lambda { args, body, typ: function_type }))
             },
             // Since this is not a function type, we know it has no bundled data and we can
             // thus ignore the additional type arguments, extract the tag value, and
@@ -1244,7 +1243,7 @@ impl<'c> Context<'c> {
             hir::Ast::Sequence(hir::Sequence { statements: body_prelude })
         });
 
-        let mut function = hir::Ast::Lambda(Rc::new(hir::Lambda { args, body, typ, compile_time: false }));
+        let mut function = hir::Ast::Lambda(Rc::new(hir::Lambda { args, body, typ }));
 
         if !lambda.closure_environment.is_empty() {
             function = self.pack_closure_environment(function, &lambda.closure_environment);
@@ -1503,13 +1502,13 @@ impl<'c> Context<'c> {
                         hir::Ast::Sequence(hir::Sequence {
                             statements: vec![
                                 function_definition,
-                                hir::Ast::FunctionCall(hir::FunctionCall { function, args, function_type, compile_time: false }),
+                                hir::Ast::FunctionCall(hir::FunctionCall { function, args, function_type }),
                             ],
                         })
                     },
                     Type::Function(function_type) => {
                         let function = Box::new(function);
-                        hir::Ast::FunctionCall(hir::FunctionCall { function, args, function_type, compile_time: false })
+                        hir::Ast::FunctionCall(hir::FunctionCall { function, args, function_type })
                     },
                     _ => unreachable!(),
                 }
@@ -1712,8 +1711,7 @@ impl<'c> Context<'c> {
                 ast::Ast::FunctionCall(call) => {
                     let effect = match self.monomorphise(&call.function) {
                         hir::Ast::Variable(variable) => {
-                            let definition = variable.definition.as_ref().unwrap().borrow();
-                            match &*definition {
+                            match variable.definition.as_ref().map(AsRef::as_ref) {
                                 Some(hir::Ast::Definition(definition)) => match definition.expr.as_ref() {
                                     hir::Ast::Effect(effect) => effect.clone(),
                                     other => unreachable!("Unexpected effect definition expr: {}", other),
@@ -1776,7 +1774,7 @@ impl<'c> Context<'c> {
                 expression: Box::new(expr),
                 effect,
                 resume: resume_var,
-                branch_body: hir::Lambda { args, body, typ: branch_type, compile_time: false },
+                branch_body: hir::Lambda { args, body, typ: branch_type },
                 result_type: self.convert_type(handle.typ.as_ref().unwrap()),
             })
         };
@@ -1817,7 +1815,7 @@ impl<'c> Context<'c> {
 
             let expr = Box::new(effect);
             let definition = hir::Ast::Definition(hir::Definition { variable: id, expr, name: name.clone(), typ: typ.clone() });
-            let definition = Some(Rc::new(RefCell::new(Some(definition))));
+            let definition = Some(Rc::new(definition));
             let definition = hir::DefinitionInfo { definition_id: id, definition, name, typ: Rc::new(typ) };
 
             let definition = Definition::Normal(definition);

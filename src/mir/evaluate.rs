@@ -32,7 +32,17 @@ impl Evaluate for hir::Variable {
     fn evaluate(self, substitutions: &Substitutions) -> Ast {
         match substitutions.get(&self.definition_id) {
             Some(ast) => ast.clone(), // Should we recur here?
-            None => Ast::Variable(self),
+            None => {
+                if let Some(def) = &self.definition {
+                    if let Ok(mut def) = def.try_borrow_mut() {
+                        if let Some(definition) = def.as_ref() {
+                            let new_definition = definition.clone().evaluate(substitutions);
+                            *def = Some(new_definition);
+                        }
+                    }
+                }
+                Ast::Variable(self)
+            },
         }
     }
 }
@@ -55,11 +65,12 @@ impl Evaluate for Rc<hir::Lambda> {
 
 impl Evaluate for hir::FunctionCall{
     fn evaluate(mut self, substitutions: &Substitutions) -> Ast {
+        let t = self.clone();
         let function = self.function.evaluate(substitutions);
         let args = fmap(self.args, |arg| arg.evaluate(substitutions));
 
         // TODO: Need to convert to CPS or ANF first otherwise we're evaluating side-effects twice.
-        if let Ast::Lambda(lambda) = &function {
+        if let Some(lambda) = try_get_lambda(&function) {
             // TODO: Rc::try_unwrap
             let lambda = lambda.as_ref().clone();
 
@@ -71,6 +82,9 @@ impl Evaluate for hir::FunctionCall{
                     new_substitutions.insert(param.definition_id, arg);
                 }
 
+                let result = lambda.body.clone().evaluate(&new_substitutions);
+                println!("Evaluated {} to {}", t, result);
+
                 return lambda.body.evaluate(&new_substitutions).evaluate(substitutions);
             }
         }
@@ -78,6 +92,22 @@ impl Evaluate for hir::FunctionCall{
         *self.function = function;
         self.args = args;
         Ast::FunctionCall(self)
+    }
+}
+
+fn try_get_lambda(ast: &Ast) -> Option<Rc<hir::Lambda>> {
+    match ast {
+        Ast::Lambda(lambda) => Some(lambda.clone()),
+        Ast::Variable(variable) => {
+            variable.definition.as_ref().and_then(|definition| {
+                let def = definition.borrow();
+                match def.as_ref() {
+                    Some(def) => try_get_lambda(def),
+                    None => None,
+                }
+            })
+        }
+        _ => None,
     }
 }
 

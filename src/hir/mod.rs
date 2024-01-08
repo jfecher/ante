@@ -15,9 +15,9 @@ mod printer;
 mod types;
 
 pub use monomorphisation::monomorphise;
-pub use types::{FunctionType, IntegerKind, PrimitiveType, Type};
+pub use types::{FunctionType, IntegerKind, PrimitiveType, Type, Typed};
 
-use std::{rc::Rc, cell::RefCell};
+use std::rc::Rc;
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct DefinitionId(pub usize);
@@ -42,7 +42,7 @@ pub struct DefinitionInfo {
     /// `id = expr` where id == self.definition_id. Most definitions will
     /// be exactly this, but others may be a sequence of several definitions
     /// in the case of e.g. tuple unpacking.
-    pub definition: Option<Rc<RefCell<Option<Ast>>>>,
+    pub definition: Option<Rc<Ast>>,
 
     pub definition_id: DefinitionId,
 
@@ -71,7 +71,7 @@ impl Variable {
         DefinitionInfo {
             definition_id: def.variable,
             typ,
-            definition: Some(Rc::new(RefCell::new(Some(Ast::Definition(def))))),
+            definition: Some(Rc::new(Ast::Definition(def))),
             name,
         }
     }
@@ -84,11 +84,6 @@ pub struct Lambda {
     pub args: Vec<Variable>,
     pub body: Box<Ast>,
     pub typ: FunctionType,
-
-    /// True if this lambda should be evaluated at compile-time.
-    /// This is used to create static lambdas and static calls for specializing
-    /// effect handlers at compile-time.
-    pub compile_time: bool,
 }
 
 /// foo a b c
@@ -97,11 +92,6 @@ pub struct FunctionCall {
     pub function: Box<Ast>,
     pub args: Vec<Ast>,
     pub function_type: FunctionType,
-
-    /// True if this function call should be evaluated at compile-time.
-    /// This is used to create static lambdas and static calls for specializing
-    /// effect handlers at compile-time.
-    pub compile_time: bool,
 }
 
 /// Unlike ast::Definition, hir::Definition
@@ -326,50 +316,7 @@ pub enum Ast {
 
 impl std::fmt::Display for DefinitionId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "v{}", self.0)
-    }
-}
-
-impl Ast {
-    /// Construct the unit literal
-    pub fn unit() -> Ast {
-        Ast::Literal(Literal::Unit)
-    }
-
-    /// Construct a runtime call expression
-    pub fn rt_call(function: Ast, args: Vec<Ast>, function_type: FunctionType) -> Ast {
-        Ast::FunctionCall(FunctionCall {
-            function: Box::new(function),
-            args,
-            function_type,
-            compile_time: false,
-        })
-    }
-
-    /// Construct a runtime call expression with one argument.
-    pub fn rt_call1(function: Ast, arg: Ast, function_type: FunctionType) -> Ast {
-        Ast::FunctionCall(FunctionCall {
-            function: Box::new(function),
-            args: vec![arg],
-            function_type,
-            compile_time: false,
-        })
-    }
-
-    /// Construct a compile-time call expression with one argument.
-    /// The function type here is unused since we expect this node to be removed anyway.
-    pub fn ct_call1(function: Ast, arg: Ast) -> Ast {
-        Ast::FunctionCall(FunctionCall {
-            function: Box::new(function),
-            args: vec![arg],
-            compile_time: true,
-            function_type: FunctionType {
-                parameters: Vec::new(),
-                return_type: Box::new(Type::unit()),
-                effects: Vec::new(),
-                is_varargs: false,
-            },
-        })
+        write!(f, "{}", self.0)
     }
 }
 

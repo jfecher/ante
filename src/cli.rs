@@ -78,12 +78,15 @@ pub enum EmitTarget {
     /// Ante's post-monomorphisation HIR representation
     Hir,
 
-    /// Ante's HIR after being converted to capability-passing style
-    HirCPS,
+    /// A slight modification of Hir to be an A-Normal form
+    Mir,
 
-    /// The final version of Hir after each capability and static function call is evaluated at
-    /// compile-time.
-    HirFinal,
+    /// MIR after being converted to capability-passing style
+    MirCPS,
+
+    /// The final version of Mir after each capability and static function call is
+    /// evaluated at compile-time.
+    MirFinal,
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone, ValueEnum)]
