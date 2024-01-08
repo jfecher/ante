@@ -45,10 +45,13 @@ use crate::util::fmap;
 
 use self::ir::Atom;
 
-// mod evaluate;
+#[macro_use]
 mod ir;
+mod evaluate;
 mod cps;
 mod printer;
+
+pub use ir::*;
 
 pub fn convert_to_mir(hir: hir::Ast, next_id: usize) -> ir::Mir {
     let mut context = Context::new(next_id);

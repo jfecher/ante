@@ -33,8 +33,8 @@ impl Display for Atom {
     }
 }
 
-impl Printer {
-    fn display_in_block(&mut self, ast: &Ast, f: &mut Formatter) -> Result {
+impl<'ast> Printer {
+    fn display_in_block(&mut self, ast: &'ast Ast, f: &mut Formatter) -> Result {
         self.indent_level += 1;
         self.display_ast(ast, f)?;
         self.indent_level -= 1;
@@ -44,21 +44,32 @@ impl Printer {
     fn next_line(&self, f: &mut Formatter) -> Result {
         writeln!(f)?;
         for _ in 0 .. self.indent_level {
-            write!(f, "    ")?;
+            write!(f, "  ")?;
         }
         Ok(())
     }
 
-    fn display_ast(&mut self, ast: &Ast, f: &mut Formatter) -> Result {
+    fn display_ast(&mut self, ast: &'ast Ast, f: &mut Formatter) -> Result {
         self.next_line(f)?;
         self.display_ast_no_newline(ast, f)
     }
 
-    fn display_ast_no_newline(&mut self, ast: &Ast, f: &mut Formatter) -> Result {
+    fn display_ast_no_newline(&mut self, ast: &'ast Ast, f: &mut Formatter) -> Result {
+        self.display_statements(ast, Vec::new(), f)
+    }
+
+    fn display_statements(&mut self, ast: &'ast Ast, mut queued_lets: Vec<&'ast ir::Let<Ast>>, f: &mut Formatter) -> Result {
+        if !queued_lets.is_empty() && !matches!(ast, Ast::Let(_)) {
+            let let_ = queued_lets.pop().unwrap();
+            write!(f, "let {}{}: {} = ", let_.name, let_.variable, let_.typ)?;
+            self.display_ast_try_one_line(ast, f)?;
+            return self.display_ast(&let_.body, f);
+        }
+
         match ast {
             Ast::Atom(atom) => self.display_atom(atom, f),
             Ast::FunctionCall(call) => self.display_call(call, f),
-            Ast::Let(let_) => self.display_let(let_, f),
+            Ast::Let(let_) => self.display_let(let_, queued_lets, f),
             Ast::If(if_) => self.display_if(if_, f),
             Ast::Match(match_) => self.display_match(match_, f),
             Ast::Return(return_) => self.display_return(return_, f),
@@ -70,14 +81,14 @@ impl Printer {
         }
     }
 
-    fn display_ast_try_one_line(&mut self, ast: &Ast, f: &mut Formatter) -> Result {
+    fn display_ast_try_one_line(&mut self, ast: &'ast Ast, f: &mut Formatter) -> Result {
         match ast {
             Ast::Let(_) => self.display_in_block(ast, f),
             other => self.display_ast_no_newline(other, f),
         }
     }
 
-    fn display_decision_tree_in_block(&mut self, tree: &ir::DecisionTree, f: &mut Formatter) -> Result {
+    fn display_decision_tree_in_block(&mut self, tree: &'ast ir::DecisionTree, f: &mut Formatter) -> Result {
         self.indent_level += 1;
         self.display_decision_tree(tree, f)?;
         self.indent_level -= 1;
@@ -94,7 +105,7 @@ impl Printer {
         }
     }
 
-    fn display_atom(&mut self, atom: &Atom, f: &mut Formatter) -> Result {
+    fn display_atom(&mut self, atom: &'ast Atom, f: &mut Formatter) -> Result {
         match atom {
             Atom::Literal(literal) => literal.fmt(f),
             Atom::Variable(variable) => variable.fmt(f),
@@ -104,7 +115,7 @@ impl Printer {
         }
     }
 
-    fn display_lambda(&mut self, lambda: &ir::Lambda, f: &mut Formatter) -> Result {
+    fn display_lambda(&mut self, lambda: &'ast ir::Lambda, f: &mut Formatter) -> Result {
         let start = if lambda.compile_time { "\\" } else { "fn" };
         write!(f, "{start}")?;
 
@@ -126,7 +137,7 @@ impl Printer {
         }
     }
 
-    fn display_call(&mut self, call: &ir::FunctionCall, f: &mut Formatter) -> Result {
+    fn display_call(&mut self, call: &'ast ir::FunctionCall, f: &mut Formatter) -> Result {
         self.display_atom(&call.function, f)?;
 
         if call.compile_time {
@@ -141,13 +152,20 @@ impl Printer {
         Ok(())
     }
 
-    fn display_let(&mut self, let_: &ir::Let<Ast>, f: &mut Formatter) -> Result {
-        write!(f, "let {}{}: {} = ", let_.name, let_.variable, let_.typ)?;
-        self.display_ast_try_one_line(&let_.expr, f)?;
-        self.display_ast(&let_.body, f)
+    fn display_let(&mut self, let_: &'ast ir::Let<Ast>, mut queued_lets: Vec<&'ast ir::Let<Ast>>, f: &mut Formatter) -> Result {
+        if matches!(let_.expr.as_ref(), Ast::Let(_)) {
+            // Queue this let to print it after the inner let for better readability.
+            queued_lets.push(let_);
+            self.display_statements(&let_.expr, queued_lets, f)
+        } else {
+            write!(f, "let {}{}: {} = ", let_.name, let_.variable, let_.typ)?;
+            self.display_ast_try_one_line(&let_.expr, f)?;
+            self.next_line(f)?;
+            self.display_statements(&let_.body, queued_lets, f)
+        }
     }
 
-    fn display_if(&mut self, if_: &ir::If, f: &mut Formatter) -> Result {
+    fn display_if(&mut self, if_: &'ast ir::If, f: &mut Formatter) -> Result {
         write!(f, "if ")?;
         self.display_atom(&if_.condition, f)?;
         write!(f, " then ")?;
@@ -157,7 +175,7 @@ impl Printer {
         self.finish_block_with("endif", &if_.otherwise, f)
     }
 
-    fn display_match(&mut self, match_: &ir::Match, f: &mut Formatter) -> Result {
+    fn display_match(&mut self, match_: &'ast ir::Match, f: &mut Formatter) -> Result {
         self.display_decision_tree(&match_.decision_tree, f)?;
 
         for (i, branch) in match_.branches.iter().enumerate() {
@@ -168,7 +186,7 @@ impl Printer {
         Ok(())
     }
 
-    fn display_decision_tree(&mut self, tree: &ir::DecisionTree, f: &mut Formatter) -> Result {
+    fn display_decision_tree(&mut self, tree: &'ast ir::DecisionTree, f: &mut Formatter) -> Result {
         match tree {
             ir::DecisionTree::Leaf(index) => write!(f, "branch {index}"),
             ir::DecisionTree::Let(let_) => {
@@ -197,23 +215,23 @@ impl Printer {
         }
     }
 
-    fn display_return(&mut self, return_: &ir::Return, f: &mut Formatter) -> Result {
+    fn display_return(&mut self, return_: &'ast ir::Return, f: &mut Formatter) -> Result {
         write!(f, "return ")?;
         self.display_atom(&return_.expression, f)
     }
 
-    fn display_assign(&mut self, assign: &ir::Assignment, f: &mut Formatter) -> Result {
+    fn display_assign(&mut self, assign: &'ast ir::Assignment, f: &mut Formatter) -> Result {
         self.display_atom(&assign.lhs, f)?;
         write!(f, " := ")?;
         self.display_atom(&assign.rhs, f)
     }
 
-    fn display_access(&mut self, access: &ir::MemberAccess, f: &mut Formatter) -> Result {
+    fn display_access(&mut self, access: &'ast ir::MemberAccess, f: &mut Formatter) -> Result {
         self.display_atom(&access.lhs, f)?;
         write!(f, ".{}", access.member_index)
     }
 
-    fn display_tuple(&mut self, tuple: &ir::Tuple, f: &mut Formatter) -> Result {
+    fn display_tuple(&mut self, tuple: &'ast ir::Tuple, f: &mut Formatter) -> Result {
         write!(f, "(")?;
 
         for (i, field) in tuple.fields.iter().enumerate() {
@@ -226,8 +244,8 @@ impl Printer {
         write!(f, ")")
     }
 
-    fn display_builtin(&mut self, builtin: &ir::Builtin, f: &mut Formatter) -> Result {
-        let display = |this: &mut Self, f: &mut Formatter, name: &str, items: &[&Atom]| {
+    fn display_builtin(&mut self, builtin: &'ast ir::Builtin, f: &mut Formatter) -> Result {
+        let display = |this: &mut Self, f: &mut Formatter, name: &str, items: &[&'ast Atom]| {
             if items.len() == 1 {
                 write!(f, "{name} ")?;
                 this.display_atom(items[0], f)
@@ -239,7 +257,7 @@ impl Printer {
             }
         };
 
-        let display_with_type = |this: &mut Self, f: &mut Formatter, name: &str, item: &Atom, typ: &Type| {
+        let display_with_type = |this: &mut Self, f: &mut Formatter, name: &str, item: &'ast Atom, typ: &Type| {
             write!(f, "{name} ")?;
             this.display_atom(item, f)?;
             write!(f, " : {typ}")
@@ -285,7 +303,7 @@ impl Printer {
         }
     }
 
-    fn display_handle(&mut self, handle: &ir::Handle, f: &mut Formatter) -> Result {
+    fn display_handle(&mut self, handle: &'ast ir::Handle, f: &mut Formatter) -> Result {
         write!(f, "handle ")?;
         self.display_ast_try_one_line(&handle.expression, f)?;
 

@@ -171,22 +171,22 @@ fn compile(args: Cli) {
         println!("{mir}");
     }
 
-    // mir = mir.evaluate_static_calls();
+    mir = mir.evaluate_static_calls();
 
-    // if matches!(args.emit, Some(EmitTarget::HirFinal)) {
-    //     println!("{hir}");
-    // }
+    if matches!(args.emit, Some(EmitTarget::MirFinal)) {
+        println!("{mir}");
+    }
 
     // // Phase 6: Codegen
     // let default_backend = if args.opt_level == '0' { Backend::Cranelift } else { Backend::Llvm };
     // let backend = args.backend.unwrap_or(default_backend);
 
     // match backend {
-    //     Backend::Cranelift => cranelift_backend::run(filename, hir, &args),
+    //     Backend::Cranelift => cranelift_backend::run(filename, mir, &args),
     //     Backend::Llvm => {
     //         if cfg!(feature = "llvm") {
     //             #[cfg(feature = "llvm")]
-    //             llvm::run(filename, hir, &args);
+    //             llvm::run(filename, mir, &args);
     //         } else {
     //             eprintln!("The llvm backend is required for non-debug builds. Recompile ante with --features 'llvm' to enable optimized builds.");
     //         }

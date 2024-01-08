@@ -1,80 +1,85 @@
 //! Evaluate any compile-time function applications in the Hir to remove handler abstractions
-use std::rc::Rc;
+use crate::util::fmap;
 
-use crate::{hir::{self, Ast, DefinitionId, DecisionTree}, util::fmap};
+use super::ir::{ self as mir, Ast, dispatch_on_mir, DefinitionId, Atom, Mir };
 
-impl Ast {
-    pub fn evaluate_static_calls(self) -> Ast {
-        self.evaluate(&im::HashMap::new())
+impl Mir {
+    pub fn evaluate_static_calls(mut self) -> Mir {
+        self.functions = self.functions.into_iter().map(|(id, function)| {
+            (id, function.evaluate(&im::HashMap::new()))
+        }).collect();
+        self
     }
 }
 
-type Substitutions = im::HashMap<DefinitionId, Ast>;
+type Substitutions = im::HashMap<DefinitionId, Atom>;
 
 /// Evaluate static calls in `self` using the given substitutions
-trait Evaluate {
-    fn evaluate(self, substitutions: &Substitutions) -> Ast;
+trait Evaluate<T> {
+    fn evaluate(self, substitutions: &Substitutions) -> T;
 }
 
-impl Evaluate for Ast {
+impl Evaluate<Ast> for Ast {
     fn evaluate(self, substitutions: &Substitutions) -> Ast {
-        dispatch_on_hir!(self, Evaluate::evaluate, substitutions)
+        dispatch_on_mir!(self, Evaluate::evaluate, substitutions)
     }
 }
 
-impl Evaluate for hir::Literal {
-    fn evaluate(self, _: &Substitutions) -> Ast {
-        Ast::Literal(self)
+impl Evaluate<Atom> for Atom {
+    fn evaluate(self, substitutions: &Substitutions) -> Atom {
+        dispatch_on_atom!(self, Evaluate::evaluate, substitutions)
     }
 }
 
-impl Evaluate for hir::Variable {
+impl Evaluate<Ast> for Atom {
     fn evaluate(self, substitutions: &Substitutions) -> Ast {
+        Ast::Atom(self.evaluate(substitutions))
+    }
+}
+
+impl Evaluate<Atom> for mir::Literal {
+    fn evaluate(self, _: &Substitutions) -> Atom {
+        Atom::Literal(self)
+    }
+}
+
+impl Evaluate<Atom> for mir::Variable {
+    fn evaluate(self, substitutions: &Substitutions) -> Atom {
         match substitutions.get(&self.definition_id) {
             Some(ast) => ast.clone(), // Should we recur here?
-            None => {
-                if let Some(def) = &self.definition {
-                    if let Ok(mut def) = def.try_borrow_mut() {
-                        if let Some(definition) = def.as_ref() {
-                            let new_definition = definition.clone().evaluate(substitutions);
-                            *def = Some(new_definition);
-                        }
-                    }
-                }
-                Ast::Variable(self)
-            },
+            None => Atom::Variable(self),
         }
     }
 }
 
-impl Evaluate for Rc<hir::Lambda> {
+impl Evaluate<Atom> for mir::Lambda {
     // Any variables introduced by the lambda shadow any matching variables in `substitutions`,
     // so make sure to remove them before evaluating the lambda body.
-    fn evaluate(self, substitutions: &Substitutions) -> Ast {
+    fn evaluate(mut self, substitutions: &Substitutions) -> Atom {
         let mut substitutions = substitutions.clone();
 
         for arg in &self.args {
             substitutions.remove(&arg.definition_id);
         }
 
-        let mut this = self.as_ref().clone();
-        this.body = Box::new(this.body.evaluate(&substitutions));
-        Ast::Lambda(Rc::new(this))
+        *self.body = self.body.evaluate(&substitutions);
+        Atom::Lambda(self)
     }
 }
 
-impl Evaluate for hir::FunctionCall{
+impl Evaluate<Atom> for mir::Extern {
+    fn evaluate(self, _: &Substitutions) -> Atom {
+        Atom::Extern(self)
+    }
+}
+
+impl Evaluate<Ast> for mir::FunctionCall {
     fn evaluate(mut self, substitutions: &Substitutions) -> Ast {
-        let t = self.clone();
         let function = self.function.evaluate(substitutions);
         let args = fmap(self.args, |arg| arg.evaluate(substitutions));
 
-        // TODO: Need to convert to CPS or ANF first otherwise we're evaluating side-effects twice.
-        if let Some(lambda) = try_get_lambda(&function) {
-            // TODO: Rc::try_unwrap
-            let lambda = lambda.as_ref().clone();
-
-            if lambda.compile_time || self.compile_time {
+        match function {
+            Atom::Lambda(lambda) if lambda.compile_time || self.compile_time => {
                 let mut new_substitutions = substitutions.clone();
                 assert_eq!(lambda.args.len(), args.len());
 
@@ -82,52 +87,35 @@ impl Evaluate for hir::FunctionCall{
                     new_substitutions.insert(param.definition_id, arg);
                 }
 
-                let result = lambda.body.clone().evaluate(&new_substitutions);
-                println!("Evaluated {} to {}", t, result);
-
-                return lambda.body.evaluate(&new_substitutions).evaluate(substitutions);
+                lambda.body.evaluate(&new_substitutions).evaluate(substitutions)
+            }
+            function => {
+                self.function = function;
+                self.args = args;
+                Ast::FunctionCall(self)
             }
         }
-
-        *self.function = function;
-        self.args = args;
-        Ast::FunctionCall(self)
     }
 }
 
-fn try_get_lambda(ast: &Ast) -> Option<Rc<hir::Lambda>> {
-    match ast {
-        Ast::Lambda(lambda) => Some(lambda.clone()),
-        Ast::Variable(variable) => {
-            variable.definition.as_ref().and_then(|definition| {
-                let def = definition.borrow();
-                match def.as_ref() {
-                    Some(def) => try_get_lambda(def),
-                    None => None,
-                }
-            })
-        }
-        _ => None,
-    }
-}
-
-impl Evaluate for hir::Definition {
+impl Evaluate<Ast> for mir::Let<Ast> {
     fn evaluate(mut self, substitutions: &Substitutions) -> Ast {
         *self.expr = self.expr.evaluate(substitutions);
-        Ast::Definition(self)
+        *self.body = self.body.evaluate(substitutions);
+        Ast::Let(self)
     }
 }
 
-impl Evaluate for hir::If {
+impl Evaluate<Ast> for mir::If {
     fn evaluate(mut self, substitutions: &Substitutions) -> Ast {
-        *self.condition = self.condition.evaluate(substitutions);
+        self.condition = self.condition.evaluate(substitutions);
         *self.then = self.then.evaluate(substitutions);
         *self.otherwise = self.otherwise.evaluate(substitutions);
         Ast::If(self)
     }
 }
 
-impl Evaluate for hir::Match {
+impl Evaluate<Ast> for mir::Match {
     fn evaluate(mut self, substitutions: &Substitutions) -> Ast {
         self.decision_tree = evaluate_decision_tree(self.decision_tree, substitutions);
         self.branches = fmap(self.branches, |branch| branch.evaluate(substitutions));
@@ -135,80 +123,60 @@ impl Evaluate for hir::Match {
     }
 }
 
-fn evaluate_decision_tree(tree: DecisionTree, substitutions: &Substitutions) -> DecisionTree {
+fn evaluate_decision_tree(tree: mir::DecisionTree, substitutions: &Substitutions) -> mir::DecisionTree {
     match tree {
-        DecisionTree::Leaf(_) => todo!(),
-        DecisionTree::Definition(_, _) => todo!(),
-        DecisionTree::Switch { int_to_switch_on, cases, else_case } => todo!(),
+        mir::DecisionTree::Leaf(_) => todo!(),
+        mir::DecisionTree::Let(_) => todo!(),
+        mir::DecisionTree::Switch { int_to_switch_on, cases, else_case } => todo!(),
     }
 }
 
-impl Evaluate for hir::Return {
+impl Evaluate<Ast> for mir::Return {
     fn evaluate(mut self, substitutions: &Substitutions) -> Ast {
-        *self.expression = self.expression.evaluate(substitutions);
+        self.expression = self.expression.evaluate(substitutions);
         Ast::Return(self)
     }
 }
 
-impl Evaluate for hir::Sequence {
+impl Evaluate<Ast> for mir::Assignment {
     fn evaluate(mut self, substitutions: &Substitutions) -> Ast {
-        self.statements = fmap(self.statements, |statement| statement.evaluate(substitutions));
-        Ast::Sequence(self)
-    }
-}
-
-impl Evaluate for hir::Extern {
-    fn evaluate(self, _: &Substitutions) -> Ast {
-        Ast::Extern(self)
-    }
-}
-
-impl Evaluate for hir::Assignment {
-    fn evaluate(mut self, substitutions: &Substitutions) -> Ast {
-        *self.lhs = self.lhs.evaluate(substitutions);
-        *self.rhs = self.rhs.evaluate(substitutions);
+        self.lhs = self.lhs.evaluate(substitutions);
+        self.rhs = self.rhs.evaluate(substitutions);
         Ast::Assignment(self)
     }
 }
 
-impl Evaluate for hir::MemberAccess {
+impl Evaluate<Ast> for mir::MemberAccess {
     fn evaluate(mut self, substitutions: &Substitutions) -> Ast {
-        *self.lhs = self.lhs.evaluate(substitutions);
+        self.lhs = self.lhs.evaluate(substitutions);
         Ast::MemberAccess(self)
     }
 }
 
-impl Evaluate for hir::Tuple {
+impl Evaluate<Ast> for mir::Tuple {
     fn evaluate(mut self, substitutions: &Substitutions) -> Ast {
         self.fields = fmap(self.fields, |field| field.evaluate(substitutions));
         Ast::Tuple(self)
     }
 }
 
-impl Evaluate for hir::ReinterpretCast {
-    fn evaluate(mut self, substitutions: &Substitutions) -> Ast {
-        *self.lhs = self.lhs.evaluate(substitutions);
-        Ast::ReinterpretCast(self)
-    }
-}
-
-impl Evaluate for hir::Builtin {
+impl Evaluate<Ast> for mir::Builtin {
     fn evaluate(self, substitutions: &Substitutions) -> Ast {
-        use hir::Builtin;
+        use mir::Builtin;
 
-        let both = |f: fn(_, _) -> Builtin, mut lhs: Box<Ast>, mut rhs: Box<Ast>| {
-            *lhs = lhs.evaluate(substitutions);
-            *rhs = rhs.evaluate(substitutions);
+        let both = |f: fn(_, _) -> Builtin, lhs: Atom, rhs: Atom| {
+            let lhs = lhs.evaluate(substitutions);
+            let rhs = rhs.evaluate(substitutions);
             Ast::Builtin(f(lhs, rhs))
         };
 
-        let one_with_type = |f: fn(_, _) -> Builtin, mut lhs: Box<Ast>, typ| {
-            *lhs = lhs.evaluate(substitutions);
+        let one_with_type = |f: fn(_, _) -> Builtin, lhs: Atom, typ| {
+            let lhs = lhs.evaluate(substitutions);
             Ast::Builtin(f(lhs, typ))
         };
 
-        let one = |f: fn(_) -> Builtin, mut lhs: Box<Ast>| {
-            *lhs = lhs.evaluate(substitutions);
+        let one = |f: fn(_) -> Builtin, lhs: Atom| {
+            let lhs = lhs.evaluate(substitutions);
             Ast::Builtin(f(lhs))
         };
 
@@ -248,23 +216,23 @@ impl Evaluate for hir::Builtin {
             Builtin::Truncate(lhs, rhs) => one_with_type(Builtin::Truncate, lhs, rhs),
             Builtin::Deref(lhs, rhs) => one_with_type(Builtin::Deref, lhs, rhs),
             Builtin::Transmute(lhs, rhs) => one_with_type(Builtin::Transmute, lhs, rhs),
-            Builtin::Offset(mut lhs, mut rhs, typ) => {
-                *lhs = lhs.evaluate(substitutions);
-                *rhs = rhs.evaluate(substitutions);
+            Builtin::Offset(lhs, rhs, typ) => {
+                let lhs = lhs.evaluate(substitutions);
+                let rhs = rhs.evaluate(substitutions);
                 Ast::Builtin(Builtin::Offset(lhs, rhs, typ))
             },
         }
     }
 }
 
-impl Evaluate for hir::Effect{
-    fn evaluate(self, _: &Substitutions) -> Ast {
-        unreachable!()
+impl Evaluate<Atom> for mir::Effect {
+    fn evaluate(self, _: &Substitutions) -> Atom {
+        unreachable!("Effect nodes should be removed by the mir-cps pass before evaluation")
     }
 }
 
-impl Evaluate for hir::Handle{
+impl Evaluate<Ast> for mir::Handle {
     fn evaluate(self, _: &Substitutions) -> Ast {
-        todo!("evaluate")
+        unreachable!("Handle expressions should be removed by the mir-cps pass before evaluation")
     }
 }

@@ -9,7 +9,8 @@
 //!   arguments to calling functions (boxing).
 use std::{rc::Rc, collections::BTreeMap};
 
-use crate::hir::{PrimitiveType, DefinitionId, Literal, FunctionType, Type, self};
+// These parts of mir are all identical to the hir
+pub use crate::hir::{PrimitiveType, DefinitionId, Literal, FunctionType, Type, Effect, Extern};
 
 #[derive(Debug, Clone)]
 pub struct DefinitionInfo {
@@ -145,17 +146,6 @@ pub struct Tuple {
     pub fields: Vec<Atom>,
 }
 
-/// Essentially the same as Builtin::Transmute.
-/// Enum variants are padded with extra bytes
-/// then lowered to this. lhs's type should be the same
-/// size as the target type, though there may be
-/// padding differences currently.
-#[derive(Debug, Clone)]
-pub struct ReinterpretCast {
-    pub lhs: Box<Ast>,
-    pub target_type: Type,
-}
-
 /// handle expression
 /// | pattern -> branch_body   (resume_var in scope)
 ///
@@ -171,7 +161,7 @@ pub struct ReinterpretCast {
 #[derive(Debug, Clone)]
 pub struct Handle {
     pub expression: Box<Ast>,
-    pub effect: hir::Effect,
+    pub effect: Effect,
     pub resume: Variable,
     pub result_type: Type,
 
@@ -251,8 +241,8 @@ pub enum Atom {
     Literal(Literal),
     Variable(Variable),
     Lambda(Lambda),
-    Extern(hir::Extern),
-    Effect(hir::Effect),
+    Extern(Extern),
+    Effect(Effect),
 }
 
 impl Ast {
@@ -310,25 +300,32 @@ impl Mir {
 macro_rules! dispatch_on_mir {
     ( $expr_name:expr, $function:expr $(, $($args:expr),* )? ) => ({
         match $expr_name {
-            $crate::mir::Ast::Literal(inner) =>         $function(inner $(, $($args),* )? ),
-            $crate::mir::Ast::Variable(inner) =>        $function(inner $(, $($args),* )? ),
-            $crate::mir::Ast::Lambda(inner) =>          $function(inner $(, $($args),* )? ),
-            $crate::mir::Ast::FunctionCall(inner) =>    $function(inner $(, $($args),* )? ),
-            $crate::mir::Ast::Definition(inner) =>      $function(inner $(, $($args),* )? ),
-            $crate::mir::Ast::If(inner) =>              $function(inner $(, $($args),* )? ),
-            $crate::mir::Ast::Match(inner) =>           $function(inner $(, $($args),* )? ),
-            $crate::mir::Ast::Return(inner) =>          $function(inner $(, $($args),* )? ),
-            $crate::mir::Ast::Sequence(inner) =>        $function(inner $(, $($args),* )? ),
-            $crate::mir::Ast::Extern(inner) =>          $function(inner $(, $($args),* )? ),
-            $crate::mir::Ast::Assignment(inner) =>      $function(inner $(, $($args),* )? ),
-            $crate::mir::Ast::MemberAccess(inner) =>    $function(inner $(, $($args),* )? ),
-            $crate::mir::Ast::Tuple(inner) =>           $function(inner $(, $($args),* )? ),
-            $crate::mir::Ast::ReinterpretCast(inner) => $function(inner $(, $($args),* )? ),
-            $crate::mir::Ast::Builtin(inner) =>         $function(inner $(, $($args),* )? ),
-            $crate::mir::Ast::Effect(inner) =>          $function(inner $(, $($args),* )? ),
-            $crate::mir::Ast::Handle(inner) =>          $function(inner $(, $($args),* )? ),
+            $crate::mir::Ast::Atom(inner) =>         $function(inner $(, $($args),* )? ),
+            $crate::mir::Ast::FunctionCall(inner) => $function(inner $(, $($args),* )? ),
+            $crate::mir::Ast::Let(inner) =>          $function(inner $(, $($args),* )? ),
+            $crate::mir::Ast::If(inner) =>           $function(inner $(, $($args),* )? ),
+            $crate::mir::Ast::Match(inner) =>        $function(inner $(, $($args),* )? ),
+            $crate::mir::Ast::Return(inner) =>       $function(inner $(, $($args),* )? ),
+            $crate::mir::Ast::Assignment(inner) =>   $function(inner $(, $($args),* )? ),
+            $crate::mir::Ast::MemberAccess(inner) => $function(inner $(, $($args),* )? ),
+            $crate::mir::Ast::Tuple(inner) =>        $function(inner $(, $($args),* )? ),
+            $crate::mir::Ast::Builtin(inner) =>      $function(inner $(, $($args),* )? ),
+            $crate::mir::Ast::Handle(inner) =>       $function(inner $(, $($args),* )? ),
+        }
+    });
+}
+
+macro_rules! dispatch_on_atom {
+    ( $expr_name:expr, $function:expr $(, $($args:expr),* )? ) => ({
+        match $expr_name {
+            $crate::mir::Atom::Literal(inner) =>  $function(inner $(, $($args),* )? ),
+            $crate::mir::Atom::Variable(inner) => $function(inner $(, $($args),* )? ),
+            $crate::mir::Atom::Lambda(inner) =>   $function(inner $(, $($args),* )? ),
+            $crate::mir::Atom::Extern(inner) =>   $function(inner $(, $($args),* )? ),
+            $crate::mir::Atom::Effect(inner) =>   $function(inner $(, $($args),* )? ),
         }
     });
 }
 
 pub(crate) use dispatch_on_mir;
+pub(crate) use dispatch_on_atom;
