@@ -19,7 +19,7 @@
 //! function which is called directly from `main`. This function sets up the
 //! Generator, walks the Ast, then optimizes and links the resulting Module.
 use crate::cli::{Cli, EmitTarget};
-use crate::hir::{self, DefinitionId};
+use crate::mir::{self, DefinitionId, Mir};
 use crate::lexer::token::FloatKind;
 use crate::util::{self, fmap, timing};
 
@@ -38,7 +38,6 @@ use inkwell::OptimizationLevel;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::rc::Rc;
 
 mod builtin;
 mod decisiontree;
@@ -63,7 +62,7 @@ pub struct Generator<'context> {
 }
 
 /// Codegen the given Ast, producing a binary file at the given path.
-pub fn run(path: &Path, ast: hir::Ast, args: &Cli) {
+pub fn run(path: &Path, ast: Mir, args: &Cli) {
     timing::start_time("LLVM codegen");
 
     let context = Context::create();
@@ -146,7 +145,7 @@ fn to_size_level(optimization_argument: char) -> u32 {
 }
 
 impl<'g> Generator<'g> {
-    fn codegen_main(&mut self, ast: &hir::Ast) {
+    fn codegen_main(&mut self, ast: &mir::Ast) {
         let i32_type = self.context.i32_type();
         let main_type = i32_type.fn_type(&[], false);
         let function = self.module.add_function("main", main_type, Some(Linkage::External));
@@ -220,7 +219,7 @@ impl<'g> Generator<'g> {
     /// Create a new function with the given name and type and set
     /// its entry block as the current insert point. Returns the
     /// pointer to the function.
-    fn function(&mut self, name: &str, typ: &hir::FunctionType) -> (FunctionValue<'g>, BasicValueEnum<'g>) {
+    fn function(&mut self, name: &str, typ: &mir::FunctionType) -> (FunctionValue<'g>, BasicValueEnum<'g>) {
         let raw_function_type = self.convert_function_type(typ);
 
         let function = self.module.add_function(name, raw_function_type, Some(Linkage::Internal));
@@ -243,19 +242,19 @@ impl<'g> Generator<'g> {
         i1.const_int(0, false).into()
     }
 
-    /// Converts a hir::FunctionType directly to an inkwell FunctionType.
+    /// Converts a mir::FunctionType directly to an inkwell FunctionType.
     /// Note that the representation of functions in Ante is typically not
     /// a FunctionType directly but a function pointeror closure tuple.
-    fn convert_function_type(&mut self, f: &hir::FunctionType) -> FunctionType<'g> {
+    fn convert_function_type(&mut self, f: &mir::FunctionType) -> FunctionType<'g> {
         let parameters = fmap(&f.parameters, |param| self.convert_type(param).into());
         let ret = self.convert_type(&f.return_type);
         ret.fn_type(&parameters, false)
     }
 
-    fn convert_type(&mut self, typ: &hir::Type) -> BasicTypeEnum<'g> {
+    fn convert_type(&mut self, typ: &mir::Type) -> BasicTypeEnum<'g> {
         match typ {
-            hir::Type::Primitive(p) => {
-                use hir::PrimitiveType;
+            mir::Type::Primitive(p) => {
+                use mir::PrimitiveType;
                 match p {
                     PrimitiveType::Integer(kind) => {
                         self.context.custom_width_int_type(self.integer_bit_count(*kind)).into()
@@ -268,8 +267,8 @@ impl<'g> Generator<'g> {
                     PrimitiveType::Pointer => self.context.i8_type().ptr_type(AddressSpace::default()).into(),
                 }
             },
-            hir::Type::Function(f) => self.convert_function_type(f).ptr_type(AddressSpace::default()).into(),
-            hir::Type::Tuple(tuple) => {
+            mir::Type::Function(f) => self.convert_function_type(f).ptr_type(AddressSpace::default()).into(),
+            mir::Type::Tuple(tuple) => {
                 let fields = fmap(tuple, |typ| self.convert_type(typ));
                 self.context.struct_type(&fields, true).into()
             },
@@ -281,8 +280,8 @@ impl<'g> Generator<'g> {
     }
 
     /// Returns the size in bits of this integer.
-    fn integer_bit_count(&self, int_kind: hir::IntegerKind) -> u32 {
-        use hir::IntegerKind::*;
+    fn integer_bit_count(&self, int_kind: mir::IntegerKind) -> u32 {
+        use mir::IntegerKind::*;
         match int_kind {
             I8 | U8 => 8,
             I16 | U16 => 16,
@@ -296,15 +295,15 @@ impl<'g> Generator<'g> {
     ///
     /// Will bind the integer to an i32 if this integer is an IntegerKind::Inferred
     /// that has not already been bound to a concrete type.
-    fn is_unsigned_integer(&mut self, int_kind: hir::IntegerKind) -> bool {
-        use hir::IntegerKind::*;
+    fn is_unsigned_integer(&mut self, int_kind: mir::IntegerKind) -> bool {
+        use mir::IntegerKind::*;
         match int_kind {
             I8 | I16 | I32 | I64 | Isz => false,
             U8 | U16 | U32 | U64 | Usz => true,
         }
     }
 
-    fn integer_value(&mut self, value: u64, kind: hir::IntegerKind) -> BasicValueEnum<'g> {
+    fn integer_value(&mut self, value: u64, kind: mir::IntegerKind) -> BasicValueEnum<'g> {
         let bits = self.integer_bit_count(kind);
         let unsigned = self.is_unsigned_integer(kind);
         self.context.custom_width_int_type(bits).const_int(value, unsigned).as_basic_value_enum()
@@ -368,7 +367,7 @@ impl<'g> Generator<'g> {
     /// check that the branch hasn't yet terminated before inserting a br after
     /// a then/else branch, pattern match, or looping construct.
     fn codegen_branch(
-        &mut self, branch: &hir::Ast, end_block: BasicBlock<'g>,
+        &mut self, branch: &mir::Ast, end_block: BasicBlock<'g>,
     ) -> (BasicTypeEnum<'g>, Option<(BasicValueEnum<'g>, BasicBlock<'g>)>) {
         let branch_value = branch.codegen(self);
 
@@ -452,7 +451,7 @@ impl<'g> Generator<'g> {
 
     /// Creates a GEP instruction and Load which emulate a single Extract instruction but
     /// delays the Load as long as possible to make assigning to this as an l-value easier later on.
-    fn gep_at_index(&mut self, load: BasicValueEnum<'g>, field_index: u32, field_type: &hir::Type, field_name: &str) -> BasicValueEnum<'g> {
+    fn gep_at_index(&mut self, load: BasicValueEnum<'g>, field_index: u32, field_type: &mir::Type, field_name: &str) -> BasicValueEnum<'g> {
         let instruction = load.as_instruction_value().unwrap();
         assert_eq!(instruction.get_opcode(), InstructionOpcode::Load);
 
@@ -471,36 +470,36 @@ trait CodeGen<'g> {
     fn codegen(&self, generator: &mut Generator<'g>) -> BasicValueEnum<'g>;
 }
 
-impl<'g> CodeGen<'g> for hir::Ast {
+impl<'g> CodeGen<'g> for mir::Ast {
     fn codegen(&self, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
-        dispatch_on_hir!(self, CodeGen::codegen, generator)
+        dispatch_on_mir!(self, CodeGen::codegen, generator)
     }
 }
 
-impl<'g> CodeGen<'g> for hir::Literal {
+impl<'g> CodeGen<'g> for mir::Atom {
+    fn codegen(&self, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+        dispatch_on_atom!(self, CodeGen::codegen, generator)
+    }
+}
+
+impl<'g> CodeGen<'g> for mir::Literal {
     fn codegen(&self, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
         match self {
-            hir::Literal::Char(c) => generator.char_value(*c as u64),
-            hir::Literal::Bool(b) => generator.bool_value(*b),
-            hir::Literal::Float(f, kind) => generator.float_value(f64::from_bits(*f), *kind),
-            hir::Literal::Integer(i, kind) => generator.integer_value(*i, *kind),
-            hir::Literal::CString(s) => generator.cstring_value(s),
-            hir::Literal::Unit => generator.unit_value(),
+            mir::Literal::Char(c) => generator.char_value(*c as u64),
+            mir::Literal::Bool(b) => generator.bool_value(*b),
+            mir::Literal::Float(f, kind) => generator.float_value(f64::from_bits(*f), *kind),
+            mir::Literal::Integer(i, kind) => generator.integer_value(*i, *kind),
+            mir::Literal::CString(s) => generator.cstring_value(s),
+            mir::Literal::Unit => generator.unit_value(),
         }
     }
 }
 
-impl<'g> CodeGen<'g> for hir::Variable {
+impl<'g> CodeGen<'g> for mir::Variable {
     fn codegen(&self, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
         let mut value = match generator.definitions.get(&self.definition_id) {
             Some(definition) => *definition,
-            None => {
-                match self.definition.as_ref() {
-                    Some(ast) => ast.codegen(generator),
-                    None => unreachable!("Definition for {} not yet compiled", self.definition_id),
-                };
-                generator.definitions[&self.definition_id]
-            },
+            None => generator.definitions[&self.definition_id],
         };
 
         if generator.auto_derefs.contains(&self.definition_id) {
@@ -513,7 +512,7 @@ impl<'g> CodeGen<'g> for hir::Variable {
     }
 }
 
-impl<'g> CodeGen<'g> for Rc<hir::Lambda> {
+impl<'g> CodeGen<'g> for mir::Lambda {
     fn codegen(&self, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
         let caller_block = generator.current_block();
         let name = generator.current_definition_name.take().unwrap_or_else(|| "lambda".into());
@@ -536,7 +535,7 @@ impl<'g> CodeGen<'g> for Rc<hir::Lambda> {
     }
 }
 
-impl<'g> CodeGen<'g> for hir::FunctionCall {
+impl<'g> CodeGen<'g> for mir::FunctionCall {
     fn codegen(&self, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
         let function = self.function.codegen(generator).into_pointer_value();
         let args = fmap(&self.args, |arg| arg.codegen(generator).into());
@@ -548,34 +547,30 @@ impl<'g> CodeGen<'g> for hir::FunctionCall {
     }
 }
 
-fn should_auto_deref(definition: &hir::Definition) -> bool {
-    if let hir::Ast::Extern(ext) = definition.expr.as_ref() {
-        return !matches!(&ext.typ, hir::Type::Function(_));
+fn should_auto_deref(definition: &mir::Let<mir::Ast>) -> bool {
+    if let mir::Ast::Atom(mir::Atom::Extern(ext)) = definition.expr.as_ref() {
+        return !matches!(&ext.typ, mir::Type::Function(_));
     }
 
     false
 }
 
-impl<'g> CodeGen<'g> for hir::Definition {
+impl<'g> CodeGen<'g> for mir::Let<mir::Ast> {
     fn codegen(&self, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
-        // Cannot use HashMap::entry here, generator is borrowed mutably in self.expr.codegen
-        #[allow(clippy::map_entry)]
-        if !generator.definitions.contains_key(&self.variable) {
-            if should_auto_deref(self) {
-                generator.auto_derefs.insert(self.variable);
-            }
-
-            generator.current_function_info = Some(self.variable);
-            generator.current_definition_name = self.name.clone();
-            let value = self.expr.codegen(generator);
-            generator.definitions.insert(self.variable, value);
+        if should_auto_deref(self) {
+            generator.auto_derefs.insert(self.variable);
         }
 
-        generator.unit_value()
+        generator.current_function_info = Some(self.variable);
+        generator.current_definition_name = Some(self.name.as_ref().clone());
+        let value = self.expr.codegen(generator);
+        generator.definitions.insert(self.variable, value);
+
+        self.body.codegen(generator)
     }
 }
 
-impl<'g> CodeGen<'g> for hir::If {
+impl<'g> CodeGen<'g> for mir::If {
     fn codegen(&self, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
         let condition = self.condition.codegen(generator);
 
@@ -622,13 +617,13 @@ impl<'g> CodeGen<'g> for hir::If {
     }
 }
 
-impl<'g> CodeGen<'g> for hir::Match {
+impl<'g> CodeGen<'g> for mir::Match {
     fn codegen(&self, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
         generator.codegen_tree(self)
     }
 }
 
-impl<'g> CodeGen<'g> for hir::Return {
+impl<'g> CodeGen<'g> for mir::Return {
     fn codegen(&self, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
         let value = self.expression.codegen(generator);
         generator.builder.build_return(Some(&value))
@@ -637,24 +632,12 @@ impl<'g> CodeGen<'g> for hir::Return {
     }
 }
 
-impl<'g> CodeGen<'g> for hir::Sequence {
-    fn codegen(&self, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
-        assert!(!self.statements.is_empty());
-
-        for statement in self.statements.iter().take(self.statements.len() - 1) {
-            statement.codegen(generator);
-        }
-
-        self.statements.last().unwrap().codegen(generator)
-    }
-}
-
-impl<'g> CodeGen<'g> for hir::Extern {
+impl<'g> CodeGen<'g> for mir::Extern {
     fn codegen(&self, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
         let name = &self.name;
 
         match &self.typ {
-            hir::Type::Function(function_type) => {
+            mir::Type::Function(function_type) => {
                 let function_type = generator.convert_function_type(function_type);
                 generator
                     .module
@@ -670,14 +653,14 @@ impl<'g> CodeGen<'g> for hir::Extern {
     }
 }
 
-impl<'g> CodeGen<'g> for hir::MemberAccess {
+impl<'g> CodeGen<'g> for mir::MemberAccess {
     fn codegen(&self, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
         let lhs = self.lhs.codegen(generator);
         let index = self.member_index;
 
         // If our lhs is a load from an alloca, create a GEP instead of extracting directly.
         // This will delay the load as long as possible which makes this easier to detect
-        // as a valid l-value in hir::Assignment::codegen.
+        // as a valid l-value in mir::Assignment::codegen.
         match lhs.as_instruction_value().map(|instr| instr.get_opcode()) {
             Some(InstructionOpcode::Load) => {
                 generator.gep_at_index(lhs, index, &self.typ, "")
@@ -690,7 +673,7 @@ impl<'g> CodeGen<'g> for hir::MemberAccess {
     }
 }
 
-impl<'g> CodeGen<'g> for hir::Assignment {
+impl<'g> CodeGen<'g> for mir::Assignment {
     fn codegen(&self, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
         let lhs = self.lhs.codegen(generator);
 
@@ -713,7 +696,7 @@ impl<'g> CodeGen<'g> for hir::Assignment {
     }
 }
 
-impl<'g> CodeGen<'g> for hir::Tuple {
+impl<'g> CodeGen<'g> for mir::Tuple {
     fn codegen(&self, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
         let (values, types) = self
             .fields
@@ -728,27 +711,19 @@ impl<'g> CodeGen<'g> for hir::Tuple {
     }
 }
 
-impl<'g> CodeGen<'g> for hir::ReinterpretCast {
-    fn codegen(&self, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
-        let value = self.lhs.codegen(generator);
-        let target_type = generator.convert_type(&self.target_type);
-        generator.reinterpret_cast(value, target_type)
-    }
-}
-
-impl<'g> CodeGen<'g> for hir::Builtin {
+impl<'g> CodeGen<'g> for mir::Builtin {
     fn codegen(&self, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
         builtin::call_builtin(self, generator)
     }
 }
 
-impl<'g> CodeGen<'g> for hir::Handle {
+impl<'g> CodeGen<'g> for mir::Handle {
     fn codegen(&self, _: &mut Generator<'g>) -> BasicValueEnum<'g> {
         todo!("llvm codegen for Handle (remove)")
     }
 }
 
-impl<'g> CodeGen<'g> for hir::Effect {
+impl<'g> CodeGen<'g> for mir::Effect {
     fn codegen(&self, _: &mut Generator<'g>) -> BasicValueEnum<'g> {
         todo!("llvm codegen for Effects (remove)")
     }

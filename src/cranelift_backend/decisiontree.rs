@@ -4,7 +4,7 @@ use cranelift::{
     prelude::{Block, InstBuilder, JumpTableData, TrapCode},
 };
 
-use crate::{hir, util::fmap};
+use crate::{mir, util::fmap};
 
 use super::{
     context::{Context, Value},
@@ -12,7 +12,7 @@ use super::{
 };
 
 impl Context {
-    pub fn codegen_match(&mut self, match_: &hir::Match, builder: &mut FunctionBuilder) -> Value {
+    pub fn codegen_match(&mut self, match_: &mir::Match, builder: &mut FunctionBuilder) -> Value {
         let branches = fmap(&match_.branches, |_| builder.create_block());
         let end_block = self.new_block_with_arg(&match_.result_type, builder);
 
@@ -31,16 +31,16 @@ impl Context {
         self.array_to_value(end_values, &match_.result_type)
     }
 
-    fn codegen_subtree(&mut self, tree: &hir::DecisionTree, branches: &[Block], builder: &mut FunctionBuilder) {
+    fn codegen_subtree(&mut self, tree: &mir::DecisionTree, branches: &[Block], builder: &mut FunctionBuilder) {
         match tree {
-            hir::DecisionTree::Leaf(n) => {
+            mir::DecisionTree::Leaf(n) => {
                 builder.ins().jump(branches[*n], &[]);
             },
-            hir::DecisionTree::Definition(definition, subtree) => {
-                definition.codegen(self, builder);
-                self.codegen_subtree(subtree, branches, builder);
+            mir::DecisionTree::Let(let_) => {
+                let_.codegen(self, builder);
+                self.codegen_subtree(&let_.body, branches, builder);
             },
-            hir::DecisionTree::Switch { int_to_switch_on, cases, else_case } => {
+            mir::DecisionTree::Switch { int_to_switch_on, cases, else_case } => {
                 let int_to_switch_on = int_to_switch_on.eval_single(self, builder);
                 self.build_switch(int_to_switch_on, cases, else_case, branches, builder);
             },
@@ -48,8 +48,8 @@ impl Context {
     }
 
     fn build_switch(
-        &mut self, int_to_switch_on: CraneliftValue, cases: &[(u32, hir::DecisionTree)],
-        else_case: &Option<Box<hir::DecisionTree>>, branches: &[Block], builder: &mut FunctionBuilder,
+        &mut self, int_to_switch_on: CraneliftValue, cases: &[(u32, mir::DecisionTree)],
+        else_case: &Option<Box<mir::DecisionTree>>, branches: &[Block], builder: &mut FunctionBuilder,
     ) {
         let mut cases = fmap(cases, |(tag, subtree)| {
             let new_block = builder.create_block();
@@ -67,8 +67,8 @@ impl Context {
     }
 
     fn codegen_cases(
-        &mut self, else_block: Block, else_case: &Option<Box<hir::DecisionTree>>,
-        cases: Vec<(i64, Block, &hir::DecisionTree)>, branches: &[Block], builder: &mut FunctionBuilder,
+        &mut self, else_block: Block, else_case: &Option<Box<mir::DecisionTree>>,
+        cases: Vec<(i64, Block, &mir::DecisionTree)>, branches: &[Block], builder: &mut FunctionBuilder,
     ) {
         builder.switch_to_block(else_block);
         if let Some(subtree) = else_case {
@@ -86,7 +86,7 @@ impl Context {
     }
 }
 
-fn create_jump_table_data(cases: &mut Vec<(i64, Block, &hir::DecisionTree)>, else_block: Block) -> JumpTableData {
+fn create_jump_table_data(cases: &mut Vec<(i64, Block, &mir::DecisionTree)>, else_block: Block) -> JumpTableData {
     // Sorting unstably doesn't matter here, the type checker's DecisionTree generation
     // ensures there are no duplicate tag values.
     // TODO: Can we merge sorting and filling in missing cases into 1 step?

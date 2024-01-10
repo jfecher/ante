@@ -2,12 +2,13 @@ use std::collections::BTreeMap;
 
 use crate::{hir::{self, Type}, util::fmap};
 
-use self::context::EffectStack;
+use self::effect_stack::EffectStack;
 
-use super::ir::{ self as mir, Ast, Mir, Atom, Variable };
+use super::ir::{ self as mir, Ast, Mir, Atom };
 use context::Context;
 
 mod context;
+mod effect_stack;
 
 impl Mir {
     pub fn convert_to_cps(self) -> Mir {
@@ -19,10 +20,11 @@ impl Mir {
         };
 
         let main = &self.functions[&self.main];
-        let new_main = context.cps_statement(main, &Vec::new());
+        let new_main = context.cps_statement(main, &EffectStack::default());
         new_mir.functions.insert(new_mir.main, new_main);
 
         while let Some((source, destination, effects)) = context.definition_queue.pop_front() {
+            println!("CPS'ing {} -> {} with {} effects", source, destination, effects.len());
             context.local_definitions.clear();
 
             let function = &self.functions[&source];
@@ -34,14 +36,6 @@ impl Mir {
         new_mir.next_id = context.next_id;
         new_mir
     }
-}
-
-/// To match more closely with the syntax in https://se.cs.uni-tuebingen.de/publications/schuster19zero.pdf,
-/// effects and handlers are wrapped in this enum which corresponds to cases of `H` in the link.
-/// The `lift` cases are determined automatically from the shape of the effect stack.
-enum EffectAst<'ast> {
-    Variable(hir::DefinitionId),
-    Handle(&'ast mir::Handle),
 }
 
 impl Context {
@@ -60,7 +54,7 @@ impl Context {
     ///   = (fn c => S(s, [ts, t]) @@ (fn x => S(return x, ts))) @@ H(h, [ts, t])
     fn cps_statement(&mut self, statement: &Ast, effects: &EffectStack) -> Ast {
         match statement {
-            Ast::FunctionCall(call) => self.cps_call(&call.function, &call.args, &call.function_type, effects),
+            Ast::FunctionCall(call) => self.cps_call(&call, effects),
             Ast::Let(let_) => self.cps_let(let_, effects),
             Ast::Return(return_expr) => self.cps_return(&return_expr.expression, &return_expr.typ, effects),
             Ast::Handle(handle) => self.cps_handle(handle, effects),
@@ -82,7 +76,7 @@ impl Context {
             Atom::Variable(variable) => self.cps_variable(variable, effects),
             Atom::Lambda(lambda) => self.cps_lambda(lambda, effects, None),
             Atom::Extern(extern_reference) => Self::cps_extern(extern_reference),
-            Atom::Effect(effect) => self.cps_effect(effect, effects),
+            Atom::Effect(effect) => self.cps_effect(effect),
         }
     }
 
@@ -91,10 +85,9 @@ impl Context {
     }
 
     fn cps_variable(&mut self, variable: &mir::Variable, effects: &EffectStack) -> Atom {
-        let variable = self.get_definition(variable.definition_id, effects).unwrap_or_else(|| {
-            self.add_global_to_queue(variable.clone(), effects.clone())
-        });
-        Atom::Variable(variable)
+        self.get_definition(variable.definition_id, effects).unwrap_or_else(|| {
+            Atom::Variable(self.add_global_to_queue(variable.clone(), effects.clone()))
+        })
     }
 
     /// E((fn x -> s) : t -> t' can eff) = fn x -> Reify(eff, S(s, eff))
@@ -105,15 +98,17 @@ impl Context {
     /// Note that effect arguments (handler abstractions) are on the outside of any letrecs of lambdas.
     fn cps_lambda(&mut self, lambda: &mir::Lambda, effects: &EffectStack, _id: Option<hir::DefinitionId>) -> Atom {
         // Reorder the effects if needed to match the lambda's effect type ordering
-        let new_effects = fmap(&lambda.typ.effects, |effect| {
-            let handler_type = effects.iter().find(|e| e.0 == effect.id).unwrap().1.clone();
-            (effect.id, handler_type)
-        });
+        let new_effects = EffectStack::new(fmap(&lambda.typ.effects, |effect| {
+            let handler_type = effects.find(effect.id).handler_type.clone();
+            let effect_type = self.convert_type(&effect.typ);
+            let handler = self.anonymous_variable("effect", effect_type);
+            self.new_effect(effect.id, Atom::Variable(handler), handler_type)
+        }));
 
         // TODO: Restore old definitions of effect ids
-        let effect_args = fmap(&lambda.typ.effects, |effect| {
-            let effect_type = self.convert_type(&effect.typ);
-            self.new_local(effect.id, "effect", effect_type)
+        let effect_args = fmap(&new_effects, |effect| match &effect.handler {
+            Atom::Variable(variable) => variable.clone(),
+            _ => unreachable!("Effect arguments to a lambda are always variables"),
         });
 
         let parameters = fmap(&lambda.args, |arg| self.new_local_from_existing(arg));
@@ -122,7 +117,7 @@ impl Context {
             let body = self.cps_statement(&lambda.body, &new_effects);
 
             self.let_binding_atom(lambda.typ.return_type.as_ref().clone(), body, |this, body| {
-                this.reify(&new_effects, body)
+                this.reify(new_effects.as_slice(), body)
             })
         });
 
@@ -138,32 +133,28 @@ impl Context {
     /// S(e(e'), ts) = Reflect(ts, E(e) @ E(e'))
     ///
     /// E(e[h] : ts) = E(e) @@ H(h, ts)
-    fn cps_call(&mut self, function: &Atom, args: &[Atom], function_type: &hir::FunctionType, effects: &EffectStack) -> Ast {
-        let mut result = Ast::Atom(self.cps_atom(function, effects));
+    fn cps_call(&mut self, call: &mir::FunctionCall, effects: &EffectStack) -> Ast {
+        let mut result = Ast::Atom(self.cps_atom(&call.function, effects));
 
         // E(e[h] : ts) = E(e) @@ H(h, ts)
-        for effect in &function_type.effects {
-            let effect = EffectAst::Variable(effect.id);
-            let handler = self.convert_effect(effect, effects);
+        for call_effect in &call.function_type.effects {
+            let handler = effects.find(call_effect.id).handler.clone();
 
-            // TODO: Remove this hack
-            // if result != handler {
             // What type should be used here?
             result = self.let_binding(Type::unit(), result, |_, result| {
                 Ast::ct_call1(result, handler)
             })
-            // }
         }
 
         // S(e(e'), ts) = Reflect(ts, E(e) @ E(e'))
-        let args = fmap(args, |arg| self.cps_atom(arg, effects));
+        let args = fmap(&call.args, |arg| self.cps_atom(arg, effects));
 
-        let result = self.let_binding(Type::Function(function_type.clone()), result, |_, result| {
-            Ast::rt_call(result, args, function_type.clone())
+        let result = self.let_binding(Type::Function(call.function_type.clone()), result, |_, result| {
+            Ast::rt_call(result, args, call.function_type.clone())
         });
 
-        self.let_binding_atom(function_type.return_type.as_ref().clone(), result, |this, result| {
-            this.reflect(effects, result)
+        self.let_binding_atom(call.function_type.return_type.as_ref().clone(), result, |this, result| {
+            this.reflect(effects.as_slice(), result)
         })
     }
 
@@ -283,22 +274,12 @@ impl Context {
     /// so cps_let_binding_pure recurs on its arguments but otherwise returns
     /// the same structure.
     fn cps_let_binding_pure(&mut self, let_binding: &mir::Let<Ast>) -> Ast {
-        let expr = self.cps_statement(&let_binding.expr, &Vec::new());
+        let expr = self.cps_statement(&let_binding.expr, &EffectStack::default());
 
-        let name = let_binding.name.clone();
-        let typ = let_binding.typ.clone();
-        let expr = Box::new(expr);
-        let new_id = self.next_id();
-
-        self.insert_local_definition(let_binding.variable, Variable {
-            definition_id: new_id,
-            typ: typ.clone(),
-            name: name.clone(),
-        });
-
-        let body = Box::new(self.cps_statement(&let_binding.body, &Vec::new()));
-
-        Ast::Let(mir::Let { variable: new_id, name, expr, body, typ })
+        self.let_binding(let_binding.typ.as_ref().clone(), expr, |this, atom| {
+            this.insert_local_definition(let_binding.variable, atom);
+            this.cps_statement(&let_binding.body, &EffectStack::default())
+        })
     }
 
     /// S(val x <- s; s', [ts, t])
@@ -314,7 +295,7 @@ impl Context {
         let x = self.fresh_existing_variable(let_binding.name.clone(), x_type);
         let x_type = let_binding.typ.as_ref().clone();
 
-        self.insert_local_definition(let_binding.variable, x.clone());
+        self.insert_local_definition(let_binding.variable, Atom::Variable(x.clone()));
 
         Ast::Atom(Context::ct_lambda(vec![k.clone()], {
             let inner_lambda = Context::ct_lambda(vec![x], {
@@ -421,26 +402,37 @@ impl Context {
     ///
     /// S(do h(e), ts) = H(h, ts) @@ E(e)
     ///
-    /// TODO: Need to ensure effects are ct_call
+    /// Has been adapted here since Ante's type system includes `can Effect` even
+    /// for the original effect function. From this, if we followed the original rule,
+    /// we'd return the handler `h`, then a function call would apply `h` to its arguments.
+    /// In doing this, it sees that it `can Effect` and will pass in the effect handler `h`
+    /// automatically, leading to `h h`.
     ///
-    /// Has been adapted here since this effect node excludes the arguments:
+    /// To prevent this, instead of translating the effect itself via
     ///
     /// S(h, ts) = H(h, ts)
-    fn cps_effect(&mut self, effect: &hir::Effect, effects: &EffectStack) -> Atom {
-        self.convert_effect(EffectAst::Variable(effect.id), effects)
+    ///
+    /// We translate it to the identity function `fn x -> x`.
+    fn cps_effect(&mut self, effect: &hir::Effect) -> Atom {
+        let x = self.anonymous_variable("effect", effect.typ.clone());
+        Context::ct_lambda(vec![x.clone()], Ast::Atom(Atom::Variable(x)))
     }
 
     /// S(handle c = h in s : t, ts)
     ///   = (fn c => S(s, [ts, t]) @@ (fn x => S(return x, ts))) @@ H(h, [ts, t])
     fn cps_handle(&mut self, handle: &mir::Handle, effects: &EffectStack) -> Ast {
-        let mut new_effects = effects.to_vec();
+        let mut new_effects = effects.clone();
         let result_type = self.convert_type(&handle.result_type);
-        new_effects.push((handle.effect.id, result_type.clone()));
 
-        let handler = self.convert_effect(EffectAst::Handle(handle), &new_effects);
+        // Despite the rule above, the handler is converted with the old effect stack
+        // since the rule for converting handlers pops the top effect anyway, and we
+        // need the handler to create the newest effect in the stack.
+        let handler = self.convert_handler(handle, &new_effects);
 
         let c_type = self.convert_type(&handle.effect.typ);
-        let c = self.new_local(handle.effect.id, "c", c_type);
+        let c = self.anonymous_variable("c", c_type);
+
+        new_effects.push(self.new_effect(handle.effect.id, Atom::Variable(c.clone()), result_type.clone()));
 
         let c_lambda = Context::ct_lambda(vec![c], {
             let expression = self.cps_statement(&handle.expression, &new_effects);
@@ -464,33 +456,25 @@ impl Context {
     /// H(lift h, [t]) = fn x => fn k => k @@ (H(h, []) @@ x)
     /// H(lift h, [ts, t, t'])
     ///   = fn x => fn k => fn k' => H(h, [ts, t]) @@ x @@ (fn y => k @@ y @@ k')
-    fn convert_effect(&mut self, effect: EffectAst, effects: &EffectStack) -> Atom {
-        match effect {
-            // H(c, ts) = c
-            // TODO: implement lift cases
-            EffectAst::Variable(id) => {
-                let c = self.get_definition(id, effects).unwrap_or_else(|| {
-                    panic!("No handler for effect {}", id)
-                });
-                Atom::Variable(c)
-            },
-            // H(F(x, k) -> s, [ts, t]) = fn x => fn k => S(s, ts)
-            EffectAst::Handle(handle) => {
-                // TODO: assert effects.pop() == t
-                let mut effects = effects.to_vec();
-                effects.pop();
+    ///
+    /// Although only:
+    ///
+    /// H(F(x, k) -> s, [ts, t]) = fn x => fn k => S(s, ts)
+    ///
+    /// Is used here.
+    fn convert_handler(&mut self, handle: &mir::Handle, effects: &EffectStack) -> Atom {
+        // These lines aren't needed due to the change in cps_handle where we convert
+        // handlers before the new effect is pushed to the EffectStack
+        // let mut effects = effects.to_vec();
+        // effects.pop();
+        let xs = fmap(&handle.branch_args, |arg| self.new_local_from_existing(arg));
 
-                let xs = fmap(&handle.branch_args, |arg| self.new_local_from_existing(arg));
+        let k = self.new_local(handle.resume.definition_id, "k", handle.resume.typ.as_ref().clone());
 
-                let k = self.new_local(handle.resume.definition_id, "k", handle.resume.typ.as_ref().clone());
-
-                // Should this be one function with k as the last parameter?
-                Context::ct_lambda(xs, {
-                    Ast::Atom(Context::ct_lambda(vec![k], {
-                        self.cps_statement(&handle.branch_body, &effects)
-                    }))
-                })
-            },
-        }
+        Context::ct_lambda(xs, {
+            Ast::Atom(Context::ct_lambda(vec![k], {
+                self.cps_statement(&handle.branch_body, &effects)
+            }))
+        })
     }
 }

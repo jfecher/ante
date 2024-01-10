@@ -39,11 +39,8 @@
 use std::collections::{HashSet, VecDeque, BTreeMap};
 use std::rc::Rc;
 
-use crate::hir::{DefinitionId, Type, PrimitiveType, Typed};
-use crate::hir;
+use crate::hir::{ self, Typed };
 use crate::util::fmap;
-
-use self::ir::Atom;
 
 #[macro_use]
 mod ir;

@@ -1,7 +1,7 @@
 //! llvm/decisiontree.rs - Defines how to codegen a decision tree
 //! via `codegen_tree`. This decisiontree is the result of compiling
 //! a match expression into a decisiontree during type inference.
-use crate::hir;
+use crate::mir;
 use crate::llvm::{CodeGen, Generator};
 use crate::util::fmap;
 
@@ -9,7 +9,7 @@ use inkwell::basic_block::BasicBlock;
 use inkwell::values::BasicValueEnum;
 
 impl<'g> Generator<'g> {
-    pub fn codegen_tree(&mut self, match_expr: &hir::Match) -> BasicValueEnum<'g> {
+    pub fn codegen_tree(&mut self, match_expr: &mir::Match) -> BasicValueEnum<'g> {
         let current_function = self.current_function();
         let end_block = self.context.append_basic_block(current_function, "match_end");
 
@@ -46,17 +46,17 @@ impl<'g> Generator<'g> {
     /// Recurse on the given DecisionTree, codegening each switch and remembering
     /// all the Leaf nodes that have already been compiled, since these may be
     /// repeated in the same DecisionTree.
-    fn codegen_subtree(&mut self, tree: &hir::DecisionTree, branches: &[BasicBlock<'g>]) {
+    fn codegen_subtree(&mut self, tree: &mir::DecisionTree, branches: &[BasicBlock<'g>]) {
         match tree {
-            hir::DecisionTree::Leaf(n) => {
+            mir::DecisionTree::Leaf(n) => {
                 self.builder.build_unconditional_branch(branches[*n])
                     .expect("Could not create br during codegen_subtree");
             },
-            hir::DecisionTree::Definition(definition, subtree) => {
-                definition.codegen(self);
-                self.codegen_subtree(subtree, branches);
+            mir::DecisionTree::Let(let_) => {
+                let_.codegen(self);
+                self.codegen_subtree(&let_.body, branches);
             },
-            hir::DecisionTree::Switch { int_to_switch_on, cases, else_case } => {
+            mir::DecisionTree::Switch { int_to_switch_on, cases, else_case } => {
                 let int_to_switch_on = int_to_switch_on.codegen(self);
                 self.build_switch(int_to_switch_on, cases, else_case, branches);
             },
@@ -64,8 +64,8 @@ impl<'g> Generator<'g> {
     }
 
     fn build_switch(
-        &mut self, int_to_switch_on: BasicValueEnum<'g>, cases: &[(u32, hir::DecisionTree)],
-        else_case: &Option<Box<hir::DecisionTree>>, branches: &[BasicBlock<'g>],
+        &mut self, int_to_switch_on: BasicValueEnum<'g>, cases: &[(u32, mir::DecisionTree)],
+        else_case: &Option<Box<mir::DecisionTree>>, branches: &[BasicBlock<'g>],
     ) {
         let starting_block = self.current_block();
         let cases = fmap(cases, |(tag, subtree)| {

@@ -3,7 +3,7 @@ use std::path::Path;
 use std::rc::Rc;
 
 use crate::cli::{Cli, EmitTarget};
-use crate::hir::{self, Ast, DefinitionId, PrimitiveType, Type};
+use crate::mir::{self, Ast, DefinitionId, PrimitiveType, Type};
 use crate::lexer::token::FloatKind;
 use crate::util::fmap;
 
@@ -21,7 +21,7 @@ use super::module::DynModule;
 use super::CodeGen;
 
 // TODO: Make this a threadsafe queue so we can compile functions in parallel
-type FunctionQueue = Vec<(Rc<hir::Lambda>, Signature, FuncId)>;
+type FunctionQueue = Vec<(Rc<mir::Lambda>, Signature, FuncId)>;
 
 pub struct Context {
     pub definitions: HashMap<DefinitionId, Value>,
@@ -141,12 +141,12 @@ impl Context {
         )
     }
 
-    pub fn codegen_all(path: &Path, hir: &Ast, args: &Cli) {
+    pub fn codegen_all(path: &Path, mir: &Ast, args: &Cli) {
         let output_path = path.with_extension("o");
         let (mut context, mut builder_context) = Context::new(&output_path, !args.build);
         let mut module_context = context.module.make_context();
 
-        let main = context.codegen_main(hir, &mut builder_context, &mut module_context, args);
+        let main = context.codegen_main(mir, &mut builder_context, &mut module_context, args);
 
         // Then codegen any functions used by main and so forth
         while let Some((function, signature, id)) = context.function_queue.pop() {
@@ -166,7 +166,7 @@ impl Context {
     /// Should this be renamed since it delegates to codegen_function_inner to
     /// compile the actual body of the function?
     fn codegen_function_body(
-        &mut self, function: &hir::Lambda, context: &mut FunctionBuilderContext,
+        &mut self, function: &mir::Lambda, context: &mut FunctionBuilderContext,
         module_context: &mut cranelift::codegen::Context, signature: Signature, function_id: FuncId, args: &Cli,
     ) {
         module_context.func = Function::with_name_signature(ExternalName::user(0, function_id.as_u32()), signature);
@@ -247,7 +247,7 @@ impl Context {
         main_id
     }
 
-    fn codegen_lambda(&mut self, lambda: &hir::Lambda, builder: &mut FunctionBuilder) -> Value {
+    fn codegen_lambda(&mut self, lambda: &mir::Lambda, builder: &mut FunctionBuilder) -> Value {
         let block = builder.current_block().unwrap();
         let mut i = 0;
         let all_parameters = builder.block_params(block);
@@ -269,7 +269,7 @@ impl Context {
     /// Where `codegen_function_body` creates a new function in the IR and codegens
     /// its body, this function essentially codegens the reference to a function at
     /// the callsite.
-    pub fn codegen_function_use(&mut self, ast: &hir::Ast, builder: &mut FunctionBuilder) -> FunctionValue {
+    pub fn codegen_function_use(&mut self, ast: &mir::Ast, builder: &mut FunctionBuilder) -> FunctionValue {
         let value = ast.codegen(self, builder);
 
         // If we have a direct call we can return early. Otherwise we need to check the expected
@@ -289,7 +289,7 @@ impl Context {
         }
     }
 
-    /// For each cranelift type in this hir::Type, do f.
+    /// For each cranelift type in this mir::Type, do f.
     /// This will apply f to each element in the case of tuples.
     /// Otherwise, it will only apply it once.
     pub fn for_each_type_in<F>(&mut self, typ: &Type, mut f: F)
@@ -339,7 +339,7 @@ impl Context {
         block
     }
 
-    pub fn convert_signature(&mut self, f: &hir::FunctionType) -> Signature {
+    pub fn convert_signature(&mut self, f: &mir::FunctionType) -> Signature {
         let mut sig = Signature::new(CallConv::Fast);
 
         for parameter in &f.parameters {
@@ -360,7 +360,7 @@ impl Context {
         builder.ins().return_(&values);
     }
 
-    pub fn add_function_to_queue(&mut self, function: Rc<hir::Lambda>, name: &str) -> Value {
+    pub fn add_function_to_queue(&mut self, function: Rc<mir::Lambda>, name: &str) -> Value {
         let signature = self.convert_signature(&function.typ);
 
         let name = format!("lambda{}", name);
@@ -596,8 +596,8 @@ fn convert_primitive_type(typ: &PrimitiveType) -> cranelift_types::Type {
     }
 }
 
-pub fn convert_integer_kind(kind: hir::IntegerKind) -> cranelift_types::Type {
-    use hir::IntegerKind;
+pub fn convert_integer_kind(kind: mir::IntegerKind) -> cranelift_types::Type {
+    use mir::IntegerKind;
     match kind {
         IntegerKind::I8 => cranelift_types::I8,
         IntegerKind::I16 => cranelift_types::I16,

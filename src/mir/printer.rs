@@ -33,6 +33,12 @@ impl Display for Atom {
     }
 }
 
+impl Display for ir::Lambda {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        Printer::default().display_lambda(self, f)
+    }
+}
+
 impl<'ast> Printer {
     fn display_in_block(&mut self, ast: &'ast Ast, f: &mut Formatter) -> Result {
         self.indent_level += 1;
@@ -55,21 +61,10 @@ impl<'ast> Printer {
     }
 
     fn display_ast_no_newline(&mut self, ast: &'ast Ast, f: &mut Formatter) -> Result {
-        self.display_statements(ast, Vec::new(), f)
-    }
-
-    fn display_statements(&mut self, ast: &'ast Ast, mut queued_lets: Vec<&'ast ir::Let<Ast>>, f: &mut Formatter) -> Result {
-        if !queued_lets.is_empty() && !matches!(ast, Ast::Let(_)) {
-            let let_ = queued_lets.pop().unwrap();
-            write!(f, "let {}{}: {} = ", let_.name, let_.variable, let_.typ)?;
-            self.display_ast_try_one_line(ast, f)?;
-            return self.display_ast(&let_.body, f);
-        }
-
         match ast {
             Ast::Atom(atom) => self.display_atom(atom, f),
             Ast::FunctionCall(call) => self.display_call(call, f),
-            Ast::Let(let_) => self.display_let(let_, queued_lets, f),
+            Ast::Let(let_) => self.display_let(let_, f),
             Ast::If(if_) => self.display_if(if_, f),
             Ast::Match(match_) => self.display_match(match_, f),
             Ast::Return(return_) => self.display_return(return_, f),
@@ -152,17 +147,10 @@ impl<'ast> Printer {
         Ok(())
     }
 
-    fn display_let(&mut self, let_: &'ast ir::Let<Ast>, mut queued_lets: Vec<&'ast ir::Let<Ast>>, f: &mut Formatter) -> Result {
-        if matches!(let_.expr.as_ref(), Ast::Let(_)) {
-            // Queue this let to print it after the inner let for better readability.
-            queued_lets.push(let_);
-            self.display_statements(&let_.expr, queued_lets, f)
-        } else {
-            write!(f, "let {}{}: {} = ", let_.name, let_.variable, let_.typ)?;
-            self.display_ast_try_one_line(&let_.expr, f)?;
-            self.next_line(f)?;
-            self.display_statements(&let_.body, queued_lets, f)
-        }
+    fn display_let(&mut self, let_: &'ast ir::Let<Ast>, f: &mut Formatter) -> Result {
+        write!(f, "let {}{}: {} = ", let_.name, let_.variable, let_.typ)?;
+        self.display_ast_try_one_line(&let_.expr, f)?;
+        self.display_ast(&let_.body, f)
     }
 
     fn display_if(&mut self, if_: &'ast ir::If, f: &mut Formatter) -> Result {

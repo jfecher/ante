@@ -21,19 +21,16 @@
 //! Unless the term falls into one of the above cases, it is considered to be a runtime term.
 use std::{collections::{HashMap, VecDeque}, rc::Rc};
 
-use crate::{hir::{self, Type, DefinitionId, FunctionType}, util::fmap};
-use crate::mir::ir::{ self as mir, Ast, Atom, Variable };
+use crate::util::fmap;
+use crate::mir::ir::{ self as mir, Ast, Atom, Variable, Type, DefinitionId, FunctionType };
+
+use super::effect_stack::{EffectStack, Effect};
 
 pub struct Context {
     global_definitions: Definitions,
-    pub(super) local_definitions: HashMap<hir::DefinitionId, Variable>,
+    pub(super) local_definitions: HashMap<DefinitionId, Atom>,
 
     pub(super) definition_queue: VecDeque<(DefinitionId, DefinitionId, EffectStack)>,
-
-    /// The name of any lambda when we need to make one up.
-    /// This is stored here so that we can increment a Rc instead of allocating a new
-    /// string for each variable named this way.
-    pub(super) lambda_name: Rc<String>,
 
     /// Default name to give to fresh variables
     pub(super) default_name: Rc<String>,
@@ -42,10 +39,7 @@ pub struct Context {
     pub(super) next_id: usize,
 }
 
-pub(super) type Definitions = HashMap<hir::DefinitionId, HashMap<EffectStack, Variable>>;
-
-pub(super) type Effect = (hir::DefinitionId, Type);
-pub(super) type EffectStack = Vec<Effect>;
+pub(super) type Definitions = HashMap<DefinitionId, HashMap<EffectStack, Variable>>;
 
 impl Context {
     pub fn new(next_id: usize) -> Self {
@@ -53,24 +47,25 @@ impl Context {
             global_definitions: HashMap::new(),
             local_definitions: HashMap::new(),
             definition_queue: VecDeque::new(),
-            lambda_name: Rc::new("lambda".into()),
             default_name: Rc::new("_".into()),
             next_id,
         }
     }
 
-    pub fn get_definition(&self, id: hir::DefinitionId, effects: &EffectStack) -> Option<Variable> {
-        self.local_definitions.get(&id).or_else(|| {
-            self.global_definitions.get(&id).and_then(|map| map.get(effects))
-        }).cloned()
+    pub fn get_definition(&self, id: DefinitionId, effects: &EffectStack) -> Option<Atom> {
+        self.local_definitions.get(&id).cloned().or_else(|| {
+            let map = self.global_definitions.get(&id)?;
+            let definition = map.get(effects)?.clone();
+            Some(Atom::Variable(definition))
+        })
     }
 
-    pub fn insert_global_definition(&mut self, id: hir::DefinitionId, value: Variable, effects: EffectStack) {
+    pub fn insert_global_definition(&mut self, id: DefinitionId, value: Variable, effects: EffectStack) {
         self.global_definitions.entry(id).or_default().insert(effects, value);
     }
 
-    pub fn insert_local_definition(&mut self, id: hir::DefinitionId, value: Variable) {
-        self.local_definitions.insert(id, value);
+    pub fn insert_local_definition(&mut self, id: DefinitionId, atom: Atom) {
+        self.local_definitions.insert(id, atom);
     }
 
     pub fn next_id(&mut self) -> DefinitionId {
@@ -90,11 +85,6 @@ impl Context {
 
     pub fn lambda(args: Vec<Variable>, typ: FunctionType, body: Ast) -> Atom {
         Atom::Lambda(mir::Lambda { args, body: Box::new(body), typ, compile_time: false })
-    }
-
-    /// Convenience function for getting the name of a definition which may not have one
-    pub fn name_of(name: &Option<String>) -> String {
-        name.clone().unwrap_or_else(|| "_".into())
     }
 
     /// A lambda to be evaluated at compile time.
@@ -120,7 +110,7 @@ impl Context {
     /// Create a new local and introduce it into `self.local_definitions`
     pub fn new_local(&mut self, id: DefinitionId, name: impl Into<String>, typ: Type) -> Variable {
         let local = self.anonymous_variable(name, typ);
-        self.insert_local_definition(id, local.clone());
+        self.insert_local_definition(id, Atom::Variable(local.clone()));
         local
     }
 
@@ -131,7 +121,7 @@ impl Context {
         let name = variable.name.clone();
         let local = Variable { definition_id, typ, name };
 
-        self.insert_local_definition(variable.definition_id, local.clone());
+        self.insert_local_definition(variable.definition_id, Atom::Variable(local.clone()));
         local
     }
 
@@ -157,11 +147,11 @@ impl Context {
     ///
     /// Ante currently doesn't separate capability types from other function types so there
     /// are no cases for these.
-    pub fn convert_type(&mut self, typ: &hir::Type) -> Type {
+    pub fn convert_type(&mut self, typ: &Type) -> Type {
         match typ {
-            hir::Type::Primitive(primitive) => Type::Primitive(primitive.clone()),
-            hir::Type::Function(function_type) => self.convert_function_type(function_type),
-            hir::Type::Tuple(fields) => {
+            Type::Primitive(primitive) => Type::Primitive(primitive.clone()),
+            Type::Function(function_type) => self.convert_function_type(function_type),
+            Type::Tuple(fields) => {
                 Type::Tuple(fmap(fields, |field| self.convert_type(field)))
             },
         }
@@ -170,11 +160,11 @@ impl Context {
     /// T(t -> t' can t'') = T(t) -> C(t', t'', false)
     ///
     /// TODO: Need to differentiate handler types from non-handler types
-    pub fn convert_function_type(&mut self, typ: &hir::FunctionType) -> Type {
+    pub fn convert_function_type(&mut self, typ: &FunctionType) -> Type {
         let parameters = fmap(&typ.parameters, |param| self.convert_type(param));
         let return_type = self.convert_capability_type(&typ.return_type, &typ.effects, false);
 
-        Type::Function(hir::FunctionType {
+        Type::Function(FunctionType {
             parameters,
             return_type: Box::new(return_type),
             effects: Vec::new(),
@@ -188,7 +178,7 @@ impl Context {
     /// C(t, [], _) = T(t)
     /// C(t, [t'.., t''], false) = (T(t) -> C(t'', t', false)) -> C(t'', t', false)
     /// C(t, [t'.., t''], true) = (T(t) => C(t'', t', true)) => C(t'', t', true)
-    fn convert_capability_type(&mut self, typ: &hir::Type, effects: &[hir::Effect], compile_time: bool) -> Type {
+    fn convert_capability_type(&mut self, typ: &Type, effects: &[mir::Effect], compile_time: bool) -> Type {
         if effects.is_empty() {
             self.convert_type(typ)
         } else {
@@ -196,14 +186,14 @@ impl Context {
             let head = vec![self.convert_type(typ)];
             let return_type = Box::new(self.convert_capability_type(&last.typ, rest, compile_time));
 
-            let inner_function = Type::Function(hir::FunctionType {
+            let inner_function = Type::Function(FunctionType {
                 parameters: head,
                 return_type: return_type.clone(),
                 effects: Vec::new(),
                 is_varargs: false,
             });
 
-            Type::Function(hir::FunctionType {
+            Type::Function(FunctionType {
                 parameters: vec![inner_function],
                 return_type,
                 effects: Vec::new(),
@@ -215,6 +205,10 @@ impl Context {
     pub fn let_binding(&mut self, typ: Type, ast: Ast, f: impl FnOnce(&mut Self, Atom) -> Ast) -> Ast {
         match ast {
             Ast::Atom(atom) => f(self, atom),
+            Ast::Let(mut let_) => {
+                *let_.body = self.let_binding(typ, *let_.body, f);
+                Ast::Let(let_)
+            }
             ast => {
                 let fresh_id = self.next_id();
                 let typ = Rc::new(typ);
@@ -240,6 +234,13 @@ impl Context {
         self.let_binding(typ, ast, move |this, atom| Ast::Atom(f(this, atom)))
     }
 
+    pub fn new_effect(&mut self, id: DefinitionId, handler: Atom, handler_type: Type) -> Effect {
+        // This could use its own counter instead of sharing next_id, but this does no harm.
+        let time_stamp = self.next_id;
+        self.next_id += 1;
+        Effect { id, handler, handler_type, time_stamp }
+    }
+
     /// reify converts a compile-time (static) term to a runtime (residual) term.
     ///
     /// Reify(ts) : C(t, ts, true) -> C(t, ts, false) 
@@ -248,7 +249,7 @@ impl Context {
     pub fn reify(&mut self, effects: &[Effect], s: Atom) -> Atom {
         match effects.split_last() {
             None => s,
-            Some(((_, _t), ts)) => {
+            Some((_t, ts)) => {
                 // What is the type of `k` here?
                 let k_type = Context::placeholder_function_type();
                 let k = self.anonymous_variable("reify_k", Type::Function(k_type.clone()));
@@ -284,7 +285,7 @@ impl Context {
     pub fn reflect(&mut self, effects: &[Effect], s: Atom) -> Atom {
         match effects.split_last() {
             None => s,
-            Some(((_, _t), ts)) => {
+            Some((_t, ts)) => {
                 // What is the type of `k` here?
                 let k_type = Context::placeholder_function_type();
                 let k = self.anonymous_variable("reflect_k", Type::Function(k_type.clone()));

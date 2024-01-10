@@ -10,10 +10,10 @@
 use std::{rc::Rc, collections::BTreeMap};
 
 // These parts of mir are all identical to the hir
-pub use crate::hir::{PrimitiveType, DefinitionId, Literal, FunctionType, Type, Effect, Extern};
+pub use crate::hir::{PrimitiveType, DefinitionId, Literal, FunctionType, Type, Effect, Extern, IntegerKind};
 
-#[derive(Debug, Clone)]
-pub struct DefinitionInfo {
+#[derive(Debug, Clone, Eq)]
+pub struct Variable {
     pub definition_id: DefinitionId,
 
     pub typ: Rc<Type>,
@@ -23,7 +23,17 @@ pub struct DefinitionInfo {
     pub name: Rc<String>,
 }
 
-pub type Variable = DefinitionInfo;
+impl PartialEq for Variable {
+    fn eq(&self, other: &Self) -> bool {
+        self.definition_id == other.definition_id
+    }
+}
+
+impl std::hash::Hash for Variable {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.definition_id.hash(state);
+    }
+}
 
 /// \a b. expr
 /// Function definitions are also desugared to a ast::Definition with a ast::Lambda as its body
@@ -116,15 +126,6 @@ pub enum DecisionTree {
 pub struct Return {
     pub expression: Atom,
     pub typ: Type,
-}
-
-/// statement1
-/// statement2
-/// ...
-/// statementN
-#[derive(Debug, Clone)]
-pub struct Sequence {
-    pub statements: Vec<Ast>,
 }
 
 /// lhs := rhs
