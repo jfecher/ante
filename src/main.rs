@@ -154,32 +154,35 @@ fn compile(args: Cli) {
         return;
     }
 
+    // Phase 5: Monomorphization
     let (hir, next_id) = hir::monomorphise(ast, cache);
     if args.emit == Some(EmitTarget::Hir) {
         println!("{}", hir);
         return;
     }
 
-    // Phase 5: CPS Conversion
+    // Phase 6: Mir Conversion
     let mut mir = mir::convert_to_mir(hir, next_id);
-
     if matches!(args.emit, Some(EmitTarget::Mir)) {
         println!("{mir}");
+        return;
     }
 
+    // Phase 6.1: Convert Mir to capability passing style
     mir = mir.convert_to_cps();
-
     if matches!(args.emit, Some(EmitTarget::MirCPS)) {
         println!("{mir}");
+        return;
     }
 
+    // Phase 6.2: Evaluate static calls in the Mir to remove effect handlers at compile-time
     mir = mir.evaluate_static_calls();
-
     if matches!(args.emit, Some(EmitTarget::MirFinal)) {
         println!("{mir}");
+        return;
     }
 
-    // // Phase 6: Codegen
+    // // Phase 7: Codegen
     let default_backend = if args.opt_level == '0' { Backend::Cranelift } else { Backend::Llvm };
     let backend = args.backend.unwrap_or(default_backend);
 

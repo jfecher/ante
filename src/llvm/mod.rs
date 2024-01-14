@@ -19,7 +19,7 @@
 //! function which is called directly from `main`. This function sets up the
 //! Generator, walks the Ast, then optimizes and links the resulting Module.
 use crate::cli::{Cli, EmitTarget};
-use crate::mir::{self, DefinitionId, Mir};
+use crate::mir::{self, DefinitionId, Mir, Atom};
 use crate::lexer::token::FloatKind;
 use crate::util::{self, fmap, timing};
 
@@ -82,8 +82,7 @@ pub fn run(path: &Path, ast: Mir, args: &Cli) {
         current_definition_name: None,
     };
 
-    // Codegen main, and all functions reachable from it
-    codegen.codegen_main(&ast);
+    codegen.codegen_all(&ast);
 
     codegen
         .module
@@ -145,7 +144,51 @@ fn to_size_level(optimization_argument: char) -> u32 {
 }
 
 impl<'g> Generator<'g> {
-    fn codegen_main(&mut self, ast: &mir::Ast) {
+    fn codegen_all(&mut self, mir: &Mir) {
+        let global_functions = fmap(mir.functions.iter().filter(|(id, _)| **id != mir.main), |(id, (name, function))| {
+            let lambda = match function {
+                mir::Ast::Atom(Atom::Lambda(lambda)) => lambda,
+                other => unreachable!("Expected lambda, found {}", other),
+            };
+            let (function_value, entry_block) = self.declare_function(*id, name, &lambda.typ);
+            (lambda, function_value, entry_block)
+        });
+
+        let main = &mir.functions[&mir.main].1;
+        self.codegen_main(main);
+
+        for (lambda, function_value, entry_block) in global_functions {
+            self.define_function(lambda, function_value, entry_block);
+        }
+    }
+
+    fn declare_function(&mut self, id: DefinitionId, name: &str, function_type: &mir::FunctionType) -> (FunctionValue<'g>, BasicBlock<'g>) {
+        self.current_function_info = Some(id);
+        let value = self.function(&name, function_type).0;
+        let block = self.builder.get_insert_block().unwrap();
+        (value, block)
+    }
+
+    /// Defines a function by filling in its body. Expects `declare_function` to have
+    /// already been called previously
+    fn define_function(&mut self, lambda: &mir::Lambda, function: FunctionValue<'g>, entry_block: BasicBlock<'g>) {
+        let caller_block = self.current_block();
+        self.builder.position_at_end(entry_block);
+
+        // Bind each parameter node to the nth parameter of `function`
+        for (i, parameter) in lambda.args.iter().enumerate() {
+            let value =
+                expect_opt!(function.get_nth_param(i as u32), "Could not get parameter {} of function {}", i, lambda);
+            self.definitions.insert(parameter.definition_id, value);
+        }
+
+        let return_value = lambda.body.codegen(self);
+
+        self.build_return(return_value);
+        self.builder.position_at_end(caller_block);
+    }
+
+    fn codegen_main(&mut self, main: &mir::Ast) {
         let i32_type = self.context.i32_type();
         let main_type = i32_type.fn_type(&[], false);
         let function = self.module.add_function("main", main_type, Some(Linkage::External));
@@ -153,7 +196,7 @@ impl<'g> Generator<'g> {
 
         self.builder.position_at_end(basic_block);
 
-        ast.codegen(self);
+        main.codegen(self);
 
         let success = i32_type.const_int(0, true);
         self.build_return(success.into());
@@ -464,6 +507,13 @@ impl<'g> Generator<'g> {
         self.builder.build_load(field_type, gep, field_name)
             .expect("Error creating load")
     }
+
+    fn codegen_let_expr<T>(&mut self, let_: &mir::Let<T>) {
+        self.current_function_info = Some(let_.variable);
+        self.current_definition_name = Some(let_.name.as_ref().clone());
+        let value = let_.expr.codegen(self);
+        self.definitions.insert(let_.variable, value);
+    }
 }
 
 trait CodeGen<'g> {
@@ -518,25 +568,17 @@ impl<'g> CodeGen<'g> for mir::Lambda {
         let name = generator.current_definition_name.take().unwrap_or_else(|| "lambda".into());
 
         let (function, function_value) = generator.function(&name, &self.typ);
+        let entry_block = generator.current_block();
+        generator.define_function(self, function, entry_block);
 
-        // Bind each parameter node to the nth parameter of `function`
-        for (i, parameter) in self.args.iter().enumerate() {
-            let value =
-                expect_opt!(function.get_nth_param(i as u32), "Could not get parameter {} of function {}", i, self);
-            generator.definitions.insert(parameter.definition_id, value);
-        }
-
-        let return_value = self.body.codegen(generator);
-
-        generator.build_return(return_value);
         generator.builder.position_at_end(caller_block);
-
         function_value
     }
 }
 
 impl<'g> CodeGen<'g> for mir::FunctionCall {
     fn codegen(&self, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+        // Panic here into_pointer_value
         let function = self.function.codegen(generator).into_pointer_value();
         let args = fmap(&self.args, |arg| arg.codegen(generator).into());
         let function_type = generator.convert_function_type(&self.function_type);
@@ -561,11 +603,7 @@ impl<'g> CodeGen<'g> for mir::Let<mir::Ast> {
             generator.auto_derefs.insert(self.variable);
         }
 
-        generator.current_function_info = Some(self.variable);
-        generator.current_definition_name = Some(self.name.as_ref().clone());
-        let value = self.expr.codegen(generator);
-        generator.definitions.insert(self.variable, value);
-
+        generator.codegen_let_expr(self);
         self.body.codegen(generator)
     }
 }

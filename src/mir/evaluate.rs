@@ -5,13 +5,13 @@ use super::ir::{ self as mir, Ast, dispatch_on_mir, DefinitionId, Atom, Mir };
 
 impl Mir {
     pub fn evaluate_static_calls(mut self) -> Mir {
-        self.functions = self.functions.iter().filter_map(|(id, function)| {
+        self.functions = self.functions.iter().filter_map(|(id, (name, function))| {
             if matches!(function, Ast::Atom(Atom::Lambda(lambda)) if lambda.compile_time) {
                 None
             } else {
                 let function = function.clone();
                 let new_function = function.evaluate(&self, &im::HashMap::new());
-                Some((*id, new_function))
+                Some((*id, (name.clone(), new_function)))
             }
         }).collect();
         self
@@ -54,7 +54,7 @@ impl Evaluate<Atom> for mir::Variable {
         match substitutions.get(&self.definition_id) {
             Some(ast) => ast.clone(), // Should we recur here?
             None => {
-                if let Some(Ast::Atom(Atom::Lambda(lambda))) = mir.functions.get(&self.definition_id) {
+                if let Some((_, Ast::Atom(Atom::Lambda(lambda)))) = mir.functions.get(&self.definition_id) {
                     if lambda.compile_time {
                         return Atom::Lambda(lambda.clone());
                     }
@@ -92,8 +92,10 @@ impl Evaluate<Ast> for mir::FunctionCall {
         let function = self.function.evaluate(mir, substitutions);
         let args = fmap(self.args, |arg| arg.evaluate(mir, substitutions));
 
+        let args_is_unit = args.len() == 1 && matches!(&args[0], Atom::Literal(mir::Literal::Unit));
+
         match function {
-            Atom::Lambda(lambda) if lambda.compile_time || self.compile_time => {
+            Atom::Lambda(lambda) if lambda.compile_time || self.compile_time || args_is_unit => {
                 let mut new_substitutions = substitutions.clone();
                 assert_eq!(lambda.args.len(), args.len());
 
@@ -101,7 +103,13 @@ impl Evaluate<Ast> for mir::FunctionCall {
                     new_substitutions.insert(param.definition_id, arg);
                 }
 
-                lambda.body.evaluate(mir, &new_substitutions).evaluate(mir, substitutions)
+                let evaluate_recursive = !args_is_unit;
+
+                let mut result = lambda.body.evaluate(mir, &new_substitutions);
+                if evaluate_recursive {
+                    result = result.evaluate(mir, substitutions);
+                }
+                result
             }
             function => {
                 self.function = function;
@@ -119,6 +127,12 @@ impl Evaluate<Ast> for mir::Let<Ast> {
                 let new_substitutions = substitutions.update(self.variable, atom);
                 self.body.evaluate(mir, &new_substitutions)
             },
+            // Transform `let a = (let b = c in b) in d` into `let a = c in d`
+            // Ast::Let(let_) if let_.is_trivial() => {
+            //     self.expr = let_.expr;
+            //     *self.body = self.body.evaluate(mir, substitutions);
+            //     Ast::Let(self)
+            // }
             expr => {
                 *self.expr = expr;
                 *self.body = self.body.evaluate(mir, substitutions);

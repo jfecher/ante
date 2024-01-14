@@ -56,7 +56,7 @@ pub fn convert_to_mir(hir: hir::Ast, next_id: usize) -> ir::Mir {
 
     let main_id = context.next_id();
     let mut functions = BTreeMap::new();
-    functions.insert(main_id, main);
+    functions.insert(main_id, (Rc::new("main".into()), main));
 
     let mut mir = ir::Mir { main: main_id, functions, next_id };
 
@@ -66,7 +66,8 @@ pub fn convert_to_mir(hir: hir::Ast, next_id: usize) -> ir::Mir {
             hir::Ast::Definition(definition) => definition.expr.as_ref(),
             other => other,
         };
-        let result = ast.to_mir(&mut context);
+        let name = context.get_name(&next_global.name);
+        let result = (name, ast.to_mir(&mut context));
         mir.functions.insert(next_global.definition_id, result);
     }
 

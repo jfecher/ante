@@ -68,6 +68,10 @@ impl EffectStack {
     pub fn push(&mut self, effect: Effect) {
         self.effects.push(effect);
     }
+
+    pub fn pop(&mut self) {
+        self.effects.pop();
+    }
 }
 
 impl<'a> IntoIterator for &'a EffectStack {

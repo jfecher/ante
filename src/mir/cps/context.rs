@@ -32,6 +32,8 @@ pub struct Context {
 
     pub(super) definition_queue: VecDeque<(DefinitionId, DefinitionId, EffectStack)>,
 
+    pub(super) effects: EffectStack,
+
     /// Default name to give to fresh variables
     pub(super) default_name: Rc<String>,
 
@@ -48,19 +50,21 @@ impl Context {
             local_definitions: HashMap::new(),
             definition_queue: VecDeque::new(),
             default_name: Rc::new("_".into()),
+            effects: EffectStack::new(Vec::new()),
             next_id,
         }
     }
 
-    pub fn get_definition(&self, id: DefinitionId, effects: &EffectStack) -> Option<Atom> {
+    pub fn get_definition(&self, id: DefinitionId) -> Option<Atom> {
         self.local_definitions.get(&id).cloned().or_else(|| {
             let map = self.global_definitions.get(&id)?;
-            let definition = map.get(effects)?.clone();
+            let definition = map.get(&self.effects)?.clone();
             Some(Atom::Variable(definition))
         })
     }
 
-    pub fn insert_global_definition(&mut self, id: DefinitionId, value: Variable, effects: EffectStack) {
+    pub fn insert_global_definition(&mut self, id: DefinitionId, value: Variable) {
+        let effects = self.effects.clone();
         self.global_definitions.entry(id).or_default().insert(effects, value);
     }
 
@@ -125,15 +129,16 @@ impl Context {
         local
     }
 
-    pub fn add_global_to_queue(&mut self, variable: Variable, effects: EffectStack) -> Variable {
+    pub fn add_global_to_queue(&mut self, variable: Variable) -> Variable {
         let definition_id = self.next_id();
         let typ = variable.typ.clone();
         let name = variable.name.clone();
 
         let new_variable = Variable { definition_id, typ, name };
 
-        self.insert_global_definition(variable.definition_id, new_variable.clone(), effects.clone());
+        self.insert_global_definition(variable.definition_id, new_variable.clone());
 
+        let effects = self.effects.clone();
         self.definition_queue.push_back((variable.definition_id, definition_id, effects));
         new_variable
     }
@@ -162,7 +167,14 @@ impl Context {
     /// TODO: Need to differentiate handler types from non-handler types
     pub fn convert_function_type(&mut self, typ: &FunctionType) -> Type {
         let parameters = fmap(&typ.parameters, |param| self.convert_type(param));
-        let return_type = self.convert_capability_type(&typ.return_type, &typ.effects, false);
+
+        // TODO: Need to ensure ordering of effects in the function is the same as the
+        // handler ordering
+        let handler_types = fmap(&typ.effects, |effect| {
+            self.effects.find(effect.id).handler_type.clone()
+        });
+
+        let return_type = self.convert_capability_type(&typ.return_type, &handler_types, false);
 
         Type::Function(FunctionType {
             parameters,
@@ -178,13 +190,13 @@ impl Context {
     /// C(t, [], _) = T(t)
     /// C(t, [t'.., t''], false) = (T(t) -> C(t'', t', false)) -> C(t'', t', false)
     /// C(t, [t'.., t''], true) = (T(t) => C(t'', t', true)) => C(t'', t', true)
-    fn convert_capability_type(&mut self, typ: &Type, effects: &[mir::Effect], compile_time: bool) -> Type {
-        if effects.is_empty() {
+    fn convert_capability_type(&mut self, typ: &Type, handler_types: &[Type], compile_time: bool) -> Type {
+        if handler_types.is_empty() {
             self.convert_type(typ)
         } else {
-            let (last, rest) = effects.split_last().unwrap();
+            let (last, rest) = handler_types.split_last().unwrap();
             let head = vec![self.convert_type(typ)];
-            let return_type = Box::new(self.convert_capability_type(&last.typ, rest, compile_time));
+            let return_type = Box::new(self.convert_capability_type(last, rest, compile_time));
 
             let inner_function = Type::Function(FunctionType {
                 parameters: head,
@@ -203,7 +215,7 @@ impl Context {
     }
 
     pub fn let_binding(&mut self, typ: Type, ast: Ast, f: impl FnOnce(&mut Self, Atom) -> Ast) -> Ast {
-        match ast {
+        let result = match ast {
             Ast::Atom(atom) => f(self, atom),
             Ast::Let(mut let_) => {
                 *let_.body = self.let_binding(typ, *let_.body, f);
@@ -227,6 +239,12 @@ impl Context {
                     typ,
                 })
             }
+        };
+
+        // Simplify Ast by transforming `let x = y in x` to `y`
+        match result {
+            Ast::Let(let_) if let_.is_trivial() => *let_.expr,
+            other => other,
         }
     }
 
@@ -241,36 +259,57 @@ impl Context {
         Effect { id, handler, handler_type, time_stamp }
     }
 
+    /// Convert a compile-time term to a runtime term.
+    ///
+    /// See comments on reify_helper for details of this function
+    pub fn reify(&mut self, s: Atom, s_type: &Type) -> Atom {
+        let handler_types = fmap(&self.effects, |effect| effect.handler_type.clone());
+        let s_type = self.convert_capability_type(s_type, &handler_types, false);
+        self.reify_helper(&handler_types, s, s_type)
+    }
+
+    /// Convert a runtime term to a compile-time term.
+    ///
+    /// See comments on reflect_helper for details of this function
+    pub fn reflect(&mut self, s: Atom, s_type: &Type) -> Atom {
+        let handler_types = fmap(&self.effects, |effect| effect.handler_type.clone());
+        let s_type = self.convert_capability_type(s_type, &handler_types, true);
+        self.reflect_helper(&handler_types, s, s_type)
+    }
+
     /// reify converts a compile-time (static) term to a runtime (residual) term.
     ///
     /// Reify(ts) : C(t, ts, true) -> C(t, ts, false) 
     /// Reify([], s) = s
     /// Reify([ts.., t], s) = fn k -> Reify(ts, s @@ (fn x => Reflect(ts, k @ x)))
-    pub fn reify(&mut self, effects: &[Effect], s: Atom) -> Atom {
-        match effects.split_last() {
+    fn reify_helper(&mut self, handler_types: &[Type], s: Atom, s_type: Type) -> Atom {
+        match handler_types.split_last() {
             None => s,
             Some((_t, ts)) => {
-                // What is the type of `k` here?
-                let k_type = Context::placeholder_function_type();
+                let lambda_type = s_type.into_function().unwrap();
+                let lambda_result_type = lambda_type.return_type.as_ref().clone();
+
+                let k_type = lambda_type.parameters[0].clone().into_function().unwrap();
+                let k_result_type = k_type.return_type.as_ref().clone();
+                let k_arg_type = k_type.parameters[0].clone();
+                assert_eq!(k_type.parameters.len(), 1);
                 let k = self.anonymous_variable("reify_k", Type::Function(k_type.clone()));
 
-                let lambda_type = Context::placeholder_function_type();
-
-                Context::lambda(vec![k.clone()], lambda_type, {
-                    // What is the type of 'x' here?
-                    let x = self.anonymous_variable("reify_x", Type::unit());
+                Context::lambda(vec![k.clone()], lambda_type.clone(), {
+                    let x = self.anonymous_variable("reify_x", k_arg_type);
 
                     let reify_inner = Context::ct_lambda(vec![x.clone()], {
                         let inner_call = Ast::rt_call1(Atom::Variable(k), Atom::Variable(x), k_type);
+
                         // What type should `inner_call` have?
-                        self.let_binding_atom(Type::unit(), inner_call, |this, inner_call| {
-                            this.reflect(ts, inner_call)
+                        self.let_binding_atom(k_result_type.clone(), inner_call, |this, inner_call| {
+                            this.reflect_helper(ts, inner_call, k_result_type)
                         })
                     });
 
                     let call = Ast::ct_call1(s, reify_inner);
-                    self.let_binding_atom(Type::unit(), call, |this, call| {
-                        this.reify(ts, call)
+                    self.let_binding_atom(lambda_result_type.clone(), call, |this, call| {
+                        this.reify_helper(ts, call, lambda_result_type)
                     })
                 })
             },
@@ -282,31 +321,36 @@ impl Context {
     /// Reflect(ts) : C(t, ts, false) -> C(t, ts, true) 
     /// Reflect([], s) = s
     /// Reflect([ts.., t], s) = fn k => Reflect(ts, s @ (fn x -> Reify(ts, k @@ x)))
-    pub fn reflect(&mut self, effects: &[Effect], s: Atom) -> Atom {
-        match effects.split_last() {
+    fn reflect_helper(&mut self, handler_types: &[Type], s: Atom, s_type: Type) -> Atom {
+        match handler_types.split_last() {
             None => s,
             Some((_t, ts)) => {
-                // What is the type of `k` here?
-                let k_type = Context::placeholder_function_type();
+                let lambda_type = s_type.into_function().unwrap();
+                let lambda_result_type = lambda_type.return_type.as_ref().clone();
+                
+                let k_type = lambda_type.parameters[0].clone().into_function().unwrap();
+                let k_result_type = k_type.return_type.as_ref().clone();
+                let k_arg_type = k_type.parameters[0].clone();
+                assert_eq!(k_type.parameters.len(), 1);
                 let k = self.anonymous_variable("reflect_k", Type::Function(k_type.clone()));
 
                 Context::ct_lambda(vec![k.clone()], {
-                    let x = self.anonymous_variable("reflect_x", Type::unit());
+                    let x = self.anonymous_variable("reflect_x", k_arg_type);
                     let lambda_type = Context::placeholder_function_type();
 
-                    let reflect_inner = Context::lambda(vec![x.clone()], lambda_type.clone(), {
+                    // lambda_type
+                    let reflect_inner = Context::lambda(vec![x.clone()], k_type, {
                         let inner_call = Ast::ct_call1(Atom::Variable(k), Atom::Variable(x));
 
                         // What type should `inner_call` have?
-                        self.let_binding_atom(Type::unit(), inner_call, |this, inner_call| {
-                            this.reify(ts, inner_call)
+                        self.let_binding_atom(k_result_type.clone(), inner_call, |this, inner_call| {
+                            this.reify_helper(ts, inner_call, k_result_type)
                         })
                     });
 
                     let call = Ast::rt_call1(s, reflect_inner, lambda_type);
-
-                    self.let_binding_atom(Type::unit(), call, |this, call| {
-                        this.reflect(ts, call)
+                    self.let_binding_atom(lambda_result_type.clone(), call, |this, call| {
+                        this.reflect_helper(ts, call, lambda_result_type)
                     })
                 })
             },

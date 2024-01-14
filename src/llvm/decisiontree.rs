@@ -53,7 +53,7 @@ impl<'g> Generator<'g> {
                     .expect("Could not create br during codegen_subtree");
             },
             mir::DecisionTree::Let(let_) => {
-                let_.codegen(self);
+                self.codegen_let_expr(let_);
                 self.codegen_subtree(&let_.body, branches);
             },
             mir::DecisionTree::Switch { int_to_switch_on, cases, else_case } => {

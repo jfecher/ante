@@ -37,7 +37,7 @@ impl Context {
                 builder.ins().jump(branches[*n], &[]);
             },
             mir::DecisionTree::Let(let_) => {
-                let_.codegen(self, builder);
+                self.codegen_let_expr(let_, builder);
                 self.codegen_subtree(&let_.body, branches, builder);
             },
             mir::DecisionTree::Switch { int_to_switch_on, cases, else_case } => {

@@ -3,7 +3,7 @@ use std::path::Path;
 use std::rc::Rc;
 
 use crate::cli::{Cli, EmitTarget};
-use crate::mir::{self, Ast, DefinitionId, PrimitiveType, Type};
+use crate::mir::{self, Ast, DefinitionId, PrimitiveType, Type, Mir, Atom};
 use crate::lexer::token::FloatKind;
 use crate::util::fmap;
 
@@ -141,12 +141,19 @@ impl Context {
         )
     }
 
-    pub fn codegen_all(path: &Path, mir: &Ast, args: &Cli) {
+    pub fn codegen_all(path: &Path, mir: &Mir, args: &Cli) {
         let output_path = path.with_extension("o");
         let (mut context, mut builder_context) = Context::new(&output_path, !args.build);
         let mut module_context = context.module.make_context();
 
-        let main = context.codegen_main(mir, &mut builder_context, &mut module_context, args);
+        for (id, (name, function)) in &mir.functions {
+            if *id != mir.main {
+                context.declare_function(*id, name, function);
+            }
+        }
+
+        let main = &mir.functions[&mir.main].1;
+        let main = context.codegen_main(main, &mut builder_context, &mut module_context, args);
 
         // Then codegen any functions used by main and so forth
         while let Some((function, signature, id)) = context.function_queue.pop() {
@@ -157,6 +164,44 @@ impl Context {
         if args.emit.is_none() {
             context.module.run(main, &output_path);
         }
+    }
+
+    fn declare_function(&mut self, id: DefinitionId, name: &str, function: &Ast) {
+        let function = match function {
+            Ast::Atom(Atom::Lambda(lambda)) => lambda,
+            other => unreachable!("Expected lambda, found {}", other),
+        };
+
+        let signature = self.convert_signature(&function.typ);
+        let function_id = self.module.declare_function(name, Linkage::Export, &signature).unwrap();
+
+        self.definitions.insert(id, Value::Function(FuncData {
+            name: ExternalName::user(0, function_id.as_u32()),
+            signature,
+            // Using 'true' here gives an unimplemented error on aarch64
+            colocated: false,
+        }));
+    }
+
+    pub fn codegen_let_expr<T>(&mut self, let_: &mir::Let<T>, builder: &mut FunctionBuilder) {
+        if matches!(let_.expr.as_ref(), Ast::Atom(Atom::Lambda(_))) {
+            self.current_function_name = Some(let_.variable);
+        }
+
+        let value = let_.expr.codegen(self, builder);
+        self.definitions.insert(let_.variable, value);
+    }
+
+    pub fn add_function_to_queue(&mut self, function: &mir::Lambda, name: &str) -> Value {
+        let signature = self.convert_signature(&function.typ);
+        let function_id = self.module.declare_function(name, Linkage::Export, &signature).unwrap();
+
+        Value::Function(FuncData {
+            name: ExternalName::user(0, function_id.as_u32()),
+            signature,
+            // Using 'true' here gives an unimplemented error on aarch64
+            colocated: false,
+        })
     }
 
     /// Codegens an entire function. Cranelift enforces we must finish compiling the
@@ -269,8 +314,8 @@ impl Context {
     /// Where `codegen_function_body` creates a new function in the IR and codegens
     /// its body, this function essentially codegens the reference to a function at
     /// the callsite.
-    pub fn codegen_function_use(&mut self, ast: &mir::Ast, builder: &mut FunctionBuilder) -> FunctionValue {
-        let value = ast.codegen(self, builder);
+    pub fn codegen_function_use(&mut self, atom: &Atom, builder: &mut FunctionBuilder) -> FunctionValue {
+        let value = atom.codegen(self, builder);
 
         // If we have a direct call we can return early. Otherwise we need to check the expected
         // type to see if we expect a function pointer or a boxed closure value.
@@ -358,22 +403,6 @@ impl Context {
     pub fn create_return(&mut self, value: Value, builder: &mut FunctionBuilder) {
         let values = value.eval_all(self, builder);
         builder.ins().return_(&values);
-    }
-
-    pub fn add_function_to_queue(&mut self, function: Rc<mir::Lambda>, name: &str) -> Value {
-        let signature = self.convert_signature(&function.typ);
-
-        let name = format!("lambda{}", name);
-        let function_id = self.module.declare_function(&name, Linkage::Export, &signature).unwrap();
-
-        self.function_queue.push((function, signature.clone(), function_id));
-
-        Value::Function(FuncData {
-            name: ExternalName::user(0, function_id.as_u32()),
-            signature,
-            // Using 'true' here gives an unimplemented error on aarch64
-            colocated: false,
-        })
     }
 
     pub fn codegen_extern(&mut self, name: &str, typ: &Type) -> Value {

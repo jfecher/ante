@@ -115,17 +115,8 @@ impl CodeGen for mir::FunctionCall {
 
 impl CodeGen for mir::Let<Ast> {
     fn codegen(&self, context: &mut Context, builder: &mut FunctionBuilder) -> Value {
-        // Cannot use entry here, need to borrow context mutably for self.expr.codegen
-        #[allow(clippy::map_entry)]
-        if !context.definitions.contains_key(&self.variable) {
-            if matches!(self.expr.as_ref(), Ast::Atom(Atom::Lambda(_))) {
-                context.current_function_name = Some(self.variable);
-            }
-
-            let value = self.expr.codegen(context, builder);
-            context.definitions.insert(self.variable, value);
-        }
-
+        context.codegen_let_expr(self, builder);
+        // TODO: May need immutable definitions here
         self.body.codegen(context, builder)
     }
 }

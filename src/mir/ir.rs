@@ -76,6 +76,16 @@ pub struct Let<Body> {
     pub typ: Rc<Type>,
 }
 
+impl Let<Ast> {
+    /// A `let` is considered trivial if it is in the form `let x = ... in x`
+    pub fn is_trivial(&self) -> bool {
+        match self.body.as_ref() {
+            Ast::Atom(Atom::Variable(variable)) => variable.definition_id == self.variable,
+            _ => false,
+        }
+    }
+}
+
 /// if condition then expression else expression
 #[derive(Debug, Clone)]
 pub struct If {
@@ -286,16 +296,8 @@ impl Ast {
 
 pub struct Mir {
     pub main: DefinitionId,
-    pub functions: BTreeMap<DefinitionId, Ast>,
+    pub functions: BTreeMap<DefinitionId, (Rc<String>, Ast)>,
     pub next_id: usize,
-}
-
-impl Mir {
-    pub fn next_id(&mut self) -> DefinitionId {
-        let id = self.next_id;
-        self.next_id += 1;
-        DefinitionId(id)
-    }
 }
 
 macro_rules! dispatch_on_mir {

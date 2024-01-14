@@ -12,8 +12,8 @@ struct Printer {
 impl Display for Mir {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let mut printer = Printer::default();
-        for (id, function) in &self.functions {
-            write!(f, "letrec {} = ", id)?;
+        for (id, (name, function)) in &self.functions {
+            write!(f, "letrec {}{} = ", name, id)?;
             printer.display_ast_try_one_line(function, f)?;
             writeln!(f)?;
         }
@@ -114,10 +114,17 @@ impl<'ast> Printer {
         let start = if lambda.compile_time { "\\" } else { "fn" };
         write!(f, "{start}")?;
 
-        for arg in &lambda.args {
-            write!(f, " {arg}")?;
+        for (i, arg) in lambda.args.iter().enumerate() {
+            let arg_type = lambda.typ.parameters.get(i).map(ToString::to_string).unwrap_or_else(|| "?".into());
+            write!(f, " ({arg}: {arg_type})")?;
         }
 
+        if lambda.typ.parameters.len() > lambda.args.len() {
+            let difference = lambda.typ.parameters.len() - lambda.args.len();
+            write!(f, " !!! and {} more", difference)?;
+        }
+
+        write!(f, " : {}", lambda.typ.return_type)?;
         let arrow = if lambda.compile_time { "=>" } else { "->" };
         write!(f, " {arrow} ")?;
 
