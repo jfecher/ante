@@ -52,7 +52,7 @@ pub use ir::*;
 
 pub fn convert_to_mir(hir: hir::Ast, next_id: usize) -> ir::Mir {
     let mut context = Context::new(next_id);
-    let main = hir.to_mir(&mut context);
+    let main = hir.to_block(&mut context, Type::unit());
 
     let main_id = context.next_id();
     let mut functions = BTreeMap::new();

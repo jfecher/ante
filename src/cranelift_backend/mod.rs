@@ -24,37 +24,37 @@ pub fn run(path: &Path, mir: Mir, args: &Cli) {
 }
 
 pub trait CodeGen {
-    fn codegen(&self, context: &mut Context, builder: &mut FunctionBuilder) -> Value;
+    fn codegen<'ast>(&'ast self, context: &mut Context<'ast>, builder: &mut FunctionBuilder) -> Value;
 
-    fn eval_all(&self, context: &mut Context, builder: &mut FunctionBuilder) -> Vec<CraneliftValue> {
+    fn eval_all<'ast>(&'ast self, context: &mut Context<'ast>, builder: &mut FunctionBuilder) -> Vec<CraneliftValue> {
         self.codegen(context, builder).eval_all(context, builder)
     }
 
-    fn eval_single(&self, context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
+    fn eval_single<'ast>(&'ast self, context: &mut Context<'ast>, builder: &mut FunctionBuilder) -> CraneliftValue {
         self.codegen(context, builder).eval_single(context, builder)
     }
 }
 
 impl CodeGen for Ast {
-    fn codegen(&self, context: &mut Context, builder: &mut FunctionBuilder) -> Value {
+    fn codegen<'ast>(&'ast self, context: &mut Context<'ast>, builder: &mut FunctionBuilder) -> Value {
         dispatch_on_mir!(self, CodeGen::codegen, context, builder)
     }
 }
 
 impl CodeGen for Atom {
-    fn codegen(&self, context: &mut Context, builder: &mut FunctionBuilder) -> Value {
+    fn codegen<'ast>(&'ast self, context: &mut Context<'ast>, builder: &mut FunctionBuilder) -> Value {
         dispatch_on_atom!(self, CodeGen::codegen, context, builder)
     }
 }
 
 impl CodeGen for Box<Ast> {
-    fn codegen(&self, context: &mut Context, builder: &mut FunctionBuilder) -> Value {
+    fn codegen<'ast>(&'ast self, context: &mut Context<'ast>, builder: &mut FunctionBuilder) -> Value {
         self.as_ref().codegen(context, builder)
     }
 }
 
 impl CodeGen for mir::Literal {
-    fn codegen(&self, context: &mut Context, builder: &mut FunctionBuilder) -> Value {
+    fn codegen<'ast>(&'ast self, context: &mut Context<'ast>, builder: &mut FunctionBuilder) -> Value {
         Value::Normal(match self {
             mir::Literal::Integer(value, kind) => {
                 let typ = convert_integer_kind(*kind);
@@ -72,7 +72,7 @@ impl CodeGen for mir::Literal {
 }
 
 impl CodeGen for mir::Variable {
-    fn codegen(&self, context: &mut Context, builder: &mut FunctionBuilder) -> Value {
+    fn codegen<'ast>(&'ast self, context: &mut Context<'ast>, _: &mut FunctionBuilder) -> Value {
         match context.definitions.get(&self.definition_id) {
             Some(definition) => definition.clone(),
             None => context.definitions[&self.definition_id].clone(),
@@ -81,7 +81,7 @@ impl CodeGen for mir::Variable {
 }
 
 impl CodeGen for mir::Lambda {
-    fn codegen(&self, context: &mut Context, _builder: &mut FunctionBuilder) -> Value {
+    fn codegen<'ast>(&'ast self, context: &mut Context<'ast>, _builder: &mut FunctionBuilder) -> Value {
         let name = match context.current_function_name.take() {
             Some(id) => format!("{}", id),
             None => format!("_anon{}", context.next_unique_id()),
@@ -92,7 +92,7 @@ impl CodeGen for mir::Lambda {
 }
 
 impl CodeGen for mir::FunctionCall {
-    fn codegen(&self, context: &mut Context, builder: &mut FunctionBuilder) -> Value {
+    fn codegen<'ast>(&'ast self, context: &mut Context<'ast>, builder: &mut FunctionBuilder) -> Value {
         let f = context.codegen_function_use(&self.function, builder);
         let args = self.args.iter().flat_map(|arg| arg.eval_all(context, builder)).collect::<Vec<_>>();
 
@@ -114,7 +114,7 @@ impl CodeGen for mir::FunctionCall {
 }
 
 impl CodeGen for mir::Let<Ast> {
-    fn codegen(&self, context: &mut Context, builder: &mut FunctionBuilder) -> Value {
+    fn codegen<'ast>(&'ast self, context: &mut Context<'ast>, builder: &mut FunctionBuilder) -> Value {
         context.codegen_let_expr(self, builder);
         // TODO: May need immutable definitions here
         self.body.codegen(context, builder)
@@ -122,7 +122,7 @@ impl CodeGen for mir::Let<Ast> {
 }
 
 impl CodeGen for mir::If {
-    fn codegen(&self, context: &mut Context, builder: &mut FunctionBuilder) -> Value {
+    fn codegen<'ast>(&'ast self, context: &mut Context<'ast>, builder: &mut FunctionBuilder) -> Value {
         let cond = self.condition.eval_single(context, builder);
 
         let then = builder.create_block();
@@ -156,13 +156,13 @@ impl CodeGen for mir::If {
 }
 
 impl CodeGen for mir::Match {
-    fn codegen(&self, context: &mut Context, builder: &mut FunctionBuilder) -> Value {
+    fn codegen<'ast>(&'ast self, context: &mut Context<'ast>, builder: &mut FunctionBuilder) -> Value {
         context.codegen_match(self, builder)
     }
 }
 
 impl CodeGen for mir::Return {
-    fn codegen(&self, context: &mut Context, builder: &mut FunctionBuilder) -> Value {
+    fn codegen<'ast>(&'ast self, context: &mut Context<'ast>, builder: &mut FunctionBuilder) -> Value {
         let value = self.expression.codegen(context, builder);
         context.create_return(value.clone(), builder);
         value
@@ -170,13 +170,13 @@ impl CodeGen for mir::Return {
 }
 
 impl CodeGen for mir::Extern {
-    fn codegen(&self, context: &mut Context, _builder: &mut FunctionBuilder) -> Value {
+    fn codegen<'ast>(&'ast self, context: &mut Context<'ast>, _builder: &mut FunctionBuilder) -> Value {
         context.codegen_extern(&self.name, &self.typ)
     }
 }
 
 impl CodeGen for mir::MemberAccess {
-    fn codegen(&self, context: &mut Context, builder: &mut FunctionBuilder) -> Value {
+    fn codegen<'ast>(&'ast self, context: &mut Context<'ast>, builder: &mut FunctionBuilder) -> Value {
         let lhs = self.lhs.codegen(context, builder);
         let index = self.member_index as usize;
 
@@ -188,7 +188,7 @@ impl CodeGen for mir::MemberAccess {
 }
 
 impl CodeGen for mir::Assignment {
-    fn codegen(&self, context: &mut Context, builder: &mut FunctionBuilder) -> Value {
+    fn codegen<'ast>(&'ast self, context: &mut Context<'ast>, builder: &mut FunctionBuilder) -> Value {
         let lhs = self.lhs.eval_single(context, builder);
         let rhs = self.rhs.codegen(context, builder);
 
@@ -198,25 +198,25 @@ impl CodeGen for mir::Assignment {
 }
 
 impl CodeGen for mir::Tuple {
-    fn codegen(&self, context: &mut Context, builder: &mut FunctionBuilder) -> Value {
+    fn codegen<'ast>(&'ast self, context: &mut Context<'ast>, builder: &mut FunctionBuilder) -> Value {
         Value::Tuple(fmap(&self.fields, |field| field.codegen(context, builder)))
     }
 }
 
 impl CodeGen for mir::Builtin {
-    fn codegen(&self, context: &mut Context, builder: &mut FunctionBuilder) -> Value {
+    fn codegen<'ast>(&'ast self, context: &mut Context<'ast>, builder: &mut FunctionBuilder) -> Value {
         builtin::call_builtin(self, context, builder)
     }
 }
 
 impl CodeGen for mir::Handle {
-    fn codegen(&self, _context: &mut Context, _builder: &mut FunctionBuilder) -> Value {
+    fn codegen<'ast>(&'ast self, _context: &mut Context<'ast>, _builder: &mut FunctionBuilder) -> Value {
         unreachable!("mir::Handle should be removed before cranelift codegen")
     }
 }
 
 impl CodeGen for mir::Effect {
-    fn codegen(&self, _context: &mut Context, _builder: &mut FunctionBuilder) -> Value {
+    fn codegen<'ast>(&'ast self, _context: &mut Context<'ast>, _builder: &mut FunctionBuilder) -> Value {
         unreachable!("mir::Effect should be removed before cranelift codegen")
     }
 }

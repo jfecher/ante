@@ -25,7 +25,10 @@ impl Mir {
             context.local_definitions.clear();
             context.effects = effects;
 
-            let (name, function) = &self.functions[&source];
+            let (name, function) = self.functions.get(&source).unwrap_or_else(|| {
+                panic!("No function with id {}", source)
+            });
+
             let new_function = context.cps_statement(function);
 
             new_mir.functions.insert(destination, (name.clone(), new_function));

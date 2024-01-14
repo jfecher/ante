@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::path::Path;
-use std::rc::Rc;
 
 use crate::cli::{Cli, EmitTarget};
 use crate::mir::{self, Ast, DefinitionId, PrimitiveType, Type, Mir, Atom};
@@ -21,13 +20,13 @@ use super::module::DynModule;
 use super::CodeGen;
 
 // TODO: Make this a threadsafe queue so we can compile functions in parallel
-type FunctionQueue = Vec<(Rc<mir::Lambda>, Signature, FuncId)>;
+type FunctionQueue<'ast> = Vec<(&'ast mir::Lambda, Signature, FuncId)>;
 
-pub struct Context {
+pub struct Context<'ast> {
     pub definitions: HashMap<DefinitionId, Value>,
     module: DynModule,
     data_context: DataContext,
-    function_queue: FunctionQueue,
+    function_queue: FunctionQueue<'ast>,
 
     pub current_function_name: Option<DefinitionId>,
     next_func_id: u32,
@@ -123,7 +122,7 @@ enum FunctionOrGlobal {
     Global,
 }
 
-impl Context {
+impl<'ast> Context<'ast> {
     fn new(output_path: &Path, use_jit: bool) -> (Self, FunctionBuilderContext) {
         let builder_context = FunctionBuilderContext::new();
         let module = DynModule::new(output_path.to_string_lossy().into_owned(), use_jit);
@@ -166,24 +165,21 @@ impl Context {
         }
     }
 
-    fn declare_function(&mut self, id: DefinitionId, name: &str, function: &Ast) {
+    fn declare_function(&mut self, id: DefinitionId, name: &str, function: &'ast Ast) {
         let function = match function {
             Ast::Atom(Atom::Lambda(lambda)) => lambda,
+            Ast::Atom(Atom::Extern(extern_)) => {
+                self.codegen_extern(&extern_.name, &extern_.typ);
+                return;
+            },
             other => unreachable!("Expected lambda, found {}", other),
         };
 
-        let signature = self.convert_signature(&function.typ);
-        let function_id = self.module.declare_function(name, Linkage::Export, &signature).unwrap();
-
-        self.definitions.insert(id, Value::Function(FuncData {
-            name: ExternalName::user(0, function_id.as_u32()),
-            signature,
-            // Using 'true' here gives an unimplemented error on aarch64
-            colocated: false,
-        }));
+        let value = self.add_function_to_queue(function, name);
+        self.definitions.insert(id, value);
     }
 
-    pub fn codegen_let_expr<T>(&mut self, let_: &mir::Let<T>, builder: &mut FunctionBuilder) {
+    pub fn codegen_let_expr<T>(&mut self, let_: &'ast mir::Let<T>, builder: &mut FunctionBuilder) {
         if matches!(let_.expr.as_ref(), Ast::Atom(Atom::Lambda(_))) {
             self.current_function_name = Some(let_.variable);
         }
@@ -192,9 +188,13 @@ impl Context {
         self.definitions.insert(let_.variable, value);
     }
 
-    pub fn add_function_to_queue(&mut self, function: &mir::Lambda, name: &str) -> Value {
+    pub fn add_function_to_queue(&mut self, function: &'ast mir::Lambda, name: &str) -> Value {
         let signature = self.convert_signature(&function.typ);
+
+        eprintln!("Declaring {} : {}", name, function.typ);
         let function_id = self.module.declare_function(name, Linkage::Export, &signature).unwrap();
+
+        self.function_queue.push((function, signature.clone(), function_id));
 
         Value::Function(FuncData {
             name: ExternalName::user(0, function_id.as_u32()),
@@ -211,7 +211,7 @@ impl Context {
     /// Should this be renamed since it delegates to codegen_function_inner to
     /// compile the actual body of the function?
     fn codegen_function_body(
-        &mut self, function: &mir::Lambda, context: &mut FunctionBuilderContext,
+        &mut self, function: &'ast mir::Lambda, context: &mut FunctionBuilderContext,
         module_context: &mut cranelift::codegen::Context, signature: Signature, function_id: FuncId, args: &Cli,
     ) {
         module_context.func = Function::with_name_signature(ExternalName::user(0, function_id.as_u32()), signature);
@@ -253,7 +253,7 @@ impl Context {
     }
 
     fn codegen_main(
-        &mut self, ast: &Ast, builder_context: &mut FunctionBuilderContext,
+        &mut self, ast: &'ast Ast, builder_context: &mut FunctionBuilderContext,
         module_context: &mut cranelift::codegen::Context, args: &Cli,
     ) -> FuncId {
         let func = &mut module_context.func;
@@ -292,7 +292,7 @@ impl Context {
         main_id
     }
 
-    fn codegen_lambda(&mut self, lambda: &mir::Lambda, builder: &mut FunctionBuilder) -> Value {
+    fn codegen_lambda(&mut self, lambda: &'ast mir::Lambda, builder: &mut FunctionBuilder) -> Value {
         let block = builder.current_block().unwrap();
         let mut i = 0;
         let all_parameters = builder.block_params(block);
@@ -314,7 +314,7 @@ impl Context {
     /// Where `codegen_function_body` creates a new function in the IR and codegens
     /// its body, this function essentially codegens the reference to a function at
     /// the callsite.
-    pub fn codegen_function_use(&mut self, atom: &Atom, builder: &mut FunctionBuilder) -> FunctionValue {
+    pub fn codegen_function_use(&mut self, atom: &'ast Atom, builder: &mut FunctionBuilder) -> FunctionValue {
         let value = atom.codegen(self, builder);
 
         // If we have a direct call we can return early. Otherwise we need to check the expected
@@ -558,7 +558,7 @@ impl Context {
     }
 
     pub fn eval_all_in_block(
-        &mut self, ast: &impl CodeGen, block: Block, builder: &mut FunctionBuilder,
+        &mut self, ast: &'ast impl CodeGen, block: Block, builder: &mut FunctionBuilder,
     ) -> Option<Vec<CraneliftValue>> {
         builder.switch_to_block(block);
         let value = ast.codegen(self, builder);

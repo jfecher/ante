@@ -139,16 +139,16 @@ impl std::fmt::Display for FunctionType {
 impl std::fmt::Display for IntegerKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            IntegerKind::I8 => write!(f, "i8"),
-            IntegerKind::I16 => write!(f, "i16"),
-            IntegerKind::I32 => write!(f, "i32"),
-            IntegerKind::I64 => write!(f, "i64"),
-            IntegerKind::Isz => write!(f, "isz"),
-            IntegerKind::U8 => write!(f, "u8"),
-            IntegerKind::U16 => write!(f, "u16"),
-            IntegerKind::U32 => write!(f, "u32"),
-            IntegerKind::U64 => write!(f, "u64"),
-            IntegerKind::Usz => write!(f, "usz"),
+            IntegerKind::I8 => write!(f, "I8"),
+            IntegerKind::I16 => write!(f, "I16"),
+            IntegerKind::I32 => write!(f, "I32"),
+            IntegerKind::I64 => write!(f, "I64"),
+            IntegerKind::Isz => write!(f, "Isz"),
+            IntegerKind::U8 => write!(f, "U8"),
+            IntegerKind::U16 => write!(f, "U16"),
+            IntegerKind::U32 => write!(f, "U32"),
+            IntegerKind::U64 => write!(f, "U64"),
+            IntegerKind::Usz => write!(f, "Usz"),
         }
     }
 }
