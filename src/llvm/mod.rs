@@ -145,14 +145,7 @@ fn to_size_level(optimization_argument: char) -> u32 {
 
 impl<'g> Generator<'g> {
     fn codegen_all(&mut self, mir: &Mir) {
-        let global_functions = fmap(mir.functions.iter().filter(|(id, _)| **id != mir.main), |(id, (name, function))| {
-            let lambda = match function {
-                mir::Ast::Atom(Atom::Lambda(lambda)) => lambda,
-                other => unreachable!("Expected lambda, found {}", other),
-            };
-            let (function_value, entry_block) = self.declare_function(*id, name, &lambda.typ);
-            (lambda, function_value, entry_block)
-        });
+        let global_functions = self.declare_globals(mir);
 
         let main = &mir.functions[&mir.main].1;
         self.codegen_main(main);
@@ -160,6 +153,29 @@ impl<'g> Generator<'g> {
         for (lambda, function_value, entry_block) in global_functions {
             self.define_function(lambda, function_value, entry_block);
         }
+    }
+
+    /// Declare each global function and extern, and return each function
+    /// which we will need to later codegen the body for still.
+    fn declare_globals<'mir>(&mut self, mir: &'mir Mir) -> Vec<(&'mir mir::Lambda, FunctionValue<'g>, BasicBlock<'g>)> {
+        mir.functions.iter().filter_map(|(id, (name, function))| {
+            if *id == mir.main {
+                return None;
+            }
+
+            match function {
+                mir::Ast::Atom(Atom::Lambda(lambda)) => {
+                    let (function_value, entry_block) = self.declare_function(*id, name, &lambda.typ);
+                    Some((lambda, function_value, entry_block))
+                },
+                mir::Ast::Atom(Atom::Extern(extern_)) => {
+                    let result = extern_.codegen(self);
+                    self.definitions.insert(*id, result);
+                    None
+                },
+                other => unreachable!("Expected lambda, found {}", other),
+            }
+        }).collect()
     }
 
     fn declare_function(&mut self, id: DefinitionId, name: &str, function_type: &mir::FunctionType) -> (FunctionValue<'g>, BasicBlock<'g>) {
@@ -549,7 +565,9 @@ impl<'g> CodeGen<'g> for mir::Variable {
     fn codegen(&self, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
         let mut value = match generator.definitions.get(&self.definition_id) {
             Some(definition) => *definition,
-            None => generator.definitions[&self.definition_id],
+            None => *generator.definitions.get(&self.definition_id).unwrap_or_else(|| {
+                unreachable!("llvm backend: No definition for variable '{}'", self)
+            }),
         };
 
         if generator.auto_derefs.contains(&self.definition_id) {

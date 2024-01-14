@@ -166,16 +166,15 @@ impl<'ast> Context<'ast> {
     }
 
     fn declare_function(&mut self, id: DefinitionId, name: &str, function: &'ast Ast) {
-        let function = match function {
-            Ast::Atom(Atom::Lambda(lambda)) => lambda,
-            Ast::Atom(Atom::Extern(extern_)) => {
-                self.codegen_extern(&extern_.name, &extern_.typ);
-                return;
+        let value = match function {
+            Ast::Atom(Atom::Lambda(lambda)) => {
+                let name = format!("{}${}", name, id);
+                self.add_function_to_queue(lambda, &name)
             },
-            other => unreachable!("Expected lambda, found {}", other),
+            Ast::Atom(Atom::Extern(extern_)) => self.codegen_extern(&extern_.name, &extern_.typ),
+            other => unreachable!("Expected lambda or extern, found {}", other),
         };
 
-        let value = self.add_function_to_queue(function, name);
         self.definitions.insert(id, value);
     }
 
@@ -188,10 +187,11 @@ impl<'ast> Context<'ast> {
         self.definitions.insert(let_.variable, value);
     }
 
+    /// Add a function to the function queue to be compiled, and create a declaration for it.
+    /// This declaration will be globally exported, so the given name must be unique.
     pub fn add_function_to_queue(&mut self, function: &'ast mir::Lambda, name: &str) -> Value {
         let signature = self.convert_signature(&function.typ);
 
-        eprintln!("Declaring {} : {}", name, function.typ);
         let function_id = self.module.declare_function(name, Linkage::Export, &signature).unwrap();
 
         self.function_queue.push((function, signature.clone(), function_id));

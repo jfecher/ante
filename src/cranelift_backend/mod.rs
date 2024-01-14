@@ -75,7 +75,9 @@ impl CodeGen for mir::Variable {
     fn codegen<'ast>(&'ast self, context: &mut Context<'ast>, _: &mut FunctionBuilder) -> Value {
         match context.definitions.get(&self.definition_id) {
             Some(definition) => definition.clone(),
-            None => context.definitions[&self.definition_id].clone(),
+            None => context.definitions.get(&self.definition_id).cloned().unwrap_or_else(|| {
+                unreachable!("Cranelift backend: No definition for variable '{}'", self)
+            }),
         }
     }
 }
@@ -83,8 +85,8 @@ impl CodeGen for mir::Variable {
 impl CodeGen for mir::Lambda {
     fn codegen<'ast>(&'ast self, context: &mut Context<'ast>, _builder: &mut FunctionBuilder) -> Value {
         let name = match context.current_function_name.take() {
-            Some(id) => format!("{}", id),
-            None => format!("_anon{}", context.next_unique_id()),
+            Some(id) => format!("lambda${}", id),
+            None => format!("_${}", context.next_unique_id()),
         };
 
         context.add_function_to_queue(self, &name)

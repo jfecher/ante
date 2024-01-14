@@ -336,9 +336,7 @@ impl Context {
 
                 Context::ct_lambda(vec![k.clone()], {
                     let x = self.anonymous_variable("reflect_x", k_arg_type);
-                    let lambda_type = Context::placeholder_function_type();
 
-                    // lambda_type
                     let reflect_inner = Context::lambda(vec![x.clone()], k_type, {
                         let inner_call = Ast::ct_call1(Atom::Variable(k), Atom::Variable(x));
 
