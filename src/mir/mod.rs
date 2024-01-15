@@ -140,25 +140,26 @@ impl Context {
 
     /// Finish the current block, collecting all the previous local definitions
     /// into a let binding for each to properly sequence each statement.
+    ///
+    /// If `return_type` is set, this will wrap the last expression in a `return`
+    /// node of the given type.
     fn finish_block(&mut self, last_expression: ir::Ast, typ: Type) -> ir::Ast {
-        let mut result = last_expression;
-        // let mut result = match last_expression {
-        //     ir::Ast::Atom(expression) => ir::Ast::Atom(expression), // ir::Ast::Return(ir::Return { expression, typ }),
-        //     ir::Ast::Return(return_expr) => ir::Ast::Return(return_expr),
-        //     other => {
-        //         let fresh_id = self.next_id();
-        //         let name = self.default_name.clone();
-        //         let rc_type = Rc::new(typ.clone());
-        //         self.local_definitions.push((fresh_id, name, rc_type.clone(), other));
-        //         let expression = Atom::Variable(ir::Variable {
-        //             definition_id: fresh_id,
-        //             typ: rc_type,
-        //             name: self.default_name.clone(),
-        //         });
-        //         ir::Ast::Atom(expression)
-        //         // ir::Ast::Return(ir::Return { expression, typ })
-        //     }
-        // };
+        let mut result = match last_expression {
+            ir::Ast::Atom(expression) => ir::Ast::Return(ir::Return { expression, typ }),
+            ir::Ast::Return(return_expr) => ir::Ast::Return(return_expr),
+            other => {
+                let fresh_id = self.next_id();
+                let name = self.default_name.clone();
+                let rc_type = Rc::new(typ.clone());
+                self.local_definitions.push((fresh_id, name, rc_type.clone(), other));
+                let expression = Atom::Variable(ir::Variable {
+                    definition_id: fresh_id,
+                    typ: rc_type,
+                    name: self.default_name.clone(),
+                });
+                ir::Ast::Return(ir::Return { expression, typ })
+            }
+        };
 
         let definitions = std::mem::take(&mut self.local_definitions);
 
