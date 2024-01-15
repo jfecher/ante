@@ -171,17 +171,24 @@ impl<'ast> Printer {
     }
 
     fn display_match(&mut self, match_: &'ast ir::Match, f: &mut Formatter) -> Result {
-        self.display_decision_tree(&match_.decision_tree, f)?;
+        self.display_decision_tree_no_newline(&match_.decision_tree, f)?;
 
         for (i, branch) in match_.branches.iter().enumerate() {
             self.next_line(f)?;
             write!(f, "branch {i} -> ")?;
+            self.indent_level += 1;
             self.display_ast_try_one_line(branch, f)?;
+            self.indent_level -= 1;
         }
         Ok(())
     }
 
     fn display_decision_tree(&mut self, tree: &'ast ir::DecisionTree, f: &mut Formatter) -> Result {
+        self.next_line(f)?;
+        self.display_decision_tree_no_newline(tree, f)
+    }
+
+    fn display_decision_tree_no_newline(&mut self, tree: &'ast ir::DecisionTree, f: &mut Formatter) -> Result {
         match tree {
             ir::DecisionTree::Leaf(index) => write!(f, "branch {index}"),
             ir::DecisionTree::Let(let_) => {

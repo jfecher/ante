@@ -331,4 +331,3 @@ macro_rules! dispatch_on_atom {
 }
 
 pub(crate) use dispatch_on_mir;
-pub(crate) use dispatch_on_atom;

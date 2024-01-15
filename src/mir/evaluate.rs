@@ -159,11 +159,21 @@ impl Evaluate<Ast> for mir::Match {
     }
 }
 
-fn evaluate_decision_tree(tree: mir::DecisionTree, _mir: &Mir, _substitutions: &Substitutions) -> mir::DecisionTree {
+// Decision trees should be free of side-effects so we shouldn't expect to find any redexes here
+fn evaluate_decision_tree(tree: mir::DecisionTree, mir: &Mir, substitutions: &Substitutions) -> mir::DecisionTree {
     match tree {
-        mir::DecisionTree::Leaf(_) => todo!(),
-        mir::DecisionTree::Let(_) => todo!(),
-        mir::DecisionTree::Switch { .. } => todo!(),
+        mir::DecisionTree::Leaf(index) => mir::DecisionTree::Leaf(index),
+        mir::DecisionTree::Let(mut let_) => {
+            *let_.expr = let_.expr.evaluate(mir, substitutions);
+            *let_.body = evaluate_decision_tree(*let_.body, mir, substitutions);
+            mir::DecisionTree::Let(let_)
+        },
+        mir::DecisionTree::Switch { int_to_switch_on, cases, else_case } => {
+            let int_to_switch_on = int_to_switch_on.evaluate(mir, substitutions);
+            let cases = fmap(cases, |(tag, case)| (tag, evaluate_decision_tree(case, mir, substitutions)));
+            let else_case = else_case.map(|case| Box::new(evaluate_decision_tree(*case, mir, substitutions)));
+            mir::DecisionTree::Switch { int_to_switch_on, cases, else_case }
+        },
     }
 }
 

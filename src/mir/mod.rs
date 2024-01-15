@@ -141,22 +141,24 @@ impl Context {
     /// Finish the current block, collecting all the previous local definitions
     /// into a let binding for each to properly sequence each statement.
     fn finish_block(&mut self, last_expression: ir::Ast, typ: Type) -> ir::Ast {
-        let mut result = match last_expression {
-            ir::Ast::Atom(expression) => ir::Ast::Return(ir::Return { expression, typ }),
-            ir::Ast::Return(return_expr) => ir::Ast::Return(return_expr),
-            other => {
-                let fresh_id = self.next_id();
-                let name = self.default_name.clone();
-                let rc_type = Rc::new(typ.clone());
-                self.local_definitions.push((fresh_id, name, rc_type.clone(), other));
-                let expression = Atom::Variable(ir::Variable {
-                    definition_id: fresh_id,
-                    typ: rc_type,
-                    name: self.default_name.clone(),
-                });
-                ir::Ast::Return(ir::Return { expression, typ })
-            }
-        };
+        let mut result = last_expression;
+        // let mut result = match last_expression {
+        //     ir::Ast::Atom(expression) => ir::Ast::Atom(expression), // ir::Ast::Return(ir::Return { expression, typ }),
+        //     ir::Ast::Return(return_expr) => ir::Ast::Return(return_expr),
+        //     other => {
+        //         let fresh_id = self.next_id();
+        //         let name = self.default_name.clone();
+        //         let rc_type = Rc::new(typ.clone());
+        //         self.local_definitions.push((fresh_id, name, rc_type.clone(), other));
+        //         let expression = Atom::Variable(ir::Variable {
+        //             definition_id: fresh_id,
+        //             typ: rc_type,
+        //             name: self.default_name.clone(),
+        //         });
+        //         ir::Ast::Atom(expression)
+        //         // ir::Ast::Return(ir::Return { expression, typ })
+        //     }
+        // };
 
         let definitions = std::mem::take(&mut self.local_definitions);
 
@@ -167,6 +169,18 @@ impl Context {
         }
 
         result
+    }
+
+    /// Convert a Builtin::Transmute or ReinterpretCast to a transmute instruction.
+    /// Contains the minor optimization that `transmute x as T == x` iff `x: T`
+    fn convert_transmute(&mut self, transmute_lhs: &hir::Ast, typ: Type) -> Ast {
+        let lhs = transmute_lhs.to_atom(self, typ.clone());
+
+        if transmute_lhs.get_type() == typ {
+            Ast::Atom(lhs)
+        } else {
+            ir::Ast::Builtin(ir::Builtin::Transmute(lhs, typ))
+        }
     }
 }
 
@@ -270,8 +284,33 @@ impl ToMir for hir::If {
 }
 
 impl ToMir for hir::Match {
-    fn to_mir(&self, _context: &mut Context) -> ir::Ast {
-        todo!()
+    fn to_mir(&self, context: &mut Context) -> ir::Ast {
+        let decision_tree = decision_tree_to_mir(&self.decision_tree, context);
+        let result_type = self.result_type.clone();
+        let branches = fmap(&self.branches, |branch| branch.to_block(context, result_type.clone()));
+
+        ir::Ast::Match(ir::Match { branches, decision_tree, result_type })
+    }
+}
+
+fn decision_tree_to_mir(tree: &hir::DecisionTree, context: &mut Context) -> ir::DecisionTree {
+    match tree {
+        hir::DecisionTree::Leaf(leaf_index) => ir::DecisionTree::Leaf(*leaf_index),
+        hir::DecisionTree::Definition(definition, rest) => {
+            let variable = definition.variable;
+            context.translated.insert(variable);
+            let name = context.get_name(&definition.name);
+            let expr = Box::new(definition.expr.to_block(context, definition.typ.clone()));
+            let body = Box::new(decision_tree_to_mir(rest, context));
+            let typ = Rc::new(definition.typ.clone());
+            ir::DecisionTree::Let(ir::Let { variable, name, expr, body, typ })
+        },
+        hir::DecisionTree::Switch { int_to_switch_on, cases, else_case } => {
+            let int_to_switch_on = int_to_switch_on.to_atom(context, Type::tag_type());
+            let cases = fmap(cases, |(tag, case)| (*tag, decision_tree_to_mir(case, context)));
+            let else_case = else_case.as_ref().map(|case| Box::new(decision_tree_to_mir(case, context)));
+            ir::DecisionTree::Switch { int_to_switch_on, cases, else_case }
+        },
     }
 }
 
@@ -330,8 +369,7 @@ impl ToMir for hir::Tuple {
 
 impl ToMir for hir::ReinterpretCast {
     fn to_mir(&self, context: &mut Context) -> ir::Ast {
-        let lhs = self.lhs.to_atom(context, self.lhs.get_type());
-        ir::Ast::Builtin(ir::Builtin::Transmute(lhs, self.target_type.clone()))
+        context.convert_transmute(&self.lhs, self.target_type.clone())
     }
 }
 
@@ -387,8 +425,8 @@ impl ToMir for hir::Builtin {
             hir::Builtin::BitwiseNot(lhs) => one(context, ir::Builtin::BitwiseNot, lhs),
             hir::Builtin::Truncate(lhs, rhs) => one_with_type(context, ir::Builtin::Truncate, lhs, rhs),
             hir::Builtin::Deref(lhs, rhs) => one_with_type(context, ir::Builtin::Deref, lhs, rhs),
-            hir::Builtin::Transmute(lhs, rhs) => one_with_type(context, ir::Builtin::Transmute, lhs, rhs),
             hir::Builtin::StackAlloc(lhs) => one(context, ir::Builtin::StackAlloc, lhs),
+            hir::Builtin::Transmute(lhs, rhs) => context.convert_transmute(lhs, rhs.clone()),
             hir::Builtin::Offset(lhs, rhs, typ) => {
                 let lhs = lhs.to_atom(context, lhs.get_type());
                 let rhs = rhs.to_atom(context, rhs.get_type());

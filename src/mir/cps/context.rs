@@ -222,21 +222,15 @@ impl Context {
                 Ast::Let(let_)
             }
             ast => {
-                let fresh_id = self.next_id();
-                let typ = Rc::new(typ);
-
-                let variable = Atom::Variable(Variable {
-                    definition_id: fresh_id,
-                    typ: typ.clone(),
-                    name: self.default_name.clone(),
-                });
+                let name = self.default_name.clone();
+                let variable = self.fresh_existing_variable(name, Rc::new(typ));
 
                 Ast::Let(mir::Let {
-                    variable: fresh_id,
+                    variable: variable.definition_id,
                     name: self.default_name.clone(),
                     expr: Box::new(ast),
-                    body: Box::new(f(self, variable)),
-                    typ,
+                    typ: variable.typ.clone(),
+                    body: Box::new(f(self, Atom::Variable(variable))),
                 })
             }
         };

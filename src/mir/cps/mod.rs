@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use crate::{hir::{self, Type}, util::fmap};
 
-use super::ir::{ self as mir, Ast, Mir, Atom };
+use super::{ir::{ self as mir, Ast, Mir, Atom }, DecisionTree};
 use context::Context;
 
 mod context;
@@ -168,65 +168,46 @@ impl Context {
         })
     }
 
-    fn cps_match(&mut self, _match_expr: &mir::Match) -> Ast {
-        todo!("cps_match")
-        // let original_function = self.current_function_id.clone();
-        // let leaves = fmap(&match_expr.branches, |_| self.next_fresh_function());
+    fn cps_match(&mut self, match_expr: &mir::Match) -> Ast {
+        let decision_tree = self.cps_decision_tree(&match_expr.decision_tree);
+        let branches = fmap(&match_expr.branches, |branch| self.cps_statement(branch));
+        let result_type = match_expr.result_type.clone();
 
-        // // Codegen the switches first to eventually jump to each leaf
-        // self.current_function_id = original_function;
-        // self.cps_decision_tree(&match_expr.decision_tree, &leaves);
-
-        // let end = self.next_fresh_function();
-        // self.add_parameter(&match_expr.result_type);
-
-        // // Now codegen each leaf, all jumping to the same end continuation afterward
-        // for (leaf_hir, leaf_function) in match_expr.branches.iter().zip(leaves) {
-        //     self.current_function_id = leaf_function;
-        //     let result = self.cps_ast(leaf_hir, effects);
-        //     self.set_function_body(Ast::Function(end.clone()), vec![result]);
-        // }
-
-        // self.current_function_id = end.clone();
-        // Ast::Parameter(ParameterId {
-        //     function: end,
-        //     parameter_index: 0,
-        // })
+        Ast::Match(mir::Match { branches, decision_tree, result_type })
     }
 
-    fn cps_decision_tree(&mut self, _tree: &mir::DecisionTree) {
-        todo!("cps_tree")
-        // match tree {
-        //     DecisionTree::Leaf(leaf_index) => {
-        //         let function = Ast::Function(leaves[*leaf_index].clone());
-        //         self.set_function_body(function, vec![]);
-        //     },
-        //     DecisionTree::Definition(definition, rest) => {
-        //         definition.to_expr(self);
-        //         self.cps_decision_tree(&rest, leaves);
-        //     },
-        //     DecisionTree::Switch { int_to_switch_on, cases, else_case } => {
-        //         let tag = int_to_switch_on.to_expr(self);
-        //         let original_function = self.current_function_id.clone();
+    fn cps_decision_tree(&mut self, tree: &mir::DecisionTree) -> DecisionTree {
+        match tree {
+            DecisionTree::Leaf(leaf_index) => DecisionTree::Leaf(*leaf_index),
+            DecisionTree::Let(let_) => {
+                // Codegening this Let as pure, since it is guaranteed the inner lets of a
+                // DecisionTree are just unpacking the tuple being matched on and thus can't
+                // contain an effectful function call.
+                match self.cps_statement(&let_.expr) {
+                    Ast::Atom(atom) => {
+                        self.insert_local_definition(let_.variable, atom);
+                        self.cps_decision_tree(&let_.body)
+                    }
+                    other => {
+                        let variable = self.fresh_existing_variable(let_.name.clone(), let_.typ.clone());
+                        let id = variable.definition_id;
+                        let name = variable.name.clone();
+                        let typ = variable.typ.clone();
+                        self.insert_local_definition(let_.variable, Atom::Variable(variable));
 
-        //         let case_functions = fmap(cases, |(tag_to_match, case_tree)| {
-        //             let function = self.next_fresh_function();
-        //             self.cps_decision_tree(case_tree, leaves);
-        //             (*tag_to_match, function)
-        //         });
-
-        //         let else_function = else_case.as_ref().map(|else_tree| {
-        //             let function = self.next_fresh_function();
-        //             self.cps_decision_tree(else_tree, leaves);
-        //             function
-        //         });
-
-        //         let switch = Ast::Switch(case_functions, else_function);
-
-        //         self.current_function_id = original_function;
-        //         self.set_function_body(switch, vec![tag]);
-        //     },
-        // }
+                        let expr = Box::new(other);
+                        let body = Box::new(self.cps_decision_tree(&let_.body));
+                        DecisionTree::Let(mir::Let { variable: id, name, expr, body, typ })
+                    }
+                }
+            },
+            DecisionTree::Switch { int_to_switch_on, cases, else_case } => {
+                let int_to_switch_on = self.cps_atom(int_to_switch_on);
+                let cases = fmap(cases, |(tag, case)| (*tag, self.cps_decision_tree(case)));
+                let else_case = else_case.as_ref().map(|case| Box::new(self.cps_decision_tree(case)));
+                DecisionTree::Switch { int_to_switch_on, cases, else_case }
+            },
+        }
     }
 
     /// S(return e, []) = E(e)

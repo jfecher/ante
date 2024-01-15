@@ -65,6 +65,11 @@ impl Type {
         Type::Primitive(PrimitiveType::Unit)
     }
 
+    /// The type of a tagged union's tag value
+    pub fn tag_type() -> Self {
+        Type::Primitive(PrimitiveType::Integer(IntegerKind::U8))
+    }
+
     pub fn into_function(self) -> Option<FunctionType> {
         match self {
             Type::Function(f) => Some(f),
