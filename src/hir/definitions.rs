@@ -106,7 +106,7 @@ fn definition_type_eq(a: &types::Type, b: &types::Type) -> bool {
                 return false;
             }
             args1.iter().zip(args2).all(|(p1, p2)| definition_type_eq(p1, p2))
-                && definition_type_eq(&constructor1, &constructor2)
+                && definition_type_eq(constructor1, constructor2)
         },
         (Type::Struct(field_names1, _), Type::Struct(field_names2, _)) => {
             if field_names1.len() != field_names2.len() {

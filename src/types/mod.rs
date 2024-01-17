@@ -171,7 +171,7 @@ impl Type {
         self == &Type::Primitive(PrimitiveType::FloatType)
     }
 
-    pub fn is_unit<'c>(&self, cache: &ModuleCache<'c>) -> bool {
+    pub fn is_unit(&self, cache: &ModuleCache<'_>) -> bool {
         match self {
             Type::Primitive(PrimitiveType::UnitType) => true,
             Type::TypeVariable(id) => match &cache.type_bindings[id.0] {
@@ -182,14 +182,12 @@ impl Type {
         }
     }
 
-    pub fn is_union_constructor<'a, 'c>(&'a self, cache: &'a ModuleCache<'c>) -> bool {
+    pub fn is_union_constructor<'a>(&'a self, cache: &'a ModuleCache<'_>) -> bool {
         self.union_constructor_variants(cache).is_some()
     }
 
     /// Returns Some(variants) if this is a union type constructor or union type itself.
-    pub fn union_constructor_variants<'a, 'c>(
-        &'a self, cache: &'a ModuleCache<'c>,
-    ) -> Option<&'a Vec<TypeConstructor>> {
+    pub fn union_constructor_variants<'a>(&'a self, cache: &'a ModuleCache<'_>) -> Option<&'a Vec<TypeConstructor>> {
         use Type::*;
         match self {
             Primitive(_) => None,
@@ -258,7 +256,7 @@ impl Type {
                 if let TypeBinding::Bound(binding) = &cache.type_bindings[id.0] {
                     return binding.traverse_rec(cache, f);
                 }
-                for (_, typ) in fields {
+                for typ in fields.values() {
                     typ.traverse_rec(cache, f);
                 }
             },
@@ -299,7 +297,7 @@ impl Type {
                 }
             },
             Type::Struct(fields, _) => {
-                for (_, typ) in fields {
+                for typ in fields.values() {
                     typ.traverse_no_follow_rec(f);
                 }
             },
@@ -375,7 +373,7 @@ impl GeneralizedType {
         }
     }
 
-    pub fn is_union_constructor<'a, 'c>(&'a self, cache: &'a ModuleCache<'c>) -> bool {
+    pub fn is_union_constructor<'a>(&'a self, cache: &'a ModuleCache<'_>) -> bool {
         self.remove_forall().is_union_constructor(cache)
     }
 

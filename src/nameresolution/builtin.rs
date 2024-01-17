@@ -66,7 +66,7 @@ pub fn prelude_path() -> PathBuf {
     crate::util::stdlib_dir().join("prelude.an")
 }
 
-pub fn import_prelude<'a>(resolver: &mut NameResolver, cache: &mut ModuleCache<'a>) {
+pub fn import_prelude(resolver: &mut NameResolver, cache: &mut ModuleCache<'_>) {
     if resolver.filepath == prelude_path() {
         // If we're in the prelude include the built-in symbol "builtin" to define primitives
         resolver.current_scope().definitions.insert("builtin".into(), BUILTIN_ID);

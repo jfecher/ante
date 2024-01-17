@@ -60,9 +60,9 @@ fn fill_typevar_map(map: &mut HashMap<TypeVariableId, String>, typevars: Vec<Typ
 /// `TypeVariableId(55)` that may be used in both the type and any traits are given the same
 /// name in both. Printing out the type separately from the traits would cause type variable
 /// naming to restart at `a` which may otherwise give them different names.
-pub fn show_type_and_traits<'b>(
+pub fn show_type_and_traits(
     typ: &GeneralizedType, traits: &[RequiredTrait], trait_info: &Option<(TraitInfoId, Vec<Type>)>,
-    cache: &ModuleCache<'b>,
+    cache: &ModuleCache<'_>,
 ) -> (String, Vec<String>) {
     let mut map = HashMap::new();
     let mut current = 'a';

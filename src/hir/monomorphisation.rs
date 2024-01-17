@@ -803,10 +803,10 @@ impl<'c> Context<'c> {
                 let definition_id = self.next_unique_id();
                 let name = info.name.clone();
                 let monomorphized_type = Rc::new(self.convert_type(&typ));
-                let info = hir::DefinitionInfo { 
-                    definition: None, 
-                    definition_id, 
-                    name: Some(name.clone()), 
+                let info = hir::DefinitionInfo {
+                    definition: None,
+                    definition_id,
+                    name: Some(name.clone()),
                     typ: monomorphized_type,
                 };
 
@@ -926,14 +926,11 @@ impl<'c> Context<'c> {
         (definition, variable)
     }
 
-    fn make_definition(&mut self, definition_rhs: hir::Ast, name: Option<String>, typ: Rc<Type>) -> hir::DefinitionInfo {
+    fn make_definition(
+        &mut self, definition_rhs: hir::Ast, name: Option<String>, typ: Rc<Type>,
+    ) -> hir::DefinitionInfo {
         let (definition, definition_id) = self.fresh_definition(definition_rhs, name.clone());
-        hir::DefinitionInfo { 
-            definition_id, 
-            definition: Some(Rc::new(definition)), 
-            name,
-            typ
-        }
+        hir::DefinitionInfo { definition_id, definition: Some(Rc::new(definition)), name, typ }
     }
 
     /// Monomorphise a definition defined elsewhere
@@ -967,12 +964,7 @@ impl<'c> Context<'c> {
 
         let definition = Some(Rc::new(definition));
         let typ = Rc::new(self.convert_type(&typ));
-        Definition::Normal(hir::Variable {
-            definition_id, 
-            definition, 
-            name: Some(name),
-            typ,
-        })
+        Definition::Normal(hir::Variable { definition_id, definition, name: Some(name), typ })
     }
 
     /// Simplifies a pattern and expression like `(a, b) = foo ()`
@@ -1001,7 +993,7 @@ impl<'c> Context<'c> {
                 let id = variable_pattern.definition.unwrap();
 
                 let name = Some(variable_pattern.to_string());
-                let monomorphized_type = Rc::new(self.convert_type(&typ)); 
+                let monomorphized_type = Rc::new(self.convert_type(&typ));
                 let variable = hir::Variable { definition_id, definition: None, name, typ: monomorphized_type };
                 let definition = Definition::Normal(variable);
 
@@ -1012,7 +1004,7 @@ impl<'c> Context<'c> {
             },
             // Match a struct pattern
             FunctionCall(call) if call.is_pair_constructor() => {
-                let monomorphized_type = Rc::new(self.convert_type(&typ)); 
+                let monomorphized_type = Rc::new(self.convert_type(&typ));
                 let variable = hir::Variable { definition_id, definition: None, name: None, typ: monomorphized_type };
 
                 for (i, arg_pattern) in call.args.iter().enumerate() {
@@ -1223,7 +1215,12 @@ impl<'c> Context<'c> {
                 definitions.push(definition);
                 definitions.push(rest_env_def);
 
-                env = hir::Variable { definition_id: rest_env_var, definition: None, name: None, typ: Rc::new(env_type.clone()) };
+                env = hir::Variable {
+                    definition_id: rest_env_var,
+                    definition: None,
+                    name: None,
+                    typ: Rc::new(env_type.clone()),
+                };
 
                 let monomorphized_type = Rc::new(self.convert_type(&typ));
                 hir::Variable { definition_id, definition: None, name: None, typ: monomorphized_type }
@@ -1254,7 +1251,7 @@ impl<'c> Context<'c> {
         if env.is_empty() {
             Type::Primitive(hir::PrimitiveType::Unit)
         } else if env.len() == 1 {
-            let inner_var = env.first_key_value().unwrap().1.1;
+            let inner_var = env.first_key_value().unwrap().1 .1;
             let info = &self.cache[inner_var];
             let typ = info.typ.as_ref().unwrap().as_monotype().clone();
             self.convert_type(&typ)
@@ -1522,17 +1519,15 @@ impl<'c> Context<'c> {
                     // Pass through ref types transparently
                     types::Type::Ref(_) => self.get_field_index(field_name, &args[0]),
                     // These last 2 cases are the same. They're duplicated to avoid another follow_bindings_shallow call.
-                    typ => self.get_field_index(field_name, &typ),
+                    typ => self.get_field_index(field_name, typ),
                 }
             },
             // This case should only happen when a bottom type is unified with an anonymous field
             // type. Default to alphabetically ordered fields, but it should never actually be
             // accessed anyway.
-            Struct(fields, _binding) => fields.keys().position(|name| name == field_name).expect(&format!(
-                "Expected type {} to have a field named '{}'",
-                typ.display(&self.cache),
-                field_name
-            )) as u32,
+            Struct(fields, _binding) => fields.keys().position(|name| name == field_name).unwrap_or_else(|| {
+                panic!("Expected type {} to have a field named '{}'", typ.display(&self.cache), field_name)
+            }) as u32,
             _ => unreachable!(
                 "get_field_index called with type {} that doesn't have a '{}' field",
                 typ.display(&self.cache),

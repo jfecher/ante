@@ -171,7 +171,7 @@ impl TypeVariableScope {
     /// Returns None if a type variable with the same name is already in scope.
     pub fn push_existing_type_variable(&mut self, key: String, id: TypeVariableId) -> Option<TypeVariableId> {
         let prev = self.type_variables.insert(key, id);
-        if !prev.is_none() {
+        if prev.is_some() {
             return None;
         }
         Some(id)
@@ -219,7 +219,7 @@ impl FunctionScopes {
         self.scopes.pop();
     }
 
-    pub fn push_new_scope<'c>(&mut self, cache: &mut ModuleCache<'c>) {
+    pub fn push_new_scope(&mut self, cache: &mut ModuleCache<'_>) {
         self.scopes.push(Scope::new(cache));
     }
 

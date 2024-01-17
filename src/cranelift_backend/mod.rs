@@ -35,7 +35,7 @@ pub trait CodeGen {
     }
 }
 
-impl<'c> CodeGen for Ast {
+impl CodeGen for Ast {
     fn codegen<'a>(&'a self, context: &mut Context<'a>, builder: &mut FunctionBuilder) -> Value {
         dispatch_on_hir!(self, CodeGen::codegen, context, builder)
     }

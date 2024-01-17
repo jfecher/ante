@@ -113,7 +113,7 @@ pub fn run(path: &Path, ast: hir::Ast, args: &Cli) {
     // Run the program by default if --build was not passed
     if !args.build {
         let program_command = PathBuf::from("./".to_string() + &binary_name);
-        Command::new(&program_command).spawn().unwrap().wait().unwrap();
+        Command::new(program_command).spawn().unwrap().wait().unwrap();
     }
 
     // --delete-binary: remove the binary after running the program to
@@ -337,7 +337,9 @@ impl<'g> Generator<'g> {
 
         let cstring_type = self.context.i8_type().ptr_type(AddressSpace::default());
 
-        let cast = self.builder.build_pointer_cast(value, cstring_type, "string_cast")
+        let cast = self
+            .builder
+            .build_pointer_cast(value, cstring_type, "string_cast")
             .expect("Internal error creating an llvm pointer cast");
 
         cast.as_basic_value_enum()
@@ -382,17 +384,15 @@ impl<'g> Generator<'g> {
 
     fn reinterpret_cast(&mut self, value: BasicValueEnum<'g>, target_type: BasicTypeEnum<'g>) -> BasicValueEnum<'g> {
         let source_type = value.get_type();
-        let alloca = self.builder.build_alloca(source_type, "alloca")
-            .expect("Error creating alloca");
+        let alloca = self.builder.build_alloca(source_type, "alloca").expect("Error creating alloca");
 
         self.builder.build_store(alloca, value).expect("Could not create store during cast");
 
         let target_pointer_type = target_type.ptr_type(AddressSpace::default());
-        let cast = self.builder.build_pointer_cast(alloca, target_pointer_type, "cast")
-            .expect("Error creating pointer cast");
+        let cast =
+            self.builder.build_pointer_cast(alloca, target_pointer_type, "cast").expect("Error creating pointer cast");
 
-        self.builder.build_load(target_type, cast, "union_cast")
-            .expect("Error creating load")
+        self.builder.build_load(target_type, cast, "union_cast").expect("Error creating load")
     }
 
     fn tuple(
@@ -451,18 +451,21 @@ impl<'g> Generator<'g> {
 
     /// Creates a GEP instruction and Load which emulate a single Extract instruction but
     /// delays the Load as long as possible to make assigning to this as an l-value easier later on.
-    fn gep_at_index(&mut self, load: BasicValueEnum<'g>, field_index: u32, field_type: &hir::Type, field_name: &str) -> BasicValueEnum<'g> {
+    fn gep_at_index(
+        &mut self, load: BasicValueEnum<'g>, field_index: u32, field_type: &hir::Type, field_name: &str,
+    ) -> BasicValueEnum<'g> {
         let instruction = load.as_instruction_value().unwrap();
         assert_eq!(instruction.get_opcode(), InstructionOpcode::Load);
 
         let pointer = instruction.get_operand(0).unwrap().left().unwrap().into_pointer_value();
 
-        let gep = self.builder.build_struct_gep(load.get_type(), pointer, field_index, field_name)
+        let gep = self
+            .builder
+            .build_struct_gep(load.get_type(), pointer, field_index, field_name)
             .expect("Error creating GEP");
 
         let field_type = self.convert_type(field_type);
-        self.builder.build_load(field_type, gep, field_name)
-            .expect("Error creating load")
+        self.builder.build_load(field_type, gep, field_name).expect("Error creating load")
     }
 }
 
@@ -504,8 +507,7 @@ impl<'g> CodeGen<'g> for hir::Variable {
 
         if generator.auto_derefs.contains(&self.definition_id) {
             let typ = generator.convert_type(&self.typ);
-            value = generator.builder.build_load(typ, value.into_pointer_value(), "")
-                .expect("Error creating load");
+            value = generator.builder.build_load(typ, value.into_pointer_value(), "").expect("Error creating load");
         }
 
         value
@@ -541,9 +543,13 @@ impl<'g> CodeGen<'g> for hir::FunctionCall {
         let args = fmap(&self.args, |arg| arg.codegen(generator).into());
         let function_type = generator.convert_function_type(&self.function_type);
 
-        generator.builder.build_indirect_call(function_type, function, &args, "")
+        generator
+            .builder
+            .build_indirect_call(function_type, function, &args, "")
             .expect("Could not build indirect call")
-            .try_as_basic_value().left().unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap()
     }
 }
 
@@ -584,7 +590,9 @@ impl<'g> CodeGen<'g> for hir::If {
 
         // Setup conditional jump
         let else_block = generator.context.append_basic_block(current_function, "else");
-        generator.builder.build_conditional_branch(condition.into_int_value(), then_block, else_block)
+        generator
+            .builder
+            .build_conditional_branch(condition.into_int_value(), then_block, else_block)
             .expect("Could not create conditional branch for if");
 
         generator.builder.position_at_end(then_block);
@@ -600,8 +608,7 @@ impl<'g> CodeGen<'g> for hir::If {
         // determine which we should add to the phi or if we should even create a phi at all.
         match (then_option, else_option) {
             (Some((then_value, then_branch)), Some((else_value, else_branch))) => {
-                let phi = generator.builder.build_phi(then_value.get_type(), "if_result")
-                    .expect("Could not build phi");
+                let phi = generator.builder.build_phi(then_value.get_type(), "if_result").expect("Could not build phi");
 
                 phi.add_incoming(&[(&then_value, then_branch), (&else_value, else_branch)]);
                 phi.as_basic_value()
@@ -609,8 +616,7 @@ impl<'g> CodeGen<'g> for hir::If {
             (Some((then_value, _)), None) => then_value,
             (None, Some((else_value, _))) => else_value,
             (None, None) => {
-                generator.builder.build_unreachable()
-                    .expect("Could not create 'unreachable' for if");
+                generator.builder.build_unreachable().expect("Could not create 'unreachable' for if");
 
                 // Block is unreachable but we still need to return an undef value.
                 // If we return None the compiler would crash while compiling
@@ -630,8 +636,7 @@ impl<'g> CodeGen<'g> for hir::Match {
 impl<'g> CodeGen<'g> for hir::Return {
     fn codegen(&self, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
         let value = self.expression.codegen(generator);
-        generator.builder.build_return(Some(&value))
-            .expect("Could not create an llvm return");
+        generator.builder.build_return(Some(&value)).expect("Could not create an llvm return");
         value
     }
 }
@@ -660,11 +665,11 @@ impl<'g> CodeGen<'g> for hir::Extern {
                     .add_function(name, function_type, Some(Linkage::External))
                     .as_global_value()
                     .as_basic_value_enum()
-            }
+            },
             _ => {
                 let llvm_type = generator.convert_type(&self.typ);
                 generator.module.add_global(llvm_type, None, name).as_basic_value_enum()
-            }
+            },
         }
     }
 }
@@ -678,9 +683,7 @@ impl<'g> CodeGen<'g> for hir::MemberAccess {
         // This will delay the load as long as possible which makes this easier to detect
         // as a valid l-value in hir::Assignment::codegen.
         match lhs.as_instruction_value().map(|instr| instr.get_opcode()) {
-            Some(InstructionOpcode::Load) => {
-                generator.gep_at_index(lhs, index, &self.typ, "")
-            }
+            Some(InstructionOpcode::Load) => generator.gep_at_index(lhs, index, &self.typ, ""),
             _ => {
                 let collection = lhs.into_struct_value();
                 generator.builder.build_extract_value(collection, index, "").unwrap()
@@ -704,7 +707,9 @@ impl<'g> CodeGen<'g> for hir::Assignment {
         let rhs = self.rhs.codegen(generator);
 
         let rhs_ptr = rhs.get_type().ptr_type(AddressSpace::default());
-        let lhs = generator.builder.build_pointer_cast(lhs, rhs_ptr, "bitcast")
+        let lhs = generator
+            .builder
+            .build_pointer_cast(lhs, rhs_ptr, "bitcast")
             .expect("Failed to create point cast during assignment");
 
         generator.builder.build_store(lhs, rhs).expect("Could not build store");

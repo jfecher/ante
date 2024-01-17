@@ -124,7 +124,7 @@ impl RequiredTrait {
         TraitConstraint { required, scope }
     }
 
-    pub fn find_all_typevars<'b>(&self, cache: &ModuleCache<'b>) -> Vec<TypeVariableId> {
+    pub fn find_all_typevars(&self, cache: &ModuleCache<'_>) -> Vec<TypeVariableId> {
         self.signature.find_all_typevars(cache)
     }
 
@@ -139,7 +139,7 @@ impl RequiredTrait {
 }
 
 impl ConstraintSignature {
-    pub fn find_all_typevars<'b>(&self, cache: &ModuleCache<'b>) -> Vec<TypeVariableId> {
+    pub fn find_all_typevars(&self, cache: &ModuleCache<'_>) -> Vec<TypeVariableId> {
         let mut typevars = vec![];
         for typ in &self.args {
             typevars.append(&mut find_all_typevars(typ, false, cache));

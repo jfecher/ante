@@ -46,8 +46,8 @@ const DEFAULT_FLOAT_TYPE: Type = Type::Primitive(PrimitiveType::FloatTag(FloatKi
 /// Returns the list of traits propogated upward.
 /// Binds the impls that were searched for and found to the required_impls
 /// in the callsite VariableInfo, and errors for any impls that couldn't be found.
-pub fn resolve_traits<'a>(
-    constraints: TraitConstraints, typevars_in_fn_signature: &[TypeVariableId], cache: &mut ModuleCache<'a>,
+pub fn resolve_traits(
+    constraints: TraitConstraints, typevars_in_fn_signature: &[TypeVariableId], cache: &mut ModuleCache<'_>,
 ) -> Vec<RequiredTrait> {
     let (propagated_traits, other_constraints) = sort_traits(constraints, typevars_in_fn_signature, cache);
 
@@ -142,8 +142,8 @@ type PropagatedTraits = Vec<RequiredTrait>;
 /// - All other constraints. This includes all other normal trait constraints like `Print a`
 ///   or `Cast a b` which should have an impl searched for now. Traits like this that shouldn't
 ///   have an impl searched for belong to the first category of propogated traits.
-fn sort_traits<'c>(
-    constraints: TraitConstraints, typevars_in_fn_signature: &[TypeVariableId], cache: &ModuleCache<'c>,
+fn sort_traits(
+    constraints: TraitConstraints, typevars_in_fn_signature: &[TypeVariableId], cache: &ModuleCache<'_>,
 ) -> (PropagatedTraits, TraitConstraints) {
     let mut propogated_traits = vec![];
     let mut other_constraints = Vec::with_capacity(constraints.len());
@@ -165,8 +165,8 @@ fn sort_traits<'c>(
 /// For example, the trait constraint `Print i32` should never be propogated because it doesn't
 /// contain any typevariables. A constraint like `Print a` may be propogated if `a` is a
 /// typevariable used in the signature of the current function.
-fn should_propagate<'a>(
-    constraint: &TraitConstraint, typevars_in_fn_signature: &[TypeVariableId], cache: &ModuleCache<'a>,
+fn should_propagate(
+    constraint: &TraitConstraint, typevars_in_fn_signature: &[TypeVariableId], cache: &ModuleCache<'_>,
 ) -> bool {
     // Don't check the fundeps since only the typeargs proper are used to find impls
     let arg_count = cache[constraint.trait_id()].typeargs.len();
@@ -180,8 +180,8 @@ fn should_propagate<'a>(
 
 /// Try to solve a normal constraint, but avoid issuing an error if it fails.
 /// Returns Some(constraint) on error.
-fn try_solve_normal_constraint<'a, 'c>(
-    constraint: &'a TraitConstraint, bindings: UnificationBindings, cache: &mut ModuleCache<'c>,
+fn try_solve_normal_constraint<'a>(
+    constraint: &'a TraitConstraint, bindings: UnificationBindings, cache: &mut ModuleCache<'_>,
 ) -> Option<&'a TraitConstraint> {
     let mut matching_impls = find_matching_impls(constraint, &bindings, RECURSION_LIMIT, cache);
 
@@ -199,7 +199,7 @@ fn try_solve_normal_constraint<'a, 'c>(
 
 /// Search and bind a specific impl to the given TraitConstraint, erroring if 0
 /// or >1 matching impls are found.
-fn solve_normal_constraint<'c>(constraint: &TraitConstraint, cache: &mut ModuleCache<'c>) {
+fn solve_normal_constraint(constraint: &TraitConstraint, cache: &mut ModuleCache<'_>) {
     let bindings = UnificationBindings::empty();
     let mut matching_impls = find_matching_impls(constraint, &bindings, RECURSION_LIMIT, cache);
 
@@ -249,8 +249,8 @@ fn solve_normal_constraint<'c>(constraint: &TraitConstraint, cache: &mut ModuleC
 ///
 /// Note that any impls that are automatically impld by the compiler will not have their
 /// ImplInfoIds within the returned Vec (since they don't have any).
-fn find_matching_impls<'c>(
-    constraint: &TraitConstraint, bindings: &UnificationBindings, fuel: u32, cache: &mut ModuleCache<'c>,
+fn find_matching_impls(
+    constraint: &TraitConstraint, bindings: &UnificationBindings, fuel: u32, cache: &mut ModuleCache<'_>,
 ) -> Vec<(Vec<(ImplInfoId, TraitConstraint)>, UnificationBindings)> {
     if fuel == 0 {
         if !RECURSION_WARNING_PRINTED.swap(true, std::sync::atomic::Ordering::Relaxed) {
@@ -268,8 +268,8 @@ fn find_matching_impls<'c>(
 /// required `given` constraints, these impls in the given constraints are also returned.
 /// Thus, each element of the returned Vec will contain a set of the original impl found
 /// and all impls it depends on (in practice this number is small, usually < 2).
-fn find_matching_normal_impls<'c>(
-    constraint: &TraitConstraint, bindings: &UnificationBindings, fuel: u32, cache: &mut ModuleCache<'c>,
+fn find_matching_normal_impls(
+    constraint: &TraitConstraint, bindings: &UnificationBindings, fuel: u32, cache: &mut ModuleCache<'_>,
 ) -> Vec<(Vec<(ImplInfoId, TraitConstraint)>, UnificationBindings)> {
     let scope = cache[constraint.scope].clone();
 
@@ -308,9 +308,9 @@ fn find_matching_normal_impls<'c>(
 /// `Cast a string` and is thus only valid if that impl can be found as well.
 /// If any of these given constraints cannot be solved then None is returned. Otherwise, the Vec
 /// of the original constraint and all its required given constraints are returned.
-fn check_given_constraints<'c>(
+fn check_given_constraints(
     constraint: &TraitConstraint, impl_id: ImplInfoId, mut unification_bindings: UnificationBindings,
-    mut impl_bindings: TypeBindings, fuel: u32, cache: &mut ModuleCache<'c>,
+    mut impl_bindings: TypeBindings, fuel: u32, cache: &mut ModuleCache<'_>,
 ) -> Option<(Vec<(ImplInfoId, TraitConstraint)>, UnificationBindings)> {
     let mut required_impls = vec![(impl_id, constraint.clone())];
 

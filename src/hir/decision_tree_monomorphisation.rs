@@ -7,7 +7,10 @@ use crate::{
     util::fmap,
 };
 
-use super::{monomorphisation::{Context, Definition}, Variable};
+use super::{
+    monomorphisation::{Context, Definition},
+    Variable,
+};
 use crate::hir;
 
 impl<'c> Context<'c> {
@@ -196,7 +199,11 @@ impl<'c> Context<'c> {
 
                         hir::Definition {
                             variable: field_variable_id,
-                            expr: Box::new(Self::extract(variant_variable.clone().into(), field_index, monomorphized_field_type.unwrap())),
+                            expr: Box::new(Self::extract(
+                                variant_variable.clone().into(),
+                                field_index,
+                                monomorphized_field_type.unwrap(),
+                            )),
                             name: None,
                         }
                     })

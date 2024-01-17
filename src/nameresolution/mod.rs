@@ -161,7 +161,7 @@ impl PartialEq for NameResolver {
 
 macro_rules! lookup_fn {
     ( $name:ident , $stack_field:ident , $cache_field:ident, $return_type:ty ) => {
-        fn $name<'c>(&self, name: &str, cache: &mut ModuleCache<'c>) -> Option<$return_type> {
+        fn $name(&self, name: &str, cache: &mut ModuleCache<'_>) -> Option<$return_type> {
             let function_scope = self.scopes.last().unwrap();
             for stack in function_scope.iter().rev() {
                 if let Some(id) = stack.$stack_field.get(name) {
@@ -351,16 +351,14 @@ impl NameResolver {
         self.push_existing_type_variable(key, id, location)
     }
 
-    fn pop_scope<'c>(
-        &mut self, cache: &mut ModuleCache<'c>, warn_unused: bool, id_to_ignore: Option<DefinitionInfoId>,
-    ) {
+    fn pop_scope(&mut self, cache: &mut ModuleCache<'_>, warn_unused: bool, id_to_ignore: Option<DefinitionInfoId>) {
         if warn_unused {
             self.current_scope().check_for_unused_definitions(cache, id_to_ignore);
         }
         self.function_scopes().pop();
     }
 
-    fn pop_lambda<'c>(&mut self, cache: &mut ModuleCache<'c>) {
+    fn pop_lambda(&mut self, cache: &mut ModuleCache<'_>) {
         let function = self.function_scopes();
         let function_id = function.function_id;
         assert_eq!(function.scopes.len(), 1);
@@ -413,7 +411,7 @@ impl NameResolver {
 
     /// Add a DefinitionInfoId to a trait's list of required definitions and add
     /// the trait to the DefinitionInfo's list of required traits.
-    fn attach_to_trait<'c>(&mut self, id: DefinitionInfoId, trait_id: TraitInfoId, cache: &mut ModuleCache<'c>) {
+    fn attach_to_trait(&mut self, id: DefinitionInfoId, trait_id: TraitInfoId, cache: &mut ModuleCache<'_>) {
         let trait_info = &mut cache.trait_infos[trait_id.0];
         trait_info.definitions.push(id);
 

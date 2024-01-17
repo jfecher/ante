@@ -30,8 +30,7 @@ impl<'g> Generator<'g> {
             .collect::<Vec<_>>();
 
         self.builder.position_at_end(end_block);
-        let phi = self.builder.build_phi(typ.unwrap(), "match_result")
-            .expect("Could not build phi");
+        let phi = self.builder.build_phi(typ.unwrap(), "match_result").expect("Could not build phi");
 
         // Inkwell forces us to pass a &[(&dyn BasicValue, _)] which prevents us from
         // passing an entire Vec since we'd also need to store the basic values in another
@@ -49,7 +48,8 @@ impl<'g> Generator<'g> {
     fn codegen_subtree(&mut self, tree: &hir::DecisionTree, branches: &[BasicBlock<'g>]) {
         match tree {
             hir::DecisionTree::Leaf(n) => {
-                self.builder.build_unconditional_branch(branches[*n])
+                self.builder
+                    .build_unconditional_branch(branches[*n])
                     .expect("Could not create br during codegen_subtree");
             },
             hir::DecisionTree::Definition(definition, subtree) => {
@@ -80,13 +80,11 @@ impl<'g> Generator<'g> {
         if let Some(subtree) = else_case {
             self.codegen_subtree(subtree, branches);
         } else {
-            self.builder.build_unreachable()
-                .expect("Could not create unreachable during build_switch");
+            self.builder.build_unreachable().expect("Could not create unreachable during build_switch");
         }
 
         self.builder.position_at_end(starting_block);
         let tag = int_to_switch_on.into_int_value();
-        self.builder.build_switch(tag, else_block, &cases)
-            .expect("Could not build switch");
+        self.builder.build_switch(tag, else_block, &cases).expect("Could not build switch");
     }
 }

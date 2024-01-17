@@ -7,10 +7,11 @@
 //! to be removed if the AST nodes ever become arena allocated and
 //! a key can be used from the arena instead of a direct reference in the ModuleCache.
 
-pub fn extend_lifetime<'a, 'b, T>(x: &'a mut T) -> &'b mut T {
+pub fn extend_lifetime<'b, T>(x: &mut T) -> &'b mut T {
     unsafe { std::mem::transmute(x) }
 }
 
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub fn make_mut<'a, T>(x: *const T) -> &'a mut T {
     #[allow(clippy::transmute_ptr_to_ref)]
     unsafe {
@@ -18,7 +19,7 @@ pub fn make_mut<'a, T>(x: *const T) -> &'a mut T {
     }
 }
 
-pub fn make_mut_ref<'a, 'b, T>(x: &'a T) -> &'b mut T {
+pub fn make_mut_ref<'b, T>(x: &T) -> &'b mut T {
     #[allow(mutable_transmutes)]
     unsafe {
         std::mem::transmute(x)

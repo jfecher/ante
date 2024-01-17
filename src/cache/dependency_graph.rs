@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
-use crate::cache::DefinitionInfoId;
-use petgraph::dot::{ Dot, Config };
-use petgraph::graph::{ DiGraph, NodeIndex };
 use super::ModuleCache;
+use crate::cache::DefinitionInfoId;
+use petgraph::dot::{Config, Dot};
+use petgraph::graph::{DiGraph, NodeIndex};
 
 #[derive(Default, Debug)]
 pub struct DependencyGraph {
@@ -31,12 +31,12 @@ impl DependencyGraph {
         println!("{dot:?}");
     }
 
-    pub fn set_definition<'c>(&mut self, definition: DefinitionInfoId) {
+    pub fn set_definition(&mut self, definition: DefinitionInfoId) {
         self.current_definition = Some(definition);
     }
 
     // add an edge when a global is referenced
-    pub fn add_edge<'c>(&mut self, dependency: DefinitionInfoId) {
+    pub fn add_edge(&mut self, dependency: DefinitionInfoId) {
         if let Some(dependent) = self.current_definition {
             let dependent = self.get_or_add_node(dependent);
             let dependency = self.get_or_add_node(dependency);

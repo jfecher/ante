@@ -35,7 +35,7 @@ type AstResult<'a, 'b> = ParseResult<'a, 'b, Ast<'b>>;
 
 /// The entry point to parsing. Parses an entire file, printing any
 /// error found, or returns the Ast if there was no error.
-pub fn parse<'a, 'b>(input: Input<'a, 'b>) -> Result<Ast<'b>, ParseError<'b>> {
+pub fn parse<'b>(input: Input<'_, 'b>) -> Result<Ast<'b>, ParseError<'b>> {
     let result = parse_file(input);
     if let Err(error) = &result {
         eprintln!("{}", error);
@@ -44,7 +44,7 @@ pub fn parse<'a, 'b>(input: Input<'a, 'b>) -> Result<Ast<'b>, ParseError<'b>> {
 }
 
 /// A file is a sequence of statements, separated by newlines.
-pub fn parse_file<'a, 'b>(input: Input<'a, 'b>) -> Result<Ast<'b>, ParseError<'b>> {
+pub fn parse_file<'b>(input: Input<'_, 'b>) -> Result<Ast<'b>, ParseError<'b>> {
     let (input, _, _) = maybe_newline(input)?;
     let (input, ast, _) = statement_list(input)?;
     let (input, _, _) = maybe_newline(input)?;
