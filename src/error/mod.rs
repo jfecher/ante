@@ -94,7 +94,7 @@ impl<'a> Ord for ErrorMessage<'a> {
 
 impl<'a> PartialOrd for ErrorMessage<'a> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.location.partial_cmp(&other.location)
+        Some(self.cmp(other))
     }
 }
 

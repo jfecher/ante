@@ -29,8 +29,8 @@ use std::path::{Path, PathBuf};
 use self::dependency_graph::DependencyGraph;
 
 mod counter;
-mod unsafecache;
 mod dependency_graph;
+mod unsafecache;
 
 /// The ModuleCache is for information needed until compilation is completely finished
 /// (ie. not just for one phase). Accessing each `Vec` inside the `ModuleCache` is done

@@ -322,7 +322,7 @@ fn get_covered_constructors<T>(variants: &BTreeMap<&VariantTag, T>) -> BTreeSet<
 
 /// Given a hashmap from variant tag -> arity,
 /// return true if the hashmap covers all constructors for its type.
-fn get_missing_cases<'c, T>(variants: &BTreeMap<&VariantTag, T>, cache: &ModuleCache<'c>) -> BTreeSet<VariantTag> {
+fn get_missing_cases<T>(variants: &BTreeMap<&VariantTag, T>, cache: &ModuleCache<'_>) -> BTreeSet<VariantTag> {
     use VariantTag::*;
 
     if let Some(result) = get_missing_builtin_cases(variants) {
@@ -773,14 +773,14 @@ struct DebugConstructor {
 }
 
 impl DebugConstructor {
-    fn new<'c>(tag: &Option<VariantTag>, cache: &ModuleCache<'c>) -> DebugConstructor {
+    fn new(tag: &Option<VariantTag>, cache: &ModuleCache<'_>) -> DebugConstructor {
         use VariantTag::*;
         let tag = match &tag {
             Some(UserDefined(id)) => cache.definition_infos[id.0].name.clone(),
             Some(Literal(LiteralKind::Integer(_, Some(kind)))) => format!("_ : {}", kind),
-            Some(Literal(LiteralKind::Integer(_, None))) => format!("_ : Int"),
+            Some(Literal(LiteralKind::Integer(_, None))) => "_ : Int".to_string(),
             Some(Literal(LiteralKind::Float(_, Some(kind)))) => format!("_ : {}", kind),
-            Some(Literal(LiteralKind::Float(_, None))) => format!("_ : Float"),
+            Some(Literal(LiteralKind::Float(_, None))) => "_ : Float".to_string(),
             Some(Literal(LiteralKind::String(_))) => "_ : string".to_string(),
             Some(Literal(LiteralKind::Char(_))) => "_ : char".to_string(),
 
@@ -798,7 +798,7 @@ impl DebugConstructor {
         DebugConstructor { tag, fields: vec![] }
     }
 
-    fn from_case<'c>(case: &Case, cache: &ModuleCache<'c>) -> DebugConstructor {
+    fn from_case(case: &Case, cache: &ModuleCache<'_>) -> DebugConstructor {
         let mut constructor = DebugConstructor::new(&case.tag, cache);
         constructor.fields = case.fields.clone();
         constructor
@@ -888,8 +888,8 @@ fn set_type<'c>(id: DefinitionInfoId, expected: &Type, location: Location<'c>, c
 /// Since this is only useful for type inference of arguments, if the constructor is
 /// not a function type like (Some : a -> Maybe a) (and thus has no arguments like None : Maybe a)
 /// then we can skip this step completely.
-fn unify_constructor_type<'c, 'a>(
-    constructor: &'a Type, expected: &Type, location: Location<'c>, cache: &mut ModuleCache<'c>,
+fn unify_constructor_type<'c>(
+    constructor: &Type, expected: &Type, location: Location<'c>, cache: &mut ModuleCache<'c>,
 ) {
     // If it is not a function, there are no arguments, so there's no need to unify the type with
     // the expected type. We could unify to assert they're equal but this would incur a runtime cost.
@@ -914,7 +914,7 @@ fn parameters_of_type(typ: &Type) -> Vec<&Type> {
 }
 
 impl Case {
-    fn get_constructor_type<'c>(&self, expected_type: &Type, cache: &mut ModuleCache<'c>) -> Type {
+    fn get_constructor_type(&self, expected_type: &Type, cache: &mut ModuleCache<'_>) -> Type {
         use VariantTag::*;
         match &self.tag {
             Some(UserDefined(id)) => {

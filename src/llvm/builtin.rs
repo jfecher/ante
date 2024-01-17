@@ -172,13 +172,15 @@ fn deref_ptr<'g>(ptr: &Ast, typ: &Type, generator: &mut Generator<'g>) -> BasicV
 
     let ptr = ptr.codegen(generator).into_pointer_value();
     let ptr = generator.builder.build_pointer_cast(ptr, ret, "bitcast").unwrap();
-    generator.builder.build_load(element_type, ptr, "deref").unwrap().into()
+    generator.builder.build_load(element_type, ptr, "deref").unwrap()
 }
 
 /// offset (p: Ptr t) (offset: usz) = (p as usize + offset * size_of t) as Ptr t
 ///
 // This builtin is unnecessary once we replace it with size_of
-fn offset<'g>(ptr: &Ast, offset: IntValue<'g>, element_type: &Type, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+fn offset<'g>(
+    ptr: &Ast, offset: IntValue<'g>, element_type: &Type, generator: &mut Generator<'g>,
+) -> BasicValueEnum<'g> {
     let ptr = ptr.codegen(generator).into_pointer_value();
     let element_type = generator.convert_type(element_type);
     unsafe { generator.builder.build_gep(element_type, ptr, &[offset], "offset").unwrap().into() }
@@ -260,8 +262,7 @@ fn truncate<'g>(x: IntValue<'g>, typ: &Type, generator: &mut Generator<'g>) -> B
 fn stack_alloc<'g>(x: &Ast, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
     let value = x.codegen(generator);
     let alloca = generator.builder.build_alloca(value.get_type(), "alloca").unwrap();
-    generator.builder.build_store(alloca, value)
-        .expect("Could not build store in stack_alloc");
+    generator.builder.build_store(alloca, value).expect("Could not build store in stack_alloc");
 
     let ptr_type = &crate::hir::Type::Primitive(PrimitiveType::Pointer);
     let opaque_ptr_type = generator.convert_type(ptr_type).into_pointer_type();

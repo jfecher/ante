@@ -135,7 +135,7 @@ impl TypeResult {
 /// was one of the variables given in the definition of the user-defined-type:
 /// `type Foo var1 var2 ... varN = ...` and each `arg` corresponds to the generic argument
 /// of the type somewhere in the program, e.g: `foo : Foo arg1 arg2 ... argN`
-pub fn type_application_bindings<'c>(info: &TypeInfo<'c>, typeargs: &[Type], cache: &ModuleCache) -> TypeBindings {
+pub fn type_application_bindings(info: &TypeInfo<'_>, typeargs: &[Type], cache: &ModuleCache) -> TypeBindings {
     info.args
         .iter()
         .copied()
@@ -160,8 +160,8 @@ fn ref_of(typ: Type, cache: &mut ModuleCache) -> Type {
 
 /// Replace any typevars found in typevars_to_replace with the
 /// associated value in the same table, leave them otherwise
-fn replace_typevars<'c>(
-    typ: &Type, typevars_to_replace: &HashMap<TypeVariableId, TypeVariableId>, cache: &ModuleCache<'c>,
+fn replace_typevars(
+    typ: &Type, typevars_to_replace: &HashMap<TypeVariableId, TypeVariableId>, cache: &ModuleCache<'_>,
 ) -> Type {
     let typevars_to_replace = typevars_to_replace.iter().map(|(key, id)| (*key, TypeVariable(*id))).collect();
 
@@ -174,7 +174,7 @@ fn replace_typevars<'c>(
 /// Note that unlike `generalize(typ).instantiate(..)`, this will
 /// replace all type variables rather than only type variables
 /// that have not originated from an outer scope.
-pub fn replace_all_typevars<'c>(types: &[Type], cache: &mut ModuleCache<'c>) -> (Vec<Type>, TypeBindings) {
+pub fn replace_all_typevars(types: &[Type], cache: &mut ModuleCache<'_>) -> (Vec<Type>, TypeBindings) {
     let mut bindings = HashMap::new();
     let types = fmap(types, |typ| replace_all_typevars_with_bindings(typ, &mut bindings, cache));
     (types, bindings)
@@ -183,8 +183,8 @@ pub fn replace_all_typevars<'c>(types: &[Type], cache: &mut ModuleCache<'c>) -> 
 /// Replace all type variables in the given type, using new_bindings
 /// to lookup what each variable should be bound to, inserting a
 /// fresh type variable into new_bindings if that type variable was not present.
-pub fn replace_all_typevars_with_bindings<'c>(
-    typ: &Type, new_bindings: &mut TypeBindings, cache: &mut ModuleCache<'c>,
+pub fn replace_all_typevars_with_bindings(
+    typ: &Type, new_bindings: &mut TypeBindings, cache: &mut ModuleCache<'_>,
 ) -> Type {
     match typ {
         Primitive(p) => Primitive(*p),
@@ -239,9 +239,9 @@ pub fn replace_all_typevars_with_bindings<'c>(
 ///
 /// `default` should be either TypeVariable or Ref and controls which kind of type gets
 /// created that wraps the newly-instantiated TypeVariableId if one is made.
-fn replace_typevar_with_binding<'c>(
+fn replace_typevar_with_binding(
     id: TypeVariableId, new_bindings: &mut TypeBindings, default: fn(TypeVariableId) -> Type,
-    cache: &mut ModuleCache<'c>,
+    cache: &mut ModuleCache<'_>,
 ) -> Type {
     if let Bound(typ) = &cache.type_bindings[id.0] {
         replace_all_typevars_with_bindings(&typ.clone(), new_bindings, cache)
@@ -259,7 +259,7 @@ fn replace_typevar_with_binding<'c>(
 /// Compared to `replace_all_typevars_with_bindings`, this function does not instantiate
 /// unbound type variables that were not in type_bindings. Thus if type_bindings is empty,
 /// this function will just clone the original Type.
-pub fn bind_typevars<'c>(typ: &Type, type_bindings: &TypeBindings, cache: &ModuleCache<'c>) -> Type {
+pub fn bind_typevars(typ: &Type, type_bindings: &TypeBindings, cache: &ModuleCache<'_>) -> Type {
     match typ {
         Primitive(p) => Primitive(*p),
 
@@ -321,8 +321,8 @@ pub fn bind_typevars<'c>(typ: &Type, type_bindings: &TypeBindings, cache: &Modul
 /// Helper for bind_typevars which binds a single TypeVariableId if it is Unbound
 /// and it is found in the type_bindings. If a type_binding wasn't found, a
 /// default TypeVariable or Ref is constructed by passing the relevant constructor to `default`.
-fn bind_typevar<'c>(
-    id: TypeVariableId, type_bindings: &TypeBindings, default: fn(TypeVariableId) -> Type, cache: &ModuleCache<'c>,
+fn bind_typevar(
+    id: TypeVariableId, type_bindings: &TypeBindings, default: fn(TypeVariableId) -> Type, cache: &ModuleCache<'_>,
 ) -> Type {
     // TODO: This ordering of checking type_bindings first is important.
     // There seems to be an issue currently where forall-bound variables
@@ -342,7 +342,7 @@ fn bind_typevar<'c>(
 
 /// Recurse on typ, returning true if it contains any of the TypeVariableIds
 /// contained within list.
-pub fn contains_any_typevars_from_list<'c>(typ: &Type, list: &[TypeVariableId], cache: &ModuleCache<'c>) -> bool {
+pub fn contains_any_typevars_from_list(typ: &Type, list: &[TypeVariableId], cache: &ModuleCache<'_>) -> bool {
     match typ {
         Primitive(_) => false,
         UserDefined(_) => false,
@@ -370,8 +370,8 @@ pub fn contains_any_typevars_from_list<'c>(typ: &Type, list: &[TypeVariableId], 
     }
 }
 
-fn type_variable_contains_any_typevars_from_list<'c>(
-    id: TypeVariableId, list: &[TypeVariableId], cache: &ModuleCache<'c>,
+fn type_variable_contains_any_typevars_from_list(
+    id: TypeVariableId, list: &[TypeVariableId], cache: &ModuleCache<'_>,
 ) -> bool {
     if let Bound(typ) = &cache.type_bindings[id.0] {
         contains_any_typevars_from_list(typ, list, cache)
@@ -427,8 +427,8 @@ fn to_trait_constraints(
 /// This will also instantiate each given trait constraint, replacing
 /// each free typevar of the constraint's argument types.
 impl GeneralizedType {
-    pub fn instantiate<'b>(
-        &self, mut constraints: TraitConstraints, cache: &mut ModuleCache<'b>,
+    pub fn instantiate(
+        &self, mut constraints: TraitConstraints, cache: &mut ModuleCache<'_>,
     ) -> (Type, TraitConstraints, TypeBindings) {
         // Note that the returned type is no longer a PolyType,
         // this means it is now monomorphic and not forall-quantified
@@ -467,8 +467,8 @@ impl GeneralizedType {
 ///
 /// This version is also different in that it also replaces the type variables
 /// of monotypes.
-fn instantiate_impl_with_bindings<'b>(
-    typ: &GeneralizedType, bindings: &mut TypeBindings, cache: &mut ModuleCache<'b>,
+fn instantiate_impl_with_bindings(
+    typ: &GeneralizedType, bindings: &mut TypeBindings, cache: &mut ModuleCache<'_>,
 ) -> GeneralizedType {
     use GeneralizedType::*;
     match typ {
@@ -480,7 +480,7 @@ fn instantiate_impl_with_bindings<'b>(
     }
 }
 
-fn find_binding<'b>(id: TypeVariableId, map: &UnificationBindings, cache: &ModuleCache<'b>) -> TypeBinding {
+fn find_binding(id: TypeVariableId, map: &UnificationBindings, cache: &ModuleCache<'_>) -> TypeBinding {
     match &cache.type_bindings[id.0] {
         Bound(typ) => Bound(typ.clone()),
         Unbound(level, kind) => match map.bindings.get(&id) {
@@ -535,9 +535,9 @@ impl OccursResult {
 /// Doing so increases the lifetime of the typevariable and lets us keep
 /// track of which type variables to generalize later on. It also means
 /// that occurs should only be called during unification however.
-pub(super) fn occurs<'b>(
+pub(super) fn occurs(
     id: TypeVariableId, level: LetBindingLevel, typ: &Type, bindings: &mut UnificationBindings, fuel: u32,
-    cache: &mut ModuleCache<'b>,
+    cache: &mut ModuleCache<'_>,
 ) -> OccursResult {
     if fuel == 0 {
         panic!("Recursion limit reached in occurs");
@@ -566,9 +566,9 @@ pub(super) fn occurs<'b>(
 ///
 /// Recurse within `haystack` to try to find an Unbound typevar and check if it
 /// has the same Id as the needle TypeVariableId.
-pub(super) fn typevars_match<'c>(
+pub(super) fn typevars_match(
     needle: TypeVariableId, level: LetBindingLevel, haystack: TypeVariableId, bindings: &mut UnificationBindings,
-    fuel: u32, cache: &mut ModuleCache<'c>,
+    fuel: u32, cache: &mut ModuleCache<'_>,
 ) -> OccursResult {
     match find_binding(haystack, bindings, cache) {
         Bound(binding) => occurs(needle, level, &binding, bindings, fuel, cache),
@@ -580,9 +580,7 @@ pub(super) fn typevars_match<'c>(
 }
 
 /// Returns what a given type is bound to, following all typevar links until it reaches an Unbound one.
-pub fn follow_bindings_in_cache_and_map<'b>(
-    typ: &Type, bindings: &UnificationBindings, cache: &ModuleCache<'b>,
-) -> Type {
+pub fn follow_bindings_in_cache_and_map(typ: &Type, bindings: &UnificationBindings, cache: &ModuleCache<'_>) -> Type {
     match typ {
         TypeVariable(id) | Ref(id) => match find_binding(*id, bindings, cache) {
             Bound(typ) => follow_bindings_in_cache_and_map(&typ, bindings, cache),
@@ -592,7 +590,7 @@ pub fn follow_bindings_in_cache_and_map<'b>(
     }
 }
 
-pub fn follow_bindings_in_cache<'b>(typ: &Type, cache: &ModuleCache<'b>) -> Type {
+pub fn follow_bindings_in_cache(typ: &Type, cache: &ModuleCache<'_>) -> Type {
     match typ {
         TypeVariable(id) | Ref(id) => match &cache.type_bindings[id.0] {
             Bound(typ) => follow_bindings_in_cache(typ, cache),
@@ -787,8 +785,8 @@ fn bind_struct_fields_subset<'c>(
     Ok(())
 }
 
-fn get_fields<'c>(
-    typ: &Type, args: &[Type], bindings: &mut UnificationBindings, cache: &mut ModuleCache<'c>,
+fn get_fields(
+    typ: &Type, args: &[Type], bindings: &mut UnificationBindings, cache: &mut ModuleCache<'_>,
 ) -> Result<BTreeMap<String, Type>, ()> {
     match typ {
         UserDefined(id) => {
@@ -908,9 +906,9 @@ pub fn try_unify_all_with_bindings<'c>(
 }
 
 /// Concatenate all the types into a comma-separated string for error messages.
-fn concat_type_strings<'c>(types: &[Type], cache: &ModuleCache<'c>) -> String {
+fn concat_type_strings(types: &[Type], cache: &ModuleCache<'_>) -> String {
     let types = fmap(types, |typ| typ.display(cache).to_string());
-    join_with(&types, ", ")
+    join_with(types, ", ")
 }
 
 /// Unifies the two given types, remembering the unification results in the cache.
@@ -947,7 +945,7 @@ fn level_is_polymorphic(level: LetBindingLevel) -> bool {
 /// Since this function uses CURRENT_LEVEL when polymorphic_only = true, the function
 /// should only be used with polymorphic_only = false outside of the typechecking pass.
 /// Otherwise the decision of whether to propagate the variable would be incorrect.
-pub fn find_all_typevars<'a>(typ: &Type, polymorphic_only: bool, cache: &ModuleCache<'a>) -> Vec<TypeVariableId> {
+pub fn find_all_typevars(typ: &Type, polymorphic_only: bool, cache: &ModuleCache<'_>) -> Vec<TypeVariableId> {
     match typ {
         Primitive(_) => vec![],
         UserDefined(_) => vec![],
@@ -1001,7 +999,7 @@ pub(super) fn find_typevars_in_typevar_binding(
     }
 }
 
-fn find_all_typevars_in_traits<'a>(traits: &TraitConstraints, cache: &ModuleCache<'a>) -> Vec<TypeVariableId> {
+fn find_all_typevars_in_traits(traits: &TraitConstraints, cache: &ModuleCache<'_>) -> Vec<TypeVariableId> {
     let mut typevars = vec![];
     for constraint in traits.iter() {
         for typ in constraint.args() {
@@ -1013,7 +1011,7 @@ fn find_all_typevars_in_traits<'a>(traits: &TraitConstraints, cache: &ModuleCach
 
 /// Find all typevars declared inside the current LetBindingLevel and wrap the type in a PolyType
 /// e.g.  generalize (a -> b -> b) = forall a b. a -> b -> b
-fn generalize<'a>(typ: &Type, cache: &ModuleCache<'a>) -> GeneralizedType {
+fn generalize(typ: &Type, cache: &ModuleCache<'_>) -> GeneralizedType {
     let mut typevars = find_all_typevars(typ, true, cache);
     if typevars.is_empty() {
         GeneralizedType::MonoType(typ.clone())
@@ -1101,7 +1099,7 @@ fn infer_nested_definition(
 
 /// Infer the type of all the closed-over variables within a lambda so when we
 /// type check the body their type will already be known.
-fn bind_closure_environment<'c>(environment: &mut ClosureEnvironment, cache: &mut ModuleCache<'c>) {
+fn bind_closure_environment(environment: &mut ClosureEnvironment, cache: &mut ModuleCache<'_>) {
     for (from, (_, to, to_bindings)) in environment {
         if let Some(from) = cache.definition_infos[from.0].typ.as_ref() {
             let (from, _, bindings) = from.clone().instantiate(vec![], cache);
@@ -1117,7 +1115,7 @@ fn bind_closure_environment<'c>(environment: &mut ClosureEnvironment, cache: &mu
     }
 }
 
-fn infer_closure_environment<'c>(environment: &ClosureEnvironment, cache: &mut ModuleCache<'c>) -> Type {
+fn infer_closure_environment(environment: &ClosureEnvironment, cache: &mut ModuleCache<'_>) -> Type {
     let mut environment =
         fmap(environment, |(_from, (_, to, _))| cache[*to].typ.as_ref().unwrap().clone().into_monotype());
 
@@ -1139,8 +1137,7 @@ fn make_tuple_type(mut types: Vec<Type>) -> Type {
     assert!(types.len() > 1);
     let mut ret = types.pop().unwrap();
 
-    while !types.is_empty() {
-        let typ = types.pop().unwrap();
+    while let Some(typ) = types.pop() {
         let pair = Box::new(Type::UserDefined(PAIR_TYPE));
         ret = Type::TypeApplication(pair, vec![typ, ret]);
     }
@@ -1232,9 +1229,7 @@ pub(super) fn bind_irrefutable_pattern<'c>(
     }
 }
 
-fn lookup_definition_type_in_trait<'a>(
-    name: &str, trait_id: TraitInfoId, cache: &mut ModuleCache<'a>,
-) -> GeneralizedType {
+fn lookup_definition_type_in_trait(name: &str, trait_id: TraitInfoId, cache: &mut ModuleCache<'_>) -> GeneralizedType {
     let trait_info = &cache.trait_infos[trait_id.0];
     for definition_id in trait_info.definitions.iter() {
         let definition_info = &cache.definition_infos[definition_id.0];
@@ -1268,7 +1263,7 @@ fn lookup_definition_traits_in_trait(name: &str, trait_id: TraitInfoId, cache: &
 
 /// Perform type inference on the ast::TraitDefinition that defines the given trait function name.
 /// The type returned will be that of the named trait member rather than the trait as a whole.
-fn infer_trait_definition<'c>(name: &str, trait_id: TraitInfoId, cache: &mut ModuleCache<'c>) -> GeneralizedType {
+fn infer_trait_definition(name: &str, trait_id: TraitInfoId, cache: &mut ModuleCache<'_>) -> GeneralizedType {
     let trait_info = &mut cache.trait_infos[trait_id.0];
     match &mut trait_info.trait_node {
         Some(node) => {
