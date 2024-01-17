@@ -1,4 +1,4 @@
-fn_args_layout = "Compressed"
+fn_params_layout = "Compressed"
 match_block_trailing_comma = true
 newline_style = "Unix"
 use_field_init_shorthand = true
