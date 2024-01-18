@@ -16,7 +16,7 @@
 //! rule is accessible via the location/loc parameter.
 #[macro_use]
 mod combinators;
-mod error;
+pub mod error;
 
 #[macro_use]
 pub mod ast;

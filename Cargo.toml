@@ -9,6 +9,9 @@ build = "build.rs"
 name = "ante"
 edition = "2018"
 
+[workspace]
+members = [ "ante-ls" ]
+
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 colored = "2.0.0"
