@@ -11,6 +11,10 @@
         };
       in
       {
+        toolchainConfig = {
+          channel = "stable";
+          components = [ "rust-analyzer" "clippy" "rustfmt" "rust-src" ];
+        };
         projects.ante.path = ./.;
         crates.ante = {
           depsDrvConfig = {

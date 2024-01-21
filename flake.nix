@@ -4,7 +4,10 @@
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     nci = {
       url = "github:yusdacra/nix-cargo-integration";
-      inputs.nixpkgs.follows = "nixpkgs";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+        parts.follows = "parts";
+      };
     };
     parts = {
       url = "github:hercules-ci/flake-parts";
