@@ -329,8 +329,8 @@ impl<'ast> Context<'ast> {
             Value::Global(_) => {
                 todo!("Is this case reachable? Can we have function-value Value::Globals that are not Value::Function?")
             },
-            Value::Tuple(_) => unreachable!(),
-            Value::Unit => unreachable!(),
+            Value::Tuple(_) => unreachable!("Expected function, found tuple"),
+            Value::Unit => unreachable!("Expected function, found unit value"),
         }
     }
 

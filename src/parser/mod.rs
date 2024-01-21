@@ -621,13 +621,6 @@ fn basic_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
     }
 }
 
-fn basic_effect<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Effect<'b>> {
-    match input[0].0 {
-        Token::TypeName(_) => user_defined_effect(input),
-        _ => Err(ParseError::InRule("type", input[0].1)),
-    }
-}
-
 fn parenthesized_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
     parenthesized(parse_type)(input)
 }
@@ -719,8 +712,8 @@ fn pattern_argument<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
 parser!(lambda loc =
     _ <- expect(Token::Fn);
     args !<- many1(pattern_argument);
-    return_type <- maybe(function_return_type);
-    effects <- maybe(effect_set);
+    return_type !<- maybe(function_return_type);
+    effects !<- maybe(effect_set);
     _ !<- expect(Token::RightArrow);
     body !<- block_or_statement;
     Ast::lambda(args, return_type, effects, body, loc)
@@ -812,12 +805,6 @@ parser!(effect_set loc -> 'b Vec<Effect<'b>> =
     effs
 );
 
-// Parses an effect with parameters or an effect without parameters.
-// `Use a b c` or `Log`
-fn effect_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Effect<'b>> {
-    or(&[effect_application, basic_effect], "type")(input)
-}
-
 // Returns true if this function is a closure
 fn function_arrow<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, bool> {
     match input[0].0 {
@@ -833,11 +820,12 @@ parser!(type_application loc -> 'b Type<'b> =
     Type::TypeApplication(Box::new(type_constructor), args, loc)
 );
 
-// Parses effect with one or more parameters.
-parser!(effect_application loc -> 'b Effect<'b> =
-    effect_constructor <- basic_effect;
-    args <- many1(basic_type);
-    Effect::Application(Box::new(effect_constructor), args, loc)
+// Parses an effect with zero or more parameters
+// `Use a b c` or `Log`
+parser!(effect_type location -> 'b Effect<'b> =
+    name <- typename;
+    args <- many0(basic_type);
+    Effect { name, args, location }
 );
 
 parser!(pair_type loc -> 'b Type<'b> =
@@ -905,9 +893,4 @@ parser!(type_variable loc -> 'b Type<'b> =
 parser!(user_defined_type loc -> 'b Type<'b> =
     name <- typename;
     Type::UserDefined(name, loc)
-);
-
-parser!(user_defined_effect loc -> 'b Effect<'b> =
-    name <- typename;
-    Effect::UserDefined(name, loc)
 );

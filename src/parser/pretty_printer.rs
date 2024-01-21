@@ -127,11 +127,9 @@ impl<'a> Display for ast::Type<'a> {
 
 impl<'a> Display for ast::Effect<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        use ast::Effect::*;
-        match self {
-          UserDefined(name, _) => write!(f, "{}", name),
-          Application(name, params, _) => write!(f, "({} {})", name, join_with(params, " ")),
-        }
+        let space = if self.args.is_empty() { "" } else { " " };
+        let args = join_with(&self.args, " ");
+        write!(f, "({}{}{})", self.name, space, args)
     }
 }
 
