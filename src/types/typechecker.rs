@@ -29,7 +29,7 @@
 use crate::cache::{DefinitionInfoId, DefinitionKind, EffectInfoId, ModuleCache, TraitInfoId};
 use crate::cache::{ImplScopeId, VariableId};
 use crate::error::location::{Locatable, Location};
-use crate::error::{get_error_count, ErrorMessage};
+use crate::error::Diagnostic;
 use crate::parser::ast::{self, ClosureEnvironment};
 use crate::types::traits::{RequiredTrait, TraitConstraint, TraitConstraints};
 use crate::types::typed::Typed;
@@ -60,7 +60,7 @@ pub type TypeBindings = HashMap<TypeVariableId, Type>;
 
 /// The result of `try_unify`: either a set of type bindings to perform,
 /// or an error message of which types failed to unify.
-pub type UnificationResult<'c> = Result<UnificationBindings, ErrorMessage<'c>>;
+pub type UnificationResult<'c> = Result<UnificationBindings, Diagnostic<'c>>;
 
 type LevelBindings = Vec<(TypeVariableId, LetBindingLevel)>;
 
@@ -862,7 +862,7 @@ fn try_unify_type_variable_with_bindings<'c>(
 pub fn try_unify_with_bindings<'b>(
     t1: &Type, t2: &Type, bindings: &mut UnificationBindings, location: Location<'b>, cache: &mut ModuleCache<'b>,
     error_message: &str,
-) -> Result<(), ErrorMessage<'b>> {
+) -> Result<(), Diagnostic<'b>> {
     match try_unify_with_bindings_inner(t1, t2, bindings, location, cache) {
         Ok(()) => Ok(()),
         Err(()) => Err(error::from_template(error_message, location, t1, t2, cache)),
@@ -1616,7 +1616,7 @@ impl<'a> Inferable<'a> for ast::FunctionCall<'a> {
 }
 
 fn issue_argument_types_error<'c>(
-    call: &ast::FunctionCall<'c>, f: Type, args: Type, original_error: ErrorMessage, cache: &mut ModuleCache<'c>,
+    call: &ast::FunctionCall<'c>, f: Type, args: Type, original_error: Diagnostic, cache: &mut ModuleCache<'c>,
 ) {
     match try_unwrap_functions(f, args, cache) {
         Some((expected, actual)) => {

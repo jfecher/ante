@@ -15,6 +15,7 @@
 //! kept in the ModuleCache and instead should be in a special data structure for
 //! the relevant phase. An example is the `llvm::Generator` in the llvm codegen phase.
 use crate::cache::unsafecache::UnsafeCache;
+use crate::error::{Diagnostic, DiagnosticKind, ErrorType};
 use crate::error::location::{Locatable, Location};
 use crate::nameresolution::NameResolver;
 use crate::parser::ast::{Ast, Definition, EffectDefinition, Extern, TraitDefinition, TraitImpl};
@@ -119,6 +120,12 @@ pub struct ModuleCache<'a> {
     /// This is generally rather lax, the only variant that is enforced is that
     /// there is no dependency cycle between two non-function globals.
     pub global_dependency_graph: DependencyGraph,
+
+    /// Any diagnostics (errors, warnings, or notes) emitted by the program
+    pub diagnostics: Vec<Diagnostic<'a>>,
+
+    /// The number of errors emitted by the program
+    pub error_count: usize,
 }
 
 #[derive(Debug)]
@@ -373,19 +380,41 @@ impl<'a> ModuleCache<'a> {
             modules: HashMap::default(),
             parse_trees: UnsafeCache::default(),
             name_resolvers: UnsafeCache::default(),
-            filepaths: vec![],
-            definition_infos: vec![],
-            variable_infos: vec![],
-            type_bindings: vec![],
-            type_infos: vec![],
-            trait_infos: vec![],
-            impl_infos: vec![],
-            impl_scopes: vec![],
+            filepaths: Vec::new(),
+            definition_infos: Vec::new(),
+            variable_infos: Vec::new(),
+            type_bindings: Vec::new(),
+            type_infos: Vec::new(),
+            trait_infos: Vec::new(),
+            impl_infos: Vec::new(),
+            impl_scopes: Vec::new(),
             current_trait_constraint_id: Default::default(),
-            call_stack: vec![],
-            mutual_recursion_sets: vec![],
-            effect_infos: vec![],
+            call_stack: Vec::new(),
+            mutual_recursion_sets: Vec::new(),
+            effect_infos: Vec::new(),
             global_dependency_graph: DependencyGraph::default(),
+            diagnostics: Vec::new(),
+            error_count: 0,
+        }
+    }
+
+    pub fn error_count(&self) -> usize {
+        self.error_count
+    }
+
+    /// Push a diagnostic and increment the error count if it was an error.
+    /// This does not display the diagnostic.
+    pub fn push_diagnostic(&mut self, location: Location<'a>, msg: DiagnosticKind) {
+        let diagnostic = Diagnostic { location, msg };
+        if diagnostic.error_type() == ErrorType::Error {
+            self.error_count += 1;
+        }
+        self.diagnostics.push(diagnostic);
+    }
+
+    pub fn display_diagnostics(&self) {
+        for diagnostic in self.diagnostics {
+            eprintln!("{}", diagnostic);
         }
     }
 

@@ -40,8 +40,8 @@
 use crate::cache::{DefinitionInfoId, EffectInfoId, ModuleCache, ModuleId};
 use crate::cache::{DefinitionKind, ImplInfoId, TraitInfoId};
 use crate::error::{
-    self,
     location::{Locatable, Location},
+    DiagnosticKind as D,
 };
 use crate::lexer::{token::Token, Lexer};
 use crate::nameresolution::scope::{FunctionScopes, Scope};
@@ -53,8 +53,6 @@ use crate::types::{
     TypeInfoId, TypeVariableId, INITIAL_LEVEL, STRING_TYPE,
 };
 use crate::util::{fmap, timing, trustme};
-
-use colored::Colorize;
 
 use std::borrow::Cow;
 use std::collections::{BTreeSet, HashMap};
@@ -181,7 +179,7 @@ macro_rules! lookup_fn {
     };
 }
 
-impl NameResolver {
+impl<'c> NameResolver {
     // lookup_fn!(lookup_definition, definitions, definition_infos, DefinitionInfoId);
     lookup_fn!(lookup_type, types, type_infos, TypeInfoId);
     lookup_fn!(lookup_trait, traits, trait_infos, TraitInfoId);
@@ -189,7 +187,7 @@ impl NameResolver {
     /// Similar to the lookup functions above, but will also lookup variables that are
     /// defined in a parent function to keep track of which variables closures
     /// will need in their environment.
-    fn reference_definition<'c>(
+    fn reference_definition(
         &mut self, name: &str, location: Location<'c>, cache: &mut ModuleCache<'c>,
     ) -> Option<DefinitionInfoId> {
         let current_function_scope = self.scopes.last().unwrap();
@@ -256,7 +254,7 @@ impl NameResolver {
     /// This also handles the case of transitive closures. When we add an environment variable to
     /// a closure, we may also need to create more closures along the way to be able to thread
     /// through our environment variables to reach any closures within other closures.
-    fn create_closure<'c>(
+    fn create_closure(
         &mut self, mut environment: DefinitionInfoId, environment_name: &str, environment_function_index: usize,
         location: Location<'c>, cache: &mut ModuleCache<'c>,
     ) -> DefinitionInfoId {
@@ -284,7 +282,7 @@ impl NameResolver {
         ret.unwrap()
     }
 
-    fn add_closure_parameter_definition<'c>(
+    fn add_closure_parameter_definition(
         &mut self, parameter: &str, function_scope_index: usize, location: Location<'c>, cache: &mut ModuleCache<'c>,
     ) -> DefinitionInfoId {
         let function_scope = &mut self.scopes[function_scope_index];
@@ -324,7 +322,7 @@ impl NameResolver {
         }
     }
 
-    fn push_lambda<'c>(&mut self, lambda: &mut ast::Lambda<'c>, cache: &mut ModuleCache<'c>) {
+    fn push_lambda(&mut self, lambda: &mut ast::Lambda<'c>, cache: &mut ModuleCache<'c>) {
         let function_id = self.current_function.as_ref().map(|(_, id)| *id);
         self.scopes.push(FunctionScopes::from_lambda(lambda, function_id));
         self.push_type_variable_scope();
@@ -335,20 +333,20 @@ impl NameResolver {
         self.type_variable_scopes.push(scope::TypeVariableScope::default());
     }
 
-    fn push_existing_type_variable(&mut self, key: &str, id: TypeVariableId, location: Location) -> TypeVariableId {
+    fn push_existing_type_variable(&mut self, key: &str, id: TypeVariableId, location: Location, cache: &mut ModuleCache<'c>) -> TypeVariableId {
         let top = self.type_variable_scopes.len() - 1;
 
         if self.type_variable_scopes[top].push_existing_type_variable(key.to_owned(), id).is_none() {
-            error!(location, "Type variable '{}' is already in scope", key);
+            cache.push_diagnostic(location, D::TypeVariableAlreadyInScope(key.to_owned()));
         }
         id
     }
 
-    fn push_new_type_variable<'c>(
+    fn push_new_type_variable(
         &mut self, key: &str, location: Location<'c>, cache: &mut ModuleCache<'c>,
     ) -> TypeVariableId {
         let id = cache.next_type_variable_id(self.let_binding_level);
-        self.push_existing_type_variable(key, id, location)
+        self.push_existing_type_variable(key, id, location, cache)
     }
 
     fn pop_scope(&mut self, cache: &mut ModuleCache<'_>, warn_unused: bool, id_to_ignore: Option<DefinitionInfoId>) {
@@ -399,13 +397,13 @@ impl NameResolver {
     /// Checks that the given variable name is required by the trait for the impl we're currently resolving.
     /// If it is not, an error is issued that the impl does not need to implement this function.
     /// Otherwise, the name is removed from the list of required_definitions for the impl.
-    fn check_required_definitions<'c>(&mut self, name: &str, cache: &mut ModuleCache<'c>, location: Location<'c>) {
+    fn check_required_definitions(&mut self, name: &str, cache: &mut ModuleCache<'c>, location: Location<'c>) {
         let required_definitions = self.required_definitions.as_mut().unwrap();
         if let Some(index) = required_definitions.iter().position(|id| cache.definition_infos[id.0].name == name) {
             required_definitions.swap_remove(index);
         } else {
             let trait_info = &cache.trait_infos[self.current_trait.unwrap().0];
-            error!(location, "{} is not required by {}", name, trait_info.name);
+            cache.push_diagnostic(location, D::ItemNotRequiredByTrait(name.to_string(), trait_info.name.clone()))
         }
     }
 
@@ -424,7 +422,7 @@ impl NameResolver {
     }
 
     /// Push a new Definition onto the current scope.
-    fn push_definition<'c>(
+    fn push_definition(
         &mut self, name: &str, cache: &mut ModuleCache<'c>, location: Location<'c>,
     ) -> DefinitionInfoId {
         let id = cache.push_definition(name, location);
@@ -435,9 +433,9 @@ impl NameResolver {
         if let Some(existing_definition) = self.current_scope().definitions.get(name) {
             // disallow shadowing in global scopes
             if in_global_scope {
-                error!(location, "{} is already in scope", name);
+                cache.push_diagnostic(location, D::AlreadyInScope(name.to_owned()));
                 let previous_location = cache.definition_infos[existing_definition.0].location;
-                note!(previous_location, "{} previously defined here", name);
+                cache.push_diagnostic(previous_location, D::PreviouslyDefinedHere(name.to_owned()));
             } else {
                 // allow shadowing in local scopes
                 self.current_scope().check_for_unused_definitions(cache, None);
@@ -467,13 +465,13 @@ impl NameResolver {
         id
     }
 
-    pub fn push_type_info<'c>(
+    pub fn push_type_info(
         &mut self, name: String, args: Vec<TypeVariableId>, cache: &mut ModuleCache<'c>, location: Location<'c>,
     ) -> TypeInfoId {
         if let Some(existing_definition) = self.current_scope().types.get(&name) {
-            error!(location, "{} is already in scope", name);
+            cache.push_diagnostic(location, D::AlreadyInScope(name.clone()));
             let previous_location = cache.type_infos[existing_definition.0].locate();
-            note!(previous_location, "{} previously defined here", name);
+            cache.push_diagnostic(previous_location, D::PreviouslyDefinedHere(name));
         }
 
         let id = cache.push_type_info(name.clone(), args, location);
@@ -484,14 +482,14 @@ impl NameResolver {
         id
     }
 
-    fn push_trait<'c>(
+    fn push_trait(
         &mut self, name: String, args: Vec<TypeVariableId>, fundeps: Vec<TypeVariableId>,
         node: &'c mut ast::TraitDefinition<'c>, cache: &mut ModuleCache<'c>, location: Location<'c>,
     ) -> TraitInfoId {
         if let Some(existing_definition) = self.current_scope().traits.get(&name) {
-            error!(location, "{} is already in scope", name);
+            cache.push_diagnostic(location, D::AlreadyInScope(name.clone()));
             let previous_location = cache.trait_infos[existing_definition.0].locate();
-            note!(previous_location, "{} previously defined here", name);
+            cache.push_diagnostic(previous_location, D::PreviouslyDefinedHere(name));
         }
 
         let id = cache.push_trait_definition(name.clone(), args, fundeps, Some(node), location);
@@ -502,14 +500,14 @@ impl NameResolver {
         id
     }
 
-    fn push_effect<'c>(
+    fn push_effect(
         &mut self, name: String, args: Vec<TypeVariableId>, node: &'c mut ast::EffectDefinition<'c>,
         cache: &mut ModuleCache<'c>, location: Location<'c>,
     ) -> EffectInfoId {
         if let Some(existing_definition) = self.current_scope().effects.get(&name) {
-            error!(location, "{} is already in scope", name);
+            cache.push_diagnostic(location, D::AlreadyInScope(name.clone()));
             let previous_location = cache.effect_infos[existing_definition.0].locate();
-            note!(previous_location, "{} previously defined here", name);
+            cache.push_diagnostic(previous_location, D::PreviouslyDefinedHere(name));
         }
 
         let id = cache.push_effect_definition(name.clone(), args, node, location);
@@ -521,7 +519,7 @@ impl NameResolver {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn push_trait_impl<'c>(
+    fn push_trait_impl(
         &mut self, trait_id: TraitInfoId, args: Vec<Type>, definitions: Vec<DefinitionInfoId>,
         trait_impl: &'c mut ast::TraitImpl<'c>, given: Vec<ConstraintSignature>, cache: &mut ModuleCache<'c>,
         location: Location<'c>,
@@ -538,7 +536,7 @@ impl NameResolver {
         id
     }
 
-    fn add_module_scope_and_import_impls<'c>(
+    fn add_module_scope_and_import_impls(
         &mut self, relative_path: &str, location: Location<'c>, cache: &mut ModuleCache<'c>,
     ) -> Option<ModuleId> {
         if let Some(module_id) = declare_module(Path::new(&relative_path), cache, location) {
@@ -553,22 +551,13 @@ impl NameResolver {
         None
     }
 
-    fn validate_type_application<'c>(
+    fn validate_type_application(
         &self, constructor: &Type, args: &[Type], location: Location<'c>, cache: &mut ModuleCache<'c>,
     ) {
         let expected = self.get_expected_type_argument_count(constructor, cache);
         if args.len() != expected && !matches!(constructor, Type::TypeVariable(_)) {
-            let plural_s = if expected == 1 { "" } else { "s" };
-            let is_are = if args.len() == 1 { "is" } else { "are" };
-            error!(
-                location,
-                "Type {} expects {} argument{}, but {} {} given here",
-                constructor.display(cache),
-                expected,
-                plural_s,
-                args.len(),
-                is_are
-            );
+            let typename = constructor.display(cache).to_string();
+            cache.push_diagnostic(location, D::IncorrectConstructorArgCount(typename, expected, args.len()));
         }
 
         // Check argument is an integer/float type (issue #146)
@@ -576,12 +565,14 @@ impl NameResolver {
             match constructor {
                 Type::Primitive(PrimitiveType::IntegerType) => {
                     if !matches!(first_arg, Type::Primitive(PrimitiveType::IntegerTag(_)) | Type::TypeVariable(_)) {
-                        error!(location, "Type {} is not an integer type", first_arg.display(cache));
+                        let typename = first_arg.display(cache).to_string();
+                        cache.push_diagnostic(location, D::NonIntegerType(typename));
                     }
                 },
                 Type::Primitive(PrimitiveType::FloatType) => {
                     if !matches!(first_arg, Type::Primitive(PrimitiveType::FloatTag(_)) | Type::TypeVariable(_)) {
-                        error!(location, "Type {} is not a float type", first_arg.display(cache));
+                        let typename = first_arg.display(cache).to_string();
+                        cache.push_diagnostic(location, D::NonFloatType(typename));
                     }
                 },
                 _ => (),
@@ -605,23 +596,23 @@ impl NameResolver {
             Type::Effects(_) => 0,
         }
     }
+}
 
+impl<'c> NameResolver {
     /// Re-insert the given type variables into the current scope.
     /// Currently used for remembering type variables from type and trait definitions that
     /// were created in the declare pass and need to be used later in the define pass.
     fn add_existing_type_variables_to_scope(
-        &mut self, existing_typevars: &[String], ids: &[TypeVariableId], location: Location,
+        &mut self, existing_typevars: &[String], ids: &[TypeVariableId], location: Location, cache: &mut ModuleCache<'c>, 
     ) {
         // re-insert the typevars into scope.
         // These names are guarenteed to not collide since we just pushed a new scope.
         assert_eq!(existing_typevars.len(), ids.len());
         for (key, id) in existing_typevars.iter().zip(ids) {
-            self.push_existing_type_variable(key, *id, location);
+            self.push_existing_type_variable(key, *id, location, cache);
         }
     }
-}
 
-impl<'c> NameResolver {
     /// Performs name resolution on an entire program, starting from the
     /// given Ast and all imports reachable from it.
     pub fn start(ast: Ast<'c>, cache: &mut ModuleCache<'c>) -> Result<(), ()> {
@@ -633,7 +624,7 @@ impl<'c> NameResolver {
         timing::start_time("Name Resolution (Define)");
         resolver.define(cache);
 
-        if error::get_error_count() != 0 {
+        if cache.error_count() != 0 {
             Err(())
         } else {
             Ok(())
@@ -726,7 +717,7 @@ impl<'c> NameResolver {
                         let id = self.push_new_type_variable(name, *location, cache);
                         Type::TypeVariable(id)
                     } else {
-                        error!(*location, "Type variable {} was not found in scope", name);
+                        cache.push_diagnostic(*location, D::NotInScope("Type variable", name.clone()));
                         Type::UNIT
                     }
                 },
@@ -734,7 +725,7 @@ impl<'c> NameResolver {
             ast::Type::UserDefined(name, location) => match self.lookup_type(name, cache) {
                 Some(id) => Type::UserDefined(id),
                 None => {
-                    error!(*location, "Type {} was not found in scope", name);
+                    cache.push_diagnostic(*location, D::NotInScope("Type", name.clone()));
                     Type::UNIT
                 },
             },
@@ -750,7 +741,7 @@ impl<'c> NameResolver {
                 let pair = match self.lookup_type(&Token::Comma.to_string(), cache) {
                     Some(id) => Type::UserDefined(id),
                     None => {
-                        error!(*location, "The pair type (`,`) was not found in scope, there may have been a problem while importing the prelude");
+                        cache.push_diagnostic(*location, D::NotInScope("The pair type", "(,)".into()));
                         Type::UNIT
                     },
                 };
@@ -872,7 +863,7 @@ impl<'c> NameResolver {
                     id: cache.next_trait_constraint_id(),
                 });
             } else {
-                error!(trait_.location, "Could not find trait {} in scope", trait_.name.blue());
+                cache.push_diagnostic(trait_.location, D::NotInScope("Trait", trait_.name.clone()));
             }
         }
         required_traits
@@ -975,14 +966,14 @@ impl<'c> Resolvable<'c> for ast::Variable<'c> {
                         self.impl_scope = Some(resolver.current_scope().impl_scope);
                         self.id = Some(cache.push_variable(name.into_owned(), self.location));
                     } else {
-                        error!(self.location, "Could not find module `{}`", relative_path);
+                        cache.push_diagnostic(self.location, D::CouldNotFindModule(relative_path));
                     }
                 }
             }
 
             // If it is still not declared, print an error
             if self.definition.is_none() {
-                error!(self.location, "No declaration for `{}` was found in scope", self);
+                cache.push_diagnostic(self.location, D::NoDeclarationFoundInScope(self.to_string()));
             }
         } else if resolver.in_global_scope() {
             let id = self.definition.unwrap();
@@ -1190,7 +1181,7 @@ impl<'c> Resolvable<'c> for ast::TypeDefinition<'c> {
 
         // Re-add the typevariables we created in TypeDefinition::declare back into scope
         let existing_ids = &cache.type_infos[id.0].args;
-        resolver.add_existing_type_variables_to_scope(&self.args, existing_ids, self.location);
+        resolver.add_existing_type_variables_to_scope(&self.args, existing_ids, self.location, cache);
 
         let type_id = self.type_info.unwrap();
         match &self.definition {
@@ -1257,7 +1248,7 @@ pub fn declare_module<'a>(path: &Path, cache: &mut ModuleCache<'a>, error_locati
     let (file, path) = match find_file(path, cache) {
         Some((f, p)) => (f, p),
         _ => {
-            error!(error_location, "Couldn't open file for import: {}.an", path.display());
+            cache.push_diagnostic(error_location, D::CouldNotOpenFileForImport(path.to_owned()));
             return None;
         },
     };
@@ -1300,7 +1291,7 @@ pub fn define_module<'a>(
     let import = cache.name_resolvers.get_mut(module_id.0).unwrap();
     match import.state {
         NameResolutionState::NotStarted | NameResolutionState::DeclareInProgress => {
-            error!(error_location, "Internal compiler error: imported module has been defined but not declared");
+            cache.push_diagnostic(error_location, D::InternalError("imported module has been defined but not declared"));
             return None;
         },
         NameResolutionState::Declared => {
@@ -1374,8 +1365,8 @@ impl<'c> Resolvable<'c> for ast::TraitDefinition<'c> {
 
             // Re-add the typevariables we created in TraitDefinition::declare back into scope
             let trait_info = &cache.trait_infos[self.trait_info.unwrap().0];
-            resolver.add_existing_type_variables_to_scope(&self.args, &trait_info.typeargs, self.location);
-            resolver.add_existing_type_variables_to_scope(&self.fundeps, &trait_info.fundeps, self.location);
+            resolver.add_existing_type_variables_to_scope(&self.args, &trait_info.typeargs, self.location, cache);
+            resolver.add_existing_type_variables_to_scope(&self.fundeps, &trait_info.fundeps, self.location, cache);
 
             for declaration in self.declarations.iter_mut() {
                 resolver.auto_declare = true;
@@ -1399,7 +1390,7 @@ impl<'c> Resolvable<'c> for ast::TraitImpl<'c> {
         let trait_id = match &self.trait_info {
             Some(id) => *id,
             None => {
-                error!(self.location, "Trait {} was not found in scope", self.trait_name);
+                cache.push_diagnostic(self.location, D::NotInScope("Trait", self.trait_name.clone()));
                 return;
             },
         };
@@ -1415,13 +1406,9 @@ impl<'c> Resolvable<'c> for ast::TraitImpl<'c> {
         // The user is required to specify all of the trait's typeargs and functional dependencies.
         let required_arg_count = trait_info.typeargs.len() + trait_info.fundeps.len();
         if self.trait_args.len() != required_arg_count {
-            error!(
-                self.location,
-                "impl has {} type arguments but {} requires {}",
-                self.trait_args.len(),
-                self.trait_name.blue(),
-                required_arg_count
-            );
+            let trait_name = self.trait_name.clone();
+            let error = D::IncorrectImplTraitArgCount(trait_name, self.trait_args.len(), required_arg_count);
+            cache.push_diagnostic(self.location, error);
         }
 
         resolver.push_scope(cache);
@@ -1434,10 +1421,8 @@ impl<'c> Resolvable<'c> for ast::TraitImpl<'c> {
         // resolve_all_definitions now? The checks in push_definition can probably
         // be moved here instead
         for required_definition in resolver.required_definitions.as_ref().unwrap() {
-            error!(
-                self.location,
-                "impl is missing a definition for {}", cache.definition_infos[required_definition.0].name
-            );
+            let name = cache.definition_infos[required_definition.0].name.clone();
+            cache.push_diagnostic(self.location, D::MissingImplDefinition(name));
         }
 
         resolver.required_definitions = None;
@@ -1554,7 +1539,7 @@ impl<'c> Resolvable<'c> for ast::EffectDefinition<'c> {
             }
 
             if !matches!(&declaration.rhs, ast::Type::Function(..)) {
-                error!(declaration.rhs.locate(), "Only function types are allowed in effect declarations");
+                cache.push_diagnostic(declaration.rhs.locate(), D::EffectsMustBeFunctions);
             }
         }
 
@@ -1573,7 +1558,7 @@ impl<'c> Resolvable<'c> for ast::EffectDefinition<'c> {
 
             // Re-add the typevariables we created in TraitDefinition::declare back into scope
             let effect_info = &cache.effect_infos[self.effect_info.unwrap().0];
-            resolver.add_existing_type_variables_to_scope(&self.args, &effect_info.typeargs, self.location);
+            resolver.add_existing_type_variables_to_scope(&self.args, &effect_info.typeargs, self.location, cache);
 
             for declaration in self.declarations.iter_mut() {
                 resolver.auto_declare = true;
@@ -1586,27 +1571,18 @@ impl<'c> Resolvable<'c> for ast::EffectDefinition<'c> {
     }
 }
 
-fn get_handled_effect_function(pattern: &ast::Ast) -> Option<DefinitionInfoId> {
-    match pattern {
+fn get_handled_effect_function(pattern: &ast::Ast, cache: &mut ModuleCache) -> Option<DefinitionInfoId> {
+    let location = match pattern {
         Ast::FunctionCall(call) => match call.function.as_ref() {
-            Ast::Variable(variable) => variable.definition,
-            _ => {
-                error!(
-                    call.function.locate(),
-                    "Invalid pattern in function position, expected a variable for an effect function"
-                );
-                None
-            },
+            Ast::Variable(variable) => return variable.definition,
+            _ => call.function.locate(),
         },
-        Ast::Return(_) => None,
-        _ => {
-            error!(
-                pattern.locate(),
-                "Invalid handle pattern. Handle patterns must be an effect function call or a return expression"
-            );
-            None
-        },
-    }
+        Ast::Return(_) => return None,
+        _ => pattern.locate(),
+    };
+    cache.push_diagnostic(location, D::InvalidHandlerPattern);
+    None
+
 }
 
 impl<'c> Resolvable<'c> for ast::Handle<'c> {
@@ -1631,7 +1607,7 @@ impl<'c> Resolvable<'c> for ast::Handle<'c> {
             rhs.define(resolver, cache);
             resolver.pop_scope(cache, true, None);
 
-            if let Some(case) = get_handled_effect_function(pattern) {
+            if let Some(case) = get_handled_effect_function(pattern, cache) {
                 // Remove the case from the remaining cases that we need to handle.
                 // If it was not in the list then it is part of a new effect for
                 // which we need to add the functions of to our remaining cases.
@@ -1644,15 +1620,15 @@ impl<'c> Resolvable<'c> for ast::Handle<'c> {
                             remaining_cases.extend(cache[id].declarations.iter().copied());
                             remaining_cases.remove(&case);
                         },
-                        other => error!(pattern.locate(), "{} is not an effect: {:?}", info.name, other),
+                        _ => cache.push_diagnostic(pattern.locate(), D::NotAnEffect(info.name.clone())),
                     }
                 }
             }
         }
 
         if !remaining_cases.is_empty() {
-            let missing_cases = fmap(remaining_cases, |id| cache[id].name.clone()).join(", ");
-            error!(self.location, "Missing cases: {}", missing_cases);
+            let missing_cases = fmap(remaining_cases, |id| cache[id].name.clone());
+            cache.push_diagnostic(self.location, D::HandlerMissingCases(missing_cases));
         }
     }
 }

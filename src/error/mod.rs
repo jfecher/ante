@@ -15,57 +15,47 @@ use std::cmp::{max, min};
 use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::io::{BufReader, Read};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering::SeqCst;
-use std::sync::atomic::{AtomicBool, AtomicUsize};
+use std::sync::atomic::AtomicBool;
 
 static COLORED_OUTPUT: AtomicBool = AtomicBool::new(true);
 
-static ERROR_COUNT: AtomicUsize = AtomicUsize::new(0);
+/// Every diagnostic that may be emitted by the compiler
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum DiagnosticKind {
+    /// These errors are always indicative of a compiler bug.
+    /// They're preferred over panics in cases where we have concrete locations of the error.
+    InternalError(/*message*/&'static str),
 
-/// Return an error which may be issued later
-macro_rules! make_error {
-    ( $location:expr , $fmt_string:expr $( , $($msg:tt)* )? ) => ({
-        let message = format!($fmt_string $( , $($msg)* )? );
-        $crate::error::ErrorMessage::error(&message[..], $location)
-    });
-}
+    // Parsing
 
-/// Issue an error message to stderr and increment the error count
-macro_rules! error {
-    ( $location:expr , $fmt_string:expr $( , $($msg:tt)* )? ) => ({
-        eprintln!("{}", make_error!($location, $fmt_string $( , $($msg)* )?));
-    });
-}
+    // Name Resolution
+    //
+    TypeVariableAlreadyInScope(/*type variable name*/String),
+    ItemNotRequiredByTrait(/*item name*/String, /*trait name*/String),
+    AlreadyInScope(/*item name*/String),
+    PreviouslyDefinedHere(/*item name*/String),
+    IncorrectConstructorArgCount(/*item name*/String, /*expected count*/usize, /*actual count*/usize),
 
-/// Return a warning which may be issued later
-macro_rules! make_warning {
-    ( $location:expr , $fmt_string:expr $( , $($msg:tt)* )? ) => ({
-        let message = format!($fmt_string $( , $($msg)* )? );
-        $crate::error::ErrorMessage::warning(&message[..], $location)
-    });
-}
+    // This can be combined with IncorrectArgCount
+    IncorrectImplTraitArgCount(/*Trait name*/String, /*expected count*/usize, /*actual count*/usize),
+    NonIntegerType(/*type name*/String),
+    NonFloatType(/*type name*/String),
+    NotInScope(/*item kind*/&'static str, /*item name*/String),
+    CouldNotFindModule(/*module path*/String),
 
-/// Issues a warning to stderr
-macro_rules! warning {
-    ( $location:expr , $fmt_string:expr $( , $($msg:tt)* )? ) => ({
-        eprintln!("{}", make_warning!($location, $fmt_string $( , $($msg)* )?));
-    });
-}
+    // Should this be combined with `NotInScope`?
+    NoDeclarationFoundInScope(/*variable name*/String),
+    CouldNotOpenFileForImport(/*file path*/PathBuf),
+    MissingImplDefinition(/*definition name*/String),
+    EffectsMustBeFunctions,
+    InvalidHandlerPattern,
+    NotAnEffect(/*item name*/String),
+    HandlerMissingCases(/*missing effect cases*/ Vec<String>),
 
-/// Return a note which may be issued later
-macro_rules! make_note {
-    ( $location:expr , $fmt_string:expr $( , $($msg:tt)* )? ) => ({
-        let message = format!($fmt_string $( , $($msg)* )? );
-        $crate::error::ErrorMessage::note(&message[..], $location)
-    });
-}
-
-/// Issues a note to stderr
-macro_rules! note {
-    ( $location:expr , $fmt_string:expr $( , $($msg:tt)* )? ) => ({
-        eprintln!("{}", make_note!($location, $fmt_string $( , $($msg)* )?));
-    });
+    // Type Checking
+    //
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -75,44 +65,111 @@ pub enum ErrorType {
     Note,
 }
 
+impl Display for DiagnosticKind {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        match self {
+            DiagnosticKind::InternalError(message) => {
+                write!(f, "Internal compiler error: {}", message)
+            },
+            DiagnosticKind::TypeVariableAlreadyInScope(name) => {
+                write!(f, "Type variable '{}' is already in scope", name)
+            },
+            DiagnosticKind::ItemNotRequiredByTrait(item, trait_name) => {
+                write!(f, "{} is not required by {}", item, trait_name)
+            },
+            DiagnosticKind::AlreadyInScope(item) => {
+                write!(f, "{} is already in scope", item)
+            },
+            DiagnosticKind::PreviouslyDefinedHere(item) => {
+                write!(f, "{} previously defined here", item)
+            },
+            DiagnosticKind::IncorrectConstructorArgCount(item, expected, actual) => {
+                let plural_s = if *expected == 1 { "" } else { "s" };
+                let is_are = if *actual == 1 { "is" } else { "are" };
+                write!(f, "Type {} expects {} argument{}, but {} {} given here", item, expected, plural_s, actual, is_are)
+            },
+            DiagnosticKind::IncorrectImplTraitArgCount(trait_name, expected, actual) => {
+                let plural_s = if *expected == 1 { "" } else { "s" };
+                write!(f, "impl has {} type argument{} but {} requires {}", expected, plural_s, trait_name, actual)
+            },
+            DiagnosticKind::NonIntegerType(typename) => {
+                write!(f, "Type {} is not an integer type", typename)
+            },
+            DiagnosticKind::NonFloatType(typename) => {
+                write!(f, "Type {} is not a float type", typename)
+            }
+            DiagnosticKind::NotInScope(item_kind, item) => {
+                write!(f, "{} {} was not found in scope", item_kind, item)
+            },
+            DiagnosticKind::CouldNotFindModule(module) => {
+                write!(f, "Could not find module `{}`", module)
+            },
+            DiagnosticKind::NoDeclarationFoundInScope(item) => {
+                write!(f, "No declaration for `{}` was found in scope", item)
+            },
+            DiagnosticKind::CouldNotOpenFileForImport(path) => {
+                write!(f, "Couldn't open file for import: {}.an", path.display())
+            },
+            DiagnosticKind::MissingImplDefinition(definition_name) => {
+                write!(f, "impl is missing a definition for {}", definition_name)
+            },
+            DiagnosticKind::EffectsMustBeFunctions => {
+                write!(f, "Only function types are allowed in effect declarations")
+            },
+            DiagnosticKind::InvalidHandlerPattern => {
+                write!(f, "Invalid handle pattern. Handle patterns must be an effect function call or a return expression")
+            }
+            DiagnosticKind::NotAnEffect(item) => {
+                write!(f, "{} is not an effect", item)
+            },
+            DiagnosticKind::HandlerMissingCases(cases) => {
+                let plural_s = if cases.len() == 1 { "" } else { "s" };
+                let cases = cases.join(", ");
+                write!(f, "Handler is missing {} case{}: {}", cases.len(), plural_s, cases)
+            }
+        }
+    }
+}
+
+impl DiagnosticKind {
+    pub fn error_type(&self) -> ErrorType {
+        use ErrorType::*;
+
+        match &self {
+            DiagnosticKind::InternalError(_) => Error,
+            DiagnosticKind::TypeVariableAlreadyInScope(_) => Error,
+            DiagnosticKind::ItemNotRequiredByTrait(..) => Error,
+            DiagnosticKind::AlreadyInScope(_) => Error,
+            DiagnosticKind::PreviouslyDefinedHere(_) => Note,
+            DiagnosticKind::IncorrectConstructorArgCount(..) => Error,
+            DiagnosticKind::IncorrectImplTraitArgCount(..) => Error,
+            DiagnosticKind::NonIntegerType(_) => Error,
+            DiagnosticKind::NonFloatType(_) => Error,
+            DiagnosticKind::NotInScope(_, _) => Error,
+            DiagnosticKind::CouldNotFindModule(_) => Error,
+            DiagnosticKind::NoDeclarationFoundInScope(_) => Error,
+            DiagnosticKind::CouldNotOpenFileForImport(_) => Error,
+            DiagnosticKind::MissingImplDefinition(_) => Error,
+            DiagnosticKind::EffectsMustBeFunctions => Error,
+            DiagnosticKind::InvalidHandlerPattern => Error,
+        }
+    }
+}
+
 /// An error (or warning/note) message to be printed out on screen.
-#[derive(Debug, PartialEq, Eq)]
-pub struct ErrorMessage<'a> {
-    msg: ColoredString,
-    error_type: ErrorType,
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Diagnostic<'a> {
+    msg: DiagnosticKind,
     location: Location<'a>,
 }
 
-/// ErrorMessages are ordered so we can issue them in a
-/// deterministic order for the golden tests.
-impl<'a> Ord for ErrorMessage<'a> {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        use std::ops::Deref;
-        (self.location, self.error_type, self.msg.deref()).cmp(&(other.location, other.error_type, &other.msg))
-    }
-}
-
-impl<'a> PartialOrd for ErrorMessage<'a> {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl<'a> ErrorMessage<'a> {
-    pub fn error<T: Into<ColoredString>>(msg: T, location: Location<'a>) -> ErrorMessage<'a> {
-        ErrorMessage { msg: msg.into(), location, error_type: ErrorType::Error }
-    }
-
-    pub fn warning<T: Into<ColoredString>>(msg: T, location: Location<'a>) -> ErrorMessage<'a> {
-        ErrorMessage { msg: msg.into(), location, error_type: ErrorType::Warning }
-    }
-
-    pub fn note<T: Into<ColoredString>>(msg: T, location: Location<'a>) -> ErrorMessage<'a> {
-        ErrorMessage { msg: msg.into(), location, error_type: ErrorType::Note }
+impl<'a> Diagnostic<'a> {
+    pub fn error_type(&self) -> ErrorType {
+        self.msg.error_type()
     }
 
     fn marker(&self) -> ColoredString {
-        match self.error_type {
+        match self.error_type() {
             ErrorType::Error => self.color("error:"),
             ErrorType::Warning => self.color("warning:"),
             ErrorType::Note => self.color("note:"),
@@ -121,7 +178,7 @@ impl<'a> ErrorMessage<'a> {
 
     /// Color the given string in either the error, warning, or note color
     fn color(&self, msg: &str) -> ColoredString {
-        match (COLORED_OUTPUT.load(SeqCst), self.error_type) {
+        match (COLORED_OUTPUT.load(SeqCst), self.error_type()) {
             (false, _) => msg.normal(),
             (_, ErrorType::Error) => msg.red(),
             (_, ErrorType::Warning) => msg.yellow(),
@@ -142,10 +199,6 @@ fn read_file_or_panic(path: &Path) -> String {
 /// Sets whether error message output should be colored or not
 pub fn color_output(should_color: bool) {
     COLORED_OUTPUT.store(should_color, SeqCst);
-}
-
-pub fn get_error_count() -> usize {
-    ERROR_COUNT.load(SeqCst)
 }
 
 /// Format the path in an OS-agnostic way. By default rust uses "/" on Unix
@@ -181,21 +234,15 @@ fn os_agnostic_display_path(path: &Path) -> ColoredString {
 }
 
 impl<'a> Display for Location<'a> {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         let filename = os_agnostic_display_path(self.filename);
         write!(f, "{}:{}:{}", filename, self.start.line, self.start.column)
     }
 }
 
-impl<'a> Display for ErrorMessage<'a> {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
+impl<'a> Display for Diagnostic<'a> {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         let start = self.location.start;
-
-        // An error isn't considered an error until it is actually printed out.
-        // That's why ERROR_COUNT is incremented here and not when ErrorMessage is constructed.
-        if self.error_type == ErrorType::Error {
-            ERROR_COUNT.fetch_add(1, SeqCst);
-        }
 
         writeln!(f, "{}\t{} {}", self.location, self.marker(), self.msg)?;
 

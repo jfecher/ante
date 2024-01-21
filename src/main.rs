@@ -143,11 +143,15 @@ fn compile(args: Cli) {
     let ast = cache.parse_trees.get_mut(0).unwrap();
     types::typechecker::infer_ast(ast, &mut cache);
 
+    // Display any diagnostics that should be reported.
+    // After type checking, there should be no more errors that can occur.
+    cache.display_diagnostics();
+
     if args.show_types {
         print_definition_types(&cache);
     }
 
-    if args.check || error::get_error_count() != 0 {
+    if args.check || cache.error_count() != 0 {
         return;
     }
 
