@@ -126,7 +126,15 @@ fn compile(args: Cli) {
 
     // Phase 2: Parsing
     util::timing::start_time("Parsing");
-    let root = expect!(parser::parse(&tokens), "");
+
+    let root = match parser::parse(&tokens) {
+        Ok(root) => root,
+        Err(parse_error) => {
+            eprintln!("{}", parse_error.into_diagnostic().display());
+            // Parse errors are currently always fatal
+            return;
+        }
+    };
 
     if args.parse {
         println!("{}", root);

@@ -15,8 +15,8 @@
 //! kept in the ModuleCache and instead should be in a special data structure for
 //! the relevant phase. An example is the `llvm::Generator` in the llvm codegen phase.
 use crate::cache::unsafecache::UnsafeCache;
-use crate::error::{Diagnostic, DiagnosticKind, ErrorType};
 use crate::error::location::{Locatable, Location};
+use crate::error::{Diagnostic, DiagnosticKind, ErrorType};
 use crate::nameresolution::NameResolver;
 use crate::parser::ast::{Ast, Definition, EffectDefinition, Extern, TraitDefinition, TraitImpl};
 use crate::types::traits::{ConstraintSignature, RequiredImpl, RequiredTrait, TraitConstraintId};
@@ -405,7 +405,10 @@ impl<'a> ModuleCache<'a> {
     /// Push a diagnostic and increment the error count if it was an error.
     /// This does not display the diagnostic.
     pub fn push_diagnostic(&mut self, location: Location<'a>, msg: DiagnosticKind) {
-        let diagnostic = Diagnostic { location, msg };
+        self.push_full_diagnostic(Diagnostic::new(location, msg));
+    }
+
+    pub fn push_full_diagnostic(&mut self, diagnostic: Diagnostic<'a>) {
         if diagnostic.error_type() == ErrorType::Error {
             self.error_count += 1;
         }
@@ -413,8 +416,8 @@ impl<'a> ModuleCache<'a> {
     }
 
     pub fn display_diagnostics(&self) {
-        for diagnostic in self.diagnostics {
-            eprintln!("{}", diagnostic);
+        for diagnostic in &self.diagnostics {
+            eprintln!("{}", diagnostic.display());
         }
     }
 

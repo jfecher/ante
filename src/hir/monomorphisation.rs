@@ -2,6 +2,7 @@ use std::collections::{HashMap, VecDeque};
 use std::rc::Rc;
 
 use crate::cache::{DefinitionInfoId, DefinitionKind, ImplInfoId, ModuleCache, VariableId};
+use crate::error::TypeErrorKind as TE;
 use crate::hir;
 use crate::lexer::token::FloatKind;
 use crate::nameresolution::builtin::BUILTIN_ID;
@@ -687,14 +688,13 @@ impl<'c> Context<'c> {
         if definition.trait_impl.is_some() {
             let definition_type = definition.typ.as_ref().unwrap().remove_forall();
             let bindings = typechecker::try_unify(
-                typ,
                 definition_type,
+                typ,
                 definition.location,
                 &mut self.cache,
-                "Unification error during monomorphisation: Could not unify definition $2 with instantiation $1",
+                TE::MonomorphizationError,
             )
-            .map_err(|error| eprintln!("{}", error))
-            .expect("Unification error during monomorphisation");
+            .unwrap_or_else(|error| panic!("ICE: {}", error.display()));
 
             self.monomorphisation_bindings.push(Rc::new(bindings.bindings));
         }

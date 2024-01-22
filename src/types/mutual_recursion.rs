@@ -5,6 +5,7 @@ use crate::{
     cache::{DefinitionInfoId, DefinitionKind, ModuleCache, VariableId},
     error::location::Locatable,
     parser::ast,
+    error::DiagnosticKind as D,
     types::{
         traitchecker,
         typechecker::{bind_irrefutable_pattern, find_all_typevars},
@@ -140,7 +141,7 @@ pub(super) fn definition_is_mutually_recursive(definition: DefinitionInfoId, cac
     info.mutually_recursive_set.is_some()
 }
 
-fn is_mutually_recursive(pattern: &ast::Ast, cache: &ModuleCache) -> MutualRecursionResult {
+fn is_mutually_recursive<'a>(pattern: &ast::Ast<'a>, cache: &mut ModuleCache<'a>) -> MutualRecursionResult {
     use ast::Ast::*;
     match pattern {
         Literal(_) => MutualRecursionResult::No,
@@ -160,7 +161,7 @@ fn is_mutually_recursive(pattern: &ast::Ast, cache: &ModuleCache) -> MutualRecur
             call.args.iter().fold(MutualRecursionResult::No, |a, b| a.combine(is_mutually_recursive(b, cache)))
         },
         _ => {
-            error!(pattern.locate(), "Invalid syntax in irrefutable pattern");
+            cache.push_diagnostic(pattern.locate(), D::InvalidSyntaxInIrrefutablePattern);
             MutualRecursionResult::No
         },
     }

@@ -5,6 +5,6 @@ bar a b = if then else
 
 // args: --parse --no-color
 // expected stderr:
-// examples/parsing/parse_error.an:2:9	error: parser expected 'then' here
+// examples/parsing/parse_error.an:2:9	error: Parser expected 'then' here
 // if true else
 //         ^^^^

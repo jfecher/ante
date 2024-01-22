@@ -12,6 +12,7 @@
 //! for how a PatternMatrix is converted into a `DecisionTree`.
 use crate::cache::{DefinitionInfoId, DefinitionKind, ModuleCache};
 use crate::error::location::{Locatable, Location};
+use crate::error::{DiagnosticKind as D, TypeErrorKind as TE};
 use crate::lexer::token::Token;
 use crate::parser::ast::{self, Ast, LiteralKind};
 use crate::types::pattern::Constructor::*;
@@ -31,7 +32,7 @@ pub fn compile<'c>(match_expr: &ast::Match<'c>, cache: &mut ModuleCache<'c>) -> 
     if result.context.reachable_branches.len() != match_expr.branches.len() {
         for (i, (pattern, _branch)) in match_expr.branches.iter().enumerate() {
             if !result.context.reachable_branches.contains(&i) {
-                warning!(pattern.locate(), "Unreachable pattern");
+                cache.push_diagnostic(pattern.locate(), D::UnreachablePattern);
             }
         }
     }
@@ -217,12 +218,12 @@ impl PatternStack {
                     PatternStack(vec![(Variant(tag, fields), variable)])
                 },
                 _ => {
-                    error!(ast.locate(), "Invalid syntax used in pattern");
+                    cache.push_diagnostic(ast.locate(), D::InvalidSyntaxInPattern);
                     PatternStack(vec![])
                 },
             },
             _ => {
-                error!(ast.locate(), "Invalid syntax used in pattern");
+                cache.push_diagnostic(ast.locate(), D::InvalidSyntaxInPattern);
                 PatternStack(vec![])
             },
         }
@@ -618,7 +619,7 @@ impl DecisionTreeResult {
         DecisionTreeResult::new(DecisionTree::Leaf(branch), context)
     }
 
-    fn issue_inexhaustive_errors<'c>(&self, cache: &ModuleCache<'c>, location: Location<'c>) {
+    fn issue_inexhaustive_errors<'c>(&self, cache: &mut ModuleCache<'c>, location: Location<'c>) {
         let mut bindings = BTreeMap::new();
         DecisionTreeResult::issue_inexhaustive_errors_helper(&self.tree, None, &mut bindings, cache, location);
     }
@@ -627,7 +628,7 @@ impl DecisionTreeResult {
     /// When this hits a Fail node, the reconstructed piece of data will be a missing case.
     fn issue_inexhaustive_errors_helper<'c>(
         tree: &DecisionTree, starting_id: Option<DefinitionInfoId>, bindings: &mut DebugMatchBindings,
-        cache: &ModuleCache<'c>, location: Location<'c>,
+        cache: &mut ModuleCache<'c>, location: Location<'c>,
     ) {
         use DecisionTree::*;
         match tree {
@@ -642,7 +643,7 @@ impl DecisionTreeResult {
 
                             for tag in get_missing_cases(&covered_cases, cache) {
                                 bindings.insert(*id, DebugConstructor::new(&Some(tag), cache));
-                                DecisionTreeResult::issue_inexhaustive_error(starting_id, bindings, location);
+                                DecisionTreeResult::issue_inexhaustive_error(starting_id, bindings, location, cache);
                             }
                         },
                         _ => {
@@ -663,13 +664,14 @@ impl DecisionTreeResult {
         }
     }
 
-    fn issue_inexhaustive_error(
-        starting_id: Option<DefinitionInfoId>, bindings: &DebugMatchBindings, location: Location,
+    fn issue_inexhaustive_error<'a>(
+        starting_id: Option<DefinitionInfoId>, bindings: &DebugMatchBindings, location: Location<'a>,
+        cache: &mut ModuleCache<'a>,
     ) {
         let case =
             starting_id.map_or("_".to_string(), |id| DecisionTreeResult::construct_missing_case_string(id, bindings));
 
-        error!(location, "Missing case {}", case);
+        cache.push_diagnostic(location, D::MissingCase(case));
     }
 
     /// Construct the string representation of the data defined by the starting DefinitionInfoId
@@ -867,13 +869,7 @@ fn set_type<'c>(id: DefinitionInfoId, expected: &Type, location: Location<'c>, c
     match &definition.typ {
         Some(definition_type) => {
             let definition_type = definition_type.as_monotype().clone();
-            typechecker::unify(
-                &definition_type,
-                expected,
-                location,
-                cache,
-                "Pattern type $2 does not match the definition's type $1",
-            );
+            typechecker::unify(&definition_type, expected, location, cache, TE::PatternTypeDoesNotMatchDefinitionType);
         },
         None => {
             definition.typ = Some(GeneralizedType::MonoType(expected.clone()));
@@ -894,13 +890,7 @@ fn unify_constructor_type<'c>(
     // If it is not a function, there are no arguments, so there's no need to unify the type with
     // the expected type. We could unify to assert they're equal but this would incur a runtime cost.
     if let Type::Function(function) = constructor {
-        typechecker::unify(
-            &function.return_type,
-            expected,
-            location,
-            cache,
-            "Expected type $2 does not match the pattern's return type $1",
-        );
+        typechecker::unify(expected, &function.return_type, location, cache, TE::PatternReturnTypeMismatch);
     }
 }
 

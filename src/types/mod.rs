@@ -16,7 +16,6 @@ use self::typeprinter::TypePrinter;
 use crate::types::effects::EffectSet;
 
 pub mod effects;
-mod error;
 mod mutual_recursion;
 pub mod pattern;
 pub mod traitchecker;

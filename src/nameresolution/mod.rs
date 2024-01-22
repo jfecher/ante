@@ -333,7 +333,9 @@ impl<'c> NameResolver {
         self.type_variable_scopes.push(scope::TypeVariableScope::default());
     }
 
-    fn push_existing_type_variable(&mut self, key: &str, id: TypeVariableId, location: Location, cache: &mut ModuleCache<'c>) -> TypeVariableId {
+    fn push_existing_type_variable(
+        &mut self, key: &str, id: TypeVariableId, location: Location<'c>, cache: &mut ModuleCache<'c>,
+    ) -> TypeVariableId {
         let top = self.type_variable_scopes.len() - 1;
 
         if self.type_variable_scopes[top].push_existing_type_variable(key.to_owned(), id).is_none() {
@@ -422,9 +424,7 @@ impl<'c> NameResolver {
     }
 
     /// Push a new Definition onto the current scope.
-    fn push_definition(
-        &mut self, name: &str, cache: &mut ModuleCache<'c>, location: Location<'c>,
-    ) -> DefinitionInfoId {
+    fn push_definition(&mut self, name: &str, cache: &mut ModuleCache<'c>, location: Location<'c>) -> DefinitionInfoId {
         let id = cache.push_definition(name, location);
 
         let in_global_scope = self.in_global_scope();
@@ -471,7 +471,7 @@ impl<'c> NameResolver {
         if let Some(existing_definition) = self.current_scope().types.get(&name) {
             cache.push_diagnostic(location, D::AlreadyInScope(name.clone()));
             let previous_location = cache.type_infos[existing_definition.0].locate();
-            cache.push_diagnostic(previous_location, D::PreviouslyDefinedHere(name));
+            cache.push_diagnostic(previous_location, D::PreviouslyDefinedHere(name.clone()));
         }
 
         let id = cache.push_type_info(name.clone(), args, location);
@@ -489,7 +489,7 @@ impl<'c> NameResolver {
         if let Some(existing_definition) = self.current_scope().traits.get(&name) {
             cache.push_diagnostic(location, D::AlreadyInScope(name.clone()));
             let previous_location = cache.trait_infos[existing_definition.0].locate();
-            cache.push_diagnostic(previous_location, D::PreviouslyDefinedHere(name));
+            cache.push_diagnostic(previous_location, D::PreviouslyDefinedHere(name.clone()));
         }
 
         let id = cache.push_trait_definition(name.clone(), args, fundeps, Some(node), location);
@@ -507,7 +507,7 @@ impl<'c> NameResolver {
         if let Some(existing_definition) = self.current_scope().effects.get(&name) {
             cache.push_diagnostic(location, D::AlreadyInScope(name.clone()));
             let previous_location = cache.effect_infos[existing_definition.0].locate();
-            cache.push_diagnostic(previous_location, D::PreviouslyDefinedHere(name));
+            cache.push_diagnostic(previous_location, D::PreviouslyDefinedHere(name.clone()));
         }
 
         let id = cache.push_effect_definition(name.clone(), args, node, location);
@@ -603,7 +603,8 @@ impl<'c> NameResolver {
     /// Currently used for remembering type variables from type and trait definitions that
     /// were created in the declare pass and need to be used later in the define pass.
     fn add_existing_type_variables_to_scope(
-        &mut self, existing_typevars: &[String], ids: &[TypeVariableId], location: Location, cache: &mut ModuleCache<'c>, 
+        &mut self, existing_typevars: &[String], ids: &[TypeVariableId], location: Location<'c>,
+        cache: &mut ModuleCache<'c>,
     ) {
         // re-insert the typevars into scope.
         // These names are guarenteed to not collide since we just pushed a new scope.
@@ -1180,8 +1181,8 @@ impl<'c> Resolvable<'c> for ast::TypeDefinition<'c> {
         let id = self.type_info.unwrap();
 
         // Re-add the typevariables we created in TypeDefinition::declare back into scope
-        let existing_ids = &cache.type_infos[id.0].args;
-        resolver.add_existing_type_variables_to_scope(&self.args, existing_ids, self.location, cache);
+        let existing_ids = cache.type_infos[id.0].args.clone();
+        resolver.add_existing_type_variables_to_scope(&self.args, &existing_ids, self.location, cache);
 
         let type_id = self.type_info.unwrap();
         match &self.definition {
@@ -1286,12 +1287,13 @@ pub fn declare_module<'a>(path: &Path, cache: &mut ModuleCache<'a>, error_locati
 }
 
 pub fn define_module<'a>(
-    module_id: ModuleId, cache: &mut ModuleCache<'a>, error_location: Location,
+    module_id: ModuleId, cache: &mut ModuleCache<'a>, error_location: Location<'a>,
 ) -> Option<&'a Scope> {
     let import = cache.name_resolvers.get_mut(module_id.0).unwrap();
     match import.state {
         NameResolutionState::NotStarted | NameResolutionState::DeclareInProgress => {
-            cache.push_diagnostic(error_location, D::InternalError("imported module has been defined but not declared"));
+            cache
+                .push_diagnostic(error_location, D::InternalError("imported module has been defined but not declared"));
             return None;
         },
         NameResolutionState::Declared => {
@@ -1365,8 +1367,11 @@ impl<'c> Resolvable<'c> for ast::TraitDefinition<'c> {
 
             // Re-add the typevariables we created in TraitDefinition::declare back into scope
             let trait_info = &cache.trait_infos[self.trait_info.unwrap().0];
-            resolver.add_existing_type_variables_to_scope(&self.args, &trait_info.typeargs, self.location, cache);
-            resolver.add_existing_type_variables_to_scope(&self.fundeps, &trait_info.fundeps, self.location, cache);
+            let typeargs = trait_info.typeargs.clone();
+            let fundeps = trait_info.fundeps.clone();
+
+            resolver.add_existing_type_variables_to_scope(&self.args, &typeargs, self.location, cache);
+            resolver.add_existing_type_variables_to_scope(&self.fundeps, &fundeps, self.location, cache);
 
             for declaration in self.declarations.iter_mut() {
                 resolver.auto_declare = true;
@@ -1557,8 +1562,8 @@ impl<'c> Resolvable<'c> for ast::EffectDefinition<'c> {
             resolver.push_type_variable_scope();
 
             // Re-add the typevariables we created in TraitDefinition::declare back into scope
-            let effect_info = &cache.effect_infos[self.effect_info.unwrap().0];
-            resolver.add_existing_type_variables_to_scope(&self.args, &effect_info.typeargs, self.location, cache);
+            let typeargs = cache.effect_infos[self.effect_info.unwrap().0].typeargs.clone();
+            resolver.add_existing_type_variables_to_scope(&self.args, &typeargs, self.location, cache);
 
             for declaration in self.declarations.iter_mut() {
                 resolver.auto_declare = true;
@@ -1571,7 +1576,7 @@ impl<'c> Resolvable<'c> for ast::EffectDefinition<'c> {
     }
 }
 
-fn get_handled_effect_function(pattern: &ast::Ast, cache: &mut ModuleCache) -> Option<DefinitionInfoId> {
+fn get_handled_effect_function<'a>(pattern: &ast::Ast<'a>, cache: &mut ModuleCache<'a>) -> Option<DefinitionInfoId> {
     let location = match pattern {
         Ast::FunctionCall(call) => match call.function.as_ref() {
             Ast::Variable(variable) => return variable.definition,
@@ -1582,7 +1587,6 @@ fn get_handled_effect_function(pattern: &ast::Ast, cache: &mut ModuleCache) -> O
     };
     cache.push_diagnostic(location, D::InvalidHandlerPattern);
     None
-
 }
 
 impl<'c> Resolvable<'c> for ast::Handle<'c> {

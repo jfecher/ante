@@ -1,5 +1,6 @@
 use crate::cache::{EffectInfoId, ModuleCache};
 use crate::error::location::Location;
+use crate::error::TypeErrorKind as TE;
 use crate::types::typechecker::TypeBindings;
 use crate::types::Type;
 use crate::util::fmap;
@@ -195,11 +196,15 @@ fn find_matching_effect(effect: &Effect, set: &[Effect], cache: &mut ModuleCache
         if effect_id == other_id {
             let bindings = UnificationBindings::empty();
             let no_loc = Location::builtin();
-            let no_error = "";
 
-            if let Ok(bindings) =
-                typechecker::try_unify_all_with_bindings(effect_args, other_args, bindings, no_loc, cache, no_error)
-            {
+            if let Ok(bindings) = typechecker::try_unify_all_with_bindings(
+                effect_args,
+                other_args,
+                bindings,
+                no_loc,
+                cache,
+                TE::NeverShown,
+            ) {
                 return Ok(bindings);
             }
         }

@@ -12,6 +12,7 @@
 //! struct for more details on this.
 use crate::cache::{DefinitionInfoId, EffectInfoId, ImplInfoId, ImplScopeId, ModuleCache, ModuleId, TraitInfoId};
 use crate::error::location::{Locatable, Location};
+use crate::error::{Diagnostic, DiagnosticKind as D};
 use crate::parser::ast;
 use crate::types::{TypeInfoId, TypeVariableId};
 use std::collections::{HashMap, HashSet};
@@ -58,7 +59,7 @@ impl Scope {
     /// symbols are exported are determined in the "declare" pass. This is because since
     /// the other Scope's symbols are mutably added to self, they cannot be easily distinguished
     /// from definitions originating in this scope.
-    pub fn import(&mut self, other: &Scope, cache: &mut ModuleCache, location: Location, symbols: &HashSet<String>) {
+    pub fn import<'a>(&mut self, other: &Scope, cache: &mut ModuleCache<'a>, location: Location<'a>, symbols: &HashSet<String>) {
         self.import_definitions_types_and_traits(other, cache, location, symbols);
         self.import_impls(other, cache);
     }
@@ -77,8 +78,8 @@ impl Scope {
         }
     }
 
-    fn import_definitions_types_and_traits(
-        &mut self, other: &Scope, cache: &mut ModuleCache, location: Location, symbols: &HashSet<String>,
+    fn import_definitions_types_and_traits<'a>(
+        &mut self, other: &Scope, cache: &mut ModuleCache<'a>, location: Location<'a>, symbols: &HashSet<String>,
     ) {
         macro_rules! merge_table {
             ( $field:tt , $cache_field:tt , $errors:tt ) => {{
@@ -89,8 +90,8 @@ impl Scope {
 
                     if let Some(existing) = self.$field.get(k) {
                         let prev_loc = cache.$cache_field[existing.0].locate();
-                        let error = make_error!(location, "import shadows previous definition of {}", k);
-                        let note = make_note!(prev_loc, "{} was previously defined here", k);
+                        let error = Diagnostic::new(location, D::ImportShadowsPreviousDefinition(k.to_string()));
+                        let note = Diagnostic::new(prev_loc, D::PreviouslyDefinedHere(k.to_string()));
                         $errors.push((error, note));
                     } else {
                         self.$field.insert(k.clone(), *v);
@@ -105,10 +106,12 @@ impl Scope {
         merge_table!(traits, trait_infos, errors);
         merge_table!(effects, effect_infos, errors);
 
-        if !errors.is_empty() {
-            // Using sort_by instead of sort_by_key here avoids cloning the ErrorMessage
-            errors.sort_by(|x, y| x.0.cmp(&y.0));
-            errors.into_iter().for_each(|(error, note)| eprintln!("{}\n{}", error, note));
+        // Using sort_by instead of sort_by_key here avoids cloning the Diagnostic
+        errors.sort_by(|x, y| x.0.cmp(&y.0));
+
+        for (error, note) in errors {
+            cache.push_full_diagnostic(error);
+            cache.push_full_diagnostic(note);
         }
     }
 
@@ -116,18 +119,14 @@ impl Scope {
     /// This is meant to be done at the end of a scope since if we're still in the middle
     /// of name resolution for a particular scope, any currently unused symbol may become
     /// used later on.
-    pub fn check_for_unused_definitions(&self, cache: &ModuleCache, id_to_ignore: Option<DefinitionInfoId>) {
+    pub fn check_for_unused_definitions(&self, cache: &mut ModuleCache, id_to_ignore: Option<DefinitionInfoId>) {
         let mut warnings = vec![];
 
         for (name, id) in &self.definitions {
             if id_to_ignore != Some(*id) {
                 let definition = &cache.definition_infos[id.0];
                 if definition.uses == 0 && !definition.ignore_unused_warning {
-                    warnings.push(make_warning!(
-                        definition.location,
-                        "{} is unused (prefix name with _ to silence this warning)",
-                        name
-                    ));
+                    warnings.push(Diagnostic::new(definition.location, D::Unused(name.clone())));
                 }
             }
         }
@@ -135,17 +134,14 @@ impl Scope {
         for (name, id) in &self.types {
             let definition = &cache.type_infos[id.0];
             if definition.uses == 0 && !definition.name.starts_with('_') {
-                warnings.push(make_warning!(
-                    definition.location,
-                    "{} is unused (prefix name with _ to silence this warning)",
-                    name
-                ));
+                warnings.push(Diagnostic::new(definition.location, D::Unused(name.clone())));
             }
         }
 
-        if !warnings.is_empty() {
-            warnings.sort();
-            warnings.into_iter().for_each(|warning| eprintln!("{}", warning));
+        warnings.sort();
+
+        for warning in warnings {
+            cache.push_full_diagnostic(warning);
         }
     }
 }

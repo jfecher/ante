@@ -36,11 +36,7 @@ type AstResult<'a, 'b> = ParseResult<'a, 'b, Ast<'b>>;
 /// The entry point to parsing. Parses an entire file, printing any
 /// error found, or returns the Ast if there was no error.
 pub fn parse<'b>(input: Input<'_, 'b>) -> Result<Ast<'b>, ParseError<'b>> {
-    let result = parse_file(input);
-    if let Err(error) = &result {
-        eprintln!("{}", error);
-    }
-    result
+    parse_file(input)
 }
 
 /// A file is a sequence of statements, separated by newlines.

@@ -20,6 +20,7 @@
 use std::sync::atomic::AtomicBool;
 
 use crate::cache::{ImplInfoId, ModuleCache};
+use crate::error::{DiagnosticKind as D, TypeErrorKind as TE};
 use crate::lexer::token::{FloatKind, IntegerKind};
 use crate::types::traits::{RequiredTrait, TraitConstraint, TraitConstraints};
 use crate::types::typechecker::{self, TypeBindings};
@@ -211,25 +212,24 @@ fn solve_normal_constraint(constraint: &TraitConstraint, cache: &mut ModuleCache
             bind_impl(impl_id, constraint, cache);
         }
     } else if matching_impls.len() > 1 {
-        error!(
-            constraint.locate(cache),
-            "{} matching impls found for {}",
-            matching_impls.len(),
-            constraint.display(cache)
-        );
+        let constraint_str = constraint.display(cache).to_string();
+        cache.push_diagnostic(constraint.locate(cache), D::MultipleMatchingImpls(constraint_str, matching_impls.len()));
 
         let max_shown_impls = 3;
         for (i, (impls, _)) in matching_impls.iter().enumerate().take(max_shown_impls) {
             let impl_id = impls[0].0;
+            let location = cache[impl_id].location;
+
             if i == 2 && matching_impls.len() > max_shown_impls {
                 let rest = matching_impls.len() - max_shown_impls;
-                note!(cache[impl_id].location, "Candidate {} ({} more hidden)", i + 1, rest);
+                cache.push_diagnostic(location, D::ImplCandidateWithMoreHidden(i + 1, rest));
             } else {
-                note!(cache[impl_id].location, "Candidate {}", i + 1);
+                cache.push_diagnostic(location, D::ImplCandidate(i + 1));
             }
         }
     } else {
-        error!(constraint.locate(cache), "No impl found for {}", constraint.display(cache))
+        let constraint_str = constraint.display(cache).to_string();
+        cache.push_diagnostic(constraint.locate(cache), D::NoMatchingImpls(constraint_str));
     }
 }
 
@@ -293,7 +293,7 @@ fn find_matching_normal_impls(
                 bindings.clone(),
                 location,
                 cache,
-                "never shown",
+                TE::NeverShown,
             )
             .ok()?;
 

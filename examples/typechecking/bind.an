@@ -13,6 +13,6 @@ add_one x =
 // args: --check --show-types
 // expected stdout:
 // add_one : (forall a. ((Maybe I32) -> (Maybe I32) can a))
-// bind : (forall a b c d. ((Maybe b) - (b => (Maybe c) can d) -> (Maybe c) can d))
+// bind : (forall a b c d. ((Maybe c) - (c => (Maybe b) can d) -> (Maybe b) can d))
 // ret : (forall a b. (a -> (Maybe a) can b))
 // x : (Maybe I32)

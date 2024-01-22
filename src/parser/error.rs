@@ -2,10 +2,9 @@
 //! when printing this error to stderr.
 use super::combinators::Input;
 use crate::error::location::{Locatable, Location};
-use crate::error::Diagnostic;
+use crate::error::{ Diagnostic, DiagnosticKind as D };
 use crate::lexer::token::{LexerError, Token};
-use crate::util::join_with;
-use std::fmt::Display;
+use crate::util::fmap;
 
 #[derive(Debug)]
 pub enum ParseError<'a> {
@@ -43,27 +42,20 @@ impl<'a> Locatable<'a> for ParseError<'a> {
     }
 }
 
-impl<'a> Display for ParseError<'a> {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+impl<'a> ParseError<'a> {
+    pub fn into_diagnostic(self) -> Diagnostic<'a> {
         match self {
-            ParseError::Fatal(error) => error.fmt(fmt),
+            ParseError::Fatal(error) => error.into_diagnostic(),
             ParseError::Expected(tokens, location) => {
-                if tokens.len() == 1 {
-                    let msg = format!("parser expected {} here", tokens[0]);
-                    write!(fmt, "{}", Diagnostic::error(&msg[..], *location))
-                } else {
-                    let expected = join_with(tokens.iter(), ", ");
-                    let msg = format!("parser expected one of {}", expected);
-                    write!(fmt, "{}", Diagnostic::error(&msg[..], *location))
-                }
+                let tokens = fmap(&tokens, ToString::to_string);
+                Diagnostic::new(location, D::ParserExpected(tokens))
             },
             ParseError::InRule(rule, location) => {
-                let msg = format!("failed trying to parse a {}", rule);
-                write!(fmt, "{}", Diagnostic::error(&msg[..], *location))
+                Diagnostic::new(location, D::ParserErrorInRule(rule))
             },
             ParseError::LexerError(error, location) => {
-                write!(fmt, "{}", Diagnostic::error(&error.to_string()[..], *location))
+                Diagnostic::new(location, D::LexerError(error.to_string()))
             },
-        }
+        } 
     }
 }
