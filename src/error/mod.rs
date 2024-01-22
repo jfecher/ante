@@ -198,8 +198,8 @@ impl Display for DiagnosticKind {
             },
             DiagnosticKind::HandlerMissingCases(cases) => {
                 let plural_s = if cases.len() == 1 { "" } else { "s" };
-                let cases = cases.join(", ");
-                write!(f, "Handler is missing {} case{}: {}", cases.len(), plural_s, cases)
+                let cases_str = cases.join(", ");
+                write!(f, "Handler is missing {} case{}: {}", cases.len(), plural_s, cases_str)
             },
             DiagnosticKind::ImportShadowsPreviousDefinition(item) => {
                 write!(f, "import shadows previous definition of {item}")

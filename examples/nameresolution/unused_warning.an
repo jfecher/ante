@@ -8,7 +8,7 @@ id x = error
 // examples/nameresolution/unused_warning.an:4:1	error: id is already in scope
 // id x = error
 // 
-// examples/nameresolution/unused_warning.an:2:1	note: id previously defined here
+// examples/nameresolution/unused_warning.an:2:1	note: id was previously defined here
 // id x = x
 // 
 // examples/nameresolution/unused_warning.an:4:8	error: No declaration for `error` was found in scope

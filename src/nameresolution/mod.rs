@@ -616,7 +616,7 @@ impl<'c> NameResolver {
 
     /// Performs name resolution on an entire program, starting from the
     /// given Ast and all imports reachable from it.
-    pub fn start(ast: Ast<'c>, cache: &mut ModuleCache<'c>) -> Result<(), ()> {
+    pub fn start(ast: Ast<'c>, cache: &mut ModuleCache<'c>) {
         timing::start_time("Name Resolution (Declare)");
 
         builtin::define_builtins(cache);
@@ -624,12 +624,6 @@ impl<'c> NameResolver {
 
         timing::start_time("Name Resolution (Define)");
         resolver.define(cache);
-
-        if cache.error_count() != 0 {
-            Err(())
-        } else {
-            Ok(())
-        }
     }
 
     /// Creates a NameResolver and performs the declare pass on

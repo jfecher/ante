@@ -144,7 +144,12 @@ fn compile(args: Cli) {
     // Phase 3: Name resolution
     // Timing for name resolution is within the start method to
     // break up the declare and define passes
-    expect!(NameResolver::start(root, &mut cache), "");
+    NameResolver::start(root, &mut cache);
+
+    if cache.error_count() != 0 {
+        cache.display_diagnostics();
+        return;
+    }
 
     // Phase 4: Type inference
     util::timing::start_time("Type Inference");

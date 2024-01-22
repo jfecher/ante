@@ -19,7 +19,7 @@ a = 3 // already declared
 // examples/nameresolution/errors.an:15:1	error: a is already in scope
 // a = 3 // already declared
 // 
-// examples/nameresolution/errors.an:14:1	note: a previously defined here
+// examples/nameresolution/errors.an:14:1	note: a was previously defined here
 // a = 2
 // 
 // examples/nameresolution/errors.an:4:14	error: No declaration for `is_an_error` was found in scope
