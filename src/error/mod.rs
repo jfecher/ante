@@ -7,7 +7,7 @@
 //! that as many can be issued as possible. A possible future improvement
 //! would be to implement poisoning so that repeated errors are hidden.
 pub mod location;
-use crate::error::location::Location;
+use crate::error::location::{Locatable, Location};
 
 use colored::ColoredString;
 use colored::*;
@@ -441,6 +441,12 @@ impl<'a> Diagnostic<'a> {
             writeln!(f, "{}{}", padding, indicator)?;
         }
         Ok(())
+    }
+}
+
+impl<'a> Locatable<'a> for Diagnostic<'a> {
+    fn locate(&self) -> Location<'a> {
+        self.location
     }
 }
 

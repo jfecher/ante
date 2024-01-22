@@ -1,12 +1,22 @@
-use std::path::Path;
+use std::{
+    collections::HashMap,
+    env::{current_dir, set_current_dir},
+    path::{Path, PathBuf},
+};
 
-use ante::lexer::Lexer;
-use ante::parser::{error::ParseError, parse};
+use ante::{
+    cache::ModuleCache,
+    error::{location::Locatable, ErrorType},
+    lexer::Lexer,
+    nameresolution::NameResolver,
+    parser::parse,
+    types::typechecker,
+};
+
 use dashmap::DashMap;
+use futures::future::join_all;
 use ropey::Rope;
-use tower_lsp::jsonrpc::Result;
-use tower_lsp::lsp_types::*;
-use tower_lsp::{Client, LanguageServer, LspService, Server};
+use tower_lsp::{jsonrpc::Result, lsp_types::*, Client, LanguageServer, LspService, Server};
 
 #[derive(Debug)]
 struct Backend {
@@ -14,21 +24,25 @@ struct Backend {
     document_map: DashMap<Url, Rope>,
 }
 
-/// Lets you skip writing the `Type::` part in `..Type::default()` calls
-fn default<T: Default>() -> T {
-    T::default()
-}
-
 #[tower_lsp::async_trait]
 impl LanguageServer for Backend {
     async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
         self.client.log_message(MessageType::LOG, format!("ante-ls initialize: {:?}", params)).await;
+        if let Some(root_uri) = params.root_uri {
+            let root = PathBuf::from(root_uri.path());
+            if set_current_dir(&root).is_err() {
+                self.client
+                    .log_message(MessageType::ERROR, format!("Failed to set root directory to {:?}", root))
+                    .await;
+            };
+        }
+
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
                 text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::INCREMENTAL)),
-                ..default()
+                ..Default::default()
             },
-            ..default()
+            ..Default::default()
         })
     }
 
@@ -59,6 +73,9 @@ impl LanguageServer for Backend {
         self.update_diagnostics(params.text_document.uri, &rope).await;
     }
 
+    // The diagnostics can't be updated on change, because the content of the file in the file system
+    // is not guaranteed to be the same as the content of the file in the editor. This will result in
+    // a panic when running Diagnostic::format, and the column are lengths different than expected.
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
         self.client.log_message(MessageType::LOG, format!("ante_ls did_change: {:?}", params)).await;
         self.document_map.alter(&params.text_document.uri, |_, mut rope| {
@@ -73,8 +90,24 @@ impl LanguageServer for Backend {
             }
             rope
         });
-        if let Some(rope) = self.document_map.get(&params.text_document.uri) {
-            self.update_diagnostics(params.text_document.uri, &rope).await;
+    }
+}
+
+fn relative_path<P1: AsRef<Path>, P2: AsRef<Path>>(root: P1, path: P2) -> Option<PathBuf> {
+    let path = path.as_ref();
+    if let Ok(path) = path.strip_prefix(&root) {
+        return Some(path.to_path_buf());
+    }
+
+    let mut acc = PathBuf::new();
+    let mut root = root.as_ref();
+    loop {
+        if let Ok(path) = path.strip_prefix(root) {
+            acc.push(path);
+            return Some(acc);
+        } else {
+            acc.push("..");
+            root = root.parent()?;
         }
     }
 }
@@ -112,51 +145,110 @@ fn rope_range_to_lsp_range(range: std::ops::Range<usize>, rope: &Rope) -> Range 
     }
 }
 
-fn parser_error_diagnostic(err: ParseError<'_>) -> (&std::path::Path, std::ops::Range<usize>, String) {
-    match err {
-        ParseError::Fatal(e) => parser_error_diagnostic(*e),
-        ParseError::InRule(rule, loc) => {
-            (loc.filename, loc.start.index..loc.end.index, format!("failed trying to parse a {}", rule))
-        },
-        ParseError::LexerError(e, loc) => (loc.filename, loc.start.index..loc.end.index, e.to_string()),
-        ParseError::Expected(tokens, loc) => {
-            let message = tokens.into_iter().map(|t| format!("\t - {t}")).collect::<Vec<_>>().join("\n");
-            (loc.filename, loc.start.index..loc.end.index, format!("expected one of:\n {}", message))
-        },
-    }
-}
-
 impl Backend {
     async fn update_diagnostics(&self, uri: Url, rope: &Rope) {
-        let filename = Path::new(uri.path());
-        let tokens = Lexer::new(filename, &rope.to_string()).collect::<Vec<_>>();
-        match parse(&tokens) {
-            Ok(_) => {
-                self.client.publish_diagnostics(uri, Vec::new(), None).await;
-            },
-            Err(err) => {
-                let (path, range, message) = parser_error_diagnostic(err);
-                let uri = Url::from_file_path(path).unwrap();
-                let range = rope_range_to_lsp_range(range, rope);
-                self.client
-                    .publish_diagnostics(
-                        uri,
-                        vec![Diagnostic {
-                            range,
-                            severity: Some(DiagnosticSeverity::ERROR),
-                            code: None,
-                            code_description: None,
-                            source: Some(String::from("ante-ls")),
-                            message,
-                            related_information: None,
-                            tags: None,
-                            data: None,
-                        }],
-                        None,
-                    )
-                    .await;
+        let root = match current_dir() {
+            Ok(root) => root,
+            Err(_) => {
+                self.client.log_message(MessageType::ERROR, "Failed to get current directory".to_string()).await;
+                return;
             },
         };
+        // We want the filename to be relative to the root for nicer error messages.
+        // This could fail on windows when the root is on a different drive than the file.
+        let filename = Path::new(uri.path());
+        let filename = relative_path(&root, filename).unwrap();
+
+        let mut cache = ModuleCache::new(filename.parent().unwrap());
+        let tokens = Lexer::new(&filename, &rope.to_string()).collect::<Vec<_>>();
+        match parse(&tokens) {
+            Ok(ast) => {
+                NameResolver::start(ast, &mut cache);
+                if cache.error_count() == 0 {
+                    let ast = cache.parse_trees.get_mut(0).unwrap();
+                    typechecker::infer_ast(ast, &mut cache);
+                }
+            },
+            Err(err) => {
+                cache.push_full_diagnostic(err.into_diagnostic());
+            },
+        };
+
+        // Diagnostics for a document get cleared only when an empty list is sent for it's Uri.
+        // This presents an issue, as when we have files A and B, where file A imports the file B,
+        // and we provide a diagnostic for file A about incorrect usage of a function in file B,
+        // the diagnostic will not be cleared when we update  file B, as the compiler currently
+        // has no way of knowing that file A imports file B. Because of this, we're initialising
+        // the diagnostics with an empty list only for the current file, and not for all files,
+        // as we don't want to clear the diagnostics for errors unrelated to changes we made.
+        // The diagnostics for file A will only be updated when the function is ran against that file,
+        // ie. when it's saved or reopened. Once ante gets a way of defining projects, and there's a way
+        // to generate a list of files in one, we could run the compiler on the root of the project.
+        // That should provide an exhaustive list of diagnostics, and allow us to clear all diagnostics
+        // for files that had none in the new list.
+        let mut diagnostics = HashMap::from([(uri, Vec::new())]);
+
+        for diagnostic in cache.get_diagnostics() {
+            let severity = Some(match diagnostic.error_type() {
+                ErrorType::Note => DiagnosticSeverity::HINT,
+                ErrorType::Warning => DiagnosticSeverity::WARNING,
+                ErrorType::Error => DiagnosticSeverity::ERROR,
+            });
+
+            let loc = diagnostic.locate();
+            let filename = root.join(loc.filename);
+            let filename = match filename.canonicalize() {
+                Ok(filename) => filename,
+                Err(_) => {
+                    self.client
+                        .log_message(
+                            MessageType::ERROR,
+                            format!("Diagnostics for file {filename:?}, but its path could not be canonicalized"),
+                        )
+                        .await;
+                    continue;
+                },
+            };
+            let uri = Url::from_file_path(filename).unwrap();
+
+            let rope = match self.document_map.get(&uri) {
+                Some(rope) => rope,
+                None => {
+                    // Can we somehow retrieve the file from the compiler rather than reading it again?
+                    // Or have the compiler go through the lsp server file buffer instead of reading it from the file system?
+                    let rope = Rope::from_str(&std::fs::read_to_string(uri.path()).unwrap());
+                    self.document_map.insert(uri.clone(), rope.clone());
+                    self.document_map.get(&uri).unwrap()
+                },
+            };
+            let range = rope_range_to_lsp_range(loc.start.index..loc.end.index, &rope);
+
+            let message = format!("{}", diagnostic.display());
+
+            let diagnostic = Diagnostic {
+                code: None,
+                code_description: None,
+                data: None,
+                message,
+                range,
+                related_information: None,
+                severity,
+                source: Some(String::from("ante-ls")),
+                tags: None,
+            };
+
+            match diagnostics.get_mut(&uri) {
+                Some(diagnostics) => diagnostics.push(diagnostic),
+                None => {
+                    diagnostics.insert(uri, vec![diagnostic]);
+                },
+            };
+        }
+
+        join_all(
+            diagnostics.into_iter().map(|(uri, diagnostics)| self.client.publish_diagnostics(uri, diagnostics, None)),
+        )
+        .await;
     }
 }
 
