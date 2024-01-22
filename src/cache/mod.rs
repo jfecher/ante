@@ -421,6 +421,11 @@ impl<'a> ModuleCache<'a> {
         }
     }
 
+    #[allow(unused)]
+    pub fn get_diagnostics(&self) -> &[Diagnostic<'a>] {
+        &self.diagnostics
+    }
+
     pub fn push_filepath(&mut self, path: PathBuf) -> &'a Path {
         let index = self.filepaths.len();
         self.filepaths.push(path);
