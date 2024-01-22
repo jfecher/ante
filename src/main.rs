@@ -100,6 +100,64 @@ pub fn main() {
     }
 }
 
+pub enum CheckResult {
+    Done,
+    ContinueCompilation,
+    Errors,
+}
+
+pub fn check<'a>(
+    args: &Cli, filename: &'a Path, main_file_contents: String, cache: &mut ModuleCache<'a>,
+) -> CheckResult {
+    util::timing::time_passes(args.show_time);
+
+    // Phase 1: Lexing
+    util::timing::start_time("Lexing");
+    let tokens = Lexer::new(filename, &main_file_contents).collect::<Vec<_>>();
+
+    if args.lex {
+        tokens.iter().for_each(|(token, _)| println!("{}", token));
+        return CheckResult::Done;
+    }
+
+    // Phase 2: Parsing
+    util::timing::start_time("Parsing");
+
+    let root = match parser::parse(&tokens) {
+        Ok(root) => root,
+        Err(parse_error) => {
+            // Parse errors are currently always fatal
+            cache.push_full_diagnostic(parse_error.into_diagnostic());
+            return CheckResult::Errors;
+        },
+    };
+
+    if args.parse {
+        println!("{}", root);
+        return CheckResult::Done;
+    }
+
+    // Phase 3: Name resolution
+    // Timing for name resolution is within the start method to
+    // break up the declare and define passes
+    NameResolver::start(root, cache);
+
+    if cache.error_count() != 0 {
+        return CheckResult::Errors;
+    }
+
+    // Phase 4: Type inference
+    util::timing::start_time("Type Inference");
+    let ast = cache.parse_trees.get_mut(0).unwrap();
+    types::typechecker::infer_ast(ast, cache);
+
+    if cache.error_count() != 0 {
+        CheckResult::Errors
+    } else {
+        CheckResult::ContinueCompilation
+    }
+}
+
 fn compile(args: Cli) {
     // Setup the cache and read from the first file
     let filename = Path::new(&args.file);
@@ -113,52 +171,21 @@ fn compile(args: Cli) {
     expect!(reader.read_to_string(&mut contents), "Failed to read {} into a string\n", filename.display());
 
     error::color_output(!args.no_color);
-    util::timing::time_passes(args.show_time);
 
-    // Phase 1: Lexing
-    util::timing::start_time("Lexing");
-    let tokens = Lexer::new(filename, &contents).collect::<Vec<_>>();
+    match check(&args, filename, contents, &mut cache) {
+        CheckResult::Done => return,
+        CheckResult::ContinueCompilation => (),
+        CheckResult::Errors => {
+            cache.display_diagnostics();
 
-    if args.lex {
-        tokens.iter().for_each(|(token, _)| println!("{}", token));
-        return;
-    }
-
-    // Phase 2: Parsing
-    util::timing::start_time("Parsing");
-
-    let root = match parser::parse(&tokens) {
-        Ok(root) => root,
-        Err(parse_error) => {
-            eprintln!("{}", parse_error.into_diagnostic().display());
-            // Parse errors are currently always fatal
+            if args.show_types {
+                print_definition_types(&cache);
+            }
             return;
         },
-    };
-
-    if args.parse {
-        println!("{}", root);
-        return;
     }
 
-    // Phase 3: Name resolution
-    // Timing for name resolution is within the start method to
-    // break up the declare and define passes
-    NameResolver::start(root, &mut cache);
-
-    if cache.error_count() != 0 {
-        cache.display_diagnostics();
-        return;
-    }
-
-    // Phase 4: Type inference
-    util::timing::start_time("Type Inference");
     let ast = cache.parse_trees.get_mut(0).unwrap();
-    types::typechecker::infer_ast(ast, &mut cache);
-
-    // Display any diagnostics that should be reported.
-    // After type checking, there should be no more errors that can occur.
-    cache.display_diagnostics();
 
     if args.show_types {
         print_definition_types(&cache);
