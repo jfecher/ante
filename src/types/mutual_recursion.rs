@@ -4,8 +4,8 @@ use crate::types::GeneralizedType;
 use crate::{
     cache::{DefinitionInfoId, DefinitionKind, ModuleCache, VariableId},
     error::location::Locatable,
-    parser::ast,
     error::DiagnosticKind as D,
+    parser::ast,
     types::{
         traitchecker,
         typechecker::{bind_irrefutable_pattern, find_all_typevars},

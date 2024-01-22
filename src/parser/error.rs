@@ -2,7 +2,7 @@
 //! when printing this error to stderr.
 use super::combinators::Input;
 use crate::error::location::{Locatable, Location};
-use crate::error::{ Diagnostic, DiagnosticKind as D };
+use crate::error::{Diagnostic, DiagnosticKind as D};
 use crate::lexer::token::{LexerError, Token};
 use crate::util::fmap;
 
@@ -50,12 +50,8 @@ impl<'a> ParseError<'a> {
                 let tokens = fmap(&tokens, ToString::to_string);
                 Diagnostic::new(location, D::ParserExpected(tokens))
             },
-            ParseError::InRule(rule, location) => {
-                Diagnostic::new(location, D::ParserErrorInRule(rule))
-            },
-            ParseError::LexerError(error, location) => {
-                Diagnostic::new(location, D::LexerError(error.to_string()))
-            },
-        } 
+            ParseError::InRule(rule, location) => Diagnostic::new(location, D::ParserErrorInRule(rule)),
+            ParseError::LexerError(error, location) => Diagnostic::new(location, D::LexerError(error.to_string())),
+        }
     }
 }

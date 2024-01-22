@@ -133,7 +133,7 @@ fn compile(args: Cli) {
             eprintln!("{}", parse_error.into_diagnostic().display());
             // Parse errors are currently always fatal
             return;
-        }
+        },
     };
 
     if args.parse {

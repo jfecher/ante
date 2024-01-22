@@ -31,8 +31,8 @@ pub enum DiagnosticKind {
     //
     //                     Parsing
     //
-    ParserExpected(/*Expected tokens*/Vec<String>),
-    ParserErrorInRule(/*Failing parse rule*/&'static str),
+    ParserExpected(/*Expected tokens*/ Vec<String>),
+    ParserErrorInRule(/*Failing parse rule*/ &'static str),
     LexerError(String),
 
     //

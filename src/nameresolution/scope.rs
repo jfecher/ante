@@ -59,7 +59,9 @@ impl Scope {
     /// symbols are exported are determined in the "declare" pass. This is because since
     /// the other Scope's symbols are mutably added to self, they cannot be easily distinguished
     /// from definitions originating in this scope.
-    pub fn import<'a>(&mut self, other: &Scope, cache: &mut ModuleCache<'a>, location: Location<'a>, symbols: &HashSet<String>) {
+    pub fn import<'a>(
+        &mut self, other: &Scope, cache: &mut ModuleCache<'a>, location: Location<'a>, symbols: &HashSet<String>,
+    ) {
         self.import_definitions_types_and_traits(other, cache, location, symbols);
         self.import_impls(other, cache);
     }
