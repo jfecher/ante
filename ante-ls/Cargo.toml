@@ -7,6 +7,7 @@ edition = "2021"
 ante = { path = ".." }
 dashmap = "5.5.3"
 env_logger = "0.10.2"
+futures = "0.3.30"
 im-rc = "15.1.0"
 log = "0.4.20"
 ropey = "1.6.1"
