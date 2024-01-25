@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-ante = { path = ".." }
+ante = { path = "..", default-features = false }
 dashmap = "5.5.3"
 env_logger = "0.10.2"
 futures = "0.3.30"

@@ -31,11 +31,22 @@
       ];
 
       perSystem = { config, ... }:
-        let crateOutputs = config.nci.outputs.ante; in
+        let
+          anteCrate = config.nci.outputs.ante;
+          ante-lsCrate = config.nci.outputs.ante-ls;
+        in
         {
-          overlayAttrs.ante = config.packages.default;
-          packages.default = crateOutputs.packages.release;
-          devShells.default = crateOutputs.devShell.overrideAttrs (_: {
+          overlayAttrs = {
+            inherit (config.packages)
+              ante
+              ante-ls;
+          };
+          packages = rec {
+            default = ante;
+            ante = anteCrate.packages.release;
+            ante-ls = ante-lsCrate.packages.release;
+          };
+          devShells.default = anteCrate.devShell.overrideAttrs (_: {
             shellHook = ''
               PATH=$PATH:$PWD/target/debug
             '';
