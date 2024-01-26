@@ -7,10 +7,7 @@ use std::{
 use ante::{
     cache::{cached_read, ModuleCache},
     error::{location::Locatable, ErrorType},
-    lexer::Lexer,
-    nameresolution::NameResolver,
-    parser::parse,
-    types::typechecker,
+    frontend,
 };
 
 use dashmap::DashMap;
@@ -141,19 +138,7 @@ impl Backend {
         let file_cache = paths.iter().zip(contents.into_iter()).map(|(p, c)| (p.as_path(), c)).collect();
         let mut cache = ModuleCache::new(cache_root, file_cache);
 
-        let tokens = Lexer::new(filename, &rope.to_string()).collect::<Vec<_>>();
-        match parse(&tokens) {
-            Ok(ast) => {
-                NameResolver::start(ast, &mut cache);
-                if cache.error_count() == 0 {
-                    let ast = cache.parse_trees.get_mut(0).unwrap();
-                    typechecker::infer_ast(ast, &mut cache);
-                }
-            },
-            Err(err) => {
-                cache.push_full_diagnostic(err.into_diagnostic());
-            },
-        };
+        let _ = frontend::check(filename, rope.to_string(), &mut cache, frontend::FrontendPhase::TypeCheck, false);
 
         // Diagnostics for a document get cleared only when an empty list is sent for it's Uri.
         // This presents an issue, as when we have files A and B, where file A imports the file B,

@@ -4,6 +4,7 @@ pub mod lexer;
 
 #[macro_use]
 pub mod util;
+pub mod frontend;
 
 #[macro_use]
 pub mod error;
