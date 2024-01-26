@@ -384,6 +384,10 @@ impl<'a> Diagnostic<'a> {
         Self { location, msg }
     }
 
+    pub fn msg(&self) -> &DiagnosticKind {
+        &self.msg
+    }
+
     pub fn error_type(&self) -> ErrorType {
         self.msg.error_type()
     }

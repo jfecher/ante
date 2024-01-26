@@ -221,15 +221,15 @@ impl Backend {
                     self.document_map.get(&uri).unwrap()
                 },
             };
-            let range = rope_range_to_lsp_range(loc.start.index..loc.end.index, &rope);
 
-            let message = format!("{}", diagnostic.display());
+            // TODO: This range seems to be off
+            let range = rope_range_to_lsp_range(loc.start.index..loc.end.index, &rope);
 
             let diagnostic = Diagnostic {
                 code: None,
                 code_description: None,
                 data: None,
-                message,
+                message: diagnostic.msg().to_string(),
                 range,
                 related_information: None,
                 severity,
