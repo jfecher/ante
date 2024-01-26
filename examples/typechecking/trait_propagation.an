@@ -17,5 +17,5 @@ foo () = baz bar
 // foo : (forall a. (Unit -> Unit can a))
 
 // expected stderr:
-// examples/typechecking/trait_propagation.an:6:10	error: No impl found for Baz a
+// trait_propagation.an:6:10	error: No impl found for Baz a
 // foo () = baz bar

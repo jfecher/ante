@@ -6,14 +6,14 @@ library_fn _ = 3
 
 // args: --check
 // expected stderr:
-// examples/nameresolution/conflictingimport.an:1:1	error: import shadows previous definition of library_fn
+// conflictingimport.an:1:1	error: import shadows previous definition of library_fn
 // import Library
 // 
-// examples/nameresolution/conflictingimport.an:5:1	note: library_fn was previously defined here
+// conflictingimport.an:5:1	note: library_fn was previously defined here
 // library_fn _ = 3
 // 
-// examples/nameresolution/conflictingimport.an:1:1	error: import shadows previous definition of library_int
+// conflictingimport.an:1:1	error: import shadows previous definition of library_int
 // import Library
 // 
-// examples/nameresolution/conflictingimport.an:3:1	note: library_int was previously defined here
+// conflictingimport.an:3:1	note: library_int was previously defined here
 // library_int = 1

@@ -16,26 +16,26 @@ a = 3 // already declared
 
 // args: --check
 // expected stderr:
-// examples/nameresolution/errors.an:15:1	error: a is already in scope
+// errors.an:15:1	error: a is already in scope
 // a = 3 // already declared
 // 
-// examples/nameresolution/errors.an:14:1	note: a was previously defined here
+// errors.an:14:1	note: a was previously defined here
 // a = 2
 // 
-// examples/nameresolution/errors.an:4:14	error: No declaration for `is_an_error` was found in scope
+// errors.an:4:14	error: No declaration for `is_an_error` was found in scope
 // not_an_error is_an_error
 // 
-// examples/nameresolution/errors.an:6:15	error: No declaration for `c` was found in scope
+// errors.an:6:15	error: No declaration for `c` was found in scope
 // fn a b -> a + c + b
 // 
-// examples/nameresolution/errors.an:9:9	warning: c is unused (prefix name with _ to silence this warning)
+// errors.an:9:9	warning: c is unused (prefix name with _ to silence this warning)
 //     bar c d =
 // 
-// examples/nameresolution/errors.an:9:11	warning: d is unused (prefix name with _ to silence this warning)
+// errors.an:9:11	warning: d is unused (prefix name with _ to silence this warning)
 //     bar c d =
 // 
-// examples/nameresolution/errors.an:8:5	warning: a is unused (prefix name with _ to silence this warning)
+// errors.an:8:5	warning: a is unused (prefix name with _ to silence this warning)
 // foo a b =
 // 
-// examples/nameresolution/errors.an:9:5	warning: bar is unused (prefix name with _ to silence this warning)
+// errors.an:9:5	warning: bar is unused (prefix name with _ to silence this warning)
 //     bar c d =

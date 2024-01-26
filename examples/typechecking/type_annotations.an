@@ -17,7 +17,7 @@ puts2
 // TODO: bar should probably error that its annotated
 //       type is more general than its actual type
 // expected stderr:
-// examples/typechecking/type_annotations.an:13:7	error: Expected argument of type I32, but found String
+// type_annotations.an:13:7	error: Expected argument of type I32, but found String
 // exit2 "test"
 // 
 
