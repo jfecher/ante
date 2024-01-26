@@ -694,7 +694,7 @@ impl<'c> Context<'c> {
                 &mut self.cache,
                 TE::MonomorphizationError,
             )
-            .unwrap_or_else(|error| panic!("ICE: {}", error.display()));
+            .unwrap_or_else(|error| panic!("ICE: {}", error.display(&self.cache)));
 
             self.monomorphisation_bindings.push(Rc::new(bindings.bindings));
         }

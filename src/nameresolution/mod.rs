@@ -56,8 +56,6 @@ use crate::util::{fmap, timing, trustme};
 
 use std::borrow::Cow;
 use std::collections::{BTreeSet, HashMap};
-use std::fs::File;
-use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 
 pub mod builtin;
@@ -596,9 +594,7 @@ impl<'c> NameResolver {
             Type::Effects(_) => 0,
         }
     }
-}
 
-impl<'c> NameResolver {
     /// Re-insert the given type variables into the current scope.
     /// Currently used for remembering type variables from type and trait definitions that
     /// were created in the declare pass and need to be used later in the define pass.
@@ -1223,25 +1219,24 @@ impl<'c> Resolvable<'c> for ast::TypeAnnotation<'c> {
     }
 }
 
-fn find_file(relative_path: &Path, cache: &mut ModuleCache) -> Option<(File, PathBuf)> {
+fn absolute_path(relative_path: &Path, cache: &ModuleCache) -> Option<PathBuf> {
     let relative_path = PathBuf::from(relative_path);
 
     for root in cache.relative_roots.iter() {
         let path = root.join(&relative_path).with_extension("an");
 
-        let file = match File::open(&path) {
-            Ok(file) => file,
-            Err(_) => continue,
+        if !(cache.file_cache.contains_key(path.as_path()) || path.is_file()) {
+            continue;
         };
 
-        return Some((file, path));
+        return Some(path);
     }
     None
 }
 
 pub fn declare_module<'a>(path: &Path, cache: &mut ModuleCache<'a>, error_location: Location<'a>) -> Option<ModuleId> {
-    let (file, path) = match find_file(path, cache) {
-        Some((f, p)) => (f, p),
+    let path = match absolute_path(path, cache) {
+        Some(p) => p,
         _ => {
             cache.push_diagnostic(error_location, D::CouldNotOpenFileForImport(path.to_owned()));
             return None;
@@ -1260,9 +1255,7 @@ pub fn declare_module<'a>(path: &Path, cache: &mut ModuleCache<'a>, error_locati
 
     let path = cache.push_filepath(PathBuf::from(&path));
 
-    let mut reader = BufReader::new(file);
-    let mut contents = String::new();
-    reader.read_to_string(&mut contents).unwrap();
+    let contents = cache.get_contents(path).unwrap();
 
     timing::start_time("Lexing");
     let tokens = Lexer::new(path, &contents).collect::<Vec<_>>();

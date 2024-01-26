@@ -7,14 +7,13 @@
 //! that as many can be issued as possible. A possible future improvement
 //! would be to implement poisoning so that repeated errors are hidden.
 pub mod location;
+use crate::cache::{cached_read, ModuleCache};
 use crate::error::location::{Locatable, Location};
 
 use colored::ColoredString;
 use colored::*;
 use std::cmp::{max, min};
 use std::fmt::{Display, Formatter};
-use std::fs::File;
-use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering::SeqCst;
@@ -413,18 +412,23 @@ impl<'a> Diagnostic<'a> {
     /// Return a displayable version of this Diagnostic.
     /// Note that before being displayed, Diagnostics should always be pushed
     /// to the ModuleCache first.
-    pub fn display(&self) -> DisplayDiagnostic {
-        DisplayDiagnostic(self)
+    pub fn display<'l>(&'l self, cache: &'l ModuleCache<'a>) -> DisplayDiagnostic<'l, 'a> {
+        DisplayDiagnostic(self, cache)
     }
 
     /// Display isn't implemented directly on Diagnostic to avoid accidentally printing
     /// out errors when they should be pushed to the ModuleCache first.
-    fn format(&self, f: &mut Formatter) -> std::fmt::Result {
+    fn format(&self, f: &mut Formatter, cache: &'a ModuleCache) -> std::fmt::Result {
         let start = self.location.start;
 
-        writeln!(f, "{}\t{} {}", self.location, self.marker(), self.msg)?;
+        let relative_path =
+            os_agnostic_display_path(cache.strip_root(self.location.filename).unwrap_or(self.location.filename));
 
-        let file_contents = read_file_or_panic(self.location.filename);
+        write!(f, "{}:{}:{}", relative_path, start.line, start.column)?;
+
+        writeln!(f, "\t{} {}", self.marker(), self.msg)?;
+
+        let file_contents = cached_read(&cache.file_cache, self.location.filename).unwrap();
         let line = file_contents.lines().nth(max(1, start.line) as usize - 1).unwrap_or("");
 
         let start_column = max(1, start.column) as usize - 1;
@@ -452,15 +456,6 @@ impl<'a> Locatable<'a> for Diagnostic<'a> {
     fn locate(&self) -> Location<'a> {
         self.location
     }
-}
-
-/// Reads the given file, returning all of its contents
-fn read_file_or_panic(path: &Path) -> String {
-    let file = File::open(path).unwrap();
-    let mut reader = BufReader::new(file);
-    let mut contents = String::new();
-    reader.read_to_string(&mut contents).unwrap();
-    contents
 }
 
 /// Sets whether error message output should be colored or not
@@ -500,17 +495,10 @@ fn os_agnostic_display_path(path: &Path) -> ColoredString {
     }
 }
 
-impl<'a> Display for Location<'a> {
-    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        let filename = os_agnostic_display_path(self.filename);
-        write!(f, "{}:{}:{}", filename, self.start.line, self.start.column)
-    }
-}
-
-pub struct DisplayDiagnostic<'local, 'cache>(&'local Diagnostic<'cache>);
+pub struct DisplayDiagnostic<'local, 'cache>(&'local Diagnostic<'cache>, &'local ModuleCache<'cache>);
 
 impl<'local, 'cache> Display for DisplayDiagnostic<'local, 'cache> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        self.0.format(f)
+        self.0.format(f, self.1)
     }
 }

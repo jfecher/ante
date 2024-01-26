@@ -40,6 +40,7 @@ use nameresolution::NameResolver;
 
 use clap::{CommandFactory, Parser};
 use clap_complete as clap_cmp;
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{stdout, BufReader, Read};
 use std::path::Path;
@@ -163,16 +164,25 @@ fn compile(args: Cli) {
     let filename = Path::new(&args.file);
     let file = File::open(filename);
     let file = expect!(file, "Could not open file {}\n", filename.display());
-
-    let mut cache = ModuleCache::new(filename.parent().unwrap());
-
     let mut reader = BufReader::new(file);
     let mut contents = String::new();
     expect!(reader.read_to_string(&mut contents), "Failed to read {} into a string\n", filename.display());
 
+    let filename = if filename.is_relative() {
+        let cwd = expect!(std::env::current_dir(), "Could not get current directory\n");
+        expect!(cwd.join(filename).canonicalize(), "Could not canonicalize {}\n", filename.display())
+    } else {
+        expect!(filename.canonicalize(), "Could not canonicalize {}\n", filename.display())
+    };
+    let parent = filename.parent().unwrap();
+
+    let file_cache = HashMap::from([(filename.as_path(), contents.clone())]);
+
+    let mut cache = ModuleCache::new(parent, file_cache);
+
     error::color_output(!args.no_color);
 
-    match check(&args, filename, contents, &mut cache) {
+    match check(&args, &filename, contents, &mut cache) {
         CheckResult::Done => return,
         CheckResult::ContinueCompilation => (),
         CheckResult::Errors => {
@@ -214,11 +224,11 @@ fn compile(args: Cli) {
     let backend = args.backend.unwrap_or(default_backend);
 
     match backend {
-        Backend::Cranelift => cranelift_backend::run(filename, hir, &args),
+        Backend::Cranelift => cranelift_backend::run(&filename, hir, &args),
         Backend::Llvm => {
             if cfg!(feature = "llvm") {
                 #[cfg(feature = "llvm")]
-                llvm::run(filename, hir, &args);
+                llvm::run(&filename, hir, &args);
             } else {
                 eprintln!("The llvm backend is required for non-debug builds. Recompile ante with --features 'llvm' to enable optimized builds.");
             }
