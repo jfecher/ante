@@ -24,6 +24,7 @@ use crate::types::{GeneralizedType, Kind, LetBindingLevel, TypeBinding};
 use crate::types::{Type, TypeInfo, TypeInfoBody, TypeInfoId, TypeVariableId};
 use crate::util::stdlib_dir;
 
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufReader, Read};
@@ -378,15 +379,17 @@ impl<'a> Locatable<'a> for EffectInfo<'a> {
     }
 }
 
-pub fn cached_read(file_cache: &FileCache<'_>, path: &Path) -> Option<String> {
-    file_cache.get(path).cloned().or_else(|| {
-        let file = File::open(path).ok()?;
-        let mut reader = BufReader::new(file);
-        let mut contents = String::new();
-        reader.read_to_string(&mut contents).ok()?;
-
-        Some(contents)
-    })
+pub fn cached_read<'a>(file_cache: &'a FileCache<'_>, path: &Path) -> Option<Cow<'a, str>> {
+    match file_cache.get(path) {
+        Some(contents) => Some(Cow::Borrowed(contents)),
+        None => {
+            let file = File::open(path).ok()?;
+            let mut reader = BufReader::new(file);
+            let mut contents = String::new();
+            reader.read_to_string(&mut contents).ok()?;
+            Some(Cow::Owned(contents))
+        }
+    }
 }
 
 impl<'a> ModuleCache<'a> {
@@ -442,12 +445,16 @@ impl<'a> ModuleCache<'a> {
         }
     }
 
-    pub fn get_contents(&mut self, path: &'a Path) -> Option<String> {
+    pub fn get_contents<'local>(&'local mut self, path: &'a Path) -> Option<&'local str> {
+        let contains_path = self.file_cache.contains_key(path);
         let contents = cached_read(&self.file_cache, path)?;
-        if !self.file_cache.contains_key(path) {
-            self.file_cache.insert(path, contents.clone());
-        };
-        Some(contents)
+
+        if !contains_path {
+            let contents = contents.into_owned();
+            self.file_cache.insert(path, contents);
+        }
+
+        self.file_cache.get(path).map(|s| s.as_str())
     }
 
     pub fn strip_root<'b>(&self, path: &'b Path) -> Option<&'b Path> {
