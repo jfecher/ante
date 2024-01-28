@@ -383,6 +383,10 @@ impl<'a> Diagnostic<'a> {
         Self { location, msg }
     }
 
+    // This is used by ante-ls to avoid displaying the location and
+    // location contents inline when we're already highlighting the
+    // same location within a source file.
+    #[allow(unused)]
     pub fn msg(&self) -> &DiagnosticKind {
         &self.msg
     }

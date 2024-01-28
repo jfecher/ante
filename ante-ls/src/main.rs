@@ -174,15 +174,12 @@ impl Backend {
                 },
             };
 
-            let range = rope_range_to_lsp_range(loc.start.index..loc.end.index, &rope);
-            let message = format!("{}", diagnostic.display(&cache));
-
             let diagnostic = Diagnostic {
                 code: None,
                 code_description: None,
                 data: None,
-                message,
-                range,
+                message: diagnostic.msg().to_string(),
+                range: rope_range_to_lsp_range(loc.start.index..loc.end.index, &rope),
                 related_information: None,
                 severity,
                 source: Some(String::from("ante-ls")),
