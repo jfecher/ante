@@ -133,7 +133,6 @@ pub struct ModuleCache<'a> {
 }
 
 pub type FileCache<'a> = HashMap<&'a Path, String>;
-// type MutCache<'a> = &'a mut HashMap<&'a Path, Box<str>>;
 
 #[derive(Debug)]
 pub struct MutualRecursionSet {
