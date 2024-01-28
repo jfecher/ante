@@ -424,9 +424,7 @@ impl<'a> Diagnostic<'a> {
         let relative_path =
             os_agnostic_display_path(cache.strip_root(self.location.filename).unwrap_or(self.location.filename));
 
-        write!(f, "{}:{}:{}", relative_path, start.line, start.column)?;
-
-        writeln!(f, "\t{} {}", self.marker(), self.msg)?;
+        writeln!(f, "{}:{}:{}\t{} {}", relative_path, start.line, start.column, self.marker(), self.msg)?;
 
         let file_contents = cached_read(&cache.file_cache, self.location.filename).unwrap();
         let line = file_contents.lines().nth(max(1, start.line) as usize - 1).unwrap_or("");
