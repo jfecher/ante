@@ -25,6 +25,8 @@ use crate::types::{Type, TypeInfo, TypeInfoBody, TypeInfoId, TypeVariableId};
 use crate::util::stdlib_dir;
 
 use std::collections::{HashMap, HashSet};
+use std::fs::File;
+use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 
 use self::dependency_graph::DependencyGraph;
@@ -126,7 +128,11 @@ pub struct ModuleCache<'a> {
 
     /// The number of errors emitted by the program
     pub error_count: usize,
+
+    pub file_cache: FileCache<'a>,
 }
+
+pub type FileCache<'a> = HashMap<&'a Path, String>;
 
 #[derive(Debug)]
 pub struct MutualRecursionSet {
@@ -372,8 +378,21 @@ impl<'a> Locatable<'a> for EffectInfo<'a> {
     }
 }
 
+pub fn cached_read(file_cache: &FileCache<'_>, path: &Path) -> Option<String> {
+    file_cache.get(path).cloned().or_else(|| {
+        let file = File::open(path).ok()?;
+        let mut reader = BufReader::new(file);
+        let mut contents = String::new();
+        reader.read_to_string(&mut contents).ok()?;
+
+        Some(contents)
+    })
+}
+
 impl<'a> ModuleCache<'a> {
-    pub fn new(project_directory: &Path) -> ModuleCache<'a> {
+    /// For consistency, all paths should be absolute and canonical.
+    /// They can be converted to relative paths for displaying errors later.
+    pub fn new(project_directory: &Path, file_cache: FileCache<'a>) -> ModuleCache<'a> {
         ModuleCache {
             relative_roots: vec![project_directory.to_owned(), stdlib_dir()],
             // Really wish you could do ..Default::default() for the remaining fields
@@ -395,6 +414,7 @@ impl<'a> ModuleCache<'a> {
             global_dependency_graph: DependencyGraph::default(),
             diagnostics: Vec::new(),
             error_count: 0,
+            file_cache,
         }
     }
 
@@ -417,8 +437,21 @@ impl<'a> ModuleCache<'a> {
 
     pub fn display_diagnostics(&self) {
         for diagnostic in &self.diagnostics {
-            eprintln!("{}", diagnostic.display());
+            let diagnostic = diagnostic.display(self);
+            eprintln!("{}", diagnostic);
         }
+    }
+
+    pub fn get_contents(&mut self, path: &'a Path) -> Option<String> {
+        let contents = cached_read(&self.file_cache, path)?;
+        if !self.file_cache.contains_key(path) {
+            self.file_cache.insert(path, contents.clone());
+        };
+        Some(contents)
+    }
+
+    pub fn strip_root<'b>(&self, path: &'b Path) -> Option<&'b Path> {
+        self.relative_roots.iter().find_map(move |root| path.strip_prefix(root).ok())
     }
 
     #[allow(unused)]

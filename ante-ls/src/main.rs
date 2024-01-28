@@ -1,16 +1,13 @@
 use std::{
     collections::HashMap,
-    env::{current_dir, set_current_dir},
+    env::set_current_dir,
     path::{Path, PathBuf},
 };
 
 use ante::{
-    cache::ModuleCache,
+    cache::{cached_read, ModuleCache},
     error::{location::Locatable, ErrorType},
-    lexer::Lexer,
-    nameresolution::NameResolver,
-    parser::parse,
-    types::typechecker,
+    frontend,
 };
 
 use dashmap::DashMap;
@@ -73,9 +70,6 @@ impl LanguageServer for Backend {
         self.update_diagnostics(params.text_document.uri, &rope).await;
     }
 
-    // The diagnostics can't be updated on change, because the content of the file in the file system
-    // is not guaranteed to be the same as the content of the file in the editor. This will result in
-    // a panic when running Diagnostic::format, and the column are lengths different than expected.
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
         self.client.log_message(MessageType::LOG, format!("ante_ls did_change: {:?}", params)).await;
         self.document_map.alter(&params.text_document.uri, |_, mut rope| {
@@ -90,25 +84,9 @@ impl LanguageServer for Backend {
             }
             rope
         });
-    }
-}
-
-fn relative_path<P1: AsRef<Path>, P2: AsRef<Path>>(root: P1, path: P2) -> Option<PathBuf> {
-    let path = path.as_ref();
-    if let Ok(path) = path.strip_prefix(&root) {
-        return Some(path.to_path_buf());
-    }
-
-    let mut acc = PathBuf::new();
-    let mut root = root.as_ref();
-    loop {
-        if let Ok(path) = path.strip_prefix(root) {
-            acc.push(path);
-            return Some(acc);
-        } else {
-            acc.push("..");
-            root = root.parent()?;
-        }
+        if let Some(rope) = self.document_map.get(&params.text_document.uri) {
+            self.update_diagnostics(params.text_document.uri, &rope).await;
+        };
     }
 }
 
@@ -147,32 +125,20 @@ fn rope_range_to_lsp_range(range: std::ops::Range<usize>, rope: &Rope) -> Range 
 
 impl Backend {
     async fn update_diagnostics(&self, uri: Url, rope: &Rope) {
-        let root = match current_dir() {
-            Ok(root) => root,
-            Err(_) => {
-                self.client.log_message(MessageType::ERROR, "Failed to get current directory".to_string()).await;
-                return;
-            },
-        };
-        // We want the filename to be relative to the root for nicer error messages.
-        // This could fail on windows when the root is on a different drive than the file.
+        // Urls always contain ablsoute canonical paths, so there's no need to canonicalize them.
         let filename = Path::new(uri.path());
-        let filename = relative_path(&root, filename).unwrap();
+        let cache_root = filename.parent().unwrap();
 
-        let mut cache = ModuleCache::new(filename.parent().unwrap());
-        let tokens = Lexer::new(&filename, &rope.to_string()).collect::<Vec<_>>();
-        match parse(&tokens) {
-            Ok(ast) => {
-                NameResolver::start(ast, &mut cache);
-                if cache.error_count() == 0 {
-                    let ast = cache.parse_trees.get_mut(0).unwrap();
-                    typechecker::infer_ast(ast, &mut cache);
-                }
-            },
-            Err(err) => {
-                cache.push_full_diagnostic(err.into_diagnostic());
-            },
-        };
+        let (paths, contents) =
+            self.document_map.iter().fold((Vec::new(), Vec::new()), |(mut paths, mut contents), item| {
+                paths.push(PathBuf::from(item.key().path()));
+                contents.push(item.value().to_string());
+                (paths, contents)
+            });
+        let file_cache = paths.iter().zip(contents.into_iter()).map(|(p, c)| (p.as_path(), c)).collect();
+        let mut cache = ModuleCache::new(cache_root, file_cache);
+
+        let _ = frontend::check(filename, rope.to_string(), &mut cache, frontend::FrontendPhase::TypeCheck, false);
 
         // Diagnostics for a document get cleared only when an empty list is sent for it's Uri.
         // This presents an issue, as when we have files A and B, where file A imports the file B,
@@ -186,7 +152,7 @@ impl Backend {
         // to generate a list of files in one, we could run the compiler on the root of the project.
         // That should provide an exhaustive list of diagnostics, and allow us to clear all diagnostics
         // for files that had none in the new list.
-        let mut diagnostics = HashMap::from([(uri, Vec::new())]);
+        let mut diagnostics = HashMap::from([(uri.clone(), Vec::new())]);
 
         for diagnostic in cache.get_diagnostics() {
             let severity = Some(match diagnostic.error_type() {
@@ -196,40 +162,26 @@ impl Backend {
             });
 
             let loc = diagnostic.locate();
-            let filename = root.join(loc.filename);
-            let filename = match filename.canonicalize() {
-                Ok(filename) => filename,
-                Err(_) => {
-                    self.client
-                        .log_message(
-                            MessageType::ERROR,
-                            format!("Diagnostics for file {filename:?}, but its path could not be canonicalized"),
-                        )
-                        .await;
-                    continue;
-                },
-            };
-            let uri = Url::from_file_path(filename).unwrap();
+            let uri = Url::from_file_path(loc.filename).unwrap();
 
             let rope = match self.document_map.get(&uri) {
                 Some(rope) => rope,
                 None => {
-                    // Can we somehow retrieve the file from the compiler rather than reading it again?
-                    // Or have the compiler go through the lsp server file buffer instead of reading it from the file system?
-                    let rope = Rope::from_str(&std::fs::read_to_string(uri.path()).unwrap());
-                    self.document_map.insert(uri.clone(), rope.clone());
+                    let contents = cached_read(&cache.file_cache, loc.filename).unwrap();
+                    let rope = Rope::from_str(&contents);
+                    self.document_map.insert(uri.clone(), rope);
                     self.document_map.get(&uri).unwrap()
                 },
             };
 
-            // TODO: This range seems to be off
             let range = rope_range_to_lsp_range(loc.start.index..loc.end.index, &rope);
+            let message = format!("{}", diagnostic.display(&cache));
 
             let diagnostic = Diagnostic {
                 code: None,
                 code_description: None,
                 data: None,
-                message: diagnostic.msg().to_string(),
+                message,
                 range,
                 related_information: None,
                 severity,
@@ -245,10 +197,18 @@ impl Backend {
             };
         }
 
-        join_all(
+        let handle = join_all(
             diagnostics.into_iter().map(|(uri, diagnostics)| self.client.publish_diagnostics(uri, diagnostics, None)),
-        )
-        .await;
+        );
+
+        for (path, content) in cache.file_cache {
+            let uri = Url::from_file_path(path).unwrap();
+            if self.document_map.get(&uri).is_none() {
+                self.document_map.insert(uri.clone(), Rope::from_str(&content));
+            }
+        }
+
+        handle.await;
     }
 }
 

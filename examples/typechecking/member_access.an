@@ -17,7 +17,7 @@ foo_and_bar foo bar
 
 // args: --check --show-types
 // expected stderr:
-// examples/typechecking/member_access.an:16:17	error: Expected argument of type { bar: String, .. }, but found Bar
+// member_access.an:16:17	error: Expected argument of type { bar: String, .. }, but found Bar
 // foo_and_bar foo bar
 // 
 

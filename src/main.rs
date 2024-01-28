@@ -18,6 +18,7 @@ mod lexer;
 
 #[macro_use]
 mod util;
+mod frontend;
 
 #[macro_use]
 mod error;
@@ -35,16 +36,15 @@ mod types;
 mod llvm;
 
 use cache::ModuleCache;
-use lexer::Lexer;
-use nameresolution::NameResolver;
+use cli::{Backend, Cli, Completions, EmitTarget};
+use frontend::{check, FrontendPhase, FrontendResult};
 
 use clap::{CommandFactory, Parser};
 use clap_complete as clap_cmp;
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{stdout, BufReader, Read};
 use std::path::Path;
-
-use crate::cli::{Backend, Cli, Completions, EmitTarget};
 
 #[global_allocator]
 static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
@@ -100,82 +100,41 @@ pub fn main() {
     }
 }
 
-pub enum CheckResult {
-    Done,
-    ContinueCompilation,
-    Errors,
-}
-
-pub fn check<'a>(
-    args: &Cli, filename: &'a Path, main_file_contents: String, cache: &mut ModuleCache<'a>,
-) -> CheckResult {
-    util::timing::time_passes(args.show_time);
-
-    // Phase 1: Lexing
-    util::timing::start_time("Lexing");
-    let tokens = Lexer::new(filename, &main_file_contents).collect::<Vec<_>>();
-
-    if args.lex {
-        tokens.iter().for_each(|(token, _)| println!("{}", token));
-        return CheckResult::Done;
-    }
-
-    // Phase 2: Parsing
-    util::timing::start_time("Parsing");
-
-    let root = match parser::parse(&tokens) {
-        Ok(root) => root,
-        Err(parse_error) => {
-            // Parse errors are currently always fatal
-            cache.push_full_diagnostic(parse_error.into_diagnostic());
-            return CheckResult::Errors;
-        },
-    };
-
-    if args.parse {
-        println!("{}", root);
-        return CheckResult::Done;
-    }
-
-    // Phase 3: Name resolution
-    // Timing for name resolution is within the start method to
-    // break up the declare and define passes
-    NameResolver::start(root, cache);
-
-    if cache.error_count() != 0 {
-        return CheckResult::Errors;
-    }
-
-    // Phase 4: Type inference
-    util::timing::start_time("Type Inference");
-    let ast = cache.parse_trees.get_mut(0).unwrap();
-    types::typechecker::infer_ast(ast, cache);
-
-    if cache.error_count() != 0 {
-        CheckResult::Errors
-    } else {
-        CheckResult::ContinueCompilation
-    }
-}
-
 fn compile(args: Cli) {
     // Setup the cache and read from the first file
     let filename = Path::new(&args.file);
     let file = File::open(filename);
     let file = expect!(file, "Could not open file {}\n", filename.display());
-
-    let mut cache = ModuleCache::new(filename.parent().unwrap());
-
     let mut reader = BufReader::new(file);
     let mut contents = String::new();
     expect!(reader.read_to_string(&mut contents), "Failed to read {} into a string\n", filename.display());
 
+    let filename = if filename.is_relative() {
+        let cwd = expect!(std::env::current_dir(), "Could not get current directory\n");
+        expect!(cwd.join(filename).canonicalize(), "Could not canonicalize {}\n", filename.display())
+    } else {
+        expect!(filename.canonicalize(), "Could not canonicalize {}\n", filename.display())
+    };
+    let parent = filename.parent().unwrap();
+
+    let file_cache = HashMap::from([(filename.as_path(), contents.clone())]);
+
+    let mut cache = ModuleCache::new(parent, file_cache);
+
     error::color_output(!args.no_color);
 
-    match check(&args, filename, contents, &mut cache) {
-        CheckResult::Done => return,
-        CheckResult::ContinueCompilation => (),
-        CheckResult::Errors => {
+    let phase = if args.lex {
+        FrontendPhase::Lex
+    } else if args.parse {
+        FrontendPhase::Parse
+    } else {
+        FrontendPhase::TypeCheck
+    };
+
+    match check(&filename, contents, &mut cache, phase, args.show_time) {
+        FrontendResult::Done => return,
+        FrontendResult::ContinueCompilation => (),
+        FrontendResult::Errors => {
             cache.display_diagnostics();
 
             if args.show_types {
@@ -214,11 +173,11 @@ fn compile(args: Cli) {
     let backend = args.backend.unwrap_or(default_backend);
 
     match backend {
-        Backend::Cranelift => cranelift_backend::run(filename, hir, &args),
+        Backend::Cranelift => cranelift_backend::run(&filename, hir, &args),
         Backend::Llvm => {
             if cfg!(feature = "llvm") {
                 #[cfg(feature = "llvm")]
-                llvm::run(filename, hir, &args);
+                llvm::run(&filename, hir, &args);
             } else {
                 eprintln!("The llvm backend is required for non-debug builds. Recompile ante with --features 'llvm' to enable optimized builds.");
             }

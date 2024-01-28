@@ -24,8 +24,8 @@ handle ()
 
 // args: --check
 // expected stderr:
-// examples/nameresolution/effects.an:12:1	error: Handler is missing 2 cases: two, three
+// effects.an:12:1	error: Handler is missing 2 cases: two, three
 // handle ()
 // 
-// examples/nameresolution/effects.an:21:1	error: Handler is missing 3 cases: one, two, get
+// effects.an:21:1	error: Handler is missing 3 cases: one, two, get
 // handle ()
