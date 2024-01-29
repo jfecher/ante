@@ -29,6 +29,7 @@ use crate::error::location::{Locatable, Location};
 use crate::lexer::token::{FloatKind, IntegerKind, Token};
 use crate::types::pattern::DecisionTree;
 use crate::types::traits::RequiredTrait;
+use crate::types::effects::EffectSet;
 use crate::types::typechecker::TypeBindings;
 use crate::types::{self, LetBindingLevel, TypeInfoId};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -116,7 +117,9 @@ pub struct Lambda<'a> {
     pub args: Vec<Ast<'a>>,
     pub body: Box<Ast<'a>>,
     pub return_type: Option<Type<'a>>,
+
     pub effects: Option<Vec<Effect<'a>>>,
+    pub resolved_effects: Option<EffectSet>,
 
     pub closure_environment: ClosureEnvironment,
 
@@ -214,9 +217,10 @@ pub enum Type<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub enum Effect<'a> {
-    UserDefined(String, Location<'a>),
-    Application(Box<Effect<'a>>, Vec<Type<'a>>, Location<'a>),
+pub struct Effect<'a> {
+    pub name: String,
+    pub args: Vec<Type<'a>>,
+    pub location: Location<'a>,
 }
 
 /// The AST representation of a trait usage.
@@ -562,6 +566,7 @@ impl<'a> Ast<'a> {
             effects,
             location,
             required_traits: vec![],
+            resolved_effects: None,
             typ: None,
         })
     }

@@ -52,6 +52,7 @@ use crate::types::{
     Field, FunctionType, GeneralizedType, LetBindingLevel, PrimitiveType, Type, TypeConstructor, TypeInfoBody,
     TypeInfoId, TypeVariableId, INITIAL_LEVEL, STRING_TYPE,
 };
+use crate::types::effects::EffectSet;
 use crate::util::{fmap, timing, trustme};
 
 use colored::Colorize;
@@ -182,9 +183,9 @@ macro_rules! lookup_fn {
 }
 
 impl NameResolver {
-    // lookup_fn!(lookup_definition, definitions, definition_infos, DefinitionInfoId);
     lookup_fn!(lookup_type, types, type_infos, TypeInfoId);
     lookup_fn!(lookup_trait, traits, trait_infos, TraitInfoId);
+    lookup_fn!(lookup_effect, effects, effect_infos, EffectInfoId);
 
     /// Similar to the lookup functions above, but will also lookup variables that are
     /// defined in a parent function to keep track of which variables closures
@@ -712,12 +713,17 @@ impl<'c> NameResolver {
             ast::Type::Pointer(_) => Type::Primitive(PrimitiveType::Ptr),
             ast::Type::Boolean(_) => Type::Primitive(PrimitiveType::BooleanType),
             ast::Type::Unit(_) => Type::UNIT,
-            ast::Type::Function(args, ret, eff, is_varargs, is_closure, _) => {
+            ast::Type::Function(args, ret, effects, is_varargs, is_closure, _) => {
                 let parameters = fmap(args, |arg| self.convert_type(cache, arg));
                 let return_type = Box::new(self.convert_type(cache, ret));
                 let environment =
                     Box::new(if *is_closure { cache.next_type_variable(self.let_binding_level) } else { Type::UNIT });
-                let effects = Box::new(cache.next_type_variable(self.let_binding_level));
+
+                let effects = Box::new(match effects {
+                    Some(effects) => Type::Effects(self.resolve_effects(cache, &effects)),
+                    None => cache.next_type_variable(self.let_binding_level),
+                });
+
                 let is_varargs = *is_varargs;
                 Type::Function(FunctionType { parameters, return_type, environment, is_varargs, effects })
             },
@@ -769,6 +775,23 @@ impl<'c> NameResolver {
                 Type::Ref(lifetime_variable)
             },
         }
+    }
+
+    pub fn resolve_effects(&mut self, cache: &mut ModuleCache<'c>, effects: &[ast::Effect<'c>]) -> EffectSet {
+        let effects = effects.iter().filter_map(|effect| {
+            let id = match self.lookup_effect(&effect.name, cache) {
+                Some(effect_id) => effect_id,
+                None => {
+                    error!(effect.location, "Could not find effect {} in scope", effect.name.blue());
+                    return None;
+                }
+            };
+            let args = fmap(&effect.args, |arg| self.convert_type(cache, arg));
+            Some((id, args))
+        }).collect();
+
+        let replacement = cache.next_type_variable_id(self.let_binding_level);
+        EffectSet { effects, replacement }
     }
 
     /// The collect* family of functions recurses over an irrefutable pattern, either declaring or
@@ -1006,6 +1029,11 @@ impl<'c> Resolvable<'c> for ast::Lambda<'c> {
             resolver.auto_declare = true;
             self.body.set_type(resolver.convert_type(cache, typ));
             resolver.auto_declare = false;
+        }
+
+        if let Some(effects) = &self.effects {
+            let effects = resolver.resolve_effects(cache, effects);
+            self.resolved_effects = Some(effects);
         }
 
         self.body.define(resolver, cache);
