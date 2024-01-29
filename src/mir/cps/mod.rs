@@ -155,17 +155,29 @@ impl Context {
         })
     }
 
+    /// S(if a then e1 else e2, []) = if a then E(e1) else E(e2)
+    /// S(if a then e1 else e2, [ts, t]) = fn k -> if E(a) then E(e1) @@ k else E(e2) @@ k
     fn cps_if(&mut self, if_expr: &mir::If) -> Ast {
         let condition = self.cps_atom(&if_expr.condition);
         let then = self.cps_statement(&if_expr.then);
         let otherwise = self.cps_statement(&if_expr.otherwise);
+        let result_type = if_expr.result_type.clone();
 
-        Ast::If(mir::If {
-            condition,
-            then: Box::new(then),
-            otherwise: Box::new(otherwise),
-            result_type: if_expr.result_type.clone(),
-        })
+        if self.effects.is_empty() {
+            let then = Box::new(then);
+            let otherwise = Box::new(otherwise);
+            Ast::If(mir::If { condition, then, otherwise, result_type })
+        } else {
+            Ast::Atom(self.continuation_lambda(|this, k| {
+                this.let_binding(if_expr.result_type.clone(), then, |this, then| {
+                    this.let_binding(if_expr.result_type.clone(), otherwise, |_, otherwise| {
+                        let then = Box::new(Ast::ct_call1(then, k.clone()));
+                        let otherwise = Box::new(Ast::ct_call1(otherwise, k));
+                        Ast::If(mir::If { condition, then, otherwise, result_type })
+                    })
+                })
+            }))
+        }
     }
 
     fn cps_match(&mut self, match_expr: &mir::Match) -> Ast {
@@ -224,11 +236,7 @@ impl Context {
         if self.effects.is_empty() {
             Ast::Atom(expr)
         } else {
-            let k = self.anonymous_variable("k", Type::Function(Context::placeholder_function_type()));
-
-            Ast::Atom(Context::ct_lambda(vec![k.clone()], {
-                Ast::ct_call1(Atom::Variable(k), expr)
-            }))
+            Ast::Atom(self.continuation_lambda(|_, k| Ast::ct_call1(k, expr)))
         }
     }
 
@@ -265,27 +273,21 @@ impl Context {
     fn cps_let_binding_impure(&mut self, let_binding: &mir::Let<Ast>) -> Ast {
         let definition_rhs = self.cps_statement(&let_binding.expr);
 
-        // TODO: What is the type of 'k' here?
-        let k_type = Type::Function(Context::placeholder_function_type());
         let x_type = let_binding.typ.clone();
-
-        let k = self.anonymous_variable("k", k_type);
         let x = self.fresh_existing_variable(let_binding.name.clone(), x_type);
         let x_type = let_binding.typ.as_ref().clone();
 
         self.insert_local_definition(let_binding.variable, Atom::Variable(x.clone()));
 
-        Ast::Atom(Context::ct_lambda(vec![k.clone()], {
+        Ast::Atom(self.continuation_lambda(|this, k| {
             let inner_lambda = Context::ct_lambda(vec![x], {
-                let rest = self.cps_statement(&let_binding.body);
+                let rest = this.cps_statement(&let_binding.body);
 
                 // TODO: Fix the type
-                self.let_binding(Type::unit(), rest, |_, rest| {
-                    Ast::ct_call1(rest, Atom::Variable(k))
-                })
+                this.let_binding(Type::unit(), rest, |_, rest| Ast::ct_call1(rest, k))
             });
 
-            self.let_binding(x_type, definition_rhs, |_, definition_rhs| {
+            this.let_binding(x_type, definition_rhs, |_, definition_rhs| {
                 Ast::ct_call1(definition_rhs, inner_lambda)
             })
         }))

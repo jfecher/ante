@@ -163,7 +163,7 @@ impl<'ast> Printer {
     fn display_if(&mut self, if_: &'ast ir::If, f: &mut Formatter) -> Result {
         write!(f, "if ")?;
         self.display_atom(&if_.condition, f)?;
-        write!(f, " then ")?;
+        write!(f, " : (if_type {}) then ", if_.result_type)?;
         self.display_ast_try_one_line(&if_.then, f)?;
         self.finish_block_with("else ", &if_.then, f)?;
         self.display_ast_try_one_line(&if_.otherwise, f)?;

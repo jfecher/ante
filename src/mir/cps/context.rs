@@ -98,6 +98,15 @@ impl Context {
         Atom::Lambda(mir::Lambda { args, body: Box::new(body), typ, compile_time: true })
     }
 
+    /// A variant of `ct_lambda` which only takes a continuation as an argument.
+    /// Returns a compile-time lambda containing `\k -> body` with place holder types for arguments
+    /// since they are expected to later be evaluated away at compile-time anyway.
+    pub fn continuation_lambda(&mut self, body: impl FnOnce(&mut Self, Atom) -> Ast) -> Atom {
+        let k = self.anonymous_variable("k", Type::Function(Self::placeholder_function_type()));
+        let body = body(self, Atom::Variable(k.clone()));
+        Self::ct_lambda(vec![k], body)
+    }
+
     /// Create a new variable but do not introduce it into `self.local_definitions`
     pub fn anonymous_variable(&mut self, name: impl Into<String>, typ: Type) -> Variable {
         let typ = Rc::new(typ);
