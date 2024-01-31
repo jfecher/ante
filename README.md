@@ -7,19 +7,17 @@
 Ante is a low-level functional language for exploring refinement types, lifetime inference, and
 other fun features. Here's a quick taste:
 
-```scala
-type Person = name: String, job: Ref String
+```rs
+// No lifetime variables
+foo (x: &shared mut Bar) (y: &a) : a can Fail given Clone a =
+    // Algebraic effects
+    if not valid x then fail ()
 
-// Infer that the data referenced via `&` should not be freed inside this function
-make_person name =
-    Person name &"programmer"
+    // Safe, aliasable, mutable references
+    baz x x
 
-// bob is only used at this scope, so it can be safely freed afterward
-bob = make_person "bob"
-
-// unlike ownership systems, aliasing is allowed with lifetime inference
-bob_twin = bob
-assert (bob.name == bob_twin.name)
+    // Traits
+    clone y
 ```
 
 In general, ante is low-level (no GC, values aren't boxed by default) while also trying to
