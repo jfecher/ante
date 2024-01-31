@@ -7,7 +7,7 @@
 Ante is a low-level functional language for exploring refinement types, lifetime inference, and
 other fun features. Here's a quick taste:
 
-```rs
+```scala
 // No lifetime variables
 foo (x: &shared mut Bar) (y: &a) : a can Fail given Clone a =
     // Algebraic effects
