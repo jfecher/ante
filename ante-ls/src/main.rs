@@ -8,6 +8,8 @@ use ante::{
     cache::{cached_read, ModuleCache},
     error::{location::Locatable, ErrorType},
     frontend,
+    parser::ast::{Ast, VariableKind},
+    types::typeprinter,
 };
 
 use dashmap::DashMap;
@@ -37,6 +39,7 @@ impl LanguageServer for Backend {
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
                 text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::INCREMENTAL)),
+                hover_provider: Some(HoverProviderCapability::Simple(true)),
                 ..Default::default()
             },
             ..Default::default()
@@ -88,57 +91,264 @@ impl LanguageServer for Backend {
             self.update_diagnostics(params.text_document.uri, &rope).await;
         };
     }
-}
 
-fn lsp_range_to_rope_range(range: Range, rope: &Rope) -> std::ops::Range<usize> {
-    let start_line = range.start.line as usize;
-    let start_line = rope.line_to_char(start_line);
+    async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
+        self.client.log_message(MessageType::LOG, format!("ante-ls hover: {:?}", params)).await;
+        let uri = params.text_document_position_params.text_document.uri;
+        let rope = match self.document_map.get(&uri) {
+            Some(rope) => rope,
+            None => return Ok(None),
+        };
 
-    let start_char = range.start.character as usize;
-    let start_char = start_line + start_char;
+        let cache = self.create_cache(&uri, &rope);
+        let ast = cache.parse_trees.get_mut(0).unwrap();
 
-    let end_line = range.end.line as usize;
-    let end_line = rope.line_to_char(end_line);
+        let index = position_to_index(params.text_document_position_params.position, &rope);
+        let hovered_node = walk_ast(ast, index);
 
-    let end_char = range.end.character as usize;
-    let end_char = end_line + end_char;
+        match hovered_node {
+            Ast::Variable(v) => {
+                let info = match v.definition {
+                    Some(definition_id) => &cache[definition_id],
+                    _ => return Ok(None),
+                };
 
-    start_char..end_char
-}
+                let typ = match &info.typ {
+                    Some(typ) => typ,
+                    None => return Ok(None),
+                };
 
-fn rope_range_to_lsp_range(range: std::ops::Range<usize>, rope: &Rope) -> Range {
-    let start_line = rope.char_to_line(range.start);
-    let start_char = rope.line_to_char(start_line);
-    let start_char = (range.start - start_char) as u32;
-    let start_line = start_line as u32;
+                let name = match &v.kind {
+                    VariableKind::Identifier(name) => name.clone(),
+                    VariableKind::TypeConstructor(name) => name.clone(),
+                    VariableKind::Operator(op) => format!("({})", op),
+                };
 
-    let end_line = rope.char_to_line(range.end);
-    let end_char = rope.line_to_char(end_line);
-    let end_char = (range.end - end_char) as u32;
-    let end_line = end_line as u32;
+                let (typ_str, traits) =
+                    typeprinter::show_type_and_traits(typ, &info.required_traits, &info.trait_info, &cache);
 
-    Range {
-        start: Position { line: start_line, character: start_char },
-        end: Position { line: end_line, character: end_char },
+                let value = format!("{} : {}", name, typ_str);
+                let value = if traits.is_empty() { value } else { format!("{}\n  given {}", value, traits.join(", ")) };
+
+                let location = v.locate();
+                let range = Some(rope_range_to_lsp_range(location.start.index..location.end.index, &rope));
+
+                Ok(Some(Hover {
+                    contents: HoverContents::Markup(MarkupContent { kind: MarkupKind::PlainText, value }),
+                    range,
+                }))
+            },
+            _ => Ok(None),
+        }
     }
 }
 
+fn contains(loc: ante::error::location::Location, idx: &usize) -> bool {
+    (loc.start.index..loc.end.index).contains(idx)
+}
+
+fn walk_ast<'a>(ast: &'a Ast<'a>, idx: usize) -> &'a Ast<'a> {
+    let mut ast = ast;
+    loop {
+        match ast {
+            Ast::Assignment(a) => {
+                if contains(a.lhs.locate(), &idx) {
+                    ast = &a.lhs;
+                } else if contains(a.rhs.locate(), &idx) {
+                    ast = &a.rhs;
+                } else {
+                    break;
+                }
+            },
+            Ast::Definition(d) => {
+                if contains(d.pattern.locate(), &idx) {
+                    ast = &d.pattern;
+                } else if contains(d.expr.locate(), &idx) {
+                    ast = &d.expr;
+                } else {
+                    break;
+                }
+            },
+            Ast::EffectDefinition(_) => {
+                break;
+            },
+            Ast::Extern(_) => {
+                break;
+            },
+            Ast::FunctionCall(f) => {
+                if let Some(arg) = f.args.iter().find(|&arg| contains(arg.locate(), &idx)) {
+                    ast = arg;
+                } else if contains(f.function.locate(), &idx) {
+                    ast = &f.function;
+                } else {
+                    break;
+                }
+            },
+            Ast::Handle(h) => {
+                if let Some(branch) = h.branches.iter().find_map(|(pat, body)| {
+                    if contains(pat.locate(), &idx) {
+                        return Some(pat);
+                    };
+                    if contains(body.locate(), &idx) {
+                        return Some(body);
+                    };
+                    None
+                }) {
+                    ast = branch;
+                } else if contains(h.expression.locate(), &idx) {
+                    ast = &h.expression;
+                } else {
+                    break;
+                }
+            },
+            Ast::If(i) => {
+                if contains(i.condition.locate(), &idx) {
+                    ast = &i.condition;
+                } else if contains(i.then.locate(), &idx) {
+                    ast = &i.then;
+                } else if contains(i.otherwise.locate(), &idx) {
+                    ast = &i.otherwise;
+                } else {
+                    break;
+                }
+            },
+            Ast::Import(_) => {
+                break;
+            },
+            Ast::Lambda(l) => {
+                if let Some(arg) = l.args.iter().find(|&arg| contains(arg.locate(), &idx)) {
+                    ast = arg;
+                } else if contains(l.body.locate(), &idx) {
+                    ast = &l.body;
+                } else {
+                    break;
+                }
+            },
+            Ast::Literal(_) => {
+                break;
+            },
+            Ast::Match(m) => {
+                if let Some(branch) = m.branches.iter().find_map(|(pat, body)| {
+                    if contains(pat.locate(), &idx) {
+                        return Some(pat);
+                    };
+                    if contains(body.locate(), &idx) {
+                        return Some(body);
+                    };
+                    None
+                }) {
+                    ast = branch;
+                } else {
+                    break;
+                }
+            },
+            Ast::MemberAccess(m) => {
+                if contains(m.lhs.locate(), &idx) {
+                    ast = &m.lhs;
+                } else {
+                    break;
+                }
+            },
+            Ast::NamedConstructor(n) => {
+                if let Some((_, arg)) = n.args.iter().find(|(_, arg)| contains(arg.locate(), &idx)) {
+                    ast = arg;
+                } else if contains(n.constructor.locate(), &idx) {
+                    ast = &n.constructor;
+                } else {
+                    break;
+                }
+            },
+            Ast::Return(r) => {
+                if contains(r.expression.locate(), &idx) {
+                    ast = &r.expression;
+                } else {
+                    break;
+                }
+            },
+            Ast::Sequence(s) => {
+                if let Some(stmt) = s.statements.iter().find(|&stmt| contains(stmt.locate(), &idx)) {
+                    ast = stmt;
+                } else {
+                    break;
+                }
+            },
+            Ast::TraitDefinition(_) => {
+                break;
+            },
+            Ast::TraitImpl(t) => {
+                if let Some(def) = t.definitions.iter().find_map(|def| {
+                    if contains(def.pattern.locate(), &idx) {
+                        return Some(&def.pattern);
+                    };
+                    if contains(def.expr.locate(), &idx) {
+                        return Some(&def.expr);
+                    };
+                    None
+                }) {
+                    ast = def;
+                } else {
+                    break;
+                }
+            },
+            Ast::TypeAnnotation(t) => {
+                if contains(t.lhs.locate(), &idx) {
+                    ast = &t.lhs;
+                } else {
+                    break;
+                }
+            },
+            Ast::TypeDefinition(_) => {
+                break;
+            },
+            Ast::Variable(_) => {
+                break;
+            },
+        }
+    }
+    ast
+}
+
+fn position_to_index(position: Position, rope: &Rope) -> usize {
+    let line = position.line as usize;
+    let line = rope.line_to_char(line);
+    line + position.character as usize
+}
+
+fn index_to_position(index: usize, rope: &Rope) -> Position {
+    let line = rope.char_to_line(index);
+    let char = index - rope.line_to_char(line);
+    Position { line: line as u32, character: char as u32 }
+}
+
+fn lsp_range_to_rope_range(range: Range, rope: &Rope) -> std::ops::Range<usize> {
+    let start = position_to_index(range.start, rope);
+    let end = position_to_index(range.end, rope);
+    start..end
+}
+
+fn rope_range_to_lsp_range(range: std::ops::Range<usize>, rope: &Rope) -> Range {
+    let start = index_to_position(range.start, rope);
+    let end = index_to_position(range.end, rope);
+    Range { start, end }
+}
+
 impl Backend {
-    async fn update_diagnostics(&self, uri: Url, rope: &Rope) {
+    fn create_cache<'a>(&self, uri: &'a Url, rope: &Rope) -> ModuleCache<'a> {
         // Urls always contain ablsoute canonical paths, so there's no need to canonicalize them.
         let filename = Path::new(uri.path());
         let cache_root = filename.parent().unwrap();
 
-        let (paths, contents) =
-            self.document_map.iter().fold((Vec::new(), Vec::new()), |(mut paths, mut contents), item| {
-                paths.push(PathBuf::from(item.key().path()));
-                contents.push(item.value().to_string());
-                (paths, contents)
-            });
-        let file_cache = paths.iter().zip(contents.into_iter()).map(|(p, c)| (p.as_path(), c)).collect();
+        let file_cache =
+            self.document_map.iter().map(|item| (PathBuf::from(item.key().path()), item.value().to_string())).collect();
         let mut cache = ModuleCache::new(cache_root, file_cache);
 
         let _ = frontend::check(filename, rope.to_string(), &mut cache, frontend::FrontendPhase::TypeCheck, false);
+
+        cache
+    }
+
+    async fn update_diagnostics(&self, uri: Url, rope: &Rope) {
+        let cache = self.create_cache(&uri, rope);
 
         // Diagnostics for a document get cleared only when an empty list is sent for it's Uri.
         // This presents an issue, as when we have files A and B, where file A imports the file B,

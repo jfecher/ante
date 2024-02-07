@@ -117,7 +117,7 @@ fn compile(args: Cli) {
     };
     let parent = filename.parent().unwrap();
 
-    let file_cache = HashMap::from([(filename.as_path(), contents.clone())]);
+    let file_cache = HashMap::from([(filename.clone(), contents.clone())]);
 
     let mut cache = ModuleCache::new(parent, file_cache);
 

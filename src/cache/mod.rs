@@ -130,10 +130,10 @@ pub struct ModuleCache<'a> {
     /// The number of errors emitted by the program
     pub error_count: usize,
 
-    pub file_cache: FileCache<'a>,
+    pub file_cache: FileCache,
 }
 
-pub type FileCache<'a> = HashMap<&'a Path, String>;
+pub type FileCache = HashMap<PathBuf, String>;
 
 #[derive(Debug)]
 pub struct MutualRecursionSet {
@@ -379,7 +379,7 @@ impl<'a> Locatable<'a> for EffectInfo<'a> {
     }
 }
 
-pub fn cached_read<'a>(file_cache: &'a FileCache<'_>, path: &Path) -> Option<Cow<'a, str>> {
+pub fn cached_read<'a>(file_cache: &'a FileCache, path: &Path) -> Option<Cow<'a, str>> {
     match file_cache.get(path) {
         Some(contents) => Some(Cow::Borrowed(contents)),
         None => {
@@ -388,14 +388,14 @@ pub fn cached_read<'a>(file_cache: &'a FileCache<'_>, path: &Path) -> Option<Cow
             let mut contents = String::new();
             reader.read_to_string(&mut contents).ok()?;
             Some(Cow::Owned(contents))
-        }
+        },
     }
 }
 
 impl<'a> ModuleCache<'a> {
     /// For consistency, all paths should be absolute and canonical.
     /// They can be converted to relative paths for displaying errors later.
-    pub fn new(project_directory: &Path, file_cache: FileCache<'a>) -> ModuleCache<'a> {
+    pub fn new(project_directory: &Path, file_cache: FileCache) -> ModuleCache<'a> {
         ModuleCache {
             relative_roots: vec![project_directory.to_owned(), stdlib_dir()],
             // Really wish you could do ..Default::default() for the remaining fields
@@ -451,7 +451,7 @@ impl<'a> ModuleCache<'a> {
 
         if !contains_path {
             let contents = contents.into_owned();
-            self.file_cache.insert(path, contents);
+            self.file_cache.insert(path.to_path_buf(), contents);
         }
 
         self.file_cache.get(path).map(|s| s.as_str())
