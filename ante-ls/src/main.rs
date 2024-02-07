@@ -8,7 +8,7 @@ use ante::{
     cache::{cached_read, ModuleCache},
     error::{location::Locatable, ErrorType},
     frontend,
-    parser::ast::{Ast, VariableKind},
+    parser::ast::Ast,
     types::typeprinter,
 };
 
@@ -118,17 +118,10 @@ impl LanguageServer for Backend {
                     None => return Ok(None),
                 };
 
-                let name = match &v.kind {
-                    VariableKind::Identifier(name) => name.clone(),
-                    VariableKind::TypeConstructor(name) => name.clone(),
-                    VariableKind::Operator(op) => format!("({})", op),
-                };
+                let name = v.kind.name();
 
-                let (typ_str, traits) =
-                    typeprinter::show_type_and_traits(typ, &info.required_traits, &info.trait_info, &cache);
-
-                let value = format!("{} : {}", name, typ_str);
-                let value = if traits.is_empty() { value } else { format!("{}\n  given {}", value, traits.join(", ")) };
+                let value =
+                    typeprinter::show_type_and_traits(&name, typ, &info.required_traits, &info.trait_info, &cache);
 
                 let location = v.locate();
                 let range = Some(rope_range_to_lsp_range(location.start.index..location.end.index, &rope));
@@ -143,27 +136,23 @@ impl LanguageServer for Backend {
     }
 }
 
-fn contains(loc: ante::error::location::Location, idx: &usize) -> bool {
-    (loc.start.index..loc.end.index).contains(idx)
-}
-
 fn walk_ast<'a>(ast: &'a Ast<'a>, idx: usize) -> &'a Ast<'a> {
     let mut ast = ast;
     loop {
         match ast {
             Ast::Assignment(a) => {
-                if contains(a.lhs.locate(), &idx) {
+                if a.lhs.locate().contains_index(&idx) {
                     ast = &a.lhs;
-                } else if contains(a.rhs.locate(), &idx) {
+                } else if a.rhs.locate().contains_index(&idx) {
                     ast = &a.rhs;
                 } else {
                     break;
                 }
             },
             Ast::Definition(d) => {
-                if contains(d.pattern.locate(), &idx) {
+                if d.pattern.locate().contains_index(&idx) {
                     ast = &d.pattern;
-                } else if contains(d.expr.locate(), &idx) {
+                } else if d.expr.locate().contains_index(&idx) {
                     ast = &d.expr;
                 } else {
                     break;
@@ -176,9 +165,9 @@ fn walk_ast<'a>(ast: &'a Ast<'a>, idx: usize) -> &'a Ast<'a> {
                 break;
             },
             Ast::FunctionCall(f) => {
-                if let Some(arg) = f.args.iter().find(|&arg| contains(arg.locate(), &idx)) {
+                if let Some(arg) = f.args.iter().find(|&arg| arg.locate().contains_index(&idx)) {
                     ast = arg;
-                } else if contains(f.function.locate(), &idx) {
+                } else if f.function.locate().contains_index(&idx) {
                     ast = &f.function;
                 } else {
                     break;
@@ -186,27 +175,27 @@ fn walk_ast<'a>(ast: &'a Ast<'a>, idx: usize) -> &'a Ast<'a> {
             },
             Ast::Handle(h) => {
                 if let Some(branch) = h.branches.iter().find_map(|(pat, body)| {
-                    if contains(pat.locate(), &idx) {
+                    if pat.locate().contains_index(&idx) {
                         return Some(pat);
                     };
-                    if contains(body.locate(), &idx) {
+                    if body.locate().contains_index(&idx) {
                         return Some(body);
                     };
                     None
                 }) {
                     ast = branch;
-                } else if contains(h.expression.locate(), &idx) {
+                } else if h.expression.locate().contains_index(&idx) {
                     ast = &h.expression;
                 } else {
                     break;
                 }
             },
             Ast::If(i) => {
-                if contains(i.condition.locate(), &idx) {
+                if i.condition.locate().contains_index(&idx) {
                     ast = &i.condition;
-                } else if contains(i.then.locate(), &idx) {
+                } else if i.then.locate().contains_index(&idx) {
                     ast = &i.then;
-                } else if contains(i.otherwise.locate(), &idx) {
+                } else if i.otherwise.locate().contains_index(&idx) {
                     ast = &i.otherwise;
                 } else {
                     break;
@@ -216,9 +205,9 @@ fn walk_ast<'a>(ast: &'a Ast<'a>, idx: usize) -> &'a Ast<'a> {
                 break;
             },
             Ast::Lambda(l) => {
-                if let Some(arg) = l.args.iter().find(|&arg| contains(arg.locate(), &idx)) {
+                if let Some(arg) = l.args.iter().find(|&arg| arg.locate().contains_index(&idx)) {
                     ast = arg;
-                } else if contains(l.body.locate(), &idx) {
+                } else if l.body.locate().contains_index(&idx) {
                     ast = &l.body;
                 } else {
                     break;
@@ -229,10 +218,10 @@ fn walk_ast<'a>(ast: &'a Ast<'a>, idx: usize) -> &'a Ast<'a> {
             },
             Ast::Match(m) => {
                 if let Some(branch) = m.branches.iter().find_map(|(pat, body)| {
-                    if contains(pat.locate(), &idx) {
+                    if pat.locate().contains_index(&idx) {
                         return Some(pat);
                     };
-                    if contains(body.locate(), &idx) {
+                    if body.locate().contains_index(&idx) {
                         return Some(body);
                     };
                     None
@@ -243,30 +232,30 @@ fn walk_ast<'a>(ast: &'a Ast<'a>, idx: usize) -> &'a Ast<'a> {
                 }
             },
             Ast::MemberAccess(m) => {
-                if contains(m.lhs.locate(), &idx) {
+                if m.lhs.locate().contains_index(&idx) {
                     ast = &m.lhs;
                 } else {
                     break;
                 }
             },
             Ast::NamedConstructor(n) => {
-                if let Some((_, arg)) = n.args.iter().find(|(_, arg)| contains(arg.locate(), &idx)) {
+                if let Some((_, arg)) = n.args.iter().find(|(_, arg)| arg.locate().contains_index(&idx)) {
                     ast = arg;
-                } else if contains(n.constructor.locate(), &idx) {
+                } else if n.constructor.locate().contains_index(&idx) {
                     ast = &n.constructor;
                 } else {
                     break;
                 }
             },
             Ast::Return(r) => {
-                if contains(r.expression.locate(), &idx) {
+                if r.expression.locate().contains_index(&idx) {
                     ast = &r.expression;
                 } else {
                     break;
                 }
             },
             Ast::Sequence(s) => {
-                if let Some(stmt) = s.statements.iter().find(|&stmt| contains(stmt.locate(), &idx)) {
+                if let Some(stmt) = s.statements.iter().find(|&stmt| stmt.locate().contains_index(&idx)) {
                     ast = stmt;
                 } else {
                     break;
@@ -277,10 +266,10 @@ fn walk_ast<'a>(ast: &'a Ast<'a>, idx: usize) -> &'a Ast<'a> {
             },
             Ast::TraitImpl(t) => {
                 if let Some(def) = t.definitions.iter().find_map(|def| {
-                    if contains(def.pattern.locate(), &idx) {
+                    if def.pattern.locate().contains_index(&idx) {
                         return Some(&def.pattern);
                     };
-                    if contains(def.expr.locate(), &idx) {
+                    if def.expr.locate().contains_index(&idx) {
                         return Some(&def.expr);
                     };
                     None
@@ -291,7 +280,7 @@ fn walk_ast<'a>(ast: &'a Ast<'a>, idx: usize) -> &'a Ast<'a> {
                 }
             },
             Ast::TypeAnnotation(t) => {
-                if contains(t.lhs.locate(), &idx) {
+                if t.lhs.locate().contains_index(&idx) {
                     ast = &t.lhs;
                 } else {
                     break;

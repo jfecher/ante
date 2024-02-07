@@ -31,6 +31,7 @@ use crate::types::pattern::DecisionTree;
 use crate::types::traits::RequiredTrait;
 use crate::types::typechecker::TypeBindings;
 use crate::types::{self, LetBindingLevel, TypeInfoId};
+use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::Rc;
 
@@ -457,6 +458,17 @@ impl std::hash::Hash for LiteralKind {
             LiteralKind::Char(x) => x.hash(state),
             LiteralKind::Bool(x) => x.hash(state),
             LiteralKind::Unit => (),
+        }
+    }
+}
+
+impl VariableKind {
+    #![allow(dead_code)]
+    pub fn name(&self) -> Cow<'_, String> {
+        match self {
+            VariableKind::Identifier(name) => Cow::Borrowed(name),
+            VariableKind::Operator(token) => Cow::Owned(token.to_string()),
+            VariableKind::TypeConstructor(name) => Cow::Borrowed(name),
         }
     }
 }

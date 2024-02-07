@@ -108,6 +108,11 @@ impl<'c> Location<'c> {
 
         Location { filename: self.filename, start, end }
     }
+
+    #[allow(dead_code)]
+    pub fn contains_index(&self, idx: &usize) -> bool {
+        (self.start.index..self.end.index).contains(idx)
+    }
 }
 
 /// A trait representing anything that has a Location

@@ -55,15 +55,15 @@ fn fill_typevar_map(map: &mut HashMap<TypeVariableId, String>, typevars: Vec<Typ
     }
 }
 
-/// Returns a string of the given type along with a Vec of strings of each trait it requires.
+/// Returns a string of the given type and traits it requires.
 /// The type and traits are all taken in together so that any repeated typevariables e.g.
 /// `TypeVariableId(55)` that may be used in both the type and any traits are given the same
 /// name in both. Printing out the type separately from the traits would cause type variable
 /// naming to restart at `a` which may otherwise give them different names.
 pub fn show_type_and_traits(
-    typ: &GeneralizedType, traits: &[RequiredTrait], trait_info: &Option<(TraitInfoId, Vec<Type>)>,
+    name: &str, typ: &GeneralizedType, traits: &[RequiredTrait], trait_info: &Option<(TraitInfoId, Vec<Type>)>,
     cache: &ModuleCache<'_>,
-) -> (String, Vec<String>) {
+) -> String {
     let mut map = HashMap::new();
     let mut current = 'a';
 
@@ -72,7 +72,8 @@ pub fn show_type_and_traits(
 
     let debug = true;
     let typ = typ.clone();
-    let type_string = TypePrinter { typ, cache, debug, typevar_names: map.clone() }.to_string();
+    let printer = TypePrinter { typ, cache, debug, typevar_names: map.clone() };
+    let type_string = format!("{} : {}", name, printer);
 
     let mut traits = traits
         .iter()
@@ -107,7 +108,11 @@ pub fn show_type_and_traits(
     // isn't used in their Display impl so they look like duplicates.
     traits.sort();
     traits.dedup();
-    (type_string, traits)
+    if traits.is_empty() {
+        type_string
+    } else {
+        format!("{}\n  given {}", type_string, traits.join(", "))
+    }
 }
 
 impl<'a, 'b> TypePrinter<'a, 'b> {
