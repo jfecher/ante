@@ -1627,7 +1627,102 @@ impl<'c> Resolvable<'c> for ast::Handle<'c> {
 impl<'c> Resolvable<'c> for ast::NamedConstructor<'c> {
     fn declare(&mut self, _resolver: &mut NameResolver, _cache: &mut ModuleCache<'c>) {}
 
-    fn define(&mut self, _resolver: &mut NameResolver, _cache: &mut ModuleCache<'c>) {
-        todo!()
+    fn define(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'c>) {
+        let type_name = match self.constructor.as_ref() {
+            Ast::Variable(ast::Variable { kind, .. }) => kind.name(),
+            _ => {
+                // This should never happen since constructor is parsed with the `variant` parser
+                cache.push_diagnostic(
+                    self.constructor.locate(),
+                    D::InternalError("Expected consturctor field to be a Variable"),
+                );
+                return;
+            },
+        };
+        // This will increment the use count for that type.
+        // It will result in it being one higher than it needs to,
+        // as the define pass on the sequence will do it again,
+        // since it ends with a FunctionCall. Is that a problem?
+        let type_info = match resolver.lookup_type(type_name.as_ref(), cache) {
+            Some(id) => &cache.type_infos[id.0],
+            None => {
+                cache.push_diagnostic(self.location, D::NotInScope("Type", type_name.as_ref().clone()));
+                return;
+            },
+        };
+
+        // Field names in the order they appear in the type definition
+        let struct_fields = match &type_info.body {
+            TypeInfoBody::Struct(fields) => fields.iter().map(|field| &field.name),
+            _ => {
+                cache.push_diagnostic(self.constructor.locate(), D::NotAStruct(type_name.as_ref().clone()));
+                return;
+            },
+        };
+        let statements = match self.sequence.as_mut() {
+            Ast::Sequence(ast::Sequence { statements, .. }) => statements,
+            _ => {
+                // This should never happen again, but it's better to emit an error than panic
+                cache.push_diagnostic(self.location, D::InternalError("Expected statements field to be a Variable"));
+                return;
+            },
+        };
+
+        // Fields referenced in the constructor
+        let mut defined_fields = statements
+            .iter()
+            .map(|stmt| {
+                let (variable, location) = match stmt {
+                    Ast::Definition(ast::Definition { pattern, location, .. }) => (pattern.as_ref(), location),
+                    Ast::Variable(v) => (stmt, &v.location),
+                    _ => unreachable!(),
+                };
+
+                let name = match variable {
+                    Ast::Variable(ast::Variable { kind: ast::VariableKind::Identifier(name), .. }) => name,
+                    _ => unreachable!(),
+                };
+
+                (name, (variable, location))
+            })
+            .collect::<HashMap<_, _>>();
+
+        let (missing_fields, args) =
+            struct_fields.fold((Vec::new(), Vec::new()), |(mut missing_fields, mut args), field| {
+                if let Some((variable, _)) = defined_fields.remove(field) {
+                    args.push(variable.clone());
+                } else {
+                    missing_fields.push(field);
+                }
+                (missing_fields, args)
+            });
+
+        let has_missing_fields = !missing_fields.is_empty();
+        let has_unknown_fields = !defined_fields.is_empty();
+
+        if has_missing_fields {
+            cache.push_diagnostic(
+                self.constructor.locate(),
+                D::MissingFields(missing_fields.into_iter().cloned().collect()),
+            );
+        }
+
+        for (name, (_, location)) in defined_fields {
+            cache.push_diagnostic(*location, D::NotAStructField(name.clone()));
+        }
+
+        if has_missing_fields || has_unknown_fields {
+            return;
+        }
+
+        let call = ast::Ast::function_call(self.constructor.as_ref().clone(), args, self.location);
+
+        // We only want to keep definitions in the sequence to keep the Hir simpler
+        statements.retain(|stmt| matches!(stmt, Ast::Definition(_)));
+        statements.push(call);
+
+        resolver.push_scope(cache);
+        self.sequence.define(resolver, cache);
+        resolver.pop_scope(cache, false, None);
     }
 }
