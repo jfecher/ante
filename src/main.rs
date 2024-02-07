@@ -63,12 +63,9 @@ fn print_definition_types(cache: &ModuleCache) {
         let info = &cache[*definition_id];
 
         if let Some(typ) = &info.typ {
-            let (t, traits) =
-                types::typeprinter::show_type_and_traits(typ, &info.required_traits, &info.trait_info, cache);
-            println!("{} : {}", name, t);
-            if !traits.is_empty() {
-                println!("  given {}", traits.join(", "));
-            }
+            let type_string =
+                types::typeprinter::show_type_and_traits(name, typ, &info.required_traits, &info.trait_info, cache);
+            println!("{}", type_string);
         } else {
             println!("{} : (none)", name);
         }
@@ -117,7 +114,7 @@ fn compile(args: Cli) {
     };
     let parent = filename.parent().unwrap();
 
-    let file_cache = HashMap::from([(filename.as_path(), contents.clone())]);
+    let file_cache = HashMap::from([(filename.clone(), contents.clone())]);
 
     let mut cache = ModuleCache::new(parent, file_cache);
 

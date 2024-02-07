@@ -1258,7 +1258,7 @@ pub fn declare_module<'a>(path: &Path, cache: &mut ModuleCache<'a>, error_locati
     let contents = cache.get_contents(path).unwrap();
 
     timing::start_time("Lexing");
-    let tokens = Lexer::new(path, &contents).collect::<Vec<_>>();
+    let tokens = Lexer::new(path, contents).collect::<Vec<_>>();
 
     timing::start_time("Parsing");
     let result = parser::parse(&tokens);
