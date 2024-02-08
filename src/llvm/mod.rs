@@ -112,7 +112,7 @@ pub fn run(path: &Path, ast: hir::Ast, args: &Cli) {
 
     // Run the program by default if --build was not passed
     if !args.build {
-        let program_command = PathBuf::from("./".to_string() + &binary_name);
+        let program_command = PathBuf::from(&binary_name);
         Command::new(program_command).spawn().unwrap().wait().unwrap();
     }
 
