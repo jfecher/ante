@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, rc::Rc};
 
 use crate::{hir::{self, Type}, util::fmap};
 
@@ -29,8 +29,16 @@ impl Mir {
                 panic!("No function with id {}", source)
             });
 
-            let new_function = context.cps_statement(function);
+            context.set_current_top_level_function(source, destination, name.clone());
 
+            // We need to check if this is an atom to call cps_atom instead of cps_return in
+            // the atom case. Otherwise the result will be wrapped in an extra continuation.
+            let new_function = match function {
+                Ast::Atom(atom) => context.cps_atom(atom),
+                other => unreachable!("Expected atom for global definition, found {:?}", other),
+            };
+
+            let new_function = Ast::Atom(new_function);
             new_mir.functions.insert(destination, (name.clone(), new_function));
         }
 
@@ -54,28 +62,30 @@ impl Context {
     /// S(handle c = h in s : t, ts)
     ///   = (fn c => S(s, [ts, t]) @@ (fn x => S(return x, ts))) @@ H(h, [ts, t])
     fn cps_statement(&mut self, statement: &Ast) -> Ast {
-        match statement {
+        let result = match statement {
             Ast::FunctionCall(call) => self.cps_call(&call),
             Ast::Let(let_) => self.cps_let(let_),
-            Ast::Return(return_expr) => self.cps_return(&return_expr.expression, &return_expr.typ),
+            Ast::LetRec(let_) => self.cps_let_rec(let_),
+            Ast::Return(return_expr) => self.cps_return(&return_expr.expression),
             Ast::Handle(handle) => self.cps_handle(handle),
 
             // Each case from now on is an extension of the original rules
-            Ast::Atom(atom) => Ast::Atom(self.cps_atom(atom)),
+            Ast::Atom(atom) => self.cps_return(atom), //Ast::Atom(self.cps_atom(atom)),
             Ast::If(if_expr) => self.cps_if(if_expr),
             Ast::Match(match_expr) => self.cps_match(match_expr),
             Ast::Assignment(assign) => self.cps_assign(assign),
             Ast::MemberAccess(access) => self.cps_member_access(access),
             Ast::Tuple(tuple) => self.cps_tuple(tuple),
             Ast::Builtin(builtin) => self.cps_builtin(builtin),
-        }
+        };
+        self.pop_local_let_bindings(result)
     }
 
     fn cps_atom(&mut self, atom: &Atom) -> Atom {
         match atom {
             Atom::Literal(literal) => Self::cps_literal(literal),
             Atom::Variable(variable) => self.cps_variable(variable),
-            Atom::Lambda(lambda) => self.cps_lambda(lambda, None),
+            Atom::Lambda(lambda) => self.cps_lambda(lambda),
             Atom::Extern(extern_reference) => Self::cps_extern(extern_reference),
             Atom::Effect(effect) => self.cps_effect(effect),
         }
@@ -86,9 +96,32 @@ impl Context {
     }
 
     fn cps_variable(&mut self, variable: &mir::Variable) -> Atom {
-        self.get_definition(variable.definition_id).unwrap_or_else(|| {
+        for effect in &self.effects {
+            if effect.id == variable.definition_id {
+                return effect.handler.clone();
+            }
+        }
+
+        let mut result = self.get_definition(variable.definition_id).unwrap_or_else(|| {
             Atom::Variable(self.add_global_to_queue(variable.clone()))
-        })
+        });
+
+        let is_recursive_call = self.current_top_level_function_is(variable.definition_id);
+
+        // E(e[h] : ts) = E(e) @@ H(h, ts)
+        if !is_recursive_call {
+            if let Type::Function(function_type) = variable.typ.as_ref() {
+                for call_effect in &function_type.effects {
+                    // TODO: Will eventually need to lift handler here
+                    let handler = self.effects.find(call_effect.id).handler.clone();
+
+                    // What type should be used here?
+                    result = self.push_local_let_binding(Type::unit(), Ast::ct_call1(result, handler));
+                }
+            }
+        }
+
+        result
     }
 
     /// E((fn x -> s) : t -> t' can eff) = fn x -> Reify(eff, S(s, eff))
@@ -97,7 +130,7 @@ impl Context {
     /// E([c : [F]τ] ⇒ e) = fn c => E(e)
     ///
     /// Note that effect arguments (handler abstractions) are on the outside of any letrecs of lambdas.
-    fn cps_lambda(&mut self, lambda: &mir::Lambda, _id: Option<hir::DefinitionId>) -> Atom {
+    fn cps_lambda(&mut self, lambda: &mir::Lambda) -> Atom {
         // TODO: Restore old definitions of effect ids
         let effect_args = fmap(&self.effects, |effect| match &effect.handler {
             Atom::Variable(variable) => variable.clone(),
@@ -115,12 +148,28 @@ impl Context {
             })
         });
 
-        // TODO: set definition to body for recursive calls (not \effect_args -> body)
-
         if effect_args.is_empty() {
             body
         } else {
-            Context::ct_lambda(effect_args, Ast::Atom(body))
+            let body = if let Some((new_id, name)) = self.get_current_top_level_function_cps() {
+                let typ = Rc::new(Type::Function(lambda.typ.clone()));
+
+                Ast::LetRec(mir::Let {
+                    variable: new_id,
+                    name: name.clone(),
+                    expr: Box::new(Ast::Atom(body)),
+                    body: Box::new(Ast::Atom(Atom::Variable(mir::Variable {
+                        definition_id: new_id,
+                        typ: typ.clone(),
+                        name,
+                    }))),
+                    typ,
+                })
+            } else {
+                Ast::Atom(body)
+            };
+
+            Context::ct_lambda(effect_args, body)
         }
     }
 
@@ -128,18 +177,7 @@ impl Context {
     ///
     /// E(e[h] : ts) = E(e) @@ H(h, ts)
     fn cps_call(&mut self, call: &mir::FunctionCall) -> Ast {
-        let mut result = Ast::Atom(self.cps_atom(&call.function));
-
-        // E(e[h] : ts) = E(e) @@ H(h, ts)
-        for call_effect in &call.function_type.effects {
-            // TODO: Will eventually need to lift handler here
-            let handler = self.effects.find(call_effect.id).handler.clone();
-
-            // What type should be used here?
-            result = self.let_binding(Type::unit(), result, |_, result| {
-                Ast::ct_call1(result, handler)
-            })
-        }
+        let result = Ast::Atom(self.cps_atom(&call.function));
 
         // S(e(e'), ts) = Reflect(ts, E(e) @ E(e'))
         let args = fmap(&call.args, |arg| self.cps_atom(arg));
@@ -224,15 +262,14 @@ impl Context {
 
     /// S(return e, []) = E(e)
     /// S(return e, [ts, t]) = fn k -> k @ E(e)
-    fn cps_return(&mut self, expression: &Atom, result_type: &hir::Type) -> Ast {
-        let result_type = self.convert_type(result_type);
+    fn cps_return(&mut self, expression: &Atom) -> Ast {
         let expr = self.cps_atom(expression);
-        self.cps_return_helper(expr, result_type)
+        self.cps_return_helper(expr)
     }
 
     /// S(return e, []) = E(e)
     /// S(return e, [ts, t]) = fn k => k @@ E(e)
-    fn cps_return_helper(&mut self, expr: Atom, _result_type: Type) -> Ast {
+    fn cps_return_helper(&mut self, expr: Atom) -> Ast {
         if self.effects.is_empty() {
             Ast::Atom(expr)
         } else {
@@ -250,6 +287,13 @@ impl Context {
             self.cps_let_binding_pure(let_binding)
         } else {
             self.cps_let_binding_impure(let_binding)
+        }
+    }
+
+    fn cps_let_rec(&mut self, let_binding: &mir::Let<Ast>) -> Ast {
+        match self.cps_let(let_binding) {
+            Ast::Let(let_) => Ast::LetRec(let_),
+            other => other,
         }
     }
 
@@ -427,7 +471,7 @@ impl Context {
             let k = Context::ct_lambda(vec![x.clone()], {
                 // But this return expression is only converted with the previous handlers
                 self.effects.pop();
-                self.cps_return_helper(Atom::Variable(x), result_type.clone())
+                self.cps_return_helper(Atom::Variable(x))
             });
 
             self.let_binding(result_type, expression, |_, expression| {

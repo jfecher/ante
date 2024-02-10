@@ -27,7 +27,23 @@ trait Evaluate<T> {
 
 impl Evaluate<Ast> for Ast {
     fn evaluate(self, mir: &Mir, substitutions: &Substitutions) -> Ast {
-        dispatch_on_mir!(self, Evaluate::evaluate, mir, substitutions)
+        // let mut subs = Cow::Borrowed(substitutions);
+
+        match self {
+            Ast::LetRec(let_) => evaluate_let_rec(let_, mir, substitutions),
+            other => dispatch_on_mir!(other, Evaluate::evaluate, mir, substitutions),
+        }
+        // if let Ast::LetRec(let_) = self {
+        //     // Map a LetRec's variable to itself to prevent infinite recursion
+        //     // from recursively substituting the variable's definition into itself.
+        //     let s2 = substitutions.update(let_.variable, Atom::Variable(mir::Variable {
+        //         definition_id: let_.variable,
+        //         typ: let_.typ.clone(),
+        //         name: let_.name.clone(),
+        //     }));
+
+        //     subs = Cow::Owned(s2);
+        // }
     }
 }
 
@@ -118,6 +134,17 @@ impl Evaluate<Ast> for mir::FunctionCall {
             }
         }
     }
+}
+
+fn evaluate_let_rec(mut let_: mir::Let<Ast>, mir: &Mir, substitutions: &Substitutions) -> Ast {
+    let new_substitutions = substitutions.update(let_.variable, Atom::Variable(mir::Variable {
+        definition_id: let_.variable,
+        typ: let_.typ.clone(),
+        name: let_.name.clone(),
+    }));
+    *let_.expr = let_.expr.evaluate(mir, &new_substitutions);
+    *let_.body = let_.body.evaluate(mir, &new_substitutions);
+    Ast::LetRec(let_)
 }
 
 impl Evaluate<Ast> for mir::Let<Ast> {

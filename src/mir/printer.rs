@@ -7,6 +7,7 @@ use super::ir::{Mir, Ast, Atom, Variable, self};
 #[derive(Default)]
 struct Printer {
     indent_level: u32,
+    display_types: bool,
 }
 
 impl Display for Mir {
@@ -64,7 +65,8 @@ impl<'ast> Printer {
         match ast {
             Ast::Atom(atom) => self.display_atom(atom, f),
             Ast::FunctionCall(call) => self.display_call(call, f),
-            Ast::Let(let_) => self.display_let(let_, f),
+            Ast::Let(let_) => self.display_let(let_, false, f),
+            Ast::LetRec(let_) => self.display_let(let_, true, f),
             Ast::If(if_) => self.display_if(if_, f),
             Ast::Match(match_) => self.display_match(match_, f),
             Ast::Return(return_) => self.display_return(return_, f),
@@ -111,12 +113,16 @@ impl<'ast> Printer {
     }
 
     fn display_lambda(&mut self, lambda: &'ast ir::Lambda, f: &mut Formatter) -> Result {
-        let start = if lambda.compile_time { "\\" } else { "fn" };
+        let start = if lambda.compile_time { "(\\" } else { "(fn" };
         write!(f, "{start}")?;
 
         for (i, arg) in lambda.args.iter().enumerate() {
-            let arg_type = lambda.typ.parameters.get(i).map(ToString::to_string).unwrap_or_else(|| "?".into());
-            write!(f, " ({arg}: {arg_type})")?;
+            if self.display_types {
+                let arg_type = lambda.typ.parameters.get(i).map(ToString::to_string).unwrap_or_else(|| "?".into());
+                write!(f, " ({arg}: {arg_type})")?;
+            } else {
+                write!(f, " {arg}")?;
+            }
         }
 
         if lambda.typ.parameters.len() > lambda.args.len() {
@@ -124,17 +130,20 @@ impl<'ast> Printer {
             write!(f, " !!! and {} more", difference)?;
         }
 
-        write!(f, " : {}", lambda.typ.return_type)?;
+        if self.display_types {
+            write!(f, " : {}", lambda.typ.return_type)?;
+        }
+
         let arrow = if lambda.compile_time { "=>" } else { "->" };
         write!(f, " {arrow} ")?;
 
         self.display_in_block(&lambda.body, f)?;
 
         match lambda.body.as_ref() {
-            Ast::Atom(_) => write!(f, " endfn"),
+            Ast::Atom(_) => write!(f, ")"),
             _ => {
                 self.next_line(f)?;
-                write!(f, "endfn")
+                write!(f, ")")
             },
         }
     }
@@ -154,8 +163,15 @@ impl<'ast> Printer {
         Ok(())
     }
 
-    fn display_let(&mut self, let_: &'ast ir::Let<Ast>, f: &mut Formatter) -> Result {
-        write!(f, "let {}{}: {} = ", let_.name, let_.variable, let_.typ)?;
+    fn display_let(&mut self, let_: &'ast ir::Let<Ast>, recursive: bool, f: &mut Formatter) -> Result {
+        let rec = if recursive { "rec " } else { "" };
+        write!(f, "{rec}{}{}", let_.name, let_.variable)?;
+
+        if self.display_types {
+            write!(f, ": {}", let_.typ)?;
+        }
+
+        write!(f, " = ")?;
         self.display_ast_try_one_line(&let_.expr, f)?;
         self.display_ast(&let_.body, f)
     }

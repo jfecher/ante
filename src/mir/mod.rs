@@ -288,8 +288,13 @@ impl ToMir for hir::Match {
     fn to_mir(&self, context: &mut Context) -> ir::Ast {
         let decision_tree = decision_tree_to_mir(&self.decision_tree, context);
         let result_type = self.result_type.clone();
-        let branches = fmap(&self.branches, |branch| branch.to_block(context, result_type.clone()));
 
+        // Optimization: if the match is a single case we can remove it entirely
+        if let DecisionTree::Leaf(index) = &decision_tree {
+            return self.branches[*index].to_block(context, result_type);
+        }
+
+        let branches = fmap(&self.branches, |branch| branch.to_block(context, result_type.clone()));
         ir::Ast::Match(ir::Match { branches, decision_tree, result_type })
     }
 }

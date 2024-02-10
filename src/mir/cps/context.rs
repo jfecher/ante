@@ -39,6 +39,16 @@ pub struct Context {
 
     /// The next free DefinitionId to create
     pub(super) next_id: usize,
+
+    /// The id of the top-level function currently being compiled.
+    /// Used to allow these recursive functions to rebind themselves locally
+    /// so that recursive calls do not re-apply a capability.
+    ///
+    /// The original id is the id this function had in the previous Mir IR we're
+    /// operating on. The new id is the new id it was assigned in this CPS'd Mir IR.
+    pub(super) current_top_level_function: Option<(/*original id*/DefinitionId, /*new id*/DefinitionId, Rc<String>)>,
+
+    pub(super) local_let_bindings: Vec<mir::Let<()>>,
 }
 
 pub(super) type Definitions = HashMap<DefinitionId, HashMap<EffectStack, Variable>>;
@@ -51,7 +61,9 @@ impl Context {
             definition_queue: VecDeque::new(),
             default_name: Rc::new("_".into()),
             effects: EffectStack::new(Vec::new()),
+            current_top_level_function: None,
             next_id,
+            local_let_bindings: Vec::new(),
         }
     }
 
@@ -147,7 +159,19 @@ impl Context {
 
         self.insert_global_definition(variable.definition_id, new_variable.clone());
 
-        let effects = self.effects.clone();
+        // Filter the current effect stack to only the effects used by the function.
+        // This lets us still compile pure functions without continuations within an effectful context.
+        let mut effects = Vec::with_capacity(self.effects.len());
+
+        if let Type::Function(function_type) = variable.typ.as_ref() {
+            for effect in &function_type.effects {
+                // TODO: Handle lifting effects
+                let e = self.effects.find(effect.id);
+                effects.push(e.clone());
+            }
+        }
+
+        let effects = EffectStack::new(effects);
         self.definition_queue.push_back((variable.definition_id, definition_id, effects));
         new_variable
     }
@@ -253,6 +277,62 @@ impl Context {
 
     pub fn let_binding_atom(&mut self, typ: Type, ast: Ast, f: impl FnOnce(&mut Self, Atom) -> Atom) -> Ast {
         self.let_binding(typ, ast, move |this, atom| Ast::Atom(f(this, atom)))
+    }
+
+    /// Push a let binding to the Context if needed.
+    /// This should only be used when an Atom is needed to be returned
+    /// so we cannot otherwise return an Ast::Let. Care needs to be taken
+    /// later so that the let binding that was pushed to the context is
+    /// popped and applied to yield the same Ast.
+    pub fn push_local_let_binding(&mut self, typ: Type, ast: Ast) -> Atom {
+        match ast {
+            Ast::Atom(atom) => atom,
+            ast => {
+                let name = self.default_name.clone();
+                let variable = self.fresh_existing_variable(name.clone(), Rc::new(typ));
+
+                self.local_let_bindings.push(mir::Let {
+                    variable: variable.definition_id,
+                    name,
+                    expr: Box::new(ast),
+                    body: Box::new(()),
+                    typ: variable.typ.clone(),
+                });
+
+                Atom::Variable(variable)
+            }
+        }
+    }
+
+    /// Pop all the local let bindings from the context and wrap them around
+    /// the given Ast.
+    pub fn pop_local_let_bindings(&mut self, mut ast: Ast) -> Ast {
+        let let_bindings = std::mem::take(&mut self.local_let_bindings);
+
+        for let_ in let_bindings.into_iter().rev() {
+            ast = Ast::Let(mir::Let {
+                variable: let_.variable,
+                name: let_.name,
+                expr: let_.expr,
+                body: Box::new(ast),
+                typ: let_.typ,
+            })
+        }
+
+        ast
+    }
+
+    pub fn set_current_top_level_function(&mut self, old_id: DefinitionId, new_id: DefinitionId, name: Rc<String>) {
+        self.current_top_level_function = Some((old_id, new_id, name))
+    }
+
+    pub fn current_top_level_function_is(&self, id: DefinitionId) -> bool {
+        self.current_top_level_function.as_ref().map_or(false, |(source, ..)| *source == id)
+    }
+
+    /// Retrieves the new id and name of the current top level function, if there is one set.
+    pub fn get_current_top_level_function_cps(&mut self) -> Option<(DefinitionId, Rc<String>)> {
+        self.current_top_level_function.clone().map(|(_, new_id, name)| (new_id, name))
     }
 
     pub fn new_effect(&mut self, id: DefinitionId, handler: Atom, handler_type: Type) -> Effect {
