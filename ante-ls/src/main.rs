@@ -15,7 +15,11 @@ use ante::{
 use dashmap::DashMap;
 use futures::future::join_all;
 use ropey::Rope;
-use tower_lsp::{jsonrpc::Result, lsp_types::*, Client, LanguageServer, LspService, Server};
+use tower_lsp::{
+    jsonrpc::{Error, ErrorCode, Result},
+    lsp_types::*,
+    Client, LanguageServer, LspService, Server,
+};
 
 #[derive(Debug)]
 struct Backend {
@@ -40,6 +44,7 @@ impl LanguageServer for Backend {
             capabilities: ServerCapabilities {
                 text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::INCREMENTAL)),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
+                definition_provider: Some(OneOf::Left(true)),
                 ..Default::default()
             },
             ..Default::default()
@@ -130,6 +135,56 @@ impl LanguageServer for Backend {
                     contents: HoverContents::Markup(MarkupContent { kind: MarkupKind::PlainText, value }),
                     range,
                 }))
+            },
+            _ => Ok(None),
+        }
+    }
+
+    async fn goto_definition(&self, params: GotoDefinitionParams) -> Result<Option<GotoDefinitionResponse>> {
+        self.client.log_message(MessageType::LOG, format!("ante-ls goto_definition: {:?}", params)).await;
+        let uri = params.text_document_position_params.text_document.uri;
+        let rope = match self.document_map.get(&uri) {
+            Some(rope) => rope,
+            None => return Ok(None),
+        };
+
+        let cache = self.create_cache(&uri, &rope);
+        let ast = cache.parse_trees.get_mut(0).unwrap();
+
+        let index = position_to_index(params.text_document_position_params.position, &rope);
+        let hovered_node = walk_ast(ast, index);
+
+        match hovered_node {
+            Ast::Variable(v) => {
+                let info = match v.definition {
+                    Some(definition_id) => &cache[definition_id],
+                    _ => return Ok(None),
+                };
+                let loc = info.location;
+                let uri = match Url::from_file_path(loc.filename) {
+                    Ok(uri) => uri,
+                    Err(_) => {
+                        return Err(Error {
+                            code: ErrorCode::InternalError,
+                            message: "Failed to convert path to uri".into(),
+                            data: None,
+                        })
+                    },
+                };
+                let rope = match self.document_map.get(&uri) {
+                    Some(rope) => rope,
+                    None => {
+                        let contents = cached_read(&cache.file_cache, loc.filename).unwrap();
+                        let rope = Rope::from_str(&contents);
+                        self.document_map.insert(uri.clone(), rope);
+                        self.document_map.get(&uri).unwrap()
+                    },
+                };
+
+                let range = loc.start.index..loc.end.index;
+                let range = rope_range_to_lsp_range(range, &rope);
+
+                Ok(Some(GotoDefinitionResponse::Scalar(Location { uri, range })))
             },
             _ => Ok(None),
         }
