@@ -111,7 +111,7 @@ impl LanguageServer for Backend {
         let index = position_to_index(params.text_document_position_params.position, &rope);
         let hovered_node = walk_ast(ast, index);
 
-        match hovered_node {
+        let result = match hovered_node {
             Ast::Variable(v) => {
                 let info = match v.definition {
                     Some(definition_id) => &cache[definition_id],
@@ -137,7 +137,10 @@ impl LanguageServer for Backend {
                 }))
             },
             _ => Ok(None),
-        }
+        };
+
+        self.save_cache(cache);
+        result
     }
 
     async fn goto_definition(&self, params: GotoDefinitionParams) -> Result<Option<GotoDefinitionResponse>> {
@@ -154,7 +157,7 @@ impl LanguageServer for Backend {
         let index = position_to_index(params.text_document_position_params.position, &rope);
         let hovered_node = walk_ast(ast, index);
 
-        match hovered_node {
+        let result = match hovered_node {
             Ast::Variable(v) => {
                 let info = match v.definition {
                     Some(definition_id) => &cache[definition_id],
@@ -187,7 +190,10 @@ impl LanguageServer for Backend {
                 Ok(Some(GotoDefinitionResponse::Scalar(Location { uri, range })))
             },
             _ => Ok(None),
-        }
+        };
+
+        self.save_cache(cache);
+        result
     }
 }
 
@@ -391,6 +397,15 @@ impl Backend {
         cache
     }
 
+    fn save_cache(&self, cache: ModuleCache) {
+        for (path, content) in cache.file_cache {
+            let uri = Url::from_file_path(path).unwrap();
+            if self.document_map.get(&uri).is_none() {
+                self.document_map.insert(uri.clone(), Rope::from_str(&content));
+            }
+        }
+    }
+
     async fn update_diagnostics(&self, uri: Url, rope: &Rope) {
         let cache = self.create_cache(&uri, rope);
 
@@ -452,12 +467,7 @@ impl Backend {
             diagnostics.into_iter().map(|(uri, diagnostics)| self.client.publish_diagnostics(uri, diagnostics, None)),
         );
 
-        for (path, content) in cache.file_cache {
-            let uri = Url::from_file_path(path).unwrap();
-            if self.document_map.get(&uri).is_none() {
-                self.document_map.insert(uri.clone(), Rope::from_str(&content));
-            }
-        }
+        self.save_cache(cache);
 
         handle.await;
     }
