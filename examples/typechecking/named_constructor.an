@@ -2,9 +2,7 @@ type Foo a b=
   x: a
   y: b
 
-x = "Hello World"
-
-hello_foo y = Foo with x, y
+hello_foo y = Foo with x = "Hello World", y
 
 foo = hello_foo 42
 
@@ -13,4 +11,3 @@ foo = hello_foo 42
 // Foo : (forall a b c. (a - b -> (Foo a b) can c))
 // foo : (Foo String (Int a))
 // hello_foo : (forall a b. (a -> (Foo String a) can b))
-// x : String
