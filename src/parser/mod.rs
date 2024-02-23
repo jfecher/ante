@@ -458,11 +458,11 @@ parser!(function_call loc =
 parser!(named_constructor_expr loc =
     constructor <- variant;
     _ <- expect(Token::With);
-    args !<- named_constructor_args;
-    Ast::named_constructor(constructor, args, loc)
+    sequence !<- named_constructor_args;
+    Ast::named_constructor(constructor, sequence, loc)
 );
 
-fn named_constructor_args<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Vec<(String, Ast<'b>)>> {
+fn named_constructor_args<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Ast<'b>> {
     if let Token::Indent = input[0].0 {
         named_constructor_block_args(input)
     } else {
@@ -470,24 +470,27 @@ fn named_constructor_args<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, V
     }
 }
 
-parser!(named_constructor_block_args loc -> 'b Vec<(String, Ast<'b>)> =
+parser!(named_constructor_block_args loc -> 'b Ast<'b> =
     _ <- expect(Token::Indent);
-    args <- delimited_trailing(named_constructor_arg, expect(Token::Newline), false);
+    statements <- delimited_trailing(named_constructor_arg, expect(Token::Newline), false);
     _ !<- expect(Token::Unindent);
-    args
+    Ast::sequence(statements, loc)
 );
 
-parser!(named_constructor_inline_args loc -> 'b Vec<(String, Ast<'b>)> =
-    args <- delimited(named_constructor_arg, expect(Token::Comma));
-    args
+parser!(named_constructor_inline_args loc -> 'b Ast<'b> =
+    statements <- delimited(named_constructor_arg, expect(Token::Comma));
+    Ast::sequence(statements, loc)
 );
 
-fn named_constructor_arg<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, (String, Ast<'b>)> {
+fn named_constructor_arg<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Ast<'b>> {
     let (input, ident, start) = identifier(input)?;
+    let field_name = Ast::variable(vec![], ident, start);
     let (input, maybe_expr, end) = maybe(pair(expect(Token::Equal), function_argument))(input)?;
-    // Desugar bar, baz into bar = bar, baz = baz
-    let expr = maybe_expr.map_or_else(|| Ast::variable(vec![], ident.clone(), start), |(_, expr)| expr);
-    Ok((input, (ident, expr), start.union(end)))
+    let expr = match maybe_expr {
+        Some((_, expr)) => Ast::definition(field_name, expr, start.union(end)),
+        None => field_name,
+    };
+    Ok((input, expr, start.union(end)))
 }
 
 parser!(pattern_function_call loc =

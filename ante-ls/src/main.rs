@@ -239,8 +239,12 @@ fn walk_ast<'a>(ast: &'a Ast<'a>, idx: usize) -> &'a Ast<'a> {
                 }
             },
             Ast::NamedConstructor(n) => {
-                if let Some((_, arg)) = n.args.iter().find(|(_, arg)| arg.locate().contains_index(&idx)) {
-                    ast = arg;
+                let statements = match n.sequence.as_ref() {
+                    Ast::Sequence(s) => &s.statements,
+                    _ => unreachable!(),
+                };
+                if let Some(stmt) = statements.iter().find(|stmt| stmt.locate().contains_index(&idx)) {
+                    ast = stmt;
                 } else if n.constructor.locate().contains_index(&idx) {
                     ast = &n.constructor;
                 } else {

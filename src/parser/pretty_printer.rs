@@ -275,7 +275,16 @@ impl<'a> Display for ast::Handle<'a> {
 
 impl<'a> Display for ast::NamedConstructor<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let args = fmap(self.args.iter(), |(name, expr)| format!("{name} = {expr}"));
+        let statements = match self.sequence.as_ref() {
+            Ast::Sequence(ast::Sequence { statements, .. }) => statements,
+            _ => unreachable!(),
+        };
+        let args = fmap(statements, |stmt| match stmt {
+            Ast::Definition(ast::Definition { pattern, expr, .. }) => format!("{pattern} = {expr}"),
+            Ast::Variable(v) => format!("{v} = {v}"),
+            _ => unreachable!(),
+        });
+
         write!(f, "({} with {})", self.constructor, args.join(", "))
     }
 }

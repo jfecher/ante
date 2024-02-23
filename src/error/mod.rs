@@ -60,6 +60,9 @@ pub enum DiagnosticKind {
     HandlerMissingCases(/*missing effect cases*/ Vec<String>),
     ImportShadowsPreviousDefinition(/*item name*/ String),
     Unused(/*item name*/ String),
+    NotAStruct(/*struct name*/ String),
+    MissingFields(/*missing struct fields*/ Vec<String>),
+    NotAStructField(/*field name*/ String),
 
     //
     //                  Type Checking
@@ -205,6 +208,15 @@ impl Display for DiagnosticKind {
             },
             DiagnosticKind::Unused(item) => {
                 write!(f, "{item} is unused (prefix name with _ to silence this warning)")
+            },
+            DiagnosticKind::NotAStruct(name) => {
+                write!(f, "{} is not a struct", name)
+            },
+            DiagnosticKind::NotAStructField(name) => {
+                write!(f, "{} is not a struct field", name)
+            },
+            DiagnosticKind::MissingFields(fields) => {
+                write!(f, "Missing fields: {}", fields.join(", "))
             },
             DiagnosticKind::TypeLengthMismatch(left, right) => {
                 write!(
@@ -366,7 +378,10 @@ impl DiagnosticKind {
             | MultipleMatchingImpls(_, _)
             | NoMatchingImpls(_)
             | MissingCase(_)
-            | InternalError(_) => Error,
+            | InternalError(_)
+            | NotAStruct(_)
+            | MissingFields(_)
+            | NotAStructField(_) => Error,
         }
     }
 }
