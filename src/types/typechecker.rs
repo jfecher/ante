@@ -30,7 +30,7 @@ use crate::cache::{DefinitionInfoId, DefinitionKind, EffectInfoId, ModuleCache, 
 use crate::cache::{ImplScopeId, VariableId};
 use crate::error::location::{Locatable, Location};
 use crate::error::{Diagnostic, DiagnosticKind as D, TypeErrorKind, TypeErrorKind as TE};
-use crate::parser::ast::{self, ClosureEnvironment};
+use crate::parser::ast::{self, ClosureEnvironment, Sharedness, Mutability};
 use crate::types::traits::{RequiredTrait, TraitConstraint, TraitConstraints};
 use crate::types::typed::Typed;
 use crate::types::EffectSet;
@@ -154,7 +154,7 @@ pub fn type_application_bindings(info: &TypeInfo<'_>, typeargs: &[Type], cache: 
 /// Given `a` returns `ref a`
 fn ref_of(typ: Type, cache: &mut ModuleCache) -> Type {
     let new_var = next_type_variable_id(cache);
-    let constructor = Box::new(Type::Ref(new_var));
+    let constructor = Box::new(Type::Ref(Sharedness::Polymorphic, Mutability::Polymorphic, new_var));
     TypeApplication(constructor, vec![typ])
 }
 

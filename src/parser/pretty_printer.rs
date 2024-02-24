@@ -1,7 +1,7 @@
 //! Defines a simple pretty printer to print the Ast to stdout.
 //! Used for the golden tests testing parsing to ensure there
 //! are no parsing regressions.
-use crate::parser::ast::{self, Ast};
+use crate::parser::ast::{self, Ast, Sharedness};
 use crate::util::{fmap, join_with};
 use std::fmt::{self, Display, Formatter};
 use std::sync::atomic::AtomicUsize;
@@ -98,7 +98,10 @@ impl<'a> Display for ast::Type<'a> {
             Pointer(_) => write!(f, "Ptr"),
             Boolean(_) => write!(f, "Bool"),
             Unit(_) => write!(f, "Unit"),
-            Reference(_) => write!(f, "Ref"),
+            Reference(shared, mutable, _) => {
+                let space = if *shared == Sharedness::Polymorphic { "" } else { " " };
+                write!(f, "&{shared}{space}{mutable}")
+            }
             TypeVariable(name, _) => write!(f, "{}", name),
             UserDefined(name, _) => write!(f, "{}", name),
             Function(params, return_type, varargs, is_closure, _) => {

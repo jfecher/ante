@@ -9,6 +9,7 @@ use std::collections::BTreeMap;
 use crate::cache::{DefinitionInfoId, ModuleCache};
 use crate::error::location::{Locatable, Location};
 use crate::lexer::token::{FloatKind, IntegerKind};
+use crate::parser::ast::{Mutability, Sharedness};
 use crate::util::fmap;
 use crate::{lifetimes, util};
 
@@ -102,7 +103,7 @@ pub enum Type {
     /// A region-allocated reference to some data.
     /// Contains a region variable that is unified with other refs during type
     /// inference. All these refs will be allocated in the same region.
-    Ref(lifetimes::LifetimeVariableId),
+    Ref(Sharedness, Mutability, lifetimes::LifetimeVariableId),
 
     /// A (row-polymorphic) struct type. Unlike normal rho variables,
     /// the type variable used here replaces the entire type if bound.
@@ -190,7 +191,7 @@ impl Type {
         use Type::*;
         match self {
             Primitive(_) => None,
-            Ref(_) => None,
+            Ref(..) => None,
             Function(function) => function.return_type.union_constructor_variants(cache),
             TypeApplication(typ, _) => typ.union_constructor_variants(cache),
             UserDefined(id) => cache.type_infos[id.0].union_variants(),
@@ -231,7 +232,7 @@ impl Type {
                 function.environment.traverse_rec(cache, f);
                 function.return_type.traverse_rec(cache, f);
             },
-            Type::TypeVariable(id) | Type::Ref(id) => match &cache.type_bindings[id.0] {
+            Type::TypeVariable(id) | Type::Ref(_, _, id) => match &cache.type_bindings[id.0] {
                 TypeBinding::Bound(binding) => binding.traverse_rec(cache, f),
                 TypeBinding::Unbound(_, _) => (),
             },
@@ -273,7 +274,7 @@ impl Type {
             Type::Primitive(_) => (),
             Type::UserDefined(_) => (),
             Type::TypeVariable(_) => (),
-            Type::Ref(_) => (),
+            Type::Ref(..) => (),
 
             Type::Function(function) => {
                 for parameter in &function.parameters {
@@ -324,7 +325,7 @@ impl Type {
                 let args = fmap(args, |arg| arg.approx_to_string());
                 format!("({} {})", constructor, args.join(" "))
             },
-            Type::Ref(id) => format!("(ref tv{})", id.0),
+            Type::Ref(shared, mutable, id) => format!("&'{} {}{}", id.0, shared, mutable),
             Type::Struct(fields, id) => {
                 let fields = fmap(fields, |(name, typ)| format!("{}: {}", name, typ.approx_to_string()));
                 format!("{{ {}, ..tv{} }}", fields.join(", "), id.0)

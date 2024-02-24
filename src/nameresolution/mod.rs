@@ -589,7 +589,7 @@ impl<'c> NameResolver {
             Type::TypeVariable(_) => 0,
             Type::UserDefined(id) => cache[*id].args.len(),
             Type::TypeApplication(_, _) => 0,
-            Type::Ref(_) => 1,
+            Type::Ref(..) => 1,
             Type::Struct(_, _) => 0,
             Type::Effects(_) => 0,
         }
@@ -739,14 +739,14 @@ impl<'c> NameResolver {
 
                 Type::TypeApplication(Box::new(pair), args)
             },
-            ast::Type::Reference(_) => {
+            ast::Type::Reference(sharednes, mutability, _) => {
                 // When translating ref types, all have a hidden lifetime variable that is unified
                 // under the hood by the compiler to determine the reference's stack lifetime.
                 // This is never able to be manually specified by the programmer, so we use
                 // next_type_variable_id on the cache rather than the NameResolver's version which
                 // would add a name into scope.
                 let lifetime_variable = cache.next_type_variable_id(self.let_binding_level);
-                Type::Ref(lifetime_variable)
+                Type::Ref(*sharednes, *mutability, lifetime_variable)
             },
         }
     }
