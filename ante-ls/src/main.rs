@@ -15,14 +15,7 @@ use ante::{
 use dashmap::DashMap;
 use futures::future::join_all;
 use ropey::Rope;
-use tower_lsp::{
-    jsonrpc::{Error, ErrorCode, Result},
-    lsp_types::*,
-    Client, LanguageServer, LspService, Server,
-};
-
-mod util;
-use util::{lsp_range_to_rope_range, node_at_index, position_to_index, rope_range_to_lsp_range};
+use tower_lsp::{jsonrpc::Result, lsp_types::*, Client, LanguageServer, LspService, Server};
 
 #[derive(Debug)]
 struct Backend {
@@ -47,7 +40,6 @@ impl LanguageServer for Backend {
             capabilities: ServerCapabilities {
                 text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::INCREMENTAL)),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
-                definition_provider: Some(OneOf::Left(true)),
                 ..Default::default()
             },
             ..Default::default()
@@ -86,7 +78,7 @@ impl LanguageServer for Backend {
         self.document_map.alter(&params.text_document.uri, |_, mut rope| {
             for change in params.content_changes {
                 if let Some(range) = change.range {
-                    let range = lsp_range_to_rope_range(range, &rope).unwrap();
+                    let range = lsp_range_to_rope_range(range, &rope);
                     rope.remove(range.clone());
                     rope.insert(range.start, &change.text);
                 } else {
@@ -109,19 +101,12 @@ impl LanguageServer for Backend {
         };
 
         let cache = self.create_cache(&uri, &rope);
-        let ast = match cache.parse_trees.get_mut(0) {
-            Some(ast) => ast,
-            None => return Ok(None),
-        };
+        let ast = cache.parse_trees.get_mut(0).unwrap();
 
-        let index = position_to_index(params.text_document_position_params.position, &rope).map_err(|_| Error {
-            code: ErrorCode::InternalError,
-            message: "Failed to convert hover position to range".into(),
-            data: None,
-        })?;
-        let hovered_node = node_at_index(ast, index);
+        let index = position_to_index(params.text_document_position_params.position, &rope);
+        let hovered_node = walk_ast(ast, index);
 
-        let result = match hovered_node {
+        match hovered_node {
             Ast::Variable(v) => {
                 let info = match v.definition {
                     Some(definition_id) => &cache[definition_id],
@@ -139,14 +124,7 @@ impl LanguageServer for Backend {
                     typeprinter::show_type_and_traits(&name, typ, &info.required_traits, &info.trait_info, &cache);
 
                 let location = v.locate();
-                let range =
-                    Some(rope_range_to_lsp_range(location.start.index..location.end.index, &rope).map_err(|_| {
-                        Error {
-                            code: ErrorCode::InternalError,
-                            message: "Failed to convert range to hover location".into(),
-                            data: None,
-                        }
-                    })?);
+                let range = Some(rope_range_to_lsp_range(location.start.index..location.end.index, &rope));
 
                 Ok(Some(Hover {
                     contents: HoverContents::Markup(MarkupContent { kind: MarkupKind::PlainText, value }),
@@ -154,75 +132,197 @@ impl LanguageServer for Backend {
                 }))
             },
             _ => Ok(None),
-        };
-
-        self.save_cache(cache);
-        result
+        }
     }
+}
 
-    async fn goto_definition(&self, params: GotoDefinitionParams) -> Result<Option<GotoDefinitionResponse>> {
-        self.client.log_message(MessageType::LOG, format!("ante-ls goto_definition: {:?}", params)).await;
-        let uri = params.text_document_position_params.text_document.uri;
-        let rope = match self.document_map.get(&uri) {
-            Some(rope) => rope,
-            None => return Ok(None),
-        };
-
-        let cache = self.create_cache(&uri, &rope);
-        let ast = match cache.parse_trees.get_mut(0) {
-            Some(ast) => ast,
-            None => return Ok(None),
-        };
-
-        let index = position_to_index(params.text_document_position_params.position, &rope).map_err(|_| Error {
-            code: ErrorCode::InternalError,
-            message: "Failed to convert hover position to range".into(),
-            data: None,
-        })?;
-        let hovered_node = node_at_index(ast, index);
-
-        let result = match hovered_node {
-            Ast::Variable(v) => {
-                let info = match v.definition {
-                    Some(definition_id) => &cache[definition_id],
-                    _ => return Ok(None),
-                };
-                let loc = info.location;
-                let uri = match Url::from_file_path(loc.filename) {
-                    Ok(uri) => uri,
-                    Err(_) => {
-                        return Err(Error {
-                            code: ErrorCode::InternalError,
-                            message: "Failed to convert path to uri".into(),
-                            data: None,
-                        })
-                    },
-                };
-                let rope = match self.document_map.get(&uri) {
-                    Some(rope) => rope,
-                    None => {
-                        let contents = cached_read(&cache.file_cache, loc.filename).unwrap();
-                        let rope = Rope::from_str(&contents);
-                        self.document_map.insert(uri.clone(), rope);
-                        self.document_map.get(&uri).unwrap()
-                    },
-                };
-
-                let range = loc.start.index..loc.end.index;
-                let range = rope_range_to_lsp_range(range, &rope).map_err(|_| Error {
-                    code: ErrorCode::InternalError,
-                    message: "Failed to convert range to definition location".into(),
-                    data: None,
-                })?;
-
-                Ok(Some(GotoDefinitionResponse::Scalar(Location { uri, range })))
+fn walk_ast<'a>(ast: &'a Ast<'a>, idx: usize) -> &'a Ast<'a> {
+    let mut ast = ast;
+    loop {
+        match ast {
+            Ast::Assignment(a) => {
+                if a.lhs.locate().contains_index(&idx) {
+                    ast = &a.lhs;
+                } else if a.rhs.locate().contains_index(&idx) {
+                    ast = &a.rhs;
+                } else {
+                    break;
+                }
             },
-            _ => Ok(None),
-        };
-
-        self.save_cache(cache);
-        result
+            Ast::Definition(d) => {
+                if d.pattern.locate().contains_index(&idx) {
+                    ast = &d.pattern;
+                } else if d.expr.locate().contains_index(&idx) {
+                    ast = &d.expr;
+                } else {
+                    break;
+                }
+            },
+            Ast::EffectDefinition(_) => {
+                break;
+            },
+            Ast::Extern(_) => {
+                break;
+            },
+            Ast::FunctionCall(f) => {
+                if let Some(arg) = f.args.iter().find(|&arg| arg.locate().contains_index(&idx)) {
+                    ast = arg;
+                } else if f.function.locate().contains_index(&idx) {
+                    ast = &f.function;
+                } else {
+                    break;
+                }
+            },
+            Ast::Handle(h) => {
+                if let Some(branch) = h.branches.iter().find_map(|(pat, body)| {
+                    if pat.locate().contains_index(&idx) {
+                        return Some(pat);
+                    };
+                    if body.locate().contains_index(&idx) {
+                        return Some(body);
+                    };
+                    None
+                }) {
+                    ast = branch;
+                } else if h.expression.locate().contains_index(&idx) {
+                    ast = &h.expression;
+                } else {
+                    break;
+                }
+            },
+            Ast::If(i) => {
+                if i.condition.locate().contains_index(&idx) {
+                    ast = &i.condition;
+                } else if i.then.locate().contains_index(&idx) {
+                    ast = &i.then;
+                } else if i.otherwise.locate().contains_index(&idx) {
+                    ast = &i.otherwise;
+                } else {
+                    break;
+                }
+            },
+            Ast::Import(_) => {
+                break;
+            },
+            Ast::Lambda(l) => {
+                if let Some(arg) = l.args.iter().find(|&arg| arg.locate().contains_index(&idx)) {
+                    ast = arg;
+                } else if l.body.locate().contains_index(&idx) {
+                    ast = &l.body;
+                } else {
+                    break;
+                }
+            },
+            Ast::Literal(_) => {
+                break;
+            },
+            Ast::Match(m) => {
+                if let Some(branch) = m.branches.iter().find_map(|(pat, body)| {
+                    if pat.locate().contains_index(&idx) {
+                        return Some(pat);
+                    };
+                    if body.locate().contains_index(&idx) {
+                        return Some(body);
+                    };
+                    None
+                }) {
+                    ast = branch;
+                } else {
+                    break;
+                }
+            },
+            Ast::MemberAccess(m) => {
+                if m.lhs.locate().contains_index(&idx) {
+                    ast = &m.lhs;
+                } else {
+                    break;
+                }
+            },
+            Ast::NamedConstructor(n) => {
+                let statements = match n.sequence.as_ref() {
+                    Ast::Sequence(s) => &s.statements,
+                    _ => unreachable!(),
+                };
+                if let Some(stmt) = statements.iter().find(|stmt| stmt.locate().contains_index(&idx)) {
+                    ast = stmt;
+                } else if n.constructor.locate().contains_index(&idx) {
+                    ast = &n.constructor;
+                } else {
+                    break;
+                }
+            },
+            Ast::Return(r) => {
+                if r.expression.locate().contains_index(&idx) {
+                    ast = &r.expression;
+                } else {
+                    break;
+                }
+            },
+            Ast::Sequence(s) => {
+                if let Some(stmt) = s.statements.iter().find(|&stmt| stmt.locate().contains_index(&idx)) {
+                    ast = stmt;
+                } else {
+                    break;
+                }
+            },
+            Ast::TraitDefinition(_) => {
+                break;
+            },
+            Ast::TraitImpl(t) => {
+                if let Some(def) = t.definitions.iter().find_map(|def| {
+                    if def.pattern.locate().contains_index(&idx) {
+                        return Some(&def.pattern);
+                    };
+                    if def.expr.locate().contains_index(&idx) {
+                        return Some(&def.expr);
+                    };
+                    None
+                }) {
+                    ast = def;
+                } else {
+                    break;
+                }
+            },
+            Ast::TypeAnnotation(t) => {
+                if t.lhs.locate().contains_index(&idx) {
+                    ast = &t.lhs;
+                } else {
+                    break;
+                }
+            },
+            Ast::TypeDefinition(_) => {
+                break;
+            },
+            Ast::Variable(_) => {
+                break;
+            },
+        }
     }
+    ast
+}
+
+fn position_to_index(position: Position, rope: &Rope) -> usize {
+    let line = position.line as usize;
+    let line = rope.line_to_char(line);
+    line + position.character as usize
+}
+
+fn index_to_position(index: usize, rope: &Rope) -> Position {
+    let line = rope.char_to_line(index);
+    let char = index - rope.line_to_char(line);
+    Position { line: line as u32, character: char as u32 }
+}
+
+fn lsp_range_to_rope_range(range: Range, rope: &Rope) -> std::ops::Range<usize> {
+    let start = position_to_index(range.start, rope);
+    let end = position_to_index(range.end, rope);
+    start..end
+}
+
+fn rope_range_to_lsp_range(range: std::ops::Range<usize>, rope: &Rope) -> Range {
+    let start = index_to_position(range.start, rope);
+    let end = index_to_position(range.end, rope);
+    Range { start, end }
 }
 
 impl Backend {
@@ -238,15 +338,6 @@ impl Backend {
         let _ = frontend::check(filename, rope.to_string(), &mut cache, frontend::FrontendPhase::TypeCheck, false);
 
         cache
-    }
-
-    fn save_cache(&self, cache: ModuleCache) {
-        for (path, content) in cache.file_cache {
-            let uri = Url::from_file_path(path).unwrap();
-            if self.document_map.get(&uri).is_none() {
-                self.document_map.insert(uri.clone(), Rope::from_str(&content));
-            }
-        }
     }
 
     async fn update_diagnostics(&self, uri: Url, rope: &Rope) {
@@ -286,20 +377,12 @@ impl Backend {
                 },
             };
 
-            let range = match rope_range_to_lsp_range(loc.start.index..loc.end.index, &rope) {
-                Ok(range) => range,
-                Err(e) => {
-                    self.client.log_message(MessageType::ERROR, format!("Failed to convert range: {:?}", e)).await;
-                    return;
-                },
-            };
-
             let diagnostic = Diagnostic {
                 code: None,
                 code_description: None,
                 data: None,
                 message: diagnostic.msg().to_string(),
-                range,
+                range: rope_range_to_lsp_range(loc.start.index..loc.end.index, &rope),
                 related_information: None,
                 severity,
                 source: Some(String::from("ante-ls")),
@@ -318,7 +401,12 @@ impl Backend {
             diagnostics.into_iter().map(|(uri, diagnostics)| self.client.publish_diagnostics(uri, diagnostics, None)),
         );
 
-        self.save_cache(cache);
+        for (path, content) in cache.file_cache {
+            let uri = Url::from_file_path(path).unwrap();
+            if self.document_map.get(&uri).is_none() {
+                self.document_map.insert(uri.clone(), Rope::from_str(&content));
+            }
+        }
 
         handle.await;
     }
