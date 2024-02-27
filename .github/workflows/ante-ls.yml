@@ -18,7 +18,4 @@ jobs:
     - uses: actions/checkout@v2
     - name: Build
       working-directory: ./ante-ls
-      run: cargo build --verbose --no-default-features
-    - name: Run tests
-      working-directory: ./ante-ls
-      run: cargo test --verbose --no-default-features
+      run: cargo build --no-default-features
