@@ -105,8 +105,15 @@ pub fn node_at_index<'a>(ast: &'a Ast<'a>, idx: usize) -> &'a Ast<'a> {
                 }
             },
             Ast::NamedConstructor(n) => {
-                if let Some((_, arg)) = n.args.iter().find(|(_, arg)| arg.locate().contains_index(&idx)) {
-                    ast = arg;
+                let sequence = match n.sequence.as_ref() {
+                    Ast::Sequence(s) => Some(s),
+                    _ => None,
+                };
+
+                if let Some(stmt) =
+                    sequence.and_then(|s| s.statements.iter().find(|stmt| stmt.locate().contains_index(&idx)))
+                {
+                    ast = stmt;
                 } else if n.constructor.locate().contains_index(&idx) {
                     ast = &n.constructor;
                 } else {
