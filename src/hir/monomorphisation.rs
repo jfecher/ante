@@ -125,7 +125,7 @@ impl<'c> Context<'c> {
             Assignment(assignment) => self.monomorphise_assignment(assignment),
             EffectDefinition(_) => todo!(),
             Handle(_) => todo!(),
-            NamedConstructor(_) => todo!(),
+            NamedConstructor(constructor) => self.monomorphise_named_constructor(constructor),
         }
     }
 
@@ -1584,6 +1584,13 @@ impl<'c> Context<'c> {
         };
 
         hir::Ast::Assignment(hir::Assignment { lhs: Box::new(lhs), rhs: Box::new(self.monomorphise(&assignment.rhs)) })
+    }
+
+    fn monomorphise_named_constructor(&mut self, constructor: &ast::NamedConstructor<'c>) -> hir::Ast {
+        match constructor.sequence.as_ref() {
+            ast::Ast::Sequence(sequence) => self.monomorphise_sequence(sequence),
+            _ => unreachable!(),
+        }
     }
 
     pub fn extract(ast: hir::Ast, member_index: u32, result_type: Type) -> hir::Ast {

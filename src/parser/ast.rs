@@ -400,8 +400,7 @@ pub struct Handle<'a> {
 #[derive(Debug, Clone)]
 pub struct NamedConstructor<'a> {
     pub constructor: Box<Ast<'a>>,
-    pub args: Vec<(String, Ast<'a>)>,
-
+    pub sequence: Box<Ast<'a>>,
     pub location: Location<'a>,
     pub typ: Option<types::Type>,
 }
@@ -709,8 +708,13 @@ impl<'a> Ast<'a> {
         Ast::Handle(Handle { expression: Box::new(expression), branches, location, resumes: vec![], typ: None })
     }
 
-    pub fn named_constructor(constructor: Ast<'a>, args: Vec<(String, Ast<'a>)>, location: Location<'a>) -> Ast<'a> {
-        Ast::NamedConstructor(NamedConstructor { constructor: Box::new(constructor), args, location, typ: None })
+    pub fn named_constructor(constructor: Ast<'a>, sequence: Ast<'a>, location: Location<'a>) -> Ast<'a> {
+        Ast::NamedConstructor(NamedConstructor {
+            constructor: Box::new(constructor),
+            sequence: Box::new(sequence),
+            location,
+            typ: None,
+        })
     }
 
     /// This is a bit of a hack.
