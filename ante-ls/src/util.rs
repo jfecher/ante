@@ -163,26 +163,26 @@ pub fn node_at_index<'a>(ast: &'a Ast<'a>, idx: usize) -> &'a Ast<'a> {
     ast
 }
 
-pub fn position_to_index(position: Position, rope: &Rope) -> usize {
+pub fn position_to_index(position: Position, rope: &Rope) -> Result<usize, ropey::Error> {
     let line = position.line as usize;
-    let line = rope.line_to_char(line);
-    line + position.character as usize
+    let line = rope.try_line_to_char(line)?;
+    Ok(line + position.character as usize)
 }
 
-pub fn index_to_position(index: usize, rope: &Rope) -> Position {
-    let line = rope.char_to_line(index);
+pub fn index_to_position(index: usize, rope: &Rope) -> Result<Position, ropey::Error> {
+    let line = rope.try_char_to_line(index)?;
     let char = index - rope.line_to_char(line);
-    Position { line: line as u32, character: char as u32 }
+    Ok(Position { line: line as u32, character: char as u32 })
 }
 
-pub fn lsp_range_to_rope_range(range: Range, rope: &Rope) -> std::ops::Range<usize> {
-    let start = position_to_index(range.start, rope);
-    let end = position_to_index(range.end, rope);
-    start..end
+pub fn lsp_range_to_rope_range(range: Range, rope: &Rope) -> Result<std::ops::Range<usize>, ropey::Error> {
+    let start = position_to_index(range.start, rope)?;
+    let end = position_to_index(range.end, rope)?;
+    Ok(start..end)
 }
 
-pub fn rope_range_to_lsp_range(range: std::ops::Range<usize>, rope: &Rope) -> Range {
-    let start = index_to_position(range.start, rope);
-    let end = index_to_position(range.end, rope);
-    Range { start, end }
+pub fn rope_range_to_lsp_range(range: std::ops::Range<usize>, rope: &Rope) -> Result<Range, ropey::Error> {
+    let start = index_to_position(range.start, rope)?;
+    let end = index_to_position(range.end, rope)?;
+    Ok(Range { start, end })
 }

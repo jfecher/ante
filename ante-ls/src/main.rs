@@ -86,7 +86,7 @@ impl LanguageServer for Backend {
         self.document_map.alter(&params.text_document.uri, |_, mut rope| {
             for change in params.content_changes {
                 if let Some(range) = change.range {
-                    let range = lsp_range_to_rope_range(range, &rope);
+                    let range = lsp_range_to_rope_range(range, &rope).unwrap();
                     rope.remove(range.clone());
                     rope.insert(range.start, &change.text);
                 } else {
@@ -109,9 +109,16 @@ impl LanguageServer for Backend {
         };
 
         let cache = self.create_cache(&uri, &rope);
-        let ast = cache.parse_trees.get_mut(0).unwrap();
+        let ast = match cache.parse_trees.get_mut(0) {
+            Some(ast) => ast,
+            None => return Ok(None),
+        };
 
-        let index = position_to_index(params.text_document_position_params.position, &rope);
+        let index = position_to_index(params.text_document_position_params.position, &rope).map_err(|_| Error {
+            code: ErrorCode::InternalError,
+            message: "Failed to convert hover position to range".into(),
+            data: None,
+        })?;
         let hovered_node = node_at_index(ast, index);
 
         let result = match hovered_node {
@@ -132,7 +139,14 @@ impl LanguageServer for Backend {
                     typeprinter::show_type_and_traits(&name, typ, &info.required_traits, &info.trait_info, &cache);
 
                 let location = v.locate();
-                let range = Some(rope_range_to_lsp_range(location.start.index..location.end.index, &rope));
+                let range =
+                    Some(rope_range_to_lsp_range(location.start.index..location.end.index, &rope).map_err(|_| {
+                        Error {
+                            code: ErrorCode::InternalError,
+                            message: "Failed to convert range to hover location".into(),
+                            data: None,
+                        }
+                    })?);
 
                 Ok(Some(Hover {
                     contents: HoverContents::Markup(MarkupContent { kind: MarkupKind::PlainText, value }),
@@ -155,9 +169,16 @@ impl LanguageServer for Backend {
         };
 
         let cache = self.create_cache(&uri, &rope);
-        let ast = cache.parse_trees.get_mut(0).unwrap();
+        let ast = match cache.parse_trees.get_mut(0) {
+            Some(ast) => ast,
+            None => return Ok(None),
+        };
 
-        let index = position_to_index(params.text_document_position_params.position, &rope);
+        let index = position_to_index(params.text_document_position_params.position, &rope).map_err(|_| Error {
+            code: ErrorCode::InternalError,
+            message: "Failed to convert hover position to range".into(),
+            data: None,
+        })?;
         let hovered_node = node_at_index(ast, index);
 
         let result = match hovered_node {
@@ -188,7 +209,11 @@ impl LanguageServer for Backend {
                 };
 
                 let range = loc.start.index..loc.end.index;
-                let range = rope_range_to_lsp_range(range, &rope);
+                let range = rope_range_to_lsp_range(range, &rope).map_err(|_| Error {
+                    code: ErrorCode::InternalError,
+                    message: "Failed to convert range to definition location".into(),
+                    data: None,
+                })?;
 
                 Ok(Some(GotoDefinitionResponse::Scalar(Location { uri, range })))
             },
@@ -261,12 +286,20 @@ impl Backend {
                 },
             };
 
+            let range = match rope_range_to_lsp_range(loc.start.index..loc.end.index, &rope) {
+                Ok(range) => range,
+                Err(e) => {
+                    self.client.log_message(MessageType::ERROR, format!("Failed to convert range: {:?}", e)).await;
+                    return;
+                },
+            };
+
             let diagnostic = Diagnostic {
                 code: None,
                 code_description: None,
                 data: None,
                 message: diagnostic.msg().to_string(),
-                range: rope_range_to_lsp_range(loc.start.index..loc.end.index, &rope),
+                range,
                 related_information: None,
                 severity,
                 source: Some(String::from("ante-ls")),
