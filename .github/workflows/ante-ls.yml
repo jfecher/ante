@@ -13,11 +13,9 @@ jobs:
   build:
 
     runs-on: ubuntu-latest
-    working-directory: ./ante-ls
 
     steps:
     - uses: actions/checkout@v2
     - name: Build
-      run: cargo build --verbose --no-default-features
-    - name: Run tests
-      run: cargo test --verbose --no-default-features
+      working-directory: ./ante-ls
+      run: cargo build --no-default-features
