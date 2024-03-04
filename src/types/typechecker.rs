@@ -204,10 +204,13 @@ pub fn replace_all_typevars_with_bindings(
         UserDefined(id) => UserDefined(*id),
 
         // We must recurse on the lifetime variable since they are unified as normal type variables
-        Ref(lifetime) => match replace_typevar_with_binding(*lifetime, new_bindings, Ref, cache) {
-            TypeVariable(new_lifetime) => Ref(new_lifetime),
-            Ref(new_lifetime) => Ref(new_lifetime),
-            _ => unreachable!("Bound Ref lifetime to non-lifetime type"),
+        Ref(sharedness, mutability, lifetime) => {
+            let make_ref = |new_lifetime| Ref(*sharedness, *mutability, new_lifetime);
+            match replace_typevar_with_binding(*lifetime, new_bindings, make_ref, cache) {
+                TypeVariable(new_lifetime) => make_ref(new_lifetime),
+                new_ref @ Ref(..) => new_ref,
+                _ => unreachable!("Bound Ref lifetime to non-lifetime type"),
+            }
         },
 
         TypeApplication(typ, args) => {
@@ -240,7 +243,7 @@ pub fn replace_all_typevars_with_bindings(
 /// `default` should be either TypeVariable or Ref and controls which kind of type gets
 /// created that wraps the newly-instantiated TypeVariableId if one is made.
 fn replace_typevar_with_binding(
-    id: TypeVariableId, new_bindings: &mut TypeBindings, default: fn(TypeVariableId) -> Type,
+    id: TypeVariableId, new_bindings: &mut TypeBindings, default: impl FnOnce(TypeVariableId) -> Type,
     cache: &mut ModuleCache<'_>,
 ) -> Type {
     if let Bound(typ) = &cache.type_bindings[id.0] {
@@ -249,8 +252,9 @@ fn replace_typevar_with_binding(
         var.clone()
     } else {
         let new_typevar = next_type_variable_id(cache);
-        new_bindings.insert(id, default(new_typevar));
-        default(new_typevar)
+        let typ = default(new_typevar);
+        new_bindings.insert(id, typ.clone());
+        typ
     }
 }
 
@@ -275,10 +279,13 @@ pub fn bind_typevars(typ: &Type, type_bindings: &TypeBindings, cache: &ModuleCac
         },
         UserDefined(id) => UserDefined(*id),
 
-        Ref(lifetime) => match bind_typevar(*lifetime, type_bindings, Ref, cache) {
-            TypeVariable(new_lifetime) => Ref(new_lifetime),
-            Ref(new_lifetime) => Ref(new_lifetime),
-            _ => unreachable!("Bound Ref lifetime to non-lifetime type"),
+        Ref(sharedness, mutability, lifetime) => {
+            let make_ref = |lifetime| Ref(*sharedness, *mutability, lifetime);
+            match bind_typevar(*lifetime, type_bindings, make_ref, cache) {
+                TypeVariable(new_lifetime) => make_ref(new_lifetime),
+                new_ref @ Ref(..) => new_ref,
+                _ => unreachable!("Bound Ref lifetime to non-lifetime type"),
+            }
         },
 
         TypeApplication(typ, args) => {
@@ -322,7 +329,7 @@ pub fn bind_typevars(typ: &Type, type_bindings: &TypeBindings, cache: &ModuleCac
 /// and it is found in the type_bindings. If a type_binding wasn't found, a
 /// default TypeVariable or Ref is constructed by passing the relevant constructor to `default`.
 fn bind_typevar(
-    id: TypeVariableId, type_bindings: &TypeBindings, default: fn(TypeVariableId) -> Type, cache: &ModuleCache<'_>,
+    id: TypeVariableId, type_bindings: &TypeBindings, default: impl FnOnce(TypeVariableId) -> Type, cache: &ModuleCache<'_>,
 ) -> Type {
     // TODO: This ordering of checking type_bindings first is important.
     // There seems to be an issue currently where forall-bound variables
@@ -356,7 +363,7 @@ pub fn contains_any_typevars_from_list(typ: &Type, list: &[TypeVariableId], cach
                 || contains_any_typevars_from_list(&function.effects, list, cache)
         },
 
-        Ref(lifetime) => type_variable_contains_any_typevars_from_list(*lifetime, list, cache),
+        Ref(_, _, lifetime) => type_variable_contains_any_typevars_from_list(*lifetime, list, cache),
 
         TypeApplication(typ, args) => {
             contains_any_typevars_from_list(typ, list, cache)
@@ -555,7 +562,7 @@ pub(super) fn occurs(
             .then_all(&function.parameters, |param| occurs(id, level, param, bindings, fuel, cache)),
         TypeApplication(typ, args) => occurs(id, level, typ, bindings, fuel, cache)
             .then_all(args, |arg| occurs(id, level, arg, bindings, fuel, cache)),
-        Ref(lifetime) => typevars_match(id, level, *lifetime, bindings, fuel, cache),
+        Ref(_, _, lifetime) => typevars_match(id, level, *lifetime, bindings, fuel, cache),
         Struct(fields, var_id) => typevars_match(id, level, *var_id, bindings, fuel, cache)
             .then_all(fields.iter().map(|(_, typ)| typ), |field| occurs(id, level, field, bindings, fuel, cache)),
         Effects(effects) => effects.occurs(id, level, bindings, fuel, cache),
@@ -582,7 +589,7 @@ pub(super) fn typevars_match(
 /// Returns what a given type is bound to, following all typevar links until it reaches an Unbound one.
 pub fn follow_bindings_in_cache_and_map(typ: &Type, bindings: &UnificationBindings, cache: &ModuleCache<'_>) -> Type {
     match typ {
-        TypeVariable(id) | Ref(id) => match find_binding(*id, bindings, cache) {
+        TypeVariable(id) | Ref(_, _, id) => match find_binding(*id, bindings, cache) {
             Bound(typ) => follow_bindings_in_cache_and_map(&typ, bindings, cache),
             Unbound(..) => typ.clone(),
         },
@@ -592,7 +599,7 @@ pub fn follow_bindings_in_cache_and_map(typ: &Type, bindings: &UnificationBindin
 
 pub fn follow_bindings_in_cache(typ: &Type, cache: &ModuleCache<'_>) -> Type {
     match typ {
-        TypeVariable(id) | Ref(id) => match &cache.type_bindings[id.0] {
+        TypeVariable(id) | Ref(_, _, id) => match &cache.type_bindings[id.0] {
             Bound(typ) => follow_bindings_in_cache(typ, cache),
             Unbound(..) => typ.clone(),
         },
@@ -664,7 +671,11 @@ pub fn try_unify_with_bindings_inner<'b>(
         },
 
         // Refs have a hidden lifetime variable we need to unify here
-        (Ref(a_lifetime), Ref(_)) => {
+        (Ref(shared1, mut1, a_lifetime), Ref(shared2, mut2, _)) => {
+            if shared1 != shared2 || mut1 != mut2 {
+                return Err(());
+            }
+
             try_unify_type_variable_with_bindings(*a_lifetime, t1, t2, bindings, location, cache)
         },
 
@@ -816,7 +827,7 @@ fn get_fields(
             }
         },
         TypeApplication(constructor, args) => match follow_bindings_in_cache_and_map(constructor, bindings, cache) {
-            Ref(_) => get_fields(&args[0], &[], bindings, cache),
+            Ref(..) => get_fields(&args[0], &[], bindings, cache),
             other => get_fields(&other, args, bindings, cache),
         },
         Struct(fields, rest) => match &cache.type_bindings[rest.0] {
@@ -960,7 +971,7 @@ pub fn find_all_typevars(typ: &Type, polymorphic_only: bool, cache: &ModuleCache
             }
             type_variables
         },
-        Ref(lifetime) => find_typevars_in_typevar_binding(*lifetime, polymorphic_only, cache),
+        Ref(_, _, lifetime) => find_typevars_in_typevar_binding(*lifetime, polymorphic_only, cache),
         Struct(fields, id) => match &cache.type_bindings[id.0] {
             Bound(t) => find_all_typevars(t, polymorphic_only, cache),
             Unbound(..) => {
@@ -1672,11 +1683,7 @@ impl<'a> Inferable<'a> for ast::Definition<'a> {
         let previous_level = CURRENT_LEVEL.swap(level.0, Ordering::SeqCst);
 
         // t, traits
-        let mut result = infer(self.expr.as_mut(), cache);
-        if self.mutable {
-            let lifetime = next_type_variable_id(cache);
-            result.typ = Type::TypeApplication(Box::new(Type::Ref(lifetime)), vec![result.typ]);
-        }
+        let result = infer(self.expr.as_mut(), cache);
 
         // The rhs of a Definition must be inferred at a greater LetBindingLevel than
         // the lhs below. Here we use level for the rhs and level - 1 for the lhs
@@ -1942,7 +1949,8 @@ impl<'a> Inferable<'a> for ast::Assignment<'a> {
         result.combine(&mut rhs, cache);
 
         let lifetime = next_type_variable_id(cache);
-        let mutref = Type::TypeApplication(Box::new(Type::Ref(lifetime)), vec![rhs.typ.clone()]);
+        let mut_ref = Type::Ref(Sharedness::Polymorphic, Mutability::Mutable, lifetime);
+        let mutref = Type::TypeApplication(Box::new(mut_ref), vec![rhs.typ.clone()]);
 
         match try_unify(&result.typ, &mutref, self.location, cache, TE::NeverShown) {
             Ok(bindings) => bindings.perform(cache),
@@ -1959,7 +1967,8 @@ fn issue_assignment_error<'c>(
     // Try to offer a more specific error message
     let lifetime = next_type_variable_id(cache);
     let var = next_type_variable(cache);
-    let mutref = Type::TypeApplication(Box::new(Type::Ref(lifetime)), vec![var]);
+    let mutref = Type::Ref(Sharedness::Polymorphic, Mutability::Mutable, lifetime);
+    let mutref = Type::TypeApplication(Box::new(mutref), vec![var]);
 
     if let Err(msg) = try_unify(&mutref, lhs, lhs_loc, cache, TE::AssignToNonMutRef) {
         cache.push_full_diagnostic(msg);
