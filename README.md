@@ -13,7 +13,7 @@ foo (x: &shared mut Bar) (y: &a) : a can Fail given Clone a =
     // Algebraic effects
     if not valid x then fail ()
 
-    // Safe, aliasable, mutable references
+    // Safe, aliasable mutable references
     baz x x
 
     // Traits
