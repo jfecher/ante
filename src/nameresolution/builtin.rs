@@ -80,6 +80,7 @@ pub fn import_prelude(resolver: &mut NameResolver, cache: &mut ModuleCache<'_>) 
     }
     // Extract stdlib Types (specifically Maybe a) to keep track of for downstream
     // sytantic sugaring
+    //println!("{:?}", resolver.current_scope().types);
     let maybe_id = resolver.current_scope().types.get("Maybe").unwrap().clone();
     cache.maybe_type = maybe_id;
     // Manually insert some builtins as if they were defined in the prelude

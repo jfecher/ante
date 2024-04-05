@@ -442,6 +442,7 @@ fn expression<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
 fn term<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
     match input[0].0 {
         Token::If => if_expr(input),
+        Token::Else => else_expr(input),
         Token::Loop => loop_expr(input),
         Token::Match => match_expr(input),
         Token::Handle => handle_expr(input),
@@ -634,9 +635,10 @@ parser!(match_branch _loc -> 'b (Ast<'b>, Ast<'b>) =
 
 parser!(else_expr _loc =
     _ <- maybe_newline;
+    expr <- block_or_statement;
     _ <- expect(Token::Else);
     otherwise !<- block_or_statement;
-    otherwise
+    Ast::else_expr(expr, otherwise, _loc)
 );
 
 /// A function_argument is a unary expr or a member_access of
