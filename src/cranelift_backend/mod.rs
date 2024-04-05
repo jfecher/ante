@@ -163,6 +163,33 @@ impl CodeGen for hir::If {
     }
 }
 
+impl CodeGen for hir::Else {
+    fn codegen<'a>(&'a self, context: &mut Context<'a>, builder: &mut FunctionBuilder) -> Value {
+        let expr = builder.create_block();
+        let then_values = context.eval_all_in_block(&self.expr, expr, builder);
+
+        let end = context.new_block_with_arg(&self.result_type, builder);
+
+        let else_none = builder.create_block();
+        builder.ins().jump(else_none, &[]);
+
+        let else_values = context.eval_all_in_block(&self.otherwise, else_none, builder);
+
+        if let Some(else_values) = else_values {
+            builder.ins().jump(end, &else_values);
+        }
+
+        builder.seal_block(end);
+        builder.switch_to_block(end);
+        let end_values = builder.block_params(end);
+        let ret = context.array_to_value(end_values, &self.result_type);
+
+        builder.seal_block(expr);
+        builder.seal_block(else_none);
+        ret
+    }
+}
+
 impl CodeGen for hir::Match {
     fn codegen<'a>(&'a self, context: &mut Context<'a>, builder: &mut FunctionBuilder) -> Value {
         context.codegen_match(self, builder)

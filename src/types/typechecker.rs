@@ -1728,6 +1728,28 @@ impl<'a> Inferable<'a> for ast::If<'a> {
     }
 }
 
+impl<'a> Inferable<'a> for ast::Else<'a> {
+    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> TypeResult {
+        // Create new serogate Variable x
+        let x = next_type_variable(cache);
+        //let x = Type::TypeVariable(id);
+        // Construct a Maybe x Type
+        //let maybe_typeinfo_id = cache.type_infos.get(cache.maybe_type.0);
+        let maybe_type = UserDefined(cache.maybe_type);
+        let maybe_x = TypeApplication(Box::new(maybe_type), vec![x.clone()]);
+        // Unify Maybe x with expr and raise if Type is mismatched
+        let mut expr = infer(self.expr.as_mut(), cache);
+        unify(&maybe_x, &mut expr.typ, self.expr.locate(), cache, TE::ElseBranchMismatch);
+
+        // Unify x with a and raise if Type is mismatched
+        let mut otherwise = infer(self.otherwise.as_mut(), cache);
+        expr.combine(&mut otherwise, cache);
+
+        unify(&x, &otherwise.typ, self.location, cache, TE::ArgumentTypeMismatch);
+        expr.with_type(otherwise.typ)
+    }
+}
+
 impl<'a> Inferable<'a> for ast::Match<'a> {
     fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> TypeResult {
         let error_count = cache.error_count();

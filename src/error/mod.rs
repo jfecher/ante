@@ -104,6 +104,7 @@ pub enum TypeErrorKind {
     ArgumentTypeMismatch,
     NonBoolInCondition,
     IfBranchMismatch,
+    ElseBranchMismatch,
     MatchPatternTypeDiffers,
     MatchReturnTypeDiffers,
     DoesNotMatchAnnotatedType,
@@ -276,6 +277,12 @@ impl Display for DiagnosticKind {
                 write!(
                     f,
                     "Expected 'then' and 'else' branch types to match, but found {expected} and {actual} respectively"
+                )
+            },
+            DiagnosticKind::TypeError(TypeErrorKind::ElseBranchMismatch, expected, actual) => {
+                write!(
+                    f,
+                    "Expected 'expr' and 'else' branch types to match, but found {expected} and {actual} respectively"
                 )
             },
             DiagnosticKind::TypeError(TypeErrorKind::MatchPatternTypeDiffers, expected, actual) => {

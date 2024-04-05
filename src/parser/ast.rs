@@ -172,6 +172,14 @@ pub struct If<'a> {
     pub location: Location<'a>,
     pub typ: Option<types::Type>,
 }
+// Maybe a then a else expression
+#[derive(Debug, Clone)]
+pub struct Else<'a> {
+    pub expr: Box<Ast<'a>>,
+    pub otherwise: Box<Ast<'a>>,
+    pub location: Location<'a>,
+    pub typ: Option<types::Type>,
+}
 
 /// match expression
 /// | pattern1 -> branch1
@@ -413,6 +421,7 @@ pub enum Ast<'a> {
     FunctionCall(FunctionCall<'a>),
     Definition(Definition<'a>),
     If(If<'a>),
+    Else(Else<'a>),
     Match(Match<'a>),
     TypeDefinition(TypeDefinition<'a>),
     TypeAnnotation(TypeAnnotation<'a>),
@@ -588,6 +597,10 @@ impl<'a> Ast<'a> {
         }
     }
 
+    pub fn else_expr(expr: Ast<'a>, otherwise: Ast<'a>, location: Location<'a>) -> Ast<'a> {
+        Ast::Else(Else { expr: Box::new(expr), otherwise: Box::new(otherwise), location, typ: None })
+    }
+
     pub fn definition(pattern: Ast<'a>, expr: Ast<'a>, location: Location<'a>) -> Ast<'a> {
         Ast::Definition(Definition {
             pattern: Box::new(pattern),
@@ -736,6 +749,7 @@ macro_rules! dispatch_on_expr {
             $crate::parser::ast::Ast::FunctionCall(inner) =>     $function(inner $(, $($args),* )? ),
             $crate::parser::ast::Ast::Definition(inner) =>       $function(inner $(, $($args),* )? ),
             $crate::parser::ast::Ast::If(inner) =>               $function(inner $(, $($args),* )? ),
+            $crate::parser::ast::Ast::Else(inner) =>             $function(inner $(, $($args),* )? ),
             $crate::parser::ast::Ast::Match(inner) =>            $function(inner $(, $($args),* )? ),
             $crate::parser::ast::Ast::TypeDefinition(inner) =>   $function(inner $(, $($args),* )? ),
             $crate::parser::ast::Ast::TypeAnnotation(inner) =>   $function(inner $(, $($args),* )? ),
@@ -776,6 +790,7 @@ impl_locatable_for!(Lambda);
 impl_locatable_for!(FunctionCall);
 impl_locatable_for!(Definition);
 impl_locatable_for!(If);
+impl_locatable_for!(Else);
 impl_locatable_for!(Match);
 impl_locatable_for!(TypeDefinition);
 impl_locatable_for!(TypeAnnotation);

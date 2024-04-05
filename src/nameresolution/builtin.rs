@@ -78,7 +78,10 @@ pub fn import_prelude(resolver: &mut NameResolver, cache: &mut ModuleCache<'_>) 
             resolver.current_scope().import(exports, cache, Location::builtin(), &HashSet::new());
         }
     }
-
+    // Extract stdlib Types (specifically Maybe a) to keep track of for downstream
+    // sytantic sugaring
+    let maybe_id = resolver.current_scope().types.get("Maybe").unwrap().clone();
+    cache.maybe_type = maybe_id;
     // Manually insert some builtins as if they were defined in the prelude
     resolver.current_scope().types.insert(Token::Comma.to_string(), PAIR_TYPE);
     resolver.current_scope().definitions.insert(Token::Comma.to_string(), PAIR_ID);
