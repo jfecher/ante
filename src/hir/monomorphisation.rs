@@ -1501,11 +1501,11 @@ impl<'c> Context<'c> {
     }
 
     fn monomorphise_else(&mut self, else_: &ast::Else<'c>) -> hir::Ast {
-        let expr = Box::new(self.monomorphise(&else_.expr));
-        let otherwise = Box::new(self.monomorphise(&else_.otherwise));
+        let lhs = Box::new(self.monomorphise(&else_.lhs));
+        let rhs = Box::new(self.monomorphise(&else_.rhs));
         let result_type = self.convert_type(else_.typ.as_ref().unwrap());
 
-        hir::Ast::Else(hir::Else { expr, otherwise, result_type })
+        hir::Ast::Else(hir::Else { lhs, rhs, result_type })
     }
 
     fn monomorphise_return(&mut self, return_: &ast::Return<'c>) -> hir::Ast {

@@ -91,8 +91,8 @@ fn replace_env(expr: Ast, env: &Ast, definition_id: hir::DefinitionId, f: &hir::
             Ast::If(if_expr)
         },
         Ast::Else(mut else_expr) => {
-            else_expr.expr = Box::new(replace_env(*else_expr.expr, env, definition_id, f));
-            else_expr.otherwise = Box::new(replace_env(*else_expr.otherwise, env, definition_id, f));
+            else_expr.lhs = Box::new(replace_env(*else_expr.lhs, env, definition_id, f));
+            else_expr.rhs = Box::new(replace_env(*else_expr.rhs, env, definition_id, f));
             Ast::Else(else_expr)
         },
         Ast::Sequence(mut seq) => {

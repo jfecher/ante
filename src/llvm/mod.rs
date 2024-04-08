@@ -637,10 +637,10 @@ impl<'g> CodeGen<'g> for hir::Else {
         let else_block = generator.context.append_basic_block(current_function, "else");
 
         generator.builder.position_at_end(expr_block);
-        let (if_type, then_option) = generator.codegen_branch(&self.expr, end_block);
+        let (if_type, then_option) = generator.codegen_branch(&self.lhs, end_block);
 
         generator.builder.position_at_end(else_block);
-        let (_, else_option) = generator.codegen_branch(&self.otherwise, end_block);
+        let (_, else_option) = generator.codegen_branch(&self.rhs, end_block);
 
         // Create phi at the end of the if beforehand
         generator.builder.position_at_end(end_block);

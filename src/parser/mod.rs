@@ -442,7 +442,7 @@ fn expression<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
 fn term<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
     match input[0].0 {
         Token::If => if_expr(input),
-        Token::Else => else_expr(input),
+        //Token::Else => else_expr(input),
         Token::Loop => loop_expr(input),
         Token::Match => match_expr(input),
         Token::Handle => handle_expr(input),
@@ -506,7 +506,7 @@ parser!(if_expr loc =
     _ !<- maybe_newline;
     _ !<- expect(Token::Then);
     then !<- block_or_statement;
-    otherwise !<- maybe(else_expr);
+    otherwise !<- maybe(without_else_expr);
     Ast::if_expr(condition, then, otherwise, loc)
 );
 
@@ -631,6 +631,14 @@ parser!(match_branch _loc -> 'b (Ast<'b>, Ast<'b>) =
     _ !<- expect(Token::RightArrow);
     branch !<- block_or_statement;
     (pattern, branch)
+);
+
+parser!(without_else_expr _loc =
+    _ <- maybe_newline;
+    expr <- block_or_statement;
+    _ <- expect(Token::Else);
+    otherwise !<- block_or_statement;
+    otherwise
 );
 
 parser!(else_expr _loc =

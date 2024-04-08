@@ -175,8 +175,8 @@ pub struct If<'a> {
 // Maybe a then a else expression
 #[derive(Debug, Clone)]
 pub struct Else<'a> {
-    pub expr: Box<Ast<'a>>,
-    pub otherwise: Box<Ast<'a>>,
+    pub lhs: Box<Ast<'a>>,
+    pub rhs: Box<Ast<'a>>,
     pub location: Location<'a>,
     pub typ: Option<types::Type>,
 }
@@ -597,8 +597,8 @@ impl<'a> Ast<'a> {
         }
     }
 
-    pub fn else_expr(expr: Ast<'a>, otherwise: Ast<'a>, location: Location<'a>) -> Ast<'a> {
-        Ast::Else(Else { expr: Box::new(expr), otherwise: Box::new(otherwise), location, typ: None })
+    pub fn else_expr(lhs: Ast<'a>, rhs: Ast<'a>, location: Location<'a>) -> Ast<'a> {
+        Ast::Else(Else { lhs: Box::new(lhs), rhs: Box::new(rhs), location, typ: None })
     }
 
     pub fn definition(pattern: Ast<'a>, expr: Ast<'a>, location: Location<'a>) -> Ast<'a> {

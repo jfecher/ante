@@ -110,8 +110,8 @@ pub struct If {
 
 #[derive(Debug, Clone)]
 pub struct Else {
-    pub expr: Box<Ast>,
-    pub otherwise: Box<Ast>,
+    pub lhs: Box<Ast>,
+    pub rhs: Box<Ast>,
     pub result_type: Type,
 }
 

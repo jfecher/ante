@@ -1735,18 +1735,18 @@ impl<'a> Inferable<'a> for ast::Else<'a> {
         //let x = Type::TypeVariable(id);
         // Construct a Maybe x Type
         //let maybe_typeinfo_id = cache.type_infos.get(cache.maybe_type.0);
-        let maybe_type = UserDefined(cache.maybe_type);
+        let maybe_type = UserDefined(cache.maybe_type.expect("Maybe type should be befined from importing prelude"));
         let maybe_x = TypeApplication(Box::new(maybe_type), vec![x.clone()]);
         // Unify Maybe x with expr and raise if Type is mismatched
-        let mut expr = infer(self.expr.as_mut(), cache);
-        unify(&maybe_x, &mut expr.typ, self.expr.locate(), cache, TE::ElseBranchMismatch);
+        let mut lhs = infer(self.lhs.as_mut(), cache);
+        unify(&maybe_x, &mut lhs.typ, self.lhs.locate(), cache, TE::ElseBranchMismatch);
 
         // Unify x with a and raise if Type is mismatched
-        let mut otherwise = infer(self.otherwise.as_mut(), cache);
-        expr.combine(&mut otherwise, cache);
+        let mut rhs = infer(self.rhs.as_mut(), cache);
+        lhs.combine(&mut rhs, cache);
 
-        unify(&x, &otherwise.typ, self.location, cache, TE::ArgumentTypeMismatch);
-        expr.with_type(otherwise.typ)
+        unify(&x, &rhs.typ, self.location, cache, TE::ArgumentTypeMismatch);
+        lhs.with_type(rhs.typ)
     }
 }
 
