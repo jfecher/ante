@@ -630,13 +630,11 @@ impl<'g> CodeGen<'g> for hir::If {
 impl<'g> CodeGen<'g> for hir::Else {
     fn codegen(&self, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
         let current_function = generator.current_function();
-        let expr_block = generator.context.append_basic_block(current_function, "expr");
         let end_block = generator.context.append_basic_block(current_function, "end_else");
 
         // Setup conditional jump
         let else_block = generator.context.append_basic_block(current_function, "else");
 
-        generator.builder.position_at_end(expr_block);
         let (if_type, then_option) = generator.codegen_branch(&self.lhs, end_block);
 
         generator.builder.position_at_end(else_block);

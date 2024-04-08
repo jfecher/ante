@@ -442,7 +442,7 @@ fn expression<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
 fn term<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
     match input[0].0 {
         Token::If => if_expr(input),
-        //Token::Else => else_expr(input),
+        Token::Else => else_expr(input),
         Token::Loop => loop_expr(input),
         Token::Match => match_expr(input),
         Token::Handle => handle_expr(input),
