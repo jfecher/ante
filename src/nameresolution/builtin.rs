@@ -70,20 +70,17 @@ pub fn import_prelude(resolver: &mut NameResolver, cache: &mut ModuleCache<'_>) 
     if resolver.filepath == prelude_path() {
         // If we're in the prelude include the built-in symbol "builtin" to define primitives
         resolver.current_scope().definitions.insert("builtin".into(), BUILTIN_ID);
-        //println!("{:?}", &resolver.current_scope().types);
     } else {
         // Otherwise, import the prelude itself
         let prelude_dir = prelude_path();
         if let Some(id) = declare_module(&prelude_dir, cache, Location::builtin()) {
             let exports = define_module(id, cache, Location::builtin()).unwrap();
             resolver.current_scope().import(exports, cache, Location::builtin(), &HashSet::new());
+            let maybe_id = resolver.current_scope().types.get("Maybe").unwrap().clone();
+            cache.maybe_type = Some(maybe_id);
         }
     }
-    // Extract stdlib Types (specifically Maybe a) to keep track of for downstream
-    //println!("{:?}", &resolver.current_scope().types);
-    //let maybe_id = resolver.current_scope().types.get("Maybe").unwrap().clone();
-    //cache.maybe_type = Some(maybe_id);
-    // sytantic sugaring
+
     // Manually insert some builtins as if they were defined in the prelude
     resolver.current_scope().types.insert(Token::Comma.to_string(), PAIR_TYPE);
     resolver.current_scope().definitions.insert(Token::Comma.to_string(), PAIR_ID);
