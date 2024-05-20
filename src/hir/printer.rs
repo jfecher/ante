@@ -183,7 +183,7 @@ impl FmtAst for Else {
         printer.block(self.lhs.as_ref(), f)?;
         write!(f, " else ")?;
         printer.block(self.rhs.as_ref(), f)?;
-        write!(f, ") ")
+        write!(f, ")")
     }
 }
 
