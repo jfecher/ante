@@ -419,7 +419,7 @@ impl<'a> ModuleCache<'a> {
             global_dependency_graph: DependencyGraph::default(),
             diagnostics: Vec::new(),
             error_count: 0,
-            maybe_type: Some(TypeInfoId(0)), // sentinel value
+            maybe_type: None,
             file_cache,
         }
     }
