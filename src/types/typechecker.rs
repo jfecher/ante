@@ -1730,7 +1730,6 @@ impl<'a> Inferable<'a> for ast::If<'a> {
 
 impl<'a> Inferable<'a> for ast::Else<'a> {
     fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> TypeResult {
-        // Create new serogate Variable x
         let x = next_type_variable(cache);
         //let x = Type::TypeVariable(id);
         // Construct a Maybe x Type
