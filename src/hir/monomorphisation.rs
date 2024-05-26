@@ -112,7 +112,6 @@ impl<'c> Context<'c> {
             FunctionCall(call) => self.monomorphise_call(call),
             Definition(definition) => self.monomorphise_definition(definition),
             If(if_) => self.monomorphise_if(if_),
-            Else(else_) => self.monomorphise_else(else_),
             Match(match_) => self.monomorphise_match(match_),
             TypeDefinition(_) => unit_literal(),
             TypeAnnotation(annotation) => self.monomorphise(&annotation.lhs),
@@ -1498,14 +1497,6 @@ impl<'c> Context<'c> {
         let result_type = self.convert_type(if_.typ.as_ref().unwrap());
 
         hir::Ast::If(hir::If { condition, then, otherwise, result_type })
-    }
-
-    fn monomorphise_else(&mut self, else_: &ast::Else<'c>) -> hir::Ast {
-        let lhs = Box::new(self.monomorphise(&else_.lhs));
-        let rhs = Box::new(self.monomorphise(&else_.rhs));
-        let result_type = self.convert_type(else_.typ.as_ref().unwrap());
-
-        hir::Ast::Else(hir::Else { lhs, rhs, result_type })
     }
 
     fn monomorphise_return(&mut self, return_: &ast::Return<'c>) -> hir::Ast {

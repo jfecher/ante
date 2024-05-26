@@ -177,16 +177,6 @@ impl FmtAst for If {
     }
 }
 
-impl FmtAst for Else {
-    fn fmt_ast(&self, printer: &mut AstPrinter, f: &mut Formatter) -> fmt::Result {
-        write!(f, "(")?;
-        printer.block(self.lhs.as_ref(), f)?;
-        write!(f, " else ")?;
-        printer.block(self.rhs.as_ref(), f)?;
-        write!(f, ")")
-    }
-}
-
 impl FmtAst for Return {
     fn fmt_ast(&self, printer: &mut AstPrinter, f: &mut Formatter) -> fmt::Result {
         write!(f, "return ")?;

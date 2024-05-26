@@ -1065,18 +1065,6 @@ impl<'c> Resolvable<'c> for ast::If<'c> {
     }
 }
 
-impl<'c> Resolvable<'c> for ast::Else<'c> {
-    fn declare(&mut self, _resolver: &mut NameResolver, _cache: &mut ModuleCache<'c>) {}
-
-    fn define(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'c>) {
-        self.lhs.define(resolver, cache);
-
-        resolver.push_scope(cache);
-        self.rhs.define(resolver, cache);
-        resolver.pop_scope(cache, true, None);
-    }
-}
-
 impl<'c> Resolvable<'c> for ast::Match<'c> {
     fn declare(&mut self, _resolver: &mut NameResolver, _cache: &mut ModuleCache<'c>) {}
 

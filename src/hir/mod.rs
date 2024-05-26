@@ -109,13 +109,6 @@ pub struct If {
 }
 
 #[derive(Debug, Clone)]
-pub struct Else {
-    pub lhs: Box<Ast>,
-    pub rhs: Box<Ast>,
-    pub result_type: Type,
-}
-
-#[derive(Debug, Clone)]
 pub struct Match {
     // Unlike ast::Match this only contains the parts of the
     // branch after the ->.
@@ -269,7 +262,6 @@ pub enum Ast {
     FunctionCall(FunctionCall),
     Definition(Definition),
     If(If),
-    Else(Else),
     Match(Match),
     Return(Return),
     Sequence(Sequence),
@@ -296,7 +288,6 @@ macro_rules! dispatch_on_hir {
             $crate::hir::Ast::FunctionCall(inner) =>    $function(inner $(, $($args),* )? ),
             $crate::hir::Ast::Definition(inner) =>      $function(inner $(, $($args),* )? ),
             $crate::hir::Ast::If(inner) =>              $function(inner $(, $($args),* )? ),
-            $crate::hir::Ast::Else(inner) =>            $function(inner $(, $($args),* )? ),
             $crate::hir::Ast::Match(inner) =>           $function(inner $(, $($args),* )? ),
             $crate::hir::Ast::Return(inner) =>          $function(inner $(, $($args),* )? ),
             $crate::hir::Ast::Sequence(inner) =>        $function(inner $(, $($args),* )? ),
@@ -332,7 +323,6 @@ impl_display!(Lambda);
 impl_display!(FunctionCall);
 impl_display!(Definition);
 impl_display!(If);
-impl_display!(Else);
 impl_display!(Match);
 impl_display!(Return);
 impl_display!(Sequence);

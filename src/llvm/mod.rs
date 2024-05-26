@@ -627,45 +627,6 @@ impl<'g> CodeGen<'g> for hir::If {
     }
 }
 
-impl<'g> CodeGen<'g> for hir::Else {
-    fn codegen(&self, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
-        let current_function = generator.current_function();
-        let end_block = generator.context.append_basic_block(current_function, "end_else");
-
-        // Setup conditional jump
-        let else_block = generator.context.append_basic_block(current_function, "else");
-
-        let (if_type, then_option) = generator.codegen_branch(&self.lhs, end_block);
-
-        generator.builder.position_at_end(else_block);
-        let (_, else_option) = generator.codegen_branch(&self.rhs, end_block);
-
-        // Create phi at the end of the if beforehand
-        generator.builder.position_at_end(end_block);
-
-        // Some of the branches may have terminated early. We need to check each case to
-        // determine which we should add to the phi or if we should even create a phi at all.
-        match (then_option, else_option) {
-            (Some((then_value, then_branch)), Some((else_value, else_branch))) => {
-                let phi = generator.builder.build_phi(then_value.get_type(), "if_result").expect("Could not build phi");
-
-                phi.add_incoming(&[(&then_value, then_branch), (&else_value, else_branch)]);
-                phi.as_basic_value()
-            },
-            (Some((then_value, _)), None) => then_value,
-            (None, Some((else_value, _))) => else_value,
-            (None, None) => {
-                generator.builder.build_unreachable().expect("Could not create 'unreachable' for if");
-
-                // Block is unreachable but we still need to return an undef value.
-                // If we return None the compiler would crash while compiling
-                // `2 + if true return "uh" else return "oh"`
-                Generator::undef_value(if_type)
-            },
-        }
-    }
-}
-
 impl<'g> CodeGen<'g> for hir::Match {
     fn codegen(&self, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
         generator.codegen_tree(self)

@@ -380,8 +380,9 @@ fn precedence(token: &Token) -> Option<(i8, bool)> {
         Token::In => Some((8, false)),
         Token::Append => Some((9, false)),
         Token::Range => Some((10, false)),
-        Token::Add | Token::Subtract => Some((11, false)),
-        Token::Multiply | Token::Divide | Token::Modulus => Some((12, false)),
+        Token::Else => Some((11, false)),
+        Token::Add | Token::Subtract => Some((12, false)),
+        Token::Multiply | Token::Divide | Token::Modulus => Some((13, false)),
         Token::Index => Some((14, false)),
         Token::As => Some((15, false)),
         _ => None,
@@ -442,7 +443,6 @@ fn expression<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
 fn term<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
     match input[0].0 {
         Token::If => if_expr(input),
-        Token::Else => else_expr(input),
         Token::Loop => loop_expr(input),
         Token::Match => match_expr(input),
         Token::Handle => handle_expr(input),
@@ -506,7 +506,7 @@ parser!(if_expr loc =
     _ !<- maybe_newline;
     _ !<- expect(Token::Then);
     then !<- block_or_statement;
-    otherwise !<- maybe(without_else_expr);
+    otherwise !<- maybe(else_expr);
     Ast::if_expr(condition, then, otherwise, loc)
 );
 
@@ -633,20 +633,11 @@ parser!(match_branch _loc -> 'b (Ast<'b>, Ast<'b>) =
     (pattern, branch)
 );
 
-parser!(without_else_expr _loc =
+parser!(else_expr _loc =
     _ <- maybe_newline;
-    expr <- block_or_statement;
     _ <- expect(Token::Else);
     otherwise !<- block_or_statement;
     otherwise
-);
-
-parser!(else_expr _loc =
-    _ <- maybe_newline;
-    expr <- block_or_statement;
-    _ <- expect(Token::Else);
-    otherwise !<- block_or_statement;
-    Ast::else_expr(expr, otherwise, _loc)
 );
 
 /// A function_argument is a unary expr or a member_access of

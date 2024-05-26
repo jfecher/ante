@@ -75,12 +75,6 @@ impl<'a> Display for ast::If<'a> {
     }
 }
 
-impl<'a> Display for ast::Else<'a> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "({} else {})", self.lhs, self.rhs)
-    }
-}
-
 impl<'a> Display for ast::Match<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "(match {}", self.expression)?;

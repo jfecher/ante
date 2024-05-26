@@ -39,7 +39,6 @@ impl_typed_for!(Lambda);
 impl_typed_for!(FunctionCall);
 impl_typed_for!(Definition);
 impl_typed_for!(If);
-impl_typed_for!(Else);
 impl_typed_for!(Match);
 impl_typed_for!(TypeDefinition);
 impl_typed_for!(TypeAnnotation);
