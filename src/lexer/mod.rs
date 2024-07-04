@@ -121,20 +121,16 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
             ("Ptr", Token::PointerType),
             ("Bool", Token::BooleanType),
             ("Unit", Token::UnitType),
-            ("Ref", Token::Ref),
             ("mut", Token::Mut),
             ("true", Token::BooleanLiteral(true)),
             ("false", Token::BooleanLiteral(false)),
             ("and", Token::And),
             ("as", Token::As),
             ("block", Token::Block),
-            ("break", Token::Break),
-            ("continue", Token::Continue),
             ("do", Token::Do),
             ("effect", Token::Effect),
             ("else", Token::Else),
             ("extern", Token::Extern),
-            ("for", Token::For),
             ("fn", Token::Fn),
             ("given", Token::Given),
             ("handle", Token::Handle),
@@ -142,14 +138,16 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
             ("impl", Token::Impl),
             ("import", Token::Import),
             ("in", Token::In),
-            ("is", Token::Is),
-            ("isnt", Token::Isnt),
             ("loop", Token::Loop),
             ("match", Token::Match),
             ("module", Token::Module),
             ("not", Token::Not),
             ("or", Token::Or),
+            ("owned", Token::Owned),
             ("return", Token::Return),
+            ("ref", Token::Ref),
+            ("return", Token::Return),
+            ("shared", Token::Shared),
             ("then", Token::Then),
             ("trait", Token::Trait),
             ("type", Token::Type),
@@ -590,7 +588,7 @@ impl<'cache, 'contents> Iterator for Lexer<'cache, 'contents> {
                 // This will overflow if there are mismatched parenthesis,
                 // should we handle this inside the lexer,
                 // or leave that to the parsing stage?
-                self.open_braces.parenthesis -= 1;
+                self.open_braces.parenthesis = self.open_braces.parenthesis.saturating_sub(1);
                 self.advance_with(Token::ParenthesisRight)
             },
             ('+', _) => self.advance_with(Token::Add),
@@ -599,7 +597,7 @@ impl<'cache, 'contents> Iterator for Lexer<'cache, 'contents> {
                 self.advance_with(Token::BracketLeft)
             },
             (']', _) => {
-                self.open_braces.square -= 1;
+                self.open_braces.square = self.open_braces.square.saturating_sub(1);
                 self.advance_with(Token::BracketRight)
             },
             ('|', _) => self.advance_with(Token::Pipe),

@@ -85,20 +85,16 @@ pub enum Token {
     PointerType,
     BooleanType,
     UnitType,
-    Ref,
     Mut,
 
     // Keywords
     And,
     As,
     Block,
-    Break,
-    Continue,
     Do,
     Effect,
     Else,
     Extern,
-    For,
     Fn,
     Given,
     Handle,
@@ -106,14 +102,15 @@ pub enum Token {
     Impl,
     Import,
     In,
-    Is,
-    Isnt,
     Loop,
     Match,
     Module,
     Not,
     Or,
+    Owned,
+    Ref,
     Return,
+    Shared,
     Then,
     Trait,
     Type,
@@ -166,8 +163,6 @@ impl Token {
             And | As
                 | At
                 | In
-                | Is
-                | Isnt
                 | Not
                 | Or
                 | EqualEqual
@@ -186,7 +181,7 @@ impl Token {
                 | LessThanOrEqual
                 | GreaterThanOrEqual
                 | Divide
-                | Ampersand
+                | Range
         )
     }
 }
@@ -271,20 +266,16 @@ impl Display for Token {
             Token::PointerType => write!(f, "'Ptr'"),
             Token::BooleanType => write!(f, "'bool'"),
             Token::UnitType => write!(f, "'unit'"),
-            Token::Ref => write!(f, "'ref'"),
             Token::Mut => write!(f, "'mut'"),
 
             // Keywords
             Token::And => write!(f, "'and'"),
             Token::As => write!(f, "'as'"),
             Token::Block => write!(f, "'block'"),
-            Token::Break => write!(f, "'break'"),
-            Token::Continue => write!(f, "'continue'"),
             Token::Do => write!(f, "'do'"),
             Token::Effect => write!(f, "'effect'"),
             Token::Else => write!(f, "'else'"),
             Token::Extern => write!(f, "'extern'"),
-            Token::For => write!(f, "'for'"),
             Token::Fn => write!(f, "'fn'"),
             Token::Given => write!(f, "'given'"),
             Token::Handle => write!(f, "'handle'"),
@@ -292,14 +283,15 @@ impl Display for Token {
             Token::Impl => write!(f, "'impl'"),
             Token::Import => write!(f, "'import'"),
             Token::In => write!(f, "'in'"),
-            Token::Is => write!(f, "'is'"),
-            Token::Isnt => write!(f, "'isnt'"),
             Token::Loop => write!(f, "'loop'"),
             Token::Match => write!(f, "'match'"),
             Token::Module => write!(f, "'module'"),
             Token::Not => write!(f, "'not'"),
             Token::Or => write!(f, "'or'"),
+            Token::Owned => write!(f, "'owned'"),
             Token::Return => write!(f, "'return'"),
+            Token::Ref => write!(f, "'ref'"),
+            Token::Shared => write!(f, "'shared'"),
             Token::Then => write!(f, "'then'"),
             Token::Trait => write!(f, "'trait'"),
             Token::Type => write!(f, "'type'"),

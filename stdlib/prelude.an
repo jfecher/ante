@@ -321,20 +321,20 @@ offset (ptr: Ptr t) (index: Usz) : Ptr t =
     // new_addr = addr + index * size_of (MkType: Type t)
     // transmute new_addr
 
-deref (x: Ref t) : t =
+deref (x: &t) : t =
     builtin "Deref" x
 
 deref_ptr (p: Ptr t) : t =
     deref <| transmute p
 
 ptr_store (p: Ptr a) (value: a) : Unit =
-    addr: Ref a = transmute p
+    addr: &a = transmute p
     addr := value
 
 array_insert (p: Ptr a) (index: Usz) (value: a) : Unit =
     offset p index |> ptr_store value
 
-ptr_to_ref: Ptr a -> Ref a = transmute
+ptr_to_ref: Ptr a -> &a = transmute
 
 (@) = deref
 
@@ -416,7 +416,7 @@ impl Print (Maybe a) given Print a with
         | Some a -> printne a
         | None -> printne "None"
 
-impl Print (Ref a) given Print a with
+impl Print &a given Print a with
     printne r = printne @r
 
 unwrap (m: Maybe t) : t =
@@ -517,7 +517,7 @@ with
 //
 //     Some (if isNeg then -1 * sum else sum)
 
-impl Eq (Ref t) given Eq t with
+impl Eq &t given Eq t with
     (==) l r = deref l == deref r
 
 // This `given` clause is required by the current trait checker since t is generalized
@@ -559,7 +559,7 @@ impl Iterator InFile String with
         else Some (infile, next_line infile)
 
 // TODO: manually construct a String from parts
-// impl Cast (Ref Char) String with
+// impl Cast &Char String with
 //     cast c_string = String c_string (cast (strlen c_string))
 
 // impl Eq String

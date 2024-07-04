@@ -25,11 +25,13 @@ pub mod pretty_printer;
 
 use std::{collections::HashSet, iter::FromIterator};
 
-use crate::error::location::Location;
 use crate::lexer::token::Token;
+use crate::{error::location::Location, parser::ast::Mutability};
 use ast::{Ast, Trait, Type, TypeDefinitionBody};
 use combinators::*;
 use error::{ParseError, ParseResult};
+
+use self::ast::Sharedness;
 
 type AstResult<'a, 'b> = ParseResult<'a, 'b, Ast<'b>>;
 
@@ -170,7 +172,7 @@ parser!(type_definition loc =
     name <- typename;
     args <- many0(identifier);
     _ <- expect(Token::Equal);
-    body !<- type_definition_body;
+    body <- type_definition_body;
     Ast::type_definition(name, args, body, loc)
 );
 
@@ -178,8 +180,8 @@ parser!(type_alias loc =
     _ <- expect(Token::Type);
     name <- typename;
     args <- many0(identifier);
-    _ <- expect(Token::Is);
-    body !<- parse_type;
+    _ <- expect(Token::Equal);
+    body <- parse_type;
     Ast::type_definition(name, args, TypeDefinitionBody::Alias(body), loc)
 );
 
@@ -370,8 +372,6 @@ fn precedence(token: &Token) -> Option<(i8, bool)> {
         Token::Or => Some((4, false)),
         Token::And => Some((5, false)),
         Token::EqualEqual
-        | Token::Is
-        | Token::Isnt
         | Token::NotEqual
         | Token::GreaterThan
         | Token::LessThan
@@ -589,7 +589,7 @@ parser!(type_annotation loc =
 );
 
 fn parse_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
-    or(&[function_type, pair_type, type_application, basic_type], "type")(input)
+    or(&[function_type, pair_type, reference_type, type_application, basic_type], "type")(input)
 }
 
 fn function_arg_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
@@ -597,7 +597,7 @@ fn function_arg_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'
 }
 
 fn parse_type_no_pair<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
-    or(&[function_type, type_application, basic_type], "type")(input)
+    or(&[function_type, reference_type, type_application, basic_type], "type")(input)
 }
 
 fn basic_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
@@ -611,7 +611,7 @@ fn basic_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
         Token::PointerType => pointer_type(input),
         Token::BooleanType => boolean_type(input),
         Token::UnitType => unit_type(input),
-        Token::Ref => reference_type(input),
+        Token::Ampersand => basic_reference_type(input),
         Token::Identifier(_) => type_variable(input),
         Token::TypeName(_) => user_defined_type(input),
         Token::ParenthesisLeft => parenthesized_type(input),
@@ -861,9 +861,43 @@ parser!(unit_type loc -> 'b Type<'b> =
 );
 
 parser!(reference_type loc -> 'b Type<'b> =
-    _ <- expect(Token::Ref);
-    Type::Reference(loc)
+    _ <- expect(Token::Ampersand);
+    sharedness <- sharedness;
+    mutability <- maybe(expect(Token::Mut));
+    element <- maybe(reference_element_type);
+    {
+        let mutability = if mutability.is_some() { Mutability::Mutable } else { Mutability::Immutable };
+        make_reference_type(Type::Reference(sharedness, mutability, loc), element, loc)
+    }
 );
+
+// The basic reference type `&t` can be used without parenthesis in a type application
+parser!(basic_reference_type loc -> 'b Type<'b> =
+    _ <- expect(Token::Ampersand);
+    element <- maybe(basic_type);
+    make_reference_type(Type::Reference(Sharedness::Polymorphic, Mutability::Immutable, loc), element, loc)
+);
+
+parser!(reference_element_type loc -> 'b Type<'b> =
+    typ <- or(&[type_application, basic_type], "type");
+    typ
+);
+
+fn make_reference_type<'b>(reference: Type<'b>, element: Option<Type<'b>>, loc: Location<'b>) -> Type<'b> {
+    match element {
+        Some(element) => Type::TypeApplication(Box::new(reference), vec![element], loc),
+        None => reference,
+    }
+}
+
+// Parses 'owned' or 'shared' on a reference type
+fn sharedness<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Sharedness> {
+    match input[0].0 {
+        Token::Shared => Ok((&input[1..], Sharedness::Shared, input[0].1)),
+        Token::Owned => Ok((&input[1..], Sharedness::Owned, input[0].1)),
+        _ => Ok((input, Sharedness::Polymorphic, input[0].1)),
+    }
+}
 
 parser!(type_variable loc -> 'b Type<'b> =
     name <- identifier;

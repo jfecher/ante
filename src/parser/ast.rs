@@ -33,6 +33,7 @@ use crate::types::typechecker::TypeBindings;
 use crate::types::{self, LetBindingLevel, TypeInfoId};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::fmt::Display;
 use std::rc::Rc;
 
 #[derive(Clone, Debug, Eq, PartialOrd, Ord)]
@@ -205,12 +206,46 @@ pub enum Type<'a> {
     Pointer(Location<'a>),
     Boolean(Location<'a>),
     Unit(Location<'a>),
-    Reference(Location<'a>),
+    Reference(Sharedness, Mutability, Location<'a>),
     Function(Vec<Type<'a>>, Box<Type<'a>>, /*varargs:*/ bool, /*closure*/ bool, Location<'a>),
     TypeVariable(String, Location<'a>),
     UserDefined(String, Location<'a>),
     TypeApplication(Box<Type<'a>>, Vec<Type<'a>>, Location<'a>),
     Pair(Box<Type<'a>>, Box<Type<'a>>, Location<'a>),
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Sharedness {
+    Polymorphic,
+    Shared,
+    Owned,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Mutability {
+    Polymorphic,
+    Immutable,
+    Mutable,
+}
+
+impl Display for Sharedness {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Sharedness::Polymorphic => Ok(()),
+            Sharedness::Shared => write!(f, "shared"),
+            Sharedness::Owned => write!(f, "owned"),
+        }
+    }
+}
+
+impl Display for Mutability {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Mutability::Polymorphic => write!(f, "mut?"),
+            Mutability::Immutable => Ok(()),
+            Mutability::Mutable => write!(f, "mut"),
+        }
+    }
 }
 
 /// The AST representation of a trait usage.
@@ -801,7 +836,7 @@ impl<'a> Locatable<'a> for Type<'a> {
             Type::Pointer(location) => *location,
             Type::Boolean(location) => *location,
             Type::Unit(location) => *location,
-            Type::Reference(location) => *location,
+            Type::Reference(_, _, location) => *location,
             Type::Function(_, _, _, _, location) => *location,
             Type::TypeVariable(_, location) => *location,
             Type::UserDefined(_, location) => *location,

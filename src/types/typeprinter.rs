@@ -4,6 +4,7 @@
 //! types/traits are displayed via `type.display(cache)` rather than directly having
 //! a Display impl.
 use crate::cache::{ModuleCache, TraitInfoId};
+use crate::parser::ast::{Mutability, Sharedness};
 use crate::types::traits::{ConstraintSignature, ConstraintSignaturePrinter, RequiredTrait, TraitConstraintId};
 use crate::types::typechecker::find_all_typevars;
 use crate::types::{FunctionType, PrimitiveType, Type, TypeBinding, TypeInfoId, TypeVariableId};
@@ -165,7 +166,7 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             Type::TypeVariable(id) => self.fmt_type_variable(*id, f),
             Type::UserDefined(id) => self.fmt_user_defined_type(*id, f),
             Type::TypeApplication(constructor, args) => self.fmt_type_application(constructor, args, f),
-            Type::Ref(lifetime) => self.fmt_ref(*lifetime, f),
+            Type::Ref(shared, mutable, lifetime) => self.fmt_ref(*shared, *mutable, *lifetime, f),
             Type::Struct(fields, rest) => self.fmt_struct(fields, *rest, f),
             Type::Effects(effects) => self.fmt_effects(effects, f),
         }
@@ -277,11 +278,17 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
         }
     }
 
-    fn fmt_ref(&self, lifetime: TypeVariableId, f: &mut Formatter) -> std::fmt::Result {
+    fn fmt_ref(
+        &self, shared: Sharedness, mutable: Mutability, lifetime: TypeVariableId, f: &mut Formatter,
+    ) -> std::fmt::Result {
         match &self.cache.type_bindings[lifetime.0] {
             TypeBinding::Bound(typ) => self.fmt_type(typ, f),
             TypeBinding::Unbound(..) => {
-                write!(f, "{}", "ref".blue())?;
+                let shared = shared.to_string();
+                let mutable = mutable.to_string();
+                let space = if shared.is_empty() { "" } else { " " };
+
+                write!(f, "{}{}{}{}", "&".blue(), shared.blue(), space, mutable.blue())?;
 
                 if self.debug {
                     match self.typevar_names.get(&lifetime) {

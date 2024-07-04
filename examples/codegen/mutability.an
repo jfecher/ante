@@ -6,7 +6,7 @@ print num
 mutate num
 print num
 
-mutate (n: Ref I32) =
+mutate (n: &mut I32) =
     x = double @n
     n := x
 

@@ -142,12 +142,12 @@ impl<'c> Context<'c> {
 
         let fuel = fuel - 1;
         match &self.cache.type_bindings[id.0] {
-            Bound(TypeVariable(id2) | Ref(id2)) => self.find_binding(*id2, fuel),
+            Bound(TypeVariable(id2) | Ref(_, _, id2)) => self.find_binding(*id2, fuel),
             Bound(binding) => Ok(binding),
             Unbound(..) => {
                 for bindings in self.monomorphisation_bindings.iter().rev() {
                     match bindings.get(&id) {
-                        Some(TypeVariable(id2) | Ref(id2)) => return self.find_binding(*id2, fuel),
+                        Some(TypeVariable(id2) | Ref(_, _, id2)) => return self.find_binding(*id2, fuel),
                         Some(binding) => return Ok(binding),
                         None => (),
                     }
@@ -204,7 +204,7 @@ impl<'c> Context<'c> {
                 let args = fmap(args, |arg| self.follow_all_bindings_inner(arg, fuel));
                 TypeApplication(Box::new(con), args)
             },
-            Ref(_) => typ.clone(),
+            Ref(..) => typ.clone(),
             Struct(fields, id) => match self.find_binding(*id, fuel) {
                 Ok(binding) => self.follow_all_bindings_inner(binding, fuel),
                 Err(_) => {
@@ -346,7 +346,7 @@ impl<'c> Context<'c> {
                 _ => unreachable!("Kind error inside size_of_type"),
             },
 
-            Ref(_) => Self::ptr_size(),
+            Ref(..) => Self::ptr_size(),
             Struct(fields, rest) => {
                 if let Ok(binding) = self.find_binding(*rest, RECURSION_LIMIT) {
                     let binding = binding.clone();
@@ -519,7 +519,7 @@ impl<'c> Context<'c> {
                 let typ = self.follow_bindings_shallow(typ);
 
                 match typ {
-                    Ok(Primitive(PrimitiveType::Ptr) | Ref(_)) => Type::Primitive(hir::PrimitiveType::Pointer),
+                    Ok(Primitive(PrimitiveType::Ptr) | Ref(..)) => Type::Primitive(hir::PrimitiveType::Pointer),
                     Ok(Primitive(PrimitiveType::IntegerType)) => {
                         if self.is_type_variable(&args[0]) {
                             // Default to i32
@@ -553,7 +553,7 @@ impl<'c> Context<'c> {
                 }
             },
 
-            Ref(_) => {
+            Ref(..) => {
                 unreachable!(
                     "Kind error during monomorphisation. Attempted to translate a `ref` without a type argument"
                 )
@@ -1517,7 +1517,7 @@ impl<'c> Context<'c> {
             TypeApplication(typ, args) => {
                 match typ.as_ref() {
                     // Pass through ref types transparently
-                    types::Type::Ref(_) => self.get_field_index(field_name, &args[0]),
+                    types::Type::Ref(..) => self.get_field_index(field_name, &args[0]),
                     // These last 2 cases are the same. They're duplicated to avoid another follow_bindings_shallow call.
                     typ => self.get_field_index(field_name, typ),
                 }
@@ -1551,7 +1551,7 @@ impl<'c> Context<'c> {
         let ref_type = match lhs_type {
             types::Type::TypeApplication(constructor, args) => match self.follow_bindings_shallow(constructor.as_ref())
             {
-                Ok(types::Type::Ref(_)) => Some(self.convert_type(&args[0])),
+                Ok(types::Type::Ref(..)) => Some(self.convert_type(&args[0])),
                 _ => None,
             },
             _ => None,

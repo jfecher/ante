@@ -63,7 +63,10 @@ impl std::hash::Hash for DefinitionType {
                 types::Type::TypeVariable(_) => (), // Do nothing
                 types::Type::Function(_) => (),
                 types::Type::TypeApplication(_, _) => (),
-                types::Type::Ref(_) => (),
+                types::Type::Ref(shared, mutable, _) => {
+                    shared.hash(state);
+                    mutable.hash(state);
+                },
                 types::Type::Struct(field_names, _) => {
                     for name in field_names {
                         name.hash(state);
@@ -91,7 +94,13 @@ fn definition_type_eq(a: &types::Type, b: &types::Type) -> bool {
     match (a, b) {
         (Type::Primitive(primitive1), Type::Primitive(primitive2)) => primitive1 == primitive2,
         (Type::UserDefined(id1), Type::UserDefined(id2)) => id1 == id2,
-        (Type::TypeVariable(_), Type::TypeVariable(_)) | (Type::Ref(_), Type::Ref(_)) => true, // Do nothing
+        (Type::TypeVariable(_), Type::TypeVariable(_)) => true, // Do nothing
+        // This will monomorphize separate definitions for polymorphically-owned references
+        // which is undesired. Defaulting them to shared/owned though can change behavior
+        // if traits are involved.
+        (Type::Ref(shared1, mutable1, _), Type::Ref(shared2, mutable2, _)) => {
+            shared1 == shared2 && mutable1 == mutable2
+        },
         (Type::Function(f1), Type::Function(f2)) => {
             if f1.parameters.len() != f2.parameters.len() {
                 return false;
