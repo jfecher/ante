@@ -11,7 +11,6 @@ use crate::hir::{Ast, Builtin, PrimitiveType, Type};
 use crate::llvm::{CodeGen, Generator};
 
 use inkwell::attributes::{Attribute, AttributeLoc};
-use inkwell::types::BasicType;
 use inkwell::values::{BasicValueEnum, IntValue};
 use inkwell::{AddressSpace, FloatPredicate, IntPredicate};
 
@@ -168,7 +167,7 @@ fn eq_bool<'g>(a: IntValue<'g>, b: IntValue<'g>, generator: &mut Generator<'g>) 
 
 fn deref_ptr<'g>(ptr: &Ast, typ: &Type, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
     let element_type = generator.convert_type(typ);
-    let ret = element_type.ptr_type(AddressSpace::default());
+    let ret = generator.context.ptr_type(AddressSpace::default());
 
     let ptr = ptr.codegen(generator).into_pointer_value();
     let ptr = generator.builder.build_pointer_cast(ptr, ret, "bitcast").unwrap();

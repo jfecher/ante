@@ -18,7 +18,7 @@ clap = { version = "4", features = ["derive"] }
 colored = "2.0.0"
 mimalloc = { version = "0.1.29", default-features = false }
 difference = "2.0.0"
-inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm16-0", "llvm16-0-prefer-dynamic"], optional = true }
+inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm17-0", "llvm17-0-prefer-dynamic"], optional = true }
 cranelift = "0.86.1"
 cranelift-module = "0.86.1"
 cranelift-jit = "0.86.1"
