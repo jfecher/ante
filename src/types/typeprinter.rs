@@ -4,7 +4,7 @@
 //! types/traits are displayed via `type.display(cache)` rather than directly having
 //! a Display impl.
 use crate::cache::{ModuleCache, TraitInfoId};
-use crate::parser::ast::{Sharedness, Mutability};
+use crate::parser::ast::{Mutability, Sharedness};
 use crate::types::traits::{ConstraintSignature, ConstraintSignaturePrinter, RequiredTrait, TraitConstraintId};
 use crate::types::typechecker::find_all_typevars;
 use crate::types::{FunctionType, PrimitiveType, Type, TypeBinding, TypeInfoId, TypeVariableId};
@@ -278,7 +278,9 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
         }
     }
 
-    fn fmt_ref(&self, shared: Sharedness, mutable: Mutability, lifetime: TypeVariableId, f: &mut Formatter) -> std::fmt::Result {
+    fn fmt_ref(
+        &self, shared: Sharedness, mutable: Mutability, lifetime: TypeVariableId, f: &mut Formatter,
+    ) -> std::fmt::Result {
         match &self.cache.type_bindings[lifetime.0] {
             TypeBinding::Bound(typ) => self.fmt_type(typ, f),
             TypeBinding::Unbound(..) => {

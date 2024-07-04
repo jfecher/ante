@@ -101,7 +101,7 @@ impl<'a> Display for ast::Type<'a> {
             Reference(shared, mutable, _) => {
                 let space = if *shared == Sharedness::Polymorphic { "" } else { " " };
                 write!(f, "&{shared}{space}{mutable}")
-            }
+            },
             TypeVariable(name, _) => write!(f, "{}", name),
             UserDefined(name, _) => write!(f, "{}", name),
             Function(params, return_type, varargs, is_closure, _) => {

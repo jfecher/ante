@@ -30,7 +30,7 @@ use crate::cache::{DefinitionInfoId, DefinitionKind, EffectInfoId, ModuleCache, 
 use crate::cache::{ImplScopeId, VariableId};
 use crate::error::location::{Locatable, Location};
 use crate::error::{Diagnostic, DiagnosticKind as D, TypeErrorKind, TypeErrorKind as TE};
-use crate::parser::ast::{self, ClosureEnvironment, Sharedness, Mutability};
+use crate::parser::ast::{self, ClosureEnvironment, Mutability, Sharedness};
 use crate::types::traits::{RequiredTrait, TraitConstraint, TraitConstraints};
 use crate::types::typed::Typed;
 use crate::types::EffectSet;
@@ -329,7 +329,8 @@ pub fn bind_typevars(typ: &Type, type_bindings: &TypeBindings, cache: &ModuleCac
 /// and it is found in the type_bindings. If a type_binding wasn't found, a
 /// default TypeVariable or Ref is constructed by passing the relevant constructor to `default`.
 fn bind_typevar(
-    id: TypeVariableId, type_bindings: &TypeBindings, default: impl FnOnce(TypeVariableId) -> Type, cache: &ModuleCache<'_>,
+    id: TypeVariableId, type_bindings: &TypeBindings, default: impl FnOnce(TypeVariableId) -> Type,
+    cache: &ModuleCache<'_>,
 ) -> Type {
     // TODO: This ordering of checking type_bindings first is important.
     // There seems to be an issue currently where forall-bound variables
@@ -673,7 +674,11 @@ pub fn try_unify_with_bindings_inner<'b>(
         // Refs have a hidden lifetime variable we need to unify here
         (Ref(shared1, mut1, a_lifetime), Ref(shared2, mut2, _)) => {
             if shared1 != shared2 || mut1 != mut2 {
-                return Err(());
+                if *shared1 != Sharedness::Polymorphic && *shared2 != Sharedness::Polymorphic {
+                    if *mut1 != Mutability::Polymorphic && *mut2 != Mutability::Polymorphic {
+                        return Err(());
+                    }
+                }
             }
 
             try_unify_type_variable_with_bindings(*a_lifetime, t1, t2, bindings, location, cache)
@@ -1683,7 +1688,13 @@ impl<'a> Inferable<'a> for ast::Definition<'a> {
         let previous_level = CURRENT_LEVEL.swap(level.0, Ordering::SeqCst);
 
         // t, traits
-        let result = infer(self.expr.as_mut(), cache);
+        let mut result = infer(self.expr.as_mut(), cache);
+        if self.mutable {
+            let lifetime = next_type_variable_id(cache);
+            let shared = Sharedness::Polymorphic;
+            let mutability = Mutability::Mutable;
+            result.typ = Type::TypeApplication(Box::new(Type::Ref(shared, mutability, lifetime)), vec![result.typ]);
+        }
 
         // The rhs of a Definition must be inferred at a greater LetBindingLevel than
         // the lhs below. Here we use level for the rhs and level - 1 for the lhs

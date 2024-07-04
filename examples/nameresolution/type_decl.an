@@ -1,7 +1,7 @@
 
 type Struct1 = a:I32, b:F64, c:String
 
-type Thingy is Struct1
+type Thingy = Struct1
 
 type Generic a b = first: a, second: b
 
@@ -17,7 +17,7 @@ type Option a =
 
 t = Just 1
 
-type UniquePtr a is Ref a
+type MyRef a = &a
 
 // args: --check
 // expected stdout:

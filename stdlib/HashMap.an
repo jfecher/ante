@@ -15,14 +15,14 @@ trait Hash t with
 
 empty () = HashMap 0 0 (null ())
  
-clear (map: Ref (HashMap k v)) : Unit =
+clear (map: &mut HashMap k v) : Unit =
     if map.capacity != 0 then
         repeat map.capacity fn i ->
             entry = mut deref_ptr <| offset map.entries i
             entry.&occupied := false
             entry.&tombstone := false
 
-resize (map: Ref (HashMap k v)) (new_capacity: Usz) : Unit =
+resize (map: &mut HashMap k v) (new_capacity: Usz) : Unit =
     if new_capacity > map.capacity then
         new_memory = calloc new_capacity (size_of (MkType : Type (Entry k v)))
 
@@ -44,16 +44,16 @@ should_resize (map: HashMap k v) : Bool =
     scale_factor = 2
     (map.len + 1) * scale_factor > map.capacity
 
-insert (map: Ref (HashMap k v)) (key: k) (value: v) : Unit =
+insert (map: &mut HashMap k v) (key: k) (value: v) : Unit =
     if should_resize @map then
         resize map ((map.capacity + 1) * 2)
 
-    iter_until (map: Ref (HashMap k v)) (key: k) (value: v) (start: Usz) (end: Usz) : Bool =
+    iter_until (map: &mut HashMap k v) (key: k) (value: v) (start: Usz) (end: Usz) : Bool =
         if start >= end then
             false
         else
             entry_ptr = offset (map.entries) start
-            entry = transmute entry_ptr : Ref (Entry k v)
+            entry = transmute entry_ptr : &mut Entry k v
             if entry.occupied then
                 iter_until map key value (start + 1) end
             else
@@ -105,7 +105,7 @@ get (map: HashMap k v) (key: k) : Maybe v =
     | None -> None
 
 
-remove (map: ref (HashMap k v)) (key: k) : Maybe v =
+remove (map: &mut HashMap k v) (key: k) : Maybe v =
     match get_entry (@map) key
     | None -> None
     | Some e2 ->

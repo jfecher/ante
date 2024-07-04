@@ -172,7 +172,7 @@ parser!(type_definition loc =
     name <- typename;
     args <- many0(identifier);
     _ <- expect(Token::Equal);
-    body !<- type_definition_body;
+    body <- type_definition_body;
     Ast::type_definition(name, args, body, loc)
 );
 
@@ -181,7 +181,7 @@ parser!(type_alias loc =
     name <- typename;
     args <- many0(identifier);
     _ <- expect(Token::Equal);
-    body !<- parse_type;
+    body <- parse_type;
     Ast::type_definition(name, args, TypeDefinitionBody::Alias(body), loc)
 );
 
@@ -589,7 +589,7 @@ parser!(type_annotation loc =
 );
 
 fn parse_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
-    or(&[function_type, pair_type, type_application, basic_type], "type")(input)
+    or(&[function_type, pair_type, reference_type, type_application, basic_type], "type")(input)
 }
 
 fn function_arg_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
