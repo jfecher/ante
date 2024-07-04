@@ -27,7 +27,7 @@ use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::{Linkage, Module};
-use inkwell::passes::{PassManager, PassManagerBuilder};
+use inkwell::passes::PassManager;
 use inkwell::targets::{CodeModel, FileType, RelocMode, TargetTriple};
 use inkwell::targets::{InitializationConfig, Target, TargetMachine};
 use inkwell::types::{BasicType, BasicTypeEnum, FunctionType};
@@ -164,15 +164,14 @@ impl<'g> Generator<'g> {
     fn optimize(&self, optimization_argument: char) {
         let config = InitializationConfig::default();
         Target::initialize_native(&config).unwrap();
-        let pass_manager_builder = PassManagerBuilder::create();
 
-        let optimization_level = to_optimization_level(optimization_argument);
-        let size_level = to_size_level(optimization_argument);
-        pass_manager_builder.set_optimization_level(optimization_level);
-        pass_manager_builder.set_size_level(size_level);
+        let _optimization_level = to_optimization_level(optimization_argument);
+        let _size_level = to_size_level(optimization_argument);
 
         let pass_manager = PassManager::create(());
-        pass_manager_builder.populate_module_pass_manager(&pass_manager);
+
+        // No optimizations currently since the PassManagerBuilder was removed
+        // in addition to all the add_pass methods.
         pass_manager.run_on(&self.module);
 
         // TODO: It seems this method was removed; re-evaluate if inlining is still done
@@ -264,10 +263,10 @@ impl<'g> Generator<'g> {
                     PrimitiveType::Char => self.context.i8_type().into(),
                     PrimitiveType::Boolean => self.context.bool_type().into(),
                     PrimitiveType::Unit => self.context.bool_type().into(),
-                    PrimitiveType::Pointer => self.context.i8_type().ptr_type(AddressSpace::default()).into(),
+                    PrimitiveType::Pointer => self.context.ptr_type(AddressSpace::default()).into(),
                 }
             },
-            hir::Type::Function(f) => self.convert_function_type(f).ptr_type(AddressSpace::default()).into(),
+            hir::Type::Function(_) => self.context.ptr_type(AddressSpace::default()).into(),
             hir::Type::Tuple(tuple) => {
                 let fields = fmap(tuple, |typ| self.convert_type(typ));
                 self.context.struct_type(&fields, true).into()
@@ -335,7 +334,7 @@ impl<'g> Generator<'g> {
 
         let value = global.as_pointer_value();
 
-        let cstring_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let cstring_type = self.context.ptr_type(AddressSpace::default());
 
         let cast = self
             .builder
@@ -388,7 +387,7 @@ impl<'g> Generator<'g> {
 
         self.builder.build_store(alloca, value).expect("Could not create store during cast");
 
-        let target_pointer_type = target_type.ptr_type(AddressSpace::default());
+        let target_pointer_type = self.context.ptr_type(AddressSpace::default());
         let cast =
             self.builder.build_pointer_cast(alloca, target_pointer_type, "cast").expect("Error creating pointer cast");
 
@@ -706,7 +705,7 @@ impl<'g> CodeGen<'g> for hir::Assignment {
 
         let rhs = self.rhs.codegen(generator);
 
-        let rhs_ptr = rhs.get_type().ptr_type(AddressSpace::default());
+        let rhs_ptr = generator.context.ptr_type(AddressSpace::default());
         let lhs = generator
             .builder
             .build_pointer_cast(lhs, rhs_ptr, "bitcast")
