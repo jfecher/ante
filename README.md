@@ -97,7 +97,7 @@ The project itself provides build instructions for the [Nix package manager](htt
 Those can be used for the most recent version of the compiler, or for working on it.
 
 To enter the development environment, run either `nix-shell` or `nix develop` depending on whether you are using nix
-with [flakes](https:/wiki.nixos.org/wiki/Flakes) and [nix command](https://wiki.nixos.org/wiki/Nix_command) enabled or not.
+with [flakes](https://wiki.nixos.org/wiki/Flakes) and [nix command](https://wiki.nixos.org/wiki/Nix_command) enabled or not.
 Then you can build and run the project with `cargo` as described at the top of this section.
 
 Beyond that, the project will also build with `nix-build` / `nix build`, meaning you can install it on your system using
