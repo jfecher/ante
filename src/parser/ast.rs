@@ -223,6 +223,7 @@ pub enum Sharedness {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Mutability {
+    #[allow(unused)]
     Polymorphic,
     Immutable,
     Mutable,

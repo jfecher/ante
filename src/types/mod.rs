@@ -9,9 +9,8 @@ use std::collections::BTreeMap;
 use crate::cache::{DefinitionInfoId, ModuleCache};
 use crate::error::location::{Locatable, Location};
 use crate::lexer::token::{FloatKind, IntegerKind};
-use crate::parser::ast::{Mutability, Sharedness};
 use crate::util::fmap;
-use crate::{lifetimes, util};
+use crate::util;
 
 use self::typeprinter::TypePrinter;
 use crate::types::effects::EffectSet;
@@ -103,7 +102,7 @@ pub enum Type {
     /// A region-allocated reference to some data.
     /// Contains a region variable that is unified with other refs during type
     /// inference. All these refs will be allocated in the same region.
-    Ref(Sharedness, Mutability, lifetimes::LifetimeVariableId),
+    Ref { mutability: Box<Type>, sharedness: Box<Type>, lifetime: Box<Type> },
 
     /// A (row-polymorphic) struct type. Unlike normal rho variables,
     /// the type variable used here replaces the entire type if bound.
@@ -115,6 +114,22 @@ pub enum Type {
     /// are included in it since they are still valid in a type position
     /// most notably when substituting type variables for effects.
     Effects(EffectSet),
+
+    /// Tags are any type which isn't a valid type by itself but may be inside
+    /// a larger type. For example, `shared` is not a type, but a polymorphic
+    /// reference's type variable may resolve to a shared reference.
+    Tag(TypeTag),
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub enum TypeTag {
+    // References can be polymorphic in their ownership or mutability.
+    // When they are, they hold type variables which later resolve to one
+    // of these variants.
+    Owned,
+    Shared,
+    Mutable,
+    Immutable,
 }
 
 #[derive(Debug, Clone)]
@@ -191,13 +206,14 @@ impl Type {
         use Type::*;
         match self {
             Primitive(_) => None,
-            Ref(..) => None,
+            Ref { .. } => None,
             Function(function) => function.return_type.union_constructor_variants(cache),
             TypeApplication(typ, _) => typ.union_constructor_variants(cache),
             UserDefined(id) => cache.type_infos[id.0].union_variants(),
             TypeVariable(_) => unreachable!("Constructors should always have concrete types"),
             Struct(_, _) => None,
             Effects(_) => None,
+            Tag(_) => None,
         }
     }
 
@@ -224,6 +240,7 @@ impl Type {
         match self {
             Type::Primitive(_) => (),
             Type::UserDefined(_) => (),
+            Type::Tag(_) => (),
 
             Type::Function(function) => {
                 for parameter in &function.parameters {
@@ -232,10 +249,15 @@ impl Type {
                 function.environment.traverse_rec(cache, f);
                 function.return_type.traverse_rec(cache, f);
             },
-            Type::TypeVariable(id) | Type::Ref(_, _, id) => match &cache.type_bindings[id.0] {
+            Type::TypeVariable(id) => match &cache.type_bindings[id.0] {
                 TypeBinding::Bound(binding) => binding.traverse_rec(cache, f),
                 TypeBinding::Unbound(_, _) => (),
             },
+            Type::Ref { sharedness, mutability, lifetime } => {
+                sharedness.traverse_rec(cache, f);
+                mutability.traverse_rec(cache, f);
+                lifetime.traverse_rec(cache, f);
+            }
             Type::TypeApplication(constructor, args) => {
                 constructor.traverse_rec(cache, f);
                 for arg in args {
@@ -274,7 +296,7 @@ impl Type {
             Type::Primitive(_) => (),
             Type::UserDefined(_) => (),
             Type::TypeVariable(_) => (),
-            Type::Ref(..) => (),
+            Type::Tag(_) => (),
 
             Type::Function(function) => {
                 for parameter in &function.parameters {
@@ -301,6 +323,10 @@ impl Type {
                     typ.traverse_no_follow_rec(f);
                 }
             },
+            Type::Ref { sharedness, mutability, lifetime: _ } => {
+                sharedness.traverse_no_follow_rec(f);
+                mutability.traverse_no_follow_rec(f);
+            },
         }
     }
 
@@ -325,7 +351,12 @@ impl Type {
                 let args = fmap(args, |arg| arg.approx_to_string());
                 format!("({} {})", constructor, args.join(" "))
             },
-            Type::Ref(shared, mutable, id) => format!("&'{} {}{}", id.0, shared, mutable),
+            Type::Ref { sharedness, mutability, lifetime } => {
+                let shared = sharedness.approx_to_string();
+                let mutable = mutability.approx_to_string();
+                let lifetime = lifetime.approx_to_string();
+                format!("{}{} '{}", mutable, shared, lifetime)
+            }
             Type::Struct(fields, id) => {
                 let fields = fmap(fields, |(name, typ)| format!("{}: {}", name, typ.approx_to_string()));
                 format!("{{ {}, ..tv{} }}", fields.join(", "), id.0)
@@ -341,6 +372,18 @@ impl Type {
                     format!("can {}, ..tv{}", effects.join(", "), set.replacement.0)
                 }
             },
+            Type::Tag(tag) => tag.to_string(),
+        }
+    }
+}
+
+impl std::fmt::Display for TypeTag {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TypeTag::Owned => write!(f, "owned"),
+            TypeTag::Shared => write!(f, "shared"),
+            TypeTag::Mutable => write!(f, "!"),
+            TypeTag::Immutable => write!(f, "&"),
         }
     }
 }
