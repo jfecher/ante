@@ -297,7 +297,7 @@ impl Display for DiagnosticKind {
                 write!(f, "{actual} has no field '{field_name}' of type {expected}")
             },
             DiagnosticKind::TypeError(TypeErrorKind::AssignToNonMutRef, expected, actual) => {
-                write!(f, "Expression of type {actual} must be a `{expected}` type to be assigned to")
+                write!(f, "Expression of type {actual} must be a `{expected}` to be assigned to")
             },
             DiagnosticKind::TypeError(TypeErrorKind::AssignToWrongType, expected, actual) => {
                 write!(f, "Cannot assign expression of type {actual} to a Ref of type {expected}")

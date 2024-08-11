@@ -63,7 +63,7 @@ fn fill_typevar_map(map: &mut HashMap<TypeVariableId, String>, typevars: Vec<Typ
 /// naming to restart at `a` which may otherwise give them different names.
 pub fn show_type_and_traits(
     name: &str, typ: &GeneralizedType, traits: &[RequiredTrait], trait_info: &Option<(TraitInfoId, Vec<Type>)>,
-    cache: &ModuleCache<'_>,
+    cache: &ModuleCache<'_>, debug: bool,
 ) -> String {
     let mut map = HashMap::new();
     let mut current = 'a';
@@ -71,7 +71,6 @@ pub fn show_type_and_traits(
     let typevars = typ.find_all_typevars(false, cache);
     fill_typevar_map(&mut map, typevars, &mut current);
 
-    let debug = true;
     let typ = typ.clone();
     let printer = TypePrinter { typ, cache, debug, typevar_names: map.clone() };
     let type_string = format!("{} : {}", name, printer);
