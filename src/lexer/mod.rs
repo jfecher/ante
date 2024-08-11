@@ -610,6 +610,8 @@ impl<'cache, 'contents> Iterator for Lexer<'cache, 'contents> {
             ('\\', _) => self.advance_with(Token::Backslash),
             ('&', _) => self.advance_with(Token::Ampersand),
             ('@', _) => self.advance_with(Token::At),
+            ('!', _) => self.advance_with(Token::ExclamationMark),
+            ('?', _) => self.advance_with(Token::QuestionMark),
             (c, _) => self.advance_with(Token::Invalid(LexerError::UnknownChar(c))),
         }
     }

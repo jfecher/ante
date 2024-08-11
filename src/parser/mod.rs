@@ -570,7 +570,7 @@ parser!(not_expr loc =
 );
 
 parser!(ref_expr loc =
-    token <- expect(Token::Ampersand);
+    token <- or(&[expect(Token::Ampersand), expect(Token::ExclamationMark)], "expression");
     expr !<- term;
     Ast::function_call(Ast::operator(token, loc), vec![expr], loc)
 );
@@ -645,6 +645,7 @@ fn function_argument<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
     match input[0].0 {
         Token::Not => not_expr(input),
         Token::Ampersand => ref_expr(input),
+        Token::ExclamationMark => ref_expr(input),
         Token::At => at_expr(input),
         _ => member_access(input),
     }
@@ -653,6 +654,7 @@ fn function_argument<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
 fn pattern_function_argument<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
     match input[0].0 {
         Token::Ampersand => ref_expr(input),
+        Token::ExclamationMark => ref_expr(input),
         Token::At => at_expr(input),
         _ => pattern_argument(input),
     }
@@ -861,21 +863,27 @@ parser!(unit_type loc -> 'b Type<'b> =
 );
 
 parser!(reference_type loc -> 'b Type<'b> =
-    _ <- expect(Token::Ampersand);
+    mutability <- reference_operator;
     sharedness <- sharedness;
-    mutability <- maybe(expect(Token::Mut));
     element <- maybe(reference_element_type);
-    {
-        let mutability = if mutability.is_some() { Mutability::Mutable } else { Mutability::Immutable };
-        make_reference_type(Type::Reference(sharedness, mutability, loc), element, loc)
+    make_reference_type(Type::Reference(sharedness, mutability, loc), element, loc)
+);
+
+parser!(reference_operator loc -> 'b Mutability =
+    token <- or(&[expect(Token::Ampersand), expect(Token::ExclamationMark)], "type");
+    match token {
+        Token::Ampersand => Mutability::Immutable,
+        Token::ExclamationMark => Mutability::Mutable,
+        Token::QuestionMark => Mutability::Polymorphic,
+        _ => unreachable!(),
     }
 );
 
 // The basic reference type `&t` can be used without parenthesis in a type application
 parser!(basic_reference_type loc -> 'b Type<'b> =
-    _ <- expect(Token::Ampersand);
+    mutability <- reference_operator;
     element <- maybe(basic_type);
-    make_reference_type(Type::Reference(Sharedness::Polymorphic, Mutability::Immutable, loc), element, loc)
+    make_reference_type(Type::Reference(Sharedness::Polymorphic, mutability, loc), element, loc)
 );
 
 parser!(reference_element_type loc -> 'b Type<'b> =

@@ -153,6 +153,8 @@ pub enum Token {
     Backslash,          // \
     Ampersand,          // &
     At,                 // @
+    ExclamationMark,    // !
+    QuestionMark,       // ?
 }
 
 impl Token {
@@ -334,6 +336,8 @@ impl Display for Token {
             Token::Backslash => write!(f, "'\\'"),
             Token::Ampersand => write!(f, "'&'"),
             Token::At => write!(f, "'@'"),
+            Token::ExclamationMark => write!(f, "'!'"),
+            Token::QuestionMark => write!(f, "'?'"),
         }
     }
 }

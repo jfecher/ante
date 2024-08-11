@@ -6,7 +6,7 @@ type StringBuilder =
 empty () = StringBuilder (null ()) 0 0
 
 // reserve space for at least n additional characters
-reserve (s: &mut StringBuilder) (n: Usz) : Unit =
+reserve (s: !StringBuilder) (n: Usz) : Unit =
     if s.length + n > s.cap then
         new_size = s.cap + n
         ptr = realloc s.data new_size
@@ -19,7 +19,7 @@ reserve (s: &mut StringBuilder) (n: Usz) : Unit =
         s.&cap := new_size
 
 // append a string
-append (s: &mut StringBuilder) (new_str: String) : Unit =
+append (s: !StringBuilder) (new_str: String) : Unit =
     reserve s new_str.length
     memcpy (cast (cast s.data + s.length)) new_str.c_string (cast (new_str.length+1))
     s.&length := s.length + new_str.length
