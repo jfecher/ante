@@ -700,8 +700,8 @@ impl<'c> Context<'c> {
         if definition.trait_impl.is_some() {
             let definition_type = definition.typ.as_ref().unwrap().remove_forall();
             let bindings = typechecker::try_unify(
-                definition_type,
                 typ,
+                definition_type,
                 definition.location,
                 &mut self.cache,
                 TE::MonomorphizationError,

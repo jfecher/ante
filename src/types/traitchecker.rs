@@ -288,8 +288,8 @@ fn find_matching_normal_impls(
 
             let location = constraint.locate(cache);
             let type_bindings = typechecker::try_unify_all_with_bindings(
-                &impl_typeargs,
                 constraint.args(),
+                &impl_typeargs,
                 bindings.clone(),
                 location,
                 cache,

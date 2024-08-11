@@ -66,7 +66,7 @@ type LevelBindings = Vec<(TypeVariableId, LetBindingLevel)>;
 
 /// Arbitrary limit of maximum recursive calls to functions like find_binding.
 /// Expected not to happen but leads to better errors than a stack overflow when it does.
-const RECURSION_LIMIT: u32 = 15;
+const RECURSION_LIMIT: u32 = 100;
 
 #[derive(Debug, Clone)]
 pub struct UnificationBindings {
@@ -715,6 +715,9 @@ pub fn try_unify_with_bindings_inner<'b>(
 
         // ! <: &
         (Tag(TypeTag::Mutable), Tag(TypeTag::Immutable)) => Ok(()),
+
+        // owned <: shared
+        (Tag(TypeTag::Owned), Tag(TypeTag::Shared)) => Ok(()),
 
         _ => Err(()),
     }
