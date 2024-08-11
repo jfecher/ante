@@ -30,7 +30,7 @@ use crate::cache::{DefinitionInfoId, DefinitionKind, EffectInfoId, ModuleCache, 
 use crate::cache::{ImplScopeId, VariableId};
 use crate::error::location::{Locatable, Location};
 use crate::error::{Diagnostic, DiagnosticKind as D, TypeErrorKind, TypeErrorKind as TE};
-use crate::parser::ast::{self, ClosureEnvironment};
+use crate::parser::ast::{self, ClosureEnvironment, Mutability};
 use crate::types::traits::{RequiredTrait, TraitConstraint, TraitConstraints};
 use crate::types::typed::Typed;
 use crate::types::EffectSet;
@@ -152,9 +152,13 @@ pub fn type_application_bindings(info: &TypeInfo<'_>, typeargs: &[Type], cache: 
 }
 
 /// Given `a` returns `ref a`
-fn ref_of(typ: Type, cache: &mut ModuleCache) -> Type {
+fn ref_of(mutability: Mutability, typ: Type, cache: &mut ModuleCache) -> Type {
     let sharedness = Box::new(next_type_variable(cache));
-    let mutability = Box::new(next_type_variable(cache));
+    let mutability = match mutability {
+        Mutability::Polymorphic => Box::new(next_type_variable(cache)),
+        Mutability::Immutable => Box::new(Type::Tag(TypeTag::Immutable)),
+        Mutability::Mutable => Box::new(Type::Tag(TypeTag::Mutable)),
+    };
     let lifetime = Box::new(next_type_variable(cache));
     let constructor = Box::new(Type::Ref { sharedness, mutability, lifetime });
     TypeApplication(constructor, vec![typ])
@@ -895,14 +899,14 @@ fn try_unify_type_variable_with_bindings<'c>(
 }
 
 pub fn try_unify_with_bindings<'b>(
-    t1: &Type, t2: &Type, bindings: &mut UnificationBindings, location: Location<'b>, cache: &mut ModuleCache<'b>,
+    actual: &Type, expected: &Type, bindings: &mut UnificationBindings, location: Location<'b>, cache: &mut ModuleCache<'b>,
     error: TypeErrorKind,
 ) -> Result<(), Diagnostic<'b>> {
-    match try_unify_with_bindings_inner(t1, t2, bindings, location, cache) {
+    match try_unify_with_bindings_inner(actual, expected, bindings, location, cache) {
         Ok(()) => Ok(()),
         Err(()) => {
-            let t1 = t1.display(cache).to_string();
-            let t2 = t2.display(cache).to_string();
+            let t1 = actual.display(cache).to_string();
+            let t2 = expected.display(cache).to_string();
             Err(Diagnostic::new(location, D::TypeError(error, t1, t2)))
         },
     }
@@ -1667,12 +1671,12 @@ fn issue_argument_types_error<'c>(
                 let typ = Function(expected.clone()).display(cache).to_string();
                 cache.push_diagnostic(
                     call.location,
-                    D::FunctionParameterCountMismatch(typ, expected.parameters.len(), actual.parameters.len()),
+                    D::FunctionParameterCountMismatch(typ, actual.parameters.len(), expected.parameters.len()),
                 );
             }
 
             for ((arg, param), arg_ast) in actual.parameters.into_iter().zip(expected.parameters).zip(&call.args) {
-                unify(&param, &arg, arg_ast.locate(), cache, TE::ArgumentTypeMismatch);
+                unify(&arg, &param, arg_ast.locate(), cache, TE::ArgumentTypeMismatch);
             }
         },
         None => cache.push_full_diagnostic(original_error),
@@ -1782,7 +1786,7 @@ impl<'a> Inferable<'a> for ast::Match<'a> {
             let mut pattern = infer(&mut self.branches[0].0, cache);
             result.combine(&mut pattern, cache);
 
-            unify(&result.typ, &pattern.typ, self.branches[0].0.locate(), cache, TE::MatchPatternTypeDiffers);
+            unify(&pattern.typ, &result.typ, self.branches[0].0.locate(), cache, TE::MatchPatternTypeDiffers);
 
             let mut branch = infer(&mut self.branches[0].1, cache);
             result.combine(&mut branch, cache);
@@ -1792,8 +1796,8 @@ impl<'a> Inferable<'a> for ast::Match<'a> {
                 let mut pattern_result = infer(pattern, cache);
                 let mut branch_result = infer(branch, cache);
 
-                unify(&result.typ, &pattern_result.typ, pattern.locate(), cache, TE::MatchPatternTypeDiffers);
-                unify(&return_type, &branch_result.typ, branch.locate(), cache, TE::MatchReturnTypeDiffers);
+                unify(&pattern_result.typ, &result.typ, pattern.locate(), cache, TE::MatchPatternTypeDiffers);
+                unify(&branch_result.typ, &return_type, branch.locate(), cache, TE::MatchReturnTypeDiffers);
 
                 result.combine(&mut pattern_result, cache);
                 result.combine(&mut branch_result, cache);
@@ -1952,10 +1956,10 @@ impl<'a> Inferable<'a> for ast::MemberAccess<'a> {
         let level = LetBindingLevel(CURRENT_LEVEL.load(Ordering::SeqCst));
         let mut field_type = cache.next_type_variable(level);
 
-        if self.is_offset {
+        if let Some(mutability) = self.offset {
             let collection_variable = next_type_variable(cache);
-            let expected = ref_of(collection_variable.clone(), cache);
-            unify(&expected, &result.typ, self.lhs.locate(), cache, TE::ExpectedStructReference);
+            let expected = ref_of(mutability, collection_variable.clone(), cache);
+            unify(&result.typ, &expected, self.lhs.locate(), cache, TE::ExpectedStructReference);
             result.typ = collection_variable;
         }
 
@@ -1966,10 +1970,10 @@ impl<'a> Inferable<'a> for ast::MemberAccess<'a> {
         let rho = cache.next_type_variable_id(level);
         let struct_type = Type::Struct(fields, rho);
 
-        unify(&struct_type, &result.typ, self.location, cache, TE::NoFieldOfType(self.field.clone()));
+        unify(&result.typ, &struct_type, self.location, cache, TE::NoFieldOfType(self.field.clone()));
 
-        if self.is_offset {
-            field_type = ref_of(field_type, cache);
+        if let Some(mutability) = self.offset {
+            field_type = ref_of(mutability, field_type, cache);
         }
 
         result.with_type(field_type)
@@ -2009,7 +2013,7 @@ fn issue_assignment_error<'c>(
     let mutref = mut_polymorphically_shared_ref(cache);
     let mutref = Type::TypeApplication(Box::new(mutref), vec![var]);
 
-    if let Err(msg) = try_unify(&mutref, lhs, lhs_loc, cache, TE::AssignToNonMutRef) {
+    if let Err(msg) = try_unify(lhs, &mutref, lhs_loc, cache, TE::AssignToNonMutRef) {
         cache.push_full_diagnostic(msg);
     } else {
         let inner_type = match follow_bindings_in_cache(lhs, cache) {

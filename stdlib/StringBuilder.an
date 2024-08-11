@@ -15,14 +15,14 @@ reserve (s: !StringBuilder) (n: Usz) : Unit =
             print "Error in reserving more elements for Vec"
             return ()
 
-        s.&data := ptr
-        s.&cap := new_size
+        s.!data := ptr
+        s.!cap := new_size
 
 // append a string
 append (s: !StringBuilder) (new_str: String) : Unit =
     reserve s new_str.length
     memcpy (cast (cast s.data + s.length)) new_str.c_string (cast (new_str.length+1))
-    s.&length := s.length + new_str.length
+    s.!length := s.length + new_str.length
 
 // convert to string
 to_string (s: StringBuilder) : String =

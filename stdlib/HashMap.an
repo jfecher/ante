@@ -19,8 +19,8 @@ clear (map: !HashMap k v) : Unit =
     if map.capacity != 0 then
         repeat map.capacity fn i ->
             entry = mut deref_ptr <| offset map.entries i
-            entry.&occupied := false
-            entry.&tombstone := false
+            entry.!occupied := false
+            entry.!tombstone := false
 
 resize (map: !HashMap k v) (new_capacity: Usz) : Unit =
     if new_capacity > map.capacity then
@@ -36,8 +36,8 @@ resize (map: !HashMap k v) (new_capacity: Usz) : Unit =
             if entry.occupied then
                 insert new_map entry.key entry.value
 
-        map.&capacity := new_capacity
-        map.&entries := new_memory
+        map.!capacity := new_capacity
+        map.!entries := new_memory
 
 // Should we resize this map when pushing another element?
 should_resize (map: HashMap k v) : Bool =
@@ -66,7 +66,7 @@ insert (map: !HashMap k v) (key: k) (value: v) : Unit =
         if not iter_until map key value 0 h then
             panic "Failed to insert entry into map"
 
-    map.&len := map.len + 1usz
+    map.!len := map.len + 1usz
 
 // TODO: Name resolution issue preventing this from being visible to iter_until
 // if it is defined within get_entry
@@ -110,9 +110,9 @@ remove (map: !HashMap k v) (key: k) : Maybe v =
     | None -> None
     | Some e2 ->
         entry = ptr_to_ref e2
-        entry.&occupied := false
-        entry.&tombstone := true
-        map.&len := map.len - 1
+        entry.!occupied := false
+        entry.!tombstone := true
+        map.!len := map.len - 1
         Some entry.value
 
 impl Print (HashMap k v) given Print k, Print v with

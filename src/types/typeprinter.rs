@@ -286,16 +286,16 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
         let parenthesize = matches!(shared, Type::Tag(_)) || self.debug;
 
         if parenthesize {
-            write!(f, "(")?;
+            write!(f, "{}", "(".blue())?;
         }
 
         match mutable {
-            Type::Tag(tag) => write!(f, "{tag}")?,
-            _ => write!(f, "?")?,
+            Type::Tag(tag) => write!(f, "{}", tag.to_string().blue())?,
+            _ => write!(f, "{}", "&".blue())?,
         }
 
         if let Type::Tag(tag) = shared {
-            write!(f, "{tag}")?;
+            write!(f, "{}", tag.to_string().blue())?;
         }
 
         if self.debug {
@@ -304,7 +304,7 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
         }
 
         if parenthesize {
-            write!(f, ")")?;
+            write!(f, "{}", ")".blue())?;
         }
         Ok(())
     }

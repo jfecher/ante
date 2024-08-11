@@ -555,7 +555,7 @@ impl<'c> NameResolver {
         let expected = self.get_expected_type_argument_count(constructor, cache);
         if args.len() != expected && !matches!(constructor, Type::TypeVariable(_)) {
             let typename = constructor.display(cache).to_string();
-            cache.push_diagnostic(location, D::IncorrectConstructorArgCount(typename, expected, args.len()));
+            cache.push_diagnostic(location, D::IncorrectConstructorArgCount(typename, args.len(), expected));
         }
 
         // Check argument is an integer/float type (issue #146)
@@ -1413,7 +1413,7 @@ impl<'c> Resolvable<'c> for ast::TraitImpl<'c> {
         let required_arg_count = trait_info.typeargs.len() + trait_info.fundeps.len();
         if self.trait_args.len() != required_arg_count {
             let trait_name = self.trait_name.clone();
-            let error = D::IncorrectImplTraitArgCount(trait_name, self.trait_args.len(), required_arg_count);
+            let error = D::IncorrectImplTraitArgCount(trait_name, required_arg_count, self.trait_args.len());
             cache.push_diagnostic(self.location, error);
         }
 

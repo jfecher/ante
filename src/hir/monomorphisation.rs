@@ -1572,17 +1572,17 @@ impl<'c> Context<'c> {
         let result_type = self.convert_type(member_access.typ.as_ref().unwrap());
 
         // If our collection type is a ref we do a ptr offset instead of a direct access
-        match (ref_type, member_access.is_offset) {
-            (Some(elem_type), true) => {
+        match (ref_type, member_access.offset) {
+            (Some(elem_type), Some(_)) => {
                 let offset = Self::get_field_offset(&elem_type, index);
                 offset_ptr(lhs, offset as u64)
             },
-            (Some(elem_type), false) => {
+            (Some(elem_type), None) => {
                 let lhs = hir::Ast::Builtin(hir::Builtin::Deref(Box::new(lhs), elem_type));
                 Self::extract(lhs, index, result_type)
             },
             _ => {
-                assert!(!member_access.is_offset);
+                assert!(member_access.offset.is_none());
                 Self::extract(lhs, index, result_type)
             },
         }

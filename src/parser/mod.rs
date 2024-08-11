@@ -664,8 +664,12 @@ fn pattern_function_argument<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> 
 fn member_access<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
     let (mut input, mut arg, mut location) = argument(input)?;
 
-    while input[0].0 == Token::MemberAccess || input[0].0 == Token::MemberReference {
-        let is_reference = input[0].0 == Token::MemberReference;
+    while input[0].0 == Token::MemberAccess || input[0].0 == Token::MemberRef || input[0].0 == Token::MemberMutRef {
+        let is_reference = match input[0].0 {
+            Token::MemberMutRef => Some(Mutability::Mutable),
+            Token::MemberRef => Some(Mutability::Immutable),
+            _ => None,
+        };
         input = &input[1..];
 
         let (new_input, field, field_location) = no_backtracking(identifier)(input)?;

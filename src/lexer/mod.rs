@@ -567,7 +567,8 @@ impl<'cache, 'contents> Iterator for Lexer<'cache, 'contents> {
                 self.previous_token_expects_indent = true;
                 self.advance2_with(Token::RightArrow)
             },
-            ('.', '&') => self.advance2_with(Token::MemberReference),
+            ('.', '&') => self.advance2_with(Token::MemberRef),
+            ('.', '!') => self.advance2_with(Token::MemberMutRef),
             ('.', _) => self.advance_with(Token::MemberAccess),
             ('-', _) => self.lex_negative(),
             ('!', '=') => self.advance2_with(Token::NotEqual),

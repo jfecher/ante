@@ -32,8 +32,8 @@ reserve (v: !Vec t) (numElems: Usz) : Unit =
             print "Error in reserving more elements for Vec"
             return ()
 
-        v.&data := ptr
-        v.&cap := v.cap + numElems
+        v.!data := ptr
+        v.!cap := v.cap + numElems
 
 //push an element onto the end of the vector.
 //resizes if necessary
@@ -42,26 +42,26 @@ push (v: !Vec t) (elem: t) : Unit =
         reserve v (if v.cap == 0usz then 1 else v.cap)
 
     array_insert v.data v.len elem
-    v.&len := v.len + 1usz
+    v.!len := v.len + 1usz
 
 //pop the last element off if it exists
 //this will never resize the vector.
 pop (v: !Vec t) : Maybe t =
     if is_empty v then None
     else
-        v.&len := v.len - 1
+        v.!len := v.len - 1
         Some (v.data#v.len)
 
 //remove the element at the given index and return it.
 //will error if the index is out of bounds.
 remove_index (v: !Vec t) (idx:Usz) : t =
     if idx == v.len - 1 then
-        v.&len := v.len - 1
+        v.!len := v.len - 1
     else if idx >= 0 and idx < v.len - 1 then
         iter_range idx (v.len - 1) fn i ->
             array_insert v.data i (v.data#(i+1))
 
-        v.&len := v.len - 1
+        v.!len := v.len - 1
     else
         panic "Vec.remove_index: index ${idx} out of bounds for Vec of length ${v.len}"
 
@@ -100,7 +100,7 @@ remove_indices (v: !Vec t) (idxs: Vec Usz) : Unit =
             iter_range (cur + 1) v.len fn j ->
                 array_insert v.data (j - @moved) (v.data#j)
 
-    v.&len := v.len - @moved
+    v.!len := v.len - @moved
 
 //remove all matching elements from the vector and
 //return the number of elements removed.
@@ -121,7 +121,7 @@ remove_all (v: !Vec t) (elem: t) : Usz =
 swap_last (v: !Vec t) (idx:Usz) : Bool =
     if idx >= v.len or idx + 1 == v.len then false
     else
-        v.&len := v.len - 1
+        v.!len := v.len - 1
         array_insert v.data idx (v.data#v.len)
         true
 
