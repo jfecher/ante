@@ -17,6 +17,7 @@ use colored::*;
 use super::effects::EffectSet;
 use super::typechecker::follow_bindings_in_cache;
 use super::GeneralizedType;
+use super::TypePriority;
 
 /// Wrapper containing the information needed to print out a type
 pub struct TypePrinter<'a, 'b> {
@@ -186,9 +187,14 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
     }
 
     fn fmt_function(&self, function: &FunctionType, f: &mut Formatter) -> std::fmt::Result {
-        write!(f, "{}", "(".blue())?;
         for (i, param) in function.parameters.iter().enumerate() {
+            if TypePriority::FUN >= param.priority() {
+                write!(f, "{}", "(".blue())?;
+            }
             self.fmt_type(param, f)?;
+            if TypePriority::FUN >= param.priority() {
+                write!(f, "{}", ")".blue())?;
+            }
             write!(f, " ")?;
 
             if i != function.parameters.len() - 1 {
@@ -206,12 +212,19 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             write!(f, "{}", "=> ".blue())?;
         }
 
+        // No parentheses are necessary if the precedence is the same, because `->` is right associative.
+        // i.e. `a -> b -> c` means `a -> (b -> c)`
+        if TypePriority::FUN > function.return_type.priority() {
+            write!(f, "{}", "(".blue())?;
+        }
         self.fmt_type(function.return_type.as_ref(), f)?;
+        if TypePriority::FUN > function.return_type.priority() {
+            write!(f, "{}", ")".blue())?;
+        }
 
         write!(f, "{}", " can ".blue())?;
         self.fmt_type(&function.effects, f)?;
-
-        write!(f, "{}", ")".blue())
+        Ok(())
     }
 
     fn fmt_type_variable(&self, id: TypeVariableId, f: &mut Formatter) -> std::fmt::Result {
@@ -242,7 +255,14 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
                 self.fmt_type(constructor, f)?;
                 for arg in args {
                     write!(f, " ")?;
+                    // `(app f (app a b))` should be represented as `f (a b)`
+                    if TypePriority::APP >= arg.priority() {
+                        write!(f, "{}", "(".blue())?;
+                    }
                     self.fmt_type(arg, f)?;
+                    if TypePriority::APP >= arg.priority() {
+                        write!(f, "{}", ")".blue())?;
+                    }
                 }
             }
             Ok(())
@@ -301,14 +321,20 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
     }
 
     fn fmt_forall(&self, typevars: &[TypeVariableId], typ: &Type, f: &mut Formatter) -> std::fmt::Result {
-        write!(f, "{}", "(forall".blue())?;
-        for typevar in typevars.iter() {
+        write!(f, "{}", "forall".blue())?;
+        for typevar in typevars {
             write!(f, " ")?;
             self.fmt_type_variable(*typevar, f)?;
         }
         write!(f, "{}", ". ".blue())?;
-        self.fmt_type(typ, f)?;
-        write!(f, "{}", ")".blue())
+        if TypePriority::FORALL > typ.priority() {
+            write!(f, "{}", "(".blue())?;
+            self.fmt_type(typ, f)?;
+            write!(f, "{}", ")".blue())?;
+        } else {
+            self.fmt_type(typ, f)?;
+        }
+        Ok(())
     }
 
     fn fmt_struct(
