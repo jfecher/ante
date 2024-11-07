@@ -15,8 +15,8 @@ use std::fmt::{Debug, Display, Formatter};
 use colored::*;
 
 use super::effects::EffectSet;
-use super::GeneralizedType;
 use super::typechecker::follow_bindings_in_cache;
+use super::GeneralizedType;
 
 /// Wrapper containing the information needed to print out a type
 pub struct TypePrinter<'a, 'b> {
@@ -232,55 +232,46 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
 
     fn fmt_type_application(&self, constructor: &Type, args: &[Type], f: &mut Formatter) -> std::fmt::Result {
         if constructor.is_polymorphic_int_type() {
-            self.fmt_polymorphic_numeral(args, f, "Int")
+            self.fmt_polymorphic_numeral(&args[0], f, "Int")
         } else if constructor.is_polymorphic_float_type() {
-            self.fmt_polymorphic_numeral(args, f, "Float")
+            self.fmt_polymorphic_numeral(&args[0], f, "Float")
         } else {
-            write!(f, "{}", "(".blue())?;
-
             if constructor.is_pair_type() {
-                self.fmt_pair(args, f)?;
+                self.fmt_pair(&args[0], &args[1], f)?;
             } else {
                 self.fmt_type(constructor, f)?;
-                for arg in args.iter() {
+                for arg in args {
                     write!(f, " ")?;
                     self.fmt_type(arg, f)?;
                 }
             }
-
-            write!(f, "{}", ")".blue())
+            Ok(())
         }
     }
 
-    fn fmt_pair(&self, args: &[Type], f: &mut Formatter) -> std::fmt::Result {
-        assert_eq!(args.len(), 2);
+    fn fmt_pair(&self, arg1: &Type, arg2: &Type, f: &mut Formatter) -> std::fmt::Result {
+        write!(f, "{}", "(".blue())?;
 
-        self.fmt_type(&args[0], f)?;
+        self.fmt_type(arg1, f)?;
 
         write!(f, "{}", ", ".blue())?;
 
-        match &args[1] {
-            Type::TypeApplication(constructor, args) if constructor.is_pair_type() => self.fmt_pair(args, f),
-            other => self.fmt_type(other, f),
-        }
+        self.fmt_type(arg2, f)?;
+
+        write!(f, "{}", ")".blue())
     }
 
-    fn fmt_polymorphic_numeral(&self, args: &[Type], f: &mut Formatter, kind: &str) -> std::fmt::Result {
-        assert_eq!(args.len(), 1);
-
-        match self.cache.follow_typebindings_shallow(&args[0]) {
+    fn fmt_polymorphic_numeral(&self, arg: &Type, f: &mut Formatter, kind: &str) -> std::fmt::Result {
+        match self.cache.follow_typebindings_shallow(arg) {
             Type::TypeVariable(_) => {
-                write!(f, "{}{} ", "(".blue(), kind.blue())?;
-                self.fmt_type(&args[0], f)?;
-                write!(f, "{}", ")".blue())
+                write!(f, "{} ", kind.blue())?;
+                self.fmt_type(arg, f)
             },
             other => self.fmt_type(other, f),
         }
     }
 
-    fn fmt_ref(
-        &self, shared: &Type, mutable: &Type, lifetime: &Type, f: &mut Formatter,
-    ) -> std::fmt::Result {
+    fn fmt_ref(&self, shared: &Type, mutable: &Type, lifetime: &Type, f: &mut Formatter) -> std::fmt::Result {
         let mutable = follow_bindings_in_cache(mutable, self.cache);
         let shared = follow_bindings_in_cache(shared, self.cache);
         let parenthesize = matches!(shared, Type::Tag(_)) || self.debug;
