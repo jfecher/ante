@@ -241,10 +241,14 @@ impl Type {
         }
     }
 
-    pub fn priority(&self) -> TypePriority {
+    pub fn priority(&self, cache: &ModuleCache<'_>) -> TypePriority {
         use Type::*;
         match self {
-            Primitive(_) | TypeVariable(_) | UserDefined(_) | Struct(_, _) | Tag(_) => TypePriority::MAX,
+            Primitive(_) | UserDefined(_) | Struct(_, _) | Tag(_) => TypePriority::MAX,
+            TypeVariable(id) => match &cache.type_bindings[id.0] {
+                TypeBinding::Bound(typ) => typ.priority(cache),
+                TypeBinding::Unbound(..) => TypePriority::MAX,
+            },
             Function(_) => TypePriority::FUN,
             TypeApplication(ctor, _) => {
                 if ctor.is_pair_type() {
@@ -482,9 +486,9 @@ impl GeneralizedType {
         }
     }
 
-    pub fn priority(&self) -> TypePriority {
+    pub fn priority(&self, cache: &ModuleCache<'_>) -> TypePriority {
         match self {
-            GeneralizedType::MonoType(typ) => typ.priority(),
+            GeneralizedType::MonoType(typ) => typ.priority(cache),
             GeneralizedType::PolyType(..) => TypePriority::FORALL,
         }
     }

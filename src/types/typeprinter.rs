@@ -188,11 +188,11 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
 
     fn fmt_function(&self, function: &FunctionType, f: &mut Formatter) -> std::fmt::Result {
         for (i, param) in function.parameters.iter().enumerate() {
-            if TypePriority::FUN >= param.priority() {
+            if TypePriority::FUN >= param.priority(&self.cache) {
                 write!(f, "{}", "(".blue())?;
             }
             self.fmt_type(param, f)?;
-            if TypePriority::FUN >= param.priority() {
+            if TypePriority::FUN >= param.priority(&self.cache) {
                 write!(f, "{}", ")".blue())?;
             }
             write!(f, " ")?;
@@ -214,11 +214,11 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
 
         // No parentheses are necessary if the precedence is the same, because `->` is right associative.
         // i.e. `a -> b -> c` means `a -> (b -> c)`
-        if TypePriority::FUN > function.return_type.priority() {
+        if TypePriority::FUN > function.return_type.priority(&self.cache) {
             write!(f, "{}", "(".blue())?;
         }
         self.fmt_type(function.return_type.as_ref(), f)?;
-        if TypePriority::FUN > function.return_type.priority() {
+        if TypePriority::FUN > function.return_type.priority(&self.cache) {
             write!(f, "{}", ")".blue())?;
         }
 
@@ -256,11 +256,11 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
                 for arg in args {
                     write!(f, " ")?;
                     // `(app f (app a b))` should be represented as `f (a b)`
-                    if TypePriority::APP >= arg.priority() {
+                    if TypePriority::APP >= arg.priority(&self.cache) {
                         write!(f, "{}", "(".blue())?;
                     }
                     self.fmt_type(arg, f)?;
-                    if TypePriority::APP >= arg.priority() {
+                    if TypePriority::APP >= arg.priority(&self.cache) {
                         write!(f, "{}", ")".blue())?;
                     }
                 }
@@ -270,21 +270,21 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
     }
 
     fn fmt_pair(&self, arg1: &Type, arg2: &Type, f: &mut Formatter) -> std::fmt::Result {
-        if TypePriority::PAIR >= arg1.priority() {
+        if TypePriority::PAIR >= arg1.priority(&self.cache) {
             write!(f, "{}", "(".blue())?;
         }
         self.fmt_type(arg1, f)?;
-        if TypePriority::PAIR >= arg1.priority() {
+        if TypePriority::PAIR >= arg1.priority(&self.cache) {
             write!(f, "{}", ")".blue())?;
         }
         write!(f, "{}", ", ".blue())?;
-        // `(,)` is right-associative.
-        // `a, b, .., n, m` means `(a, (b, (.. (n, m)..)))`.
-        if TypePriority::PAIR > arg2.priority() {
+        // Because `(,)` is right-associative, omit parentheses if it has equal priority.
+        // e.g. `a, b, .., n, m` means `(a, (b, (.. (n, m)..)))`.
+        if TypePriority::PAIR > arg2.priority(&self.cache) {
             write!(f, "{}", "(".blue())?;
         }
         self.fmt_type(arg2, f)?;
-        if TypePriority::PAIR > arg2.priority() {
+        if TypePriority::PAIR > arg2.priority(&self.cache) {
             write!(f, "{}", ")".blue())?;
         }
         Ok(())
@@ -336,7 +336,7 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             self.fmt_type_variable(*typevar, f)?;
         }
         write!(f, "{}", ". ".blue())?;
-        if TypePriority::FORALL > typ.priority() {
+        if TypePriority::FORALL > typ.priority(&self.cache) {
             write!(f, "{}", "(".blue())?;
             self.fmt_type(typ, f)?;
             write!(f, "{}", ")".blue())?;
