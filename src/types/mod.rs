@@ -250,6 +250,8 @@ impl Type {
                 TypeBinding::Unbound(..) => TypePriority::MAX,
             },
             Function(_) => TypePriority::FUN,
+            TypeApplication(ctor, _) if ctor.is_polymorphic_int_type() => TypePriority::MAX,
+            TypeApplication(ctor, _) if ctor.is_polymorphic_float_type() => TypePriority::MAX,
             TypeApplication(ctor, _) => {
                 if ctor.is_pair_type() {
                     TypePriority::PAIR
