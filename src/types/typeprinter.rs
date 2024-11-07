@@ -270,15 +270,24 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
     }
 
     fn fmt_pair(&self, arg1: &Type, arg2: &Type, f: &mut Formatter) -> std::fmt::Result {
-        write!(f, "{}", "(".blue())?;
-
+        if TypePriority::PAIR >= arg1.priority() {
+            write!(f, "{}", "(".blue())?;
+        }
         self.fmt_type(arg1, f)?;
-
+        if TypePriority::PAIR >= arg1.priority() {
+            write!(f, "{}", ")".blue())?;
+        }
         write!(f, "{}", ", ".blue())?;
-
+        // `(,)` is right-associative.
+        // `a, b, .., n, m` means `(a, (b, (.. (n, m)..)))`.
+        if TypePriority::PAIR > arg2.priority() {
+            write!(f, "{}", "(".blue())?;
+        }
         self.fmt_type(arg2, f)?;
-
-        write!(f, "{}", ")".blue())
+        if TypePriority::PAIR > arg2.priority() {
+            write!(f, "{}", ")".blue())?;
+        }
+        Ok(())
     }
 
     fn fmt_polymorphic_numeral(&self, arg: &Type, f: &mut Formatter, kind: &str) -> std::fmt::Result {

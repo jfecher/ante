@@ -45,8 +45,9 @@ impl std::fmt::Display for TypePriority {
 
 impl TypePriority {
     pub const MAX: TypePriority = TypePriority(u8::MAX);
-    pub const APP: TypePriority = TypePriority(3);
-    pub const FORALL: TypePriority = TypePriority(2);
+    pub const APP: TypePriority = TypePriority(4);
+    pub const FORALL: TypePriority = TypePriority(3);
+    pub const PAIR: TypePriority = TypePriority(2);
     pub const FUN: TypePriority = TypePriority(1);
 }
 
@@ -245,7 +246,13 @@ impl Type {
         match self {
             Primitive(_) | TypeVariable(_) | UserDefined(_) | Struct(_, _) | Tag(_) => TypePriority::MAX,
             Function(_) => TypePriority::FUN,
-            TypeApplication(_, _) => TypePriority::APP,
+            TypeApplication(ctor, _) => {
+                if ctor.is_pair_type() {
+                    TypePriority::PAIR
+                } else {
+                    TypePriority::APP
+                }
+            },
             Ref { .. } => TypePriority::APP,
             Effects(_) => unimplemented!("Type::priority for Effects"),
         }
