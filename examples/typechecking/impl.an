@@ -23,5 +23,5 @@ c = foo "one" "two"
 // a : I32
 // b : F64
 // c : String
-// foo : (forall a b. (a - a -> a can b))
+// foo : forall a b. (a - a -> a can b)
 //   given Foo a
