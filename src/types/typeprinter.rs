@@ -15,8 +15,9 @@ use std::fmt::{Debug, Display, Formatter};
 use colored::*;
 
 use super::effects::EffectSet;
-use super::GeneralizedType;
 use super::typechecker::follow_bindings_in_cache;
+use super::GeneralizedType;
+use super::TypePriority;
 
 /// Wrapper containing the information needed to print out a type
 pub struct TypePrinter<'a, 'b> {
@@ -186,9 +187,14 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
     }
 
     fn fmt_function(&self, function: &FunctionType, f: &mut Formatter) -> std::fmt::Result {
-        write!(f, "{}", "(".blue())?;
         for (i, param) in function.parameters.iter().enumerate() {
+            if TypePriority::FUN >= param.priority(&self.cache) {
+                write!(f, "{}", "(".blue())?;
+            }
             self.fmt_type(param, f)?;
+            if TypePriority::FUN >= param.priority(&self.cache) {
+                write!(f, "{}", ")".blue())?;
+            }
             write!(f, " ")?;
 
             if i != function.parameters.len() - 1 {
@@ -206,12 +212,19 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             write!(f, "{}", "=> ".blue())?;
         }
 
+        // No parentheses are necessary if the precedence is the same, because `->` is right associative.
+        // i.e. `a -> b -> c` means `a -> (b -> c)`
+        if TypePriority::FUN > function.return_type.priority(&self.cache) {
+            write!(f, "{}", "(".blue())?;
+        }
         self.fmt_type(function.return_type.as_ref(), f)?;
+        if TypePriority::FUN > function.return_type.priority(&self.cache) {
+            write!(f, "{}", ")".blue())?;
+        }
 
         write!(f, "{}", " can ".blue())?;
         self.fmt_type(&function.effects, f)?;
-
-        write!(f, "{}", ")".blue())
+        Ok(())
     }
 
     fn fmt_type_variable(&self, id: TypeVariableId, f: &mut Formatter) -> std::fmt::Result {
@@ -232,55 +245,62 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
 
     fn fmt_type_application(&self, constructor: &Type, args: &[Type], f: &mut Formatter) -> std::fmt::Result {
         if constructor.is_polymorphic_int_type() {
-            self.fmt_polymorphic_numeral(args, f, "Int")
+            self.fmt_polymorphic_numeral(&args[0], f, "Int")
         } else if constructor.is_polymorphic_float_type() {
-            self.fmt_polymorphic_numeral(args, f, "Float")
+            self.fmt_polymorphic_numeral(&args[0], f, "Float")
         } else {
-            write!(f, "{}", "(".blue())?;
-
             if constructor.is_pair_type() {
-                self.fmt_pair(args, f)?;
+                self.fmt_pair(&args[0], &args[1], f)?;
             } else {
                 self.fmt_type(constructor, f)?;
-                for arg in args.iter() {
+                for arg in args {
                     write!(f, " ")?;
+                    // `(app f (app a b))` should be represented as `f (a b)`
+                    if TypePriority::APP >= arg.priority(&self.cache) {
+                        write!(f, "{}", "(".blue())?;
+                    }
                     self.fmt_type(arg, f)?;
+                    if TypePriority::APP >= arg.priority(&self.cache) {
+                        write!(f, "{}", ")".blue())?;
+                    }
                 }
             }
-
-            write!(f, "{}", ")".blue())
+            Ok(())
         }
     }
 
-    fn fmt_pair(&self, args: &[Type], f: &mut Formatter) -> std::fmt::Result {
-        assert_eq!(args.len(), 2);
-
-        self.fmt_type(&args[0], f)?;
-
+    fn fmt_pair(&self, arg1: &Type, arg2: &Type, f: &mut Formatter) -> std::fmt::Result {
+        if TypePriority::PAIR >= arg1.priority(&self.cache) {
+            write!(f, "{}", "(".blue())?;
+        }
+        self.fmt_type(arg1, f)?;
+        if TypePriority::PAIR >= arg1.priority(&self.cache) {
+            write!(f, "{}", ")".blue())?;
+        }
         write!(f, "{}", ", ".blue())?;
-
-        match &args[1] {
-            Type::TypeApplication(constructor, args) if constructor.is_pair_type() => self.fmt_pair(args, f),
-            other => self.fmt_type(other, f),
+        // Because `(,)` is right-associative, omit parentheses if it has equal priority.
+        // e.g. `a, b, .., n, m` means `(a, (b, (.. (n, m)..)))`.
+        if TypePriority::PAIR > arg2.priority(&self.cache) {
+            write!(f, "{}", "(".blue())?;
         }
+        self.fmt_type(arg2, f)?;
+        if TypePriority::PAIR > arg2.priority(&self.cache) {
+            write!(f, "{}", ")".blue())?;
+        }
+        Ok(())
     }
 
-    fn fmt_polymorphic_numeral(&self, args: &[Type], f: &mut Formatter, kind: &str) -> std::fmt::Result {
-        assert_eq!(args.len(), 1);
-
-        match self.cache.follow_typebindings_shallow(&args[0]) {
+    fn fmt_polymorphic_numeral(&self, arg: &Type, f: &mut Formatter, kind: &str) -> std::fmt::Result {
+        match self.cache.follow_typebindings_shallow(arg) {
             Type::TypeVariable(_) => {
-                write!(f, "{}{} ", "(".blue(), kind.blue())?;
-                self.fmt_type(&args[0], f)?;
-                write!(f, "{}", ")".blue())
+                write!(f, "{} ", kind.blue())?;
+                self.fmt_type(arg, f)
             },
             other => self.fmt_type(other, f),
         }
     }
 
-    fn fmt_ref(
-        &self, shared: &Type, mutable: &Type, lifetime: &Type, f: &mut Formatter,
-    ) -> std::fmt::Result {
+    fn fmt_ref(&self, shared: &Type, mutable: &Type, lifetime: &Type, f: &mut Formatter) -> std::fmt::Result {
         let mutable = follow_bindings_in_cache(mutable, self.cache);
         let shared = follow_bindings_in_cache(shared, self.cache);
         let parenthesize = matches!(shared, Type::Tag(_)) || self.debug;
@@ -310,14 +330,20 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
     }
 
     fn fmt_forall(&self, typevars: &[TypeVariableId], typ: &Type, f: &mut Formatter) -> std::fmt::Result {
-        write!(f, "{}", "(forall".blue())?;
-        for typevar in typevars.iter() {
+        write!(f, "{}", "forall".blue())?;
+        for typevar in typevars {
             write!(f, " ")?;
             self.fmt_type_variable(*typevar, f)?;
         }
         write!(f, "{}", ". ".blue())?;
-        self.fmt_type(typ, f)?;
-        write!(f, "{}", ")".blue())
+        if TypePriority::FORALL > typ.priority(&self.cache) {
+            write!(f, "{}", "(".blue())?;
+            self.fmt_type(typ, f)?;
+            write!(f, "{}", ")".blue())?;
+        } else {
+            self.fmt_type(typ, f)?;
+        }
+        Ok(())
     }
 
     fn fmt_struct(

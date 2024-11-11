@@ -9,8 +9,8 @@ use std::collections::BTreeMap;
 use crate::cache::{DefinitionInfoId, ModuleCache};
 use crate::error::location::{Locatable, Location};
 use crate::lexer::token::{FloatKind, IntegerKind};
-use crate::util::fmap;
 use crate::util;
+use crate::util::fmap;
 
 use self::typeprinter::TypePrinter;
 use crate::types::effects::EffectSet;
@@ -26,6 +26,30 @@ pub mod typeprinter;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct TypeVariableId(pub usize);
+
+/// Priority of operator on Types
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct TypePriority(u8);
+
+impl From<u8> for TypePriority {
+    fn from(priority: u8) -> Self {
+        Self(priority)
+    }
+}
+
+impl std::fmt::Display for TypePriority {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "priority {}", self.0)
+    }
+}
+
+impl TypePriority {
+    pub const MAX: TypePriority = TypePriority(u8::MAX);
+    pub const APP: TypePriority = TypePriority(4);
+    pub const FORALL: TypePriority = TypePriority(3);
+    pub const PAIR: TypePriority = TypePriority(2);
+    pub const FUN: TypePriority = TypePriority(1);
+}
 
 /// Primitive types are the easy cases when unifying types.
 /// They're equal simply if the other type is also the same PrimitiveType variant,
@@ -217,6 +241,36 @@ impl Type {
         }
     }
 
+    pub fn priority(&self, cache: &ModuleCache<'_>) -> TypePriority {
+        use Type::*;
+        match self {
+            Primitive(_) | UserDefined(_) | Struct(_, _) | Tag(_) => TypePriority::MAX,
+            TypeVariable(id) => match &cache.type_bindings[id.0] {
+                TypeBinding::Bound(typ) => typ.priority(cache),
+                TypeBinding::Unbound(..) => TypePriority::MAX,
+            },
+            Function(_) => TypePriority::FUN,
+            TypeApplication(ctor, args) if ctor.is_polymorphic_int_type() || ctor.is_polymorphic_float_type() => {
+                if matches!(cache.follow_typebindings_shallow(&args[0]), Type::TypeVariable(_)) {
+                    // type variable is unbound variable
+                    TypePriority::APP
+                } else {
+                    // type variable is bound (polymorphic int)
+                    TypePriority::MAX
+                }
+            },
+            TypeApplication(ctor, _) => {
+                if ctor.is_pair_type() {
+                    TypePriority::PAIR
+                } else {
+                    TypePriority::APP
+                }
+            },
+            Ref { .. } => TypePriority::APP,
+            Effects(_) => unimplemented!("Type::priority for Effects"),
+        }
+    }
+
     /// Pretty-print each type with each typevar substituted for a, b, c, etc.
     pub fn display<'a, 'b>(&self, cache: &'a ModuleCache<'b>) -> typeprinter::TypePrinter<'a, 'b> {
         let typ = GeneralizedType::MonoType(self.clone());
@@ -257,7 +311,7 @@ impl Type {
                 sharedness.traverse_rec(cache, f);
                 mutability.traverse_rec(cache, f);
                 lifetime.traverse_rec(cache, f);
-            }
+            },
             Type::TypeApplication(constructor, args) => {
                 constructor.traverse_rec(cache, f);
                 for arg in args {
@@ -356,7 +410,7 @@ impl Type {
                 let mutable = mutability.approx_to_string();
                 let lifetime = lifetime.approx_to_string();
                 format!("{}{} '{}", mutable, shared, lifetime)
-            }
+            },
             Type::Struct(fields, id) => {
                 let fields = fmap(fields, |(name, typ)| format!("{}: {}", name, typ.approx_to_string()));
                 format!("{{ {}, ..tv{} }}", fields.join(", "), id.0)
@@ -438,6 +492,13 @@ impl GeneralizedType {
         match self {
             GeneralizedType::MonoType(typ) => typ,
             GeneralizedType::PolyType(_, _) => unreachable!(),
+        }
+    }
+
+    pub fn priority(&self, cache: &ModuleCache<'_>) -> TypePriority {
+        match self {
+            GeneralizedType::MonoType(typ) => typ.priority(cache),
+            GeneralizedType::PolyType(..) => TypePriority::FORALL,
         }
     }
 }

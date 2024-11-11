@@ -12,7 +12,7 @@ exit2 0
 
 // args: --check --show-types
 // expected stdout:
-// add : (forall a. (I32 - I32 -> I32 can a))
-// exit2 : (forall a b. (I32 -> a can b))
-// foo : (forall a b c. (a -> b can c))
-// puts2 : (forall a. (String -> Unit can a))
+// add : forall a. (I32 - I32 -> I32 can a)
+// exit2 : forall a b. (I32 -> a can b)
+// foo : forall a b c. (a -> b can c)
+// puts2 : forall a. (String -> Unit can a)

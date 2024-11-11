@@ -12,9 +12,9 @@ second b + 2i64
 
 // args: --check --show-types
 // expected stdout:
-// a : (U64, I64)
-// b : (U64, I64)
-// c : (U64, I64)
+// a : U64, I64
+// b : U64, I64
+// c : U64, I64
 
 // Expected results with the function block uncommented:
 // f : (forall a. (Unit -> (U64, I64) can a))
