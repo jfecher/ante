@@ -250,21 +250,12 @@ impl Type {
                 TypeBinding::Unbound(..) => TypePriority::MAX,
             },
             Function(_) => TypePriority::FUN,
-            TypeApplication(ctor, args) if ctor.is_polymorphic_int_type() => {
+            TypeApplication(ctor, args) if ctor.is_polymorphic_int_type() || ctor.is_polymorphic_float_type() => {
                 if matches!(cache.follow_typebindings_shallow(&args[0]), Type::TypeVariable(_)) {
                     // type variable is unbound variable
                     TypePriority::APP
                 } else {
                     // type variable is bound (polymorphic int)
-                    TypePriority::MAX
-                }
-            },
-            TypeApplication(ctor, args) if ctor.is_polymorphic_float_type() => {
-                if matches!(cache.follow_typebindings_shallow(&args[0]), Type::TypeVariable(_)) {
-                    // type variable is unbound variable
-                    TypePriority::APP
-                } else {
-                    // type variable is bound (polymorphic float)
                     TypePriority::MAX
                 }
             },
