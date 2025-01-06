@@ -244,8 +244,7 @@ pub fn replace_all_typevars_with_bindings(
 /// If the given TypeVariableId is unbound then return the matching binding in new_bindings.
 /// If there is no binding found, instantiate a new type variable and use that.
 fn replace_typevar_with_binding(
-    id: TypeVariableId, new_bindings: &mut TypeBindings,
-    cache: &mut ModuleCache<'_>,
+    id: TypeVariableId, new_bindings: &mut TypeBindings, cache: &mut ModuleCache<'_>,
 ) -> Type {
     if let Bound(typ) = &cache.type_bindings[id.0] {
         replace_all_typevars_with_bindings(&typ.clone(), new_bindings, cache)
@@ -328,10 +327,7 @@ pub fn bind_typevars(typ: &Type, type_bindings: &TypeBindings, cache: &ModuleCac
 /// Helper for bind_typevars which binds a single TypeVariableId if it is Unbound
 /// and it is found in the type_bindings. If a type_binding wasn't found, a
 /// default TypeVariable is constructed.
-fn bind_typevar(
-    id: TypeVariableId, type_bindings: &TypeBindings,
-    cache: &ModuleCache<'_>,
-) -> Type {
+fn bind_typevar(id: TypeVariableId, type_bindings: &TypeBindings, cache: &ModuleCache<'_>) -> Type {
     // TODO: This ordering of checking type_bindings first is important.
     // There seems to be an issue currently where forall-bound variables
     // can be bound in the cache, so checking the cache for bindings first
@@ -369,7 +365,7 @@ pub fn contains_any_typevars_from_list(typ: &Type, list: &[TypeVariableId], cach
             contains_any_typevars_from_list(mutability, list, cache)
                 || contains_any_typevars_from_list(sharedness, list, cache)
                 || contains_any_typevars_from_list(lifetime, list, cache)
-        }
+        },
 
         TypeApplication(typ, args) => {
             contains_any_typevars_from_list(typ, list, cache)
@@ -569,8 +565,7 @@ pub(super) fn occurs(
             .then_all(&function.parameters, |param| occurs(id, level, param, bindings, fuel, cache)),
         TypeApplication(typ, args) => occurs(id, level, typ, bindings, fuel, cache)
             .then_all(args, |arg| occurs(id, level, arg, bindings, fuel, cache)),
-        Ref { mutability, sharedness, lifetime } => 
-            occurs(id, level, mutability, bindings, fuel, cache)
+        Ref { mutability, sharedness, lifetime } => occurs(id, level, mutability, bindings, fuel, cache)
             .then(|| occurs(id, level, sharedness, bindings, fuel, cache))
             .then(|| occurs(id, level, lifetime, bindings, fuel, cache)),
         Struct(fields, var_id) => typevars_match(id, level, *var_id, bindings, fuel, cache)
@@ -628,7 +623,8 @@ pub fn follow_bindings_in_cache(typ: &Type, cache: &ModuleCache<'_>) -> Type {
 /// This function performs the bulk of the work for the various unification functions.
 #[allow(clippy::nonminimal_bool)]
 pub fn try_unify_with_bindings_inner<'b>(
-    actual: &Type, expected: &Type, bindings: &mut UnificationBindings, location: Location<'b>, cache: &mut ModuleCache<'b>,
+    actual: &Type, expected: &Type, bindings: &mut UnificationBindings, location: Location<'b>,
+    cache: &mut ModuleCache<'b>,
 ) -> Result<(), ()> {
     match (actual, expected) {
         (Primitive(p1), Primitive(p2)) if p1 == p2 => Ok(()),
@@ -641,9 +637,13 @@ pub fn try_unify_with_bindings_inner<'b>(
         //   it to the minimum scope of type variables in b. This happens within the occurs check.
         //   The unification of the LetBindingLevel here is a form of lifetime inference for the
         //   typevar and is used during generalization to determine which variables to generalize.
-        (TypeVariable(id), _) => try_unify_type_variable_with_bindings(*id, actual, expected, true, bindings, location, cache),
+        (TypeVariable(id), _) => {
+            try_unify_type_variable_with_bindings(*id, actual, expected, true, bindings, location, cache)
+        },
 
-        (_, TypeVariable(id)) => try_unify_type_variable_with_bindings(*id, expected, actual, false, bindings, location, cache),
+        (_, TypeVariable(id)) => {
+            try_unify_type_variable_with_bindings(*id, expected, actual, false, bindings, location, cache)
+        },
 
         (Function(function1), Function(function2)) => {
             if function1.parameters.len() != function2.parameters.len() {
@@ -683,8 +683,10 @@ pub fn try_unify_with_bindings_inner<'b>(
         },
 
         // Refs have a hidden lifetime variable we need to unify here
-        (Ref { sharedness: a_shared, mutability: a_mut, lifetime: a_lifetime },
-         Ref { sharedness: b_shared, mutability: b_mut, lifetime: b_lifetime }) => {
+        (
+            Ref { sharedness: a_shared, mutability: a_mut, lifetime: a_lifetime },
+            Ref { sharedness: b_shared, mutability: b_mut, lifetime: b_lifetime },
+        ) => {
             try_unify_with_bindings_inner(a_shared, b_shared, bindings, location, cache)?;
             try_unify_with_bindings_inner(a_mut, b_mut, bindings, location, cache)?;
             try_unify_with_bindings_inner(a_lifetime, b_lifetime, bindings, location, cache)
@@ -865,10 +867,8 @@ fn get_fields(
 /// Unify a single type variable (id arising from the type a) with an expected type b.
 /// Follows the given TypeBindings in bindings and the cache if a is Bound.
 fn try_unify_type_variable_with_bindings<'c>(
-    id: TypeVariableId, a: &Type, b: &Type,
-    typevar_on_lhs: bool,
-    bindings: &mut UnificationBindings, location: Location<'c>,
-    cache: &mut ModuleCache<'c>,
+    id: TypeVariableId, a: &Type, b: &Type, typevar_on_lhs: bool, bindings: &mut UnificationBindings,
+    location: Location<'c>, cache: &mut ModuleCache<'c>,
 ) -> Result<(), ()> {
     match find_binding(id, bindings, cache) {
         Bound(a) => {
@@ -877,7 +877,7 @@ fn try_unify_type_variable_with_bindings<'c>(
             } else {
                 try_unify_with_bindings_inner(b, &a, bindings, location, cache)
             }
-        }
+        },
         Unbound(a_level, _a_kind) => {
             // Create binding for boundTy that is currently empty.
             // Ensure not to create recursive bindings to the same variable
@@ -899,8 +899,8 @@ fn try_unify_type_variable_with_bindings<'c>(
 }
 
 pub fn try_unify_with_bindings<'b>(
-    actual: &Type, expected: &Type, bindings: &mut UnificationBindings, location: Location<'b>, cache: &mut ModuleCache<'b>,
-    error: TypeErrorKind,
+    actual: &Type, expected: &Type, bindings: &mut UnificationBindings, location: Location<'b>,
+    cache: &mut ModuleCache<'b>, error: TypeErrorKind,
 ) -> Result<(), Diagnostic<'b>> {
     match try_unify_with_bindings_inner(actual, expected, bindings, location, cache) {
         Ok(()) => Ok(()),
@@ -945,7 +945,9 @@ pub fn try_unify_all_with_bindings<'c>(
 
 /// Unifies the two given types, remembering the unification results in the cache.
 /// If this operation fails, a user-facing error message is emitted.
-pub fn unify<'c>(actual: &Type, expected: &Type, location: Location<'c>, cache: &mut ModuleCache<'c>, error_kind: TypeErrorKind) {
+pub fn unify<'c>(
+    actual: &Type, expected: &Type, location: Location<'c>, cache: &mut ModuleCache<'c>, error_kind: TypeErrorKind,
+) {
     perform_bindings_or_push_error(try_unify(actual, expected, location, cache, error_kind), cache);
 }
 
@@ -1005,7 +1007,7 @@ pub fn find_all_typevars(typ: &Type, polymorphic_only: bool, cache: &ModuleCache
             type_variables.append(&mut find_all_typevars(sharedness, polymorphic_only, cache));
             type_variables.append(&mut find_all_typevars(lifetime, polymorphic_only, cache));
             type_variables
-        }
+        },
         Struct(fields, id) => match &cache.type_bindings[id.0] {
             Bound(t) => find_all_typevars(t, polymorphic_only, cache),
             Unbound(..) => {
@@ -1489,8 +1491,12 @@ pub fn infer_ast<'a>(ast: &mut ast::Ast<'a>, cache: &mut ModuleCache<'a>) {
     // No traits should be propogated above the top-level main function
     assert!(exposed_traits.is_empty());
 
-    // TODO: Better error message, check for IO effect
-    assert!(result.effects.effects.is_empty());
+    // TODO: Check for IO effect
+    if !result.effects.effects.is_empty() {
+        let effects = Type::Effects(result.effects.clone());
+        let effects = effects.display(cache).to_string();
+        cache.push_diagnostic(ast.locate(), D::UnhandledEffectsInMain(effects));
+    }
 }
 
 pub fn infer<'a, T>(ast: &mut T, cache: &mut ModuleCache<'a>) -> TypeResult

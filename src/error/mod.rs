@@ -83,6 +83,7 @@ pub enum DiagnosticKind {
     NoMatchingImpls(/*constraint*/ String),
     UnreachablePattern,
     MissingCase(/*case*/ String),
+    UnhandledEffectsInMain(/*effects*/ String),
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -313,7 +314,7 @@ impl Display for DiagnosticKind {
             },
             DiagnosticKind::TypeError(TypeErrorKind::MonomorphizationError, actual, expected) => {
                 unreachable!(
-                    "Unification error during monomorphisation: Could not unify definition {} with instantiation {}",
+                    "Unification error during monomorphization: Could not unify definition {} with instantiation {}",
                     expected, actual
                 )
             },
@@ -334,6 +335,9 @@ impl Display for DiagnosticKind {
             },
             DiagnosticKind::MissingCase(case) => {
                 write!(f, "Missing case {case}")
+            },
+            DiagnosticKind::UnhandledEffectsInMain(effects) => {
+                write!(f, "Unhandled effects at top-level: {effects}")
             },
         }
     }
@@ -381,6 +385,7 @@ impl DiagnosticKind {
             | InternalError(_)
             | NotAStruct(_)
             | MissingFields(_)
+            | UnhandledEffectsInMain(_)
             | NotAStructField(_) => Error,
         }
     }
