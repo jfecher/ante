@@ -58,7 +58,7 @@ than development updates. You can also feel free to file issues or ask questions
 
 ### Building
 
-Ante currently optionally requires llvm 17.0 while building. If you already have this installed with
+Ante currently optionally requires llvm 18.0 while building. If you already have this installed with
 sources, you may be fine building with `cargo install --path .` alone. If cargo complains
 about not finding any suitable llvm version, you can either choose to build ante without
 the llvm backend via `cargo install --path . --no-default-features` or you can build llvm from
@@ -66,19 +66,19 @@ source via [CMake](#CMake) as covered in the next sections.
 
 #### Linux and Mac
 
-The easiest method to install llvm 17.0 would be through your package manager, making sure to install any `-dev` packages
+The easiest method to install llvm 18.0 would be through your package manager, making sure to install any `-dev` packages
 if they are available for your distro. Once installed, if `cargo b` still cannot find the right version of llvm, you may
-need to make sure to set the `LLVM_SYS_170_PREFIX` to the path llvm was installed to:
+need to make sure to set the `LLVM_SYS_180_PREFIX` to the path llvm was installed to:
 
 ```bash
-$ LLVM_SYS_170_PREFIX=$(llvm-config --obj-root)
+$ LLVM_SYS_180_PREFIX=$(llvm-config --obj-root)
 ```
 
-If your distro ships a version other than llvm 17.0 you can try changing the inkwell dependency Ante's Cargo.toml.
+If your distro ships a version other than llvm 18.0 you can try changing the inkwell dependency Ante's Cargo.toml.
 This dependency controls the llvm version expected and by default it is:
 
 ```toml
-inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm17-0"], optional = true }
+inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm18-0"], optional = true }
 ```
 
 Change the quoted llvm portion to `"llvm-16-0"` for example to build with llvm 16.0. Also don't forget that after changing
