@@ -12,7 +12,7 @@ foo (x: S) (y: S) =
     printne "x before: "
     print x
     z = mut y
-    z.&message := "modifying y"
+    z.!message := "modifying y"
     printne "x after:  "
     print x
 

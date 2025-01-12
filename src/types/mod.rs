@@ -9,9 +9,8 @@ use std::collections::BTreeMap;
 use crate::cache::{DefinitionInfoId, ModuleCache};
 use crate::error::location::{Locatable, Location};
 use crate::lexer::token::{FloatKind, IntegerKind};
-use crate::parser::ast::{Mutability, Sharedness};
+use crate::util;
 use crate::util::fmap;
-use crate::{lifetimes, util};
 
 use self::typeprinter::TypePrinter;
 use crate::types::effects::EffectSet;
@@ -27,6 +26,30 @@ pub mod typeprinter;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct TypeVariableId(pub usize);
+
+/// Priority of operator on Types
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct TypePriority(u8);
+
+impl From<u8> for TypePriority {
+    fn from(priority: u8) -> Self {
+        Self(priority)
+    }
+}
+
+impl std::fmt::Display for TypePriority {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "priority {}", self.0)
+    }
+}
+
+impl TypePriority {
+    pub const MAX: TypePriority = TypePriority(u8::MAX);
+    pub const APP: TypePriority = TypePriority(4);
+    pub const FORALL: TypePriority = TypePriority(3);
+    pub const PAIR: TypePriority = TypePriority(2);
+    pub const FUN: TypePriority = TypePriority(1);
+}
 
 /// Primitive types are the easy cases when unifying types.
 /// They're equal simply if the other type is also the same PrimitiveType variant,
@@ -103,7 +126,7 @@ pub enum Type {
     /// A region-allocated reference to some data.
     /// Contains a region variable that is unified with other refs during type
     /// inference. All these refs will be allocated in the same region.
-    Ref(Sharedness, Mutability, lifetimes::LifetimeVariableId),
+    Ref { mutability: Box<Type>, sharedness: Box<Type>, lifetime: Box<Type> },
 
     /// A (row-polymorphic) struct type. Unlike normal rho variables,
     /// the type variable used here replaces the entire type if bound.
@@ -115,6 +138,22 @@ pub enum Type {
     /// are included in it since they are still valid in a type position
     /// most notably when substituting type variables for effects.
     Effects(EffectSet),
+
+    /// Tags are any type which isn't a valid type by itself but may be inside
+    /// a larger type. For example, `shared` is not a type, but a polymorphic
+    /// reference's type variable may resolve to a shared reference.
+    Tag(TypeTag),
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub enum TypeTag {
+    // References can be polymorphic in their ownership or mutability.
+    // When they are, they hold type variables which later resolve to one
+    // of these variants.
+    Owned,
+    Shared,
+    Mutable,
+    Immutable,
 }
 
 #[derive(Debug, Clone)]
@@ -191,13 +230,44 @@ impl Type {
         use Type::*;
         match self {
             Primitive(_) => None,
-            Ref(..) => None,
+            Ref { .. } => None,
             Function(function) => function.return_type.union_constructor_variants(cache),
             TypeApplication(typ, _) => typ.union_constructor_variants(cache),
             UserDefined(id) => cache.type_infos[id.0].union_variants(),
             TypeVariable(_) => unreachable!("Constructors should always have concrete types"),
             Struct(_, _) => None,
             Effects(_) => None,
+            Tag(_) => None,
+        }
+    }
+
+    pub fn priority(&self, cache: &ModuleCache<'_>) -> TypePriority {
+        use Type::*;
+        match self {
+            Primitive(_) | UserDefined(_) | Struct(_, _) | Tag(_) => TypePriority::MAX,
+            TypeVariable(id) => match &cache.type_bindings[id.0] {
+                TypeBinding::Bound(typ) => typ.priority(cache),
+                TypeBinding::Unbound(..) => TypePriority::MAX,
+            },
+            Function(_) => TypePriority::FUN,
+            TypeApplication(ctor, args) if ctor.is_polymorphic_int_type() || ctor.is_polymorphic_float_type() => {
+                if matches!(cache.follow_typebindings_shallow(&args[0]), Type::TypeVariable(_)) {
+                    // type variable is unbound variable
+                    TypePriority::APP
+                } else {
+                    // type variable is bound (polymorphic int)
+                    TypePriority::MAX
+                }
+            },
+            TypeApplication(ctor, _) => {
+                if ctor.is_pair_type() {
+                    TypePriority::PAIR
+                } else {
+                    TypePriority::APP
+                }
+            },
+            Ref { .. } => TypePriority::APP,
+            Effects(_) => unimplemented!("Type::priority for Effects"),
         }
     }
 
@@ -224,6 +294,7 @@ impl Type {
         match self {
             Type::Primitive(_) => (),
             Type::UserDefined(_) => (),
+            Type::Tag(_) => (),
 
             Type::Function(function) => {
                 for parameter in &function.parameters {
@@ -232,9 +303,14 @@ impl Type {
                 function.environment.traverse_rec(cache, f);
                 function.return_type.traverse_rec(cache, f);
             },
-            Type::TypeVariable(id) | Type::Ref(_, _, id) => match &cache.type_bindings[id.0] {
+            Type::TypeVariable(id) => match &cache.type_bindings[id.0] {
                 TypeBinding::Bound(binding) => binding.traverse_rec(cache, f),
                 TypeBinding::Unbound(_, _) => (),
+            },
+            Type::Ref { sharedness, mutability, lifetime } => {
+                sharedness.traverse_rec(cache, f);
+                mutability.traverse_rec(cache, f);
+                lifetime.traverse_rec(cache, f);
             },
             Type::TypeApplication(constructor, args) => {
                 constructor.traverse_rec(cache, f);
@@ -274,7 +350,7 @@ impl Type {
             Type::Primitive(_) => (),
             Type::UserDefined(_) => (),
             Type::TypeVariable(_) => (),
-            Type::Ref(..) => (),
+            Type::Tag(_) => (),
 
             Type::Function(function) => {
                 for parameter in &function.parameters {
@@ -301,6 +377,10 @@ impl Type {
                     typ.traverse_no_follow_rec(f);
                 }
             },
+            Type::Ref { sharedness, mutability, lifetime: _ } => {
+                sharedness.traverse_no_follow_rec(f);
+                mutability.traverse_no_follow_rec(f);
+            },
         }
     }
 
@@ -325,7 +405,12 @@ impl Type {
                 let args = fmap(args, |arg| arg.approx_to_string());
                 format!("({} {})", constructor, args.join(" "))
             },
-            Type::Ref(shared, mutable, id) => format!("&'{} {}{}", id.0, shared, mutable),
+            Type::Ref { sharedness, mutability, lifetime } => {
+                let shared = sharedness.approx_to_string();
+                let mutable = mutability.approx_to_string();
+                let lifetime = lifetime.approx_to_string();
+                format!("{}{} '{}", mutable, shared, lifetime)
+            },
             Type::Struct(fields, id) => {
                 let fields = fmap(fields, |(name, typ)| format!("{}: {}", name, typ.approx_to_string()));
                 format!("{{ {}, ..tv{} }}", fields.join(", "), id.0)
@@ -341,6 +426,18 @@ impl Type {
                     format!("can {}, ..tv{}", effects.join(", "), set.replacement.0)
                 }
             },
+            Type::Tag(tag) => tag.to_string(),
+        }
+    }
+}
+
+impl std::fmt::Display for TypeTag {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TypeTag::Owned => write!(f, "owned"),
+            TypeTag::Shared => write!(f, "shared"),
+            TypeTag::Mutable => write!(f, "!"),
+            TypeTag::Immutable => write!(f, "&"),
         }
     }
 }
@@ -395,6 +492,13 @@ impl GeneralizedType {
         match self {
             GeneralizedType::MonoType(typ) => typ,
             GeneralizedType::PolyType(_, _) => unreachable!(),
+        }
+    }
+
+    pub fn priority(&self, cache: &ModuleCache<'_>) -> TypePriority {
+        match self {
+            GeneralizedType::MonoType(typ) => typ.priority(cache),
+            GeneralizedType::PolyType(..) => TypePriority::FORALL,
         }
     }
 }

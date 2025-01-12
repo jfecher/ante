@@ -376,8 +376,10 @@ pub struct MemberAccess<'a> {
     pub lhs: Box<Ast<'a>>,
     pub field: String,
     pub location: Location<'a>,
-    /// True if this is an offset .& operation
-    pub is_offset: bool,
+
+    /// If this member access is an offset rather
+    /// than a move/copy, this will contain the mutability of the offset.
+    pub offset: Option<Mutability>,
     pub typ: Option<types::Type>,
 }
 
@@ -716,8 +718,8 @@ impl<'a> Ast<'a> {
         Ast::Extern(Extern { declarations, location, level: None, typ: None })
     }
 
-    pub fn member_access(lhs: Ast<'a>, field: String, is_offset: bool, location: Location<'a>) -> Ast<'a> {
-        Ast::MemberAccess(MemberAccess { lhs: Box::new(lhs), field, is_offset, location, typ: None })
+    pub fn member_access(lhs: Ast<'a>, field: String, offset: Option<Mutability>, location: Location<'a>) -> Ast<'a> {
+        Ast::MemberAccess(MemberAccess { lhs: Box::new(lhs), field, offset, location, typ: None })
     }
 
     pub fn assignment(lhs: Ast<'a>, rhs: Ast<'a>, location: Location<'a>) -> Ast<'a> {

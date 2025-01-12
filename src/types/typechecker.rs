@@ -17,7 +17,7 @@
 //! Most of this file is translated from: https://github.com/jfecher/algorithm-j
 //! That repository may be a good starting place for those new to type inference.
 //! For those already familiar with type inference or more interested in ante's
-//! internals, the reccomended starting place while reading this file is the
+//! internals, the recommended starting place while reading this file is the
 //! `Inferable` trait and its impls for each node. From there, you can see what
 //! type inference does for each node type and inspect any helpers that are used.
 //!
@@ -30,7 +30,7 @@ use crate::cache::{DefinitionInfoId, DefinitionKind, EffectInfoId, ModuleCache, 
 use crate::cache::{ImplScopeId, VariableId};
 use crate::error::location::{Locatable, Location};
 use crate::error::{Diagnostic, DiagnosticKind as D, TypeErrorKind, TypeErrorKind as TE};
-use crate::parser::ast::{self, ClosureEnvironment, Mutability, Sharedness};
+use crate::parser::ast::{self, ClosureEnvironment, Mutability};
 use crate::types::traits::{RequiredTrait, TraitConstraint, TraitConstraints};
 use crate::types::typed::Typed;
 use crate::types::EffectSet;
@@ -46,7 +46,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use super::mutual_recursion::{definition_is_mutually_recursive, try_generalize_definition};
 use super::traits::{Callsite, ConstraintSignature, TraitConstraintId};
-use super::{GeneralizedType, TypeInfoBody};
+use super::{GeneralizedType, TypeInfoBody, TypeTag};
 
 /// The current LetBindingLevel we are at.
 /// This increases by 1 whenever we enter the rhs of a `ast::Definition` and decreases
@@ -66,7 +66,7 @@ type LevelBindings = Vec<(TypeVariableId, LetBindingLevel)>;
 
 /// Arbitrary limit of maximum recursive calls to functions like find_binding.
 /// Expected not to happen but leads to better errors than a stack overflow when it does.
-const RECURSION_LIMIT: u32 = 15;
+const RECURSION_LIMIT: u32 = 100;
 
 #[derive(Debug, Clone)]
 pub struct UnificationBindings {
@@ -152,9 +152,15 @@ pub fn type_application_bindings(info: &TypeInfo<'_>, typeargs: &[Type], cache: 
 }
 
 /// Given `a` returns `ref a`
-fn ref_of(typ: Type, cache: &mut ModuleCache) -> Type {
-    let new_var = next_type_variable_id(cache);
-    let constructor = Box::new(Type::Ref(Sharedness::Polymorphic, Mutability::Polymorphic, new_var));
+fn ref_of(mutability: Mutability, typ: Type, cache: &mut ModuleCache) -> Type {
+    let sharedness = Box::new(next_type_variable(cache));
+    let mutability = match mutability {
+        Mutability::Polymorphic => Box::new(next_type_variable(cache)),
+        Mutability::Immutable => Box::new(Type::Tag(TypeTag::Immutable)),
+        Mutability::Mutable => Box::new(Type::Tag(TypeTag::Mutable)),
+    };
+    let lifetime = Box::new(next_type_variable(cache));
+    let constructor = Box::new(Type::Ref { sharedness, mutability, lifetime });
     TypeApplication(constructor, vec![typ])
 }
 
@@ -188,8 +194,9 @@ pub fn replace_all_typevars_with_bindings(
 ) -> Type {
     match typ {
         Primitive(p) => Primitive(*p),
+        Tag(tag) => Tag(*tag),
 
-        TypeVariable(id) => replace_typevar_with_binding(*id, new_bindings, TypeVariable, cache),
+        TypeVariable(id) => replace_typevar_with_binding(*id, new_bindings, cache),
 
         Function(function) => {
             let parameters = fmap(&function.parameters, |parameter| {
@@ -203,14 +210,11 @@ pub fn replace_all_typevars_with_bindings(
         },
         UserDefined(id) => UserDefined(*id),
 
-        // We must recurse on the lifetime variable since they are unified as normal type variables
-        Ref(sharedness, mutability, lifetime) => {
-            let make_ref = |new_lifetime| Ref(*sharedness, *mutability, new_lifetime);
-            match replace_typevar_with_binding(*lifetime, new_bindings, make_ref, cache) {
-                TypeVariable(new_lifetime) => make_ref(new_lifetime),
-                new_ref @ Ref(..) => new_ref,
-                _ => unreachable!("Bound Ref lifetime to non-lifetime type"),
-            }
+        Ref { mutability, sharedness, lifetime } => {
+            let mutability = Box::new(replace_all_typevars_with_bindings(mutability, new_bindings, cache));
+            let sharedness = Box::new(replace_all_typevars_with_bindings(sharedness, new_bindings, cache));
+            let lifetime = Box::new(replace_all_typevars_with_bindings(lifetime, new_bindings, cache));
+            Ref { sharedness, mutability, lifetime }
         },
 
         TypeApplication(typ, args) => {
@@ -239,12 +243,8 @@ pub fn replace_all_typevars_with_bindings(
 
 /// If the given TypeVariableId is unbound then return the matching binding in new_bindings.
 /// If there is no binding found, instantiate a new type variable and use that.
-///
-/// `default` should be either TypeVariable or Ref and controls which kind of type gets
-/// created that wraps the newly-instantiated TypeVariableId if one is made.
 fn replace_typevar_with_binding(
-    id: TypeVariableId, new_bindings: &mut TypeBindings, default: impl FnOnce(TypeVariableId) -> Type,
-    cache: &mut ModuleCache<'_>,
+    id: TypeVariableId, new_bindings: &mut TypeBindings, cache: &mut ModuleCache<'_>,
 ) -> Type {
     if let Bound(typ) = &cache.type_bindings[id.0] {
         replace_all_typevars_with_bindings(&typ.clone(), new_bindings, cache)
@@ -252,7 +252,7 @@ fn replace_typevar_with_binding(
         var.clone()
     } else {
         let new_typevar = next_type_variable_id(cache);
-        let typ = default(new_typevar);
+        let typ = Type::TypeVariable(new_typevar);
         new_bindings.insert(id, typ.clone());
         typ
     }
@@ -266,8 +266,9 @@ fn replace_typevar_with_binding(
 pub fn bind_typevars(typ: &Type, type_bindings: &TypeBindings, cache: &ModuleCache<'_>) -> Type {
     match typ {
         Primitive(p) => Primitive(*p),
+        Tag(tag) => Tag(*tag),
 
-        TypeVariable(id) => bind_typevar(*id, type_bindings, TypeVariable, cache),
+        TypeVariable(id) => bind_typevar(*id, type_bindings, cache),
 
         Function(function) => {
             let parameters = fmap(&function.parameters, |parameter| bind_typevars(parameter, type_bindings, cache));
@@ -279,13 +280,11 @@ pub fn bind_typevars(typ: &Type, type_bindings: &TypeBindings, cache: &ModuleCac
         },
         UserDefined(id) => UserDefined(*id),
 
-        Ref(sharedness, mutability, lifetime) => {
-            let make_ref = |lifetime| Ref(*sharedness, *mutability, lifetime);
-            match bind_typevar(*lifetime, type_bindings, make_ref, cache) {
-                TypeVariable(new_lifetime) => make_ref(new_lifetime),
-                new_ref @ Ref(..) => new_ref,
-                _ => unreachable!("Bound Ref lifetime to non-lifetime type"),
-            }
+        Ref { mutability, sharedness, lifetime } => {
+            let mutability = Box::new(bind_typevars(mutability, type_bindings, cache));
+            let sharedness = Box::new(bind_typevars(sharedness, type_bindings, cache));
+            let lifetime = Box::new(bind_typevars(lifetime, type_bindings, cache));
+            Ref { sharedness, mutability, lifetime }
         },
 
         TypeApplication(typ, args) => {
@@ -327,11 +326,8 @@ pub fn bind_typevars(typ: &Type, type_bindings: &TypeBindings, cache: &ModuleCac
 
 /// Helper for bind_typevars which binds a single TypeVariableId if it is Unbound
 /// and it is found in the type_bindings. If a type_binding wasn't found, a
-/// default TypeVariable or Ref is constructed by passing the relevant constructor to `default`.
-fn bind_typevar(
-    id: TypeVariableId, type_bindings: &TypeBindings, default: impl FnOnce(TypeVariableId) -> Type,
-    cache: &ModuleCache<'_>,
-) -> Type {
+/// default TypeVariable is constructed.
+fn bind_typevar(id: TypeVariableId, type_bindings: &TypeBindings, cache: &ModuleCache<'_>) -> Type {
     // TODO: This ordering of checking type_bindings first is important.
     // There seems to be an issue currently where forall-bound variables
     // can be bound in the cache, so checking the cache for bindings first
@@ -342,7 +338,7 @@ fn bind_typevar(
             if let Bound(typ) = &cache.type_bindings[id.0] {
                 bind_typevars(&typ.clone(), type_bindings, cache)
             } else {
-                default(id)
+                Type::TypeVariable(id)
             }
         },
     }
@@ -354,6 +350,7 @@ pub fn contains_any_typevars_from_list(typ: &Type, list: &[TypeVariableId], cach
     match typ {
         Primitive(_) => false,
         UserDefined(_) => false,
+        Tag(_) => false,
 
         TypeVariable(id) => type_variable_contains_any_typevars_from_list(*id, list, cache),
 
@@ -364,7 +361,11 @@ pub fn contains_any_typevars_from_list(typ: &Type, list: &[TypeVariableId], cach
                 || contains_any_typevars_from_list(&function.effects, list, cache)
         },
 
-        Ref(_, _, lifetime) => type_variable_contains_any_typevars_from_list(*lifetime, list, cache),
+        Ref { mutability, sharedness, lifetime } => {
+            contains_any_typevars_from_list(mutability, list, cache)
+                || contains_any_typevars_from_list(sharedness, list, cache)
+                || contains_any_typevars_from_list(lifetime, list, cache)
+        },
 
         TypeApplication(typ, args) => {
             contains_any_typevars_from_list(typ, list, cache)
@@ -555,6 +556,7 @@ pub(super) fn occurs(
     match typ {
         Primitive(_) => OccursResult::does_not_occur(),
         UserDefined(_) => OccursResult::does_not_occur(),
+        Tag(_) => OccursResult::does_not_occur(),
 
         TypeVariable(var_id) => typevars_match(id, level, *var_id, bindings, fuel, cache),
         Function(function) => occurs(id, level, &function.return_type, bindings, fuel, cache)
@@ -563,7 +565,9 @@ pub(super) fn occurs(
             .then_all(&function.parameters, |param| occurs(id, level, param, bindings, fuel, cache)),
         TypeApplication(typ, args) => occurs(id, level, typ, bindings, fuel, cache)
             .then_all(args, |arg| occurs(id, level, arg, bindings, fuel, cache)),
-        Ref(_, _, lifetime) => typevars_match(id, level, *lifetime, bindings, fuel, cache),
+        Ref { mutability, sharedness, lifetime } => occurs(id, level, mutability, bindings, fuel, cache)
+            .then(|| occurs(id, level, sharedness, bindings, fuel, cache))
+            .then(|| occurs(id, level, lifetime, bindings, fuel, cache)),
         Struct(fields, var_id) => typevars_match(id, level, *var_id, bindings, fuel, cache)
             .then_all(fields.iter().map(|(_, typ)| typ), |field| occurs(id, level, field, bindings, fuel, cache)),
         Effects(effects) => effects.occurs(id, level, bindings, fuel, cache),
@@ -590,7 +594,7 @@ pub(super) fn typevars_match(
 /// Returns what a given type is bound to, following all typevar links until it reaches an Unbound one.
 pub fn follow_bindings_in_cache_and_map(typ: &Type, bindings: &UnificationBindings, cache: &ModuleCache<'_>) -> Type {
     match typ {
-        TypeVariable(id) | Ref(_, _, id) => match find_binding(*id, bindings, cache) {
+        TypeVariable(id) => match find_binding(*id, bindings, cache) {
             Bound(typ) => follow_bindings_in_cache_and_map(&typ, bindings, cache),
             Unbound(..) => typ.clone(),
         },
@@ -600,7 +604,7 @@ pub fn follow_bindings_in_cache_and_map(typ: &Type, bindings: &UnificationBindin
 
 pub fn follow_bindings_in_cache(typ: &Type, cache: &ModuleCache<'_>) -> Type {
     match typ {
-        TypeVariable(id) | Ref(_, _, id) => match &cache.type_bindings[id.0] {
+        TypeVariable(id) => match &cache.type_bindings[id.0] {
             Bound(typ) => follow_bindings_in_cache(typ, cache),
             Unbound(..) => typ.clone(),
         },
@@ -619,9 +623,10 @@ pub fn follow_bindings_in_cache(typ: &Type, cache: &ModuleCache<'_>) -> Type {
 /// This function performs the bulk of the work for the various unification functions.
 #[allow(clippy::nonminimal_bool)]
 pub fn try_unify_with_bindings_inner<'b>(
-    t1: &Type, t2: &Type, bindings: &mut UnificationBindings, location: Location<'b>, cache: &mut ModuleCache<'b>,
+    actual: &Type, expected: &Type, bindings: &mut UnificationBindings, location: Location<'b>,
+    cache: &mut ModuleCache<'b>,
 ) -> Result<(), ()> {
-    match (t1, t2) {
+    match (actual, expected) {
         (Primitive(p1), Primitive(p2)) if p1 == p2 => Ok(()),
 
         (UserDefined(id1), UserDefined(id2)) if id1 == id2 => Ok(()),
@@ -632,9 +637,13 @@ pub fn try_unify_with_bindings_inner<'b>(
         //   it to the minimum scope of type variables in b. This happens within the occurs check.
         //   The unification of the LetBindingLevel here is a form of lifetime inference for the
         //   typevar and is used during generalization to determine which variables to generalize.
-        (TypeVariable(id), _) => try_unify_type_variable_with_bindings(*id, t1, t2, bindings, location, cache),
+        (TypeVariable(id), _) => {
+            try_unify_type_variable_with_bindings(*id, actual, expected, true, bindings, location, cache)
+        },
 
-        (_, TypeVariable(id)) => try_unify_type_variable_with_bindings(*id, t2, t1, bindings, location, cache),
+        (_, TypeVariable(id)) => {
+            try_unify_type_variable_with_bindings(*id, expected, actual, false, bindings, location, cache)
+        },
 
         (Function(function1), Function(function2)) => {
             if function1.parameters.len() != function2.parameters.len() {
@@ -651,7 +660,9 @@ pub fn try_unify_with_bindings_inner<'b>(
                 try_unify_with_bindings_inner(a_arg, b_arg, bindings, location, cache)?
             }
 
-            try_unify_with_bindings_inner(&function1.return_type, &function2.return_type, bindings, location, cache)?;
+            // Reverse the arguments when checking return types to preserve
+            // some subtyping relations with mutable & immutable references.
+            try_unify_with_bindings_inner(&function2.return_type, &function1.return_type, bindings, location, cache)?;
             try_unify_with_bindings_inner(&function1.environment, &function2.environment, bindings, location, cache)?;
             try_unify_with_bindings_inner(&function1.effects, &function2.effects, bindings, location, cache)
         },
@@ -672,16 +683,13 @@ pub fn try_unify_with_bindings_inner<'b>(
         },
 
         // Refs have a hidden lifetime variable we need to unify here
-        (Ref(shared1, mut1, a_lifetime), Ref(shared2, mut2, _)) => {
-            if shared1 != shared2 || mut1 != mut2 {
-                if *shared1 != Sharedness::Polymorphic && *shared2 != Sharedness::Polymorphic {
-                    if *mut1 != Mutability::Polymorphic && *mut2 != Mutability::Polymorphic {
-                        return Err(());
-                    }
-                }
-            }
-
-            try_unify_type_variable_with_bindings(*a_lifetime, t1, t2, bindings, location, cache)
+        (
+            Ref { sharedness: a_shared, mutability: a_mut, lifetime: a_lifetime },
+            Ref { sharedness: b_shared, mutability: b_mut, lifetime: b_lifetime },
+        ) => {
+            try_unify_with_bindings_inner(a_shared, b_shared, bindings, location, cache)?;
+            try_unify_with_bindings_inner(a_mut, b_mut, bindings, location, cache)?;
+            try_unify_with_bindings_inner(a_lifetime, b_lifetime, bindings, location, cache)
         },
 
         // Follow any bindings here for convenience so we don't have to check if a or b
@@ -709,6 +717,14 @@ pub fn try_unify_with_bindings_inner<'b>(
             Ok(())
         },
 
+        (Tag(tag1), Tag(tag2)) if tag1 == tag2 => Ok(()),
+
+        // ! <: &
+        (Tag(TypeTag::Mutable), Tag(TypeTag::Immutable)) => Ok(()),
+
+        // owned <: shared
+        (Tag(TypeTag::Owned), Tag(TypeTag::Shared)) => Ok(()),
+
         _ => Err(()),
     }
 }
@@ -731,6 +747,7 @@ fn bind_struct_fields<'c>(
             rest1,
             &TypeVariable(rest1),
             &TypeVariable(rest2),
+            true,
             bindings,
             location,
             cache,
@@ -742,11 +759,11 @@ fn bind_struct_fields<'c>(
     } else if new_fields.len() != fields1.len() {
         // Set 1 := 2
         let struct2 = Struct(new_fields, rest2);
-        try_unify_type_variable_with_bindings(rest1, &TypeVariable(rest1), &struct2, bindings, location, cache)?;
+        try_unify_type_variable_with_bindings(rest1, &TypeVariable(rest1), &struct2, true, bindings, location, cache)?;
     } else if new_fields.len() != fields2.len() {
         // Set 2 := 1
         let struct1 = Struct(new_fields, rest1);
-        try_unify_type_variable_with_bindings(rest2, &TypeVariable(rest2), &struct1, bindings, location, cache)?;
+        try_unify_type_variable_with_bindings(rest2, &TypeVariable(rest2), &struct1, false, bindings, location, cache)?;
     }
 
     Ok(())
@@ -832,7 +849,7 @@ fn get_fields(
             }
         },
         TypeApplication(constructor, args) => match follow_bindings_in_cache_and_map(constructor, bindings, cache) {
-            Ref(..) => get_fields(&args[0], &[], bindings, cache),
+            Ref { .. } => get_fields(&args[0], &[], bindings, cache),
             other => get_fields(&other, args, bindings, cache),
         },
         Struct(fields, rest) => match &cache.type_bindings[rest.0] {
@@ -850,11 +867,17 @@ fn get_fields(
 /// Unify a single type variable (id arising from the type a) with an expected type b.
 /// Follows the given TypeBindings in bindings and the cache if a is Bound.
 fn try_unify_type_variable_with_bindings<'c>(
-    id: TypeVariableId, a: &Type, b: &Type, bindings: &mut UnificationBindings, location: Location<'c>,
-    cache: &mut ModuleCache<'c>,
+    id: TypeVariableId, a: &Type, b: &Type, typevar_on_lhs: bool, bindings: &mut UnificationBindings,
+    location: Location<'c>, cache: &mut ModuleCache<'c>,
 ) -> Result<(), ()> {
     match find_binding(id, bindings, cache) {
-        Bound(a) => try_unify_with_bindings_inner(&a, b, bindings, location, cache),
+        Bound(a) => {
+            if typevar_on_lhs {
+                try_unify_with_bindings_inner(&a, b, bindings, location, cache)
+            } else {
+                try_unify_with_bindings_inner(b, &a, bindings, location, cache)
+            }
+        },
         Unbound(a_level, _a_kind) => {
             // Create binding for boundTy that is currently empty.
             // Ensure not to create recursive bindings to the same variable
@@ -876,14 +899,14 @@ fn try_unify_type_variable_with_bindings<'c>(
 }
 
 pub fn try_unify_with_bindings<'b>(
-    t1: &Type, t2: &Type, bindings: &mut UnificationBindings, location: Location<'b>, cache: &mut ModuleCache<'b>,
-    error: TypeErrorKind,
+    actual: &Type, expected: &Type, bindings: &mut UnificationBindings, location: Location<'b>,
+    cache: &mut ModuleCache<'b>, error: TypeErrorKind,
 ) -> Result<(), Diagnostic<'b>> {
-    match try_unify_with_bindings_inner(t1, t2, bindings, location, cache) {
+    match try_unify_with_bindings_inner(actual, expected, bindings, location, cache) {
         Ok(()) => Ok(()),
         Err(()) => {
-            let t1 = t1.display(cache).to_string();
-            let t2 = t2.display(cache).to_string();
+            let t1 = actual.display(cache).to_string();
+            let t2 = expected.display(cache).to_string();
             Err(Diagnostic::new(location, D::TypeError(error, t1, t2)))
         },
     }
@@ -893,37 +916,39 @@ pub fn try_unify_with_bindings<'b>(
 /// set of type bindings, and returning all the newly-created bindings on success,
 /// or the unification error message on error.
 pub fn try_unify<'c>(
-    t1: &Type, t2: &Type, location: Location<'c>, cache: &mut ModuleCache<'c>, error_kind: TypeErrorKind,
+    actual: &Type, expected: &Type, location: Location<'c>, cache: &mut ModuleCache<'c>, error_kind: TypeErrorKind,
 ) -> UnificationResult<'c> {
     let mut bindings = UnificationBindings::empty();
-    try_unify_with_bindings(t1, t2, &mut bindings, location, cache, error_kind).map(|()| bindings)
+    try_unify_with_bindings(actual, expected, &mut bindings, location, cache, error_kind).map(|()| bindings)
 }
 
 /// Try to unify all the given type, with the given bindings in scope.
 /// Will add new bindings to the given TypeBindings and return them all on success.
 pub fn try_unify_all_with_bindings<'c>(
-    vec1: &[Type], vec2: &[Type], mut bindings: UnificationBindings, location: Location<'c>,
+    actual: &[Type], expected: &[Type], mut bindings: UnificationBindings, location: Location<'c>,
     cache: &mut ModuleCache<'c>, error_kind: TypeErrorKind,
 ) -> UnificationResult<'c> {
-    if vec1.len() != vec2.len() {
+    if actual.len() != expected.len() {
         // This bad error message is the reason this function isn't used within
         // try_unify_with_bindings! We'd need access to the full type to give better
         // errors like the other function does.
-        let vec1 = fmap(vec1, |typ| typ.display(cache).to_string());
-        let vec2 = fmap(vec2, |typ| typ.display(cache).to_string());
+        let vec1 = fmap(actual, |typ| typ.display(cache).to_string());
+        let vec2 = fmap(expected, |typ| typ.display(cache).to_string());
         return Err(Diagnostic::new(location, D::TypeLengthMismatch(vec1, vec2)));
     }
 
-    for (t1, t2) in vec1.iter().zip(vec2.iter()) {
-        try_unify_with_bindings(t1, t2, &mut bindings, location, cache, error_kind.clone())?;
+    for (actual, expected) in actual.iter().zip(expected.iter()) {
+        try_unify_with_bindings(actual, expected, &mut bindings, location, cache, error_kind.clone())?;
     }
     Ok(bindings)
 }
 
 /// Unifies the two given types, remembering the unification results in the cache.
 /// If this operation fails, a user-facing error message is emitted.
-pub fn unify<'c>(t1: &Type, t2: &Type, location: Location<'c>, cache: &mut ModuleCache<'c>, error_kind: TypeErrorKind) {
-    perform_bindings_or_push_error(try_unify(t1, t2, location, cache, error_kind), cache);
+pub fn unify<'c>(
+    actual: &Type, expected: &Type, location: Location<'c>, cache: &mut ModuleCache<'c>, error_kind: TypeErrorKind,
+) {
+    perform_bindings_or_push_error(try_unify(actual, expected, location, cache, error_kind), cache);
 }
 
 /// Helper for committing to the results of try_unify.
@@ -958,6 +983,7 @@ pub fn find_all_typevars(typ: &Type, polymorphic_only: bool, cache: &ModuleCache
     match typ {
         Primitive(_) => vec![],
         UserDefined(_) => vec![],
+        Tag(_) => vec![],
         TypeVariable(id) => find_typevars_in_typevar_binding(*id, polymorphic_only, cache),
         Function(function) => {
             let mut type_variables = vec![];
@@ -976,7 +1002,12 @@ pub fn find_all_typevars(typ: &Type, polymorphic_only: bool, cache: &ModuleCache
             }
             type_variables
         },
-        Ref(_, _, lifetime) => find_typevars_in_typevar_binding(*lifetime, polymorphic_only, cache),
+        Ref { sharedness, mutability, lifetime } => {
+            let mut type_variables = find_all_typevars(mutability, polymorphic_only, cache);
+            type_variables.append(&mut find_all_typevars(sharedness, polymorphic_only, cache));
+            type_variables.append(&mut find_all_typevars(lifetime, polymorphic_only, cache));
+            type_variables
+        },
         Struct(fields, id) => match &cache.type_bindings[id.0] {
             Bound(t) => find_all_typevars(t, polymorphic_only, cache),
             Unbound(..) => {
@@ -1460,8 +1491,12 @@ pub fn infer_ast<'a>(ast: &mut ast::Ast<'a>, cache: &mut ModuleCache<'a>) {
     // No traits should be propogated above the top-level main function
     assert!(exposed_traits.is_empty());
 
-    // TODO: Better error message, check for IO effect
-    assert!(result.effects.effects.is_empty());
+    // TODO: Check for IO effect
+    if !result.effects.effects.is_empty() {
+        let effects = Type::Effects(result.effects.clone());
+        let effects = effects.display(cache).to_string();
+        cache.push_diagnostic(ast.locate(), D::UnhandledEffectsInMain(effects));
+    }
 }
 
 pub fn infer<'a, T>(ast: &mut T, cache: &mut ModuleCache<'a>) -> TypeResult
@@ -1642,12 +1677,12 @@ fn issue_argument_types_error<'c>(
                 let typ = Function(expected.clone()).display(cache).to_string();
                 cache.push_diagnostic(
                     call.location,
-                    D::FunctionParameterCountMismatch(typ, expected.parameters.len(), actual.parameters.len()),
+                    D::FunctionParameterCountMismatch(typ, actual.parameters.len(), expected.parameters.len()),
                 );
             }
 
             for ((arg, param), arg_ast) in actual.parameters.into_iter().zip(expected.parameters).zip(&call.args) {
-                unify(&param, &arg, arg_ast.locate(), cache, TE::ArgumentTypeMismatch);
+                unify(&arg, &param, arg_ast.locate(), cache, TE::ArgumentTypeMismatch);
             }
         },
         None => cache.push_full_diagnostic(original_error),
@@ -1690,10 +1725,8 @@ impl<'a> Inferable<'a> for ast::Definition<'a> {
         // t, traits
         let mut result = infer(self.expr.as_mut(), cache);
         if self.mutable {
-            let lifetime = next_type_variable_id(cache);
-            let shared = Sharedness::Polymorphic;
-            let mutability = Mutability::Mutable;
-            result.typ = Type::TypeApplication(Box::new(Type::Ref(shared, mutability, lifetime)), vec![result.typ]);
+            let ref_type = mut_polymorphically_shared_ref(cache);
+            result.typ = Type::TypeApplication(Box::new(ref_type), vec![result.typ]);
         }
 
         // The rhs of a Definition must be inferred at a greater LetBindingLevel than
@@ -1759,7 +1792,7 @@ impl<'a> Inferable<'a> for ast::Match<'a> {
             let mut pattern = infer(&mut self.branches[0].0, cache);
             result.combine(&mut pattern, cache);
 
-            unify(&result.typ, &pattern.typ, self.branches[0].0.locate(), cache, TE::MatchPatternTypeDiffers);
+            unify(&pattern.typ, &result.typ, self.branches[0].0.locate(), cache, TE::MatchPatternTypeDiffers);
 
             let mut branch = infer(&mut self.branches[0].1, cache);
             result.combine(&mut branch, cache);
@@ -1769,8 +1802,8 @@ impl<'a> Inferable<'a> for ast::Match<'a> {
                 let mut pattern_result = infer(pattern, cache);
                 let mut branch_result = infer(branch, cache);
 
-                unify(&result.typ, &pattern_result.typ, pattern.locate(), cache, TE::MatchPatternTypeDiffers);
-                unify(&return_type, &branch_result.typ, branch.locate(), cache, TE::MatchReturnTypeDiffers);
+                unify(&pattern_result.typ, &result.typ, pattern.locate(), cache, TE::MatchPatternTypeDiffers);
+                unify(&branch_result.typ, &return_type, branch.locate(), cache, TE::MatchReturnTypeDiffers);
 
                 result.combine(&mut pattern_result, cache);
                 result.combine(&mut branch_result, cache);
@@ -1929,10 +1962,10 @@ impl<'a> Inferable<'a> for ast::MemberAccess<'a> {
         let level = LetBindingLevel(CURRENT_LEVEL.load(Ordering::SeqCst));
         let mut field_type = cache.next_type_variable(level);
 
-        if self.is_offset {
+        if let Some(mutability) = self.offset {
             let collection_variable = next_type_variable(cache);
-            let expected = ref_of(collection_variable.clone(), cache);
-            unify(&expected, &result.typ, self.lhs.locate(), cache, TE::ExpectedStructReference);
+            let expected = ref_of(mutability, collection_variable.clone(), cache);
+            unify(&result.typ, &expected, self.lhs.locate(), cache, TE::ExpectedStructReference);
             result.typ = collection_variable;
         }
 
@@ -1943,10 +1976,10 @@ impl<'a> Inferable<'a> for ast::MemberAccess<'a> {
         let rho = cache.next_type_variable_id(level);
         let struct_type = Type::Struct(fields, rho);
 
-        unify(&struct_type, &result.typ, self.location, cache, TE::NoFieldOfType(self.field.clone()));
+        unify(&result.typ, &struct_type, self.location, cache, TE::NoFieldOfType(self.field.clone()));
 
-        if self.is_offset {
-            field_type = ref_of(field_type, cache);
+        if let Some(mutability) = self.offset {
+            field_type = ref_of(mutability, field_type, cache);
         }
 
         result.with_type(field_type)
@@ -1959,8 +1992,7 @@ impl<'a> Inferable<'a> for ast::Assignment<'a> {
         let mut rhs = infer(self.rhs.as_mut(), cache);
         result.combine(&mut rhs, cache);
 
-        let lifetime = next_type_variable_id(cache);
-        let mut_ref = Type::Ref(Sharedness::Polymorphic, Mutability::Mutable, lifetime);
+        let mut_ref = mut_polymorphically_shared_ref(cache);
         let mutref = Type::TypeApplication(Box::new(mut_ref), vec![rhs.typ.clone()]);
 
         match try_unify(&result.typ, &mutref, self.location, cache, TE::NeverShown) {
@@ -1972,16 +2004,22 @@ impl<'a> Inferable<'a> for ast::Assignment<'a> {
     }
 }
 
+fn mut_polymorphically_shared_ref(cache: &mut ModuleCache) -> Type {
+    let mutability = Box::new(Type::Tag(TypeTag::Mutable));
+    let sharedness = Box::new(next_type_variable(cache));
+    let lifetime = Box::new(next_type_variable(cache));
+    Type::Ref { mutability, sharedness, lifetime }
+}
+
 fn issue_assignment_error<'c>(
     lhs: &Type, lhs_loc: Location<'c>, rhs: &Type, location: Location<'c>, cache: &mut ModuleCache<'c>,
 ) {
     // Try to offer a more specific error message
-    let lifetime = next_type_variable_id(cache);
     let var = next_type_variable(cache);
-    let mutref = Type::Ref(Sharedness::Polymorphic, Mutability::Mutable, lifetime);
+    let mutref = mut_polymorphically_shared_ref(cache);
     let mutref = Type::TypeApplication(Box::new(mutref), vec![var]);
 
-    if let Err(msg) = try_unify(&mutref, lhs, lhs_loc, cache, TE::AssignToNonMutRef) {
+    if let Err(msg) = try_unify(lhs, &mutref, lhs_loc, cache, TE::AssignToNonMutRef) {
         cache.push_full_diagnostic(msg);
     } else {
         let inner_type = match follow_bindings_in_cache(lhs, cache) {

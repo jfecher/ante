@@ -83,6 +83,7 @@ pub enum DiagnosticKind {
     NoMatchingImpls(/*constraint*/ String),
     UnreachablePattern,
     MissingCase(/*case*/ String),
+    UnhandledEffectsInMain(/*effects*/ String),
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -152,7 +153,7 @@ impl Display for DiagnosticKind {
             DiagnosticKind::PreviouslyDefinedHere(item) => {
                 write!(f, "{} was previously defined here", item)
             },
-            DiagnosticKind::IncorrectConstructorArgCount(item, expected, actual) => {
+            DiagnosticKind::IncorrectConstructorArgCount(item, actual, expected) => {
                 let plural_s = if *expected == 1 { "" } else { "s" };
                 let is_are = if *actual == 1 { "is" } else { "are" };
                 write!(
@@ -161,7 +162,7 @@ impl Display for DiagnosticKind {
                     item, expected, plural_s, actual, is_are
                 )
             },
-            DiagnosticKind::IncorrectImplTraitArgCount(trait_name, expected, actual) => {
+            DiagnosticKind::IncorrectImplTraitArgCount(trait_name, actual, expected) => {
                 let plural_s = if *expected == 1 { "" } else { "s" };
                 write!(f, "impl has {} type argument{} but {} requires {}", expected, plural_s, trait_name, actual)
             },
@@ -240,80 +241,80 @@ impl Display for DiagnosticKind {
                     "Invalid syntax in irrefutable pattern, expected a name, type annotation, or type constructor"
                 )
             },
-            DiagnosticKind::FunctionParameterCountMismatch(typ, expected, actual) => {
+            DiagnosticKind::FunctionParameterCountMismatch(typ, actual, expected) => {
                 let plural_s = if *expected == 1 { "" } else { "s" };
                 let was_were = if *actual == 1 { "was" } else { "were" };
                 write!(f, "Function of type {typ} declared to take {expected} parameter{plural_s}, but {actual} {was_were} supplied")
             },
-            DiagnosticKind::TypeError(TypeErrorKind::ExpectedUnitTypeFromPattern, _expected, actual) => {
+            DiagnosticKind::TypeError(TypeErrorKind::ExpectedUnitTypeFromPattern, actual, _expected) => {
                 write!(f, "Expected a unit type from this pattern, but the corresponding value has the type {}", actual)
             },
-            DiagnosticKind::TypeError(TypeErrorKind::ExpectedPairTypeFromPattern, _, actual) => {
+            DiagnosticKind::TypeError(TypeErrorKind::ExpectedPairTypeFromPattern, actual, _expected) => {
                 write!(f, "Expected a pair type from this pattern, but found {actual}")
             },
-            DiagnosticKind::TypeError(TypeErrorKind::VariableDoesNotMatchDeclaredType, expected, actual) => {
+            DiagnosticKind::TypeError(TypeErrorKind::VariableDoesNotMatchDeclaredType, actual, expected) => {
                 write!(f, "Variable type {actual} does not match its declared type of {expected}")
             },
-            DiagnosticKind::TypeError(TypeErrorKind::PatternTypeDoesNotMatchAnnotatedType, expected, actual) => {
+            DiagnosticKind::TypeError(TypeErrorKind::PatternTypeDoesNotMatchAnnotatedType, actual, expected) => {
                 write!(f, "Pattern type {actual} does not match the annotated type {expected}")
             },
-            DiagnosticKind::TypeError(TypeErrorKind::PatternTypeDoesNotMatchDefinitionType, expected, actual) => {
+            DiagnosticKind::TypeError(TypeErrorKind::PatternTypeDoesNotMatchDefinitionType, actual, expected) => {
                 write!(f, "Pattern type {actual} does not match the definition's type {expected}")
             },
-            DiagnosticKind::TypeError(TypeErrorKind::FunctionBodyDoesNotMatchReturnType, expected, actual) => {
+            DiagnosticKind::TypeError(TypeErrorKind::FunctionBodyDoesNotMatchReturnType, actual, expected) => {
                 write!(f, "Function body type {actual} does not match declared return type of {expected}")
             },
-            DiagnosticKind::TypeError(TypeErrorKind::CalledValueIsNotAFunction, _, actual) => {
+            DiagnosticKind::TypeError(TypeErrorKind::CalledValueIsNotAFunction, actual, _expected) => {
                 write!(f, "Value being called is not a function, it is a {actual}")
             },
-            DiagnosticKind::TypeError(TypeErrorKind::ArgumentTypeMismatch, expected, actual) => {
+            DiagnosticKind::TypeError(TypeErrorKind::ArgumentTypeMismatch, actual, expected) => {
                 write!(f, "Expected argument of type {expected}, but found {actual}")
             },
-            DiagnosticKind::TypeError(TypeErrorKind::NonBoolInCondition, expected, actual) => {
+            DiagnosticKind::TypeError(TypeErrorKind::NonBoolInCondition, actual, expected) => {
                 write!(f, "{actual} should be a {expected} to be used in an if condition")
             },
-            DiagnosticKind::TypeError(TypeErrorKind::IfBranchMismatch, expected, actual) => {
+            DiagnosticKind::TypeError(TypeErrorKind::IfBranchMismatch, actual, expected) => {
                 write!(
                     f,
                     "Expected 'then' and 'else' branch types to match, but found {expected} and {actual} respectively"
                 )
             },
-            DiagnosticKind::TypeError(TypeErrorKind::MatchPatternTypeDiffers, expected, actual) => {
+            DiagnosticKind::TypeError(TypeErrorKind::MatchPatternTypeDiffers, actual, expected) => {
                 write!(f, "This pattern of type {actual} does not match the type {expected} that is being matched on")
             },
-            DiagnosticKind::TypeError(TypeErrorKind::MatchReturnTypeDiffers, expected, actual) => {
+            DiagnosticKind::TypeError(TypeErrorKind::MatchReturnTypeDiffers, actual, expected) => {
                 write!(
                     f,
                     "This branch's return type {actual} does not match the previous branches which return {expected}"
                 )
             },
-            DiagnosticKind::TypeError(TypeErrorKind::DoesNotMatchAnnotatedType, expected, actual) => {
+            DiagnosticKind::TypeError(TypeErrorKind::DoesNotMatchAnnotatedType, actual, expected) => {
                 write!(f, "Expression of type {actual} does not match its annotated type {expected}")
             },
-            DiagnosticKind::TypeError(TypeErrorKind::ExpectedStructReference, _, actual) => {
+            DiagnosticKind::TypeError(TypeErrorKind::ExpectedStructReference, actual, _expected) => {
                 write!(f, "Expected a struct reference but found {actual} instead")
             },
-            DiagnosticKind::TypeError(TypeErrorKind::NoFieldOfType(field_name), expected, actual) => {
+            DiagnosticKind::TypeError(TypeErrorKind::NoFieldOfType(field_name), actual, expected) => {
                 write!(f, "{actual} has no field '{field_name}' of type {expected}")
             },
-            DiagnosticKind::TypeError(TypeErrorKind::AssignToNonMutRef, expected, actual) => {
-                write!(f, "Expression of type {actual} must be a `{expected}` type to be assigned to")
+            DiagnosticKind::TypeError(TypeErrorKind::AssignToNonMutRef, actual, expected) => {
+                write!(f, "Expression of type {actual} must be a mutable reference type ({expected}) to be assigned to")
             },
-            DiagnosticKind::TypeError(TypeErrorKind::AssignToWrongType, expected, actual) => {
+            DiagnosticKind::TypeError(TypeErrorKind::AssignToWrongType, actual, expected) => {
                 write!(f, "Cannot assign expression of type {actual} to a Ref of type {expected}")
             },
-            DiagnosticKind::TypeError(TypeErrorKind::HandleBranchMismatch, expected, actual) => {
+            DiagnosticKind::TypeError(TypeErrorKind::HandleBranchMismatch, actual, expected) => {
                 write!(f, "The type of this branch ({actual}) should match the type of the expression being handled: {expected}")
             },
-            DiagnosticKind::TypeError(TypeErrorKind::PatternReturnTypeMismatch, expected, actual) => {
+            DiagnosticKind::TypeError(TypeErrorKind::PatternReturnTypeMismatch, actual, expected) => {
                 write!(f, "Expected type {expected} does not match the pattern's return type {actual}")
             },
-            DiagnosticKind::TypeError(TypeErrorKind::NeverShown, expected, actual) => {
+            DiagnosticKind::TypeError(TypeErrorKind::NeverShown, actual, expected) => {
                 unreachable!("This type error should never be shown. Expected {}, Actual {}", expected, actual)
             },
-            DiagnosticKind::TypeError(TypeErrorKind::MonomorphizationError, expected, actual) => {
+            DiagnosticKind::TypeError(TypeErrorKind::MonomorphizationError, actual, expected) => {
                 unreachable!(
-                    "Unification error during monomorphisation: Could not unify definition {} with instantiation {}",
+                    "Unification error during monomorphization: Could not unify definition {} with instantiation {}",
                     expected, actual
                 )
             },
@@ -334,6 +335,9 @@ impl Display for DiagnosticKind {
             },
             DiagnosticKind::MissingCase(case) => {
                 write!(f, "Missing case {case}")
+            },
+            DiagnosticKind::UnhandledEffectsInMain(effects) => {
+                write!(f, "Unhandled effects at top-level: {effects}")
             },
         }
     }
@@ -381,6 +385,7 @@ impl DiagnosticKind {
             | InternalError(_)
             | NotAStruct(_)
             | MissingFields(_)
+            | UnhandledEffectsInMain(_)
             | NotAStructField(_) => Error,
         }
     }

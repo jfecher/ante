@@ -64,7 +64,7 @@ fn print_definition_types(cache: &ModuleCache) {
 
         if let Some(typ) = &info.typ {
             let type_string =
-                types::typeprinter::show_type_and_traits(name, typ, &info.required_traits, &info.trait_info, cache);
+                types::typeprinter::show_type_and_traits(name, typ, &info.required_traits, &info.trait_info, cache, true);
             println!("{}", type_string);
         } else {
             println!("{} : (none)", name);

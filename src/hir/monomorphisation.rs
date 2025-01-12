@@ -142,12 +142,12 @@ impl<'c> Context<'c> {
 
         let fuel = fuel - 1;
         match &self.cache.type_bindings[id.0] {
-            Bound(TypeVariable(id2) | Ref(_, _, id2)) => self.find_binding(*id2, fuel),
+            Bound(TypeVariable(id2)) => self.find_binding(*id2, fuel),
             Bound(binding) => Ok(binding),
             Unbound(..) => {
                 for bindings in self.monomorphisation_bindings.iter().rev() {
                     match bindings.get(&id) {
-                        Some(TypeVariable(id2) | Ref(_, _, id2)) => return self.find_binding(*id2, fuel),
+                        Some(TypeVariable(id2)) => return self.find_binding(*id2, fuel),
                         Some(binding) => return Ok(binding),
                         None => (),
                     }
@@ -204,7 +204,12 @@ impl<'c> Context<'c> {
                 let args = fmap(args, |arg| self.follow_all_bindings_inner(arg, fuel));
                 TypeApplication(Box::new(con), args)
             },
-            Ref(..) => typ.clone(),
+            Ref { mutability, sharedness, lifetime } => {
+                let mutability = Box::new(self.follow_all_bindings_inner(mutability, fuel));
+                let sharedness = Box::new(self.follow_all_bindings_inner(sharedness, fuel));
+                let lifetime = Box::new(self.follow_all_bindings_inner(lifetime, fuel));
+                Ref { mutability, sharedness, lifetime }
+            },
             Struct(fields, id) => match self.find_binding(*id, fuel) {
                 Ok(binding) => self.follow_all_bindings_inner(binding, fuel),
                 Err(_) => {
@@ -217,6 +222,7 @@ impl<'c> Context<'c> {
                 },
             },
             Effects(effects) => self.follow_all_effect_bindings_inner(effects, fuel),
+            Tag(tag) => Tag(*tag),
         }
     }
 
@@ -315,6 +321,9 @@ impl<'c> Context<'c> {
             Primitive(FloatType) => {
                 unreachable!("'Float' type constructor without arguments found during size_of_type")
             },
+            Tag(tag) => {
+                unreachable!("'{}' found during size_of_type", tag)
+            }
 
             Function(..) => Self::ptr_size(),
 
@@ -346,7 +355,7 @@ impl<'c> Context<'c> {
                 _ => unreachable!("Kind error inside size_of_type"),
             },
 
-            Ref(..) => Self::ptr_size(),
+            Ref { .. } => Self::ptr_size(),
             Struct(fields, rest) => {
                 if let Ok(binding) = self.find_binding(*rest, RECURSION_LIMIT) {
                     let binding = binding.clone();
@@ -519,7 +528,7 @@ impl<'c> Context<'c> {
                 let typ = self.follow_bindings_shallow(typ);
 
                 match typ {
-                    Ok(Primitive(PrimitiveType::Ptr) | Ref(..)) => Type::Primitive(hir::PrimitiveType::Pointer),
+                    Ok(Primitive(PrimitiveType::Ptr) | Ref { .. }) => Type::Primitive(hir::PrimitiveType::Pointer),
                     Ok(Primitive(PrimitiveType::IntegerType)) => {
                         if self.is_type_variable(&args[0]) {
                             // Default to i32
@@ -553,11 +562,14 @@ impl<'c> Context<'c> {
                 }
             },
 
-            Ref(..) => {
+            Ref { .. } => {
                 unreachable!(
                     "Kind error during monomorphisation. Attempted to translate a `ref` without a type argument"
                 )
             },
+            Tag(tag) => {
+                unreachable!("Kind error during monomorphisation. Attempted to translate a `{}` as a type", tag)
+            }
             Struct(fields, rest) => {
                 if let Ok(binding) = self.find_binding(*rest, fuel) {
                     let binding = binding.clone();
@@ -688,8 +700,8 @@ impl<'c> Context<'c> {
         if definition.trait_impl.is_some() {
             let definition_type = definition.typ.as_ref().unwrap().remove_forall();
             let bindings = typechecker::try_unify(
-                definition_type,
                 typ,
+                definition_type,
                 definition.location,
                 &mut self.cache,
                 TE::MonomorphizationError,
@@ -1517,7 +1529,7 @@ impl<'c> Context<'c> {
             TypeApplication(typ, args) => {
                 match typ.as_ref() {
                     // Pass through ref types transparently
-                    types::Type::Ref(..) => self.get_field_index(field_name, &args[0]),
+                    types::Type::Ref { .. } => self.get_field_index(field_name, &args[0]),
                     // These last 2 cases are the same. They're duplicated to avoid another follow_bindings_shallow call.
                     typ => self.get_field_index(field_name, typ),
                 }
@@ -1551,7 +1563,7 @@ impl<'c> Context<'c> {
         let ref_type = match lhs_type {
             types::Type::TypeApplication(constructor, args) => match self.follow_bindings_shallow(constructor.as_ref())
             {
-                Ok(types::Type::Ref(..)) => Some(self.convert_type(&args[0])),
+                Ok(types::Type::Ref { .. }) => Some(self.convert_type(&args[0])),
                 _ => None,
             },
             _ => None,
@@ -1560,17 +1572,17 @@ impl<'c> Context<'c> {
         let result_type = self.convert_type(member_access.typ.as_ref().unwrap());
 
         // If our collection type is a ref we do a ptr offset instead of a direct access
-        match (ref_type, member_access.is_offset) {
-            (Some(elem_type), true) => {
+        match (ref_type, member_access.offset) {
+            (Some(elem_type), Some(_)) => {
                 let offset = Self::get_field_offset(&elem_type, index);
                 offset_ptr(lhs, offset as u64)
             },
-            (Some(elem_type), false) => {
+            (Some(elem_type), None) => {
                 let lhs = hir::Ast::Builtin(hir::Builtin::Deref(Box::new(lhs), elem_type));
                 Self::extract(lhs, index, result_type)
             },
             _ => {
-                assert!(!member_access.is_offset);
+                assert!(member_access.offset.is_none());
                 Self::extract(lhs, index, result_type)
             },
         }

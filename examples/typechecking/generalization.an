@@ -6,4 +6,4 @@ foo x =
 
 // args: --check --show-types
 // expected stdout:
-// foo : (forall a b c d. (a -> (b => a can c) can d))
+// foo : forall a b c d. (a -> b => a can c can d)

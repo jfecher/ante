@@ -136,7 +136,7 @@ impl LanguageServer for Backend {
                 let name = v.kind.name();
 
                 let value =
-                    typeprinter::show_type_and_traits(&name, typ, &info.required_traits, &info.trait_info, &cache);
+                    typeprinter::show_type_and_traits(&name, typ, &info.required_traits, &info.trait_info, &cache, false);
 
                 let location = v.locate();
                 let range =

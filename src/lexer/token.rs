@@ -144,7 +144,8 @@ pub enum Token {
     Semicolon,          // ;
     Comma,              // ,
     MemberAccess,       // .
-    MemberReference,    // .&
+    MemberRef,          // .&
+    MemberMutRef,       // .!
     LessThan,           // <
     GreaterThan,        // >
     LessThanOrEqual,    // <=
@@ -153,6 +154,8 @@ pub enum Token {
     Backslash,          // \
     Ampersand,          // &
     At,                 // @
+    ExclamationMark,    // !
+    QuestionMark,       // ?
 }
 
 impl Token {
@@ -325,7 +328,8 @@ impl Display for Token {
             Token::Semicolon => write!(f, "';'"),
             Token::Comma => write!(f, "','"),
             Token::MemberAccess => write!(f, "'.'"),
-            Token::MemberReference => write!(f, "'.&'"),
+            Token::MemberRef => write!(f, "'.&'"),
+            Token::MemberMutRef => write!(f, "'.!'"),
             Token::LessThan => write!(f, "'<'"),
             Token::GreaterThan => write!(f, "'>'"),
             Token::LessThanOrEqual => write!(f, "'<='"),
@@ -334,6 +338,8 @@ impl Display for Token {
             Token::Backslash => write!(f, "'\\'"),
             Token::Ampersand => write!(f, "'&'"),
             Token::At => write!(f, "'@'"),
+            Token::ExclamationMark => write!(f, "'!'"),
+            Token::QuestionMark => write!(f, "'?'"),
         }
     }
 }

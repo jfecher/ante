@@ -9,6 +9,6 @@ str = foo 0i32
 
 // args: --check --show-types
 // expected stdout:
-// foo : (forall a b c. (a -> b can c))
+// foo : forall a b c. (a -> b can c)
 //   given Foo a b
 // str : String

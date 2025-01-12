@@ -50,7 +50,7 @@ use crate::types::traits::ConstraintSignature;
 use crate::types::typed::Typed;
 use crate::types::{
     Field, FunctionType, GeneralizedType, LetBindingLevel, PrimitiveType, Type, TypeConstructor, TypeInfoBody,
-    TypeInfoId, TypeVariableId, INITIAL_LEVEL, STRING_TYPE,
+    TypeInfoId, TypeVariableId, INITIAL_LEVEL, STRING_TYPE, TypeTag,
 };
 use crate::util::{fmap, timing, trustme};
 
@@ -555,7 +555,7 @@ impl<'c> NameResolver {
         let expected = self.get_expected_type_argument_count(constructor, cache);
         if args.len() != expected && !matches!(constructor, Type::TypeVariable(_)) {
             let typename = constructor.display(cache).to_string();
-            cache.push_diagnostic(location, D::IncorrectConstructorArgCount(typename, expected, args.len()));
+            cache.push_diagnostic(location, D::IncorrectConstructorArgCount(typename, args.len(), expected));
         }
 
         // Check argument is an integer/float type (issue #146)
@@ -589,9 +589,10 @@ impl<'c> NameResolver {
             Type::TypeVariable(_) => 0,
             Type::UserDefined(id) => cache[*id].args.len(),
             Type::TypeApplication(_, _) => 0,
-            Type::Ref(..) => 1,
+            Type::Ref { .. } => 1,
             Type::Struct(_, _) => 0,
             Type::Effects(_) => 0,
+            Type::Tag(_) => 0,
         }
     }
 
@@ -739,14 +740,27 @@ impl<'c> NameResolver {
 
                 Type::TypeApplication(Box::new(pair), args)
             },
-            ast::Type::Reference(sharednes, mutability, _) => {
+            ast::Type::Reference(sharedness, mutability, _) => {
                 // When translating ref types, all have a hidden lifetime variable that is unified
                 // under the hood by the compiler to determine the reference's stack lifetime.
                 // This is never able to be manually specified by the programmer, so we use
                 // next_type_variable_id on the cache rather than the NameResolver's version which
                 // would add a name into scope.
-                let lifetime_variable = cache.next_type_variable_id(self.let_binding_level);
-                Type::Ref(*sharednes, *mutability, lifetime_variable)
+                let lifetime = Box::new(cache.next_type_variable(self.let_binding_level));
+
+                let sharedness = Box::new(match sharedness {
+                    ast::Sharedness::Polymorphic => cache.next_type_variable(self.let_binding_level),
+                    ast::Sharedness::Shared => Type::Tag(TypeTag::Shared),
+                    ast::Sharedness::Owned => Type::Tag(TypeTag::Owned),
+                });
+                
+                let mutability = Box::new(match mutability {
+                    ast::Mutability::Polymorphic => cache.next_type_variable(self.let_binding_level),
+                    ast::Mutability::Immutable => Type::Tag(TypeTag::Immutable),
+                    ast::Mutability::Mutable => Type::Tag(TypeTag::Mutable),
+                });
+
+                Type::Ref { sharedness, mutability, lifetime }
             },
         }
     }
@@ -1399,7 +1413,7 @@ impl<'c> Resolvable<'c> for ast::TraitImpl<'c> {
         let required_arg_count = trait_info.typeargs.len() + trait_info.fundeps.len();
         if self.trait_args.len() != required_arg_count {
             let trait_name = self.trait_name.clone();
-            let error = D::IncorrectImplTraitArgCount(trait_name, self.trait_args.len(), required_arg_count);
+            let error = D::IncorrectImplTraitArgCount(trait_name, required_arg_count, self.trait_args.len());
             cache.push_diagnostic(self.location, error);
         }
 

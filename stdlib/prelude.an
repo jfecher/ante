@@ -328,13 +328,13 @@ deref_ptr (p: Ptr t) : t =
     deref <| transmute p
 
 ptr_store (p: Ptr a) (value: a) : Unit =
-    addr: &a = transmute p
+    addr: !a = transmute p
     addr := value
 
 array_insert (p: Ptr a) (index: Usz) (value: a) : Unit =
     offset p index |> ptr_store value
 
-ptr_to_ref: Ptr a -> &a = transmute
+ptr_to_ref: Ptr a -> !a = transmute
 
 (@) = deref
 
