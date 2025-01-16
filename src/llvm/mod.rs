@@ -434,6 +434,7 @@ impl<'g> Generator<'g> {
             BasicValueEnum::PointerValue(pointer) => pointer.is_const(),
             BasicValueEnum::StructValue(_) => false,
             BasicValueEnum::VectorValue(vector) => vector.is_const(),
+            BasicValueEnum::ScalableVectorValue(vector) => vector.is_const(),
         }
     }
 
@@ -445,6 +446,7 @@ impl<'g> Generator<'g> {
             BasicTypeEnum::PointerType(pointer) => pointer.get_undef().into(),
             BasicTypeEnum::StructType(tuple) => tuple.get_undef().into(),
             BasicTypeEnum::VectorType(vector) => vector.get_undef().into(),
+            BasicTypeEnum::ScalableVectorType(vector) => vector.get_undef().into(),
         }
     }
 
