@@ -39,10 +39,9 @@
 pub mod token;
 
 use crate::error::location::{EndPosition, Locatable, Location, Position};
-use std::collections::HashMap;
 use std::path::Path;
 use std::str::Chars;
-use token::{FloatKind, IntegerKind, LexerError, Token};
+use token::{lookup_keyword, FloatKind, IntegerKind, LexerError, Token};
 
 #[derive(Clone)]
 struct OpenBraces {
@@ -64,7 +63,6 @@ pub struct Lexer<'cache, 'contents> {
     return_newline: bool, // Hack to always return a newline after an Unindent token
     previous_token_expects_indent: bool,
     chars: Chars<'contents>,
-    keywords: HashMap<&'static str, Token>,
     open_braces: OpenBraces,
     pending_interpolations: Vec<usize>,
 }
@@ -100,64 +98,6 @@ impl<'cache, 'contents> Locatable<'cache> for Lexer<'cache, 'contents> {
 type IterElem<'a> = Option<(Token, Location<'a>)>;
 
 impl<'cache, 'contents> Lexer<'cache, 'contents> {
-    pub fn get_keywords() -> HashMap<&'static str, Token> {
-        vec![
-            ("I8", Token::IntegerType(IntegerKind::I8)),
-            ("I16", Token::IntegerType(IntegerKind::I16)),
-            ("I32", Token::IntegerType(IntegerKind::I32)),
-            ("I64", Token::IntegerType(IntegerKind::I64)),
-            ("Isz", Token::IntegerType(IntegerKind::Isz)),
-            ("U8", Token::IntegerType(IntegerKind::U8)),
-            ("U16", Token::IntegerType(IntegerKind::U16)),
-            ("U32", Token::IntegerType(IntegerKind::U32)),
-            ("U64", Token::IntegerType(IntegerKind::U64)),
-            ("Usz", Token::IntegerType(IntegerKind::Usz)),
-            ("F32", Token::FloatType(FloatKind::F32)),
-            ("F64", Token::FloatType(FloatKind::F64)),
-            ("Int", Token::PolymorphicIntType),
-            ("Float", Token::PolymorphicFloatType),
-            ("Char", Token::CharType),
-            ("String", Token::StringType),
-            ("Ptr", Token::PointerType),
-            ("Bool", Token::BooleanType),
-            ("Unit", Token::UnitType),
-            ("mut", Token::Mut),
-            ("true", Token::BooleanLiteral(true)),
-            ("false", Token::BooleanLiteral(false)),
-            ("and", Token::And),
-            ("as", Token::As),
-            ("block", Token::Block),
-            ("do", Token::Do),
-            ("effect", Token::Effect),
-            ("else", Token::Else),
-            ("extern", Token::Extern),
-            ("fn", Token::Fn),
-            ("given", Token::Given),
-            ("handle", Token::Handle),
-            ("if", Token::If),
-            ("impl", Token::Impl),
-            ("import", Token::Import),
-            ("in", Token::In),
-            ("loop", Token::Loop),
-            ("match", Token::Match),
-            ("module", Token::Module),
-            ("not", Token::Not),
-            ("or", Token::Or),
-            ("owned", Token::Owned),
-            ("return", Token::Return),
-            ("ref", Token::Ref),
-            ("return", Token::Return),
-            ("shared", Token::Shared),
-            ("then", Token::Then),
-            ("trait", Token::Trait),
-            ("type", Token::Type),
-            ("while", Token::While),
-            ("with", Token::With),
-        ]
-        .into_iter()
-        .collect()
-    }
-
     pub fn new(filename: &'cache Path, file_contents: &'contents str) -> Lexer<'cache, 'contents> {
         let mut chars = file_contents.chars();
         let current = chars.next().unwrap_or('\0');
@@ -174,7 +114,6 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
             return_newline: false,
             previous_token_expects_indent: false,
             chars,
-            keywords: Lexer::get_keywords(),
             open_braces: OpenBraces { parenthesis: 0, curly: 0, square: 0 },
             pending_interpolations: Vec::new(),
         }
@@ -340,10 +279,10 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
         let word = self.advance_while(|current, _| current.is_alphanumeric() || current == '_');
         let location = self.locate();
 
-        match self.keywords.get(word) {
+        match lookup_keyword(word) {
             Some(keyword) => {
-                self.previous_token_expects_indent = Lexer::should_expect_indent_after_token(keyword);
-                Some((keyword.clone(), location))
+                self.previous_token_expects_indent = Lexer::should_expect_indent_after_token(&keyword);
+                Some((keyword, location))
             },
             None if is_type => Some((Token::TypeName(word.to_owned()), location)),
             None => Some((Token::Identifier(word.to_owned()), location)),
