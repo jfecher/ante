@@ -72,6 +72,7 @@ parser!(statement_list loc =
 fn statement<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
     match input[0].0 {
         Token::ParenthesisLeft | Token::Identifier(_) => or(&[definition, assignment, expression], "statement")(input),
+        Token::Boxed => type_definition(input),
         Token::Type => or(&[type_definition, type_alias], "statement")(input),
         Token::Import => import(input),
         Token::Trait => trait_definition(input),
@@ -95,17 +96,30 @@ parser!(function_definition location -> 'b ast::Definition<'b> =
     name <- pattern_argument;
     args <- many1(pattern_argument);
     return_type <- maybe(function_return_type);
+    effects <- maybe(effect_clause);
     _ <- expect(Token::Equal);
     body !<- block_or_statement;
     ast::Definition {
         pattern: Box::new(name),
-        expr: Box::new(Ast::lambda(args, return_type, body, location)),
+        expr: Box::new(Ast::lambda(args, return_type, effects, body, location)),
         mutable: false,
         location,
         level: None,
         info: None,
         typ: None,
     }
+);
+
+parser!(effect_clause location -> 'b Vec<(String, Vec<Type<'b>>)> =
+    _ <- expect(Token::Can);
+    effects <- many1(effect);
+    effects
+);
+
+parser!(effect location -> 'b (String, Vec<Type<'b>>) =
+    name <- typename;
+    args <- many0(basic_type);
+    (name, args)
 );
 
 parser!(varargs location -> 'b () =
@@ -168,12 +182,13 @@ fn parenthesized_irrefutable_pattern<'a, 'b>(input: Input<'a, 'b>) -> AstResult<
 }
 
 parser!(type_definition loc =
+    boxed <- maybe(expect(Token::Boxed));
     _ <- expect(Token::Type);
     name <- typename;
     args <- many0(identifier);
     _ <- expect(Token::Equal);
     body <- type_definition_body;
-    Ast::type_definition(name, args, body, loc)
+    Ast::type_definition(boxed.is_some(), name, args, body, loc)
 );
 
 parser!(type_alias loc =
@@ -182,7 +197,7 @@ parser!(type_alias loc =
     args <- many0(identifier);
     _ <- expect(Token::Equal);
     body <- parse_type;
-    Ast::type_definition(name, args, TypeDefinitionBody::Alias(body), loc)
+    Ast::type_definition(false, name, args, TypeDefinitionBody::Alias(body), loc)
 );
 
 fn type_definition_body<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, ast::TypeDefinitionBody<'b>> {
@@ -717,9 +732,10 @@ parser!(lambda loc =
     _ <- expect(Token::Fn);
     args !<- many1(pattern_argument);
     return_type <- maybe(function_return_type);
+    effects <- maybe(effect_clause);
     _ !<- expect(Token::RightArrow);
     body !<- block_or_statement;
-    Ast::lambda(args, return_type, body, loc)
+    Ast::lambda(args, return_type, effects, body, loc)
 );
 
 parser!(operator loc =

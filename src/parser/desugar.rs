@@ -36,7 +36,7 @@ where
     });
 
     let function_call = call_function(function, args, loc);
-    Ast::lambda(curried_args, None, function_call, loc)
+    Ast::lambda(curried_args, None, None, function_call, loc)
 }
 
 fn matches_underscore(arg: &Ast) -> bool {
@@ -85,7 +85,7 @@ fn prepend_argument_to_function<'a>(f: Ast<'a>, arg: Ast<'a>, location: Location
 pub fn desugar_loop<'a>(params_defaults: Vec<(Ast<'a>, Ast<'a>)>, body: Ast<'a>, location: Location<'a>) -> Ast<'a> {
     let (params, args) = params_defaults.into_iter().unzip();
     let recur_name = || Ast::variable(vec![], "recur".to_owned(), location);
-    let recur_def = Ast::definition(recur_name(), Ast::lambda(params, None, body, location), location);
+    let recur_def = Ast::definition(recur_name(), Ast::lambda(params, None, None, body, location), location);
     let recur_call = Ast::function_call(recur_name(), args, location);
     Ast::new_scope(Ast::sequence(vec![recur_def, recur_call], location), location)
 }

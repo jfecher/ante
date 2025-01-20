@@ -118,6 +118,7 @@ pub struct Lambda<'a> {
     pub args: Vec<Ast<'a>>,
     pub body: Box<Ast<'a>>,
     pub return_type: Option<Type<'a>>,
+    pub effects: Option<Vec<EffectName<'a>>>,
 
     pub closure_environment: ClosureEnvironment,
 
@@ -126,6 +127,8 @@ pub struct Lambda<'a> {
     pub location: Location<'a>,
     pub typ: Option<types::Type>,
 }
+
+pub type EffectName<'a> = (String, Vec<Type<'a>>);
 
 // TODO: Remove. This is only used for experimenting with ante-lsp
 // which does not refer to the instantiation_mapping field at all.
@@ -268,6 +271,7 @@ pub enum TypeDefinitionBody<'a> {
 /// type Name arg1 arg2 ... argN = definition
 #[derive(Debug, Clone)]
 pub struct TypeDefinition<'a> {
+    pub boxed: bool,
     pub name: String,
     pub args: Vec<String>,
     pub definition: TypeDefinitionBody<'a>,
@@ -593,10 +597,14 @@ impl<'a> Ast<'a> {
         })
     }
 
-    pub fn lambda(args: Vec<Ast<'a>>, return_type: Option<Type<'a>>, body: Ast<'a>, location: Location<'a>) -> Ast<'a> {
+    pub fn lambda(
+        args: Vec<Ast<'a>>, return_type: Option<Type<'a>>, effects: Option<Vec<EffectName<'a>>>, body: Ast<'a>,
+        location: Location<'a>,
+    ) -> Ast<'a> {
         assert!(!args.is_empty());
         Ast::Lambda(Lambda {
             args,
+            effects,
             body: Box::new(body),
             closure_environment: BTreeMap::new(),
             return_type,
@@ -656,9 +664,9 @@ impl<'a> Ast<'a> {
     }
 
     pub fn type_definition(
-        name: String, args: Vec<String>, definition: TypeDefinitionBody<'a>, location: Location<'a>,
+        boxed: bool, name: String, args: Vec<String>, definition: TypeDefinitionBody<'a>, location: Location<'a>,
     ) -> Ast<'a> {
-        Ast::TypeDefinition(TypeDefinition { name, args, definition, location, type_info: None, typ: None })
+        Ast::TypeDefinition(TypeDefinition { boxed, name, args, definition, location, type_info: None, typ: None })
     }
 
     pub fn type_annotation(lhs: Ast<'a>, rhs: Type<'a>, location: Location<'a>) -> Ast<'a> {
