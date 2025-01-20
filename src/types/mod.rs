@@ -494,13 +494,6 @@ impl GeneralizedType {
             GeneralizedType::PolyType(_, _) => unreachable!(),
         }
     }
-
-    pub fn priority(&self, cache: &ModuleCache<'_>) -> TypePriority {
-        match self {
-            GeneralizedType::MonoType(typ) => typ.priority(cache),
-            GeneralizedType::PolyType(..) => TypePriority::FORALL,
-        }
-    }
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, PartialOrd, Ord)]

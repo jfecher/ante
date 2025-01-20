@@ -120,6 +120,15 @@ fn replace_env(expr: Ast, env: &Ast, definition_id: hir::DefinitionId, f: &hir::
             *cast.lhs = replace_env(*cast.lhs, env, definition_id, f);
             Ast::ReinterpretCast(cast)
         },
+        Ast::Handle(mut handle) => {
+            *handle.expression = replace_env(*handle.expression, env, definition_id, f);
+            handle.branches = fmap(handle.branches, |(pattern, branch)| {
+                let pattern = replace_env(pattern, env, definition_id, f);
+                let branch = replace_env(branch, env, definition_id, f);
+                (pattern, branch)
+            });
+            Ast::Handle(handle)
+        },
         Ast::Builtin(builtin) => Ast::Builtin(replace_env_builtin(builtin, env, definition_id, f)),
     }
 }

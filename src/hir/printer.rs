@@ -328,3 +328,17 @@ impl FmtAst for DecisionTree {
         }
     }
 }
+
+impl FmtAst for Handle {
+    fn fmt_ast(&self, printer: &mut AstPrinter, f: &mut Formatter) -> fmt::Result {
+        write!(f, "handle ")?;
+        self.expression.fmt_ast(printer, f)?;
+        for (pattern, branch) in &self.branches {
+            printer.newline(f)?;
+            pattern.fmt_ast(printer, f)?;
+            write!(f, " -> ")?;
+            branch.fmt_ast(printer, f)?;
+        }
+        Ok(())
+    }
+}

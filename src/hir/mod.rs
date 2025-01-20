@@ -203,6 +203,16 @@ pub struct ReinterpretCast {
 }
 
 #[derive(Debug, Clone)]
+pub struct Handle {
+    pub expression: Box<Ast>,
+    pub branches: Vec<(Ast, Ast)>,
+
+    /// IDs for each 'resume' variable (1 per branch) of this handle expression.
+    /// This is filled out during name resolution.
+    pub resumes: Vec<DefinitionId>,
+}
+
+#[derive(Debug, Clone)]
 pub enum Builtin {
     AddInt(Box<Ast>, Box<Ast>),
     AddFloat(Box<Ast>, Box<Ast>),
@@ -271,6 +281,7 @@ pub enum Ast {
     Tuple(Tuple),
     ReinterpretCast(ReinterpretCast),
     Builtin(Builtin),
+    Handle(Handle),
 }
 
 impl std::fmt::Display for DefinitionId {
@@ -296,6 +307,7 @@ macro_rules! dispatch_on_hir {
             $crate::hir::Ast::MemberAccess(inner) =>    $function(inner $(, $($args),* )? ),
             $crate::hir::Ast::Tuple(inner) =>           $function(inner $(, $($args),* )? ),
             $crate::hir::Ast::ReinterpretCast(inner) => $function(inner $(, $($args),* )? ),
+            $crate::hir::Ast::Handle(inner) =>          $function(inner $(, $($args),* )? ),
             $crate::hir::Ast::Builtin(inner) =>         $function(inner $(, $($args),* )? ),
         }
     });

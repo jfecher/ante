@@ -123,8 +123,8 @@ impl<'c> Context<'c> {
             Extern(_) => unit_literal(),
             MemberAccess(member_access) => self.monomorphise_member_access(member_access),
             Assignment(assignment) => self.monomorphise_assignment(assignment),
-            EffectDefinition(_) => todo!(),
-            Handle(_) => todo!(),
+            EffectDefinition(_) => unit_literal(),
+            Handle(handle) => self.monomorphise_handle(handle),
             NamedConstructor(constructor) => self.monomorphise_named_constructor(constructor),
         }
     }
@@ -323,7 +323,7 @@ impl<'c> Context<'c> {
             },
             Tag(tag) => {
                 unreachable!("'{}' found during size_of_type", tag)
-            }
+            },
 
             Function(..) => Self::ptr_size(),
 
@@ -569,7 +569,7 @@ impl<'c> Context<'c> {
             },
             Tag(tag) => {
                 unreachable!("Kind error during monomorphisation. Attempted to translate a `{}` as a type", tag)
-            }
+            },
             Struct(fields, rest) => {
                 if let Ok(binding) = self.find_binding(*rest, fuel) {
                     let binding = binding.clone();
@@ -1642,6 +1642,29 @@ impl<'c> Context<'c> {
                 Ast::MemberAccess(hir::MemberAccess { lhs, member_index, typ: result_type })
             },
         }
+    }
+
+    fn monomorphise_handle(&mut self, handle: &ast::Handle<'c>) -> hir::Ast {
+        let expression = Box::new(self.monomorphise(&handle.expression));
+
+        let resumes = fmap(&handle.resumes, |old_resume_id| {
+            let definition_id = self.next_unique_id();
+            let typ = self.cache.definition_infos[old_resume_id.0].typ.as_ref().unwrap().as_monotype().clone();
+            let monomorphized_type = Rc::new(self.convert_type(&typ));
+            let name = Some("resume".to_string());
+            let variable = hir::Variable { definition_id, definition: None, name, typ: monomorphized_type };
+            let definition = Definition::Normal(variable);
+            self.definitions.insert(*old_resume_id, typ, definition);
+            definition_id
+        });
+
+        let branches = fmap(&handle.branches, |(pattern, branch)| {
+            let pattern = self.monomorphise(pattern);
+            let branch = self.monomorphise(branch);
+            (pattern, branch)
+        });
+
+        hir::Ast::Handle(hir::Handle { expression, branches, resumes })
     }
 }
 

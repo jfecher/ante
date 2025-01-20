@@ -746,3 +746,9 @@ impl<'g> CodeGen<'g> for hir::Builtin {
         builtin::call_builtin(self, generator)
     }
 }
+
+impl<'g> CodeGen<'g> for hir::Handle {
+    fn codegen(&self, _generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+        todo!("LLVM Codegen for hir::Handle")
+    }
+}
