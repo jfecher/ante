@@ -139,7 +139,7 @@ unsafe impl<'c> Sync for Lambda<'c> {}
 #[derive(Debug, Clone)]
 pub struct FunctionCall<'a> {
     pub function: Box<Ast<'a>>,
-    pub args: Vec<Ast<'a>>,
+    pub args: Vec<(ParameterMode, Ast<'a>)>,
     pub location: Location<'a>,
     pub typ: Option<types::Type>,
 }
@@ -209,8 +209,13 @@ pub enum Type<'a> {
     Pointer(Location<'a>),
     Boolean(Location<'a>),
     Unit(Location<'a>),
-    Reference(Sharedness, Mutability, Location<'a>),
-    Function(Vec<Type<'a>>, Box<Type<'a>>, /*varargs:*/ bool, /*closure*/ bool, Location<'a>),
+    Function(
+        Vec<(ParameterMode, Type<'a>)>,
+        Box<Type<'a>>,
+        /*varargs:*/ bool,
+        /*closure*/ bool,
+        Location<'a>,
+    ),
     TypeVariable(String, Location<'a>),
     UserDefined(String, Location<'a>),
     TypeApplication(Box<Type<'a>>, Vec<Type<'a>>, Location<'a>),
@@ -218,27 +223,18 @@ pub enum Type<'a> {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Sharedness {
-    Polymorphic,
-    Shared,
-    Owned,
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Mutability {
+    #[allow(unused)]
     Polymorphic,
     Immutable,
     Mutable,
 }
 
-impl Display for Sharedness {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Sharedness::Polymorphic => Ok(()),
-            Sharedness::Shared => write!(f, "shared"),
-            Sharedness::Owned => write!(f, "owned"),
-        }
-    }
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ParameterMode {
+    Ref,
+    MutRef,
+    Move,
 }
 
 impl Display for Mutability {
@@ -614,7 +610,7 @@ impl<'a> Ast<'a> {
         })
     }
 
-    pub fn function_call(function: Ast<'a>, args: Vec<Ast<'a>>, location: Location<'a>) -> Ast<'a> {
+    pub fn function_call(function: Ast<'a>, args: Vec<(ParameterMode, Ast<'a>)>, location: Location<'a>) -> Ast<'a> {
         assert!(!args.is_empty());
         Ast::FunctionCall(FunctionCall { function: Box::new(function), args, location, typ: None })
     }
@@ -846,7 +842,6 @@ impl<'a> Locatable<'a> for Type<'a> {
             Type::Pointer(location) => *location,
             Type::Boolean(location) => *location,
             Type::Unit(location) => *location,
-            Type::Reference(_, _, location) => *location,
             Type::Function(_, _, _, _, location) => *location,
             Type::TypeVariable(_, location) => *location,
             Type::UserDefined(_, location) => *location,

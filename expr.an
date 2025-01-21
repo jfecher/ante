@@ -1,0 +1,28 @@
+import HashMap
+
+boxed type Expr =
+    | Integer I64
+    | Var String
+    | Add Expr Expr
+    | Let String Expr Expr
+
+effect Env with
+    lookup: &String -> I64
+    define: String - I64 -> Unit
+
+eval (expr: Expr): I64 can Env =
+    match expr
+    | Integer x -> x
+    | Var name -> lookup &name
+    | Add lhs rhs -> eval lhs + eval rhs
+    | Let name rhs body ->
+        define name (eval rhs)
+        eval body
+
+main () =
+    map = mut HashMap.empty ()
+    handle eval (Integer 3)
+    | lookup name ->
+        resume (lookup map name |> unwrap)
+    | define name val ->
+        resume (insert map name val)

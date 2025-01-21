@@ -27,11 +27,9 @@ use std::{collections::HashSet, iter::FromIterator};
 
 use crate::lexer::token::Token;
 use crate::{error::location::Location, parser::ast::Mutability};
-use ast::{Ast, Trait, Type, TypeDefinitionBody};
+use ast::{Ast, ParameterMode, Trait, Type, TypeDefinitionBody};
 use combinators::*;
 use error::{ParseError, ParseResult};
-
-use self::ast::Sharedness;
 
 type AstResult<'a, 'b> = ParseResult<'a, 'b, Ast<'b>>;
 
@@ -460,7 +458,7 @@ fn term<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
         Token::Loop => loop_expr(input),
         Token::Match => match_expr(input),
         Token::Handle => handle_expr(input),
-        _ => or(&[type_annotation, named_constructor_expr, function_call, function_argument], "term")(input),
+        _ => or(&[type_annotation, named_constructor_expr, function_call, argument_or_unary], "term")(input),
     }
 }
 
@@ -500,7 +498,7 @@ parser!(named_constructor_inline_args loc -> 'b Ast<'b> =
 fn named_constructor_arg<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Ast<'b>> {
     let (input, ident, start) = identifier(input)?;
     let field_name = Ast::variable(vec![], ident, start);
-    let (input, maybe_expr, end) = maybe(pair(expect(Token::Equal), function_argument))(input)?;
+    let (input, maybe_expr, end) = maybe(pair(expect(Token::Equal), argument_or_unary))(input)?;
     let expr = match maybe_expr {
         Some((_, expr)) => Ast::definition(field_name, expr, start.union(end)),
         None => field_name,
@@ -584,12 +582,6 @@ parser!(not_expr loc =
     Ast::function_call(Ast::operator(not, loc), vec![expr], loc)
 );
 
-parser!(ref_expr loc =
-    token <- or(&[expect(Token::Ampersand), expect(Token::ExclamationMark)], "expression");
-    expr !<- term;
-    Ast::function_call(Ast::operator(token, loc), vec![expr], loc)
-);
-
 parser!(at_expr loc =
     token <- expect(Token::At);
     expr !<- term;
@@ -597,22 +589,36 @@ parser!(at_expr loc =
 );
 
 parser!(type_annotation loc =
-    lhs <- or(&[function_call, function_argument], "term");
+    lhs <- or(&[function_call, argument_or_unary], "term");
     _ <- expect(Token::Colon);
     rhs <- parse_type;
     Ast::type_annotation(lhs, rhs, loc)
 );
 
 fn parse_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
-    or(&[function_type, pair_type, reference_type, type_application, basic_type], "type")(input)
+    or(&[function_type, pair_type, type_application, basic_type], "type")(input)
 }
 
-fn function_arg_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
+parser!(function_arg_type loc -> 'b (ParameterMode, Type<'b>) =
+    mode <- parameter_mode;
+    typ <- function_arg_type_inner;
+    (mode, typ)
+);
+
+fn parameter_mode<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, ParameterMode> {
+    match input[0] {
+        (Token::Ampersand, loc) => Ok((&input[1..], ParameterMode::Ref, loc)),
+        (Token::ExclamationMark, loc) => Ok((&input[1..], ParameterMode::MutRef, loc)),
+        (_, loc) => Ok((&input, ParameterMode::Move, loc)),
+    }
+}
+
+fn function_arg_type_inner<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
     or(&[type_application, pair_type, basic_type], "type")(input)
 }
 
 fn parse_type_no_pair<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
-    or(&[function_type, reference_type, type_application, basic_type], "type")(input)
+    or(&[function_type, type_application, basic_type], "type")(input)
 }
 
 fn basic_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
@@ -626,7 +632,6 @@ fn basic_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
         Token::PointerType => pointer_type(input),
         Token::BooleanType => boolean_type(input),
         Token::UnitType => unit_type(input),
-        Token::Ampersand => basic_reference_type(input),
         Token::Identifier(_) => type_variable(input),
         Token::TypeName(_) => user_defined_type(input),
         Token::ParenthesisLeft => parenthesized_type(input),
@@ -654,13 +659,17 @@ parser!(else_expr _loc =
     otherwise
 );
 
-/// A function_argument is a unary expr or a member_access of
-/// 1-n arguments.
-fn function_argument<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
+// A function_argument is a unary expr or a member_access of
+// 1-n arguments.
+parser!(function_argument loc -> 'b (ParameterMode, Ast<'b>) =
+    mode <- parameter_mode;
+    arg <- argument_or_unary;
+    (mode, arg)
+);
+
+fn argument_or_unary<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
     match input[0].0 {
         Token::Not => not_expr(input),
-        Token::Ampersand => ref_expr(input),
-        Token::ExclamationMark => ref_expr(input),
         Token::At => at_expr(input),
         _ => member_access(input),
     }
@@ -668,8 +677,6 @@ fn function_argument<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
 
 fn pattern_function_argument<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
     match input[0].0 {
-        Token::Ampersand => ref_expr(input),
-        Token::ExclamationMark => ref_expr(input),
         Token::At => at_expr(input),
         _ => pattern_argument(input),
     }
@@ -881,51 +888,6 @@ parser!(unit_type loc -> 'b Type<'b> =
     _ <- expect(Token::UnitType);
     Type::Unit(loc)
 );
-
-parser!(reference_type loc -> 'b Type<'b> =
-    mutability <- reference_operator;
-    sharedness <- sharedness;
-    element <- maybe(reference_element_type);
-    make_reference_type(Type::Reference(sharedness, mutability, loc), element, loc)
-);
-
-parser!(reference_operator loc -> 'b Mutability =
-    token <- or(&[expect(Token::Ampersand), expect(Token::ExclamationMark)], "type");
-    match token {
-        Token::Ampersand => Mutability::Immutable,
-        Token::ExclamationMark => Mutability::Mutable,
-        Token::QuestionMark => Mutability::Polymorphic,
-        _ => unreachable!(),
-    }
-);
-
-// The basic reference type `&t` can be used without parenthesis in a type application
-parser!(basic_reference_type loc -> 'b Type<'b> =
-    mutability <- reference_operator;
-    element <- maybe(basic_type);
-    make_reference_type(Type::Reference(Sharedness::Polymorphic, mutability, loc), element, loc)
-);
-
-parser!(reference_element_type loc -> 'b Type<'b> =
-    typ <- or(&[type_application, basic_type], "type");
-    typ
-);
-
-fn make_reference_type<'b>(reference: Type<'b>, element: Option<Type<'b>>, loc: Location<'b>) -> Type<'b> {
-    match element {
-        Some(element) => Type::TypeApplication(Box::new(reference), vec![element], loc),
-        None => reference,
-    }
-}
-
-// Parses 'owned' or 'shared' on a reference type
-fn sharedness<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Sharedness> {
-    match input[0].0 {
-        Token::Shared => Ok((&input[1..], Sharedness::Shared, input[0].1)),
-        Token::Owned => Ok((&input[1..], Sharedness::Owned, input[0].1)),
-        _ => Ok((input, Sharedness::Polymorphic, input[0].1)),
-    }
-}
 
 parser!(type_variable loc -> 'b Type<'b> =
     name <- identifier;

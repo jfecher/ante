@@ -1,15 +1,17 @@
 use std::collections::BTreeMap;
 
-use crate::error::location::Location;
+use crate::error::location::{Locatable, Location};
 use crate::parser::ast::Ast;
-use crate::{error::location::Locatable, lexer::token::Token, parser::ast, util::fmap};
+use crate::{lexer::token::Token, parser::ast, util::fmap};
+
+use super::ast::ParameterMode;
 
 /// Turns `(foo _  _ 2)` into `(fn $1 $2 -> (foo $1 $2 2))`
 pub fn desugar_explicit_currying<'a, F>(
-    function: Ast<'a>, args: Vec<Ast<'a>>, make_function_call: F, loc: Location<'a>,
+    function: Ast<'a>, args: Vec<(ParameterMode, Ast<'a>)>, make_function_call: F, loc: Location<'a>,
 ) -> Ast<'a>
 where
-    F: FnOnce(Ast<'a>, Vec<Ast<'a>>, Location<'a>) -> Ast<'a>,
+    F: FnOnce(Ast<'a>, Vec<(ParameterMode, Ast<'a>)>, Location<'a>) -> Ast<'a>,
 {
     if args.iter().any(matches_underscore) {
         curried_function_call(function, args, make_function_call, loc)
@@ -18,18 +20,21 @@ where
     }
 }
 
-fn curried_function_call<'a, F>(function: Ast<'a>, args: Vec<Ast<'a>>, call_function: F, loc: Location<'a>) -> Ast<'a>
+fn curried_function_call<'a, F>(
+    function: Ast<'a>, args: Vec<(ParameterMode, Ast<'a>)>, call_function: F, loc: Location<'a>,
+) -> Ast<'a>
 where
-    F: FnOnce(Ast<'a>, Vec<Ast<'a>>, Location<'a>) -> Ast<'a>,
+    F: FnOnce(Ast<'a>, Vec<(ParameterMode, Ast<'a>)>, Location<'a>) -> Ast<'a>,
 {
     let mut curried_args = vec![];
     let mut curried_arg_count = 0;
-    let args: Vec<Ast<'a>> = fmap(args, |arg| {
+    let args = fmap(args, |arg| {
         if matches_underscore(&arg) {
             curried_arg_count += 1;
             let curried_arg = format!("${}", curried_arg_count);
-            curried_args.push(Ast::variable(vec![], curried_arg.clone(), arg.locate()));
-            Ast::variable(vec![], curried_arg, arg.locate()) // TODO: add correct module prefix
+            curried_args.push(Ast::variable(vec![], curried_arg.clone(), arg.1.locate()));
+            (ParameterMode::Move, Ast::variable(vec![], curried_arg, arg.1.locate()))
+        // TODO: add correct module prefix
         } else {
             arg
         }
@@ -39,8 +44,8 @@ where
     Ast::lambda(curried_args, None, None, function_call, loc)
 }
 
-fn matches_underscore(arg: &Ast) -> bool {
-    matches!(arg, Ast::Variable(ast::Variable{ kind: ast::VariableKind::Identifier(x), ..}) if x == "_")
+fn matches_underscore(arg: &(ParameterMode, Ast)) -> bool {
+    matches!(&arg.1, Ast::Variable(ast::Variable{ kind: ast::VariableKind::Identifier(x), ..}) if x == "_")
 }
 
 /// Turns:
@@ -51,9 +56,10 @@ fn matches_underscore(arg: &Ast) -> bool {
 /// Also handles explicitly curried operators. E.g. `_ or false` will
 /// be translated as `fn $1 -> if $1 then true else false`
 pub fn desugar_operators<'a>(operator: Token, lhs: Ast<'a>, rhs: Ast<'a>, location: Location<'a>) -> Ast<'a> {
-    let call_operator_function = |function: Ast<'a>, mut arguments: Vec<Ast<'a>>, location| {
-        let rhs = arguments.pop().unwrap();
-        let lhs = arguments.pop().unwrap();
+    let call_operator_function = |function: Ast<'a>, mut arguments: Vec<(ParameterMode, Ast<'a>)>, location| {
+        // TODO: We're ignoring the ParameterMode here
+        let rhs = arguments.pop().unwrap().1;
+        let lhs = arguments.pop().unwrap().1;
 
         match function.get_operator() {
             Some(Token::ApplyLeft) => prepend_argument_to_function(lhs, rhs, location),
@@ -69,7 +75,12 @@ pub fn desugar_operators<'a>(operator: Token, lhs: Ast<'a>, rhs: Ast<'a>, locati
     };
 
     let operator_symbol = Ast::operator(operator, location);
-    desugar_explicit_currying(operator_symbol, vec![lhs, rhs], call_operator_function, location)
+    desugar_explicit_currying(
+        operator_symbol,
+        vec![(ParameterMode::Move, lhs), (ParameterMode::Move, rhs)],
+        call_operator_function,
+        location,
+    )
 }
 
 fn prepend_argument_to_function<'a>(f: Ast<'a>, arg: Ast<'a>, location: Location<'a>) -> Ast<'a> {

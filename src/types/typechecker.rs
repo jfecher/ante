@@ -30,7 +30,7 @@ use crate::cache::{DefinitionInfoId, DefinitionKind, EffectInfoId, ModuleCache, 
 use crate::cache::{ImplScopeId, VariableId};
 use crate::error::location::{Locatable, Location};
 use crate::error::{Diagnostic, DiagnosticKind as D, TypeErrorKind, TypeErrorKind as TE};
-use crate::parser::ast::{self, ClosureEnvironment, Mutability};
+use crate::parser::ast::{self, ClosureEnvironment};
 use crate::types::traits::{RequiredTrait, TraitConstraint, TraitConstraints};
 use crate::types::typed::Typed;
 use crate::types::EffectSet;
@@ -46,7 +46,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use super::mutual_recursion::{definition_is_mutually_recursive, try_generalize_definition};
 use super::traits::{Callsite, ConstraintSignature, TraitConstraintId};
-use super::{GeneralizedType, TypeInfoBody, TypeTag};
+use super::{GeneralizedType, TypeInfoBody};
 
 /// The current LetBindingLevel we are at.
 /// This increases by 1 whenever we enter the rhs of a `ast::Definition` and decreases
@@ -151,19 +151,6 @@ pub fn type_application_bindings(info: &TypeInfo<'_>, typeargs: &[Type], cache: 
         .collect()
 }
 
-/// Given `a` returns `ref a`
-fn ref_of(mutability: Mutability, typ: Type, cache: &mut ModuleCache) -> Type {
-    let sharedness = Box::new(next_type_variable(cache));
-    let mutability = match mutability {
-        Mutability::Polymorphic => Box::new(next_type_variable(cache)),
-        Mutability::Immutable => Box::new(Type::Tag(TypeTag::Immutable)),
-        Mutability::Mutable => Box::new(Type::Tag(TypeTag::Mutable)),
-    };
-    let lifetime = Box::new(next_type_variable(cache));
-    let constructor = Box::new(Type::Ref { sharedness, mutability, lifetime });
-    TypeApplication(constructor, vec![typ])
-}
-
 /// Replace any typevars found in typevars_to_replace with the
 /// associated value in the same table, leave them otherwise
 fn replace_typevars(
@@ -194,7 +181,6 @@ pub fn replace_all_typevars_with_bindings(
 ) -> Type {
     match typ {
         Primitive(p) => Primitive(*p),
-        Tag(tag) => Tag(*tag),
 
         TypeVariable(id) => replace_typevar_with_binding(*id, new_bindings, cache),
 
@@ -209,13 +195,6 @@ pub fn replace_all_typevars_with_bindings(
             Function(FunctionType { parameters, return_type, environment, is_varargs, effects })
         },
         UserDefined(id) => UserDefined(*id),
-
-        Ref { mutability, sharedness, lifetime } => {
-            let mutability = Box::new(replace_all_typevars_with_bindings(mutability, new_bindings, cache));
-            let sharedness = Box::new(replace_all_typevars_with_bindings(sharedness, new_bindings, cache));
-            let lifetime = Box::new(replace_all_typevars_with_bindings(lifetime, new_bindings, cache));
-            Ref { sharedness, mutability, lifetime }
-        },
 
         TypeApplication(typ, args) => {
             let typ = replace_all_typevars_with_bindings(typ, new_bindings, cache);
@@ -266,7 +245,6 @@ fn replace_typevar_with_binding(
 pub fn bind_typevars(typ: &Type, type_bindings: &TypeBindings, cache: &ModuleCache<'_>) -> Type {
     match typ {
         Primitive(p) => Primitive(*p),
-        Tag(tag) => Tag(*tag),
 
         TypeVariable(id) => bind_typevar(*id, type_bindings, cache),
 
@@ -279,13 +257,6 @@ pub fn bind_typevars(typ: &Type, type_bindings: &TypeBindings, cache: &ModuleCac
             Function(FunctionType { parameters, return_type, environment, is_varargs, effects })
         },
         UserDefined(id) => UserDefined(*id),
-
-        Ref { mutability, sharedness, lifetime } => {
-            let mutability = Box::new(bind_typevars(mutability, type_bindings, cache));
-            let sharedness = Box::new(bind_typevars(sharedness, type_bindings, cache));
-            let lifetime = Box::new(bind_typevars(lifetime, type_bindings, cache));
-            Ref { sharedness, mutability, lifetime }
-        },
 
         TypeApplication(typ, args) => {
             let typ = bind_typevars(typ, type_bindings, cache);
@@ -350,7 +321,6 @@ pub fn contains_any_typevars_from_list(typ: &Type, list: &[TypeVariableId], cach
     match typ {
         Primitive(_) => false,
         UserDefined(_) => false,
-        Tag(_) => false,
 
         TypeVariable(id) => type_variable_contains_any_typevars_from_list(*id, list, cache),
 
@@ -359,12 +329,6 @@ pub fn contains_any_typevars_from_list(typ: &Type, list: &[TypeVariableId], cach
                 || contains_any_typevars_from_list(&function.return_type, list, cache)
                 || contains_any_typevars_from_list(&function.environment, list, cache)
                 || contains_any_typevars_from_list(&function.effects, list, cache)
-        },
-
-        Ref { mutability, sharedness, lifetime } => {
-            contains_any_typevars_from_list(mutability, list, cache)
-                || contains_any_typevars_from_list(sharedness, list, cache)
-                || contains_any_typevars_from_list(lifetime, list, cache)
         },
 
         TypeApplication(typ, args) => {
@@ -556,7 +520,6 @@ pub(super) fn occurs(
     match typ {
         Primitive(_) => OccursResult::does_not_occur(),
         UserDefined(_) => OccursResult::does_not_occur(),
-        Tag(_) => OccursResult::does_not_occur(),
 
         TypeVariable(var_id) => typevars_match(id, level, *var_id, bindings, fuel, cache),
         Function(function) => occurs(id, level, &function.return_type, bindings, fuel, cache)
@@ -565,9 +528,6 @@ pub(super) fn occurs(
             .then_all(&function.parameters, |param| occurs(id, level, param, bindings, fuel, cache)),
         TypeApplication(typ, args) => occurs(id, level, typ, bindings, fuel, cache)
             .then_all(args, |arg| occurs(id, level, arg, bindings, fuel, cache)),
-        Ref { mutability, sharedness, lifetime } => occurs(id, level, mutability, bindings, fuel, cache)
-            .then(|| occurs(id, level, sharedness, bindings, fuel, cache))
-            .then(|| occurs(id, level, lifetime, bindings, fuel, cache)),
         Struct(fields, var_id) => typevars_match(id, level, *var_id, bindings, fuel, cache)
             .then_all(fields.iter().map(|(_, typ)| typ), |field| occurs(id, level, field, bindings, fuel, cache)),
         Effects(effects) => effects.occurs(id, level, bindings, fuel, cache),
@@ -682,16 +642,6 @@ pub fn try_unify_with_bindings_inner<'b>(
             Ok(())
         },
 
-        // Refs have a hidden lifetime variable we need to unify here
-        (
-            Ref { sharedness: a_shared, mutability: a_mut, lifetime: a_lifetime },
-            Ref { sharedness: b_shared, mutability: b_mut, lifetime: b_lifetime },
-        ) => {
-            try_unify_with_bindings_inner(a_shared, b_shared, bindings, location, cache)?;
-            try_unify_with_bindings_inner(a_mut, b_mut, bindings, location, cache)?;
-            try_unify_with_bindings_inner(a_lifetime, b_lifetime, bindings, location, cache)
-        },
-
         // Follow any bindings here for convenience so we don't have to check if a or b
         // are bound in all Struct cases below.
         (Struct(_, var), t2) | (t2, Struct(_, var)) if matches!(&cache.type_bindings[var.0], Bound(_)) => {
@@ -716,14 +666,6 @@ pub fn try_unify_with_bindings_inner<'b>(
             effects1.try_unify_with_bindings(effects2, bindings, cache);
             Ok(())
         },
-
-        (Tag(tag1), Tag(tag2)) if tag1 == tag2 => Ok(()),
-
-        // ! <: &
-        (Tag(TypeTag::Mutable), Tag(TypeTag::Immutable)) => Ok(()),
-
-        // owned <: shared
-        (Tag(TypeTag::Owned), Tag(TypeTag::Shared)) => Ok(()),
 
         _ => Err(()),
     }
@@ -848,10 +790,7 @@ fn get_fields(
                 },
             }
         },
-        TypeApplication(constructor, args) => match follow_bindings_in_cache_and_map(constructor, bindings, cache) {
-            Ref { .. } => get_fields(&args[0], &[], bindings, cache),
-            other => get_fields(&other, args, bindings, cache),
-        },
+        TypeApplication(constructor, args) => get_fields(&constructor, args, bindings, cache),
         Struct(fields, rest) => match &cache.type_bindings[rest.0] {
             Bound(binding) => get_fields(&binding.clone(), args, bindings, cache),
             Unbound(_, _) => Ok(fields.clone()),
@@ -983,7 +922,6 @@ pub fn find_all_typevars(typ: &Type, polymorphic_only: bool, cache: &ModuleCache
     match typ {
         Primitive(_) => vec![],
         UserDefined(_) => vec![],
-        Tag(_) => vec![],
         TypeVariable(id) => find_typevars_in_typevar_binding(*id, polymorphic_only, cache),
         Function(function) => {
             let mut type_variables = vec![];
@@ -1000,12 +938,6 @@ pub fn find_all_typevars(typ: &Type, polymorphic_only: bool, cache: &ModuleCache
             for arg in args {
                 type_variables.append(&mut find_all_typevars(arg, polymorphic_only, cache));
             }
-            type_variables
-        },
-        Ref { sharedness, mutability, lifetime } => {
-            let mut type_variables = find_all_typevars(mutability, polymorphic_only, cache);
-            type_variables.append(&mut find_all_typevars(sharedness, polymorphic_only, cache));
-            type_variables.append(&mut find_all_typevars(lifetime, polymorphic_only, cache));
             type_variables
         },
         Struct(fields, id) => match &cache.type_bindings[id.0] {
@@ -1723,10 +1655,9 @@ impl<'a> Inferable<'a> for ast::Definition<'a> {
         let previous_level = CURRENT_LEVEL.swap(level.0, Ordering::SeqCst);
 
         // t, traits
-        let mut result = infer(self.expr.as_mut(), cache);
+        let result = infer(self.expr.as_mut(), cache);
         if self.mutable {
-            let ref_type = mut_polymorphically_shared_ref(cache);
-            result.typ = Type::TypeApplication(Box::new(ref_type), vec![result.typ]);
+            // TODO: Mark definition mutable?
         }
 
         // The rhs of a Definition must be inferred at a greater LetBindingLevel than
@@ -1957,16 +1888,13 @@ impl<'a> Inferable<'a> for ast::Extern<'a> {
 
 impl<'a> Inferable<'a> for ast::MemberAccess<'a> {
     fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> TypeResult {
-        let mut result = infer(self.lhs.as_mut(), cache);
+        let result = infer(self.lhs.as_mut(), cache);
 
         let level = LetBindingLevel(CURRENT_LEVEL.load(Ordering::SeqCst));
-        let mut field_type = cache.next_type_variable(level);
+        let field_type = cache.next_type_variable(level);
 
-        if let Some(mutability) = self.offset {
-            let collection_variable = next_type_variable(cache);
-            let expected = ref_of(mutability, collection_variable.clone(), cache);
-            unify(&result.typ, &expected, self.lhs.locate(), cache, TE::ExpectedStructReference);
-            result.typ = collection_variable;
+        if let Some(_mutability) = self.offset {
+            // TODO: Check that `self` is a reference
         }
 
         let mut fields = BTreeMap::new();
@@ -1978,8 +1906,8 @@ impl<'a> Inferable<'a> for ast::MemberAccess<'a> {
 
         unify(&result.typ, &struct_type, self.location, cache, TE::NoFieldOfType(self.field.clone()));
 
-        if let Some(mutability) = self.offset {
-            field_type = ref_of(mutability, field_type, cache);
+        if let Some(_mutability) = self.offset {
+            // TODO: Mark the result as a reference
         }
 
         result.with_type(field_type)
@@ -1992,42 +1920,12 @@ impl<'a> Inferable<'a> for ast::Assignment<'a> {
         let mut rhs = infer(self.rhs.as_mut(), cache);
         result.combine(&mut rhs, cache);
 
-        let mut_ref = mut_polymorphically_shared_ref(cache);
-        let mutref = Type::TypeApplication(Box::new(mut_ref), vec![rhs.typ.clone()]);
+        unify(&result.typ, &rhs.typ, self.location, cache, TE::NeverShown);
 
-        match try_unify(&result.typ, &mutref, self.location, cache, TE::NeverShown) {
-            Ok(bindings) => bindings.perform(cache),
-            Err(_) => issue_assignment_error(&result.typ, self.lhs.locate(), &rhs.typ, self.location, cache),
-        }
-
+        // TODO: Need new way to check if lhs is mutable
+        // if !mutable:
+        //   issue_assignment_error(&result.typ, self.lhs.locate(), &rhs.typ, self.location, cache),
         result.with_type(Type::UNIT)
-    }
-}
-
-fn mut_polymorphically_shared_ref(cache: &mut ModuleCache) -> Type {
-    let mutability = Box::new(Type::Tag(TypeTag::Mutable));
-    let sharedness = Box::new(next_type_variable(cache));
-    let lifetime = Box::new(next_type_variable(cache));
-    Type::Ref { mutability, sharedness, lifetime }
-}
-
-fn issue_assignment_error<'c>(
-    lhs: &Type, lhs_loc: Location<'c>, rhs: &Type, location: Location<'c>, cache: &mut ModuleCache<'c>,
-) {
-    // Try to offer a more specific error message
-    let var = next_type_variable(cache);
-    let mutref = mut_polymorphically_shared_ref(cache);
-    let mutref = Type::TypeApplication(Box::new(mutref), vec![var]);
-
-    if let Err(msg) = try_unify(lhs, &mutref, lhs_loc, cache, TE::AssignToNonMutRef) {
-        cache.push_full_diagnostic(msg);
-    } else {
-        let inner_type = match follow_bindings_in_cache(lhs, cache) {
-            TypeApplication(_, mut args) => args.remove(0),
-            _ => unreachable!(),
-        };
-
-        unify(&inner_type, rhs, location, cache, TE::AssignToWrongType);
     }
 }
 

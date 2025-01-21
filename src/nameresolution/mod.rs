@@ -45,12 +45,13 @@ use crate::error::{
 };
 use crate::lexer::{token::Token, Lexer};
 use crate::nameresolution::scope::{FunctionScopes, Scope};
+use crate::parser::ast::ParameterMode;
 use crate::parser::{self, ast, ast::Ast};
 use crate::types::traits::ConstraintSignature;
 use crate::types::typed::Typed;
 use crate::types::{
     Field, FunctionType, GeneralizedType, LetBindingLevel, PrimitiveType, Type, TypeConstructor, TypeInfoBody,
-    TypeInfoId, TypeVariableId, INITIAL_LEVEL, STRING_TYPE, TypeTag,
+    TypeInfoId, TypeVariableId, INITIAL_LEVEL, STRING_TYPE,
 };
 use crate::util::{fmap, timing, trustme};
 
@@ -589,10 +590,8 @@ impl<'c> NameResolver {
             Type::TypeVariable(_) => 0,
             Type::UserDefined(id) => cache[*id].args.len(),
             Type::TypeApplication(_, _) => 0,
-            Type::Ref { .. } => 1,
             Type::Struct(_, _) => 0,
             Type::Effects(_) => 0,
-            Type::Tag(_) => 0,
         }
     }
 
@@ -694,7 +693,7 @@ impl<'c> NameResolver {
             ast::Type::Boolean(_) => Type::Primitive(PrimitiveType::BooleanType),
             ast::Type::Unit(_) => Type::UNIT,
             ast::Type::Function(args, ret, is_varargs, is_closure, _) => {
-                let parameters = fmap(args, |arg| self.convert_type(cache, arg));
+                let parameters = fmap(args, |arg| self.convert_type(cache, &arg.1)); // TODO: ignoring param mode here
                 let return_type = Box::new(self.convert_type(cache, ret));
                 let environment =
                     Box::new(if *is_closure { cache.next_type_variable(self.let_binding_level) } else { Type::UNIT });
@@ -739,28 +738,6 @@ impl<'c> NameResolver {
                 };
 
                 Type::TypeApplication(Box::new(pair), args)
-            },
-            ast::Type::Reference(sharedness, mutability, _) => {
-                // When translating ref types, all have a hidden lifetime variable that is unified
-                // under the hood by the compiler to determine the reference's stack lifetime.
-                // This is never able to be manually specified by the programmer, so we use
-                // next_type_variable_id on the cache rather than the NameResolver's version which
-                // would add a name into scope.
-                let lifetime = Box::new(cache.next_type_variable(self.let_binding_level));
-
-                let sharedness = Box::new(match sharedness {
-                    ast::Sharedness::Polymorphic => cache.next_type_variable(self.let_binding_level),
-                    ast::Sharedness::Shared => Type::Tag(TypeTag::Shared),
-                    ast::Sharedness::Owned => Type::Tag(TypeTag::Owned),
-                });
-                
-                let mutability = Box::new(match mutability {
-                    ast::Mutability::Polymorphic => cache.next_type_variable(self.let_binding_level),
-                    ast::Mutability::Immutable => Type::Tag(TypeTag::Immutable),
-                    ast::Mutability::Mutable => Type::Tag(TypeTag::Mutable),
-                });
-
-                Type::Ref { sharedness, mutability, lifetime }
             },
         }
     }
@@ -1018,7 +995,7 @@ impl<'c> Resolvable<'c> for ast::FunctionCall<'c> {
         resolver.auto_declare = prev_auto_declare;
 
         for arg in self.args.iter_mut() {
-            arg.define(resolver, cache)
+            arg.1.define(resolver, cache)
         }
     }
 }
@@ -1704,7 +1681,7 @@ impl<'c> Resolvable<'c> for ast::NamedConstructor<'c> {
         let (missing_fields, args) =
             struct_fields.fold((Vec::new(), Vec::new()), |(mut missing_fields, mut args), field| {
                 if let Some((variable, _)) = defined_fields.remove(field) {
-                    args.push(variable.clone());
+                    args.push((ParameterMode::Move, variable.clone()));
                 } else {
                     missing_fields.push(field);
                 }

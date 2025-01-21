@@ -204,12 +204,6 @@ impl<'c> Context<'c> {
                 let args = fmap(args, |arg| self.follow_all_bindings_inner(arg, fuel));
                 TypeApplication(Box::new(con), args)
             },
-            Ref { mutability, sharedness, lifetime } => {
-                let mutability = Box::new(self.follow_all_bindings_inner(mutability, fuel));
-                let sharedness = Box::new(self.follow_all_bindings_inner(sharedness, fuel));
-                let lifetime = Box::new(self.follow_all_bindings_inner(lifetime, fuel));
-                Ref { mutability, sharedness, lifetime }
-            },
             Struct(fields, id) => match self.find_binding(*id, fuel) {
                 Ok(binding) => self.follow_all_bindings_inner(binding, fuel),
                 Err(_) => {
@@ -222,7 +216,6 @@ impl<'c> Context<'c> {
                 },
             },
             Effects(effects) => self.follow_all_effect_bindings_inner(effects, fuel),
-            Tag(tag) => Tag(*tag),
         }
     }
 
@@ -321,9 +314,6 @@ impl<'c> Context<'c> {
             Primitive(FloatType) => {
                 unreachable!("'Float' type constructor without arguments found during size_of_type")
             },
-            Tag(tag) => {
-                unreachable!("'{}' found during size_of_type", tag)
-            },
 
             Function(..) => Self::ptr_size(),
 
@@ -355,7 +345,6 @@ impl<'c> Context<'c> {
                 _ => unreachable!("Kind error inside size_of_type"),
             },
 
-            Ref { .. } => Self::ptr_size(),
             Struct(fields, rest) => {
                 if let Ok(binding) = self.find_binding(*rest, RECURSION_LIMIT) {
                     let binding = binding.clone();
@@ -528,7 +517,7 @@ impl<'c> Context<'c> {
                 let typ = self.follow_bindings_shallow(typ);
 
                 match typ {
-                    Ok(Primitive(PrimitiveType::Ptr) | Ref { .. }) => Type::Primitive(hir::PrimitiveType::Pointer),
+                    Ok(Primitive(PrimitiveType::Ptr)) => Type::Primitive(hir::PrimitiveType::Pointer),
                     Ok(Primitive(PrimitiveType::IntegerType)) => {
                         if self.is_type_variable(&args[0]) {
                             // Default to i32
@@ -560,15 +549,6 @@ impl<'c> Context<'c> {
                         unreachable!("Tried to apply an unbound type variable (id {}), args: {:?}", var.0, args);
                     },
                 }
-            },
-
-            Ref { .. } => {
-                unreachable!(
-                    "Kind error during monomorphisation. Attempted to translate a `ref` without a type argument"
-                )
-            },
-            Tag(tag) => {
-                unreachable!("Kind error during monomorphisation. Attempted to translate a `{}` as a type", tag)
             },
             Struct(fields, rest) => {
                 if let Ok(binding) = self.find_binding(*rest, fuel) {
@@ -1526,13 +1506,9 @@ impl<'c> Context<'c> {
         let typ = self.follow_all_bindings(typ);
         match &typ {
             UserDefined(id) => self.cache[*id].find_field(field_name).unwrap().0,
-            TypeApplication(typ, args) => {
-                match typ.as_ref() {
-                    // Pass through ref types transparently
-                    types::Type::Ref { .. } => self.get_field_index(field_name, &args[0]),
-                    // These last 2 cases are the same. They're duplicated to avoid another follow_bindings_shallow call.
-                    typ => self.get_field_index(field_name, typ),
-                }
+            TypeApplication(typ, _args) => {
+                // These last 2 cases are the same. They're duplicated to avoid another follow_bindings_shallow call.
+                self.get_field_index(field_name, typ)
             },
             // This case should only happen when a bottom type is unified with an anonymous field
             // type. Default to alphabetically ordered fields, but it should never actually be
@@ -1560,14 +1536,8 @@ impl<'c> Context<'c> {
         let lhs_type = self.follow_all_bindings(member_access.lhs.get_type().unwrap());
         let index = self.get_field_index(&member_access.field, &lhs_type);
 
-        let ref_type = match lhs_type {
-            types::Type::TypeApplication(constructor, args) => match self.follow_bindings_shallow(constructor.as_ref())
-            {
-                Ok(types::Type::Ref { .. }) => Some(self.convert_type(&args[0])),
-                _ => None,
-            },
-            _ => None,
-        };
+        // TODO: Check for refs?
+        let ref_type = None;
 
         let result_type = self.convert_type(member_access.typ.as_ref().unwrap());
 

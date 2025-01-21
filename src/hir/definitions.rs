@@ -63,10 +63,6 @@ impl std::hash::Hash for DefinitionType {
                 types::Type::TypeVariable(_) => (), // Do nothing
                 types::Type::Function(_) => (),
                 types::Type::TypeApplication(_, _) => (),
-                types::Type::Ref { sharedness, mutability, lifetime: _ } => {
-                    sharedness.hash(state);
-                    mutability.hash(state);
-                },
                 types::Type::Struct(field_names, _) => {
                     for name in field_names {
                         name.hash(state);
@@ -77,7 +73,6 @@ impl std::hash::Hash for DefinitionType {
                         id.hash(state);
                     }
                 },
-                types::Type::Tag(tag) => tag.hash(state),
             }
         })
     }
@@ -96,13 +91,6 @@ fn definition_type_eq(a: &types::Type, b: &types::Type) -> bool {
         (Type::Primitive(primitive1), Type::Primitive(primitive2)) => primitive1 == primitive2,
         (Type::UserDefined(id1), Type::UserDefined(id2)) => id1 == id2,
         (Type::TypeVariable(_), Type::TypeVariable(_)) => true, // Do nothing
-        // This will monomorphize separate definitions for polymorphically-owned references
-        // which is undesired. Defaulting them to shared/owned though can change behavior
-        // if traits are involved.
-        (Type::Ref { sharedness: shared1, mutability: mutable1, .. },
-         Type::Ref { sharedness: shared2, mutability: mutable2, .. }) => {
-            definition_type_eq(shared1, shared2) && definition_type_eq(mutable1, mutable2)
-        },
         (Type::Function(f1), Type::Function(f2)) => {
             if f1.parameters.len() != f2.parameters.len() {
                 return false;
@@ -139,7 +127,6 @@ fn definition_type_eq(a: &types::Type, b: &types::Type) -> bool {
                 id1 == id2 && args1.iter().zip(args2).all(|(t1, t2)| definition_type_eq(t1, t2))
             })
         },
-        (Type::Tag(tag1), Type::Tag(tag2)) => tag1 == tag2,
         (othera, otherb) => {
             assert_ne!(std::mem::discriminant(othera), std::mem::discriminant(otherb), "ICE: Missing match case");
             false

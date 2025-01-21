@@ -15,7 +15,6 @@ use std::fmt::{Debug, Display, Formatter};
 use colored::*;
 
 use super::effects::EffectSet;
-use super::typechecker::follow_bindings_in_cache;
 use super::GeneralizedType;
 use super::TypePriority;
 
@@ -166,10 +165,8 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             Type::TypeVariable(id) => self.fmt_type_variable(*id, f),
             Type::UserDefined(id) => self.fmt_user_defined_type(*id, f),
             Type::TypeApplication(constructor, args) => self.fmt_type_application(constructor, args, f),
-            Type::Ref { sharedness, mutability, lifetime } => self.fmt_ref(sharedness, mutability, lifetime, f),
             Type::Struct(fields, rest) => self.fmt_struct(fields, *rest, f),
             Type::Effects(effects) => self.fmt_effects(effects, f),
-            Type::Tag(tag) => write!(f, "{tag}"),
         }
     }
 
@@ -298,35 +295,6 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             },
             other => self.fmt_type(other, f),
         }
-    }
-
-    fn fmt_ref(&self, shared: &Type, mutable: &Type, lifetime: &Type, f: &mut Formatter) -> std::fmt::Result {
-        let mutable = follow_bindings_in_cache(mutable, self.cache);
-        let shared = follow_bindings_in_cache(shared, self.cache);
-        let parenthesize = matches!(shared, Type::Tag(_)) || self.debug;
-
-        if parenthesize {
-            write!(f, "{}", "(".blue())?;
-        }
-
-        match mutable {
-            Type::Tag(tag) => write!(f, "{}", tag.to_string().blue())?,
-            _ => write!(f, "{}", "&".blue())?,
-        }
-
-        if let Type::Tag(tag) = shared {
-            write!(f, "{}", tag.to_string().blue())?;
-        }
-
-        if self.debug {
-            write!(f, " ")?;
-            self.fmt_type(lifetime, f)?;
-        }
-
-        if parenthesize {
-            write!(f, "{}", ")".blue())?;
-        }
-        Ok(())
     }
 
     fn fmt_forall(&self, typevars: &[TypeVariableId], typ: &Type, f: &mut Formatter) -> std::fmt::Result {

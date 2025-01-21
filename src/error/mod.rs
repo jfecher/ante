@@ -93,6 +93,7 @@ pub enum ErrorType {
     Note,
 }
 
+#[allow(unused)]
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum TypeErrorKind {
     ExpectedUnitTypeFromPattern,
