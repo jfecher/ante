@@ -7,6 +7,7 @@ use crate::hir;
 use crate::lexer::token::FloatKind;
 use crate::nameresolution::builtin::BUILTIN_ID;
 use crate::parser::ast;
+use crate::parser::ast::ParameterMode;
 use crate::parser::ast::ClosureEnvironment;
 use crate::types::traits::{Callsite, RequiredImpl, TraitConstraintId};
 use crate::types::typechecker::{self, TypeBindings};
@@ -999,7 +1000,7 @@ impl<'c> Context<'c> {
                 let monomorphized_type = Rc::new(self.convert_type(&typ));
                 let variable = hir::Variable { definition_id, definition: None, name: None, typ: monomorphized_type };
 
-                for (i, arg_pattern) in call.args.iter().enumerate() {
+                for (i, (_mode, arg_pattern)) in call.args.iter().enumerate() {
                     let arg_type = self.follow_all_bindings(arg_pattern.get_type().unwrap());
 
                     let extract_result_type = self.convert_type(&arg_type);
@@ -1304,19 +1305,19 @@ impl<'c> Context<'c> {
         }
     }
 
-    fn convert_builtin(&mut self, args: &[ast::Ast<'c>], result_type: &types::Type) -> hir::Ast {
+    fn convert_builtin(&mut self, args: &[(ParameterMode, ast::Ast<'c>)], result_type: &types::Type) -> hir::Ast {
         use hir::Builtin::*;
-        let arg = match &args[0] {
+        let arg = match &args[0].1 {
             ast::Ast::Literal(ast::Literal { kind: ast::LiteralKind::String(string), .. }) => string,
             _ => unreachable!(),
         };
 
         let binary = |this: &mut Self, f: fn(Box<hir::Ast>, Box<hir::Ast>) -> hir::Builtin| {
-            f(Box::new(this.monomorphise(&args[1])), Box::new(this.monomorphise(&args[2])))
+            f(Box::new(this.monomorphise(&args[1].1)), Box::new(this.monomorphise(&args[2].1)))
         };
 
         let cast = |this: &mut Self, f: fn(Box<hir::Ast>, Type) -> hir::Builtin| {
-            f(Box::new(this.monomorphise(&args[1])), this.convert_type(result_type))
+            f(Box::new(this.monomorphise(&args[1].1)), this.convert_type(result_type))
         };
 
         hir::Ast::Builtin(match arg.as_ref() {
@@ -1353,20 +1354,20 @@ impl<'c> Context<'c> {
             "UnsignedToFloat" => cast(self, UnsignedToFloat),
             "FloatToSigned" => cast(self, FloatToSigned),
             "FloatToUnsigned" => cast(self, FloatToUnsigned),
-            "FloatPromote" => FloatPromote(Box::new(self.monomorphise(&args[1]))),
-            "FloatDemote" => FloatDemote(Box::new(self.monomorphise(&args[1]))),
+            "FloatPromote" => FloatPromote(Box::new(self.monomorphise(&args[1].1))),
+            "FloatDemote" => FloatDemote(Box::new(self.monomorphise(&args[1].1))),
 
             "BitwiseAnd" => binary(self, BitwiseAnd),
             "BitwiseOr" => binary(self, BitwiseOr),
             "BitwiseXor" => binary(self, BitwiseXor),
-            "BitwiseNot" => BitwiseNot(Box::new(self.monomorphise(&args[1]))),
+            "BitwiseNot" => BitwiseNot(Box::new(self.monomorphise(&args[1].1))),
 
             "Truncate" => cast(self, Truncate),
 
             "Deref" => cast(self, Deref),
             "Offset" => Offset(
-                Box::new(self.monomorphise(&args[1])),
-                Box::new(self.monomorphise(&args[2])),
+                Box::new(self.monomorphise(&args[1].1)),
+                Box::new(self.monomorphise(&args[2].1)),
                 self.convert_type_arg0(result_type),
             ),
             "Transmute" => cast(self, Transmute),
@@ -1374,7 +1375,7 @@ impl<'c> Context<'c> {
             // We know the result of SizeOf now, so replace it with a constant
             "SizeOf" => {
                 // We expect (size_of : Type t -> usz), so get the size of t
-                let size = self.size_of_type_arg0(args[1].get_type().unwrap());
+                let size = self.size_of_type_arg0(args[1].1.get_type().unwrap());
                 return int_literal(size as u64, IntegerKind::Usz);
             },
 
@@ -1394,7 +1395,7 @@ impl<'c> Context<'c> {
                 // generalized.
                 // TODO: Review this restriction. `a = Some 2` is no longer generalized due to the
                 // value restriction.
-                let mut args = fmap(&call.args, |arg| self.monomorphise(arg));
+                let mut args = fmap(&call.args, |(_mode, arg)| self.monomorphise(arg));
                 let function = self.monomorphise(&call.function);
 
                 // We could use a new convert_type_shallow here in the future since all we need
