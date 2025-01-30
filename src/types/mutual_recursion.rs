@@ -158,7 +158,7 @@ fn is_mutually_recursive<'a>(pattern: &ast::Ast<'a>, cache: &mut ModuleCache<'a>
         },
         TypeAnnotation(annotation) => is_mutually_recursive(&annotation.lhs, cache),
         FunctionCall(call) => {
-            call.args.iter().fold(MutualRecursionResult::No, |a, b| a.combine(is_mutually_recursive(b, cache)))
+            call.args.iter().fold(MutualRecursionResult::No, |a, (_, b)| a.combine(is_mutually_recursive(b, cache)))
         },
         _ => {
             cache.push_diagnostic(pattern.locate(), D::InvalidSyntaxInIrrefutablePattern);

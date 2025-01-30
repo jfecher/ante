@@ -211,7 +211,7 @@ impl PatternStack {
                 Ast::Variable(variable) => {
                     let tag = VariantTag::UserDefined(variable.definition.unwrap());
                     let fields =
-                        call.args.iter().rev().flat_map(|arg| PatternStack::from_ast(arg, cache, location)).collect();
+                        call.args.iter().rev().flat_map(|(_mode, arg)| PatternStack::from_ast(arg, cache, location)).collect();
 
                     let fields = PatternStack(fields);
                     let variable = new_pattern_variable(".from_ast.FunctionCall", location, cache);

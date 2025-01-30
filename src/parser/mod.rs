@@ -579,13 +579,13 @@ fn handle_pattern<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
 parser!(not_expr loc =
     not <- expect(Token::Not);
     expr !<- term;
-    Ast::function_call(Ast::operator(not, loc), vec![expr], loc)
+    Ast::function_call(Ast::operator(not, loc), vec![(ParameterMode::Move, expr)], loc)
 );
 
 parser!(at_expr loc =
     token <- expect(Token::At);
     expr !<- term;
-    Ast::function_call(Ast::operator(token, loc), vec![expr], loc)
+    Ast::function_call(Ast::operator(token, loc), vec![(ParameterMode::Move, expr)], loc)
 );
 
 parser!(type_annotation loc =

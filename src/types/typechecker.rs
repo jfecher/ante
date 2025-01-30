@@ -1197,7 +1197,7 @@ pub(super) fn bind_irrefutable_pattern<'c>(
 
             match pair_type {
                 Type::TypeApplication(_, args) => {
-                    for (element, element_type) in call.args.iter_mut().zip(args) {
+                    for ((_mode, element), element_type) in call.args.iter_mut().zip(args) {
                         bind_irrefutable_pattern(element, &element_type, required_traits, should_generalize, cache);
                     }
                 },
@@ -1275,7 +1275,7 @@ pub(super) fn foreach_variable<'a>(
         Variable(variable) => f(variable, cache),
         TypeAnnotation(annotation) => foreach_variable(annotation.lhs.as_ref(), cache, f),
         FunctionCall(call) => {
-            for arg in &call.args {
+            for (_mode, arg) in &call.args {
                 foreach_variable(arg, cache, f);
             }
         },
@@ -1572,7 +1572,7 @@ impl<'a> Inferable<'a> for ast::FunctionCall<'a> {
     fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> TypeResult {
         let mut f = infer(self.function.as_mut(), cache);
 
-        let parameters = fmap(&mut self.args, |arg| {
+        let parameters = fmap(&mut self.args, |(_mode, arg)| {
             let mut arg_result = infer(arg, cache);
             f.combine(&mut arg_result, cache);
             arg_result.typ
@@ -1614,7 +1614,7 @@ fn issue_argument_types_error<'c>(
             }
 
             for ((arg, param), arg_ast) in actual.parameters.into_iter().zip(expected.parameters).zip(&call.args) {
-                unify(&arg, &param, arg_ast.locate(), cache, TE::ArgumentTypeMismatch);
+                unify(&arg, &param, arg_ast.1.locate(), cache, TE::ArgumentTypeMismatch);
             }
         },
         None => cache.push_full_diagnostic(original_error),
