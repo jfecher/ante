@@ -1,6 +1,6 @@
 import HashMap
 
-boxed type Expr =
+shared type Expr =
     | Integer I64
     | Var String
     | Add Expr Expr
@@ -13,10 +13,11 @@ effect Env with
 eval (expr: Expr): I64 can Env =
     match expr
     | Integer x -> x
-    | Var name -> lookup &name
+    | Var name -> lookup name
     | Add lhs rhs -> eval lhs + eval rhs
     | Let name rhs body ->
-        define name (eval rhs)
+        // can't move `name` out of `boxed type Expr` here
+        define (clone name) (eval rhs)
         eval body
 
 main () =
