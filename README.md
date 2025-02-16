@@ -9,7 +9,7 @@ other fun features. Here's a quick taste:
 
 ```scala
 // No lifetime variables
-foo (x: &shared mut Bar) (y: &a) : a can Fail given Clone a =
+foo (x: !shared Bar) (y: &a) : a can Fail given Clone a =
     // Algebraic effects
     if not valid x then fail ()
 
