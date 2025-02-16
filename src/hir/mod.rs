@@ -213,6 +213,12 @@ pub struct Handle {
 }
 
 #[derive(Debug, Clone)]
+pub struct Reference {
+    pub mutability: Mutability,
+    pub expression: Box<Ast>,
+}
+
+#[derive(Debug, Clone)]
 pub enum Builtin {
     AddInt(Box<Ast>, Box<Ast>),
     AddFloat(Box<Ast>, Box<Ast>),
@@ -282,6 +288,7 @@ pub enum Ast {
     ReinterpretCast(ReinterpretCast),
     Builtin(Builtin),
     Handle(Handle),
+    Reference(Reference),
 }
 
 impl std::fmt::Display for DefinitionId {
@@ -309,13 +316,14 @@ macro_rules! dispatch_on_hir {
             $crate::hir::Ast::ReinterpretCast(inner) => $function(inner $(, $($args),* )? ),
             $crate::hir::Ast::Handle(inner) =>          $function(inner $(, $($args),* )? ),
             $crate::hir::Ast::Builtin(inner) =>         $function(inner $(, $($args),* )? ),
+            $crate::hir::Ast::Reference(inner) =>       $function(inner $(, $($args),* )? ),
         }
     });
 }
 
 pub(crate) use dispatch_on_hir;
 
-use crate::lexer::token::FloatKind;
+use crate::{lexer::token::FloatKind, parser::ast::Mutability};
 
 // Rust won't let us impl<T: FmtAst> Display for T
 macro_rules! impl_display {

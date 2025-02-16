@@ -2122,3 +2122,17 @@ impl<'a> Inferable<'a> for ast::NamedConstructor<'a> {
         self.sequence.infer_impl(cache)
     }
 }
+
+impl<'a> Inferable<'a> for ast::Reference<'a> {
+    fn infer_impl(&mut self, checker: &mut ModuleCache<'a>) -> TypeResult {
+        let mut result = infer(self.expression.as_mut(), checker);
+
+        result.typ = Type::Ref {
+            mutability: Box::new(Type::Tag(self.mutability.as_tag())),
+            sharedness: Box::new(Type::Tag(TypeTag::Shared)),
+            lifetime: Box::new(next_type_variable(checker)),
+        };
+
+        result
+    }
+}

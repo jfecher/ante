@@ -342,3 +342,10 @@ impl FmtAst for Handle {
         Ok(())
     }
 }
+
+impl FmtAst for Reference {
+    fn fmt_ast(&self, printer: &mut AstPrinter, f: &mut Formatter) -> fmt::Result {
+        write!(f, "{}", self.mutability)?;
+        self.expression.fmt_ast(printer, f)
+    }
+}

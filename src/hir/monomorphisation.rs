@@ -126,6 +126,7 @@ impl<'c> Context<'c> {
             EffectDefinition(_) => unit_literal(),
             Handle(handle) => self.monomorphise_handle(handle),
             NamedConstructor(constructor) => self.monomorphise_named_constructor(constructor),
+            Reference(reference) => self.monomorphise_reference(reference),
         }
     }
 
@@ -1603,6 +1604,11 @@ impl<'c> Context<'c> {
             ast::Ast::Sequence(sequence) => self.monomorphise_sequence(sequence),
             _ => unreachable!(),
         }
+    }
+
+    fn monomorphise_reference(&mut self, reference: &ast::Reference<'c>) -> hir::Ast {
+        let expression = Box::new(self.monomorphise(&reference.expression));
+        hir::Ast::Reference(hir::Reference { expression, mutability: reference.mutability })
     }
 
     pub fn extract(ast: hir::Ast, member_index: u32, result_type: Type) -> hir::Ast {

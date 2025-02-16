@@ -1740,3 +1740,11 @@ impl<'c> Resolvable<'c> for ast::NamedConstructor<'c> {
         resolver.pop_scope(cache, false, None);
     }
 }
+
+impl<'c> Resolvable<'c> for ast::Reference<'c> {
+    fn declare(&mut self, _resolver: &mut NameResolver, _cache: &mut ModuleCache<'c>) {}
+
+    fn define(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'c>) {
+        self.expression.define(resolver, cache);
+    }
+}

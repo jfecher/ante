@@ -260,6 +260,10 @@ fn truncate<'g>(x: IntValue<'g>, typ: &Type, generator: &mut Generator<'g>) -> B
 
 fn stack_alloc<'g>(x: &Ast, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
     let value = x.codegen(generator);
+    stack_alloc_basic_value(value, generator)
+}
+
+pub fn stack_alloc_basic_value<'g>(value: BasicValueEnum<'g>, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
     let alloca = generator.builder.build_alloca(value.get_type(), "alloca").unwrap();
     generator.builder.build_store(alloca, value).expect("Could not build store in stack_alloc");
 

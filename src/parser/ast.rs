@@ -231,6 +231,16 @@ pub enum Mutability {
     Mutable,
 }
 
+impl Mutability {
+    pub(crate) fn as_tag(&self) -> types::TypeTag {
+        match self {
+            Mutability::Polymorphic => panic!("as_tag called on Mutability::Polymorphic"),
+            Mutability::Immutable => types::TypeTag::Immutable,
+            Mutability::Mutable => types::TypeTag::Mutable,
+        }
+    }
+}
+
 impl Display for Sharedness {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -244,9 +254,9 @@ impl Display for Sharedness {
 impl Display for Mutability {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Mutability::Polymorphic => write!(f, "mut?"),
-            Mutability::Immutable => Ok(()),
-            Mutability::Mutable => write!(f, "mut"),
+            Mutability::Polymorphic => write!(f, "?"),
+            Mutability::Immutable => write!(f, "&"),
+            Mutability::Mutable => write!(f, "!"),
         }
     }
 }
@@ -446,6 +456,15 @@ pub struct NamedConstructor<'a> {
     pub typ: Option<types::Type>,
 }
 
+/// &expr or !expr
+#[derive(Debug, Clone)]
+pub struct Reference<'a> {
+    pub mutability: Mutability,
+    pub expression: Box<Ast<'a>>,
+    pub location: Location<'a>,
+    pub typ: Option<types::Type>,
+}
+
 #[derive(Debug, Clone)]
 pub enum Ast<'a> {
     Literal(Literal<'a>),
@@ -468,6 +487,7 @@ pub enum Ast<'a> {
     EffectDefinition(EffectDefinition<'a>),
     Handle(Handle<'a>),
     NamedConstructor(NamedConstructor<'a>),
+    Reference(Reference<'a>),
 }
 
 unsafe impl<'c> Send for Ast<'c> {}
@@ -767,6 +787,15 @@ impl<'a> Ast<'a> {
     pub fn new_scope(body: Ast<'a>, location: Location<'a>) -> Ast<'a> {
         Ast::match_expr(Ast::unit_literal(location), vec![(Ast::unit_literal(location), body)], location)
     }
+
+    pub fn reference(mutability: Token, expression: Ast<'a>, location: Location<'a>) -> Ast<'a> {
+        let mutability = match mutability {
+            Token::Ampersand => Mutability::Immutable,
+            Token::ExclamationMark => Mutability::Mutable,
+            other => panic!("Invalid token '{}' passed to Ast::reference", other),
+        };
+        Ast::Reference(Reference { mutability, expression: Box::new(expression), location, typ: None })
+    }
 }
 
 /// A macro for calling a method on every variant of an Ast node.
@@ -795,6 +824,7 @@ macro_rules! dispatch_on_expr {
             $crate::parser::ast::Ast::EffectDefinition(inner) => $function(inner $(, $($args),* )? ),
             $crate::parser::ast::Ast::Handle(inner) =>           $function(inner $(, $($args),* )? ),
             $crate::parser::ast::Ast::NamedConstructor(inner) => $function(inner $(, $($args),* )? ),
+            $crate::parser::ast::Ast::Reference(inner) =>        $function(inner $(, $($args),* )? ),
         }
     });
 }
@@ -835,6 +865,7 @@ impl_locatable_for!(Assignment);
 impl_locatable_for!(EffectDefinition);
 impl_locatable_for!(Handle);
 impl_locatable_for!(NamedConstructor);
+impl_locatable_for!(Reference);
 
 impl<'a> Locatable<'a> for Type<'a> {
     fn locate(&self) -> Location<'a> {

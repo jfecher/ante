@@ -115,6 +115,13 @@ impl Value {
             Value::Tuple(elems) => panic!("Value::Tuple found in eval_single: {:?}", elems),
         }
     }
+
+    pub fn map(self, mut f: impl FnMut(Value) -> Value) -> Value {
+        match self {
+            Value::Tuple(values) => Value::Tuple(fmap(values, f)),
+            other => f(other),
+        }
+    }
 }
 
 enum FunctionOrGlobal {

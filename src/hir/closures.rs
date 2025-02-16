@@ -129,6 +129,10 @@ fn replace_env(expr: Ast, env: &Ast, definition_id: hir::DefinitionId, f: &hir::
             });
             Ast::Handle(handle)
         },
+        Ast::Reference(mut reference) => {
+            *reference.expression = replace_env(*reference.expression, env, definition_id, f);
+            Ast::Reference(reference)
+        },
         Ast::Builtin(builtin) => Ast::Builtin(replace_env_builtin(builtin, env, definition_id, f)),
     }
 }

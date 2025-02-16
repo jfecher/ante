@@ -587,7 +587,7 @@ parser!(not_expr loc =
 parser!(ref_expr loc =
     token <- or(&[expect(Token::Ampersand), expect(Token::ExclamationMark)], "expression");
     expr !<- term;
-    Ast::function_call(Ast::operator(token, loc), vec![expr], loc)
+    Ast::reference(token, expr, loc)
 );
 
 parser!(at_expr loc =

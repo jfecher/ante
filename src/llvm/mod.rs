@@ -39,6 +39,8 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use self::builtin::stack_alloc_basic_value;
+
 mod builtin;
 mod decisiontree;
 
@@ -750,5 +752,20 @@ impl<'g> CodeGen<'g> for hir::Builtin {
 impl<'g> CodeGen<'g> for hir::Handle {
     fn codegen(&self, _generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
         todo!("LLVM Codegen for hir::Handle")
+    }
+}
+
+impl<'g> CodeGen<'g> for hir::Reference{
+    fn codegen(&self, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+        let value = self.expression.codegen(generator);
+
+        // Adapted from Assignment::codegen, yeah.. we need to just copy what the cranelift backend does
+        match value.as_instruction_value() {
+            Some(instruction) if instruction.get_opcode() == InstructionOpcode::Load => {
+                instruction.get_operand(0).unwrap().left().unwrap()
+            },
+            // Allocate immutable temporaries on the stack
+            _ => stack_alloc_basic_value(value, generator),
+        }
     }
 }
