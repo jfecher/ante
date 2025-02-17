@@ -1723,11 +1723,11 @@ impl<'a> Inferable<'a> for ast::Definition<'a> {
         let previous_level = CURRENT_LEVEL.swap(level.0, Ordering::SeqCst);
 
         // t, traits
-        let mut result = infer(self.expr.as_mut(), cache);
-        if self.mutable {
-            let ref_type = mut_polymorphically_shared_ref(cache);
-            result.typ = Type::TypeApplication(Box::new(ref_type), vec![result.typ]);
-        }
+        let result = infer(self.expr.as_mut(), cache);
+        // if self.mutable {
+        //     let ref_type = mut_polymorphically_shared_ref(cache);
+        //     result.typ = Type::TypeApplication(Box::new(ref_type), vec![result.typ]);
+        // }
 
         // The rhs of a Definition must be inferred at a greater LetBindingLevel than
         // the lhs below. Here we use level for the rhs and level - 1 for the lhs
@@ -2127,12 +2127,13 @@ impl<'a> Inferable<'a> for ast::Reference<'a> {
     fn infer_impl(&mut self, checker: &mut ModuleCache<'a>) -> TypeResult {
         let mut result = infer(self.expression.as_mut(), checker);
 
-        result.typ = Type::Ref {
+        let ref_type = Type::Ref {
             mutability: Box::new(Type::Tag(self.mutability.as_tag())),
             sharedness: Box::new(Type::Tag(TypeTag::Shared)),
             lifetime: Box::new(next_type_variable(checker)),
         };
 
+        result.typ = Type::TypeApplication(Box::new(ref_type), vec![result.typ]);
         result
     }
 }

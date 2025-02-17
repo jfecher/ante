@@ -586,7 +586,7 @@ parser!(not_expr loc =
 
 parser!(ref_expr loc =
     token <- or(&[expect(Token::Ampersand), expect(Token::ExclamationMark)], "expression");
-    expr !<- term;
+    expr !<- function_argument;
     Ast::reference(token, expr, loc)
 );
 
@@ -626,7 +626,7 @@ fn basic_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
         Token::PointerType => pointer_type(input),
         Token::BooleanType => boolean_type(input),
         Token::UnitType => unit_type(input),
-        Token::Ampersand => basic_reference_type(input),
+        Token::Ampersand | Token::ExclamationMark => basic_reference_type(input),
         Token::Identifier(_) => type_variable(input),
         Token::TypeName(_) => user_defined_type(input),
         Token::ParenthesisLeft => parenthesized_type(input),

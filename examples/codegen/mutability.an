@@ -3,7 +3,7 @@ print num
 num := 7
 print num
 
-mutate num
+mutate !num
 print num
 
 mutate (n: !I32) =

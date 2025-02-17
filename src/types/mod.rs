@@ -210,6 +210,10 @@ impl Type {
         self == &Type::Primitive(PrimitiveType::FloatType)
     }
 
+    pub fn is_reference_type(&self) -> bool {
+        matches!(self, Type::Ref { .. })
+    }
+
     pub fn is_unit(&self, cache: &ModuleCache<'_>) -> bool {
         match self {
             Type::Primitive(PrimitiveType::UnitType) => true,

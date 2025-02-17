@@ -17,8 +17,7 @@ foo (x: S) (y: S) =
     print x
 
 x = mut S "original x string"
-// TODO: Raise precedence of @
-foo (@x) (@x)
+foo x x
 
 // args: --delete-binary
 // expected stdout:

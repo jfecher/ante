@@ -2,8 +2,8 @@ import Vec.empty push
 
 v = mut empty ()
 
-push v 3i32
-push v 4
+push !v 3i32
+push !v 4
 
 print v
 

@@ -165,6 +165,13 @@ pub fn node_at_index<'a>(ast: &'a Ast<'a>, idx: usize) -> &'a Ast<'a> {
             Ast::Variable(_) => {
                 break;
             },
+            Ast::Reference(reference) => {
+                if reference.expression.locate().contains_index(&idx) {
+                    ast = &reference.expression;
+                } else {
+                    break;
+                }
+            }
         }
     }
     ast

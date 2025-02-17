@@ -201,7 +201,12 @@ impl<'a, 'b> Display for ConstraintSignaturePrinter<'a, 'b> {
         for arg in &self.signature.args {
             let typ = GeneralizedType::MonoType(arg.clone());
             let arg_printer = TypePrinter::new(typ, self.typevar_names.clone(), self.debug, self.cache);
-            write!(f, " {}", arg_printer)?;
+            let parenthesize = arg_printer.to_string().contains(' ');
+            if parenthesize {
+                write!(f, " {}{}{}", "(".blue(), arg_printer, ")".blue())?;
+            } else {
+                write!(f, " {}", arg_printer)?;
+            }
         }
         Ok(())
     }

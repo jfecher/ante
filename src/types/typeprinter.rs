@@ -244,10 +244,19 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
     }
 
     fn fmt_type_application(&self, constructor: &Type, args: &[Type], f: &mut Formatter) -> std::fmt::Result {
+        let constructor = self.cache.follow_typebindings_shallow(constructor);
+
         if constructor.is_polymorphic_int_type() {
             self.fmt_polymorphic_numeral(&args[0], f, "Int")
         } else if constructor.is_polymorphic_float_type() {
             self.fmt_polymorphic_numeral(&args[0], f, "Float")
+        } else if constructor.is_reference_type() {
+            let separate = self.reference_type_has_shared_specifier(constructor);
+            self.fmt_type(constructor, f)?;
+            if separate {
+                write!(f, " ")?;
+            }
+            self.fmt_type(&args[0], f)
         } else {
             if constructor.is_pair_type() {
                 self.fmt_pair(&args[0], &args[1], f)?;
@@ -267,6 +276,15 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             }
             Ok(())
         }
+    }
+
+    fn reference_type_has_shared_specifier(&self, typ: &Type) -> bool {
+        let Type::Ref { mutability: _, sharedness, lifetime: _ } = typ else {
+            return false;
+        };
+
+        let sharedness = self.cache.follow_typebindings_shallow(sharedness);
+        matches!(sharedness, Type::Tag(_))
     }
 
     fn fmt_pair(&self, arg1: &Type, arg2: &Type, f: &mut Formatter) -> std::fmt::Result {
@@ -303,15 +321,10 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
     fn fmt_ref(&self, shared: &Type, mutable: &Type, lifetime: &Type, f: &mut Formatter) -> std::fmt::Result {
         let mutable = follow_bindings_in_cache(mutable, self.cache);
         let shared = follow_bindings_in_cache(shared, self.cache);
-        let parenthesize = matches!(shared, Type::Tag(_)) || self.debug;
-
-        if parenthesize {
-            write!(f, "{}", "(".blue())?;
-        }
 
         match mutable {
             Type::Tag(tag) => write!(f, "{}", tag.to_string().blue())?,
-            _ => write!(f, "{}", "&".blue())?,
+            _ => write!(f, "{}", "?".blue())?,
         }
 
         if let Type::Tag(tag) = shared {
@@ -323,9 +336,6 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             self.fmt_type(lifetime, f)?;
         }
 
-        if parenthesize {
-            write!(f, "{}", ")".blue())?;
-        }
         Ok(())
     }
 
