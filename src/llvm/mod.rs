@@ -561,7 +561,7 @@ fn should_auto_deref(definition: &hir::Definition) -> bool {
         return !matches!(&ext.typ, hir::Type::Function(_));
     }
 
-    false
+    definition.mutable
 }
 
 impl<'g> CodeGen<'g> for hir::Definition {
@@ -575,7 +575,12 @@ impl<'g> CodeGen<'g> for hir::Definition {
 
             generator.current_function_info = Some(self.variable);
             generator.current_definition_name = self.name.clone();
-            let value = self.expr.codegen(generator);
+            let mut value = self.expr.codegen(generator);
+
+            if self.mutable {
+                value = stack_alloc_basic_value(value, generator);
+            }
+
             generator.definitions.insert(self.variable, value);
         }
 
@@ -755,7 +760,7 @@ impl<'g> CodeGen<'g> for hir::Handle {
     }
 }
 
-impl<'g> CodeGen<'g> for hir::Reference{
+impl<'g> CodeGen<'g> for hir::Reference {
     fn codegen(&self, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
         let value = self.expression.codegen(generator);
 

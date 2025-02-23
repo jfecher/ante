@@ -32,10 +32,11 @@ impl<'c> Context<'c> {
 
         if let Some(DecisionTree::Switch(id, _)) = &match_.decision_tree {
             let name = Some(self.cache[*id].name.clone());
-            let (def, new_id) = self.fresh_definition(value, name.clone());
             let typ = self.follow_all_bindings(self.cache[*id].typ.as_ref().unwrap().as_monotype());
-            let monomorphized_type = Rc::new(self.convert_type(&typ));
-            let definition = Definition::Normal(Variable::new(new_id, monomorphized_type));
+            let monomorphized_type = self.convert_type(&typ);
+
+            let (def, new_id) = self.fresh_definition(value, name.clone(), monomorphized_type.clone());
+            let definition = Definition::Normal(Variable::new(new_id, Rc::new(monomorphized_type)));
             self.definitions.insert(*id, typ, definition);
             def
         } else {
@@ -84,6 +85,7 @@ impl<'c> Context<'c> {
             self.monomorphise_tree(&case.branch)
         } else {
             // variable = value = reinterpret match_value as variant_type
+            let typ = match_value.typ.as_ref().clone();
             let value = self.cast_to_variant_type(match_value, case);
             let variable = self.next_unique_id();
             let field_bindings = self.bind_patterns(variable, case);
@@ -95,7 +97,7 @@ impl<'c> Context<'c> {
             }
 
             let expr = Box::new(value);
-            let cast_definition = hir::Definition { variable, expr, name: None };
+            let cast_definition = hir::Definition { variable, expr, name: None, mutable: false, typ };
 
             hir::DecisionTree::Definition(cast_definition, Box::new(tree))
         };
@@ -199,12 +201,14 @@ impl<'c> Context<'c> {
 
                         hir::Definition {
                             variable: field_variable_id,
+                            typ: monomorphized_field_type.clone().unwrap(),
                             expr: Box::new(Self::extract(
                                 variant_variable.clone().into(),
                                 field_index,
                                 monomorphized_field_type.unwrap(),
                             )),
                             name: None,
+                            mutable: false,
                         }
                     })
                 } else {

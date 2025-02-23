@@ -122,7 +122,12 @@ impl CodeGen for hir::Definition {
                 context.current_function_name = Some(self.variable);
             }
 
-            let value = self.expr.codegen(context, builder);
+            let mut value = self.expr.codegen(context, builder);
+            if self.mutable {
+                let ptr = context.stack_alloc(value, builder);
+                value = Value::Loadable { ptr, element_type: self.typ.clone() };
+            }
+
             context.definitions.insert(self.variable, value);
         }
         Value::unit()
@@ -243,7 +248,7 @@ impl CodeGen for hir::Handle {
 impl CodeGen for hir::Reference {
     fn codegen<'a>(&'a self, context: &mut Context<'a>, builder: &mut FunctionBuilder) -> Value {
         self.expression.codegen(context, builder).map(|value| match value {
-            Value::Loadable(ptr, _typ) => Value::Normal(ptr),
+            Value::Loadable { ptr, element_type: _ } => Value::Normal(ptr),
             value => {
                 // Stack allocate values that aren't already mutable variables
                 let value = value.eval_single(context, builder);
@@ -254,7 +259,7 @@ impl CodeGen for hir::Reference {
 
                 builder.ins().stack_store(value, slot, 0);
                 Value::Normal(builder.ins().stack_addr(context::pointer_type(), slot, 0))
-            }
+            },
         })
     }
 }

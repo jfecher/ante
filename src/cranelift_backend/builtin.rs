@@ -256,18 +256,6 @@ fn deref<'a>(context: &mut Context<'a>, typ: &crate::hir::Type, addr: &'a Ast, b
 }
 
 fn stack_alloc<'a>(param1: &'a Ast, context: &mut Context<'a>, builder: &mut FunctionBuilder) -> CraneliftValue {
-    let values = param1.eval_all(context, builder);
-
-    let size = values.iter().map(|value| builder.func.dfg.value_type(*value).bytes()).sum();
-
-    let data = StackSlotData::new(StackSlotKind::ExplicitSlot, size);
-    let slot = builder.create_stack_slot(data);
-
-    let mut offset: u32 = 0;
-    for value in values {
-        builder.ins().stack_store(value, slot, offset as i32);
-        offset += builder.func.dfg.value_type(value).bytes();
-    }
-
-    builder.ins().stack_addr(pointer_type(), slot, 0)
+    let value = param1.codegen(context, builder);
+    context.stack_alloc(value, builder)
 }

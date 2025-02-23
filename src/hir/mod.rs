@@ -96,6 +96,8 @@ pub struct FunctionCall {
 pub struct Definition {
     pub variable: DefinitionId,
     pub name: Option<String>,
+    pub mutable: bool,
+    pub typ: Type,
     pub expr: Box<Ast>,
 }
 

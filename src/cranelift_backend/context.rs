@@ -68,7 +68,7 @@ pub enum Value {
 
     /// A loadable is a pointer value that should be loaded before it is used.
     /// Mutable definitions usually translate to these.
-    Loadable(CraneliftValue, cranelift_types::Type),
+    Loadable { ptr: CraneliftValue, element_type: Type },
 
     /// Lazily inserting unit values helps prevent cluttering the IR with too many
     /// unit literals.
@@ -90,6 +90,20 @@ impl Value {
                 }
                 result
             },
+            Value::Loadable { ptr, element_type: Type::Tuple(elems) } => {
+                let mut result = Vec::with_capacity(elems.len());
+                let mut offset = 0;
+
+                for element_type in elems {
+                    context.for_each_type_in(&element_type, |ctx, typ| {
+                        let element = builder.ins().load(typ, MemFlags::new(), ptr, offset);
+                        offset += typ.bytes() as i32;
+                        result.push(element);
+                    });
+                }
+
+                result
+            }
             other => vec![other.eval_single(context, builder)],
         }
     }
@@ -98,7 +112,14 @@ impl Value {
     pub fn eval_single(self, context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
         match self {
             Value::Normal(value) => value,
-            Value::Loadable(ptr, typ) => builder.ins().load(typ, MemFlags::new(), ptr, 0),
+            Value::Loadable { ptr, element_type } => {
+                let element_type = match element_type {
+                    Type::Tuple(_) => panic!("Reference to Value::Tuple found in eval_single. Reference is of type {}", element_type),
+                    Type::Primitive(p) => convert_primitive_type(&p),
+                    Type::Function(f) => function_type(),
+                };
+                builder.ins().load(element_type, MemFlags::new(), ptr, 0)
+            },
             Value::Unit => {
                 let unit_type = cranelift_types::I8;
                 builder.ins().iconst(unit_type, 0)
@@ -273,8 +294,7 @@ impl<'local> Context<'local> {
     }
 
     /// Where `codegen_function_body` creates a new function in the IR and codegens
-    /// its body, this function essentially codegens the reference to a function at
-    /// the callsite.
+    /// its body, this function codegens the reference to a function at the callsite.
     pub fn codegen_function_use(&mut self, ast: &'local hir::Ast, builder: &mut FunctionBuilder) -> FunctionValue {
         let value = ast.codegen(self, builder);
 
@@ -283,8 +303,13 @@ impl<'local> Context<'local> {
         match value {
             Value::Function(data) => FunctionValue::Direct(data),
             Value::Normal(value) => FunctionValue::Indirect(value),
-            Value::Loadable(ptr, typ) => {
-                let value = builder.ins().load(typ, MemFlags::new(), ptr, 0);
+            Value::Loadable { ptr, element_type } => {
+                let element_type = match element_type {
+                    Type::Primitive(p) => unreachable!("Primitive type as function value: {:?}", p),
+                    Type::Tuple(elems) => unreachable!("Tuple type used as function value: {:?}", elems),
+                    Type::Function(_) => function_type(),
+                };
+                let value = builder.ins().load(element_type, MemFlags::new(), ptr, 0);
                 FunctionValue::Indirect(value)
             },
             Value::Global(_) => {
@@ -545,6 +570,22 @@ impl<'local> Context<'local> {
         } else {
             Some(value.eval_all(self, builder))
         }
+    }
+
+    pub fn stack_alloc(&mut self, value: Value, builder: &mut FunctionBuilder) -> CraneliftValue {
+        let values = value.eval_all(self, builder);
+        let size = values.iter().map(|value| builder.func.dfg.value_type(*value).bytes()).sum();
+
+        let data = StackSlotData::new(StackSlotKind::ExplicitSlot, size);
+        let slot = builder.create_stack_slot(data);
+
+        let mut offset: u32 = 0;
+        for value in values {
+            builder.ins().stack_store(value, slot, offset as i32);
+            offset += builder.func.dfg.value_type(value).bytes();
+        }
+
+        builder.ins().stack_addr(pointer_type(), slot, 0)
     }
 }
 

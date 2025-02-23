@@ -29,6 +29,8 @@ impl<'c> Context<'c> {
                     variable: inner_f.definition_id,
                     name: None,
                     expr: Box::new(new_f),
+                    typ: inner_f.typ.as_ref().clone(),
+                    mutable: false,
                 });
 
                 let seq = Ast::Sequence(hir::Sequence { statements: vec![def, inner_f.into()] });

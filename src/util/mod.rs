@@ -4,8 +4,13 @@ use std::{collections::BTreeSet, fmt::Display, path::PathBuf, process::Command};
 
 #[macro_use]
 pub mod logging;
+mod id;
 pub mod timing;
 pub mod trustme;
+mod vecmap;
+
+pub use id::Id;
+pub use vecmap::VecMap;
 
 /// Equivalent to .iter().map(f).collect()
 pub fn fmap<T, U, F>(iterable: T, f: F) -> Vec<U>
