@@ -1,6 +1,6 @@
 use cranelift::frontend::FunctionBuilder;
 use cranelift::prelude::types::I8;
-use cranelift::prelude::{FloatCC, InstBuilder, IntCC, StackSlotData, StackSlotKind, Value as CraneliftValue};
+use cranelift::prelude::{FloatCC, InstBuilder, IntCC, Value as CraneliftValue};
 
 use crate::hir::{Ast, Builtin};
 
@@ -55,7 +55,7 @@ pub fn call_builtin<'ast>(builtin: &'ast Builtin, context: &mut Context<'ast>, b
         Builtin::Truncate(a, _typ) => truncate(value(a), builder),
 
         Builtin::Deref(a, typ) => return deref(context, typ, a, builder),
-        Builtin::Offset(a, b, elem_size) => offset(value(a), value(b), elem_size, builder),
+        Builtin::Offset(a, b, elem_size) => return offset(context, a, b, elem_size, builder),
         Builtin::Transmute(a, typ) => return transmute(context, a, typ, builder),
         Builtin::StackAlloc(a) => stack_alloc(a, context, builder),
     };
@@ -147,9 +147,16 @@ fn transmute<'a>(
     context.transmute(value, typ, builder)
 }
 
-fn offset(
-    address: CraneliftValue, offset: CraneliftValue, elem_type: &crate::hir::Type, builder: &mut FunctionBuilder,
-) -> CraneliftValue {
+fn offset<'a>(
+    context: &mut Context<'a>,
+    address: &'a Ast, offset: &'a Ast, elem_type: &crate::hir::Type, builder: &mut FunctionBuilder,
+) -> Value {
+    // The `offset` builtin is used to compile field offsets like `foo.&field` which shouldn't
+    // implicitly dereference the stack-allocated value `foo` if it was declared as one.
+    // Hence we use `eval_address` here instead of `eval_single`.
+    let address = address.eval_address(context, builder);
+    let offset = offset.eval_single(context, builder);
+
     let usize_type = int_pointer_type();
     let pointer_type = pointer_type();
 
@@ -157,13 +164,13 @@ fn offset(
     let size = builder.ins().iconst(usize_type, elem_size as i64);
     let offset = builder.ins().imul(offset, size);
 
-    if usize_type != pointer_type {
+    Value::Normal(if usize_type != pointer_type {
         let address = builder.ins().bitcast(usize_type, address);
         let new_address = builder.ins().iadd(address, offset);
         builder.ins().bitcast(pointer_type, new_address)
     } else {
         builder.ins().iadd(address, offset)
-    }
+    })
 }
 
 // All integers are boxed as an i64, so this is a no-op in this backend

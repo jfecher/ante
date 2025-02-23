@@ -4,7 +4,7 @@ impl Hash U8 with
     hash x = cast x
 
 map = mut empty ()
-insert map 1u8 3u16
+insert !map 1u8 3u16
 
 print map
 print map

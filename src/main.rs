@@ -29,6 +29,8 @@ mod cli;
 mod hir;
 mod cranelift_backend;
 mod lifetimes;
+
+#[allow(unused)]
 mod mir;
 mod nameresolution;
 mod types;

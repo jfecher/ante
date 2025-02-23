@@ -765,7 +765,7 @@ impl<'c> NameResolver {
         }
     }
 
-    /// The collect* family of functions recurses over an irrefutable pattern, either declaring or
+    /// The collect* family of functions recurs over an irrefutable pattern, either declaring or
     /// defining each node and tagging the declaration with the given DefinitionNode.
     fn resolve_declarations<F>(&mut self, ast: &mut Ast<'c>, cache: &mut ModuleCache<'c>, mut definition: F)
     where
@@ -997,9 +997,10 @@ impl<'c> Resolvable<'c> for ast::Lambda<'c> {
 
         if let Some(typ) = &self.return_type {
             // Auto-declare any new type variables within the return type
+            let prev_auto_declare = resolver.auto_declare;
             resolver.auto_declare = true;
             self.body.set_type(resolver.convert_type(cache, typ));
-            resolver.auto_declare = false;
+            resolver.auto_declare = prev_auto_declare;
         }
 
         self.body.define(resolver, cache);
@@ -1032,6 +1033,9 @@ impl<'c> Resolvable<'c> for ast::Definition<'c> {
         resolver.push_type_variable_scope();
 
         resolver.resolve_declarations(self.pattern.as_mut(), cache, definition);
+        for id in resolver.definitions_collected.iter() {
+            cache[*id].mutable = self.mutable;
+        }
 
         self.level = Some(resolver.let_binding_level);
         resolver.pop_type_variable_scope();
@@ -1050,6 +1054,9 @@ impl<'c> Resolvable<'c> for ast::Definition<'c> {
         resolver.push_type_variable_scope();
 
         resolver.resolve_definitions(self.pattern.as_mut(), cache, definition);
+        for id in resolver.definitions_collected.iter() {
+            cache[*id].mutable = self.mutable;
+        }
 
         self.level = Some(resolver.let_binding_level);
 
@@ -1375,9 +1382,10 @@ impl<'c> Resolvable<'c> for ast::TraitDefinition<'c> {
             resolver.add_existing_type_variables_to_scope(&self.fundeps, &fundeps, self.location, cache);
 
             for declaration in self.declarations.iter_mut() {
+                let prev_auto_declare = resolver.auto_declare;
                 resolver.auto_declare = true;
                 let rhs = resolver.convert_type(cache, &declaration.rhs);
-                resolver.auto_declare = false;
+                resolver.auto_declare = prev_auto_declare;
                 declaration.typ = Some(rhs);
             }
             resolver.pop_type_variable_scope();
@@ -1402,9 +1410,10 @@ impl<'c> Resolvable<'c> for ast::TraitImpl<'c> {
         };
 
         resolver.push_type_variable_scope();
+        let prev_auto_declare = resolver.auto_declare;
         resolver.auto_declare = true;
         self.trait_arg_types = fmap(&self.trait_args, |arg| resolver.convert_type(cache, arg));
-        resolver.auto_declare = false;
+        resolver.auto_declare = prev_auto_declare;
 
         let trait_info = &cache.trait_infos[trait_id.0];
         resolver.required_definitions = Some(trait_info.definitions.clone());
@@ -1567,9 +1576,10 @@ impl<'c> Resolvable<'c> for ast::EffectDefinition<'c> {
             resolver.add_existing_type_variables_to_scope(&self.args, &typeargs, self.location, cache);
 
             for declaration in self.declarations.iter_mut() {
+                let prev_auto_declare = resolver.auto_declare;
                 resolver.auto_declare = true;
                 let rhs = resolver.convert_type(cache, &declaration.rhs);
-                resolver.auto_declare = false;
+                resolver.auto_declare = prev_auto_declare;
                 declaration.typ = Some(rhs);
             }
             resolver.pop_type_variable_scope();

@@ -72,6 +72,8 @@ pub enum DiagnosticKind {
     InvalidSyntaxInPattern,
     InvalidSyntaxInIrrefutablePattern,
     FunctionParameterCountMismatch(/*type*/ String, /*expected*/ usize, /*actual*/ usize),
+    MutRefToImmutableVariable(/*name*/String),
+    MutRefToTemporary,
 
     // Type errors are grouped together here for ease of passing different TypeErrorKinds to
     // `try_unify` while delaying converting the types to strings until the error actually is
@@ -339,6 +341,12 @@ impl Display for DiagnosticKind {
             DiagnosticKind::UnhandledEffectsInMain(effects) => {
                 write!(f, "Unhandled effects at top-level: {effects}")
             },
+            DiagnosticKind::MutRefToImmutableVariable(name) => {
+                write!(f, "Cannot mutably reference `{name}`. It was declared as immutable")
+            },
+            DiagnosticKind::MutRefToTemporary => {
+                write!(f, "Cannot mutably reference a temporary value")
+            },
         }
     }
 }
@@ -386,6 +394,8 @@ impl DiagnosticKind {
             | NotAStruct(_)
             | MissingFields(_)
             | UnhandledEffectsInMain(_)
+            | MutRefToImmutableVariable(_)
+            | MutRefToTemporary
             | NotAStructField(_) => Error,
         }
     }

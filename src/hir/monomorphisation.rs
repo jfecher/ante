@@ -1571,14 +1571,17 @@ impl<'c> Context<'c> {
     }
 
     fn monomorphise_member_access(&mut self, member_access: &ast::MemberAccess<'c>) -> hir::Ast {
-        let lhs = self.monomorphise(&member_access.lhs);
+        let mut lhs = self.monomorphise(&member_access.lhs);
         let lhs_type = self.follow_all_bindings(member_access.lhs.get_type().unwrap());
         let index = self.get_field_index(&member_access.field, &lhs_type);
 
-        let ref_type = match lhs_type {
-            types::Type::TypeApplication(constructor, args) => match self.follow_bindings_shallow(constructor.as_ref())
+        let ref_elem_type = match self.follow_bindings_shallow(&lhs_type) {
+            Ok(types::Type::TypeApplication(constructor, args)) => match self.follow_bindings_shallow(constructor.as_ref())
             {
-                Ok(types::Type::Ref { .. }) => Some(self.convert_type(&args[0])),
+                Ok(types::Type::Ref { .. }) => {
+                    let arg = args[0].clone();
+                    Some(self.convert_type(&arg))
+                }
                 _ => None,
             },
             _ => None,
@@ -1586,20 +1589,17 @@ impl<'c> Context<'c> {
 
         let result_type = self.convert_type(member_access.typ.as_ref().unwrap());
 
-        // If our collection type is a ref we do a ptr offset instead of a direct access
-        match (ref_type, member_access.offset) {
-            (Some(elem_type), Some(_)) => {
-                let offset = Self::get_field_offset(&elem_type, index);
-                offset_ptr(lhs, offset as u64)
-            },
-            (Some(elem_type), None) => {
-                let lhs = hir::Ast::Builtin(hir::Builtin::Deref(Box::new(lhs), elem_type));
-                Self::extract(lhs, index, result_type)
-            },
-            _ => {
-                assert!(member_access.offset.is_none());
-                Self::extract(lhs, index, result_type)
-            },
+        // This operation can be an offset or a dereference depending on `member_access.offset`.
+        // We also need to check if we should implicitly dereference if this is a reference type.
+        if member_access.offset.is_some() {
+            let elem_type = ref_elem_type.unwrap_or_else(|| self.convert_type(&lhs_type));
+            let offset = Self::get_field_offset(&elem_type, index);
+            offset_ptr(lhs, offset as u64)
+        } else {
+            if let Some(elem_type) = ref_elem_type {
+                lhs = hir::Ast::Builtin(hir::Builtin::Deref(Box::new(lhs), elem_type));
+            }
+            Self::extract(lhs, index, result_type)
         }
     }
 

@@ -95,7 +95,7 @@ impl Value {
                 let mut offset = 0;
 
                 for element_type in elems {
-                    context.for_each_type_in(&element_type, |ctx, typ| {
+                    context.for_each_type_in(&element_type, |_ctx, typ| {
                         let element = builder.ins().load(typ, MemFlags::new(), ptr, offset);
                         offset += typ.bytes() as i32;
                         result.push(element);
@@ -111,15 +111,26 @@ impl Value {
     /// Convert the value into a single CraneliftValue, panics if this is a tuple.
     pub fn eval_single(self, context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
         match self {
-            Value::Normal(value) => value,
             Value::Loadable { ptr, element_type } => {
                 let element_type = match element_type {
                     Type::Tuple(_) => panic!("Reference to Value::Tuple found in eval_single. Reference is of type {}", element_type),
                     Type::Primitive(p) => convert_primitive_type(&p),
-                    Type::Function(f) => function_type(),
+                    Type::Function(_) => function_type(),
                 };
                 builder.ins().load(element_type, MemFlags::new(), ptr, 0)
             },
+            Value::Tuple(elems) => panic!("Value::Tuple found in eval_single: {:?}", elems),
+            other => other.eval_address(context, builder),
+        }
+    }
+
+    /// Convert the value into a single CraneliftValue, panics if this is a tuple.
+    /// This is similar to `eval_single` but returns the pointer from a `Value::Loadable` instead
+    /// of automatically loading from it.
+    pub fn eval_address(self, context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
+        match self {
+            Value::Normal(value) => value,
+            Value::Loadable { ptr, element_type: _ } => ptr,
             Value::Unit => {
                 let unit_type = cranelift_types::I8;
                 builder.ins().iconst(unit_type, 0)
@@ -133,7 +144,7 @@ impl Value {
                 let function = function.import(builder);
                 builder.ins().func_addr(pointer_type(), function)
             },
-            Value::Tuple(elems) => panic!("Value::Tuple found in eval_single: {:?}", elems),
+            Value::Tuple(elems) => panic!("Value::Tuple found in eval_address: {:?}", elems),
         }
     }
 

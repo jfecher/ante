@@ -33,6 +33,10 @@ pub trait CodeGen {
     fn eval_single<'a>(&'a self, context: &mut Context<'a>, builder: &mut FunctionBuilder) -> CraneliftValue {
         self.codegen(context, builder).eval_single(context, builder)
     }
+
+    fn eval_address<'a>(&'a self, context: &mut Context<'a>, builder: &mut FunctionBuilder) -> CraneliftValue {
+        self.codegen(context, builder).eval_address(context, builder)
+    }
 }
 
 impl CodeGen for Ast {

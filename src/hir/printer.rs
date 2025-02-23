@@ -154,11 +154,12 @@ impl FmtAst for FunctionCall {
 impl FmtAst for Definition {
     fn fmt_ast(&self, printer: &mut AstPrinter, f: &mut Formatter) -> fmt::Result {
         printer.already_printed.insert(self.variable);
+        let prefix = if self.mutable { "mut " } else { "" };
 
         if let Some(name) = &self.name {
-            write!(f, "{}_v{} = ", name, self.variable.0)?;
+            write!(f, "{prefix}{}_v{} = ", name, self.variable.0)?;
         } else {
-            write!(f, "v{} = ", self.variable.0)?;
+            write!(f, "{prefix}v{} = ", self.variable.0)?;
         }
 
         printer.block(self.expr.as_ref(), f)

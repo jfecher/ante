@@ -244,6 +244,10 @@ pub struct DefinitionInfo<'a> {
     /// False by default.
     pub ignore_unused_warning: bool,
 
+    /// True if this was declared as a locally mutable variable.
+    /// This is separate from whether the type is a mutable reference or not.
+    pub mutable: bool,
+
     /// The type of this definition. Filled out during type inference,
     /// and is guarenteed to be Some afterward.
     pub typ: Option<GeneralizedType>,
@@ -483,6 +487,7 @@ impl<'a> ModuleCache<'a> {
             location,
             typ: None,
             uses: 0,
+            mutable: false,
             trait_impl: None,
             mutually_recursive_set: None,
             undergoing_type_inference: false,

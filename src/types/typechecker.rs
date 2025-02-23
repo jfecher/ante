@@ -1724,10 +1724,6 @@ impl<'a> Inferable<'a> for ast::Definition<'a> {
 
         // t, traits
         let result = infer(self.expr.as_mut(), cache);
-        // if self.mutable {
-        //     let ref_type = mut_polymorphically_shared_ref(cache);
-        //     result.typ = Type::TypeApplication(Box::new(ref_type), vec![result.typ]);
-        // }
 
         // The rhs of a Definition must be inferred at a greater LetBindingLevel than
         // the lhs below. Here we use level for the rhs and level - 1 for the lhs
@@ -1962,10 +1958,17 @@ impl<'a> Inferable<'a> for ast::MemberAccess<'a> {
         let level = LetBindingLevel(CURRENT_LEVEL.load(Ordering::SeqCst));
         let mut field_type = cache.next_type_variable(level);
 
-        if let Some(mutability) = self.offset {
+        // If this is a mutable reference to a field, ensure the collection is either
+        // a mutable reference to a collection, or is a local mutable variable.
+        if let Some(Mutability::Mutable) = self.offset {
             let collection_variable = next_type_variable(cache);
-            let expected = ref_of(mutability, collection_variable.clone(), cache);
-            unify(&result.typ, &expected, self.lhs.locate(), cache, TE::ExpectedStructReference);
+            let expected = ref_of(Mutability::Mutable, collection_variable.clone(), cache);
+
+            match try_unify(&result.typ, &expected, self.lhs.locate(), cache, TE::ExpectedStructReference) {
+                Ok(bindings) => bindings.perform(cache),
+                Err(_) => check_field_access_lhs_is_mutable(&self.lhs, cache),
+            }
+
             result.typ = collection_variable;
         }
 
@@ -1983,6 +1986,24 @@ impl<'a> Inferable<'a> for ast::MemberAccess<'a> {
         }
 
         result.with_type(field_type)
+    }
+}
+
+/// Error if an already resolved Ast does not refer to a mutable variable or a field access.
+fn check_field_access_lhs_is_mutable<'c>(variable: &ast::Ast<'c>, cache: &mut ModuleCache<'c>) {
+    match variable {
+        ast::Ast::Variable(variable) => {
+            let Some(definition) = variable.definition else { return };
+            if !cache[definition].mutable {
+                let name = cache[definition].name.to_string();
+                cache.push_diagnostic(variable.location, D::MutRefToImmutableVariable(name));
+            }
+        },
+        // Assume we've already checked the recursive case from MemberAccess::infer_impl
+        ast::Ast::MemberAccess(_) => (),
+        ast => {
+            cache.push_diagnostic(ast.locate(), D::MutRefToTemporary);
+        },
     }
 }
 
