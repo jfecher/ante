@@ -30,11 +30,12 @@ resize (map: !HashMap k v) (new_capacity: Usz) : Unit =
             panic "Ran out of memory while resizing HashMap"
 
         new_map = mut HashMap (map.len) new_capacity new_memory
+        new_map_ref = !new_map
 
         repeat (map.capacity) fn i ->
             entry: Entry k v = map.entries#i
             if entry.occupied then
-                insert !new_map entry.key entry.value
+                insert new_map_ref entry.key entry.value
 
         map.!capacity := new_capacity
         map.!entries := new_memory

@@ -83,6 +83,27 @@ impl Value {
         Value::Unit
     }
 
+    /// Similar to `eval_all` in that this will evaluate any Loadable values, and other needed
+    /// imports but will keep the tree structure of the value mostly intact. In the case of
+    /// loading from struct values, any Loadable leaves of the tree will be expanded to contain
+    /// each loaded field of the struct.
+    pub fn eval(self, context: &mut Context, builder: &mut FunctionBuilder) -> Value {
+        match self {
+            Value::Tuple(values) => Value::Tuple(fmap(values, |value| value.eval(context, builder))),
+            Value::Loadable { ptr, element_type: Type::Tuple(elems) } => {
+                let mut offset = 0;
+                Value::Tuple(fmap(elems, |element_type| {
+                    context.fmap_type(&element_type, &mut |_ctx, typ| {
+                        let element = builder.ins().load(typ, MemFlags::new(), ptr, offset);
+                        offset += typ.bytes() as i32;
+                        element
+                    })
+                }))
+            },
+            other => Value::Normal(other.eval_single(context, builder)),
+        }
+    }
+
     /// Convert the value into a CraneliftValue
     pub fn eval_all(self, context: &mut Context, builder: &mut FunctionBuilder) -> Vec<CraneliftValue> {
         match self {

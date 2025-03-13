@@ -1,0 +1,11 @@
+x = mut 4
+y = x
+print y
+x := 5
+print y
+
+// This used to print 4, 5
+// args: --delete-binary
+// expected stdout:
+// 4
+// 4

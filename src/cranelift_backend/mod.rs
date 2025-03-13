@@ -26,6 +26,13 @@ pub fn run(path: &Path, hir: Ast, args: &Cli) {
 pub trait CodeGen {
     fn codegen<'a>(&'a self, context: &mut Context<'a>, builder: &mut FunctionBuilder) -> Value;
 
+    /// Similar to `codegen` but will also load any `Loadable` values within.
+    /// This shoud generally always be preferred over calling `codegen` raw unless
+    /// you're using it as a building block for other helper functions.
+    fn eval<'a>(&'a self, context: &mut Context<'a>, builder: &mut FunctionBuilder) -> Value {
+        self.codegen(context, builder).eval(context, builder)
+    }
+
     fn eval_all<'a>(&'a self, context: &mut Context<'a>, builder: &mut FunctionBuilder) -> Vec<CraneliftValue> {
         self.codegen(context, builder).eval_all(context, builder)
     }
@@ -75,7 +82,7 @@ impl CodeGen for hir::Variable {
             Some(definition) => definition.clone(),
             None => {
                 match self.definition.as_ref() {
-                    Some(ast) => ast.codegen(context, builder),
+                    Some(ast) => ast.eval(context, builder),
                     None => unreachable!("Definition for {} not yet compiled", self.definition_id),
                 };
                 context.definitions[&self.definition_id].clone()
@@ -126,7 +133,14 @@ impl CodeGen for hir::Definition {
                 context.current_function_name = Some(self.variable);
             }
 
-            let mut value = self.expr.codegen(context, builder);
+            // Don't import the function if this is a global function value.
+            // We have to do that on each use with cranelift. Yet we still
+            // want to evaluate `expr` to load any `Loadable` references now.
+            let mut value = match self.expr.codegen(context, builder) {
+                Value::Function(f) => Value::Function(f),
+                other => other.eval(context, builder),
+            };
+
             if self.mutable {
                 let ptr = context.stack_alloc(value, builder);
                 value = Value::Loadable { ptr, element_type: self.typ.clone() };
@@ -180,7 +194,7 @@ impl CodeGen for hir::Match {
 
 impl CodeGen for hir::Return {
     fn codegen<'a>(&'a self, context: &mut Context<'a>, builder: &mut FunctionBuilder) -> Value {
-        let value = self.expression.codegen(context, builder);
+        let value = self.expression.eval(context, builder);
         context.create_return(value.clone(), builder);
         value
     }
@@ -190,9 +204,12 @@ impl CodeGen for hir::Sequence {
     fn codegen<'a>(&'a self, context: &mut Context<'a>, builder: &mut FunctionBuilder) -> Value {
         let mut value = None;
         for statement in &self.statements {
-            value = Some(statement.codegen(context, builder));
+            let result = statement.codegen(context, builder);
+            if !builder.is_filled() {
+                value = Some(result.eval(context, builder));
+            }
         }
-        value.unwrap()
+        value.unwrap_or(Value::Unit)
     }
 }
 
@@ -204,7 +221,7 @@ impl CodeGen for hir::Extern {
 
 impl CodeGen for hir::MemberAccess {
     fn codegen<'a>(&'a self, context: &mut Context<'a>, builder: &mut FunctionBuilder) -> Value {
-        let lhs = self.lhs.codegen(context, builder);
+        let lhs = self.lhs.eval(context, builder);
         let index = self.member_index as usize;
 
         match lhs {
@@ -217,7 +234,7 @@ impl CodeGen for hir::MemberAccess {
 impl CodeGen for hir::Assignment {
     fn codegen<'a>(&'a self, context: &mut Context<'a>, builder: &mut FunctionBuilder) -> Value {
         let lhs = self.lhs.eval_single(context, builder);
-        let rhs = self.rhs.codegen(context, builder);
+        let rhs = self.rhs.eval(context, builder);
 
         context.store_value(lhs, rhs, &mut 0, builder);
         Value::Unit
@@ -226,13 +243,13 @@ impl CodeGen for hir::Assignment {
 
 impl CodeGen for hir::Tuple {
     fn codegen<'a>(&'a self, context: &mut Context<'a>, builder: &mut FunctionBuilder) -> Value {
-        Value::Tuple(fmap(&self.fields, |field| field.codegen(context, builder)))
+        Value::Tuple(fmap(&self.fields, |field| field.eval(context, builder)))
     }
 }
 
 impl CodeGen for hir::ReinterpretCast {
     fn codegen<'a>(&'a self, context: &mut Context<'a>, builder: &mut FunctionBuilder) -> Value {
-        let value = self.lhs.codegen(context, builder);
+        let value = self.lhs.eval(context, builder);
         context.transmute(value, &self.target_type, builder)
     }
 }

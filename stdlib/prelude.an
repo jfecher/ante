@@ -324,6 +324,10 @@ offset (ptr: Ptr t) (index: Usz) : Ptr t =
 deref (x: &t) : t =
     builtin "Deref" x
 
+// Temporary. We should instead be polymorphic over each reference type
+deref_mut (x: !t) : t =
+    builtin "Deref" x
+
 deref_ptr (p: Ptr t) : t =
     deref <| transmute p
 

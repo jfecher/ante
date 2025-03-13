@@ -1966,7 +1966,7 @@ impl<'a> Inferable<'a> for ast::MemberAccess<'a> {
 
             match try_unify(&result.typ, &expected, self.lhs.locate(), cache, TE::ExpectedStructReference) {
                 Ok(bindings) => bindings.perform(cache),
-                Err(_) => check_field_access_lhs_is_mutable(&self.lhs, cache),
+                Err(_) => check_field_access_lhs_is_mutable(&self.lhs, false, cache),
             }
 
             result.typ = collection_variable;
@@ -1990,7 +1990,9 @@ impl<'a> Inferable<'a> for ast::MemberAccess<'a> {
 }
 
 /// Error if an already resolved Ast does not refer to a mutable variable or a field access.
-fn check_field_access_lhs_is_mutable<'c>(variable: &ast::Ast<'c>, cache: &mut ModuleCache<'c>) {
+fn check_field_access_lhs_is_mutable<'c>(
+    variable: &ast::Ast<'c>, allow_mut_ref_to_temporary: bool, cache: &mut ModuleCache<'c>,
+) {
     match variable {
         ast::Ast::Variable(variable) => {
             let Some(definition) = variable.definition else { return };
@@ -2001,9 +2003,10 @@ fn check_field_access_lhs_is_mutable<'c>(variable: &ast::Ast<'c>, cache: &mut Mo
         },
         // Assume we've already checked the recursive case from MemberAccess::infer_impl
         ast::Ast::MemberAccess(_) => (),
-        ast => {
+        ast if !allow_mut_ref_to_temporary => {
             cache.push_diagnostic(ast.locate(), D::MutRefToTemporary);
         },
+        _ => (),
     }
 }
 
@@ -2016,7 +2019,7 @@ impl<'a> Inferable<'a> for ast::Assignment<'a> {
         if let Ok(bindings) = try_unify(&result.typ, &rhs.typ, self.location, cache, TE::NeverShown) {
             // TODO: test this with field access (not offset) e.g. `foo.field := 3`
             //       instead of `foo.!field := 3`
-            check_field_access_lhs_is_mutable(&self.lhs, cache);
+            check_field_access_lhs_is_mutable(&self.lhs, false, cache);
 
             // Implicitly add the mutable reference
             let old_lhs = std::mem::replace(self.lhs.as_mut(), ast::Ast::unit_literal(self.location));
@@ -2166,6 +2169,7 @@ impl<'a> Inferable<'a> for ast::NamedConstructor<'a> {
 impl<'a> Inferable<'a> for ast::Reference<'a> {
     fn infer_impl(&mut self, checker: &mut ModuleCache<'a>) -> TypeResult {
         let mut result = infer(self.expression.as_mut(), checker);
+        check_field_access_lhs_is_mutable(&self.expression, true, checker);
 
         let ref_type = Type::Ref {
             mutability: Box::new(Type::Tag(self.mutability.as_tag())),
