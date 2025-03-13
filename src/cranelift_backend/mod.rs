@@ -5,7 +5,7 @@ use crate::hir::{self, Ast};
 use crate::lexer::token::FloatKind;
 use crate::util::{fmap, timing};
 
-use cranelift::codegen::ir::{types as cranelift_types, StackSlotData, StackSlotKind, Value as CraneliftValue};
+use cranelift::codegen::ir::{types as cranelift_types, Value as CraneliftValue};
 
 mod builtin;
 mod context;
@@ -251,19 +251,12 @@ impl CodeGen for hir::Handle {
 
 impl CodeGen for hir::Reference {
     fn codegen<'a>(&'a self, context: &mut Context<'a>, builder: &mut FunctionBuilder) -> Value {
-        self.expression.codegen(context, builder).map(|value| match value {
+        match self.expression.codegen(context, builder) {
             Value::Loadable { ptr, element_type: _ } => Value::Normal(ptr),
-            value => {
-                // Stack allocate values that aren't already mutable variables
-                let value = value.eval_single(context, builder);
-                let size = builder.func.dfg.value_type(value).bytes();
-
-                let data = StackSlotData::new(StackSlotKind::ExplicitSlot, size);
-                let slot = builder.create_stack_slot(data);
-
-                builder.ins().stack_store(value, slot, 0);
-                Value::Normal(builder.ins().stack_addr(context::pointer_type(), slot, 0))
+            other => {
+                let reference = context.stack_alloc(other, builder);
+                Value::Normal(reference)
             },
-        })
+        }
     }
 }

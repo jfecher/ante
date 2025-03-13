@@ -72,7 +72,7 @@ pub enum DiagnosticKind {
     InvalidSyntaxInPattern,
     InvalidSyntaxInIrrefutablePattern,
     FunctionParameterCountMismatch(/*type*/ String, /*expected*/ usize, /*actual*/ usize),
-    MutRefToImmutableVariable(/*name*/String),
+    MutRefToImmutableVariable(/*name*/ String),
     MutRefToTemporary,
 
     // Type errors are grouped together here for ease of passing different TypeErrorKinds to

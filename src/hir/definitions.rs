@@ -99,10 +99,10 @@ fn definition_type_eq(a: &types::Type, b: &types::Type) -> bool {
         // This will monomorphize separate definitions for polymorphically-owned references
         // which is undesired. Defaulting them to shared/owned though can change behavior
         // if traits are involved.
-        (Type::Ref { sharedness: shared1, mutability: mutable1, .. },
-         Type::Ref { sharedness: shared2, mutability: mutable2, .. }) => {
-            definition_type_eq(shared1, shared2) && definition_type_eq(mutable1, mutable2)
-        },
+        (
+            Type::Ref { sharedness: shared1, mutability: mutable1, .. },
+            Type::Ref { sharedness: shared2, mutability: mutable2, .. },
+        ) => definition_type_eq(shared1, shared2) && definition_type_eq(mutable1, mutable2),
         (Type::Function(f1), Type::Function(f2)) => {
             if f1.parameters.len() != f2.parameters.len() {
                 return false;

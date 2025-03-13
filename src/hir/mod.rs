@@ -269,6 +269,7 @@ pub enum Builtin {
     Transmute(Box<Ast>, Type),
 
     /// Allocate space for the given value on the stack, and store it there. Return the stack address
+    #[allow(unused)]
     StackAlloc(Box<Ast>),
 }
 

@@ -50,7 +50,7 @@ use crate::types::traits::ConstraintSignature;
 use crate::types::typed::Typed;
 use crate::types::{
     Field, FunctionType, GeneralizedType, LetBindingLevel, PrimitiveType, Type, TypeConstructor, TypeInfoBody,
-    TypeInfoId, TypeVariableId, INITIAL_LEVEL, STRING_TYPE, TypeTag,
+    TypeInfoId, TypeTag, TypeVariableId, INITIAL_LEVEL, STRING_TYPE,
 };
 use crate::util::{fmap, timing, trustme};
 
@@ -753,7 +753,7 @@ impl<'c> NameResolver {
                     ast::Sharedness::Shared => Type::Tag(TypeTag::Shared),
                     ast::Sharedness::Owned => Type::Tag(TypeTag::Owned),
                 });
-                
+
                 let mutability = Box::new(match mutability {
                     ast::Mutability::Polymorphic => cache.next_type_variable(self.let_binding_level),
                     ast::Mutability::Immutable => Type::Tag(TypeTag::Immutable),

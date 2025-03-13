@@ -1576,13 +1576,14 @@ impl<'c> Context<'c> {
         let index = self.get_field_index(&member_access.field, &lhs_type);
 
         let ref_elem_type = match self.follow_bindings_shallow(&lhs_type) {
-            Ok(types::Type::TypeApplication(constructor, args)) => match self.follow_bindings_shallow(constructor.as_ref())
-            {
-                Ok(types::Type::Ref { .. }) => {
-                    let arg = args[0].clone();
-                    Some(self.convert_type(&arg))
+            Ok(types::Type::TypeApplication(constructor, args)) => {
+                match self.follow_bindings_shallow(constructor.as_ref()) {
+                    Ok(types::Type::Ref { .. }) => {
+                        let arg = args[0].clone();
+                        Some(self.convert_type(&arg))
+                    },
+                    _ => None,
                 }
-                _ => None,
             },
             _ => None,
         };

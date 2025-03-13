@@ -2013,6 +2013,25 @@ impl<'a> Inferable<'a> for ast::Assignment<'a> {
         let mut rhs = infer(self.rhs.as_mut(), cache);
         result.combine(&mut rhs, cache);
 
+        if let Ok(bindings) = try_unify(&result.typ, &rhs.typ, self.location, cache, TE::NeverShown) {
+            // TODO: test this with field access (not offset) e.g. `foo.field := 3`
+            //       instead of `foo.!field := 3`
+            check_field_access_lhs_is_mutable(&self.lhs, cache);
+
+            // Implicitly add the mutable reference
+            let old_lhs = std::mem::replace(self.lhs.as_mut(), ast::Ast::unit_literal(self.location));
+
+            *self.lhs = ast::Ast::Reference(ast::Reference {
+                mutability: Mutability::Mutable,
+                expression: Box::new(old_lhs),
+                location: self.lhs.locate(),
+                typ: None,
+            });
+
+            bindings.perform(cache);
+            return result.with_type(Type::UNIT);
+        }
+
         let mut_ref = mut_polymorphically_shared_ref(cache);
         let mutref = Type::TypeApplication(Box::new(mut_ref), vec![rhs.typ.clone()]);
 

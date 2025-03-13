@@ -68,7 +68,10 @@ pub enum Value {
 
     /// A loadable is a pointer value that should be loaded before it is used.
     /// Mutable definitions usually translate to these.
-    Loadable { ptr: CraneliftValue, element_type: Type },
+    Loadable {
+        ptr: CraneliftValue,
+        element_type: Type,
+    },
 
     /// Lazily inserting unit values helps prevent cluttering the IR with too many
     /// unit literals.
@@ -103,7 +106,7 @@ impl Value {
                 }
 
                 result
-            }
+            },
             other => vec![other.eval_single(context, builder)],
         }
     }
@@ -113,7 +116,9 @@ impl Value {
         match self {
             Value::Loadable { ptr, element_type } => {
                 let element_type = match element_type {
-                    Type::Tuple(_) => panic!("Reference to Value::Tuple found in eval_single. Reference is of type {}", element_type),
+                    Type::Tuple(_) => {
+                        panic!("Reference to Value::Tuple found in eval_single. Reference is of type {}", element_type)
+                    },
                     Type::Primitive(p) => convert_primitive_type(&p),
                     Type::Function(_) => function_type(),
                 };
@@ -145,13 +150,6 @@ impl Value {
                 builder.ins().func_addr(pointer_type(), function)
             },
             Value::Tuple(elems) => panic!("Value::Tuple found in eval_address: {:?}", elems),
-        }
-    }
-
-    pub fn map(self, mut f: impl FnMut(Value) -> Value) -> Value {
-        match self {
-            Value::Tuple(values) => Value::Tuple(fmap(values, f)),
-            other => f(other),
         }
     }
 }
@@ -233,6 +231,8 @@ impl<'local> Context<'local> {
 
         let flags = settings::Flags::new(settings::builder());
         if let Err(errors) = verify_function(&module_context.func, &flags) {
+            println!("{function}");
+            println!("{}", module_context.func.display());
             panic!("{}", errors);
         }
 

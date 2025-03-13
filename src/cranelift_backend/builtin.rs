@@ -148,8 +148,8 @@ fn transmute<'a>(
 }
 
 fn offset<'a>(
-    context: &mut Context<'a>,
-    address: &'a Ast, offset: &'a Ast, elem_type: &crate::hir::Type, builder: &mut FunctionBuilder,
+    context: &mut Context<'a>, address: &'a Ast, offset: &'a Ast, elem_type: &crate::hir::Type,
+    builder: &mut FunctionBuilder,
 ) -> Value {
     // The `offset` builtin is used to compile field offsets like `foo.&field` which shouldn't
     // implicitly dereference the stack-allocated value `foo` if it was declared as one.

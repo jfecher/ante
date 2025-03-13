@@ -1,3 +1,4 @@
+#![allow(unused)]
 use std::marker::PhantomData;
 
 /// A dense map from keys of type K to values of type V.
