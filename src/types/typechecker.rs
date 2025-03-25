@@ -2169,7 +2169,10 @@ impl<'a> Inferable<'a> for ast::NamedConstructor<'a> {
 impl<'a> Inferable<'a> for ast::Reference<'a> {
     fn infer_impl(&mut self, checker: &mut ModuleCache<'a>) -> TypeResult {
         let mut result = infer(self.expression.as_mut(), checker);
-        check_field_access_lhs_is_mutable(&self.expression, true, checker);
+
+        if self.mutability == Mutability::Mutable {
+            check_field_access_lhs_is_mutable(&self.expression, true, checker);
+        }
 
         let ref_type = Type::Ref {
             mutability: Box::new(Type::Tag(self.mutability.as_tag())),
