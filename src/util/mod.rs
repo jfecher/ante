@@ -53,6 +53,7 @@ pub fn link(object_filename: &str, binary_filename: &str) {
     let output = format!("-o{}", binary_filename);
     let mut child = Command::new("gcc")
         .arg(object_filename)
+        .arg(minicoro_path())
         .arg("-Wno-everything")
         .arg("-O0")
         .arg("-lm")
@@ -72,6 +73,13 @@ pub fn binary_name(module_name: &str) -> String {
         PathBuf::from(module_name).with_extension("exe").to_string_lossy().into()
     } else {
         PathBuf::from(module_name).with_extension("").to_string_lossy().into()
+    }
+}
+
+fn minicoro_path() -> &'static str {
+    match option_env!("ANTE_MINICORO_PATH") {
+        Some(path) => path,
+        None => panic!("ANTE_MINICORO_PATH is not set"),
     }
 }
 

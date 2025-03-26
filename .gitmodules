@@ -1,0 +1,3 @@
+[submodule "minicoro"]
+	path = minicoro
+	url = https://github.com/jfecher/minicoro
