@@ -502,6 +502,10 @@ impl<'c> Context<'c> {
                     environment_parameter
                 });
 
+                for (effect_id, effect_args) in self.get_effects(&function.effects) {
+                    eprintln!("Effect {effect_id:?} {effect_args:?}");
+                }
+
                 let function = Type::Function(hir::types::FunctionType {
                     parameters,
                     return_type,
@@ -580,6 +584,23 @@ impl<'c> Context<'c> {
                 Type::Tuple(fmap(fields, |(_, field)| self.convert_type_inner(field, fuel)))
             },
             Effects(_) => unreachable!(),
+        }
+    }
+
+    fn get_effects<'typ>(&'typ self, effects: &'typ types::Type) -> &'typ [types::effects::Effect] {
+        match self.follow_bindings_shallow(effects) {
+            Ok(types::Type::Effects(effects)) => {
+                if let Ok(binding) = self.find_binding(effects.replacement, RECURSION_LIMIT) {
+                    self.get_effects(binding)
+                } else {
+                    &effects.effects
+                }
+            },
+            Ok(other) => {
+                eprintln!("get_effects got other: {:?}", other.debug(&self.cache));
+                &[]
+            }
+            Err(_type_var) => &[],
         }
     }
 
@@ -843,13 +864,17 @@ impl<'c> Context<'c> {
                     typ.debug(&self.cache)
                 )
             },
-            Some(DefinitionKind::EffectDefinition(_)) => {
-                unreachable!(
-                    "Cannot monomorphise from a EffectDefinition.\nNo cached handle for {} {}: {}",
-                    info.name,
-                    id.0,
-                    typ.debug(&self.cache)
-                )
+            Some(DefinitionKind::EffectDefinition(e)) => {
+                let typ = self.follow_all_bindings(&typ);
+                eprintln!("Have effect {}, {}", e.name, typ.debug(&self.cache));
+                Definition::Macro(hir::Ast::Literal(hir::Literal::Unit))
+
+                // unreachable!(
+                //     "Cannot monomorphise from a EffectDefinition.\nNo cached handle for {} {}: {}",
+                //     info.name,
+                //     id.0,
+                //     typ.debug(&self.cache)
+                // )
             },
             Some(DefinitionKind::Parameter) => {
                 unreachable!(
@@ -1198,7 +1223,7 @@ impl<'c> Context<'c> {
 
         if !lambda.closure_environment.is_empty() {
             function = self.pack_closure_environment(function, &lambda.closure_environment);
-        };
+        }
 
         self.definitions.pop_local_scope();
         function
@@ -1671,23 +1696,97 @@ impl<'c> Context<'c> {
         let resumes = fmap(&handle.resumes, |old_resume_id| {
             let definition_id = self.next_unique_id();
             let typ = self.cache.definition_infos[old_resume_id.0].typ.as_ref().unwrap().as_monotype().clone();
+            let typ = self.follow_all_bindings(&typ);
             let monomorphized_type = Rc::new(self.convert_type(&typ));
             let name = Some("resume".to_string());
             let variable = hir::Variable { definition_id, definition: None, name, typ: monomorphized_type };
             let definition = Definition::Normal(variable);
+            eprintln!("Defining resume {:?} : {}", old_resume_id, typ.debug(&self.cache));
+            // TODO: Need to wrap resume in a function which pushes arguments via
+            // ContinuationArgPush and resumes via ContinuationResume
             self.definitions.insert(*old_resume_id, typ, definition);
             definition_id
         });
 
         let branches = fmap(&handle.branches, |(pattern, branch)| {
-            let pattern = self.monomorphise(pattern);
+            self.definitions.push_local_scope();
+            let _pattern = self.gather_function_and_parameters(pattern);
+            let pattern = hir::Ast::Literal(hir::Literal::Unit);
             let branch = self.monomorphise(branch);
+            self.definitions.pop_local_scope();
             (pattern, branch)
         });
 
         hir::Ast::Handle(hir::Handle { expression, branches, resumes })
     }
+
+    fn make_resume_function(&mut self, typ: &Type) {
+        let function_type = match typ {
+            Type::Function(function) => function,
+            other => panic!("Expected function type, found {}", other),
+        };
+
+        let mut args = fmap(function_type.parameters.iter(), |param| {
+            hir::DefinitionInfo {
+                definition: None,
+                definition_id: self.next_unique_id(),
+                typ: Rc::new(param.clone()),
+                name: None,
+            }
+        });
+
+        let k: hir::Ast = todo!("Retrieve continuation"); {};
+
+        // Push each parameter to the continuation
+        let mut statements = fmap(&args, |arg| {
+            let arg = Box::new(hir::Ast::Variable(arg.clone()));
+            hir::Ast::Builtin(hir::Builtin::ContinuationArgPush(Box::new(k.clone()), arg))
+        });
+
+        // Then resume the continuation
+        statements.push(hir::Ast::Builtin(hir::Builtin::ContinuationResume(Box::new(k))));
+
+        let body = Box::new(hir::Ast::Sequence(hir::Sequence { statements }));
+
+        let lambda = hir::Lambda {
+            args: todo!(),
+            body: todo!(),
+            typ: todo!(),
+        };
+    }
+
+    fn gather_function_and_parameters(&mut self, pattern: &ast::Ast<'c>) -> () {
+        match pattern {
+            ast::Ast::FunctionCall(call) => {
+                // TODO: use function to identify the right continuation
+                let _function = unwrap_variable(&call.function);
+
+                let _args = fmap(&call.args, |arg| {
+                    let var = unwrap_variable(arg);
+                    let definition_id = self.next_unique_id();
+                    let typ = self.follow_all_bindings(var.get_type().unwrap());
+                    let monomorphized_type = Rc::new(self.convert_type(&typ));
+                    let name = Some(var.to_string());
+                    let variable = hir::Variable { definition_id, definition: None, name, typ: monomorphized_type };
+                    let definition = Definition::Normal(variable);
+                    self.definitions.insert(var.definition.unwrap(), typ, definition);
+                    definition_id
+                });
+            },
+            other => {
+                unreachable!("Expected a function call in a handle pattern. Found: {:?}", other)
+            }
+        }
+    }
 }
+
+fn unwrap_variable<'c>(ast: &'c ast::Ast<'c>) -> &'c ast::Variable<'c> {
+    match ast {
+        ast::Ast::Variable(variable) => variable,
+        other => unreachable!("Exepected variable arguments to each part of the function call in a Handle. Found {:?}", other),
+    }
+}
+
 
 fn tuple(fields: Vec<hir::Ast>) -> hir::Ast {
     hir::Ast::Tuple(hir::Tuple { fields })
