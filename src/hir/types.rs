@@ -35,6 +35,7 @@ pub enum PrimitiveType {
     Boolean,
     Unit,
     Pointer, // An opaque pointer type
+    Continuation,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -42,6 +43,12 @@ pub struct FunctionType {
     pub parameters: Vec<Type>,
     pub return_type: Box<Type>,
     pub is_varargs: bool,
+}
+
+impl FunctionType {
+    pub fn new(parameters: Vec<Type>, return_type: Type) -> Self {
+        Self { parameters, return_type: Box::new(return_type), is_varargs: false }
+    }
 }
 
 /// A HIR type representation.
@@ -58,6 +65,14 @@ pub enum Type {
 }
 
 impl Type {
+    pub fn unit() -> Self {
+        Type::Primitive(PrimitiveType::Unit)
+    }
+
+    pub fn continuation() -> Self {
+        Type::Primitive(PrimitiveType::Continuation)
+    }
+
     pub fn into_function(self) -> Option<FunctionType> {
         match self {
             Type::Function(f) => Some(f),
@@ -76,7 +91,7 @@ impl Type {
                 PrimitiveType::Char => 1,
                 PrimitiveType::Boolean => 1,
                 PrimitiveType::Unit => 1,
-                PrimitiveType::Pointer => std::mem::size_of::<*const i8>() as u64,
+                PrimitiveType::Pointer | PrimitiveType::Continuation => std::mem::size_of::<*const i8>() as u64,
             },
             Type::Function(_) => panic!("Tried to take size of a function type"), // Functions technically do not have a size, only pointers do
             Type::Tuple(elements) => elements.iter().map(|element| element.size_in_bytes()).sum(),
@@ -94,6 +109,7 @@ impl std::fmt::Display for Type {
                 PrimitiveType::Boolean => write!(f, "Bool"),
                 PrimitiveType::Unit => write!(f, "Unit"),
                 PrimitiveType::Pointer => write!(f, "Ptr"),
+                PrimitiveType::Continuation => write!(f, "Cont"),
             },
             Type::Function(function) => write!(f, "({})", function),
             Type::Tuple(elems) => {

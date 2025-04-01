@@ -274,6 +274,7 @@ pub enum Builtin {
     StackAlloc(Box<Ast>),
 
     ContinuationInit(Box<Ast>), // Argument is the `void(void*)` function to start
+    ContinuationIsSuspended(/*k:*/Box<Ast>),
     ContinuationArgPush(/*k:*/Box<Ast>, /*arg:*/Box<Ast>),
     ContinuationArgPop(/*k:*/Box<Ast>, /*arg_type:*/Type),
     ContinuationResume(/*k:*/Box<Ast>),

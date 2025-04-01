@@ -962,6 +962,21 @@ impl<'c> Context<'c> {
         self.fresh_definition_with_mutability(definition_rhs, name, false, typ)
     }
 
+    /// Returns (hir::Definition, hir::Variable) of a freshly created local variable
+    pub fn fresh_definition_with_variable(
+        &mut self, definition_rhs: hir::Ast, name: String, typ: Type,
+    ) -> (hir::Ast, hir::Ast) {
+        let (def, id) = self.fresh_definition_with_mutability(definition_rhs, Some(name.clone()), false, typ.clone());
+
+        let var = hir::Variable {
+            definition: None,
+            definition_id: id,
+            typ: Rc::new(typ),
+            name: Some(name),
+        };
+        (def, hir::Ast::Variable(var))
+    }
+
     pub fn fresh_definition_with_mutability(
         &mut self, definition_rhs: hir::Ast, name: Option<String>, mutable: bool, typ: Type,
     ) -> (hir::Ast, hir::DefinitionId) {
@@ -1162,8 +1177,8 @@ impl<'c> Context<'c> {
                     PrimitiveType::Float(FloatKind::F64) => 8,
                     PrimitiveType::Char => 1,
                     PrimitiveType::Boolean => 1,
-                    PrimitiveType::Unit => 1, // TODO: this can depend on the backend
-                    PrimitiveType::Pointer => Self::ptr_size() as u32,
+                    PrimitiveType::Unit => 0, // TODO: this can depend on the backend
+                    PrimitiveType::Pointer | PrimitiveType::Continuation => Self::ptr_size() as u32,
                 }
             },
             Type::Function(_) => Self::ptr_size() as u32, // Closures would be represented as tuples
@@ -1690,41 +1705,178 @@ impl<'c> Context<'c> {
         }
     }
 
+    /// A handle expression:
+    /// ```
+    /// handle expr
+    /// | effect1 arg1_1 .. arg1_M -> body1
+    /// ...
+    /// | effectN argN_1 .. argN_M -> bodyN
+    /// | return x -> return_case
+    /// ```
+    /// lowers into:
+    /// ```
+    /// start_expr(continuation) =
+    ///     result = expr // `continuation` is automatically added to any function calls within expr
+    ///     continuation_push(continuation, result)
+    ///     ()
+    ///
+    /// handler(continuation) =
+    ///     if continuation_suspended(continuation) then
+    ///         continuation_resume(continuation)
+    ///         match continuation_pop(continuation, U32)
+    ///         | Effect1_Hash ->
+    ///             // Note that arguments are popped in reverse order
+    ///             arg1_M = continuation_pop(continuation, typeof(arg1_1))
+    ///             ...
+    ///             arg1_1 = continuation_pop(continuation, typeof(arg1_M))
+    ///             body1
+    ///         ...
+    ///         | EffectN_Hash ->
+    ///             argN_M = continuation_pop(continuation, typeof(argN_1))
+    ///             ...
+    ///             argN_1 = continuation_pop(continuation, typeof(argN_M))
+    ///             bodyN
+    ///     else
+    ///         x = continuation_pop(continuation, typeof(x))
+    ///         return_case
+    ///
+    /// k = continuation_init(start_expr)
+    /// ret = handler(k)
+    /// continuation_free(k)
+    /// ret
+    /// ```
+    /// where resume functions defined in the scope of each
+    /// body make recursive calls back to `handler`.
     fn monomorphise_handle(&mut self, handle: &ast::Handle<'c>) -> hir::Ast {
-        let expression = Box::new(self.monomorphise(&handle.expression));
+        let start_expr_fn = self.make_start_effect_expr_function(&handle.expression);
+        let handler_fn = self.make_handler_function(handle);
 
+        // create the final inline expression
+        // k = continuation_init(start_expr)
+        let init = hir::Ast::Builtin(hir::Builtin::ContinuationInit(Box::new(start_expr_fn)));
+        let (k_def, k) = self.fresh_definition_with_variable(init, "k".into(), Type::continuation());
+
+        // ret = handler(k)
+        let ret_type = self.convert_type(handle.get_type().unwrap());
+        let call_handler = hir::Ast::FunctionCall(hir::FunctionCall {
+            function: Box::new(handler_fn),
+            args: vec![k.clone()],
+            function_type: hir::FunctionType::new(vec![Type::continuation()], ret_type.clone()),
+        });
+        let (ret_def, ret) = self.fresh_definition_with_variable(call_handler, "ret".into(), ret_type);
+
+        // continuation_free(k)
+        let free_k = hir::Ast::Builtin(hir::Builtin::ContinuationFree(Box::new(k)));
+
+        hir::Ast::Sequence(hir::Sequence { statements: vec![
+            k_def,
+            ret_def,
+            free_k,
+            ret
+        ]})
+    }
+
+    /// Creates the `handler` function from a handler:
+    /// ```
+    /// handle expr
+    /// | effect1 arg1_1 .. arg1_M -> body1
+    /// ...
+    /// | effectN argN_1 .. argN_M -> bodyN
+    /// | return x -> return_case
+    /// ```
+    /// lowers into:
+    /// ```
+    /// handler(continuation) =
+    ///     if continuation_suspended(continuation) then
+    ///         continuation_resume(continuation)
+    ///         match continuation_pop(continuation, U32)
+    ///         | Effect1_Hash ->
+    ///             // Note that arguments are popped in reverse order
+    ///             arg1_M = continuation_pop(continuation, typeof(arg1_1))
+    ///             ...
+    ///             arg1_1 = continuation_pop(continuation, typeof(arg1_M))
+    ///             body1
+    ///         ...
+    ///         | EffectN_Hash ->
+    ///             argN_M = continuation_pop(continuation, typeof(argN_1))
+    ///             ...
+    ///             argN_1 = continuation_pop(continuation, typeof(argN_M))
+    ///             bodyN
+    ///     else
+    ///         x = continuation_pop(continuation, typeof(x))
+    ///         return_case
+    fn make_handler_function(&mut self, handle: &ast::Handle<'c>) -> hir::Ast {
         let resumes = fmap(&handle.resumes, |old_resume_id| {
             let definition_id = self.next_unique_id();
             let typ = self.cache.definition_infos[old_resume_id.0].typ.as_ref().unwrap().as_monotype().clone();
             let typ = self.follow_all_bindings(&typ);
             let monomorphized_type = Rc::new(self.convert_type(&typ));
+            let resume_function = self.make_resume_function(&monomorphized_type);
+
             let name = Some("resume".to_string());
-            let variable = hir::Variable { definition_id, definition: None, name, typ: monomorphized_type };
+            let definition = Some(Rc::new(resume_function));
+            let variable = hir::Variable { definition_id, definition, name, typ: monomorphized_type };
             let definition = Definition::Normal(variable);
             eprintln!("Defining resume {:?} : {}", old_resume_id, typ.debug(&self.cache));
-            // TODO: Need to wrap resume in a function which pushes arguments via
-            // ContinuationArgPush and resumes via ContinuationResume
+
             self.definitions.insert(*old_resume_id, typ, definition);
             definition_id
         });
 
+        assert_eq!(handle.branches.len(), 1, "`handle` is currently only implemented for matching on 1 effectful function at a time");
+
+        let continuation_var = self.fresh_variable(Type::continuation());
+        let continuation = hir::Ast::Variable(continuation_var);
+
         let branches = fmap(&handle.branches, |(pattern, branch)| {
-            self.definitions.push_local_scope();
-            let _pattern = self.gather_function_and_parameters(pattern);
-            let pattern = hir::Ast::Literal(hir::Literal::Unit);
-            let branch = self.monomorphise(branch);
-            self.definitions.pop_local_scope();
-            (pattern, branch)
+            self.make_effect_body(pattern, branch, continuation.clone())
         });
 
         hir::Ast::Handle(hir::Handle { expression, branches, resumes })
     }
 
-    fn make_resume_function(&mut self, typ: &Type) {
+    /// Lowers the `expr` in `handle expr | ...` into:
+    /// ```
+    /// start_expr(continuation) =
+    ///     result = expr // `continuation` is automatically added to any function calls within expr
+    ///     continuation_push(continuation, result)
+    /// ```
+    fn make_start_effect_expr_function(&mut self, expr: &ast::Ast<'c>) -> hir::Ast {
+        let continuation_var = self.fresh_variable(Type::continuation());
+        let continuation = Box::new(hir::Ast::Variable(continuation_var.clone()));
+        let args = vec![continuation_var];
+
+        let result = Box::new(self.monomorphise(expr));
+        let body = Box::new(hir::Ast::Builtin(hir::Builtin::ContinuationArgPush(continuation, result)));
+
+        let parameters = vec![Type::continuation()];
+        let return_type = Box::new(Type::unit());
+        let typ = hir::FunctionType { parameters, return_type, is_varargs: false };
+
+        hir::Ast::Lambda(hir::Lambda { args, body, typ  })
+    }
+
+    // A resume function `resume: Arg1 - Arg2 - ... - ArgN -> Ret` translates to:
+    // ```
+    // Ret resume(_1: Arg1, _2: Arg2, ..., _N: ArgN, continuation* co) {
+    //     co_push(co, &_1, sizeof(Arg1));
+    //     co_push(co, &_2, sizeof(Arg2));
+    //     ...
+    //     co_push(co, &_N, sizeof(ArgN));
+    //     co_resume(co);
+    //     Ret ret;
+    //     co_pop(co, &ret, sizeof(Ret));
+    //     return ret;
+    // }
+    // ```
+    fn make_resume_function(&mut self, typ: &Type) -> hir::Ast {
+        use hir::{ Ast::Builtin, Builtin::ContinuationResume, Builtin::ContinuationArgPush, Builtin::ContinuationArgPop };
         let function_type = match typ {
             Type::Function(function) => function,
             other => panic!("Expected function type, found {}", other),
         };
+
+        eprintln!("resume function type = {function_type}");
 
         let mut args = fmap(function_type.parameters.iter(), |param| {
             hir::DefinitionInfo {
@@ -1735,43 +1887,89 @@ impl<'c> Context<'c> {
             }
         });
 
-        let k: hir::Ast = todo!("Retrieve continuation"); {};
+        let k_var = hir::DefinitionInfo {
+            definition: None,
+            definition_id: self.next_unique_id(),
+            typ: Rc::new(Type::continuation()),
+            name: Some("k".into()),
+        };
+
+        let k = hir::Ast::Variable(k_var.clone());
 
         // Push each parameter to the continuation
         let mut statements = fmap(&args, |arg| {
             let arg = Box::new(hir::Ast::Variable(arg.clone()));
-            hir::Ast::Builtin(hir::Builtin::ContinuationArgPush(Box::new(k.clone()), arg))
+            Builtin(ContinuationArgPush(Box::new(k.clone()), arg))
         });
 
+        args.push(k_var);
+
         // Then resume the continuation
-        statements.push(hir::Ast::Builtin(hir::Builtin::ContinuationResume(Box::new(k))));
+        statements.push(Builtin(ContinuationResume(Box::new(k.clone()))));
+
+        // And pop & return from the continuation to retrieve the returned result.
+        let ret_ty = function_type.return_type.as_ref().clone();
+        statements.push(Builtin(ContinuationArgPop(Box::new(k), ret_ty)));
 
         let body = Box::new(hir::Ast::Sequence(hir::Sequence { statements }));
-
-        let lambda = hir::Lambda {
-            args: todo!(),
-            body: todo!(),
-            typ: todo!(),
-        };
+        hir::Ast::Lambda(hir::Lambda { args, body, typ: function_type.clone() })
     }
 
-    fn gather_function_and_parameters(&mut self, pattern: &ast::Ast<'c>) -> () {
+    /// When matching on an effect in a handler:
+    /// ```
+    /// | effect1 arg1_1 .. arg1_M -> body1
+    /// ```
+    /// Generate the code:
+    /// ```
+    /// // Pop arguments in reverse order
+    /// arg1_M = continuation_pop(continuation, typeof(arg1_1))
+    /// ...
+    /// arg1_1 = continuation_pop(continuation, typeof(arg1_M))
+    /// body1
+    /// ```
+    fn make_effect_body(&mut self, pattern: &ast::Ast<'c>, branch: &ast::Ast<'c>, continuation: hir::Ast) -> hir::Ast {
+        use hir::{ Ast::Builtin, Builtin::ContinuationArgPop };
+
+        let arguments = self.effect_function_parameters(pattern);
+        let mut statements = Vec::with_capacity(arguments.len() + 1);
+
+        for argument in arguments.into_iter().rev() {
+            let k = Box::new(continuation.clone());
+            let argument_type = argument.typ.as_ref().clone();
+
+            // arg = continuation_pop(continuation, typeof(arg))
+            let arg_def = hir::Ast::Definition(hir::Definition {
+                variable: argument.definition_id,
+                name: argument.name.clone(),
+                mutable: false,
+                typ: argument_type,
+                expr: Box::new(Builtin(ContinuationArgPop(k, argument_type.clone()))),
+            });
+            statements.push(arg_def);
+        }
+
+        statements.push(self.monomorphise(branch));
+        hir::Ast::Sequence(hir::Sequence { statements })
+    }
+
+    /// Define and return each parameter from this effect function pattern
+    fn effect_function_parameters(&mut self, pattern: &ast::Ast<'c>) -> Vec<hir::Variable> {
         match pattern {
             ast::Ast::FunctionCall(call) => {
-                // TODO: use function to identify the right continuation
+                // TODO: use function to get the right function hash
                 let _function = unwrap_variable(&call.function);
 
-                let _args = fmap(&call.args, |arg| {
+                fmap(&call.args, |arg| {
                     let var = unwrap_variable(arg);
                     let definition_id = self.next_unique_id();
                     let typ = self.follow_all_bindings(var.get_type().unwrap());
                     let monomorphized_type = Rc::new(self.convert_type(&typ));
                     let name = Some(var.to_string());
                     let variable = hir::Variable { definition_id, definition: None, name, typ: monomorphized_type };
-                    let definition = Definition::Normal(variable);
+                    let definition = Definition::Normal(variable.clone());
                     self.definitions.insert(var.definition.unwrap(), typ, definition);
-                    definition_id
-                });
+                    variable
+                })
             },
             other => {
                 unreachable!("Expected a function call in a handle pattern. Found: {:?}", other)
