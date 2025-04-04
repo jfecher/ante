@@ -1806,7 +1806,7 @@ impl<'c> Context<'c> {
     ///         x = continuation_pop(continuation, typeof(x))
     ///         return_case
     fn make_handler_function(&mut self, handle: &ast::Handle<'c>) -> hir::Ast {
-        let resumes = fmap(&handle.resumes, |old_resume_id| {
+        for old_resume_id in &handle.resumes {
             let definition_id = self.next_unique_id();
             let typ = self.cache.definition_infos[old_resume_id.0].typ.as_ref().unwrap().as_monotype().clone();
             let typ = self.follow_all_bindings(&typ);
@@ -1817,22 +1817,41 @@ impl<'c> Context<'c> {
             let definition = Some(Rc::new(resume_function));
             let variable = hir::Variable { definition_id, definition, name, typ: monomorphized_type };
             let definition = Definition::Normal(variable);
-            eprintln!("Defining resume {:?} : {}", old_resume_id, typ.debug(&self.cache));
 
             self.definitions.insert(*old_resume_id, typ, definition);
-            definition_id
-        });
-
-        assert_eq!(handle.branches.len(), 1, "`handle` is currently only implemented for matching on 1 effectful function at a time");
+        }
 
         let continuation_var = self.fresh_variable(Type::continuation());
         let continuation = hir::Ast::Variable(continuation_var);
+        let k = || Box::new(continuation.clone());
 
-        let branches = fmap(&handle.branches, |(pattern, branch)| {
+        let mut branches = fmap(&handle.branches, |(pattern, branch)| {
             self.make_effect_body(pattern, branch, continuation.clone())
         });
 
-        hir::Ast::Handle(hir::Handle { expression, branches, resumes })
+        let result_type = self.convert_type(handle.get_type().unwrap());
+
+        assert_eq!(handle.branches.len(), 1, "`handle` is currently only implemented for matching on 1 effectful function at a time");
+
+        // continuation_suspended(continuation)
+        let condition = hir::Ast::Builtin(hir::Builtin::ContinuationIsSuspended(k()));
+
+        // continuation_resume(continuation)
+        // branch0 body
+        let then = hir::Ast::Sequence(hir::Sequence { statements: vec![
+            hir::Ast::Builtin(hir::Builtin::ContinuationResume(k())),
+            branches.pop().unwrap(),
+        ] });
+
+        // This is the default / `return _ -> _` case
+        let otherwise = hir::Ast::Builtin(hir::Builtin::ContinuationArgPop(k(), result_type.clone()));
+
+        hir::Ast::If(hir::If {
+            condition: Box::new(condition),
+            then: Box::new(then),
+            otherwise: Box::new(otherwise),
+            result_type,
+        })
     }
 
     /// Lowers the `expr` in `handle expr | ...` into:
@@ -1873,6 +1892,12 @@ impl<'c> Context<'c> {
         use hir::{ Ast::Builtin, Builtin::ContinuationResume, Builtin::ContinuationArgPush, Builtin::ContinuationArgPop };
         let function_type = match typ {
             Type::Function(function) => function,
+            Type::Tuple(elements) if elements.len() == 2 => {
+                match &elements[0] {
+                    Type::Function(function) => function,
+                    other => panic!("Expected function type, found {}", other),
+                }
+            }
             other => panic!("Expected function type, found {}", other),
         };
 
@@ -1942,8 +1967,8 @@ impl<'c> Context<'c> {
                 variable: argument.definition_id,
                 name: argument.name.clone(),
                 mutable: false,
-                typ: argument_type,
-                expr: Box::new(Builtin(ContinuationArgPop(k, argument_type.clone()))),
+                typ: argument_type.clone(),
+                expr: Box::new(Builtin(ContinuationArgPop(k, argument_type))),
             });
             statements.push(arg_def);
         }

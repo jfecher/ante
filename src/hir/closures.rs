@@ -122,15 +122,6 @@ fn replace_env(expr: Ast, env: &Ast, definition_id: hir::DefinitionId, f: &hir::
             *cast.lhs = replace_env(*cast.lhs, env, definition_id, f);
             Ast::ReinterpretCast(cast)
         },
-        Ast::Handle(mut handle) => {
-            *handle.expression = replace_env(*handle.expression, env, definition_id, f);
-            handle.branches = fmap(handle.branches, |(pattern, branch)| {
-                let pattern = replace_env(pattern, env, definition_id, f);
-                let branch = replace_env(branch, env, definition_id, f);
-                (pattern, branch)
-            });
-            Ast::Handle(handle)
-        },
         Ast::Reference(mut reference) => {
             *reference.expression = replace_env(*reference.expression, env, definition_id, f);
             Ast::Reference(reference)
@@ -209,5 +200,11 @@ fn replace_env_builtin(
         Offset(lhs, rhs, size) => Offset(f(lhs), f(rhs), size),
         Transmute(lhs, t) => Transmute(f(lhs), t),
         StackAlloc(lhs) => StackAlloc(f(lhs)),
+        ContinuationInit(fun) => ContinuationInit(f(fun)),
+        ContinuationIsSuspended(k) => ContinuationIsSuspended(f(k)),
+        ContinuationArgPush(k, x) => ContinuationArgPush(f(k), f(x)),
+        ContinuationArgPop(k, typ) => ContinuationArgPop(f(k), typ),
+        ContinuationResume(k) => ContinuationResume(f(k)),
+        ContinuationFree(k) => ContinuationFree(f(k)),
     }
 }

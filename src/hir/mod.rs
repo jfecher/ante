@@ -206,16 +206,6 @@ pub struct ReinterpretCast {
 }
 
 #[derive(Debug, Clone)]
-pub struct Handle {
-    pub expression: Box<Ast>,
-    pub branches: Vec<(Ast, Ast)>,
-
-    /// IDs for each 'resume' variable (1 per branch) of this handle expression.
-    /// This is filled out during name resolution.
-    pub resumes: Vec<DefinitionId>,
-}
-
-#[derive(Debug, Clone)]
 pub struct Reference {
     pub mutability: Mutability,
     pub expression: Box<Ast>,
@@ -298,7 +288,6 @@ pub enum Ast {
     Tuple(Tuple),
     ReinterpretCast(ReinterpretCast),
     Builtin(Builtin),
-    Handle(Handle),
     Reference(Reference),
 }
 
@@ -325,7 +314,6 @@ macro_rules! dispatch_on_hir {
             $crate::hir::Ast::MemberAccess(inner) =>    $function(inner $(, $($args),* )? ),
             $crate::hir::Ast::Tuple(inner) =>           $function(inner $(, $($args),* )? ),
             $crate::hir::Ast::ReinterpretCast(inner) => $function(inner $(, $($args),* )? ),
-            $crate::hir::Ast::Handle(inner) =>          $function(inner $(, $($args),* )? ),
             $crate::hir::Ast::Builtin(inner) =>         $function(inner $(, $($args),* )? ),
             $crate::hir::Ast::Reference(inner) =>       $function(inner $(, $($args),* )? ),
         }

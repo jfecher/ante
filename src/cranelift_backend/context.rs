@@ -672,6 +672,7 @@ fn convert_primitive_type(typ: &PrimitiveType) -> cranelift_types::Type {
         PrimitiveType::Boolean => cranelift_types::I8,
         PrimitiveType::Unit => cranelift_types::I8,
         PrimitiveType::Pointer => pointer_type(),
+        PrimitiveType::Continuation => pointer_type(),
     }
 }
 

@@ -58,6 +58,13 @@ pub fn call_builtin<'ast>(builtin: &'ast Builtin, context: &mut Context<'ast>, b
         Builtin::Offset(a, b, elem_size) => return offset(context, a, b, elem_size, builder),
         Builtin::Transmute(a, typ) => return transmute(context, a, typ, builder),
         Builtin::StackAlloc(a) => stack_alloc(a, context, builder),
+
+        Builtin::ContinuationInit(_) => todo!("cranelift codegen for ContinuationInit"),
+        Builtin::ContinuationIsSuspended(_) => todo!("cranelift codegen for ContinuationIsSuspended"),
+        Builtin::ContinuationArgPush(_, _) => todo!("cranelift codegen for ContinuationArgPush"),
+        Builtin::ContinuationArgPop(_, _) => todo!("cranelift codegen for ContinuationArgPop"),
+        Builtin::ContinuationResume(_) => todo!("cranelift codegen for ContinuationResume"),
+        Builtin::ContinuationFree(_) => todo!("cranelift codegen for ContinuationFree"),
     };
 
     Value::Normal(result)

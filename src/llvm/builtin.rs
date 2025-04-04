@@ -71,6 +71,13 @@ pub fn call_builtin<'g>(builtin: &Builtin, generator: &mut Generator<'g>) -> Bas
         Builtin::Offset(a, b, typ) => offset(a, int(b), typ, generator),
         Builtin::Transmute(a, _typ) => transmute_value(a, generator),
         Builtin::StackAlloc(a) => stack_alloc(a, generator),
+
+        Builtin::ContinuationInit(_) => todo!("llvm codegen for ContinuationInit"),
+        Builtin::ContinuationIsSuspended(_) => todo!("llvm codegen for ContinuationIsSuspended"),
+        Builtin::ContinuationArgPush(_, _) => todo!("llvm codegen for ContinuationArgPush"),
+        Builtin::ContinuationArgPop(_, _) => todo!("llvm codegen for ContinuationArgPop"),
+        Builtin::ContinuationResume(_) => todo!("llvm codegen for ContinuationResume"),
+        Builtin::ContinuationFree(_) => todo!("llvm codegen for ContinuationFree"),
     }
 }
 

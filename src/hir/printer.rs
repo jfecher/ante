@@ -283,6 +283,12 @@ impl FmtAst for Builtin {
             Builtin::Offset(a, b, typ) => printer.fmt_offset(a, b, typ, f),
             Builtin::Transmute(a, b) => printer.fmt_cast("#Transmute", a, b, f),
             Builtin::StackAlloc(value) => printer.fmt_call("#StackAlloc", &[value], f),
+            Builtin::ContinuationInit(fun) => printer.fmt_call("#ContInit", &[fun], f),
+            Builtin::ContinuationIsSuspended(k) => printer.fmt_call("#ContIsSuspended", &[k], f),
+            Builtin::ContinuationArgPush(k, x) => printer.fmt_call("#ContArgPush", &[k, x], f),
+            Builtin::ContinuationArgPop(k, typ) => printer.fmt_cast("#ContArgPop", k, typ, f),
+            Builtin::ContinuationResume(k) => printer.fmt_call("#ContResume", &[k], f),
+            Builtin::ContinuationFree(k) => printer.fmt_call("#ContFree", &[k], f),
         }
     }
 }
@@ -327,20 +333,6 @@ impl FmtAst for DecisionTree {
                 Ok(())
             },
         }
-    }
-}
-
-impl FmtAst for Handle {
-    fn fmt_ast(&self, printer: &mut AstPrinter, f: &mut Formatter) -> fmt::Result {
-        write!(f, "handle ")?;
-        self.expression.fmt_ast(printer, f)?;
-        for (pattern, branch) in &self.branches {
-            printer.newline(f)?;
-            pattern.fmt_ast(printer, f)?;
-            write!(f, " -> ")?;
-            branch.fmt_ast(printer, f)?;
-        }
-        Ok(())
     }
 }
 

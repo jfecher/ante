@@ -260,12 +260,6 @@ impl CodeGen for hir::Builtin {
     }
 }
 
-impl CodeGen for hir::Handle {
-    fn codegen<'a>(&'a self, _context: &mut Context<'a>, _builder: &mut FunctionBuilder) -> Value {
-        todo!("Cranelift codegen for hir::Handle")
-    }
-}
-
 impl CodeGen for hir::Reference {
     fn codegen<'a>(&'a self, context: &mut Context<'a>, builder: &mut FunctionBuilder) -> Value {
         match self.expression.codegen(context, builder) {

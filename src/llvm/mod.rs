@@ -266,6 +266,7 @@ impl<'g> Generator<'g> {
                     PrimitiveType::Boolean => self.context.bool_type().into(),
                     PrimitiveType::Unit => self.context.bool_type().into(),
                     PrimitiveType::Pointer => self.context.ptr_type(AddressSpace::default()).into(),
+                    PrimitiveType::Continuation => self.context.ptr_type(AddressSpace::default()).into(),
                 }
             },
             hir::Type::Function(_) => self.context.ptr_type(AddressSpace::default()).into(),
@@ -751,12 +752,6 @@ impl<'g> CodeGen<'g> for hir::ReinterpretCast {
 impl<'g> CodeGen<'g> for hir::Builtin {
     fn codegen(&self, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
         builtin::call_builtin(self, generator)
-    }
-}
-
-impl<'g> CodeGen<'g> for hir::Handle {
-    fn codegen(&self, _generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
-        todo!("LLVM Codegen for hir::Handle")
     }
 }
 
