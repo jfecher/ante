@@ -1822,7 +1822,7 @@ impl<'c> Context<'c> {
         }
 
         let continuation_var = self.fresh_variable(Type::continuation());
-        let continuation = hir::Ast::Variable(continuation_var);
+        let continuation = hir::Ast::Variable(continuation_var.clone());
         let k = || Box::new(continuation.clone());
 
         let mut branches = fmap(&handle.branches, |(pattern, branch)| {
@@ -1846,12 +1846,17 @@ impl<'c> Context<'c> {
         // This is the default / `return _ -> _` case
         let otherwise = hir::Ast::Builtin(hir::Builtin::ContinuationArgPop(k(), result_type.clone()));
 
-        hir::Ast::If(hir::If {
+        let body = Box::new(hir::Ast::If(hir::If {
             condition: Box::new(condition),
             then: Box::new(then),
             otherwise: Box::new(otherwise),
-            result_type,
-        })
+            result_type: result_type.clone(),
+        }));
+
+        let parameters = vec![Type::continuation()];
+        let return_type = Box::new(result_type);
+        let typ = hir::FunctionType { parameters, return_type, is_varargs: false };
+        hir::Ast::Lambda(hir::Lambda { args: vec![continuation_var], body, typ })
     }
 
     /// Lowers the `expr` in `handle expr | ...` into:
