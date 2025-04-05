@@ -8,5 +8,4 @@
 use crate::hir::Ast;
 
 /// Run the effect lowering pass on the given Hir
-pub fn convert_effects_to_coroutines(_hir: Ast) {
-}
+pub fn convert_effects_to_coroutines(_hir: Ast) {}

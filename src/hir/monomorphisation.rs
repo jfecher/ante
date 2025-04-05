@@ -6,8 +6,7 @@ use crate::error::TypeErrorKind as TE;
 use crate::hir;
 use crate::lexer::token::FloatKind;
 use crate::nameresolution::builtin::BUILTIN_ID;
-use crate::parser::ast;
-use crate::parser::ast::ClosureEnvironment;
+use crate::parser::ast::{self, ClosureEnvironment};
 use crate::types::traits::{Callsite, RequiredImpl, TraitConstraintId};
 use crate::types::typechecker::{self, TypeBindings};
 use crate::types::typed::Typed;
@@ -599,7 +598,7 @@ impl<'c> Context<'c> {
             Ok(other) => {
                 eprintln!("get_effects got other: {:?}", other.debug(&self.cache));
                 &[]
-            }
+            },
             Err(_type_var) => &[],
         }
     }
@@ -864,17 +863,20 @@ impl<'c> Context<'c> {
                     typ.debug(&self.cache)
                 )
             },
-            Some(DefinitionKind::EffectDefinition(e)) => {
+            Some(DefinitionKind::EffectDefinition(_)) => {
                 let typ = self.follow_all_bindings(&typ);
-                eprintln!("Have effect {}, {}", e.name, typ.debug(&self.cache));
-                Definition::Macro(hir::Ast::Literal(hir::Literal::Unit))
+                let hir_type = self.convert_type(&typ);
+                let lambda = self.make_effect_function(hir_type.clone());
 
-                // unreachable!(
-                //     "Cannot monomorphise from a EffectDefinition.\nNo cached handle for {} {}: {}",
-                //     info.name,
-                //     id.0,
-                //     typ.debug(&self.cache)
-                // )
+                let variable = self.next_unique_id();
+                let expr = Box::new(lambda);
+
+                let name = Some(self.cache[id].name.clone());
+                let definition = hir::Definition { variable, expr, name, mutable: false, typ: hir_type.clone() };
+                let def = Definition::Normal(hir::Variable::with_definition(definition, Rc::new(hir_type)));
+
+                self.definitions.insert(id, typ, def.clone());
+                def
             },
             Some(DefinitionKind::Parameter) => {
                 unreachable!(
@@ -968,12 +970,7 @@ impl<'c> Context<'c> {
     ) -> (hir::Ast, hir::Ast) {
         let (def, id) = self.fresh_definition_with_mutability(definition_rhs, Some(name.clone()), false, typ.clone());
 
-        let var = hir::Variable {
-            definition: None,
-            definition_id: id,
-            typ: Rc::new(typ),
-            name: Some(name),
-        };
+        let var = hir::Variable { definition: None, definition_id: id, typ: Rc::new(typ), name: Some(name) };
         (def, hir::Ast::Variable(var))
     }
 
@@ -1133,6 +1130,46 @@ impl<'c> Context<'c> {
                 unreachable!("Type constructor must be a Function or Tuple type: {}", typ)
             },
         }
+    }
+
+    /// Compile an effect `eff : A - ... - Z -> Ret` as:
+    /// ```
+    /// eff(a, ..., z, k) =
+    ///     continuation_push(k, a)
+    ///     ...
+    ///     continuation_push(k, z)
+    ///     continuation_resume(k)
+    ///     continuation_pop(k, Ret)
+    /// ```
+    fn make_effect_function(&mut self, typ: Type) -> hir::Ast {
+        use hir::{Ast, Builtin};
+        let hir::types::Type::Function(mut function_type) = typ else {
+            unreachable!("All effects should be functions")
+        };
+
+        eprintln!("Monomorphizing effect function with type {}", function_type);
+
+        let mut args = fmap(&function_type.parameters, |param| self.fresh_variable(param.clone()));
+
+        let continuation = self.fresh_variable(Type::continuation());
+        let k = || Box::new(Ast::Variable(continuation.clone()));
+
+        // continuation_push(k, arg)
+        let mut statements = fmap(&args, |arg| {
+            let arg = Box::new(Ast::Variable(arg.clone()));
+            Ast::Builtin(Builtin::ContinuationArgPush(k(), arg))
+        });
+
+        let return_type = function_type.return_type.as_ref().clone();
+
+        statements.push(Ast::Builtin(Builtin::ContinuationResume(k())));
+        statements.push(Ast::Builtin(Builtin::ContinuationArgPop(k(), return_type)));
+
+        args.push(continuation);
+        function_type.parameters.push(Type::continuation());
+
+        let body = Box::new(Ast::Sequence(hir::Sequence { statements }));
+        Ast::Lambda(hir::Lambda { args, body, typ: function_type })
     }
 
     /// Create a reinterpret_cast instruction for the given Ast value.
@@ -1768,12 +1805,7 @@ impl<'c> Context<'c> {
         // continuation_free(k)
         let free_k = hir::Ast::Builtin(hir::Builtin::ContinuationFree(Box::new(k)));
 
-        hir::Ast::Sequence(hir::Sequence { statements: vec![
-            k_def,
-            ret_def,
-            free_k,
-            ret
-        ]})
+        hir::Ast::Sequence(hir::Sequence { statements: vec![k_def, ret_def, free_k, ret] })
     }
 
     /// Creates the `handler` function from a handler:
@@ -1825,23 +1857,25 @@ impl<'c> Context<'c> {
         let continuation = hir::Ast::Variable(continuation_var.clone());
         let k = || Box::new(continuation.clone());
 
-        let mut branches = fmap(&handle.branches, |(pattern, branch)| {
-            self.make_effect_body(pattern, branch, continuation.clone())
-        });
+        let mut branches =
+            fmap(&handle.branches, |(pattern, branch)| self.make_effect_body(pattern, branch, continuation.clone()));
 
         let result_type = self.convert_type(handle.get_type().unwrap());
 
-        assert_eq!(handle.branches.len(), 1, "`handle` is currently only implemented for matching on 1 effectful function at a time");
+        assert_eq!(
+            handle.branches.len(),
+            1,
+            "`handle` is currently only implemented for matching on 1 effectful function at a time"
+        );
 
         // continuation_suspended(continuation)
         let condition = hir::Ast::Builtin(hir::Builtin::ContinuationIsSuspended(k()));
 
         // continuation_resume(continuation)
         // branch0 body
-        let then = hir::Ast::Sequence(hir::Sequence { statements: vec![
-            hir::Ast::Builtin(hir::Builtin::ContinuationResume(k())),
-            branches.pop().unwrap(),
-        ] });
+        let then = hir::Ast::Sequence(hir::Sequence {
+            statements: vec![hir::Ast::Builtin(hir::Builtin::ContinuationResume(k())), branches.pop().unwrap()],
+        });
 
         // This is the default / `return _ -> _` case
         let otherwise = hir::Ast::Builtin(hir::Builtin::ContinuationArgPop(k(), result_type.clone()));
@@ -1877,7 +1911,7 @@ impl<'c> Context<'c> {
         let return_type = Box::new(Type::unit());
         let typ = hir::FunctionType { parameters, return_type, is_varargs: false };
 
-        hir::Ast::Lambda(hir::Lambda { args, body, typ  })
+        hir::Ast::Lambda(hir::Lambda { args, body, typ })
     }
 
     // A resume function `resume: Arg1 - Arg2 - ... - ArgN -> Ret` translates to:
@@ -1894,27 +1928,25 @@ impl<'c> Context<'c> {
     // }
     // ```
     fn make_resume_function(&mut self, typ: &Type) -> hir::Ast {
-        use hir::{ Ast::Builtin, Builtin::ContinuationResume, Builtin::ContinuationArgPush, Builtin::ContinuationArgPop };
+        use hir::{
+            Ast::Builtin, Builtin::ContinuationArgPop, Builtin::ContinuationArgPush, Builtin::ContinuationResume,
+        };
         let function_type = match typ {
             Type::Function(function) => function,
-            Type::Tuple(elements) if elements.len() == 2 => {
-                match &elements[0] {
-                    Type::Function(function) => function,
-                    other => panic!("Expected function type, found {}", other),
-                }
-            }
+            Type::Tuple(elements) if elements.len() == 2 => match &elements[0] {
+                Type::Function(function) => function,
+                other => panic!("Expected function type, found {}", other),
+            },
             other => panic!("Expected function type, found {}", other),
         };
 
         eprintln!("resume function type = {function_type}");
 
-        let mut args = fmap(function_type.parameters.iter(), |param| {
-            hir::DefinitionInfo {
-                definition: None,
-                definition_id: self.next_unique_id(),
-                typ: Rc::new(param.clone()),
-                name: None,
-            }
+        let mut args = fmap(function_type.parameters.iter(), |param| hir::DefinitionInfo {
+            definition: None,
+            definition_id: self.next_unique_id(),
+            typ: Rc::new(param.clone()),
+            name: None,
         });
 
         let k_var = hir::DefinitionInfo {
@@ -1958,7 +1990,7 @@ impl<'c> Context<'c> {
     /// body1
     /// ```
     fn make_effect_body(&mut self, pattern: &ast::Ast<'c>, branch: &ast::Ast<'c>, continuation: hir::Ast) -> hir::Ast {
-        use hir::{ Ast::Builtin, Builtin::ContinuationArgPop };
+        use hir::{Ast::Builtin, Builtin::ContinuationArgPop};
 
         let arguments = self.effect_function_parameters(pattern);
         let mut statements = Vec::with_capacity(arguments.len() + 1);
@@ -2003,7 +2035,7 @@ impl<'c> Context<'c> {
             },
             other => {
                 unreachable!("Expected a function call in a handle pattern. Found: {:?}", other)
-            }
+            },
         }
     }
 }
@@ -2011,10 +2043,12 @@ impl<'c> Context<'c> {
 fn unwrap_variable<'c>(ast: &'c ast::Ast<'c>) -> &'c ast::Variable<'c> {
     match ast {
         ast::Ast::Variable(variable) => variable,
-        other => unreachable!("Exepected variable arguments to each part of the function call in a Handle. Found {:?}", other),
+        other => unreachable!(
+            "Exepected variable arguments to each part of the function call in a Handle. Found {:?}",
+            other
+        ),
     }
 }
-
 
 fn tuple(fields: Vec<hir::Ast>) -> hir::Ast {
     hir::Ast::Tuple(hir::Tuple { fields })
