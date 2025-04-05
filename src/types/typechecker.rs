@@ -2131,7 +2131,7 @@ impl<'a> Inferable<'a> for ast::Handle<'a> {
             let expected_resume_type = Type::Function(FunctionType {
                 parameters: vec![pattern_type.typ],
                 return_type: Box::new(result.typ.clone()),
-                environment: Box::new(next_type_variable(cache)),
+                environment: Box::new(Type::UNIT),
                 effects: Box::new(next_type_variable(cache)),
                 is_varargs: false,
             });
