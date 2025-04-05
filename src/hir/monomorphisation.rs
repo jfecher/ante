@@ -143,11 +143,19 @@ impl<'c> Context<'c> {
         let fuel = fuel - 1;
         match &self.cache.type_bindings[id.0] {
             Bound(TypeVariable(id2)) => self.find_binding(*id2, fuel),
+            Bound(typ @ Effects(effects)) => {
+                let binding = self.find_binding(effects.replacement, fuel);
+                Ok(binding.unwrap_or(typ))
+            }
             Bound(binding) => Ok(binding),
             Unbound(..) => {
                 for bindings in self.monomorphisation_bindings.iter().rev() {
                     match bindings.get(&id) {
                         Some(TypeVariable(id2)) => return self.find_binding(*id2, fuel),
+                        Some(typ @ Effects(effects)) => {
+                            let binding = self.find_binding(effects.replacement, fuel);
+                            return Ok(binding.unwrap_or(typ));
+                        }
                         Some(binding) => return Ok(binding),
                         None => (),
                     }
@@ -501,8 +509,8 @@ impl<'c> Context<'c> {
                     environment_parameter
                 });
 
-                for (effect_id, effect_args) in self.get_effects(&function.effects) {
-                    eprintln!("Effect {effect_id:?} {effect_args:?}");
+                for _ in self.get_effects(&function.effects) {
+                    parameters.push(Type::continuation());
                 }
 
                 let function = Type::Function(hir::types::FunctionType {
@@ -582,24 +590,27 @@ impl<'c> Context<'c> {
 
                 Type::Tuple(fmap(fields, |(_, field)| self.convert_type_inner(field, fuel)))
             },
-            Effects(_) => unreachable!(),
+            Effects(_) => unreachable!("convert_type given {}", typ.debug(&self.cache)),
         }
     }
 
     fn get_effects<'typ>(&'typ self, effects: &'typ types::Type) -> &'typ [types::effects::Effect] {
-        match self.follow_bindings_shallow(effects) {
+        let r = self.get_effects2(effects);
+        r
+    }
+
+    fn get_effects2<'typ>(&'typ self, typ: &'typ types::Type) -> &'typ [types::effects::Effect] {
+        match self.follow_bindings_shallow(typ) {
             Ok(types::Type::Effects(effects)) => {
-                if let Ok(binding) = self.find_binding(effects.replacement, RECURSION_LIMIT) {
-                    self.get_effects(binding)
-                } else {
-                    &effects.effects
-                }
+                // TODO: Need to figure out why non-empty effect sets are getting bound to empty ones
+                // if let Ok(binding) = self.find_binding(effects.replacement, RECURSION_LIMIT) {
+                //     self.get_effects2(binding)
+                // } else {
+                //     &effects.effects
+                // }
+                &effects.effects
             },
-            Ok(other) => {
-                eprintln!("get_effects got other: {:?}", other.debug(&self.cache));
-                &[]
-            },
-            Err(_type_var) => &[],
+            _ => &[],
         }
     }
 
@@ -822,7 +833,15 @@ impl<'c> Context<'c> {
             return value;
         }
 
+        let t2 = typ;
+
         let typ = self.follow_all_bindings(typ);
+        let ttt = self.convert_type(&typ);
+        eprintln!("  {} : {} : {} : {}",
+                  self.cache[id].name,
+                  t2.debug(&self.cache),
+                  typ.debug(&self.cache),
+                  ttt);
 
         let info = trustme::extend_lifetime(&mut self.cache[id]);
         self.push_monomorphisation_bindings(instantiation_mapping, &typ, info);
@@ -1147,8 +1166,6 @@ impl<'c> Context<'c> {
             unreachable!("All effects should be functions")
         };
 
-        eprintln!("Monomorphizing effect function with type {}", function_type);
-
         let mut args = fmap(&function_type.parameters, |param| self.fresh_variable(param.clone()));
 
         let continuation = self.fresh_variable(Type::continuation());
@@ -1244,6 +1261,7 @@ impl<'c> Context<'c> {
         let t = lambda.typ.as_ref().unwrap();
         let t = self.follow_all_bindings(t);
         let typ = self.get_function_type(&t);
+
         let mut body_prelude = vec![];
 
         // Bind each parameter node to the nth parameter of `function`
@@ -1839,18 +1857,7 @@ impl<'c> Context<'c> {
     ///         return_case
     fn make_handler_function(&mut self, handle: &ast::Handle<'c>) -> hir::Ast {
         for old_resume_id in &handle.resumes {
-            let definition_id = self.next_unique_id();
-            let typ = self.cache.definition_infos[old_resume_id.0].typ.as_ref().unwrap().as_monotype().clone();
-            let typ = self.follow_all_bindings(&typ);
-            let monomorphized_type = Rc::new(self.convert_type(&typ));
-            let resume_function = self.make_resume_function(&monomorphized_type);
-
-            let name = Some("resume".to_string());
-            let definition = Some(Rc::new(resume_function));
-            let variable = hir::Variable { definition_id, definition, name, typ: monomorphized_type };
-            let definition = Definition::Normal(variable);
-
-            self.definitions.insert(*old_resume_id, typ, definition);
+            self.define_resume_function(*old_resume_id);
         }
 
         let continuation_var = self.fresh_variable(Type::continuation());
@@ -1914,33 +1921,56 @@ impl<'c> Context<'c> {
         hir::Ast::Lambda(hir::Lambda { args, body, typ })
     }
 
-    // A resume function `resume: Arg1 - Arg2 - ... - ArgN -> Ret` translates to:
-    // ```
-    // Ret resume(_1: Arg1, _2: Arg2, ..., _N: ArgN, continuation* co) {
-    //     co_push(co, &_1, sizeof(Arg1));
-    //     co_push(co, &_2, sizeof(Arg2));
-    //     ...
-    //     co_push(co, &_N, sizeof(ArgN));
-    //     co_resume(co);
-    //     Ret ret;
-    //     co_pop(co, &ret, sizeof(Ret));
-    //     return ret;
-    // }
-    // ```
+    /// Defines the `resume` function for a particular handle definition.
+    /// This becomes a global function and can be defined any time.
+    fn define_resume_function(&mut self, resume_id: DefinitionInfoId) {
+        let definition_id = self.next_unique_id();
+        let typ = self.cache.definition_infos[resume_id.0].typ.as_ref().unwrap().as_monotype().clone();
+        let typ = self.follow_all_bindings(&typ);
+        let monomorphized_type = Rc::new(self.convert_type(&typ));
+        let resume_function = self.make_resume_function(&monomorphized_type);
+
+        let name = Some("resume".to_string());
+        let definition = hir::Ast::Definition(hir::Definition {
+            variable: definition_id,
+            name: name.clone(),
+            mutable: false,
+            typ: monomorphized_type.as_ref().clone(),
+            expr: Box::new(resume_function),
+        });
+
+        let definition = Some(Rc::new(definition));
+        let variable = hir::Variable { definition_id, definition, name, typ: monomorphized_type };
+        let definition = Definition::Normal(variable);
+
+        self.definitions.insert(resume_id, typ, definition);
+    }
+
+    /// A resume function `resume: Arg1 - Arg2 - ... - ArgN -> Ret` translates to:
+    /// ```
+    /// Ret resume(_1: Arg1, _2: Arg2, ..., _N: ArgN, continuation* co) {
+    ///     co_push(co, &_1, sizeof(Arg1));
+    ///     co_push(co, &_2, sizeof(Arg2));
+    ///     ...
+    ///     co_push(co, &_N, sizeof(ArgN));
+    ///     co_resume(co);
+    ///     Ret ret;
+    ///     co_pop(co, &ret, sizeof(Ret));
+    ///     return ret;
+    /// }
+    /// ```
     fn make_resume_function(&mut self, typ: &Type) -> hir::Ast {
         use hir::{
             Ast::Builtin, Builtin::ContinuationArgPop, Builtin::ContinuationArgPush, Builtin::ContinuationResume,
         };
-        let function_type = match typ {
-            Type::Function(function) => function,
+        let mut function_type = match typ {
+            Type::Function(function) => function.clone(),
             Type::Tuple(elements) if elements.len() == 2 => match &elements[0] {
-                Type::Function(function) => function,
+                Type::Function(function) => function.clone(),
                 other => panic!("Expected function type, found {}", other),
             },
             other => panic!("Expected function type, found {}", other),
         };
-
-        eprintln!("resume function type = {function_type}");
 
         let mut args = fmap(function_type.parameters.iter(), |param| hir::DefinitionInfo {
             definition: None,
@@ -1957,6 +1987,7 @@ impl<'c> Context<'c> {
         };
 
         let k = hir::Ast::Variable(k_var.clone());
+        function_type.parameters.push(Type::continuation());
 
         // Push each parameter to the continuation
         let mut statements = fmap(&args, |arg| {
@@ -1974,7 +2005,7 @@ impl<'c> Context<'c> {
         statements.push(Builtin(ContinuationArgPop(Box::new(k), ret_ty)));
 
         let body = Box::new(hir::Ast::Sequence(hir::Sequence { statements }));
-        hir::Ast::Lambda(hir::Lambda { args, body, typ: function_type.clone() })
+        hir::Ast::Lambda(hir::Lambda { args, body, typ: function_type })
     }
 
     /// When matching on an effect in a handler:
