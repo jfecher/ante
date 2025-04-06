@@ -183,6 +183,7 @@ pub enum DefinitionKind<'a> {
     /// If the constructed type is a tagged union, tag will
     /// be Some, otherwise if it is a struct, tag is None.
     TypeConstructor {
+        #[allow(unused)]
         name: String,
         tag: Option<u8>,
     },
@@ -365,8 +366,6 @@ pub struct EffectInfoId(pub usize);
 #[derive(Debug)]
 pub struct EffectInfo<'a> {
     pub name: String,
-
-    pub effect_node: &'a mut EffectDefinition<'a>,
 
     /// Type variables on the effect declaration itself.
     /// Unlike traits, this may be empty.
@@ -559,11 +558,10 @@ impl<'a> ModuleCache<'a> {
     }
 
     pub fn push_effect_definition(
-        &mut self, name: String, typeargs: Vec<TypeVariableId>, effect_node: &'a mut EffectDefinition<'a>,
-        location: Location<'a>,
+        &mut self, name: String, typeargs: Vec<TypeVariableId>, location: Location<'a>,
     ) -> EffectInfoId {
         let id = self.effect_infos.len();
-        self.effect_infos.push(EffectInfo { name, typeargs, effect_node, declarations: vec![], location });
+        self.effect_infos.push(EffectInfo { name, typeargs, declarations: vec![], location });
         EffectInfoId(id)
     }
 

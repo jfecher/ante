@@ -238,13 +238,20 @@ impl<'local> Context<'local> {
         let init_signature = &hir::FunctionType::new(vec![init_function_arg], Type::continuation());
 
         // char mco_coro_is_suspended(mco_coro*, k);
-        let is_suspended_signature = &hir::FunctionType::new(vec![Type::continuation()], Type::Primitive(PrimitiveType::Boolean));
+        let is_suspended_signature =
+            &hir::FunctionType::new(vec![Type::continuation()], Type::Primitive(PrimitiveType::Boolean));
 
         // void mco_coro_push(mco_coro* k, const void* data, size_t data_size);
-        let push_signature = &hir::FunctionType::new(vec![Type::continuation(), Type::pointer(), Type::Primitive(PrimitiveType::Integer(hir::IntegerKind::Usz))], Type::unit());
+        let push_signature = &hir::FunctionType::new(
+            vec![Type::continuation(), Type::pointer(), Type::Primitive(PrimitiveType::Integer(hir::IntegerKind::Usz))],
+            Type::unit(),
+        );
 
         // void mco_coro_pop(mco_coro* k, void* data, size_t data_size);
-        let pop_signature = &hir::FunctionType::new(vec![Type::continuation(), Type::pointer(), Type::Primitive(PrimitiveType::Integer(hir::IntegerKind::Usz))], Type::unit());
+        let pop_signature = &hir::FunctionType::new(
+            vec![Type::continuation(), Type::pointer(), Type::Primitive(PrimitiveType::Integer(hir::IntegerKind::Usz))],
+            Type::unit(),
+        );
 
         // void mco_coro_suspend(mco_coro* k);
         let suspend_signature = &hir::FunctionType::new(vec![Type::continuation()], Type::unit());
@@ -256,11 +263,14 @@ impl<'local> Context<'local> {
         let free_signature = &hir::FunctionType::new(vec![Type::continuation()], Type::unit());
 
         self.continuation_init_function = Some(self.define_continuation_function("mco_coro_init", init_signature));
-        self.continuation_is_suspended_function = Some(self.define_continuation_function("mco_coro_is_suspended", is_suspended_signature));
+        self.continuation_is_suspended_function =
+            Some(self.define_continuation_function("mco_coro_is_suspended", is_suspended_signature));
         self.continuation_arg_push_function = Some(self.define_continuation_function("mco_coro_push", push_signature));
         self.continuation_arg_pop_function = Some(self.define_continuation_function("mco_coro_pop", pop_signature));
-        self.continuation_suspend_function = Some(self.define_continuation_function("mco_coro_suspend", suspend_signature));
-        self.continuation_resume_function = Some(self.define_continuation_function("mco_coro_resume", resume_signature));
+        self.continuation_suspend_function =
+            Some(self.define_continuation_function("mco_coro_suspend", suspend_signature));
+        self.continuation_resume_function =
+            Some(self.define_continuation_function("mco_coro_resume", resume_signature));
         self.continuation_free_function = Some(self.define_continuation_function("mco_coro_free", free_signature));
     }
 

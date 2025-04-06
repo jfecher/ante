@@ -146,24 +146,22 @@ impl<'c> Context<'c> {
 
         let fuel = fuel - 1;
         match &self.cache.type_bindings[id.0] {
-            Bound(TypeVariable(id2)) => {
-                self.find_binding(*id2, fuel)
-            }
+            Bound(TypeVariable(id2)) => self.find_binding(*id2, fuel),
             Bound(typ @ Effects(effects)) => {
                 let binding = self.find_binding(effects.replacement, fuel);
                 Ok(binding.unwrap_or(typ))
-            }
+            },
             Bound(binding) => Ok(binding),
             Unbound(..) => {
                 for bindings in self.monomorphisation_bindings.iter().rev() {
                     match bindings.get(&id) {
                         Some(TypeVariable(id2)) => {
                             return self.find_binding(*id2, fuel);
-                        }
+                        },
                         Some(typ @ Effects(effects)) => {
                             let binding = self.find_binding(effects.replacement, fuel);
                             return Ok(binding.unwrap_or(typ));
-                        }
+                        },
                         Some(binding) => return Ok(binding),
                         None => (),
                     }
@@ -1162,9 +1160,7 @@ impl<'c> Context<'c> {
     /// ```
     fn make_effect_function(&mut self, typ: Type) -> hir::Ast {
         use hir::{Ast, Builtin};
-        let hir::types::Type::Function(function_type) = typ else {
-            unreachable!("All effects should be functions")
-        };
+        let hir::types::Type::Function(function_type) = typ else { unreachable!("All effects should be functions") };
 
         let mut args = fmap(&function_type.parameters, |param| self.fresh_variable(param.clone()));
         let continuation = args.pop().unwrap();
@@ -1257,7 +1253,10 @@ impl<'c> Context<'c> {
     /// and pushes each onto the end of the function's parameter list.
     fn push_continuation_parameters(&mut self, function_type: types::Type, parameters: &mut Vec<hir::Variable>) {
         let types::Type::Function(function) = self.follow_all_bindings(&function_type) else {
-            unreachable!("push_continuation_parameters expected function type, found {}", function_type.debug(&self.cache));
+            unreachable!(
+                "push_continuation_parameters expected function type, found {}",
+                function_type.debug(&self.cache)
+            );
         };
 
         let effects = self.get_effects(&function.effects).to_vec();
@@ -1283,13 +1282,16 @@ impl<'c> Context<'c> {
 
     fn get_continuation_args(&mut self, function_type: &types::Type) -> Vec<hir::Ast> {
         let types::Type::Function(function) = self.follow_all_bindings(&function_type) else {
-            unreachable!("push_continuation_parameters expected function type, found {}", function_type.debug(&self.cache));
+            unreachable!(
+                "push_continuation_parameters expected function type, found {}",
+                function_type.debug(&self.cache)
+            );
         };
 
         let effects = self.get_effects(&function.effects).to_vec();
         fmap(effects, |effect| self.get_continuation_arg(effect))
     }
-    
+
     fn get_continuation_arg(&mut self, (target_id, mut target_args): Effect) -> hir::Ast {
         target_args = fmap(target_args, |arg| self.follow_all_bindings(&arg));
 
@@ -1953,10 +1955,9 @@ impl<'c> Context<'c> {
             result_type,
         });
 
-        let body = Box::new(hir::Ast::Sequence(hir::Sequence { statements: vec![
-            hir::Ast::Builtin(hir::Builtin::ContinuationResume(k())),
-            if_,
-        ]}));
+        let body = Box::new(hir::Ast::Sequence(hir::Sequence {
+            statements: vec![hir::Ast::Builtin(hir::Builtin::ContinuationResume(k())), if_],
+        }));
 
         let lambda = hir::Ast::Lambda(hir::Lambda { args: vec![continuation_var], body, typ: function_type });
 
@@ -2040,9 +2041,7 @@ impl<'c> Context<'c> {
     /// }
     /// ```
     fn make_resume_function(&mut self, typ: &Type, handler_function: &hir::Variable) -> hir::Ast {
-        use hir::{
-            Ast::Builtin, Builtin::ContinuationArgPush,
-        };
+        use hir::{Ast::Builtin, Builtin::ContinuationArgPush};
         let mut function_type = match typ {
             Type::Function(function) => function.clone(),
             Type::Tuple(elements) if elements.len() == 2 => match &elements[0] {

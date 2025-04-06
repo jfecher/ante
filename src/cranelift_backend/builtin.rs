@@ -276,7 +276,9 @@ fn stack_alloc<'a>(param1: &'a Ast, context: &mut Context<'a>, builder: &mut Fun
     context.stack_alloc(value, builder)
 }
 
-fn continuation_init(f: CraneliftValue, context: &mut Context<'_>, builder: &mut FunctionBuilder<'_>) -> CraneliftValue {
+fn continuation_init(
+    f: CraneliftValue, context: &mut Context<'_>, builder: &mut FunctionBuilder<'_>,
+) -> CraneliftValue {
     let cont_init = context.get_continuation_init_function().import(builder);
     let call = builder.ins().call(cont_init, &[f]);
     let returns = builder.inst_results(call);
@@ -284,7 +286,9 @@ fn continuation_init(f: CraneliftValue, context: &mut Context<'_>, builder: &mut
     returns[0]
 }
 
-fn continuation_is_suspended(k: CraneliftValue, context: &mut Context<'_>, builder: &mut FunctionBuilder<'_>) -> CraneliftValue {
+fn continuation_is_suspended(
+    k: CraneliftValue, context: &mut Context<'_>, builder: &mut FunctionBuilder<'_>,
+) -> CraneliftValue {
     let cont_is_suspended = context.get_continuation_is_suspended_function().import(builder);
     let call = builder.ins().call(cont_is_suspended, &[k]);
     let returns = builder.inst_results(call);
@@ -293,7 +297,9 @@ fn continuation_is_suspended(k: CraneliftValue, context: &mut Context<'_>, build
 }
 
 // mco_push(k, &x, sizeof(x));
-fn continuation_arg_push<'a>(k: CraneliftValue, x: &'a Ast, context: &mut Context<'a>, builder: &mut FunctionBuilder<'_>) -> Value {
+fn continuation_arg_push<'a>(
+    k: CraneliftValue, x: &'a Ast, context: &mut Context<'a>, builder: &mut FunctionBuilder<'_>,
+) -> Value {
     let cont_arg_push = context.get_continuation_arg_push_function().import(builder);
 
     let x_args = x.eval_all(context, builder);
@@ -309,7 +315,9 @@ fn continuation_arg_push<'a>(k: CraneliftValue, x: &'a Ast, context: &mut Contex
 // result_type ret;
 // mco_pop(k, &ret, sizeof(result_type));
 // ret
-fn continuation_arg_pop(k: CraneliftValue, result_type: &crate::mir::ir::Type, context: &mut Context<'_>, builder: &mut FunctionBuilder<'_>) -> Value {
+fn continuation_arg_pop(
+    k: CraneliftValue, result_type: &crate::mir::ir::Type, context: &mut Context<'_>, builder: &mut FunctionBuilder<'_>,
+) -> Value {
     let cont_arg_pop = context.get_continuation_arg_pop_function().import(builder);
     let result_size = result_type.size_in_bytes() as u32;
 

@@ -499,8 +499,7 @@ impl<'c> NameResolver {
     }
 
     fn push_effect(
-        &mut self, name: String, args: Vec<TypeVariableId>, node: &'c mut ast::EffectDefinition<'c>,
-        cache: &mut ModuleCache<'c>, location: Location<'c>,
+        &mut self, name: String, args: Vec<TypeVariableId>, cache: &mut ModuleCache<'c>, location: Location<'c>,
     ) -> EffectInfoId {
         if let Some(existing_definition) = self.current_scope().effects.get(&name) {
             cache.push_diagnostic(location, D::AlreadyInScope(name.clone()));
@@ -508,7 +507,7 @@ impl<'c> NameResolver {
             cache.push_diagnostic(previous_location, D::PreviouslyDefinedHere(name.clone()));
         }
 
-        let id = cache.push_effect_definition(name.clone(), args, node, location);
+        let id = cache.push_effect_definition(name.clone(), args, location);
         if self.in_global_scope() {
             self.exports.effects.insert(name.clone(), id);
         }
@@ -1547,8 +1546,7 @@ impl<'c> Resolvable<'c> for ast::EffectDefinition<'c> {
 
         let args = fmap(&self.args, |_| cache.next_type_variable_id(resolver.let_binding_level));
 
-        let effect_id =
-            resolver.push_effect(self.name.clone(), args, trustme::extend_lifetime(self), cache, self.location);
+        let effect_id = resolver.push_effect(self.name.clone(), args, cache, self.location);
 
         let self_pointer = self as *const _;
         for declaration in self.declarations.iter_mut() {

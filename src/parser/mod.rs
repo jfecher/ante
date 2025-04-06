@@ -105,7 +105,6 @@ parser!(function_definition location -> 'b ast::Definition<'b> =
         mutable: false,
         location,
         level: None,
-        info: None,
         typ: None,
     }
 );
@@ -145,7 +144,6 @@ parser!(variable_definition location -> 'b ast::Definition<'b> =
         mutable: mutable.is_some(),
         location,
         level: None,
-        info: None,
         typ: None,
     }
 );

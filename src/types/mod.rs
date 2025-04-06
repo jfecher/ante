@@ -230,7 +230,9 @@ impl Type {
     }
 
     /// Returns Some(variants) if this is a union type constructor or union type itself.
-    pub fn union_constructor_variants<'a>(&'a self, cache: &'a ModuleCache<'_>) -> Option<&'a Vec<TypeConstructor>> {
+    pub fn union_constructor_variants<'a>(
+        &'a self, cache: &'a ModuleCache<'_>,
+    ) -> Option<&'a Vec<TypeConstructor<'a>>> {
         use Type::*;
         match self {
             Primitive(_) => None,
@@ -549,9 +551,11 @@ pub enum TypeBinding {
 
 #[derive(Debug)]
 pub struct TypeConstructor<'a> {
+    #[allow(unused)]
     pub name: String,
     pub args: Vec<Type>,
     pub id: DefinitionInfoId,
+    #[allow(unused)]
     pub location: Location<'a>,
 }
 
@@ -559,6 +563,7 @@ pub struct TypeConstructor<'a> {
 pub struct Field<'a> {
     pub name: String,
     pub field_type: Type,
+    #[allow(unused)]
     pub location: Location<'a>,
 }
 
@@ -608,7 +613,7 @@ impl<'a> TypeInfo<'a> {
         }
     }
 
-    pub fn find_field<'b>(&'b self, field_name: &str) -> Option<(u32, &'b Field)> {
+    pub fn find_field<'b>(&'b self, field_name: &str) -> Option<(u32, &'b Field<'b>)> {
         match &self.body {
             TypeInfoBody::Struct(fields) => fields
                 .iter()
@@ -624,6 +629,7 @@ impl<'a> TypeInfo<'a> {
 pub enum Kind {
     /// usize is the number of type arguments it takes before it returns a type of kind *.
     /// For example, the kind Normal(2) : * -> * -> *
+    #[allow(unused)]
     Normal(usize),
 
     /// A higher order kind where each element in the Vec is an argument. For example, the kind:

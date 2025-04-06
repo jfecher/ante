@@ -49,15 +49,6 @@ impl EndPosition {
     }
 }
 
-/// The file a Location arises from.
-/// The 'c lifetime refers to the ModuleCache which stores
-/// file's names and contents.
-#[derive(Debug, Copy, Clone)]
-pub struct File<'c> {
-    pub filename: &'c Path,
-    pub contents: &'c str,
-}
-
 /// A source location for a given Ast node or other construct.
 /// The 'c lifetime refers to the ModuleCache which stores
 /// the file paths.

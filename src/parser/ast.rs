@@ -119,10 +119,13 @@ pub struct Lambda<'a> {
     pub args: Vec<Ast<'a>>,
     pub body: Box<Ast<'a>>,
     pub return_type: Option<Type<'a>>,
+
+    #[allow(unused)]
     pub effects: Option<Vec<EffectName<'a>>>,
 
     pub closure_environment: ClosureEnvironment,
 
+    #[allow(unused)]
     pub required_traits: Vec<RequiredTrait>,
 
     pub location: Location<'a>,
@@ -164,7 +167,6 @@ pub struct Definition<'a> {
     pub mutable: bool,
     pub location: Location<'a>,
     pub level: Option<LetBindingLevel>,
-    pub info: Option<DefinitionInfoId>,
     pub typ: Option<types::Type>,
 }
 
@@ -282,6 +284,7 @@ pub enum TypeDefinitionBody<'a> {
 /// type Name arg1 arg2 ... argN = definition
 #[derive(Debug, Clone)]
 pub struct TypeDefinition<'a> {
+    #[allow(unused)]
     pub boxed: bool,
     pub name: String,
     pub args: Vec<String>,
@@ -664,7 +667,6 @@ impl<'a> Ast<'a> {
             location,
             mutable: false,
             level: None,
-            info: None,
             typ: None,
         })
     }
@@ -774,7 +776,14 @@ impl<'a> Ast<'a> {
 
     pub fn handle(expression: Ast<'a>, branches: Vec<(Ast<'a>, Ast<'a>)>, location: Location<'a>) -> Ast<'a> {
         let branches = super::desugar::desugar_handle_branches_into_matches(branches);
-        Ast::Handle(Handle { expression: Box::new(expression), branches, location, effects_handled: Vec::new(), resumes: vec![], typ: None })
+        Ast::Handle(Handle {
+            expression: Box::new(expression),
+            branches,
+            location,
+            effects_handled: Vec::new(),
+            resumes: vec![],
+            typ: None,
+        })
     }
 
     pub fn named_constructor(constructor: Ast<'a>, sequence: Ast<'a>, location: Location<'a>) -> Ast<'a> {

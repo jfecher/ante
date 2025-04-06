@@ -125,7 +125,10 @@ impl TypeResult {
         self.effects = self.effects.combine(&other.effects, cache);
     }
 
-    fn handle_effects_from(&mut self, mut traits: TraitConstraints, effects: EffectSet, handled_effects: &mut Vec<Effect>, cache: &mut ModuleCache) {
+    fn handle_effects_from(
+        &mut self, mut traits: TraitConstraints, effects: EffectSet, handled_effects: &mut Vec<Effect>,
+        cache: &mut ModuleCache,
+    ) {
         self.traits.append(&mut traits);
         let level = CURRENT_LEVEL.load(Ordering::SeqCst);
         self.effects.handle_effects_from(effects, handled_effects, LetBindingLevel(level), cache);
@@ -947,7 +950,9 @@ pub fn try_unify_all_with_bindings<'c>(
 
 /// The same as `try_unify_all_with_bindings` but always starts with an empty set of bindings
 /// and displays no error on failure.
-pub fn try_unify_all_hide_error<'c>(actual: &[Type], expected: &[Type], cache: &mut ModuleCache<'c>) -> UnificationResult<'c> {
+pub fn try_unify_all_hide_error<'c>(
+    actual: &[Type], expected: &[Type], cache: &mut ModuleCache<'c>,
+) -> UnificationResult<'c> {
     let bindings = UnificationBindings::empty();
     let location = Location::builtin();
     try_unify_all_with_bindings(actual, expected, bindings, location, cache, TE::NeverShown)

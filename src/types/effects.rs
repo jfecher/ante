@@ -171,7 +171,10 @@ impl EffectSet {
 
     /// Mutates self to the set difference between self and other.
     /// Any effects that are removed are added to `handled_effects`.
-    pub(super) fn handle_effects_from(&mut self, other: EffectSet, handled_effects: &mut Vec<Effect>, level: super::LetBindingLevel, cache: &mut ModuleCache) {
+    pub(super) fn handle_effects_from(
+        &mut self, other: EffectSet, handled_effects: &mut Vec<Effect>, level: super::LetBindingLevel,
+        cache: &mut ModuleCache,
+    ) {
         let a = self.follow_bindings(cache).clone();
         let b = other.follow_bindings(cache).clone();
 
@@ -182,7 +185,7 @@ impl EffectSet {
                 Ok(bindings) => {
                     bindings.perform(cache);
                     handled_effects.push(a_effect.clone());
-                }
+                },
                 Err(()) => new_effects.push(a_effect.clone()),
             }
         }
