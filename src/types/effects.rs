@@ -169,8 +169,8 @@ impl EffectSet {
         result
     }
 
-    /// Returns the set difference between self and other.
-    pub(super) fn handle_effects_from(&self, other: EffectSet, cache: &mut ModuleCache) {
+    /// Mutates self to the set difference between self and other.
+    pub(super) fn handle_effects_from(&mut self, other: EffectSet, level: super::LetBindingLevel, cache: &mut ModuleCache) {
         let a = self.follow_bindings(cache).clone();
         let b = other.follow_bindings(cache).clone();
 
@@ -183,10 +183,10 @@ impl EffectSet {
             }
         }
 
-        let a_id = a.replacement;
-
-        let new_effect = EffectSet::new(new_effects, cache);
-        cache.bind(a_id, Type::Effects(new_effect));
+        // TODO: Should we update self.replacement too?
+        //       It seems to be shared with function calls
+        self.effects = new_effects;
+        self.replacement = cache.next_type_variable_id(level);
     }
 }
 

@@ -126,7 +126,8 @@ impl TypeResult {
 
     fn handle_effects_from(&mut self, mut traits: TraitConstraints, effects: EffectSet, cache: &mut ModuleCache) {
         self.traits.append(&mut traits);
-        self.effects.handle_effects_from(effects, cache);
+        let level = CURRENT_LEVEL.load(Ordering::SeqCst);
+        self.effects.handle_effects_from(effects, LetBindingLevel(level), cache);
     }
 }
 

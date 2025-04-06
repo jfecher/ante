@@ -10,7 +10,6 @@
 mod closures;
 mod decision_tree_monomorphisation;
 mod definitions;
-mod effect_lowering;
 mod monomorphisation;
 mod printer;
 mod types;

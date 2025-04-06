@@ -142,7 +142,9 @@ impl<'c> Context<'c> {
 
         let fuel = fuel - 1;
         match &self.cache.type_bindings[id.0] {
-            Bound(TypeVariable(id2)) => self.find_binding(*id2, fuel),
+            Bound(TypeVariable(id2)) => {
+                self.find_binding(*id2, fuel)
+            }
             Bound(typ @ Effects(effects)) => {
                 let binding = self.find_binding(effects.replacement, fuel);
                 Ok(binding.unwrap_or(typ))
@@ -151,7 +153,9 @@ impl<'c> Context<'c> {
             Unbound(..) => {
                 for bindings in self.monomorphisation_bindings.iter().rev() {
                     match bindings.get(&id) {
-                        Some(TypeVariable(id2)) => return self.find_binding(*id2, fuel),
+                        Some(TypeVariable(id2)) => {
+                            return self.find_binding(*id2, fuel);
+                        }
                         Some(typ @ Effects(effects)) => {
                             let binding = self.find_binding(effects.replacement, fuel);
                             return Ok(binding.unwrap_or(typ));
@@ -833,15 +837,7 @@ impl<'c> Context<'c> {
             return value;
         }
 
-        let t2 = typ;
-
         let typ = self.follow_all_bindings(typ);
-        let ttt = self.convert_type(&typ);
-        eprintln!("  {} : {} : {} : {}",
-                  self.cache[id].name,
-                  t2.debug(&self.cache),
-                  typ.debug(&self.cache),
-                  ttt);
 
         let info = trustme::extend_lifetime(&mut self.cache[id]);
         self.push_monomorphisation_bindings(instantiation_mapping, &typ, info);
@@ -1162,7 +1158,7 @@ impl<'c> Context<'c> {
     /// ```
     fn make_effect_function(&mut self, typ: Type) -> hir::Ast {
         use hir::{Ast, Builtin};
-        let hir::types::Type::Function(mut function_type) = typ else {
+        let hir::types::Type::Function(function_type) = typ else {
             unreachable!("All effects should be functions")
         };
 
@@ -1183,7 +1179,6 @@ impl<'c> Context<'c> {
         statements.push(Ast::Builtin(Builtin::ContinuationArgPop(k(), return_type)));
 
         args.push(continuation);
-        function_type.parameters.push(Type::continuation());
 
         let body = Box::new(Ast::Sequence(hir::Sequence { statements }));
         Ast::Lambda(hir::Lambda { args, body, typ: function_type })
