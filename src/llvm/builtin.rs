@@ -76,6 +76,7 @@ pub fn call_builtin<'g>(builtin: &Builtin, generator: &mut Generator<'g>) -> Bas
         Builtin::ContinuationIsSuspended(_) => todo!("llvm codegen for ContinuationIsSuspended"),
         Builtin::ContinuationArgPush(_, _) => todo!("llvm codegen for ContinuationArgPush"),
         Builtin::ContinuationArgPop(_, _) => todo!("llvm codegen for ContinuationArgPop"),
+        Builtin::ContinuationSuspend(_) => todo!("llvm codegen for ContinuationSuspend"),
         Builtin::ContinuationResume(_) => todo!("llvm codegen for ContinuationResume"),
         Builtin::ContinuationFree(_) => todo!("llvm codegen for ContinuationFree"),
     }

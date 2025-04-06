@@ -73,6 +73,10 @@ impl Type {
         Type::Primitive(PrimitiveType::Continuation)
     }
 
+    pub fn pointer() -> Self {
+        Type::Primitive(PrimitiveType::Pointer)
+    }
+
     pub fn into_function(self) -> Option<FunctionType> {
         match self {
             Type::Function(f) => Some(f),

@@ -266,6 +266,7 @@ pub enum Builtin {
     ContinuationIsSuspended(/*k:*/ Box<Ast>),
     ContinuationArgPush(/*k:*/ Box<Ast>, /*arg:*/ Box<Ast>),
     ContinuationArgPop(/*k:*/ Box<Ast>, /*arg_type:*/ Type),
+    ContinuationSuspend(/*k:*/ Box<Ast>),
     ContinuationResume(/*k:*/ Box<Ast>),
     ContinuationFree(/*k:*/ Box<Ast>),
 }

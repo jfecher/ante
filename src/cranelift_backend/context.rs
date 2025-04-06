@@ -30,6 +30,14 @@ pub struct Context<'ast> {
 
     pub current_function_name: Option<DefinitionId>,
     next_func_id: u32,
+
+    continuation_init_function: Option<FuncData>,
+    continuation_is_suspended_function: Option<FuncData>,
+    continuation_arg_push_function: Option<FuncData>,
+    continuation_arg_pop_function: Option<FuncData>,
+    continuation_suspend_function: Option<FuncData>,
+    continuation_resume_function: Option<FuncData>,
+    continuation_free_function: Option<FuncData>,
 }
 
 #[derive(Debug)]
@@ -193,6 +201,13 @@ impl<'local> Context<'local> {
                 data_context: DataContext::new(),
                 function_queue: vec![],
                 current_function_name: None,
+                continuation_init_function: None,
+                continuation_is_suspended_function: None,
+                continuation_arg_push_function: None,
+                continuation_arg_pop_function: None,
+                continuation_suspend_function: None,
+                continuation_resume_function: None,
+                continuation_free_function: None,
             },
             builder_context,
         )
@@ -203,6 +218,7 @@ impl<'local> Context<'local> {
         let (mut context, mut builder_context) = Context::new(&output_path, !args.build);
         let mut module_context = context.module.make_context();
 
+        context.define_continuation_functions();
         let main = context.codegen_main(hir, &mut builder_context, &mut module_context, args);
 
         // Then codegen any functions used by main and so forth
@@ -214,6 +230,46 @@ impl<'local> Context<'local> {
         if args.emit.is_none() {
             context.module.run(main, &output_path);
         }
+    }
+
+    fn define_continuation_functions(&mut self) {
+        // mco_coro* mco_coro_init(void(*f)(mco_coro*));
+        let init_function_arg = Type::Function(hir::FunctionType::new(vec![Type::continuation()], Type::unit()));
+        let init_signature = &hir::FunctionType::new(vec![init_function_arg], Type::continuation());
+
+        // char mco_coro_is_suspended(mco_coro*, k);
+        let is_suspended_signature = &hir::FunctionType::new(vec![Type::continuation()], Type::Primitive(PrimitiveType::Boolean));
+
+        // void mco_push(mco_coro* k, const void* data, size_t data_size);
+        let push_signature = &hir::FunctionType::new(vec![Type::continuation(), Type::pointer(), Type::Primitive(PrimitiveType::Integer(hir::IntegerKind::Usz))], Type::unit());
+
+        // void mco_pop(mco_coro* k, void* data, size_t data_size);
+        let pop_signature = &hir::FunctionType::new(vec![Type::continuation(), Type::pointer(), Type::Primitive(PrimitiveType::Integer(hir::IntegerKind::Usz))], Type::unit());
+
+        // void mco_yield(mco_coro* k);
+        let yield_signature = &hir::FunctionType::new(vec![Type::continuation()], Type::unit());
+
+        // void mco_resume(mco_coro* k);
+        let resume_signature = &hir::FunctionType::new(vec![Type::continuation()], Type::unit());
+
+        // void mco_destory(mco_coro* k);
+        let destroy_signature = &hir::FunctionType::new(vec![Type::continuation()], Type::unit());
+
+        self.continuation_init_function = Some(self.define_continuation_function("mco_coro_init", init_signature));
+        self.continuation_is_suspended_function = Some(self.define_continuation_function("mco_coro_is_suspended", is_suspended_signature));
+        self.continuation_arg_push_function = Some(self.define_continuation_function("mco_push", push_signature));
+        self.continuation_arg_pop_function = Some(self.define_continuation_function("mco_pop", pop_signature));
+        self.continuation_suspend_function = Some(self.define_continuation_function("mco_yield", yield_signature));
+        self.continuation_resume_function = Some(self.define_continuation_function("mco_resume", resume_signature));
+        self.continuation_free_function = Some(self.define_continuation_function("mco_destroy", destroy_signature));
+    }
+
+    fn define_continuation_function(&mut self, name: &str, signature: &hir::FunctionType) -> FuncData {
+        let mut signature = self.convert_signature(signature);
+        signature.call_conv = Self::extern_call_conv();
+
+        let id = self.module.declare_function(name, Linkage::Import, &signature).unwrap();
+        FuncData { name: ExternalName::user(0, id.as_u32()), signature, colocated: false }
     }
 
     /// Codegens an entire function. Cranelift enforces we must finish compiling the
@@ -297,6 +353,7 @@ impl<'local> Context<'local> {
         }
 
         if let Err(errors) = res {
+            println!("main =\n{}", func.display());
             panic!("{}", errors);
         }
 
@@ -425,6 +482,7 @@ impl<'local> Context<'local> {
 
     pub fn add_function_to_queue(&mut self, function: &'local hir::Lambda, name: &str) -> Value {
         let signature = self.convert_signature(&function.typ);
+        eprintln!("{name} : {} : {}", function.typ, signature);
 
         let name = format!("lambda{}", name);
         let function_id = self.module.declare_function(&name, Linkage::Export, &signature).unwrap();
@@ -606,6 +664,11 @@ impl<'local> Context<'local> {
 
     pub fn stack_alloc(&mut self, value: Value, builder: &mut FunctionBuilder) -> CraneliftValue {
         let values = value.eval_all(self, builder);
+        self.stack_alloc_all(values, builder)
+    }
+
+    /// Allocate a single stack allocation to fit each value and store them all in it
+    pub fn stack_alloc_all(&mut self, values: Vec<CraneliftValue>, builder: &mut FunctionBuilder) -> CraneliftValue {
         let size = values.iter().map(|value| builder.func.dfg.value_type(*value).bytes()).sum();
 
         let data = StackSlotData::new(StackSlotKind::ExplicitSlot, size);
@@ -618,6 +681,34 @@ impl<'local> Context<'local> {
         }
 
         builder.ins().stack_addr(pointer_type(), slot, 0)
+    }
+
+    pub fn get_continuation_init_function(&self) -> FuncData {
+        self.continuation_init_function.clone().unwrap()
+    }
+
+    pub fn get_continuation_is_suspended_function(&self) -> FuncData {
+        self.continuation_is_suspended_function.clone().unwrap()
+    }
+
+    pub fn get_continuation_arg_push_function(&self) -> FuncData {
+        self.continuation_arg_push_function.clone().unwrap()
+    }
+
+    pub fn get_continuation_arg_pop_function(&self) -> FuncData {
+        self.continuation_arg_pop_function.clone().unwrap()
+    }
+
+    pub(crate) fn get_continuation_suspend_function(&self) -> FuncData {
+        self.continuation_suspend_function.clone().unwrap()
+    }
+
+    pub fn get_continuation_resume_function(&self) -> FuncData {
+        self.continuation_resume_function.clone().unwrap()
+    }
+
+    pub fn get_continuation_free_function(&self) -> FuncData {
+        self.continuation_free_function.clone().unwrap()
     }
 }
 

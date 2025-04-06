@@ -1,3 +1,4 @@
+use cranelift::codegen::ir::{StackSlotData, StackSlotKind};
 use cranelift::frontend::FunctionBuilder;
 use cranelift::prelude::types::I8;
 use cranelift::prelude::{FloatCC, InstBuilder, IntCC, Value as CraneliftValue};
@@ -59,12 +60,13 @@ pub fn call_builtin<'ast>(builtin: &'ast Builtin, context: &mut Context<'ast>, b
         Builtin::Transmute(a, typ) => return transmute(context, a, typ, builder),
         Builtin::StackAlloc(a) => stack_alloc(a, context, builder),
 
-        Builtin::ContinuationInit(_) => todo!("cranelift codegen for ContinuationInit"),
-        Builtin::ContinuationIsSuspended(_) => todo!("cranelift codegen for ContinuationIsSuspended"),
-        Builtin::ContinuationArgPush(_, _) => todo!("cranelift codegen for ContinuationArgPush"),
-        Builtin::ContinuationArgPop(_, _) => todo!("cranelift codegen for ContinuationArgPop"),
-        Builtin::ContinuationResume(_) => todo!("cranelift codegen for ContinuationResume"),
-        Builtin::ContinuationFree(_) => todo!("cranelift codegen for ContinuationFree"),
+        Builtin::ContinuationInit(f) => continuation_init(value(f), context, builder),
+        Builtin::ContinuationIsSuspended(k) => continuation_is_suspended(value(k), context, builder),
+        Builtin::ContinuationArgPush(k, x) => return continuation_arg_push(value(k), x, context, builder),
+        Builtin::ContinuationArgPop(k, typ) => return continuation_arg_pop(value(k), typ, context, builder),
+        Builtin::ContinuationSuspend(k) => return continuation_suspend(value(k), context, builder),
+        Builtin::ContinuationResume(k) => return continuation_resume(value(k), context, builder),
+        Builtin::ContinuationFree(k) => return continuation_free(value(k), context, builder),
     };
 
     Value::Normal(result)
@@ -272,4 +274,69 @@ fn deref<'a>(context: &mut Context<'a>, typ: &crate::hir::Type, addr: &'a Ast, b
 fn stack_alloc<'a>(param1: &'a Ast, context: &mut Context<'a>, builder: &mut FunctionBuilder) -> CraneliftValue {
     let value = param1.codegen(context, builder);
     context.stack_alloc(value, builder)
+}
+
+fn continuation_init(f: CraneliftValue, context: &mut Context<'_>, builder: &mut FunctionBuilder<'_>) -> CraneliftValue {
+    let cont_init = context.get_continuation_init_function().import(builder);
+    let call = builder.ins().call(cont_init, &[f]);
+    let returns = builder.inst_results(call);
+    assert_eq!(returns.len(), 1);
+    returns[0]
+}
+
+fn continuation_is_suspended(k: CraneliftValue, context: &mut Context<'_>, builder: &mut FunctionBuilder<'_>) -> CraneliftValue {
+    let cont_is_suspended = context.get_continuation_is_suspended_function().import(builder);
+    let call = builder.ins().call(cont_is_suspended, &[k]);
+    let returns = builder.inst_results(call);
+    assert_eq!(returns.len(), 1);
+    returns[0]
+}
+
+// mco_push(k, &x, sizeof(x));
+fn continuation_arg_push<'a>(k: CraneliftValue, x: &'a Ast, context: &mut Context<'a>, builder: &mut FunctionBuilder<'_>) -> Value {
+    let cont_arg_push = context.get_continuation_arg_push_function().import(builder);
+
+    let x_args = x.eval_all(context, builder);
+    let x_size = x_args.iter().map(|arg| builder.func.dfg.value_type(*arg).bytes() as i64).sum::<i64>();
+
+    let x = context.stack_alloc_all(x_args, builder);
+    let x_size = builder.ins().iconst(int_pointer_type(), x_size);
+
+    builder.ins().call(cont_arg_push, &[k, x, x_size]);
+    Value::Unit
+}
+
+// result_type ret;
+// mco_pop(k, &ret, sizeof(result_type));
+// ret
+fn continuation_arg_pop(k: CraneliftValue, result_type: &crate::mir::ir::Type, context: &mut Context<'_>, builder: &mut FunctionBuilder<'_>) -> Value {
+    let cont_arg_pop = context.get_continuation_arg_pop_function().import(builder);
+    let result_size = result_type.size_in_bytes() as u32;
+
+    let data = StackSlotData::new(StackSlotKind::ExplicitSlot, result_size);
+    let slot = builder.create_stack_slot(data);
+    let ret_ptr = builder.ins().stack_addr(pointer_type(), slot, 0);
+
+    let result_size = builder.ins().iconst(int_pointer_type(), result_size as i64);
+    builder.ins().call(cont_arg_pop, &[k, ret_ptr, result_size]);
+
+    context.load_value(result_type, ret_ptr, &mut 0, builder)
+}
+
+fn continuation_suspend(k: CraneliftValue, context: &mut Context<'_>, builder: &mut FunctionBuilder<'_>) -> Value {
+    let cont_suspend = context.get_continuation_suspend_function().import(builder);
+    builder.ins().call(cont_suspend, &[k]);
+    Value::Unit
+}
+
+fn continuation_resume(k: CraneliftValue, context: &mut Context<'_>, builder: &mut FunctionBuilder<'_>) -> Value {
+    let cont_resume = context.get_continuation_resume_function().import(builder);
+    builder.ins().call(cont_resume, &[k]);
+    Value::Unit
+}
+
+fn continuation_free(k: CraneliftValue, context: &mut Context<'_>, builder: &mut FunctionBuilder<'_>) -> Value {
+    let cont_free = context.get_continuation_free_function().import(builder);
+    builder.ins().call(cont_free, &[k]);
+    Value::Unit
 }

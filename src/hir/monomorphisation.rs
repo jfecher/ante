@@ -1157,7 +1157,7 @@ impl<'c> Context<'c> {
     ///     continuation_push(k, a)
     ///     ...
     ///     continuation_push(k, z)
-    ///     continuation_resume(k)
+    ///     continuation_suspend(k)
     ///     continuation_pop(k, Ret)
     /// ```
     fn make_effect_function(&mut self, typ: Type) -> hir::Ast {
@@ -1179,7 +1179,7 @@ impl<'c> Context<'c> {
 
         let return_type = function_type.return_type.as_ref().clone();
 
-        statements.push(Ast::Builtin(Builtin::ContinuationResume(k())));
+        statements.push(Ast::Builtin(Builtin::ContinuationSuspend(k())));
         statements.push(Ast::Builtin(Builtin::ContinuationArgPop(k(), return_type)));
 
         args.push(continuation);
@@ -1912,13 +1912,12 @@ impl<'c> Context<'c> {
     ///         x = continuation_pop(continuation, typeof(x))
     ///         return_case
     fn make_handler_function(&mut self, handle: &ast::Handle<'c>) -> hir::Ast {
-        for old_resume_id in &handle.resumes {
-            self.define_resume_function(*old_resume_id);
-        }
-
         let continuation_var = self.fresh_variable(Type::continuation());
         let continuation = hir::Ast::Variable(continuation_var.clone());
-        let k = || Box::new(continuation.clone());
+
+        for old_resume_id in &handle.resumes {
+            self.define_resume_function(*old_resume_id, continuation.clone());
+        }
 
         let mut branches =
             fmap(&handle.branches, |(pattern, branch)| self.make_effect_body(pattern, branch, continuation.clone()));
@@ -1930,6 +1929,8 @@ impl<'c> Context<'c> {
             1,
             "`handle` is currently only implemented for matching on 1 effectful function at a time"
         );
+
+        let k = || Box::new(continuation.clone());
 
         // continuation_suspended(continuation)
         let condition = hir::Ast::Builtin(hir::Builtin::ContinuationIsSuspended(k()));
@@ -1988,12 +1989,14 @@ impl<'c> Context<'c> {
 
     /// Defines the `resume` function for a particular handle definition.
     /// This becomes a global function and can be defined any time.
-    fn define_resume_function(&mut self, resume_id: DefinitionInfoId) {
+    fn define_resume_function(&mut self, resume_id: DefinitionInfoId, k: hir::Ast) {
         let definition_id = self.next_unique_id();
         let typ = self.cache.definition_infos[resume_id.0].typ.as_ref().unwrap().as_monotype().clone();
         let typ = self.follow_all_bindings(&typ);
         let monomorphized_type = Rc::new(self.convert_type(&typ));
+
         let resume_function = self.make_resume_function(&monomorphized_type);
+        let resume_closure = tuple(vec![resume_function, k]);
 
         let name = Some("resume".to_string());
         let definition = hir::Ast::Definition(hir::Definition {
@@ -2001,7 +2004,7 @@ impl<'c> Context<'c> {
             name: name.clone(),
             mutable: false,
             typ: monomorphized_type.as_ref().clone(),
-            expr: Box::new(resume_function),
+            expr: Box::new(resume_closure),
         });
 
         let definition = Some(Rc::new(definition));
@@ -2036,6 +2039,12 @@ impl<'c> Context<'c> {
             },
             other => panic!("Expected function type, found {}", other),
         };
+
+        // `ast::Handle::infer_impl` has a type checking hack to set the environment type of
+        // `resume` to a continuation type despite there being no proper Cont type in the front
+        // end. It uses a `Ptr Unit` instead so we swap out that type with the real one here.
+        let fake_cont_type = function_type.parameters.pop().unwrap();
+        assert_eq!(fake_cont_type, Type::pointer());
 
         let mut args = fmap(function_type.parameters.iter(), |param| hir::DefinitionInfo {
             definition: None,

@@ -204,6 +204,7 @@ fn replace_env_builtin(
         ContinuationIsSuspended(k) => ContinuationIsSuspended(f(k)),
         ContinuationArgPush(k, x) => ContinuationArgPush(f(k), f(x)),
         ContinuationArgPop(k, typ) => ContinuationArgPop(f(k), typ),
+        ContinuationSuspend(k) => ContinuationSuspend(f(k)),
         ContinuationResume(k) => ContinuationResume(f(k)),
         ContinuationFree(k) => ContinuationFree(f(k)),
     }

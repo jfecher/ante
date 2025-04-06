@@ -1572,8 +1572,6 @@ impl<'a> Inferable<'a> for ast::Variable<'a> {
         let (s, traits) = match &info.typ {
             Some(typ) => {
                 let typ = typ.clone();
-                eprintln!("{} : {}", self, typ.debug(cache));
-
                 let constraints = to_trait_constraints(definition_id, impl_scope, id, cache);
                 (typ, constraints)
             },
@@ -1598,8 +1596,6 @@ impl<'a> Inferable<'a> for ast::Variable<'a> {
         cache.update_mutual_recursion_sets(definition_id, self.id.unwrap());
 
         let (t, traits, mapping) = s.instantiate(traits, cache);
-                eprintln!("  {} : {}  instantiated", self, t.debug(cache));
-
         self.instantiation_mapping = Rc::new(mapping);
         TypeResult::new(t, traits, cache)
     }
@@ -2140,10 +2136,17 @@ impl<'a> Inferable<'a> for ast::Handle<'a> {
             let pattern_type = infer(pattern, cache);
             pattern_results.push((pattern_type.traits, pattern_type.effects));
 
+            // Represent a continuation type as a ptr to something. It'll be lowered
+            // into an opaque pointer during monomorphization anyway.
+            let ptr = Box::new(Type::Primitive(PrimitiveType::Ptr));
+            let unit = Type::Primitive(PrimitiveType::UnitType);
+            let continuation_type = Type::TypeApplication(ptr, vec![unit]);
+
             let expected_resume_type = Type::Function(FunctionType {
                 parameters: vec![pattern_type.typ],
                 return_type: Box::new(result.typ.clone()),
-                environment: Box::new(Type::UNIT),
+                // `resume` has a continuation in its environment
+                environment: Box::new(continuation_type),
                 effects: Box::new(next_type_variable(cache)),
                 is_varargs: false,
             });

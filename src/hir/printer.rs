@@ -287,6 +287,7 @@ impl FmtAst for Builtin {
             Builtin::ContinuationIsSuspended(k) => printer.fmt_call("#ContIsSuspended", &[k], f),
             Builtin::ContinuationArgPush(k, x) => printer.fmt_call("#ContArgPush", &[k, x], f),
             Builtin::ContinuationArgPop(k, typ) => printer.fmt_cast("#ContArgPop", k, typ, f),
+            Builtin::ContinuationSuspend(k) => printer.fmt_call("#ContSuspend", &[k], f),
             Builtin::ContinuationResume(k) => printer.fmt_call("#ContResume", &[k], f),
             Builtin::ContinuationFree(k) => printer.fmt_call("#ContFree", &[k], f),
         }
