@@ -44,6 +44,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use super::effects::Effect;
 use super::mutual_recursion::{definition_is_mutually_recursive, try_generalize_definition};
 use super::traits::{Callsite, ConstraintSignature, TraitConstraintId};
 use super::{GeneralizedType, TypeInfoBody, TypeTag};
@@ -124,10 +125,10 @@ impl TypeResult {
         self.effects = self.effects.combine(&other.effects, cache);
     }
 
-    fn handle_effects_from(&mut self, mut traits: TraitConstraints, effects: EffectSet, cache: &mut ModuleCache) {
+    fn handle_effects_from(&mut self, mut traits: TraitConstraints, effects: EffectSet, handled_effects: &mut Vec<Effect>, cache: &mut ModuleCache) {
         self.traits.append(&mut traits);
         let level = CURRENT_LEVEL.load(Ordering::SeqCst);
-        self.effects.handle_effects_from(effects, LetBindingLevel(level), cache);
+        self.effects.handle_effects_from(effects, handled_effects, LetBindingLevel(level), cache);
     }
 }
 
@@ -942,6 +943,14 @@ pub fn try_unify_all_with_bindings<'c>(
         try_unify_with_bindings(actual, expected, &mut bindings, location, cache, error_kind.clone())?;
     }
     Ok(bindings)
+}
+
+/// The same as `try_unify_all_with_bindings` but always starts with an empty set of bindings
+/// and displays no error on failure.
+pub fn try_unify_all_hide_error<'c>(actual: &[Type], expected: &[Type], cache: &mut ModuleCache<'c>) -> UnificationResult<'c> {
+    let bindings = UnificationBindings::empty();
+    let location = Location::builtin();
+    try_unify_all_with_bindings(actual, expected, bindings, location, cache, TE::NeverShown)
 }
 
 /// Unifies the two given types, remembering the unification results in the cache.
@@ -2122,7 +2131,6 @@ fn inject_effect(id: DefinitionInfoId, effect_id: EffectInfoId, effect_args: Vec
 
 impl<'a> Inferable<'a> for ast::Handle<'a> {
     fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> TypeResult {
-        // TODO: Selectively remove effects from result
         let mut result = infer(self.expression.as_mut(), cache);
 
         let mut pattern_results = Vec::with_capacity(self.branches.len());
@@ -2151,9 +2159,12 @@ impl<'a> Inferable<'a> for ast::Handle<'a> {
         }
 
         // Must remove all the handled effects from each pattern first
+        let mut handled_effects = Vec::new();
         for (traits, effects) in pattern_results {
-            result.handle_effects_from(traits, effects, cache);
+            result.handle_effects_from(traits, effects, &mut handled_effects, cache);
         }
+
+        self.effects_handled = handled_effects;
 
         // So that we can later add the effects from the branches without accidentally removing them
         for mut branch in branch_results {

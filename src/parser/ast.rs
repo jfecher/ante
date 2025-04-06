@@ -27,6 +27,7 @@
 use crate::cache::{DefinitionInfoId, EffectInfoId, ImplInfoId, ImplScopeId, ModuleId, TraitInfoId, VariableId};
 use crate::error::location::{Locatable, Location};
 use crate::lexer::token::{FloatKind, IntegerKind, Token};
+use crate::types::effects::Effect;
 use crate::types::pattern::DecisionTree;
 use crate::types::traits::RequiredTrait;
 use crate::types::typechecker::TypeBindings;
@@ -441,6 +442,9 @@ pub struct Handle<'a> {
     /// This is filled out during name resolution.
     pub resumes: Vec<DefinitionInfoId>,
 
+    /// This is filled out during type checking
+    pub effects_handled: Vec<Effect>,
+
     pub location: Location<'a>,
     pub typ: Option<types::Type>,
 }
@@ -770,7 +774,7 @@ impl<'a> Ast<'a> {
 
     pub fn handle(expression: Ast<'a>, branches: Vec<(Ast<'a>, Ast<'a>)>, location: Location<'a>) -> Ast<'a> {
         let branches = super::desugar::desugar_handle_branches_into_matches(branches);
-        Ast::Handle(Handle { expression: Box::new(expression), branches, location, resumes: vec![], typ: None })
+        Ast::Handle(Handle { expression: Box::new(expression), branches, location, effects_handled: Vec::new(), resumes: vec![], typ: None })
     }
 
     pub fn named_constructor(constructor: Ast<'a>, sequence: Ast<'a>, location: Location<'a>) -> Ast<'a> {

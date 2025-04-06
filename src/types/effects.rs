@@ -170,7 +170,8 @@ impl EffectSet {
     }
 
     /// Mutates self to the set difference between self and other.
-    pub(super) fn handle_effects_from(&mut self, other: EffectSet, level: super::LetBindingLevel, cache: &mut ModuleCache) {
+    /// Any effects that are removed are added to `handled_effects`.
+    pub(super) fn handle_effects_from(&mut self, other: EffectSet, handled_effects: &mut Vec<Effect>, level: super::LetBindingLevel, cache: &mut ModuleCache) {
         let a = self.follow_bindings(cache).clone();
         let b = other.follow_bindings(cache).clone();
 
@@ -178,13 +179,14 @@ impl EffectSet {
 
         for a_effect in a.effects.iter() {
             match find_matching_effect(a_effect, &b.effects, cache) {
-                Ok(bindings) => bindings.perform(cache),
+                Ok(bindings) => {
+                    bindings.perform(cache);
+                    handled_effects.push(a_effect.clone());
+                }
                 Err(()) => new_effects.push(a_effect.clone()),
             }
         }
 
-        // TODO: Should we update self.replacement too?
-        //       It seems to be shared with function calls
         self.effects = new_effects;
         self.replacement = cache.next_type_variable_id(level);
     }

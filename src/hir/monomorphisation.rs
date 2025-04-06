@@ -7,6 +7,7 @@ use crate::hir;
 use crate::lexer::token::FloatKind;
 use crate::nameresolution::builtin::BUILTIN_ID;
 use crate::parser::ast::{self, ClosureEnvironment};
+use crate::types::effects::Effect;
 use crate::types::traits::{Callsite, RequiredImpl, TraitConstraintId};
 use crate::types::typechecker::{self, TypeBindings};
 use crate::types::typed::Typed;
@@ -48,6 +49,8 @@ pub struct Context<'c> {
     impl_mappings: Vec<Impls>,
 
     next_id: usize,
+
+    effect_continuations: Vec<Vec<(Effect, hir::Variable)>>,
 }
 
 type Impls = HashMap<VariableId, Impl>;
@@ -92,6 +95,7 @@ impl<'c> Context<'c> {
             types: HashMap::new(),
             impl_mappings: vec![HashMap::new()],
             next_id: 0,
+            effect_continuations: Vec::new(),
             cache,
         }
     }
@@ -507,15 +511,15 @@ impl<'c> Context<'c> {
 
                 let return_type = Box::new(self.convert_type_inner(&function.return_type, fuel));
 
+                for _ in self.get_effects(&function.effects) {
+                    parameters.push(Type::continuation());
+                }
+
                 let environment = (!self.empty_closure_environment(&function.environment)).then(|| {
                     let environment_parameter = self.convert_type_inner(&function.environment, fuel);
                     parameters.push(environment_parameter.clone());
                     environment_parameter
                 });
-
-                for _ in self.get_effects(&function.effects) {
-                    parameters.push(Type::continuation());
-                }
 
                 let function = Type::Function(hir::types::FunctionType {
                     parameters,
@@ -1163,8 +1167,8 @@ impl<'c> Context<'c> {
         };
 
         let mut args = fmap(&function_type.parameters, |param| self.fresh_variable(param.clone()));
+        let continuation = args.pop().unwrap();
 
-        let continuation = self.fresh_variable(Type::continuation());
         let k = || Box::new(Ast::Variable(continuation.clone()));
 
         // continuation_push(k, arg)
@@ -1179,7 +1183,6 @@ impl<'c> Context<'c> {
         statements.push(Ast::Builtin(Builtin::ContinuationArgPop(k(), return_type)));
 
         args.push(continuation);
-
         let body = Box::new(Ast::Sequence(hir::Sequence { statements }));
         Ast::Lambda(hir::Lambda { args, body, typ: function_type })
     }
@@ -1250,6 +1253,58 @@ impl<'c> Context<'c> {
         }
     }
 
+    /// Defines a continuation parameter for each effect in the function signature
+    /// and pushes each onto the end of the function's parameter list.
+    fn push_continuation_parameters(&mut self, function_type: types::Type, parameters: &mut Vec<hir::Variable>) {
+        let types::Type::Function(function) = self.follow_all_bindings(&function_type) else {
+            unreachable!("push_continuation_parameters expected function type, found {}", function_type.debug(&self.cache));
+        };
+
+        let effects = self.get_effects(&function.effects).to_vec();
+
+        let continuations = fmap(effects, |(effect_id, mut effect_args)| {
+            effect_args = fmap(effect_args, |arg| self.follow_all_bindings(&arg));
+            let new_arg = hir::Variable {
+                definition: None,
+                definition_id: self.next_unique_id(),
+                typ: Rc::new(Type::continuation()),
+                name: Some("k".into()),
+            };
+            parameters.push(new_arg.clone());
+            ((effect_id, effect_args), new_arg)
+        });
+
+        self.effect_continuations.push(continuations);
+    }
+
+    fn pop_continuation_parameters(&mut self) {
+        self.effect_continuations.pop();
+    }
+
+    fn get_continuation_args(&mut self, function_type: &types::Type) -> Vec<hir::Ast> {
+        let types::Type::Function(function) = self.follow_all_bindings(&function_type) else {
+            unreachable!("push_continuation_parameters expected function type, found {}", function_type.debug(&self.cache));
+        };
+
+        let effects = self.get_effects(&function.effects).to_vec();
+        fmap(effects, |effect| self.get_continuation_arg(effect))
+    }
+    
+    fn get_continuation_arg(&mut self, (target_id, mut target_args): Effect) -> hir::Ast {
+        target_args = fmap(target_args, |arg| self.follow_all_bindings(&arg));
+
+        for ((effect_id, effect_args), parameter) in self.effect_continuations.last().unwrap() {
+            if *effect_id == target_id {
+                let result = typechecker::try_unify_all_hide_error(&target_args, effect_args, &mut self.cache);
+                if result.is_ok() {
+                    return hir::Ast::Variable(parameter.clone());
+                }
+            }
+        }
+
+        panic!("No effect continuation defined for effect ({:?}, {:?})", target_id, target_args);
+    }
+
     fn monomorphise_lambda(&mut self, lambda: &ast::Lambda<'c>) -> hir::Ast {
         self.definitions.push_local_scope();
 
@@ -1269,6 +1324,8 @@ impl<'c> Context<'c> {
             self.desugar_pattern(arg, param.definition_id, typ, &mut body_prelude);
             param
         });
+
+        self.push_continuation_parameters(t, &mut args);
 
         if !lambda.closure_environment.is_empty() {
             let env = self.unpack_environment(&lambda.closure_environment, &mut body_prelude);
@@ -1290,6 +1347,7 @@ impl<'c> Context<'c> {
             function = self.pack_closure_environment(function, &lambda.closure_environment);
         }
 
+        self.pop_continuation_parameters();
         self.definitions.pop_local_scope();
         function
     }
@@ -1521,6 +1579,9 @@ impl<'c> Context<'c> {
                 // value restriction.
                 let mut args = fmap(&call.args, |arg| self.monomorphise(arg));
                 let function = self.monomorphise(&call.function);
+
+                let continuation_args = self.get_continuation_args(call.function.get_type().unwrap());
+                args.extend(continuation_args);
 
                 // We could use a new convert_type_shallow here in the future since all we need
                 // is to check if it is a tuple type or not
@@ -1798,7 +1859,7 @@ impl<'c> Context<'c> {
     /// where resume functions defined in the scope of each
     /// body make recursive calls back to `handler`.
     fn monomorphise_handle(&mut self, handle: &ast::Handle<'c>) -> hir::Ast {
-        let start_expr_fn = self.make_start_effect_expr_function(&handle.expression);
+        let start_expr_fn = self.make_start_effect_expr_function(&handle.expression, &handle.effects_handled);
         let handler_fn = self.make_handler_function(handle);
 
         // create the final inline expression
@@ -1901,14 +1962,23 @@ impl<'c> Context<'c> {
     ///     result = expr // `continuation` is automatically added to any function calls within expr
     ///     continuation_push(continuation, result)
     /// ```
-    fn make_start_effect_expr_function(&mut self, expr: &ast::Ast<'c>) -> hir::Ast {
+    fn make_start_effect_expr_function(&mut self, expr: &ast::Ast<'c>, effects_handled: &[Effect]) -> hir::Ast {
         let continuation_var = self.fresh_variable(Type::continuation());
         let continuation = Box::new(hir::Ast::Variable(continuation_var.clone()));
-        let args = vec![continuation_var];
+
+        // All continuations handled by this Handle expression use the same continuation variable,
+        // even in the case of multiple effects being handled.
+        self.effect_continuations.push(fmap(effects_handled, |(effect_id, effect_args)| {
+            let effect_args = fmap(effect_args, |arg| self.follow_all_bindings(arg));
+            ((*effect_id, effect_args), continuation_var.clone())
+        }));
 
         let result = Box::new(self.monomorphise(expr));
         let body = Box::new(hir::Ast::Builtin(hir::Builtin::ContinuationArgPush(continuation, result)));
 
+        self.pop_continuation_parameters();
+
+        let args = vec![continuation_var];
         let parameters = vec![Type::continuation()];
         let return_type = Box::new(Type::unit());
         let typ = hir::FunctionType { parameters, return_type, is_varargs: false };
