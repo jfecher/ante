@@ -32,7 +32,14 @@ impl DynModule {
         let libcall_names = cranelift_module::default_libcall_names();
 
         if use_jit {
-            let builder = JITBuilder::with_isa(target_isa, libcall_names);
+            let mut builder = JITBuilder::with_isa(target_isa, libcall_names);
+            builder.symbol("mco_coro_init", aminicoro::mco_coro_init as *const u8);
+            builder.symbol("mco_coro_free", aminicoro::mco_coro_free as *const u8);
+            builder.symbol("mco_coro_is_suspended", aminicoro::mco_coro_is_suspended as *const u8);
+            builder.symbol("mco_coro_push", aminicoro::mco_coro_push as *const u8);
+            builder.symbol("mco_coro_pop", aminicoro::mco_coro_pop as *const u8);
+            builder.symbol("mco_coro_suspend", aminicoro::mco_coro_suspend as *const u8);
+            builder.symbol("mco_coro_resume", aminicoro::mco_coro_resume as *const u8);
             DynModule::Jit(cranelift_jit::JITModule::new(builder))
         } else {
             let builder = ObjectBuilder::new(target_isa, output_name, libcall_names);

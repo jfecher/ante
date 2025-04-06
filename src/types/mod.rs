@@ -433,6 +433,23 @@ impl Type {
             Type::Tag(tag) => tag.to_string(),
         }
     }
+
+    pub fn remove_effects_from_function(self) -> Type {
+        match self {
+            Type::Function(mut function) => {
+                function.effects = Box::new(Type::Primitive(PrimitiveType::UnitType));
+                Type::Function(function)
+            },
+            Type::Primitive(_)
+            | Type::UserDefined(_)
+            | Type::Effects(_)
+            | Type::TypeApplication(_, _)
+            | Type::Ref { .. }
+            | Type::Struct(..)
+            | Type::TypeVariable(_)
+            | Type::Tag(_) => self,
+        }
+    }
 }
 
 impl std::fmt::Display for TypeTag {

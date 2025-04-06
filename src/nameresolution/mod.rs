@@ -1500,6 +1500,13 @@ impl<'c> Resolvable<'c> for ast::Extern<'c> {
         resolver.push_let_binding_level();
         resolver.resolve_extern_definitions(self, cache);
         resolver.pop_let_binding_level();
+
+        // Ensure this extern definition is not treated as effect polymorphic.
+        // We don't want this recompiled for each different continuation set.
+        for declaration in &mut self.declarations {
+            let typ = declaration.typ.take().unwrap();
+            declaration.typ = Some(typ.remove_effects_from_function());
+        }
     }
 
     fn define(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'c>) {

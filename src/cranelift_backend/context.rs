@@ -240,28 +240,28 @@ impl<'local> Context<'local> {
         // char mco_coro_is_suspended(mco_coro*, k);
         let is_suspended_signature = &hir::FunctionType::new(vec![Type::continuation()], Type::Primitive(PrimitiveType::Boolean));
 
-        // void mco_push(mco_coro* k, const void* data, size_t data_size);
+        // void mco_coro_push(mco_coro* k, const void* data, size_t data_size);
         let push_signature = &hir::FunctionType::new(vec![Type::continuation(), Type::pointer(), Type::Primitive(PrimitiveType::Integer(hir::IntegerKind::Usz))], Type::unit());
 
-        // void mco_pop(mco_coro* k, void* data, size_t data_size);
+        // void mco_coro_pop(mco_coro* k, void* data, size_t data_size);
         let pop_signature = &hir::FunctionType::new(vec![Type::continuation(), Type::pointer(), Type::Primitive(PrimitiveType::Integer(hir::IntegerKind::Usz))], Type::unit());
 
-        // void mco_yield(mco_coro* k);
-        let yield_signature = &hir::FunctionType::new(vec![Type::continuation()], Type::unit());
+        // void mco_coro_suspend(mco_coro* k);
+        let suspend_signature = &hir::FunctionType::new(vec![Type::continuation()], Type::unit());
 
-        // void mco_resume(mco_coro* k);
+        // void mco_coro_resume(mco_coro* k);
         let resume_signature = &hir::FunctionType::new(vec![Type::continuation()], Type::unit());
 
-        // void mco_destory(mco_coro* k);
-        let destroy_signature = &hir::FunctionType::new(vec![Type::continuation()], Type::unit());
+        // void mco_coro_free(mco_coro* k);
+        let free_signature = &hir::FunctionType::new(vec![Type::continuation()], Type::unit());
 
         self.continuation_init_function = Some(self.define_continuation_function("mco_coro_init", init_signature));
         self.continuation_is_suspended_function = Some(self.define_continuation_function("mco_coro_is_suspended", is_suspended_signature));
-        self.continuation_arg_push_function = Some(self.define_continuation_function("mco_push", push_signature));
-        self.continuation_arg_pop_function = Some(self.define_continuation_function("mco_pop", pop_signature));
-        self.continuation_suspend_function = Some(self.define_continuation_function("mco_yield", yield_signature));
-        self.continuation_resume_function = Some(self.define_continuation_function("mco_resume", resume_signature));
-        self.continuation_free_function = Some(self.define_continuation_function("mco_destroy", destroy_signature));
+        self.continuation_arg_push_function = Some(self.define_continuation_function("mco_coro_push", push_signature));
+        self.continuation_arg_pop_function = Some(self.define_continuation_function("mco_coro_pop", pop_signature));
+        self.continuation_suspend_function = Some(self.define_continuation_function("mco_coro_suspend", suspend_signature));
+        self.continuation_resume_function = Some(self.define_continuation_function("mco_coro_resume", resume_signature));
+        self.continuation_free_function = Some(self.define_continuation_function("mco_coro_free", free_signature));
     }
 
     fn define_continuation_function(&mut self, name: &str, signature: &hir::FunctionType) -> FuncData {
@@ -482,7 +482,6 @@ impl<'local> Context<'local> {
 
     pub fn add_function_to_queue(&mut self, function: &'local hir::Lambda, name: &str) -> Value {
         let signature = self.convert_signature(&function.typ);
-        eprintln!("{name} : {} : {}", function.typ, signature);
 
         let name = format!("lambda{}", name);
         let function_id = self.module.declare_function(&name, Linkage::Export, &signature).unwrap();

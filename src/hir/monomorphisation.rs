@@ -1915,14 +1915,19 @@ impl<'c> Context<'c> {
         let continuation_var = self.fresh_variable(Type::continuation());
         let continuation = hir::Ast::Variable(continuation_var.clone());
 
+        let parameters = vec![Type::continuation()];
+        let result_type = self.convert_type(handle.get_type().unwrap());
+        let return_type = Box::new(result_type.clone());
+        let function_type = hir::FunctionType { parameters, return_type, is_varargs: false };
+        let typ = Type::Function(function_type.clone());
+        let mut handle_function_var = self.fresh_variable(typ.clone());
+
         for old_resume_id in &handle.resumes {
-            self.define_resume_function(*old_resume_id, continuation.clone());
+            self.define_resume_function(*old_resume_id, continuation.clone(), &handle_function_var);
         }
 
         let mut branches =
             fmap(&handle.branches, |(pattern, branch)| self.make_effect_body(pattern, branch, continuation.clone()));
-
-        let result_type = self.convert_type(handle.get_type().unwrap());
 
         assert_eq!(
             handle.branches.len(),
@@ -1948,13 +1953,21 @@ impl<'c> Context<'c> {
             condition: Box::new(condition),
             then: Box::new(then),
             otherwise: Box::new(otherwise),
-            result_type: result_type.clone(),
+            result_type,
         }));
 
-        let parameters = vec![Type::continuation()];
-        let return_type = Box::new(result_type);
-        let typ = hir::FunctionType { parameters, return_type, is_varargs: false };
-        hir::Ast::Lambda(hir::Lambda { args: vec![continuation_var], body, typ })
+        let lambda = hir::Ast::Lambda(hir::Lambda { args: vec![continuation_var], body, typ: function_type });
+
+        let definition = hir::Ast::Definition(hir::Definition {
+            variable: handle_function_var.definition_id,
+            name: Some("handle".into()),
+            mutable: false,
+            typ: typ.clone(),
+            expr: Box::new(lambda),
+        });
+
+        handle_function_var.definition = Some(Rc::new(definition));
+        hir::Ast::Variable(handle_function_var)
     }
 
     /// Lowers the `expr` in `handle expr | ...` into:
@@ -1989,13 +2002,13 @@ impl<'c> Context<'c> {
 
     /// Defines the `resume` function for a particular handle definition.
     /// This becomes a global function and can be defined any time.
-    fn define_resume_function(&mut self, resume_id: DefinitionInfoId, k: hir::Ast) {
+    fn define_resume_function(&mut self, resume_id: DefinitionInfoId, k: hir::Ast, handler_function: &hir::Variable) {
         let definition_id = self.next_unique_id();
         let typ = self.cache.definition_infos[resume_id.0].typ.as_ref().unwrap().as_monotype().clone();
         let typ = self.follow_all_bindings(&typ);
         let monomorphized_type = Rc::new(self.convert_type(&typ));
 
-        let resume_function = self.make_resume_function(&monomorphized_type);
+        let resume_function = self.make_resume_function(&monomorphized_type, handler_function);
         let resume_closure = tuple(vec![resume_function, k]);
 
         let name = Some("resume".to_string());
@@ -2024,10 +2037,10 @@ impl<'c> Context<'c> {
     ///     co_resume(co);
     ///     Ret ret;
     ///     co_pop(co, &ret, sizeof(Ret));
-    ///     return ret;
+    ///     return handler_function(ret);
     /// }
     /// ```
-    fn make_resume_function(&mut self, typ: &Type) -> hir::Ast {
+    fn make_resume_function(&mut self, typ: &Type, handler_function: &hir::Variable) -> hir::Ast {
         use hir::{
             Ast::Builtin, Builtin::ContinuationArgPop, Builtin::ContinuationArgPush, Builtin::ContinuationResume,
         };
@@ -2076,7 +2089,13 @@ impl<'c> Context<'c> {
 
         // And pop & return from the continuation to retrieve the returned result.
         let ret_ty = function_type.return_type.as_ref().clone();
-        statements.push(Builtin(ContinuationArgPop(Box::new(k), ret_ty)));
+        let cont_ret = Builtin(ContinuationArgPop(Box::new(k), ret_ty));
+
+        statements.push(hir::Ast::FunctionCall(hir::FunctionCall {
+            function: Box::new(hir::Ast::Variable(handler_function.clone())),
+            args: todo!(),
+            function_type,
+        }));
 
         let body = Box::new(hir::Ast::Sequence(hir::Sequence { statements }));
         hir::Ast::Lambda(hir::Lambda { args, body, typ: function_type })
