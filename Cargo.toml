@@ -11,7 +11,7 @@ name = "ante"
 edition = "2021"
 
 [workspace]
-members = [ "ante-ls"]
+members = [ "ante-ls" ]
 
 [dependencies]
 aminicoro = { path = "./aminicoro" }

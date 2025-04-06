@@ -1893,8 +1893,8 @@ impl<'c> Context<'c> {
     /// lowers into:
     /// ```
     /// handler(continuation) =
+    ///     continuation_resume(continuation)
     ///     if continuation_suspended(continuation) then
-    ///         continuation_resume(continuation)
     ///         match continuation_pop(continuation, U32)
     ///         | Effect1_Hash ->
     ///             // Note that arguments are popped in reverse order
@@ -1940,21 +1940,23 @@ impl<'c> Context<'c> {
         // continuation_suspended(continuation)
         let condition = hir::Ast::Builtin(hir::Builtin::ContinuationIsSuspended(k()));
 
-        // continuation_resume(continuation)
         // branch0 body
-        let then = hir::Ast::Sequence(hir::Sequence {
-            statements: vec![hir::Ast::Builtin(hir::Builtin::ContinuationResume(k())), branches.pop().unwrap()],
-        });
+        let then = branches.pop().unwrap();
 
         // This is the default / `return _ -> _` case
         let otherwise = hir::Ast::Builtin(hir::Builtin::ContinuationArgPop(k(), result_type.clone()));
 
-        let body = Box::new(hir::Ast::If(hir::If {
+        let if_ = hir::Ast::If(hir::If {
             condition: Box::new(condition),
             then: Box::new(then),
             otherwise: Box::new(otherwise),
             result_type,
-        }));
+        });
+
+        let body = Box::new(hir::Ast::Sequence(hir::Sequence { statements: vec![
+            hir::Ast::Builtin(hir::Builtin::ContinuationResume(k())),
+            if_,
+        ]}));
 
         let lambda = hir::Ast::Lambda(hir::Lambda { args: vec![continuation_var], body, typ: function_type });
 
@@ -2029,20 +2031,17 @@ impl<'c> Context<'c> {
 
     /// A resume function `resume: Arg1 - Arg2 - ... - ArgN -> Ret` translates to:
     /// ```
-    /// Ret resume(_1: Arg1, _2: Arg2, ..., _N: ArgN, continuation* co) {
+    /// Ret resume(_1: Arg1, _2: Arg2, ..., _N: ArgN, k: Cont) {
     ///     co_push(co, &_1, sizeof(Arg1));
     ///     co_push(co, &_2, sizeof(Arg2));
     ///     ...
     ///     co_push(co, &_N, sizeof(ArgN));
-    ///     co_resume(co);
-    ///     Ret ret;
-    ///     co_pop(co, &ret, sizeof(Ret));
-    ///     return handler_function(ret);
+    ///     return handler_function(k);
     /// }
     /// ```
     fn make_resume_function(&mut self, typ: &Type, handler_function: &hir::Variable) -> hir::Ast {
         use hir::{
-            Ast::Builtin, Builtin::ContinuationArgPop, Builtin::ContinuationArgPush, Builtin::ContinuationResume,
+            Ast::Builtin, Builtin::ContinuationArgPush,
         };
         let mut function_type = match typ {
             Type::Function(function) => function.clone(),
@@ -2085,16 +2084,11 @@ impl<'c> Context<'c> {
         args.push(k_var);
 
         // Then resume the continuation
-        statements.push(Builtin(ContinuationResume(Box::new(k.clone()))));
-
-        // And pop & return from the continuation to retrieve the returned result.
-        let ret_ty = function_type.return_type.as_ref().clone();
-        let cont_ret = Builtin(ContinuationArgPop(Box::new(k), ret_ty));
-
+        let result_type = function_type.return_type.as_ref().clone();
         statements.push(hir::Ast::FunctionCall(hir::FunctionCall {
             function: Box::new(hir::Ast::Variable(handler_function.clone())),
-            args: todo!(),
-            function_type,
+            args: vec![k],
+            function_type: hir::FunctionType::new(vec![Type::continuation()], result_type),
         }));
 
         let body = Box::new(hir::Ast::Sequence(hir::Sequence { statements }));
