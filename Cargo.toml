@@ -2,18 +2,19 @@
 name = "ante"
 version = "0.1.1"
 authors = ["Jake Fecher <jfecher11@gmail.com>"]
-edition = "2018"
+edition = "2021"
 build = "build.rs"
-rust-version = "1.74"
+rust-version = "1.77.0"
 
 [lib]
 name = "ante"
-edition = "2018"
+edition = "2021"
 
 [workspace]
-members = [ "ante-ls" ]
+members = [ "ante-ls"]
 
 [dependencies]
+aminicoro = { path = "./aminicoro" }
 clap = { version = "4", features = ["derive"] }
 colored = "2.0.0"
 mimalloc = { version = "0.1.29", default-features = false }

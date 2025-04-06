@@ -1,3 +1,6 @@
 [submodule "minicoro"]
 	path = minicoro
 	url = https://github.com/jfecher/minicoro
+[submodule "aminicoro"]
+	path = aminicoro
+	url = https://github.com/jfecher/minicoro
