@@ -4,7 +4,7 @@ version = "0.1.1"
 authors = ["Jake Fecher <jfecher11@gmail.com>"]
 edition = "2021"
 build = "build.rs"
-rust-version = "1.77.0"
+rust-version = "1.81.0"
 
 [lib]
 name = "ante"
