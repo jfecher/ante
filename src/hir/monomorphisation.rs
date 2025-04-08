@@ -932,8 +932,8 @@ impl<'c> Context<'c> {
 
         let name = self.cache[id].name.clone();
         let monomorphized_type = self.convert_type(typ);
-        let extern_ = hir::Ast::Extern(hir::Extern { name: name.clone(), typ: monomorphized_type.clone() });
 
+        let extern_ = hir::Ast::Extern(hir::Extern { name: name.clone(), typ: monomorphized_type.clone() });
         let definition = self.make_definition(extern_, Some(name), Rc::new(monomorphized_type));
 
         // Insert the global for both the current type and the unit type

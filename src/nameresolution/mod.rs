@@ -131,6 +131,11 @@ pub struct NameResolver {
     /// of looked up in the symbol table.
     auto_declare: bool,
 
+    /// A function signature like `a -> b` in Ante can implicitly be made to be
+    /// effect polymorphic `a -> b can e`. Setting this flag to true will disable
+    /// this behavior.
+    no_implicit_effects: bool,
+
     /// The trait we're currently declaring. While this is Some(id) all
     /// declarations will be declared as part of the trait.
     current_trait: Option<TraitInfoId>,
@@ -642,6 +647,7 @@ impl<'c> NameResolver {
             type_variable_scopes: vec![scope::TypeVariableScope::default()],
             state: NameResolutionState::DeclareInProgress,
             auto_declare: false,
+            no_implicit_effects: false,
             current_trait: None,
             required_definitions: None,
             current_function: None,
@@ -695,9 +701,15 @@ impl<'c> NameResolver {
             ast::Type::Function(args, ret, is_varargs, is_closure, _) => {
                 let parameters = fmap(args, |arg| self.convert_type(cache, arg));
                 let return_type = Box::new(self.convert_type(cache, ret));
+
                 let environment =
                     Box::new(if *is_closure { cache.next_type_variable(self.let_binding_level) } else { Type::UNIT });
-                let effects = Box::new(cache.next_type_variable(self.let_binding_level));
+
+                let effects = Box::new(if self.no_implicit_effects {
+                    Type::UNIT
+                } else {
+                    cache.next_type_variable(self.let_binding_level)
+                });
                 let is_varargs = *is_varargs;
                 Type::Function(FunctionType { parameters, return_type, environment, is_varargs, effects })
             },
@@ -792,12 +804,17 @@ impl<'c> NameResolver {
         self.definitions_collected.clear();
         self.auto_declare = true;
 
+        // Ensure this extern definition is not treated as effect polymorphic.
+        // We don't want this recompiled for each different continuation set.
+        self.no_implicit_effects = true;
+
         for declaration in &mut extern_.declarations {
             self.push_type_variable_scope();
             declaration.define(self, cache);
             self.pop_type_variable_scope();
         }
 
+        self.no_implicit_effects = false;
         self.auto_declare = false;
 
         for id in self.definitions_collected.iter() {
@@ -1499,13 +1516,6 @@ impl<'c> Resolvable<'c> for ast::Extern<'c> {
         resolver.push_let_binding_level();
         resolver.resolve_extern_definitions(self, cache);
         resolver.pop_let_binding_level();
-
-        // Ensure this extern definition is not treated as effect polymorphic.
-        // We don't want this recompiled for each different continuation set.
-        for declaration in &mut self.declarations {
-            let typ = declaration.typ.take().unwrap();
-            declaration.typ = Some(typ.remove_effects_from_function());
-        }
     }
 
     fn define(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'c>) {

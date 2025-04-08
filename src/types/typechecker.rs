@@ -1683,10 +1683,12 @@ impl<'a> Inferable<'a> for ast::FunctionCall<'a> {
 }
 
 fn issue_argument_types_error<'c>(
-    call: &ast::FunctionCall<'c>, f: Type, args: Type, original_error: Diagnostic<'c>, cache: &mut ModuleCache<'c>,
+    call: &ast::FunctionCall<'c>, f: Type, new_function: Type, original_error: Diagnostic<'c>, cache: &mut ModuleCache<'c>,
 ) {
-    match try_unwrap_functions(f, args, cache) {
+    match try_unwrap_functions(f, new_function, cache) {
         Some((expected, actual)) => {
+            let error_count = cache.error_count();
+
             if expected.parameters.len() != actual.parameters.len() && !expected.is_varargs && !actual.is_varargs {
                 let typ = Function(expected.clone()).display(cache).to_string();
                 cache.push_diagnostic(
@@ -1695,8 +1697,17 @@ fn issue_argument_types_error<'c>(
                 );
             }
 
-            for ((arg, param), arg_ast) in actual.parameters.into_iter().zip(expected.parameters).zip(&call.args) {
-                unify(&arg, &param, arg_ast.locate(), cache, TE::ArgumentTypeMismatch);
+            for ((arg, param), arg_ast) in actual.parameters.iter().zip(&expected.parameters).zip(&call.args) {
+                unify(arg, param, arg_ast.locate(), cache, TE::ArgumentTypeMismatch);
+            }
+
+            // No error was issued, the type difference must be an effect or environment
+            // difference. Just issue the original error with the full function type.
+            if cache.error_count() == error_count {
+                let actual = Type::Function(actual).display(cache).to_string();
+                let expected = Type::Function(expected).display(cache).to_string();
+                let diagnostic = D::FunctionTypeMismatch(actual, expected);
+                cache.push_diagnostic(call.location, diagnostic);
             }
         },
         None => cache.push_full_diagnostic(original_error),

@@ -41,10 +41,10 @@ pub enum DiagnosticKind {
     ItemNotRequiredByTrait(/*item name*/ String, /*trait name*/ String),
     AlreadyInScope(/*item name*/ String),
     PreviouslyDefinedHere(/*item name*/ String),
-    IncorrectConstructorArgCount(/*item name*/ String, /*expected count*/ usize, /*actual count*/ usize),
+    IncorrectConstructorArgCount(/*item name*/ String, /*actual count*/ usize, /*expected count*/ usize),
 
     // This can be combined with IncorrectArgCount
-    IncorrectImplTraitArgCount(/*Trait name*/ String, /*expected count*/ usize, /*actual count*/ usize),
+    IncorrectImplTraitArgCount(/*Trait name*/ String, /*actual count*/ usize, /*expected count*/ usize),
     NonIntegerType(/*type name*/ String),
     NonFloatType(/*type name*/ String),
     NotInScope(/*item kind*/ &'static str, /*item name*/ String),
@@ -71,14 +71,14 @@ pub enum DiagnosticKind {
     PatternIsNotIrrefutable,
     InvalidSyntaxInPattern,
     InvalidSyntaxInIrrefutablePattern,
-    FunctionParameterCountMismatch(/*type*/ String, /*expected*/ usize, /*actual*/ usize),
+    FunctionParameterCountMismatch(/*type*/ String, /*actual*/ usize, /*expected*/ usize),
     MutRefToImmutableVariable(/*name*/ String),
     MutRefToTemporary,
 
     // Type errors are grouped together here for ease of passing different TypeErrorKinds to
     // `try_unify` while delaying converting the types to strings until the error actually is
     // pushed.
-    TypeError(TypeErrorKind, /*expected type*/ String, /*actual type*/ String),
+    TypeError(TypeErrorKind, /*actual type*/ String, /*expected type*/ String),
     MultipleMatchingImpls(/*constraint*/ String, /*impl count*/ usize),
     ImplCandidate(/*candidate index*/ usize),
     ImplCandidateWithMoreHidden(/*candidate index*/ usize, /*remaining hidden candidate count*/ usize),
@@ -86,6 +86,7 @@ pub enum DiagnosticKind {
     UnreachablePattern,
     MissingCase(/*case*/ String),
     UnhandledEffectsInMain(/*effects*/ String),
+    FunctionTypeMismatch(/*actual*/String, /*expected*/String),
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -347,6 +348,9 @@ impl Display for DiagnosticKind {
             DiagnosticKind::MutRefToTemporary => {
                 write!(f, "Cannot mutably reference a temporary value")
             },
+            DiagnosticKind::FunctionTypeMismatch(actual, expected) => {
+                write!(f, "Expected function of type {expected}, but found {actual}")
+            },
         }
     }
 }
@@ -396,6 +400,7 @@ impl DiagnosticKind {
             | UnhandledEffectsInMain(_)
             | MutRefToImmutableVariable(_)
             | MutRefToTemporary
+            | FunctionTypeMismatch(..)
             | NotAStructField(_) => Error,
         }
     }
