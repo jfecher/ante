@@ -45,12 +45,13 @@ use crate::error::{
 };
 use crate::lexer::{token::Token, Lexer};
 use crate::nameresolution::scope::{FunctionScopes, Scope};
+use crate::parser::ast::EffectName;
 use crate::parser::{self, ast, ast::Ast};
+use crate::types::effects::EffectSet;
 use crate::types::traits::ConstraintSignature;
 use crate::types::typed::Typed;
 use crate::types::{
-    Field, FunctionType, GeneralizedType, LetBindingLevel, PrimitiveType, Type, TypeConstructor, TypeInfoBody,
-    TypeInfoId, TypeTag, TypeVariableId, INITIAL_LEVEL, STRING_TYPE,
+    Field, FunctionType, GeneralizedType, LetBindingLevel, PrimitiveType, Type, TypeConstructor, TypeInfoBody, TypeInfoId, TypeTag, TypeVariableId, INITIAL_LEVEL, STRING_TYPE
 };
 use crate::util::{fmap, timing, trustme};
 
@@ -186,6 +187,7 @@ impl<'c> NameResolver {
     // lookup_fn!(lookup_definition, definitions, definition_infos, DefinitionInfoId);
     lookup_fn!(lookup_type, types, type_infos, TypeInfoId);
     lookup_fn!(lookup_trait, traits, trait_infos, TraitInfoId);
+    lookup_fn!(lookup_effect, effects, effect_infos, EffectInfoId);
 
     /// Similar to the lookup functions above, but will also lookup variables that are
     /// defined in a parent function to keep track of which variables closures
@@ -698,20 +700,21 @@ impl<'c> NameResolver {
             ast::Type::Pointer(_) => Type::Primitive(PrimitiveType::Ptr),
             ast::Type::Boolean(_) => Type::Primitive(PrimitiveType::BooleanType),
             ast::Type::Unit(_) => Type::UNIT,
-            ast::Type::Function(args, ret, is_varargs, is_closure, _) => {
-                let parameters = fmap(args, |arg| self.convert_type(cache, arg));
-                let return_type = Box::new(self.convert_type(cache, ret));
+            ast::Type::Function(function) => {
+                let parameters = fmap(&function.parameters, |arg| self.convert_type(cache, arg));
+                let return_type = Box::new(self.convert_type(cache, &function.return_type));
 
                 let environment =
-                    Box::new(if *is_closure { cache.next_type_variable(self.let_binding_level) } else { Type::UNIT });
+                    Box::new(if function.is_closure { cache.next_type_variable(self.let_binding_level) } else { Type::UNIT });
 
-                let effects = Box::new(if self.no_implicit_effects {
-                    Type::UNIT
+                let effects = if let Some(effects) = &function.effects {
+                    Box::new(self.convert_effects(effects, cache))
                 } else {
-                    cache.next_type_variable(self.let_binding_level)
-                });
-                let is_varargs = *is_varargs;
-                Type::Function(FunctionType { parameters, return_type, environment, is_varargs, effects })
+                    Box::new(Type::Tag(TypeTag::Pure))
+                };
+
+                let has_varargs = function.has_varargs;
+                Type::Function(FunctionType { parameters, return_type, environment, has_varargs, effects })
             },
             ast::Type::TypeVariable(name, location) => match self.lookup_type_variable(name) {
                 Some(id) => Type::TypeVariable(id),
@@ -774,6 +777,22 @@ impl<'c> NameResolver {
                 Type::Ref { sharedness, mutability, lifetime }
             },
         }
+    }
+
+    fn convert_effects(&mut self, effects: &[EffectName<'c>], cache: &mut ModuleCache<'c>) -> Type {
+        let mut new_effects = Vec::new();
+
+        for (effect_name, effect_args) in effects {
+            let id = self.lookup_effect(effect_name, cache);
+            let args = fmap(effect_args, |arg| self.convert_type(cache, arg));
+
+            if let Some(id) = id {
+                new_effects.push((id, args));
+            }
+        }
+
+        let replacement = Box::new(Type::Tag(TypeTag::Pure));
+        Type::Effects(EffectSet { effects: new_effects, replacement })
     }
 
     /// The collect* family of functions recurs over an irrefutable pattern, either declaring or
@@ -1009,6 +1028,9 @@ impl<'c> Resolvable<'c> for ast::Lambda<'c> {
     fn define(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'c>) {
         resolver.push_lambda(self, cache);
         resolver.try_add_current_function_to_scope();
+
+        desugar_function_effect_variables(&mut self.args, &mut self.effects);
+
         resolver.resolve_all_definitions(self.args.iter_mut(), cache, || DefinitionKind::Parameter);
 
         if let Some(typ) = &self.return_type {
@@ -1021,6 +1043,34 @@ impl<'c> Resolvable<'c> for ast::Lambda<'c> {
 
         self.body.define(resolver, cache);
         resolver.pop_lambda(cache);
+    }
+}
+
+/// If any parameters have a function type (not contained within another type) without an explicit
+/// `can` clause, this adds an implicit `can e` to both that parameter and to this outer lambda.
+fn desugar_function_effect_variables<'a>(args: &mut [ast::Ast<'a>], effects: &mut Option<Vec<EffectName<'a>>>) {
+    // The name of this variable is a bit ugly but we need to ensure it doesn't clash
+    // with any existing variable names.
+    let implicit_effect = ("$e".to_string(), Vec::new());
+    let mut modified = false;
+
+    for arg in args {
+        if let Ast::TypeAnnotation(annotation) = arg {
+            if let ast::Type::Function(function) = &mut annotation.rhs {
+                if function.effects.is_none() {
+                    function.effects = Some(vec![implicit_effect.clone()]);
+                    modified = true;
+                }
+            }
+        }
+    }
+
+    if modified {
+        if let Some(effects) = effects {
+            effects.push(implicit_effect);
+        } else {
+            *effects = Some(vec![implicit_effect]);
+        }
     }
 }
 
@@ -1146,7 +1196,7 @@ fn create_variant_constructor_type(
             return_type: Box::new(result),
             environment: Box::new(Type::UNIT),
             effects,
-            is_varargs: false,
+            has_varargs: false,
         });
     }
 

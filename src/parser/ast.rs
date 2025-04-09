@@ -120,7 +120,6 @@ pub struct Lambda<'a> {
     pub body: Box<Ast<'a>>,
     pub return_type: Option<Type<'a>>,
 
-    #[allow(unused)]
     pub effects: Option<Vec<EffectName<'a>>>,
 
     pub closure_environment: ClosureEnvironment,
@@ -213,11 +212,21 @@ pub enum Type<'a> {
     Boolean(Location<'a>),
     Unit(Location<'a>),
     Reference(Sharedness, Mutability, Location<'a>),
-    Function(Vec<Type<'a>>, Box<Type<'a>>, /*varargs:*/ bool, /*closure*/ bool, Location<'a>),
+    Function(FunctionType<'a>),
     TypeVariable(String, Location<'a>),
     UserDefined(String, Location<'a>),
     TypeApplication(Box<Type<'a>>, Vec<Type<'a>>, Location<'a>),
     Pair(Box<Type<'a>>, Box<Type<'a>>, Location<'a>),
+}
+
+#[derive(Debug, Clone)]
+pub struct FunctionType<'a> {
+    pub parameters: Vec<Type<'a>>,
+    pub return_type: Box<Type<'a>>,
+    pub has_varargs: bool,
+    pub is_closure: bool,
+    pub effects: Option<Vec<EffectName<'a>>>,
+    pub location: Location<'a>
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -891,7 +900,7 @@ impl<'a> Locatable<'a> for Type<'a> {
             Type::Boolean(location) => *location,
             Type::Unit(location) => *location,
             Type::Reference(_, _, location) => *location,
-            Type::Function(_, _, _, _, location) => *location,
+            Type::Function(function) => function.location,
             Type::TypeVariable(_, location) => *location,
             Type::UserDefined(_, location) => *location,
             Type::TypeApplication(_, _, location) => *location,

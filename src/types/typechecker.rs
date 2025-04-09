@@ -209,9 +209,9 @@ pub fn replace_all_typevars_with_bindings(
             });
             let return_type = Box::new(replace_all_typevars_with_bindings(&function.return_type, new_bindings, cache));
             let environment = Box::new(replace_all_typevars_with_bindings(&function.environment, new_bindings, cache));
-            let is_varargs = function.is_varargs;
+            let is_varargs = function.has_varargs;
             let effects = Box::new(replace_all_typevars_with_bindings(&function.effects, new_bindings, cache));
-            Function(FunctionType { parameters, return_type, environment, is_varargs, effects })
+            Function(FunctionType { parameters, return_type, environment, has_varargs: is_varargs, effects })
         },
         UserDefined(id) => UserDefined(*id),
 
@@ -279,9 +279,9 @@ pub fn bind_typevars(typ: &Type, type_bindings: &TypeBindings, cache: &ModuleCac
             let parameters = fmap(&function.parameters, |parameter| bind_typevars(parameter, type_bindings, cache));
             let return_type = Box::new(bind_typevars(&function.return_type, type_bindings, cache));
             let environment = Box::new(bind_typevars(&function.environment, type_bindings, cache));
-            let is_varargs = function.is_varargs;
+            let is_varargs = function.has_varargs;
             let effects = Box::new(bind_typevars(&function.effects, type_bindings, cache));
-            Function(FunctionType { parameters, return_type, environment, is_varargs, effects })
+            Function(FunctionType { parameters, return_type, environment, has_varargs: is_varargs, effects })
         },
         UserDefined(id) => UserDefined(*id),
 
@@ -654,8 +654,8 @@ pub fn try_unify_with_bindings_inner<'b>(
             if function1.parameters.len() != function2.parameters.len() {
                 // Whether a function is varargs or not is never unified,
                 // so if one function is varargs, assume they both should be.
-                if !(function1.is_varargs && function2.parameters.len() >= function1.parameters.len())
-                    && !(function2.is_varargs && function1.parameters.len() >= function2.parameters.len())
+                if !(function1.has_varargs && function2.parameters.len() >= function1.parameters.len())
+                    && !(function2.has_varargs && function1.parameters.len() >= function2.parameters.len())
                 {
                     return Err(());
                 }
@@ -1272,7 +1272,7 @@ pub(super) fn bind_irrefutable_pattern<'c>(
                 return_type: Box::new(pair_type.clone()),
                 environment: Box::new(Type::UNIT),
                 effects: Box::new(next_type_variable(cache)),
-                is_varargs: false,
+                has_varargs: false,
             });
 
             call.function.set_type(function_type);
@@ -1638,7 +1638,7 @@ impl<'a> Inferable<'a> for ast::Lambda<'a> {
             return_type: Box::new(body.typ),
             environment: Box::new(infer_closure_environment(&self.closure_environment, cache)),
             effects: Box::new(Type::Effects(body.effects)),
-            is_varargs: false,
+            has_varargs: false,
         });
 
         TypeResult::new(typ, body.traits, cache)
@@ -1668,7 +1668,7 @@ impl<'a> Inferable<'a> for ast::FunctionCall<'a> {
             return_type: Box::new(return_type.clone()),
             environment: Box::new(next_type_variable(cache)),
             effects: Box::new(Type::Effects(new_effect)),
-            is_varargs: false,
+            has_varargs: false,
         });
 
         // Don't need a match here, but if we already know f is a function type
@@ -1689,7 +1689,7 @@ fn issue_argument_types_error<'c>(
         Some((expected, actual)) => {
             let error_count = cache.error_count();
 
-            if expected.parameters.len() != actual.parameters.len() && !expected.is_varargs && !actual.is_varargs {
+            if expected.parameters.len() != actual.parameters.len() && !expected.has_varargs && !actual.has_varargs {
                 let typ = Function(expected.clone()).display(cache).to_string();
                 cache.push_diagnostic(
                     call.location,
@@ -2164,7 +2164,7 @@ impl<'a> Inferable<'a> for ast::Handle<'a> {
                 // `resume` has a continuation in its environment
                 environment: Box::new(continuation_type),
                 effects: Box::new(next_type_variable(cache)),
-                is_varargs: false,
+                has_varargs: false,
             });
 
             let resume_info = &mut cache[*resume];

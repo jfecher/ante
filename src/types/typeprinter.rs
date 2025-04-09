@@ -202,7 +202,7 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             }
         }
 
-        if function.is_varargs {
+        if function.has_varargs {
             write!(f, "{}", "... ".blue())?;
         }
 

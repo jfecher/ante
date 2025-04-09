@@ -84,7 +84,7 @@ pub struct FunctionType {
 
     /// Expected to be a Type::Effects or Type::TypeVariable only
     pub effects: Box<Type>,
-    pub is_varargs: bool,
+    pub has_varargs: bool,
 }
 
 /// Any type in ante. Note that a trait is not a type. Traits are
@@ -154,6 +154,7 @@ pub enum TypeTag {
     Shared,
     Mutable,
     Immutable,
+    Pure,
 }
 
 #[derive(Debug, Clone)]
@@ -445,6 +446,7 @@ impl std::fmt::Display for TypeTag {
             TypeTag::Shared => write!(f, "shared"),
             TypeTag::Mutable => write!(f, "!"),
             TypeTag::Immutable => write!(f, "&"),
+            TypeTag::Pure => write!(f, "pure"),
         }
     }
 }

@@ -52,7 +52,7 @@ pub fn define_builtins(cache: &mut ModuleCache) {
         return_type: Box::new(Type::TypeVariable(a)),
         environment: Box::new(Type::UNIT),
         effects: Box::new(Type::TypeVariable(e)),
-        is_varargs: true,
+        has_varargs: true,
     });
 
     let builtin_type = GeneralizedType::PolyType(vec![a, e], builtin_fn_type);
@@ -120,7 +120,7 @@ fn define_string(cache: &mut ModuleCache) -> Type {
         return_type: Box::new(string.clone()),
         environment: Box::new(Type::UNIT),
         effects: Box::new(Type::TypeVariable(effects)),
-        is_varargs: false,
+        has_varargs: false,
     });
 
     let polytype = GeneralizedType::PolyType(vec![effects], constructor_type);
@@ -163,7 +163,7 @@ fn define_pair(cache: &mut ModuleCache) {
         return_type: pair_a_b,
         environment: Box::new(Type::UNIT),
         effects: Box::new(Type::TypeVariable(e)),
-        is_varargs: false,
+        has_varargs: false,
     });
 
     let constructor_type = GeneralizedType::PolyType(vec![a, b, e], constructor_type);

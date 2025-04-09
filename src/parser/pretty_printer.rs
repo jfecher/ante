@@ -103,10 +103,23 @@ impl<'a> Display for ast::Type<'a> {
             },
             TypeVariable(name, _) => write!(f, "{}", name),
             UserDefined(name, _) => write!(f, "{}", name),
-            Function(params, return_type, varargs, is_closure, _) => {
-                let arrow = if *is_closure { "=>" } else { "->" };
-                let varargs = if *varargs { "... " } else { "" };
-                write!(f, "({} {}{} {})", join_with(params, " "), varargs, arrow, return_type)
+            Function(function) => {
+                let arrow = if function.is_closure { "=>" } else { "->" };
+                let varargs = if function.has_varargs { "... " } else { "" };
+                let effects = if let Some(effects) = &function.effects {
+                    let effects = fmap(effects, |(name, args)| {
+                        let args = join_with(args, " ");
+                        if args.is_empty() {
+                            name.clone()
+                        } else {
+                            format!("{} {}", name, args)
+                        }
+                    });
+                    format!(" can {}", join_with(effects, ", "))
+                } else {
+                    Default::default()
+                };
+                write!(f, "({} {}{} {}{})", join_with(&function.parameters, " "), varargs, arrow, &function.return_type, effects)
             },
             TypeApplication(constructor, args, _) => {
                 write!(f, "({} {})", constructor, join_with(args, " "))

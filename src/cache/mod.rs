@@ -374,6 +374,7 @@ pub struct EffectInfo<'a> {
     pub location: Location<'a>,
 
     pub declarations: Vec<DefinitionInfoId>,
+    pub uses: u32,
 }
 
 impl<'a> Locatable<'a> for EffectInfo<'a> {
@@ -561,7 +562,7 @@ impl<'a> ModuleCache<'a> {
         &mut self, name: String, typeargs: Vec<TypeVariableId>, location: Location<'a>,
     ) -> EffectInfoId {
         let id = self.effect_infos.len();
-        self.effect_infos.push(EffectInfo { name, typeargs, declarations: vec![], location });
+        self.effect_infos.push(EffectInfo { name, typeargs, declarations: vec![], location, uses: 0 });
         EffectInfoId(id)
     }
 

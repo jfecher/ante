@@ -208,7 +208,7 @@ impl<'c> Context<'c> {
                     return_type: Box::new(self.follow_all_bindings_inner(&f.return_type, fuel)),
                     environment: Box::new(self.follow_all_bindings_inner(&f.environment, fuel)),
                     effects: Box::new(self.follow_all_bindings_inner(&f.effects, fuel)),
-                    is_varargs: f.is_varargs,
+                    has_varargs: f.has_varargs,
                 };
                 Function(f)
             },
@@ -522,7 +522,7 @@ impl<'c> Context<'c> {
                 let function = Type::Function(hir::types::FunctionType {
                     parameters,
                     return_type,
-                    is_varargs: function.is_varargs,
+                    is_varargs: function.has_varargs,
                 });
 
                 match environment {

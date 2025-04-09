@@ -109,10 +109,19 @@ parser!(function_definition location -> 'b ast::Definition<'b> =
     }
 );
 
-parser!(effect_clause location -> 'b Vec<(String, Vec<Type<'b>>)> =
+fn effect_clause<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Vec<(String, Vec<Type<'b>>)>> {
+    or(&[non_empty_effect_clause, pure_clause], "effect clause")(input)
+}
+
+parser!(non_empty_effect_clause location -> 'b Vec<(String, Vec<Type<'b>>)> =
     _ <- expect(Token::Can);
     effects <- many1(effect);
     effects
+);
+
+parser!(pure_clause location -> 'b Vec<(String, Vec<Type<'b>>)> =
+    _ <- expect(Token::Pure);
+    Vec::new()
 );
 
 parser!(effect location -> 'b (String, Vec<Type<'b>>) =
@@ -806,11 +815,19 @@ parser!(unit loc =
 );
 
 parser!(function_type loc -> 'b Type<'b> =
-    args <- delimited_trailing(function_arg_type, expect(Token::Subtract), false);
+    parameters <- delimited_trailing(function_arg_type, expect(Token::Subtract), false);
     varargs <- maybe(varargs);
     is_closure <- function_arrow;
     return_type <- parse_type;
-    Type::Function(args, Box::new(return_type), varargs.is_some(), is_closure, loc)
+    effects <- maybe(effect_clause);
+    Type::Function(ast::FunctionType {
+        parameters,
+        return_type: Box::new(return_type),
+        has_varargs: varargs.is_some(),
+        is_closure,
+        effects,
+        location: loc,
+    })
 );
 
 // Returns true if this function is a closure
