@@ -710,6 +710,7 @@ impl<'c> NameResolver {
                 let effects = if let Some(effects) = &function.effects {
                     Box::new(self.convert_effects(effects, cache))
                 } else {
+                    cache.push_diagnostic(function.location, D::FunctionEffectsNotSpecified);
                     Box::new(Type::Tag(TypeTag::Pure))
                 };
 
@@ -791,8 +792,13 @@ impl<'c> NameResolver {
             }
         }
 
-        let replacement = Box::new(Type::Tag(TypeTag::Pure));
-        Type::Effects(EffectSet { effects: new_effects, replacement })
+        if new_effects.is_empty() {
+            Type::Tag(TypeTag::Pure)
+        } else {
+            let replacement = cache.next_type_variable_id(self.let_binding_level);
+            cache.bind(replacement, Type::Tag(TypeTag::Pure));
+            Type::Effects(EffectSet { effects: new_effects, replacement })
+        }
     }
 
     /// The collect* family of functions recurs over an irrefutable pattern, either declaring or
@@ -873,11 +879,11 @@ impl<'c> NameResolver {
         all_definitions
     }
 
-    fn resolve_all_definitions<'a, T: 'a, It, F>(
+    fn resolve_all_definitions<'a, T, It, F>(
         &mut self, patterns: It, cache: &mut ModuleCache<'c>, mut definition: F,
     ) where
         It: Iterator<Item = &'a mut T>,
-        T: Resolvable<'c>,
+        T: Resolvable<'c> + 'a,
         F: FnMut() -> DefinitionKind<'c>,
     {
         self.definitions_collected.clear();
@@ -1029,7 +1035,7 @@ impl<'c> Resolvable<'c> for ast::Lambda<'c> {
         resolver.push_lambda(self, cache);
         resolver.try_add_current_function_to_scope();
 
-        desugar_function_effect_variables(&mut self.args, &mut self.effects);
+        desugar_function_effect_variables_in_ast(&mut self.args, &mut self.effects);
 
         resolver.resolve_all_definitions(self.args.iter_mut(), cache, || DefinitionKind::Parameter);
 
@@ -1048,19 +1054,19 @@ impl<'c> Resolvable<'c> for ast::Lambda<'c> {
 
 /// If any parameters have a function type (not contained within another type) without an explicit
 /// `can` clause, this adds an implicit `can e` to both that parameter and to this outer lambda.
-fn desugar_function_effect_variables<'a>(args: &mut [ast::Ast<'a>], effects: &mut Option<Vec<EffectName<'a>>>) {
+fn desugar_function_effect_variables<'local, 'a: 'local, T>(args: T, effects: &mut Option<Vec<EffectName<'a>>>) 
+    where T: IntoIterator<Item = &'local mut ast::Type<'a>>
+{
     // The name of this variable is a bit ugly but we need to ensure it doesn't clash
     // with any existing variable names.
     let implicit_effect = ("$e".to_string(), Vec::new());
     let mut modified = false;
 
     for arg in args {
-        if let Ast::TypeAnnotation(annotation) = arg {
-            if let ast::Type::Function(function) = &mut annotation.rhs {
-                if function.effects.is_none() {
-                    function.effects = Some(vec![implicit_effect.clone()]);
-                    modified = true;
-                }
+        if let ast::Type::Function(function) = arg {
+            if function.effects.is_none() {
+                function.effects = Some(vec![implicit_effect.clone()]);
+                modified = true;
             }
         }
     }
@@ -1071,6 +1077,25 @@ fn desugar_function_effect_variables<'a>(args: &mut [ast::Ast<'a>], effects: &mu
         } else {
             *effects = Some(vec![implicit_effect]);
         }
+    } else {
+        *effects = Some(Vec::new());
+    }
+}
+
+fn desugar_function_effect_variables_in_ast<'a>(args: &mut [ast::Ast<'a>], effects: &mut Option<Vec<EffectName<'a>>>) {
+    let arg_types = args.iter_mut().filter_map(|arg| {
+        match arg {
+            ast::Ast::TypeAnnotation(annotation) => Some(&mut annotation.rhs),
+            _ => None,
+        }
+    });
+
+    desugar_function_effect_variables(arg_types, effects);
+}
+
+fn desugar_function_effect_variables_in_type<'a>(typ: &mut ast::Type<'a>) {
+    if let ast::Type::Function(function) = typ {
+        desugar_function_effect_variables(&mut function.parameters, &mut function.effects);
     }
 }
 
@@ -1172,7 +1197,7 @@ impl<'c> Resolvable<'c> for ast::Match<'c> {
 /// Given "type T a b c = ..." return
 /// forall a b c. args -> T a b c
 fn create_variant_constructor_type(
-    resolver: &mut NameResolver, parent_type_id: TypeInfoId, args: Vec<Type>, cache: &mut ModuleCache,
+    parent_type_id: TypeInfoId, args: Vec<Type>, cache: &mut ModuleCache,
 ) -> GeneralizedType {
     let info = &cache.type_infos[parent_type_id.0];
     let mut result = Type::UserDefined(parent_type_id);
@@ -1183,19 +1208,15 @@ fn create_variant_constructor_type(
         result = Type::TypeApplication(Box::new(result), type_variables);
     }
 
-    let mut type_args = info.args.clone();
+    let type_args = info.args.clone();
 
     // Create the arguments to the function type if this type has arguments
     if !args.is_empty() {
-        let effect_id = cache.next_type_variable_id(resolver.let_binding_level);
-        type_args.push(effect_id);
-        let effects = Box::new(Type::TypeVariable(effect_id));
-
         result = Type::Function(FunctionType {
             parameters: args,
             return_type: Box::new(result),
             environment: Box::new(Type::UNIT),
-            effects,
+            effects: Box::new(Type::Tag(TypeTag::Pure)),
             has_varargs: false,
         });
     }
@@ -1221,7 +1242,7 @@ fn create_variants<'c>(
         let args = fmap(types, |t| resolver.convert_type(cache, t));
 
         let id = resolver.push_definition(name, cache, *location);
-        let constructor_type = create_variant_constructor_type(resolver, parent_type_id, args.clone(), cache);
+        let constructor_type = create_variant_constructor_type(parent_type_id, args.clone(), cache);
 
         cache.definition_infos[id.0].typ = Some(constructor_type);
         cache.definition_infos[id.0].definition =
@@ -1278,7 +1299,7 @@ impl<'c> Resolvable<'c> for ast::TypeDefinition<'c> {
                 // Create the constructor for this type.
                 // This is done inside create_variants for tagged union types
                 let id = resolver.push_definition(&self.name, cache, self.location);
-                let constructor_type = create_variant_constructor_type(resolver, type_id, field_types, cache);
+                let constructor_type = create_variant_constructor_type(type_id, field_types, cache);
 
                 cache.definition_infos[id.0].typ = Some(constructor_type);
                 cache.definition_infos[id.0].definition =
@@ -1300,6 +1321,10 @@ impl<'c> Resolvable<'c> for ast::TypeAnnotation<'c> {
 
     fn define(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'c>) {
         self.lhs.define(resolver, cache);
+
+        if let ast::Type::Function(function) = &mut self.rhs {
+            desugar_function_effect_variables(&mut function.parameters, &mut function.effects);
+        }
 
         let rhs = resolver.convert_type(cache, &self.rhs);
         self.typ = Some(rhs);
@@ -1423,6 +1448,8 @@ impl<'c> Resolvable<'c> for ast::TraitDefinition<'c> {
         let self_pointer = self as *const _;
         for declaration in self.declarations.iter_mut() {
             let definition = || DefinitionKind::TraitDefinition(trustme::make_mut(self_pointer));
+
+            desugar_function_effect_variables_in_type(&mut declaration.rhs);
             resolver.resolve_declarations(declaration.lhs.as_mut(), cache, definition);
         }
 
@@ -1612,6 +1639,7 @@ impl<'c> Resolvable<'c> for ast::EffectDefinition<'c> {
         for declaration in self.declarations.iter_mut() {
             let definition = || DefinitionKind::EffectDefinition(trustme::make_mut(self_pointer));
 
+            desugar_function_effect_variables_in_type(&mut declaration.rhs);
             resolver.resolve_declarations(declaration.lhs.as_mut(), cache, definition);
 
             for definition in &resolver.definitions_collected {

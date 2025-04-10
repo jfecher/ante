@@ -1,0 +1,40 @@
+effect Add with
+    add: U32 -> Unit
+
+foo () can Add =
+    print "foo"
+    add 1
+    add 2
+
+bar () =
+    print "bar"
+    add 3
+    add 4
+
+sum_all () =
+    handle
+        foo ()
+        bar ()
+        0
+    | add y ->
+        print "add called"
+        r = resume ()
+        print "add resume finished"
+        y + r
+
+// 10
+sum_all () |> print
+
+// args: --delete-binary
+// expected stdout:
+// foo
+// add called
+// add called
+// bar
+// add called
+// add called
+// add resume finished
+// add resume finished
+// add resume finished
+// add resume finished
+// 10

@@ -115,7 +115,11 @@ impl<'a> Display for ast::Type<'a> {
                             format!("{} {}", name, args)
                         }
                     });
-                    format!(" can {}", join_with(effects, ", "))
+                    if effects.is_empty() {
+                        format!(" pure")
+                    } else {
+                        format!(" can {}", join_with(effects, ", "))
+                    }
                 } else {
                     Default::default()
                 };

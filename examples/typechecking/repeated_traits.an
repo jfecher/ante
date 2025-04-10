@@ -5,5 +5,5 @@ foo a =
 // Make sure output is not "... given Print a, Print a"
 // args: --check --show-types
 // expected stdout:
-// foo : forall a b. (a -> Unit can b)
+// foo : forall a. (a -> Unit pure)
 //   given Print a

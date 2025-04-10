@@ -87,6 +87,7 @@ pub enum DiagnosticKind {
     MissingCase(/*case*/ String),
     UnhandledEffectsInMain(/*effects*/ String),
     FunctionTypeMismatch(/*actual*/String, /*expected*/String),
+    FunctionEffectsNotSpecified,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -351,6 +352,9 @@ impl Display for DiagnosticKind {
             DiagnosticKind::FunctionTypeMismatch(actual, expected) => {
                 write!(f, "Expected function of type {expected}, but found {actual}")
             },
+            DiagnosticKind::FunctionEffectsNotSpecified => {
+                write!(f, "This function type's effects must be specified. Add `pure` if it shouldn't have any.")
+            },
         }
     }
 }
@@ -401,6 +405,7 @@ impl DiagnosticKind {
             | MutRefToImmutableVariable(_)
             | MutRefToTemporary
             | FunctionTypeMismatch(..)
+            | FunctionEffectsNotSpecified
             | NotAStructField(_) => Error,
         }
     }

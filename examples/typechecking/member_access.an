@@ -22,11 +22,11 @@ foo_and_bar foo bar
 // 
 
 // expected stdout:
-// Bar : forall a. (Char -> Bar can a)
-// Foo : forall a. (F64 -> Foo can a)
-// FooBar : forall a. (I32 - String -> FooBar can a)
+// Bar : Char -> Bar pure
+// Foo : F64 -> Foo pure
+// FooBar : I32 - String -> FooBar pure
 // bar : Bar
 // foo : Foo
-// foo_and_bar : forall a b c d. ({ foo: a, ..b } - { bar: String, ..c } -> String can d)
+// foo_and_bar : forall a b c. ({ foo: a, ..b } - { bar: String, ..c } -> String pure)
 // foobar : FooBar
-// stringify : forall a. (String -> String can a)
+// stringify : String -> String pure

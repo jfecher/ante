@@ -8,6 +8,6 @@ foo = hello_foo 42
 
 // args: --check --show-types
 // expected stdout:
-// Foo : forall a b c. (a - b -> Foo a b can c)
+// Foo : forall a b. (a - b -> Foo a b pure)
 // foo : Foo String (Int a)
-// hello_foo : forall a b. (a -> Foo String a can b)
+// hello_foo : forall a. (a -> Foo String a pure)

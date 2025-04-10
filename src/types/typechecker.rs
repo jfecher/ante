@@ -1633,11 +1633,17 @@ impl<'a> Inferable<'a> for ast::Lambda<'a> {
             infer(self.body.as_mut(), cache)
         };
 
+        let effects = if body.effects.effects.is_empty() {
+            Box::new(Type::Tag(TypeTag::Pure))
+        } else {
+            Box::new(Type::Effects(body.effects))
+        };
+
         let typ = Function(FunctionType {
             parameters: parameter_types,
             return_type: Box::new(body.typ),
             environment: Box::new(infer_closure_environment(&self.closure_environment, cache)),
-            effects: Box::new(Type::Effects(body.effects)),
+            effects,
             has_varargs: false,
         });
 
@@ -1661,13 +1667,17 @@ impl<'a> Inferable<'a> for ast::FunctionCall<'a> {
         });
 
         let return_type = next_type_variable(cache);
-        let new_effect = f.effects.clone();
+        let effects = if f.effects.effects.is_empty() {
+            Box::new(Type::Tag(TypeTag::Pure))
+        } else {
+            Box::new(Type::Effects(f.effects.clone()))
+        };
 
         let new_function = Function(FunctionType {
             parameters,
             return_type: Box::new(return_type.clone()),
             environment: Box::new(next_type_variable(cache)),
-            effects: Box::new(Type::Effects(new_effect)),
+            effects,
             has_varargs: false,
         });
 

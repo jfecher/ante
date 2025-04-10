@@ -6,7 +6,7 @@ impl Iterator U64 U64 with
 
 type TakeWhile i a =
     iter: i
-    pred: a -> Bool
+    pred: a -> Bool pure
 
 impl Iterator (TakeWhile i a) a given Iterator i a with
     next tw =

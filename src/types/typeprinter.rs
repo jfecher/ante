@@ -169,7 +169,8 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             Type::Ref { sharedness, mutability, lifetime } => self.fmt_ref(sharedness, mutability, lifetime, f),
             Type::Struct(fields, rest) => self.fmt_struct(fields, *rest, f),
             Type::Effects(effects) => self.fmt_effects(effects, f),
-            Type::Tag(tag) => write!(f, "{tag}"),
+            Type::Tag(super::TypeTag::Pure) => write!(f, "{}", " pure".blue()),
+            Type::Tag(tag) => write!(f, "{}", tag.to_string().blue()),
         }
     }
 
@@ -222,7 +223,6 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             write!(f, "{}", ")".blue())?;
         }
 
-        write!(f, "{}", " can ".blue())?;
         self.fmt_type(&function.effects, f)?;
         Ok(())
     }
@@ -386,8 +386,13 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             return self.fmt_effects(effects, f);
         }
 
+        if effects.effects.is_empty() {
+            eprintln!("Empty effects!");
+            return write!(f, "{}", " pure".blue());
+        }
+
         if !effects.effects.is_empty() {
-            write!(f, "{}", "(".blue())?;
+            write!(f, "{}", " can (".blue())?;
         }
 
         for (effect_id, effect_args) in &effects.effects {
