@@ -16,7 +16,7 @@ use colored::*;
 
 use super::effects::EffectSet;
 use super::typechecker::follow_bindings_in_cache;
-use super::GeneralizedType;
+use super::{GeneralizedType, TypeTag};
 use super::TypePriority;
 
 /// Wrapper containing the information needed to print out a type
@@ -169,7 +169,6 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             Type::Ref { sharedness, mutability, lifetime } => self.fmt_ref(sharedness, mutability, lifetime, f),
             Type::Struct(fields, rest) => self.fmt_struct(fields, *rest, f),
             Type::Effects(effects) => self.fmt_effects(effects, f),
-            Type::Tag(super::TypeTag::Pure) => write!(f, "{}", " pure".blue()),
             Type::Tag(tag) => write!(f, "{}", tag.to_string().blue()),
         }
     }
@@ -223,6 +222,7 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             write!(f, "{}", ")".blue())?;
         }
 
+        write!(f, " ")?;
         self.fmt_type(&function.effects, f)?;
         Ok(())
     }
@@ -386,16 +386,20 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             return self.fmt_effects(effects, f);
         }
 
+        let replacement = &self.cache.type_bindings[effects.replacement.0];
+        let is_closed = matches!(replacement, TypeBinding::Bound(Type::Tag(TypeTag::Pure)));
+
+        // This case shouldn't be possible (empty effects should be bound to Pure instead)
+        // but we want to avoid panicking so print something still correct but distinctive.
         if effects.effects.is_empty() {
-            eprintln!("Empty effects!");
-            return write!(f, "{}", " pure".blue());
+            return write!(f, "{}", "(pure)".blue());
         }
 
         if !effects.effects.is_empty() {
-            write!(f, "{}", " can (".blue())?;
+            write!(f, "{}", "can ".blue())?;
         }
 
-        for (effect_id, effect_args) in &effects.effects {
+        for (i, (effect_id, effect_args)) in effects.effects.iter().enumerate() {
             let name = &self.cache.effect_infos[effect_id.0].name;
             write!(f, "{}", name.blue())?;
 
@@ -404,13 +408,13 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
                 self.fmt_type(arg, f)?;
             }
 
-            write!(f, "{}", ", ".blue())?;
+            if i != effects.effects.len() - 1{
+                write!(f, "{}", ", ".blue())?;
+            }
         }
 
-        self.fmt_type_variable(effects.replacement, f)?;
-
-        if !effects.effects.is_empty() {
-            write!(f, "{}", ")".blue())?;
+        if !is_closed {
+            self.fmt_type_variable(effects.replacement, f)?;
         }
 
         Ok(())

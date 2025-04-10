@@ -22,15 +22,16 @@ impl EffectSet {
         EffectSet { effects: vec![], replacement: typechecker::next_type_variable_id(cache) }
     }
 
-    pub fn single(id: EffectInfoId, args: Vec<Type>, cache: &mut ModuleCache) -> EffectSet {
-        let mut set = EffectSet::any(cache);
-        set.effects.push((id, args));
-        set
-    }
-
     pub fn new(effects: Vec<(EffectInfoId, Vec<Type>)>, cache: &mut ModuleCache) -> EffectSet {
         let mut set = EffectSet::any(cache);
         set.effects = effects;
+        set
+    }
+
+    /// Create an effect set with only the given effects, not letting it be extended any further.
+    pub fn only(effects: Vec<(EffectInfoId, Vec<Type>)>, cache: &mut ModuleCache<'_>) -> EffectSet {
+        let set = Self::new(effects, cache);
+        cache.bind(set.replacement, Type::Tag(super::TypeTag::Pure));
         set
     }
 

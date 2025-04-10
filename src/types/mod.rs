@@ -6,6 +6,8 @@
 //! definition of a user-defined type.
 use std::collections::BTreeMap;
 
+use effects::Effect;
+
 use crate::cache::{DefinitionInfoId, ModuleCache};
 use crate::error::location::{Locatable, Location};
 use crate::lexer::token::{FloatKind, IntegerKind};
@@ -435,6 +437,16 @@ impl Type {
                 }
             },
             Type::Tag(tag) => tag.to_string(),
+        }
+    }
+
+    /// Converts the given type into an EffectSet.
+    /// Panics if it is not a Type::Effects or Pure tag
+    fn as_effect_set(&self) -> Vec<Effect> {
+        match self {
+            Type::Effects(effects) => effects.effects.clone(),
+            Type::Tag(TypeTag::Pure) => Vec::new(),
+            _ => panic!("as_effect_set called on non-effect type"),
         }
     }
 }

@@ -1600,6 +1600,8 @@ impl<'a> Inferable<'a> for ast::Variable<'a> {
         // mutual recursion set can be generalized at once.
         cache.update_mutual_recursion_sets(definition_id, self.id.unwrap());
 
+        eprintln!("Base type of variable {} with id {} is {}", self, definition_id.0, s.display(cache));
+
         let (t, traits, mapping) = s.instantiate(traits, cache);
         self.instantiation_mapping = Rc::new(mapping);
         TypeResult::new(t, traits, cache)
@@ -1659,6 +1661,7 @@ impl<'a> Inferable<'a> for ast::Lambda<'a> {
 impl<'a> Inferable<'a> for ast::FunctionCall<'a> {
     fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> TypeResult {
         let mut f = infer(self.function.as_mut(), cache);
+        eprintln!("{} has {} effects", self.function, f.effects.effects.len());
 
         let parameters = fmap(&mut self.args, |arg| {
             let mut arg_result = infer(arg, cache);
@@ -2136,12 +2139,18 @@ fn inject_effect(id: DefinitionInfoId, effect_id: EffectInfoId, effect_args: Vec
     let info = &mut cache[id];
     let typ = info.typ.take().unwrap().into_monotype();
 
-    match &typ {
-        Type::Function(f) => {
-            let current_effects = f.effects.as_ref();
-            let location = info.location;
-            let extra_effect = Type::Effects(EffectSet::single(effect_id, effect_args, cache));
-            unify(current_effects, &extra_effect, location, cache, TE::NeverShown);
+    match typ {
+        Type::Function(mut f) => {
+            let mut current_effects = f.effects.as_effect_set();
+
+            // Exact equality here should be fine. `inject_effect` is meant to be called only on
+            // EffectDefinitions and should be before any unifications with type variables are done.
+            if !current_effects.iter().any(|(id, args)| *id == effect_id && *args == effect_args) {
+                current_effects.push((effect_id, effect_args));
+            }
+
+            *f.effects = Type::Effects(EffectSet::only(current_effects, cache));
+            let typ = Type::Function(f);
 
             let generalized = generalize(&typ, cache);
             cache[id].typ = Some(generalized);
