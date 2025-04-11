@@ -1604,6 +1604,8 @@ impl<'a> Inferable<'a> for ast::Variable<'a> {
 
         let (t, traits, mapping) = s.instantiate(traits, cache);
         self.instantiation_mapping = Rc::new(mapping);
+
+        eprintln!("Instantiated type of variable is {}", t.display(cache));
         TypeResult::new(t, traits, cache)
     }
 }
@@ -1662,6 +1664,7 @@ impl<'a> Inferable<'a> for ast::FunctionCall<'a> {
     fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> TypeResult {
         let mut f = infer(self.function.as_mut(), cache);
         eprintln!("{} has {} effects", self.function, f.effects.effects.len());
+        eprintln!("  function type is {}", f.typ.display(cache));
 
         let parameters = fmap(&mut self.args, |arg| {
             let mut arg_result = infer(arg, cache);
@@ -1670,17 +1673,13 @@ impl<'a> Inferable<'a> for ast::FunctionCall<'a> {
         });
 
         let return_type = next_type_variable(cache);
-        let effects = if f.effects.effects.is_empty() {
-            Box::new(Type::Tag(TypeTag::Pure))
-        } else {
-            Box::new(Type::Effects(f.effects.clone()))
-        };
+        let effects_var = next_type_variable_id(cache);
 
         let new_function = Function(FunctionType {
             parameters,
             return_type: Box::new(return_type.clone()),
             environment: Box::new(next_type_variable(cache)),
-            effects,
+            effects: Box::new(Type::TypeVariable(effects_var)),
             has_varargs: false,
         });
 
@@ -1691,6 +1690,12 @@ impl<'a> Inferable<'a> for ast::FunctionCall<'a> {
             Err(error) => issue_argument_types_error(self, f.typ.clone(), new_function, error, cache),
         }
 
+        if let TypeBinding::Bound(Type::Effects(new_effects)) = &cache.type_bindings[effects_var.0] {
+            let new_effects = new_effects.clone();
+            f.effects = f.effects.combine(&new_effects, cache);
+        }
+
+        eprintln!("call `{}` has {} effects", self, f.effects.effects.len());
         f.with_type(return_type)
     }
 }
