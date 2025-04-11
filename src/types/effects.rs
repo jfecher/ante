@@ -166,16 +166,16 @@ impl EffectSet {
         new_effects.sort();
         new_effects.dedup();
 
-        // let a_id = a.replacement;
-        // let b_id = b.replacement;
+        let a_id = a.replacement;
+        let b_id = b.replacement;
 
         let new_effect = EffectSet::new(new_effects, cache);
-        // if let Some(a_id) = a_id {
-        //     cache.bind(a_id, Type::Effects(new_effect.clone()));
-        // }
-        // if let Some(b_id) = b_id {
-        //     cache.bind(b_id, Type::Effects(new_effect.clone()));
-        // }
+        if let Some(a_id) = a_id {
+            cache.bind(a_id, Type::Effects(new_effect.clone()));
+        }
+        if let Some(b_id) = b_id {
+            cache.bind(b_id, Type::Effects(new_effect.clone()));
+        }
         new_effect
     }
 

@@ -53,4 +53,8 @@ map4 (l: List a) (f: a -> b) : List b can Log = ()
 // ) ((return _$0) 
 //     (_ = _$0);
 //     "foo"
-// ))
+// ));
+// (map1 = (fn (: l (List a)) (: f (a -> b can Log)) : (List b) -> ()));
+// (map2 = (fn (: l (List a)) (: f (a -> b pure)) : (List b) -> ()));
+// (map3 = (fn (: l (List a)) (: f (a -> b pure)) : (List b) pure -> ()));
+// (map4 = (fn (: l (List a)) (: f (a -> b)) : (List b) can Log -> ()))

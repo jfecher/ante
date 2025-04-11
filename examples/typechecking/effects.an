@@ -23,10 +23,10 @@ does_use x =
 
 // args: --check --show-types
 // expected stdout:
-// does_use : forall a b. (a -> Unit can (Use a, b))
+// does_use : forall a. (a -> Unit can Use a)
 //   given Add a
-// get : forall a b. (Unit -> a can (Use a, b))
-// handle_basic : forall a. (Unit -> Unit can (Use String, a))
-// log : forall a. (String -> Unit can (Log, a))
-// set : forall a b. (a -> Unit can (Use a, b))
-// use_resume : forall a. (Unit -> Unit can a)
+// get : forall a. (Unit -> a can Use a)
+// handle_basic : Unit -> Unit can Use String
+// log : String -> Unit can Log
+// set : forall a. (a -> Unit can Use a)
+// use_resume : Unit -> Unit pure

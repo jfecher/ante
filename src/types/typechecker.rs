@@ -564,10 +564,7 @@ pub(super) fn occurs(
         Tag(_) => OccursResult::does_not_occur(),
 
         TypeVariable(var_id) => typevars_match(id, level, *var_id, bindings, fuel, cache),
-        Function(function) => occurs(id, level, &function.return_type, bindings, fuel, cache)
-            .then(|| occurs(id, level, &function.environment, bindings, fuel, cache))
-            .then(|| occurs(id, level, &function.effects, bindings, fuel, cache))
-            .then_all(&function.parameters, |param| occurs(id, level, param, bindings, fuel, cache)),
+        Function(function) => occurs_in_function(id, level, function, bindings, fuel, cache),
         TypeApplication(typ, args) => occurs(id, level, typ, bindings, fuel, cache)
             .then_all(args, |arg| occurs(id, level, arg, bindings, fuel, cache)),
         Ref { mutability, sharedness, lifetime } => occurs(id, level, mutability, bindings, fuel, cache)
@@ -577,6 +574,16 @@ pub(super) fn occurs(
             .then_all(fields.iter().map(|(_, typ)| typ), |field| occurs(id, level, field, bindings, fuel, cache)),
         Effects(effects) => effects.occurs(id, level, bindings, fuel, cache),
     }
+}
+
+pub(super) fn occurs_in_function(
+    id: TypeVariableId, level: LetBindingLevel, function: &FunctionType, bindings: &mut UnificationBindings, fuel: u32,
+    cache: &mut ModuleCache<'_>,
+) -> OccursResult {
+    occurs(id, level, &function.return_type, bindings, fuel, cache)
+        .then(|| occurs(id, level, &function.environment, bindings, fuel, cache))
+        .then(|| occurs(id, level, &function.effects, bindings, fuel, cache))
+        .then_all(&function.parameters, |param| occurs(id, level, param, bindings, fuel, cache))
 }
 
 /// Helper function for the `occurs` check.
@@ -717,9 +724,7 @@ pub fn try_unify_with_bindings_inner<'b>(
             Ok(())
         },
 
-        (Effects(effects1), Effects(effects2)) => {
-            effects1.try_unify_with_bindings(effects2, bindings, cache)
-        },
+        (Effects(effects1), Effects(effects2)) => effects1.try_unify_with_bindings(effects2, bindings, cache),
 
         (Tag(tag1), Tag(tag2)) if tag1 == tag2 => Ok(()),
 
@@ -1632,16 +1637,31 @@ impl<'a> Inferable<'a> for ast::Lambda<'a> {
             infer(self.body.as_mut(), cache)
         };
 
-        let effects = Box::new(Type::Effects(body.effects));
-        let typ = Function(FunctionType {
+        let mut effects = body.effects.follow_bindings(cache).clone();
+        // To check if the function can be effect polymorphic we need to remove the replacement
+        // variable so we can see if it occurs in the rest of the function type.
+        let replacement = effects.replacement.take();
+
+        let mut typ = FunctionType {
             parameters: parameter_types,
             return_type: Box::new(body.typ),
             environment: Box::new(infer_closure_environment(&self.closure_environment, cache)),
-            effects,
+            effects: Box::new(Type::Effects(effects.clone())),
             has_varargs: false,
-        });
+        };
 
-        TypeResult::new(typ, body.traits, cache)
+        // Try to close the function's effects so they can no longer be extended, but
+        // ensure that the type variable isn't used within the function type first.
+        if let Some(replacement) = replacement {
+            let level = LetBindingLevel(CURRENT_LEVEL.load(Ordering::SeqCst));
+            let bindings = &mut UnificationBindings::empty();
+            if occurs_in_function(replacement, level, &typ, bindings, RECURSION_LIMIT, cache).occurs {
+                effects.replacement = Some(replacement);
+                *typ.effects = Type::Effects(effects);
+            }
+        }
+
+        TypeResult::new(Type::Function(typ), body.traits, cache)
     }
 }
 
@@ -1678,17 +1698,19 @@ impl<'a> Inferable<'a> for ast::FunctionCall<'a> {
             Err(error) => issue_argument_types_error(self, f.typ.clone(), new_function, error, cache),
         }
 
-        if let TypeBinding::Bound(Type::Effects(new_effects)) = &cache.type_bindings[effects_var.0] {
-            let new_effects = new_effects.clone();
-            f.effects = f.effects.combine(&new_effects, cache);
-        }
+        // Add any effects from f to our executed effects.
+        // Note that the effects in `f.effects` are the effects from evaluating f,
+        // not the effects within f's lambda body. Those are stored only on f's type.
+        let expected = Type::Effects(f.effects.clone());
+        unify(&Type::TypeVariable(effects_var), &expected, self.location, cache, TE::NeverShown);
 
         f.with_type(return_type)
     }
 }
 
 fn issue_argument_types_error<'c>(
-    call: &ast::FunctionCall<'c>, f: Type, new_function: Type, original_error: Diagnostic<'c>, cache: &mut ModuleCache<'c>,
+    call: &ast::FunctionCall<'c>, f: Type, new_function: Type, original_error: Diagnostic<'c>,
+    cache: &mut ModuleCache<'c>,
 ) {
     match try_unwrap_functions(f, new_function, cache) {
         Some((expected, actual)) => {

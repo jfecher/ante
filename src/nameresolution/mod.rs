@@ -51,7 +51,8 @@ use crate::types::effects::EffectSet;
 use crate::types::traits::ConstraintSignature;
 use crate::types::typed::Typed;
 use crate::types::{
-    Field, FunctionType, GeneralizedType, LetBindingLevel, PrimitiveType, Type, TypeConstructor, TypeInfoBody, TypeInfoId, TypeTag, TypeVariableId, INITIAL_LEVEL, STRING_TYPE
+    Field, FunctionType, GeneralizedType, LetBindingLevel, PrimitiveType, Type, TypeConstructor, TypeInfoBody,
+    TypeInfoId, TypeTag, TypeVariableId, INITIAL_LEVEL, STRING_TYPE,
 };
 use crate::util::{fmap, timing, trustme};
 
@@ -704,8 +705,11 @@ impl<'c> NameResolver {
                 let parameters = fmap(&function.parameters, |arg| self.convert_type(cache, arg));
                 let return_type = Box::new(self.convert_type(cache, &function.return_type));
 
-                let environment =
-                    Box::new(if function.is_closure { cache.next_type_variable(self.let_binding_level) } else { Type::UNIT });
+                let environment = Box::new(if function.is_closure {
+                    cache.next_type_variable(self.let_binding_level)
+                } else {
+                    Type::UNIT
+                });
 
                 let effects = if let Some(effects) = &function.effects {
                     Box::new(self.convert_effects(effects, cache))
@@ -873,9 +877,8 @@ impl<'c> NameResolver {
         all_definitions
     }
 
-    fn resolve_all_definitions<'a, T, It, F>(
-        &mut self, patterns: It, cache: &mut ModuleCache<'c>, mut definition: F,
-    ) where
+    fn resolve_all_definitions<'a, T, It, F>(&mut self, patterns: It, cache: &mut ModuleCache<'c>, mut definition: F)
+    where
         It: Iterator<Item = &'a mut T>,
         T: Resolvable<'c> + 'a,
         F: FnMut() -> DefinitionKind<'c>,
@@ -1048,8 +1051,9 @@ impl<'c> Resolvable<'c> for ast::Lambda<'c> {
 
 /// If any parameters have a function type (not contained within another type) without an explicit
 /// `can` clause, this adds an implicit `can e` to both that parameter and to this outer lambda.
-fn desugar_function_effect_variables<'local, 'a: 'local, T>(args: T, effects: &mut Option<Vec<EffectName<'a>>>) 
-    where T: IntoIterator<Item = &'local mut ast::Type<'a>>
+fn desugar_function_effect_variables<'local, 'a: 'local, T>(args: T, effects: &mut Option<Vec<EffectName<'a>>>)
+where
+    T: IntoIterator<Item = &'local mut ast::Type<'a>>,
 {
     // The name of this variable is a bit ugly but we need to ensure it doesn't clash
     // with any existing variable names.
@@ -1077,11 +1081,9 @@ fn desugar_function_effect_variables<'local, 'a: 'local, T>(args: T, effects: &m
 }
 
 fn desugar_function_effect_variables_in_ast<'a>(args: &mut [ast::Ast<'a>], effects: &mut Option<Vec<EffectName<'a>>>) {
-    let arg_types = args.iter_mut().filter_map(|arg| {
-        match arg {
-            ast::Ast::TypeAnnotation(annotation) => Some(&mut annotation.rhs),
-            _ => None,
-        }
+    let arg_types = args.iter_mut().filter_map(|arg| match arg {
+        ast::Ast::TypeAnnotation(annotation) => Some(&mut annotation.rhs),
+        _ => None,
     });
 
     desugar_function_effect_variables(arg_types, effects);

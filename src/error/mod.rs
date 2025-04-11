@@ -86,7 +86,7 @@ pub enum DiagnosticKind {
     UnreachablePattern,
     MissingCase(/*case*/ String),
     UnhandledEffectsInMain(/*effects*/ String),
-    FunctionTypeMismatch(/*actual*/String, /*expected*/String),
+    FunctionTypeMismatch(/*actual*/ String, /*expected*/ String),
     FunctionEffectsNotSpecified,
 }
 

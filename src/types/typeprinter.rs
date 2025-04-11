@@ -223,7 +223,14 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
         }
 
         write!(f, " ")?;
-        self.fmt_type(&function.effects, f)?;
+
+        if let Type::TypeVariable(id) = self.cache.follow_typebindings_shallow(&function.effects) {
+            write!(f, "{}", "can ".blue())?;
+            self.fmt_type_variable(*id, f)?;
+        } else {
+            self.fmt_type(&function.effects, f)?;
+        }
+
         Ok(())
     }
 
@@ -405,7 +412,7 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
                 self.fmt_type(arg, f)?;
             }
 
-            if i != effects.effects.len() - 1{
+            if i != effects.effects.len() - 1 {
                 write!(f, "{}", ", ".blue())?;
             }
         }

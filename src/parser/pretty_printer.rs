@@ -53,6 +53,23 @@ impl<'a> Display for ast::Lambda<'a> {
         if let Some(typ) = &self.return_type {
             write!(f, " : {}", typ)?;
         }
+        if let Some(effects) = &self.effects {
+            if effects.is_empty() {
+                write!(f, " pure")?;
+            } else {
+                write!(f, " can")?;
+                for (i, (name, args)) in effects.iter().enumerate() {
+                    if i != 0 {
+                        write!(f, ",")?;
+                    }
+                    write!(f, " {name}")?;
+                    let args = fmap(args, ToString::to_string).join(" ");
+                    if !args.is_empty() {
+                        write!(f, " {args}")?;
+                    }
+                }
+            }
+        }
         write!(f, " -> {})", self.body)
     }
 }
@@ -123,7 +140,15 @@ impl<'a> Display for ast::Type<'a> {
                 } else {
                     Default::default()
                 };
-                write!(f, "({} {}{} {}{})", join_with(&function.parameters, " "), varargs, arrow, &function.return_type, effects)
+                write!(
+                    f,
+                    "({} {}{} {}{})",
+                    join_with(&function.parameters, " "),
+                    varargs,
+                    arrow,
+                    &function.return_type,
+                    effects
+                )
             },
             TypeApplication(constructor, args, _) => {
                 write!(f, "({} {})", constructor, join_with(args, " "))

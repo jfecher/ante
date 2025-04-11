@@ -1155,7 +1155,7 @@ impl<'c> Context<'c> {
     }
 
     /// Compile an effect `eff : A - ... - Z -> Ret` as:
-    /// ```
+    /// ```pseudocode
     /// eff(a, ..., z, k) =
     ///     continuation_push(k, a)
     ///     ...
@@ -1824,7 +1824,7 @@ impl<'c> Context<'c> {
     }
 
     /// A handle expression:
-    /// ```
+    /// ```pseudocode
     /// handle expr
     /// | effect1 arg1_1 .. arg1_M -> body1
     /// ...
@@ -1832,7 +1832,7 @@ impl<'c> Context<'c> {
     /// | return x -> return_case
     /// ```
     /// lowers into:
-    /// ```
+    /// ```pseudocode
     /// start_expr(continuation) =
     ///     result = expr // `continuation` is automatically added to any function calls within expr
     ///     continuation_push(continuation, result)
@@ -1890,7 +1890,7 @@ impl<'c> Context<'c> {
     }
 
     /// Creates the `handler` function from a handler:
-    /// ```
+    /// ```pseudocode
     /// handle expr
     /// | effect1 arg1_1 .. arg1_M -> body1
     /// ...
@@ -1898,7 +1898,7 @@ impl<'c> Context<'c> {
     /// | return x -> return_case
     /// ```
     /// lowers into:
-    /// ```
+    /// ```pseudocode
     /// handler(continuation) =
     ///     continuation_resume(continuation)
     ///     if continuation_suspended(continuation) then
@@ -1979,7 +1979,7 @@ impl<'c> Context<'c> {
     }
 
     /// Lowers the `expr` in `handle expr | ...` into:
-    /// ```
+    /// ```pseudocode
     /// start_expr(continuation) =
     ///     result = expr // `continuation` is automatically added to any function calls within expr
     ///     continuation_push(continuation, result)
@@ -2036,7 +2036,7 @@ impl<'c> Context<'c> {
     }
 
     /// A resume function `resume: Arg1 - Arg2 - ... - ArgN -> Ret` translates to:
-    /// ```
+    /// ```pseudocode
     /// Ret resume(_1: Arg1, _2: Arg2, ..., _N: ArgN, k: Cont) {
     ///     co_push(co, &_1, sizeof(Arg1));
     ///     co_push(co, &_2, sizeof(Arg2));
@@ -2100,11 +2100,11 @@ impl<'c> Context<'c> {
     }
 
     /// When matching on an effect in a handler:
-    /// ```
+    /// ```pseudocode
     /// | effect1 arg1_1 .. arg1_M -> body1
     /// ```
     /// Generate the code:
-    /// ```
+    /// ```pseudocode
     /// // Pop arguments in reverse order
     /// arg1_M = continuation_pop(continuation, typeof(arg1_1))
     /// ...

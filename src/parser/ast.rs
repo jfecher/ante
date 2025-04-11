@@ -226,7 +226,7 @@ pub struct FunctionType<'a> {
     pub has_varargs: bool,
     pub is_closure: bool,
     pub effects: Option<Vec<EffectName<'a>>>,
-    pub location: Location<'a>
+    pub location: Location<'a>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
