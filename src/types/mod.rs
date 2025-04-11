@@ -156,7 +156,6 @@ pub enum TypeTag {
     Shared,
     Mutable,
     Immutable,
-    Pure,
 }
 
 #[derive(Debug, Clone)]
@@ -328,8 +327,10 @@ impl Type {
                 }
             },
             Type::Effects(effects) => {
-                if let TypeBinding::Bound(binding) = &cache.type_bindings[effects.replacement.0] {
-                    return binding.traverse_rec(cache, f);
+                if let Some(replacement) = effects.replacement {
+                    if let TypeBinding::Bound(binding) = &cache.type_bindings[replacement.0] {
+                        return binding.traverse_rec(cache, f);
+                    }
                 }
                 for (_, effect_args) in &effects.effects {
                     for arg in effect_args {
@@ -427,13 +428,21 @@ impl Type {
             },
             Type::Effects(set) => {
                 if set.effects.is_empty() {
-                    format!("can tv{}", set.replacement.0)
+                    if let Some(replacement) = set.replacement {
+                        format!("can tv{}", replacement.0)
+                    } else {
+                        "pure".to_string()
+                    }
                 } else {
                     let effects = fmap(&set.effects, |(id, args)| {
                         let args = fmap(args, |arg| arg.approx_to_string());
                         format!("e{} {}", id.0, args.join(" "))
                     });
-                    format!("can {}, ..tv{}", effects.join(", "), set.replacement.0)
+                    let mut effects = format!("can {}", effects.join(", "));
+                    if let Some(replacement) = set.replacement {
+                        effects = format!("{effects}, ..tv{}", replacement.0)
+                    }
+                    effects
                 }
             },
             Type::Tag(tag) => tag.to_string(),
@@ -441,11 +450,10 @@ impl Type {
     }
 
     /// Converts the given type into an EffectSet.
-    /// Panics if it is not a Type::Effects or Pure tag
+    /// Panics if it is not a Type::Effects
     fn as_effect_set(&self) -> Vec<Effect> {
         match self {
             Type::Effects(effects) => effects.effects.clone(),
-            Type::Tag(TypeTag::Pure) => Vec::new(),
             _ => panic!("as_effect_set called on non-effect type"),
         }
     }
@@ -458,7 +466,6 @@ impl std::fmt::Display for TypeTag {
             TypeTag::Shared => write!(f, "shared"),
             TypeTag::Mutable => write!(f, "!"),
             TypeTag::Immutable => write!(f, "&"),
-            TypeTag::Pure => write!(f, "pure"),
         }
     }
 }

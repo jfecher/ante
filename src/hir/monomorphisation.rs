@@ -147,8 +147,9 @@ impl<'c> Context<'c> {
         let fuel = fuel - 1;
         match &self.cache.type_bindings[id.0] {
             Bound(TypeVariable(id2)) => self.find_binding(*id2, fuel),
-            Bound(typ @ Effects(effects)) => {
-                let binding = self.find_binding(effects.replacement, fuel);
+            Bound(typ @ Effects(effects)) if effects.replacement.is_some() => {
+                let replacement = effects.replacement.unwrap();
+                let binding = self.find_binding(replacement, fuel);
                 Ok(binding.unwrap_or(typ))
             },
             Bound(binding) => Ok(binding),
@@ -158,8 +159,9 @@ impl<'c> Context<'c> {
                         Some(TypeVariable(id2)) => {
                             return self.find_binding(*id2, fuel);
                         },
-                        Some(typ @ Effects(effects)) => {
-                            let binding = self.find_binding(effects.replacement, fuel);
+                        Some(typ @ Effects(effects)) if effects.replacement.is_some() => {
+                            let replacement = effects.replacement.unwrap();
+                            let binding = self.find_binding(replacement, fuel);
                             return Ok(binding.unwrap_or(typ));
                         },
                         Some(binding) => return Ok(binding),
@@ -243,10 +245,13 @@ impl<'c> Context<'c> {
     fn follow_all_effect_bindings_inner<'a>(
         &'a self, effects: &'a types::effects::EffectSet, fuel: u32,
     ) -> types::Type {
-        let replacement = match self.find_binding(effects.replacement, fuel) {
-            Ok(binding) => return self.follow_all_bindings_inner(binding, fuel),
-            Err(id) => id,
-        };
+        let mut replacement = None;
+        if let Some(original_replacement) = effects.replacement {
+            match self.find_binding(original_replacement, fuel) {
+                Ok(binding) => return self.follow_all_bindings_inner(binding, fuel),
+                Err(id) => replacement = Some(id),
+            };
+        }
 
         let effects = fmap(&effects.effects, |(id, args)| {
             let args = fmap(args, |arg| self.follow_all_bindings_inner(arg, fuel));

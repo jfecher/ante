@@ -16,7 +16,7 @@ use colored::*;
 
 use super::effects::EffectSet;
 use super::typechecker::follow_bindings_in_cache;
-use super::{GeneralizedType, TypeTag};
+use super::GeneralizedType;
 use super::TypePriority;
 
 /// Wrapper containing the information needed to print out a type
@@ -382,20 +382,17 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
     }
 
     fn fmt_effects(&self, effects: &EffectSet, f: &mut Formatter) -> std::fmt::Result {
-        if let TypeBinding::Bound(Type::Effects(effects)) = &self.cache.type_bindings[effects.replacement.0] {
-            return self.fmt_effects(effects, f);
+        if let Some(replacement) = effects.replacement {
+            if let TypeBinding::Bound(Type::Effects(effects)) = &self.cache.type_bindings[replacement.0] {
+                return self.fmt_effects(effects, f);
+            }
         }
 
-        let replacement = &self.cache.type_bindings[effects.replacement.0];
-        let is_closed = matches!(replacement, TypeBinding::Bound(Type::Tag(TypeTag::Pure)));
-
-        // This case shouldn't be possible (empty effects should be bound to Pure instead)
-        // but we want to avoid panicking so print something still correct but distinctive.
-        if effects.effects.is_empty() {
-            return write!(f, "{}", "(pure)".blue());
+        if effects.effects.is_empty() && effects.replacement.is_none() {
+            return write!(f, "{}", "pure".blue());
         }
 
-        if !effects.effects.is_empty() {
+        if !effects.effects.is_empty() || effects.replacement.is_some() {
             write!(f, "{}", "can ".blue())?;
         }
 
@@ -413,8 +410,11 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             }
         }
 
-        if !is_closed {
-            self.fmt_type_variable(effects.replacement, f)?;
+        if let Some(replacement) = effects.replacement {
+            if !effects.effects.is_empty() {
+                write!(f, "{}", ", ".blue())?;
+            }
+            self.fmt_type_variable(replacement, f)?;
         }
 
         Ok(())

@@ -711,7 +711,7 @@ impl<'c> NameResolver {
                     Box::new(self.convert_effects(effects, cache))
                 } else {
                     cache.push_diagnostic(function.location, D::FunctionEffectsNotSpecified);
-                    Box::new(Type::Tag(TypeTag::Pure))
+                    Box::new(Type::Effects(EffectSet::pure()))
                 };
 
                 let has_varargs = function.has_varargs;
@@ -792,13 +792,7 @@ impl<'c> NameResolver {
             }
         }
 
-        if new_effects.is_empty() {
-            Type::Tag(TypeTag::Pure)
-        } else {
-            let replacement = cache.next_type_variable_id(self.let_binding_level);
-            cache.bind(replacement, Type::Tag(TypeTag::Pure));
-            Type::Effects(EffectSet { effects: new_effects, replacement })
-        }
+        Type::Effects(EffectSet::only(new_effects))
     }
 
     /// The collect* family of functions recurs over an irrefutable pattern, either declaring or
@@ -1216,7 +1210,7 @@ fn create_variant_constructor_type(
             parameters: args,
             return_type: Box::new(result),
             environment: Box::new(Type::UNIT),
-            effects: Box::new(Type::Tag(TypeTag::Pure)),
+            effects: Box::new(Type::Effects(EffectSet::pure())),
             has_varargs: false,
         });
     }

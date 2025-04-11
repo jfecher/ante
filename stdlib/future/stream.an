@@ -19,7 +19,7 @@ for (s: Stream _ a) (f: a -> b) -> Unit =
     handle stream s
     | emit a ->
         f a
-        for resume f
+        resume ()
 
 filter_map (s: Stream _ a) (f: a -> Maybe b) -> Unit can Emit b =
     handle stream s
@@ -27,8 +27,7 @@ filter_map (s: Stream _ a) (f: a -> Maybe b) -> Unit can Emit b =
         match f a
         | Some b -> emit b
         | None -> ()
-
-        filter_map resume f
+        resume ()
 
 map s f = filter_map s fn x -> Some (f x)
 

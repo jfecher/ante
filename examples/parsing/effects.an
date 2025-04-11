@@ -24,6 +24,14 @@ handle ()
 | return _ -> "foo"
 | log _ -> "impossible"
 
+map1 (l: List a) (f: a -> b can Log) : List b = ()
+
+map2 (l: List a) (f: a -> b pure) : List b = ()
+
+map3 (l: List a) (f: a -> b pure) : List b pure = ()
+
+map4 (l: List a) (f: a -> b) : List b can Log = ()
+
 // args: --parse
 // expected stdout:
 // (effect Log with

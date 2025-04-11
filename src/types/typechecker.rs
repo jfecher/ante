@@ -718,8 +718,7 @@ pub fn try_unify_with_bindings_inner<'b>(
         },
 
         (Effects(effects1), Effects(effects2)) => {
-            effects1.try_unify_with_bindings(effects2, bindings, cache);
-            Ok(())
+            effects1.try_unify_with_bindings(effects2, bindings, cache)
         },
 
         (Tag(tag1), Tag(tag2)) if tag1 == tag2 => Ok(()),
@@ -1600,12 +1599,8 @@ impl<'a> Inferable<'a> for ast::Variable<'a> {
         // mutual recursion set can be generalized at once.
         cache.update_mutual_recursion_sets(definition_id, self.id.unwrap());
 
-        eprintln!("Base type of variable {} with id {} is {}", self, definition_id.0, s.display(cache));
-
         let (t, traits, mapping) = s.instantiate(traits, cache);
         self.instantiation_mapping = Rc::new(mapping);
-
-        eprintln!("Instantiated type of variable is {}", t.display(cache));
         TypeResult::new(t, traits, cache)
     }
 }
@@ -1637,12 +1632,7 @@ impl<'a> Inferable<'a> for ast::Lambda<'a> {
             infer(self.body.as_mut(), cache)
         };
 
-        let effects = if body.effects.effects.is_empty() {
-            Box::new(Type::Tag(TypeTag::Pure))
-        } else {
-            Box::new(Type::Effects(body.effects))
-        };
-
+        let effects = Box::new(Type::Effects(body.effects));
         let typ = Function(FunctionType {
             parameters: parameter_types,
             return_type: Box::new(body.typ),
@@ -1663,8 +1653,6 @@ impl<'a> Inferable<'a> for ast::Lambda<'a> {
 impl<'a> Inferable<'a> for ast::FunctionCall<'a> {
     fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> TypeResult {
         let mut f = infer(self.function.as_mut(), cache);
-        eprintln!("{} has {} effects", self.function, f.effects.effects.len());
-        eprintln!("  function type is {}", f.typ.display(cache));
 
         let parameters = fmap(&mut self.args, |arg| {
             let mut arg_result = infer(arg, cache);
@@ -1695,7 +1683,6 @@ impl<'a> Inferable<'a> for ast::FunctionCall<'a> {
             f.effects = f.effects.combine(&new_effects, cache);
         }
 
-        eprintln!("call `{}` has {} effects", self, f.effects.effects.len());
         f.with_type(return_type)
     }
 }
@@ -2154,7 +2141,7 @@ fn inject_effect(id: DefinitionInfoId, effect_id: EffectInfoId, effect_args: Vec
                 current_effects.push((effect_id, effect_args));
             }
 
-            *f.effects = Type::Effects(EffectSet::only(current_effects, cache));
+            *f.effects = Type::Effects(EffectSet::only(current_effects));
             let typ = Type::Function(f);
 
             let generalized = generalize(&typ, cache);

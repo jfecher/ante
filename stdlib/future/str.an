@@ -1,18 +1,19 @@
 import Vec
 
-reverse (s: String) -> String =
+reverse (s: String) : String =
     buf = mut malloc (s.len + 1usz)
 
-    loop (i = 0) ->
+    i = loop (i = 0) ->
         if i < s.len then
             buf#i := s#(s.len - i - 1usz)
             recur (i + 1)
+        else i
 
     buf#i := '\0'
     String buf i
 
 
-split (s: String) (c: String) -> Vec String =
+split (s: String) (c: String) : Vec String =
     v = mut Vec.empty ()
 
     i, j = loop (subend = 0) (substart = 0) ->
@@ -31,7 +32,7 @@ split (s: String) (c: String) -> Vec String =
     push v (substr s j i)
     v
 
-substr (s: String) (begin: Usz) (end: Usz) -> String =
+substr (s: String) (begin: Usz) (end: Usz) : String =
     if end > s.len or begin >= s.len then
         return ""
 

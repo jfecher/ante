@@ -1,15 +1,15 @@
 effect Fail with
     fail: Unit -> a
 
-try (f: Unit -> a can Fail) -> Maybe a =
+try (f: Unit -> a can Fail) : Maybe a =
     handle f ()
     | return a -> Some a
     | fail () -> None
 
-try_or (default: a) (f: Unit -> a can Fail) -> a =
+try_or (default: a) (f: Unit -> a can Fail) : a =
     try f else default
 
-assert (cond: Bool) -> Unit can Fail =
+assert (cond: Bool) : Unit can Fail =
     if not cond then fail ()
 
 /// Retry a function until it succeeds (doesn't call fail).
@@ -24,7 +24,7 @@ assert (cond: Bool) -> Unit can Fail =
 ///     input = get_input ()
 ///     parse input
 /// ```
-retry_until_success (f: Unit -> a can Fail) -> a =
+retry_until_success (f: Unit -> a can Fail) : a =
     handle f ()
     | return a -> a
     | fail () -> retry_until_success f
