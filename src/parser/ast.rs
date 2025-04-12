@@ -131,7 +131,7 @@ pub struct Lambda<'a> {
     pub typ: Option<types::Type>,
 }
 
-pub type EffectName<'a> = (String, Vec<Type<'a>>);
+pub type EffectName<'a> = (String, Location<'a>, Vec<Type<'a>>);
 
 // TODO: Remove. This is only used for experimenting with ante-lsp
 // which does not refer to the instantiation_mapping field at all.

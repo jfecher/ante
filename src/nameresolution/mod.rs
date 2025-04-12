@@ -63,6 +63,10 @@ use std::path::{Path, PathBuf};
 pub mod builtin;
 mod scope;
 
+/// The name of this variable is a bit ugly but we need to ensure it doesn't clash
+/// with any existing variable names.
+const IMPLICIT_EFFECT_NAME: &str = "$e";
+
 /// Specifies how far a particular module is in name resolution.
 /// Keeping this properly up to date for each module is the
 /// key for preventing infinite recursion when declaring recursive imports.
@@ -689,7 +693,6 @@ impl<'c> NameResolver {
         self.state = NameResolutionState::Defined;
     }
 
-    /// Converts an ast::Type to a types::Type, expects all typevars to be in scope
     pub fn convert_type(&mut self, cache: &mut ModuleCache<'c>, ast_type: &ast::Type<'c>) -> Type {
         match ast_type {
             ast::Type::Integer(Some(kind), _) => Type::int(*kind),
@@ -786,17 +789,60 @@ impl<'c> NameResolver {
 
     fn convert_effects(&mut self, effects: &[EffectName<'c>], cache: &mut ModuleCache<'c>) -> Type {
         let mut new_effects = Vec::new();
+        let mut replacement_var: Option<(String, Location<'c>, TypeVariableId)> = None;
 
-        for (effect_name, effect_args) in effects {
-            let id = self.lookup_effect(effect_name, cache);
-            let args = fmap(effect_args, |arg| self.convert_type(cache, arg));
+        for (effect_name, name_location, effect_args) in effects {
+            if effect_name.chars().next().map_or(false, |c| c.is_uppercase()) {
+                let id = self.lookup_effect(effect_name, cache);
+                let args = fmap(effect_args, |arg| self.convert_type(cache, arg));
 
-            if let Some(id) = id {
-                new_effects.push((id, args));
+                if let Some(id) = id {
+                    new_effects.push((id, args));
+                } else {
+                    cache.push_diagnostic(*name_location, D::NotInScope("Effect", effect_name.clone()));
+                }
+            } else {
+                if let Some((previous_name, previous_location, _)) = &replacement_var {
+                    if previous_name == IMPLICIT_EFFECT_NAME {
+                        cache.push_diagnostic(
+                            *previous_location,
+                            D::ImplicitEffectVariableMustBeExplicit { explicit_arg_name: effect_name.clone() },
+                        );
+                        cache.push_diagnostic(
+                            *name_location,
+                            D::ImplicitEffectVariableMustBeExplicitNote { explicit_arg_name: effect_name.clone() },
+                        );
+                    } else if effect_name == IMPLICIT_EFFECT_NAME {
+                        cache.push_diagnostic(
+                            *name_location,
+                            D::ImplicitEffectVariableMustBeExplicit { explicit_arg_name: effect_name.clone() },
+                        );
+                        cache.push_diagnostic(
+                            *previous_location,
+                            D::ImplicitEffectVariableMustBeExplicitNote { explicit_arg_name: effect_name.clone() },
+                        );
+                    } else {
+                        cache.push_diagnostic(
+                            *name_location,
+                            D::EffectVariableAlreadyUsed {
+                                unnecessary_var_name: effect_name.clone(),
+                                old_name: previous_name.clone(),
+                            },
+                        );
+                        cache.push_diagnostic(
+                            *previous_location,
+                            D::EffectVariableAlreadyUsedNote { old_name: previous_name.clone() },
+                        );
+                    }
+                } else {
+                    let var = cache.next_type_variable_id(self.let_binding_level);
+                    replacement_var = Some((effect_name.clone(), *name_location, var));
+                }
             }
         }
 
-        Type::Effects(EffectSet::only(new_effects))
+        let replacement = replacement_var.map(|(_, _, type_variable)| type_variable);
+        Type::Effects(EffectSet { effects: new_effects, replacement })
     }
 
     /// The collect* family of functions recurs over an irrefutable pattern, either declaring or
@@ -1055,27 +1101,28 @@ fn desugar_function_effect_variables<'local, 'a: 'local, T>(args: T, effects: &m
 where
     T: IntoIterator<Item = &'local mut ast::Type<'a>>,
 {
-    // The name of this variable is a bit ugly but we need to ensure it doesn't clash
-    // with any existing variable names.
-    let implicit_effect = ("$e".to_string(), Vec::new());
-    let mut modified = false;
+    // Set to the location of the function type we've modified
+    let mut modified = None;
 
     for arg in args {
         if let ast::Type::Function(function) = arg {
             if function.effects.is_none() {
-                function.effects = Some(vec![implicit_effect.clone()]);
-                modified = true;
+                let location = function.location;
+                function.effects = Some(vec![(IMPLICIT_EFFECT_NAME.to_string(), location, Vec::new())]);
+                modified = Some(location);
             }
         }
     }
 
-    if modified {
+    if let Some(modified_location) = modified {
+        let implicit_effect = (IMPLICIT_EFFECT_NAME.to_string(), modified_location, Vec::new());
+
         if let Some(effects) = effects {
             effects.push(implicit_effect);
         } else {
             *effects = Some(vec![implicit_effect]);
         }
-    } else {
+    } else if effects.is_none() {
         *effects = Some(Vec::new());
     }
 }

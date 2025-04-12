@@ -63,6 +63,19 @@ pub enum DiagnosticKind {
     NotAStruct(/*struct name*/ String),
     MissingFields(/*missing struct fields*/ Vec<String>),
     NotAStructField(/*field name*/ String),
+    ImplicitEffectVariableMustBeExplicit {
+        explicit_arg_name: String,
+    },
+    ImplicitEffectVariableMustBeExplicitNote {
+        explicit_arg_name: String,
+    },
+    EffectVariableAlreadyUsed {
+        unnecessary_var_name: String,
+        old_name: String,
+    },
+    EffectVariableAlreadyUsedNote {
+        old_name: String,
+    },
 
     //
     //                  Type Checking
@@ -355,6 +368,18 @@ impl Display for DiagnosticKind {
             DiagnosticKind::FunctionEffectsNotSpecified => {
                 write!(f, "This function type's effects must be specified. Add `pure` if it shouldn't have any.")
             },
+            DiagnosticKind::ImplicitEffectVariableMustBeExplicit { explicit_arg_name } => {
+                write!(f, "This function's effects must be specified explicitly since a polymorphic effect variable `{explicit_arg_name}` was already previously used")
+            },
+            DiagnosticKind::ImplicitEffectVariableMustBeExplicitNote { explicit_arg_name } => {
+                write!(f, "`{explicit_arg_name}` previously used here")
+            },
+            DiagnosticKind::EffectVariableAlreadyUsed { unnecessary_var_name, old_name } => {
+                write!(f, "This function already has an effect variable named `{old_name}`, so `{unnecessary_var_name}` is unnecessary")
+            },
+            DiagnosticKind::EffectVariableAlreadyUsedNote { old_name } => {
+                write!(f, "`{old_name}` previously used here")
+            },
         }
     }
 }
@@ -365,7 +390,11 @@ impl DiagnosticKind {
         use ErrorType::*;
 
         match &self {
-            PreviouslyDefinedHere(_) | ImplCandidate(_) | ImplCandidateWithMoreHidden(_, _) => Note,
+            ImplicitEffectVariableMustBeExplicitNote { .. }
+            | EffectVariableAlreadyUsedNote { .. }
+            | PreviouslyDefinedHere(_)
+            | ImplCandidate(_)
+            | ImplCandidateWithMoreHidden(_, _) => Note,
 
             Unused(_) | UnreachablePattern => Warning,
 
@@ -406,6 +435,8 @@ impl DiagnosticKind {
             | MutRefToTemporary
             | FunctionTypeMismatch(..)
             | FunctionEffectsNotSpecified
+            | ImplicitEffectVariableMustBeExplicit { .. }
+            | EffectVariableAlreadyUsed { .. }
             | NotAStructField(_) => Error,
         }
     }

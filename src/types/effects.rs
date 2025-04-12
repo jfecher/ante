@@ -52,6 +52,10 @@ impl EffectSet {
 
         match &cache.type_bindings[replacement.0] {
             TypeBinding::Bound(Type::Effects(effects)) => effects.follow_bindings(cache),
+            TypeBinding::Bound(typevar @ Type::TypeVariable(_)) => match &cache.follow_typebindings_shallow(typevar) {
+                Type::Effects(effects) => effects.follow_bindings(cache),
+                _ => self,
+            },
             _ => self,
         }
     }

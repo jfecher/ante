@@ -58,7 +58,7 @@ impl<'a> Display for ast::Lambda<'a> {
                 write!(f, " pure")?;
             } else {
                 write!(f, " can")?;
-                for (i, (name, args)) in effects.iter().enumerate() {
+                for (i, (name, _, args)) in effects.iter().enumerate() {
                     if i != 0 {
                         write!(f, ",")?;
                     }
@@ -124,7 +124,7 @@ impl<'a> Display for ast::Type<'a> {
                 let arrow = if function.is_closure { "=>" } else { "->" };
                 let varargs = if function.has_varargs { "... " } else { "" };
                 let effects = if let Some(effects) = &function.effects {
-                    let effects = fmap(effects, |(name, args)| {
+                    let effects = fmap(effects, |(name, _, args)| {
                         let args = join_with(args, " ");
                         if args.is_empty() {
                             name.clone()

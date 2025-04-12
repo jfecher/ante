@@ -32,6 +32,7 @@ use combinators::*;
 use error::{ParseError, ParseResult};
 
 use self::ast::Sharedness;
+use self::ast::EffectName;
 
 type AstResult<'a, 'b> = ParseResult<'a, 'b, Ast<'b>>;
 
@@ -109,25 +110,34 @@ parser!(function_definition location -> 'b ast::Definition<'b> =
     }
 );
 
-fn effect_clause<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Vec<(String, Vec<Type<'b>>)>> {
+fn effect_clause<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Vec<EffectName<'b>>> {
     or(&[non_empty_effect_clause, pure_clause], "effect clause")(input)
 }
 
-parser!(non_empty_effect_clause location -> 'b Vec<(String, Vec<Type<'b>>)> =
+parser!(non_empty_effect_clause location -> 'b Vec<EffectName<'b>> =
     _ <- expect(Token::Can);
     effects <- many1(effect);
     effects
 );
 
-parser!(pure_clause location -> 'b Vec<(String, Vec<Type<'b>>)> =
+parser!(pure_clause location -> 'b Vec<EffectName<'b>> =
     _ <- expect(Token::Pure);
     Vec::new()
 );
 
-parser!(effect location -> 'b (String, Vec<Type<'b>>) =
+fn effect<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, EffectName<'b>> {
+    or(&[concrete_effect, polymorphic_effect], "effect")(input)
+}
+
+parser!(concrete_effect location -> 'b EffectName<'b> =
     name <- typename;
     args <- many0(basic_type);
-    (name, args)
+    (name, location, args)
+);
+
+parser!(polymorphic_effect location -> 'b EffectName<'b> =
+    name <- identifier;
+    (name, location, Vec::new())
 );
 
 parser!(varargs location -> 'b () =

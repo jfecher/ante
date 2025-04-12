@@ -1009,6 +1009,7 @@ pub fn find_all_typevars(typ: &Type, polymorphic_only: bool, cache: &ModuleCache
             for parameter in &function.parameters {
                 type_variables.append(&mut find_all_typevars(parameter, polymorphic_only, cache));
             }
+
             type_variables.append(&mut find_all_typevars(&function.environment, polymorphic_only, cache));
             type_variables.append(&mut find_all_typevars(&function.return_type, polymorphic_only, cache));
             type_variables.append(&mut find_all_typevars(&function.effects, polymorphic_only, cache));
