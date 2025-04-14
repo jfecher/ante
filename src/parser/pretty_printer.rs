@@ -7,6 +7,8 @@ use std::fmt::{self, Display, Formatter};
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
+use super::ast::EffectAst;
+
 static INDENT_LEVEL: AtomicUsize = AtomicUsize::new(0);
 
 impl<'a> Display for Ast<'a> {
@@ -54,23 +56,39 @@ impl<'a> Display for ast::Lambda<'a> {
             write!(f, " : {}", typ)?;
         }
         if let Some(effects) = &self.effects {
-            if effects.is_empty() {
-                write!(f, " pure")?;
-            } else {
-                write!(f, " can")?;
-                for (i, (name, _, args)) in effects.iter().enumerate() {
-                    if i != 0 {
-                        write!(f, ",")?;
-                    }
-                    write!(f, " {name}")?;
-                    let args = fmap(args, ToString::to_string).join(" ");
-                    if !args.is_empty() {
-                        write!(f, " {args}")?;
-                    }
-                }
-            }
+            write!(f, " ")?;
+            fmt_effects(effects, f)?;
         }
         write!(f, " -> {})", self.body)
+    }
+}
+
+fn fmt_effects(effects: &[EffectAst], f: &mut Formatter) -> fmt::Result {
+    if effects.is_empty() {
+        write!(f, "pure")
+    } else {
+        write!(f, "can")?;
+        for (i, (name, _, args)) in effects.iter().enumerate() {
+            if i != 0 {
+                write!(f, ",")?;
+            }
+
+            write!(f, " {name}")?;
+            let args = fmap(args, ToString::to_string).join(" ");
+            if !args.is_empty() {
+                write!(f, " {args}")?;
+            }
+        }
+        Ok(())
+    }
+}
+
+impl<'a> Display for ast::EffectName {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            ast::EffectName::Name(name) => write!(f, "{name}"),
+            ast::EffectName::ImplicitEffect(_) => write!(f, ".."),
+        }
     }
 }
 
@@ -123,32 +141,12 @@ impl<'a> Display for ast::Type<'a> {
             Function(function) => {
                 let arrow = if function.is_closure { "=>" } else { "->" };
                 let varargs = if function.has_varargs { "... " } else { "" };
-                let effects = if let Some(effects) = &function.effects {
-                    let effects = fmap(effects, |(name, _, args)| {
-                        let args = join_with(args, " ");
-                        if args.is_empty() {
-                            name.clone()
-                        } else {
-                            format!("{} {}", name, args)
-                        }
-                    });
-                    if effects.is_empty() {
-                        format!(" pure")
-                    } else {
-                        format!(" can {}", join_with(effects, ", "))
-                    }
-                } else {
-                    Default::default()
-                };
-                write!(
-                    f,
-                    "({} {}{} {}{})",
-                    join_with(&function.parameters, " "),
-                    varargs,
-                    arrow,
-                    &function.return_type,
-                    effects
-                )
+                write!(f, "({} {}{} {}", join_with(&function.parameters, " "), varargs, arrow, &function.return_type,)?;
+                if let Some(effects) = &function.effects {
+                    write!(f, " ")?;
+                    fmt_effects(effects, f)?;
+                }
+                write!(f, ")")
             },
             TypeApplication(constructor, args, _) => {
                 write!(f, "({} {})", constructor, join_with(args, " "))

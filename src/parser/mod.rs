@@ -27,12 +27,12 @@ use std::{collections::HashSet, iter::FromIterator};
 
 use crate::lexer::token::Token;
 use crate::{error::location::Location, parser::ast::Mutability};
-use ast::{Ast, Trait, Type, TypeDefinitionBody};
+use ast::{Ast, EffectName, Trait, Type, TypeDefinitionBody};
 use combinators::*;
 use error::{ParseError, ParseResult};
 
+use self::ast::EffectAst;
 use self::ast::Sharedness;
-use self::ast::EffectName;
 
 type AstResult<'a, 'b> = ParseResult<'a, 'b, Ast<'b>>;
 
@@ -110,34 +110,34 @@ parser!(function_definition location -> 'b ast::Definition<'b> =
     }
 );
 
-fn effect_clause<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Vec<EffectName<'b>>> {
+fn effect_clause<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Vec<EffectAst<'b>>> {
     or(&[non_empty_effect_clause, pure_clause], "effect clause")(input)
 }
 
-parser!(non_empty_effect_clause location -> 'b Vec<EffectName<'b>> =
+parser!(non_empty_effect_clause location -> 'b Vec<EffectAst<'b>> =
     _ <- expect(Token::Can);
     effects <- many1(effect);
     effects
 );
 
-parser!(pure_clause location -> 'b Vec<EffectName<'b>> =
+parser!(pure_clause location -> 'b Vec<EffectAst<'b>> =
     _ <- expect(Token::Pure);
     Vec::new()
 );
 
-fn effect<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, EffectName<'b>> {
+fn effect<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, EffectAst<'b>> {
     or(&[concrete_effect, polymorphic_effect], "effect")(input)
 }
 
-parser!(concrete_effect location -> 'b EffectName<'b> =
+parser!(concrete_effect location -> 'b EffectAst<'b> =
     name <- typename;
     args <- many0(basic_type);
-    (name, location, args)
+    (EffectName::Name(name), location, args)
 );
 
-parser!(polymorphic_effect location -> 'b EffectName<'b> =
+parser!(polymorphic_effect location -> 'b EffectAst<'b> =
     name <- identifier;
-    (name, location, Vec::new())
+    (EffectName::Name(name), location, Vec::new())
 );
 
 parser!(varargs location -> 'b () =

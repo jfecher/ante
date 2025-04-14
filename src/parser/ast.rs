@@ -31,7 +31,7 @@ use crate::types::effects::Effect;
 use crate::types::pattern::DecisionTree;
 use crate::types::traits::RequiredTrait;
 use crate::types::typechecker::TypeBindings;
-use crate::types::{self, LetBindingLevel, TypeInfoId};
+use crate::types::{self, LetBindingLevel, TypeInfoId, TypeVariableId};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Display;
@@ -120,7 +120,7 @@ pub struct Lambda<'a> {
     pub body: Box<Ast<'a>>,
     pub return_type: Option<Type<'a>>,
 
-    pub effects: Option<Vec<EffectName<'a>>>,
+    pub effects: Option<Vec<EffectAst<'a>>>,
 
     pub closure_environment: ClosureEnvironment,
 
@@ -131,7 +131,13 @@ pub struct Lambda<'a> {
     pub typ: Option<types::Type>,
 }
 
-pub type EffectName<'a> = (String, Location<'a>, Vec<Type<'a>>);
+pub type EffectAst<'a> = (EffectName, Location<'a>, Vec<Type<'a>>);
+
+#[derive(Debug, Clone)]
+pub enum EffectName {
+    Name(String),
+    ImplicitEffect(TypeVariableId),
+}
 
 // TODO: Remove. This is only used for experimenting with ante-lsp
 // which does not refer to the instantiation_mapping field at all.
@@ -225,7 +231,7 @@ pub struct FunctionType<'a> {
     pub return_type: Box<Type<'a>>,
     pub has_varargs: bool,
     pub is_closure: bool,
-    pub effects: Option<Vec<EffectName<'a>>>,
+    pub effects: Option<Vec<EffectAst<'a>>>,
     pub location: Location<'a>,
 }
 
@@ -634,7 +640,7 @@ impl<'a> Ast<'a> {
     }
 
     pub fn lambda(
-        args: Vec<Ast<'a>>, return_type: Option<Type<'a>>, effects: Option<Vec<EffectName<'a>>>, body: Ast<'a>,
+        args: Vec<Ast<'a>>, return_type: Option<Type<'a>>, effects: Option<Vec<EffectAst<'a>>>, body: Ast<'a>,
         location: Location<'a>,
     ) -> Ast<'a> {
         assert!(!args.is_empty());

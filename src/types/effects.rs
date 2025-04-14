@@ -78,9 +78,7 @@ impl EffectSet {
         }
     }
 
-    fn follow_unification_bindings(
-        &self, bindings: &UnificationBindings, cache: &ModuleCache,
-    ) -> Self {
+    fn follow_unification_bindings(&self, bindings: &UnificationBindings, cache: &ModuleCache) -> Self {
         let this = self.flatten(cache);
         let Some(replacement) = this.extension else {
             return this;
@@ -109,7 +107,7 @@ impl EffectSet {
                     let new_id = typechecker::next_type_variable_id(cache);
                     cache.bind(new_id, other);
                     new_id
-                }
+                },
             }
         });
 
@@ -253,8 +251,7 @@ impl EffectSet {
     /// Mutates self to the set difference between self and other.
     /// Any effects that are removed are added to `handled_effects`.
     pub(super) fn handle_effects_from(
-        &mut self, other: EffectSet, handled_effects: &mut Vec<Effect>,
-        cache: &mut ModuleCache,
+        &mut self, other: EffectSet, handled_effects: &mut Vec<Effect>, cache: &mut ModuleCache,
     ) {
         let a = self.flatten(cache);
         let b = other.flatten(cache);

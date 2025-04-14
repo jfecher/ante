@@ -45,7 +45,7 @@ use crate::error::{
 };
 use crate::lexer::{token::Token, Lexer};
 use crate::nameresolution::scope::{FunctionScopes, Scope};
-use crate::parser::ast::EffectName;
+use crate::parser::ast::{EffectAst, EffectName};
 use crate::parser::{self, ast, ast::Ast};
 use crate::types::effects::EffectSet;
 use crate::types::traits::ConstraintSignature;
@@ -62,10 +62,6 @@ use std::path::{Path, PathBuf};
 
 pub mod builtin;
 mod scope;
-
-/// The name of this variable is a bit ugly but we need to ensure it doesn't clash
-/// with any existing variable names.
-const IMPLICIT_EFFECT_NAME: &str = "$e";
 
 /// Specifies how far a particular module is in name resolution.
 /// Keeping this properly up to date for each module is the
@@ -787,62 +783,83 @@ impl<'c> NameResolver {
         }
     }
 
-    fn convert_effects(&mut self, effects: &[EffectName<'c>], cache: &mut ModuleCache<'c>) -> Type {
+    fn convert_effects(&mut self, effects: &[EffectAst<'c>], cache: &mut ModuleCache<'c>) -> Type {
         let mut new_effects = Vec::new();
-        let mut replacement_var: Option<(String, Location<'c>, TypeVariableId)> = None;
+        let mut extension_var: Option<(EffectName, Location<'c>, TypeVariableId)> = None;
+
+        let starts_with_uppercase = |name: &str| name.chars().next().map_or(false, |c| c.is_uppercase());
 
         for (effect_name, name_location, effect_args) in effects {
-            if effect_name.chars().next().map_or(false, |c| c.is_uppercase()) {
-                let id = self.lookup_effect(effect_name, cache);
-                let args = fmap(effect_args, |arg| self.convert_type(cache, arg));
+            match effect_name {
+                EffectName::Name(effect_name) if starts_with_uppercase(effect_name) => {
+                    let id = self.lookup_effect(effect_name, cache);
+                    let args = fmap(effect_args, |arg| self.convert_type(cache, arg));
 
-                if let Some(id) = id {
-                    new_effects.push((id, args));
-                } else {
-                    cache.push_diagnostic(*name_location, D::NotInScope("Effect", effect_name.clone()));
-                }
-            } else {
-                if let Some((previous_name, previous_location, _)) = &replacement_var {
-                    if previous_name == IMPLICIT_EFFECT_NAME {
-                        cache.push_diagnostic(
-                            *previous_location,
-                            D::ImplicitEffectVariableMustBeExplicit { explicit_arg_name: effect_name.clone() },
-                        );
+                    if let Some(id) = id {
+                        new_effects.push((id, args));
+                    } else {
+                        cache.push_diagnostic(*name_location, D::NotInScope("Effect", effect_name.clone()));
+                    }
+                },
+                name_or_id @ EffectName::Name(effect_name) => {
+                    if let Some((previous_name, previous_location, _)) = &extension_var {
+                        match previous_name {
+                            EffectName::Name(previous_name) => {
+                                cache.push_diagnostic(
+                                    *name_location,
+                                    D::EffectVariableAlreadyUsed {
+                                        unnecessary_var_name: effect_name.clone(),
+                                        old_name: previous_name.clone(),
+                                    },
+                                );
+                                cache.push_diagnostic(
+                                    *previous_location,
+                                    D::EffectVariableAlreadyUsedNote { old_name: previous_name.clone() },
+                                );
+                            },
+                            EffectName::ImplicitEffect(_) => {
+                                cache.push_diagnostic(
+                                    *previous_location,
+                                    D::ImplicitEffectVariableMustBeExplicit { explicit_arg_name: effect_name.clone() },
+                                );
+                                cache.push_diagnostic(
+                                    *name_location,
+                                    D::ImplicitEffectVariableMustBeExplicitNote {
+                                        explicit_arg_name: effect_name.clone(),
+                                    },
+                                );
+                            },
+                        }
+                    } else {
+                        let var = cache.next_type_variable_id(self.let_binding_level);
+                        extension_var = Some((name_or_id.clone(), *name_location, var));
+                    }
+                },
+                // This is an implicitly inserted type variable from desugar_function_effect_variables
+                EffectName::ImplicitEffect(id) => {
+                    if let Some((previous_name, previous_location, _)) = &extension_var {
+                        let explicit_arg_name = match previous_name {
+                            EffectName::Name(name) => name.clone(),
+                            EffectName::ImplicitEffect(_) => unreachable!("An implicit effect should never be added by the compiler to the same function type twice"),
+                        };
+
                         cache.push_diagnostic(
                             *name_location,
-                            D::ImplicitEffectVariableMustBeExplicitNote { explicit_arg_name: effect_name.clone() },
-                        );
-                    } else if effect_name == IMPLICIT_EFFECT_NAME {
-                        cache.push_diagnostic(
-                            *name_location,
-                            D::ImplicitEffectVariableMustBeExplicit { explicit_arg_name: effect_name.clone() },
+                            D::ImplicitEffectVariableMustBeExplicit { explicit_arg_name: explicit_arg_name.clone() },
                         );
                         cache.push_diagnostic(
                             *previous_location,
-                            D::ImplicitEffectVariableMustBeExplicitNote { explicit_arg_name: effect_name.clone() },
+                            D::ImplicitEffectVariableMustBeExplicitNote { explicit_arg_name },
                         );
                     } else {
-                        cache.push_diagnostic(
-                            *name_location,
-                            D::EffectVariableAlreadyUsed {
-                                unnecessary_var_name: effect_name.clone(),
-                                old_name: previous_name.clone(),
-                            },
-                        );
-                        cache.push_diagnostic(
-                            *previous_location,
-                            D::EffectVariableAlreadyUsedNote { old_name: previous_name.clone() },
-                        );
+                        extension_var = Some((effect_name.clone(), *name_location, *id));
                     }
-                } else {
-                    let var = cache.next_type_variable_id(self.let_binding_level);
-                    replacement_var = Some((effect_name.clone(), *name_location, var));
-                }
+                },
             }
         }
 
-        let replacement = replacement_var.map(|(_, _, type_variable)| type_variable);
-        Type::Effects(EffectSet { effects: new_effects, extension: replacement })
+        let extension = extension_var.map(|(_, _, type_variable)| type_variable);
+        Type::Effects(EffectSet { effects: new_effects, extension })
     }
 
     /// The collect* family of functions recurs over an irrefutable pattern, either declaring or
@@ -971,6 +988,58 @@ impl<'c> NameResolver {
             assert!(existing.is_none());
         }
     }
+
+    /// If any parameters have a function type (not contained within another type) without an explicit
+    /// `can` clause, this adds an implicit `can e` to both that parameter and to this outer lambda.
+    fn desugar_function_effect_variables<'local, 'a: 'local, T>(
+        &self, args: T, effects: &mut Option<Vec<EffectAst<'a>>>, cache: &mut ModuleCache,
+    ) where
+        T: IntoIterator<Item = &'local mut ast::Type<'a>>,
+    {
+        // Set to the location of the function type we've modified
+        let mut modified = None;
+        let fresh_typevar = cache.next_type_variable_id(self.let_binding_level);
+        let implicit_effect = EffectName::ImplicitEffect(fresh_typevar);
+
+        for arg in args {
+            if let ast::Type::Function(function) = arg {
+                if function.effects.is_none() {
+                    let location = function.location;
+                    function.effects = Some(vec![(implicit_effect.clone(), location, Vec::new())]);
+                    modified = Some(location);
+                }
+            }
+        }
+
+        if let Some(modified_location) = modified {
+            let implicit_effect = (implicit_effect, modified_location, Vec::new());
+
+            if let Some(effects) = effects {
+                effects.push(implicit_effect);
+            } else {
+                *effects = Some(vec![implicit_effect]);
+            }
+        } else if effects.is_none() {
+            *effects = Some(Vec::new());
+        }
+    }
+
+    fn desugar_function_effect_variables_in_ast<'a>(
+        &self, args: &mut [ast::Ast<'a>], effects: &mut Option<Vec<EffectAst<'a>>>, cache: &mut ModuleCache,
+    ) {
+        let arg_types = args.iter_mut().filter_map(|arg| match arg {
+            ast::Ast::TypeAnnotation(annotation) => Some(&mut annotation.rhs),
+            _ => None,
+        });
+
+        self.desugar_function_effect_variables(arg_types, effects, cache);
+    }
+
+    fn desugar_function_effect_variables_in_type<'a>(&self, typ: &mut ast::Type<'a>, cache: &mut ModuleCache) {
+        if let ast::Type::Function(function) = typ {
+            self.desugar_function_effect_variables(&mut function.parameters, &mut function.effects, cache);
+        }
+    }
 }
 
 pub trait Resolvable<'c> {
@@ -1078,7 +1147,7 @@ impl<'c> Resolvable<'c> for ast::Lambda<'c> {
         resolver.push_lambda(self, cache);
         resolver.try_add_current_function_to_scope();
 
-        desugar_function_effect_variables_in_ast(&mut self.args, &mut self.effects);
+        resolver.desugar_function_effect_variables_in_ast(&mut self.args, &mut self.effects, cache);
 
         resolver.resolve_all_definitions(self.args.iter_mut(), cache, || DefinitionKind::Parameter);
 
@@ -1092,53 +1161,6 @@ impl<'c> Resolvable<'c> for ast::Lambda<'c> {
 
         self.body.define(resolver, cache);
         resolver.pop_lambda(cache);
-    }
-}
-
-/// If any parameters have a function type (not contained within another type) without an explicit
-/// `can` clause, this adds an implicit `can e` to both that parameter and to this outer lambda.
-fn desugar_function_effect_variables<'local, 'a: 'local, T>(args: T, effects: &mut Option<Vec<EffectName<'a>>>)
-where
-    T: IntoIterator<Item = &'local mut ast::Type<'a>>,
-{
-    // Set to the location of the function type we've modified
-    let mut modified = None;
-
-    for arg in args {
-        if let ast::Type::Function(function) = arg {
-            if function.effects.is_none() {
-                let location = function.location;
-                function.effects = Some(vec![(IMPLICIT_EFFECT_NAME.to_string(), location, Vec::new())]);
-                modified = Some(location);
-            }
-        }
-    }
-
-    if let Some(modified_location) = modified {
-        let implicit_effect = (IMPLICIT_EFFECT_NAME.to_string(), modified_location, Vec::new());
-
-        if let Some(effects) = effects {
-            effects.push(implicit_effect);
-        } else {
-            *effects = Some(vec![implicit_effect]);
-        }
-    } else if effects.is_none() {
-        *effects = Some(Vec::new());
-    }
-}
-
-fn desugar_function_effect_variables_in_ast<'a>(args: &mut [ast::Ast<'a>], effects: &mut Option<Vec<EffectName<'a>>>) {
-    let arg_types = args.iter_mut().filter_map(|arg| match arg {
-        ast::Ast::TypeAnnotation(annotation) => Some(&mut annotation.rhs),
-        _ => None,
-    });
-
-    desugar_function_effect_variables(arg_types, effects);
-}
-
-fn desugar_function_effect_variables_in_type<'a>(typ: &mut ast::Type<'a>) {
-    if let ast::Type::Function(function) = typ {
-        desugar_function_effect_variables(&mut function.parameters, &mut function.effects);
     }
 }
 
@@ -1366,7 +1388,7 @@ impl<'c> Resolvable<'c> for ast::TypeAnnotation<'c> {
         self.lhs.define(resolver, cache);
 
         if let ast::Type::Function(function) = &mut self.rhs {
-            desugar_function_effect_variables(&mut function.parameters, &mut function.effects);
+            resolver.desugar_function_effect_variables(&mut function.parameters, &mut function.effects, cache);
         }
 
         let rhs = resolver.convert_type(cache, &self.rhs);
@@ -1492,7 +1514,7 @@ impl<'c> Resolvable<'c> for ast::TraitDefinition<'c> {
         for declaration in self.declarations.iter_mut() {
             let definition = || DefinitionKind::TraitDefinition(trustme::make_mut(self_pointer));
 
-            desugar_function_effect_variables_in_type(&mut declaration.rhs);
+            resolver.desugar_function_effect_variables_in_type(&mut declaration.rhs, cache);
             resolver.resolve_declarations(declaration.lhs.as_mut(), cache, definition);
         }
 
@@ -1682,7 +1704,7 @@ impl<'c> Resolvable<'c> for ast::EffectDefinition<'c> {
         for declaration in self.declarations.iter_mut() {
             let definition = || DefinitionKind::EffectDefinition(trustme::make_mut(self_pointer));
 
-            desugar_function_effect_variables_in_type(&mut declaration.rhs);
+            resolver.desugar_function_effect_variables_in_type(&mut declaration.rhs, cache);
             resolver.resolve_declarations(declaration.lhs.as_mut(), cache, definition);
 
             for definition in &resolver.definitions_collected {
