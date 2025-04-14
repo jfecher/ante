@@ -130,8 +130,7 @@ impl TypeResult {
         cache: &mut ModuleCache,
     ) {
         self.traits.append(&mut traits);
-        let level = CURRENT_LEVEL.load(Ordering::SeqCst);
-        self.effects.handle_effects_from(effects, handled_effects, LetBindingLevel(level), cache);
+        self.effects.handle_effects_from(effects, handled_effects, cache);
     }
 }
 
@@ -248,7 +247,7 @@ pub fn replace_all_typevars_with_bindings(
 
 /// If the given TypeVariableId is unbound then return the matching binding in new_bindings.
 /// If there is no binding found, instantiate a new type variable and use that.
-fn replace_typevar_with_binding(
+pub fn replace_typevar_with_binding(
     id: TypeVariableId, new_bindings: &mut TypeBindings, cache: &mut ModuleCache<'_>,
 ) -> Type {
     if let Bound(typ) = &cache.type_bindings[id.0] {
@@ -1638,10 +1637,10 @@ impl<'a> Inferable<'a> for ast::Lambda<'a> {
             infer(self.body.as_mut(), cache)
         };
 
-        let mut effects = body.effects.follow_bindings(cache).clone();
-        // To check if the function can be effect polymorphic we need to remove the replacement
+        let mut effects = body.effects.flatten(cache);
+        // To check if the function can be effect polymorphic we need to remove the extension
         // variable so we can see if it occurs in the rest of the function type.
-        let replacement = effects.replacement.take();
+        let extension = effects.extension.take();
 
         let mut typ = FunctionType {
             parameters: parameter_types,
@@ -1653,11 +1652,12 @@ impl<'a> Inferable<'a> for ast::Lambda<'a> {
 
         // Try to close the function's effects so they can no longer be extended, but
         // ensure that the type variable isn't used within the function type first.
-        if let Some(replacement) = replacement {
+        if let Some(extension) = extension {
             let level = LetBindingLevel(CURRENT_LEVEL.load(Ordering::SeqCst));
             let bindings = &mut UnificationBindings::empty();
-            if occurs_in_function(replacement, level, &typ, bindings, RECURSION_LIMIT, cache).occurs {
-                effects.replacement = Some(replacement);
+
+            if occurs_in_function(extension, level, &typ, bindings, RECURSION_LIMIT, cache).occurs {
+                effects.extension = Some(extension);
                 *typ.effects = Type::Effects(effects);
             }
         }
@@ -2209,6 +2209,13 @@ impl<'a> Inferable<'a> for ast::Handle<'a> {
             unify(&branch_type.typ, &result.typ, branch.locate(), cache, TE::HandleBranchMismatch);
 
             branch_results.push(branch_type);
+        }
+
+        // Before we handle the effects we need to add them to the handled expression
+        // in case that expression was not known to have them already (e.g. invoking a
+        // parameter with an inferred function type).
+        for (_, effects) in &pattern_results {
+            result.effects = result.effects.combine(&effects, cache);
         }
 
         // Must remove all the handled effects from each pattern first

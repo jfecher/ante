@@ -327,7 +327,7 @@ impl Type {
                 }
             },
             Type::Effects(effects) => {
-                if let Some(replacement) = effects.replacement {
+                if let Some(replacement) = effects.extension {
                     if let TypeBinding::Bound(binding) = &cache.type_bindings[replacement.0] {
                         return binding.traverse_rec(cache, f);
                     }
@@ -428,7 +428,7 @@ impl Type {
             },
             Type::Effects(set) => {
                 if set.effects.is_empty() {
-                    if let Some(replacement) = set.replacement {
+                    if let Some(replacement) = set.extension {
                         format!("can tv{}", replacement.0)
                     } else {
                         "pure".to_string()
@@ -439,7 +439,7 @@ impl Type {
                         format!("e{} {}", id.0, args.join(" "))
                     });
                     let mut effects = format!("can {}", effects.join(", "));
-                    if let Some(replacement) = set.replacement {
+                    if let Some(replacement) = set.extension {
                         effects = format!("{effects}, ..tv{}", replacement.0)
                     }
                     effects
@@ -455,6 +455,19 @@ impl Type {
         match self {
             Type::Effects(effects) => effects.effects.clone(),
             _ => panic!("as_effect_set called on non-effect type"),
+        }
+    }
+
+    fn flatten_effects(&self, cache: &ModuleCache) -> EffectSet {
+        match self {
+            Type::TypeVariable(type_variable_id) => {
+                match &cache.type_bindings[type_variable_id.0] {
+                    TypeBinding::Bound(typ) => typ.flatten_effects(cache),
+                    TypeBinding::Unbound(..) => EffectSet::new(Vec::new(), Some(*type_variable_id)),
+                }
+            },
+            Type::Effects(effect_set) => effect_set.flatten(cache),
+            other => panic!("flatten_effects expected effects, found {}", other.debug(cache)),
         }
     }
 }

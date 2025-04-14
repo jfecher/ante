@@ -147,8 +147,8 @@ impl<'c> Context<'c> {
         let fuel = fuel - 1;
         match &self.cache.type_bindings[id.0] {
             Bound(TypeVariable(id2)) => self.find_binding(*id2, fuel),
-            Bound(typ @ Effects(effects)) if effects.replacement.is_some() => {
-                let replacement = effects.replacement.unwrap();
+            Bound(typ @ Effects(effects)) if effects.extension.is_some() => {
+                let replacement = effects.extension.unwrap();
                 let binding = self.find_binding(replacement, fuel);
                 Ok(binding.unwrap_or(typ))
             },
@@ -159,8 +159,8 @@ impl<'c> Context<'c> {
                         Some(TypeVariable(id2)) => {
                             return self.find_binding(*id2, fuel);
                         },
-                        Some(typ @ Effects(effects)) if effects.replacement.is_some() => {
-                            let replacement = effects.replacement.unwrap();
+                        Some(typ @ Effects(effects)) if effects.extension.is_some() => {
+                            let replacement = effects.extension.unwrap();
                             let binding = self.find_binding(replacement, fuel);
                             return Ok(binding.unwrap_or(typ));
                         },
@@ -246,7 +246,7 @@ impl<'c> Context<'c> {
         &'a self, effects: &'a types::effects::EffectSet, fuel: u32,
     ) -> types::Type {
         let mut replacement = None;
-        if let Some(original_replacement) = effects.replacement {
+        if let Some(original_replacement) = effects.extension {
             match self.find_binding(original_replacement, fuel) {
                 Ok(binding) => return self.follow_all_bindings_inner(binding, fuel),
                 Err(id) => replacement = Some(id),
@@ -258,7 +258,7 @@ impl<'c> Context<'c> {
             (*id, args)
         });
 
-        types::Type::Effects(types::effects::EffectSet { effects, replacement })
+        types::Type::Effects(types::effects::EffectSet { effects, extension: replacement })
     }
 
     fn size_of_struct_type(&mut self, info: &types::TypeInfo, fields: &[types::Field], args: &[types::Type]) -> usize {

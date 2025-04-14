@@ -389,17 +389,13 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
     }
 
     fn fmt_effects(&self, effects: &EffectSet, f: &mut Formatter) -> std::fmt::Result {
-        if let Some(replacement) = effects.replacement {
-            if let TypeBinding::Bound(Type::Effects(effects)) = &self.cache.type_bindings[replacement.0] {
-                return self.fmt_effects(effects, f);
-            }
-        }
+        let effects = effects.flatten(&self.cache);
 
-        if effects.effects.is_empty() && effects.replacement.is_none() {
+        if effects.effects.is_empty() && effects.extension.is_none() {
             return write!(f, "{}", "pure".blue());
         }
 
-        if !effects.effects.is_empty() || effects.replacement.is_some() {
+        if !effects.effects.is_empty() || effects.extension.is_some() {
             write!(f, "{}", "can ".blue())?;
         }
 
@@ -417,7 +413,7 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             }
         }
 
-        if let Some(replacement) = effects.replacement {
+        if let Some(replacement) = effects.extension {
             if !effects.effects.is_empty() {
                 write!(f, "{}", ", ".blue())?;
             }

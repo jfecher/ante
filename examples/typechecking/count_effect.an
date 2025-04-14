@@ -1,0 +1,21 @@
+effect Count with
+    count: Unit -> Unit
+
+foo () =
+    count ()
+    repeat 10 fn _ -> count ()
+
+handle_count f =
+    handle
+        f ()
+        0
+    | count () -> 1 + resume ()
+
+handle_count foo
+
+// args: --check --show-types
+// expected stdout:
+// count : Unit -> Unit can Count
+// foo : Unit -> Unit can Count
+// handle_count : forall a b c d. ((Unit => a can Count, d) -> Int c can Count, d)
+//   given Add (Int c)

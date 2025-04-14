@@ -16,9 +16,9 @@ pub struct EffectSet {
     /// A value of `Some(unbound type variable)` means this set is
     /// open to extension.
     /// A value of `Some(bound type variable)` means this set has
-    /// been extended and should be ignored entirely in favor of the
-    /// type it is now bound to.
-    pub replacement: Option<TypeVariableId>,
+    /// been extended and the full set of effects is the current
+    /// effects appended to any effects in the extension.
+    pub extension: Option<TypeVariableId>,
 }
 
 pub type Effect = (EffectInfoId, Vec<Type>);
@@ -26,18 +26,23 @@ pub type Effect = (EffectInfoId, Vec<Type>);
 impl EffectSet {
     /// Create a new, empty polymorphic effect set
     pub fn any(cache: &mut ModuleCache) -> EffectSet {
-        EffectSet { effects: vec![], replacement: Some(typechecker::next_type_variable_id(cache)) }
+        EffectSet { effects: vec![], extension: Some(typechecker::next_type_variable_id(cache)) }
     }
 
-    pub fn new(effects: Vec<(EffectInfoId, Vec<Type>)>, cache: &mut ModuleCache) -> EffectSet {
+    pub fn new(effects: Vec<Effect>, extension: Option<TypeVariableId>) -> EffectSet {
+        EffectSet { effects, extension }
+    }
+
+    /// Create a new polymorphic effect set starting with the given effects
+    pub fn open(effects: Vec<Effect>, cache: &mut ModuleCache) -> EffectSet {
         let mut set = EffectSet::any(cache);
         set.effects = effects;
         set
     }
 
     /// Create an effect set with only the given effects, not letting it be extended any further.
-    pub fn only(effects: Vec<(EffectInfoId, Vec<Type>)>) -> EffectSet {
-        EffectSet { effects, replacement: None }
+    pub fn only(effects: Vec<Effect>) -> EffectSet {
+        EffectSet { effects, extension: None }
     }
 
     /// Create an empty effect set, not letting it be extended any further.
@@ -45,57 +50,70 @@ impl EffectSet {
         EffectSet::only(Vec::new())
     }
 
-    pub fn follow_bindings<'a>(&'a self, cache: &'a ModuleCache) -> &'a Self {
-        let Some(replacement) = self.replacement else {
-            return self;
-        };
+    /// Flattens this EffectSet, returning a new EffectSet containing
+    /// the effects from `self` and all extensions of `self`, if any.
+    pub fn flatten<'a>(&'a self, cache: &'a ModuleCache) -> Self {
+        let mut effects = self.effects.clone();
+        let mut extension = self.extension;
 
-        match &cache.type_bindings[replacement.0] {
-            TypeBinding::Bound(Type::Effects(effects)) => effects.follow_bindings(cache),
-            TypeBinding::Bound(typevar @ Type::TypeVariable(_)) => match &cache.follow_typebindings_shallow(typevar) {
-                Type::Effects(effects) => effects.follow_bindings(cache),
-                _ => self,
-            },
-            _ => self,
+        loop {
+            let Some(extension_var) = extension.as_mut() else {
+                return Self::only(effects);
+            };
+
+            match &cache.type_bindings[extension_var.0] {
+                TypeBinding::Bound(Type::Effects(new_set)) => {
+                    extension = new_set.extension;
+                    effects.extend_from_slice(&new_set.effects);
+                },
+                TypeBinding::Bound(Type::TypeVariable(typevar)) => {
+                    *extension_var = *typevar;
+                },
+                _ => {
+                    effects.sort();
+                    effects.dedup();
+                    break Self { effects, extension };
+                },
+            }
         }
     }
 
-    pub fn follow_unification_bindings<'a>(
-        &'a self, bindings: &'a UnificationBindings, cache: &'a ModuleCache,
-    ) -> &'a Self {
-        let Some(replacement) = self.replacement else {
-            return self;
+    fn follow_unification_bindings(
+        &self, bindings: &UnificationBindings, cache: &ModuleCache,
+    ) -> Self {
+        let this = self.flatten(cache);
+        let Some(replacement) = this.extension else {
+            return this;
         };
 
-        match &cache.type_bindings[replacement.0] {
-            TypeBinding::Bound(Type::Effects(effects)) => effects.follow_unification_bindings(bindings, cache),
-            _ => match bindings.bindings.get(&replacement) {
-                Some(Type::Effects(effects)) => effects.follow_unification_bindings(bindings, cache),
-                _ => self,
-            },
-        }
+        let Some(typ) = bindings.bindings.get(&replacement) else {
+            return this;
+        };
+
+        let mut extended = typ.flatten_effects(cache);
+        extended.effects.extend(this.effects);
+        extended.effects.sort();
+        extended.effects.dedup();
+        extended
     }
 
     pub fn replace_all_typevars_with_bindings(&self, new_bindings: &mut TypeBindings, cache: &mut ModuleCache) -> Type {
-        let mut new_replacement = None;
-
-        if let Some(replacement) = self.replacement {
-            if let TypeBinding::Bound(Type::Effects(effects)) = &cache.type_bindings[replacement.0] {
-                return effects.clone().replace_all_typevars_with_bindings(new_bindings, cache);
-            }
-
-            new_replacement = match new_bindings.get(&replacement) {
-                Some(Type::TypeVariable(new_id)) => Some(*new_id),
-                Some(other) => return other.clone(),
-                None => Some(typechecker::next_type_variable_id(cache)),
-            };
-        }
-
         let effects = fmap(&self.effects, |(id, args)| {
             (*id, fmap(args, |arg| typechecker::replace_all_typevars_with_bindings(arg, new_bindings, cache)))
         });
 
-        Type::Effects(EffectSet { effects, replacement: new_replacement })
+        let extension = self.extension.map(|extension| {
+            match typechecker::replace_typevar_with_binding(extension, new_bindings, cache) {
+                Type::TypeVariable(id) => id,
+                other => {
+                    let new_id = typechecker::next_type_variable_id(cache);
+                    cache.bind(new_id, other);
+                    new_id
+                }
+            }
+        });
+
+        Type::Effects(EffectSet { effects, extension })
     }
 
     /// Replace any typevars found with the given type bindings
@@ -106,11 +124,11 @@ impl EffectSet {
     pub fn bind_typevars(&self, type_bindings: &TypeBindings, cache: &ModuleCache) -> Type {
         // type_bindings is checked for bindings before the cache, see the comment
         // in typechecker::bind_typevar
-        let replacement = if let Some(replacement) = self.replacement {
+        let replacement = if let Some(replacement) = self.extension {
             match type_bindings.get(&replacement) {
                 Some(Type::TypeVariable(new_id)) => Some(*new_id),
                 Some(other) => return other.clone(),
-                None => self.replacement,
+                None => self.extension,
             }
         } else {
             None
@@ -126,7 +144,7 @@ impl EffectSet {
             (*id, fmap(args, |arg| typechecker::bind_typevars(arg, type_bindings, cache)))
         });
 
-        Type::Effects(EffectSet { effects, replacement })
+        Type::Effects(EffectSet { effects, extension: replacement })
     }
 
     pub fn try_unify_with_bindings(
@@ -140,8 +158,8 @@ impl EffectSet {
         new_effects.sort();
         new_effects.dedup();
 
-        let a_id = a.replacement;
-        let b_id = b.replacement;
+        let a_id = a.extension;
+        let b_id = b.extension;
 
         // Checking these now avoids having to clone them versus combining this
         // with the a_id and b_id checks later.
@@ -149,7 +167,7 @@ impl EffectSet {
             return Err(());
         }
 
-        let new_effect = EffectSet::new(new_effects, cache);
+        let new_effect = EffectSet::open(new_effects, cache);
         if let Some(a_id) = a_id {
             bindings.bindings.insert(a_id, Type::Effects(new_effect.clone()));
         }
@@ -161,31 +179,39 @@ impl EffectSet {
         Ok(())
     }
 
+    /// To combine two separate effects into a single new effectset containing both,
+    /// it is sufficient to bind each extension to the other effect set but with a
+    /// fresh extension id so that it is not infinitely recursive. This may result in
+    /// duplicate effects but these should be deduplicated later during `flatten` calls.
+    #[must_use]
     pub fn combine(&self, other: &EffectSet, cache: &mut ModuleCache) -> EffectSet {
-        let a = self.follow_bindings(cache);
-        let b = other.follow_bindings(cache);
+        let mut a = self.flatten(cache);
+        let mut b = other.flatten(cache);
 
-        let mut new_effects = a.effects.clone();
-        new_effects.append(&mut b.effects.clone());
-        new_effects.sort();
-        new_effects.dedup();
+        let a_ext = a.extension;
+        let b_ext = b.extension;
 
-        let a_id = a.replacement;
-        let b_id = b.replacement;
+        let extension_var = typechecker::next_type_variable_id(cache);
 
-        let new_effect = EffectSet::new(new_effects, cache);
-        if let Some(a_id) = a_id {
-            cache.bind(a_id, Type::Effects(new_effect.clone()));
+        if let Some(a_id) = a_ext {
+            // always Some because `a` was open to extension even if `b` is not
+            b.extension = Some(extension_var);
+            cache.bind(a_id, Type::Effects(b));
         }
-        if let Some(b_id) = b_id {
-            cache.bind(b_id, Type::Effects(new_effect.clone()));
+
+        if let Some(b_id) = b_ext {
+            // always Some because `b` was open to extension even if `a` is not
+            a.extension = Some(extension_var);
+            cache.bind(b_id, Type::Effects(a.clone()));
         }
-        new_effect
+
+        a.extension = a_ext;
+        a
     }
 
     pub fn find_all_typevars(&self, polymorphic_only: bool, cache: &ModuleCache) -> Vec<super::TypeVariableId> {
-        let this = self.follow_bindings(cache);
-        let mut vars = match this.replacement {
+        let this = self.flatten(cache);
+        let mut vars = match this.extension {
             Some(replacement) => typechecker::find_typevars_in_typevar_binding(replacement, polymorphic_only, cache),
             None => Vec::new(),
         };
@@ -200,8 +226,8 @@ impl EffectSet {
     }
 
     pub fn contains_any_typevars_from_list(&self, list: &[super::TypeVariableId], cache: &ModuleCache) -> bool {
-        let this = self.follow_bindings(cache);
-        this.replacement.map_or(false, |replacement| list.contains(&replacement))
+        let this = self.flatten(cache);
+        this.extension.map_or(false, |replacement| list.contains(&replacement))
             || this
                 .effects
                 .iter()
@@ -212,8 +238,8 @@ impl EffectSet {
         &self, id: super::TypeVariableId, level: super::LetBindingLevel, bindings: &mut UnificationBindings, fuel: u32,
         cache: &mut ModuleCache,
     ) -> OccursResult {
-        let this = self.follow_bindings(cache).clone();
-        let mut result = match this.replacement {
+        let this = self.flatten(cache);
+        let mut result = match this.extension {
             Some(replacement) => typechecker::typevars_match(id, level, replacement, bindings, fuel, cache),
             None => OccursResult::does_not_occur(),
         };
@@ -227,12 +253,11 @@ impl EffectSet {
     /// Mutates self to the set difference between self and other.
     /// Any effects that are removed are added to `handled_effects`.
     pub(super) fn handle_effects_from(
-        &mut self, other: EffectSet, handled_effects: &mut Vec<Effect>, level: super::LetBindingLevel,
+        &mut self, other: EffectSet, handled_effects: &mut Vec<Effect>,
         cache: &mut ModuleCache,
     ) {
-        let a = self.follow_bindings(cache).clone();
-        let b = other.follow_bindings(cache).clone();
-
+        let a = self.flatten(cache);
+        let b = other.flatten(cache);
         let mut new_effects = Vec::with_capacity(a.effects.len());
 
         for a_effect in a.effects.iter() {
@@ -245,8 +270,8 @@ impl EffectSet {
             }
         }
 
+        self.extension = a.extension;
         self.effects = new_effects;
-        self.replacement = self.replacement.map(|_| cache.next_type_variable_id(level));
     }
 }
 

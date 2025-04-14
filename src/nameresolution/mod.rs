@@ -842,7 +842,7 @@ impl<'c> NameResolver {
         }
 
         let replacement = replacement_var.map(|(_, _, type_variable)| type_variable);
-        Type::Effects(EffectSet { effects: new_effects, replacement })
+        Type::Effects(EffectSet { effects: new_effects, extension: replacement })
     }
 
     /// The collect* family of functions recurs over an irrefutable pattern, either declaring or
