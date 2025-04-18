@@ -61,7 +61,9 @@ use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
 pub mod builtin;
+pub mod free_variables;
 mod scope;
+pub mod visitor;
 
 /// Specifies how far a particular module is in name resolution.
 /// Keeping this properly up to date for each module is the
@@ -294,7 +296,7 @@ impl<'c> NameResolver {
         let function_scope = &mut self.scopes[function_scope_index];
         let scope = function_scope.first_mut();
 
-        let id = cache.push_definition(parameter, location);
+        let id = cache.push_definition(parameter, false, location);
         cache.definition_infos[id.0].definition = Some(DefinitionKind::Parameter);
         cache.definition_infos[id.0].uses = 1;
 
@@ -431,9 +433,8 @@ impl<'c> NameResolver {
 
     /// Push a new Definition onto the current scope.
     fn push_definition(&mut self, name: &str, cache: &mut ModuleCache<'c>, location: Location<'c>) -> DefinitionInfoId {
-        let id = cache.push_definition(name, location);
-
         let in_global_scope = self.in_global_scope();
+        let id = cache.push_definition(name, in_global_scope, location);
 
         // if shadows
         if let Some(existing_definition) = self.current_scope().definitions.get(name) {

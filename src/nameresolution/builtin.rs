@@ -38,7 +38,7 @@ pub const PAIR_ID: DefinitionInfoId = DefinitionInfoId(2);
 pub fn define_builtins(cache: &mut ModuleCache) {
     // Define builtin : forall a. string -> a imported only into the prelude to define
     // builtin operations by name. The specific string arguments are matched on in src/llvm/builtin.rs
-    let id = cache.push_definition("builtin", Location::builtin());
+    let id = cache.push_definition("builtin", true, Location::builtin());
     assert_eq!(id, BUILTIN_ID);
 
     let string_type = define_string(cache);
@@ -110,7 +110,7 @@ fn define_string(cache: &mut ModuleCache) -> Type {
         Field { name: "length".into(), field_type: length_type.clone(), location },
     ]);
 
-    let constructor = cache.push_definition(&name, location);
+    let constructor = cache.push_definition(&name, true, location);
     assert_eq!(constructor, STRING_ID);
 
     let effects = cache.next_type_variable_id(LetBindingLevel(1));
@@ -169,7 +169,7 @@ fn define_pair(cache: &mut ModuleCache) {
     let constructor_type = GeneralizedType::PolyType(vec![a, b, e], constructor_type);
 
     // and now register a new type constructor in the cache with the given type
-    let id = cache.push_definition(&name, location);
+    let id = cache.push_definition(&name, true, location);
     assert_eq!(id, PAIR_ID);
     let constructor = DefinitionKind::TypeConstructor { name, tag: None };
 

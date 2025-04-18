@@ -249,6 +249,9 @@ pub struct DefinitionInfo<'a> {
     /// This is separate from whether the type is a mutable reference or not.
     pub mutable: bool,
 
+    /// True if this is a global definition
+    pub global: bool,
+
     /// The type of this definition. Filled out during type inference,
     /// and is guarenteed to be Some afterward.
     pub typ: Option<GeneralizedType>,
@@ -477,7 +480,7 @@ impl<'a> ModuleCache<'a> {
         unsafe { std::mem::transmute(path) }
     }
 
-    pub fn push_definition(&mut self, name: &str, location: Location<'a>) -> DefinitionInfoId {
+    pub fn push_definition(&mut self, name: &str, global: bool, location: Location<'a>) -> DefinitionInfoId {
         let id = self.definition_infos.len();
         self.definition_infos.push(DefinitionInfo {
             name: name.to_string(),
@@ -488,6 +491,7 @@ impl<'a> ModuleCache<'a> {
             typ: None,
             uses: 0,
             mutable: false,
+            global,
             trait_impl: None,
             mutually_recursive_set: None,
             undergoing_type_inference: false,

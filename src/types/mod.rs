@@ -458,7 +458,7 @@ impl Type {
         }
     }
 
-    fn flatten_effects(&self, cache: &ModuleCache) -> EffectSet {
+    pub fn flatten_effects(&self, cache: &ModuleCache) -> EffectSet {
         match self {
             Type::TypeVariable(type_variable_id) => match &cache.type_bindings[type_variable_id.0] {
                 TypeBinding::Bound(typ) => typ.flatten_effects(cache),

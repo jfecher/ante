@@ -97,7 +97,7 @@ impl Type {
                 PrimitiveType::Unit => 1,
                 PrimitiveType::Pointer | PrimitiveType::Continuation => std::mem::size_of::<*const i8>() as u64,
             },
-            Type::Function(_) => panic!("Tried to take size of a function type"), // Functions technically do not have a size, only pointers do
+            Type::Function(_) => std::mem::size_of::<*const i8>() as u64,
             Type::Tuple(elements) => elements.iter().map(|element| element.size_in_bytes()).sum(),
         }
     }

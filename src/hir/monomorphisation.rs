@@ -1,4 +1,4 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::rc::Rc;
 
 use crate::cache::{DefinitionInfoId, DefinitionKind, ImplInfoId, ModuleCache, VariableId};
@@ -7,7 +7,7 @@ use crate::hir;
 use crate::lexer::token::FloatKind;
 use crate::nameresolution::builtin::BUILTIN_ID;
 use crate::parser::ast::{self, ClosureEnvironment};
-use crate::types::effects::Effect;
+use crate::types::effects::{Effect, EffectSet};
 use crate::types::traits::{Callsite, RequiredImpl, TraitConstraintId};
 use crate::types::typechecker::{self, TypeBindings};
 use crate::types::typed::Typed;
@@ -147,22 +147,12 @@ impl<'c> Context<'c> {
         let fuel = fuel - 1;
         match &self.cache.type_bindings[id.0] {
             Bound(TypeVariable(id2)) => self.find_binding(*id2, fuel),
-            Bound(typ @ Effects(effects)) if effects.extension.is_some() => {
-                let replacement = effects.extension.unwrap();
-                let binding = self.find_binding(replacement, fuel);
-                Ok(binding.unwrap_or(typ))
-            },
             Bound(binding) => Ok(binding),
             Unbound(..) => {
                 for bindings in self.monomorphisation_bindings.iter().rev() {
                     match bindings.get(&id) {
                         Some(TypeVariable(id2)) => {
                             return self.find_binding(*id2, fuel);
-                        },
-                        Some(typ @ Effects(effects)) if effects.extension.is_some() => {
-                            let replacement = effects.extension.unwrap();
-                            let binding = self.find_binding(replacement, fuel);
-                            return Ok(binding.unwrap_or(typ));
                         },
                         Some(binding) => return Ok(binding),
                         None => (),
@@ -237,28 +227,34 @@ impl<'c> Context<'c> {
                     Struct(fields, *id)
                 },
             },
-            Effects(effects) => self.follow_all_effect_bindings_inner(effects, fuel),
+            Effects(effects) => Effects(self.follow_all_effect_bindings_inner(effects, fuel)),
             Tag(tag) => Tag(*tag),
         }
     }
 
     fn follow_all_effect_bindings_inner<'a>(
         &'a self, effects: &'a types::effects::EffectSet, fuel: u32,
-    ) -> types::Type {
-        let mut replacement = None;
-        if let Some(original_replacement) = effects.extension {
-            match self.find_binding(original_replacement, fuel) {
-                Ok(binding) => return self.follow_all_bindings_inner(binding, fuel),
-                Err(id) => replacement = Some(id),
-            };
-        }
-
-        let effects = fmap(&effects.effects, |(id, args)| {
+    ) -> EffectSet {
+        let mut set = effects.flatten(&self.cache);
+        set.effects = fmap(&set.effects, |(id, args)| {
             let args = fmap(args, |arg| self.follow_all_bindings_inner(arg, fuel));
             (*id, args)
         });
 
-        types::Type::Effects(types::effects::EffectSet { effects, extension: replacement })
+        if let Some(extension) = set.extension {
+            match self.follow_all_bindings_inner(&types::Type::TypeVariable(extension), fuel) {
+                types::Type::Effects(more_effects) => {
+                    let extended = self.follow_all_effect_bindings_inner(&more_effects, fuel);
+                    set.effects.extend(extended.effects);
+                    set.extension = extended.extension;
+                }
+                types::Type::TypeVariable(extension) => {
+                    set.extension = Some(extension);
+                }
+                _ => unreachable!(),
+            }
+        }
+        set
     }
 
     fn size_of_struct_type(&mut self, info: &types::TypeInfo, fields: &[types::Field], args: &[types::Type]) -> usize {
@@ -605,24 +601,20 @@ impl<'c> Context<'c> {
         }
     }
 
-    fn get_effects<'typ>(&'typ self, effects: &'typ types::Type) -> &'typ [types::effects::Effect] {
-        let r = self.get_effects2(effects);
-        r
-    }
+    fn get_effects<'typ>(&'typ self, effects: &'typ types::Type) -> Vec<types::effects::Effect> {
+        let mut set = effects.flatten_effects(&self.cache);
+        let Some(extension) = set.extension else {
+            return set.effects.to_vec();
+        };
 
-    fn get_effects2<'typ>(&'typ self, typ: &'typ types::Type) -> &'typ [types::effects::Effect] {
-        match self.follow_bindings_shallow(typ) {
-            Ok(types::Type::Effects(effects)) => {
-                // TODO: Need to figure out why non-empty effect sets are getting bound to empty ones
-                // if let Ok(binding) = self.find_binding(effects.replacement, RECURSION_LIMIT) {
-                //     self.get_effects2(binding)
-                // } else {
-                //     &effects.effects
-                // }
-                &effects.effects
-            },
-            _ => &[],
+        if let Ok(typ) = self.find_binding(extension, RECURSION_LIMIT) {
+            let effects = self.get_effects(typ);
+            set.effects.extend(effects);
         }
+
+        set.effects.sort();
+        set.effects.dedup();
+        set.effects
     }
 
     fn convert_integer_kind(&self, kind: crate::lexer::token::IntegerKind) -> IntegerKind {
@@ -1300,6 +1292,10 @@ impl<'c> Context<'c> {
     fn get_continuation_arg(&mut self, (target_id, mut target_args): Effect) -> hir::Ast {
         target_args = fmap(target_args, |arg| self.follow_all_bindings(&arg));
 
+        if self.effect_continuations.is_empty() {
+            return hir::Ast::Variable(hir::Variable::new(hir::DefinitionId(9999), Rc::new(Type::unit())));
+        }
+
         for ((effect_id, effect_args), parameter) in self.effect_continuations.last().unwrap() {
             if *effect_id == target_id {
                 let result = typechecker::try_unify_all_hide_error(&target_args, effect_args, &mut self.cache);
@@ -1834,6 +1830,9 @@ impl<'c> Context<'c> {
     /// lowers into:
     /// ```pseudocode
     /// start_expr(continuation) =
+    ///     env_N = continuation_pop(continuation, typeof(env_N)) // (*) Note
+    ///     ...
+    ///     env_1 = continuation_pop(continuation, typeof(env_1))
     ///     result = expr // `continuation` is automatically added to any function calls within expr
     ///     continuation_push(continuation, result)
     ///     ()
@@ -1859,20 +1858,59 @@ impl<'c> Context<'c> {
     ///         return_case
     ///
     /// k = continuation_init(start_expr)
+    /// continuation_push(continuation, &env_1) // (*) Note
+    /// ...
+    /// continuation_push(continuation, &env_N)
     /// ret = handler(k)
     /// continuation_free(k)
     /// ret
     /// ```
     /// where resume functions defined in the scope of each
     /// body make recursive calls back to `handler`.
+    ///
+    /// (*) Note: The additional `env` variables comes from the fact we are implicitly creating
+    /// functions from `Handle` expressions and thus need to handle captured variables from the
+    /// environment as we would with a closure's environment. Since the type signature expected by
+    /// `continuation_init` prevents us from actually passing in the environment directly we need
+    /// to push and pop them to the closure's channel.
     fn monomorphise_handle(&mut self, handle: &ast::Handle<'c>) -> hir::Ast {
-        let start_expr_fn = self.make_start_effect_expr_function(&handle.expression, &handle.effects_handled);
+        // Push a local scope, we're going to redefine our captured environment variables
+        // since we're defining an implicit closure and only want to refer to the new terms.
+        self.definitions.push_local_scope();
+        let free_vars = handle.find_free_variables(&self.cache);
+
+        // Redefine the captured environment
+        for (variable, typ) in &free_vars {
+            let typ = self.follow_all_bindings(typ);
+            let fresh_id = self.next_unique_id();
+            let name = self.cache.definition_infos[variable.0].name.clone();
+            let converted_type = Rc::new(self.convert_type(&typ));
+            let new_variable = hir::Variable {
+                definition: None,
+                definition_id: fresh_id,
+                typ: converted_type,
+                name: Some(name),
+            };
+            self.definitions.insert(*variable, typ.clone(), Definition::Normal(new_variable));
+        }
+
+        let start_expr_fn = self.make_start_effect_expr_function(&handle.expression, &handle.effects_handled, &free_vars);
         let handler_fn = self.make_handler_function(handle);
+
+        // We need to pop the local scope before `make_handle_env_pushes` so that that function can
+        // refer to the captured variables to push them to the environment.
+        self.definitions.pop_local_scope();
 
         // create the final inline expression
         // k = continuation_init(start_expr)
         let init = hir::Ast::Builtin(hir::Builtin::ContinuationInit(Box::new(start_expr_fn)));
         let (k_def, k) = self.fresh_definition_with_variable(init, "k".into(), Type::continuation());
+        let mut statements = vec![k_def];
+
+        // continuation_push(continuation, arg_1)
+        // ...
+        // continuation_push(continuation, arg_N)
+        self.make_handle_env_pushes(k.clone(), free_vars, &mut statements);
 
         // ret = handler(k)
         let ret_type = self.convert_type(handle.get_type().unwrap());
@@ -1882,11 +1920,14 @@ impl<'c> Context<'c> {
             function_type: hir::FunctionType::new(vec![Type::continuation()], ret_type.clone()),
         });
         let (ret_def, ret) = self.fresh_definition_with_variable(call_handler, "ret".into(), ret_type);
+        statements.push(ret_def);
 
         // continuation_free(k)
         let free_k = hir::Ast::Builtin(hir::Builtin::ContinuationFree(Box::new(k)));
+        statements.push(free_k);
+        statements.push(ret);
 
-        hir::Ast::Sequence(hir::Sequence { statements: vec![k_def, ret_def, free_k, ret] })
+        hir::Ast::Sequence(hir::Sequence { statements })
     }
 
     /// Creates the `handler` function from a handler:
@@ -1918,6 +1959,7 @@ impl<'c> Context<'c> {
     ///     else
     ///         x = continuation_pop(continuation, typeof(x))
     ///         return_case
+    /// ```
     fn make_handler_function(&mut self, handle: &ast::Handle<'c>) -> hir::Ast {
         let continuation_var = self.fresh_variable(Type::continuation());
         let continuation = hir::Ast::Variable(continuation_var.clone());
@@ -1981,12 +2023,22 @@ impl<'c> Context<'c> {
     /// Lowers the `expr` in `handle expr | ...` into:
     /// ```pseudocode
     /// start_expr(continuation) =
+    ///     env_N = continuation_pop(continuation, typeof(env_N))
+    ///     ...
+    ///     env_1 = continuation_pop(continuation, typeof(env_1))
     ///     result = expr // `continuation` is automatically added to any function calls within expr
     ///     continuation_push(continuation, result)
     /// ```
-    fn make_start_effect_expr_function(&mut self, expr: &ast::Ast<'c>, effects_handled: &[Effect]) -> hir::Ast {
+    fn make_start_effect_expr_function(
+        &mut self,
+        expr: &ast::Ast<'c>,
+        effects_handled: &[Effect],
+        env: &BTreeMap<DefinitionInfoId, types::Type>,
+    ) -> hir::Ast {
         let continuation_var = self.fresh_variable(Type::continuation());
         let continuation = Box::new(hir::Ast::Variable(continuation_var.clone()));
+
+        let mut statements = self.make_handle_env_pops(continuation.clone(), env);
 
         // All continuations handled by this Handle expression use the same continuation variable,
         // even in the case of multiple effects being handled.
@@ -1996,7 +2048,10 @@ impl<'c> Context<'c> {
         }));
 
         let result = Box::new(self.monomorphise(expr));
-        let body = Box::new(hir::Ast::Builtin(hir::Builtin::ContinuationArgPush(continuation, result)));
+        let push = hir::Ast::Builtin(hir::Builtin::ContinuationArgPush(continuation, result));
+        statements.push(push);
+
+        let body = Box::new(hir::Ast::Sequence(hir::Sequence { statements }));
 
         self.pop_continuation_parameters();
 
@@ -2006,6 +2061,75 @@ impl<'c> Context<'c> {
         let typ = hir::FunctionType { parameters, return_type, is_varargs: false };
 
         hir::Ast::Lambda(hir::Lambda { args, body, typ })
+    }
+
+    /// Create code to push each given variable to the continuation's channel.
+    /// ```pseudocode
+    /// continuation_push(continuation, env_1)
+    /// ...
+    /// continuation_push(continuation, env_N)
+    /// ```
+    /// These environment variables comes from the fact we are implicitly creating
+    /// functions from `Handle` expressions and thus need to handle captured variables from the
+    /// environment as we would with a closure's environment. Since the type signature expected by
+    /// `continuation_init` prevents us from actually passing in the environment directly we need
+    /// to push and pop them to the closure's channel.
+    fn make_handle_env_pushes(
+        &self,
+        k: hir::Ast,
+        free_vars: BTreeMap<DefinitionInfoId, types::Type>,
+        statements: &mut Vec<hir::Ast>
+    ) {
+        use hir::{Ast::Builtin, Builtin::ContinuationArgPush};
+
+        for (variable, variable_type) in free_vars {
+            let k = Box::new(k.clone());
+            let variable = match self.lookup_definition(variable, &variable_type).unwrap() {
+                Definition::Macro(_) => unreachable!("Macro definitions should not be captured"),
+                Definition::Normal(variable) => variable,
+            };
+
+            let variable = Box::new(hir::Ast::Variable(variable));
+            statements.push(Builtin(ContinuationArgPush(k, variable)));
+        }
+    }
+
+    /// Create code to pop each given variable to the continuation's channel.
+    /// ```pseudocode
+    /// env_N = continuation_pop(continuation, typeof(env_N))
+    /// ...
+    /// env_1 = continuation_pop(continuation, typeof(env_1))
+    /// ```
+    /// These environment variables comes from the fact we are implicitly creating
+    /// functions from `Handle` expressions and thus need to handle captured variables from the
+    /// environment as we would with a closure's environment. Since the type signature expected by
+    /// `continuation_init` prevents us from actually passing in the environment directly we need
+    /// to push and pop them to the closure's channel.
+    fn make_handle_env_pops(
+        &mut self,
+        k: Box<hir::Ast>,
+        free_vars: &BTreeMap<DefinitionInfoId, types::Type>,
+    ) -> Vec<hir::Ast> {
+        fmap(free_vars.iter().rev(), |(variable, variable_type)| {
+            let name = self.cache.definition_infos[variable.0].name.clone();
+
+            let variable = match self.lookup_definition(*variable, &variable_type).unwrap() {
+                Definition::Macro(_) => unreachable!(),
+                Definition::Normal(variable) => variable.definition_id,
+            };
+
+            let typ = self.convert_type(&variable_type);
+            let pop = hir::Builtin::ContinuationArgPop(k.clone(), typ.clone());
+            let expr = Box::new(hir::Ast::Builtin(pop));
+
+            hir::Ast::Definition(hir::Definition {
+                variable,
+                name: Some(name),
+                mutable: false,
+                typ,
+                expr,
+            })
+        })
     }
 
     /// Defines the `resume` function for a particular handle definition.
