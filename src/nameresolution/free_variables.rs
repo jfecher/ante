@@ -1,7 +1,10 @@
 use std::collections::{BTreeMap, HashSet};
 
-use crate::{cache::{DefinitionInfoId, ModuleCache}, parser::ast, types::{typed::Typed, Type}};
-
+use crate::{
+    cache::{DefinitionInfoId, ModuleCache},
+    parser::ast,
+    types::{typed::Typed, Type},
+};
 
 impl<'c> ast::Handle<'c> {
     pub fn find_free_variables(&self, cache: &ModuleCache<'c>) -> BTreeMap<DefinitionInfoId, Type> {

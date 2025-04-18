@@ -413,11 +413,11 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             }
         }
 
-        if let Some(replacement) = effects.extension {
+        if let Some(extension) = effects.extension {
             if !effects.effects.is_empty() {
                 write!(f, "{}", ", ".blue())?;
             }
-            self.fmt_type_variable(replacement, f)?;
+            self.fmt_type_variable(extension, f)?;
         }
 
         Ok(())

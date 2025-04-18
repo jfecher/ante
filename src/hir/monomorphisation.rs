@@ -232,10 +232,9 @@ impl<'c> Context<'c> {
         }
     }
 
-    fn follow_all_effect_bindings_inner<'a>(
-        &'a self, effects: &'a types::effects::EffectSet, fuel: u32,
-    ) -> EffectSet {
+    fn follow_all_effect_bindings_inner<'a>(&'a self, effects: &'a types::effects::EffectSet, fuel: u32) -> EffectSet {
         let mut set = effects.flatten(&self.cache);
+
         set.effects = fmap(&set.effects, |(id, args)| {
             let args = fmap(args, |arg| self.follow_all_bindings_inner(arg, fuel));
             (*id, args)
@@ -247,10 +246,10 @@ impl<'c> Context<'c> {
                     let extended = self.follow_all_effect_bindings_inner(&more_effects, fuel);
                     set.effects.extend(extended.effects);
                     set.extension = extended.extension;
-                }
+                },
                 types::Type::TypeVariable(extension) => {
                     set.extension = Some(extension);
-                }
+                },
                 _ => unreachable!(),
             }
         }
@@ -1885,16 +1884,13 @@ impl<'c> Context<'c> {
             let fresh_id = self.next_unique_id();
             let name = self.cache.definition_infos[variable.0].name.clone();
             let converted_type = Rc::new(self.convert_type(&typ));
-            let new_variable = hir::Variable {
-                definition: None,
-                definition_id: fresh_id,
-                typ: converted_type,
-                name: Some(name),
-            };
+            let new_variable =
+                hir::Variable { definition: None, definition_id: fresh_id, typ: converted_type, name: Some(name) };
             self.definitions.insert(*variable, typ.clone(), Definition::Normal(new_variable));
         }
 
-        let start_expr_fn = self.make_start_effect_expr_function(&handle.expression, &handle.effects_handled, &free_vars);
+        let start_expr_fn =
+            self.make_start_effect_expr_function(&handle.expression, &handle.effects_handled, &free_vars);
         let handler_fn = self.make_handler_function(handle);
 
         // We need to pop the local scope before `make_handle_env_pushes` so that that function can
@@ -2030,10 +2026,7 @@ impl<'c> Context<'c> {
     ///     continuation_push(continuation, result)
     /// ```
     fn make_start_effect_expr_function(
-        &mut self,
-        expr: &ast::Ast<'c>,
-        effects_handled: &[Effect],
-        env: &BTreeMap<DefinitionInfoId, types::Type>,
+        &mut self, expr: &ast::Ast<'c>, effects_handled: &[Effect], env: &BTreeMap<DefinitionInfoId, types::Type>,
     ) -> hir::Ast {
         let continuation_var = self.fresh_variable(Type::continuation());
         let continuation = Box::new(hir::Ast::Variable(continuation_var.clone()));
@@ -2075,10 +2068,7 @@ impl<'c> Context<'c> {
     /// `continuation_init` prevents us from actually passing in the environment directly we need
     /// to push and pop them to the closure's channel.
     fn make_handle_env_pushes(
-        &self,
-        k: hir::Ast,
-        free_vars: BTreeMap<DefinitionInfoId, types::Type>,
-        statements: &mut Vec<hir::Ast>
+        &self, k: hir::Ast, free_vars: BTreeMap<DefinitionInfoId, types::Type>, statements: &mut Vec<hir::Ast>,
     ) {
         use hir::{Ast::Builtin, Builtin::ContinuationArgPush};
 
@@ -2106,9 +2096,7 @@ impl<'c> Context<'c> {
     /// `continuation_init` prevents us from actually passing in the environment directly we need
     /// to push and pop them to the closure's channel.
     fn make_handle_env_pops(
-        &mut self,
-        k: Box<hir::Ast>,
-        free_vars: &BTreeMap<DefinitionInfoId, types::Type>,
+        &mut self, k: Box<hir::Ast>, free_vars: &BTreeMap<DefinitionInfoId, types::Type>,
     ) -> Vec<hir::Ast> {
         fmap(free_vars.iter().rev(), |(variable, variable_type)| {
             let name = self.cache.definition_infos[variable.0].name.clone();
@@ -2122,13 +2110,7 @@ impl<'c> Context<'c> {
             let pop = hir::Builtin::ContinuationArgPop(k.clone(), typ.clone());
             let expr = Box::new(hir::Ast::Builtin(pop));
 
-            hir::Ast::Definition(hir::Definition {
-                variable,
-                name: Some(name),
-                mutable: false,
-                typ,
-                expr,
-            })
+            hir::Ast::Definition(hir::Definition { variable, name: Some(name), mutable: false, typ, expr })
         })
     }
 

@@ -723,7 +723,7 @@ pub fn try_unify_with_bindings_inner<'b>(
             Ok(())
         },
 
-        (Effects(effects1), Effects(effects2)) => effects1.try_unify_with_bindings(effects2, bindings, cache),
+        (Effects(effects1), Effects(effects2)) => effects1.try_unify_with_bindings(effects2, bindings, location, cache),
 
         (Tag(tag1), Tag(tag2)) if tag1 == tag2 => Ok(()),
 
@@ -874,7 +874,7 @@ fn get_fields(
 
 /// Unify a single type variable (id arising from the type a) with an expected type b.
 /// Follows the given TypeBindings in bindings and the cache if a is Bound.
-fn try_unify_type_variable_with_bindings<'c>(
+pub fn try_unify_type_variable_with_bindings<'c>(
     id: TypeVariableId, a: &Type, b: &Type, typevar_on_lhs: bool, bindings: &mut UnificationBindings,
     location: Location<'c>, cache: &mut ModuleCache<'c>,
 ) -> Result<(), ()> {
@@ -1638,6 +1638,7 @@ impl<'a> Inferable<'a> for ast::Lambda<'a> {
         };
 
         let mut effects = body.effects.flatten(cache);
+
         // To check if the function can be effect polymorphic we need to remove the extension
         // variable so we can see if it occurs in the rest of the function type.
         let extension = effects.extension.take();

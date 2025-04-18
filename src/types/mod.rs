@@ -327,15 +327,13 @@ impl Type {
                 }
             },
             Type::Effects(effects) => {
-                if let Some(replacement) = effects.extension {
-                    if let TypeBinding::Bound(binding) = &cache.type_bindings[replacement.0] {
-                        return binding.traverse_rec(cache, f);
-                    }
-                }
                 for (_, effect_args) in &effects.effects {
                     for arg in effect_args {
                         arg.traverse_rec(cache, f);
                     }
+                }
+                if let Some(extension) = effects.extension {
+                    Type::TypeVariable(extension).traverse_rec(cache, f);
                 }
             },
             Type::Struct(fields, id) => {
@@ -428,8 +426,8 @@ impl Type {
             },
             Type::Effects(set) => {
                 if set.effects.is_empty() {
-                    if let Some(replacement) = set.extension {
-                        format!("can tv{}", replacement.0)
+                    if let Some(extension) = set.extension {
+                        format!("can tv{}", extension.0)
                     } else {
                         "pure".to_string()
                     }
@@ -439,8 +437,8 @@ impl Type {
                         format!("e{} {}", id.0, args.join(" "))
                     });
                     let mut effects = format!("can {}", effects.join(", "));
-                    if let Some(replacement) = set.extension {
-                        effects = format!("{effects}, ..tv{}", replacement.0)
+                    if let Some(extension) = set.extension {
+                        effects = format!("{effects}, ..tv{}", extension.0)
                     }
                     effects
                 }
