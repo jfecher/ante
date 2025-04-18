@@ -1,0 +1,17 @@
+effect Count with
+    count: Unit -> Unit
+
+foo () =
+    count ()
+    repeat 10 fn _ -> count ()
+
+handle_count f =
+    handle
+        f ()
+        0
+    | count () -> 1 + resume ()
+
+handle_count foo |> print
+
+// args: --delete-binary
+// expected stdout: 11

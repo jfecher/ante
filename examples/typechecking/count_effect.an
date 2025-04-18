@@ -17,5 +17,5 @@ handle_count foo
 // expected stdout:
 // count : Unit -> Unit can Count
 // foo : Unit -> Unit can Count
-// handle_count : forall a b c d. ((Unit => a can Count, d) -> Int c can Count, d)
+// handle_count : forall a b c d. ((Unit => a can Count, d) -> Int c can d)
 //   given Add (Int c)
