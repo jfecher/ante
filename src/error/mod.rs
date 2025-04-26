@@ -125,7 +125,7 @@ pub enum TypeErrorKind {
     MatchPatternTypeDiffers,
     MatchReturnTypeDiffers,
     DoesNotMatchAnnotatedType,
-    ExpectedStructReference,
+    ExpectedMutable,
 
     // This taking a String is the reason we can't have nice things (Copy)
     NoFieldOfType(/*field name*/ String),
@@ -309,8 +309,8 @@ impl Display for DiagnosticKind {
             DiagnosticKind::TypeError(TypeErrorKind::DoesNotMatchAnnotatedType, actual, expected) => {
                 write!(f, "Expression of type {actual} does not match its annotated type {expected}")
             },
-            DiagnosticKind::TypeError(TypeErrorKind::ExpectedStructReference, actual, _expected) => {
-                write!(f, "Expected a struct reference but found {actual} instead")
+            DiagnosticKind::TypeError(TypeErrorKind::ExpectedMutable, actual, _expected) => {
+                write!(f, "Expected a mutable reference but found {actual} instead")
             },
             DiagnosticKind::TypeError(TypeErrorKind::NoFieldOfType(field_name), actual, expected) => {
                 write!(f, "{actual} has no field '{field_name}' of type {expected}")

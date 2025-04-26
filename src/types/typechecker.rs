@@ -856,9 +856,8 @@ fn get_fields(
                 },
             }
         },
-        TypeApplication(constructor, args) => match follow_bindings_in_cache_and_map(constructor, bindings, cache) {
-            Ref { .. } => get_fields(&args[0], &[], bindings, cache),
-            other => get_fields(&other, args, bindings, cache),
+        TypeApplication(constructor, args) => {
+            get_fields(&follow_bindings_in_cache_and_map(constructor, bindings, cache), args, bindings, cache)
         },
         Struct(fields, rest) => match &cache.type_bindings[rest.0] {
             Bound(binding) => get_fields(&binding.clone(), args, bindings, cache),
@@ -2007,24 +2006,10 @@ impl<'a> Inferable<'a> for ast::Extern<'a> {
 
 impl<'a> Inferable<'a> for ast::MemberAccess<'a> {
     fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> TypeResult {
-        let mut result = infer(self.lhs.as_mut(), cache);
+        let result = infer(self.lhs.as_mut(), cache);
 
         let level = LetBindingLevel(CURRENT_LEVEL.load(Ordering::SeqCst));
         let mut field_type = cache.next_type_variable(level);
-
-        // If this is a mutable reference to a field, ensure the collection is either
-        // a mutable reference to a collection, or is a local mutable variable.
-        if let Some(Mutability::Mutable) = self.offset {
-            let collection_variable = next_type_variable(cache);
-            let expected = ref_of(Mutability::Mutable, collection_variable.clone(), cache);
-
-            match try_unify(&result.typ, &expected, self.lhs.locate(), cache, TE::ExpectedStructReference) {
-                Ok(bindings) => bindings.perform(cache),
-                Err(_) => check_field_access_lhs_is_mutable(&self.lhs, false, cache),
-            }
-
-            result.typ = collection_variable;
-        }
 
         let mut fields = BTreeMap::new();
         fields.insert(self.field.clone(), field_type.clone());
@@ -2033,7 +2018,48 @@ impl<'a> Inferable<'a> for ast::MemberAccess<'a> {
         let rho = cache.next_type_variable_id(level);
         let struct_type = Type::Struct(fields, rho);
 
-        unify(&result.typ, &struct_type, self.location, cache, TE::NoFieldOfType(self.field.clone()));
+        let mut bindings =
+            try_unify(&result.typ, &struct_type, self.location, cache, TE::NoFieldOfType(self.field.clone()));
+
+        if bindings.is_ok() && self.offset == Some(Mutability::Mutable) {
+            // If unification succeeded (`bindings.is_ok()`) and this is a
+            // mutable field access (`self.offset == Mutable`), `self.lhs`
+            // must be a mutable variable.
+            check_field_access_lhs_is_mutable(self.lhs.as_ref(), false, cache);
+        } else if let Err(error_without_deref) = bindings {
+            // If unification failed, try again with a single dereference.
+            //
+            // (This replicates logic from AST-to-HIR monomorphisation.)
+
+            // If this is a mutable field access (`a.!b`), it's necessary to
+            // unify the actual type (`result.typ`) with a mutable reference to
+            // the partial `struct_type`.
+            let struct_ref = ref_of(self.offset.unwrap_or(Mutability::Immutable), struct_type.clone(), cache);
+
+            bindings = try_unify(&result.typ, &struct_ref, self.lhs.locate(), cache, TE::ExpectedMutable);
+
+            // The complicated logic here is solely to improve diagnostics.
+            bindings = bindings.map_err(|error_with_mutable_deref| {
+                let struct_imm_ref = ref_of(Mutability::Immutable, struct_type.clone(), cache);
+
+                // This unification is only used for a single bit of information.
+                let unification_with_immutable_deref =
+                    try_unify(&result.typ, &struct_imm_ref, self.lhs.locate(), cache, TE::ExpectedMutable);
+
+                if unification_with_immutable_deref.is_ok() {
+                    // Show TE::ExpectedMutable from the second `try_unify`
+                    // when an immutable deref unifies but a mutable deref
+                    // doesn't.
+                    error_with_mutable_deref
+                } else {
+                    // Unification still fails against an immutable reference.
+                    // Show the diagnostic that doesn't mention references.
+                    error_without_deref
+                }
+            });
+        }
+
+        perform_bindings_or_push_error(bindings, cache);
 
         if let Some(mutability) = self.offset {
             field_type = ref_of(mutability, field_type, cache);
