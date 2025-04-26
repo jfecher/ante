@@ -1,0 +1,9 @@
+a = mut (0_i32, 0_i32)
+
+field = a.!first
+field := 1_u32
+
+// args: --check
+// expected stderr:
+// 212_mutable_reference.an:4:1	error: Cannot assign expression of type I32 to a Ref of type U32
+// field := 1_u32
