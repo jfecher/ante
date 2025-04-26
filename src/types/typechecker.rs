@@ -2183,21 +2183,20 @@ impl<'a> Inferable<'a> for ast::Handle<'a> {
         let mut pattern_results = Vec::with_capacity(self.branches.len());
         let mut branch_results = Vec::with_capacity(self.branches.len());
 
+        // All `resume` variables (there is a separate one per branch) have the same environment
+        // type that is the free variables in this `Handle` + a continuation type. We can't set
+        // this until these free variables have their types set though so this is a type variable
+        // for now and we unify it after the Handle branches are finished type checking.
+        let resume_environment_type_var = next_type_variable(cache);
+
         for ((pattern, branch), resume) in self.branches.iter_mut().zip(&self.resumes) {
             let pattern_type = infer(pattern, cache);
             pattern_results.push((pattern_type.traits, pattern_type.effects));
 
-            // Represent a continuation type as a ptr to something. It'll be lowered
-            // into an opaque pointer during monomorphization anyway.
-            let ptr = Box::new(Type::Primitive(PrimitiveType::Ptr));
-            let unit = Type::Primitive(PrimitiveType::UnitType);
-            let continuation_type = Type::TypeApplication(ptr, vec![unit]);
-
             let expected_resume_type = Type::Function(FunctionType {
                 parameters: vec![pattern_type.typ],
                 return_type: Box::new(result.typ.clone()),
-                // `resume` has a continuation in its environment
-                environment: Box::new(continuation_type),
+                environment: Box::new(resume_environment_type_var.clone()),
                 effects: Box::new(next_type_variable(cache)),
                 has_varargs: false,
             });
@@ -2211,6 +2210,22 @@ impl<'a> Inferable<'a> for ast::Handle<'a> {
 
             branch_results.push(branch_type);
         }
+
+        // Now that every variable in each branch is type checked, we can find free variables,
+        // get their types, and set `resume`'s environment type which is the same for every `resume`
+        // variable.
+        let free_variables = self.find_free_variables(cache);
+        let actual_environment_type = resume_environment_type(free_variables);
+
+        // TODO: This error message could be improved if we could ensure `resume` starts as a
+        // closure instead of a polymorphic function or closure.
+        unify(
+            &resume_environment_type_var,
+            &actual_environment_type,
+            self.location,
+            cache,
+            TE::ResumeEnvironmentMismatch,
+        );
 
         // Before we handle the effects we need to add them to the handled expression
         // in case that expression was not known to have them already (e.g. invoking a
@@ -2233,6 +2248,24 @@ impl<'a> Inferable<'a> for ast::Handle<'a> {
         }
 
         result
+    }
+}
+
+fn resume_environment_type(free_variables: BTreeMap<DefinitionInfoId, Type>) -> Type {
+    // Represent a continuation type as a ptr to something. It'll be lowered
+    // into an opaque pointer during monomorphization anyway.
+    let ptr = Box::new(Type::Primitive(PrimitiveType::Ptr));
+    let unit = Type::Primitive(PrimitiveType::UnitType);
+    let continuation_type = Type::TypeApplication(ptr, vec![unit]);
+
+    if free_variables.is_empty() {
+        continuation_type
+    } else {
+        let mut env = vec![continuation_type];
+        for (_, free_var_type) in free_variables {
+            env.push(free_var_type);
+        }
+        make_tuple_type(env)
     }
 }
 

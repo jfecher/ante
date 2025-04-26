@@ -1362,7 +1362,7 @@ impl<'c> Context<'c> {
     ) -> hir::DefinitionInfo {
         assert!(!closure_environment.is_empty());
 
-        let mut env_type = self.make_env_type(closure_environment);
+        let mut env_type = self.make_env_type(closure_environment.values().map(|(_, id, _)| *id));
         let mut env = self.fresh_variable(env_type.clone());
         env.name = Some("env".to_string()); // Not named in source code, but this is only for debugging
         let first_env = env.clone();
@@ -1424,16 +1424,18 @@ impl<'c> Context<'c> {
         tuple(vec![function, env])
     }
 
-    fn make_env_type(&mut self, env: &ClosureEnvironment) -> Type {
-        if env.is_empty() {
+    /// Creates a closure's environment type from an iterator over the closure
+    /// variables within the closure (not the packed environment outside the closure function).
+    fn make_env_type(&mut self, mut env: impl ExactSizeIterator<Item = DefinitionInfoId>) -> Type {
+        if env.len() == 0 {
             Type::Primitive(hir::PrimitiveType::Unit)
         } else if env.len() == 1 {
-            let inner_var = env.first_key_value().unwrap().1 .1;
+            let inner_var = env.next().unwrap();
             let info = &self.cache[inner_var];
             let typ = info.typ.as_ref().unwrap().as_monotype().clone();
             self.convert_type(&typ)
         } else {
-            let mut ids = fmap(env, |(_, (_, id, _))| *id);
+            let mut ids = env.collect::<Vec<_>>();
 
             let info = &self.cache[ids.pop().unwrap()];
             let typ = info.typ.as_ref().unwrap().as_monotype().clone();
@@ -1879,22 +1881,20 @@ impl<'c> Context<'c> {
         let free_vars = handle.find_free_variables(&self.cache);
 
         // Redefine the captured environment
-        for (variable, typ) in &free_vars {
-            let typ = self.follow_all_bindings(typ);
-            let fresh_id = self.next_unique_id();
-            let name = self.cache.definition_infos[variable.0].name.clone();
-            let converted_type = Rc::new(self.convert_type(&typ));
-            let new_variable =
-                hir::Variable { definition: None, definition_id: fresh_id, typ: converted_type, name: Some(name) };
-            self.definitions.insert(*variable, typ.clone(), Definition::Normal(new_variable));
-        }
+        self.redefine_captured_environment(&free_vars);
 
         let start_expr_fn =
             self.make_start_effect_expr_function(&handle.expression, &handle.effects_handled, &free_vars);
-        let handler_fn = self.make_handler_function(handle);
 
         // We need to pop the local scope before `make_handle_env_pushes` so that that function can
         // refer to the captured variables to push them to the environment.
+        self.definitions.pop_local_scope();
+
+        // We need to redefine the captured variables again to make new ids which will be function
+        // parameters of the handle function.
+        self.definitions.push_local_scope();
+        self.redefine_captured_environment(&free_vars);
+        let handler_fn = self.make_handler_function(handle, &free_vars);
         self.definitions.pop_local_scope();
 
         // create the final inline expression
@@ -1906,15 +1906,22 @@ impl<'c> Context<'c> {
         // continuation_push(continuation, arg_1)
         // ...
         // continuation_push(continuation, arg_N)
-        self.make_handle_env_pushes(k.clone(), free_vars, &mut statements);
+        self.make_handle_env_pushes(k.clone(), &free_vars, &mut statements);
 
-        // ret = handler(k)
+        // ret = handler(k, env1, ..., envN)
+        let mut args = vec![k.clone()];
+        for (free_var_id, free_var_type) in free_vars {
+            let variable = match self.lookup_definition(free_var_id, &free_var_type).unwrap() {
+                Definition::Macro(_) => unreachable!("Macro definitions should not be captured"),
+                Definition::Normal(variable) => variable,
+            };
+            args.push(hir::Ast::Variable(variable));
+        }
+
         let ret_type = self.convert_type(handle.get_type().unwrap());
-        let call_handler = hir::Ast::FunctionCall(hir::FunctionCall {
-            function: Box::new(handler_fn),
-            args: vec![k.clone()],
-            function_type: hir::FunctionType::new(vec![Type::continuation()], ret_type.clone()),
-        });
+        let function = Box::new(handler_fn);
+        let function_type = hir::FunctionType::new(vec![Type::continuation()], ret_type.clone());
+        let call_handler = hir::Ast::FunctionCall(hir::FunctionCall { function, args, function_type });
         let (ret_def, ret) = self.fresh_definition_with_variable(call_handler, "ret".into(), ret_type);
         statements.push(ret_def);
 
@@ -1924,6 +1931,18 @@ impl<'c> Context<'c> {
         statements.push(ret);
 
         hir::Ast::Sequence(hir::Sequence { statements })
+    }
+
+    fn redefine_captured_environment(&mut self, free_vars: &BTreeMap<DefinitionInfoId, types::Type>) {
+        for (variable, typ) in free_vars {
+            let typ = self.follow_all_bindings(typ);
+            let fresh_id = self.next_unique_id();
+            let name = self.cache.definition_infos[variable.0].name.clone();
+            let converted_type = Rc::new(self.convert_type(&typ));
+            let new_variable =
+                hir::Variable { definition: None, definition_id: fresh_id, typ: converted_type, name: Some(name) };
+            self.definitions.insert(*variable, typ.clone(), Definition::Normal(new_variable));
+        }
     }
 
     /// Creates the `handler` function from a handler:
@@ -1945,22 +1964,34 @@ impl<'c> Context<'c> {
     ///             arg1_M = continuation_pop(continuation, typeof(arg1_1))
     ///             ...
     ///             arg1_1 = continuation_pop(continuation, typeof(arg1_M))
+    ///             envM = continuation_pop(continuation, typeof(env1))
+    ///             ...
+    ///             env1 = continuation_pop(continuation, typeof(envM))
     ///             body1
     ///         ...
     ///         | EffectN_Hash ->
     ///             argN_M = continuation_pop(continuation, typeof(argN_1))
     ///             ...
     ///             argN_1 = continuation_pop(continuation, typeof(argN_M))
+    ///             envM = continuation_pop(continuation, typeof(env1))
+    ///             ...
+    ///             env1 = continuation_pop(continuation, typeof(envM))
     ///             bodyN
     ///     else
     ///         x = continuation_pop(continuation, typeof(x))
     ///         return_case
     /// ```
-    fn make_handler_function(&mut self, handle: &ast::Handle<'c>) -> hir::Ast {
+    fn make_handler_function(
+        &mut self, handle: &ast::Handle<'c>, free_vars: &BTreeMap<DefinitionInfoId, types::Type>,
+    ) -> hir::Ast {
         let continuation_var = self.fresh_variable(Type::continuation());
         let continuation = hir::Ast::Variable(continuation_var.clone());
 
-        let parameters = vec![Type::continuation()];
+        let mut parameters = vec![Type::continuation()];
+        for (_, free_var_type) in free_vars {
+            parameters.push(self.convert_type(free_var_type));
+        }
+
         let result_type = self.convert_type(handle.get_type().unwrap());
         let return_type = Box::new(result_type.clone());
         let function_type = hir::FunctionType { parameters, return_type, is_varargs: false };
@@ -1968,7 +1999,7 @@ impl<'c> Context<'c> {
         let mut handle_function_var = self.fresh_variable(typ.clone());
 
         for old_resume_id in &handle.resumes {
-            self.define_resume_function(*old_resume_id, continuation.clone(), &handle_function_var);
+            self.define_resume_function(*old_resume_id, continuation.clone(), &handle_function_var, free_vars);
         }
 
         let mut branches =
@@ -2002,7 +2033,16 @@ impl<'c> Context<'c> {
             statements: vec![hir::Ast::Builtin(hir::Builtin::ContinuationResume(k())), if_],
         }));
 
-        let lambda = hir::Ast::Lambda(hir::Lambda { args: vec![continuation_var], body, typ: function_type });
+        let mut args = vec![continuation_var];
+        for (free_var_id, free_var_type) in free_vars {
+            let variable = match self.lookup_definition(*free_var_id, free_var_type).unwrap() {
+                Definition::Macro(_) => unreachable!("Macro definitions should not be captured"),
+                Definition::Normal(variable) => variable,
+            };
+            args.push(variable);
+        }
+
+        let lambda = hir::Ast::Lambda(hir::Lambda { args, body, typ: function_type });
 
         let definition = hir::Ast::Definition(hir::Definition {
             variable: handle_function_var.definition_id,
@@ -2068,13 +2108,13 @@ impl<'c> Context<'c> {
     /// `continuation_init` prevents us from actually passing in the environment directly we need
     /// to push and pop them to the closure's channel.
     fn make_handle_env_pushes(
-        &self, k: hir::Ast, free_vars: BTreeMap<DefinitionInfoId, types::Type>, statements: &mut Vec<hir::Ast>,
+        &self, k: hir::Ast, free_vars: &BTreeMap<DefinitionInfoId, types::Type>, statements: &mut Vec<hir::Ast>,
     ) {
         use hir::{Ast::Builtin, Builtin::ContinuationArgPush};
 
         for (variable, variable_type) in free_vars {
             let k = Box::new(k.clone());
-            let variable = match self.lookup_definition(variable, &variable_type).unwrap() {
+            let variable = match self.lookup_definition(*variable, variable_type).unwrap() {
                 Definition::Macro(_) => unreachable!("Macro definitions should not be captured"),
                 Definition::Normal(variable) => variable,
             };
@@ -2116,14 +2156,31 @@ impl<'c> Context<'c> {
 
     /// Defines the `resume` function for a particular handle definition.
     /// This becomes a global function and can be defined any time.
-    fn define_resume_function(&mut self, resume_id: DefinitionInfoId, k: hir::Ast, handler_function: &hir::Variable) {
+    fn define_resume_function(
+        &mut self, resume_id: DefinitionInfoId, k: hir::Ast, handler_function: &hir::Variable,
+        free_vars: &BTreeMap<DefinitionInfoId, types::Type>,
+    ) {
         let definition_id = self.next_unique_id();
         let typ = self.cache.definition_infos[resume_id.0].typ.as_ref().unwrap().as_monotype().clone();
         let typ = self.follow_all_bindings(&typ);
         let monomorphized_type = Rc::new(self.convert_type(&typ));
 
-        let resume_function = self.make_resume_function(&monomorphized_type, handler_function);
-        let resume_closure = tuple(vec![resume_function, k]);
+        let resume_function = self.make_resume_function(&monomorphized_type, handler_function, free_vars);
+
+        // `resume`'s closure environment is any free variable used by any of the effect branches
+        // plus the continuation `k`.
+        let mut env = VecDeque::new();
+        env.push_back(k);
+        for (free_var_id, free_var_type) in free_vars {
+            let variable = match self.lookup_definition(*free_var_id, free_var_type).unwrap() {
+                Definition::Macro(_) => unreachable!("Macro definitions should not be captured"),
+                Definition::Normal(variable) => variable,
+            };
+            env.push_back(hir::Ast::Variable(variable));
+        }
+
+        let env = Self::make_closure_environment(env);
+        let resume_closure = tuple(vec![resume_function, env]);
 
         let name = Some("resume".to_string());
         let definition = hir::Ast::Definition(hir::Definition {
@@ -2143,15 +2200,17 @@ impl<'c> Context<'c> {
 
     /// A resume function `resume: Arg1 - Arg2 - ... - ArgN -> Ret` translates to:
     /// ```pseudocode
-    /// Ret resume(_1: Arg1, _2: Arg2, ..., _N: ArgN, k: Cont) {
+    /// Ret resume(_1: Arg1, _2: Arg2, ..., _N: ArgN, env1: Env1, env2: Env2, ..., envN: EnvN, k: Cont) {
     ///     co_push(co, &_1, sizeof(Arg1));
     ///     co_push(co, &_2, sizeof(Arg2));
     ///     ...
     ///     co_push(co, &_N, sizeof(ArgN));
-    ///     return handler_function(k);
+    ///     return handler_function(k, env1, env2, ..., envN);
     /// }
     /// ```
-    fn make_resume_function(&mut self, typ: &Type, handler_function: &hir::Variable) -> hir::Ast {
+    fn make_resume_function(
+        &mut self, typ: &Type, handler_function: &hir::Variable, free_vars: &BTreeMap<DefinitionInfoId, types::Type>,
+    ) -> hir::Ast {
         use hir::{Ast::Builtin, Builtin::ContinuationArgPush};
         let mut function_type = match typ {
             Type::Function(function) => function.clone(),
@@ -2162,47 +2221,101 @@ impl<'c> Context<'c> {
             other => panic!("Expected function type, found {}", other),
         };
 
-        // `ast::Handle::infer_impl` has a type checking hack to set the environment type of
-        // `resume` to a continuation type despite there being no proper Cont type in the front
-        // end. It uses a `Ptr Unit` instead so we swap out that type with the real one here.
-        let fake_cont_type = function_type.parameters.pop().unwrap();
-        assert_eq!(fake_cont_type, Type::pointer());
+        let environment_type =
+            function_type.parameters.last_mut().expect("There should always be a closure environment parameter");
+        let environment_size = free_vars.len() + 1;
+        Self::fix_resume_environment_type(environment_type, environment_size);
 
-        let mut args = fmap(function_type.parameters.iter(), |param| hir::DefinitionInfo {
-            definition: None,
-            definition_id: self.next_unique_id(),
-            typ: Rc::new(param.clone()),
-            name: None,
+        let lambda_args = fmap(&function_type.parameters, |param| {
+            let definition_id = self.next_unique_id();
+            hir::DefinitionInfo { definition: None, definition_id, typ: Rc::new(param.clone()), name: None }
         });
 
-        let k_var = hir::DefinitionInfo {
-            definition: None,
-            definition_id: self.next_unique_id(),
-            typ: Rc::new(Type::continuation()),
-            name: Some("k".into()),
-        };
+        let environment = lambda_args.last().unwrap().clone();
 
+        let (k_var, mut statements, call_args) = self.unpack_resume_environment(free_vars, environment);
         let k = hir::Ast::Variable(k_var.clone());
-        function_type.parameters.push(Type::continuation());
 
         // Push each parameter to the continuation
-        let mut statements = fmap(&args, |arg| {
+        statements.extend(lambda_args.iter().map(|arg| {
             let arg = Box::new(hir::Ast::Variable(arg.clone()));
             Builtin(ContinuationArgPush(Box::new(k.clone()), arg))
-        });
+        }));
 
-        args.push(k_var);
+        // The last arg in `lambda_args` is the environment which we don't want to push
+        statements.pop();
 
         // Then resume the continuation
         let result_type = function_type.return_type.as_ref().clone();
         statements.push(hir::Ast::FunctionCall(hir::FunctionCall {
             function: Box::new(hir::Ast::Variable(handler_function.clone())),
-            args: vec![k],
+            args: call_args,
             function_type: hir::FunctionType::new(vec![Type::continuation()], result_type),
         }));
 
         let body = Box::new(hir::Ast::Sequence(hir::Sequence { statements }));
-        hir::Ast::Lambda(hir::Lambda { args, body, typ: function_type })
+        hir::Ast::Lambda(hir::Lambda { args: lambda_args, body, typ: function_type })
+    }
+
+    /// Unpack `resume`'s closure environment, adding each definition to the returned
+    /// Vec of statements. This also returns a Vec of each defined variable (k being first)
+    /// so that these can later be forwarded to the handle function since k + the environment
+    /// are the arguments it takes as well.
+    fn unpack_resume_environment(
+        &mut self, free_vars: &BTreeMap<DefinitionInfoId, types::Type>, mut environment: hir::Variable,
+    ) -> (hir::Variable, Vec<hir::Ast>, Vec<hir::Ast>) {
+        let environment_vars = std::iter::once(Type::continuation())
+            .chain(free_vars.iter().map(|(_, typ)| self.convert_type(typ)))
+            .collect::<Vec<_>>();
+
+        let mut env_type = environment.typ.as_ref().clone();
+        let total_vars = environment_vars.len();
+
+        let mut statements = Vec::new();
+        let mut defined_vars = Vec::new();
+
+        for (i, environment_var_type) in environment_vars.into_iter().enumerate() {
+            if i == total_vars - 1 {
+                defined_vars.push(environment.clone());
+            } else {
+                let env_ast = hir::Ast::Variable(environment);
+
+                let variable_extract = Self::extract(env_ast.clone(), 0, environment_var_type.clone());
+                env_type = Self::extract_second_type(env_type);
+                let env_ast = Self::extract(env_ast, 1, env_type.clone());
+
+                let (var_def, var) = self.fresh_definition(variable_extract, None, environment_var_type.clone());
+                let (env_def, env_var) = self.fresh_definition(env_ast, None, env_type.clone());
+
+                statements.push(var_def);
+                statements.push(env_def);
+                defined_vars.push(hir::Variable::new(var, Rc::new(environment_var_type)));
+                environment = hir::Variable::new(env_var, Rc::new(env_type.clone()));
+            }
+        }
+
+        let k = defined_vars.first().unwrap().clone();
+        let defined_vars = fmap(defined_vars, hir::Ast::Variable);
+        (k, statements, defined_vars)
+    }
+
+    /// The frontend does not have a continuation type so it encodes it as a `Ptr Unit` instead.
+    /// Here we take an environment tuple and mutate the very first element to be a continuation
+    /// type.
+    fn fix_resume_environment_type(typ: &mut Type, environment_size: usize) {
+        if environment_size > 1 {
+            match typ {
+                Type::Tuple(items) => {
+                    assert_eq!(items.len(), 2, "environment tuples should always be nested pairs");
+                    items[0] = Type::continuation();
+                },
+                other => unreachable!(
+                    "Expected an environment tuple of size {environment_size} but found a non-tuple {other}"
+                ),
+            }
+        } else {
+            *typ = Type::continuation();
+        }
     }
 
     /// When matching on an effect in a handler:

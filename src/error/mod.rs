@@ -134,6 +134,7 @@ pub enum TypeErrorKind {
     HandleBranchMismatch,
     PatternReturnTypeMismatch,
     MonomorphizationError,
+    ResumeEnvironmentMismatch,
 
     NeverShown,
 }
@@ -325,6 +326,13 @@ impl Display for DiagnosticKind {
             },
             DiagnosticKind::TypeError(TypeErrorKind::PatternReturnTypeMismatch, actual, expected) => {
                 write!(f, "Expected type {expected} does not match the pattern's return type {actual}")
+            },
+            DiagnosticKind::TypeError(TypeErrorKind::ResumeEnvironmentMismatch, actual, expected) => {
+                if *actual == "Unit".blue().to_string() {
+                    write!(f, "`resume` should be a closure with an environment type of {expected}, but it was used where only free functions are expected")
+                } else {
+                    write!(f, "`resume` should be a closure with an environment type of {expected}, but it was inferred to be {actual}")
+                }
             },
             DiagnosticKind::TypeError(TypeErrorKind::NeverShown, actual, expected) => {
                 unreachable!("This type error should never be shown. Expected {}, Actual {}", expected, actual)

@@ -63,7 +63,8 @@ impl<'c> FreeVars for ast::Variable<'c> {
         let id = self.definition.unwrap();
 
         if !ctx.cache.definition_infos[id.0].global && !ctx.free_variables.contains_key(&id) {
-            ctx.free_variables.insert(id, self.get_type().unwrap().clone());
+            let t = self.get_type().unwrap().clone();
+            ctx.free_variables.insert(id, t);
         }
     }
 }
