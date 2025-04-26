@@ -2007,7 +2007,7 @@ impl<'a> Inferable<'a> for ast::Extern<'a> {
 
 impl<'a> Inferable<'a> for ast::MemberAccess<'a> {
     fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> TypeResult {
-        let mut result = infer(self.lhs.as_mut(), cache);
+        let result = infer(self.lhs.as_mut(), cache);
 
         let level = LetBindingLevel(CURRENT_LEVEL.load(Ordering::SeqCst));
         let mut field_type = cache.next_type_variable(level);
@@ -2022,8 +2022,6 @@ impl<'a> Inferable<'a> for ast::MemberAccess<'a> {
                 Ok(bindings) => bindings.perform(cache),
                 Err(_) => check_field_access_lhs_is_mutable(&self.lhs, false, cache),
             }
-
-            result.typ = collection_variable;
         }
 
         let mut fields = BTreeMap::new();
