@@ -997,56 +997,68 @@ fn level_is_polymorphic(level: LetBindingLevel) -> bool {
 /// should only be used with polymorphic_only = false outside of the typechecking pass.
 /// Otherwise the decision of whether to propagate the variable would be incorrect.
 pub fn find_all_typevars(typ: &Type, polymorphic_only: bool, cache: &ModuleCache<'_>) -> Vec<TypeVariableId> {
+    find_all_typevars_helper(typ, polymorphic_only, cache, RECURSION_LIMIT)
+}
+
+pub(super) fn find_all_typevars_helper(
+    typ: &Type, polymorphic_only: bool, cache: &ModuleCache<'_>, fuel: u32,
+) -> Vec<TypeVariableId> {
     match typ {
         Primitive(_) => vec![],
         UserDefined(_) => vec![],
         Tag(_) => vec![],
-        TypeVariable(id) => find_typevars_in_typevar_binding(*id, polymorphic_only, cache),
+        TypeVariable(id) => find_typevars_in_typevar_binding(*id, polymorphic_only, cache, fuel),
         Function(function) => {
             let mut type_variables = vec![];
             for parameter in &function.parameters {
-                type_variables.append(&mut find_all_typevars(parameter, polymorphic_only, cache));
+                type_variables.append(&mut find_all_typevars_helper(parameter, polymorphic_only, cache, fuel));
             }
 
-            type_variables.append(&mut find_all_typevars(&function.environment, polymorphic_only, cache));
-            type_variables.append(&mut find_all_typevars(&function.return_type, polymorphic_only, cache));
-            type_variables.append(&mut find_all_typevars(&function.effects, polymorphic_only, cache));
+            type_variables.append(&mut find_all_typevars_helper(&function.environment, polymorphic_only, cache, fuel));
+            type_variables.append(&mut find_all_typevars_helper(&function.return_type, polymorphic_only, cache, fuel));
+            type_variables.append(&mut find_all_typevars_helper(&function.effects, polymorphic_only, cache, fuel));
             type_variables
         },
         TypeApplication(constructor, args) => {
-            let mut type_variables = find_all_typevars(constructor, polymorphic_only, cache);
+            let mut type_variables = find_all_typevars_helper(constructor, polymorphic_only, cache, fuel);
             for arg in args {
-                type_variables.append(&mut find_all_typevars(arg, polymorphic_only, cache));
+                type_variables.append(&mut find_all_typevars_helper(arg, polymorphic_only, cache, fuel));
             }
             type_variables
         },
         Ref { sharedness, mutability, lifetime } => {
-            let mut type_variables = find_all_typevars(mutability, polymorphic_only, cache);
-            type_variables.append(&mut find_all_typevars(sharedness, polymorphic_only, cache));
-            type_variables.append(&mut find_all_typevars(lifetime, polymorphic_only, cache));
+            let mut type_variables = find_all_typevars_helper(mutability, polymorphic_only, cache, fuel);
+            type_variables.append(&mut find_all_typevars_helper(sharedness, polymorphic_only, cache, fuel));
+            type_variables.append(&mut find_all_typevars_helper(lifetime, polymorphic_only, cache, fuel));
             type_variables
         },
         Struct(fields, id) => match &cache.type_bindings[id.0] {
-            Bound(t) => find_all_typevars(t, polymorphic_only, cache),
+            Bound(t) => find_all_typevars_helper(t, polymorphic_only, cache, fuel),
             Unbound(..) => {
-                let mut vars = find_typevars_in_typevar_binding(*id, polymorphic_only, cache);
+                let mut vars = find_typevars_in_typevar_binding(*id, polymorphic_only, cache, fuel);
                 for field in fields.values() {
-                    vars.append(&mut find_all_typevars(field, polymorphic_only, cache));
+                    vars.append(&mut find_all_typevars_helper(field, polymorphic_only, cache, fuel));
                 }
                 vars
             },
         },
-        Effects(effects) => effects.find_all_typevars(polymorphic_only, cache),
+        Effects(effects) => effects.find_all_typevars(polymorphic_only, cache, fuel),
     }
 }
 
 /// Helper for find_all_typevars which gets the TypeBinding for a given
 /// TypeVariableId and either recurses on it if it is bound or returns it.
 pub(super) fn find_typevars_in_typevar_binding(
-    id: TypeVariableId, polymorphic_only: bool, cache: &ModuleCache,
+    id: TypeVariableId, polymorphic_only: bool, cache: &ModuleCache, fuel: u32,
 ) -> Vec<TypeVariableId> {
+    if fuel == 0 {
+        panic!("Recursion limit hit in find_all_typevars");
+    }
+
+    let fuel = fuel - 1;
+
     match &cache.type_bindings[id.0] {
-        Bound(t) => find_all_typevars(t, polymorphic_only, cache),
+        Bound(t) => find_all_typevars_helper(t, polymorphic_only, cache, fuel),
         Unbound(level, _) => {
             if !polymorphic_only || level_is_polymorphic(*level) {
                 vec![id]

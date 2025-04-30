@@ -242,16 +242,18 @@ impl EffectSet {
         a
     }
 
-    pub fn find_all_typevars(&self, polymorphic_only: bool, cache: &ModuleCache) -> Vec<super::TypeVariableId> {
+    pub fn find_all_typevars(
+        &self, polymorphic_only: bool, cache: &ModuleCache, fuel: u32,
+    ) -> Vec<super::TypeVariableId> {
         let this = self.flatten(cache);
         let mut vars = match this.extension {
-            Some(extension) => typechecker::find_typevars_in_typevar_binding(extension, polymorphic_only, cache),
+            Some(extension) => typechecker::find_typevars_in_typevar_binding(extension, polymorphic_only, cache, fuel),
             None => Vec::new(),
         };
 
         for (_, args) in &this.effects {
             for arg in args {
-                vars.append(&mut typechecker::find_all_typevars(arg, polymorphic_only, cache));
+                vars.append(&mut typechecker::find_all_typevars_helper(arg, polymorphic_only, cache, fuel));
             }
         }
 

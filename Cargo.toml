@@ -8,7 +8,6 @@ rust-version = "1.81.0"
 
 [lib]
 name = "ante"
-edition = "2021"
 
 [workspace]
 members = [ "ante-ls" ]
