@@ -1,6 +1,6 @@
 import StringBuilder
 
-sb: StringBuilder = mut empty ()
+mut sb: StringBuilder = empty ()
 reserve !sb 10
 append !sb "你好，"
 append !sb " World!"

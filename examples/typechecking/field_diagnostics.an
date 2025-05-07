@@ -9,7 +9,7 @@ imm_ref = &tuple
 _ = imm_ref.!first
 _ = imm_ref.!missing
 
-mut_tuple = mut (1, 1)
+mut mut_tuple = (1, 1)
 
 _ = mut_tuple.&missing
 _ = mut_tuple.!missing

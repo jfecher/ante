@@ -286,10 +286,10 @@ trait Append a with
     (++): a - a -> a
 
 trait Extract collection index -> elem with
-    (#): collection - index -> elem
+    (.[): collection - index -> elem
 
 impl Extract (Ptr t) Usz t with
-    (#) ptr index = deref_ptr <| offset ptr index
+    (.[) ptr index = deref_ptr <| offset ptr index
 
 
 // Bitwise functions
@@ -596,7 +596,7 @@ panic msg =
     exit 1
 
 impl Extract String Usz Char with
-    (#) s index = s.c_string#index
+    (.[) s index = s.c_string.[index]
 
 // impl Insert String int Char
 //     insert str index Char =
@@ -619,8 +619,8 @@ next_char (f: InFile) : Char =
 next_line (f: InFile) : String =
     if eof f then return ""
 
-    capacity = mut 32
-    cstr = mut malloc @capacity
+    mut capacity = 32
+    mut cstr = malloc @capacity
 
     len = loop (len = 0) ->
         next = next_char f

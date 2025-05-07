@@ -1,4 +1,4 @@
-x = mut 4
+mut x = 4
 y = x
 print y
 x := 5

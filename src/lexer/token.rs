@@ -132,7 +132,6 @@ pub enum Token {
     ApplyLeft,          // <|
     ApplyRight,         // |>
     Append,             // ++
-    Index,              // #
     Modulus,            // %
     Multiply,           // *
     ParenthesisLeft,    // (
@@ -149,7 +148,7 @@ pub enum Token {
     Comma,              // ,
     MemberAccess,       // .
     MemberRef,          // .&
-    MemberMutRef,       // .!
+    MemberMut,          // .!
     LessThan,           // <
     GreaterThan,        // >
     LessThanOrEqual,    // <=
@@ -160,6 +159,9 @@ pub enum Token {
     At,                 // @
     ExclamationMark,    // !
     QuestionMark,       // ?
+    Index,              // .[]
+    IndexRef,           // .&[]
+    IndexMut,           // .![]
 }
 
 impl Token {
@@ -177,7 +179,6 @@ impl Token {
                 | ApplyLeft
                 | ApplyRight
                 | Append
-                | Index
                 | Modulus
                 | Multiply
                 | Comma
@@ -189,6 +190,9 @@ impl Token {
                 | GreaterThanOrEqual
                 | Divide
                 | Range
+                | Index
+                | IndexRef
+                | IndexMut
         )
     }
 }
@@ -320,7 +324,6 @@ impl Display for Token {
             Token::ApplyLeft => write!(f, "'<|'"),
             Token::ApplyRight => write!(f, "'|>'"),
             Token::Append => write!(f, "'++'"),
-            Token::Index => write!(f, "'#'"),
             Token::Modulus => write!(f, "'%'"),
             Token::Multiply => write!(f, "'*'"),
             Token::ParenthesisLeft => write!(f, "'('"),
@@ -337,7 +340,7 @@ impl Display for Token {
             Token::Comma => write!(f, "','"),
             Token::MemberAccess => write!(f, "'.'"),
             Token::MemberRef => write!(f, "'.&'"),
-            Token::MemberMutRef => write!(f, "'.!'"),
+            Token::MemberMut => write!(f, "'.!'"),
             Token::LessThan => write!(f, "'<'"),
             Token::GreaterThan => write!(f, "'>'"),
             Token::LessThanOrEqual => write!(f, "'<='"),
@@ -348,6 +351,9 @@ impl Display for Token {
             Token::At => write!(f, "'@'"),
             Token::ExclamationMark => write!(f, "'!'"),
             Token::QuestionMark => write!(f, "'?'"),
+            Token::Index => write!(f, "'.[]'"),
+            Token::IndexRef => write!(f, "'.&[]'"),
+            Token::IndexMut => write!(f, "'.![]'"),
         }
     }
 }

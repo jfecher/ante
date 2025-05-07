@@ -1,4 +1,4 @@
-num = mut 32
+mut num = 32
 print num
 num := 7
 print num

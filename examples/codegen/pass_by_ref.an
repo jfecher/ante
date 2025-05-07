@@ -11,12 +11,12 @@ impl Print S with
 foo (x: S) (y: S) =
     printne "x before: "
     print x
-    z = mut y
+    mut z = y
     z.!message := "modifying y"
     printne "x after:  "
     print x
 
-x = mut S "original x string"
+mut x = S "original x string"
 foo x x
 
 // args: --delete-binary

@@ -506,8 +506,25 @@ impl<'cache, 'contents> Iterator for Lexer<'cache, 'contents> {
                 self.previous_token_expects_indent = true;
                 self.advance2_with(Token::RightArrow)
             },
-            ('.', '&') => self.advance2_with(Token::MemberRef),
-            ('.', '!') => self.advance2_with(Token::MemberMutRef),
+            ('.', '&') => {
+                self.advance();
+                self.advance();
+                if self.current == '[' {
+                    self.advance_with(Token::IndexRef)
+                } else {
+                    Some((Token::MemberRef, self.locate()))
+                }
+            },
+            ('.', '!') => {
+                self.advance();
+                self.advance();
+                if self.current == '[' {
+                    self.advance_with(Token::IndexMut)
+                } else {
+                    Some((Token::MemberMut, self.locate()))
+                }
+            },
+            ('.', '[') => self.advance2_with(Token::Index),
             ('.', _) => self.advance_with(Token::MemberAccess),
             ('-', _) => self.lex_negative(),
             ('!', '=') => self.advance2_with(Token::NotEqual),
@@ -517,7 +534,6 @@ impl<'cache, 'contents> Iterator for Lexer<'cache, 'contents> {
             ('(', ')') => self.advance2_with(Token::UnitLiteral),
             ('<', '=') => self.advance2_with(Token::LessThanOrEqual),
             ('>', '=') => self.advance2_with(Token::GreaterThanOrEqual),
-            ('#', _) => self.advance_with(Token::Index),
             ('%', _) => self.advance_with(Token::Modulus),
             ('*', _) => self.advance_with(Token::Multiply),
             ('(', _) => {

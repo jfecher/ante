@@ -1,4 +1,4 @@
-v = mut Vec.empty ()
+mut v = Vec.empty ()
 
 Vec.push !v 3i32
 Vec.push !v 4

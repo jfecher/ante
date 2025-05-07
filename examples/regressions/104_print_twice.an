@@ -3,7 +3,7 @@ import HashMap
 impl Hash U8 with
     hash x = cast x
 
-map = mut empty ()
+mut map = empty ()
 insert !map 1u8 3u16
 
 print map

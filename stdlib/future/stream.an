@@ -13,15 +13,15 @@ impl Stream (Unit -> Unit can Emit a) a with
 impl Stream (Vec a) a with
     stream vec =
         indices () = range 0 (len vec)
-        map indices (vec#_)
+        map indices (vec.[_])
 
-for (s: Stream _ a) (f: a -> b) -> Unit =
+for (s: Stream _ a) (f: a -> b): Unit =
     handle stream s
     | emit a ->
         f a
         resume ()
 
-filter_map (s: Stream _ a) (f: a -> Maybe b) -> Unit can Emit b =
+filter_map (s: Stream _ a) (f: a -> Maybe b): Unit can Emit b =
     handle stream s
     | emit a ->
         match f a
@@ -33,20 +33,20 @@ map s f = filter_map s fn x -> Some (f x)
 
 filter s f = filter_map s fn x -> if f x then x
 
-fold (s: Stream _ a) (acc: b) (f: a -> b -> b) -> b =
+fold (s: Stream _ a) (acc: b) (f: a - b -> b): b =
     handle stream s
     | return _ -> acc
     | emit value ->
         x = f value acc
         fold resume x f
 
-map2 (as: Stream _ a) (bs: Stream _ b) (f: a -> b -> c) -> Unit can Emit c =
-    handle stream as
+map2 (sa: Stream _ a) (sb: Stream _ b) (f: a - b -> c): Unit can Emit c =
+    handle stream sa
     | emit a ->
         resume_a = resume
-        handle stream bs
+        handle stream sb
         | emit b ->
             emit (f a b)
             map2 resume_a resume
 
-zip as bs = map2 as bs (,)
+zip a b = map2 a b (,)

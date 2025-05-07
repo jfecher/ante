@@ -6,7 +6,7 @@ type Vec t =
 empty () = Vec (null ()) 0 0
 
 of iterable =
-    v = mut empty ()
+    mut v = empty ()
     fill !v iterable
     v
 
@@ -50,7 +50,7 @@ pop (v: !Vec t) : Maybe t =
     if is_empty v then None
     else
         v.!len := v.len - 1
-        Some (v.data#v.len)
+        Some (v.data.[v.len])
 
 //remove the element at the given index and return it.
 //will error if the index is out of bounds.
@@ -59,13 +59,13 @@ remove_index (v: !Vec t) (idx:Usz) : t =
         v.!len := v.len - 1
     else if idx >= 0 and idx < v.len - 1 then
         iter_range idx (v.len - 1) fn i ->
-            array_insert v.data i (v.data#(i+1))
+            array_insert v.data i (v.data.[i+1])
 
         v.!len := v.len - 1
     else
         panic "Vec.remove_index: index ${idx} out of bounds for Vec of length ${v.len}"
 
-    v.data#v.len
+    v.data.[v.len]
 
 //remove the first instance of the given element from
 //the vector or none if the element was not found.
@@ -75,7 +75,7 @@ remove_first (v: !Vec t) (elem: t) : Maybe Usz =
     loop (i = 0) ->
         if i >= v.len then
             None
-        else if elem == v.data#i then
+        else if elem == v.data.[i] then
             remove_index v i
             Some i
         else recur (i + 1)
@@ -84,21 +84,21 @@ remove_first (v: !Vec t) (elem: t) : Maybe Usz =
 //Expects the indices to be in sorted order.
 //Will error if any index is out of bounds.
 remove_indices (v: !Vec t) (idxs: Vec Usz) : Unit =
-    moved = mut 0
+    mut moved = 0
     iter (indices idxs) fn i ->
-        cur = idxs.data#i
+        cur = idxs.data.[i]
 
         if cur < 0 or cur >= v.len then
             panic "Vec.remove: index $cur out of bounds for Vec of length ${v.len}"
 
         moved := @moved + 1
         if i != idxs.len - 1 then
-            nxt = idxs.data#(i + 1)
+            nxt = idxs.data.[i + 1]
             iter_range (cur + 1) nxt fn j ->
-                array_insert v.data (j - @moved) (v.data#j)
+                array_insert v.data (j - @moved) (v.data.[j])
         else
             iter_range (cur + 1) v.len fn j ->
-                array_insert v.data (j - @moved) (v.data#j)
+                array_insert v.data (j - @moved) (v.data.[j])
 
     v.!len := v.len - @moved
 
@@ -106,9 +106,9 @@ remove_indices (v: !Vec t) (idxs: Vec Usz) : Unit =
 //return the number of elements removed.
 //Uses = to determine element equality.
 remove_all (v: !Vec t) (elem: t) : Usz =
-    idxs = mut empty ()
+    mut idxs = empty ()
     iter (indices @v) fn i ->
-        if elem == v.data#i then
+        if elem == v.data.[i] then
             push idxs i
 
     remove_indices v @idxs
@@ -122,7 +122,7 @@ swap_last (v: !Vec t) (idx:Usz) : Bool =
     if idx >= v.len or idx + 1 == v.len then false
     else
         v.!len := v.len - 1
-        array_insert v.data idx (v.data#v.len)
+        array_insert v.data idx (v.data.[v.len])
         true
 
 
@@ -150,14 +150,14 @@ print_helper (v: Vec q) (i: Usz) : Unit =
     if i < v.len then
         // TODO: This fails to find the correct impl without
         // this type annotation
-        printne ((v.data#i) : q)
+        printne ((v.data.[i]) : q)
         if i + 1 != v.len then
             printne ", "
 
         print_helper v (i + 1)
 
 impl Extract (Vec t) Usz t with
-    (#) v i = v.data#i
+    (.[) v i = v.data.[i]
 
 // impl Insert (Vec t) Usz t with
 //     insert v i x = v.data#i := x

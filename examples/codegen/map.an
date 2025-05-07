@@ -3,7 +3,7 @@ import HashMap
 impl Hash U8 with
     hash x = cast x
 
-map = mut empty ()
+mut map = empty ()
 
 // Test several inserts. HashMap is linear-scan so it 
 // should keep resizing so that it is at least half-empty 

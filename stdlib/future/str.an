@@ -1,24 +1,24 @@
 import Vec
 
 reverse (s: String) : String =
-    buf = mut malloc (s.len + 1usz)
+    mut buf = malloc (s.len + 1usz)
 
     i = loop (i = 0) ->
         if i < s.len then
-            buf#i := s#(s.len - i - 1usz)
+            buf.[i] := s.[s.len - i - 1usz]
             recur (i + 1)
         else i
 
-    buf#i := '\0'
+    buf.[i] := '\0'
     String buf i
 
 
 split (s: String) (c: String) : Vec String =
-    v = mut Vec.empty ()
+    mut v = Vec.empty ()
 
     i, j = loop (subend = 0) (substart = 0) ->
         if subend < s.len then
-            substart = if s#subend == c then
+            substart = if s.[subend] == c then
                 push v (substr s substart subend)
                 subend + 1
             else 
@@ -37,13 +37,13 @@ substr (s: String) (begin: Usz) (end: Usz) : String =
         return ""
 
     len = end - begin
-    buf = mut malloc (len + 1)
-    buf#end := '\0'
+    mut buf = malloc (len + 1)
+    buf.[end] := '\0'
 
     loop (i = 0) ->
         b = begin + i
         if b < end then
-            buf#i := s#b
+            buf.[i] := s.[b]
             recur (i + 1)
 
     String buf len

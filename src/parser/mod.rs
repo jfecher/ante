@@ -73,6 +73,7 @@ parser!(statement_list loc =
 fn statement<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
     match input[0].0 {
         Token::ParenthesisLeft | Token::Identifier(_) => or(&[definition, assignment, expression], "statement")(input),
+        Token::Mut => definition(input),
         Token::Boxed => type_definition(input),
         Token::Type => or(&[type_definition, type_alias], "statement")(input),
         Token::Import => import(input),
@@ -153,9 +154,9 @@ parser!(function_return_type location -> 'b ast::Type<'b> =
 );
 
 parser!(variable_definition location -> 'b ast::Definition<'b> =
+    mutable <- maybe(expect(Token::Mut));
     name <- pattern;
     _ <- expect(Token::Equal);
-    mutable <- maybe(expect(Token::Mut));
     expr !<- block_or_statement;
     ast::Definition {
         pattern: Box::new(name),
@@ -414,7 +415,6 @@ fn precedence(token: &Token) -> Option<(i8, bool)> {
         Token::Range => Some((10, false)),
         Token::Add | Token::Subtract => Some((11, false)),
         Token::Multiply | Token::Divide | Token::Modulus => Some((12, false)),
-        Token::Index => Some((14, false)),
         Token::As => Some((15, false)),
         _ => None,
     }
@@ -696,18 +696,32 @@ fn pattern_function_argument<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> 
 fn member_access<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
     let (mut input, mut arg, mut location) = argument(input)?;
 
-    while input[0].0 == Token::MemberAccess || input[0].0 == Token::MemberRef || input[0].0 == Token::MemberMutRef {
+    while matches!(
+        &input[0].0,
+        Token::MemberAccess | Token::MemberRef | Token::MemberMut | Token::Index | Token::IndexRef | Token::IndexMut
+    ) {
+        let is_index = matches!(&input[0].0, Token::Index | Token::IndexRef | Token::IndexMut);
         let is_reference = match input[0].0 {
-            Token::MemberMutRef => Some(Mutability::Mutable),
-            Token::MemberRef => Some(Mutability::Immutable),
+            Token::MemberMut | Token::IndexMut => Some(Mutability::Mutable),
+            Token::MemberRef | Token::IndexRef => Some(Mutability::Immutable),
             _ => None,
         };
         input = &input[1..];
 
-        let (new_input, field, field_location) = no_backtracking(identifier)(input)?;
-        input = new_input;
-        location = location.union(field_location);
-        arg = Ast::member_access(arg, field, is_reference, location);
+        // Parse an indexing operation `e.[i]`
+        if is_index {
+            let (new_input, index, _) = expression(input)?;
+            let (new_input, _, end_location) = expect(Token::BracketRight)(new_input)?;
+            input = new_input;
+            location = location.union(end_location);
+            arg = Ast::index(arg, index, is_reference, location);
+        // Parse a normal field access `e.field`
+        } else {
+            let (new_input, field, field_location) = no_backtracking(identifier)(input)?;
+            input = new_input;
+            location = location.union(field_location);
+            arg = Ast::member_access(arg, field, is_reference, location);
+        }
     }
 
     Ok((input, arg, location))

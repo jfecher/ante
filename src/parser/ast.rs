@@ -771,6 +771,16 @@ impl<'a> Ast<'a> {
         Ast::MemberAccess(MemberAccess { lhs: Box::new(lhs), field, offset, location, typ: None })
     }
 
+    pub fn index(lhs: Ast<'a>, index: Ast<'a>, offset: Option<Mutability>, location: Location<'a>) -> Ast<'a> {
+        let operator = match offset {
+            Some(Mutability::Mutable) => Token::IndexMut,
+            Some(Mutability::Immutable) => Token::IndexRef,
+            _ => Token::Index,
+        };
+        let operator = Self::operator(operator, location);
+        Ast::function_call(operator, vec![lhs, index], location)
+    }
+
     pub fn assignment(lhs: Ast<'a>, rhs: Ast<'a>, location: Location<'a>) -> Ast<'a> {
         Ast::Assignment(Assignment { lhs: Box::new(lhs), rhs: Box::new(rhs), location, typ: None })
     }
