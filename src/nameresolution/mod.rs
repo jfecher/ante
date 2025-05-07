@@ -135,11 +135,6 @@ pub struct NameResolver {
     /// of looked up in the symbol table.
     auto_declare: bool,
 
-    /// A function signature like `a -> b` in Ante can implicitly be made to be
-    /// effect polymorphic `a -> b can e`. Setting this flag to true will disable
-    /// this behavior.
-    no_implicit_effects: bool,
-
     /// The trait we're currently declaring. While this is Some(id) all
     /// declarations will be declared as part of the trait.
     current_trait: Option<TraitInfoId>,
@@ -651,7 +646,6 @@ impl<'c> NameResolver {
             type_variable_scopes: vec![scope::TypeVariableScope::default()],
             state: NameResolutionState::DeclareInProgress,
             auto_declare: false,
-            no_implicit_effects: false,
             current_trait: None,
             required_definitions: None,
             current_function: None,
@@ -891,17 +885,12 @@ impl<'c> NameResolver {
         self.definitions_collected.clear();
         self.auto_declare = true;
 
-        // Ensure this extern definition is not treated as effect polymorphic.
-        // We don't want this recompiled for each different continuation set.
-        self.no_implicit_effects = true;
-
         for declaration in &mut extern_.declarations {
             self.push_type_variable_scope();
             declaration.define(self, cache);
             self.pop_type_variable_scope();
         }
 
-        self.no_implicit_effects = false;
         self.auto_declare = false;
 
         for id in self.definitions_collected.iter() {
@@ -997,28 +986,27 @@ impl<'c> NameResolver {
     ) where
         T: IntoIterator<Item = &'local mut ast::Type<'a>>,
     {
-        // Set to the location of the function type we've modified
-        let mut modified = None;
-        let fresh_typevar = cache.next_type_variable_id(self.let_binding_level);
-        let implicit_effect = EffectName::ImplicitEffect(fresh_typevar);
+        let mut new_effects = Vec::new();
 
         for arg in args {
             if let ast::Type::Function(function) = arg {
                 if function.effects.is_none() {
                     let location = function.location;
-                    function.effects = Some(vec![(implicit_effect.clone(), location, Vec::new())]);
-                    modified = Some(location);
+
+                    let effect = cache.next_type_variable_id(self.let_binding_level);
+                    let new_effect = (EffectName::ImplicitEffect(effect), location, Vec::new());
+
+                    function.effects = Some(vec![new_effect.clone()]);
+                    new_effects.push(new_effect);
                 }
             }
         }
 
-        if let Some(modified_location) = modified {
-            let implicit_effect = (implicit_effect, modified_location, Vec::new());
-
+        if !new_effects.is_empty() {
             if let Some(effects) = effects {
-                effects.push(implicit_effect);
+                effects.extend(new_effects);
             } else {
-                *effects = Some(vec![implicit_effect]);
+                *effects = Some(new_effects);
             }
         } else if effects.is_none() {
             *effects = Some(Vec::new());
@@ -1149,7 +1137,6 @@ impl<'c> Resolvable<'c> for ast::Lambda<'c> {
         resolver.try_add_current_function_to_scope();
 
         resolver.desugar_function_effect_variables_in_ast(&mut self.args, &mut self.effects, cache);
-
         resolver.resolve_all_definitions(self.args.iter_mut(), cache, || DefinitionKind::Parameter);
 
         if let Some(typ) = &self.return_type {

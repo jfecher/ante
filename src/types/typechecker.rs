@@ -2282,7 +2282,7 @@ impl<'a> Inferable<'a> for ast::Handle<'a> {
 
         // So that we can later add the effects from the branches without accidentally removing them
         for mut branch in branch_results {
-            result.combine(&mut branch, cache)
+            result.combine(&mut branch, cache);
         }
 
         result

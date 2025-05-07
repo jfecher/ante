@@ -116,7 +116,7 @@ fn effect_clause<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Vec<Effect
 
 parser!(non_empty_effect_clause location -> 'b Vec<EffectAst<'b>> =
     _ <- expect(Token::Can);
-    effects <- many1(effect);
+    effects <- delimited(effect, expect(Token::Comma));
     effects
 );
 

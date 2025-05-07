@@ -28,8 +28,8 @@ pub const STRING_ID: DefinitionInfoId = DefinitionInfoId(1);
 pub const PAIR_ID: DefinitionInfoId = DefinitionInfoId(2);
 
 /// Defines the builtin symbols:
-/// - `type string = c_string: ptr char, len: usz`
-/// - `builtin : string -> a` used by the codegen pass to implement
+/// - `type String = c_string: Ptr Char, length: Usz`
+/// - `builtin : String -> a` used by the codegen pass to implement
 ///   codegen of builtin operations such as adding integers.
 ///
 /// This function needs to be called before any other DefinitionInfoId is
