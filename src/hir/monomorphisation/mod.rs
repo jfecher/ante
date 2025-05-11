@@ -603,6 +603,11 @@ impl<'c> Context<'c> {
     }
 
     fn get_effects<'typ>(&'typ self, effects: &'typ types::Type) -> Vec<types::effects::Effect> {
+        let effects = match effects {
+            types::Type::Function(function_type) => &function_type.effects,
+            other => other,
+        };
+
         let mut set = effects.flatten_effects(&self.cache);
         let Some(extension) = set.extension else {
             return set.effects.to_vec();

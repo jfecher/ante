@@ -1,6 +1,15 @@
-use std::{collections::{BTreeMap, VecDeque}, rc::Rc};
+use std::{
+    collections::{BTreeMap, VecDeque},
+    rc::Rc,
+};
 
-use crate::{cache::DefinitionInfoId, hir::{self, Type}, parser::ast, types::{self, effects::Effect, typed::Typed}, util::fmap};
+use crate::{
+    cache::DefinitionInfoId,
+    hir::{self, Type},
+    parser::ast,
+    types::{self, effects::Effect, typed::Typed},
+    util::fmap,
+};
 
 use super::{tuple, unwrap_variable, Context, Definition};
 
@@ -103,6 +112,10 @@ impl<'c> Context<'c> {
             args.push(hir::Ast::Variable(variable));
         }
 
+        if let Some(frame) = self.effect_continuations.last() {
+            args.extend(frame.iter().map(|(_, k)| hir::Ast::Variable(k.clone())));
+        }
+
         let ret_type = self.convert_type(handle.get_type().unwrap());
         let function = Box::new(handler_fn);
         let function_type = hir::FunctionType::new(vec![Type::continuation()], ret_type.clone());
@@ -177,6 +190,17 @@ impl<'c> Context<'c> {
             parameters.push(self.convert_type(free_var_type));
         }
 
+        // Redefine and push effect handlers since we can't use local variables from another function
+        if let Some(frame) = self.effect_continuations.last().cloned() {
+            let new_frame = fmap(frame, |(effect, _old_k)| {
+                parameters.push(Type::continuation());
+
+                let new_k = self.fresh_variable(Type::continuation());
+                (effect.clone(), new_k)
+            });
+            self.effect_continuations.push(new_frame);
+        }
+
         let result_type = self.convert_type(handle.get_type().unwrap());
         let return_type = Box::new(result_type.clone());
         let function_type = hir::FunctionType { parameters, return_type, is_varargs: false };
@@ -227,6 +251,11 @@ impl<'c> Context<'c> {
             args.push(variable);
         }
 
+        // Push any captured effect continuations too
+        if let Some(frame) = self.effect_continuations.last() {
+            args.extend(frame.iter().map(|(_, k)| k.clone()));
+        }
+
         let lambda = hir::Ast::Lambda(hir::Lambda { args, body, typ: function_type });
 
         let definition = hir::Ast::Definition(hir::Definition {
@@ -237,6 +266,7 @@ impl<'c> Context<'c> {
             expr: Box::new(lambda),
         });
 
+        self.pop_continuation_parameters();
         handle_function_var.definition = Some(Rc::new(definition));
         hir::Ast::Variable(handle_function_var)
     }
@@ -350,7 +380,9 @@ impl<'c> Context<'c> {
         let typ = self.follow_all_bindings(&typ);
         let monomorphized_type = Rc::new(self.convert_type(&typ));
 
-        let resume_function = self.make_resume_function(&monomorphized_type, handler_function, free_vars);
+        let function_effects = self.get_effects(&typ);
+        let resume_function =
+            self.make_resume_function(&monomorphized_type, handler_function, free_vars, function_effects);
 
         // `resume`'s closure environment is any free variable used by any of the effect branches
         // plus the continuation `k`.
@@ -395,6 +427,7 @@ impl<'c> Context<'c> {
     /// ```
     fn make_resume_function(
         &mut self, typ: &Type, handler_function: &hir::Variable, free_vars: &BTreeMap<DefinitionInfoId, types::Type>,
+        mut function_effects: Vec<Effect>,
     ) -> hir::Ast {
         use hir::{Ast::Builtin, Builtin::ContinuationArgPush};
         let mut function_type = match typ {
@@ -411,14 +444,35 @@ impl<'c> Context<'c> {
         let environment_size = free_vars.len() + 1;
         Self::fix_resume_environment_type(environment_type, environment_size);
 
-        let lambda_args = fmap(&function_type.parameters, |param| {
+        function_effects.reverse();
+        let mut effect_continuations = Vec::with_capacity(function_effects.len());
+
+        let lambda_args = fmap(function_type.parameters.iter().enumerate(), |(i, param)| {
             let definition_id = self.next_unique_id();
-            hir::DefinitionInfo { definition: None, definition_id, typ: Rc::new(param.clone()), name: None }
+            let var = hir::DefinitionInfo { definition: None, definition_id, typ: Rc::new(param.clone()), name: None };
+
+            // Check if this parameter is a Continuation that is not this resume's continuation.
+            // If it is this resume's continuation it'll always be in the captured environment, so
+            // we skip that last parameter. If it is not this resume's continuation, it should have
+            // been pushed as a continuation parameter before the environment parameter.
+            let is_env_param = i == function_type.parameters.len() - 1;
+            if !is_env_param && *param == Type::continuation() {
+                let effect = function_effects.pop().expect("Expected effect handler");
+                effect_continuations.push((effect, var.clone()));
+            }
+            var
         });
+        self.effect_continuations.push(effect_continuations);
 
         let environment = lambda_args.last().unwrap().clone();
 
-        let (k_var, mut statements, call_args) = self.unpack_resume_environment(free_vars, environment);
+        let (k_var, mut statements, mut call_args) = self.unpack_resume_environment(free_vars, environment);
+
+        // Push any effect continuations that aren't handled by this Handle as well
+        if let Some(frame) = self.effect_continuations.last() {
+            call_args.extend(frame.iter().map(|(_, k)| hir::Ast::Variable(k.clone())));
+        }
+
         let k = hir::Ast::Variable(k_var.clone());
 
         // Push each parameter to the continuation
@@ -438,6 +492,7 @@ impl<'c> Context<'c> {
             function_type: hir::FunctionType::new(vec![Type::continuation()], result_type),
         }));
 
+        self.pop_continuation_parameters();
         let body = Box::new(hir::Ast::Sequence(hir::Sequence { statements }));
         hir::Ast::Lambda(hir::Lambda { args: lambda_args, body, typ: function_type })
     }

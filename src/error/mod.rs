@@ -135,6 +135,7 @@ pub enum TypeErrorKind {
     PatternReturnTypeMismatch,
     MonomorphizationError,
     ResumeEnvironmentMismatch,
+    ResumeEffectsMismatch,
 
     NeverShown,
 }
@@ -333,6 +334,9 @@ impl Display for DiagnosticKind {
                 } else {
                     write!(f, "`resume` should be a closure with an environment type of {expected}, but it was inferred to be {actual}")
                 }
+            },
+            DiagnosticKind::TypeError(TypeErrorKind::ResumeEffectsMismatch, actual, expected) => {
+                write!(f, "Expected `resume` to have effects {expected}, but found {actual}")
             },
             DiagnosticKind::TypeError(TypeErrorKind::NeverShown, actual, expected) => {
                 unreachable!("This type error should never be shown. Expected {}, Actual {}", expected, actual)

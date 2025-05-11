@@ -1,0 +1,30 @@
+effect Emit a with
+    emit: a -> Unit
+
+iota (n: U32) = loop (i = 0) ->
+    if i < n then
+        emit i
+        recur (i + 1)
+
+filter (stream: Unit -> Unit can Emit a) (f: a -> Bool pure) =
+    handle stream ()
+    | emit x ->
+        if f x then
+            emit x
+        resume ()
+
+for (stream: Unit -> Unit can Emit a) (f: a -> Unit pure) =
+    handle stream ()
+    | emit x ->
+        f x
+        resume ()
+
+for (fn () -> filter (fn () -> iota 10) (fn x -> x % 2 == 0)) print
+
+// args: --delete-binary
+// expected stdout:
+// 0
+// 2
+// 4
+// 6
+// 8

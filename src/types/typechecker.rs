@@ -2226,6 +2226,7 @@ impl<'a> Inferable<'a> for ast::Handle<'a> {
         // this until these free variables have their types set though so this is a type variable
         // for now and we unify it after the Handle branches are finished type checking.
         let resume_environment_type_var = next_type_variable(cache);
+        let resume_effects = next_type_variable(cache);
 
         for ((pattern, branch), resume) in self.branches.iter_mut().zip(&self.resumes) {
             let pattern_type = infer(pattern, cache);
@@ -2235,7 +2236,7 @@ impl<'a> Inferable<'a> for ast::Handle<'a> {
                 parameters: vec![pattern_type.typ],
                 return_type: Box::new(result.typ.clone()),
                 environment: Box::new(resume_environment_type_var.clone()),
-                effects: Box::new(next_type_variable(cache)),
+                effects: Box::new(resume_effects.clone()),
                 has_varargs: false,
             });
 
@@ -2279,6 +2280,8 @@ impl<'a> Inferable<'a> for ast::Handle<'a> {
         }
 
         self.effects_handled = handled_effects;
+
+        unify(&resume_effects, &Type::Effects(result.effects.clone()), self.location, cache, TE::ResumeEffectsMismatch);
 
         // So that we can later add the effects from the branches without accidentally removing them
         for mut branch in branch_results {
