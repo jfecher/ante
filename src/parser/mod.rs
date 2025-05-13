@@ -401,21 +401,22 @@ fn precedence(token: &Token) -> Option<(i8, bool)> {
         Token::Semicolon => Some((0, false)),
         Token::ApplyRight => Some((1, false)),
         Token::ApplyLeft => Some((2, true)),
-        Token::Comma => Some((3, true)),
-        Token::Or => Some((4, false)),
-        Token::And => Some((5, false)),
+        Token::With => Some((3, false)),
+        Token::Comma => Some((4, true)),
+        Token::Or => Some((5, false)),
+        Token::And => Some((6, false)),
         Token::EqualEqual
         | Token::NotEqual
         | Token::GreaterThan
         | Token::LessThan
         | Token::GreaterThanOrEqual
-        | Token::LessThanOrEqual => Some((7, false)),
-        Token::In => Some((8, false)),
-        Token::Append => Some((9, false)),
-        Token::Range => Some((10, false)),
-        Token::Add | Token::Subtract => Some((11, false)),
-        Token::Multiply | Token::Divide | Token::Modulus => Some((12, false)),
-        Token::As => Some((15, false)),
+        | Token::LessThanOrEqual => Some((8, false)),
+        Token::In => Some((9, false)),
+        Token::Append => Some((10, false)),
+        Token::Range => Some((11, false)),
+        Token::Add | Token::Subtract => Some((12, false)),
+        Token::Multiply | Token::Divide | Token::Modulus => Some((13, false)),
+        Token::As => Some((16, false)),
         _ => None,
     }
 }

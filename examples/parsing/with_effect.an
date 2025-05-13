@@ -1,0 +1,8 @@
+iota 10
+    with filter even
+    with map (_ * 2)
+    with for print
+
+// args: --parse
+// expected stdout:
+// (for (fn () -> (map (fn () -> (filter (fn () -> (iota 10)) even)) (fn $1 -> ('*' $1 2)))) print)

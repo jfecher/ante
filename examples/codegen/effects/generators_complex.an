@@ -27,7 +27,10 @@ for (stream: Unit -> Unit can Emit a) (f: a -> Unit pure) =
 
 even x = x % 2 == 0
 
-for (fn () -> map (fn () -> filter (fn () -> iota 10) even) (_ * 2)) print
+iota 10
+    with filter even
+    with map (_ * 2)
+    with for print
 
 // args: --delete-binary
 // expected stdout:

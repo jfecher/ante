@@ -47,6 +47,7 @@ fn matches_underscore(arg: &Ast) -> bool {
 /// - `bar |> foo` into `foo bar` (applies to <| as well)
 /// - `a and b` into `if a then b else false`
 /// - `a or b` into `if a then true else b`
+/// - `a with b` into `(fn () -> a) |> b` which gets desugared into `b (fn () -> a)`
 ///
 /// Also handles explicitly curried operators. E.g. `_ or false` will
 /// be translated as `fn $1 -> if $1 then true else false`
@@ -60,6 +61,7 @@ pub fn desugar_operators<'a>(operator: Token, lhs: Ast<'a>, rhs: Ast<'a>, locati
             Some(Token::ApplyRight) => prepend_argument_to_function(rhs, lhs, location),
             Some(Token::And) => Ast::if_expr(lhs, rhs, Some(Ast::bool_literal(false, location)), location),
             Some(Token::Or) => Ast::if_expr(lhs, Ast::bool_literal(true, location), Some(rhs), location),
+            Some(Token::With) => with_expr(lhs, rhs, location),
             Some(operator_token) => {
                 let operator = Ast::operator(operator_token, location);
                 Ast::function_call(operator, vec![lhs, rhs], location)
@@ -70,6 +72,12 @@ pub fn desugar_operators<'a>(operator: Token, lhs: Ast<'a>, rhs: Ast<'a>, locati
 
     let operator_symbol = Ast::operator(operator, location);
     desugar_explicit_currying(operator_symbol, vec![lhs, rhs], call_operator_function, location)
+}
+
+/// Desugars `lhs with rhs` into `rhs (fn () -> lhs)`
+fn with_expr<'a>(lhs: Ast<'a>, rhs: Ast<'a>, location: Location<'a>) -> Ast<'a> {
+    let lambda = Ast::lambda(vec![Ast::unit_literal(location)], None, None, lhs, location);
+    prepend_argument_to_function(rhs, lambda, location)
 }
 
 fn prepend_argument_to_function<'a>(f: Ast<'a>, arg: Ast<'a>, location: Location<'a>) -> Ast<'a> {
