@@ -51,6 +51,7 @@ impl EffectSet {
 
         loop {
             let Some(extension_var) = extension.as_mut() else {
+                Self::dedup_effects(&mut effects, cache);
                 return Self::only(effects);
             };
 
@@ -63,12 +64,21 @@ impl EffectSet {
                     *extension_var = *typevar;
                 },
                 _ => {
-                    effects.sort();
-                    effects.dedup();
+                    Self::dedup_effects(&mut effects, cache);
                     break Self { effects, extension };
                 },
             }
         }
+    }
+
+    fn dedup_effects(effects: &mut Vec<Effect>, cache: &ModuleCache) {
+        for (_id, args) in effects.iter_mut() {
+            for arg in args {
+                *arg = cache.follow_bindings(arg);
+            }
+        }
+        effects.sort();
+        effects.dedup();
     }
 
     fn follow_unification_bindings(&self, bindings: &UnificationBindings, cache: &ModuleCache) -> Self {
@@ -216,30 +226,39 @@ impl EffectSet {
     /// it is sufficient to bind each extension to the other effect set but with a
     /// fresh extension id so that it is not infinitely recursive. This may result in
     /// duplicate effects but these should be deduplicated later during `flatten` calls.
-    #[must_use]
-    pub fn combine(&self, other: &EffectSet, cache: &mut ModuleCache) -> EffectSet {
-        let mut a = self.flatten(cache);
-        let mut b = other.flatten(cache);
+    pub fn combine(&self, other: &EffectSet, cache: &mut ModuleCache) {
+        let a = self.flatten(cache);
+        let b = other.flatten(cache);
 
         let a_ext = a.extension;
         let b_ext = b.extension;
 
         let extension_var = typechecker::next_type_variable_id(cache);
 
+        let mut new_a_effects = Vec::new();
+        let mut new_b_effects = Vec::new();
+
+        for effect in &a.effects {
+            match find_matching_effect(&effect, &b.effects, cache) {
+                Ok(bindings) => bindings.perform(cache),
+                Err(_) => new_b_effects.push(effect.clone()),
+            }
+        }
+
+        for effect in &b.effects {
+            match find_matching_effect(&effect, &a.effects, cache) {
+                Ok(bindings) => bindings.perform(cache),
+                Err(_) => new_a_effects.push(effect.clone()),
+            }
+        }
+
         if let Some(a_id) = a_ext {
-            // always Some because `a` was open to extension even if `b` is not
-            b.extension = Some(extension_var);
-            cache.bind(a_id, Type::Effects(b));
+            cache.bind(a_id, Type::Effects(EffectSet::new(new_a_effects, Some(extension_var))));
         }
 
         if let Some(b_id) = b_ext {
-            // always Some because `b` was open to extension even if `a` is not
-            a.extension = Some(extension_var);
-            cache.bind(b_id, Type::Effects(a.clone()));
+            cache.bind(b_id, Type::Effects(EffectSet::new(new_b_effects, Some(extension_var))));
         }
-
-        a.extension = a_ext;
-        a
     }
 
     pub fn find_all_typevars(

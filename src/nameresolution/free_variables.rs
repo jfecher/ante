@@ -10,11 +10,20 @@ impl<'c> ast::Handle<'c> {
     pub fn find_free_variables(&self, cache: &ModuleCache<'c>) -> BTreeMap<DefinitionInfoId, Type> {
         let mut context = Context::new(cache);
         self.find_free_vars(&mut context);
-
         for variable in context.nonfree_variables {
             context.free_variables.remove(&variable);
         }
+        context.free_variables
+    }
+}
 
+impl<'c> ast::Ast<'c> {
+    pub fn find_free_variables(&self, cache: &ModuleCache<'c>) -> BTreeMap<DefinitionInfoId, Type> {
+        let mut context = Context::new(cache);
+        self.find_free_vars(&mut context);
+        for variable in context.nonfree_variables {
+            context.free_variables.remove(&variable);
+        }
         context.free_variables
     }
 }

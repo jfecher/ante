@@ -6,33 +6,34 @@ iota (n: U32) = loop (i = 0) ->
         emit i
         recur (i + 1)
 
-filter (stream: Unit -> Unit can Emit a) (f: a -> Bool pure) =
-    handle stream ()
+// Removing the `can` here used to panic
+filter (stream: Unit -> Unit) (f: a -> Bool pure) =
+    handle 
+        stream ()
     | emit x ->
         if f x then
             emit x
         resume ()
 
-map (stream: Unit -> Unit can Emit a) (f: a -> b pure): Unit can Emit b =
-    handle stream ()
-    | emit x ->
-        emit (f x)
-        resume ()
-
 for (stream: Unit -> Unit can Emit a) (f: a -> Unit pure) =
-    handle stream ()
+    handle 
+        stream ()
     | emit x ->
         f x
         resume ()
 
-even x = x % 2 == 0
+zero_to_nine () =
+    iota 10
 
-for (fn () -> map (fn () -> filter (fn () -> iota 10) even) (_ * 2)) print
+filtered () =
+    filter zero_to_nine (fn x -> x % 2 == 0)
+
+for filtered print
 
 // args: --delete-binary
 // expected stdout:
 // 0
+// 2
 // 4
+// 6
 // 8
-// 12
-// 16

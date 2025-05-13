@@ -610,7 +610,9 @@ impl<'c> Context<'c> {
 
         let mut set = effects.flatten_effects(&self.cache);
         let Some(extension) = set.extension else {
-            return set.effects.to_vec();
+            set.effects.sort();
+            set.effects.dedup();
+            return set.effects;
         };
 
         if let Ok(typ) = self.find_binding(extension, RECURSION_LIMIT) {

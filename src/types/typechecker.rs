@@ -122,7 +122,7 @@ impl TypeResult {
 
     fn combine(&mut self, other: &mut Self, cache: &mut ModuleCache) {
         self.traits.append(&mut other.traits);
-        self.effects = self.effects.combine(&other.effects, cache);
+        self.effects.combine(&other.effects, cache);
     }
 
     fn handle_effects_from(
@@ -2270,7 +2270,7 @@ impl<'a> Inferable<'a> for ast::Handle<'a> {
         // in case that expression was not known to have them already (e.g. invoking a
         // parameter with an inferred function type).
         for (_, effects) in &pattern_results {
-            result.effects = result.effects.combine(&effects, cache);
+            result.effects.combine(&effects, cache);
         }
 
         // Must remove all the handled effects from each pattern first

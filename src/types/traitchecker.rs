@@ -110,15 +110,15 @@ fn default_literals(arg: &Type, bindings: &mut UnificationBindings, cache: &Modu
     // Check for every type application of the `Int` or `Float` type and an unbound type variable.
     arg.traverse(cache, |typ| {
         if let Type::TypeApplication(constructor, args) = typ {
-            let constructor = cache.follow_typebindings_shallow(constructor);
+            let constructor = cache.follow_bindings_shallow(constructor);
             if let Type::Primitive(PrimitiveType::IntegerType) = &constructor {
-                let arg = cache.follow_typebindings_shallow(&args[0]);
+                let arg = cache.follow_bindings_shallow(&args[0]);
                 if let Type::TypeVariable(id) = arg {
                     // bind id to i32
                     bindings.bindings.insert(*id, DEFAULT_INT_TYPE);
                 }
             } else if let Type::Primitive(PrimitiveType::FloatType) = &constructor {
-                let arg = cache.follow_typebindings_shallow(&args[0]);
+                let arg = cache.follow_bindings_shallow(&args[0]);
                 if let Type::TypeVariable(id) = arg {
                     bindings.bindings.insert(*id, DEFAULT_FLOAT_TYPE);
                 }

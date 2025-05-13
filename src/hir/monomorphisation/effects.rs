@@ -74,11 +74,14 @@ impl<'c> Context<'c> {
         self.definitions.push_local_scope();
         let free_vars = handle.find_free_variables(&self.cache);
 
+        // This should always be a subset of `free_vars`
+        let expression_free_vars = handle.expression.find_free_variables(&self.cache);
+
         // Redefine the captured environment
         self.redefine_captured_environment(&free_vars);
 
         let start_expr_fn =
-            self.make_start_effect_expr_function(&handle.expression, &handle.effects_handled, &free_vars);
+            self.make_start_effect_expr_function(&handle.expression, &handle.effects_handled, &expression_free_vars);
 
         // We need to pop the local scope before `make_handle_env_pushes` so that that function can
         // refer to the captured variables to push them to the environment.
@@ -100,7 +103,7 @@ impl<'c> Context<'c> {
         // continuation_push(continuation, arg_1)
         // ...
         // continuation_push(continuation, arg_N)
-        self.make_handle_env_pushes(k.clone(), &free_vars, &mut statements);
+        self.make_handle_env_pushes(k.clone(), &expression_free_vars, &mut statements);
 
         // ret = handler(k, env1, ..., envN)
         let mut args = vec![k.clone()];

@@ -224,7 +224,7 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
 
         write!(f, " ")?;
 
-        if let Type::TypeVariable(id) = self.cache.follow_typebindings_shallow(&function.effects) {
+        if let Type::TypeVariable(id) = self.cache.follow_bindings_shallow(&function.effects) {
             write!(f, "{}", "can ".blue())?;
             self.fmt_type_variable(*id, f)?;
         } else {
@@ -251,7 +251,7 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
     }
 
     fn fmt_type_application(&self, constructor: &Type, args: &[Type], f: &mut Formatter) -> std::fmt::Result {
-        let constructor = self.cache.follow_typebindings_shallow(constructor);
+        let constructor = self.cache.follow_bindings_shallow(constructor);
 
         if constructor.is_polymorphic_int_type() {
             self.fmt_polymorphic_numeral(&args[0], f, "Int")
@@ -290,7 +290,7 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             return false;
         };
 
-        let sharedness = self.cache.follow_typebindings_shallow(sharedness);
+        let sharedness = self.cache.follow_bindings_shallow(sharedness);
         matches!(sharedness, Type::Tag(_))
     }
 
@@ -316,7 +316,7 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
     }
 
     fn fmt_polymorphic_numeral(&self, arg: &Type, f: &mut Formatter, kind: &str) -> std::fmt::Result {
-        match self.cache.follow_typebindings_shallow(arg) {
+        match self.cache.follow_bindings_shallow(arg) {
             Type::TypeVariable(_) => {
                 write!(f, "{} ", kind.blue())?;
                 self.fmt_type(arg, f)

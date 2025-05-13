@@ -20,9 +20,9 @@ use crate::error::{Diagnostic, DiagnosticKind, ErrorType};
 use crate::nameresolution::NameResolver;
 use crate::parser::ast::{Ast, Definition, EffectDefinition, Extern, TraitDefinition, TraitImpl};
 use crate::types::traits::{ConstraintSignature, RequiredImpl, RequiredTrait, TraitConstraintId};
-use crate::types::{GeneralizedType, Kind, LetBindingLevel, TypeBinding};
+use crate::types::{FunctionType, GeneralizedType, Kind, LetBindingLevel, TypeBinding};
 use crate::types::{Type, TypeInfo, TypeInfoBody, TypeInfoId, TypeVariableId};
-use crate::util::stdlib_dir;
+use crate::util::{fmap, stdlib_dir};
 
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
@@ -698,13 +698,63 @@ impl<'a> ModuleCache<'a> {
         self.type_bindings[id.0] = TypeBinding::Bound(binding);
     }
 
-    pub fn follow_typebindings_shallow<'b>(&'b self, typ: &'b Type) -> &'b Type {
+    pub fn follow_bindings_shallow<'b>(&'b self, typ: &'b Type) -> &'b Type {
         match typ {
             Type::TypeVariable(id) => match &self.type_bindings[id.0] {
-                TypeBinding::Bound(typ) => self.follow_typebindings_shallow(typ),
+                TypeBinding::Bound(typ) => self.follow_bindings_shallow(typ),
                 TypeBinding::Unbound(_, _) => typ,
             },
             other => other,
+        }
+    }
+
+    pub fn follow_bindings(&self, typ: &Type) -> Type {
+        let recur = |typ| self.follow_bindings(typ);
+
+        match typ {
+            Type::Primitive(_) | Type::UserDefined(_) | Type::Tag(_) => typ.clone(),
+
+            Type::Function(function_type) => {
+                let parameters = fmap(&function_type.parameters, recur);
+                let return_type = Box::new(recur(&function_type.return_type));
+                let environment = Box::new(recur(&function_type.environment));
+                let effects = Box::new(recur(&function_type.effects));
+                let has_varargs = function_type.has_varargs;
+                Type::Function(FunctionType { parameters, return_type, environment, effects, has_varargs })
+            },
+            Type::TypeVariable(id) => match &self.type_bindings[id.0] {
+                TypeBinding::Bound(typ) => recur(typ),
+                TypeBinding::Unbound(..) => Type::TypeVariable(*id),
+            },
+            Type::TypeApplication(constructor, args) => {
+                let constructor = Box::new(recur(constructor));
+                let args = fmap(args, recur);
+                Type::TypeApplication(constructor, args)
+            },
+            Type::Ref { mutability, sharedness, lifetime } => {
+                let mutability = Box::new(recur(mutability));
+                let sharedness = Box::new(recur(sharedness));
+                let lifetime = Box::new(recur(lifetime));
+                Type::Ref { mutability, sharedness, lifetime }
+            },
+            Type::Struct(fields, replacement) => {
+                if let TypeBinding::Bound(typ) = &self.type_bindings[replacement.0] {
+                    return recur(typ);
+                }
+
+                let fields = fields.iter().map(|(name, typ)| (name.clone(), recur(typ))).collect();
+                Type::Struct(fields, *replacement)
+            },
+            Type::Effects(effect_set) => {
+                let mut effects = effect_set.flatten(self);
+
+                for (_effect_id, effect_args) in effects.effects.iter_mut() {
+                    for arg in effect_args {
+                        *arg = self.follow_bindings(arg);
+                    }
+                }
+                Type::Effects(effects)
+            },
         }
     }
 }
