@@ -19,6 +19,15 @@ map (stream: Unit -> Unit can Emit a) (f: a -> b pure): Unit can Emit b =
         emit (f x)
         resume ()
 
+enumerate (stream: Unit -> Unit can Emit a): Unit can Emit (U32, a) =
+    // Bug: can't mutably capture i in handle branch if it is declared as `mut i`
+    i = !0u32
+    handle stream ()
+    | emit x ->
+        emit (i, x)
+        i := @i + 1
+        resume ()
+
 for (stream: Unit -> Unit can Emit a) (f: a -> Unit pure) =
     handle stream ()
     | emit x ->
@@ -27,15 +36,21 @@ for (stream: Unit -> Unit can Emit a) (f: a -> Unit pure) =
 
 even x = x % 2 == 0
 
+my_print (x1: (!shared U32), U32) =
+    x = @first x1
+    y = second x1
+    print "${x}, ${y}"
+
 iota 10
     with filter even
-    with map (_ * 2)
-    with for print
+    with map (_ * 2u32)
+    with enumerate
+    with for my_print
 
 // args: --delete-binary
 // expected stdout:
-// 0
-// 4
-// 8
-// 12
-// 16
+// 0, 0
+// 1, 4
+// 2, 8
+// 3, 12
+// 4, 16
