@@ -1,0 +1,20 @@
+
+effect Fail with
+    fail: Unit -> a
+
+effect Read a with
+    read: Unit -> a
+
+read_or_zero f =
+    handle Some <| f ()
+    | fail () -> None
+    | read () -> resume 5u32
+
+foo () =
+    if false then fail ()
+    read ()
+
+print <| read_or_zero foo
+
+// args: --delete-binary
+// expected stdout: 5

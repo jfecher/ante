@@ -1788,7 +1788,7 @@ impl<'a> Inferable<'a> for ast::Definition<'a> {
         let previous_level = CURRENT_LEVEL.swap(level.0, Ordering::SeqCst);
 
         // t, traits
-        let result = infer(self.expr.as_mut(), cache);
+        let expr_result = infer(self.expr.as_mut(), cache);
 
         // The rhs of a Definition must be inferred at a greater LetBindingLevel than
         // the lhs below. Here we use level for the rhs and level - 1 for the lhs
@@ -1798,18 +1798,18 @@ impl<'a> Inferable<'a> for ast::Definition<'a> {
         // resolve_traits is called. For now it is sufficient to call bind_irrefutable_pattern
         // twice - the first time with no traits, however in the future bind_irrefutable_pattern
         // should be split up into two parts.
-        bind_irrefutable_pattern(self.pattern.as_mut(), &result.typ, &[], false, cache);
+        bind_irrefutable_pattern(self.pattern.as_mut(), &expr_result.typ, &[], false, cache);
 
         // TODO investigate this check, should be unneeded. It is breaking on the `input` function
         // in the stdlib.
         if self.pattern.get_type().is_none() {
-            self.pattern.set_type(result.typ.clone());
+            self.pattern.set_type(expr_result.typ.clone());
         }
 
         // If this definition is of a lambda or variable we try to generalize it,
         // which entails wrapping type variables in a forall, and finding which traits
         // usages of this definition require.
-        let traits = try_generalize_definition(self, result.typ, result.traits, cache);
+        let traits = try_generalize_definition(self, expr_result.typ, expr_result.traits, cache);
 
         // TODO: Can these operations on the LetBindingLevel be simplified?
         CURRENT_LEVEL.store(previous_level, Ordering::SeqCst);
@@ -1818,7 +1818,9 @@ impl<'a> Inferable<'a> for ast::Definition<'a> {
         // definied within its pattern as no longer undergoing type inference
         finish_pattern(&self.pattern, cache);
 
-        TypeResult::new(unit, traits, cache)
+        let mut result = TypeResult::new(unit, traits, cache);
+        result.effects = expr_result.effects;
+        result
     }
 }
 

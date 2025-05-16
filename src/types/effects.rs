@@ -222,6 +222,16 @@ impl EffectSet {
         Ok(())
     }
 
+    #[allow(unused)]
+    pub fn debug<'a, 'b>(&self, cache: &'a ModuleCache<'b>) -> super::typeprinter::TypePrinter<'a, 'b> {
+        Type::Effects(self.clone()).debug(cache)
+    }
+
+    #[allow(unused)]
+    pub fn display<'a, 'b>(&self, cache: &'a ModuleCache<'b>) -> super::typeprinter::TypePrinter<'a, 'b> {
+        Type::Effects(self.clone()).display(cache)
+    }
+
     /// To combine two separate effects into a single new effectset containing both,
     /// it is sufficient to bind each extension to the other effect set but with a
     /// fresh extension id so that it is not infinitely recursive. This may result in
