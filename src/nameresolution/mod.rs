@@ -1804,11 +1804,12 @@ impl<'c> Resolvable<'c> for ast::NamedConstructor<'c> {
                 // This should never happen since constructor is parsed with the `variant` parser
                 cache.push_diagnostic(
                     self.constructor.locate(),
-                    D::InternalError("Expected consturctor field to be a Variable"),
+                    D::InternalError("Expected constructor field to be a Variable"),
                 );
                 return;
             },
         };
+
         // This will increment the use count for that type.
         // It will result in it being one higher than it needs to,
         // as the define pass on the sequence will do it again,
@@ -1816,7 +1817,7 @@ impl<'c> Resolvable<'c> for ast::NamedConstructor<'c> {
         let type_info = match resolver.lookup_type(type_name.as_ref(), cache) {
             Some(id) => &cache.type_infos[id.0],
             None => {
-                cache.push_diagnostic(self.location, D::NotInScope("Type", type_name.as_ref().clone()));
+                cache.push_diagnostic(self.location, D::NotInScope("Type", type_name.into_owned()));
                 return;
             },
         };
@@ -1825,7 +1826,7 @@ impl<'c> Resolvable<'c> for ast::NamedConstructor<'c> {
         let struct_fields = match &type_info.body {
             TypeInfoBody::Struct(fields) => fields.iter().map(|field| &field.name),
             _ => {
-                cache.push_diagnostic(self.constructor.locate(), D::NotAStruct(type_name.as_ref().clone()));
+                cache.push_diagnostic(self.constructor.locate(), D::NotAStruct(type_name.into_owned()));
                 return;
             },
         };

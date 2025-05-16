@@ -1,17 +1,16 @@
 use std::{
-    collections::{BTreeMap, VecDeque},
-    rc::Rc,
+    collections::{BTreeMap, VecDeque}, hash::{DefaultHasher, Hash, Hasher}, rc::Rc
 };
 
 use crate::{
     cache::DefinitionInfoId,
-    hir::{self, Type},
+    hir::{self, IntegerKind, Type},
     parser::ast,
     types::{self, effects::Effect, typed::Typed},
     util::fmap,
 };
 
-use super::{tuple, unwrap_variable, Context, Definition};
+use super::{tuple, unit_literal, unwrap_variable, Context, Definition};
 
 impl<'c> Context<'c> {
     /// A handle expression:
@@ -214,22 +213,13 @@ impl<'c> Context<'c> {
             self.define_resume_function(*old_resume_id, continuation.clone(), &handle_function_var, free_vars);
         }
 
-        let mut branches =
-            fmap(&handle.branches, |(pattern, branch)| self.make_effect_body(pattern, branch, continuation.clone()));
-
-        assert_eq!(
-            handle.branches.len(),
-            1,
-            "`handle` is currently only implemented for matching on 1 effectful function at a time"
-        );
-
         let k = || Box::new(continuation.clone());
 
         // continuation_suspended(continuation)
         let condition = hir::Ast::Builtin(hir::Builtin::ContinuationIsSuspended(k()));
 
         // branch0 body
-        let then = branches.pop().unwrap();
+        let then = self.match_on_effect(&handle.branches, continuation.clone(), result_type.clone());
 
         // This is the default / `return _ -> _` case
         let otherwise = hir::Ast::Builtin(hir::Builtin::ContinuationArgPop(k(), result_type.clone()));
@@ -272,6 +262,181 @@ impl<'c> Context<'c> {
         self.pop_continuation_parameters();
         handle_function_var.definition = Some(Rc::new(definition));
         hir::Ast::Variable(handle_function_var)
+    }
+
+    /// Matches on each effect the handler may handle:
+    ///
+    /// actual_hash = continuation_pop(continuation, U32)
+    /// if actual_hash == Effect1_Hash then
+    ///     // Note that arguments are popped in reverse order
+    ///     arg1_M = continuation_pop(continuation, typeof(arg1_1))
+    ///     ...
+    ///     arg1_1 = continuation_pop(continuation, typeof(arg1_M))
+    ///     envM = continuation_pop(continuation, typeof(env1))
+    ///     ...
+    ///     env1 = continuation_pop(continuation, typeof(envM))
+    ///     body1
+    /// ...
+    /// else if actual_hash == EffectN_Hash then
+    ///     argN_M = continuation_pop(continuation, typeof(argN_1))
+    ///     ...
+    ///     argN_1 = continuation_pop(continuation, typeof(argN_M))
+    ///     envM = continuation_pop(continuation, typeof(env1))
+    ///     ...
+    ///     env1 = continuation_pop(continuation, typeof(envM))
+    ///     bodyN
+    fn match_on_effect(&mut self, branches: &[(ast::Ast<'c>, ast::Ast<'c>)], k: hir::Ast, result_type: Type) -> hir::Ast {
+        let branches = fmap(branches, |(pattern, branch)| {
+            let effect_hash = self.hash_effect_pattern(pattern);
+            let body = self.make_effect_body(pattern, branch, k.clone());
+            (effect_hash, body)
+        });
+
+        // Sanity check to ensure there are no hash collisions
+        for (i, (hash_i, _)) in branches.iter().enumerate() {
+            for j in (i + 1) .. branches.len() {
+                let hash_j = branches[j].0;
+
+                if *hash_i == hash_j {
+                    panic!("Hash collision in `handle`:\n  {branches:?}");
+                }
+            }
+        }
+
+        let u64_type = Type::Primitive(hir::PrimitiveType::Integer(IntegerKind::U64));
+        let hash_pop = hir::Ast::Builtin(hir::Builtin::ContinuationArgPop(Box::new(k), u64_type.clone()));
+        let (definition, actual_hash) = self.fresh_definition_with_variable(hash_pop, "effect_hash".to_string(), u64_type);
+
+        let mut ret = hir::Ast::Sequence(hir::Sequence {
+            statements: vec![definition, unit_literal()],
+        });
+
+        let mut next = match &mut ret {
+            hir::Ast::Sequence(seq) => &mut seq.statements[1],
+            _ => unreachable!(),
+        };
+
+        for (hash, branch) in branches {
+            let effect_hash = hir::Ast::Literal(hir::Literal::Integer(hash, IntegerKind::U64));
+            // actual_hash == effect_hash
+            let condition = hir::Ast::Builtin(hir::Builtin::EqInt(Box::new(actual_hash.clone()), Box::new(effect_hash)));
+
+            *next = hir::Ast::If(hir::If {
+                condition: Box::new(condition),
+                then: Box::new(branch),
+                otherwise: Box::new(unit_literal()),
+                result_type: result_type.clone(),
+            });
+
+            match next {
+                hir::Ast::If(if_) => next = if_.otherwise.as_mut(),
+                _ => unreachable!(),
+            }
+        }
+
+        *next = self.make_unhandled_effect_case(actual_hash, result_type);
+        ret
+    }
+
+    // Handlers translate to a match on effect hashes but in the case of a miscompilation,
+    // we can have effect hashes that aren't handled by the handler. For these cases we
+    // add an `else` case to the handler with the pseudocode:
+    //
+    // ```
+    // else
+    //     Std.Prelude.printf "ICE: Unhandled effect hash `%llu`\n" effect_hash 
+    //     Std.Prelude.exit 1
+    //     deref (stack_alloc ()) : result_type
+    // ```
+    fn make_unhandled_effect_case(&self, effect_hash: hir::Ast, result_type: Type) -> hir::Ast {
+        let message = hir::Ast::Literal(hir::Literal::CString("ICE: Unhandled effect hash `%llu`\n".to_string()));
+
+        let int_type = |kind| Type::Primitive(hir::PrimitiveType::Integer(kind));
+
+        let printf_type = hir::FunctionType {
+            parameters: vec![Type::pointer(), int_type(IntegerKind::U64)],
+            return_type: Box::new(int_type(IntegerKind::I32)),
+            is_varargs: true,
+        };
+
+        let printf_definition = hir::Ast::Definition(hir::Definition {
+            variable: self.printf_id,
+            name: Some("printf".to_string()),
+            mutable: false,
+            typ: Type::Function(printf_type.clone()),
+            expr: Box::new(hir::Ast::Extern(hir::Extern {
+                name: "printf".to_string(),
+                typ: Type::Function(printf_type.clone()),
+            })),
+        });
+
+        let printf = hir::Variable {
+            definition: Some(Rc::new(printf_definition)),
+            definition_id: self.printf_id,
+            typ: Rc::new(Type::Function(printf_type.clone())),
+            name: Some("printf".to_string()),
+        };
+
+        let print_unhandled_hash_value = hir::Ast::FunctionCall(hir::FunctionCall {
+            function: Box::new(hir::Ast::Variable(printf)),
+            args: vec![message, effect_hash],
+            function_type: printf_type,
+        });
+
+        let exit_type = hir::FunctionType {
+            parameters: vec![int_type(IntegerKind::I32)],
+            return_type: Box::new(Type::unit()),
+            is_varargs: false,
+        };
+
+        let exit_definition = hir::Ast::Definition(hir::Definition {
+            variable: self.exit_id,
+            name: Some("exit".to_string()),
+            mutable: false,
+            typ: Type::Function(exit_type.clone()),
+            expr: Box::new(hir::Ast::Extern(hir::Extern {
+                name: "exit".to_string(),
+                typ: Type::Function(exit_type.clone()),
+            })),
+        });
+
+        let exit = hir::Variable {
+            definition: Some(Rc::new(exit_definition)),
+            definition_id: self.exit_id,
+            typ: Rc::new(Type::Function(exit_type.clone())),
+            name: Some("exit".to_string()),
+        };
+
+        let exit_call = hir::Ast::FunctionCall(hir::FunctionCall {
+            function: Box::new(hir::Ast::Variable(exit)),
+            args: vec![hir::Ast::Literal(hir::Literal::Integer(1, IntegerKind::I32))],
+            function_type: exit_type,
+        });
+
+        // Must make the result type match still
+        let alloc = hir::Ast::Builtin(hir::Builtin::StackAlloc(Box::new(unit_literal())));
+        let deref = hir::Ast::Builtin(hir::Builtin::Deref(Box::new(alloc), result_type));
+
+        hir::Ast::Sequence(hir::Sequence { statements: vec![
+            print_unhandled_hash_value,
+            exit_call,
+            deref,
+        ]})
+    }
+
+    fn hash_effect_pattern(&self, pattern: &ast::Ast<'c>) -> u64 {
+        match pattern {
+            ast::Ast::FunctionCall(call) => {
+                match call.function.as_ref() {
+                    ast::Ast::Variable(variable) => {
+                        let variable_type = self.follow_all_bindings(variable.typ.as_ref().unwrap());
+                        Self::hash_effect(&variable.kind.name(), &variable_type)
+                    }
+                    other => unreachable!("Expected function name for effect, found: `{other}`"),
+                }
+            },
+            other => unreachable!("Unexpected effect pattern: `{other}`"),
+        }
     }
 
     /// Lowers the `expr` in `handle expr | ...` into:
@@ -621,5 +786,56 @@ impl<'c> Context<'c> {
                 unreachable!("Expected a function call in a handle pattern. Found: {:?}", other)
             },
         }
+    }
+
+    /// This is a simple function but it is useful to have a centralized place that decides
+    /// how an effect should be hashed.
+    /// Expects `frontend_type` to equal `frontend_type.follow_bindings()`.
+    fn hash_effect(name: &str, frontend_type: &types::Type) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        name.hash(&mut hasher);
+        frontend_type.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    /// Compile an effect `eff : A - ... - Z -> Ret` as:
+    /// ```pseudocode
+    /// eff(a, ..., z, k) =
+    ///     continuation_push(k, a)
+    ///     ...
+    ///     continuation_push(k, z)
+    ///     continuation_push(k, hash_effect(eff))  // `hash_effect(eff)` is a known constant
+    ///     continuation_suspend(k)
+    ///     continuation_pop(k, Ret)
+    /// ```
+    pub(super) fn make_effect_function(&mut self, typ: Type, frontend_type: &types::Type, name: &str) -> hir::Ast {
+        use hir::{Ast, Builtin};
+        let hir::types::Type::Function(function_type) = typ else { unreachable!("All effects should be functions") };
+
+        let mut args = fmap(&function_type.parameters, |param| self.fresh_variable(param.clone()));
+        let continuation = args.pop().unwrap();
+
+        let k = || Box::new(Ast::Variable(continuation.clone()));
+
+        // continuation_push(k, arg)
+        let mut statements = fmap(&args, |arg| {
+            let arg = Box::new(Ast::Variable(arg.clone()));
+            Ast::Builtin(Builtin::ContinuationArgPush(k(), arg))
+        });
+
+        // Finally push the hash of the effect we're performing so the handler knows which
+        // case to branch to
+        let effect_hash = Self::hash_effect(name, frontend_type);
+        let effect_hash = hir::Ast::Literal(hir::Literal::Integer(effect_hash, IntegerKind::U64));
+        statements.push(Ast::Builtin(Builtin::ContinuationArgPush(k(), Box::new(effect_hash))));
+
+        let return_type = function_type.return_type.as_ref().clone();
+
+        statements.push(Ast::Builtin(Builtin::ContinuationSuspend(k())));
+        statements.push(Ast::Builtin(Builtin::ContinuationArgPop(k(), return_type)));
+
+        args.push(continuation);
+        let body = Box::new(Ast::Sequence(hir::Sequence { statements }));
+        Ast::Lambda(hir::Lambda { args, body, typ: function_type })
     }
 }

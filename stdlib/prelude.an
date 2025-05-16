@@ -13,7 +13,7 @@ extern
     puts: Ptr Char -> I32
     putchar: Char -> Unit
     getchar: Unit -> I32
-    exit: I32 -> never_returns
+    exit: I32 -> Unit
     malloc: Usz -> Ptr a
     calloc: /*items:*/Usz - /*size:*/Usz -> Ptr a
     realloc: Ptr a - Usz -> Ptr a
@@ -594,6 +594,8 @@ impl Append String with
 panic msg =
     print msg
     exit 1
+    // Unreachable, return any type
+    deref_ptr <| null ()
 
 impl Extract String Usz Char with
     (.[) s index = s.c_string.[index]

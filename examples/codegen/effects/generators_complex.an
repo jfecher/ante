@@ -36,7 +36,7 @@ for (stream: Unit -> Unit can Emit a) (f: a -> Unit pure) =
 
 even x = x % 2 == 0
 
-my_print (x1: (!shared U32), U32) =
+my_print (x1: !U32, U32) =
     x = @first x1
     y = second x1
     print "${x}, ${y}"

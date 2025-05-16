@@ -1,0 +1,28 @@
+effect Use a with
+    get: Unit -> a
+    set: a -> Unit
+
+use_state (y: Int a) =
+    x = get () : Int a
+    set (x + y)
+    state = get () : Int a
+    print "Ending state = ${state}"
+    state
+
+state (f: Unit -> a can Use s) (initial: s): a =
+    mut state0 = initial
+    mut state = !state0
+    handle f ()
+    | get () -> resume @state
+    | set new_state ->
+        // Set is inferred incorrectly without this type hint
+        state := new_state : s
+        resume ()
+
+use_state 10_i32 with state 1
+use_state 20_u64 with state 2
+
+// args: --delete-binary
+// expected stdout:
+// Ending state = 11
+// Ending state = 22

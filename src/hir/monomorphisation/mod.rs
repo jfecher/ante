@@ -53,6 +53,12 @@ pub struct Context<'c> {
     next_id: usize,
 
     effect_continuations: Vec<Vec<(Effect, hir::Variable)>>,
+
+    /// printf is used internally for handler panics
+    printf_id: hir::DefinitionId,
+
+    /// exit is used internally for handler panics
+    exit_id: hir::DefinitionId,
 }
 
 type Impls = HashMap<VariableId, Impl>;
@@ -96,9 +102,12 @@ impl<'c> Context<'c> {
             definitions: Definitions::new(),
             types: HashMap::new(),
             impl_mappings: vec![HashMap::new()],
-            next_id: 0,
             effect_continuations: Vec::new(),
             cache,
+            printf_id: hir::DefinitionId(0),
+            exit_id: hir::DefinitionId(1),
+            // accounts for printf_id and exit_id
+            next_id: 2,
         }
     }
 
@@ -888,12 +897,14 @@ impl<'c> Context<'c> {
             Some(DefinitionKind::EffectDefinition(_)) => {
                 let typ = self.follow_all_bindings(&typ);
                 let hir_type = self.convert_type(&typ);
-                let lambda = self.make_effect_function(hir_type.clone());
+
+                let name = self.cache[id].name.clone();
+                let lambda = self.make_effect_function(hir_type.clone(), &typ, &name);
 
                 let variable = self.next_unique_id();
                 let expr = Box::new(lambda);
 
-                let name = Some(self.cache[id].name.clone());
+                let name = Some(name);
                 let definition = hir::Definition { variable, expr, name, mutable: false, typ: hir_type.clone() };
                 let def = Definition::Normal(hir::Variable::with_definition(definition, Rc::new(hir_type)));
 
@@ -1152,40 +1163,6 @@ impl<'c> Context<'c> {
                 unreachable!("Type constructor must be a Function or Tuple type: {}", typ)
             },
         }
-    }
-
-    /// Compile an effect `eff : A - ... - Z -> Ret` as:
-    /// ```pseudocode
-    /// eff(a, ..., z, k) =
-    ///     continuation_push(k, a)
-    ///     ...
-    ///     continuation_push(k, z)
-    ///     continuation_suspend(k)
-    ///     continuation_pop(k, Ret)
-    /// ```
-    fn make_effect_function(&mut self, typ: Type) -> hir::Ast {
-        use hir::{Ast, Builtin};
-        let hir::types::Type::Function(function_type) = typ else { unreachable!("All effects should be functions") };
-
-        let mut args = fmap(&function_type.parameters, |param| self.fresh_variable(param.clone()));
-        let continuation = args.pop().unwrap();
-
-        let k = || Box::new(Ast::Variable(continuation.clone()));
-
-        // continuation_push(k, arg)
-        let mut statements = fmap(&args, |arg| {
-            let arg = Box::new(Ast::Variable(arg.clone()));
-            Ast::Builtin(Builtin::ContinuationArgPush(k(), arg))
-        });
-
-        let return_type = function_type.return_type.as_ref().clone();
-
-        statements.push(Ast::Builtin(Builtin::ContinuationSuspend(k())));
-        statements.push(Ast::Builtin(Builtin::ContinuationArgPop(k(), return_type)));
-
-        args.push(continuation);
-        let body = Box::new(Ast::Sequence(hir::Sequence { statements }));
-        Ast::Lambda(hir::Lambda { args, body, typ: function_type })
     }
 
     /// Create a reinterpret_cast instruction for the given Ast value.
