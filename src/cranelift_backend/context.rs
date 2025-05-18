@@ -233,45 +233,24 @@ impl<'local> Context<'local> {
     }
 
     fn define_continuation_functions(&mut self) {
-        // mco_coro* mco_coro_init(void(*f)(mco_coro*));
-        let init_function_arg = Type::Function(hir::FunctionType::new(vec![Type::continuation()], Type::unit()));
-        let init_signature = &hir::FunctionType::new(vec![init_function_arg], Type::continuation());
+        let init_signature = Type::continuation_init_type();
+        let is_suspended_signature = Type::continuation_is_suspended_type();
+        let push_signature = Type::continuation_push_type();
+        let pop_signature = Type::continuation_pop_type();
+        let suspend_signature = Type::continuation_suspend_type();
+        let resume_signature = Type::continuation_resume_type();
+        let free_signature = Type::continuation_free_type();
 
-        // char mco_coro_is_suspended(mco_coro*, k);
-        let is_suspended_signature =
-            &hir::FunctionType::new(vec![Type::continuation()], Type::Primitive(PrimitiveType::Boolean));
-
-        // void mco_coro_push(mco_coro* k, const void* data, size_t data_size);
-        let push_signature = &hir::FunctionType::new(
-            vec![Type::continuation(), Type::pointer(), Type::Primitive(PrimitiveType::Integer(hir::IntegerKind::Usz))],
-            Type::unit(),
-        );
-
-        // void mco_coro_pop(mco_coro* k, void* data, size_t data_size);
-        let pop_signature = &hir::FunctionType::new(
-            vec![Type::continuation(), Type::pointer(), Type::Primitive(PrimitiveType::Integer(hir::IntegerKind::Usz))],
-            Type::unit(),
-        );
-
-        // void mco_coro_suspend(mco_coro* k);
-        let suspend_signature = &hir::FunctionType::new(vec![Type::continuation()], Type::unit());
-
-        // void mco_coro_resume(mco_coro* k);
-        let resume_signature = &hir::FunctionType::new(vec![Type::continuation()], Type::unit());
-
-        // void mco_coro_free(mco_coro* k);
-        let free_signature = &hir::FunctionType::new(vec![Type::continuation()], Type::unit());
-
-        self.continuation_init_function = Some(self.define_continuation_function("mco_coro_init", init_signature));
+        self.continuation_init_function = Some(self.define_continuation_function("mco_coro_init", &init_signature));
         self.continuation_is_suspended_function =
-            Some(self.define_continuation_function("mco_coro_is_suspended", is_suspended_signature));
-        self.continuation_arg_push_function = Some(self.define_continuation_function("mco_coro_push", push_signature));
-        self.continuation_arg_pop_function = Some(self.define_continuation_function("mco_coro_pop", pop_signature));
+            Some(self.define_continuation_function("mco_coro_is_suspended", &is_suspended_signature));
+        self.continuation_arg_push_function = Some(self.define_continuation_function("mco_coro_push", &push_signature));
+        self.continuation_arg_pop_function = Some(self.define_continuation_function("mco_coro_pop", &pop_signature));
         self.continuation_suspend_function =
-            Some(self.define_continuation_function("mco_coro_suspend", suspend_signature));
+            Some(self.define_continuation_function("mco_coro_suspend", &suspend_signature));
         self.continuation_resume_function =
-            Some(self.define_continuation_function("mco_coro_resume", resume_signature));
-        self.continuation_free_function = Some(self.define_continuation_function("mco_coro_free", free_signature));
+            Some(self.define_continuation_function("mco_coro_resume", &resume_signature));
+        self.continuation_free_function = Some(self.define_continuation_function("mco_coro_free", &free_signature));
     }
 
     fn define_continuation_function(&mut self, name: &str, signature: &hir::FunctionType) -> FuncData {

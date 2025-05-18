@@ -25,6 +25,14 @@ impl IntegerKind {
             Isz | Usz => std::mem::size_of::<*const i8>() as u64 * 8,
         }
     }
+
+    pub fn is_unsigned(self) -> bool {
+        use IntegerKind::*;
+        match self {
+            I8 | I16 | I32 | I64 | Isz => false,
+            U8 | U16 | U32 | U64 | Usz => true,
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -100,6 +108,51 @@ impl Type {
             Type::Function(_) => std::mem::size_of::<*const i8>() as u64,
             Type::Tuple(elements) => elements.iter().map(|element| element.size_in_bytes()).sum(),
         }
+    }
+
+    /// The type of the Builtin::ContinuationInit
+    pub fn continuation_init_type() -> FunctionType {
+        // mco_coro* mco_coro_init(void(*f)(mco_coro*));
+        let init_function_arg = Type::Function(FunctionType::new(vec![Type::continuation()], Type::unit()));
+        FunctionType::new(vec![init_function_arg], Type::continuation())
+    }
+
+    /// The type of the Builtin::ContinuationIsSuspended
+    pub fn continuation_is_suspended_type() -> FunctionType {
+        // char mco_coro_is_suspended(mco_coro*, k);
+        FunctionType::new(vec![Type::continuation()], Type::Primitive(PrimitiveType::Boolean))
+    }
+
+    /// The type of the Builtin::ContinuationPush
+    pub fn continuation_push_type() -> FunctionType {
+        // void mco_coro_push(mco_coro* k, const void* data, size_t data_size);
+        let usz = Type::Primitive(PrimitiveType::Integer(IntegerKind::Usz));
+        FunctionType::new(vec![Type::continuation(), Type::pointer(), usz], Type::unit())
+    }
+
+    /// The type of the Builtin::ContinuationPop
+    pub fn continuation_pop_type() -> FunctionType {
+        // void mco_coro_pop(mco_coro* k, void* data, size_t data_size);
+        let usz = Type::Primitive(PrimitiveType::Integer(IntegerKind::Usz));
+        FunctionType::new(vec![Type::continuation(), Type::pointer(), usz], Type::unit())
+    }
+
+    /// The type of the Builtin::ContinuationSuspend
+    pub fn continuation_suspend_type() -> FunctionType {
+        // void mco_coro_suspend(mco_coro* k);
+        FunctionType::new(vec![Type::continuation()], Type::unit())
+    }
+
+    /// The type of the Builtin::ContinuationResume
+    pub fn continuation_resume_type() -> FunctionType {
+        // void mco_coro_resume(mco_coro* k);
+        FunctionType::new(vec![Type::continuation()], Type::unit())
+    }
+
+    /// The type of the Builtin::ContinuationFree
+    pub fn continuation_free_type() -> FunctionType {
+        // void mco_coro_free(mco_coro* k);
+        FunctionType::new(vec![Type::continuation()], Type::unit())
     }
 }
 

@@ -8,7 +8,7 @@ fn main() -> std::io::Result<()> {
 
     if option_env!("ANTE_MINICORO_PATH").is_none() {
         let cur_dir = env::current_dir()?;
-        println!("cargo:rustc-env=ANTE_MINICORO_PATH={}/minicoro/minicoro.c", cur_dir.to_str().unwrap());
+        println!("cargo:rustc-env=ANTE_MINICORO_PATH={}/aminicoro/minicoro.c", cur_dir.to_str().unwrap());
     }
 
     Ok(())

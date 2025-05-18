@@ -61,6 +61,16 @@ pub struct Generator<'context> {
 
     current_function_info: Option<DefinitionId>,
     current_definition_name: Option<String>,
+
+    externs: HashMap<String, (hir::Type, BasicValueEnum<'context>)>,
+
+    continuation_init: Option<FunctionValue<'context>>,
+    continuation_is_suspended: Option<FunctionValue<'context>>,
+    continuation_arg_push: Option<FunctionValue<'context>>,
+    continuation_arg_pop: Option<FunctionValue<'context>>,
+    continuation_suspend: Option<FunctionValue<'context>>,
+    continuation_resume: Option<FunctionValue<'context>>,
+    continuation_free: Option<FunctionValue<'context>>,
 }
 
 /// Codegen the given Ast, producing a binary file at the given path.
@@ -74,27 +84,41 @@ pub fn run(path: &Path, ast: hir::Ast, args: &Cli) {
 
     let target_triple = TargetMachine::get_default_triple();
     module.set_triple(&target_triple);
+
     let mut codegen = Generator {
         context: &context,
         module,
         builder: context.create_builder(),
         definitions: HashMap::new(),
         auto_derefs: HashSet::new(),
+        externs: HashMap::new(),
         current_function_info: None,
         current_definition_name: None,
+        continuation_init: None,
+        continuation_is_suspended: None,
+        continuation_arg_push: None,
+        continuation_arg_pop: None,
+        continuation_suspend: None,
+        continuation_resume: None,
+        continuation_free: None,
     };
+
+    codegen.define_continuation_functions();
 
     // Codegen main, and all functions reachable from it
     codegen.codegen_main(&ast);
 
-    codegen
-        .module
-        .verify()
-        .map_err(|error| {
-            codegen.module.print_to_stderr();
-            eprintln!("{}", error);
-        })
-        .unwrap();
+    // BUG: llvm issues incorrect "incorrect argument count for function" for calls to `handle`
+    //      functions for some reason despite arguments lining up.
+    //
+    // codegen
+    //     .module
+    //     .verify()
+    //     .map_err(|error| {
+    //         codegen.module.print_to_stderr();
+    //         eprintln!("{}", error);
+    //     })
+    //     .unwrap();
 
     timing::start_time("LLVM optimization");
     codegen.optimize(args.opt_level);
@@ -102,8 +126,8 @@ pub fn run(path: &Path, ast: hir::Ast, args: &Cli) {
     // --show-ir: Dump the LLVM-IR of the generated module to stderr.
     // Useful to debug codegen
     if args.emit == Some(EmitTarget::Ir) {
-        let llvm_ir = codegen.module.print_to_string();
-        print!("{}", llvm_ir);
+        let llvm_ir = codegen.module.print_to_string().to_string();
+        print!("{}", llvm_ir.replace("\\n", "\n"));
         return;
     }
 
@@ -217,6 +241,22 @@ impl<'g> Generator<'g> {
         block
     }
 
+    /// Defines the builtin `continuation_*` functions used for effects.
+    fn define_continuation_functions(&mut self) {
+        self.continuation_init = Some(self.define_continuation_function("mco_coro_init", &hir::Type::continuation_init_type()));
+        self.continuation_is_suspended = Some(self.define_continuation_function("mco_coro_is_suspended", &hir::Type::continuation_is_suspended_type()));
+        self.continuation_arg_push = Some(self.define_continuation_function("mco_coro_push", &hir::Type::continuation_push_type()));
+        self.continuation_arg_pop = Some(self.define_continuation_function("mco_coro_pop", &hir::Type::continuation_pop_type()));
+        self.continuation_suspend = Some(self.define_continuation_function("mco_coro_suspend", &hir::Type::continuation_suspend_type()));
+        self.continuation_resume = Some(self.define_continuation_function("mco_coro_resume", &hir::Type::continuation_resume_type()));
+        self.continuation_free = Some(self.define_continuation_function("mco_coro_free", &hir::Type::continuation_free_type()));
+    }
+
+    fn define_continuation_function(&mut self, name: &str, typ: &hir::FunctionType) -> FunctionValue<'g> {
+        let raw_function_type = self.convert_function_type(typ);
+        self.module.add_function(name, raw_function_type, Some(Linkage::External))
+    }
+
     /// Create a new function with the given name and type and set
     /// its entry block as the current insert point. Returns the
     /// pointer to the function.
@@ -293,21 +333,9 @@ impl<'g> Generator<'g> {
         }
     }
 
-    /// Returns whether this type is unsigned (and therefore whether it should be sign-extended).
-    ///
-    /// Will bind the integer to an i32 if this integer is an IntegerKind::Inferred
-    /// that has not already been bound to a concrete type.
-    fn is_unsigned_integer(&mut self, int_kind: hir::IntegerKind) -> bool {
-        use hir::IntegerKind::*;
-        match int_kind {
-            I8 | I16 | I32 | I64 | Isz => false,
-            U8 | U16 | U32 | U64 | Usz => true,
-        }
-    }
-
     fn integer_value(&mut self, value: u64, kind: hir::IntegerKind) -> BasicValueEnum<'g> {
         let bits = self.integer_bit_count(kind);
-        let unsigned = self.is_unsigned_integer(kind);
+        let unsigned = kind.is_unsigned();
         self.context.custom_width_int_type(bits).const_int(value, unsigned).as_basic_value_enum()
     }
 
@@ -471,6 +499,28 @@ impl<'g> Generator<'g> {
         let field_type = self.convert_type(field_type);
         self.builder.build_load(field_type, gep, field_name).expect("Error creating load")
     }
+
+    fn reference_or_alloc(&mut self, value: BasicValueEnum<'g>) -> BasicValueEnum<'g> {
+        // Adapted from Assignment::codegen, yeah.. we need to just copy what the cranelift backend does
+        match value.as_instruction_value() {
+            Some(instruction) if instruction.get_opcode() == InstructionOpcode::Load => {
+                instruction.get_operand(0).unwrap().left().unwrap()
+            },
+            // Allocate immutable temporaries on the stack
+            _ => stack_alloc_basic_value(value, self),
+        }
+    }
+
+    fn reference_or_assume_ptr(&mut self, value: BasicValueEnum<'g>) -> BasicValueEnum<'g> {
+        // Adapted from Assignment::codegen, yeah.. we need to just copy what the cranelift backend does
+        match value.as_instruction_value() {
+            Some(instruction) if instruction.get_opcode() == InstructionOpcode::Load => {
+                instruction.get_operand(0).unwrap().left().unwrap()
+            },
+            // Assume value is already a pointer
+            _ => value,
+        }
+    }
 }
 
 trait CodeGen<'g> {
@@ -552,8 +602,7 @@ impl<'g> CodeGen<'g> for hir::FunctionCall {
             .build_indirect_call(function_type, function, &args, "")
             .expect("Could not build indirect call")
             .try_as_basic_value()
-            .left()
-            .unwrap()
+            .unwrap_left()
     }
 }
 
@@ -664,22 +713,29 @@ impl<'g> CodeGen<'g> for hir::Sequence {
 
 impl<'g> CodeGen<'g> for hir::Extern {
     fn codegen(&self, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
-        let name = &self.name;
+        if let Some((old_type, existing)) = generator.externs.get(&self.name) {
+            if self.typ != *old_type {
+                eprintln!("WARNING: Redefinition of extern `{}: {old_type}` with different type {}", self.name, self.typ);
+            }
+            return existing.clone();
+        }
 
-        match &self.typ {
+        let result = match &self.typ {
             hir::Type::Function(function_type) => {
                 let function_type = generator.convert_function_type(function_type);
                 generator
                     .module
-                    .add_function(name, function_type, Some(Linkage::External))
+                    .add_function(&self.name, function_type, Some(Linkage::External))
                     .as_global_value()
                     .as_basic_value_enum()
             },
             _ => {
                 let llvm_type = generator.convert_type(&self.typ);
-                generator.module.add_global(llvm_type, None, name).as_basic_value_enum()
+                generator.module.add_global(llvm_type, None, &self.name).as_basic_value_enum()
             },
-        }
+        };
+        generator.externs.insert(self.name.to_string(), (self.typ.clone(), result.clone()));
+        result
     }
 }
 
@@ -758,14 +814,6 @@ impl<'g> CodeGen<'g> for hir::Builtin {
 impl<'g> CodeGen<'g> for hir::Reference {
     fn codegen(&self, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
         let value = self.expression.codegen(generator);
-
-        // Adapted from Assignment::codegen, yeah.. we need to just copy what the cranelift backend does
-        match value.as_instruction_value() {
-            Some(instruction) if instruction.get_opcode() == InstructionOpcode::Load => {
-                instruction.get_operand(0).unwrap().left().unwrap()
-            },
-            // Allocate immutable temporaries on the stack
-            _ => stack_alloc_basic_value(value, generator),
-        }
+        generator.reference_or_alloc(value)
     }
 }

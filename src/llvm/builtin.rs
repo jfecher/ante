@@ -11,6 +11,7 @@ use crate::hir::{Ast, Builtin, PrimitiveType, Type};
 use crate::llvm::{CodeGen, Generator};
 
 use inkwell::attributes::{Attribute, AttributeLoc};
+use inkwell::types::BasicType;
 use inkwell::values::{BasicValueEnum, IntValue};
 use inkwell::{AddressSpace, FloatPredicate, IntPredicate};
 
@@ -72,13 +73,13 @@ pub fn call_builtin<'g>(builtin: &Builtin, generator: &mut Generator<'g>) -> Bas
         Builtin::Transmute(a, _typ) => transmute_value(a, generator),
         Builtin::StackAlloc(a) => stack_alloc(a, generator),
 
-        Builtin::ContinuationInit(_) => todo!("llvm codegen for ContinuationInit"),
-        Builtin::ContinuationIsSuspended(_) => todo!("llvm codegen for ContinuationIsSuspended"),
-        Builtin::ContinuationArgPush(_, _) => todo!("llvm codegen for ContinuationArgPush"),
-        Builtin::ContinuationArgPop(_, _) => todo!("llvm codegen for ContinuationArgPop"),
-        Builtin::ContinuationSuspend(_) => todo!("llvm codegen for ContinuationSuspend"),
-        Builtin::ContinuationResume(_) => todo!("llvm codegen for ContinuationResume"),
-        Builtin::ContinuationFree(_) => todo!("llvm codegen for ContinuationFree"),
+        Builtin::ContinuationInit(f) => continuation_init(f, generator),
+        Builtin::ContinuationIsSuspended(k) => continuation_is_suspended(k, generator),
+        Builtin::ContinuationArgPush(k, x) => continuation_arg_push(k, x, generator),
+        Builtin::ContinuationArgPop(k, typ) => continuation_arg_pop(k, typ, generator),
+        Builtin::ContinuationSuspend(k) => continuation_suspend(k, generator),
+        Builtin::ContinuationResume(k) => continuation_resume(k, generator),
+        Builtin::ContinuationFree(k) => continuation_free(k, generator),
     }
 }
 
@@ -188,7 +189,9 @@ fn deref_ptr<'g>(ptr: &Ast, typ: &Type, generator: &mut Generator<'g>) -> BasicV
 fn offset<'g>(
     ptr: &Ast, offset: IntValue<'g>, element_type: &Type, generator: &mut Generator<'g>,
 ) -> BasicValueEnum<'g> {
-    let ptr = ptr.codegen(generator).into_pointer_value();
+    let ptr = ptr.codegen(generator);
+    let ptr = generator.reference_or_assume_ptr(ptr).into_pointer_value();
+
     let element_type = generator.convert_type(element_type);
     unsafe { generator.builder.build_gep(element_type, ptr, &[offset], "offset").unwrap().into() }
 }
@@ -279,4 +282,68 @@ pub fn stack_alloc_basic_value<'g>(value: BasicValueEnum<'g>, generator: &mut Ge
     let opaque_ptr_type = generator.convert_type(ptr_type).into_pointer_type();
 
     generator.builder.build_pointer_cast(alloca, opaque_ptr_type, "bitcast").unwrap().into()
+}
+
+fn continuation_init<'g>(f: &Ast, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+    let f = f.codegen(generator);
+    let init = generator.continuation_init.unwrap();
+    generator.builder.build_direct_call(init, &[f.into()], "continuation_init").unwrap()
+        .try_as_basic_value().unwrap_left()
+}
+
+fn continuation_is_suspended<'g>(k: &Ast, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+    let is_suspended = generator.continuation_is_suspended.unwrap();
+    let k = k.codegen(generator);
+
+    generator.builder.build_direct_call(is_suspended, &[k.into()], "continuation_is_suspended").unwrap()
+        .try_as_basic_value().unwrap_left()
+}
+
+// mco_push(k, &x, sizeof(x));
+fn continuation_arg_push<'g>(k: &Ast, x: &Ast, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+    let push = generator.continuation_arg_push.unwrap();
+
+    let k = k.codegen(generator);
+    let x = x.codegen(generator);
+    let x_size = x.get_type().size_of().unwrap();
+    let x_ref = generator.reference_or_alloc(x);
+
+    generator.builder.build_direct_call(push, &[k.into(), x_ref.into(), x_size.into()], "continuation_arg_push").unwrap();
+    generator.unit_value()
+}
+
+// result_type ret;
+// mco_pop(k, &ret, sizeof(result_type));
+// ret
+fn continuation_arg_pop<'g>(k: &Ast, typ: &Type, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+    let pop = generator.continuation_arg_pop.unwrap();
+
+    let k = k.codegen(generator);
+    let typ = generator.convert_type(typ);
+    let ret = generator.builder.build_alloca(typ, "k_arg").unwrap();
+    let size = typ.size_of().unwrap();
+
+    generator.builder.build_direct_call(pop, &[k.into(), ret.into(), size.into()], "continuation_arg_pop").unwrap();
+    generator.builder.build_load(typ, ret, "k_arg").unwrap()
+}
+
+fn continuation_suspend<'g>(k: &Ast, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+    let suspend = generator.continuation_suspend.unwrap();
+    let k = k.codegen(generator);
+    generator.builder.build_direct_call(suspend, &[k.into()], "continuation_suspend").unwrap();
+    generator.unit_value()
+}
+
+fn continuation_resume<'g>(k: &Ast, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+    let resume = generator.continuation_resume.unwrap();
+    let k = k.codegen(generator);
+    generator.builder.build_direct_call(resume, &[k.into()], "continuation_resume").unwrap();
+    generator.unit_value()
+}
+
+fn continuation_free<'g>(k: &Ast, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+    let free = generator.continuation_free.unwrap();
+    let k = k.codegen(generator);
+    generator.builder.build_direct_call(free, &[k.into()], "continuation_free").unwrap();
+    generator.unit_value()
 }

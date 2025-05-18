@@ -344,8 +344,8 @@ impl<'c> Context<'c> {
     //
     // ```
     // else
-    //     Std.Prelude.printf "ICE: Unhandled effect hash `%llu`\n" effect_hash 
-    //     Std.Prelude.exit 1
+    //     printf "ICE: Unhandled effect hash `%llu`\n" effect_hash 
+    //     exit 1
     //     deref (stack_alloc ()) : result_type
     // ```
     fn make_unhandled_effect_case(&self, effect_hash: hir::Ast, result_type: Type) -> hir::Ast {

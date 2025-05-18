@@ -54,10 +54,12 @@ pub struct Context<'c> {
 
     effect_continuations: Vec<Vec<(Effect, hir::Variable)>>,
 
-    /// printf is used internally for handler panics
+    /// printf is used internally for handler panics.
+    /// It isn't normally accessible since it requires varargs in the
+    /// general case which cranelift doesn't support.
     printf_id: hir::DefinitionId,
 
-    /// exit is used internally for handler panics
+    /// exit is used internally for handler panics.
     exit_id: hir::DefinitionId,
 }
 
