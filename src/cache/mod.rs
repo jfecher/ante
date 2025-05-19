@@ -726,6 +726,10 @@ impl<'a> ModuleCache<'a> {
                 TypeBinding::Bound(typ) => recur(typ),
                 TypeBinding::Unbound(..) => Type::TypeVariable(*id),
             },
+            Type::NamedGeneric(id, name) => match &self.type_bindings[id.0] {
+                TypeBinding::Bound(typ) => recur(typ),
+                TypeBinding::Unbound(..) => Type::NamedGeneric(*id, name.clone()),
+            },
             Type::TypeApplication(constructor, args) => {
                 let constructor = Box::new(recur(constructor));
                 let args = fmap(args, recur);

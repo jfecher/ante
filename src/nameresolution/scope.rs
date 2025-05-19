@@ -161,21 +161,21 @@ impl Scope {
 /// scoping rules that follow more closely how they're defined in a lexical scope.
 #[derive(Debug, Default)]
 pub struct TypeVariableScope {
-    type_variables: HashMap<String, TypeVariableId>,
+    type_variables: HashMap<String, (TypeVariableId, Rc<String>)>,
 }
 
 impl TypeVariableScope {
     /// Push a type variable with the given name and id into scope.
     /// Returns None if a type variable with the same name is already in scope.
     pub fn push_existing_type_variable(&mut self, key: String, id: TypeVariableId) -> Option<TypeVariableId> {
-        let prev = self.type_variables.insert(key, id);
+        let prev = self.type_variables.insert(key.clone(), (id, Rc::new(key)));
         if prev.is_some() {
             return None;
         }
         Some(id)
     }
 
-    pub fn get(&self, key: &str) -> Option<&TypeVariableId> {
+    pub fn get(&self, key: &str) -> Option<&(TypeVariableId, Rc<String>)> {
         self.type_variables.get(key)
     }
 }

@@ -202,6 +202,14 @@ pub fn replace_all_typevars_with_bindings(
 
         TypeVariable(id) => replace_typevar_with_binding(*id, new_bindings, cache),
 
+        NamedGeneric(id, _) => {
+            if let Some(binding) = new_bindings.get(id) {
+                binding.clone()
+            } else {
+                typ.clone()
+            }
+        },
+
         Function(function) => {
             let parameters = fmap(&function.parameters, |parameter| {
                 replace_all_typevars_with_bindings(parameter, new_bindings, cache)
@@ -273,6 +281,14 @@ pub fn bind_typevars(typ: &Type, type_bindings: &TypeBindings, cache: &ModuleCac
         Tag(tag) => Tag(*tag),
 
         TypeVariable(id) => bind_typevar(*id, type_bindings, cache),
+
+        NamedGeneric(id, _name) => {
+            if let Some(binding) = type_bindings.get(id) {
+                binding.clone()
+            } else {
+                typ.clone()
+            }
+        }
 
         Function(function) => {
             let parameters = fmap(&function.parameters, |parameter| bind_typevars(parameter, type_bindings, cache));
@@ -357,6 +373,7 @@ pub fn contains_any_typevars_from_list(typ: &Type, list: &[TypeVariableId], cach
         Tag(_) => false,
 
         TypeVariable(id) => type_variable_contains_any_typevars_from_list(*id, list, cache),
+        NamedGeneric(id, _) => type_variable_contains_any_typevars_from_list(*id, list, cache),
 
         Function(function) => {
             function.parameters.iter().any(|parameter| contains_any_typevars_from_list(parameter, list, cache))
@@ -563,6 +580,7 @@ pub(super) fn occurs(
         Tag(_) => OccursResult::does_not_occur(),
 
         TypeVariable(var_id) => typevars_match(id, level, *var_id, bindings, fuel, cache),
+        NamedGeneric(var_id, _) => typevars_match(id, level, *var_id, bindings, fuel, cache),
         Function(function) => occurs_in_function(id, level, function, bindings, fuel, cache),
         TypeApplication(typ, args) => occurs(id, level, typ, bindings, fuel, cache)
             .then_all(args, |arg| occurs(id, level, arg, bindings, fuel, cache)),
@@ -722,6 +740,8 @@ pub fn try_unify_with_bindings_inner<'b>(
             bindings.bindings.insert(*rest, other.clone());
             Ok(())
         },
+
+        (NamedGeneric(id1, _), NamedGeneric(id2, _)) if id1 == id2 => Ok(()),
 
         (Effects(effects1), Effects(effects2)) => effects1.try_unify_with_bindings(effects2, bindings, location, cache),
 
@@ -1008,6 +1028,7 @@ pub(super) fn find_all_typevars_helper(
         UserDefined(_) => vec![],
         Tag(_) => vec![],
         TypeVariable(id) => find_typevars_in_typevar_binding(*id, polymorphic_only, cache, fuel),
+        NamedGeneric(id, _) => find_typevars_in_typevar_binding(*id, polymorphic_only, cache, fuel),
         Function(function) => {
             let mut type_variables = vec![];
             for parameter in &function.parameters {

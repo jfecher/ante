@@ -59,6 +59,7 @@ use crate::util::{fmap, timing, trustme};
 use std::borrow::Cow;
 use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 pub mod builtin;
 pub mod free_variables;
@@ -301,10 +302,10 @@ impl<'c> NameResolver {
         id
     }
 
-    fn lookup_type_variable(&self, name: &str) -> Option<TypeVariableId> {
+    fn lookup_type_variable(&self, name: &str) -> Option<(TypeVariableId, Rc<String>)> {
         for scope in self.type_variable_scopes.iter().rev() {
-            if let Some(id) = scope.get(name) {
-                return Some(*id);
+            if let Some(entry) = scope.get(name) {
+                return Some(entry.clone());
             }
         }
 
@@ -338,18 +339,18 @@ impl<'c> NameResolver {
 
     fn push_existing_type_variable(
         &mut self, key: &str, id: TypeVariableId, location: Location<'c>, cache: &mut ModuleCache<'c>,
-    ) -> TypeVariableId {
+    ) -> (TypeVariableId, Rc<String>) {
         let top = self.type_variable_scopes.len() - 1;
 
         if self.type_variable_scopes[top].push_existing_type_variable(key.to_owned(), id).is_none() {
             cache.push_diagnostic(location, D::TypeVariableAlreadyInScope(key.to_owned()));
         }
-        id
+        (id, Rc::new(key.to_owned()))
     }
 
     fn push_new_type_variable(
         &mut self, key: &str, location: Location<'c>, cache: &mut ModuleCache<'c>,
-    ) -> TypeVariableId {
+    ) -> (TypeVariableId, Rc<String>) {
         let id = cache.next_type_variable_id(self.let_binding_level);
         self.push_existing_type_variable(key, id, location, cache)
     }
@@ -565,13 +566,13 @@ impl<'c> NameResolver {
         if let Some(first_arg) = args.get(0) {
             match constructor {
                 Type::Primitive(PrimitiveType::IntegerType) => {
-                    if !matches!(first_arg, Type::Primitive(PrimitiveType::IntegerTag(_)) | Type::TypeVariable(_)) {
+                    if !matches!(first_arg, Type::Primitive(PrimitiveType::IntegerTag(_)) | Type::TypeVariable(_) | Type::NamedGeneric(..)) {
                         let typename = first_arg.display(cache).to_string();
                         cache.push_diagnostic(location, D::NonIntegerType(typename));
                     }
                 },
                 Type::Primitive(PrimitiveType::FloatType) => {
-                    if !matches!(first_arg, Type::Primitive(PrimitiveType::FloatTag(_)) | Type::TypeVariable(_)) {
+                    if !matches!(first_arg, Type::Primitive(PrimitiveType::FloatTag(_)) | Type::TypeVariable(_) | Type::NamedGeneric(..)) {
                         let typename = first_arg.display(cache).to_string();
                         cache.push_diagnostic(location, D::NonFloatType(typename));
                     }
@@ -596,6 +597,7 @@ impl<'c> NameResolver {
             Type::Struct(_, _) => 0,
             Type::Effects(_) => 0,
             Type::Tag(_) => 0,
+            Type::NamedGeneric(..) => 0,
         }
     }
 
@@ -716,11 +718,11 @@ impl<'c> NameResolver {
                 Type::Function(FunctionType { parameters, return_type, environment, has_varargs, effects })
             },
             ast::Type::TypeVariable(name, location) => match self.lookup_type_variable(name) {
-                Some(id) => Type::TypeVariable(id),
+                Some((id, name)) => Type::NamedGeneric(id, name),
                 None => {
                     if self.auto_declare {
-                        let id = self.push_new_type_variable(name, *location, cache);
-                        Type::TypeVariable(id)
+                        let (id, name) = self.push_new_type_variable(name, *location, cache);
+                        Type::NamedGeneric(id, name)
                     } else {
                         cache.push_diagnostic(*location, D::NotInScope("Type variable", name.clone()));
                         Type::UNIT

@@ -5,6 +5,7 @@
 //! type system - and `TypeInfo`s - which hold more information about the
 //! definition of a user-defined type.
 use std::collections::BTreeMap;
+use std::rc::Rc;
 
 use effects::Effect;
 
@@ -115,6 +116,10 @@ pub enum Type {
     /// inference, the `unify` function may bind unbound type variables
     /// into bound type variables when asserting two types are equal.
     TypeVariable(TypeVariableId),
+
+    /// A named generic in the source program. Unlike `TypeVariable`, named generics
+    /// are written by the user and should not be bound over until monomorphization.
+    NamedGeneric(TypeVariableId, Rc<String>),
 
     /// Any user defined type defined via the `type` keyword
     /// These have a unique UserDefinedTypeId which points to
@@ -243,6 +248,7 @@ impl Type {
             TypeApplication(typ, _) => typ.union_constructor_variants(cache),
             UserDefined(id) => cache.type_infos[id.0].union_variants(),
             TypeVariable(_) => unreachable!("Constructors should always have concrete types"),
+            NamedGeneric(..) => None,
             Struct(_, _) => None,
             Effects(_) => None,
             Tag(_) => None,
@@ -274,6 +280,7 @@ impl Type {
                     TypePriority::APP
                 }
             },
+            NamedGeneric(..) => TypePriority::MAX,
             Ref { .. } => TypePriority::APP,
             Effects(_) => unimplemented!("Type::priority for Effects"),
         }
@@ -303,6 +310,7 @@ impl Type {
             Type::Primitive(_) => (),
             Type::UserDefined(_) => (),
             Type::Tag(_) => (),
+            Type::NamedGeneric(..) => (),
 
             Type::Function(function) => {
                 for parameter in &function.parameters {
@@ -359,6 +367,7 @@ impl Type {
             Type::UserDefined(_) => (),
             Type::TypeVariable(_) => (),
             Type::Tag(_) => (),
+            Type::NamedGeneric(..) => (),
 
             Type::Function(function) => {
                 for parameter in &function.parameters {
@@ -443,6 +452,7 @@ impl Type {
                     effects
                 }
             },
+            Type::NamedGeneric(_, name) => name.to_string(),
             Type::Tag(tag) => tag.to_string(),
         }
     }

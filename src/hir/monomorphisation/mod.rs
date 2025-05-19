@@ -206,6 +206,10 @@ impl<'c> Context<'c> {
                 Ok(binding) => self.follow_all_bindings_inner(binding, fuel),
                 Err(id) => TypeVariable(id),
             },
+            NamedGeneric(id, name) => match self.find_binding(*id, fuel) {
+                Ok(binding) => self.follow_all_bindings_inner(binding, fuel),
+                Err(id) => NamedGeneric(id, name.clone()),
+            },
             Primitive(_) => typ.clone(),
             Function(f) => {
                 let f = types::FunctionType {
@@ -354,7 +358,7 @@ impl<'c> Context<'c> {
 
             Function(..) => Self::ptr_size(),
 
-            TypeVariable(id) => {
+            TypeVariable(id) | NamedGeneric(id, _) => {
                 let binding = self.find_binding(*id, RECURSION_LIMIT).unwrap_or(&UNBOUND_TYPE).clone();
                 self.size_of_type(&binding)
             },
@@ -544,7 +548,7 @@ impl<'c> Context<'c> {
                 }
             },
 
-            TypeVariable(id) => match self.find_binding(*id, fuel) {
+            TypeVariable(id) | NamedGeneric(id, _) => match self.find_binding(*id, fuel) {
                 Ok(binding) => {
                     let binding = binding.clone();
                     self.convert_type_inner(&binding, fuel)

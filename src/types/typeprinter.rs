@@ -169,6 +169,7 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             Type::Ref { sharedness, mutability, lifetime } => self.fmt_ref(sharedness, mutability, lifetime, f),
             Type::Struct(fields, rest) => self.fmt_struct(fields, *rest, f),
             Type::Effects(effects) => self.fmt_effects(effects, f),
+            Type::NamedGeneric(_, name) => write!(f, "{name}"),
             Type::Tag(tag) => write!(f, "{}", tag.to_string().blue()),
         }
     }
