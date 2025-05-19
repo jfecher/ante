@@ -90,7 +90,7 @@ impl<'c> Context<'c> {
         // parameters of the handle function.
         self.definitions.push_local_scope();
         self.redefine_captured_environment(&free_vars);
-        let handler_fn = self.make_handler_function(handle, &free_vars);
+        let (handler_fn, handler_type) = self.make_handler_function(handle, &free_vars);
         self.definitions.pop_local_scope();
 
         // create the final inline expression
@@ -120,8 +120,8 @@ impl<'c> Context<'c> {
 
         let ret_type = self.convert_type(handle.get_type().unwrap());
         let function = Box::new(handler_fn);
-        let function_type = hir::FunctionType::new(vec![Type::continuation()], ret_type.clone());
-        let call_handler = hir::Ast::FunctionCall(hir::FunctionCall { function, args, function_type });
+
+        let call_handler = hir::Ast::FunctionCall(hir::FunctionCall { function, args, function_type: handler_type });
         let (ret_def, ret) = self.fresh_definition_with_variable(call_handler, "ret".into(), ret_type);
         statements.push(ret_def);
 
@@ -183,7 +183,7 @@ impl<'c> Context<'c> {
     /// ```
     fn make_handler_function(
         &mut self, handle: &ast::Handle<'c>, free_vars: &BTreeMap<DefinitionInfoId, types::Type>,
-    ) -> hir::Ast {
+    ) -> (hir::Ast, hir::FunctionType) {
         let continuation_var = self.fresh_variable(Type::continuation());
         let continuation = hir::Ast::Variable(continuation_var.clone());
 
@@ -249,7 +249,7 @@ impl<'c> Context<'c> {
             args.extend(frame.iter().map(|(_, k)| k.clone()));
         }
 
-        let lambda = hir::Ast::Lambda(hir::Lambda { args, body, typ: function_type });
+        let lambda = hir::Ast::Lambda(hir::Lambda { args, body, typ: function_type.clone() });
 
         let definition = hir::Ast::Definition(hir::Definition {
             variable: handle_function_var.definition_id,
@@ -261,7 +261,7 @@ impl<'c> Context<'c> {
 
         self.pop_continuation_parameters();
         handle_function_var.definition = Some(Rc::new(definition));
-        hir::Ast::Variable(handle_function_var)
+        (hir::Ast::Variable(handle_function_var), function_type)
     }
 
     /// Matches on each effect the handler may handle:
@@ -653,11 +653,10 @@ impl<'c> Context<'c> {
         statements.pop();
 
         // Then resume the continuation
-        let result_type = function_type.return_type.as_ref().clone();
         statements.push(hir::Ast::FunctionCall(hir::FunctionCall {
             function: Box::new(hir::Ast::Variable(handler_function.clone())),
             args: call_args,
-            function_type: hir::FunctionType::new(vec![Type::continuation()], result_type),
+            function_type: handler_function.typ.as_ref().clone().into_function().unwrap(),
         }));
 
         self.pop_continuation_parameters();

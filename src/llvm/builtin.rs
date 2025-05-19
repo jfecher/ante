@@ -19,7 +19,7 @@ pub fn call_builtin<'g>(builtin: &Builtin, generator: &mut Generator<'g>) -> Bas
     let current_function = generator.current_function();
     let always_inline = Attribute::get_named_enum_kind_id("alwaysinline");
     assert_ne!(always_inline, 0);
-    let attribute = generator.context.create_enum_attribute(always_inline, 1);
+    let attribute = generator.context.create_enum_attribute(always_inline, 0);
     current_function.add_attribute(AttributeLoc::Function, attribute);
 
     let mut int = |ast: &Ast| ast.codegen(generator).into_int_value();

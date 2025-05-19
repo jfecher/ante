@@ -110,15 +110,14 @@ pub fn run(path: &Path, ast: hir::Ast, args: &Cli) {
 
     // BUG: llvm issues incorrect "incorrect argument count for function" for calls to `handle`
     //      functions for some reason despite arguments lining up.
-    //
-    // codegen
-    //     .module
-    //     .verify()
-    //     .map_err(|error| {
-    //         codegen.module.print_to_stderr();
-    //         eprintln!("{}", error);
-    //     })
-    //     .unwrap();
+    codegen
+        .module
+        .verify()
+        .map_err(|error| {
+            codegen.module.print_to_stderr();
+            eprintln!("{}", error);
+        })
+        .unwrap();
 
     timing::start_time("LLVM optimization");
     codegen.optimize(args.opt_level);

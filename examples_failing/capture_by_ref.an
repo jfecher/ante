@@ -1,0 +1,21 @@
+main () =
+    mut x = 0
+    x_ref = !x
+
+    closure () =
+        x_ref := 5
+        x_copy = @x_ref
+
+        print "x_ref = ${x_copy}" //=> 5
+        
+        // x is captured by copy here instead of by ref
+        print "x = ${x}" //=> 0, should be 5
+
+    closure ()
+
+main ()
+
+// args: --delete-binary
+// expected stdout:
+// 5
+// 5
