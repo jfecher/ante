@@ -13,6 +13,6 @@ exit2 0
 // args: --check --show-types
 // expected stdout:
 // add : I32 - I32 -> I32 pure
-// exit2 : forall a. (I32 -> a pure)
+// exit2 : forall never_returns. (I32 -> never_returns pure)
 // foo : forall a b. (a -> b pure)
 // puts2 : String -> Unit pure

@@ -14,15 +14,19 @@ exit2 "test"
 puts2
 
 // args: --check --show-types
-// TODO: bar should probably error that its annotated
-//       type is more general than its actual type
+// TODO: This first error is duplicated
 // expected stderr:
+// type_annotations.an:4:1	error: Pattern type a - b -> b pure does not match the annotated type a - a -> I32 pure
+// bar: a - a -> I32 =
+// 
+// type_annotations.an:4:1	error: Pattern type a - b -> b pure does not match the annotated type a - a -> I32 pure
+// bar: a - a -> I32 =
+// 
 // type_annotations.an:13:7	error: Expected argument of type I32, but found String
 // exit2 "test"
-// 
 
 // expected stdout:
-// bar : I32 - I32 -> I32 pure
+// bar : forall a b. (a - b -> b pure)
 // baz : forall a. (Usz -> Ptr a pure)
 // exit2 : I32 -> Unit pure
 // foo : I32 - String -> Char pure

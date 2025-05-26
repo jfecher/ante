@@ -200,15 +200,7 @@ pub fn replace_all_typevars_with_bindings(
         Primitive(p) => Primitive(*p),
         Tag(tag) => Tag(*tag),
 
-        TypeVariable(id) => replace_typevar_with_binding(*id, new_bindings, cache),
-
-        NamedGeneric(id, _) => {
-            if let Some(binding) = new_bindings.get(id) {
-                binding.clone()
-            } else {
-                typ.clone()
-            }
-        },
+        TypeVariable(id) | NamedGeneric(id, _) => replace_typevar_with_binding(*id, new_bindings, cache),
 
         Function(function) => {
             let parameters = fmap(&function.parameters, |parameter| {
@@ -235,7 +227,9 @@ pub fn replace_all_typevars_with_bindings(
             TypeApplication(Box::new(typ), args)
         },
         Struct(fields, id) => {
-            if let Some(binding) = new_bindings.get(id) {
+            if let Bound(typ) = &cache.type_bindings[id.0] {
+                replace_all_typevars_with_bindings(&typ.clone(), new_bindings, cache)
+            } else if let Some(binding) = new_bindings.get(id) {
                 binding.clone()
             } else {
                 let fields = fields
@@ -742,6 +736,11 @@ pub fn try_unify_with_bindings_inner<'b>(
         },
 
         (NamedGeneric(id1, _), NamedGeneric(id2, _)) if id1 == id2 => Ok(()),
+
+        // Hack
+        (NamedGeneric(_, name1), NamedGeneric(_, name2)) if name1 == name2 => {
+            Ok(())
+        },
 
         (Effects(effects1), Effects(effects2)) => effects1.try_unify_with_bindings(effects2, bindings, location, cache),
 
@@ -1287,8 +1286,8 @@ pub(super) fn bind_irrefutable_pattern<'c>(
         },
         TypeAnnotation(annotation) => {
             unify(
-                annotation.typ.as_ref().unwrap(),
                 typ,
+                annotation.typ.as_ref().unwrap(),
                 annotation.location,
                 cache,
                 TE::PatternTypeDoesNotMatchAnnotatedType,

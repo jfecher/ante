@@ -9,7 +9,7 @@ use crate::nameresolution::builtin::BUILTIN_ID;
 use crate::parser::ast::{self, ClosureEnvironment};
 use crate::types::effects::{Effect, EffectSet};
 use crate::types::traits::{Callsite, RequiredImpl, TraitConstraintId};
-use crate::types::typechecker::{self, TypeBindings};
+use crate::types::typechecker::{self, replace_all_typevars_with_bindings, TypeBindings};
 use crate::types::typed::Typed;
 use crate::types::{self, TypeInfoId, TypeVariableId};
 use crate::util::{fmap, trustme};
@@ -757,16 +757,24 @@ impl<'c> Context<'c> {
 
         if definition.trait_impl.is_some() {
             let definition_type = definition.typ.as_ref().unwrap().remove_forall();
+
+            let mut new_bindings = TypeBindings::new();
+            let definition_type = replace_all_typevars_with_bindings(definition_type, &mut new_bindings, &mut self.cache);
+
             let bindings = typechecker::try_unify(
                 typ,
-                definition_type,
+                &definition_type,
                 definition.location,
                 &mut self.cache,
                 TE::MonomorphizationError,
             )
-            .unwrap_or_else(|error| panic!("ICE: {}", error.display(&self.cache)));
+            .unwrap_or_else(|error| {
+                eprintln!("ICE: {}", error.display(&self.cache));
+                panic!()
+            });
 
-            self.monomorphisation_bindings.push(Rc::new(bindings.bindings));
+            new_bindings.extend(bindings.bindings);
+            self.monomorphisation_bindings.push(Rc::new(new_bindings));
         }
     }
 

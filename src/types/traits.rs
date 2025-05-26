@@ -28,17 +28,12 @@
 //!
 //! These types are mostly useful for their data they hold - they only have a few simple
 //! methods on them for displaying them or converting between them.
-use colored::Colorize;
-
 use crate::cache::{ImplInfoId, ImplScopeId, ModuleCache, TraitInfoId, VariableId};
 use crate::error::location::Location;
 use crate::types::typechecker::find_all_typevars;
-use crate::types::{typeprinter::TypePrinter, Type, TypeVariableId};
+use crate::types::{Type, TypeVariableId};
 
-use std::collections::HashMap;
-use std::fmt::Display;
-
-use super::GeneralizedType;
+use super::typeprinter::ConstraintSignaturePrinter;
 
 /// Trait constraints do not map to anything. Instead,
 /// they provide a way to map an impl through multiple
@@ -145,70 +140,6 @@ impl ConstraintSignature {
             typevars.append(&mut find_all_typevars(typ, false, cache));
         }
         typevars
-    }
-
-    pub fn display<'a, 'b>(&self, cache: &'a ModuleCache<'b>) -> ConstraintSignaturePrinter<'a, 'b> {
-        let mut typevar_names = HashMap::new();
-        let mut current = 'a';
-        let typevars = self.find_all_typevars(cache);
-
-        for typevar in typevars {
-            if typevar_names.get(&typevar).is_none() {
-                typevar_names.insert(typevar, current.to_string());
-                current = (current as u8 + 1) as char;
-                assert!(current != 'z'); // TODO: wrap to aa, ab, ac...
-            }
-        }
-
-        ConstraintSignaturePrinter { signature: self.clone(), typevar_names, debug: false, cache }
-    }
-
-    #[allow(dead_code)]
-    pub fn debug<'a, 'b>(&self, cache: &'a ModuleCache<'b>) -> ConstraintSignaturePrinter<'a, 'b> {
-        let mut typevar_names = HashMap::new();
-
-        for typ in &self.args {
-            let typevars = find_all_typevars(typ, false, cache);
-
-            for typevar in typevars {
-                if typevar_names.get(&typevar).is_none() {
-                    typevar_names.insert(typevar, typevar.0.to_string());
-                }
-            }
-        }
-
-        ConstraintSignaturePrinter { signature: self.clone(), typevar_names, debug: true, cache }
-    }
-}
-
-pub struct ConstraintSignaturePrinter<'a, 'b> {
-    pub signature: ConstraintSignature,
-
-    /// Maps unique type variable IDs to human readable names like a, b, c, etc.
-    pub typevar_names: HashMap<TypeVariableId, String>,
-
-    /// Controls whether to show some hidden data, like lifetimes of each ref
-    pub debug: bool,
-
-    pub cache: &'a ModuleCache<'b>,
-}
-
-impl<'a, 'b> Display for ConstraintSignaturePrinter<'a, 'b> {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
-        let trait_info = &self.cache[self.signature.trait_id];
-
-        write!(f, "{}", trait_info.name.blue())?;
-        for arg in &self.signature.args {
-            let typ = GeneralizedType::MonoType(arg.clone());
-            let arg_printer = TypePrinter::new(typ, self.typevar_names.clone(), self.debug, self.cache);
-            let parenthesize = arg_printer.to_string().contains(' ');
-            if parenthesize {
-                write!(f, " {}{}{}", "(".blue(), arg_printer, ")".blue())?;
-            } else {
-                write!(f, " {}", arg_printer)?;
-            }
-        }
-        Ok(())
     }
 }
 

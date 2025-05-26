@@ -4,13 +4,14 @@
 //! types/traits are displayed via `type.display(cache)` rather than directly having
 //! a Display impl.
 use crate::cache::{ModuleCache, TraitInfoId};
-use crate::types::traits::{ConstraintSignature, ConstraintSignaturePrinter, RequiredTrait, TraitConstraintId};
+use crate::types::traits::{ConstraintSignature, RequiredTrait, TraitConstraintId};
 use crate::types::typechecker::find_all_typevars;
 use crate::types::{FunctionType, PrimitiveType, Type, TypeBinding, TypeInfoId, TypeVariableId};
 
 use std::collections::hash_map::Entry;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::{Debug, Display, Formatter};
+use std::rc::Rc;
 
 use colored::*;
 
@@ -24,12 +25,19 @@ pub struct TypePrinter<'a, 'b> {
     typ: GeneralizedType,
 
     /// Maps unique type variable IDs to human readable names like a, b, c, etc.
-    typevar_names: HashMap<TypeVariableId, String>,
+    typevar_names: TypeVarNames,
 
     /// Controls whether to show or hide some hidden data, like ref lifetimes
     debug: bool,
 
     cache: &'a ModuleCache<'b>,
+}
+
+#[derive(Clone)]
+struct TypeVarNames {
+    map: HashMap<TypeVariableId, String>,
+    used_named_generics: HashSet<Rc<String>>,
+    next_unused_name: char,
 }
 
 impl<'a, 'b> Display for TypePrinter<'a, 'b> {
@@ -44,15 +52,104 @@ impl<'a, 'b> Debug for TypePrinter<'a, 'b> {
     }
 }
 
-/// Fill a HashMap with human readable names for each typevar in the given Vec.
-/// For example, given [TypeVariableId(53), TypeVariableId(92)] this may yield `a` and `b`
-/// respectively.
-fn fill_typevar_map(map: &mut HashMap<TypeVariableId, String>, typevars: Vec<TypeVariableId>, current: &mut char) {
-    for typevar in typevars {
-        if let Entry::Vacant(entry) = map.entry(typevar) {
-            entry.insert(current.to_string());
-            *current = (*current as u8 + 1) as char;
-            assert!(*current != 'z'); // TODO: wrap to aa, ab, ac...
+impl TypeVarNames {
+    fn new() -> Self {
+        Self {
+            map: Default::default(),
+            used_named_generics: Default::default(),
+            next_unused_name: 'a',
+        }
+    }
+
+    /// Fill `self.map` with human readable names for each typevar in the given Vec.
+    /// For example, given [TypeVariableId(53), TypeVariableId(92)] this may yield `a` and `b`
+    /// respectively.
+    fn fill_typevar_map_with_lowercase_names(&mut self, typevars: Vec<TypeVariableId>) {
+        while self.used_named_generics.contains(&self.next_unused_name.to_string()) {
+            self.increment_next_unused_name();
+        }
+
+        for typevar in typevars {
+            if let Entry::Vacant(entry) = self.map.entry(typevar) {
+                entry.insert(self.next_unused_name.to_string());
+                self.increment_next_unused_name();
+            }
+        }
+    }
+
+    fn increment_next_unused_name(&mut self) {
+        loop {
+            self.next_unused_name = (self.next_unused_name as u8 + 1) as char;
+            assert!(self.next_unused_name != 'z'); // TODO: wrap to aa, ab, ac...
+
+            // If this name clashes with an existing name, keep looping
+            if !self.used_named_generics.contains(&self.next_unused_name.to_string()) {
+                break;
+            }
+        }
+    }
+
+    fn collect_named_generic_names(&mut self, typ: &Type, cache: &ModuleCache) {
+        match typ {
+            Type::Primitive(_) | Type::Tag(_) | Type::UserDefined(_) => (),
+            Type::TypeVariable(id) => {
+                match &cache.type_bindings[id.0] {
+                    TypeBinding::Bound(binding) => self.collect_named_generic_names(binding, cache),
+                    TypeBinding::Unbound(..) => (),
+                }
+            },
+            Type::NamedGeneric(id, name) => {
+                match &cache.type_bindings[id.0] {
+                    TypeBinding::Bound(binding) => self.collect_named_generic_names(binding, cache),
+                    TypeBinding::Unbound(..) => {
+                        if !self.map.contains_key(id) {
+                            self.map.insert(*id, name.as_ref().clone());
+                            self.used_named_generics.insert(name.clone());
+                        }
+                    },
+                }
+            },
+            Type::Function(function) => {
+                for parameter in &function.parameters {
+                    self.collect_named_generic_names(parameter, cache);
+                }
+                self.collect_named_generic_names(&function.environment, cache);
+                self.collect_named_generic_names(&function.return_type, cache);
+                self.collect_named_generic_names(&function.effects, cache);
+            },
+            Type::TypeApplication(constructor, args) => {
+                self.collect_named_generic_names(constructor, cache);
+                for arg in args {
+                    self.collect_named_generic_names(arg, cache);
+                }
+            },
+            Type::Ref { mutability, sharedness, lifetime } => {
+                self.collect_named_generic_names(mutability, cache);
+                self.collect_named_generic_names(sharedness, cache);
+                self.collect_named_generic_names(lifetime, cache);
+            },
+            Type::Struct(fields, replacement) => {
+                if let TypeBinding::Bound(binding) = &cache.type_bindings[replacement.0] {
+                    self.collect_named_generic_names(binding, cache);
+                } else {
+                    for (_, field) in fields {
+                        self.collect_named_generic_names(field, cache);
+                    }
+                }
+            },
+            Type::Effects(effects) => {
+                for (_effect_id, effect_args) in &effects.effects {
+                    for arg in effect_args {
+                        self.collect_named_generic_names(arg, cache);
+                    }
+                }
+
+                if let Some(extension) = effects.extension {
+                    if let TypeBinding::Bound(binding) = &cache.type_bindings[extension.0] {
+                        self.collect_named_generic_names(binding, cache);
+                    }
+                }
+            },
         }
     }
 }
@@ -66,25 +163,31 @@ pub fn show_type_and_traits(
     name: &str, typ: &GeneralizedType, traits: &[RequiredTrait], trait_info: &Option<(TraitInfoId, Vec<Type>)>,
     cache: &ModuleCache<'_>, debug: bool,
 ) -> String {
-    let mut map = HashMap::new();
-    let mut current = 'a';
+    let mut names = TypeVarNames::new();
 
     let typevars = typ.find_all_typevars(false, cache);
-    fill_typevar_map(&mut map, typevars, &mut current);
+    names.collect_named_generic_names(typ.remove_forall(), cache);
+    names.fill_typevar_map_with_lowercase_names(typevars);
 
     let typ = typ.clone();
-    let printer = TypePrinter { typ, cache, debug, typevar_names: map.clone() };
+    let printer = TypePrinter { typ, cache, debug, typevar_names: names.clone() };
     let type_string = format!("{} : {}", name, printer);
 
     let mut traits = traits
         .iter()
         .map(|required_trait| {
-            fill_typevar_map(&mut map, required_trait.find_all_typevars(cache), &mut current);
+            for arg in &required_trait.signature.args {
+                names.collect_named_generic_names(arg, cache);
+            }
+
+            names.fill_typevar_map_with_lowercase_names(required_trait.find_all_typevars(cache));
+            let signature = required_trait.signature.clone();
+            let typevar_names = names.clone();
             ConstraintSignaturePrinter {
-                signature: required_trait.signature.clone(),
+                signature,
                 cache,
                 debug,
-                typevar_names: map.clone(),
+                typevar_names,
             }
             .to_string()
         })
@@ -93,14 +196,15 @@ pub fn show_type_and_traits(
     // If this is a trait function, we must add the trait it originates from manually
     if let Some((trait_id, args)) = trait_info {
         for arg in args {
-            fill_typevar_map(&mut map, find_all_typevars(arg, false, cache), &mut current);
+            names.collect_named_generic_names(arg, cache);
+            names.fill_typevar_map_with_lowercase_names(find_all_typevars(arg, false, cache));
         }
         let signature = ConstraintSignature {
             trait_id: *trait_id,
             args: args.clone(),
             id: TraitConstraintId(0), // Dummy value
         };
-        let p = ConstraintSignaturePrinter { signature, cache, debug, typevar_names: map.clone() };
+        let p = ConstraintSignaturePrinter { signature, cache, debug, typevar_names: names };
         traits.push(p.to_string());
     }
 
@@ -116,20 +220,54 @@ pub fn show_type_and_traits(
     }
 }
 
+impl ConstraintSignature {
+    pub fn display<'a, 'b>(&self, cache: &'a ModuleCache<'b>) -> ConstraintSignaturePrinter<'a, 'b> {
+        let mut typevar_names = TypeVarNames::new();
+        let typevars = self.find_all_typevars(cache);
+
+        for arg in &self.args {
+            typevar_names.collect_named_generic_names(arg, cache);
+        }
+        typevar_names.fill_typevar_map_with_lowercase_names(typevars);
+        ConstraintSignaturePrinter { signature: self.clone(), typevar_names, debug: false, cache }
+    }
+
+    #[allow(dead_code)]
+    pub fn debug<'a, 'b>(&self, cache: &'a ModuleCache<'b>) -> ConstraintSignaturePrinter<'a, 'b> {
+        let mut typevar_names = TypeVarNames::new();
+        for arg in &self.args {
+            typevar_names.collect_named_generic_names(arg, cache);
+        }
+
+        for typ in &self.args {
+            let typevars = find_all_typevars(typ, false, cache);
+
+            for typevar in typevars {
+                if typevar_names.map.get(&typevar).is_none() {
+                    typevar_names.map.insert(typevar, typevar.0.to_string());
+                }
+            }
+        }
+
+        ConstraintSignaturePrinter { signature: self.clone(), typevar_names, debug: true, cache }
+    }
+}
+
 impl<'a, 'b> TypePrinter<'a, 'b> {
-    pub fn new(
-        typ: GeneralizedType, typevar_names: HashMap<TypeVariableId, String>, debug: bool, cache: &'a ModuleCache<'b>,
+    fn new(
+        typ: GeneralizedType, typevar_names: TypeVarNames, debug: bool, cache: &'a ModuleCache<'b>,
     ) -> Self {
         TypePrinter { typ, typevar_names, debug, cache }
     }
 
     pub fn debug_type(typ: GeneralizedType, cache: &'a ModuleCache<'b>) -> Self {
         let typevars = typ.find_all_typevars(false, cache);
-        let mut typevar_names = HashMap::new();
+        let mut typevar_names = TypeVarNames::new();
+        typevar_names.collect_named_generic_names(typ.remove_forall(), cache);
 
         for typevar in typevars {
-            if typevar_names.get(&typevar).is_none() {
-                typevar_names.insert(typevar, typevar.0.to_string());
+            if typevar_names.map.get(&typevar).is_none() {
+                typevar_names.map.insert(typevar, typevar.0.to_string());
             }
         }
 
@@ -138,17 +276,10 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
 
     pub fn display_type(typ: GeneralizedType, cache: &'a ModuleCache<'b>) -> Self {
         let typevars = typ.find_all_typevars(false, cache);
-        let mut typevar_names = HashMap::new();
-        let mut current = 'a';
+        let mut typevar_names = TypeVarNames::new();
 
-        for typevar in typevars {
-            if typevar_names.get(&typevar).is_none() {
-                typevar_names.insert(typevar, current.to_string());
-                current = (current as u8 + 1) as char;
-                assert!(current != 'z'); // TODO: wrap to aa, ab, ac...
-            }
-        }
-
+        typevar_names.collect_named_generic_names(typ.remove_forall(), cache);
+        typevar_names.fill_typevar_map_with_lowercase_names(typevars);
         Self::new(typ, typevar_names, false, cache)
     }
 
@@ -169,7 +300,7 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             Type::Ref { sharedness, mutability, lifetime } => self.fmt_ref(sharedness, mutability, lifetime, f),
             Type::Struct(fields, rest) => self.fmt_struct(fields, *rest, f),
             Type::Effects(effects) => self.fmt_effects(effects, f),
-            Type::NamedGeneric(_, name) => write!(f, "{name}"),
+            Type::NamedGeneric(_, name) => write!(f, "{}", name.blue()),
             Type::Tag(tag) => write!(f, "{}", tag.to_string().blue()),
         }
     }
@@ -240,7 +371,7 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             TypeBinding::Bound(typ) => self.fmt_type(typ, f),
             TypeBinding::Unbound(..) => {
                 let default = "?".to_string();
-                let name = self.typevar_names.get(&id).unwrap_or(&default).blue();
+                let name = self.typevar_names.map.get(&id).unwrap_or(&default).blue();
                 write!(f, "{}", name)
             },
         }
@@ -337,10 +468,12 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
 
         if let Type::Tag(tag) = shared {
             write!(f, "{}", tag.to_string().blue())?;
+            if self.debug {
+                write!(f, " ")?;
+            }
         }
 
         if self.debug {
-            write!(f, " ")?;
             self.fmt_type(lifetime, f)?;
         }
 
@@ -380,7 +513,7 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
 
                 if self.debug {
                     let default = "?".to_string();
-                    let name = self.typevar_names.get(&rest).unwrap_or(&default).blue();
+                    let name = self.typevar_names.map.get(&rest).unwrap_or(&default).blue();
                     write!(f, "{}{}{}", "..".blue(), name, " }".blue())
                 } else {
                     write!(f, "{}", ".. }".blue())
@@ -424,3 +557,35 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
         Ok(())
     }
 }
+
+pub struct ConstraintSignaturePrinter<'a, 'b> {
+    signature: ConstraintSignature,
+
+    /// Maps unique type variable IDs to human readable names like a, b, c, etc.
+    typevar_names: TypeVarNames,
+
+    /// Controls whether to show some hidden data, like lifetimes of each ref
+    debug: bool,
+
+    cache: &'a ModuleCache<'b>,
+}
+
+impl<'a, 'b> Display for ConstraintSignaturePrinter<'a, 'b> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        let trait_info = &self.cache[self.signature.trait_id];
+
+        write!(f, "{}", trait_info.name.blue())?;
+        for arg in &self.signature.args {
+            let typ = GeneralizedType::MonoType(arg.clone());
+            let arg_printer = TypePrinter::new(typ, self.typevar_names.clone(), self.debug, self.cache);
+            let parenthesize = arg_printer.to_string().contains(' ');
+            if parenthesize {
+                write!(f, " {}{}{}", "(".blue(), arg_printer, ")".blue())?;
+            } else {
+                write!(f, " {}", arg_printer)?;
+            }
+        }
+        Ok(())
+    }
+}
+

@@ -23,9 +23,9 @@ impl Monad Maybe with
 
 // args: --check --show-types
 // expected stdout:
-// bind : forall a b c d. (a c - (c -> a d can b) -> a d can b)
-//   given Monad a
-// map : forall a b c d. (a c - (c -> d can b) -> a d can b)
-//   given Functor a
-// wrap : forall a b. (b -> a b pure)
-//   given Monad a
+// bind : forall m c a b. (m a - (a -> m b can c) -> m b can c)
+//   given Monad m
+// map : forall f c a b. (f a - (a -> b can c) -> f b can c)
+//   given Functor f
+// wrap : forall m a. (a -> m a pure)
+//   given Monad m

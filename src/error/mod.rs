@@ -320,7 +320,7 @@ impl Display for DiagnosticKind {
                 write!(f, "Expression of type {actual} must be a mutable reference type ({expected}) to be assigned to")
             },
             DiagnosticKind::TypeError(TypeErrorKind::AssignToWrongType, actual, expected) => {
-                write!(f, "Cannot assign expression of type {actual} to a Ref of type {expected}")
+                write!(f, "Cannot assign expression of type {actual} to a variable of type {expected}")
             },
             DiagnosticKind::TypeError(TypeErrorKind::HandleBranchMismatch, actual, expected) => {
                 write!(f, "The type of this branch ({actual}) should match the type of the expression being handled: {expected}")

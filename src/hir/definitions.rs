@@ -141,6 +141,7 @@ fn definition_type_eq(a: &types::Type, b: &types::Type) -> bool {
             })
         },
         (Type::Tag(tag1), Type::Tag(tag2)) => tag1 == tag2,
+        (Type::NamedGeneric(id1, _), Type::NamedGeneric(id2, _)) => id1 == id2,
         (othera, otherb) => {
             assert_ne!(std::mem::discriminant(othera), std::mem::discriminant(otherb), "ICE: Missing match case");
             false

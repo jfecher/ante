@@ -557,7 +557,7 @@ impl<'c> NameResolver {
         &self, constructor: &Type, args: &[Type], location: Location<'c>, cache: &mut ModuleCache<'c>,
     ) {
         let expected = self.get_expected_type_argument_count(constructor, cache);
-        if args.len() != expected && !matches!(constructor, Type::TypeVariable(_)) {
+        if args.len() != expected && !matches!(constructor, Type::TypeVariable(_) | Type::NamedGeneric(..)) {
             let typename = constructor.display(cache).to_string();
             cache.push_diagnostic(location, D::IncorrectConstructorArgCount(typename, args.len(), expected));
         }
