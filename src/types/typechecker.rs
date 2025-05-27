@@ -737,11 +737,6 @@ pub fn try_unify_with_bindings_inner<'b>(
 
         (NamedGeneric(id1, _), NamedGeneric(id2, _)) if id1 == id2 => Ok(()),
 
-        // Hack
-        (NamedGeneric(_, name1), NamedGeneric(_, name2)) if name1 == name2 => {
-            Ok(())
-        },
-
         (Effects(effects1), Effects(effects2)) => effects1.try_unify_with_bindings(effects2, bindings, location, cache),
 
         (Tag(tag1), Tag(tag2)) if tag1 == tag2 => Ok(()),

@@ -34,7 +34,9 @@ pub(super) fn try_generalize_definition<'c>(
             bind_irrefutable_pattern(pattern, &t, &exposed_traits, true, cache);
             vec![]
         },
-        MutualRecursionResult::YesGeneralizeLater => traits, // Do nothing
+        MutualRecursionResult::YesGeneralizeLater => {
+            traits // Do nothing
+        }
         MutualRecursionResult::YesGeneralizeNow(id) => {
             // Generalize all the mutually recursive definitions at once
             for id in cache.mutual_recursion_sets[id.0].definitions.clone() {
