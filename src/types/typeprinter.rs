@@ -105,7 +105,7 @@ impl TypeVarNames {
                         if !self.map.contains_key(id) {
                             self.map.insert(*id, name.as_ref().clone());
                             // self.used_named_generics.insert(name.clone());
-                            self.used_named_generics.insert(format!("{name}_{}", id.0).into());
+                            self.used_named_generics.insert(format!("{name}").into());
                         }
                     },
                 }
@@ -301,7 +301,7 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             Type::Ref { sharedness, mutability, lifetime } => self.fmt_ref(sharedness, mutability, lifetime, f),
             Type::Struct(fields, rest) => self.fmt_struct(fields, *rest, f),
             Type::Effects(effects) => self.fmt_effects(effects, f),
-            Type::NamedGeneric(id, name) => write!(f, "{}_{}", name.blue(), id.0),
+            Type::NamedGeneric(_, name) => write!(f, "{}", name.blue()),
             Type::Tag(tag) => write!(f, "{}", tag.to_string().blue()),
         }
     }

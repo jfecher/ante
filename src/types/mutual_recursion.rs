@@ -1,5 +1,6 @@
 use crate::cache::MutualRecursionId;
 
+use crate::types::typechecker::contains_non_local_named_generic;
 use crate::types::GeneralizedType;
 use crate::{
     cache::{DefinitionInfoId, DefinitionKind, ModuleCache, VariableId},
@@ -33,33 +34,18 @@ pub(super) fn try_generalize_definition<'c>(
         MutualRecursionResult::No => {
             let typevars_in_fn = find_all_typevars(pattern.get_type().unwrap(), false, cache);
 
-            if pattern.to_string().contains("insert") || pattern.to_string().contains("resize") {
-                eprintln!("Resolving traits in non-recursive {}", pattern);
-            }
             let exposed_traits = traitchecker::resolve_traits(traits, &typevars_in_fn, cache);
-            if pattern.to_string().contains("insert") || pattern.to_string().contains("resize") {
-                eprintln!("Finished {pattern}");
-            }
             bind_irrefutable_pattern(pattern, &t, &exposed_traits, true, cache);
             vec![]
         },
         MutualRecursionResult::YesGeneralizeLater => {
-            // filter traits now
+            // filter any traits that were partially generalized
             let typevars_in_fn = find_all_named_generics(pattern.get_type().unwrap(), cache);
 
-            if pattern.to_string().contains("insert") || pattern.to_string().contains("resize") {
-                eprintln!("Resolving traits in YesGeneralizeLater {}", pattern);
-            }
             let (propagated_traits, other_constraints) = sort_traits(traits.clone(), &typevars_in_fn, cache);
-            if pattern.to_string().contains("insert") || pattern.to_string().contains("resize") {
-                eprintln!("propagated_traits on YesGeneralizeLater {pattern}:");
-                for p in &propagated_traits {
-                    eprintln!("    {}", p.debug(cache));
-                }
-            }
             bind_irrefutable_pattern(pattern, &t, &propagated_traits, false, cache);
 
-            other_constraints // Do nothing
+            other_constraints
         }
         MutualRecursionResult::YesGeneralizeNow(id) => {
             // Generalize all the mutually recursive definitions at once
@@ -77,20 +63,16 @@ pub(super) fn try_generalize_definition<'c>(
                 let pattern = &mut definition.pattern.as_mut();
 
                 let typevars_in_fn = find_all_typevars(pattern.get_type().unwrap(), false, cache);
-            if pattern.to_string().contains("insert") || pattern.to_string().contains("resize") {
-            eprintln!("Resolving traits in recursive non-root {}", pattern);
-            }
 
                 let local_named_generics = find_all_named_generics(&t, cache);
                 let traits = traits.iter()
                     .filter(|constraint| {
-                        constraint.args()
-                    });
+                        !constraint.args().iter().any(|arg| contains_non_local_named_generic(arg, &local_named_generics, cache))
+                    })
+                    .cloned()
+                    .collect::<Vec<_>>();
 
                 let mut exposed_traits = traitchecker::resolve_traits(traits.clone(), &typevars_in_fn, cache);
-            if pattern.to_string().contains("insert") || pattern.to_string().contains("resize") {
-            eprintln!("Finished {}", pattern);
-            }
 
                 let callsites = &cache[id].mutually_recursive_variables;
 
@@ -102,13 +84,14 @@ pub(super) fn try_generalize_definition<'c>(
             cache[root].undergoing_type_inference = false;
             let typevars_in_fn = find_all_typevars(pattern.get_type().unwrap(), false, cache);
 
-            if pattern.to_string().contains("insert") || pattern.to_string().contains("resize") {
-            eprintln!("Resolving traits in recursive root {}", pattern);
-            }
+                let local_named_generics = find_all_named_generics(&t, cache);
+                let traits = traits.iter()
+                    .filter(|constraint| {
+                        !constraint.args().iter().any(|arg| contains_non_local_named_generic(arg, &local_named_generics, cache))
+                    })
+                    .cloned()
+                    .collect::<Vec<_>>();
             let mut exposed_traits = traitchecker::resolve_traits(traits, &typevars_in_fn, cache);
-            if pattern.to_string().contains("insert") || pattern.to_string().contains("resize") {
-            eprintln!("Finished {}", pattern);
-            }
 
             let callsites = &cache[root].mutually_recursive_variables;
 

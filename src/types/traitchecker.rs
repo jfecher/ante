@@ -172,17 +172,11 @@ fn should_propagate(
     // Don't check the fundeps since only the typeargs proper are used to find impls
     let arg_count = cache[constraint.trait_id()].typeargs.len();
 
-    let g = constraint
+    constraint
         .args()
         .iter()
         .take(arg_count)
-        .any(|arg| typechecker::contains_any_typevars_from_list(arg, typevars_in_fn_signature, cache));
-
-    let c = constraint.debug(cache).to_string();
-    if c.contains("Hash") {
-        eprintln!("  should_propagate {}: {g}", constraint.debug(cache));
-    }
-    g
+        .any(|arg| typechecker::contains_any_typevars_from_list(arg, typevars_in_fn_signature, cache))
 }
 
 /// Try to solve a normal constraint, but avoid issuing an error if it fails.
@@ -208,11 +202,6 @@ fn try_solve_normal_constraint<'a>(
 /// or >1 matching impls are found.
 fn solve_normal_constraint(constraint: &TraitConstraint, cache: &mut ModuleCache<'_>) {
     let bindings = UnificationBindings::empty();
-
-    let c = constraint.debug(cache).to_string();
-    if c.contains("Hash") {
-        eprintln!("    have constraint {}", constraint.debug(cache));
-    }
 
     let mut matching_impls = find_matching_impls(constraint, &bindings, RECURSION_LIMIT, cache);
 

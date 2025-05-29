@@ -427,10 +427,6 @@ fn to_trait_constraints(
         required_trait.as_constraint(scope, callsite, id)
     });
 
-    if info.name == "insert" || info.name == "resize" {
-        eprintln!("{} required_traits", traits.len());
-    }
-
     // If this definition is from a trait, we must add the initial constraint directly
     if let Some((trait_id, args)) = &info.trait_info {
         let id = current_constraint_id.next();
@@ -1396,9 +1392,6 @@ pub(super) fn bind_irrefutable_pattern<'c>(
             let typ = if should_generalize { generalize(typ, cache) } else { GeneralizedType::MonoType(typ.clone()) };
 
             let info = &mut cache.definition_infos[definition_id.0];
-            if info.name == "insert" || info.name == "resize" {
-            eprintln!("Extending {}'s {} required traits with {} more", info.name, info.required_traits.len(), required_traits.len());
-            }
             info.required_traits.extend_from_slice(required_traits);
 
             variable.typ = Some(typ.remove_forall().clone());
@@ -1723,14 +1716,7 @@ fn initialize_function_type<'a>(definition: &ast::Definition<'a>, cache: &mut Mo
 
             if !named_generics.is_empty() {
                 let info = &mut cache.definition_infos[definition_id.0];
-                let t = GeneralizedType::PolyType(named_generics, function_type);
-                let n = info.name.clone();
-                let t2 = t.clone();
-                info.typ = Some(t);
-
-                if n == "insert" || n == "resize" {
-                    eprintln!("Initializing {} to {}", n, t2.debug(cache));
-                }
+                info.typ = Some(GeneralizedType::PolyType(named_generics, function_type));
             }
         }
     }
@@ -1834,10 +1820,6 @@ impl<'a> Inferable<'a> for ast::Variable<'a> {
         let (s, traits) = match &info.typ {
             Some(typ) => {
                 let typ = typ.clone();
-                
-        if self.to_string().contains("insert") || self.to_string().contains("resize") {
-                eprintln!("to_trait_constraints {self}");
-        }
                 let constraints = to_trait_constraints(definition_id, impl_scope, id, cache);
                 (typ, constraints)
             },
@@ -1845,18 +1827,8 @@ impl<'a> Inferable<'a> for ast::Variable<'a> {
                 // If the variable has a definition we can infer from then use that
                 // to determine the type, otherwise fill in a type variable for it.
                 let (typ, traits) = if info.definition.is_some() {
-        if self.to_string().contains("insert") || self.to_string().contains("resize") {
-                    eprintln!("infer_nested_definition {self}");
-        }
-                    let r= infer_nested_definition(self.definition.unwrap(), impl_scope, id, cache);
-        if self.to_string().contains("insert") || self.to_string().contains("resize") {
-                    eprintln!("finish infer_nested_definition {self}");
-        }
-        r
+                    infer_nested_definition(self.definition.unwrap(), impl_scope, id, cache)
                 } else {
-        if self.to_string().contains("insert") || self.to_string().contains("resize") {
-                    eprintln!("monotype {self}");
-        }
                     (GeneralizedType::MonoType(next_type_variable(cache)), vec![])
                 };
 
@@ -1871,27 +1843,7 @@ impl<'a> Inferable<'a> for ast::Variable<'a> {
         // mutual recursion set can be generalized at once.
         cache.update_mutual_recursion_sets(definition_id, self.id.unwrap());
 
-        let p = |traits: &Vec<TraitConstraint>, cache| {
-            eprint!("[");
-            for (i, t) in traits.iter().enumerate() {
-                if i != 0 {
-                    eprint!(", ");
-                }
-                eprint!("{}", t.debug(cache));
-            }
-            eprintln!("]");
-        };
-
         let (t, traits2, mapping) = s.instantiate(traits.clone(), cache);
-
-        if self.to_string().contains("insert") || self.to_string().contains("resize") {
-            eprint!("  Instantiated {self} : {} with traits ", s.debug(cache));
-            p(&traits, cache);
-            eprint!("            as {self} : {} with traits ", t.debug(cache));
-            p(&traits2, cache);
-        }
-
-
         self.instantiation_mapping = Rc::new(mapping);
         TypeResult::new(t, traits2, cache)
     }
