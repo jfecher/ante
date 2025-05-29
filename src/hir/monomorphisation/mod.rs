@@ -9,9 +9,9 @@ use crate::nameresolution::builtin::BUILTIN_ID;
 use crate::parser::ast::{self, ClosureEnvironment};
 use crate::types::effects::{Effect, EffectSet};
 use crate::types::traits::{Callsite, RequiredImpl, TraitConstraintId};
-use crate::types::typechecker::{self, replace_all_typevars_with_bindings, TypeBindings};
+use crate::types::typechecker::{self, replace_all_typevars_with_bindings, TypeBindings, UnificationBindings};
 use crate::types::typed::Typed;
-use crate::types::{self, TypeInfoId, TypeVariableId};
+use crate::types::{self, LetBindingLevel, TypeInfoId, TypeVariableId};
 use crate::util::{fmap, trustme};
 
 use super::definitions::Definitions;
@@ -752,7 +752,15 @@ impl<'c> Context<'c> {
         definition: &crate::cache::DefinitionInfo<'c>,
     ) {
         if !instantiation_mapping.is_empty() {
-            self.monomorphisation_bindings.push(instantiation_mapping.clone());
+            let mut instantiation_mapping = instantiation_mapping.as_ref().clone();
+
+            // Bug: We can have instantiation bindings that bind type variables to themselves
+            //      in the presense of mutual recursion and rigid type variables.
+            instantiation_mapping.retain(|k, v| {
+                !crate::types::typechecker::occurs(*k, LetBindingLevel(0), v, &mut UnificationBindings::empty(), 100, &mut self.cache)
+            });
+
+            self.monomorphisation_bindings.push(instantiation_mapping.into());
         }
 
         if definition.trait_impl.is_some() {
@@ -774,6 +782,11 @@ impl<'c> Context<'c> {
             });
 
             new_bindings.extend(bindings.bindings);
+            for (a, b) in new_bindings.iter() {
+                if crate::types::typechecker::occurs(*a, LetBindingLevel(0), b, &mut UnificationBindings::empty(), 100, &mut self.cache) {
+                    eprintln!("Binding Recursive3! {} occurs in {}", a.0, b.debug(&self.cache));
+                }
+            }
             self.monomorphisation_bindings.push(Rc::new(new_bindings));
         }
     }

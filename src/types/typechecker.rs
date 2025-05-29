@@ -560,7 +560,19 @@ impl OccursResult {
 /// Doing so increases the lifetime of the typevariable and lets us keep
 /// track of which type variables to generalize later on. It also means
 /// that occurs should only be called during unification however.
-pub(super) fn occurs(
+pub fn occurs(
+    id: TypeVariableId, level: LetBindingLevel, typ: &Type, bindings: &mut UnificationBindings, fuel: u32,
+    cache: &mut ModuleCache<'_>,
+) -> bool {
+    occurs_helper(id, level, typ, bindings, fuel, cache).occurs
+}
+
+/// Can a monomorphic TypeVariable(id) be found inside this type?
+/// This will mutate any typevars found to increase their LetBindingLevel.
+/// Doing so increases the lifetime of the typevariable and lets us keep
+/// track of which type variables to generalize later on. It also means
+/// that occurs should only be called during unification however.
+pub(super) fn occurs_helper(
     id: TypeVariableId, level: LetBindingLevel, typ: &Type, bindings: &mut UnificationBindings, fuel: u32,
     cache: &mut ModuleCache<'_>,
 ) -> OccursResult {
@@ -577,13 +589,13 @@ pub(super) fn occurs(
         TypeVariable(var_id) => typevars_match(id, level, *var_id, bindings, fuel, cache),
         NamedGeneric(var_id, _) => typevars_match(id, level, *var_id, bindings, fuel, cache),
         Function(function) => occurs_in_function(id, level, function, bindings, fuel, cache),
-        TypeApplication(typ, args) => occurs(id, level, typ, bindings, fuel, cache)
-            .then_all(args, |arg| occurs(id, level, arg, bindings, fuel, cache)),
-        Ref { mutability, sharedness, lifetime } => occurs(id, level, mutability, bindings, fuel, cache)
-            .then(|| occurs(id, level, sharedness, bindings, fuel, cache))
-            .then(|| occurs(id, level, lifetime, bindings, fuel, cache)),
+        TypeApplication(typ, args) => occurs_helper(id, level, typ, bindings, fuel, cache)
+            .then_all(args, |arg| occurs_helper(id, level, arg, bindings, fuel, cache)),
+        Ref { mutability, sharedness, lifetime } => occurs_helper(id, level, mutability, bindings, fuel, cache)
+            .then(|| occurs_helper(id, level, sharedness, bindings, fuel, cache))
+            .then(|| occurs_helper(id, level, lifetime, bindings, fuel, cache)),
         Struct(fields, var_id) => typevars_match(id, level, *var_id, bindings, fuel, cache)
-            .then_all(fields.iter().map(|(_, typ)| typ), |field| occurs(id, level, field, bindings, fuel, cache)),
+            .then_all(fields.iter().map(|(_, typ)| typ), |field| occurs_helper(id, level, field, bindings, fuel, cache)),
         Effects(effects) => effects.occurs(id, level, bindings, fuel, cache),
     }
 }
@@ -592,10 +604,10 @@ pub(super) fn occurs_in_function(
     id: TypeVariableId, level: LetBindingLevel, function: &FunctionType, bindings: &mut UnificationBindings, fuel: u32,
     cache: &mut ModuleCache<'_>,
 ) -> OccursResult {
-    occurs(id, level, &function.return_type, bindings, fuel, cache)
-        .then(|| occurs(id, level, &function.environment, bindings, fuel, cache))
-        .then(|| occurs(id, level, &function.effects, bindings, fuel, cache))
-        .then_all(&function.parameters, |param| occurs(id, level, param, bindings, fuel, cache))
+    occurs_helper(id, level, &function.return_type, bindings, fuel, cache)
+        .then(|| occurs_helper(id, level, &function.environment, bindings, fuel, cache))
+        .then(|| occurs_helper(id, level, &function.effects, bindings, fuel, cache))
+        .then_all(&function.parameters, |param| occurs_helper(id, level, param, bindings, fuel, cache))
 }
 
 /// Helper function for the `occurs` check.
@@ -607,7 +619,7 @@ pub(super) fn typevars_match(
     fuel: u32, cache: &mut ModuleCache<'_>,
 ) -> OccursResult {
     match find_binding(haystack, bindings, cache) {
-        Bound(binding) => occurs(needle, level, &binding, bindings, fuel, cache),
+        Bound(binding) => occurs_helper(needle, level, &binding, bindings, fuel, cache),
         Unbound(original_level, _) => {
             let binding = if level < original_level { vec![(needle, level)] } else { vec![] };
             OccursResult::new(needle == haystack, binding)
@@ -905,7 +917,7 @@ pub fn try_unify_type_variable_with_bindings<'c>(
             // Ensure not to create recursive bindings to the same variable
             let b = follow_bindings_in_cache_and_map(b, bindings, cache);
             if *a != b {
-                let result = occurs(id, a_level, &b, bindings, RECURSION_LIMIT, cache);
+                let result = occurs_helper(id, a_level, &b, bindings, RECURSION_LIMIT, cache);
                 if result.occurs {
                     // TODO: Need better error messages for recursive types
                     Err(())
@@ -1670,14 +1682,14 @@ fn find_matching_trait(
 
 /// Partially-annotated functions are also partially generalized early so that code
 /// like the following type checks:
-/// ```
+/// ```ante
 /// foo (x: a) y z = ...; bar x y z; ...
 /// bar (x: b) y z = ...; foo x y z; ...
 /// ```
 /// despite `bar` being called with `x: a` and expecting `x: b`. This wouldn't be an issue
 /// if they weren't mutually recursive, but since they are we encounter two seemingly different
 /// named generics. To fix this we initialize the types to:
-/// ```
+/// ```ante
 /// foo: forall a. a -> y1 -> z1 -> r1
 /// bar: forall b. b -> y2 -> z2 -> r2
 /// ```

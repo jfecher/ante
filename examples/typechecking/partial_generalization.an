@@ -1,18 +1,44 @@
 // Mutually recursive definitions which type check when partially annotated despite
-// `t != u` and neither foo nor bar being generalized when bar is called within foo.
+// `t != u` and neither ex1a nor ex1b being generalized when ex1b is called within ex1a.
 // To do this we need to initialize them with partially generalized types:
-//   foo: forall t. t -> b1 -> r1
-//   bar: forall u. u -> b2 -> r2
+//   ex1a: forall t. t -> b1 -> r1
+//   ex1b: forall u. u -> b2 -> r2
 // Such that b1, b2, r1, and r2 can still be further refined.
-foo (a: t) b =
-    bar a b
+ex1a (a: t) b =
+    ex1b a b
     0u32
 
-bar (a: u) b =
-    foo a b
+ex1b (a: u) b =
+    ex1a a b
     1u32
+
+
+// Second example
+trait T1 a with trait1: a -> Unit
+trait T2 a with trait2: a -> Unit
+
+ex2a (a: t) b =
+    ex2b a b
+    trait1 a
+
+ex2b (a: u) b =
+    ex2c a b
+    trait2 a
+
+ex2c (a: v) b =
+    ex2a a b
 
 // args: --check --show-types
 // expected stdout:
-// bar : forall u a. (u - a -> U32 pure)
-// foo : forall t a. (t - a -> U32 pure)
+// ex1a : forall t a. (t - a -> U32 pure)
+// ex1b : forall u a. (u - a -> U32 pure)
+// ex2a : forall t a. (t - a -> Unit pure)
+//   given T1 t, T2 t
+// ex2b : forall u a. (u - a -> Unit pure)
+//   given T1 u, T2 u
+// ex2c : forall v a. (v - a -> Unit pure)
+//   given T1 v, T2 v
+// trait1 : forall a. (a -> Unit pure)
+//   given T1 a
+// trait2 : forall a. (a -> Unit pure)
+//   given T2 a

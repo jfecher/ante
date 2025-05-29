@@ -309,7 +309,7 @@ impl EffectSet {
         };
 
         for (_, args) in &this.effects {
-            result = result.then_all(args, |arg| typechecker::occurs(id, level, arg, bindings, fuel, cache));
+            result = result.then_all(args, |arg| typechecker::occurs_helper(id, level, arg, bindings, fuel, cache));
         }
         result
     }

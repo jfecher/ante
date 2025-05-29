@@ -20,6 +20,7 @@ use crate::error::{Diagnostic, DiagnosticKind, ErrorType};
 use crate::nameresolution::NameResolver;
 use crate::parser::ast::{Ast, Definition, EffectDefinition, Extern, TraitDefinition, TraitImpl};
 use crate::types::traits::{ConstraintSignature, RequiredImpl, RequiredTrait, TraitConstraintId};
+use crate::types::typechecker::UnificationBindings;
 use crate::types::{FunctionType, GeneralizedType, Kind, LetBindingLevel, TypeBinding};
 use crate::types::{Type, TypeInfo, TypeInfoBody, TypeInfoId, TypeVariableId};
 use crate::util::{fmap, stdlib_dir};
@@ -702,6 +703,9 @@ impl<'a> ModuleCache<'a> {
     }
 
     pub fn bind(&mut self, id: TypeVariableId, binding: Type) {
+        if crate::types::typechecker::occurs(id, LetBindingLevel(0), &binding, &mut UnificationBindings::empty(), 100, self) {
+            eprintln!("Binding Recursive! {} occurs in {}", id.0, binding.debug(self));
+        }
         self.type_bindings[id.0] = TypeBinding::Bound(binding);
     }
 
