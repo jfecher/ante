@@ -80,6 +80,13 @@ pub(super) fn try_generalize_definition<'c>(
             if pattern.to_string().contains("insert") || pattern.to_string().contains("resize") {
             eprintln!("Resolving traits in recursive non-root {}", pattern);
             }
+
+                let local_named_generics = find_all_named_generics(&t, cache);
+                let traits = traits.iter()
+                    .filter(|constraint| {
+                        constraint.args()
+                    });
+
                 let mut exposed_traits = traitchecker::resolve_traits(traits.clone(), &typevars_in_fn, cache);
             if pattern.to_string().contains("insert") || pattern.to_string().contains("resize") {
             eprintln!("Finished {}", pattern);

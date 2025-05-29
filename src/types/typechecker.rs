@@ -1163,6 +1163,60 @@ fn find_all_named_generics_helper(typ: &Type, type_vars: &mut HashSet<TypeVariab
     }
 }
 
+pub(super) fn contains_non_local_named_generic(typ: &Type, local_named_generics: &[TypeVariableId], cache: &ModuleCache<'_>) -> bool {
+    match typ {
+        Primitive(_)
+        | UserDefined(_)
+        | Tag(_) => false,
+        Function(function_type) => {
+            for parameter in &function_type.parameters {
+                if contains_non_local_named_generic(parameter, local_named_generics, cache) {
+                    return true;
+                }
+            }
+            contains_non_local_named_generic(&function_type.environment, local_named_generics, cache)
+                || contains_non_local_named_generic(&function_type.return_type, local_named_generics, cache)
+                || contains_non_local_named_generic(&function_type.effects, local_named_generics, cache)
+        },
+        TypeVariable(id) => {
+            if let Some(binding) = cache.get_binding(*id) {
+                contains_non_local_named_generic(binding, local_named_generics, cache)
+            } else {
+                false
+            }
+        },
+        NamedGeneric(id, _) => {
+            if let Some(binding) = cache.get_binding(*id) {
+                contains_non_local_named_generic(binding, local_named_generics, cache)
+            } else {
+                !local_named_generics.contains(id)
+            }
+        },
+        TypeApplication(constructor, args) => {
+            contains_non_local_named_generic(constructor, local_named_generics, cache)
+                || args.iter().any(|arg| contains_non_local_named_generic(arg, local_named_generics, cache))
+        },
+        Ref { mutability, sharedness, lifetime } => {
+            contains_non_local_named_generic(&mutability, local_named_generics, cache)
+                || contains_non_local_named_generic(&sharedness, local_named_generics, cache)
+                || contains_non_local_named_generic(&lifetime, local_named_generics, cache)
+        },
+        Struct(fields, replacement) => {
+            if let Some(binding) = cache.get_binding(*replacement) {
+                contains_non_local_named_generic(binding, local_named_generics, cache)
+            } else {
+                fields.iter().any(|(_, typ)| contains_any_typevars_from_list(typ, local_named_generics, cache))
+            }
+        },
+        Effects(set) => {
+            let set = set.flatten(cache);
+            set.effects.iter().any(|(_, args)| {
+                args.iter().any(|typ| contains_any_typevars_from_list(typ, local_named_generics, cache))
+            })
+        },
+    }
+}
+
 /// Find all typevars declared inside the current LetBindingLevel and wrap the type in a PolyType
 /// e.g.  generalize (a -> b -> b) = forall a b. a -> b -> b
 fn generalize(typ: &Type, cache: &ModuleCache<'_>) -> GeneralizedType {
