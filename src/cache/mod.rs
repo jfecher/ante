@@ -523,6 +523,13 @@ impl<'a> ModuleCache<'a> {
         TypeVariableId(id)
     }
 
+    pub fn get_binding(&self, id: TypeVariableId) -> Option<&Type> {
+        match &self.type_bindings[id.0] {
+            TypeBinding::Bound(binding) => Some(binding),
+            TypeBinding::Unbound(..) => None,
+        }
+    }
+
     pub fn next_type_variable(&mut self, level: LetBindingLevel) -> Type {
         let id = self.next_type_variable_id(level);
         Type::TypeVariable(id)

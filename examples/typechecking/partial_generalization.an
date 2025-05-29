@@ -1,0 +1,18 @@
+// Mutually recursive definitions which type check when partially annotated despite
+// `t != u` and neither foo nor bar being generalized when bar is called within foo.
+// To do this we need to initialize them with partially generalized types:
+//   foo: forall t. t -> b1 -> r1
+//   bar: forall u. u -> b2 -> r2
+// Such that b1, b2, r1, and r2 can still be further refined.
+foo (a: t) b =
+    bar a b
+    0u32
+
+bar (a: u) b =
+    foo a b
+    1u32
+
+// args: --check --show-types
+// expected stdout:
+// bar : forall u a. (u - a -> U32 pure)
+// foo : forall t a. (t - a -> U32 pure)

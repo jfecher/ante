@@ -14,6 +14,8 @@ use crate::{
     util::trustme,
 };
 
+use super::traitchecker::sort_traits;
+use super::typechecker::find_all_named_generics;
 use super::{
     traits::{Callsite, RequiredTrait, TraitConstraints},
     Type,
@@ -30,12 +32,34 @@ pub(super) fn try_generalize_definition<'c>(
     match is_mutually_recursive(pattern, cache) {
         MutualRecursionResult::No => {
             let typevars_in_fn = find_all_typevars(pattern.get_type().unwrap(), false, cache);
+
+            if pattern.to_string().contains("insert") || pattern.to_string().contains("resize") {
+                eprintln!("Resolving traits in non-recursive {}", pattern);
+            }
             let exposed_traits = traitchecker::resolve_traits(traits, &typevars_in_fn, cache);
+            if pattern.to_string().contains("insert") || pattern.to_string().contains("resize") {
+                eprintln!("Finished {pattern}");
+            }
             bind_irrefutable_pattern(pattern, &t, &exposed_traits, true, cache);
             vec![]
         },
         MutualRecursionResult::YesGeneralizeLater => {
-            traits // Do nothing
+            // filter traits now
+            let typevars_in_fn = find_all_named_generics(pattern.get_type().unwrap(), cache);
+
+            if pattern.to_string().contains("insert") || pattern.to_string().contains("resize") {
+                eprintln!("Resolving traits in YesGeneralizeLater {}", pattern);
+            }
+            let (propagated_traits, other_constraints) = sort_traits(traits.clone(), &typevars_in_fn, cache);
+            if pattern.to_string().contains("insert") || pattern.to_string().contains("resize") {
+                eprintln!("propagated_traits on YesGeneralizeLater {pattern}:");
+                for p in &propagated_traits {
+                    eprintln!("    {}", p.debug(cache));
+                }
+            }
+            bind_irrefutable_pattern(pattern, &t, &propagated_traits, false, cache);
+
+            other_constraints // Do nothing
         }
         MutualRecursionResult::YesGeneralizeNow(id) => {
             // Generalize all the mutually recursive definitions at once
@@ -43,7 +67,7 @@ pub(super) fn try_generalize_definition<'c>(
                 let info = &mut cache.definition_infos[id.0];
                 info.undergoing_type_inference = false;
 
-                let t = info.typ.as_ref().unwrap().as_monotype().clone();
+                let t = info.typ.as_ref().unwrap().remove_forall().clone();
 
                 let definition = match &mut info.definition {
                     Some(DefinitionKind::Definition(definition)) => trustme::extend_lifetime(*definition),
@@ -53,7 +77,13 @@ pub(super) fn try_generalize_definition<'c>(
                 let pattern = &mut definition.pattern.as_mut();
 
                 let typevars_in_fn = find_all_typevars(pattern.get_type().unwrap(), false, cache);
+            if pattern.to_string().contains("insert") || pattern.to_string().contains("resize") {
+            eprintln!("Resolving traits in recursive non-root {}", pattern);
+            }
                 let mut exposed_traits = traitchecker::resolve_traits(traits.clone(), &typevars_in_fn, cache);
+            if pattern.to_string().contains("insert") || pattern.to_string().contains("resize") {
+            eprintln!("Finished {}", pattern);
+            }
 
                 let callsites = &cache[id].mutually_recursive_variables;
 
@@ -64,7 +94,14 @@ pub(super) fn try_generalize_definition<'c>(
             let root = cache.mutual_recursion_sets[id.0].root_definition;
             cache[root].undergoing_type_inference = false;
             let typevars_in_fn = find_all_typevars(pattern.get_type().unwrap(), false, cache);
+
+            if pattern.to_string().contains("insert") || pattern.to_string().contains("resize") {
+            eprintln!("Resolving traits in recursive root {}", pattern);
+            }
             let mut exposed_traits = traitchecker::resolve_traits(traits, &typevars_in_fn, cache);
+            if pattern.to_string().contains("insert") || pattern.to_string().contains("resize") {
+            eprintln!("Finished {}", pattern);
+            }
 
             let callsites = &cache[root].mutually_recursive_variables;
 
@@ -101,7 +138,7 @@ fn update_callsites(exposed_traits: Vec<RequiredTrait>, callsites: &Vec<Variable
 /// will cause them to be re-evaluated whenever they're used with new types,
 /// so generalization should be limited to when this would be expected by
 /// users (functions) or when it would not be noticeable (variables).
-fn should_generalize(ast: &ast::Ast, cache: &ModuleCache) -> bool {
+pub(super) fn should_generalize(ast: &ast::Ast, cache: &ModuleCache) -> bool {
     match ast {
         ast::Ast::Variable(variable) => {
             // Don't generalize definitions only referring to variables unless the variable

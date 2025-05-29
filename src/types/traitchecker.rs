@@ -143,7 +143,7 @@ type PropagatedTraits = Vec<RequiredTrait>;
 /// - All other constraints. This includes all other normal trait constraints like `Print a`
 ///   or `Cast a b` which should have an impl searched for now. Traits like this that shouldn't
 ///   have an impl searched for belong to the first category of propogated traits.
-fn sort_traits(
+pub(super) fn sort_traits(
     constraints: TraitConstraints, typevars_in_fn_signature: &[TypeVariableId], cache: &ModuleCache<'_>,
 ) -> (PropagatedTraits, TraitConstraints) {
     let mut propogated_traits = vec![];
@@ -172,11 +172,17 @@ fn should_propagate(
     // Don't check the fundeps since only the typeargs proper are used to find impls
     let arg_count = cache[constraint.trait_id()].typeargs.len();
 
-    constraint
+    let g = constraint
         .args()
         .iter()
         .take(arg_count)
-        .any(|arg| typechecker::contains_any_typevars_from_list(arg, typevars_in_fn_signature, cache))
+        .any(|arg| typechecker::contains_any_typevars_from_list(arg, typevars_in_fn_signature, cache));
+
+    let c = constraint.debug(cache).to_string();
+    if c.contains("Hash") {
+        eprintln!("  should_propagate {}: {g}", constraint.debug(cache));
+    }
+    g
 }
 
 /// Try to solve a normal constraint, but avoid issuing an error if it fails.
@@ -202,6 +208,12 @@ fn try_solve_normal_constraint<'a>(
 /// or >1 matching impls are found.
 fn solve_normal_constraint(constraint: &TraitConstraint, cache: &mut ModuleCache<'_>) {
     let bindings = UnificationBindings::empty();
+
+    let c = constraint.debug(cache).to_string();
+    if c.contains("Hash") {
+        eprintln!("    have constraint {}", constraint.debug(cache));
+    }
+
     let mut matching_impls = find_matching_impls(constraint, &bindings, RECURSION_LIMIT, cache);
 
     #[allow(clippy::comparison_chain)]

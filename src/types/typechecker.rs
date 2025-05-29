@@ -40,7 +40,8 @@ use crate::types::{
 };
 use crate::util::*;
 
-use std::collections::{BTreeMap, HashMap};
+use std::borrow::Cow;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -425,6 +426,10 @@ fn to_trait_constraints(
         let id = current_constraint_id.next();
         required_trait.as_constraint(scope, callsite, id)
     });
+
+    if info.name == "insert" || info.name == "resize" {
+        eprintln!("{} required_traits", traits.len());
+    }
 
     // If this definition is from a trait, we must add the initial constraint directly
     if let Some((trait_id, args)) = &info.trait_info {
@@ -1094,6 +1099,70 @@ fn find_all_typevars_in_traits(traits: &TraitConstraints, cache: &ModuleCache<'_
     typevars
 }
 
+pub(super) fn find_all_named_generics(typ: &Type, cache: &ModuleCache<'_>) -> Vec<TypeVariableId> {
+    let mut set = HashSet::new();
+    find_all_named_generics_helper(typ, &mut set, cache);
+    set.into_iter().collect()
+}
+
+fn find_all_named_generics_helper(typ: &Type, type_vars: &mut HashSet<TypeVariableId>, cache: &ModuleCache<'_>) {
+    match typ {
+        Primitive(_)
+        | UserDefined(_)
+        | Tag(_) => (),
+        Function(function_type) => {
+            for param in &function_type.parameters {
+                find_all_named_generics_helper(param, type_vars, cache);
+            }
+            find_all_named_generics_helper(&function_type.environment, type_vars, cache);
+            find_all_named_generics_helper(&function_type.return_type, type_vars, cache);
+            find_all_named_generics_helper(&function_type.effects, type_vars, cache);
+        },
+        TypeVariable(id) => {
+            match cache.get_binding(*id) {
+                Some(binding) => find_all_named_generics_helper(binding, type_vars, cache),
+                None => (),
+            }
+        },
+        NamedGeneric(id, _) => {
+            match cache.get_binding(*id) {
+                Some(binding) => find_all_named_generics_helper(binding, type_vars, cache),
+                None => {
+                    type_vars.insert(*id);
+                },
+            }
+        },
+        TypeApplication(constructor, args) => {
+            find_all_named_generics_helper(constructor, type_vars, cache);
+            for arg in args {
+                find_all_named_generics_helper(arg, type_vars, cache);
+            }
+        },
+        Ref { mutability, sharedness, lifetime } => {
+            find_all_named_generics_helper(mutability, type_vars, cache);
+            find_all_named_generics_helper(sharedness, type_vars, cache);
+            find_all_named_generics_helper(lifetime, type_vars, cache);
+        },
+        Struct(fields, replacement) => {
+            if let Some(binding) = cache.get_binding(*replacement) {
+                find_all_named_generics_helper(binding, type_vars, cache);
+            } else {
+                for (_name, field_type) in fields {
+                    find_all_named_generics_helper(field_type, type_vars, cache);
+                }
+            }
+        },
+        Effects(set) => {
+            let set = set.flatten(cache);
+            for (_id, effect_args) in &set.effects {
+                for arg in effect_args {
+                    find_all_named_generics_helper(arg, type_vars, cache);
+                }
+            }
+        },
+    }
+}
+
 /// Find all typevars declared inside the current LetBindingLevel and wrap the type in a PolyType
 /// e.g.  generalize (a -> b -> b) = forall a b. a -> b -> b
 fn generalize(typ: &Type, cache: &ModuleCache<'_>) -> GeneralizedType {
@@ -1235,7 +1304,7 @@ fn make_tuple_type(mut types: Vec<Type>) -> Type {
 /// to any variable encountered. Appends the given required_traits list in the DefinitionInfo's
 /// required_traits field.
 pub(super) fn bind_irrefutable_pattern<'c>(
-    ast: &mut ast::Ast<'c>, typ: &Type, required_traits: &[RequiredTrait], should_generalize: bool,
+    ast: &mut ast::Ast<'c>, typ: &Type, required_traits: &[RequiredTrait], mut should_generalize: bool,
     cache: &mut ModuleCache<'c>,
 ) {
     use ast::Ast::*;
@@ -1255,25 +1324,27 @@ pub(super) fn bind_irrefutable_pattern<'c>(
             // The type may already be set (e.g. from a trait impl this definition belongs to).
             // If it is, unify the existing type and new type before generalizing them.
             if let Some(existing_type) = &info.typ {
-                match existing_type {
-                    GeneralizedType::MonoType(existing_type) => {
-                        unify(
-                            &existing_type.clone(),
-                            typ,
-                            variable.location,
-                            cache,
-                            TE::VariableDoesNotMatchDeclaredType,
-                        );
-                    },
-                    GeneralizedType::PolyType(_, _) => {
-                        unreachable!("Cannot unify a polytype: {}", existing_type.debug(cache))
-                    },
+                // Make sure we don't mutate this back into a MonoType even if `should_generalize` is false
+                if matches!(existing_type, GeneralizedType::PolyType(..)) {
+                    should_generalize = true;
                 }
+
+                let existing_type = existing_type.remove_forall();
+                unify(
+                    &existing_type.clone(),
+                    typ,
+                    variable.location,
+                    cache,
+                    TE::VariableDoesNotMatchDeclaredType,
+                );
             }
 
             let typ = if should_generalize { generalize(typ, cache) } else { GeneralizedType::MonoType(typ.clone()) };
 
             let info = &mut cache.definition_infos[definition_id.0];
+            if info.name == "insert" || info.name == "resize" {
+            eprintln!("Extending {}'s {} required traits with {} more", info.name, info.required_traits.len(), required_traits.len());
+            }
             info.required_traits.extend_from_slice(required_traits);
 
             variable.typ = Some(typ.remove_forall().clone());
@@ -1320,6 +1391,47 @@ pub(super) fn bind_irrefutable_pattern<'c>(
         _ => {
             cache.push_diagnostic(ast.locate(), D::InvalidSyntaxInIrrefutablePattern);
         },
+    }
+}
+
+fn get_pattern_type<'local, 'c>(
+    pattern: &'local ast::Ast<'c>,
+    cache: &mut ModuleCache<'c>,
+) -> Option<Cow<'local, Type>> {
+    use ast::Ast::*;
+    use ast::LiteralKind;
+    match pattern {
+        Literal(literal) => match literal.kind {
+            LiteralKind::Unit => Some(Cow::Owned(Type::UNIT)),
+            _ => None,
+        },
+        Variable(variable) => {
+            let definition_id = variable.definition.unwrap();
+            let info = &cache.definition_infos[definition_id.0];
+
+            if let Some(existing_type) = &info.typ {
+                match existing_type {
+                    GeneralizedType::MonoType(existing_type) => return Some(Cow::Owned(existing_type.clone())),
+                    GeneralizedType::PolyType(_, _) => {
+                        unreachable!("Cannot unify a polytype: {}", existing_type.debug(cache))
+                    },
+                }
+            }
+
+            Some(Cow::Owned(next_type_variable(cache)))
+        },
+        TypeAnnotation(annotation) => {
+            Some(Cow::Borrowed(annotation.typ.as_ref().unwrap()))
+        },
+        // TODO: All struct patterns
+        FunctionCall(call) if call.is_pair_constructor() && call.args.len() == 2 => {
+            let arg1 = get_pattern_type(&call.args[0], cache)?.into_owned();
+            let arg2 = get_pattern_type(&call.args[1], cache)?.into_owned();
+
+            let pair_type = Box::new(Type::UserDefined(PAIR_TYPE));
+            Some(Cow::Owned(Type::TypeApplication(pair_type, vec![arg1, arg2])))
+        },
+        _ => None,
     }
 }
 
@@ -1509,7 +1621,68 @@ fn find_matching_trait(
     None
 }
 
-fn initialize_pattern_types<'a>(pattern: &ast::Ast<'a>, cache: &mut ModuleCache<'a>) {
+/// Partially-annotated functions are also partially generalized early so that code
+/// like the following type checks:
+/// ```
+/// foo (x: a) y z = ...; bar x y z; ...
+/// bar (x: b) y z = ...; foo x y z; ...
+/// ```
+/// despite `bar` being called with `x: a` and expecting `x: b`. This wouldn't be an issue
+/// if they weren't mutually recursive, but since they are we encounter two seemingly different
+/// named generics. To fix this we initialize the types to:
+/// ```
+/// foo: forall a. a -> y1 -> z1 -> r1
+/// bar: forall b. b -> y2 -> z2 -> r2
+/// ```
+/// which still lets the implicit type variables yN, zN, and rN be refined further.
+fn initialize_function_type<'a>(definition: &ast::Definition<'a>, cache: &mut ModuleCache<'a>) {
+    if let ast::Ast::Lambda(lambda) = &*definition.expr {
+        let mut definition_id = None;
+        foreach_variable(&definition.pattern, cache, &mut |id, _| {
+            definition_id = id.definition;
+        });
+
+        let Some(definition_id) = definition_id else { return; };
+
+        let info = &cache.definition_infos[definition_id.0];
+        if info.typ.is_none() {
+            // The newvars for the parameters are filled out during name resolution
+            let mut parameters = Vec::with_capacity(lambda.args.len());
+            for param in &lambda.args {
+                let Some(typ) = get_pattern_type(param, cache) else { return };
+                parameters.push(typ.into_owned());
+            }
+
+            let return_type = lambda.body.get_type().cloned().unwrap_or_else(|| {
+                next_type_variable(cache)
+            });
+
+            let function_type = Type::Function(FunctionType {
+                parameters,
+                return_type: Box::new(return_type),
+                environment: Box::new(next_type_variable(cache)),
+                effects: Box::new(next_type_variable(cache)),
+                has_varargs: false,
+            });
+
+            let named_generics = find_all_named_generics(&function_type, cache);
+
+            if !named_generics.is_empty() {
+                let info = &mut cache.definition_infos[definition_id.0];
+                let t = GeneralizedType::PolyType(named_generics, function_type);
+                let n = info.name.clone();
+                let t2 = t.clone();
+                info.typ = Some(t);
+
+                if n == "insert" || n == "resize" {
+                    eprintln!("Initializing {} to {}", n, t2.debug(cache));
+                }
+            }
+        }
+    }
+}
+
+fn mark_pattern_ids_in_progress<'a>(pattern: &ast::Ast<'a>, cache: &mut ModuleCache<'a>) {
     foreach_variable(pattern, cache, &mut |variable, cache| {
         mark_id_in_progress(variable.definition.unwrap(), cache);
     });
@@ -1607,6 +1780,10 @@ impl<'a> Inferable<'a> for ast::Variable<'a> {
         let (s, traits) = match &info.typ {
             Some(typ) => {
                 let typ = typ.clone();
+                
+        if self.to_string().contains("insert") || self.to_string().contains("resize") {
+                eprintln!("to_trait_constraints {self}");
+        }
                 let constraints = to_trait_constraints(definition_id, impl_scope, id, cache);
                 (typ, constraints)
             },
@@ -1614,8 +1791,18 @@ impl<'a> Inferable<'a> for ast::Variable<'a> {
                 // If the variable has a definition we can infer from then use that
                 // to determine the type, otherwise fill in a type variable for it.
                 let (typ, traits) = if info.definition.is_some() {
-                    infer_nested_definition(self.definition.unwrap(), impl_scope, id, cache)
+        if self.to_string().contains("insert") || self.to_string().contains("resize") {
+                    eprintln!("infer_nested_definition {self}");
+        }
+                    let r= infer_nested_definition(self.definition.unwrap(), impl_scope, id, cache);
+        if self.to_string().contains("insert") || self.to_string().contains("resize") {
+                    eprintln!("finish infer_nested_definition {self}");
+        }
+        r
                 } else {
+        if self.to_string().contains("insert") || self.to_string().contains("resize") {
+                    eprintln!("monotype {self}");
+        }
                     (GeneralizedType::MonoType(next_type_variable(cache)), vec![])
                 };
 
@@ -1630,9 +1817,29 @@ impl<'a> Inferable<'a> for ast::Variable<'a> {
         // mutual recursion set can be generalized at once.
         cache.update_mutual_recursion_sets(definition_id, self.id.unwrap());
 
-        let (t, traits, mapping) = s.instantiate(traits, cache);
+        let p = |traits: &Vec<TraitConstraint>, cache| {
+            eprint!("[");
+            for (i, t) in traits.iter().enumerate() {
+                if i != 0 {
+                    eprint!(", ");
+                }
+                eprint!("{}", t.debug(cache));
+            }
+            eprintln!("]");
+        };
+
+        let (t, traits2, mapping) = s.instantiate(traits.clone(), cache);
+
+        if self.to_string().contains("insert") || self.to_string().contains("resize") {
+            eprint!("  Instantiated {self} : {} with traits ", s.debug(cache));
+            p(&traits, cache);
+            eprint!("            as {self} : {} with traits ", t.debug(cache));
+            p(&traits2, cache);
+        }
+
+
         self.instantiation_mapping = Rc::new(mapping);
-        TypeResult::new(t, traits, cache)
+        TypeResult::new(t, traits2, cache)
     }
 }
 
@@ -1797,7 +2004,8 @@ impl<'a> Inferable<'a> for ast::Definition<'a> {
         // this definition repeatedly until eventually reaching an error when the previous type
         // is generalized but the new one is not.
         self.typ = Some(unit.clone());
-        initialize_pattern_types(&self.pattern, cache);
+        initialize_function_type(self, cache);
+        mark_pattern_ids_in_progress(&self.pattern, cache);
 
         let level = self.level.unwrap();
         let previous_level = CURRENT_LEVEL.swap(level.0, Ordering::SeqCst);

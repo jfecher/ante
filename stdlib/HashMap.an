@@ -23,12 +23,6 @@ clear (map: !HashMap k v) : Unit =
             entry.!tombstone := false
 
 resize (map: !HashMap k v) (new_capacity: Usz) : Unit =
-    resize_helper map new_capacity insert
-
-// Bug: this is currently required to break the mutual recursion between
-// resize and insert. The addition of Type::NamedGeneric broke type checking
-// of mutually recursive functions which specify their type variables.
-resize_helper (map: !HashMap k v) (new_capacity: Usz) insert_fn : Unit =
     if new_capacity > map.capacity then
         new_memory = calloc new_capacity (size_of (MkType : Type (Entry k v)))
 
@@ -41,7 +35,7 @@ resize_helper (map: !HashMap k v) (new_capacity: Usz) insert_fn : Unit =
         repeat (map.capacity) fn i ->
             entry: Entry k v = map.entries.[i]
             if entry.occupied then
-                insert_fn new_map_ref entry.key entry.value
+                insert new_map_ref entry.key entry.value
 
         map.!capacity := new_capacity
         map.!entries := new_memory
@@ -53,7 +47,7 @@ should_resize (map: HashMap k v) : Bool =
 
 insert (map: !HashMap k v) (key: k) (value: v) : Unit =
     if should_resize @map then
-        resize_helper map ((map.capacity + 1) * 2) insert
+        resize map ((map.capacity + 1) * 2)
 
     iter_until (map: !HashMap k v) (key: k) (value: v) (start: Usz) (end: Usz) : Bool =
         if start >= end then
