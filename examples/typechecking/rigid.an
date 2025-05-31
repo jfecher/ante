@@ -1,0 +1,17 @@
+
+ex1 (x: a): b = x + 1u32
+
+// This is a bug/limitation of the current system.
+// This currently produces no type errors despite the type given being too general.
+ex2: a -> b =
+    fn x -> x
+
+// args: --check --show-types
+// expected stdout:
+// ex1 : forall a b. (a -> b pure)
+//   given Add a
+// ex2 : forall a. (a -> a pure)
+//
+// expected stderr:
+// rigid.an:2:21	error: Expected argument of type a, but found U32
+// ex1 (x: a): b = x + 1u32
