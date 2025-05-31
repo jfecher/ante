@@ -16,6 +16,6 @@ id x = x
 // expected stdout:
 // add : forall a b c d e f g. ((a - c => f can e) - (a - b => c can e) -> a => b => f can e pure pure)
 // id : forall a. (a -> a pure)
-// one : forall a b c d. ((a => c can b) - a -> c can b)
-// two1 : forall a b c. ((c => c can b) - c -> c can b)
+// one : forall a b c d. ((b => a can c) - b -> a can c)
+// two1 : forall a b c. ((a => a can c) - a -> a can c)
 // two2 : (a => a can c) => a => a can c pure

@@ -242,13 +242,21 @@ impl<'g> Generator<'g> {
 
     /// Defines the builtin `continuation_*` functions used for effects.
     fn define_continuation_functions(&mut self) {
-        self.continuation_init = Some(self.define_continuation_function("mco_coro_init", &hir::Type::continuation_init_type()));
-        self.continuation_is_suspended = Some(self.define_continuation_function("mco_coro_is_suspended", &hir::Type::continuation_is_suspended_type()));
-        self.continuation_arg_push = Some(self.define_continuation_function("mco_coro_push", &hir::Type::continuation_push_type()));
-        self.continuation_arg_pop = Some(self.define_continuation_function("mco_coro_pop", &hir::Type::continuation_pop_type()));
-        self.continuation_suspend = Some(self.define_continuation_function("mco_coro_suspend", &hir::Type::continuation_suspend_type()));
-        self.continuation_resume = Some(self.define_continuation_function("mco_coro_resume", &hir::Type::continuation_resume_type()));
-        self.continuation_free = Some(self.define_continuation_function("mco_coro_free", &hir::Type::continuation_free_type()));
+        self.continuation_init =
+            Some(self.define_continuation_function("mco_coro_init", &hir::Type::continuation_init_type()));
+        self.continuation_is_suspended = Some(
+            self.define_continuation_function("mco_coro_is_suspended", &hir::Type::continuation_is_suspended_type()),
+        );
+        self.continuation_arg_push =
+            Some(self.define_continuation_function("mco_coro_push", &hir::Type::continuation_push_type()));
+        self.continuation_arg_pop =
+            Some(self.define_continuation_function("mco_coro_pop", &hir::Type::continuation_pop_type()));
+        self.continuation_suspend =
+            Some(self.define_continuation_function("mco_coro_suspend", &hir::Type::continuation_suspend_type()));
+        self.continuation_resume =
+            Some(self.define_continuation_function("mco_coro_resume", &hir::Type::continuation_resume_type()));
+        self.continuation_free =
+            Some(self.define_continuation_function("mco_coro_free", &hir::Type::continuation_free_type()));
     }
 
     fn define_continuation_function(&mut self, name: &str, typ: &hir::FunctionType) -> FunctionValue<'g> {
@@ -714,7 +722,10 @@ impl<'g> CodeGen<'g> for hir::Extern {
     fn codegen(&self, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
         if let Some((old_type, existing)) = generator.externs.get(&self.name) {
             if self.typ != *old_type {
-                eprintln!("WARNING: Redefinition of extern `{}: {old_type}` with different type {}", self.name, self.typ);
+                eprintln!(
+                    "WARNING: Redefinition of extern `{}: {old_type}` with different type {}",
+                    self.name, self.typ
+                );
             }
             return existing.clone();
         }

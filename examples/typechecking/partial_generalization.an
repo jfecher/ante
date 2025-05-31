@@ -31,13 +31,13 @@ ex2c (a: v) b =
 // args: --check --show-types
 // expected stdout:
 // ex1a : forall t a. (t - a -> U32 pure)
-// ex1b : forall u a. (u - a -> U32 pure)
+// ex1b : forall t a. (t - a -> U32 pure)
 // ex2a : forall t a. (t - a -> Unit pure)
 //   given T1 t, T2 t
-// ex2b : forall u a. (u - a -> Unit pure)
-//   given T1 u, T2 u
-// ex2c : forall v a. (v - a -> Unit pure)
-//   given T1 v, T2 v
+// ex2b : forall t a. (t - a -> Unit pure)
+//   given T1 t, T2 t
+// ex2c : forall t a. (t - a -> Unit pure)
+//   given T1 t, T2 t
 // trait1 : forall a. (a -> Unit pure)
 //   given T1 a
 // trait2 : forall a. (a -> Unit pure)

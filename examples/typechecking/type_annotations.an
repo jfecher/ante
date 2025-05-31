@@ -26,7 +26,7 @@ puts2
 // exit2 "test"
 
 // expected stdout:
-// bar : forall a b. (a - b -> b pure)
+// bar : forall a b. (b - a -> a pure)
 // baz : forall a. (Usz -> Ptr a pure)
 // exit2 : I32 -> Unit pure
 // foo : I32 - String -> Char pure

@@ -287,16 +287,24 @@ pub fn stack_alloc_basic_value<'g>(value: BasicValueEnum<'g>, generator: &mut Ge
 fn continuation_init<'g>(f: &Ast, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
     let f = f.codegen(generator);
     let init = generator.continuation_init.unwrap();
-    generator.builder.build_direct_call(init, &[f.into()], "continuation_init").unwrap()
-        .try_as_basic_value().unwrap_left()
+    generator
+        .builder
+        .build_direct_call(init, &[f.into()], "continuation_init")
+        .unwrap()
+        .try_as_basic_value()
+        .unwrap_left()
 }
 
 fn continuation_is_suspended<'g>(k: &Ast, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
     let is_suspended = generator.continuation_is_suspended.unwrap();
     let k = k.codegen(generator);
 
-    generator.builder.build_direct_call(is_suspended, &[k.into()], "continuation_is_suspended").unwrap()
-        .try_as_basic_value().unwrap_left()
+    generator
+        .builder
+        .build_direct_call(is_suspended, &[k.into()], "continuation_is_suspended")
+        .unwrap()
+        .try_as_basic_value()
+        .unwrap_left()
 }
 
 // mco_push(k, &x, sizeof(x));
@@ -308,7 +316,10 @@ fn continuation_arg_push<'g>(k: &Ast, x: &Ast, generator: &mut Generator<'g>) ->
     let x_size = x.get_type().size_of().unwrap();
     let x_ref = generator.reference_or_alloc(x);
 
-    generator.builder.build_direct_call(push, &[k.into(), x_ref.into(), x_size.into()], "continuation_arg_push").unwrap();
+    generator
+        .builder
+        .build_direct_call(push, &[k.into(), x_ref.into(), x_size.into()], "continuation_arg_push")
+        .unwrap();
     generator.unit_value()
 }
 

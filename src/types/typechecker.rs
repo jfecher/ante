@@ -41,7 +41,7 @@ use crate::types::{
 use crate::util::*;
 
 use std::borrow::Cow;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -283,7 +283,7 @@ pub fn bind_typevars(typ: &Type, type_bindings: &TypeBindings, cache: &ModuleCac
             } else {
                 typ.clone()
             }
-        }
+        },
 
         Function(function) => {
             let parameters = fmap(&function.parameters, |parameter| bind_typevars(parameter, type_bindings, cache));
@@ -505,6 +505,14 @@ fn instantiate_impl_with_bindings(
     }
 }
 
+fn has_binding(id: TypeVariableId, map: &UnificationBindings, cache: &ModuleCache<'_>) -> bool {
+    // Reimplement the innards of `find_binding` to avoid cloning
+    match &cache.type_bindings[id.0] {
+        Bound(_) => true,
+        Unbound(..) => map.bindings.get(&id).is_some(),
+    }
+}
+
 fn find_binding(id: TypeVariableId, map: &UnificationBindings, cache: &ModuleCache<'_>) -> TypeBinding {
     match &cache.type_bindings[id.0] {
         Bound(typ) => Bound(typ.clone()),
@@ -595,7 +603,9 @@ pub(super) fn occurs_helper(
             .then(|| occurs_helper(id, level, sharedness, bindings, fuel, cache))
             .then(|| occurs_helper(id, level, lifetime, bindings, fuel, cache)),
         Struct(fields, var_id) => typevars_match(id, level, *var_id, bindings, fuel, cache)
-            .then_all(fields.iter().map(|(_, typ)| typ), |field| occurs_helper(id, level, field, bindings, fuel, cache)),
+            .then_all(fields.iter().map(|(_, typ)| typ), |field| {
+                occurs_helper(id, level, field, bindings, fuel, cache)
+            }),
         Effects(effects) => effects.occurs(id, level, bindings, fuel, cache),
     }
 }
@@ -748,7 +758,41 @@ pub fn try_unify_with_bindings_inner<'b>(
             Ok(())
         },
 
+        (NamedGeneric(id, _), other) if has_binding(*id, bindings, cache) => {
+            let TypeBinding::Bound(binding) = find_binding(*id, bindings, cache) else {
+                unreachable!("Already verified by has_binding");
+            };
+            try_unify_with_bindings_inner(&binding, other, bindings, location, cache)
+        },
+        (other, NamedGeneric(id, _)) if has_binding(*id, bindings, cache) => {
+            let TypeBinding::Bound(binding) = find_binding(*id, bindings, cache) else {
+                unreachable!("Already verified by has_binding");
+            };
+            try_unify_with_bindings_inner(other, &binding, bindings, location, cache)
+        },
+
         (NamedGeneric(id1, _), NamedGeneric(id2, _)) if id1 == id2 => Ok(()),
+
+        // Hack: allow binding of two named generics to correctly type check mutual recursion
+        // with rigid type variables. We only allow rigid type variables to bind with other
+        // rigid type variables to avoid relaxing constraints, although relaxing can still
+        // occur to a lesser degree e.g. when binding `a -> b` against `a -> a`.
+        (NamedGeneric(id1, _), NamedGeneric(id2, name2)) => {
+            let TypeBinding::Unbound(_lhs_level, lhs_kind) = find_binding(*id1, bindings, cache) else {
+                unreachable!("Bound case covered above");
+            };
+            let TypeBinding::Unbound(_rhs_level, rhs_kind) = find_binding(*id2, bindings, cache) else {
+                unreachable!("Bound case covered above");
+            };
+
+            if lhs_kind != rhs_kind {
+                return Err(());
+            }
+
+            // TODO: Should we check the level here?
+            bindings.bindings.insert(*id1, NamedGeneric(*id2, name2.clone()));
+            Ok(())
+        },
 
         (Effects(effects1), Effects(effects2)) => effects1.try_unify_with_bindings(effects2, bindings, location, cache),
 
@@ -1107,124 +1151,6 @@ fn find_all_typevars_in_traits(traits: &TraitConstraints, cache: &ModuleCache<'_
     typevars
 }
 
-pub(super) fn find_all_named_generics(typ: &Type, cache: &ModuleCache<'_>) -> Vec<TypeVariableId> {
-    let mut set = HashSet::new();
-    find_all_named_generics_helper(typ, &mut set, cache);
-    set.into_iter().collect()
-}
-
-fn find_all_named_generics_helper(typ: &Type, type_vars: &mut HashSet<TypeVariableId>, cache: &ModuleCache<'_>) {
-    match typ {
-        Primitive(_)
-        | UserDefined(_)
-        | Tag(_) => (),
-        Function(function_type) => {
-            for param in &function_type.parameters {
-                find_all_named_generics_helper(param, type_vars, cache);
-            }
-            find_all_named_generics_helper(&function_type.environment, type_vars, cache);
-            find_all_named_generics_helper(&function_type.return_type, type_vars, cache);
-            find_all_named_generics_helper(&function_type.effects, type_vars, cache);
-        },
-        TypeVariable(id) => {
-            match cache.get_binding(*id) {
-                Some(binding) => find_all_named_generics_helper(binding, type_vars, cache),
-                None => (),
-            }
-        },
-        NamedGeneric(id, _) => {
-            match cache.get_binding(*id) {
-                Some(binding) => find_all_named_generics_helper(binding, type_vars, cache),
-                None => {
-                    type_vars.insert(*id);
-                },
-            }
-        },
-        TypeApplication(constructor, args) => {
-            find_all_named_generics_helper(constructor, type_vars, cache);
-            for arg in args {
-                find_all_named_generics_helper(arg, type_vars, cache);
-            }
-        },
-        Ref { mutability, sharedness, lifetime } => {
-            find_all_named_generics_helper(mutability, type_vars, cache);
-            find_all_named_generics_helper(sharedness, type_vars, cache);
-            find_all_named_generics_helper(lifetime, type_vars, cache);
-        },
-        Struct(fields, replacement) => {
-            if let Some(binding) = cache.get_binding(*replacement) {
-                find_all_named_generics_helper(binding, type_vars, cache);
-            } else {
-                for (_name, field_type) in fields {
-                    find_all_named_generics_helper(field_type, type_vars, cache);
-                }
-            }
-        },
-        Effects(set) => {
-            let set = set.flatten(cache);
-            for (_id, effect_args) in &set.effects {
-                for arg in effect_args {
-                    find_all_named_generics_helper(arg, type_vars, cache);
-                }
-            }
-        },
-    }
-}
-
-pub(super) fn contains_non_local_named_generic(typ: &Type, local_named_generics: &[TypeVariableId], cache: &ModuleCache<'_>) -> bool {
-    match typ {
-        Primitive(_)
-        | UserDefined(_)
-        | Tag(_) => false,
-        Function(function_type) => {
-            for parameter in &function_type.parameters {
-                if contains_non_local_named_generic(parameter, local_named_generics, cache) {
-                    return true;
-                }
-            }
-            contains_non_local_named_generic(&function_type.environment, local_named_generics, cache)
-                || contains_non_local_named_generic(&function_type.return_type, local_named_generics, cache)
-                || contains_non_local_named_generic(&function_type.effects, local_named_generics, cache)
-        },
-        TypeVariable(id) => {
-            if let Some(binding) = cache.get_binding(*id) {
-                contains_non_local_named_generic(binding, local_named_generics, cache)
-            } else {
-                false
-            }
-        },
-        NamedGeneric(id, _) => {
-            if let Some(binding) = cache.get_binding(*id) {
-                contains_non_local_named_generic(binding, local_named_generics, cache)
-            } else {
-                !local_named_generics.contains(id)
-            }
-        },
-        TypeApplication(constructor, args) => {
-            contains_non_local_named_generic(constructor, local_named_generics, cache)
-                || args.iter().any(|arg| contains_non_local_named_generic(arg, local_named_generics, cache))
-        },
-        Ref { mutability, sharedness, lifetime } => {
-            contains_non_local_named_generic(&mutability, local_named_generics, cache)
-                || contains_non_local_named_generic(&sharedness, local_named_generics, cache)
-                || contains_non_local_named_generic(&lifetime, local_named_generics, cache)
-        },
-        Struct(fields, replacement) => {
-            if let Some(binding) = cache.get_binding(*replacement) {
-                contains_non_local_named_generic(binding, local_named_generics, cache)
-            } else {
-                fields.iter().any(|(_, typ)| contains_any_typevars_from_list(typ, local_named_generics, cache))
-            }
-        },
-        Effects(set) => {
-            let set = set.flatten(cache);
-            set.effects.iter().any(|(_, args)| {
-                args.iter().any(|typ| contains_any_typevars_from_list(typ, local_named_generics, cache))
-            })
-        },
-    }
-}
-
 /// Find all typevars declared inside the current LetBindingLevel and wrap the type in a PolyType
 /// e.g.  generalize (a -> b -> b) = forall a b. a -> b -> b
 fn generalize(typ: &Type, cache: &ModuleCache<'_>) -> GeneralizedType {
@@ -1392,13 +1318,7 @@ pub(super) fn bind_irrefutable_pattern<'c>(
                 }
 
                 let existing_type = existing_type.remove_forall();
-                unify(
-                    &existing_type.clone(),
-                    typ,
-                    variable.location,
-                    cache,
-                    TE::VariableDoesNotMatchDeclaredType,
-                );
+                unify(&existing_type.clone(), typ, variable.location, cache, TE::VariableDoesNotMatchDeclaredType);
             }
 
             let typ = if should_generalize { generalize(typ, cache) } else { GeneralizedType::MonoType(typ.clone()) };
@@ -1454,8 +1374,7 @@ pub(super) fn bind_irrefutable_pattern<'c>(
 }
 
 fn get_pattern_type<'local, 'c>(
-    pattern: &'local ast::Ast<'c>,
-    cache: &mut ModuleCache<'c>,
+    pattern: &'local ast::Ast<'c>, cache: &mut ModuleCache<'c>,
 ) -> Option<Cow<'local, Type>> {
     use ast::Ast::*;
     use ast::LiteralKind;
@@ -1479,9 +1398,7 @@ fn get_pattern_type<'local, 'c>(
 
             Some(Cow::Owned(next_type_variable(cache)))
         },
-        TypeAnnotation(annotation) => {
-            Some(Cow::Borrowed(annotation.typ.as_ref().unwrap()))
-        },
+        TypeAnnotation(annotation) => Some(Cow::Borrowed(annotation.typ.as_ref().unwrap())),
         // TODO: All struct patterns
         FunctionCall(call) if call.is_pair_constructor() && call.args.len() == 2 => {
             let arg1 = get_pattern_type(&call.args[0], cache)?.into_owned();
@@ -1680,20 +1597,8 @@ fn find_matching_trait(
     None
 }
 
-/// Partially-annotated functions are also partially generalized early so that code
-/// like the following type checks:
-/// ```ante
-/// foo (x: a) y z = ...; bar x y z; ...
-/// bar (x: b) y z = ...; foo x y z; ...
-/// ```
-/// despite `bar` being called with `x: a` and expecting `x: b`. This wouldn't be an issue
-/// if they weren't mutually recursive, but since they are we encounter two seemingly different
-/// named generics. To fix this we initialize the types to:
-/// ```ante
-/// foo: forall a. a -> y1 -> z1 -> r1
-/// bar: forall b. b -> y2 -> z2 -> r2
-/// ```
-/// which still lets the implicit type variables yN, zN, and rN be refined further.
+/// Initializing a function's type before the body is checked can improve type errors
+/// when the function is used recursively.
 fn initialize_function_type<'a>(definition: &ast::Definition<'a>, cache: &mut ModuleCache<'a>) {
     if let ast::Ast::Lambda(lambda) = &*definition.expr {
         let mut definition_id = None;
@@ -1701,7 +1606,9 @@ fn initialize_function_type<'a>(definition: &ast::Definition<'a>, cache: &mut Mo
             definition_id = id.definition;
         });
 
-        let Some(definition_id) = definition_id else { return; };
+        let Some(definition_id) = definition_id else {
+            return;
+        };
 
         let info = &cache.definition_infos[definition_id.0];
         if info.typ.is_none() {
@@ -1712,9 +1619,7 @@ fn initialize_function_type<'a>(definition: &ast::Definition<'a>, cache: &mut Mo
                 parameters.push(typ.into_owned());
             }
 
-            let return_type = lambda.body.get_type().cloned().unwrap_or_else(|| {
-                next_type_variable(cache)
-            });
+            let return_type = lambda.body.get_type().cloned().unwrap_or_else(|| next_type_variable(cache));
 
             let function_type = Type::Function(FunctionType {
                 parameters,
@@ -1724,12 +1629,8 @@ fn initialize_function_type<'a>(definition: &ast::Definition<'a>, cache: &mut Mo
                 has_varargs: false,
             });
 
-            let named_generics = find_all_named_generics(&function_type, cache);
-
-            if !named_generics.is_empty() {
-                let info = &mut cache.definition_infos[definition_id.0];
-                info.typ = Some(GeneralizedType::PolyType(named_generics, function_type));
-            }
+            let info = &mut cache.definition_infos[definition_id.0];
+            info.typ = Some(GeneralizedType::MonoType(function_type));
         }
     }
 }

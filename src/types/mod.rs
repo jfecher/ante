@@ -649,7 +649,7 @@ impl<'a> TypeInfo<'a> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Kind {
     /// usize is the number of type arguments it takes before it returns a type of kind *.
     /// For example, the kind Normal(2) : * -> * -> *

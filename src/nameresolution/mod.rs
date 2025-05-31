@@ -566,13 +566,19 @@ impl<'c> NameResolver {
         if let Some(first_arg) = args.get(0) {
             match constructor {
                 Type::Primitive(PrimitiveType::IntegerType) => {
-                    if !matches!(first_arg, Type::Primitive(PrimitiveType::IntegerTag(_)) | Type::TypeVariable(_) | Type::NamedGeneric(..)) {
+                    if !matches!(
+                        first_arg,
+                        Type::Primitive(PrimitiveType::IntegerTag(_)) | Type::TypeVariable(_) | Type::NamedGeneric(..)
+                    ) {
                         let typename = first_arg.display(cache).to_string();
                         cache.push_diagnostic(location, D::NonIntegerType(typename));
                     }
                 },
                 Type::Primitive(PrimitiveType::FloatType) => {
-                    if !matches!(first_arg, Type::Primitive(PrimitiveType::FloatTag(_)) | Type::TypeVariable(_) | Type::NamedGeneric(..)) {
+                    if !matches!(
+                        first_arg,
+                        Type::Primitive(PrimitiveType::FloatTag(_)) | Type::TypeVariable(_) | Type::NamedGeneric(..)
+                    ) {
                         let typename = first_arg.display(cache).to_string();
                         cache.push_diagnostic(location, D::NonFloatType(typename));
                     }

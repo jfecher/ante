@@ -757,7 +757,14 @@ impl<'c> Context<'c> {
             // Bug: We can have instantiation bindings that bind type variables to themselves
             //      in the presense of mutual recursion and rigid type variables.
             instantiation_mapping.retain(|k, v| {
-                !crate::types::typechecker::occurs(*k, LetBindingLevel(0), v, &mut UnificationBindings::empty(), 100, &mut self.cache)
+                !crate::types::typechecker::occurs(
+                    *k,
+                    LetBindingLevel(0),
+                    v,
+                    &mut UnificationBindings::empty(),
+                    100,
+                    &mut self.cache,
+                )
             });
 
             self.monomorphisation_bindings.push(instantiation_mapping.into());
@@ -767,7 +774,8 @@ impl<'c> Context<'c> {
             let definition_type = definition.typ.as_ref().unwrap().remove_forall();
 
             let mut new_bindings = TypeBindings::new();
-            let definition_type = replace_all_typevars_with_bindings(definition_type, &mut new_bindings, &mut self.cache);
+            let definition_type =
+                replace_all_typevars_with_bindings(definition_type, &mut new_bindings, &mut self.cache);
 
             let bindings = typechecker::try_unify(
                 typ,
@@ -783,7 +791,14 @@ impl<'c> Context<'c> {
 
             new_bindings.extend(bindings.bindings);
             for (a, b) in new_bindings.iter() {
-                if crate::types::typechecker::occurs(*a, LetBindingLevel(0), b, &mut UnificationBindings::empty(), 100, &mut self.cache) {
+                if crate::types::typechecker::occurs(
+                    *a,
+                    LetBindingLevel(0),
+                    b,
+                    &mut UnificationBindings::empty(),
+                    100,
+                    &mut self.cache,
+                ) {
                     eprintln!("Binding Recursive3! {} occurs in {}", a.0, b.debug(&self.cache));
                 }
             }

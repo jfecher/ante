@@ -703,7 +703,14 @@ impl<'a> ModuleCache<'a> {
     }
 
     pub fn bind(&mut self, id: TypeVariableId, binding: Type) {
-        if crate::types::typechecker::occurs(id, LetBindingLevel(0), &binding, &mut UnificationBindings::empty(), 100, self) {
+        if crate::types::typechecker::occurs(
+            id,
+            LetBindingLevel(0),
+            &binding,
+            &mut UnificationBindings::empty(),
+            100,
+            self,
+        ) {
             eprintln!("Binding Recursive! {} occurs in {}", id.0, binding.debug(self));
         }
         self.type_bindings[id.0] = TypeBinding::Bound(binding);

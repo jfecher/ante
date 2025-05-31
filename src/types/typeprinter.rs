@@ -54,11 +54,7 @@ impl<'a, 'b> Debug for TypePrinter<'a, 'b> {
 
 impl TypeVarNames {
     fn new() -> Self {
-        Self {
-            map: Default::default(),
-            used_named_generics: Default::default(),
-            next_unused_name: 'a',
-        }
+        Self { map: Default::default(), used_named_generics: Default::default(), next_unused_name: 'a' }
     }
 
     /// Fill `self.map` with human readable names for each typevar in the given Vec.
@@ -92,22 +88,16 @@ impl TypeVarNames {
     fn collect_named_generic_names(&mut self, typ: &Type, cache: &ModuleCache) {
         match typ {
             Type::Primitive(_) | Type::Tag(_) | Type::UserDefined(_) => (),
-            Type::TypeVariable(id) => {
-                match &cache.type_bindings[id.0] {
-                    TypeBinding::Bound(binding) => self.collect_named_generic_names(binding, cache),
-                    TypeBinding::Unbound(..) => (),
-                }
+            Type::TypeVariable(id) => match &cache.type_bindings[id.0] {
+                TypeBinding::Bound(binding) => self.collect_named_generic_names(binding, cache),
+                TypeBinding::Unbound(..) => (),
             },
             Type::NamedGeneric(id, name) => {
-                match &cache.type_bindings[id.0] {
-                    TypeBinding::Bound(binding) => self.collect_named_generic_names(binding, cache),
-                    TypeBinding::Unbound(..) => {
-                        if !self.map.contains_key(id) {
-                            self.map.insert(*id, name.as_ref().clone());
-                            // self.used_named_generics.insert(name.clone());
-                            self.used_named_generics.insert(format!("{name}").into());
-                        }
-                    },
+                if let Some(binding) = cache.get_binding(*id) {
+                    self.collect_named_generic_names(binding, cache)
+                } else if !self.map.contains_key(id) {
+                    self.map.insert(*id, name.as_ref().clone());
+                    self.used_named_generics.insert(name.clone());
                 }
             },
             Type::Function(function) => {
@@ -184,13 +174,7 @@ pub fn show_type_and_traits(
             names.fill_typevar_map_with_lowercase_names(required_trait.find_all_typevars(cache));
             let signature = required_trait.signature.clone();
             let typevar_names = names.clone();
-            ConstraintSignaturePrinter {
-                signature,
-                cache,
-                debug,
-                typevar_names,
-            }
-            .to_string()
+            ConstraintSignaturePrinter { signature, cache, debug, typevar_names }.to_string()
         })
         .collect::<Vec<String>>();
 
@@ -255,9 +239,7 @@ impl ConstraintSignature {
 }
 
 impl<'a, 'b> TypePrinter<'a, 'b> {
-    fn new(
-        typ: GeneralizedType, typevar_names: TypeVarNames, debug: bool, cache: &'a ModuleCache<'b>,
-    ) -> Self {
+    fn new(typ: GeneralizedType, typevar_names: TypeVarNames, debug: bool, cache: &'a ModuleCache<'b>) -> Self {
         TypePrinter { typ, typevar_names, debug, cache }
     }
 
@@ -301,7 +283,7 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             Type::Ref { sharedness, mutability, lifetime } => self.fmt_ref(sharedness, mutability, lifetime, f),
             Type::Struct(fields, rest) => self.fmt_struct(fields, *rest, f),
             Type::Effects(effects) => self.fmt_effects(effects, f),
-            Type::NamedGeneric(_, name) => write!(f, "{}", name.blue()),
+            Type::NamedGeneric(id, name) => self.fmt_named_generic(*id, name, f),
             Type::Tag(tag) => write!(f, "{}", tag.to_string().blue()),
         }
     }
@@ -375,6 +357,14 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
                 let name = self.typevar_names.map.get(&id).unwrap_or(&default).blue();
                 write!(f, "{}", name)
             },
+        }
+    }
+
+    fn fmt_named_generic(&self, id: TypeVariableId, name: &str, f: &mut Formatter) -> std::fmt::Result {
+        if let Some(binding) = self.cache.get_binding(id) {
+            self.fmt_type(binding, f)
+        } else {
+            write!(f, "{}", name.blue())
         }
     }
 
@@ -589,4 +579,3 @@ impl<'a, 'b> Display for ConstraintSignaturePrinter<'a, 'b> {
         Ok(())
     }
 }
-

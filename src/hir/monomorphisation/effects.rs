@@ -1,5 +1,7 @@
 use std::{
-    collections::{BTreeMap, VecDeque}, hash::{DefaultHasher, Hash, Hasher}, rc::Rc
+    collections::{BTreeMap, VecDeque},
+    hash::{DefaultHasher, Hash, Hasher},
+    rc::Rc,
 };
 
 use crate::{
@@ -285,7 +287,9 @@ impl<'c> Context<'c> {
     ///     ...
     ///     env1 = continuation_pop(continuation, typeof(envM))
     ///     bodyN
-    fn match_on_effect(&mut self, branches: &[(ast::Ast<'c>, ast::Ast<'c>)], k: hir::Ast, result_type: Type) -> hir::Ast {
+    fn match_on_effect(
+        &mut self, branches: &[(ast::Ast<'c>, ast::Ast<'c>)], k: hir::Ast, result_type: Type,
+    ) -> hir::Ast {
         let branches = fmap(branches, |(pattern, branch)| {
             let effect_hash = self.hash_effect_pattern(pattern);
             let body = self.make_effect_body(pattern, branch, k.clone());
@@ -294,7 +298,7 @@ impl<'c> Context<'c> {
 
         // Sanity check to ensure there are no hash collisions
         for (i, (hash_i, _)) in branches.iter().enumerate() {
-            for j in (i + 1) .. branches.len() {
+            for j in (i + 1)..branches.len() {
                 let hash_j = branches[j].0;
 
                 if *hash_i == hash_j {
@@ -305,11 +309,10 @@ impl<'c> Context<'c> {
 
         let u64_type = Type::Primitive(hir::PrimitiveType::Integer(IntegerKind::U64));
         let hash_pop = hir::Ast::Builtin(hir::Builtin::ContinuationArgPop(Box::new(k), u64_type.clone()));
-        let (definition, actual_hash) = self.fresh_definition_with_variable(hash_pop, "effect_hash".to_string(), u64_type);
+        let (definition, actual_hash) =
+            self.fresh_definition_with_variable(hash_pop, "effect_hash".to_string(), u64_type);
 
-        let mut ret = hir::Ast::Sequence(hir::Sequence {
-            statements: vec![definition, unit_literal()],
-        });
+        let mut ret = hir::Ast::Sequence(hir::Sequence { statements: vec![definition, unit_literal()] });
 
         let mut next = match &mut ret {
             hir::Ast::Sequence(seq) => &mut seq.statements[1],
@@ -319,7 +322,8 @@ impl<'c> Context<'c> {
         for (hash, branch) in branches {
             let effect_hash = hir::Ast::Literal(hir::Literal::Integer(hash, IntegerKind::U64));
             // actual_hash == effect_hash
-            let condition = hir::Ast::Builtin(hir::Builtin::EqInt(Box::new(actual_hash.clone()), Box::new(effect_hash)));
+            let condition =
+                hir::Ast::Builtin(hir::Builtin::EqInt(Box::new(actual_hash.clone()), Box::new(effect_hash)));
 
             *next = hir::Ast::If(hir::If {
                 condition: Box::new(condition),
@@ -344,7 +348,7 @@ impl<'c> Context<'c> {
     //
     // ```
     // else
-    //     printf "ICE: Unhandled effect hash `%llu`\n" effect_hash 
+    //     printf "ICE: Unhandled effect hash `%llu`\n" effect_hash
     //     exit 1
     //     deref (stack_alloc ()) : result_type
     // ```
@@ -417,23 +421,17 @@ impl<'c> Context<'c> {
         let alloc = hir::Ast::Builtin(hir::Builtin::StackAlloc(Box::new(unit_literal())));
         let deref = hir::Ast::Builtin(hir::Builtin::Deref(Box::new(alloc), result_type));
 
-        hir::Ast::Sequence(hir::Sequence { statements: vec![
-            print_unhandled_hash_value,
-            exit_call,
-            deref,
-        ]})
+        hir::Ast::Sequence(hir::Sequence { statements: vec![print_unhandled_hash_value, exit_call, deref] })
     }
 
     fn hash_effect_pattern(&self, pattern: &ast::Ast<'c>) -> u64 {
         match pattern {
-            ast::Ast::FunctionCall(call) => {
-                match call.function.as_ref() {
-                    ast::Ast::Variable(variable) => {
-                        let variable_type = self.follow_all_bindings(variable.typ.as_ref().unwrap());
-                        Self::hash_effect(&variable.kind.name(), &variable_type)
-                    }
-                    other => unreachable!("Expected function name for effect, found: `{other}`"),
-                }
+            ast::Ast::FunctionCall(call) => match call.function.as_ref() {
+                ast::Ast::Variable(variable) => {
+                    let variable_type = self.follow_all_bindings(variable.typ.as_ref().unwrap());
+                    Self::hash_effect(&variable.kind.name(), &variable_type)
+                },
+                other => unreachable!("Expected function name for effect, found: `{other}`"),
             },
             other => unreachable!("Unexpected effect pattern: `{other}`"),
         }

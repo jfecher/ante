@@ -60,7 +60,7 @@ impl std::hash::Hash for DefinitionType {
             match typ {
                 types::Type::Primitive(primitive) => primitive.hash(state),
                 types::Type::UserDefined(id) => id.hash(state),
-                types::Type::TypeVariable(_) => (), // Do nothing
+                types::Type::TypeVariable(_) => (),  // Do nothing
                 types::Type::NamedGeneric(..) => (), // Do nothing
                 types::Type::Function(_) => (),
                 types::Type::TypeApplication(_, _) => (),
