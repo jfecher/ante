@@ -339,11 +339,11 @@ impl Display for DiagnosticKind {
                 write!(f, "Expected `resume` to have effects {expected}, but found {actual}")
             },
             DiagnosticKind::TypeError(TypeErrorKind::NeverShown, actual, expected) => {
-                unreachable!("This type error should never be shown. Expected {}, Actual {}", expected, actual)
+                write!(f, "(ICE - This type error should never be shown): Expected {}, Actual {}", expected, actual)
             },
             DiagnosticKind::TypeError(TypeErrorKind::MonomorphizationError, actual, expected) => {
-                unreachable!(
-                    "Unification error during monomorphization: Could not unify definition {} with instantiation {}",
+                write!(f,
+                    "(ICE - Unification error during monomorphization): Could not unify definition {} with instantiation {}",
                     expected, actual
                 )
             },
