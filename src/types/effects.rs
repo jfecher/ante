@@ -149,11 +149,11 @@ impl EffectSet {
     }
 
     pub fn try_unify_with_bindings<'c>(
-        &self, other: &EffectSet, bindings: &mut UnificationBindings, location: Location<'c>,
+        &self, expected: &EffectSet, bindings: &mut UnificationBindings, location: Location<'c>,
         cache: &mut ModuleCache<'c>,
     ) -> Result<(), ()> {
         let a = self.follow_unification_bindings(bindings, cache);
-        let b = other.follow_unification_bindings(bindings, cache);
+        let b = expected.follow_unification_bindings(bindings, cache);
 
         let mut new_effects_in_a = Vec::new();
         let mut new_effects_in_b = Vec::new();
@@ -185,8 +185,10 @@ impl EffectSet {
         check_effects(&a.effects, &b.effects, &mut new_effects_in_b);
         check_effects(&b.effects, &a.effects, &mut new_effects_in_a);
 
-        if a.extension.is_none() && !new_effects_in_a.is_empty()
-            || b.extension.is_none() && !new_effects_in_b.is_empty()
+        // Allow extra effects in `a` (actual) if `b` (expected) has extra,
+        // but not the reverse. This allows, e.g. passing a pure function
+        // into a function expecting a function with an effect.
+        if b.extension.is_none() && !new_effects_in_b.is_empty()
         {
             return Err(());
         }
@@ -208,7 +210,11 @@ impl EffectSet {
             }
         };
 
-        let a_extension = extend_effects(new_effects_in_a, a.extension)?;
+        let a_extension = match a.extension {
+            Some(extension) => extend_effects(new_effects_in_a, Some(extension))?,
+            None => None,
+        };
+
         let b_extension = extend_effects(new_effects_in_b, b.extension)?;
 
         if let (Some(a), Some(b)) = (a_extension, b_extension) {
