@@ -15,3 +15,4 @@ pub mod hir;
 mod lifetimes;
 pub mod nameresolution;
 pub mod types;
+pub mod incremental;

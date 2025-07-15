@@ -45,21 +45,17 @@ mod unsafecache;
 /// field of each `ast::Variable` node, which has the effect of pointing each variable to
 /// where it was defined.
 #[derive(Debug)]
-pub struct ModuleCache<'a> {
+pub struct ModuleCache {
     /// All the 'root' directories for imports. In practice this will contain
     /// the directory of the driver module as well as all directories containing
     /// any libraries used by the program, including the standard library.
     pub relative_roots: Vec<PathBuf>,
 
-    /// Maps ModuleId -> Ast
-    /// Contains all the parse trees parsed by the program.
-    pub parse_trees: UnsafeCache<'a, Ast<'a>>,
-
     /// Used to map paths to parse trees or name resolvers
     pub modules: HashMap<PathBuf, ModuleId>,
 
     /// Maps ModuleId -> NameResolver
-    pub name_resolvers: UnsafeCache<'a, NameResolver>,
+    pub name_resolvers: Vec<NameResolver>,
 
     /// Holds all the previously seen filenames referenced by Locations
     /// Used to lengthen the lifetime of Locations and the parse tree past
@@ -68,14 +64,14 @@ pub struct ModuleCache<'a> {
 
     /// Maps DefinitionInfoId -> DefinitionInfo
     /// Filled out during name resolution.
-    pub definition_infos: Vec<DefinitionInfo<'a>>,
+    pub definition_infos: Vec<DefinitionInfo>,
 
     /// Maps VariableInfoId -> VariableInfo
     /// Each ast::Variable node stores the required impls for use while
     /// codegening the variable's definition. These impls are filled out
     /// during type inference (see typechecker::find_impl). Unlike
     /// DefinitionInfos, VariableInfos are per usage of the variable.
-    pub variable_infos: Vec<VariableInfo<'a>>,
+    pub variable_infos: Vec<VariableInfo>,
 
     /// Maps TypeVariableId -> Type
     /// Unique TypeVariableIds are generated during name
@@ -84,20 +80,20 @@ pub struct ModuleCache<'a> {
 
     /// Maps TypeInfoId -> TypeInfo
     /// Filled out during name resolution
-    pub type_infos: Vec<TypeInfo<'a>>,
+    pub type_infos: Vec<TypeInfo>,
 
     /// Maps TraitInfoId -> TraitInfo
     /// Filled out during name resolution
-    pub trait_infos: Vec<TraitInfo<'a>>,
+    pub trait_infos: Vec<TraitInfo>,
 
     /// Maps ImplInfoId -> ImplInfo
     /// Filled out during name resolution, though
     /// definitions within impls aren't publically exposed.
-    pub impl_infos: Vec<ImplInfo<'a>>,
+    pub impl_infos: Vec<ImplInfo>,
 
     /// Maps EffectInfoId -> EffectInfo
     /// Filled out during name resolution
-    pub effect_infos: Vec<EffectInfo<'a>>,
+    pub effect_infos: Vec<EffectInfo>,
 
     /// Maps ModuleId -> Vec<ImplInfo>
     /// Name resolution needs to store the impls visible to
@@ -126,7 +122,7 @@ pub struct ModuleCache<'a> {
     pub global_dependency_graph: DependencyGraph,
 
     /// Any diagnostics (errors, warnings, or notes) emitted by the program
-    pub diagnostics: Vec<Diagnostic<'a>>,
+    pub diagnostics: Vec<Diagnostic>,
 
     /// The number of errors emitted by the program
     pub error_count: usize,
@@ -151,7 +147,7 @@ pub struct MutualRecursionSet {
 }
 
 /// TODO: Remove. This is used for experimenting with ante-lsp
-unsafe impl<'c> Send for ModuleCache<'c> {}
+unsafe impl Send for ModuleCache {}
 
 /// The key for accessing parse trees or `NameResolver`s
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
@@ -166,19 +162,22 @@ impl std::fmt::Debug for DefinitionInfoId {
     }
 }
 
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+pub struct ExprId(u32);
+
 #[derive(Debug)]
 pub enum DefinitionKind<'a> {
     /// A variable/function definition in the form `a = b`
-    Definition(&'a mut Definition<'a>),
+    Definition(&'a mut Definition),
 
     /// A trait definition in the form `trait A a with ...`
-    TraitDefinition(&'a mut TraitDefinition<'a>),
+    TraitDefinition(&'a mut TraitDefinition),
 
     /// An effect definition in the form `effect E with ...`
-    EffectDefinition(&'a mut EffectDefinition<'a>),
+    EffectDefinition(&'a mut EffectDefinition),
 
     /// An extern FFI definition with no body
-    Extern(&'a mut Extern<'a>),
+    Extern(&'a mut Extern),
 
     /// A TypeConstructor function to construct a type.
     /// If the constructed type is a tagged union, tag will
@@ -207,7 +206,7 @@ pub enum DefinitionKind<'a> {
 #[derive(Debug)]
 pub struct DefinitionInfo<'a> {
     pub name: String,
-    pub location: Location<'a>,
+    pub location: Location,
 
     /// Where this name was defined. It is expected that type checking
     /// this Definition kind should result in self.typ being filled out.
@@ -262,8 +261,8 @@ pub struct DefinitionInfo<'a> {
     pub uses: u32,
 }
 
-impl<'a> Locatable<'a> for DefinitionInfo<'a> {
-    fn locate(&self) -> Location<'a> {
+impl<'a> Locatable for DefinitionInfo<'a> {
+    fn locate(&self) -> Location {
         self.location
     }
 }
@@ -283,10 +282,10 @@ pub struct VariableId(pub usize);
 /// Contains extra information for each variable node.
 /// Used to map specific variable instances to trait impls.
 #[derive(Debug)]
-pub struct VariableInfo<'a> {
+pub struct VariableInfo {
     pub required_impls: Vec<RequiredImpl>,
     pub name: String,
-    pub location: Location<'a>,
+    pub location: Location,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, PartialOrd, Ord, Hash)]
@@ -312,7 +311,7 @@ pub struct TraitInfo<'a> {
     /// These are the `d e f` in `trait Foo a b c -> d e f with ...`
     pub fundeps: Vec<TypeVariableId>,
 
-    pub location: Location<'a>,
+    pub location: Location,
 
     /// The definitions included in this trait defintion.
     /// The term `defintion` is used somewhat loosely here
@@ -323,13 +322,13 @@ pub struct TraitInfo<'a> {
 
     /// The Ast node that defines this trait.
     /// A value of None means this trait was builtin to the compiler
-    pub trait_node: Option<&'a mut TraitDefinition<'a>>,
+    pub trait_node: Option<&'a mut TraitDefinition>,
 
     pub uses: u32,
 }
 
-impl<'a> Locatable<'a> for TraitInfo<'a> {
-    fn locate(&self) -> Location<'a> {
+impl<'a> Locatable for TraitInfo<'a> {
+    fn locate(&self) -> Location {
         self.location
     }
 }

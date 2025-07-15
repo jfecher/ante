@@ -37,6 +37,7 @@ mod types;
 
 #[cfg(feature = "llvm")]
 mod llvm;
+pub mod incremental;
 
 use cache::ModuleCache;
 use cli::{Backend, Cli, Completions, EmitTarget};

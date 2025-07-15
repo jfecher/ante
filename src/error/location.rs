@@ -2,7 +2,6 @@
 //! Locations throughout the compiler. Most notably, these locations
 //! are passed around throughout the parser and are stored in each
 //! Ast node, along with several structs in the ModuleCache.
-use std::path::Path;
 
 /// A given Position in a file. These are usually used as
 /// start positions for a Location struct.
@@ -53,26 +52,29 @@ impl EndPosition {
 /// The 'c lifetime refers to the ModuleCache which stores
 /// the file paths.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct Location<'c> {
-    pub filename: &'c Path,
+pub struct Location {
+    pub filename: PathBufId,
     pub start: Position,
     pub end: EndPosition,
 }
 
-impl<'c> Ord for Location<'c> {
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct PathBufId(u32);
+
+impl Ord for Location {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         (self.start, self.end).cmp(&(other.start, other.end))
     }
 }
 
-impl<'c> PartialOrd for Location<'c> {
+impl PartialOrd for Location {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl<'c> Location<'c> {
-    pub fn new(filename: &'c Path, start: Position, end: EndPosition) -> Location<'c> {
+impl Location {
+    pub fn new(filename: PathBufId, start: Position, end: EndPosition) -> Location {
         Location { filename, start, end }
     }
 
@@ -80,11 +82,11 @@ impl<'c> Location<'c> {
     /// actually present in any source code. Care should be taken when defining
     /// these types to ensure errors presented to users don't point to the non-existant
     /// source location. Example of builtins are the string type and the '.' trait family.
-    pub fn builtin() -> Location<'c> {
+    pub fn builtin() -> Location {
         let start = Position { index: 0, line: 0, column: 0 };
         let end = EndPosition { index: 0 };
         // TODO: update to reference prelude_path with appropriate lifetimes
-        Location::new(Path::new("stdlib/prelude.an"), start, end)
+        Location::new(todo!(), start, end)
     }
 
     pub fn length(&self) -> usize {
@@ -93,7 +95,7 @@ impl<'c> Location<'c> {
 
     /// Unify the two Locations, returning a new Location that starts at the minimum
     /// of both starting points and ends at the maximum of both end points.
-    pub fn union(&self, other: Location<'c>) -> Location<'c> {
+    pub fn union(&self, other: Location) -> Location {
         let start = if self.start.index < other.start.index { self.start } else { other.start };
         let end = if self.end.index < other.end.index { other.end } else { self.end };
 
@@ -107,6 +109,6 @@ impl<'c> Location<'c> {
 }
 
 /// A trait representing anything that has a Location
-pub trait Locatable<'a> {
-    fn locate(&self) -> Location<'a>;
+pub trait Locatable {
+    fn locate(&self) -> Location;
 }

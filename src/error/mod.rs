@@ -456,13 +456,13 @@ impl DiagnosticKind {
 
 /// An error (or warning/note) message to be printed out on screen.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Diagnostic<'a> {
+pub struct Diagnostic {
     msg: DiagnosticKind,
-    location: Location<'a>,
+    location: Location,
 }
 
-impl<'a> Diagnostic<'a> {
-    pub fn new(location: Location<'a>, msg: DiagnosticKind) -> Self {
+impl Diagnostic {
+    pub fn new(location: Location, msg: DiagnosticKind) -> Self {
         Self { location, msg }
     }
 
@@ -499,7 +499,7 @@ impl<'a> Diagnostic<'a> {
     /// Return a displayable version of this Diagnostic.
     /// Note that before being displayed, Diagnostics should always be pushed
     /// to the ModuleCache first.
-    pub fn display<'l>(&'l self, cache: &'l ModuleCache<'a>) -> DisplayDiagnostic<'l, 'a> {
+    pub fn display<'l>(&'l self, cache: &'l ModuleCache) -> DisplayDiagnostic<'l> {
         DisplayDiagnostic(self, cache)
     }
 
@@ -537,8 +537,8 @@ impl<'a> Diagnostic<'a> {
     }
 }
 
-impl<'a> Locatable<'a> for Diagnostic<'a> {
-    fn locate(&self) -> Location<'a> {
+impl Locatable for Diagnostic {
+    fn locate(&self) -> Location {
         self.location
     }
 }
@@ -580,7 +580,7 @@ fn os_agnostic_display_path(path: &Path) -> ColoredString {
     }
 }
 
-pub struct DisplayDiagnostic<'local, 'cache>(&'local Diagnostic<'cache>, &'local ModuleCache<'cache>);
+pub struct DisplayDiagnostic<'local>(&'local Diagnostic, &'local ModuleCache<'cache>);
 
 impl<'local, 'cache> Display for DisplayDiagnostic<'local, 'cache> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {

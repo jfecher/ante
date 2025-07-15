@@ -23,27 +23,37 @@ pub mod ast;
 mod desugar;
 pub mod pretty_printer;
 
+use std::fs::File;
+use std::io::{BufReader, Read};
 use std::{collections::HashSet, iter::FromIterator};
 
 use crate::lexer::token::Token;
+use crate::lexer::Lexer;
 use crate::{error::location::Location, parser::ast::Mutability};
 use ast::{Ast, EffectName, Trait, Type, TypeDefinitionBody};
 use combinators::*;
 use error::{ParseError, ParseResult};
+use crate::incremental::{DbHandle, Parse};
 
 use self::ast::EffectAst;
 use self::ast::Sharedness;
 
-type AstResult<'a, 'b> = ParseResult<'a, 'b, Ast<'b>>;
+type AstResult<'a, 'b> = ParseResult<'a, 'b, Ast>;
+
+pub fn parse(parse: &Parse, db: &DbHandle) -> Result<Ast, ParseError> {
+    let file = File::open(&parse.path).map_err(ParseError::FailedToOpenFile)?;
+
+    let mut reader = BufReader::new(file);
+    let mut contents = String::new();
+    reader.read_to_string(&mut contents).map_err(ParseError::FailedToOpenFile)?;
+
+    let tokens = Lexer::new(&parse.path, &contents).collect::<Vec<_>>();
+    parse_input(&tokens)
+}
 
 /// The entry point to parsing. Parses an entire file, printing any
 /// error found, or returns the Ast if there was no error.
-pub fn parse<'b>(input: Input<'_, 'b>) -> Result<Ast<'b>, ParseError<'b>> {
-    parse_file(input)
-}
-
-/// A file is a sequence of statements, separated by newlines.
-pub fn parse_file<'b>(input: Input<'_, 'b>) -> Result<Ast<'b>, ParseError<'b>> {
+fn parse_input<'b>(input: Input<'_, 'b>) -> Result<Ast<'b>, ParseError<'b>> {
     let (input, _, _) = maybe_newline(input)?;
     let (input, ast, _) = statement_list(input)?;
     let (input, _, _) = maybe_newline(input)?;
