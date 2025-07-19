@@ -85,7 +85,10 @@ fn minicoro_path() -> &'static str {
 
 pub fn stdlib_dir() -> PathBuf {
     match option_env!("ANTE_STDLIB_DIR") {
-        Some(env) => std::fs::canonicalize(env).unwrap(),
+        Some(env) => match std::fs::canonicalize(env) {
+            Ok(env) => env,
+            Err(_) => panic!("Failed to canonicalize stdlib path {env} ; does it exist?"),
+        },
         None => panic!("ANTE_STDLIB_DIR is not set"),
     }
 }
