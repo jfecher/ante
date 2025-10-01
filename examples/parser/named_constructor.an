@@ -1,0 +1,75 @@
+main () =
+    // Explicit names
+    T with b = "one", a = 1
+
+    T with
+        b = "one"
+        a = 1
+
+    // Implicit names
+    T with b, a
+
+    T with
+        foo
+        bar
+
+    // Path names
+    T.U.V with a, b
+
+    // Tuples and exotic indentation
+    T with a = (1, 2)
+
+    T with a = 1,
+        b = 3
+
+    T with a = (1, 2),
+        b = (3, 4), c = 5,
+        d = 6
+
+    T with foo,
+        bar,
+        baz
+
+    T with
+        foo = ( 1
+            , 2
+            , 3
+            )
+        bar = "bar"
+
+// args: --show-parse
+// expected stdout:
+// main () =
+//     T
+
+// expected stderr:
+// examples/parser/named_constructor.an:3:6	error: Expected an unindent but found `with`
+//     T with b = "one", a = 1
+// 
+// examples/parser/named_constructor.an:10:6	error: Expected `=` to begin the function body but found `with`
+//     T with b, a
+// 
+// examples/parser/named_constructor.an:12:6	error: Expected `=` to begin the function body but found `with`
+//     T with
+// 
+// examples/parser/named_constructor.an:17:10	error: Expected `=` to begin the function body but found `with`
+//     T.U.V with a, b
+// 
+// examples/parser/named_constructor.an:20:6	error: Expected `=` to begin the function body but found `with`
+//     T with a = (1, 2)
+// 
+// examples/parser/named_constructor.an:22:6	error: Expected `=` to begin the function body but found `with`
+//     T with a = 1,
+// 
+// examples/parser/named_constructor.an:25:6	error: Expected `=` to begin the function body but found `with`
+//     T with a = (1, 2),
+// 
+// examples/parser/named_constructor.an:29:6	error: Expected `=` to begin the function body but found `with`
+//     T with foo,
+// 
+// examples/parser/named_constructor.an:33:6	error: Expected `=` to begin the function body but found `with`
+//     T with
+// 
+// examples/parser/named_constructor.an:40:0	error: Expected a top-level item but found an unindent
+// // args: --show-parse
+

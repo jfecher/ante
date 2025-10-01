@@ -1,0 +1,36 @@
+import Foo.Bar
+
+// Programs now require a main function
+main () =
+    mut a = 32
+    println &a
+
+type Foo =
+    x: I32
+    y: U32
+
+Foo.print self =
+    print "Foo "
+    // Comments are only allowed between statements
+    print self.x
+    print " "
+    print self.y
+
+
+// args: --show-parse
+// expected stdout:
+// import Foo.Bar
+// 
+// main () =
+//     mut a = 32
+//     println &a
+// 
+// type Foo =
+//     x: I32
+//     y: U32
+// 
+// Foo.print self =
+//     print "Foo "
+//     print self.x
+//     print " "
+//     print self.y

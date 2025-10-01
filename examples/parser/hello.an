@@ -1,0 +1,7 @@
+main () = print "Hello, World!"
+
+// args: --show-parse
+// expected stdout: main () = print "Hello, World!"
+
+
+

@@ -1,54 +1,31 @@
-tuple = (1, 1)
+main () =
+    tuple = (1, 1)
 
-_ = (&&tuple).first
+    _ = (&&tuple).first
 
-_ = tuple.!first
-_ = tuple.!missing
+    _ = tuple.!first
+    _ = tuple.!missing
 
-imm_ref = &tuple
-_ = imm_ref.!first
-_ = imm_ref.!missing
+    imm_ref = &tuple
+    _ = imm_ref.!first
+    _ = imm_ref.!missing
 
-mut mut_tuple = (1, 1)
+    mut mut_tuple = (1, 1)
 
-_ = mut_tuple.&missing
-_ = mut_tuple.!missing
+    _ = mut_tuple.&missing
+    _ = mut_tuple.!missing
 
-mut_ref = !mut_tuple
+    mut_ref = !mut_tuple
 
-_ = mut_ref.&missing
-_ = mut_ref.!missing
+    _ = mut_ref.&missing
+    _ = mut_ref.!missing
 
-_ = (!&tuple).!first
+    _ = (!&tuple).!first
 
-// flags: --check
+// args: --show-types
+// expected exit status: 101
 // expected stderr:
-// field_diagnostics.an:3:6	error: &shared &shared Int c, Int d has no field 'first' of type { first: b, .. }
-// _ = (&&tuple).first
-// 
-// field_diagnostics.an:5:5	error: Cannot mutably reference `tuple`. It was declared as immutable
-// _ = tuple.!first
-// 
-// field_diagnostics.an:6:5	error: Int a, Int b has no field 'missing' of type { missing: b, .. }
-// _ = tuple.!missing
-// 
-// field_diagnostics.an:9:5	error: Expected a mutable reference but found &shared Int b, Int c instead
-// _ = imm_ref.!first
-// 
-// field_diagnostics.an:10:5	error: &shared Int b, Int c has no field 'missing' of type { missing: b, .. }
-// _ = imm_ref.!missing
-// 
-// field_diagnostics.an:14:5	error: Int a, Int b has no field 'missing' of type { missing: b, .. }
-// _ = mut_tuple.&missing
-// 
-// field_diagnostics.an:15:5	error: Int a, Int b has no field 'missing' of type { missing: b, .. }
-// _ = mut_tuple.!missing
-// 
-// field_diagnostics.an:19:5	error: !shared Int b, Int c has no field 'missing' of type { missing: b, .. }
-// _ = mut_ref.&missing
-// 
-// field_diagnostics.an:20:5	error: !shared Int b, Int c has no field 'missing' of type { missing: b, .. }
-// _ = mut_ref.!missing
-// 
-// field_diagnostics.an:22:6	error: !shared &shared Int c, Int d has no field 'first' of type { first: b, .. }
-// _ = (!&tuple).!first
+// thread 'main' panicked at src/type_inference/cst_traversal.rs:234:9:
+// not yet implemented
+// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+

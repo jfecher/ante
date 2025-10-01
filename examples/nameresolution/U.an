@@ -1,7 +1,31 @@
-import T
+import T.t
 
 // Module imports can form a cycle!
 u x = t x
 
-// args: --check
+// args: --show-resolved examples/nameresolution/T.an
 // expected stdout:
+// import U.u
+// 
+// // id = c1m885_9396
+// t_c1m885_9396 x_1 = u_? x_1
+// 
+// 
+// import T.t
+// 
+// // id = c1m690_3723
+// u_c1m690_3723 x_1 = t_? x_1
+
+// expected stderr:
+// examples/nameresolution/U.an:1:8	error: Could not find crate `T`
+// import T.t
+// 
+// examples/nameresolution/U.an:4:6	error: `t` is not defined, was it a typo?
+// u x = t x
+// 
+// examples/nameresolution/T.an:1:8	error: Could not find crate `U`
+// import U.u
+// 
+// examples/nameresolution/T.an:4:6	error: `u` is not defined, was it a typo?
+// t x = u x
+

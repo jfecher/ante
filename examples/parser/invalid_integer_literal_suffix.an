@@ -1,0 +1,11 @@
+main () = 3_2_fdsa
+
+// args: --show-parse
+// expected stdout: main () = (error)
+
+
+
+// expected stderr:
+// examples/parser/invalid_integer_literal_suffix.an:1:11	error: Expected an expression but found `InvalidIntegerSuffx`
+// main () = 3_2_fdsa
+

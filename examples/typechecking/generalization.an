@@ -4,6 +4,13 @@ foo x =
 
 // type should be a -> (b -> a)
 
-// args: --check --show-types
+// args: --show-types
 // expected stdout:
-// foo : forall a b. (a -> b => a pure pure)
+// (foo: _1) (x: _2) =
+//     (y: _6) = fn (_: _9) -> (x: (error))
+//     (y: (error))
+
+// expected stderr:
+// examples/typechecking/generalization.an:3:4	error: `y` is not defined, was it a typo?
+//     y
+

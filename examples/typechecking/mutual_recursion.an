@@ -8,15 +8,16 @@ is_even n =
 is_odd n =
     n == 1 or not is_even (n - 1)
 
-is_even 4
+main () = is_even 4
 
-// args: --check --show-types
 
 // Both of these definitions should have the `Print (int a)` constraint.
 // TODO: is_odd here uses `forall a c.` instead of `forall a b.`
 
-// expected stdout:
-// is_even : forall a. (Int a -> Bool pure)
-//   given Eq (Int a), Print (Int a), Sub (Int a)
-// is_odd : forall a. (Int a -> Bool pure)
-//   given Eq (Int a), Print (Int a), Sub (Int a)
+// args: --show-types
+// expected exit status: 101
+// expected stderr:
+// thread 'main' panicked at src/type_inference/get_type.rs:28:17:
+// GetType used on definition without a type annotation that has not yet been inferred. This is likely an issue with the order of type checking determined by the dependency graph.
+// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+

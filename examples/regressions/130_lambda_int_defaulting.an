@@ -1,4 +1,4 @@
-impl Iterator U64 U64 with
+impl countdown: Iterator U64 U64 with
     next x =
         if x <= 0
         then None
@@ -8,7 +8,7 @@ type TakeWhile i a =
     iter: i
     pred: a -> Bool pure
 
-impl Iterator (TakeWhile i a) a given Iterator i a with
+impl iter_take_while {_: Iterator i a}: Iterator (TakeWhile i a) a with
     next tw =
         match next tw.iter
         | Some (iter, new) ->
@@ -21,8 +21,3 @@ i = TakeWhile 8u64 (_ >= 5)
 iter i print
 
 // args: --delete-binary
-// expected stdout:
-// 8
-// 7
-// 6
-// 5

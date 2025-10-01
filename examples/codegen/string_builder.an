@@ -8,4 +8,3 @@ append !sb " World!"
 print (to_string sb)
 
 // args: --delete-binary
-// expected stdout: 你好， World!

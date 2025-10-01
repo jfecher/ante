@@ -1,4 +1,0 @@
-
-fn convert_capabilities() {
-
-}

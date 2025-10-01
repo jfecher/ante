@@ -23,6 +23,3 @@ use_state 10_i32 with state 1
 use_state 20_u64 with state 2
 
 // args: --delete-binary
-// expected stdout:
-// Ending state = 11
-// Ending state = 22

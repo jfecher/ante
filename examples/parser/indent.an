@@ -1,0 +1,53 @@
+
+foo a b =
+    fn c d ->
+         3
+
+// These should all result in the same parse tree
+when1 condition expr = if condition then
+    expr
+
+when2 condition expr =
+    if condition then expr
+
+when3 condition expr =
+    if condition then
+        expr
+
+when4 condition expr =
+    if condition
+    then expr
+
+when5 condition expr =
+    if condition
+        then expr
+
+// args: --show-parse
+// expected stdout:
+// foo a b =
+// 
+// when1 condition expr = if condition then 
+//     expr
+// 
+// when2 condition expr =
+//     if condition then expr
+// 
+// when3 condition expr =
+//     if condition then 
+//         expr
+// 
+// when4 condition expr =
+// 
+// when5 condition expr =
+//     if condition then expr
+
+// expected stderr:
+// examples/parser/indent.an:4:0	error: Expected an unindent but found an indent
+//          3
+// 
+// examples/parser/indent.an:6:0	error: Expected a top-level item but found an unindent
+// // These should all result in the same parse tree
+// 
+// examples/parser/indent.an:19:0	error: Expected an unindent but found a newline
+//     then expr
+

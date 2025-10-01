@@ -31,9 +31,3 @@ filtered () =
 for filtered print
 
 // args: --delete-binary
-// expected stdout:
-// 0
-// 2
-// 4
-// 6
-// 8

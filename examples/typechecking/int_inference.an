@@ -1,4 +1,5 @@
-print 2
+main () =
+    print 2
 
 // This example is actually more problematic than it initially appears.
 // Because integer literals with no suffix have the polymorphic type
@@ -10,5 +11,12 @@ print 2
 // The current solution of this is to sort out Int trait constraints to solve
 // them before other trait constraints.
 
-// args: --check
+// args: --show-types
 // expected stdout:
+// (main: _1) () =
+//     (print: (error)) 2
+
+// expected stderr:
+// examples/typechecking/int_inference.an:2:4	error: `print` is not defined, was it a typo?
+//     print 2
+

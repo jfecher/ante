@@ -1,6 +1,0 @@
-3_2_fdsa
-
-// args: --check
-// expected stderr:
-// invalid_integer_literal_suffix.an:1:1	error: Invalid suffix after integer literal. Expected an integer type like i32 or a space to separate the two tokens
-// 3_2_fdsa

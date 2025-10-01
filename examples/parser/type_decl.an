@@ -1,0 +1,47 @@
+
+type Struct1 = a:I32, b:F64, c:String
+
+type Struct2 t =
+    a: Thingy
+    b: Generic t Thingy
+
+type Union1 a b = | Variant1 | Variant2
+
+type Maybe a =
+   | Some a
+   | None
+
+type List a = | Nil | Cons a (&List a)
+
+
+type UniquePtr a = &a
+
+t = 3 : I32
+
+// args: --show-parse
+// expected stdout:
+// type Struct1 =
+//     a: I32
+//     b: F64
+//     c: String
+// 
+// type Struct2 =
+//     a: Thingy
+//     b: Generic t Thingy
+// 
+// type Union1 =
+//     | Variant1
+//     | Variant2
+// 
+// type Maybe =
+//     | Some a
+//     | None
+// 
+// type List =
+//     | Nil
+//     | Cons (a (& (List a)))
+// 
+// type UniquePtr = & a
+// 
+// t = 3: I32
+

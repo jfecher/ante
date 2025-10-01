@@ -1,31 +1,47 @@
-
 effect Three with
-    one: Unit -> Unit
-    two: I32 -> I32
-    three: I32 - I32 -> I32
+    one: fn Unit -> Unit
+    two: fn I32 -> I32
+    three: fn I32 I32 -> I32
 
 effect State a with
-    get: Unit -> a
-    put: a -> Unit
+    get: fn Unit -> a
+    put: fn a -> Unit
 
+main () =
+    handle ()
+    | one () -> ()
+    | one () -> ()
 
-handle ()
-| one () -> ()
-| one () -> ()
+    handle ()
+    | get () -> resume ()
+    | put () -> ()
 
+    handle ()
+    | put () -> ()
+    | three 0 1 -> ()
 
-handle ()
-| get () -> resume ()
-| put () -> ()
-
-handle ()
-| put () -> ()
-| three 0 1 -> ()
-
-// args: --check
-// expected stderr:
-// effects.an:12:1	error: Handler is missing 2 cases: two, three
-// handle ()
+// args: --show-resolved
+// expected stdout:
+// // id = c1m485_8962
+// effect Three_c1m485_8962 with
+//     one_1: fn Unit_b -> Unit_b
+//     two_2: fn I32 -> I32
+//     three_3: fn I32 I32 -> I32
 // 
-// effects.an:21:1	error: Handler is missing 3 cases: one, two, get
-// handle ()
+// // id = c1m485_5987
+// effect State_c1m485_5987 a_1 with
+//     get_2: fn Unit_b -> a_1
+//     put_4: fn a_1 -> Unit_b
+// 
+// // id = c1m485_1944
+// main_c1m485_1944 () =
+//     handle ()
+//     | one_? () -> ()
+//     | one_? () -> ()
+//     handle ()
+//     | get_? () -> resume_? ()
+//     | put_? () -> ()
+//     handle ()
+//     | put_? () -> ()
+//     | three_? 0 1 -> ()
+

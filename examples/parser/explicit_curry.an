@@ -1,0 +1,20 @@
+main () =
+    foo _ a
+    bar 1 _ 3
+
+    baz _ "test" _
+
+    qux 1 (_, 32)
+    quux 3 (_) _
+
+    2 + _
+
+// args: --show-parse
+// expected stdout:
+// main () =
+//     foo _ a
+//     bar 1 _ 3
+//     baz _ "test" _
+//     qux 1 (, _ 32)
+//     quux 3 _ _
+//     + 2 _

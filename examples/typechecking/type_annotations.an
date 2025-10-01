@@ -1,33 +1,50 @@
 
-foo (_: I32) (_: String) : Char = 'a'
+foo (_: I32) (_: String) : Char = c"a"
 
-bar: a - a -> I32 =
+bar: fn a a -> I32 =
     fn _ b -> b
 
-baz (a: Usz) : Ptr a =
+baz (a: Usz): Ptr a =
     transmute a
 
-exit2 = exit
-puts2: (Ptr Char) -> I32 = puts
+main () =
+    exit2 = exit
+    puts2: fn (Ptr Char) -> I32 = puts
 
-exit2 "test"
-puts2
+    exit2 "test"
+    puts2
 
-// args: --check --show-types
 // TODO: This first error is duplicated
-// expected stderr:
-// type_annotations.an:4:1	error: Pattern type a - b -> b pure does not match the annotated type a - a -> I32 pure
-// bar: a - a -> I32 =
-// 
-// type_annotations.an:4:1	error: Pattern type a - b -> b pure does not match the annotated type a - a -> I32 pure
-// bar: a - a -> I32 =
-// 
-// type_annotations.an:13:7	error: Expected argument of type I32, but found String
-// exit2 "test"
 
+// args: --show-types
 // expected stdout:
-// bar : forall a b. (b - a -> a pure)
-// baz : forall a. (Usz -> Ptr a pure)
-// exit2 : I32 -> Unit pure
-// foo : I32 - String -> Char pure
-// puts2 : Ptr Char -> I32 pure
+// (foo: fn I32 String -> Char) ((_: I32)) ((_: String)) : Char = c"a"
+// 
+// (bar: fn -> fn a a -> I32) : fn a a -> I32 =
+//     fn (_: a) (b: a) -> (b: I32)
+// 
+// (baz: fn Usz -> Ptr a) ((a: Usz)) : Ptr a =
+//     (transmute: (error)) (a: Usz)
+// 
+// (main: _1) () =
+//     (exit2: _6) = (exit: (error))
+//     (puts2: fn -> fn ((error) (error)) -> I32) : fn (Ptr Char) -> I32 = (puts: (error))
+//     (exit2: (error)) "test"
+//     (puts2: (error))
+
+// expected stderr:
+// examples/typechecking/type_annotations.an:2:34	error: Expected Char but found Char
+// foo (_: I32) (_: String) : Char = c"a"
+// 
+// examples/typechecking/type_annotations.an:5:14	error: Expected I32 but found a
+//     fn _ b -> b
+// 
+// examples/typechecking/type_annotations.an:8:4	error: `transmute` is not defined, was it a typo?
+//     transmute a
+// 
+// examples/typechecking/type_annotations.an:14:4	error: `exit2` is not defined, was it a typo?
+//     exit2 "test"
+// 
+// examples/typechecking/type_annotations.an:15:4	error: `puts2` is not defined, was it a typo?
+//     puts2
+

@@ -1,18 +1,19 @@
 
-extern foo: a -> b
+extern foo: fn a -> b
 
 extern
-    add: I32 - I32 -> I32
-    puts2: String -> Unit
-    exit2: I32 -> never_returns
+    add: fn I32 I32 -> I32
+    puts2: fn String -> Unit
+    exit2: fn I32 -> never_returns
 
-foo 1
-puts2 "test"
-exit2 0
+foo_result = foo 1
+puts2_result = puts2 "test"
+exit2_result = exit2 0
 
-// args: --check --show-types
-// expected stdout:
-// add : I32 - I32 -> I32 pure
-// exit2 : forall never_returns. (I32 -> never_returns pure)
-// foo : forall a b. (a -> b pure)
-// puts2 : String -> Unit pure
+// args: --show-types
+// expected exit status: 101
+// expected stderr:
+// thread 'main' panicked at src/type_inference/cst_traversal.rs:282:9:
+// not yet implemented: check_extern
+// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+

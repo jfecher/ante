@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use clap::{Parser, ValueEnum, ValueHint};
 use clap_complete::Shell;
 
@@ -10,21 +12,29 @@ pub struct Completions {
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 pub struct Cli {
-    /// Path to the source file
+    /// Path to the source files
     #[arg(value_hint=ValueHint::FilePath)]
-    pub file: String,
+    pub files: Vec<PathBuf>,
 
     /// Print out the input file annotated with inferred lifetimes of heap allocations
     #[arg(long, short = 'L')]
     pub show_lifetimes: bool,
 
     /// Lex the file and output the resulting list of tokens
-    #[arg(long, short, group = "compile_mode")]
-    pub lex: bool,
+    #[arg(long, group = "compile_mode")]
+    pub show_tokens: bool,
 
     /// Parse the file and output the resulting Ast
+    #[arg(long, group = "compile_mode")]
+    pub show_parse: bool,
+
+    /// Resolve the file and show the resulting resolved Ast
     #[arg(long, short, group = "compile_mode")]
-    pub parse: bool,
+    pub show_resolved: bool,
+
+    /// Type check the file and show the resulting typed Ast
+    #[arg(long, group = "compile_mode")]
+    pub show_types: bool,
 
     /// Check the file for errors without compiling
     #[arg(long, short, group = "compile_mode")]
@@ -61,9 +71,9 @@ pub struct Cli {
     #[arg(long)]
     pub show_time: bool,
 
-    /// Print out the type of each definition
-    #[arg(long, short = 't')]
-    pub show_types: bool,
+    /// Enable incremental compilation by reading from and writing to metadata for the current program
+    #[arg(long, short = 'i')]
+    pub incremental: bool,
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone, ValueEnum)]

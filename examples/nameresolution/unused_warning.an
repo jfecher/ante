@@ -3,16 +3,18 @@ id x = x
 
 id x = error
 
-// args: --check
+// args: --show-resolved
+// expected stdout:
+// // id = c1m576_1637
+// id_c1m576_1637 x_1 = x_1
+// 
+// // id = c1m576_973
+// id_c1m576_1637 x_1 = error_?
+
 // expected stderr:
-// unused_warning.an:4:1	error: id is already in scope
+// examples/nameresolution/unused_warning.an:4:0	warning: `id` was already defined
 // id x = error
 // 
-// unused_warning.an:2:1	note: id was previously defined here
-// id x = x
-// 
-// unused_warning.an:4:8	error: No declaration for `error` was found in scope
+// examples/nameresolution/unused_warning.an:4:7	error: `error` is not defined, was it a typo?
 // id x = error
-// 
-// unused_warning.an:4:4	warning: x is unused (prefix name with _ to silence this warning)
-// id x = error
+

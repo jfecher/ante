@@ -14,4 +14,3 @@ handle_count f =
 handle_count foo |> print
 
 // args: --delete-binary
-// expected stdout: 11

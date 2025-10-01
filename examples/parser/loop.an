@@ -1,0 +1,19 @@
+main () =
+    a = 0
+    b = 1
+    loop a (b: I32) (c: I32 = 2) (d = 3) ->
+        recur a b c d
+
+// args: --show-parse
+// expected stdout:
+// main () =
+//     a = 0
+//     b = 1
+
+// expected stderr:
+// examples/parser/loop.an:4:4	error: Expected an unindent but found `loop`
+//     loop a (b: I32) (c: I32 = 2) (d = 3) ->
+// 
+// examples/parser/loop.an:7:0	error: Expected a top-level item but found an unindent
+// // args: --show-parse
+

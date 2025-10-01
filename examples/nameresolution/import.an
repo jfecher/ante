@@ -1,8 +1,30 @@
-import Library
+import Library.library_int, library_fn
 
 foo = fn _ b -> b
 
-foo 4 library_int
-foo 5 (library_fn ())
-// args: --check
+main () =
+    foo 4 library_int
+    foo 5 (library_fn ())
+
+// args: --show-resolved
 // expected stdout:
+// import Library.library_int, library_fn
+// 
+// // id = c1m27_3132
+// foo_c1m27_3132 = fn __1 b_2 -> b_2
+// 
+// // id = c1m27_1944
+// main_c1m27_1944 () =
+//     foo_c1m27_3132 4 library_int_?
+//     foo_c1m27_3132 5 (library_fn_? ())
+
+// expected stderr:
+// examples/nameresolution/import.an:1:8	error: Could not find crate `Library`
+// import Library.library_int, library_fn
+// 
+// examples/nameresolution/import.an:6:10	error: `library_int` is not defined, was it a typo?
+//     foo 4 library_int
+// 
+// examples/nameresolution/import.an:7:11	error: `library_fn` is not defined, was it a typo?
+//     foo 5 (library_fn ())
+

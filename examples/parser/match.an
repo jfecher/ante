@@ -1,0 +1,40 @@
+main () =
+    "before"
+    match test "foo" "bar"
+    | 2 3 -> "foo"
+
+    | "bar" -> "bar"
+    | "block" ->
+        if true then 1 else 2
+
+    | "last branch" ->
+        match "nested"
+        | "hi!" -> "yo"
+
+    "after"
+
+    match "empty"
+    "done"
+
+// args: --show-parse
+// expected stdout:
+// main () =
+//     "before"
+//     match test "foo" "bar"
+
+// expected stderr:
+// examples/parser/match.an:4:8	error: Expected an unindent but found `3`
+//     | 2 3 -> "foo"
+// 
+// examples/parser/match.an:10:4	error: Expected a top-level item but found `|`
+//     | "last branch" ->
+// 
+// examples/parser/match.an:14:4	error: Expected a top-level item but found `"after"`
+//     "after"
+// 
+// examples/parser/match.an:16:4	error: Expected a top-level item but found `match`
+//     match "empty"
+// 
+// examples/parser/match.an:17:4	error: Expected a top-level item but found `"done"`
+//     "done"
+

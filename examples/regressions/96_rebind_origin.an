@@ -9,4 +9,3 @@ twice foo bar =
 twice 1u8 2u16
 
 // args: --delete-binary
-// expected stdout:

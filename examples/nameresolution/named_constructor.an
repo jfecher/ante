@@ -10,14 +10,35 @@ t2 = T with y = 3.2, x
 // Declarations should not leak from the named constructor
 z = y * 2.0
 
-// args: --check
+// args: --show-resolved
+// expected stdout:
+// // id = c1m818_9305
+// type T_c1m818_9305 =
+//     x_?: a_1
+//     y_?: b_2
+// 
+// // id = c1m818_8644
+// x_c1m818_8644 = 4
+// 
+// // id = c1m818_4106
+// t1_c1m818_4106 = T_c1m818_9305
+// 
+// // id = c1m818_4335
+// t2_c1m818_4335 = T_c1m818_9305
+// 
+// // id = c1m818_1897
+// z_c1m818_1897 = *_? y_? 2
+
 // expected stderr:
-// named_constructor.an:7:6	error: Missing fields: y
+// examples/nameresolution/named_constructor.an:7:7	error: Expected a newline after the top level item but found `with`
 // t1 = T with x = 3, z = 5
 // 
-// named_constructor.an:7:20	error: z is not a struct field
-// t1 = T with x = 3, z = 5
+// examples/nameresolution/named_constructor.an:8:7	error: Expected a newline after the top level item but found `with`
+// t2 = T with y = 3.2, x
 // 
-// named_constructor.an:11:5	error: No declaration for `y` was found in scope
+// examples/nameresolution/named_constructor.an:11:4	error: `y` is not defined, was it a typo?
+// z = y * 2.0
+// 
+// examples/nameresolution/named_constructor.an:11:6	error: `*` is not defined, was it a typo?
 // z = y * 2.0
 

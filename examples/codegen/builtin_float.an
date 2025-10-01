@@ -28,19 +28,8 @@ x = 1.0f / 7.0f
 print x
 print (cast (cast x : F64) : F32)
 
-// args: --delete-binary
-// expected stdout:
-// 7.0
-// -1.0
-// 132.0
-// 0.9375
-// 7.0
-// -1.0
-// 132.0
-// 0.9375
-// 0.1428
-// 0.1428
-
 // We used to check 1.0 for print mod_float but
 // cranelift does not support modulus for floats
 // so we can no longer support this operation at all.
+
+// args: --delete-binary

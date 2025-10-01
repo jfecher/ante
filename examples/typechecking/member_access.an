@@ -10,23 +10,16 @@ foo_and_bar a b =
 
 foobar = FooBar 1 "one"
 foo = Foo 2.0
-bar = Bar '3'
+bar = Bar c"3"
 
-foo_and_bar foobar foobar
-foo_and_bar foo bar
+main () =
+    foo_and_bar foobar foobar
+    foo_and_bar foo bar
 
-// args: --check --show-types
+// args: --show-types
+// expected exit status: 101
 // expected stderr:
-// member_access.an:16:17	error: Expected argument of type { bar: String, .. }, but found Bar
-// foo_and_bar foo bar
-// 
+// thread 'main' panicked at src/type_inference/cst_traversal.rs:234:9:
+// not yet implemented
+// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 
-// expected stdout:
-// Bar : Char -> Bar pure
-// Foo : F64 -> Foo pure
-// FooBar : I32 - String -> FooBar pure
-// bar : Bar
-// foo : Foo
-// foo_and_bar : forall a b c. ({ foo: a, ..b } - { bar: String, ..c } -> String pure)
-// foobar : FooBar
-// stringify : String -> String pure

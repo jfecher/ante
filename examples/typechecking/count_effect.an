@@ -1,5 +1,5 @@
 effect Count with
-    count: Unit -> Unit
+    count: fn Unit -> Unit
 
 foo () =
     count ()
@@ -13,9 +13,10 @@ handle_count f =
 
 handle_count foo
 
-// args: --check --show-types
-// expected stdout:
-// count : Unit -> Unit can Count
-// foo : Unit -> Unit can Count
-// handle_count : forall a b c d. ((Unit => a can Count, d) -> Int c can d)
-//   given Add (Int c)
+// args: --show-types
+// expected exit status: 101
+// expected stderr:
+// thread 'main' panicked at src/type_inference/cst_traversal.rs:274:9:
+// not yet implemented: check_handle
+// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+

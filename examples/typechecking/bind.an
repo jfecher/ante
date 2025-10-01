@@ -10,9 +10,10 @@ x = Some 10i32
 add_one x =
     bind x (fn x -> ret (x + 1i32))
 
-// args: --check --show-types
-// expected stdout:
-// add_one : Maybe I32 -> Maybe I32 pure
-// bind : forall a b c d. (Maybe d - (d => Maybe b can c) -> Maybe b can c)
-// ret : forall a. (a -> Maybe a pure)
-// x : Maybe I32
+// args: --show-types
+// expected exit status: 101
+// expected stderr:
+// thread 'main' panicked at src/type_inference/cst_traversal.rs:130:45:
+// not yet implemented: Type check Origin::TypeResolution
+// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+

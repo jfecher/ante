@@ -7,7 +7,13 @@
 //! the lexing phase of the compiler. The resulting tokens are then
 //! fed into the parser to verify the program's grammar and create
 //! an abstract syntax tree.
-use std::fmt::{self, Display};
+use std::{
+    fmt::{self, Display},
+    str::FromStr,
+    sync::Arc,
+};
+
+use serde::{Deserialize, Serialize};
 
 /// Lexing can fail with these errors, though the Lexer just
 /// returns the LexerError inside of an Invalid token which
@@ -15,7 +21,7 @@ use std::fmt::{self, Display};
 /// when it finds these tokens but in the future it may be able
 /// to issue the error then continue on to output as many errors
 /// as possible.
-#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone, Serialize, Deserialize, Hash)]
 pub enum LexerError {
     InvalidCharacterInSignificantWhitespace(char), // Only spaces are allowed in significant whitespace
     InvalidEscapeSequence(char),
@@ -25,6 +31,8 @@ pub enum LexerError {
     UnindentToNewLevel,   // Unindented to a new indent level rather than returning to a previous one
     Expected(char),
     UnknownChar(char),
+    MismatchedBracketInQuote { expected: ClosingBracket },
+    QuoteWithEndBracketAndNoStart { unexpected: ClosingBracket },
 }
 
 /// Each Token::IntegerLiteral and Ast::LiteralKind::Integer has
@@ -33,7 +41,7 @@ pub enum LexerError {
 /// Integer literals in ante are polymorphic in the `Int a` type. The 'a'
 /// here is a type variable which will later resolve to an IntegerKind once
 /// the integer size and sign are known.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum IntegerKind {
     I8,
     I16,
@@ -47,51 +55,112 @@ pub enum IntegerKind {
     Usz,
 }
 
+#[derive(Debug, PartialEq, Eq, Copy, Clone, Serialize, Deserialize, Hash)]
+pub enum ClosingBracket {
+    /// `)`
+    Paren,
+    /// `]`
+    Bracket,
+    /// `}`
+    Brace,
+    /// `    `
+    Unindent,
+}
+
+impl ClosingBracket {
+    /// Return the corresponding token for this closing bracket
+    pub fn token(self) -> Token {
+        match self {
+            ClosingBracket::Paren => Token::ParenthesisRight,
+            ClosingBracket::Bracket => Token::BracketRight,
+            ClosingBracket::Brace => Token::BraceRight,
+            ClosingBracket::Unindent => Token::Unindent,
+        }
+    }
+
+    pub fn from_token(token: &Token) -> Option<Self> {
+        use Token::*;
+        match token {
+            Indent | Unindent => Some(ClosingBracket::Unindent),
+            ParenthesisLeft | ParenthesisRight => Some(ClosingBracket::Paren),
+            BracketLeft | BracketRight => Some(ClosingBracket::Bracket),
+            BraceLeft | BraceRight => Some(ClosingBracket::Brace),
+            _ => None,
+        }
+    }
+}
+
+impl Display for ClosingBracket {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ClosingBracket::Paren => write!(f, "`)`"),
+            ClosingBracket::Bracket => write!(f, "`]`"),
+            ClosingBracket::Brace => write!(f, "`}}`"),
+            ClosingBracket::Unindent => write!(f, "an unindent"),
+        }
+    }
+}
+
 /// Each float literal is polymorphic over the `Float a` type. The `a` is the
 /// specific FloatKind of the float which is later resolved to one of these
 /// variants (or kept generic if the code allows).
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum FloatKind {
     F32,
     F64,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+/// Wrapper for `f64` providing `Eq` - we don't care about NaN values
+#[derive(Debug, PartialEq, Copy, Clone, Serialize, Deserialize)]
+pub struct F64(pub f64);
+impl Eq for F64 {}
+impl std::hash::Hash for F64 {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.to_bits().hash(state)
+    }
+}
+
+impl FromStr for F64 {
+    type Err = <f64 as FromStr>::Err;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        f64::from_str(s).map(F64)
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, Hash)]
 pub enum Token {
     // Lexer sends an end of input token before stopping so we get a proper error location when
     // reporting parsing errors that expect a token but found the end of a file instead.
     EndOfInput,
-    Invalid(LexerError),
+    Error(LexerError),
     Newline,
     Indent,
     Unindent,
 
+    LineComment(String),
+
     Identifier(String),
     StringLiteral(String),
     IntegerLiteral(u64, Option<IntegerKind>),
-    FloatLiteral(f64, Option<FloatKind>),
+    FloatLiteral(F64, Option<FloatKind>),
     CharLiteral(char),
     BooleanLiteral(bool),
     UnitLiteral,
+
+    /// A quoted list of tokens
+    Quoted(Arc<Vec<Token>>),
 
     // Types
     TypeName(String),
     IntegerType(IntegerKind),
     FloatType(FloatKind),
-    PolymorphicIntType,
-    PolymorphicFloatType,
-    CharType,
-    StringType,
-    PointerType,
-    BooleanType,
-    UnitType,
     Mut,
 
     // Keywords
     And,
     As,
     Block,
-    Boxed,
     Can,
     Do,
     Effect,
@@ -104,9 +173,9 @@ pub enum Token {
     Impl,
     Import,
     In,
+    Is,
     Loop,
     Match,
-    Methods,
     Module,
     Not,
     Or,
@@ -140,8 +209,9 @@ pub enum Token {
     Add,                // +
     BracketLeft,        // [
     BracketRight,       // ]
-    InterpolateLeft,    // ${
-    InterpolateRight,   // }
+    BraceLeft,          // {
+    BraceRight,         // }
+    Interpolate,        // ${
     Pipe,               // |
     Colon,              // :
     Semicolon,          // ;
@@ -162,9 +232,11 @@ pub enum Token {
     Index,              // .[]
     IndexRef,           // .&[]
     IndexMut,           // .![]
+    Octothorpe,         // #
 }
 
 impl Token {
+    #[allow(unused)]
     pub fn is_overloadable_operator(&self) -> bool {
         use Token::*;
         matches!(
@@ -216,6 +288,8 @@ impl Display for LexerError {
             UnindentToNewLevel => write!(f, "This unindent doesn't return to any previous indentation level"),
             Expected(c) => write!(f, "Expected {} (U+{:x}) while lexing", *c, *c as u32),
             UnknownChar(c) => write!(f, "Unknown character '{}' (U+{:x}) in file", *c, *c as u32),
+            MismatchedBracketInQuote { expected } => write!(f, "Mismatched bracket in quoted expression, expected `{expected}`"),
+            QuoteWithEndBracketAndNoStart { unexpected } => write!(f, "Cannot quote a lone {unexpected}, all brackets and indentation must be matched"),
         }
     }
 }
@@ -253,108 +327,119 @@ impl Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Token::EndOfInput => write!(f, "end of input"),
-            Token::Invalid(error) => write!(f, "{:?}", error),
+            Token::Error(error) => write!(f, "{:?}", error),
             Token::Newline => write!(f, "a newline"),
             Token::Indent => write!(f, "an indent"),
             Token::Unindent => write!(f, "an unindent"),
 
-            Token::Identifier(_) => write!(f, "an identifier"),
-            Token::StringLiteral(_) => write!(f, "a string literal"),
-            Token::IntegerLiteral(_, _) => write!(f, "an integer literal"),
-            Token::FloatLiteral(_, _) => write!(f, "a float literal"),
-            Token::CharLiteral(_) => write!(f, "a char literal"),
-            Token::BooleanLiteral(_) => write!(f, "a boolean literal"),
-            Token::UnitLiteral => write!(f, "'()'"),
+            Token::LineComment(s) => write!(f, "//{s}"),
+
+            Token::Identifier(s) => write!(f, "{s}"),
+            Token::StringLiteral(s) => write!(f, "\"{s}\""),
+            Token::IntegerLiteral(x, None) => write!(f, "{x}"),
+            Token::IntegerLiteral(x, Some(kind)) => write!(f, "{x}_{kind}"),
+            Token::FloatLiteral(x, None) => write!(f, "{x}"),
+            Token::FloatLiteral(x, Some(kind)) => write!(f, "{x}_{kind}"),
+            Token::CharLiteral(c) => write!(f, "c\"{c}\""),
+            Token::BooleanLiteral(b) => write!(f, "{b}"),
+            Token::UnitLiteral => write!(f, "()"),
 
             // Types
-            Token::TypeName(_) => write!(f, "a typename"),
-            Token::IntegerType(kind) => write!(f, "'{}'", kind),
-            Token::FloatType(kind) => write!(f, "'{}'", kind),
-            Token::PolymorphicIntType => write!(f, "'Int'"),
-            Token::PolymorphicFloatType => write!(f, "'Float'"),
-            Token::CharType => write!(f, "'char'"),
-            Token::StringType => write!(f, "'string'"),
-            Token::PointerType => write!(f, "'Ptr'"),
-            Token::BooleanType => write!(f, "'bool'"),
-            Token::UnitType => write!(f, "'unit'"),
-            Token::Mut => write!(f, "'mut'"),
+            Token::TypeName(n) => write!(f, "{n}"),
+            Token::IntegerType(kind) => write!(f, "{}", kind),
+            Token::FloatType(kind) => write!(f, "{}", kind),
+            Token::Mut => write!(f, "mut"),
 
             // Keywords
-            Token::And => write!(f, "'and'"),
-            Token::As => write!(f, "'as'"),
-            Token::Block => write!(f, "'block'"),
-            Token::Boxed => write!(f, "'boxed'"),
-            Token::Can => write!(f, "'can'"),
-            Token::Do => write!(f, "'do'"),
-            Token::Effect => write!(f, "'effect'"),
-            Token::Else => write!(f, "'else'"),
-            Token::Extern => write!(f, "'extern'"),
-            Token::Fn => write!(f, "'fn'"),
-            Token::Given => write!(f, "'given'"),
-            Token::Handle => write!(f, "'handle'"),
-            Token::If => write!(f, "'if'"),
-            Token::Impl => write!(f, "'impl'"),
-            Token::Import => write!(f, "'import'"),
-            Token::In => write!(f, "'in'"),
-            Token::Loop => write!(f, "'loop'"),
-            Token::Match => write!(f, "'match'"),
-            Token::Methods => write!(f, "'methods'"),
-            Token::Module => write!(f, "'module'"),
-            Token::Not => write!(f, "'not'"),
-            Token::Or => write!(f, "'or'"),
-            Token::Owned => write!(f, "'owned'"),
-            Token::Pure => write!(f, "'pure'"),
-            Token::Return => write!(f, "'return'"),
-            Token::Ref => write!(f, "'ref'"),
-            Token::Shared => write!(f, "'shared'"),
-            Token::Then => write!(f, "'then'"),
-            Token::Trait => write!(f, "'trait'"),
-            Token::Type => write!(f, "'type'"),
-            Token::While => write!(f, "'while'"),
-            Token::With => write!(f, "'with'"),
+            Token::And => write!(f, "and"),
+            Token::As => write!(f, "as"),
+            Token::Block => write!(f, "block"),
+            Token::Can => write!(f, "can"),
+            Token::Do => write!(f, "do"),
+            Token::Effect => write!(f, "effect"),
+            Token::Else => write!(f, "else"),
+            Token::Extern => write!(f, "extern"),
+            Token::Fn => write!(f, "fn"),
+            Token::Given => write!(f, "given"),
+            Token::Handle => write!(f, "handle"),
+            Token::If => write!(f, "if"),
+            Token::Impl => write!(f, "impl"),
+            Token::Import => write!(f, "import"),
+            Token::In => write!(f, "in"),
+            Token::Is => write!(f, "is"),
+            Token::Loop => write!(f, "loop"),
+            Token::Match => write!(f, "match"),
+            Token::Module => write!(f, "module"),
+            Token::Not => write!(f, "not"),
+            Token::Or => write!(f, "or"),
+            Token::Owned => write!(f, "owned"),
+            Token::Pure => write!(f, "pure"),
+            Token::Return => write!(f, "return"),
+            Token::Ref => write!(f, "ref"),
+            Token::Shared => write!(f, "shared"),
+            Token::Then => write!(f, "then"),
+            Token::Trait => write!(f, "trait"),
+            Token::Type => write!(f, "type"),
+            Token::While => write!(f, "while"),
+            Token::With => write!(f, "with"),
 
             // Operators
-            Token::Equal => write!(f, "'='"),
-            Token::Assignment => write!(f, "':='"),
-            Token::EqualEqual => write!(f, "'=='"),
-            Token::NotEqual => write!(f, "'!='"),
-            Token::Range => write!(f, "'..'"),
-            Token::RightArrow => write!(f, "'->'"),
-            Token::FatArrow => write!(f, "'=>'"),
-            Token::ApplyLeft => write!(f, "'<|'"),
-            Token::ApplyRight => write!(f, "'|>'"),
-            Token::Append => write!(f, "'++'"),
-            Token::Modulus => write!(f, "'%'"),
-            Token::Multiply => write!(f, "'*'"),
-            Token::ParenthesisLeft => write!(f, "'('"),
-            Token::ParenthesisRight => write!(f, "')'"),
-            Token::Subtract => write!(f, "'-'"),
-            Token::Add => write!(f, "'+'"),
-            Token::BracketLeft => write!(f, "'['"),
-            Token::BracketRight => write!(f, "']'"),
-            Token::InterpolateLeft => write!(f, "'${{'"),
-            Token::InterpolateRight => write!(f, "'}}'"),
-            Token::Pipe => write!(f, "'|'"),
-            Token::Colon => write!(f, "':'"),
-            Token::Semicolon => write!(f, "';'"),
-            Token::Comma => write!(f, "','"),
-            Token::MemberAccess => write!(f, "'.'"),
-            Token::MemberRef => write!(f, "'.&'"),
-            Token::MemberMut => write!(f, "'.!'"),
-            Token::LessThan => write!(f, "'<'"),
-            Token::GreaterThan => write!(f, "'>'"),
-            Token::LessThanOrEqual => write!(f, "'<='"),
-            Token::GreaterThanOrEqual => write!(f, "'>='"),
-            Token::Divide => write!(f, "'/'"),
-            Token::Backslash => write!(f, "'\\'"),
-            Token::Ampersand => write!(f, "'&'"),
-            Token::At => write!(f, "'@'"),
-            Token::ExclamationMark => write!(f, "'!'"),
-            Token::QuestionMark => write!(f, "'?'"),
-            Token::Index => write!(f, "'.[]'"),
-            Token::IndexRef => write!(f, "'.&[]'"),
-            Token::IndexMut => write!(f, "'.![]'"),
+            Token::Equal => write!(f, "="),
+            Token::Assignment => write!(f, ":="),
+            Token::EqualEqual => write!(f, "=="),
+            Token::NotEqual => write!(f, "!="),
+            Token::Range => write!(f, ".."),
+            Token::RightArrow => write!(f, "->"),
+            Token::FatArrow => write!(f, "=>"),
+            Token::ApplyLeft => write!(f, "<|"),
+            Token::ApplyRight => write!(f, "|>"),
+            Token::Append => write!(f, "++"),
+            Token::Modulus => write!(f, "%"),
+            Token::Multiply => write!(f, "*"),
+            Token::ParenthesisLeft => write!(f, "("),
+            Token::ParenthesisRight => write!(f, ")"),
+            Token::Subtract => write!(f, "-"),
+            Token::Add => write!(f, "+"),
+            Token::BracketLeft => write!(f, "["),
+            Token::BracketRight => write!(f, "]"),
+            Token::BraceLeft => write!(f, "{{"),
+            Token::BraceRight => write!(f, "}}"),
+            Token::Interpolate => write!(f, "${{"),
+            Token::Pipe => write!(f, "|"),
+            Token::Colon => write!(f, ":"),
+            Token::Semicolon => write!(f, ";"),
+            Token::Comma => write!(f, ","),
+            Token::MemberAccess => write!(f, "."),
+            Token::MemberRef => write!(f, ".&"),
+            Token::MemberMut => write!(f, ".!"),
+            Token::LessThan => write!(f, "<"),
+            Token::GreaterThan => write!(f, ">"),
+            Token::LessThanOrEqual => write!(f, "<="),
+            Token::GreaterThanOrEqual => write!(f, ">="),
+            Token::Divide => write!(f, "/"),
+            Token::Backslash => write!(f, "\\"),
+            Token::Ampersand => write!(f, "&"),
+            Token::At => write!(f, "@"),
+            Token::ExclamationMark => write!(f, "!"),
+            Token::QuestionMark => write!(f, "?"),
+            Token::Index => write!(f, ".[]"),
+            Token::IndexRef => write!(f, ".&[]"),
+            Token::IndexMut => write!(f, ".![]"),
+            Token::Octothorpe => write!(f, "#"),
+            Token::Quoted(tokens) => {
+                write!(f, "'")?;
+                for token in tokens.iter() {
+                    write!(f, "{token}")?;
+                }
+                Ok(())
+            },
         }
+    }
+}
+
+impl std::fmt::Display for F64 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
@@ -372,20 +457,12 @@ pub fn lookup_keyword(word: &str) -> Option<Token> {
         "Usz" => Some(Token::IntegerType(IntegerKind::Usz)),
         "F32" => Some(Token::FloatType(FloatKind::F32)),
         "F64" => Some(Token::FloatType(FloatKind::F64)),
-        "Int" => Some(Token::PolymorphicIntType),
-        "Float" => Some(Token::PolymorphicFloatType),
-        "Char" => Some(Token::CharType),
-        "String" => Some(Token::StringType),
-        "Ptr" => Some(Token::PointerType),
-        "Bool" => Some(Token::BooleanType),
-        "Unit" => Some(Token::UnitType),
         "mut" => Some(Token::Mut),
         "true" => Some(Token::BooleanLiteral(true)),
         "false" => Some(Token::BooleanLiteral(false)),
         "and" => Some(Token::And),
         "as" => Some(Token::As),
         "block" => Some(Token::Block),
-        "boxed" => Some(Token::Boxed),
         "can" => Some(Token::Can),
         "do" => Some(Token::Do),
         "effect" => Some(Token::Effect),
@@ -398,9 +475,9 @@ pub fn lookup_keyword(word: &str) -> Option<Token> {
         "impl" => Some(Token::Impl),
         "import" => Some(Token::Import),
         "in" => Some(Token::In),
+        "is" => Some(Token::Is),
         "loop" => Some(Token::Loop),
         "match" => Some(Token::Match),
-        "methods" => Some(Token::Methods),
         "module" => Some(Token::Module),
         "not" => Some(Token::Not),
         "or" => Some(Token::Or),

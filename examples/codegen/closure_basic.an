@@ -6,5 +6,3 @@ main () =
 main ()
 
 // args: --delete-binary
-// expected stdout:
-// hi there

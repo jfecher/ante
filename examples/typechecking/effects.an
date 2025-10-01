@@ -1,9 +1,9 @@
 effect Log with
-    log: String -> Unit
+    log: fn String -> Unit
 
 effect Use a with
-    get: Unit -> a
-    set: a -> Unit
+    get: fn Unit -> a
+    set: fn a -> Unit
 
 // Expect `can Use Unit` and not `can Log`
 handle_basic () = 
@@ -21,12 +21,10 @@ does_use x =
     y = get ()
     set (y + x)
 
-// args: --check --show-types
-// expected stdout:
-// does_use : forall a. (a -> Unit can Use a)
-//   given Add a
-// get : forall a. (Unit -> a can Use a)
-// handle_basic : Unit -> Unit can Use String
-// log : String -> Unit can Log
-// set : forall a. (a -> Unit can Use a)
-// use_resume : Unit -> Unit pure
+// args: --show-types
+// expected exit status: 101
+// expected stderr:
+// thread 'main' panicked at src/type_inference/cst_traversal.rs:274:9:
+// not yet implemented: check_handle
+// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+

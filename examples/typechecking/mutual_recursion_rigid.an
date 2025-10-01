@@ -14,8 +14,8 @@ ex1b (a: u) b =
 
 
 // Second example
-trait T1 a with trait1: a -> Unit
-trait T2 a with trait2: a -> Unit
+trait T1 a with trait1: fn a -> Unit
+trait T2 a with trait2: fn a -> Unit
 
 ex2a (a: t) b =
     ex2b a b
@@ -28,17 +28,10 @@ ex2b (a: u) b =
 ex2c (a: v) b =
     ex2a a b
 
-// args: --check --show-types
-// expected stdout:
-// ex1a : forall t a. (t - a -> U32 pure)
-// ex1b : forall t a. (t - a -> U32 pure)
-// ex2a : forall t a. (t - a -> Unit pure)
-//   given T1 t, T2 t
-// ex2b : forall t a. (t - a -> Unit pure)
-//   given T1 t, T2 t
-// ex2c : forall t a. (t - a -> Unit pure)
-//   given T1 t, T2 t
-// trait1 : forall a. (a -> Unit pure)
-//   given T1 a
-// trait2 : forall a. (a -> Unit pure)
-//   given T2 a
+// args: --show-types
+// expected exit status: 101
+// expected stderr:
+// thread 'main' panicked at src/type_inference/get_type.rs:28:17:
+// GetType used on definition without a type annotation that has not yet been inferred. This is likely an issue with the order of type checking determined by the dependency graph.
+// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+

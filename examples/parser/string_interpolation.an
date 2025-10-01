@@ -1,0 +1,19 @@
+main () =
+    shout x = "${x}!"
+    bar = "nested interpolations"
+    print
+        "I can do line breaks${
+            shout "\nAny expressions"
+        }${
+            shout "\nEven ${bar}"
+        }"
+
+// args: --show-parse
+// expected stdout:
+// main () =
+//     shout x = ""
+
+// expected stderr:
+// examples/parser/string_interpolation.an:2:15	error: Expected an unindent but found `${`
+//     shout x = "${x}!"
+

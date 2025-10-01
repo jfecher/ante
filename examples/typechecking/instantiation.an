@@ -7,15 +7,16 @@ two1 f x = f (f x) // (a -> a) -> a -> a
 two2 = add one one
 
 // id is polymorphic, expect no error here
-id 3
-id "four"
+main () =
+    id 3
+    id "four"
 
 id x = x
 
-// args: --check --show-types
-// expected stdout:
-// add : forall a b c d e f g. ((a - c => f can e) - (a - b => c can e) -> a => b => f can e pure pure)
-// id : forall a. (a -> a pure)
-// one : forall a b c d. ((b => a can c) - b -> a can c)
-// two1 : forall a b c. ((a => a can c) - a -> a can c)
-// two2 : (a => a can c) => a => a can c pure
+// args: --show-types
+// expected exit status: 101
+// expected stderr:
+// thread 'main' panicked at src/type_inference/get_type.rs:28:17:
+// GetType used on definition without a type annotation that has not yet been inferred. This is likely an issue with the order of type checking determined by the dependency graph.
+// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+

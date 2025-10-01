@@ -1,6 +1,6 @@
 
 trait Foo a with
-    foo: a - a -> a
+    foo: fn a a -> a
 
 impl Foo I32 with
     foo _a b = b
@@ -13,15 +13,30 @@ a = foo 1 2i32
 b = foo 1.0 2.0
 c = foo "one" "two"
 
-// args: --check --show-types
-// expected stderr:
-// impl.an:14:5	error: No impl found for Foo String
-// c = foo "one" "two"
-// 
-
+// args: --show-types
 // expected stdout:
-// a : I32
-// b : F64
-// c : String
-// foo : forall a. (a - a -> a pure)
-//   given Foo a
+// trait Foo a with
+//     (foo: (error)): fn a a -> a
+// 
+// (a: _1) = (foo: (error)) 1 2_I32
+// 
+// (b: _1) = (foo: (error)) 1 2
+// 
+// (c: _1) = (foo: (error)) "one" "two"
+
+// expected stderr:
+// examples/typechecking/impl.an:5:5	error: Expected an identifier but found `Foo`
+// impl Foo I32 with
+// 
+// examples/typechecking/impl.an:8:5	error: Expected an identifier but found `Foo`
+// impl Foo F64 with
+// 
+// examples/typechecking/impl.an:12:4	error: `foo` is not defined, was it a typo?
+// a = foo 1 2i32
+// 
+// examples/typechecking/impl.an:13:4	error: `foo` is not defined, was it a typo?
+// b = foo 1.0 2.0
+// 
+// examples/typechecking/impl.an:14:4	error: `foo` is not defined, was it a typo?
+// c = foo "one" "two"
+

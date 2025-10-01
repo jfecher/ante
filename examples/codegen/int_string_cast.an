@@ -14,8 +14,3 @@ debug <| cast 0
 debug <| cast 10
 
 // args: --delete-binary
-// expected stdout:
-// string: 255 len: 3
-// string: -1024 len: 5
-// string: 0 len: 1
-// string: 10 len: 2

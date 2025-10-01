@@ -1,0 +1,31 @@
+type Foo =
+    a: I32
+    b: I32
+
+a, b = 1, 2
+
+foo (Foo a b) = ()
+
+bar (x, y) = ()
+
+qux (x: U32, y) = ()
+
+// args: --show-resolved
+// expected stdout:
+// // id = c1m906_1237
+// type Foo_c1m906_1237 =
+//     a_?: I32
+//     b_?: I32
+// 
+// // id = c1m906_400
+// ,_b a_c1m906_400 b_c1m906_400 = ,_b 1 2
+// 
+// // id = c1m906_3132
+// foo_c1m906_3132 (Foo_c1m906_1237 a_1 b_2) = ()
+// 
+// // id = c1m906_3570
+// bar_c1m906_3570 (,_b x_1 y_2) = ()
+// 
+// // id = c1m906_2612
+// qux_c1m906_2612 (,_b (x_1: U32) y_2) = ()
+

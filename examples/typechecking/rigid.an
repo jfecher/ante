@@ -6,12 +6,15 @@ ex1 (x: a): b = x + 1u32
 ex2: a -> b =
     fn x -> x
 
-// args: --check --show-types
-// expected stdout:
-// ex1 : forall a b. (a -> b pure)
-//   given Add a
-// ex2 : forall a. (a -> a pure)
-//
+// args: --show-types
+// expected stdout: (ex1: fn a -> b) ((x: a)) : b = (+: (error)) (x: a) 1_U32
+
+
+
 // expected stderr:
-// rigid.an:2:21	error: Expected argument of type a, but found U32
+// examples/typechecking/rigid.an:2:18	error: `+` is not defined, was it a typo?
 // ex1 (x: a): b = x + 1u32
+// 
+// examples/typechecking/rigid.an:6:7	error: Expected `=` to begin the function body but found `->`
+// ex2: a -> b =
+

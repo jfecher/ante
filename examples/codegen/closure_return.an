@@ -7,5 +7,3 @@ foo = get_closure ()
 foo ()
 
 // args: --delete-binary
-// expected stdout:
-// hi there

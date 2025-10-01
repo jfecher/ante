@@ -1,0 +1,16 @@
+effect Fail with
+    fail: Unit -> a
+
+effect Read a with
+    read: Unit -> a
+
+read_or_none (f: Unit -> Unit can Read a, Fail): Maybe a =
+    handle Some (f ())
+    | fail () -> None
+    | read () -> resume ()
+
+// panic.an:8:12	error: 
+// thread 'main' panicked at src/error/mod.rs:342:17:
+// internal error: entered unreachable code: This type error should never be shown. Expected can Fail, Read b, a, Actual pure
+// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+// exit 101

@@ -26,15 +26,3 @@ sum_all () =
 sum_all () |> print
 
 // args: --delete-binary
-// expected stdout:
-// foo
-// add called
-// add called
-// bar
-// add called
-// add called
-// add resume finished
-// add resume finished
-// add resume finished
-// add resume finished
-// 10

@@ -1,0 +1,14 @@
+foo () = ()
+
+bar (a, b, c) = (a, b, c)
+
+baz (a, b) c = ()
+
+// args: --show-parse
+// expected stdout:
+// foo () = ()
+// 
+// bar (, (, a b) c) = , a (, b c)
+// 
+// baz (, a b) c = ()
+

@@ -1,0 +1,3 @@
+binary_path = "target/debug/new-ante"
+test_path = "examples"
+test_line_prefix = "// "

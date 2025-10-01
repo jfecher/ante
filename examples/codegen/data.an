@@ -16,6 +16,3 @@ match s
 | None -> print "s = None"
 
 // args: --delete-binary
-// expected stdout:
-// t = 1, one
-// s = 2

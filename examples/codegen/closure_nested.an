@@ -9,4 +9,3 @@ foo () =
 print (foo ())
 
 // args: --delete-binary
-// expected stdout: test

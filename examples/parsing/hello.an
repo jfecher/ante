@@ -1,5 +1,0 @@
-print "Hello, World!"
-
-// args: --parse
-// expected stdout:
-// (print "Hello, World!")

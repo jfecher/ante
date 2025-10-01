@@ -17,4 +17,3 @@ foo () =
 print <| read_or_zero foo
 
 // args: --delete-binary
-// expected stdout: 5

@@ -1,9 +1,10 @@
 not_an_error = 1
 
+main () =
+    // Not a name resolution error at least. This isn't testing the type checker
+    not_an_error is_an_error
 
-not_an_error is_an_error
-
-fn a b -> a + c + b
+    fn a b -> a + c + b
 
 foo a b =
     bar c d =
@@ -14,28 +15,44 @@ foo a b =
 a = 2
 a = 3 // already declared
 
-// args: --check
+// args: --show-resolved
+// expected stdout:
+// // id = c1m416_9923
+// not_an_error_c1m416_9923 = 1
+// 
+// // id = c1m416_1944
+// main_c1m416_1944 () =
+//     not_an_error_c1m416_9923 is_an_error_?
+//     fn a_4 b_5 -> +_? (+_? a_4 c_?) b_5
+// 
+// // id = c1m416_3132
+// foo_c1m416_3132 a_1 b_2 =
+//     bar_? c_? d_? =
+//         b_?
+//     ()
+// 
+// // id = c1m416_7365
+// a_c1m416_7365 = 2
+// 
+// // id = c1m416_4138
+// a_c1m416_7365 = 3
+
 // expected stderr:
-// errors.an:15:1	error: a is already in scope
+// examples/nameresolution/errors.an:5:17	error: `is_an_error` is not defined, was it a typo?
+//     not_an_error is_an_error
+// 
+// examples/nameresolution/errors.an:7:16	error: `+` is not defined, was it a typo?
+//     fn a b -> a + c + b
+// 
+// examples/nameresolution/errors.an:7:18	error: `c` is not defined, was it a typo?
+//     fn a b -> a + c + b
+// 
+// examples/nameresolution/errors.an:7:20	error: `+` is not defined, was it a typo?
+//     fn a b -> a + c + b
+// 
+// examples/nameresolution/errors.an:16:0	warning: `a` was already defined
 // a = 3 // already declared
 // 
-// errors.an:14:1	note: a was previously defined here
-// a = 2
-// 
-// errors.an:4:14	error: No declaration for `is_an_error` was found in scope
-// not_an_error is_an_error
-// 
-// errors.an:6:15	error: No declaration for `c` was found in scope
-// fn a b -> a + c + b
-// 
-// errors.an:9:9	warning: c is unused (prefix name with _ to silence this warning)
-//     bar c d =
-// 
-// errors.an:9:11	warning: d is unused (prefix name with _ to silence this warning)
-//     bar c d =
-// 
-// errors.an:8:5	warning: a is unused (prefix name with _ to silence this warning)
-// foo a b =
-// 
-// errors.an:9:5	warning: bar is unused (prefix name with _ to silence this warning)
-//     bar c d =
+// examples/nameresolution/errors.an:16:6	error: Expected a newline after the top level item but found //// already declared
+// a = 3 // already declared
+

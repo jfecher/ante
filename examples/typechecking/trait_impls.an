@@ -1,6 +1,6 @@
 
 trait Bar a -> b with
-    bar : a a -> b
+    bar: fn a a -> b
 
 
 impl Bar I32 String with
@@ -24,12 +24,37 @@ bar 3 2
 
 bar "four" "five"
 
-// args: --check --show-types
-// expected stderr:
-// trait_impls.an:12:1	error: impl has 5 type arguments but Bar requires 2
-// impl Bar I32 Char String F64 Unit with
-//
+// args: --show-types
 // expected stdout:
-// bar : (none)
-// baz : (none)
-// foo : (none)
+// trait Bar a -> b with
+//     (bar: (error)): fn a a -> b
+// 
+// (foo: _1) (a: _6) (b: _7) = (bar: (error)) (a: _6) (b: _7)
+// 
+// (baz: _1) ((x: String)) (y: _7) = (bar: (error)) (x: String) (y: _7)
+
+// expected stderr:
+// examples/typechecking/trait_impls.an:6:5	error: Expected an identifier but found `Bar`
+// impl Bar I32 String with
+// 
+// examples/typechecking/trait_impls.an:9:5	error: Expected an identifier but found `Bar`
+// impl Bar I32 I32 with
+// 
+// examples/typechecking/trait_impls.an:12:5	error: Expected an identifier but found `Bar`
+// impl Bar I32 Char String F64 Unit with
+// 
+// examples/typechecking/trait_impls.an:17:5	error: Expected an identifier but found `Bar`
+// impl Bar I32 F64 with
+// 
+// examples/typechecking/trait_impls.an:20:10	error: `bar` is not defined, was it a typo?
+// foo a b = bar a b
+// 
+// examples/typechecking/trait_impls.an:22:20	error: `bar` is not defined, was it a typo?
+// baz (x: String) y = bar x y
+// 
+// examples/typechecking/trait_impls.an:23:4	error: Expected `=` to begin the function body but found `3`
+// bar 3 2
+// 
+// examples/typechecking/trait_impls.an:25:4	error: Expected `=` to begin the function body but found `"four"`
+// bar "four" "five"
+

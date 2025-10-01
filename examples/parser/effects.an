@@ -1,0 +1,62 @@
+
+effect Log with log: fn String -> Unit
+
+effect Use a with
+    get: fn Unit -> a
+    set: fn a I32 -> Unit
+
+main () =
+    handle log "test1"
+    | log s -> print s
+
+    // Test parsing of pattern matching within handle
+    handle
+        log "test2"
+    | log "a" -> print "case 1"
+    | log "b" -> print "case 2"
+    | log _   -> print "case 3"
+
+    handle foo + bar
+    | set 0 a -> resume ()
+    | get () -> foo resume 1 // test 'resume' is parsed as a normal identifier
+    | set _ b -> resume ()
+
+    handle ()
+    | return _ -> "foo"
+    | log _ -> "impossible"
+
+map1 (l: List a) (f: fn a -> b can Log) : List b = ()
+
+map2 (l: List a) (f: fn a -> b pure) : List b = ()
+
+map3 (l: List a) (f: fn a -> b pure) : List b pure = ()
+
+map4 (l: List a) (f: fn a -> b) : List b can Log = ()
+
+// args: --show-parse
+// expected stdout:
+// effect Log with
+//     log: fn String -> Unit
+// 
+// effect Use a with
+//     get: fn Unit -> a
+//     set: fn a I32 -> Unit
+// 
+// main () =
+//     handle log "test1"
+//     | log s -> print s
+//     handle 
+//         log "test2"
+// 
+// map1 (l: List a) (f: fn a -> b can Log) : List b = ()
+// 
+// map2 (l: List a) (f: fn a -> b pure) : List b = ()
+// 
+// map3 (l: List a) (f: fn a -> b pure) : List b pure = ()
+// 
+// map4 (l: List a) (f: fn a -> b) : List b can Log = ()
+
+// expected stderr:
+// examples/parser/effects.an:15:10	error: Expected an unindent but found `"a"`
+//     | log "a" -> print "case 1"
+

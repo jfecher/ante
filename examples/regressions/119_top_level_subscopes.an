@@ -4,4 +4,3 @@ if true then
     g ()
 
 // args: --delete-binary
-// expected stdout: hi

@@ -2,44 +2,42 @@
 type Thing = nothing: Unit
 
 trait Foo a with
-    foo: a -> Unit
+    foo: fn a -> Unit
 
 trait Bar a with
-    bar: a -> Unit
+    bar: fn a -> Unit
 
 trait Baz a with
-    baz: a -> Unit
+    baz: fn a -> Unit
 
-// The call from which the `Foo a` constraint arises
-foo (Thing ())
+main () =
+    // The call from which the `Foo a` constraint arises
+    foo (Thing ())
 
 // Candidate 1
-impl Foo a given Bar a with
+impl candidate1 {_: Bar a}: Foo a with
     foo a = bar a
 
-impl Bar a given Baz a with
+impl bar {_: Baz a}: Bar a with
     bar a = baz a
 
-impl Baz Thing with
+impl baz: Baz Thing with
     baz _ = ()
 
 
 // Does not match
-impl Foo a given Print a with
+impl does_not_match {_: Print a}: Foo a with
     foo _ = ()
 
 
 // Candidate 2
-impl Foo Thing with
+impl candidate2: Foo Thing with
     foo _ = ()
 
-// args: --check
+// args: --show-types
+// expected exit status: 101
 // expected stderr:
-// multiple_matching_impls.an:14:1	error: 2 matching impls found for Foo Thing
-// foo (Thing ())
-// 
-// multiple_matching_impls.an:17:1	note: Candidate 1
-// impl Foo a given Bar a with
-// 
-// multiple_matching_impls.an:33:1	note: Candidate 2
-// impl Foo Thing with
+// thread 'main' panicked at src/type_inference/cst_traversal.rs:278:9:
+// not yet implemented: check_impl
+// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+

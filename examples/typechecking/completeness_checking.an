@@ -1,50 +1,34 @@
+main () =
+    match None
+    | None -> 1
 
-match None
-| None -> 1
+    match (2, None)
+    | (0, None) -> ()
+    | (_, Some _) -> ()
 
-match (2, None)
-| (0, None) -> ()
-| (_, Some _) -> ()
+    // This one is complete!
+    match None
+    | Some (Some _) -> 0
+    | Some _ -> 1
+    | None -> 2
 
-// This one is complete!
-match None
-| Some (Some _) -> 0
-| Some _ -> 1
-| None -> 2
+    // Redundant patterns
+    match (1, 2)
+    | (1, _) -> 0
+    | (1, 2) -> 1
+    
+    match (true, true)
+    | (false, true) -> 0
+    | (true, false) -> 1
 
-// Redundant patterns
-match (1, 2)
-| (1, _) -> 0
-| (1, 2) -> 1
- 
-match (true, true)
-| (false, true) -> 0
-| (true, false) -> 1
+    match (1, 2, 3, 4)
+    | (1, 2) -> 1
+    | (_, _, _, _) -> 3
 
-match (1, 2, 3, 4)
-| (1, 2) -> 1
-| (_, _, _, _) -> 3
-
-// args: --check
-// TODO: First error can be improved. Should be "Missing case Some _"
+// args: --show-types
+// expected exit status: 101
 // expected stderr:
-// completeness_checking.an:2:1	error: Missing case _
-// match None
-// 
-// completeness_checking.an:5:1	error: Missing case (_, None)
-// match (2, None)
-// 
-// completeness_checking.an:18:4	warning: Unreachable pattern
-// | (1, 2) -> 1
-// 
-// completeness_checking.an:16:1	error: Missing case (_ : Int, _)
-// match (1, 2)
-// 
-// completeness_checking.an:20:1	error: Missing case (true, true)
-// match (true, true)
-// 
-// completeness_checking.an:20:1	error: Missing case (false, false)
-// match (true, true)
-// 
-// completeness_checking.an:25:4	error: This pattern of type Int a, Int b does not match the type Int a, Int b, Int c, Int d that is being matched on
-// | (1, 2) -> 1
+// thread 'main' panicked at src/type_inference/cst_traversal.rs:130:45:
+// not yet implemented: Type check Origin::TypeResolution
+// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+

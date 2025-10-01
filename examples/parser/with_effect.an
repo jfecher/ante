@@ -1,0 +1,15 @@
+main () =
+    iota 10
+        with filter even
+        with map (_ * 2)
+        with for print
+
+// args: --show-parse
+// expected stdout:
+// main () =
+//     iota 10
+
+// expected stderr:
+// examples/parser/with_effect.an:3:8	error: Expected an unindent but found `with`
+//         with filter even
+

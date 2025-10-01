@@ -1,0 +1,50 @@
+
+trait Show a with
+    show: fn a -> String
+
+trait Cast a b -> c with
+    cast: fn a -> b
+
+// A collection c of elements of type e
+// The element type is uniquely determined by the collection's type c
+trait Collection c -> e with
+    push: fn c e -> c
+    pop: fn c -> Maybe e
+    empty: c
+
+
+impl show_string: Show String with
+    show s = s
+
+impl cast_bad {_: Show String}: Cast String String String with
+    cast s = show s
+
+impl _: Collection (fn a -> a) Unit with
+    push c e = c
+    pop c = ()
+    empty = fn a -> a
+
+// args: --show-parse
+// expected stdout:
+// trait Show a with
+//     show: fn a -> String
+// 
+// trait Cast a b -> c with
+//     cast: fn a -> b
+// 
+// trait Collection c -> e with
+//     push: fn c e -> c
+//     pop: fn c -> Maybe e
+//     empty: c
+// 
+// impl show_string: Show String with
+//     show s = s
+// 
+// impl cast_bad {_: Show String}: Cast String String String with
+//     cast s = show s
+// 
+// impl _: Collection (fn a -> a) Unit with
+//     push c e = c
+//     pop c = ()
+//     empty = fn a -> a
+

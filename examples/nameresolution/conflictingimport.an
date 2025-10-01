@@ -1,19 +1,27 @@
-import Library
+import Library.library_int, library_fn
 
 library_int = 1
 
 library_fn _ = 3
 
-// args: --check
+// args: --show-resolved examples/nameresolution/Library.an
+// expected stdout:
+// // id = c1m753_7873
+// library_int_c1m753_7873 = 5
+// 
+// // id = c1m753_5383
+// library_fn_c1m753_5383 __1 = 2
+// 
+// 
+// import Library.library_int, library_fn
+// 
+// // id = c1m79_7873
+// library_int_c1m79_7873 = 1
+// 
+// // id = c1m79_5383
+// library_fn_c1m79_5383 __1 = 3
+
 // expected stderr:
-// conflictingimport.an:1:1	error: import shadows previous definition of library_fn
-// import Library
-// 
-// conflictingimport.an:5:1	note: library_fn was previously defined here
-// library_fn _ = 3
-// 
-// conflictingimport.an:1:1	error: import shadows previous definition of library_int
-// import Library
-// 
-// conflictingimport.an:3:1	note: library_int was previously defined here
-// library_int = 1
+// examples/nameresolution/conflictingimport.an:1:8	error: Could not find crate `Library`
+// import Library.library_int, library_fn
+

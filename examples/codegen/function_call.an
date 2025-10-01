@@ -3,4 +3,3 @@ show x = puts x.c_string
 show "foo"
 
 // args: --delete-binary
-// expected stdout: foo

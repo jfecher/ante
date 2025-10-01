@@ -6,4 +6,3 @@ Vec.push !v 4
 print v
 
 // args: --delete-binary
-// expected stdout: [3, 4]

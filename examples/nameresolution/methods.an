@@ -1,0 +1,42 @@
+type OptionI32 =
+    | None
+    | Some I32
+
+OptionI32.unwrap_or_default (self: OptionI32) =
+    match self
+    | OptionI32.None -> 0
+    | Some x -> x
+
+shared type Tree t =
+    | Leaf t
+    | Node (Tree t) (Tree t)
+
+Tree.map (self: Tree q) (f: fn q -> z): Tree z =
+    match self
+    | Leaf x -> Leaf (f x)
+    | Node l r -> Node (l.map f) (r.map f)
+
+// args: --show-resolved
+// expected stdout:
+// // id = c1m412_5261
+// type OptionI32_c1m412_5261 =
+//     | None_c1m412_5261
+//     | Some_c1m412_5261 I32
+// 
+// // id = c1m412_3379
+// OptionI32_c1m412_5261.unwrap_or_default_c1m412_3379 (self_2: OptionI32_c1m412_5261) =
+//     match self_2
+//     | OptionI32.None_c1m412_5261 -> 0
+//     | Some_td x_3 -> x_3
+// 
+// // id = c1m412_2966
+// shared type Tree_c1m412_2966 =
+//     | Leaf_c1m412_2966 t_1
+//     | Node_c1m412_2966 (Tree_c1m412_2966 t_1) (Tree_c1m412_2966 t_1)
+// 
+// // id = c1m412_4625
+// Tree_c1m412_2966.map_c1m412_4625 (self_2: Tree_c1m412_2966 q_3) (f_4: fn q_3 -> z_6) : Tree_c1m412_2966 z_6 =
+//     match self_2
+//     | Leaf_td x_8 -> Leaf_td (f_4 x_8)
+//     | Node_td l_9 r_10 -> Node_td (l_9.map f_4) (r_10.map f_4)
+

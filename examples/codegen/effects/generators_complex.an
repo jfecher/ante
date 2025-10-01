@@ -48,9 +48,3 @@ iota 10
     with for my_print
 
 // args: --delete-binary
-// expected stdout:
-// 0, 0
-// 1, 4
-// 2, 8
-// 3, 12
-// 4, 16

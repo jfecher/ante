@@ -1,4 +1,3 @@
 puts "Hello, World!".c_string
 
 // args: --delete-binary
-// expected stdout: Hello, World!

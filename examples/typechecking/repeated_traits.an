@@ -3,7 +3,17 @@ foo a =
     print a
 
 // Make sure output is not "... given Print a, Print a"
-// args: --check --show-types
+
+// args: --show-types
 // expected stdout:
-// foo : forall a. (a -> Unit pure)
-//   given Print a
+// (foo: _1) (a: _8) =
+//     (print: (error)) (a: _8)
+//     (print: (error)) (a: _8)
+
+// expected stderr:
+// examples/typechecking/repeated_traits.an:2:4	error: `print` is not defined, was it a typo?
+//     print a
+// 
+// examples/typechecking/repeated_traits.an:3:4	error: `print` is not defined, was it a typo?
+//     print a
+

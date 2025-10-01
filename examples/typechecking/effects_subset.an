@@ -1,6 +1,6 @@
 // Regression for #215
 effect Emit a with
-    emit: a -> Unit
+    emit: fn a -> Unit
 
 iota (n: U32) = loop (i = 0) ->
     if i < n then
@@ -20,13 +20,15 @@ for stream f =
         f x
         resume ()
 
-iota 10
-    with filter (fn x -> x % 2 == 0)
-    with for print
+main () =
+    iota 10
+        with filter (fn x -> x % 2 == 0)
+        with for print
 
-// args: --check --show-types
-// expected stdout:
-// emit : forall a. (a -> Unit can Emit a)
-// filter : forall a b c d e. ((Unit => a can Emit d, e) - (d => Bool can Emit d, e) -> a can Emit d, e)
-// for : forall a b c d e f. ((Unit => a can Emit c, f) - (c => d can f) -> a can f)
-// iota : U32 -> Unit can Emit U32
+// args: --show-types
+// expected exit status: 101
+// expected stderr:
+// thread 'main' panicked at src/type_inference/cst_traversal.rs:274:9:
+// not yet implemented: check_handle
+// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+

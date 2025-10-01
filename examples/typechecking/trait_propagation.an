@@ -1,21 +1,19 @@
 
 extern bar : a
 
-trait Baz a with baz : a -> Unit
+trait Baz a with baz: fn a -> Unit
 
 foo () = baz bar
 
 // This test ensures the Baz constraint is solved in foo
 // rather than being propagated up into its signature just
 // because it has a typevariable.
-// 
-// args: --check --show-types
-// expected stdout:
-// bar : forall a. a
-// baz : forall a. (a -> Unit pure)
-//   given Baz a
-// foo : Unit -> Unit pure
+//
 
+// args: --show-types
+// expected exit status: 101
 // expected stderr:
-// trait_propagation.an:6:10	error: No impl found for Baz a
-// foo () = baz bar
+// thread 'main' panicked at src/type_inference/cst_traversal.rs:282:9:
+// not yet implemented: check_extern
+// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+

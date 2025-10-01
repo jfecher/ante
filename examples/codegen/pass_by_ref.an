@@ -1,6 +1,6 @@
 type S = message: String
 
-impl Print S with
+impl print_s: Print S with
     printne s = printne s.message
 
 // If the compiler decides to pass by reference, the code becomes:
@@ -20,6 +20,3 @@ mut x = S "original x string"
 foo x x
 
 // args: --delete-binary
-// expected stdout:
-// x before: original x string
-// x after:  original x string

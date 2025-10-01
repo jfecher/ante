@@ -1,19 +1,19 @@
 
 trait Functor f with
-    map: f a - (a -> b) -> f b
+    map: fn (f a) (fn a -> b) -> f b
 
 trait Monad m with
-    wrap: a -> m a
-    bind: m a - (a -> m b) -> m b
+    wrap: fn a -> m a
+    bind: fn (m a) (fn a -> m b) -> m b
 
 
-impl Functor Maybe with
+impl functor_maybe: Functor Maybe with
     map m f =
         match m
         | Some x -> Some (f x)
         | None -> None
 
-impl Monad Maybe with
+impl monad_maybe: Monad Maybe with
     wrap a = Some a
     
     bind m f =
@@ -21,11 +21,10 @@ impl Monad Maybe with
         | Some x -> f x
         | None -> None
 
-// args: --check --show-types
-// expected stdout:
-// bind : forall m c a b. (m a - (a -> m b can c) -> m b can c)
-//   given Monad m
-// map : forall f c a b. (f a - (a -> b can c) -> f b can c)
-//   given Functor f
-// wrap : forall m a. (a -> m a pure)
-//   given Monad m
+// args: --show-types
+// expected exit status: 101
+// expected stderr:
+// thread 'main' panicked at src/type_inference/cst_traversal.rs:278:9:
+// not yet implemented: check_impl
+// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+

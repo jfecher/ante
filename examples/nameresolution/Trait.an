@@ -1,19 +1,37 @@
 trait Foo a b with
-    foo: a -> b
+    foo: fn a -> b
     bar: a
 
-impl Foo I32 String with
+// error: missing definition of foo
+impl foo_i32_string: Foo I32 String with
     foo _x = "test"
-    baz = 2  // error: baz not in foo
-    // error: missing definition of foo
+    baz = 2
 
-foo 3
-bar : Unit
+main () =
+    foo 3
+    bar : Unit
 
-// args: --check
-// expected stderr:
-// Trait.an:7:5	error: baz is not required by Foo
-//     baz = 2  // error: baz not in foo
+// args: --show-resolved
+// expected stdout:
+// // id = c1m488_1237
+// trait Foo_c1m488_1237 a_1 b_2 with
+//     foo_3: fn a_1 -> b_2
+//     bar_6: a_1
 // 
-// Trait.an:5:1	error: impl is missing a definition for bar
-// impl Foo I32 String with
+// // id = c1m488_7510
+// impl foo_i32_string_c1m488_7510: Foo_c1m488_1237 I32 String_b with
+//     foo_1 _x_2 = "test"
+//     baz_3 = 2
+// 
+// // id = c1m488_1944
+// main_c1m488_1944 () =
+//     foo_? 3
+//     bar_?: Unit_?
+
+// expected stderr:
+// examples/nameresolution/Trait.an:11:4	error: `foo` is not defined, was it a typo?
+//     foo 3
+// 
+// examples/nameresolution/Trait.an:12:4	error: `bar` is not defined, was it a typo?
+//     bar : Unit
+
