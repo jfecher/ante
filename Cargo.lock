@@ -59,6 +59,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "ante"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "clap_complete",
+ "colored 2.2.0",
+ "deterministic-hash",
+ "goldentests",
+ "inc-complete",
+ "petgraph",
+ "rayon",
+ "ron",
+ "rustc-hash",
+ "scc",
+ "serde",
+]
+
+[[package]]
 name = "autocfg"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -323,24 +341,6 @@ checksum = "96936507f153605bddfcda068dd804796c84324ed2510809e5b2a624c81da765"
 dependencies = [
  "autocfg",
  "scopeguard",
-]
-
-[[package]]
-name = "new-ante"
-version = "0.1.0"
-dependencies = [
- "clap",
- "clap_complete",
- "colored 2.2.0",
- "deterministic-hash",
- "goldentests",
- "inc-complete",
- "petgraph",
- "rayon",
- "ron",
- "rustc-hash",
- "scc",
- "serde",
 ]
 
 [[package]]

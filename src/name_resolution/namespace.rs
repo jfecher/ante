@@ -36,6 +36,10 @@ impl SourceFileId {
         let local_module_id = LocalModuleId(crate::parser::ids::hash(path) as u32);
         SourceFileId { crate_id, local_module_id }
     }
+
+    pub fn prelude() -> SourceFileId {
+        Self::new(STDLIB_CRATE, &crate::paths::prelude_path())
+    }
 }
 
 /// A crate's id is a hash of its name and its version.

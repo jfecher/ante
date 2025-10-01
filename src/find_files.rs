@@ -4,12 +4,8 @@ use clap::builder::OsStr;
 use rustc_hash::FxHashSet;
 
 use crate::{
-    incremental::{Crate, Db, GetCrateGraph, SourceFile},
-    name_resolution::namespace::{CrateId, SourceFileId, LOCAL_CRATE, STDLIB_CRATE},
-    read_file,
+    incremental::{Crate, Db, GetCrateGraph, SourceFile}, name_resolution::namespace::{CrateId, SourceFileId, LOCAL_CRATE, STDLIB_CRATE}, paths::stdlib_path, read_file
 };
-
-const STDLIB_PATH: &str = "stdlib";
 
 pub type CrateGraph = BTreeMap<CrateId, Crate>;
 
@@ -22,8 +18,8 @@ pub fn populate_crates_and_files(compiler: &mut Db, starting_files: &[PathBuf]) 
     // before setting them in the Db at the end. If we set them before finding their source
     // files we'd need to needlessly clone them and update the Db twice instead of once.
     let mut crates = CrateGraph::default();
-    crates.insert(STDLIB_CRATE, Crate::new("Std".to_string(), PathBuf::from(STDLIB_PATH)));
 
+    add_stdlib_crate(&mut crates);
     populate_local_crate_with_starting_files(compiler, &mut crates, starting_files);
 
     let mut stack = vec![LOCAL_CRATE, STDLIB_CRATE];
@@ -44,6 +40,12 @@ pub fn populate_crates_and_files(compiler: &mut Db, starting_files: &[PathBuf]) 
     }
 
     set_crate_inputs(compiler, crates);
+}
+
+/// The Prelude should always be at a known ID for every file to import it implicitly.
+/// We manually populate the stdlib crate with the prelude here to ensure it has that ID.
+fn add_stdlib_crate(crates: &mut CrateGraph) {
+    crates.insert(STDLIB_CRATE, Crate::new("Std".to_string(), stdlib_path()));
 }
 
 /// Create the local crate's Crate entry in the graph and populate it with the given starting files.
@@ -92,6 +94,7 @@ fn add_source_files_of_crate(compiler: &mut Db, crates: &mut CrateGraph, crate_i
 
         for file in src_folder.flatten() {
             let path = file.path();
+
             if path.is_dir() {
                 remaining.push(path);
             } else if path.extension() == Some(&OsStr::from("an")) {
