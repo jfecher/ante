@@ -1,9 +1,0 @@
-- Kind checking!
-- Locations should be stored in a `types::traits::Impl` for better error messages for trait errors
-- Audit uses of `typechecker::unify` to maybe specialize them to improve error messages for type errors
-- Improve parser error messages
-- Improve type checker error messages
-  - 'type mismatch' should be more specific
-  - wrong number of parameters used points to definition rather than callsite or both
-- Declare-before use for impls
-- Support variadic functions in cranelift backend. Goal: support `extern printf: (ref char) ... -> int`
