@@ -554,7 +554,7 @@ impl<'tokens> Parser<'tokens> {
         let id: TopLevelId;
 
         let kind = match self.current_token() {
-            Token::Identifier(_) | Token::TypeName(_) => {
+            Token::Identifier(_) | Token::TypeName(_) | Token::ParenthesisLeft => {
                 let definition = self.parse_definition()?;
                 // parse_definition can eat the trailing newline
                 if *self.previous_token() == Token::Newline {
@@ -666,7 +666,7 @@ impl<'tokens> Parser<'tokens> {
 
     fn parse_function_name_pattern(&mut self) -> Result<PatternId> {
         self.with_pattern_id_and_location(|this| match this.current_token() {
-            Token::Identifier(_) => this.parse_ident_id().map(Pattern::Variable),
+            Token::Identifier(_) | Token::ParenthesisLeft => this.parse_ident_id().map(Pattern::Variable),
             Token::TypeName(_) => {
                 let type_name = this.parse_type_name_id()?;
                 this.expect(Token::MemberAccess, "a `.` to separate this method's object type from its name")?;
@@ -946,18 +946,24 @@ impl<'tokens> Parser<'tokens> {
     /// Parse 0 or more of `parser` items
     fn many0<T>(&mut self, mut parser: impl FnMut(&mut Self) -> Result<T>) -> Vec<T> {
         let mut items = Vec::new();
+        let mut last_success_position = self.token_index;
         while let Ok(item) = parser(self) {
             items.push(item);
+            last_success_position = self.token_index;
         }
+        self.token_index = last_success_position;
         items
     }
 
     /// Parse 1 or more of `parser` items
     fn many1<T>(&mut self, mut parser: impl FnMut(&mut Self) -> Result<T>) -> Result<Vec<T>> {
         let mut items = vec![parser(self)?];
+        let mut last_success_position = self.token_index;
         while let Ok(item) = parser(self) {
             items.push(item);
+            last_success_position = self.token_index;
         }
+        self.token_index = last_success_position;
         Ok(items)
     }
 
@@ -965,15 +971,29 @@ impl<'tokens> Parser<'tokens> {
         &mut self, mut parser: impl FnMut(&mut Self) -> Result<T>, delimiter: Token, allow_trailing: bool,
     ) -> Vec<T> {
         let mut items = Vec::new();
+        // Some parsers consume input even on failure. Save the current position here to
+        // recover to it when `parser` fails to parse.
+        let mut last_success_position = self.token_index;
 
         match parser(self) {
             Ok(item) => items.push(item),
-            Err(_) => return items,
+            Err(_) => {
+                self.token_index = last_success_position;
+                return items;
+            }
         }
 
+        last_success_position = self.token_index;
+
         while self.accept(delimiter.clone()) {
+            // Update the success position to include the delimiter as well
+            last_success_position = self.token_index;
+
             match parser(self) {
-                Ok(item) => items.push(item),
+                Ok(item) => {
+                    items.push(item);
+                    last_success_position = self.token_index;
+                }
                 Err(_) if allow_trailing => break,
                 Err(error) => {
                     self.diagnostics.push(error);
@@ -982,6 +1002,7 @@ impl<'tokens> Parser<'tokens> {
             }
         }
 
+        self.token_index = last_success_position;
         items
     }
 
@@ -1040,6 +1061,9 @@ impl<'tokens> Parser<'tokens> {
                 self.advance();
                 Ok(Pattern::Literal(Literal::Char(*value)))
             },
+            Token::ParenthesisLeft if self.peek_next_token().is_overloadable_operator() => {
+                self.parse_ident_id().map(Pattern::Variable)
+            }
             Token::ParenthesisLeft => {
                 self.advance();
                 let pattern = self.parse_with_recovery(
@@ -1050,10 +1074,7 @@ impl<'tokens> Parser<'tokens> {
                 self.expect(Token::ParenthesisRight, "a `)` to close the opening `(` from the parameter")?;
                 Ok(pattern)
             },
-            Token::Identifier(_) => {
-                let name = self.parse_ident_id()?;
-                Ok(Pattern::Variable(name))
-            },
+            Token::Identifier(_) => self.parse_ident_id().map(Pattern::Variable),
             Token::TypeName(_) => {
                 let path = self.parse_type_path_id()?;
                 Ok(Pattern::Constructor(path, Vec::new()))
@@ -1176,6 +1197,7 @@ impl<'tokens> Parser<'tokens> {
             Token::If => self.parse_if_expr(),
             Token::Match => self.parse_match(),
             Token::Handle => self.parse_handle(),
+            Token::Loop => self.parse_loop(),
             _ => self.parse_shunting_yard(),
         }
     }
@@ -1231,16 +1253,14 @@ impl<'tokens> Parser<'tokens> {
 
     fn parse_term_inner(&mut self) -> Result<ExprId> {
         match self.current_token() {
-            // definition, variable, function call
-            Token::Identifier(_) | Token::TypeName(_) => self.parse_function_call_or_atom(),
-            Token::Subtract | Token::Ampersand | Token::ExclamationMark | Token::At => self.parse_left_unary(),
-            _ => self.parse_atom(),
+            Token::Subtract | Token::Ampersand | Token::ExclamationMark | Token::At | Token::Not => self.parse_left_unary(),
+            _ => self.parse_function_call_or_atom(),
         }
     }
 
     fn parse_left_unary(&mut self) -> Result<ExprId> {
         match self.current_token() {
-            operator @ (Token::Subtract | Token::ExclamationMark | Token::Ampersand | Token::At) => {
+            operator @ (Token::Subtract | Token::ExclamationMark | Token::Ampersand | Token::At | Token::Not) => {
                 let call_id = self.reserve_expr();
                 let function_id = self.reserve_expr();
 
@@ -1369,6 +1389,48 @@ impl<'tokens> Parser<'tokens> {
         }
     }
 
+    /// Parse a loop expression
+    /// TODO: These aren't handled currently, we just need the stdlib to parse so we return another
+    /// expression.
+    fn parse_loop(&mut self) -> Result<ExprId> {
+        self.with_expr_id_and_location(|this| {
+            this.expect(Token::Loop, "`loop` to start a loop expression")?;
+            let _parameters = this.many1(Self::loop_parameter)?;
+            this.expect(Token::RightArrow, "`->` to separate the loop parameters from its body")?;
+            let _body = this.parse_block_or_expression();
+
+            // Now throw everything away because we don't have a loop Cst node.
+            Ok(Expr::Error)
+        })
+    }
+
+    fn loop_parameter(&mut self) -> Result<(PatternId, ExprId)> {
+        match self.current_token() {
+            Token::Identifier(name) => {
+                // Parse the same name twice as a pattern and expression
+                let arc_name = Arc::new(name.clone());
+                let location = self.current_token_location();
+                let name_id = self.push_name(arc_name, location.clone());
+                let pattern_id = self.push_pattern(Pattern::Variable(name_id), location.clone());
+
+                let path = Path { components: vec![(name.clone(), location.clone())] };
+                let path_id = self.push_path(path, location.clone());
+                let name_expr = self.push_expr(Expr::Variable(path_id), location);
+                self.advance();
+                Ok((pattern_id, name_expr))
+            },
+            Token::ParenthesisLeft => {
+                self.advance();
+                let pattern = self.parse_pattern()?;
+                self.expect(Token::Equal, "`=` to separate the loop parameter's name from its initial valeu")?;
+                let expr = self.parse_expression()?;
+                self.expect(Token::ParenthesisRight, "`)` to close the opening `(` of this loop parameter")?;
+                Ok((pattern, expr))
+            },
+            _ => self.expected("an identifier or `(` to begin a loop parameter"),
+        }
+    }
+
     fn parse_lambda(&mut self) -> Result<ExprId> {
         self.with_expr_id_and_location(|this| {
             this.expect(Token::Fn, "`fn` to start this lambda")?;
@@ -1407,7 +1469,18 @@ impl<'tokens> Parser<'tokens> {
         }
 
         self.token_index = previous_position;
-        self.parse_expression()
+
+        let expression = self.parse_expression()?;
+
+        // Try to parse an assignment
+        if self.accept(Token::Assignment) {
+            let rhs = self.parse_expression()?;
+            let location = self.expr_location(expression).to(&self.expr_location(rhs));
+            // TODO: CST node for assignments
+            Ok(self.push_expr(Expr::Error, location))
+        } else {
+            Ok(expression)
+        }
     }
 
     fn with_expr_id(&mut self, f: impl FnOnce(&mut Self) -> Result<(Expr, Location)>) -> Result<ExprId> {
@@ -1435,11 +1508,16 @@ impl<'tokens> Parser<'tokens> {
             let condition =
                 this.parse_expr_with_recovery(Self::parse_block_or_expression, Token::Then, &[Token::Newline])?;
 
+            this.accept(Token::Newline);
             this.expect(Token::Then, "a `then` to end this if condition")?;
 
             let then = this.parse_expr_with_recovery(body, Token::Else, &[Token::Newline])?;
 
-            this.accept(Token::Newline);
+            // If we allow an optional newline without an else, a lone `if a then b` could
+            // eat the newline meant to separate two statements.
+            if *this.peek_next_token() == Token::Else {
+                this.accept(Token::Newline);
+            }
 
             let else_ = if this.accept(Token::Else) { Some(body(this)?) } else { None };
             Ok(Expr::If(cst::If { condition, then, else_ }))
@@ -1572,6 +1650,7 @@ impl<'tokens> Parser<'tokens> {
 
     fn parse_function_call_or_atom(&mut self) -> Result<ExprId> {
         let function = self.parse_atom()?;
+        let index_before_arguments = self.token_index;
 
         if let Ok(arguments) = self.many1(Self::parse_function_arg) {
             let last_arg_location = self.expr_location(*arguments.last().unwrap());
@@ -1579,6 +1658,7 @@ impl<'tokens> Parser<'tokens> {
             let call = Expr::Call(Call { function, arguments });
             Ok(self.push_expr(call, location))
         } else {
+            self.token_index = index_before_arguments;
             Ok(function)
         }
     }
@@ -1622,10 +1702,26 @@ impl<'tokens> Parser<'tokens> {
         Ok(self.push_path(path, location))
     }
 
+    /// ident_id: ident
+    ///         | '(' overloadable_operator ')'
     fn parse_ident_id(&mut self) -> Result<NameId> {
-        let name = Arc::new(self.parse_ident()?);
-        let location = self.previous_token_location();
-        Ok(self.push_name(name, location))
+        match self.current_token() {
+            Token::Identifier(name) => {
+                let name = Arc::new(name.clone());
+                let location = self.previous_token_location();
+                self.advance();
+                Ok(self.push_name(name, location))
+            },
+            Token::ParenthesisLeft if self.peek_next_token().is_overloadable_operator() => {
+                self.advance();
+                let location = self.current_token_location();
+                let name = Arc::new(self.current_token().to_string());
+                self.advance();
+                self.expect(Token::ParenthesisRight, "`)` to close the opening `(`")?;
+                Ok(self.push_name(name, location))
+            }
+            _ => self.expected("an identifier"),
+        }
     }
 
     fn parse_type_name_id(&mut self) -> Result<NameId> {
@@ -1694,15 +1790,25 @@ impl<'tokens> Parser<'tokens> {
 
         let name = self.parse_ident_id()?;
         let parameters = self.parse_impl_parameters();
+
+        self.accept(Token::Newline);
         self.expect(Token::Colon, "a `:` to separate this impl's name from its type")?;
 
         let trait_path = self.parse_type_path_id()?;
         let trait_arguments = self.many0(Self::parse_type_arg);
         self.expect(Token::With, "`with` to separate this trait impl's signature from its body")?;
 
-        let body = self.parse_indented(|this| Ok(this.delimited(Self::parse_definition, Token::Newline, true)))?;
-
+        let body = self.parse_impl_body()?;
         Ok(cst::TraitImpl { name, parameters, trait_path, trait_arguments, body })
+    }
+
+    fn parse_impl_body(&mut self) -> Result<Vec<Definition>> {
+        match self.current_token() {
+            Token::Indent => {
+                self.parse_indented(|this| Ok(this.delimited(Self::parse_definition, Token::Newline, true)))
+            }
+            _ => self.parse_definition().map(|definition| vec![definition]),
+        }
     }
 
     fn parse_effect_definition(&mut self) -> Result<cst::EffectDefinition> {

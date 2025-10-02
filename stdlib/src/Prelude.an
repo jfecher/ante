@@ -18,7 +18,7 @@ extern
     calloc: fn /*items:*/Usz /*size:*/Usz -> Ptr a
     realloc: fn (Ptr a) Usz -> Ptr a
     free: fn (Ptr a) -> Unit
-    memcpy: fn (Ptr a) (Ptr b) Usz -> Ptr a //dest
+    memcpy: fn (Ptr a) (Ptr b) Usz -> Ptr a
     system: fn (Ptr Char) -> I32
     strlen: fn (Ptr Char) -> Usz
 
@@ -72,7 +72,7 @@ fifth (_, _, _, _, e) = e
 
 /// A type conversion from a to b
 trait Cast a b with
-    cast: a -> b
+    cast: fn a -> b
 
 impl cast_same: Cast a a with
     cast a = a
@@ -192,28 +192,28 @@ impl cast_char_i32: Cast Char I32 with cast x = builtin "SignExtend" x
 
 /// Represents a failable type cast from a to b
 trait TryCast a b with
-    try_cast: a -> Maybe b
+    try_cast: fn a -> Maybe b
 
 impl try_cast_from_cast {Cast a b}: TryCast a b with
     try_cast a = Some (cast a)
 
 
 // Huge block of builtin numeric operators incoming
-trait Add n with (+): n - n -> n
+trait Add n with (+): fn n n -> n
 impl add_int: Add (Int a) with (+) x y = builtin "AddInt" x y
 impl add_float: Add (Float a) with (+) x y = builtin "AddFloat" x y
 impl add_char: Add Char with (+) (x: Char) (y: Char) : Char = builtin "AddInt" x y
 
-trait Sub n with (-): n - n -> n
+trait Sub n with (-): fn n n -> n
 impl sub_int: Sub (Int a) with (-) x y = builtin "SubInt" x y
 impl sub_float: Sub (Float a) with (-) x y = builtin "SubFloat" x y
 impl sub_char: Sub Char with (-) (x: Char) (y: Char) : Char = builtin "SubInt" x y
 
-trait Mul n with (*): n - n -> n
+trait Mul n with (*): fn n n -> n
 impl mul_int: Mul (Int a) with (*) x y = builtin "MulInt" x y
 impl mul_float: Mul (Float a) with (*) x y = builtin "MulFloat" x y
 
-trait Div n with (/): n - n -> n
+trait Div n with (/): fn n n -> n
 impl div_i8: Div I8  with (/) x y = builtin "DivSigned" x y
 impl div_i16: Div I16 with (/) x y = builtin "DivSigned" x y
 impl div_i32: Div I32 with (/) x y = builtin "DivSigned" x y
@@ -226,7 +226,7 @@ impl div_u64: Div U64 with (/) x y = builtin "DivUnsigned" x y
 impl div_usz: Div Usz with (/) x y = builtin "DivUnsigned" x y
 impl div_float: Div (Float a) with (/) x y = builtin "DivFloat" x y
 
-trait Mod n with (%): n - n -> n
+trait Mod n with (%): fn n n -> n
 impl mod_i8: Mod I8  with (%) x y = builtin "ModSigned" x y
 impl mod_i16: Mod I16 with (%) x y = builtin "ModSigned" x y
 impl mod_i32: Mod I32 with (%) x y = builtin "ModSigned" x y
@@ -241,7 +241,7 @@ impl mod_usz: Mod Usz with (%) x y = builtin "ModUnsigned" x y
 // Cranelift backend does not support floating-point remainder or modulus
 // impl Mod F64 with (%) (_: F64) (_: F64) : F64 = builtin "ModFloat"
 
-trait Eq t with (==): t - t -> Bool
+trait Eq t with (==): fn t t -> Bool
 impl eq_int: Eq (Int a) with (==) x y = builtin "EqInt" x y
 impl eq_float: Eq (Float a) with (==) x y = builtin "EqFloat" x y
 
@@ -252,7 +252,7 @@ impl eq_bool: Eq Bool with (==) (x: Bool) (y: Bool) : Bool = builtin "EqBool" x 
 (!=) l r = not (l == r)
 
 trait Cmp a with
-    (<): a - a -> Bool
+    (<): fn a a -> Bool
 
 // TODO: Partial ordering screws everything up
 (>) a b = b < a
@@ -284,10 +284,10 @@ impl try_cast_u64: TryCast U64 I64 with
         else Some (transmute x)
 
 trait Append a with
-    (++): a - a -> a
+    (++): fn a a -> a
 
 trait Extract collection index -> elem with
-    (.[): collection - index -> elem
+    (.[): fn collection index -> elem
 
 impl extract_ptr_usz: Extract (Ptr t) Usz t with
     (.[) ptr index = deref_ptr <| offset ptr index
@@ -339,7 +339,7 @@ ptr_store (p: Ptr a) (value: a) : Unit =
 array_insert (p: Ptr a) (index: Usz) (value: a) : Unit =
     offset p index |> ptr_store value
 
-ptr_to_ref: Ptr a -> !a = transmute
+ptr_to_ref: fn (Ptr a) -> !a = transmute
 
 (@) = deref
 
@@ -353,22 +353,22 @@ transmute (x: a) : b =
 //     (#): mut collection - index - elem -> Unit
 
 trait In elem col with
-    (in): elem - col -> Bool
+    (in): fn elem col -> Bool
 
 // trait Deref ptr -> elem
-//     deref: ptr -> elem
+//     deref: fn ptr -> elem
 
-// TODO: Do we really need a separate trait for unary '-'?
+// TODO: Do we really need a separate trait for unary c"-"?
 // trait Neg t
-//     (-): t -> t
+//     (-): fn t -> t
 
 
 trait Print t with
-    printne: t -> Unit
+    printne: fn t -> Unit
 
 print x =
     printne x
-    putchar '\n'
+    putchar c"\n"
 
 impl print_u8:  Print U8  with printne x = print_unsigned (cast x)
 impl print_u16: Print U16 with printne x = print_unsigned (cast x)
@@ -402,12 +402,12 @@ impl print_f32: Print F32 with printne x = print_float (cast x)
 // TODO: temporary, very inaccurate
 print_float (f: F64) =
     if f < 0.0 then
-        putchar '-'
+        putchar c"-"
         print_float (0.0-f)
     else
         uint = cast f
         print_unsigned uint
-        putchar '.'
+        putchar c"."
         f2 = f - cast uint
         // Show up to 5 decimal places
         print_unsigned (cast (f2 * 10_000.0))
@@ -433,14 +433,14 @@ unwrap (m: Maybe t) : t =
 print_unsigned (x: U64) : Unit =
     if x >= 10 then print_unsigned (x / 10)
     digit: Char = cast (x % 10)
-    putchar (digit + '0')
+    putchar (digit + c"0")
 
 print_signed (x: I64) (min: I64) (min_string: String) : Unit =
     if x < 0 then
         if x == min then
             printne min_string
         else
-            putchar '-'
+            putchar c"-"
             print_unsigned <| unwrap <| try_cast (0-x)
     else
         print_unsigned <| unwrap <| try_cast x
@@ -456,7 +456,7 @@ print_string (s: String) : Unit =
 print_c_string (s: Ptr Char) : Unit =
     loop s (i = 0) ->
         c = deref_ptr (offset s i)
-        if c != '\0' then
+        if c != c"\0" then
             putchar c
             recur s (i + 1)
 
@@ -482,7 +482,8 @@ impl cast_int_string
     cast i =
       abs, sign_off = if i < 0 then (i * -1, 1) else (i, 0)
       len = loop abs (cmp = 10) ->
-        next = cmp * 10 // Need to check for overflow here
+        // Need to check for overflow here
+        next = cmp * 10
         if abs >= cmp and next > cmp
         then 1 + recur abs next
         else 1
@@ -490,37 +491,17 @@ impl cast_int_string
       size = len + sign_off + 1
       buf = malloc size
       if sign_off == 1
-      then ptr_to_ref <| offset buf 0 := '-'
-      ptr_to_ref <| offset buf (size - 1) := '\0'
+      then ptr_to_ref <| offset buf 0 := c"-"
+      ptr_to_ref <| offset buf (size - 1) := c"\0"
 
       loop (pos = len - 1) (buf = offset buf sign_off) abs ->
         char_offset = cast (abs % 10) : Char
-        ptr_to_ref <| offset buf pos := '0' + char_offset
+        ptr_to_ref <| offset buf pos := c"0" + char_offset
         if pos > 0
         then recur (pos - 1) buf (abs / 10)
 
       String buf (size - 1)
 
-
-// TODO: mut
-// parse (s: String) -> Maybe int =
-//     i = mut 0
-//     sum = mut 0
-//     isNeg =
-//         if s.len == 0 or s.c_string#0 == '-' then false
-//         else ((i += 1); true)
-//
-//     while s.c_string#i != '\0' do
-//         c = s.c_string#i
-//         if c >= '0' and c <= '9' then
-//             sum *= 10
-//             sum += cast (c - '0')
-//             i += 1
-//             None
-//         else
-//             return None
-//
-//     Some (if isNeg then -1 * sum else sum)
 
 impl eq_ref {Eq t}: Eq &t with
     (==) l r = deref l == deref r
@@ -530,7 +511,7 @@ impl eq_ptr: Eq (Ptr t) with
 
 
 trait Iterator it -> elem with
-    next: it -> Maybe (it, elem)
+    next: fn it -> Maybe (it, elem)
 
 iter iterable f =
     match next iterable
@@ -549,10 +530,10 @@ impl iterator_range {Cmp (Int a)}: Iterator (Range (Int a)) (Int a) with
             next = Range (range.start + 1) range.end
             Some (next, range.start)
 
-iter_range (from: Usz) (to: Usz) (f: Usz => Unit) : Unit =
+iter_range (from: Usz) (to: Usz) (f: fn Usz => Unit) : Unit =
     iter (Range from to) f
 
-repeat (count: Usz) (f: Usz => Unit) : Unit =
+repeat (count: Usz) (f: fn Usz => Unit) : Unit =
     iter (Range 0 count) f
 
 // Iterating through an InFile iterates through each line
@@ -630,7 +611,7 @@ next_line (f: InFile) : String =
         c: Char = cast next
 
         //Flag feof if eof occurs after terminating newline
-        if c == '\n' then
+        if c == c"\n" then
             peek = next_char f
             if peek >= 0 then ungetc (cast peek) f
             return len
@@ -642,10 +623,10 @@ next_line (f: InFile) : String =
         array_insert (@cstr) len c
         recur (len + 1)
 
-    array_insert (@cstr) len '\0'
+    array_insert (@cstr) len c"\0"
     String (@cstr) len
 
-// Read a line from stdin, ending with (and not including) a terminating '\n'
+// Read a line from stdin, ending with (and not including) a terminating c"\n"
 read_line () : String =
     buffer, len = loop (buffer = null ()) (len = 0) ->
         c = getchar ()
@@ -657,11 +638,11 @@ read_line () : String =
 
         array_insert buffer2 len c_char
 
-        if c_char != '\n' and c >= 0
+        if c_char != c"\n" and c >= 0
         then recur buffer2 (len + 1)
         else buffer2, len
 
-    array_insert buffer len '\0'
+    array_insert buffer len c"\0"
     String buffer len
 
 input msg =

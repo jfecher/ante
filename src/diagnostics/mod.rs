@@ -49,7 +49,7 @@ impl PartialOrd for Diagnostic {
 }
 
 impl Diagnostic {
-    fn kind(&self) -> DiagnosticKind {
+    pub fn kind(&self) -> DiagnosticKind {
         use Diagnostic::*;
         match self {
             NameAlreadyInScope { .. } | ImportedNameAlreadyInScope { .. } => DiagnosticKind::Warning,
@@ -200,7 +200,7 @@ impl Diagnostic {
 }
 
 #[derive(Copy, Clone)]
-enum DiagnosticKind {
+pub enum DiagnosticKind {
     Error,
     Warning,
     #[allow(unused)]

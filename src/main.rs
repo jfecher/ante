@@ -24,6 +24,7 @@
 
 use clap::{CommandFactory, Parser};
 use cli::{Cli, Completions};
+use colored::Colorize;
 use diagnostics::Diagnostic;
 use find_files::populate_crates_and_files;
 use inc_complete::{Computation, StorageFor};
@@ -38,7 +39,7 @@ use std::{
 };
 
 use crate::{
-    diagnostics::Errors,
+    diagnostics::{DiagnosticKind, Errors},
     incremental::{DbStorage, TypeCheck},
 };
 
@@ -93,7 +94,7 @@ fn compile(args: Cli) {
     // files that are no longer used are never cleared.
     populate_crates_and_files(&mut compiler, &args.files);
 
-    let errors = if args.show_tokens {
+    let diagnostics = if args.show_tokens {
         display_tokens(&compiler);
         BTreeSet::new()
     } else if args.show_parse {
@@ -106,14 +107,51 @@ fn compile(args: Cli) {
         BTreeSet::new()
     };
 
-    for error in errors {
-        eprintln!("{}", error.display(true, &compiler));
-    }
+    display_diagnostics(diagnostics, &compiler);
 
     if let Some(metadata_file) = metadata_file {
         if let Err(error) = write_metadata(compiler, &metadata_file) {
             eprintln!("\n{error}");
         }
+    }
+}
+
+/// Returns a pair of (error count, warning count)
+fn classify_diagnostics(diagnostics: &BTreeSet<Diagnostic>) -> (usize, usize) {
+    let mut error_count = 0;
+    let mut warning_count = 0;
+    for diagnostic in diagnostics {
+        match diagnostic.kind() {
+            DiagnosticKind::Error => error_count += 1,
+            DiagnosticKind::Warning => warning_count += 1,
+            DiagnosticKind::Note => (),
+        }
+    }
+    (error_count, warning_count)
+}
+
+fn display_diagnostics(diagnostics: BTreeSet<Diagnostic>, compiler: &Db) {
+    let (error_count, warning_count) = classify_diagnostics(&diagnostics);
+    for diganostic in diagnostics {
+        eprintln!("{}", diganostic.display(true, &compiler));
+    }
+
+    if error_count != 0 {
+        let error_s = if error_count == 1 { "" } else { "s" };
+        let errors = format!("{error_count} error{error_s}").red();
+
+        let warning_s = if warning_count == 1 { "" } else { "s" };
+        let warnings = format!("{warning_count} warning{warning_s}");
+
+        if warning_count == 0 {
+            eprintln!("Found {errors} and {warnings}");
+        } else {
+            eprintln!("Found {errors} and {}", warnings.yellow());
+        }
+    } else if warning_count != 0 {
+        let warning_s = if warning_count == 1 { "" } else { "s" };
+        let warnings = format!("{warning_count} warning{warning_s}");
+        eprintln!("Compiled with {}", warnings.yellow());
     }
 }
 
