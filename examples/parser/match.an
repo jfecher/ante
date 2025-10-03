@@ -23,7 +23,7 @@ main () =
 //     match test "foo" "bar"
 
 // expected stderr:
-// examples/parser/match.an:4:8	error: Expected an unindent but found `3`
+// examples/parser/match.an:4:4	error: Expected an unindent but found `|`
 //     | 2 3 -> "foo"
 // 
 // examples/parser/match.an:10:4	error: Expected a top-level item but found `|`
@@ -37,4 +37,6 @@ main () =
 // 
 // examples/parser/match.an:17:4	error: Expected a top-level item but found `"done"`
 //     "done"
+// 
+// Found 5 errors and 0 warnings
 

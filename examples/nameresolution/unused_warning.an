@@ -17,4 +17,6 @@ id x = error
 // 
 // examples/nameresolution/unused_warning.an:4:7	error: `error` is not defined, was it a typo?
 // id x = error
+// 
+// Found 1 error and 1 warning
 

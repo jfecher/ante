@@ -23,12 +23,12 @@ a = 3 // already declared
 // // id = c1m416_1944
 // main_c1m416_1944 () =
 //     not_an_error_c1m416_9923 is_an_error_?
-//     fn a_4 b_5 -> +_? (+_? a_4 c_?) b_5
+//     fn a_4 b_5 -> (a_4 +_? c_?) +_? b_5
 // 
 // // id = c1m416_3132
 // foo_c1m416_3132 a_1 b_2 =
-//     bar_? c_? d_? =
-//         b_?
+//     bar_3 c_4 d_5 =
+//         b_2
 //     ()
 // 
 // // id = c1m416_7365
@@ -55,4 +55,6 @@ a = 3 // already declared
 // 
 // examples/nameresolution/errors.an:16:6	error: Expected a newline after the top level item but found //// already declared
 // a = 3 // already declared
+// 
+// Found 5 errors and 1 warning
 

@@ -468,6 +468,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
             crate::parser::cst::Type::Error => TypeId::ERROR,
             crate::parser::cst::Type::Unit => TypeId::UNIT,
+            crate::parser::cst::Type::Pair => TypeId::PAIR,
             crate::parser::cst::Type::Application(f, args) => {
                 let f = self.convert_ast_type(f);
                 let args = vecmap(args, |typ| self.convert_ast_type(typ));

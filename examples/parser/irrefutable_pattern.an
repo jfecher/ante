@@ -8,7 +8,7 @@ baz (a, b) c = ()
 // expected stdout:
 // foo () = ()
 // 
-// bar (, (, a b) c) = , a (, b c)
+// bar (, (, a b) c) = a , (b , c)
 // 
 // baz (, a b) c = ()
 

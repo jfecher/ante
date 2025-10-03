@@ -249,6 +249,8 @@ checksum = "d9c4f5dac5e15c24eb999c26181a6ca40b39fe946cbe4c263c7209467bc83af2"
 [[package]]
 name = "goldentests"
 version = "1.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b5cf23a0e42b915eb405d068a7969de8ab8f80d093f50cd1c7a2ba82f6f2de6"
 dependencies = [
  "colored 3.0.0",
  "serde",

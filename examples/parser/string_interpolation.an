@@ -16,4 +16,6 @@ main () =
 // expected stderr:
 // examples/parser/string_interpolation.an:2:15	error: Expected an unindent but found `${`
 //     shout x = "${x}!"
+// 
+// Found 1 error and 0 warnings
 

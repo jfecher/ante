@@ -18,11 +18,11 @@ c = foo "one" "two"
 // trait Foo a with
 //     (foo: (error)): fn a a -> a
 // 
-// (a: _1) = (foo: (error)) 1 2_I32
+// (a: _0) = (foo: (error)) 1 2_I32
 // 
-// (b: _1) = (foo: (error)) 1 2
+// (b: _0) = (foo: (error)) 1.0 2.0
 // 
-// (c: _1) = (foo: (error)) "one" "two"
+// (c: _0) = (foo: (error)) "one" "two"
 
 // expected stderr:
 // examples/typechecking/impl.an:5:5	error: Expected an identifier but found `Foo`
@@ -39,4 +39,6 @@ c = foo "one" "two"
 // 
 // examples/typechecking/impl.an:14:4	error: `foo` is not defined, was it a typo?
 // c = foo "one" "two"
+// 
+// Found 5 errors and 0 warnings
 

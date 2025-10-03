@@ -46,5 +46,5 @@ impl _: Collection (fn a -> a) Unit with
 // impl _: Collection (fn a -> a) Unit with
 //     push c e = c
 //     pop c = ()
-//     empty = fn a -> a
+//     empty a = a
 

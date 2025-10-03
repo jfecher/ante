@@ -57,6 +57,8 @@ map4 (l: List a) (f: fn a -> b) : List b can Log = ()
 // map4 (l: List a) (f: fn a -> b) : List b can Log = ()
 
 // expected stderr:
-// examples/parser/effects.an:15:10	error: Expected an unindent but found `"a"`
+// examples/parser/effects.an:15:4	error: Expected an unindent but found `|`
 //     | log "a" -> print "case 1"
+// 
+// Found 1 error and 0 warnings
 

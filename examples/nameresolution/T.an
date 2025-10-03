@@ -28,4 +28,6 @@ t x = u x
 // 
 // examples/nameresolution/T.an:4:6	error: `u` is not defined, was it a typo?
 // t x = u x
+// 
+// Found 4 errors and 0 warnings
 

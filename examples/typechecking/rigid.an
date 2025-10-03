@@ -7,7 +7,7 @@ ex2: a -> b =
     fn x -> x
 
 // args: --show-types
-// expected stdout: (ex1: fn a -> b) ((x: a)) : b = (+: (error)) (x: a) 1_U32
+// expected stdout: (ex1: fn a -> b) ((x: a)) : b = (x: a) (+: (error)) 1_U32
 
 
 
@@ -17,4 +17,6 @@ ex2: a -> b =
 // 
 // examples/typechecking/rigid.an:6:7	error: Expected `=` to begin the function body but found `->`
 // ex2: a -> b =
+// 
+// Found 2 errors and 0 warnings
 

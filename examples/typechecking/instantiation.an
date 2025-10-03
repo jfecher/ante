@@ -14,9 +14,30 @@ main () =
 id x = x
 
 // args: --show-types
-// expected exit status: 101
+// expected stdout:
+// (add: fn (fn _15 _13 -> _10) (fn _15 _16 -> _13) -> fn _15 -> fn _16 -> _10) (m: fn _15 _13 -> _10) (n: fn _15 _16 -> _13) = fn (f: _15) -> fn (x: _16) -> (m: fn _15 _13 -> _10) (f: _15) ((n: fn _15 _16 -> _13) (f: _15) (x: _16))
+// 
+// (one: fn (fn _6 -> _4) _6 -> _4) (f: fn _6 -> _4) (x: _6) = (f: fn _6 -> _4) (x: _6)
+// 
+// (two1: fn (fn _8 -> _8) _8 -> _8) (f: fn _8 -> _8) (x: _8) = (f: fn _8 -> _8) ((f: fn _8 -> _8) (x: _8))
+// 
+// (two2: fn (fn _8 -> _8) -> fn _8 -> _8) = (add: fn (fn (fn _8 -> _8) _8 -> _8) (fn (fn _8 -> _8) _8 -> _8) -> fn (fn _8 -> _8) -> fn _8 -> _8) (one: fn (fn _8 -> _8) _8 -> _8) (one: fn (fn _8 -> _8) _8 -> _8)
+// 
+// (main: fn Unit -> String) () =
+//     (id: fn I32 -> I32) 3
+//     (id: fn String -> String) "four"
+// 
+// (id: fn _3 -> _3) (x: _3) = (x: _3)
+
 // expected stderr:
-// thread 'main' panicked at src/type_inference/get_type.rs:28:17:
-// GetType used on definition without a type annotation that has not yet been inferred. This is likely an issue with the order of type checking determined by the dependency graph.
-// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+// examples/typechecking/instantiation.an:2:39	error: Expected a newline after the top level item but found //// (a -> b -> c) -> (a -> d -> b) -> a -> d -> c
+// add m n = fn f -> fn x -> m f (n f x)  // (a -> b -> c) -> (a -> d -> b) -> a -> d -> c
+// 
+// examples/typechecking/instantiation.an:4:15	error: Expected a newline after the top level item but found //// (a -> b) -> a -> b
+// one f x = f x  // (a -> b) -> a -> b
+// 
+// examples/typechecking/instantiation.an:5:19	error: Expected a newline after the top level item but found //// (a -> a) -> a -> a
+// two1 f x = f (f x) // (a -> a) -> a -> a
+// 
+// Found 3 errors and 0 warnings
 

@@ -29,9 +29,44 @@ ex2c (a: v) b =
     ex2a a b
 
 // args: --show-types
-// expected exit status: 101
+// expected stdout:
+// (ex1a: fn t _18 -> U32) ((a: t)) (b: _18) =
+//     (ex1b: fn t _18 -> U32) (a: t) (b: _18)
+//     0_U32
+// 
+// (ex1b: fn u _18 -> U32) ((a: u)) (b: _18) =
+//     (ex1a: fn u _18 -> _7) (a: u) (b: _18)
+//     1_U32
+// 
+// trait T1 a with
+//     (trait1: (error)): fn a -> Unit
+// 
+// trait T2 a with
+//     (trait2: (error)): fn a -> Unit
+// 
+// (ex2a: fn t _29 -> _27) ((a: t)) (b: _29) =
+//     (ex2b: fn t _29 -> _16) (a: t) (b: _29)
+//     (trait1: (error)) (a: t)
+// 
+// (ex2b: fn u _29 -> _16) ((a: u)) (b: _29) =
+//     (ex2c: fn u _29 -> _16) (a: u) (b: _29)
+//     (trait2: (error)) (a: (error))
+// 
+// (ex2c: fn v _29 -> _25) ((a: v)) (b: _29) =
+//     (ex2a: fn v _29 -> _27) (a: v) (b: _29)
+
 // expected stderr:
-// thread 'main' panicked at src/type_inference/get_type.rs:28:17:
-// GetType used on definition without a type annotation that has not yet been inferred. This is likely an issue with the order of type checking determined by the dependency graph.
-// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+// examples/typechecking/mutual_recursion_rigid.an:0:0	error: Expected fn t _18 -> _7 but found fn t _18 -> U32
+// // Mutually recursive definitions which type check when partially annotated despite
+// 
+// examples/typechecking/mutual_recursion_rigid.an:0:0	error: Expected fn t _29 -> _16 but found fn t _29 -> _25
+// // Mutually recursive definitions which type check when partially annotated despite
+// 
+// examples/typechecking/mutual_recursion_rigid.an:22:4	error: `trait1` is not defined, was it a typo?
+//     trait1 a
+// 
+// examples/typechecking/mutual_recursion_rigid.an:26:4	error: `trait2` is not defined, was it a typo?
+//     trait2 a
+// 
+// Found 4 errors and 0 warnings
 

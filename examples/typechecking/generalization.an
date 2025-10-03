@@ -6,11 +6,7 @@ foo x =
 
 // args: --show-types
 // expected stdout:
-// (foo: _1) (x: _2) =
-//     (y: _6) = fn (_: _9) -> (x: (error))
-//     (y: (error))
-
-// expected stderr:
-// examples/typechecking/generalization.an:3:4	error: `y` is not defined, was it a typo?
-//     y
+// (foo: fn _8 -> fn _7 -> _8) (x: _8) =
+//     (y: fn _7 -> _8) (_: _7) = (x: _8)
+//     (y: fn _7 -> _8)
 

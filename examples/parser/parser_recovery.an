@@ -50,25 +50,29 @@ main () =
 //     | Leaf
 // 
 // sum tree = match tree
-// | IntBinTreeNode val left right -> + (+ val (sum left)) (sum right)
+// | IntBinTreeNode val left right -> (val + sum left) + sum right
 // | Leaf -> 0
 // 
 // flatten_filter tree comparator threshold = match tree
 // | IntBinTreeNode val left right -> 
 //     if comparator val threshold then 
-//         Cons val else 
+//         Cons val
+//     else 
 //         append (flatten_filter left comparator threshold) (flatten_filter tree comparator threshold)
 // | Leaf -> ()
 // 
 // main () =
 //     my_tree = IntBinTreeNode 10 (IntBinTreeNode 6 (IntBinTreeNode 7 Leaf Leaf) Leaf) (IntBinTreeNode 4 Leaf Leaf)
 //     sum my_tree
-//     add1 x = + x 1
-//     if > (sum my_tree) 1 then 
-//         false else 
+//     add1 x = x + 1
+//     if sum my_tree > 1 then 
+//         false
+//     else 
 //         true
 
 // expected stderr:
-// examples/parser/parser_recovery.an:21:20	error: Expected an unindent but found `|`
-//                     ||
+// examples/parser/parser_recovery.an:20:16	error: Expected an unindent but found `(`
+//                 (append 
+// 
+// Found 1 error and 0 warnings
 

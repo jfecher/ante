@@ -29,9 +29,9 @@ bar "four" "five"
 // trait Bar a -> b with
 //     (bar: (error)): fn a a -> b
 // 
-// (foo: _1) (a: _6) (b: _7) = (bar: (error)) (a: _6) (b: _7)
+// (foo: fn _6 _7 -> _4) (a: _6) (b: _7) = (bar: (error)) (a: _6) (b: _7)
 // 
-// (baz: _1) ((x: String)) (y: _7) = (bar: (error)) (x: String) (y: _7)
+// (baz: fn String _7 -> _4) ((x: String)) (y: _7) = (bar: (error)) (x: String) (y: _7)
 
 // expected stderr:
 // examples/typechecking/trait_impls.an:6:5	error: Expected an identifier but found `Bar`
@@ -57,4 +57,6 @@ bar "four" "five"
 // 
 // examples/typechecking/trait_impls.an:25:4	error: Expected `=` to begin the function body but found `"four"`
 // bar "four" "five"
+// 
+// Found 8 errors and 0 warnings
 

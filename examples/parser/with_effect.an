@@ -12,4 +12,6 @@ main () =
 // expected stderr:
 // examples/parser/with_effect.an:3:8	error: Expected an unindent but found `with`
 //         with filter even
+// 
+// Found 1 error and 0 warnings
 

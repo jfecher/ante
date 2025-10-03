@@ -15,9 +15,9 @@ map l f =
 // expected stdout:
 // // id = c1m743_1986
 // recursion_c1m743_1986 n_1 f_2 =
-//     if >_? n_1 0 then 
+//     if n_1 >_c0m12_4222 0 then 
 //         f_2 ()
-//         recursion_c1m743_1986 (-_? n_1 1) f_2
+//         recursion_c1m743_1986 (n_1 -_? 1) f_2
 // 
 // // id = c1m743_838
 // shared type List_c1m743_838 =
@@ -31,9 +31,8 @@ map l f =
 //     | Cons_td x_3 xs_4 -> Cons_td (f_2 x_3) (map_c1m743_4625 xs_4 f_2)
 
 // expected stderr:
-// examples/nameresolution/functions.an:3:9	error: `>` is not defined, was it a typo?
-//     if n > 0 then
-// 
 // examples/nameresolution/functions.an:5:21	error: `-` is not defined, was it a typo?
 //         recursion (n - 1) f
+// 
+// Found 1 error and 0 warnings
 

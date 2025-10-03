@@ -14,11 +14,11 @@ main () =
 // args: --show-parse
 // expected stdout:
 // main () =
-//     |> a foo
-//     |> b (foo 2)
-//     |> (|> a (foo b c)) (bar d e)
-//     <| (bar d e) (<| (foo b c) a)
-//     |> (, 1 2) baz
-//     <| baz (, 1 2)
-//     |> (, 1 2) (<| baz (, 3 4))
+//     a |> foo
+//     b |> foo 2
+//     (a |> foo b c) |> bar d e
+//     bar d e <| (foo b c <| a)
+//     (1 , 2) |> baz
+//     baz <| (1 , 2)
+//     (1 , 2) |> (baz <| (3 , 4))
 

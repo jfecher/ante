@@ -439,7 +439,11 @@ impl Display for Token {
 
 impl std::fmt::Display for F64 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
+        if self.0.fract() == 0.0 {
+            write!(f, "{}.0", self.0)
+        } else {
+            write!(f, "{}", self.0)
+        }
     }
 }
 

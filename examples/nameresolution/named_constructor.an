@@ -27,7 +27,7 @@ z = y * 2.0
 // t2_c1m818_4335 = T_c1m818_9305
 // 
 // // id = c1m818_1897
-// z_c1m818_1897 = *_? y_? 2
+// z_c1m818_1897 = y_? *_? 2.0
 
 // expected stderr:
 // examples/nameresolution/named_constructor.an:7:7	error: Expected a newline after the top level item but found `with`
@@ -41,4 +41,6 @@ z = y * 2.0
 // 
 // examples/nameresolution/named_constructor.an:11:6	error: `*` is not defined, was it a typo?
 // z = y * 2.0
+// 
+// Found 4 errors and 0 warnings
 

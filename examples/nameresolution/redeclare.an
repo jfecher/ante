@@ -20,8 +20,8 @@ foo _ =
 // 
 // // id = c1m779_3132
 // foo_c1m779_3132 __1 =
-//     a_? = 4
-//     a_? = 5
+//     a_3 = 4
+//     a_5 = 5
 //     ()
 
 // expected stderr:
@@ -30,4 +30,6 @@ foo _ =
 // 
 // examples/nameresolution/redeclare.an:3:0	warning: `a` was already defined
 // a = 3
+// 
+// Compiled with 2 warnings
 

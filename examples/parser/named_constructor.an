@@ -72,4 +72,6 @@ main () =
 // 
 // examples/parser/named_constructor.an:40:0	error: Expected a top-level item but found an unindent
 // // args: --show-parse
+// 
+// Found 10 errors and 0 warnings
 

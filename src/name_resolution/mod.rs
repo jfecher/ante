@@ -475,7 +475,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
     /// an error will be issued.
     fn resolve_type(&mut self, typ: &Type, declare_type_vars: bool) {
         match typ {
-            Type::Error | Type::Unit | Type::Integer(_) | Type::Float(_) | Type::String | Type::Char => (),
+            Type::Error | Type::Unit | Type::Integer(_) | Type::Float(_) | Type::String | Type::Char | Type::Pair | Type::Reference(..) => (),
             Type::Named(path) => self.link(*path, false),
             Type::Variable(name) => self.resolve_variable(*name, declare_type_vars),
             Type::Function(function) => {
@@ -496,7 +496,6 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                     self.resolve_type(arg, declare_type_vars);
                 }
             },
-            Type::Reference(..) => (),
         }
     }
 

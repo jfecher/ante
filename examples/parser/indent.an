@@ -37,17 +37,17 @@ when5 condition expr =
 //         expr
 // 
 // when4 condition expr =
+//     if condition then expr
 // 
 // when5 condition expr =
 //     if condition then expr
 
 // expected stderr:
-// examples/parser/indent.an:4:0	error: Expected an unindent but found an indent
-//          3
+// examples/parser/indent.an:3:4	error: Expected an unindent but found `fn`
+//     fn c d ->
 // 
 // examples/parser/indent.an:6:0	error: Expected a top-level item but found an unindent
 // // These should all result in the same parse tree
 // 
-// examples/parser/indent.an:19:0	error: Expected an unindent but found a newline
-//     then expr
+// Found 2 errors and 0 warnings
 

@@ -6,14 +6,16 @@ foo a =
 
 // args: --show-types
 // expected stdout:
-// (foo: _1) (a: _8) =
-//     (print: (error)) (a: _8)
-//     (print: (error)) (a: _8)
+// (foo: fn _9 -> Unit) (a: _9) =
+//     (print: fn _9 -> Unit) (a: _9)
+//     (print: fn _9 -> Unit) (a: _9)
 
 // expected stderr:
-// examples/typechecking/repeated_traits.an:2:4	error: `print` is not defined, was it a typo?
-//     print a
+// /home/rndmprsn/Code/Ante/ante/stdlib/src/Prelude.an:369:4	error: `printne` is not defined, was it a typo?
+//     printne x
 // 
-// examples/typechecking/repeated_traits.an:3:4	error: `print` is not defined, was it a typo?
-//     print a
+// /home/rndmprsn/Code/Ante/ante/stdlib/src/Prelude.an:370:12	error: Expected Char but found Char
+//     putchar c"\n"
+// 
+// Found 2 errors and 0 warnings
 

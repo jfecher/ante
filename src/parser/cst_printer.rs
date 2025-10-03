@@ -221,7 +221,7 @@ impl<'a> CstDisplay<'a> {
         self.fmt_pattern(definition.pattern, f)?;
 
         write!(f, " =")?;
-        if !matches!(self.context().exprs[definition.rhs], Expr::Sequence(_)) {
+        if !self.is_block(definition.rhs) {
             write!(f, " ")?;
         }
 
@@ -324,7 +324,7 @@ impl<'a> CstDisplay<'a> {
         }
 
         write!(f, " {}", if write_arrow { "->" } else { "=" })?;
-        if !matches!(self.context().exprs[lambda.body], Expr::Sequence(_)) {
+        if !self.is_block(lambda.body) {
             write!(f, " ")?;
         }
         self.fmt_expr(lambda.body, f)
@@ -440,6 +440,7 @@ impl<'a> CstDisplay<'a> {
             Type::Application(constructor, args) => self.fmt_type_application(constructor, args, f),
             Type::String => write!(f, "String"),
             Type::Char => write!(f, "Char"),
+            Type::Pair => write!(f, ","),
             Type::Reference(mutable, shared) => self.fmt_reference_type(*mutable, *shared, f),
         }
     }
@@ -449,8 +450,11 @@ impl<'a> CstDisplay<'a> {
     }
 
     fn fmt_type_application(&self, constructor: &Type, args: &[Type], f: &mut Formatter) -> std::fmt::Result {
-        let requires_parens = |typ: &Type| matches!(typ, Type::Function(_) | Type::Application(..));
+        if *constructor == Type::Pair {
+            return self.fmt_pair_type(args, f);
+        }
 
+        let requires_parens = |typ: &Type| matches!(typ, Type::Function(_) | Type::Application(..));
         if requires_parens(constructor) {
             write!(f, "(")?;
             self.fmt_type(constructor, f)?;
@@ -460,6 +464,29 @@ impl<'a> CstDisplay<'a> {
         }
 
         self.fmt_type_args(args, f)
+    }
+
+    fn fmt_pair_type(&self, args: &[Type], f: &mut Formatter) -> std::fmt::Result {
+        assert_eq!(args.len(), 2);
+
+        let lhs_requires_parens = |typ: &Type| {
+            match typ {
+                Type::Function(_) => true,
+                Type::Application(function, _) => matches!(function.as_ref(), Type::Pair),
+                _ => false,
+            }
+        };
+
+        if lhs_requires_parens(&args[0]) {
+            write!(f, "(")?;
+            self.fmt_type(&args[0], f)?;
+            write!(f, ")")?;
+        } else {
+            self.fmt_type(&args[0], f)?;
+        }
+
+        write!(f, ", ")?;
+        self.fmt_type(&args[1], f)
     }
 
     fn fmt_function_type(&self, function_type: &FunctionType, f: &mut Formatter) -> std::fmt::Result {
@@ -514,21 +541,69 @@ impl<'a> CstDisplay<'a> {
         Ok(())
     }
 
+    fn is_block(&self, expr: ExprId) -> bool {
+        matches!(&self.context().exprs[expr], Expr::Sequence(_))
+    }
+
     fn fmt_call(&mut self, call: &Call, f: &mut Formatter) -> std::fmt::Result {
+        if call.arguments.len() == 2 && self.is_operator(call.function) {
+            return self.fmt_infix_operator(call, f);
+        }
+
         self.fmt_expr(call.function, f)?;
 
         for arg in call.arguments.iter().copied() {
-            if self.context().exprs[arg].is_atom() {
-                write!(f, " ")?;
-                self.fmt_expr(arg, f)?;
-            } else {
-                write!(f, " (")?;
-                self.fmt_expr(arg, f)?;
-                write!(f, ")")?;
-            }
+            let parenthesize = !self.context().exprs[arg].is_atom();
+            write!(f, " ")?;
+            self.parenthesize(arg, parenthesize, f)?;
         }
 
         Ok(())
+    }
+
+    fn fmt_infix_operator(&mut self, call: &Call, f: &mut Formatter) -> std::fmt::Result {
+        assert_eq!(call.arguments.len(), 2);
+        let lhs = call.arguments[0];
+        let rhs = call.arguments[1];
+
+        let parenthesize = |this: &Self, expr| {
+            match &this.context().exprs[expr] {
+                Expr::Call(call) => this.is_operator(call.function),
+                other => !other.is_atom(),
+            }
+        };
+
+        self.parenthesize(lhs, parenthesize(self, lhs), f)?;
+        write!(f, " ")?;
+        self.fmt_expr(call.function, f)?;
+        write!(f, " ")?;
+        self.parenthesize(rhs, parenthesize(self, rhs), f)
+    }
+
+    /// If `should_parenthesize` is true, format the given expression surrounded by parenthesis.
+    /// Otherwise, format it normally.
+    fn parenthesize(&mut self, expr: ExprId, should_parenthesize: bool, f: &mut Formatter) -> std::fmt::Result {
+        if should_parenthesize {
+            write!(f, "(")?;
+            self.fmt_expr(expr, f)?;
+            write!(f, ")")
+        } else {
+            self.fmt_expr(expr, f)
+        }
+    }
+
+    fn is_operator(&self, function: ExprId) -> bool {
+        if let Expr::Variable(path) = self.context().exprs[function] {
+            let path = &self.context().paths[path];
+            if path.components.len() == 1 {
+                let name = &path.components[0].0;
+                !name.chars().next().unwrap().is_alphanumeric()
+            } else {
+                false
+            }
+        } else {
+            false
+        }
     }
 
     fn fmt_member_access(&mut self, access: &MemberAccess, f: &mut Formatter) -> std::fmt::Result {
@@ -650,11 +725,20 @@ impl<'a> CstDisplay<'a> {
     fn fmt_if(&mut self, if_: &If, f: &mut Formatter) -> std::fmt::Result {
         write!(f, "if ")?;
         self.fmt_expr(if_.condition, f)?;
-        write!(f, " then ")?;
+
+        if !self.is_block(if_.condition) {
+            write!(f, " ")?;
+        }
+        write!(f, "then ")?;
         self.fmt_expr(if_.then, f)?;
 
         if let Some(else_) = if_.else_ {
-            write!(f, " else ")?;
+            if self.is_block(if_.then) {
+                self.newline(f)?;
+            } else {
+                write!(f, " ")?;
+            }
+            write!(f, "else ")?;
             self.fmt_expr(else_, f)?;
         }
         Ok(())

@@ -316,11 +316,11 @@ type Type t = | MkType
 
 size_of (v: Type t) : Usz = builtin "SizeOf" v
 
+// addr: Usz = transmute ptr
+// new_addr = addr + index * size_of (MkType: Type t)
+// transmute new_addr
 offset (ptr: Ptr t) (index: Usz) : Ptr t =
     builtin "Offset" ptr index
-    // addr: Usz = transmute ptr
-    // new_addr = addr + index * size_of (MkType: Type t)
-    // transmute new_addr
 
 deref (x: &t) : t =
     builtin "Deref" x
@@ -351,7 +351,6 @@ transmute (x: a) : b =
 // TODO: 'mut' and special-case extract versus append
 // trait Insert collection index elem
 //     (#): mut collection - index - elem -> Unit
-
 trait In elem col with
     (in): fn elem col -> Bool
 
@@ -412,7 +411,7 @@ print_float (f: F64) =
         // Show up to 5 decimal places
         print_unsigned (cast (f2 * 10_000.0))
 
-impl print_string: Print String with printne s = print_string s
+impl print_string: Print String with printne s = _print_string s
 impl print_ptr_char: Print (Ptr Char) with printne s = print_c_string s
 
 impl print_maybe {Print a}: Print (Maybe a) with
@@ -445,7 +444,7 @@ print_signed (x: I64) (min: I64) (min_string: String) : Unit =
     else
         print_unsigned <| unwrap <| try_cast x
 
-print_string (s: String) : Unit =
+_print_string (s: String) : Unit =
     loop s (i = 0) ->
         if i < s.length then
             off = offset (s.c_string) i
@@ -568,8 +567,9 @@ impl append_string: Append String with
         memcpy buf (s1.c_string) (cast s1.length)
 
         buf_offset = cast (cast buf + s1.length)
-        memcpy buf_offset (s2.c_string) (cast s2.length + 1) //copy terminating null too
 
+        //copy terminating null too
+        memcpy buf_offset (s2.c_string) (cast s2.length + 1)
         String buf len
 
 panic msg =

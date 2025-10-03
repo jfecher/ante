@@ -24,4 +24,6 @@ library_fn _ = 3
 // expected stderr:
 // examples/nameresolution/conflictingimport.an:1:8	error: Could not find crate `Library`
 // import Library.library_int, library_fn
+// 
+// Found 1 error and 0 warnings
 

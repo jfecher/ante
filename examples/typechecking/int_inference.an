@@ -13,10 +13,15 @@ main () =
 
 // args: --show-types
 // expected stdout:
-// (main: _1) () =
-//     (print: (error)) 2
+// (main: fn Unit -> Unit) () =
+//     (print: fn I32 -> Unit) 2
 
 // expected stderr:
-// examples/typechecking/int_inference.an:2:4	error: `print` is not defined, was it a typo?
-//     print 2
+// /home/rndmprsn/Code/Ante/ante/stdlib/src/Prelude.an:369:4	error: `printne` is not defined, was it a typo?
+//     printne x
+// 
+// /home/rndmprsn/Code/Ante/ante/stdlib/src/Prelude.an:370:12	error: Expected Char but found Char
+//     putchar c"\n"
+// 
+// Found 2 errors and 0 warnings
 

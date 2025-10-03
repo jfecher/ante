@@ -11,7 +11,7 @@ main () =
 // import Library.library_int, library_fn
 // 
 // // id = c1m27_3132
-// foo_c1m27_3132 = fn __1 b_2 -> b_2
+// foo_c1m27_3132 __2 b_3 = b_3
 // 
 // // id = c1m27_1944
 // main_c1m27_1944 () =
@@ -27,4 +27,6 @@ main () =
 // 
 // examples/nameresolution/import.an:7:11	error: `library_fn` is not defined, was it a typo?
 //     foo 5 (library_fn ())
+// 
+// Found 3 errors and 0 warnings
 

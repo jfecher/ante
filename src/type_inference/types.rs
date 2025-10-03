@@ -91,6 +91,7 @@ impl TopLevelType {
             cst::Type::Unit => TopLevelType::unit(),
             cst::Type::Char => TopLevelType::Primitive(PrimitiveType::Char),
             cst::Type::String => TopLevelType::Primitive(PrimitiveType::String),
+            cst::Type::Pair  => TopLevelType::Primitive(PrimitiveType::Pair),
             cst::Type::Named(path) => {
                 match resolve.path_origins.get(path) {
                     Some(origin) => {

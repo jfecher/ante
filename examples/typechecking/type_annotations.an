@@ -20,31 +20,36 @@ main () =
 // expected stdout:
 // (foo: fn I32 String -> Char) ((_: I32)) ((_: String)) : Char = c"a"
 // 
-// (bar: fn -> fn a a -> I32) : fn a a -> I32 =
-//     fn (_: a) (b: a) -> (b: I32)
+// (bar: fn (error) (error) -> I32) =
+//     fn (_: (error)) (b: (error)) -> (b: I32)
 // 
 // (baz: fn Usz -> Ptr a) ((a: Usz)) : Ptr a =
-//     (transmute: (error)) (a: Usz)
+//     (transmute: fn Usz -> Ptr a) (a: Usz)
 // 
-// (main: _1) () =
-//     (exit2: _6) = (exit: (error))
-//     (puts2: fn -> fn ((error) (error)) -> I32) : fn (Ptr Char) -> I32 = (puts: (error))
-//     (exit2: (error)) "test"
-//     (puts2: (error))
+// (main: fn Unit -> fn (Ptr Char) -> I32) () =
+//     (exit2: fn I32 -> Unit) = (exit: fn I32 -> Unit)
+//     (puts2: fn (Ptr Char) -> I32) = (puts: fn (Ptr Char) -> I32)
+//     (exit2: fn I32 -> Unit) "test"
+//     (puts2: fn (Ptr Char) -> I32)
 
 // expected stderr:
+// /home/rndmprsn/Code/Ante/ante/stdlib/src/Prelude.an:349:4	error: `builtin` is not defined, was it a typo?
+//     builtin "Transmute" x
+// 
 // examples/typechecking/type_annotations.an:2:34	error: Expected Char but found Char
 // foo (_: I32) (_: String) : Char = c"a"
 // 
-// examples/typechecking/type_annotations.an:5:14	error: Expected I32 but found a
+// examples/typechecking/type_annotations.an:4:5	error: `a` not found in scope
+// bar: fn a a -> I32 =
+// 
+// examples/typechecking/type_annotations.an:4:8	error: `a` not found in scope
+// bar: fn a a -> I32 =
+// 
+// examples/typechecking/type_annotations.an:5:14	error: Expected I32 but found (error)
 //     fn _ b -> b
 // 
-// examples/typechecking/type_annotations.an:8:4	error: `transmute` is not defined, was it a typo?
-//     transmute a
-// 
-// examples/typechecking/type_annotations.an:14:4	error: `exit2` is not defined, was it a typo?
+// examples/typechecking/type_annotations.an:14:10	error: Expected I32 but found String
 //     exit2 "test"
 // 
-// examples/typechecking/type_annotations.an:15:4	error: `puts2` is not defined, was it a typo?
-//     puts2
+// Found 6 errors and 0 warnings
 

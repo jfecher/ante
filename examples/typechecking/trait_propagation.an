@@ -13,7 +13,7 @@ foo () = baz bar
 // args: --show-types
 // expected exit status: 101
 // expected stderr:
-// thread 'main' panicked at src/type_inference/cst_traversal.rs:282:9:
+// thread 'main' panicked at src/type_inference/cst_traversal.rs:293:9:
 // not yet implemented: check_extern
 // note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 

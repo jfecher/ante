@@ -68,6 +68,7 @@ pub enum Type {
     Unit,
     Char,
     String,
+    Pair,
     Named(PathId),
     Variable(NameId),
     Integer(IntegerKind),

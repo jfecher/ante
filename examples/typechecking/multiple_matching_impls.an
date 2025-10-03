@@ -37,7 +37,7 @@ impl candidate2: Foo Thing with
 // args: --show-types
 // expected exit status: 101
 // expected stderr:
-// thread 'main' panicked at src/type_inference/cst_traversal.rs:278:9:
+// thread 'main' panicked at src/type_inference/cst_traversal.rs:289:9:
 // not yet implemented: check_impl
 // note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 

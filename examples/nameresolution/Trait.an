@@ -21,7 +21,7 @@ main () =
 // // id = c1m488_7510
 // impl foo_i32_string_c1m488_7510: Foo_c1m488_1237 I32 String_b with
 //     foo_1 _x_2 = "test"
-//     baz_3 = 2
+//     baz_4 = 2
 // 
 // // id = c1m488_1944
 // main_c1m488_1944 () =
@@ -34,4 +34,6 @@ main () =
 // 
 // examples/nameresolution/Trait.an:12:4	error: `bar` is not defined, was it a typo?
 //     bar : Unit
+// 
+// Found 2 errors and 0 warnings
 

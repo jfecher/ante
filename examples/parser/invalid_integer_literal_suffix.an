@@ -8,4 +8,6 @@ main () = 3_2_fdsa
 // expected stderr:
 // examples/parser/invalid_integer_literal_suffix.an:1:11	error: Expected an expression but found `InvalidIntegerSuffx`
 // main () = 3_2_fdsa
+// 
+// Found 1 error and 0 warnings
 

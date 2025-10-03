@@ -614,12 +614,9 @@ impl<'tokens> Parser<'tokens> {
         match self.current_token() {
             Token::Mut => self.parse_non_function_definition(),
             _ => {
-                let start_index = self.token_index;
-
-                if let Ok(function) = self.parse_function_definition() {
+                if let Ok(function) = self.try_(Self::parse_function_definition) {
                     Ok(function)
                 } else {
-                    self.token_index = start_index;
                     self.parse_non_function_definition()
                 }
             },
@@ -745,7 +742,8 @@ impl<'tokens> Parser<'tokens> {
                     |this| {
                         let field_name = this.parse_ident_id()?;
                         this.expect(Token::Colon, "a colon separating the field name from its type")?;
-                        let field_type = this.parse_type()?;
+                        // Can't allow a pair type if we're using `,` as a field separator
+                        let field_type = this.parse_type_no_pair()?;
                         Ok((field_name, field_type))
                     },
                     Token::Comma,
@@ -802,12 +800,7 @@ impl<'tokens> Parser<'tokens> {
     }
 
     fn parse_type(&mut self) -> Result<Type> {
-        match self.current_token() {
-            Token::Fn => self.parse_function_type(),
-            Token::ExclamationMark => self.parse_mutable_reference_type(),
-            Token::Ampersand => self.parse_immutable_reference_type(),
-            _ => self.parse_type_application(),
-        }
+        self.parse_pair_type()
     }
 
     // TODO: Parse lifetime & element type
@@ -839,7 +832,11 @@ impl<'tokens> Parser<'tokens> {
             parameters.push(Type::Unit);
         }
 
-        self.expect(Token::RightArrow, "`->` to separate this function type's parameters from its return type")?;
+        // Temporarily allow the closure arrow as well
+        if !self.accept(Token::FatArrow) {
+            self.expect(Token::RightArrow, "`->` to separate this function type's parameters from its return type")?;
+        }
+
         let return_type = Box::new(self.parse_type()?);
         let effects = self.parse_effects_clause();
 
@@ -877,6 +874,39 @@ impl<'tokens> Parser<'tokens> {
                 Ok(EffectType::Variable(name))
             },
             _ => self.expected("an effect name"),
+        }
+    }
+
+    /// pair_type: type_no_pair ',' pair_type
+    ///          | type_no_pair
+    fn parse_pair_type(&mut self) -> Result<Type> {
+        let typ = self.parse_type_no_pair()?;
+
+        // Fast path: this is not a pair type
+        if *self.current_token() != Token::Comma {
+            return Ok(typ);
+        }
+
+        let mut types = vec![typ];
+        while self.accept(Token::Comma) {
+            types.push(self.parse_type_no_pair()?);
+        }
+
+        // `,` is right-associative
+        let mut typ = types.pop().expect("Should always have at least one type");
+        while let Some(lhs) = types.pop() {
+            typ = Type::Application(Box::new(Type::Pair), vec![lhs, typ]);
+        }
+
+        Ok(typ)
+    }
+
+    fn parse_type_no_pair(&mut self) -> Result<Type> {
+        match self.current_token() {
+            Token::Fn => self.parse_function_type(),
+            Token::ExclamationMark => self.parse_mutable_reference_type(),
+            Token::Ampersand => self.parse_immutable_reference_type(),
+            _ => self.parse_type_application(),
         }
     }
 
@@ -919,6 +949,18 @@ impl<'tokens> Parser<'tokens> {
                 self.expect(Token::ParenthesisRight, "a `)` to close the opening `(` from the parameter")?;
                 Ok(typ)
             },
+            Token::Ampersand => {
+                self.advance();
+                let element = self.parse_type_arg()?;
+                let reference = Type::Reference(Mutability::Immutable, Sharedness::Shared);
+                Ok(Type::Application(Box::new(reference), vec![element]))
+            }
+            Token::ExclamationMark => {
+                self.advance();
+                let element = self.parse_type_arg()?;
+                let reference = Type::Reference(Mutability::Mutable, Sharedness::Shared);
+                Ok(Type::Application(Box::new(reference), vec![element]))
+            }
             _ => self.expected("a type"),
         }
     }
@@ -996,6 +1038,7 @@ impl<'tokens> Parser<'tokens> {
                 }
                 Err(_) if allow_trailing => break,
                 Err(error) => {
+                    eprintln!("1 push error {:?}", error);
                     self.diagnostics.push(error);
                     break;
                 },
@@ -1457,18 +1500,35 @@ impl<'tokens> Parser<'tokens> {
         Ok(SequenceItem { comments, expr })
     }
 
+    /// Run the given parser, resetting to the original token position on error.
+    ///
+    /// Useful for parsers which parse some input, then fail without restoring the
+    /// previous token index. Otherwise we could end up in a state where input was
+    /// skipped and not parsed.
+    fn try_<T>(&mut self, f: impl FnOnce(&mut Self) -> Result<T>) -> Result<T> {
+        let start_position = self.token_index;
+        let diagnostic_count = self.diagnostics.len();
+        let result = f(self);
+        if result.is_err() {
+            self.token_index = start_position;
+            self.diagnostics.truncate(diagnostic_count);
+        }
+        result
+    }
+
     fn parse_statement(&mut self) -> Result<ExprId> {
         let start = self.current_token_span();
-        let previous_position = self.token_index;
 
-        if let Ok(definition) = self.parse_definition() {
+        if let Ok(definition) = self.try_(Self::parse_definition) {
             let end = self.previous_token_span();
             let location = start.to(&end).in_file(self.file_id);
             let expr = Expr::Definition(definition);
             return Ok(self.push_expr(expr, location));
         }
 
-        self.token_index = previous_position;
+        if *self.current_token() == Token::Return {
+            return self.parse_return();
+        }
 
         let expression = self.parse_expression()?;
 
@@ -1499,6 +1559,15 @@ impl<'tokens> Parser<'tokens> {
         let (pattern, location) = self.with_location(f)?;
         self.insert_pattern(id, pattern, location);
         Ok(id)
+    }
+
+    fn parse_return(&mut self) -> Result<ExprId> {
+        // TODO: Cst node for return
+        self.with_expr_id_and_location(|this| {
+            this.expect(Token::Return, "`return` to begin a return statement")?;
+            let _expr = this.parse_block_or_expression()?;
+            Ok(Expr::Error)
+        })
     }
 
     fn parse_if(&mut self, mut body: impl Copy + FnMut(&mut Self) -> Result<ExprId>) -> Result<ExprId> {
@@ -1619,6 +1688,7 @@ impl<'tokens> Parser<'tokens> {
     fn parse_block_or_expression(&mut self) -> Result<ExprId> {
         match self.current_token() {
             Token::Indent => self.parse_block(),
+            Token::Return => self.parse_return(),
             _ => self.parse_expression(),
         }
     }
@@ -1650,7 +1720,6 @@ impl<'tokens> Parser<'tokens> {
 
     fn parse_function_call_or_atom(&mut self) -> Result<ExprId> {
         let function = self.parse_atom()?;
-        let index_before_arguments = self.token_index;
 
         if let Ok(arguments) = self.many1(Self::parse_function_arg) {
             let last_arg_location = self.expr_location(*arguments.last().unwrap());
@@ -1658,7 +1727,6 @@ impl<'tokens> Parser<'tokens> {
             let call = Expr::Call(Call { function, arguments });
             Ok(self.push_expr(call, location))
         } else {
-            self.token_index = index_before_arguments;
             Ok(function)
         }
     }

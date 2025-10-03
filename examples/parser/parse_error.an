@@ -3,11 +3,14 @@ main () =
 
     bar a b = if then else
 
-
 // args: --show-parse
 // expected stdout: main () =
 
+
+
 // expected stderr:
-// examples/parser/parse_error.an:2:12	error: Expected an unindent but found `else`
+// examples/parser/parse_error.an:2:4	error: Expected an unindent but found `if`
 //     if true else
+// 
+// Found 1 error and 0 warnings
 

@@ -5,6 +5,6 @@ main () =
 // args: --show-parse
 // expected stdout:
 // main () =
-//     x = == (+ (* 1 2) 19) (* 3 7)
+//     x = ((1 * 2) + 19) == (3 * 7)
 //     print x
 
