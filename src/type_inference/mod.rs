@@ -9,7 +9,7 @@ use crate::{
     incremental::{self, DbHandle, GetItem, Resolve, TypeCheckSCC},
     iterator_extensions::vecmap,
     lexer::token::{FloatKind, IntegerKind},
-    name_resolution::{Origin, ResolutionResult},
+    name_resolution::{builtin::Builtin, Origin, ResolutionResult},
     parser::{
         cst::{TopLevelItem, TopLevelItemKind},
         ids::{ExprId, NameId, PathId, TopLevelId},
@@ -369,7 +369,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 }
             },
             (actual, other) if actual == other => Ok(()),
-            (_, _) => Err(()),
+            _ => Err(()),
         }
     }
 
@@ -485,6 +485,21 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Convert the given Origin to a type, issuing an error if the origin is not a type
     fn convert_origin_to_type(&mut self, origin: Option<Origin>, make_type: impl FnOnce(Origin) -> Type) -> TypeId {
         match origin {
+            Some(Origin::Builtin(builtin)) => {
+                match builtin {
+                    Builtin::Unit => TypeId::UNIT,
+                    Builtin::Int => TypeId::ERROR, // TODO: Polymorphic integers
+                    Builtin::Char => TypeId::CHAR,
+                    Builtin::Float => TypeId::ERROR, // TODO: Polymorphic floats
+                    Builtin::String => TypeId::STRING,
+                    Builtin::Ptr => TypeId::POINTER,
+                    Builtin::PairType => TypeId::PAIR,
+                    Builtin::PairConstructor => {
+                        // TODO: Error
+                        TypeId::ERROR
+                    },
+                }
+            }
             Some(origin) => {
                 if !origin.is_type() {
                     // TODO: Error

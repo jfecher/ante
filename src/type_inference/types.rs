@@ -5,7 +5,7 @@ use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    incremental::GetItem, iterator_extensions::vecmap, lexer::token::{FloatKind, IntegerKind}, name_resolution::{Origin, ResolutionResult}, parser::{
+    incremental::GetItem, iterator_extensions::vecmap, lexer::token::{FloatKind, IntegerKind}, name_resolution::{builtin::Builtin, Origin, ResolutionResult}, parser::{
         cst::{self, Mutability, Sharedness},
         ids::NameId,
     }, type_inference::{generics::Generic, type_context::TypeContext, type_id::TypeId}, vecmap::VecMap
@@ -28,7 +28,7 @@ pub enum TopLevelType {
     UserDefined(Origin),
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Type {
     /// Any primitive type which can be compared for unification via primitive equality
     Primitive(PrimitiveType),
@@ -48,7 +48,7 @@ pub enum Type {
     UserDefined(Origin),
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct FunctionType {
     pub parameters: Vec<TypeId>,
     pub return_type: TypeId,
@@ -93,26 +93,12 @@ impl TopLevelType {
             cst::Type::String => TopLevelType::Primitive(PrimitiveType::String),
             cst::Type::Pair  => TopLevelType::Primitive(PrimitiveType::Pair),
             cst::Type::Named(path) => {
-                match resolve.path_origins.get(path) {
-                    Some(origin) => {
-                        if !origin.is_type() {
-                            // TODO: Error
-                        }
-                        TopLevelType::UserDefined(*origin)
-                    },
-                    None => TopLevelType::error(),
-                }
+                let origin = resolve.path_origins.get(path).copied();
+                Self::convert_origin_to_type(origin, TopLevelType::UserDefined)
             },
             cst::Type::Variable(name) => {
-                match resolve.name_origins.get(name) {
-                    Some(origin) => {
-                        if !origin.is_type() {
-                            // TODO: Error
-                        }
-                        TopLevelType::Generic(Generic::Named(*origin))
-                    },
-                    None => TopLevelType::error(),
-                }
+                let origin = resolve.name_origins.get(name).copied();
+                Self::convert_origin_to_type(origin, |origin| TopLevelType::Generic(Generic::Named(origin)))
             }
             cst::Type::Integer(kind) => TopLevelType::Primitive(PrimitiveType::Int(*kind)),
             cst::Type::Float(kind) => TopLevelType::Primitive(PrimitiveType::Float(*kind)),
@@ -130,6 +116,31 @@ impl TopLevelType {
             cst::Type::Reference(mutability, sharedness) => {
                 Self::Primitive(PrimitiveType::Reference(*mutability, *sharedness))
             },
+        }
+    }
+
+    fn convert_origin_to_type(origin: Option<Origin>, make_type: impl FnOnce(Origin) -> Self) -> Self {
+        match origin {
+            Some(Origin::Builtin(builtin)) => match builtin {
+                Builtin::Unit => Self::Primitive(PrimitiveType::Unit),
+                Builtin::Char => Self::Primitive(PrimitiveType::Char),
+                Builtin::Int => Self::error(), // TODO: Polymorphic integers
+                Builtin::Float => Self::error(), // TODO: Polymorphic floats
+                Builtin::String => Self::Primitive(PrimitiveType::String),
+                Builtin::Ptr => Self::Primitive(PrimitiveType::Pointer),
+                Builtin::PairType => Self::Primitive(PrimitiveType::Pair),
+                Builtin::PairConstructor => {
+                    // TODO: Error
+                    Self::error()
+                },
+            }
+            Some(origin) => {
+                if !origin.is_type() {
+                    // TODO: Error
+                }
+                make_type(origin)
+            },
+            None => TopLevelType::error(),
         }
     }
 
