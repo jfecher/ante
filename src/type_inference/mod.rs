@@ -318,12 +318,16 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         typ.typ.substitute(&mut self.types, &substitutions)
     }
 
-    fn unify(&mut self, actual_id: TypeId, expected_id: TypeId, kind: TypeErrorKind, locator: impl Locateable) {
+    /// Unifies the two types. Returns false on failure
+    fn unify(&mut self, actual_id: TypeId, expected_id: TypeId, kind: TypeErrorKind, locator: impl Locateable) -> bool {
         if self.try_unify(actual_id, expected_id).is_err() {
             let actual = self.type_to_string(actual_id);
             let expected = self.type_to_string(expected_id);
             let location = locator.locate(self);
             self.compiler.accumulate(Diagnostic::TypeError { actual, expected, kind, location });
+            false
+        } else {
+            true
         }
     }
 

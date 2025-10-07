@@ -28,6 +28,13 @@ pub enum TypeErrorKind {
     /// Constructor expr `Foo with ...` where the actual type (`Foo` in this case) does not match
     /// the expected type
     Constructor,
+    /// A reference expression was used, but a different kind of reference was expected instead.
+    /// Both `actual` and `expected` should be reference constructors.
+    ReferenceKind,
+    /// A non-reference was expected in a reference expression, but reference expressions will only
+    /// produce references.
+    /// NOTE: `actual` will be arbitrary in this case and should not be displayed
+    ExpectedNonReference,
 }
 
 impl TypeErrorKind {
@@ -55,6 +62,12 @@ impl TypeErrorKind {
             TypeErrorKind::Constructor => {
                 format!("This constructs a {actual} type but {expected} was expected")
             },
+            TypeErrorKind::ReferenceKind => {
+                format!("A reference of kind {expected} was expected, but this constructs a {actual} reference")
+            }
+            TypeErrorKind::ExpectedNonReference => {
+                format!("Expected non-reference type {expected}, but this expression always produces a reference")
+            }
         }
     }
 }

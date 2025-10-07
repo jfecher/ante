@@ -73,7 +73,7 @@ impl TypeId {
         }
     }
 
-    pub(crate) fn primitive(primitive_type: super::types::PrimitiveType) -> TypeId {
+    pub fn primitive(primitive_type: super::types::PrimitiveType) -> TypeId {
         match primitive_type {
             super::types::PrimitiveType::Error => TypeId::ERROR,
             super::types::PrimitiveType::Unit => TypeId::UNIT,
@@ -88,6 +88,15 @@ impl TypeId {
             super::types::PrimitiveType::Reference(Mutability::Immutable, Sharedness::Owned) => TypeId::REF_OWN,
             super::types::PrimitiveType::Reference(Mutability::Mutable, Sharedness::Shared) => TypeId::REF_MUT,
             super::types::PrimitiveType::Reference(Mutability::Mutable, Sharedness::Owned) => TypeId::REF_MUT_OWN,
+        }
+    }
+
+    pub fn reference(mutability: Mutability, sharedness: Sharedness) -> TypeId {
+        match (mutability, sharedness) {
+            (Mutability::Immutable, Sharedness::Shared) => TypeId::REF,
+            (Mutability::Immutable, Sharedness::Owned) => TypeId::REF_OWN,
+            (Mutability::Mutable, Sharedness::Shared) => TypeId::REF_MUT,
+            (Mutability::Mutable, Sharedness::Owned) => TypeId::REF_MUT_OWN,
         }
     }
 

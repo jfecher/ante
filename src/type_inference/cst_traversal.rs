@@ -50,7 +50,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Expr::Index(index) => self.check_index(index, expected),
             Expr::If(if_) => self.check_if(if_, expected, expr),
             Expr::Match(match_) => self.check_match(match_, expected),
-            Expr::Reference(_) => todo!("type check references"),
+            Expr::Reference(reference) => self.check_reference(reference, expected, expr),
             Expr::TypeAnnotation(type_annotation) => {
                 let annotation = self.convert_ast_type(&type_annotation.rhs);
                 self.unify(expected, annotation, TypeErrorKind::TypeAnnotationMismatch, expr);
@@ -288,6 +288,44 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             // TODO: Specify if branch_type != type of first branch for better error messages
             self.check_expr(*branch, expected);
         }
+    }
+
+    fn check_reference(&mut self, reference: &cst::Reference, expected: TypeId, expr: ExprId) {
+        let actual = TypeId::reference(reference.mutability, reference.sharedness);
+        let expected_element_type = match self.follow_type(expected) {
+            Type::Application(constructor, args) => {
+                let first_arg = args.first().copied();
+                match self.follow_type(*constructor) {
+                    Type::Primitive(types::PrimitiveType::Reference(..)) => {
+                        self.unify(actual, *constructor, TypeErrorKind::ReferenceKind, expr);
+
+                        // Expect incorrect arg counts to be resolved beforehand
+                        first_arg.unwrap()
+                    }
+                    _ => {
+                        if self.unify(actual, expected, TypeErrorKind::ExpectedNonReference, expr) {
+                            first_arg.unwrap()
+                        } else {
+                            TypeId::ERROR
+                        }
+                    }
+                }
+            },
+            Type::Variable(id) => {
+                let id = *id;
+                let element = self.next_type_variable();
+                let expected = Type::Application(actual, vec![element]);
+                let expected = self.types.get_or_insert_type(expected);
+                self.bindings.insert(id, expected);
+                element
+            },
+            _ => {
+                self.unify(actual, expected, TypeErrorKind::ExpectedNonReference, expr);
+                TypeId::ERROR
+            }
+        };
+
+        self.check_expr(reference.rhs, expected_element_type);
     }
 
     fn check_constructor(&mut self, constructor: &cst::Constructor, expected: TypeId, id: ExprId) {
