@@ -8,9 +8,21 @@ impl foo_impl: Foo I32 String with
 str = foo 0i32
 
 // args: --show-types
-// expected exit status: 101
+// expected stdout:
+// trait Foo a -> b with
+//     (foo: (error)): fn a -> b
+// 
+// impl foo_impl: (Foo: (error)) I32 String with
+//     (foo: fn foo -> (error)) (_: foo) = "hi"
+// 
+// (str: _0) = (foo: (error)) 0_I32
+
 // expected stderr:
-// thread 'main' panicked at src/type_inference/cst_traversal.rs:60:37:
-// not yet implemented: type check constructor
-// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+// examples/typechecking/trait_fundep_result.an:3:14	error: `b` not found in scope
+//     foo: fn a -> b
+// 
+// examples/typechecking/trait_fundep_result.an:8:6	error: `foo` is not in scope
+// str = foo 0i32
+// 
+// Found 2 errors and 0 warnings
 

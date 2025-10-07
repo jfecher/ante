@@ -66,6 +66,32 @@ impl Origin {
             ),
         }
     }
+
+    /// Return the fields of this type
+    fn get_fields_of_type(self, db: &DbHandle) -> FieldsResult {
+        match self {
+            Origin::TopLevelDefinition(id) => {
+                let (item, item_context) = GetItem(id).get(db);
+                match &item.kind {
+                    TopLevelItemKind::TypeDefinition(type_definition) => {
+                        match &type_definition.body {
+                            TypeDefinitionBody::Error => FieldsResult::PriorError,
+                            TypeDefinitionBody::Enum(_) => FieldsResult::NotAStruct,
+                            TypeDefinitionBody::Alias(_) => todo!("get_fields_of_type: handle type aliases"),
+                            TypeDefinitionBody::Struct(fields) => {
+                                let names = fields.iter().map(|(name, _)| {
+                                    item_context.names[*name].clone()
+                                });
+                                FieldsResult::Fields(names.collect())
+                            },
+                        }
+                    },
+                    _ => FieldsResult::NotAStruct,
+                }
+            },
+            _ => FieldsResult::NotAStruct,
+        }
+    }
 }
 
 pub fn resolve_impl(context: &Resolve, compiler: &DbHandle) -> ResolutionResult {
@@ -442,26 +468,24 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                 let mut given_fields = BTreeSet::default();
                 let mut already_defined = FxHashMap::default();
 
-                for (pattern, _) in &constructor.fields {
-                    pattern.for_each_variable(self.context, &mut |name_id| {
-                        let name = self.context.names[name_id].clone();
-                        let location = self.context.name_locations[name_id].clone();
+                for (name_id, _) in &constructor.fields {
+                    let name = self.context.names[*name_id].clone();
+                    let location = self.context.name_locations[*name_id].clone();
 
-                        if let Some(first_location) = already_defined.get(&name).cloned() {
-                            let second_location = location;
-                            self.emit_diagnostic(Diagnostic::ConstructorFieldDuplicate { name, first_location, second_location });
-                            return;
-                        }
+                    if let Some(first_location) = already_defined.get(&name).cloned() {
+                        let second_location = location;
+                        self.emit_diagnostic(Diagnostic::ConstructorFieldDuplicate { name, first_location, second_location });
+                        return;
+                    }
 
-                        already_defined.insert(name.clone(), location.clone());
+                    already_defined.insert(name.clone(), location.clone());
 
-                        if !names.contains(&name) {
-                            let typ = constructor.typ.display(self.context).to_string();
-                            self.emit_diagnostic(Diagnostic::ConstructorNoSuchField { name, typ, location });
-                        } else {
-                            given_fields.insert(name);
-                        }
-                    });
+                    if !names.contains(&name) {
+                        let typ = constructor.typ.display(self.context).to_string();
+                        self.emit_diagnostic(Diagnostic::ConstructorNoSuchField { name, typ, location });
+                    } else {
+                        given_fields.insert(name);
+                    }
                 }
 
                 let missing_fields = names.difference(&given_fields).map(ToString::to_string).collect::<Vec<_>>();
@@ -490,24 +514,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
         match typ {
             Type::Named(path) => {
                 match self.path_links.get(path) {
-                    Some(Origin::TopLevelDefinition(typ)) => {
-                        let (item, item_context) = GetItem(*typ).get(self.compiler);
-                        match &item.kind {
-                            TopLevelItemKind::TypeDefinition(type_definition) => {
-                                match &type_definition.body {
-                                    TypeDefinitionBody::Error => FieldsResult::PriorError,
-                                    TypeDefinitionBody::Enum(_) => FieldsResult::NotAStruct,
-                                    TypeDefinitionBody::Alias(_) => todo!("get_fields_of_type: handle type aliases"),
-                                    TypeDefinitionBody::Struct(fields) => {
-                                        let names = fields.iter().map(|(name, _)| item_context.names[*name].clone());
-                                        FieldsResult::Fields(names.collect())
-                                    },
-                                }
-                            },
-                            _ => FieldsResult::NotAStruct,
-                        }
-                    },
-                    Some(_) => FieldsResult::NotAStruct,
+                    Some(origin) => origin.get_fields_of_type(self.compiler),
                     None => FieldsResult::PriorError,
                 }
             },
@@ -661,8 +668,17 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             self.resolve_type(arg, true);
         }
 
-        for definition in &trait_impl.body {
-            self.resolve_definition(definition);
+        for (name, rhs) in &trait_impl.body {
+            let is_let_rec = matches!(&self.context.exprs[*rhs], Expr::Lambda(_));
+            if is_let_rec {
+                self.declare_name(*name);
+            }
+
+            self.resolve_expr(*rhs);
+
+            if !is_let_rec {
+                self.declare_name(*name);
+            }
         }
     }
 

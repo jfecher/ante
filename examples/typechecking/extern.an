@@ -11,9 +11,18 @@ puts2_result = puts2 "test"
 exit2_result = exit2 0
 
 // args: --show-types
-// expected exit status: 101
-// expected stderr:
-// thread 'main' panicked at src/type_inference/cst_traversal.rs:294:9:
-// not yet implemented: check_extern
-// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+// expected stdout:
+// extern (foo: fn a -> b): fn a -> b
+// 
+// extern (add: fn I32 I32 -> I32): fn I32 I32 -> I32
+// 
+// extern (puts2: fn String -> Unit): fn String -> Unit
+// 
+// extern (exit2: fn I32 -> never_returns): fn I32 -> never_returns
+// 
+// (foo_result: _0) = (foo: fn I32 -> _0) 1
+// 
+// (puts2_result: Unit) = (puts2: fn String -> Unit) "test"
+// 
+// (exit2_result: _0) = (exit2: fn I32 -> _0) 0
 

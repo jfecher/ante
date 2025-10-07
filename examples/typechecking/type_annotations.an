@@ -42,11 +42,8 @@ main () =
 // examples/typechecking/type_annotations.an:4:8	error: `a` not found in scope
 // bar: fn a a -> I32 =
 // 
-// examples/typechecking/type_annotations.an:5:14	error: Expected I32 but found (error)
-//     fn _ b -> b
-// 
 // examples/typechecking/type_annotations.an:14:10	error: Expected I32 but found String
 //     exit2 "test"
 // 
-// Found 5 errors and 0 warnings
+// Found 4 errors and 0 warnings
 

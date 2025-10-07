@@ -9,11 +9,7 @@ use rustc_hash::FxHashSet;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    diagnostics::{Diagnostic, ErrorDefault, Location, Span},
-    incremental,
-    lexer::{token::Token, Lexer},
-    name_resolution::namespace::SourceFileId,
-    parser::{context::TopLevelContext, cst::HandlePattern},
+    diagnostics::{Diagnostic, ErrorDefault, Location, Span}, incremental, iterator_extensions::vecmap, lexer::{token::Token, Lexer}, name_resolution::namespace::SourceFileId, parser::{context::TopLevelContext, cst::HandlePattern}
 };
 
 use self::cst::{
@@ -1837,7 +1833,17 @@ impl<'tokens> Parser<'tokens> {
         let trait_arguments = self.many0(Self::parse_type_arg);
         self.expect(Token::With, "`with` to separate this trait impl's signature from its body")?;
 
-        let body = self.parse_impl_body()?;
+        let body = vecmap(self.parse_impl_body()?, |definition| {
+            match &self.current_context.patterns[definition.pattern] {
+                Pattern::Variable(name) => (*name, definition.rhs),
+                _ => {
+                    let location = self.current_context.pattern_locations[definition.pattern].clone();
+                    let name = self.push_name(Arc::new("(placeholder)".to_string()), location.clone());
+                    self.diagnostics.push(Diagnostic::ParserComplexImplItemName { location });
+                    (name, definition.rhs)
+                }
+            }
+        });
         Ok(cst::TraitImpl { name, parameters, trait_path, trait_arguments, body })
     }
 

@@ -11,9 +11,17 @@ foo () = baz bar
 //
 
 // args: --show-types
-// expected exit status: 101
+// expected stdout:
+// extern (bar: a): a
+// 
+// trait Baz a with
+//     (baz: (error)): fn a -> Unit
+// 
+// (foo: fn Unit -> _3) () = (baz: (error)) (bar: _5)
+
 // expected stderr:
-// thread 'main' panicked at src/type_inference/cst_traversal.rs:294:9:
-// not yet implemented: check_extern
-// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+// examples/typechecking/trait_propagation.an:6:9	error: `baz` is not in scope
+// foo () = baz bar
+// 
+// Found 1 error and 0 warnings
 

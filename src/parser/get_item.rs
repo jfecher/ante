@@ -45,7 +45,7 @@ fn desugar_impl(impl_: &TraitImpl, context: &mut TopLevelContext) -> TopLevelIte
         trait_type = Type::Application(Box::new(trait_type), impl_.trait_arguments.clone());
     }
 
-    let fields = vecmap(&impl_.body, |definition| (definition.pattern, definition.rhs));
+    let fields = impl_.body.clone();
     let constructor = Expr::Constructor(Constructor { fields, typ: trait_type.clone() });
     let constructor = context.exprs.push(constructor);
     assert_eq!(constructor, context.expr_locations.push(location.clone()));

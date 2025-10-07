@@ -265,12 +265,12 @@ impl<Db> TypePrinter<'_, Db> where Db: DbGet<GetItem> {
             Type::Primitive(primitive_type) => write!(f, "{primitive_type}"),
             Type::UserDefined(origin) => self.fmt_type_origin(*origin, f),
             Type::Generic(Generic::Named(origin)) => self.fmt_type_origin(*origin, f),
-            Type::Generic(Generic::Inferred(id)) => write!(f, "{id}"),
+            Type::Generic(Generic::Inferred(id)) => write!(f, "g{id}"),
             Type::Variable(id) => {
                 if let Some(binding) = self.bindings.get(id) {
                     self.fmt_type_id(*binding, parenthesize, f)
                 } else {
-                    write!(f, "{id}")
+                    write!(f, "_{id}")
                 }
             },
             Type::Function(function) => {
@@ -312,9 +312,9 @@ impl<Db> TypePrinter<'_, Db> where Db: DbGet<GetItem> {
     fn fmt_type_origin(&self, origin: Origin, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match origin {
             Origin::TopLevelDefinition(id) => {
-                let (item, _) = GetItem(id).get(self.db);
+                let (item, context) = GetItem(id).get(self.db);
                 if let cst::ItemName::Single(name) = item.kind.name() {
-                    write!(f, "{name}")
+                    write!(f, "{}", context.names[name])
                 } else {
                     unreachable!()
                 }
@@ -349,7 +349,7 @@ pub struct TypeVariableId(pub u32);
 
 impl std::fmt::Display for TypeVariableId {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "_{}", self.0)
+        write!(f, "{}", self.0)
     }
 }
 

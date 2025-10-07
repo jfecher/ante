@@ -34,6 +34,7 @@ pub enum Diagnostic {
     ConstructorNoSuchField { name: Arc<String>, typ: String, location: Location },
     ConstructorMissingFields { missing_fields: Vec<String>, location: Location },
     ConstructorNotAStruct { typ: String, location: Location },
+    ParserComplexImplItemName { location: Location },
 }
 
 impl Ord for Diagnostic {
@@ -70,6 +71,9 @@ impl Diagnostic {
                     format!("Expected {message} but found `{actual}`")
                 }
             },
+            Diagnostic::ParserComplexImplItemName { location: _ } => {
+                format!("Impl item names should only be a single identifier")
+            }
             Diagnostic::ExpectedPathForImport { .. } => {
                 "Imports paths should have at least 2 components (e.g. `Foo.Bar`), otherwise nothing gets imported"
                     .to_string()
@@ -139,6 +143,7 @@ impl Diagnostic {
     pub fn location(&self) -> &Location {
         match self {
             Diagnostic::ParserExpected { location, .. }
+            | Diagnostic::ParserComplexImplItemName { location, .. }
             | Diagnostic::ExpectedPathForImport { location }
             | Diagnostic::NameAlreadyInScope { second_location: location, .. }
             | Diagnostic::ImportedNameAlreadyInScope { second_location: location, .. }

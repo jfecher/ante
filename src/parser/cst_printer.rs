@@ -707,9 +707,19 @@ impl<'a> CstDisplay<'a> {
 
         write!(f, " with")?;
         self.indent_level += 1;
-        for definition in &trait_impl.body {
+        for (name, expr) in &trait_impl.body {
             self.newline(f)?;
-            self.fmt_definition(definition, context, f)?;
+            self.fmt_name(*name, context, f)?;
+
+            if let Expr::Lambda(lambda) = &context.exprs[*expr] {
+                self.fmt_lambda_inner(lambda, context, f, false)?;
+            } else {
+                write!(f, " =")?;
+                if !self.is_block(*expr, context) {
+                    write!(f, " ")?;
+                }
+                self.fmt_expr(*expr, context, f)?;
+            }
         }
         self.indent_level -= 1;
         Ok(())
@@ -871,9 +881,9 @@ impl<'a> CstDisplay<'a> {
         self.fmt_type(&constructor.typ, context, f)?;
         write!(f, " with")?;
         self.indent_level += 1;
-        for (pattern, expr) in &constructor.fields {
+        for (name, expr) in &constructor.fields {
             self.newline(f)?;
-            self.fmt_pattern(*pattern, context, f)?;
+            self.fmt_name(*name, context, f)?;
             write!(f, " = ")?;
             self.fmt_expr(*expr, context, f)?;
         }

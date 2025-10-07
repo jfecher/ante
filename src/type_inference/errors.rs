@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     diagnostics::Location,
-    parser::ids::{ExprId, PathId, PatternId, TopLevelId},
+    parser::ids::{ExprId, NameId, PathId, PatternId, TopLevelId},
     type_inference::TypeChecker,
 };
 
@@ -25,6 +25,9 @@ pub enum TypeErrorKind {
     IfStatement,
     /// `actual` Type of a lambda is not a function like expected
     Lambda { expected_parameter_count: usize },
+    /// Constructor expr `Foo with ...` where the actual type (`Foo` in this case) does not match
+    /// the expected type
+    Constructor,
 }
 
 impl TypeErrorKind {
@@ -49,6 +52,9 @@ impl TypeErrorKind {
                 let s = if expected_parameter_count == 1 { "" } else { "s" };
                 format!("Expected a function with {expected_parameter_count} parameter{s}, but found {actual}")
             },
+            TypeErrorKind::Constructor => {
+                format!("This constructs a {actual} type but {expected} was expected")
+            },
         }
     }
 }
@@ -72,6 +78,12 @@ impl Locateable for PatternId {
 impl Locateable for PathId {
     fn locate(self, context: &TypeChecker) -> Location {
         context.current_context().path_locations[self].clone()
+    }
+}
+
+impl Locateable for NameId {
+    fn locate(self, context: &TypeChecker) -> Location {
+        context.current_context().name_locations[self].clone()
     }
 }
 

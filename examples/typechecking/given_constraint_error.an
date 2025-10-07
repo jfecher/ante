@@ -3,9 +3,13 @@ impl print_impl {_: DoesNotExist a}: Print a with
     printne _ = ()
 
 // args: --show-types
-// expected exit status: 101
+// expected stdout:
+// impl print_impl {(_: (error) a)}: (Print: (error)) a with
+//     (printne: fn a -> Unit) (_: a) = ()
+
 // expected stderr:
-// thread 'main' panicked at src/type_inference/cst_traversal.rs:60:37:
-// not yet implemented: type check constructor
-// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+// examples/typechecking/given_constraint_error.an:2:20	error: `DoesNotExist` is not in scope
+// impl print_impl {_: DoesNotExist a}: Print a with
+// 
+// Found 1 error and 0 warnings
 

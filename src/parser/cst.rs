@@ -319,7 +319,7 @@ pub enum Sharedness {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
 pub struct Constructor {
     pub typ: Type,
-    pub fields: Vec<(PatternId, ExprId)>,
+    pub fields: Vec<(NameId, ExprId)>,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
@@ -379,7 +379,7 @@ pub struct TraitImpl {
     pub parameters: Vec<Parameter>,
     pub trait_path: PathId,
     pub trait_arguments: Vec<Type>,
-    pub body: Vec<Definition>,
+    pub body: Vec<(NameId, ExprId)>,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]

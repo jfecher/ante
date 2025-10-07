@@ -11,7 +11,7 @@ use crate::{
     lexer::token::{FloatKind, IntegerKind},
     name_resolution::{builtin::Builtin, Origin, ResolutionResult},
     parser::{
-        context::TopLevelContext, cst::{TopLevelItem, TopLevelItemKind}, ids::{ExprId, NameId, PathId, TopLevelId}
+        context::TopLevelContext, cst::{TopLevelItem, TopLevelItemKind, TypeDefinitionBody}, ids::{ExprId, NameId, PathId, TopLevelId}
     },
     type_inference::{
         errors::{Locateable, TypeErrorKind},
@@ -228,6 +228,31 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
+    /// Similar to substitute, but substitutes `Type::Generic` instead of `Type::TypeVariable`
+    fn substitute_generics(&mut self, typ: TypeId, bindings: &FxHashMap<Generic, TypeId>) -> TypeId {
+        match self.follow_type(typ) {
+            Type::Primitive(_) | Type::Variable(_) | Type::Reference(..) | Type::UserDefined(_) => typ,
+            Type::Generic(generic) => match bindings.get(generic) {
+                Some(binding) => *binding,
+                None => typ,
+            },
+            Type::Function(function) => {
+                let function = function.clone();
+                let parameters = vecmap(&function.parameters, |param| self.substitute_generics(*param, bindings));
+                let return_type = self.substitute_generics(function.return_type, bindings);
+                let effects = self.substitute_generics(function.effects, bindings);
+                let function = Type::Function(types::FunctionType { parameters, return_type, effects });
+                self.types.get_or_insert_type(function)
+            },
+            Type::Application(constructor, args) => {
+                let (constructor, args) = (*constructor, args.clone());
+                let constructor = self.substitute_generics(constructor, bindings);
+                let args = vecmap(args, |arg| self.substitute_generics(arg, bindings));
+                self.types.get_or_insert_type(Type::Application(constructor, args))
+            },
+        }
+    }
+
     /// Promotes a type to a top-level type.
     /// Panics if the typ contains an unbound type variable.
     fn promote_to_top_level_type(&self, typ: TypeId) -> TopLevelType {
@@ -329,6 +354,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     self.try_bind_type_variable(*expected, expected_id, actual_id)
                 }
             },
+            (Type::Primitive(types::PrimitiveType::Error), _) | (_, Type::Primitive(types::PrimitiveType::Error)) => Ok(()),
             (Type::Function(actual), Type::Function(expected)) => {
                 if actual.parameters.len() != expected.parameters.len() {
                     return Err(());
@@ -429,55 +455,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// This method does not emit any errors and relies on name resolution
     /// to emit errors when resolving types.
     pub fn convert_ast_type(&mut self, typ: &crate::parser::cst::Type) -> TypeId {
-        match typ {
-            crate::parser::cst::Type::Integer(kind) => match kind {
-                IntegerKind::I8 => TypeId::I8,
-                IntegerKind::I16 => TypeId::I16,
-                IntegerKind::I32 => TypeId::I32,
-                IntegerKind::I64 => TypeId::I64,
-                IntegerKind::Isz => TypeId::ISZ,
-                IntegerKind::U8 => TypeId::U8,
-                IntegerKind::U16 => TypeId::U16,
-                IntegerKind::U32 => TypeId::U32,
-                IntegerKind::U64 => TypeId::U64,
-                IntegerKind::Usz => TypeId::USZ,
-            },
-            crate::parser::cst::Type::Float(kind) => match kind {
-                FloatKind::F32 => TypeId::F32,
-                FloatKind::F64 => TypeId::F64,
-            },
-            crate::parser::cst::Type::String => TypeId::STRING,
-            crate::parser::cst::Type::Char => TypeId::CHAR,
-            crate::parser::cst::Type::Named(path) => {
-                let origin = self.current_resolve().path_origins.get(path).copied();
-                self.convert_origin_to_type(origin, Type::UserDefined)
-            },
-            crate::parser::cst::Type::Variable(name) => {
-                let origin = self.current_resolve().name_origins.get(name).copied();
-                self.convert_origin_to_type(origin, |origin| Type::Generic(Generic::Named(origin)))
-            },
-            crate::parser::cst::Type::Function(function) => {
-                let parameters = vecmap(&function.parameters, |typ| self.convert_ast_type(typ));
-                let return_type = self.convert_ast_type(&function.return_type);
-                // TODO: Effects
-                let effects = TypeId::UNIT;
-                let typ = Type::Function(types::FunctionType { parameters, return_type, effects });
-                self.types.get_or_insert_type(typ)
-            },
-            crate::parser::cst::Type::Error => TypeId::ERROR,
-            crate::parser::cst::Type::Unit => TypeId::UNIT,
-            crate::parser::cst::Type::Pair => TypeId::PAIR,
-            crate::parser::cst::Type::Application(f, args) => {
-                let f = self.convert_ast_type(f);
-                let args = vecmap(args, |typ| self.convert_ast_type(typ));
-                let typ = Type::Application(f, args);
-                self.types.get_or_insert_type(typ)
-            },
-            crate::parser::cst::Type::Reference(mutability, sharedness) => {
-                let typ = Type::Reference(*mutability, *sharedness);
-                self.types.get_or_insert_type(typ)
-            },
-        }
+        let resolve = self.current_resolve();
+        self.convert_foreign_type(typ, resolve)
     }
 
     /// Convert the given Origin to a type, issuing an error if the origin is not a type
@@ -506,6 +485,106 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
             // Assume name resolution has already issued an error for this case
             None => TypeId::ERROR,
+        }
+    }
+
+    /// Try to retrieve the types of each field of the given type.
+    /// Returns an empty map if unsuccessful.
+    fn get_field_types(&mut self, typ: TypeId, generic_args: Option<&[TypeId]>) -> BTreeMap<Arc<String>, TypeId> {
+        match self.follow_type(typ) {
+            Type::Application(constructor, arguments) => {
+                // TODO: Error if `generics` is non-empty
+                let constructor = *constructor;
+                let arguments = arguments.clone();
+                self.get_field_types(constructor, Some(&arguments))
+            },
+            Type::UserDefined(origin) => {
+                if let Origin::TopLevelDefinition(id) = origin {
+                    let (item, item_context) = GetItem(*id).get(self.compiler);
+                    if let TopLevelItemKind::TypeDefinition(definition) = &item.kind {
+                        let generic_count = generic_args.map_or(0, |generics| generics.len());
+
+                        let mut substitutions = FxHashMap::default();
+                        if let Some(generics) = generic_args {
+                            if definition.generics.len() == generic_count {
+                                substitutions = definition.generics.iter().map(|name| Generic::Named(Origin::Local(*name))).zip(generics.iter().copied()).collect();
+                            }
+                        }
+
+                        let resolve = Resolve(item.id).get(self.compiler);
+                        return match &definition.body {
+                            TypeDefinitionBody::Error => todo!(),
+                            TypeDefinitionBody::Struct(items) => {
+                                items.iter().map(|(name, typ)| {
+                                    let name = item_context.names[*name].clone();
+                                    let typ2 = self.convert_foreign_type(typ, &resolve);
+                                    let typ3 = self.substitute_generics(typ2, &substitutions);
+                                    (name, typ3)
+                                }).collect()
+                            },
+                            TypeDefinitionBody::Enum(_) => BTreeMap::default(),
+                            TypeDefinitionBody::Alias(_) => todo!("Type aliases"),
+                        };
+                    }
+                }
+                BTreeMap::default()
+            },
+            _ => BTreeMap::default(),
+        }
+    }
+
+    /// Converts a 'foreign' type to a TypeId.
+    /// A foreign type here is defined as a `cst::Type` with a TopLevelContext/ResolutionResult different to the one
+    /// in `self`, hence we need to take the other context as an argument.
+    fn convert_foreign_type(&mut self, typ: &crate::parser::cst::Type, resolve: &ResolutionResult) -> TypeId {
+        match typ {
+            crate::parser::cst::Type::Integer(kind) => match kind {
+                IntegerKind::I8 => TypeId::I8,
+                IntegerKind::I16 => TypeId::I16,
+                IntegerKind::I32 => TypeId::I32,
+                IntegerKind::I64 => TypeId::I64,
+                IntegerKind::Isz => TypeId::ISZ,
+                IntegerKind::U8 => TypeId::U8,
+                IntegerKind::U16 => TypeId::U16,
+                IntegerKind::U32 => TypeId::U32,
+                IntegerKind::U64 => TypeId::U64,
+                IntegerKind::Usz => TypeId::USZ,
+            },
+            crate::parser::cst::Type::Float(kind) => match kind {
+                FloatKind::F32 => TypeId::F32,
+                FloatKind::F64 => TypeId::F64,
+            },
+            crate::parser::cst::Type::String => TypeId::STRING,
+            crate::parser::cst::Type::Char => TypeId::CHAR,
+            crate::parser::cst::Type::Named(path) => {
+                let origin = resolve.path_origins.get(path).copied();
+                self.convert_origin_to_type(origin, Type::UserDefined)
+            },
+            crate::parser::cst::Type::Variable(name) => {
+                let origin = resolve.name_origins.get(name).copied();
+                self.convert_origin_to_type(origin, |origin| Type::Generic(Generic::Named(origin)))
+            },
+            crate::parser::cst::Type::Function(function) => {
+                let parameters = vecmap(&function.parameters, |typ| self.convert_foreign_type(typ, resolve));
+                let return_type = self.convert_foreign_type(&function.return_type, resolve);
+                // TODO: Effects
+                let effects = TypeId::UNIT;
+                let typ = Type::Function(types::FunctionType { parameters, return_type, effects });
+                self.types.get_or_insert_type(typ)
+            },
+            crate::parser::cst::Type::Error => TypeId::ERROR,
+            crate::parser::cst::Type::Unit => TypeId::UNIT,
+            crate::parser::cst::Type::Pair => TypeId::PAIR,
+            crate::parser::cst::Type::Application(f, args) => {
+                let f = self.convert_foreign_type(f, resolve);
+                let args = vecmap(args, |typ| self.convert_foreign_type(typ, resolve));
+                let typ = Type::Application(f, args);
+                self.types.get_or_insert_type(typ)
+            },
+            crate::parser::cst::Type::Reference(mutability, sharedness) => {
+                let typ = Type::Reference(*mutability, *sharedness);
+                self.types.get_or_insert_type(typ)
+            },
         }
     }
 }

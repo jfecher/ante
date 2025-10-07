@@ -7,7 +7,7 @@ use crate::{
     name_resolution::{builtin::Builtin, Origin},
     parser::{
         cst::{self, Definition, Expr, Literal, Pattern},
-        ids::{ExprId, PathId, PatternId},
+        ids::{ExprId, NameId, PathId, PatternId},
     },
     type_inference::{
         errors::TypeErrorKind,
@@ -57,7 +57,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 self.check_expr(type_annotation.lhs, annotation);
             },
             Expr::Handle(handle) => self.check_handle(handle, expected),
-            Expr::Constructor(_) => todo!("type check constructor"),
+            Expr::Constructor(constructor) => self.check_constructor(constructor, expected, expr),
             Expr::Quoted(_) => todo!("type check Expr::Quoted"),
             Expr::Error => (),
         };
@@ -76,6 +76,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Literal::Char(_) => TypeId::CHAR,
         };
         self.unify(actual, expected, TypeErrorKind::General, locator);
+    }
+
+    fn check_name(&mut self, name: NameId, expected: TypeId) {
+        if let Some(existing) = self.name_types.get(&name) {
+            self.unify(expected, *existing, TypeErrorKind::General, name);
+        } else {
+            self.name_types.insert(name, expected);
+        }
     }
 
     fn check_pattern(&mut self, pattern: PatternId, expected: TypeId) {
@@ -282,16 +290,33 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
+    fn check_constructor(&mut self, constructor: &cst::Constructor, expected: TypeId, id: ExprId) {
+        let typ = self.convert_ast_type(&constructor.typ);
+        self.unify(typ, expected, TypeErrorKind::Constructor, id);
+
+        let field_types = self.get_field_types(typ, None);
+
+        for (name, expr) in &constructor.fields {
+            let name_string = &self.current_context().names[*name];
+            let expected_field_type = field_types.get(name_string).copied().unwrap_or(TypeId::ERROR);
+
+            self.check_expr(*expr, expected_field_type);
+            self.check_name(*name, expected_field_type);
+        }
+    }
+
     fn check_handle(&mut self, _handle: &cst::Handle, _expected: TypeId) {
         todo!("check_handle")
     }
 
     pub(super) fn check_impl(&self, _trait_impl: &cst::TraitImpl) -> TypeId {
-        todo!("check_impl")
+        unreachable!("impls should be simplified into definitions by this point")
     }
 
-    pub(super) fn check_extern(&self, _extern_: &cst::Extern) -> TypeId {
-        todo!("check_extern")
+    pub(super) fn check_extern(&mut self, extern_: &cst::Extern) -> TypeId {
+        let typ = self.convert_ast_type(&extern_.declaration.typ);
+        self.check_name(extern_.declaration.name, typ);
+        typ
     }
 
     pub(super) fn check_comptime(&self, _comptime: &cst::Comptime) -> TypeId {
