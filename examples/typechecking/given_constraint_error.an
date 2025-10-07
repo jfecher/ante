@@ -5,7 +5,7 @@ impl print_impl {_: DoesNotExist a}: Print a with
 // args: --show-types
 // expected exit status: 101
 // expected stderr:
-// thread 'main' panicked at src/type_inference/cst_traversal.rs:289:9:
-// not yet implemented: check_impl
+// thread 'main' panicked at src/type_inference/cst_traversal.rs:60:37:
+// not yet implemented: type check constructor
 // note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 

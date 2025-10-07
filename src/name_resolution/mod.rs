@@ -1,25 +1,20 @@
 use std::{collections::{BTreeMap, BTreeSet}, sync::Arc};
 
 use namespace::{Namespace, SourceFileId, LOCAL_CRATE};
+use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 
 pub mod builtin;
 pub mod namespace;
 
 use crate::{
-    diagnostics::{Diagnostic, Location},
-    incremental::{
-        self, DbHandle, ExportedTypes, GetCrateGraph, GetItem, Resolve, VisibleDefinitions, VisibleDefinitionsResult,
-    },
-    name_resolution::builtin::Builtin,
-    parser::{
-        cst::{
-            Comptime, Declaration, Definition, EffectDefinition, EffectType, Expr, Extern, Generics, ItemName, Path,
-            Pattern, TopLevelItemKind, TraitDefinition, TraitImpl, Type, TypeDefinition, TypeDefinitionBody,
-        },
-        ids::{ExprId, NameId, PathId, PatternId, TopLevelId},
-        TopLevelContext,
-    },
+    diagnostics::{Diagnostic, Location}, incremental::{
+        self, DbHandle, ExportedTypes, GetCrateGraph, GetItem, Resolve, VisibleDefinitions, VisibleDefinitionsResult
+    }, name_resolution::builtin::Builtin, parser::{
+        context::TopLevelContext, cst::{
+            Comptime, Constructor, Declaration, Definition, EffectDefinition, EffectType, Expr, Extern, Generics, ItemName, Path, Pattern, TopLevelItemKind, TraitDefinition, TraitImpl, Type, TypeDefinition, TypeDefinitionBody
+        }, ids::{ExprId, NameId, PathId, PatternId, TopLevelId}
+    }
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -417,7 +412,9 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             },
             Expr::TypeAnnotation(type_annotation) => {
                 self.resolve_expr(type_annotation.lhs);
+                self.resolve_type(&type_annotation.rhs, false);
             },
+            Expr::Constructor(constructor) => self.resolve_constructor(constructor, expr),
             Expr::Quoted(_) => (),
             Expr::Error => (),
         }
@@ -433,6 +430,91 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
 
         if !is_let_rec {
             self.declare_names_in_pattern(definition.pattern, false, false);
+        }
+    }
+
+    fn resolve_constructor(&mut self, constructor: &Constructor, id: ExprId) {
+        self.resolve_type(&constructor.typ, false);
+
+        // Ensure all fields of the type are used exactly once
+        match self.get_fields_of_type(&constructor.typ) {
+            FieldsResult::Fields(names) => {
+                let mut given_fields = BTreeSet::default();
+                let mut already_defined = FxHashMap::default();
+
+                for (pattern, _) in &constructor.fields {
+                    pattern.for_each_variable(self.context, &mut |name_id| {
+                        let name = self.context.names[name_id].clone();
+                        let location = self.context.name_locations[name_id].clone();
+
+                        if let Some(first_location) = already_defined.get(&name).cloned() {
+                            let second_location = location;
+                            self.emit_diagnostic(Diagnostic::ConstructorFieldDuplicate { name, first_location, second_location });
+                            return;
+                        }
+
+                        already_defined.insert(name.clone(), location.clone());
+
+                        if !names.contains(&name) {
+                            let typ = constructor.typ.display(self.context).to_string();
+                            self.emit_diagnostic(Diagnostic::ConstructorNoSuchField { name, typ, location });
+                        } else {
+                            given_fields.insert(name);
+                        }
+                    });
+                }
+
+                let missing_fields = names.difference(&given_fields).map(ToString::to_string).collect::<Vec<_>>();
+                if !missing_fields.is_empty() {
+                    let location = self.context.expr_locations[id].clone();
+                    self.emit_diagnostic(Diagnostic::ConstructorMissingFields { missing_fields, location });
+                }
+            },
+            // We already issued an error when failing to resolve the path
+            // of this type, avoid issuing another.
+            FieldsResult::PriorError => (),
+            FieldsResult::NotAStruct => {
+                let typ = constructor.typ.display(self.context).to_string();
+                let location = self.context.expr_locations[id].clone();
+                self.emit_diagnostic(Diagnostic::ConstructorNotAStruct { typ, location });
+            },
+        }
+
+        for (_, expr) in &constructor.fields {
+            self.resolve_expr(*expr);
+        }
+    }
+
+    /// If the given type is a struct type, return its fields. Otherwise return None.
+    fn get_fields_of_type(&self, typ: &Type) -> FieldsResult {
+        match typ {
+            Type::Named(path) => {
+                match self.path_links.get(path) {
+                    Some(Origin::TopLevelDefinition(typ)) => {
+                        let (item, item_context) = GetItem(*typ).get(self.compiler);
+                        match &item.kind {
+                            TopLevelItemKind::TypeDefinition(type_definition) => {
+                                match &type_definition.body {
+                                    TypeDefinitionBody::Error => FieldsResult::PriorError,
+                                    TypeDefinitionBody::Enum(_) => FieldsResult::NotAStruct,
+                                    TypeDefinitionBody::Alias(_) => todo!("get_fields_of_type: handle type aliases"),
+                                    TypeDefinitionBody::Struct(fields) => {
+                                        let names = fields.iter().map(|(name, _)| item_context.names[*name].clone());
+                                        FieldsResult::Fields(names.collect())
+                                    },
+                                }
+                            },
+                            _ => FieldsResult::NotAStruct,
+                        }
+                    },
+                    Some(_) => FieldsResult::NotAStruct,
+                    None => FieldsResult::PriorError,
+                }
+            },
+            // NOTE: Once type aliases are added, the fields of an alias may depend
+            // on its generic arguments
+            Type::Application(typ, _) => self.get_fields_of_type(typ),
+            _ => FieldsResult::NotAStruct,
         }
     }
 
@@ -608,4 +690,11 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             Comptime::Definition(definition) => self.resolve_definition(definition),
         }
     }
+}
+
+enum FieldsResult {
+    Fields(BTreeSet<Arc<String>>),
+    /// A prior error occurred, avoid issuing another
+    PriorError,
+    NotAStruct,
 }

@@ -31,13 +31,13 @@ c = foo "one" "two"
 // examples/typechecking/impl.an:8:5	error: Expected an identifier but found `Foo`
 // impl Foo F64 with
 // 
-// examples/typechecking/impl.an:12:4	error: `foo` is not defined, was it a typo?
+// examples/typechecking/impl.an:12:4	error: `foo` is not in scope
 // a = foo 1 2i32
 // 
-// examples/typechecking/impl.an:13:4	error: `foo` is not defined, was it a typo?
+// examples/typechecking/impl.an:13:4	error: `foo` is not in scope
 // b = foo 1.0 2.0
 // 
-// examples/typechecking/impl.an:14:4	error: `foo` is not defined, was it a typo?
+// examples/typechecking/impl.an:14:4	error: `foo` is not in scope
 // c = foo "one" "two"
 // 
 // Found 5 errors and 0 warnings

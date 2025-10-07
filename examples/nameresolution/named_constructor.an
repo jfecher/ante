@@ -36,10 +36,10 @@ z = y * 2.0
 // examples/nameresolution/named_constructor.an:8:7	error: Expected a newline after the top level item but found `with`
 // t2 = T with y = 3.2, x
 // 
-// examples/nameresolution/named_constructor.an:11:4	error: `y` is not defined, was it a typo?
+// examples/nameresolution/named_constructor.an:11:4	error: `y` is not in scope
 // z = y * 2.0
 // 
-// examples/nameresolution/named_constructor.an:11:6	error: `*` is not defined, was it a typo?
+// examples/nameresolution/named_constructor.an:11:6	error: `*` is not in scope
 // z = y * 2.0
 // 
 // Found 4 errors and 0 warnings

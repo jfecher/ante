@@ -20,13 +20,13 @@ u x = t x
 // examples/nameresolution/U.an:1:8	error: Could not find crate `T`
 // import T.t
 // 
-// examples/nameresolution/U.an:4:6	error: `t` is not defined, was it a typo?
+// examples/nameresolution/U.an:4:6	error: `t` is not in scope
 // u x = t x
 // 
 // examples/nameresolution/T.an:1:8	error: Could not find crate `U`
 // import U.u
 // 
-// examples/nameresolution/T.an:4:6	error: `u` is not defined, was it a typo?
+// examples/nameresolution/T.an:4:6	error: `u` is not in scope
 // t x = u x
 // 
 // Found 4 errors and 0 warnings

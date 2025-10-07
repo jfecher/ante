@@ -30,6 +30,10 @@ pub enum Diagnostic {
     ValueExpected { location: Location, typ: Arc<String> },
     TypeError { actual: String, expected: String, kind: TypeErrorKind, location: Location },
     FunctionArgCountMismatch { actual: usize, expected: usize, location: Location },
+    ConstructorFieldDuplicate { name: Arc<String>, first_location: Location, second_location: Location },
+    ConstructorNoSuchField { name: Arc<String>, typ: String, location: Location },
+    ConstructorMissingFields { missing_fields: Vec<String>, location: Location },
+    ConstructorNotAStruct { typ: String, location: Location },
 }
 
 impl Ord for Diagnostic {
@@ -84,7 +88,7 @@ impl Diagnostic {
                 }
             },
             Diagnostic::NameNotInScope { name, location: _ } => {
-                format!("`{name}` is not defined, was it a typo?")
+                format!("`{name}` is not in scope")
             },
             Diagnostic::ExpectedType { actual, expected, location: _ } => {
                 format!("Expected type `{expected}` but found `{actual}`")
@@ -113,6 +117,21 @@ impl Diagnostic {
                 let was = if *expected == 1 { "was" } else { "were" };
                 format!("Function accepts {actual} parameter{s} but {expected} {was} expected")
             },
+            Diagnostic::ConstructorNoSuchField { name, typ, location: _ } => {
+                format!("{} has no field named `{name}`", typ.blue())
+            }
+            Diagnostic::ConstructorFieldDuplicate { name, first_location: _, second_location: _ } => {
+                // TODO: Show both locations in same error
+                format!("Duplicate field `{name}`")
+            }
+            Diagnostic::ConstructorMissingFields { missing_fields, location: _ } => {
+                let s = if missing_fields.len() == 1 { "" } else { "s" };
+                let fields = missing_fields.join(", ");
+                format!("Missing field{s}: {fields}")
+            }
+            Diagnostic::ConstructorNotAStruct { typ, location: _ } => {
+                format!("{} is not a struct", typ.blue())
+            }
         }
     }
 
@@ -133,6 +152,10 @@ impl Diagnostic {
             | Diagnostic::ValueExpected { location, .. }
             | Diagnostic::TypeError { location, .. }
             | Diagnostic::FunctionArgCountMismatch { location, .. }
+            | Diagnostic::ConstructorNoSuchField { location, .. }
+            | Diagnostic::ConstructorMissingFields { location, .. }
+            | Diagnostic::ConstructorNotAStruct { location, .. }
+            | Diagnostic::ConstructorFieldDuplicate { second_location: location, .. }
             | Diagnostic::NameNotFound { location, .. } => location,
         }
     }

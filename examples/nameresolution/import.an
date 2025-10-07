@@ -22,10 +22,10 @@ main () =
 // examples/nameresolution/import.an:1:8	error: Could not find crate `Library`
 // import Library.library_int, library_fn
 // 
-// examples/nameresolution/import.an:6:10	error: `library_int` is not defined, was it a typo?
+// examples/nameresolution/import.an:6:10	error: `library_int` is not in scope
 //     foo 4 library_int
 // 
-// examples/nameresolution/import.an:7:11	error: `library_fn` is not defined, was it a typo?
+// examples/nameresolution/import.an:7:11	error: `library_fn` is not in scope
 //     foo 5 (library_fn ())
 // 
 // Found 3 errors and 0 warnings

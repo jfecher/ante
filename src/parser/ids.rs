@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     diagnostics::Location,
     incremental::{DbHandle, Parse},
-    name_resolution::namespace::SourceFileId,
+    name_resolution::namespace::SourceFileId, parser::context::TopLevelContext,
 };
 
 /// A `TopLevelId` is a 64-bit hash uniquely identifying a particular
@@ -124,6 +124,23 @@ impl From<PatternId> for usize {
 impl From<usize> for PatternId {
     fn from(value: usize) -> Self {
         Self(value as u32)
+    }
+}
+
+impl PatternId {
+    pub fn for_each_variable(self, context: &TopLevelContext, f: &mut impl FnMut(NameId)) {
+        match &context.patterns[self] {
+            super::cst::Pattern::Error => (),
+            super::cst::Pattern::Literal(_) => (),
+            super::cst::Pattern::MethodName { .. } => (),
+            super::cst::Pattern::Variable(name) => f(*name),
+            super::cst::Pattern::Constructor(_, args) => {
+                for arg in args {
+                    arg.for_each_variable(context, f);
+                }
+            }
+            super::cst::Pattern::TypeAnnotation(pattern, _) => pattern.for_each_variable(context, f),
+        }
     }
 }
 

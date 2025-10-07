@@ -1,20 +1,20 @@
 
 trait Bar a -> b with
     bar: fn a a -> b
+   
 
-
-impl Bar I32 String with
+impl bar1: Bar I32 String with
     bar _ _ = "good"
 
-impl Bar I32 I32 with
+impl bar2: Bar I32 I32 with
     bar _ _ = "bad return type"
 
-impl Bar I32 Char String F64 Unit with
+impl bar3: Bar I32 Char String F64 Unit with
     bar _ _ = "bad impl args"
 
 
 
-impl Bar I32 F64 with
+impl bar4: Bar I32 F64 with
     bar _ _ = 23.2 // Should be an error, we already have a Bar I32
 
 foo a b = bar a b
@@ -25,38 +25,9 @@ bar 3 2
 bar "four" "five"
 
 // args: --show-types
-// expected stdout:
-// trait Bar a -> b with
-//     (bar: (error)): fn a a -> b
-// 
-// (foo: fn _6 _7 -> _4) (a: _6) (b: _7) = (bar: (error)) (a: _6) (b: _7)
-// 
-// (baz: fn String _7 -> _4) ((x: String)) (y: _7) = (bar: (error)) (x: String) (y: _7)
-
+// expected exit status: 101
 // expected stderr:
-// examples/typechecking/trait_impls.an:6:5	error: Expected an identifier but found `Bar`
-// impl Bar I32 String with
-// 
-// examples/typechecking/trait_impls.an:9:5	error: Expected an identifier but found `Bar`
-// impl Bar I32 I32 with
-// 
-// examples/typechecking/trait_impls.an:12:5	error: Expected an identifier but found `Bar`
-// impl Bar I32 Char String F64 Unit with
-// 
-// examples/typechecking/trait_impls.an:17:5	error: Expected an identifier but found `Bar`
-// impl Bar I32 F64 with
-// 
-// examples/typechecking/trait_impls.an:20:10	error: `bar` is not defined, was it a typo?
-// foo a b = bar a b
-// 
-// examples/typechecking/trait_impls.an:22:20	error: `bar` is not defined, was it a typo?
-// baz (x: String) y = bar x y
-// 
-// examples/typechecking/trait_impls.an:23:4	error: Expected `=` to begin the function body but found `3`
-// bar 3 2
-// 
-// examples/typechecking/trait_impls.an:25:4	error: Expected `=` to begin the function body but found `"four"`
-// bar "four" "five"
-// 
-// Found 8 errors and 0 warnings
+// thread 'main' panicked at src/type_inference/cst_traversal.rs:60:37:
+// not yet implemented: type check constructor
+// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 

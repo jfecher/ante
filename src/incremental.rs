@@ -17,8 +17,8 @@ use crate::{
         namespace::{CrateId, SourceFileId},
         ResolutionResult,
     },
-    parser::{self, cst::TopLevelItem, ids::TopLevelId, ParseResult, TopLevelContext},
-    type_inference::{self, dependency_graph::{SCC, TypeCheckDependencyGraphResult, TypeCheckResult}, types::GeneralizedType, TypeCheckSCCResult},
+    parser::{self, context::TopLevelContext, cst::TopLevelItem, get_item, ids::TopLevelId, ParseResult},
+    type_inference::{self, dependency_graph::{TypeCheckDependencyGraphResult, TypeCheckResult, SCC}, types::GeneralizedType, TypeCheckSCCResult},
 };
 
 /// A wrapper over inc-complete's database with our specific storage type to hold
@@ -52,7 +52,8 @@ pub struct DbStorage {
     exported_types: HashMapStorage<ExportedTypes>,
     get_imports: HashMapStorage<GetImports>,
     resolves: HashMapStorage<Resolve>,
-    top_level_items: HashMapStorage<GetItem>,
+    top_level_items_desugared: HashMapStorage<GetItem>,
+    top_level_items: HashMapStorage<GetItemRaw>,
     get_types: HashMapStorage<GetType>,
     type_check_sccs: HashMapStorage<TypeCheckSCC>,
     type_checks: HashMapStorage<TypeCheck>,
@@ -240,10 +241,10 @@ define_intermediate!(100, Resolve -> ResolutionResult, DbStorage, name_resolutio
 /// `TopLevelItem` has changed, and if not, we don't need to re-run any computations that
 /// depend on that item.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
-pub struct GetItem(pub TopLevelId);
+pub struct GetItemRaw(pub TopLevelId);
 
 // This one is quick and simple, let's just define it here.
-define_intermediate!(110, GetItem -> (Arc<TopLevelItem>, Arc<TopLevelContext>), DbStorage, |context, db| {
+define_intermediate!(110, GetItemRaw -> (Arc<TopLevelItem>, Arc<TopLevelContext>), DbStorage, |context, db| {
     let target_id = &context.0;
     let ast = Parse(context.0.source_file).get(db);
 
@@ -257,6 +258,13 @@ define_intermediate!(110, GetItem -> (Arc<TopLevelItem>, Arc<TopLevelContext>), 
     // Note that panics are not cached (so avoid `catch_unwind` within incremental computations!)
     unreachable!("No TopLevelItem for id {target_id:?}")
 });
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+/// Retrieves a top-level item from `GetItem` and perform desugaring on it with only information
+/// from parsing.
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GetItem(pub TopLevelId);
+define_intermediate!(115, GetItem -> (Arc<TopLevelItem>, Arc<TopLevelContext>), DbStorage, get_item::get_item_impl);
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 /// Retrieves the type of a top-level item. Like `Resolve`, this is done per-item.

@@ -57,6 +57,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 self.check_expr(type_annotation.lhs, annotation);
             },
             Expr::Handle(handle) => self.check_handle(handle, expected),
+            Expr::Constructor(_) => todo!("type check constructor"),
             Expr::Quoted(_) => todo!("type check Expr::Quoted"),
             Expr::Error => (),
         };

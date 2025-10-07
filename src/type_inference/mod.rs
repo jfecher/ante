@@ -11,9 +11,7 @@ use crate::{
     lexer::token::{FloatKind, IntegerKind},
     name_resolution::{builtin::Builtin, Origin, ResolutionResult},
     parser::{
-        cst::{TopLevelItem, TopLevelItemKind},
-        ids::{ExprId, NameId, PathId, TopLevelId},
-        TopLevelContext,
+        context::TopLevelContext, cst::{TopLevelItem, TopLevelItemKind}, ids::{ExprId, NameId, PathId, TopLevelId}
     },
     type_inference::{
         errors::{Locateable, TypeErrorKind},

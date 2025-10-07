@@ -62,10 +62,10 @@ ex2c (a: v) b =
 // examples/typechecking/mutual_recursion_rigid.an:0:0	error: Expected fn t _29 -> _16 but found fn t _29 -> _25
 // // Mutually recursive definitions which type check when partially annotated despite
 // 
-// examples/typechecking/mutual_recursion_rigid.an:22:4	error: `trait1` is not defined, was it a typo?
+// examples/typechecking/mutual_recursion_rigid.an:22:4	error: `trait1` is not in scope
 //     trait1 a
 // 
-// examples/typechecking/mutual_recursion_rigid.an:26:4	error: `trait2` is not defined, was it a typo?
+// examples/typechecking/mutual_recursion_rigid.an:26:4	error: `trait2` is not in scope
 //     trait2 a
 // 
 // Found 4 errors and 0 warnings

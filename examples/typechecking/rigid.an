@@ -12,7 +12,7 @@ ex2: a -> b =
 
 
 // expected stderr:
-// examples/typechecking/rigid.an:2:18	error: `+` is not defined, was it a typo?
+// examples/typechecking/rigid.an:2:18	error: `+` is not in scope
 // ex1 (x: a): b = x + 1u32
 // 
 // examples/typechecking/rigid.an:6:7	error: Expected `=` to begin the function body but found `->`

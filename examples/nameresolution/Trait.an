@@ -2,7 +2,7 @@ trait Foo a b with
     foo: fn a -> b
     bar: a
 
-// error: missing definition of foo
+// error: missing definition of bar
 impl foo_i32_string: Foo I32 String with
     foo _x = "test"
     baz = 2
@@ -14,26 +14,32 @@ main () =
 // args: --show-resolved
 // expected stdout:
 // // id = c1m488_1237
-// trait Foo_c1m488_1237 a_1 b_2 with
-//     foo_3: fn a_1 -> b_2
-//     bar_6: a_1
+// type Foo_c1m488_1237 =
+//     foo_?: fn a_1 -> b_2
+//     bar_?: a_1
 // 
 // // id = c1m488_7510
-// impl foo_i32_string_c1m488_7510: Foo_c1m488_1237 I32 String_b with
-//     foo_1 _x_2 = "test"
-//     baz_4 = 2
+// implicit foo_i32_string_c1m488_7510 = Foo_c1m488_1237 I32 String_b with
+//     foo_? = fn _x_2 -> "test"
+//     baz_? = 2
 // 
 // // id = c1m488_1944
 // main_c1m488_1944 () =
 //     foo_? 3
-//     bar_?: Unit_?
+//     bar_?: Unit_b
 
 // expected stderr:
-// examples/nameresolution/Trait.an:11:4	error: `foo` is not defined, was it a typo?
+// examples/nameresolution/Trait.an:6:0	error: Missing field: bar
+// impl foo_i32_string: Foo I32 String with
+// 
+// examples/nameresolution/Trait.an:8:0	error: Foo I32 String has no field named `baz`
+//     baz = 2
+// 
+// examples/nameresolution/Trait.an:11:4	error: `foo` is not in scope
 //     foo 3
 // 
-// examples/nameresolution/Trait.an:12:4	error: `bar` is not defined, was it a typo?
+// examples/nameresolution/Trait.an:12:4	error: `bar` is not in scope
 //     bar : Unit
 // 
-// Found 2 errors and 0 warnings
+// Found 4 errors and 0 warnings
 

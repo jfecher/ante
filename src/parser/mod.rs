@@ -9,12 +9,11 @@ use rustc_hash::FxHashSet;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    diagnostics::{Diagnostic, ErrorDefault, Location, LocationData, Span},
+    diagnostics::{Diagnostic, ErrorDefault, Location, Span},
     incremental,
     lexer::{token::Token, Lexer},
     name_resolution::namespace::SourceFileId,
-    parser::cst::HandlePattern,
-    vecmap::VecMap,
+    parser::{context::TopLevelContext, cst::HandlePattern},
 };
 
 use self::cst::{
@@ -25,42 +24,13 @@ use self::cst::{
 pub mod cst;
 pub mod cst_printer;
 pub mod ids;
+pub mod get_item;
+pub mod context;
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct ParseResult {
     pub cst: Cst,
     pub top_level_data: BTreeMap<TopLevelId, Arc<TopLevelContext>>,
-}
-
-/// Metadata associated with a top level statement
-#[derive(Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct TopLevelContext {
-    pub location: Location,
-    pub exprs: VecMap<ExprId, Expr>,
-    pub patterns: VecMap<PatternId, Pattern>,
-    pub paths: VecMap<PathId, Path>,
-    pub names: VecMap<NameId, Name>,
-
-    pub expr_locations: VecMap<ExprId, Location>,
-    pub pattern_locations: VecMap<PatternId, Location>,
-    pub path_locations: VecMap<PathId, Location>,
-    pub name_locations: VecMap<NameId, Location>,
-}
-
-impl TopLevelContext {
-    fn new(file_id: SourceFileId) -> Self {
-        Self {
-            location: LocationData::placeholder(file_id),
-            exprs: VecMap::default(),
-            patterns: VecMap::default(),
-            expr_locations: VecMap::default(),
-            pattern_locations: VecMap::default(),
-            paths: VecMap::default(),
-            names: VecMap::default(),
-            path_locations: VecMap::default(),
-            name_locations: VecMap::default(),
-        }
-    }
 }
 
 type Result<T> = std::result::Result<T, Diagnostic>;
@@ -612,7 +582,7 @@ impl<'tokens> Parser<'tokens> {
     /// definition: non_function_definition | function_definition
     fn parse_definition(&mut self) -> Result<Definition> {
         match self.current_token() {
-            Token::Mut => self.parse_non_function_definition(),
+            Token::Implicit | Token::Mut => self.parse_non_function_definition(),
             _ => {
                 if let Ok(function) = self.try_(Self::parse_function_definition) {
                     Ok(function)
@@ -623,8 +593,9 @@ impl<'tokens> Parser<'tokens> {
         }
     }
 
-    /// non_function_definition: 'mut'? pattern '=' expression
+    /// non_function_definition: 'implicit'? 'mut'? pattern '=' expression
     fn parse_non_function_definition(&mut self) -> Result<Definition> {
+        let implicit = self.accept(Token::Implicit);
         let mutable = self.accept(Token::Mut);
         let pattern = self.parse_pattern()?;
         self.expect(Token::Equal, "`=` to begin the function body")?;
@@ -633,7 +604,7 @@ impl<'tokens> Parser<'tokens> {
             .try_parse_or_recover_to_newline(|this| this.parse_block_or_expression())
             .unwrap_or_else(|| self.push_expr(Expr::Error, self.current_token_location()));
 
-        Ok(Definition { mutable, pattern, rhs })
+        Ok(Definition { implicit, mutable, pattern, rhs })
     }
 
     /// function_definition: function_name_pattern parameter+ (':' typ)? effects_clause '=' expression
@@ -658,7 +629,7 @@ impl<'tokens> Parser<'tokens> {
 
         let lambda = Expr::Lambda(Lambda { parameters, return_type, effects, body });
         self.insert_expr(lambda_id, lambda, start_location);
-        Ok(Definition { mutable: false, pattern: name, rhs: lambda_id })
+        Ok(Definition { implicit: false, mutable: false, pattern: name, rhs: lambda_id })
     }
 
     fn parse_function_name_pattern(&mut self) -> Result<PatternId> {

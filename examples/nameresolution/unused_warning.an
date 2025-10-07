@@ -15,7 +15,7 @@ id x = error
 // examples/nameresolution/unused_warning.an:4:0	warning: `id` was already defined
 // id x = error
 // 
-// examples/nameresolution/unused_warning.an:4:7	error: `error` is not defined, was it a typo?
+// examples/nameresolution/unused_warning.an:4:7	error: `error` is not in scope
 // id x = error
 // 
 // Found 1 error and 1 warning

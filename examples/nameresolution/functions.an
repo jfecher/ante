@@ -15,7 +15,7 @@ map l f =
 // expected stdout:
 // // id = c1m743_1986
 // recursion_c1m743_1986 n_1 f_2 =
-//     if n_1 >_c0m12_4222 0 then 
+//     if n_1 >_c0m710_4222 0 then 
 //         f_2 ()
 //         recursion_c1m743_1986 (n_1 -_? 1) f_2
 // 
@@ -31,7 +31,7 @@ map l f =
 //     | Cons_td x_3 xs_4 -> Cons_td (f_2 x_3) (map_c1m743_4625 xs_4 f_2)
 
 // expected stderr:
-// examples/nameresolution/functions.an:5:21	error: `-` is not defined, was it a typo?
+// examples/nameresolution/functions.an:5:21	error: `-` is not in scope
 //         recursion (n - 1) f
 // 
 // Found 1 error and 0 warnings

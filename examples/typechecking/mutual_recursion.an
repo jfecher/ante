@@ -27,16 +27,13 @@ main () = is_even 4
 // (main: fn Unit -> _3) () = (is_even: fn I32 -> _3) 4
 
 // expected stderr:
-// /home/rndmprsn/Code/Ante/ante/stdlib/src/Prelude.an:369:4	error: `printne` is not defined, was it a typo?
+// /Users/jakefecher/Code/Ante/ante/stdlib/src/Prelude.an:369:4	error: `printne` is not in scope
 //     printne x
-// 
-// /home/rndmprsn/Code/Ante/ante/stdlib/src/Prelude.an:370:12	error: Expected Char but found Char
-//     putchar c"\n"
 // 
 // examples/typechecking/mutual_recursion.an:0:0	error: Expected Bool but found fn _22 -> Bool
 // // Multiple mutually-recursive functions must be typechecked in tandem
 // 
-// examples/typechecking/mutual_recursion.an:4:9	error: `==` is not defined, was it a typo?
+// examples/typechecking/mutual_recursion.an:4:9	error: `==` is not in scope
 //     if n == 0 then true else
 // 
 // examples/typechecking/mutual_recursion.an:6:12	error: Expected Bool but found fn _9 -> _4
@@ -45,10 +42,10 @@ main () = is_even 4
 // examples/typechecking/mutual_recursion.an:6:19	error: Expected an unindent but found `(`
 //         not is_odd (n - 1)
 // 
-// examples/typechecking/mutual_recursion.an:9:6	error: `==` is not defined, was it a typo?
+// examples/typechecking/mutual_recursion.an:9:6	error: `==` is not in scope
 //     n == 1 or not is_even (n - 1)
 // 
-// examples/typechecking/mutual_recursion.an:9:11	error: `or` is not defined, was it a typo?
+// examples/typechecking/mutual_recursion.an:9:11	error: `or` is not in scope
 //     n == 1 or not is_even (n - 1)
 // 
 // examples/typechecking/mutual_recursion.an:9:26	error: Expected an unindent but found `(`
@@ -57,5 +54,5 @@ main () = is_even 4
 // examples/typechecking/mutual_recursion.an:11:10	error: Expected fn _5 -> _3 but found Bool
 // main () = is_even 4
 // 
-// Found 10 errors and 0 warnings
+// Found 9 errors and 0 warnings
 

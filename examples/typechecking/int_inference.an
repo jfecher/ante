@@ -17,11 +17,8 @@ main () =
 //     (print: fn I32 -> Unit) 2
 
 // expected stderr:
-// /home/rndmprsn/Code/Ante/ante/stdlib/src/Prelude.an:369:4	error: `printne` is not defined, was it a typo?
+// /Users/jakefecher/Code/Ante/ante/stdlib/src/Prelude.an:369:4	error: `printne` is not in scope
 //     printne x
 // 
-// /home/rndmprsn/Code/Ante/ante/stdlib/src/Prelude.an:370:12	error: Expected Char but found Char
-//     putchar c"\n"
-// 
-// Found 2 errors and 0 warnings
+// Found 1 error and 0 warnings
 

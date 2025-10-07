@@ -33,11 +33,8 @@ main () =
 //     (puts2: fn (Ptr Char) -> I32)
 
 // expected stderr:
-// /home/rndmprsn/Code/Ante/ante/stdlib/src/Prelude.an:349:4	error: `builtin` is not defined, was it a typo?
+// /Users/jakefecher/Code/Ante/ante/stdlib/src/Prelude.an:349:4	error: `builtin` is not in scope
 //     builtin "Transmute" x
-// 
-// examples/typechecking/type_annotations.an:2:34	error: Expected Char but found Char
-// foo (_: I32) (_: String) : Char = c"a"
 // 
 // examples/typechecking/type_annotations.an:4:5	error: `a` not found in scope
 // bar: fn a a -> I32 =
@@ -51,5 +48,5 @@ main () =
 // examples/typechecking/type_annotations.an:14:10	error: Expected I32 but found String
 //     exit2 "test"
 // 
-// Found 6 errors and 0 warnings
+// Found 5 errors and 0 warnings
 
