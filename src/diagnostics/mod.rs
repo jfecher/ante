@@ -31,10 +31,11 @@ pub enum Diagnostic {
     TypeError { actual: String, expected: String, kind: TypeErrorKind, location: Location },
     FunctionArgCountMismatch { actual: usize, expected: usize, location: Location },
     ConstructorFieldDuplicate { name: Arc<String>, first_location: Location, second_location: Location },
-    ConstructorNoSuchField { name: Arc<String>, typ: String, location: Location },
     ConstructorMissingFields { missing_fields: Vec<String>, location: Location },
     ConstructorNotAStruct { typ: String, location: Location },
+    NoSuchFieldForType { name: Arc<String>, typ: String, location: Location },
     ParserComplexImplItemName { location: Location },
+    TypeMustBeKnownMemberAccess { location: Location },
 }
 
 impl Ord for Diagnostic {
@@ -121,7 +122,7 @@ impl Diagnostic {
                 let was = if *expected == 1 { "was" } else { "were" };
                 format!("Function accepts {actual} parameter{s} but {expected} {was} expected")
             },
-            Diagnostic::ConstructorNoSuchField { name, typ, location: _ } => {
+            Diagnostic::NoSuchFieldForType { name, typ, location: _ } => {
                 format!("{} has no field named `{name}`", typ.blue())
             }
             Diagnostic::ConstructorFieldDuplicate { name, first_location: _, second_location: _ } => {
@@ -135,6 +136,9 @@ impl Diagnostic {
             }
             Diagnostic::ConstructorNotAStruct { typ, location: _ } => {
                 format!("{} is not a struct", typ.blue())
+            }
+            Diagnostic::TypeMustBeKnownMemberAccess { location: _ } => {
+                format!("Object type must be known by this point to access its field")
             }
         }
     }
@@ -157,10 +161,11 @@ impl Diagnostic {
             | Diagnostic::ValueExpected { location, .. }
             | Diagnostic::TypeError { location, .. }
             | Diagnostic::FunctionArgCountMismatch { location, .. }
-            | Diagnostic::ConstructorNoSuchField { location, .. }
+            | Diagnostic::NoSuchFieldForType { location, .. }
             | Diagnostic::ConstructorMissingFields { location, .. }
             | Diagnostic::ConstructorNotAStruct { location, .. }
             | Diagnostic::ConstructorFieldDuplicate { second_location: location, .. }
+            | Diagnostic::TypeMustBeKnownMemberAccess { location }
             | Diagnostic::NameNotFound { location, .. } => location,
         }
     }

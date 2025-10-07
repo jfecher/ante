@@ -17,9 +17,48 @@ main () =
     foo_and_bar foo bar
 
 // args: --show-types
-// expected exit status: 101
+// expected stdout:
+// type FooBar =
+//     foo: I32
+//     bar: String
+// 
+// type Foo =
+//     foo: F64
+// 
+// type Bar =
+//     bar: Char
+// 
+// (stringify: fn String -> String) ((s: String)) = (s: String)
+// 
+// (foo_and_bar: fn _7 _10 -> String) (a: _7) (b: _10) =
+//     (a: _7).foo
+//     (stringify: fn String -> String) (b: _10).bar
+// 
+// (foobar: _0) = (FooBar: fn I32 String -> _0) 1 "one"
+// 
+// (foo: _0) = (Foo: fn F64 -> _0) 2.0
+// 
+// (bar: _0) = (Bar: fn Char -> _0) c"3"
+// 
+// (main: fn Unit -> String) () =
+//     (foo_and_bar: fn _6 _7 -> String) (foobar: _6) (foobar: _7)
+//     (foo_and_bar: fn _13 _14 -> String) (foo: _13) (bar: _14)
+
 // expected stderr:
-// thread 'main' panicked at src/type_inference/cst_traversal.rs:254:9:
-// not yet implemented
-// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+// examples/typechecking/member_access.an:8:5	error: Object type must be known by this point to access its field
+//     a.foo
+// 
+// examples/typechecking/member_access.an:9:15	error: Object type must be known by this point to access its field
+//     stringify b.bar
+// 
+// examples/typechecking/member_access.an:11:9	error: Expected fn _2 _3 -> _1 but found Unit
+// foobar = FooBar 1 "one"
+// 
+// examples/typechecking/member_access.an:12:6	error: Expected fn _2 -> _1 but found Unit
+// foo = Foo 2.0
+// 
+// examples/typechecking/member_access.an:13:6	error: Expected fn _2 -> _1 but found Unit
+// bar = Bar c"3"
+// 
+// Found 5 errors and 0 warnings
 

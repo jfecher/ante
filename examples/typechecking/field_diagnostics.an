@@ -23,9 +23,71 @@ main () =
     _ = (!&tuple).!first
 
 // args: --show-types
-// expected exit status: 101
+// expected stdout:
+// (main: fn Unit -> _3) () =
+//     (tuple: I32, I32) = 1 (,: (error)) 1
+//     (_: _13) = ((&: (error)) ((&: (error)) (tuple: I32, I32))).first
+//     (_: _20) = (tuple: I32, I32).!first
+//     (_: _23) = (tuple: I32, I32).!missing
+//     (imm_ref: _34) = (&: (error)) (tuple: I32, I32)
+//     (_: _30) = (imm_ref: _34).!first
+//     (_: _33) = (imm_ref: _34).!missing
+//     mut (mut_tuple: I32, I32) = 1 (,: (error)) 1
+//     (_: _43) = (mut_tuple: I32, I32).&missing
+//     (_: _46) = (mut_tuple: I32, I32).!missing
+//     (mut_ref: _57) = (!: (error)) (mut_tuple: I32, I32)
+//     (_: _53) = (mut_ref: _57).&missing
+//     (_: _56) = (mut_ref: _57).!missing
+//     (_: _58) = ((!: (error)) ((&: (error)) (tuple: I32, I32))).!first
+
 // expected stderr:
-// thread 'main' panicked at src/type_inference/cst_traversal.rs:254:9:
-// not yet implemented
-// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+// examples/typechecking/field_diagnostics.an:4:9	error: `&` is not in scope
+//     _ = (&&tuple).first
+// 
+// examples/typechecking/field_diagnostics.an:4:10	error: `&` is not in scope
+//     _ = (&&tuple).first
+// 
+// examples/typechecking/field_diagnostics.an:4:17	error: Object type must be known by this point to access its field
+//     _ = (&&tuple).first
+// 
+// examples/typechecking/field_diagnostics.an:6:13	error: I32, I32 has no field named `first`
+//     _ = tuple.!first
+// 
+// examples/typechecking/field_diagnostics.an:7:13	error: I32, I32 has no field named `missing`
+//     _ = tuple.!missing
+// 
+// examples/typechecking/field_diagnostics.an:9:14	error: `&` is not in scope
+//     imm_ref = &tuple
+// 
+// examples/typechecking/field_diagnostics.an:10:15	error: Object type must be known by this point to access its field
+//     _ = imm_ref.!first
+// 
+// examples/typechecking/field_diagnostics.an:11:15	error: Object type must be known by this point to access its field
+//     _ = imm_ref.!missing
+// 
+// examples/typechecking/field_diagnostics.an:15:17	error: I32, I32 has no field named `missing`
+//     _ = mut_tuple.&missing
+// 
+// examples/typechecking/field_diagnostics.an:16:17	error: I32, I32 has no field named `missing`
+//     _ = mut_tuple.!missing
+// 
+// examples/typechecking/field_diagnostics.an:18:14	error: `!` is not in scope
+//     mut_ref = !mut_tuple
+// 
+// examples/typechecking/field_diagnostics.an:20:15	error: Object type must be known by this point to access its field
+//     _ = mut_ref.&missing
+// 
+// examples/typechecking/field_diagnostics.an:21:15	error: Object type must be known by this point to access its field
+//     _ = mut_ref.!missing
+// 
+// examples/typechecking/field_diagnostics.an:23:9	error: `!` is not in scope
+//     _ = (!&tuple).!first
+// 
+// examples/typechecking/field_diagnostics.an:23:10	error: `&` is not in scope
+//     _ = (!&tuple).!first
+// 
+// examples/typechecking/field_diagnostics.an:23:17	error: Object type must be known by this point to access its field
+//     _ = (!&tuple).!first
+// 
+// Found 16 errors and 0 warnings
 

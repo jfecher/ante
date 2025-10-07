@@ -295,11 +295,19 @@ impl<Db> TypePrinter<'_, Db> where Db: DbGet<GetItem> {
                 if parenthesize {
                     write!(f, "(")?;
                 }
-                self.fmt_type_id(*constructor, true, f)?;
-                for arg in args {
-                    write!(f, " ")?;
-                    self.fmt_type_id(*arg, true, f)?;
+
+                if *constructor == TypeId::PAIR && args.len() == 2 {
+                    self.fmt_type_id(args[0], true, f)?;
+                    write!(f, ", ")?;
+                    self.fmt_type_id(args[1], true, f)?;
+                } else {
+                    self.fmt_type_id(*constructor, true, f)?;
+                    for arg in args {
+                        write!(f, " ")?;
+                        self.fmt_type_id(*arg, true, f)?;
+                    }
                 }
+
                 if parenthesize {
                     write!(f, ")")?;
                 }

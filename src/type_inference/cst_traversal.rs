@@ -46,7 +46,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Expr::Definition(definition) => {
                 self.check_definition(definition);
             },
-            Expr::MemberAccess(member_access) => self.check_member_access(member_access, expected),
+            Expr::MemberAccess(member_access) => self.check_member_access(member_access, expected, expr),
             Expr::Index(index) => self.check_index(index, expected),
             Expr::If(if_) => self.check_if(if_, expected, expr),
             Expr::Match(match_) => self.check_match(match_, expected),
@@ -250,8 +250,35 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
-    fn check_member_access(&mut self, _member_access: &cst::MemberAccess, _expected: TypeId) {
-        todo!()
+    fn check_member_access(&mut self, member_access: &cst::MemberAccess, expected: TypeId, expr: ExprId) {
+        let struct_type = self.next_type_variable();
+        self.check_expr(member_access.object, struct_type);
+
+        let fields = self.get_field_types(struct_type, None);
+        if let Some(field) = fields.get(&member_access.member) {
+            // TODO: How should we differentiate between shared and owned variants?
+            let result = match member_access.ownership {
+                cst::OwnershipMode::Owned => *field,
+                cst::OwnershipMode::Borrow => {
+                    let reference = Type::Application(TypeId::REF, vec![*field]);
+                    self.types.get_or_insert_type(reference)
+                },
+                cst::OwnershipMode::BorrowMut => {
+                    let reference = Type::Application(TypeId::REF_MUT, vec![*field]);
+                    self.types.get_or_insert_type(reference)
+                },
+            };
+
+            self.unify(result, expected, TypeErrorKind::General, expr);
+        } else if matches!(self.follow_type(struct_type), Type::Variable(_)) {
+            let location = self.current_context().expr_locations[expr].clone();
+            self.compiler.accumulate(Diagnostic::TypeMustBeKnownMemberAccess { location });
+        } else {
+            let typ = self.type_to_string(struct_type);
+            let location = self.current_context().expr_locations[expr].clone();
+            let name = Arc::new(member_access.member.clone());
+            self.compiler.accumulate(Diagnostic::NoSuchFieldForType { typ, location, name });
+        }
     }
 
     fn check_index(&mut self, _index: &cst::Index, _expected: TypeId) {

@@ -482,7 +482,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
 
                     if !names.contains(&name) {
                         let typ = constructor.typ.display(self.context).to_string();
-                        self.emit_diagnostic(Diagnostic::ConstructorNoSuchField { name, typ, location });
+                        self.emit_diagnostic(Diagnostic::NoSuchFieldForType { name, typ, location });
                     } else {
                         given_fields.insert(name);
                     }

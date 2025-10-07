@@ -533,6 +533,16 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 }
                 BTreeMap::default()
             },
+            Type::Primitive(types::PrimitiveType::String) => {
+                let mut fields = BTreeMap::default();
+
+                let c_string_type = self.types.get_or_insert_type(Type::Application(TypeId::POINTER, vec![TypeId::CHAR]));
+
+                // TODO: Hide these and only expose them as unsafe builtins
+                fields.insert(Arc::new("c_string".into()), c_string_type);
+                fields.insert(Arc::new("length".into()), TypeId::U32);
+                fields
+            }
             _ => BTreeMap::default(),
         }
     }
