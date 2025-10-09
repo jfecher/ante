@@ -49,7 +49,7 @@ impl candidate2: Foo Thing with
 //     (baz: (error)): fn a -> Unit
 // 
 // (main: fn Unit -> _3) () =
-//     (foo: (error)) ((Thing: fn Unit -> _5) ())
+//     (foo: (error)) ((Thing: fn Unit -> Thing) ())
 // 
 // impl candidate1 {(_: Bar a)}: (Foo: (error)) a with
 //     (foo: fn a -> Unit) (a: a) = (bar: fn (Baz _3) -> Unit) (a: Baz _3)
@@ -67,10 +67,7 @@ impl candidate2: Foo Thing with
 //     (foo: fn Thing -> Unit) (_: Thing) = ()
 
 // expected stderr:
-// examples/typechecking/multiple_matching_impls.an:15:4	error: `foo` is not in scope
-//     foo (Thing ())
-// 
-// examples/typechecking/multiple_matching_impls.an:15:9	error: Expected fn _7 -> _5 but found Unit
+// examples/typechecking/multiple_matching_impls.an:15:4	error: `foo` not found in scope
 //     foo (Thing ())
 // 
 // examples/typechecking/multiple_matching_impls.an:19:12	error: Expected fn (Baz _3) -> Unit but found fn (Baz _3) -> Bar _3
@@ -79,8 +76,5 @@ impl candidate2: Foo Thing with
 // examples/typechecking/multiple_matching_impls.an:19:16	error: Expected Baz _3 but found a
 //     foo a = bar a
 // 
-// examples/typechecking/multiple_matching_impls.an:22:12	error: Expected fn _1 -> Unit but found Baz Thing
-//     bar a = baz a
-// 
-// Found 5 errors and 0 warnings
+// Found 3 errors and 0 warnings
 

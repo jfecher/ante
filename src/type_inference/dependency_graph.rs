@@ -122,8 +122,14 @@ fn item_lacks_known_type(dependency_id: TopLevelId, db: &DbHandle) -> bool {
 
 pub fn get_type_check_scc_impl(context: &GetTypeCheckSCC, db: &DbHandle) -> SCC {
     let graph = TypeCheckDependencyGraph.get(db);
-    let index = graph.id_to_scc[&context.0];
-    graph.sccs[index as usize].clone()
+
+    match graph.id_to_scc.get(&context.0) {
+        Some(index) => graph.sccs[*index as usize].clone(),
+        // Ids in the stdlib currently are excluded from the dependency graph.
+        // We assume these are mostly types currently and return them in their own SCC.
+        // This should be replaced with an unwrap when the stdlib type checks.
+        None => Arc::new(vec![context.0]),
+    }
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]

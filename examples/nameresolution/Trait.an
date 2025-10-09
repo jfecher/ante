@@ -14,17 +14,17 @@ main () =
 // args: --show-resolved
 // expected stdout:
 // // id = c1m488_1237
-// type Foo_c1m488_1237 =
+// type Foo_c1m488_1237_0 =
 //     foo_?: fn a_1 -> b_2
 //     bar_?: a_1
 // 
 // // id = c1m488_7510
-// implicit foo_i32_string_c1m488_7510 = Foo_c1m488_1237 I32 String_b with
+// implicit foo_i32_string_c1m488_7510_0 = Foo_c1m488_1237_0 I32 String_b with
 //     foo_? = fn _x_2 -> "test"
 //     baz_? = 2
 // 
 // // id = c1m488_1944
-// main_c1m488_1944 () =
+// main_c1m488_1944_0 () =
 //     foo_? 3
 //     bar_?: Unit_b
 
@@ -35,10 +35,10 @@ main () =
 // examples/nameresolution/Trait.an:8:0	error: Foo I32 String has no field named `baz`
 //     baz = 2
 // 
-// examples/nameresolution/Trait.an:11:4	error: `foo` is not in scope
+// examples/nameresolution/Trait.an:11:4	error: `foo` not found in scope
 //     foo 3
 // 
-// examples/nameresolution/Trait.an:12:4	error: `bar` is not in scope
+// examples/nameresolution/Trait.an:12:4	error: `bar` not found in scope
 //     bar : Unit
 // 
 // Found 4 errors and 0 warnings

@@ -31,11 +31,11 @@ ex2c (a: v) b =
 // args: --show-types
 // expected stdout:
 // (ex1a: fn t _18 -> U32) ((a: t)) (b: _18) =
-//     (ex1b: fn t _18 -> U32) (a: t) (b: _18)
+//     (ex1b: fn t _18 -> _16) (a: t) (b: _18)
 //     0_U32
 // 
-// (ex1b: fn u _18 -> U32) ((a: u)) (b: _18) =
-//     (ex1a: fn u _18 -> _7) (a: u) (b: _18)
+// (ex1b: fn u _9 -> U32) ((a: u)) (b: _9) =
+//     (ex1a: fn u _9 -> _7) (a: u) (b: _9)
 //     1_U32
 // 
 // trait T1 a with
@@ -44,29 +44,23 @@ ex2c (a: v) b =
 // trait T2 a with
 //     (trait2: (error)): fn a -> Unit
 // 
-// (ex2a: fn t _29 -> _27) ((a: t)) (b: _29) =
-//     (ex2b: fn t _29 -> _16) (a: t) (b: _29)
+// (ex2a: fn t _29 -> _25) ((a: t)) (b: _29) =
+//     (ex2b: fn t _29 -> _27) (a: t) (b: _29)
 //     (trait1: (error)) (a: t)
 // 
-// (ex2b: fn u _29 -> _16) ((a: u)) (b: _29) =
-//     (ex2c: fn u _29 -> _16) (a: u) (b: _29)
-//     (trait2: (error)) (a: (error))
+// (ex2b: fn u _18 -> _14) ((a: u)) (b: _18) =
+//     (ex2c: fn u _18 -> _16) (a: u) (b: _18)
+//     (trait2: (error)) (a: u)
 // 
-// (ex2c: fn v _29 -> _25) ((a: v)) (b: _29) =
-//     (ex2a: fn v _29 -> _27) (a: v) (b: _29)
+// (ex2c: fn v _9 -> _6) ((a: v)) (b: _9) =
+//     (ex2a: fn v _9 -> _6) (a: v) (b: _9)
 
 // expected stderr:
-// examples/typechecking/mutual_recursion_rigid.an:0:0	error: Expected fn t _18 -> _7 but found fn t _18 -> U32
-// // Mutually recursive definitions which type check when partially annotated despite
-// 
-// examples/typechecking/mutual_recursion_rigid.an:0:0	error: Expected fn t _29 -> _16 but found fn t _29 -> _25
-// // Mutually recursive definitions which type check when partially annotated despite
-// 
-// examples/typechecking/mutual_recursion_rigid.an:22:4	error: `trait1` is not in scope
+// examples/typechecking/mutual_recursion_rigid.an:22:4	error: `trait1` not found in scope
 //     trait1 a
 // 
-// examples/typechecking/mutual_recursion_rigid.an:26:4	error: `trait2` is not in scope
+// examples/typechecking/mutual_recursion_rigid.an:26:4	error: `trait2` not found in scope
 //     trait2 a
 // 
-// Found 4 errors and 0 warnings
+// Found 2 errors and 0 warnings
 

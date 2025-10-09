@@ -135,7 +135,7 @@ impl TopLevelType {
                 },
             }
             Some(origin) => {
-                if !origin.is_type() {
+                if !origin.may_be_a_type() {
                     // TODO: Error
                 }
                 make_type(origin)
@@ -320,7 +320,7 @@ impl<Db> TypePrinter<'_, Db> where Db: DbGet<GetItem> {
     fn fmt_type_origin(&self, origin: Origin, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match origin {
             Origin::TopLevelDefinition(id) => {
-                let (item, context) = GetItem(id).get(self.db);
+                let (item, context) = GetItem(id.top_level_item).get(self.db);
                 if let cst::ItemName::Single(name) = item.kind.name() {
                     write!(f, "{}", context.names[name])
                 } else {

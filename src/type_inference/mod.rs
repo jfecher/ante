@@ -11,7 +11,7 @@ use crate::{
     lexer::token::{FloatKind, IntegerKind},
     name_resolution::{builtin::Builtin, Origin, ResolutionResult},
     parser::{
-        context::TopLevelContext, cst::{TopLevelItem, TopLevelItemKind, TypeDefinitionBody}, ids::{ExprId, NameId, PathId, TopLevelId}
+        context::TopLevelContext, cst::{self, TopLevelItem, TopLevelItemKind, TypeDefinitionBody}, ids::{ExprId, NameId, PathId, TopLevelId, TopLevelName}
     },
     type_inference::{
         errors::{Locateable, TypeErrorKind},
@@ -46,18 +46,16 @@ pub fn type_check_impl(context: &TypeCheckSCC, compiler: &DbHandle) -> TypeCheck
         checker.current_item = Some(*item_id);
 
         let item = &checker.item_contexts[item_id].0;
-        let typ = match &item.kind {
+        match &item.kind {
             TopLevelItemKind::Definition(definition) => checker.check_definition(definition),
-            TopLevelItemKind::TypeDefinition(_) => TypeId::UNIT,
-            TopLevelItemKind::TraitDefinition(_) => TypeId::UNIT,
-            TopLevelItemKind::TraitImpl(trait_impl) => checker.check_impl(trait_impl),
-            TopLevelItemKind::EffectDefinition(_) => TypeId::UNIT,
+            TopLevelItemKind::TypeDefinition(type_definition) => checker.check_type_definition(type_definition),
+            TopLevelItemKind::TraitDefinition(_) => unreachable!("Traits should be desugared into types by this point"),
+            TopLevelItemKind::TraitImpl(_) => unreachable!("Impls should be simplified into definitions by this point"),
+            TopLevelItemKind::EffectDefinition(_) => (), // TODO
             TopLevelItemKind::Extern(extern_) => checker.check_extern(extern_),
             TopLevelItemKind::Comptime(comptime) => checker.check_comptime(comptime),
         };
 
-        let expected_type = checker.item_types[item_id];
-        checker.unify(typ, expected_type, TypeErrorKind::General, *item_id);
         checker.finish_item()
     });
 
@@ -76,10 +74,16 @@ pub struct TypeCheckSCCResult {
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IndividualTypeCheckResult {
-    pub name_types: BTreeMap<NameId, TypeId>,
-    pub path_types: BTreeMap<PathId, TypeId>,
-    pub expr_types: BTreeMap<ExprId, TypeId>,
-    pub typ: GeneralizedType,
+    #[serde(flatten)]
+    pub maps: TypeMaps,
+
+    /// One or more names may be externally visible outside this top-level item.
+    /// Each of these names will be generalized and placed in this map.
+    /// Ex: in `foo = (bar = 1; bar + 2)` only `foo: I32` will be generalized,
+    /// but in `a, b = 1, 2`, both `a` and `b` will be.
+    /// Ex2: in `type Foo = | A | B`, `A` and `B` will both be generalized, and
+    /// there is no need to generalize `Foo` itself.
+    pub generalized: BTreeMap<NameId, GeneralizedType>,
 }
 
 struct TypeChecker<'local, 'inner> {
@@ -93,14 +97,20 @@ struct TypeChecker<'local, 'inner> {
     item_contexts: &'local ItemContexts,
     current_item: Option<TopLevelId>,
 
+    /// The TypeChecker also resolves any paths with Origin::TypeResolution to
+    /// a more specific origin (a union variant) if possible.
+    path_origins: BTreeMap<PathId, Origin>,
+
     /// Types of each top-level item in the current SCC being worked on
-    item_types: Rc<FxHashMap<TopLevelId, TypeId>>,
+    item_types: Rc<FxHashMap<TopLevelName, TypeId>>,
 }
 
-struct TypeMaps {
-    name_types: BTreeMap<NameId, TypeId>,
-    path_types: BTreeMap<PathId, TypeId>,
-    expr_types: BTreeMap<ExprId, TypeId>,
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TypeMaps {
+    pub name_types: BTreeMap<NameId, TypeId>,
+    pub path_types: BTreeMap<PathId, TypeId>,
+    pub expr_types: BTreeMap<ExprId, TypeId>,
+    pub path_origins: BTreeMap<PathId, Origin>,
 }
 
 type ItemContexts = FxHashMap<TopLevelId, (Arc<TopLevelItem>, Arc<TopLevelContext>, ResolutionResult)>;
@@ -116,14 +126,17 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             path_types: Default::default(),
             expr_types: Default::default(),
             item_types: Default::default(),
+            path_origins: Default::default(),
             current_item: None,
             item_contexts,
         };
 
         let mut item_types = FxHashMap::default();
-        for item in item_contexts.keys() {
-            let variable = this.next_type_variable();
-            item_types.insert(*item, variable);
+        for (item_id, (_, _, resolution)) in item_contexts.iter() {
+            for name in resolution.top_level_names.iter() {
+                let variable = this.next_type_variable();
+                item_types.insert(TopLevelName::named(*item_id, *name), variable);
+            }
         }
         // We have to go through this extra step since `generalize_all` needs an Rc
         // to clone this field cheaply since `generalize` requires a mutable `self`.
@@ -152,12 +165,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     }
 
     fn finish(mut self, items: Vec<TypeMaps>) -> TypeCheckSCCResult {
-        let items = self.generalize_all().into_iter().zip(items).map(|((id, typ), maps)| {
+        let items = self.generalize_all().into_iter().zip(items).map(|((id, generalized), maps)| {
             (id, IndividualTypeCheckResult {
-                name_types: maps.name_types,
-                path_types: maps.path_types,
-                expr_types: maps.expr_types,
-                typ,
+                maps,
+                generalized,
             })
         }).collect();
 
@@ -176,6 +187,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             name_types: std::mem::take(&mut self.name_types),
             path_types: std::mem::take(&mut self.path_types),
             expr_types: std::mem::take(&mut self.expr_types),
+            path_origins: std::mem::take(&mut self.path_origins),
         }
     }
 
@@ -187,9 +199,16 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     /// Generalize all types in the current SCC.
     /// The returned Vec is in the same order as the SCC.
-    fn generalize_all(&mut self) -> Vec<(TopLevelId, GeneralizedType)> {
-        let types = self.item_types.clone();
-        vecmap(types.iter(), |(id, typ)| (*id, self.generalize(*typ)))
+    fn generalize_all(&mut self) -> BTreeMap<TopLevelId, BTreeMap<NameId, GeneralizedType>> {
+        let mut items: BTreeMap<_, BTreeMap<_, _>> = BTreeMap::new();
+
+        for (name, typ) in self.item_types.clone().iter() {
+            self.current_item = Some(name.top_level_item);
+            let typ = self.generalize(*typ);
+            items.entry(name.top_level_item).or_default().insert(name.local_name_id, typ);
+        }
+
+        items
     }
 
     /// Generalize a type, making it generic. Any holes in the type become generic types.
@@ -482,7 +501,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 }
             }
             Some(origin) => {
-                if !origin.is_type() {
+                if !origin.may_be_a_type() {
                     // TODO: Error
                 }
                 self.types.get_or_insert_type(make_type(origin))
@@ -504,15 +523,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
             Type::UserDefined(origin) => {
                 if let Origin::TopLevelDefinition(id) = origin {
-                    let (item, item_context) = GetItem(*id).get(self.compiler);
+                    let (item, item_context) = GetItem(id.top_level_item).get(self.compiler);
                     if let TopLevelItemKind::TypeDefinition(definition) = &item.kind {
-                        let generic_count = generic_args.map_or(0, |generics| generics.len());
-
                         let mut substitutions = FxHashMap::default();
                         if let Some(generics) = generic_args {
-                            if definition.generics.len() == generic_count {
-                                substitutions = definition.generics.iter().map(|name| Generic::Named(Origin::Local(*name))).zip(generics.iter().copied()).collect();
-                            }
+                            substitutions = Self::datatype_generic_substitutions(definition, generics);
                         }
 
                         let resolve = Resolve(item.id).get(self.compiler);
@@ -545,6 +560,25 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             }
             _ => BTreeMap::default(),
         }
+    }
+
+    /// Returns a set of substitutions for a user-defined type to replace instances of its generics
+    /// with the given types. Care should be taken with the resulting substitutions map since the
+    /// Generics within will each be `Origin::Local(name_id)` with a `name_id` local to the given
+    /// TypeDefinition, which is likely in a different context than the rest of the TypeChecker.
+    ///
+    /// Typically, these substitutions can be used on a type within the given TypeDefinition via
+    /// a combination of `convert_foreign_type` and `substitute_generics`.
+    ///
+    /// Does nothing if `replacements.len() != definition.generics.len()`
+    fn datatype_generic_substitutions(definition: &cst::TypeDefinition, replacements: &[TypeId]) -> FxHashMap<Generic, TypeId> {
+        let mut substitutions = FxHashMap::default();
+        if definition.generics.len() == replacements.len() {
+            for (generic, replacement) in definition.generics.iter().zip(replacements) {
+                substitutions.insert(Generic::Named(Origin::Local(*generic)), *replacement);
+            }
+        }
+        substitutions
     }
 
     /// Converts a 'foreign' type to a TypeId.

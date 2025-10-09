@@ -1,34 +1,30 @@
-use std::sync::Arc;
+use std::{borrow::Cow, sync::Arc};
+
+use rustc_hash::FxHashMap;
 
 use crate::{
     diagnostics::Diagnostic,
-    incremental::GetType,
+    incremental::{GetType, Resolve},
     iterator_extensions::vecmap,
     name_resolution::{builtin::Builtin, Origin},
     parser::{
-        cst::{self, Definition, Expr, Literal, Pattern},
-        ids::{ExprId, NameId, PathId, PatternId},
+        cst::{self, Definition, Expr, Literal, Pattern}, ids::{ExprId, NameId, PathId, PatternId, TopLevelName}
     },
     type_inference::{
-        errors::TypeErrorKind,
-        get_type::try_get_type,
-        type_id::TypeId,
-        types::{self, Type},
-        Locateable, TypeChecker,
+        errors::TypeErrorKind, get_type::try_get_type, type_id::TypeId, types::{self, Type}, Locateable, TypeChecker
     },
 };
 
 impl<'local, 'inner> TypeChecker<'local, 'inner> {
-    pub(super) fn check_definition(&mut self, definition: &Definition) -> TypeId {
+    pub(super) fn check_definition(&mut self, definition: &Definition) {
         let expected_generalized_type = try_get_type(definition, self.current_context(), &self.current_resolve());
         let expected_type = match expected_generalized_type.as_ref() {
             Some(typ) => typ.as_type(&mut self.types),
             None => self.next_type_variable(),
         };
 
-        self.check_expr(definition.rhs, expected_type);
         self.check_pattern(definition.pattern, expected_type);
-        expected_type
+        self.check_expr(definition.rhs, expected_type);
     }
 
     fn check_expr(&mut self, expr: ExprId, expected: TypeId) {
@@ -135,7 +131,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 }
             },
             Some(Origin::Local(name)) => self.name_types[&name],
-            Some(Origin::TypeResolution) => todo!("Type check Origin::TypeResolution"),
+            Some(Origin::TypeResolution) => self.resolve_type_resolution(path, expected),
             Some(Origin::Builtin(builtin)) => {
                 self.check_builtin(builtin, expected, path);
                 return;
@@ -144,6 +140,72 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         };
         self.unify(actual, expected, TypeErrorKind::General, path);
         self.path_types.insert(path, expected);
+    }
+
+    fn resolve_type_resolution(&mut self, path: PathId, expected: TypeId) -> TypeId {
+        let path_value = &self.current_context().paths[path];
+        assert_eq!(path_value.components.len(), 1, "Only single-component paths should have Origin::TypeResolution");
+
+        let Some(id) = self.try_find_type_namespace_for_type_resolution(expected) else {
+            return self.issue_name_not_in_scope_error(path);
+        };
+
+        let result = GetType(id).get(self.compiler);
+        self.instantiate(&result)
+    }
+
+    fn build_constructor_type<'a>(&mut self, id: TopLevelName, item: &cst::TypeDefinition, variant_args: impl ExactSizeIterator<Item = &'a cst::Type>) -> TypeId {
+        let mut substitutions = FxHashMap::default();
+        let mut data_type = self.types.get_or_insert_type(Type::UserDefined(Origin::TopLevelDefinition(id)));
+
+        if !item.generics.is_empty() {
+            let fresh_vars = vecmap(&item.generics, |_| self.next_type_variable());
+            substitutions = Self::datatype_generic_substitutions(item, &fresh_vars);
+
+            data_type = self.types.get_or_insert_type(Type::Application(data_type, fresh_vars));
+        }
+
+        // If there are no variant args, the result is not a function.
+        // Returning early here also lets us avoid a dependency on `Resolve(id)` since
+        // we do not need to resolve any types in `item`'s context when the variant has no arguments.
+        if variant_args.len() == 0 {
+            return data_type;
+        }
+
+        let item_resolution = Resolve(id.top_level_item).get(self.compiler);
+        let parameters = vecmap(variant_args, |arg| {
+            let mut param = self.convert_foreign_type(arg, &item_resolution);
+            
+            if !substitutions.is_empty() {
+                param = self.substitute_generics(param, &substitutions);
+            }
+            param
+        });
+
+        let function = Type::Function(types::FunctionType {
+            parameters,
+            return_type: data_type,
+            effects: TypeId::UNIT,
+        });
+
+        self.types.get_or_insert_type(function)
+    }
+
+    /// Issue a NameNotInScope error and return TypeId::Error
+    fn issue_name_not_in_scope_error(&self, path: PathId) -> TypeId {
+        let name = Arc::new(self.current_context().paths[path].last_ident().to_owned());
+        let location = self.current_context().path_locations[path].clone();
+        self.compiler.accumulate(Diagnostic::NameNotInScope { name, location });
+        TypeId::ERROR
+    }
+
+    fn try_find_type_namespace_for_type_resolution(&self, typ: TypeId) -> Option<TopLevelName> {
+        match self.follow_type(typ) {
+            Type::UserDefined(Origin::TopLevelDefinition(id)) => Some(*id),
+            Type::Function(function_type) => self.try_find_type_namespace_for_type_resolution(function_type.return_type),
+            Type::Application(constructor, _) => self.try_find_type_namespace_for_type_resolution(*constructor),
+            _ => None,
+        }
     }
 
     /// Returns the instantiated type of a builtin value
@@ -374,17 +436,35 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         todo!("check_handle")
     }
 
-    pub(super) fn check_impl(&self, _trait_impl: &cst::TraitImpl) -> TypeId {
-        unreachable!("impls should be simplified into definitions by this point")
-    }
-
-    pub(super) fn check_extern(&mut self, extern_: &cst::Extern) -> TypeId {
+    pub(super) fn check_extern(&mut self, extern_: &cst::Extern) {
         let typ = self.convert_ast_type(&extern_.declaration.typ);
         self.check_name(extern_.declaration.name, typ);
-        typ
     }
 
-    pub(super) fn check_comptime(&self, _comptime: &cst::Comptime) -> TypeId {
+    pub(super) fn check_comptime(&self, _comptime: &cst::Comptime) {
         todo!("check_comptime")
+    }
+
+    /// A type definition always returns a unit value, but we must still create the
+    /// types of the type constructors
+    pub(super) fn check_type_definition(&mut self, definition: &cst::TypeDefinition) {
+        let id = self.current_item.unwrap();
+
+        let constructors = match &definition.body {
+            cst::TypeDefinitionBody::Error => Cow::Owned(Vec::new()),
+            cst::TypeDefinitionBody::Alias(_) => todo!("check_type_definition alias"),
+            cst::TypeDefinitionBody::Struct(fields) => {
+                let fields = vecmap(fields, |(_, field_type)| field_type.clone());
+                Cow::Owned(vec![(definition.name, fields)])
+            },
+            cst::TypeDefinitionBody::Enum(variants) => Cow::Borrowed(variants),
+        };
+
+        for (name, args) in constructors.iter() {
+            let name = TopLevelName::named(id, *name);
+            let actual = self.build_constructor_type(name, definition, args.iter());
+            let expected = self.item_types[&name];
+            self.unify(actual, expected, TypeErrorKind::General, name.local_name_id);
+        }
     }
 }

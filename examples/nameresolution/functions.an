@@ -14,24 +14,24 @@ map l f =
 // args: --show-resolved
 // expected stdout:
 // // id = c1m743_1986
-// recursion_c1m743_1986 n_1 f_2 =
-//     if n_1 >_c0m710_4222 0 then 
+// recursion_c1m743_1986_0 n_1 f_2 =
+//     if n_1 >_c0m710_4222_0 0 then 
 //         f_2 ()
-//         recursion_c1m743_1986 (n_1 -_? 1) f_2
+//         recursion_c1m743_1986_0 (n_1 -_? 1) f_2
 // 
 // // id = c1m743_838
-// shared type List_c1m743_838 =
-//     | Nil_c1m743_838
-//     | Cons_c1m743_838 (a_1 (List_c1m743_838 a_1))
+// shared type List_c1m743_838_0 =
+//     | Nil_c1m743_838_2
+//     | Cons_c1m743_838_3 (a_1 (List_c1m743_838_0 a_1))
 // 
 // // id = c1m743_4625
-// map_c1m743_4625 l_1 f_2 =
+// map_c1m743_4625_0 l_1 f_2 =
 //     match l_1
 //     | Nil_td -> Nil_td
-//     | Cons_td x_3 xs_4 -> Cons_td (f_2 x_3) (map_c1m743_4625 xs_4 f_2)
+//     | Cons_td x_3 xs_4 -> Cons_td (f_2 x_3) (map_c1m743_4625_0 xs_4 f_2)
 
 // expected stderr:
-// examples/nameresolution/functions.an:5:21	error: `-` is not in scope
+// examples/nameresolution/functions.an:5:21	error: `-` not found in scope
 //         recursion (n - 1) f
 // 
 // Found 1 error and 0 warnings

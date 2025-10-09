@@ -11,21 +11,21 @@ main () =
 // import Library.library_int, library_fn
 // 
 // // id = c1m27_3132
-// foo_c1m27_3132 __2 b_3 = b_3
+// foo_c1m27_3132_1 __2 b_3 = b_3
 // 
 // // id = c1m27_1944
-// main_c1m27_1944 () =
-//     foo_c1m27_3132 4 library_int_?
-//     foo_c1m27_3132 5 (library_fn_? ())
+// main_c1m27_1944_0 () =
+//     foo_c1m27_3132_1 4 library_int_?
+//     foo_c1m27_3132_1 5 (library_fn_? ())
 
 // expected stderr:
 // examples/nameresolution/import.an:1:8	error: Could not find crate `Library`
 // import Library.library_int, library_fn
 // 
-// examples/nameresolution/import.an:6:10	error: `library_int` is not in scope
+// examples/nameresolution/import.an:6:10	error: `library_int` not found in scope
 //     foo 4 library_int
 // 
-// examples/nameresolution/import.an:7:11	error: `library_fn` is not in scope
+// examples/nameresolution/import.an:7:11	error: `library_fn` not found in scope
 //     foo 5 (library_fn ())
 // 
 // Found 3 errors and 0 warnings

@@ -6,16 +6,16 @@ id x = error
 // args: --show-resolved
 // expected stdout:
 // // id = c1m576_1637
-// id_c1m576_1637 x_1 = x_1
+// id_c1m576_1637_0 x_1 = x_1
 // 
 // // id = c1m576_973
-// id_c1m576_1637 x_1 = error_?
+// id_c1m576_1637_0 x_1 = error_?
 
 // expected stderr:
 // examples/nameresolution/unused_warning.an:4:0	warning: `id` was already defined
 // id x = error
 // 
-// examples/nameresolution/unused_warning.an:4:7	error: `error` is not in scope
+// examples/nameresolution/unused_warning.an:4:7	error: `error` not found in scope
 // id x = error
 // 
 // Found 1 error and 1 warning

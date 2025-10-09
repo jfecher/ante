@@ -12,9 +12,9 @@ foo = hello_foo 42
 //     x: a
 //     y: b
 // 
-// (hello_foo: fn _2 -> Unit) (y: _2) = (Foo: Unit)
+// (hello_foo: fn _2 -> fn _5 _6 -> Foo _5 _6) (y: _2) = (Foo: fn _5 _6 -> Foo _5 _6)
 // 
-// (foo: Unit) = (hello_foo: fn I32 -> Unit) 42
+// (foo: _1) = (hello_foo: fn I32 -> _1) 42
 
 // expected stderr:
 // examples/typechecking/named_constructor.an:5:18	error: Expected a newline after the top level item but found `with`

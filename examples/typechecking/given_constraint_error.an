@@ -8,7 +8,7 @@ impl print_impl {_: DoesNotExist a}: Print a with
 //     (printne: fn a -> Unit) (_: a) = ()
 
 // expected stderr:
-// examples/typechecking/given_constraint_error.an:2:20	error: `DoesNotExist` is not in scope
+// examples/typechecking/given_constraint_error.an:2:20	error: `DoesNotExist` not found in scope
 // impl print_impl {_: DoesNotExist a}: Print a with
 // 
 // Found 1 error and 0 warnings

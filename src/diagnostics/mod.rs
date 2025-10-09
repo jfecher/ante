@@ -24,7 +24,6 @@ pub enum Diagnostic {
     ExpectedType { actual: String, expected: String, location: Location },
     RecursiveType { typ: String, location: Location },
     NamespaceNotFound { name: String, location: Location },
-    NameNotFound { name: Arc<String>, location: Location },
     MethodDeclaredOnUnknownType { name: Arc<String>, location: Location },
     LiteralUsedAsName { location: Location },
     ValueExpected { location: Location, typ: Arc<String> },
@@ -93,7 +92,7 @@ impl Diagnostic {
                 }
             },
             Diagnostic::NameNotInScope { name, location: _ } => {
-                format!("`{name}` is not in scope")
+                format!("`{name}` not found in scope")
             },
             Diagnostic::ExpectedType { actual, expected, location: _ } => {
                 format!("Expected type `{expected}` but found `{actual}`")
@@ -103,9 +102,6 @@ impl Diagnostic {
             },
             Diagnostic::NamespaceNotFound { name, location: _ } => {
                 format!("Namespace `{name}` not found in path")
-            },
-            Diagnostic::NameNotFound { name, location: _ } => {
-                format!("`{name}` not found in scope")
             },
             Diagnostic::MethodDeclaredOnUnknownType { name, location: _ } => {
                 format!("Methods can only be defined on types declared within the same file, which `{name}` was not")
@@ -165,8 +161,7 @@ impl Diagnostic {
             | Diagnostic::ConstructorMissingFields { location, .. }
             | Diagnostic::ConstructorNotAStruct { location, .. }
             | Diagnostic::ConstructorFieldDuplicate { second_location: location, .. }
-            | Diagnostic::TypeMustBeKnownMemberAccess { location }
-            | Diagnostic::NameNotFound { location, .. } => location,
+            | Diagnostic::TypeMustBeKnownMemberAccess { location } => location,
         }
     }
 

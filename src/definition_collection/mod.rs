@@ -8,7 +8,7 @@ use crate::{
     },
     name_resolution::namespace::{SourceFileId, STDLIB_CRATE},
     parser::{
-        context::TopLevelContext, cst::{Import, ItemName, Literal, Pattern, TopLevelItemKind, TypeDefinitionBody}, ids::{NameId, PatternId, TopLevelId}
+        context::TopLevelContext, cst::{Import, ItemName, Literal, Pattern, TopLevelItemKind, TypeDefinitionBody}, ids::{NameId, PatternId, TopLevelId, TopLevelName}
     },
 };
 
@@ -127,15 +127,16 @@ pub fn exported_types_impl(context: &ExportedTypes, db: &DbHandle) -> Definition
     // Collect each definition, issuing an error if there is a duplicate name (imports are not counted)
     for item in result.cst.top_level_items.iter() {
         if let TopLevelItemKind::TypeDefinition(definition) = &item.kind {
-            let name = &result.top_level_data[&item.id].names[definition.name];
+            let context = &result.top_level_data[&item.id];
+            let name = &context.names[definition.name];
 
             if let Some(existing) = definitions.get(name) {
                 let first_location = existing.location(db);
-                let second_location = item.id.location(db);
+                let second_location = context.name_locations[definition.name].clone();
                 let name = name.clone();
                 db.accumulate(Diagnostic::NameAlreadyInScope { name, first_location, second_location });
             } else {
-                definitions.insert(name.clone(), item.id);
+                definitions.insert(name.clone(), TopLevelName::named(item.id, definition.name));
             }
         }
     }
@@ -246,7 +247,7 @@ impl<'local, 'db> Declarer<'local, 'db> {
             let second_location = context.name_locations[name_id].clone();
             self.db.accumulate(Diagnostic::NameAlreadyInScope { name, first_location, second_location });
         } else {
-            definitions(self).insert(name, id);
+            definitions(self).insert(name, TopLevelName::named(id, name_id));
         }
     }
 
@@ -257,7 +258,7 @@ impl<'local, 'db> Declarer<'local, 'db> {
 
         // Methods can only be declared on a type declared in the same file, so look in the same file for the type.
         if let Some(object_type) = self.definitions.get(type_name) {
-            let object_type = *object_type;
+            let object_type = object_type.top_level_item;
             self.declare_single_helper(item_name_id, id, context, |this| this.methods.entry(object_type).or_default());
         } else {
             let name = type_name.clone();

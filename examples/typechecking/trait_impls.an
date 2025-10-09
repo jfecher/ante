@@ -52,10 +52,10 @@ bar "four" "five"
 // examples/typechecking/trait_impls.an:18:19	error: Expected an unindent but found //// Should be an error, we already have a Bar I32
 //     bar _ _ = 23.2 // Should be an error, we already have a Bar I32
 // 
-// examples/typechecking/trait_impls.an:20:10	error: `bar` is not in scope
+// examples/typechecking/trait_impls.an:20:10	error: `bar` not found in scope
 // foo a b = bar a b
 // 
-// examples/typechecking/trait_impls.an:22:20	error: `bar` is not in scope
+// examples/typechecking/trait_impls.an:22:20	error: `bar` not found in scope
 // baz (x: String) y = bar x y
 // 
 // examples/typechecking/trait_impls.an:23:4	error: Expected `=` to begin the function body but found `3`

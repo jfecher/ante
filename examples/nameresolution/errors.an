@@ -18,36 +18,36 @@ a = 3 // already declared
 // args: --show-resolved
 // expected stdout:
 // // id = c1m416_9923
-// not_an_error_c1m416_9923 = 1
+// not_an_error_c1m416_9923_1 = 1
 // 
 // // id = c1m416_1944
-// main_c1m416_1944 () =
-//     not_an_error_c1m416_9923 is_an_error_?
+// main_c1m416_1944_0 () =
+//     not_an_error_c1m416_9923_1 is_an_error_?
 //     fn a_4 b_5 -> (a_4 +_? c_?) +_? b_5
 // 
 // // id = c1m416_3132
-// foo_c1m416_3132 a_1 b_2 =
+// foo_c1m416_3132_0 a_1 b_2 =
 //     bar_3 c_4 d_5 =
 //         b_2
 //     ()
 // 
 // // id = c1m416_7365
-// a_c1m416_7365 = 2
+// a_c1m416_7365_1 = 2
 // 
 // // id = c1m416_4138
-// a_c1m416_7365 = 3
+// a_c1m416_7365_1 = 3
 
 // expected stderr:
-// examples/nameresolution/errors.an:5:17	error: `is_an_error` is not in scope
+// examples/nameresolution/errors.an:5:17	error: `is_an_error` not found in scope
 //     not_an_error is_an_error
 // 
-// examples/nameresolution/errors.an:7:16	error: `+` is not in scope
+// examples/nameresolution/errors.an:7:16	error: `+` not found in scope
 //     fn a b -> a + c + b
 // 
-// examples/nameresolution/errors.an:7:18	error: `c` is not in scope
+// examples/nameresolution/errors.an:7:18	error: `c` not found in scope
 //     fn a b -> a + c + b
 // 
-// examples/nameresolution/errors.an:7:20	error: `+` is not in scope
+// examples/nameresolution/errors.an:7:20	error: `+` not found in scope
 //     fn a b -> a + c + b
 // 
 // examples/nameresolution/errors.an:16:0	warning: `a` was already defined

@@ -17,26 +17,21 @@ use crate::{
 /// functions should be mostly equivalent.
 pub fn get_type_impl(context: &GetType, compiler: &DbHandle) -> GeneralizedType {
     incremental::enter_query();
-    let (item, item_context) = compiler.get(GetItem(context.0));
+    let (item, item_context) = compiler.get(GetItem(context.0.top_level_item));
     incremental::println(format!("Get type of {:?}", item.id));
 
     let typ = match &item.kind {
         TopLevelItemKind::Definition(definition) => {
-            let resolve = Resolve(context.0).get(compiler);
+            let resolve = Resolve(context.0.top_level_item).get(compiler);
             try_get_type(definition, &item_context, &resolve).unwrap_or_else(|| {
-                let check = TypeCheck(context.0).get(compiler);
-                check.result.typ.clone()
+                let check = TypeCheck(context.0.top_level_item).get(compiler);
+                check.result.generalized[&context.0.local_name_id].clone()
             })
         },
-        TopLevelItemKind::TypeDefinition(_) => GeneralizedType::unit(),
-        TopLevelItemKind::TraitDefinition(_) => GeneralizedType::unit(),
-        TopLevelItemKind::TraitImpl(_) => todo!(),
-        TopLevelItemKind::EffectDefinition(_) => GeneralizedType::unit(),
-        TopLevelItemKind::Extern(item) => {
-            let resolution = Resolve(context.0).get(compiler);
-            GeneralizedType::from_ast_type(&item.declaration.typ, &resolution)
+        _ => {
+            let check = TypeCheck(context.0.top_level_item).get(compiler);
+            check.result.generalized[&context.0.local_name_id].clone()
         },
-        TopLevelItemKind::Comptime(_) => todo!(),
     };
     incremental::exit_query();
     typ
@@ -46,6 +41,11 @@ pub fn get_type_impl(context: &GetType, compiler: &DbHandle) -> GeneralizedType 
 /// If the type is successfully found then this definition will not be dependent on the
 /// types of its contents to get its type. Put another way, if the type is known then
 /// we don't need to re-type check this definition when its contents change.
+///
+/// TODO: This is used for both GetType and check_definition. It should only be used for
+/// GetType because this fails if it cannot retrieve an entire type. For definitions we
+/// want instead to succeed with partial types, filling in holes as needed for better type
+/// errors.
 pub(super) fn try_get_type(
     definition: &Definition, context: &TopLevelContext, resolve: &ResolutionResult,
 ) -> Option<GeneralizedType> {

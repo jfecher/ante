@@ -13,7 +13,7 @@ use crate::{
     }, name_resolution::builtin::Builtin, parser::{
         context::TopLevelContext, cst::{
             Comptime, Constructor, Declaration, Definition, EffectDefinition, EffectType, Expr, Extern, Generics, ItemName, Path, Pattern, TopLevelItemKind, TraitDefinition, TraitImpl, Type, TypeDefinition, TypeDefinitionBody
-        }, ids::{ExprId, NameId, PathId, PatternId, TopLevelId}
+        }, ids::{ExprId, NameId, PathId, PatternId, TopLevelId, TopLevelName}
     }
 };
 
@@ -27,6 +27,12 @@ pub struct ResolutionResult {
     /// Each other top-level item this item referenced. Used to build a dependency graph for type
     /// inference.
     pub referenced_items: BTreeSet<TopLevelId>,
+
+    /// Each name defined by this top-level item that may be visible externally. This includes
+    /// names that are directly visible such as `a, b` in `a, b = 1, 2` but also names that are
+    /// visible in any namespace exported by this item, such as `Foo` and `Bar` in
+    /// `type Union = | Foo | Bar` which are normally accessed via `Union.Foo` and `Union.Bar`.
+    pub top_level_names: Vec<NameId>,
 }
 
 struct Resolver<'local, 'inner> {
@@ -38,13 +44,16 @@ struct Resolver<'local, 'inner> {
     context: &'local TopLevelContext,
     compiler: &'local DbHandle<'inner>,
     referenced_items: BTreeSet<TopLevelId>,
+    top_level_names: Vec<NameId>,
 }
 
 /// Where was this variable defined?
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Hash, PartialOrd, Ord)]
 pub enum Origin {
-    /// This name comes from this top level definition
-    TopLevelDefinition(TopLevelId),
+    /// This name comes from another top level definition
+    /// The `NameId` here is local to the given top-level definition, using it in another context
+    /// is always a bug.
+    TopLevelDefinition(TopLevelName),
     /// This name comes from a local binding (parameter, let-binding, match-binding, etc)
     Local(NameId),
     /// This name did not resolve, try to perform type based resolution on it during type inference
@@ -56,9 +65,9 @@ pub enum Origin {
 impl Origin {
     /// True if this Origin _may_ be a type. This does not have the proper context to check whether
     /// any internal IDs actually refer to types.
-    pub fn is_type(self) -> bool {
+    pub fn may_be_a_type(self) -> bool {
         match self {
-            Origin::TopLevelDefinition(_) | Origin::Local(_) => true,
+            Origin::TopLevelDefinition(..) | Origin::Local(_) => true,
             Origin::TypeResolution => false,
             Origin::Builtin(builtin) => matches!(
                 builtin,
@@ -71,7 +80,7 @@ impl Origin {
     fn get_fields_of_type(self, db: &DbHandle) -> FieldsResult {
         match self {
             Origin::TopLevelDefinition(id) => {
-                let (item, item_context) = GetItem(id).get(db);
+                let (item, item_context) = GetItem(id.top_level_item).get(db);
                 match &item.kind {
                     TopLevelItemKind::TypeDefinition(type_definition) => {
                         match &type_definition.body {
@@ -112,10 +121,7 @@ pub fn resolve_impl(context: &Resolve, compiler: &DbHandle) -> ResolutionResult 
     }
 
     match &statement.kind {
-        TopLevelItemKind::Definition(definition) => {
-            resolver.link_existing_pattern(definition.pattern);
-            resolver.resolve_expr(definition.rhs);
-        },
+        TopLevelItemKind::Definition(definition) => resolver.resolve_expr(definition.rhs),
         TopLevelItemKind::TypeDefinition(type_definition) => resolver.resolve_type_definition(type_definition),
         TopLevelItemKind::TraitDefinition(trait_definition) => resolver.resolve_trait_definition(trait_definition),
         TopLevelItemKind::TraitImpl(trait_impl) => resolver.resolve_trait_impl(trait_impl),
@@ -141,12 +147,18 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             name_links: Default::default(),
             names_in_local_scope: vec![Default::default()],
             referenced_items: Default::default(),
+            top_level_names: Vec::new(),
             context,
         }
     }
 
     fn result(self) -> ResolutionResult {
-        ResolutionResult { path_origins: self.path_links, name_origins: self.name_links, referenced_items: self.referenced_items }
+        ResolutionResult {
+            path_origins: self.path_links,
+            name_origins: self.name_links,
+            referenced_items: self.referenced_items,
+            top_level_names: self.top_level_names,
+        }
     }
 
     #[allow(unused)]
@@ -181,9 +193,9 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                 }
 
                 let type_id = self.names_in_global_scope.definitions.get(name)?;
-                let (item, _) = GetItem(*type_id).get(self.compiler);
+                let (item, _) = GetItem(type_id.top_level_item).get(self.compiler);
                 if matches!(&item.kind, TopLevelItemKind::TypeDefinition(_)) {
-                    Some(Namespace::Type(*type_id))
+                    Some(Namespace::Type(type_id.top_level_item))
                 } else {
                     None
                 }
@@ -195,7 +207,8 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                 }
 
                 let exported = ExportedTypes(id).get(self.compiler);
-                exported.get(name).copied().map(Namespace::Type)
+                let id = exported.get(name)?;
+                Some(Namespace::Type(id.top_level_item))
             },
         }
     }
@@ -213,14 +226,14 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             Namespace::Module(file_id) => {
                 let visible = &VisibleDefinitions(file_id).get(self.compiler);
                 let id = *visible.definitions.get(name)?;
-                self.referenced_items.insert(id);
+                self.referenced_items.insert(id.top_level_item);
                 Some(Origin::TopLevelDefinition(id))
             },
             Namespace::Type(top_level_id) => {
                 let visible = &VisibleDefinitions(top_level_id.source_file).get(self.compiler);
                 let methods = visible.methods.get(&top_level_id)?;
                 let id = *methods.get(name)?;
-                self.referenced_items.insert(id);
+                self.referenced_items.insert(id.top_level_item);
                 Some(Origin::TopLevelDefinition(id))
             },
         }
@@ -284,9 +297,9 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             }
         }
 
-        if let Some(item) = self.names_in_global_scope.definitions.get(name) {
-            self.referenced_items.insert(*item);
-            return Some(Origin::TopLevelDefinition(*item));
+        if let Some(id) = self.names_in_global_scope.definitions.get(name) {
+            self.referenced_items.insert(id.top_level_item);
+            return Some(Origin::TopLevelDefinition(*id));
         }
         None
     }
@@ -332,19 +345,21 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
         // panic safety: `name` should already be declared in global scope
         let id = self.names_in_global_scope.definitions[name];
         let origin = Origin::TopLevelDefinition(id);
+        self.top_level_names.push(name_id);
         self.name_links.insert(name_id, origin);
     }
 
     /// Link a method whose name is expected to be in `self.names_in_global_scope`
-    fn link_existing_method(&mut self, type_name: NameId, item_name: NameId) {
+    fn link_existing_union_variant(&mut self, type_name: NameId, item_name: NameId) {
         let item_name_string = &self.context.names[item_name];
         let type_name_string = &self.context.names[type_name];
 
         // panic safety: `type_name` should already be declared in global scope
         let type_id = self.names_in_global_scope.definitions[type_name_string];
 
-        let methods = &self.names_in_global_scope.methods[&type_id];
+        let methods = &self.names_in_global_scope.methods[&type_id.top_level_item];
         let method = methods[item_name_string];
+        self.top_level_names.push(item_name);
         self.name_links.insert(type_name, Origin::TopLevelDefinition(type_id));
         self.name_links.insert(item_name, Origin::TopLevelDefinition(method));
     }
@@ -365,7 +380,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                 self.link_existing_pattern(*pattern);
                 self.resolve_type(typ, false);
             },
-            Pattern::MethodName { type_name, item_name } => self.link_existing_method(*type_name, *item_name),
+            Pattern::MethodName { type_name, item_name } => self.link_existing_union_variant(*type_name, *item_name),
         }
     }
 
@@ -614,7 +629,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
         } else {
             let location = self.context.name_locations[name_id].clone();
             let name = self.context.names[name_id].clone();
-            self.emit_diagnostic(Diagnostic::NameNotFound { name, location });
+            self.emit_diagnostic(Diagnostic::NameNotInScope { name, location });
         }
     }
 
@@ -630,7 +645,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             },
             TypeDefinitionBody::Enum(variants) => {
                 for (name, variant_args) in variants {
-                    self.link_existing_method(type_definition.name, *name);
+                    self.link_existing_union_variant(type_definition.name, *name);
                     for arg in variant_args {
                         self.resolve_type(arg, false);
                     }

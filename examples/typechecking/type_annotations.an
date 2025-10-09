@@ -27,13 +27,13 @@ main () =
 //     (transmute: fn Usz -> Ptr a) (a: Usz)
 // 
 // (main: fn Unit -> fn (Ptr Char) -> I32) () =
-//     (exit2: fn I32 -> Unit) = (exit: fn I32 -> Unit)
+//     (exit2: fn String -> _10) = (exit: fn String -> _10)
 //     (puts2: fn (Ptr Char) -> I32) = (puts: fn (Ptr Char) -> I32)
-//     (exit2: fn I32 -> Unit) "test"
+//     (exit2: fn String -> _10) "test"
 //     (puts2: fn (Ptr Char) -> I32)
 
 // expected stderr:
-// /Users/jakefecher/Code/Ante/ante/stdlib/src/Prelude.an:349:4	error: `builtin` is not in scope
+// /Users/jakefecher/Code/Ante/ante/stdlib/src/Prelude.an:349:4	error: `builtin` not found in scope
 //     builtin "Transmute" x
 // 
 // examples/typechecking/type_annotations.an:4:5	error: `a` not found in scope
@@ -42,8 +42,5 @@ main () =
 // examples/typechecking/type_annotations.an:4:8	error: `a` not found in scope
 // bar: fn a a -> I32 =
 // 
-// examples/typechecking/type_annotations.an:14:10	error: Expected I32 but found String
-//     exit2 "test"
-// 
-// Found 4 errors and 0 warnings
+// Found 3 errors and 0 warnings
 

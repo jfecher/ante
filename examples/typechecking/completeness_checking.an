@@ -1,13 +1,13 @@
 main () =
-    match None
+    match Maybe.None
     | None -> 1
 
-    match (2, None)
+    match (2, Maybe.None)
     | (0, None) -> ()
     | (_, Some _) -> ()
 
     // This one is complete!
-    match None
+    match Maybe.None
     | Some (Some _) -> 0
     | Some _ -> 1
     | None -> 2
@@ -26,9 +26,51 @@ main () =
     | (_, _, _, _) -> 3
 
 // args: --show-types
-// expected exit status: 101
+// expected stdout:
+// (main: fn Unit -> I32) () =
+//     match (Maybe.None: Maybe _7)
+//     | (None: Maybe _7) -> 1
+//     match 2 (,: (error)) (Maybe.None: Maybe _16)
+//     | (,: (error)) 0 (None: Maybe _16) -> ()
+//     | (,: (error)) (_: I32) ((Some: fn _28 -> Maybe _16) (_: _28)) -> ()
+//     match (Maybe.None: Maybe _33)
+//     | (Some: fn _34 -> Maybe _33) ((Some: fn _37 -> _34) (_: _37)) -> 0
+//     | (Some: fn _39 -> Maybe _33) (_: _39) -> 1
+//     | (None: Maybe _33) -> 2
+//     match 1 (,: (error)) 2
+//     | (,: (error)) 1 (_: I32) -> 0
+//     | (,: (error)) 1 2 -> 1
+//     match true (,: (error)) true
+//     | (error) -> 0
+//     | (error) -> 1
+//     match 1 (,: (error)) (2 (,: (error)) (3 (,: (error)) 4))
+//     | (,: (error)) 1 2 -> 1
+//     | (,: (error)) ((,: (error)) ((,: (error)) (_: _98) (_: _99)) (_: _94)) (_: I32, (I32, I32)) -> 3
+
 // expected stderr:
-// thread 'main' panicked at src/type_inference/cst_traversal.rs:138:45:
-// not yet implemented: Type check Origin::TypeResolution
-// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+// examples/typechecking/completeness_checking.an:7:10	error: Expected fn _28 -> Maybe _16 but found Maybe _30
+//     | (_, Some _) -> ()
+// 
+// examples/typechecking/completeness_checking.an:11:6	error: Expected fn _34 -> Maybe _33 but found Maybe _36
+//     | Some (Some _) -> 0
+// 
+// examples/typechecking/completeness_checking.an:11:12	error: `Some` not found in scope
+//     | Some (Some _) -> 0
+// 
+// examples/typechecking/completeness_checking.an:12:6	error: Expected fn _39 -> Maybe _33 but found Maybe _41
+//     | Some _ -> 1
+// 
+// examples/typechecking/completeness_checking.an:21:7	error: Expected a parameter but found `false`
+//     | (false, true) -> 0
+// 
+// examples/typechecking/completeness_checking.an:22:7	error: Expected a parameter but found `true`
+//     | (true, false) -> 1
+// 
+// examples/typechecking/completeness_checking.an:25:10	error: Expected I32, (I32, I32) but found I32
+//     | (1, 2) -> 1
+// 
+// examples/typechecking/completeness_checking.an:26:11	error: Expected fn _93 _94 -> I32 but found fn _93 _94 -> _93, _94
+//     | (_, _, _, _) -> 3
+// 
+// Found 8 errors and 0 warnings
 

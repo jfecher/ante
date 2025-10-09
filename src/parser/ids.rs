@@ -40,11 +40,6 @@ impl TopLevelId {
     pub fn new(source_file: SourceFileId, content_hash: u64) -> TopLevelId {
         TopLevelId { source_file, content_hash }
     }
-
-    pub(crate) fn location(&self, db: &DbHandle) -> Location {
-        let result = db.get(Parse(self.source_file));
-        result.top_level_data[self].location.clone()
-    }
 }
 
 impl Display for TopLevelId {
@@ -58,6 +53,36 @@ pub fn hash(x: impl std::hash::Hash) -> u64 {
     let mut hasher = deterministic_hash::DeterministicHasher::new(std::hash::DefaultHasher::new());
     x.hash(&mut hasher);
     hasher.finish()
+}
+
+/// Each TopLevelItem may define multiple TopLevelNames, e.g. `a, b = 1, 2` which corresponds to
+/// a single TopLevelId but multiple TopLevelNames.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct TopLevelName {
+    /// The top-level item which this name is contained within
+    pub top_level_item: TopLevelId,
+
+    /// The specific name within this top-level item (invalid outside of this item's context).
+    pub local_name_id: NameId,
+}
+
+impl TopLevelName {
+    /// Create a TopLevelName referring to the given name within the larger top-level item
+    pub fn named(top_level_item: TopLevelId, local_name_id: NameId) -> Self {
+        Self { top_level_item, local_name_id }
+    }
+
+    pub fn location(&self, db: &DbHandle) -> Location {
+        let result = db.get(Parse(self.top_level_item.source_file));
+        let item = &result.top_level_data[&self.top_level_item];
+        item.name_locations[self.local_name_id].clone()
+    }
+}
+
+impl Display for TopLevelName {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}_{}", self.top_level_item, self.local_name_id)
+    }
 }
 
 /// An ExprId is a bit different from a top-level id in that we make no attempt

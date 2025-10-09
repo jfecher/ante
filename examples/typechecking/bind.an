@@ -11,9 +11,37 @@ add_one x =
     bind x (fn x -> ret (x + 1i32))
 
 // args: --show-types
-// expected exit status: 101
+// expected stdout:
+// (bind: fn (error) (fn _9 -> (error)) -> (error)) (opt: (error)) (f: fn _9 -> (error)) =
+//     match (opt: (error))
+//     | (Some: fn _9 -> (error)) (x: _9) -> (f: fn _9 -> (error)) (x: _9)
+//     | (None: (error)) -> (None: (error))
+// 
+// (ret: fn _5 -> _3) (x: _5) = (Some: fn _5 -> _3) (x: _5)
+// 
+// (x: _1) = (Some: fn I32 -> _1) 10_I32
+// 
+// (add_one: fn _5 -> _3) (x: _5) =
+//     (bind: fn _5 (fn _15 -> _10) -> _3) (x: _5) (fn (x: _15) -> (ret: fn _12 -> _10) ((x: _15) (+: (error)) 1_I32))
+
 // expected stderr:
-// thread 'main' panicked at src/type_inference/cst_traversal.rs:138:45:
-// not yet implemented: Type check Origin::TypeResolution
-// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+// examples/typechecking/bind.an:3:6	error: `Some` not found in scope
+//     | Some x -> f x
+// 
+// examples/typechecking/bind.an:4:6	error: `None` not found in scope
+//     | None -> None
+// 
+// examples/typechecking/bind.an:4:14	error: `None` not found in scope
+//     | None -> None
+// 
+// examples/typechecking/bind.an:6:8	error: `Some` not found in scope
+// ret x = Some x
+// 
+// examples/typechecking/bind.an:8:4	error: `Some` not found in scope
+// x = Some 10i32
+// 
+// examples/typechecking/bind.an:11:27	error: `+` not found in scope
+//     bind x (fn x -> ret (x + 1i32))
+// 
+// Found 6 errors and 0 warnings
 

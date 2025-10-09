@@ -7,19 +7,19 @@ library_fn _ = 3
 // args: --show-resolved examples/nameresolution/Library.an
 // expected stdout:
 // // id = c1m753_7873
-// library_int_c1m753_7873 = 5
+// library_int_c1m753_7873_1 = 5
 // 
 // // id = c1m753_5383
-// library_fn_c1m753_5383 __1 = 2
+// library_fn_c1m753_5383_0 __1 = 2
 // 
 // 
 // import Library.library_int, library_fn
 // 
 // // id = c1m79_7873
-// library_int_c1m79_7873 = 1
+// library_int_c1m79_7873_1 = 1
 // 
 // // id = c1m79_5383
-// library_fn_c1m79_5383 __1 = 3
+// library_fn_c1m79_5383_0 __1 = 3
 
 // expected stderr:
 // examples/nameresolution/conflictingimport.an:1:8	error: Could not find crate `Library`

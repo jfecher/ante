@@ -17,7 +17,7 @@ use crate::{
         namespace::{CrateId, SourceFileId},
         ResolutionResult,
     },
-    parser::{self, context::TopLevelContext, cst::TopLevelItem, get_item, ids::TopLevelId, ParseResult},
+    parser::{self, context::TopLevelContext, cst::TopLevelItem, get_item, ids::{TopLevelId, TopLevelName}, ParseResult},
     type_inference::{self, dependency_graph::{TypeCheckDependencyGraphResult, TypeCheckResult, SCC}, types::GeneralizedType, TypeCheckSCCResult},
 };
 
@@ -189,7 +189,12 @@ define_intermediate!(60, VisibleTypes -> Definitions, DbStorage, definition_coll
 /// collecting these can error, we need a stable iteration order, otherwise the order
 /// we issue errors would be nondeterministic. This is why we use a BTreeMap over a
 /// HashMap, since hashmap iteration in rust has a nondeterministic ordering.
-pub type Definitions = BTreeMap<Arc<String>, TopLevelId>;
+///
+/// Each definition maps a string name to the top-level item that name originates from,
+/// as well as the local id of that name within the top-level item. This NameId is important
+/// to distinguish multiple names defined by the same top-level item. For example, `a, b = 1, 2`
+/// defines both `a` and `b`. Similarly, a trait may define multiple methods, etc.
+pub type Definitions = BTreeMap<Arc<String>, TopLevelName>;
 
 /// A map from each top-level type in a file to the methods defined on it.
 /// If a type in a file does not have any methods defined on it, it may not be in the map.
@@ -274,7 +279,7 @@ define_intermediate!(115, GetItem -> (Arc<TopLevelItem>, Arc<TopLevelContext>), 
 /// will in turn depend on not just the types of any names used in any expressions but also the
 /// name resolution results of those names.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
-pub struct GetType(pub TopLevelId);
+pub struct GetType(pub TopLevelName);
 define_intermediate!(120, GetType -> GeneralizedType, DbStorage, type_inference::get_type_impl);
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////

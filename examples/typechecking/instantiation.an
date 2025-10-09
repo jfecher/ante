@@ -21,11 +21,11 @@ id x = x
 // 
 // (two1: fn (fn _8 -> _8) _8 -> _8) (f: fn _8 -> _8) (x: _8) = (f: fn _8 -> _8) ((f: fn _8 -> _8) (x: _8))
 // 
-// (two2: fn (fn _8 -> _8) -> fn _8 -> _8) = (add: fn (fn (fn _8 -> _8) _8 -> _8) (fn (fn _8 -> _8) _8 -> _8) -> fn (fn _8 -> _8) -> fn _8 -> _8) (one: fn (fn _8 -> _8) _8 -> _8) (one: fn (fn _8 -> _8) _8 -> _8)
+// (two2: _1) = (add: fn _2 _3 -> _1) (one: _2) (one: _3)
 // 
-// (main: fn Unit -> String) () =
-//     (id: fn I32 -> I32) 3
-//     (id: fn String -> String) "four"
+// (main: fn Unit -> _3) () =
+//     (id: fn I32 -> _5) 3
+//     (id: fn String -> _3) "four"
 // 
 // (id: fn _3 -> _3) (x: _3) = (x: _3)
 

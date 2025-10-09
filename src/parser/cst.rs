@@ -180,6 +180,13 @@ impl Path {
         }
         Arc::new(path)
     }
+
+    /// Retrieve the last identifier of this path.
+    ///
+    /// Paths are guaranteed to have at least 1 component, so this will never panic.
+    pub fn last_ident(&self) -> &str {
+        &self.components.last().unwrap().0
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]

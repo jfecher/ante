@@ -41,10 +41,10 @@ main () =
 //     (_: _58) = ((!: (error)) ((&: (error)) (tuple: I32, I32))).!first
 
 // expected stderr:
-// examples/typechecking/field_diagnostics.an:4:9	error: `&` is not in scope
+// examples/typechecking/field_diagnostics.an:4:9	error: `&` not found in scope
 //     _ = (&&tuple).first
 // 
-// examples/typechecking/field_diagnostics.an:4:10	error: `&` is not in scope
+// examples/typechecking/field_diagnostics.an:4:10	error: `&` not found in scope
 //     _ = (&&tuple).first
 // 
 // examples/typechecking/field_diagnostics.an:4:17	error: Object type must be known by this point to access its field
@@ -56,7 +56,7 @@ main () =
 // examples/typechecking/field_diagnostics.an:7:13	error: I32, I32 has no field named `missing`
 //     _ = tuple.!missing
 // 
-// examples/typechecking/field_diagnostics.an:9:14	error: `&` is not in scope
+// examples/typechecking/field_diagnostics.an:9:14	error: `&` not found in scope
 //     imm_ref = &tuple
 // 
 // examples/typechecking/field_diagnostics.an:10:15	error: Object type must be known by this point to access its field
@@ -71,7 +71,7 @@ main () =
 // examples/typechecking/field_diagnostics.an:16:17	error: I32, I32 has no field named `missing`
 //     _ = mut_tuple.!missing
 // 
-// examples/typechecking/field_diagnostics.an:18:14	error: `!` is not in scope
+// examples/typechecking/field_diagnostics.an:18:14	error: `!` not found in scope
 //     mut_ref = !mut_tuple
 // 
 // examples/typechecking/field_diagnostics.an:20:15	error: Object type must be known by this point to access its field
@@ -80,10 +80,10 @@ main () =
 // examples/typechecking/field_diagnostics.an:21:15	error: Object type must be known by this point to access its field
 //     _ = mut_ref.!missing
 // 
-// examples/typechecking/field_diagnostics.an:23:9	error: `!` is not in scope
+// examples/typechecking/field_diagnostics.an:23:9	error: `!` not found in scope
 //     _ = (!&tuple).!first
 // 
-// examples/typechecking/field_diagnostics.an:23:10	error: `&` is not in scope
+// examples/typechecking/field_diagnostics.an:23:10	error: `&` not found in scope
 //     _ = (!&tuple).!first
 // 
 // examples/typechecking/field_diagnostics.an:23:17	error: Object type must be known by this point to access its field

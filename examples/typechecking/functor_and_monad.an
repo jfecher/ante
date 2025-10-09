@@ -22,9 +22,57 @@ impl monad_maybe: Monad Maybe with
         | None -> None
 
 // args: --show-types
-// expected exit status: 101
+// expected stdout:
+// trait Functor f with
+//     (map: (error)): fn (f a) (fn a -> b) -> f b
+// 
+// trait Monad m with
+//     (wrap: (error)): fn a -> m a
+//     (bind: (error)): fn (m a) (fn a -> m b) -> m b
+// 
+// impl functor_maybe: (Functor: (error)) Maybe with
+//     (map: fn (Maybe (error)) (fn (error) -> (error)) -> Maybe (error)) (m: Maybe (error)) (f: fn (error) -> (error)) =
+//         match (m: Maybe (error))
+//         | (Some: fn (error) -> Maybe (error)) (x: (error)) -> (Some: fn (error) -> Maybe (error)) ((f: fn (error) -> (error)) (x: (error)))
+//         | (None: Maybe (error)) -> (None: Maybe (error))
+// 
+// impl monad_maybe: (Monad: (error)) Maybe with
+//     (wrap: fn (error) -> Maybe (error)) (a: (error)) = (Some: fn (error) -> Maybe (error)) (a: (error))
+//     (bind: fn (Maybe (error)) (fn (error) -> Maybe (error)) -> Maybe (error)) (m: Maybe (error)) (f: fn (error) -> Maybe (error)) =
+//         match (m: Maybe (error))
+//         | (Some: fn (error) -> Maybe (error)) (x: (error)) -> (f: fn (error) -> Maybe (error)) (x: (error))
+//         | (None: Maybe (error)) -> (None: Maybe (error))
+
 // expected stderr:
-// thread 'main' panicked at src/type_inference/cst_traversal.rs:138:45:
-// not yet implemented: Type check Origin::TypeResolution
-// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+// examples/typechecking/functor_and_monad.an:3:13	error: `a` not found in scope
+//     map: fn (f a) (fn a -> b) -> f b
+// 
+// examples/typechecking/functor_and_monad.an:3:19	error: `a` not found in scope
+//     map: fn (f a) (fn a -> b) -> f b
+// 
+// examples/typechecking/functor_and_monad.an:3:24	error: `b` not found in scope
+//     map: fn (f a) (fn a -> b) -> f b
+// 
+// examples/typechecking/functor_and_monad.an:3:33	error: `b` not found in scope
+//     map: fn (f a) (fn a -> b) -> f b
+// 
+// examples/typechecking/functor_and_monad.an:6:10	error: `a` not found in scope
+//     wrap: fn a -> m a
+// 
+// examples/typechecking/functor_and_monad.an:6:18	error: `a` not found in scope
+//     wrap: fn a -> m a
+// 
+// examples/typechecking/functor_and_monad.an:7:14	error: `a` not found in scope
+//     bind: fn (m a) (fn a -> m b) -> m b
+// 
+// examples/typechecking/functor_and_monad.an:7:20	error: `a` not found in scope
+//     bind: fn (m a) (fn a -> m b) -> m b
+// 
+// examples/typechecking/functor_and_monad.an:7:28	error: `b` not found in scope
+//     bind: fn (m a) (fn a -> m b) -> m b
+// 
+// examples/typechecking/functor_and_monad.an:7:36	error: `b` not found in scope
+//     bind: fn (m a) (fn a -> m b) -> m b
+// 
+// Found 10 errors and 0 warnings
 
