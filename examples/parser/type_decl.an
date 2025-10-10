@@ -11,10 +11,10 @@ type Maybe a =
    | Some a
    | None
 
-type List a = | Nil | Cons a (&List a)
+type List a = | Nil | Cons a (ref List a)
 
 
-type UniquePtr a = &a
+type UniquePtr a = ref a
 
 t = 3 : I32
 

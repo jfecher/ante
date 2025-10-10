@@ -3,18 +3,18 @@ import Std.HashMap
 impl hash_u8: Hash U8 with
     hash x = cast x
 
-mut map = empty ()
+var map = empty ()
 
 // Test several inserts. HashMap is linear-scan so it 
 // should keep resizing so that it is at least half-empty 
 // (ie. its capacity should be >= 2 * its length).
-insert !map 1u8 3u16
-insert !map 2 6
-insert !map 3 9
-insert !map 4 12
-insert !map 5 15
-insert !map 6 18
-insert !map 7 21
+insert (mut map) 1u8 3u16
+insert (mut map) 2 6
+insert (mut map) 3 9
+insert (mut map) 4 12
+insert (mut map) 5 15
+insert (mut map) 6 18
+insert (mut map) 7 21
 
 print map
 

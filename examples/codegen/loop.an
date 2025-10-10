@@ -1,24 +1,25 @@
-start = 10
-seq_sum = loop start (sum = 0) ->
-    if start == 0 then sum
-    else recur (start - 1) (sum + start)
+main () =
+    start = 10
+    seq_sum = loop start (sum = 0) ->
+        if start == 0 then sum
+        else recur (start - 1) (sum + start)
 
-print seq_sum
+    print seq_sum
 
-loop (collatz = 7) ->
-    if collatz == 1 then 
-        print ""
-        return ()
-    printne collatz
-    printne " "
-    if collatz % 2 == 0 then recur (collatz / 2)
-    else recur (collatz * 3 + 1)
+    loop (collatz = 7) ->
+        if collatz == 1 then 
+            print ""
+            return ()
+        printne collatz
+        printne " "
+        if collatz % 2 == 0 then recur (collatz / 2)
+        else recur (collatz * 3 + 1)
 
-s = 0
-loop (s: I32) (t: I32 = 0) ->
-    printne s
-    printne t
-    if s == 3 then return ()
-    else recur (s + 1) (t + 1)
+    s = 0
+    loop (s: I32) (t: I32 = 0) ->
+        printne s
+        printne t
+        if s == 3 then return ()
+        else recur (s + 1) (t + 1)
 
 // args: --delete-binary

@@ -322,24 +322,24 @@ size_of (v: Type t) : Usz = builtin "SizeOf" v
 offset (ptr: Ptr t) (index: Usz) : Ptr t =
     builtin "Offset" ptr index
 
-deref (x: &t) : t =
+deref (x: ref t) : t =
     builtin "Deref" x
 
 // Temporary. We should instead be polymorphic over each reference type
-deref_mut (x: !t) : t =
+deref_mut (x: mut t) : t =
     builtin "Deref" x
 
 deref_ptr (p: Ptr t) : t =
     deref <| transmute p
 
 ptr_store (p: Ptr a) (value: a) : Unit =
-    addr: !a = transmute p
+    addr: mut a = transmute p
     addr := value
 
 array_insert (p: Ptr a) (index: Usz) (value: a) : Unit =
     offset p index |> ptr_store value
 
-ptr_to_ref: fn (Ptr a) -> !a = transmute
+ptr_to_ref: fn (Ptr a) -> mut a = transmute
 
 (@) = deref
 
@@ -420,7 +420,7 @@ impl print_maybe {Print a}: Print (Maybe a) with
         | Some a -> printne a
         | None -> printne "None"
 
-impl print_ref {Print a}: Print &a with
+impl print_ref {Print a}: Print (ref a) with
     printne r = printne @r
 
 unwrap (m: Maybe t) : t =
@@ -502,7 +502,7 @@ impl cast_int_string
       String buf (size - 1)
 
 
-impl eq_ref {Eq t}: Eq &t with
+impl eq_ref {Eq t}: Eq (ref t) with
     (==) l r = deref l == deref r
 
 impl eq_ptr: Eq (Ptr t) with
@@ -543,7 +543,7 @@ impl iterator_infile: Iterator InFile String with
         else Some (infile, next_line infile)
 
 // TODO: manually construct a String from parts
-// impl Cast &Char String with
+// impl Cast (ref Char) String with
 //     cast c_string = String c_string (cast (strlen c_string))
 
 // impl Eq String
@@ -602,8 +602,8 @@ next_char (f: InFile) : Char =
 next_line (f: InFile) : String =
     if eof f then return ""
 
-    mut capacity = 32
-    mut cstr = malloc @capacity
+    var capacity = 32
+    var cstr = malloc @capacity
 
     len = loop (len = 0) ->
         next = next_char f

@@ -2,8 +2,8 @@ import Foo.Bar
 
 // Programs now require a main function
 main () =
-    mut a = 32
-    println &a
+    var a = 32
+    println (ref a)
 
 type Foo =
     x: I32
@@ -16,14 +16,13 @@ Foo.print self =
     print " "
     print self.y
 
-
 // args: --show-parse
 // expected stdout:
 // import Foo.Bar
 // 
 // main () =
 //     mut a = 32
-//     println &a
+//     println (ref a)
 // 
 // type Foo =
 //     x: I32
@@ -34,3 +33,4 @@ Foo.print self =
 //     print self.x
 //     print " "
 //     print self.y
+

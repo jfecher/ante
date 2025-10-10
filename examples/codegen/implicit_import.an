@@ -1,7 +1,7 @@
-mut v = Vec.empty ()
+var v = Vec.empty ()
 
-Vec.push !v 3i32
-Vec.push !v 4
+Vec.push (mut v) 3i32
+Vec.push (mut v) 4
 
 print v
 

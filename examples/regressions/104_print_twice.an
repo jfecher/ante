@@ -3,8 +3,8 @@ import HashMap
 impl hash_u8: Hash U8 with
     hash x = cast x
 
-mut map = empty ()
-insert !map 1u8 3u16
+var map = empty ()
+insert (mut map) 1u8 3u16
 
 print map
 print map

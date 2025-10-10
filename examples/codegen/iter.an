@@ -1,6 +1,6 @@
 
 trait MyIterable it -> elem with
-    mynext : it -> Maybe (elem, it)
+    mynext: fn it -> Maybe (elem, it)
 
 // Define iterating on I32s as counting down until 0
 impl countdown: MyIterable I32 I32 with

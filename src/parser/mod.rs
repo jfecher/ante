@@ -9,7 +9,12 @@ use rustc_hash::FxHashSet;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    diagnostics::{Diagnostic, ErrorDefault, Location, Span}, incremental, iterator_extensions::vecmap, lexer::{token::Token, Lexer}, name_resolution::namespace::SourceFileId, parser::{context::TopLevelContext, cst::HandlePattern}
+    diagnostics::{Diagnostic, ErrorDefault, Location, Span},
+    incremental,
+    iterator_extensions::vecmap,
+    lexer::{token::Token, Lexer},
+    name_resolution::namespace::SourceFileId,
+    parser::{context::TopLevelContext, cst::HandlePattern},
 };
 
 use self::cst::{
@@ -17,11 +22,11 @@ use self::cst::{
     TypeDefinition, TypeDefinitionBody,
 };
 
+pub mod context;
 pub mod cst;
 pub mod cst_printer;
-pub mod ids;
 pub mod get_item;
-pub mod context;
+pub mod ids;
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct ParseResult {
@@ -578,7 +583,7 @@ impl<'tokens> Parser<'tokens> {
     /// definition: non_function_definition | function_definition
     fn parse_definition(&mut self) -> Result<Definition> {
         match self.current_token() {
-            Token::Implicit | Token::Mut => self.parse_non_function_definition(),
+            Token::Implicit | Token::Var => self.parse_non_function_definition(),
             _ => {
                 if let Ok(function) = self.try_(Self::parse_function_definition) {
                     Ok(function)
@@ -592,7 +597,7 @@ impl<'tokens> Parser<'tokens> {
     /// non_function_definition: 'implicit'? 'mut'? pattern '=' expression
     fn parse_non_function_definition(&mut self) -> Result<Definition> {
         let implicit = self.accept(Token::Implicit);
-        let mutable = self.accept(Token::Mut);
+        let mutable = self.accept(Token::Var);
         let pattern = self.parse_pattern()?;
         self.expect(Token::Equal, "`=` to begin the function body")?;
 
@@ -771,20 +776,20 @@ impl<'tokens> Parser<'tokens> {
     }
 
     // TODO: Parse lifetime & element type
-    fn parse_mutable_reference_type(&mut self) -> Result<Type> {
-        self.expect(Token::ExclamationMark, "`!` to start a mutable reference type")?;
-        self.parse_reference_element_type(cst::Mutability::Mutable)
+    fn parse_reference_type(&mut self) -> Result<Type> {
+        let (mutability, sharedness) = match self.current_token() {
+            Token::Ref => (cst::Mutability::Immutable, cst::Sharedness::Shared),
+            Token::Mut => (cst::Mutability::Mutable, cst::Sharedness::Shared),
+            Token::Imm => (cst::Mutability::Immutable, cst::Sharedness::Owned),
+            Token::Uniq => (cst::Mutability::Mutable, cst::Sharedness::Owned),
+            _ => return self.expected("a reference type"),
+        };
+
+        self.advance();
+        self.parse_reference_element_type(mutability, sharedness)
     }
 
-    // TODO: Parse lifetime & element type
-    fn parse_immutable_reference_type(&mut self) -> Result<Type> {
-        self.expect(Token::Ampersand, "`&` to start an immutable reference type")?;
-        self.parse_reference_element_type(cst::Mutability::Immutable)
-    }
-
-    fn parse_reference_element_type(&mut self, mutability: cst::Mutability) -> Result<Type> {
-        let owned = self.accept(Token::Owned);
-        let shared = if owned { Sharedness::Owned } else { Sharedness::Shared };
+    fn parse_reference_element_type(&mut self, mutability: cst::Mutability, shared: cst::Sharedness) -> Result<Type> {
         match self.parse_type_application() {
             Ok(application) => Ok(Type::Application(Box::new(Type::Reference(mutability, shared)), vec![application])),
             Err(_) => Ok(Type::Reference(mutability, shared)),
@@ -871,8 +876,7 @@ impl<'tokens> Parser<'tokens> {
     fn parse_type_no_pair(&mut self) -> Result<Type> {
         match self.current_token() {
             Token::Fn => self.parse_function_type(),
-            Token::ExclamationMark => self.parse_mutable_reference_type(),
-            Token::Ampersand => self.parse_immutable_reference_type(),
+            Token::Ref | Token::Mut | Token::Imm | Token::Uniq => self.parse_reference_type(),
             _ => self.parse_type_application(),
         }
     }
@@ -916,18 +920,6 @@ impl<'tokens> Parser<'tokens> {
                 self.expect(Token::ParenthesisRight, "a `)` to close the opening `(` from the parameter")?;
                 Ok(typ)
             },
-            Token::Ampersand => {
-                self.advance();
-                let element = self.parse_type_arg()?;
-                let reference = Type::Reference(Mutability::Immutable, Sharedness::Shared);
-                Ok(Type::Application(Box::new(reference), vec![element]))
-            }
-            Token::ExclamationMark => {
-                self.advance();
-                let element = self.parse_type_arg()?;
-                let reference = Type::Reference(Mutability::Mutable, Sharedness::Shared);
-                Ok(Type::Application(Box::new(reference), vec![element]))
-            }
             _ => self.expected("a type"),
         }
     }
@@ -989,7 +981,7 @@ impl<'tokens> Parser<'tokens> {
             Err(_) => {
                 self.token_index = last_success_position;
                 return items;
-            }
+            },
         }
 
         last_success_position = self.token_index;
@@ -1002,7 +994,7 @@ impl<'tokens> Parser<'tokens> {
                 Ok(item) => {
                     items.push(item);
                     last_success_position = self.token_index;
-                }
+                },
                 Err(_) if allow_trailing => break,
                 Err(error) => {
                     eprintln!("1 push error {:?}", error);
@@ -1073,7 +1065,7 @@ impl<'tokens> Parser<'tokens> {
             },
             Token::ParenthesisLeft if self.peek_next_token().is_overloadable_operator() => {
                 self.parse_ident_id().map(Pattern::Variable)
-            }
+            },
             Token::ParenthesisLeft => {
                 self.advance();
                 let pattern = self.parse_with_recovery(
@@ -1263,14 +1255,22 @@ impl<'tokens> Parser<'tokens> {
 
     fn parse_term_inner(&mut self) -> Result<ExprId> {
         match self.current_token() {
-            Token::Subtract | Token::Ampersand | Token::ExclamationMark | Token::At | Token::Not => self.parse_left_unary(),
+            Token::Subtract | Token::Ref | Token::Mut | Token::Imm | Token::Uniq | Token::At | Token::Not => {
+                self.parse_left_unary()
+            },
             _ => self.parse_function_call_or_atom(),
         }
     }
 
     fn parse_left_unary(&mut self) -> Result<ExprId> {
         match self.current_token() {
-            operator @ (Token::Subtract | Token::ExclamationMark | Token::Ampersand | Token::At | Token::Not) => {
+            operator @ (Token::Subtract
+            | Token::Ref
+            | Token::Mut
+            | Token::Imm
+            | Token::Uniq
+            | Token::At
+            | Token::Not) => {
                 let call_id = self.reserve_expr();
                 let function_id = self.reserve_expr();
 
@@ -1754,7 +1754,7 @@ impl<'tokens> Parser<'tokens> {
                 self.advance();
                 self.expect(Token::ParenthesisRight, "`)` to close the opening `(`")?;
                 Ok(self.push_name(name, location))
-            }
+            },
             _ => self.expected("an identifier"),
         }
     }
@@ -1833,17 +1833,16 @@ impl<'tokens> Parser<'tokens> {
         let trait_arguments = self.many0(Self::parse_type_arg);
         self.expect(Token::With, "`with` to separate this trait impl's signature from its body")?;
 
-        let body = vecmap(self.parse_impl_body()?, |definition| {
-            match &self.current_context.patterns[definition.pattern] {
+        let body =
+            vecmap(self.parse_impl_body()?, |definition| match &self.current_context.patterns[definition.pattern] {
                 Pattern::Variable(name) => (*name, definition.rhs),
                 _ => {
                     let location = self.current_context.pattern_locations[definition.pattern].clone();
                     let name = self.push_name(Arc::new("(placeholder)".to_string()), location.clone());
                     self.diagnostics.push(Diagnostic::ParserComplexImplItemName { location });
                     (name, definition.rhs)
-                }
-            }
-        });
+                },
+            });
         Ok(cst::TraitImpl { name, parameters, trait_path, trait_arguments, body })
     }
 
@@ -1851,7 +1850,7 @@ impl<'tokens> Parser<'tokens> {
         match self.current_token() {
             Token::Indent => {
                 self.parse_indented(|this| Ok(this.delimited(Self::parse_definition, Token::Newline, true)))
-            }
+            },
             _ => self.parse_definition().map(|definition| vec![definition]),
         }
     }

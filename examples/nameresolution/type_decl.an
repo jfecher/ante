@@ -17,7 +17,7 @@ type Option a =
 
 t = Option.Just 1
 
-type MyRef a = &a
+type MyRef a = ref a
 
 // args: --show-resolved
 // expected stdout:

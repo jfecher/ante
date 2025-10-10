@@ -1,93 +1,120 @@
 main () =
     tuple = (1, 1)
 
-    _ = (&&tuple).first
+    _ = (ref ref tuple).first
 
-    _ = tuple.!first
-    _ = tuple.!missing
+    _ = mut tuple.first
+    _ = mut tuple.missing
 
-    imm_ref = &tuple
-    _ = imm_ref.!first
-    _ = imm_ref.!missing
+    imm_ref = ref tuple
+    _ = mut imm_ref.first
+    _ = mut imm_ref.missing
 
-    mut mut_tuple = (1, 1)
+    var mut_tuple = (1, 1)
 
-    _ = mut_tuple.&missing
-    _ = mut_tuple.!missing
+    _ = ref mut_tuple.missing
+    _ = mut mut_tuple.missing
 
-    mut_ref = !mut_tuple
+    mut_ref = mut mut_tuple
 
-    _ = mut_ref.&missing
-    _ = mut_ref.!missing
+    _ = ref mut_ref.missing
+    _ = mut mut_ref.missing
 
-    _ = (!&tuple).!first
+    _ = mut (mut ref tuple).first
 
 // args: --show-types
 // expected stdout:
 // (main: fn Unit -> _3) () =
 //     (tuple: I32, I32) = 1 (,: (error)) 1
-//     (_: _13) = ((&: (error)) ((&: (error)) (tuple: I32, I32))).first
-//     (_: _20) = (tuple: I32, I32).!first
-//     (_: _23) = (tuple: I32, I32).!missing
-//     (imm_ref: _34) = (&: (error)) (tuple: I32, I32)
-//     (_: _30) = (imm_ref: _34).!first
-//     (_: _33) = (imm_ref: _34).!missing
+//     (_: _13) = ((ref: (error)) ((ref: (error)) (tuple: I32, I32))).first
+//     (_: _20) = (mut: (error)) (tuple: I32, I32).first
+//     (_: _25) = (mut: (error)) (tuple: I32, I32).missing
+//     (imm_ref: _42) = (ref: (error)) (tuple: I32, I32)
+//     (_: _34) = (mut: (error)) (imm_ref: _42).first
+//     (_: _39) = (mut: (error)) (imm_ref: _42).missing
 //     mut (mut_tuple: I32, I32) = 1 (,: (error)) 1
-//     (_: _43) = (mut_tuple: I32, I32).&missing
-//     (_: _46) = (mut_tuple: I32, I32).!missing
-//     (mut_ref: _57) = (!: (error)) (mut_tuple: I32, I32)
-//     (_: _53) = (mut_ref: _57).&missing
-//     (_: _56) = (mut_ref: _57).!missing
-//     (_: _58) = ((!: (error)) ((&: (error)) (tuple: I32, I32))).!first
+//     (_: _51) = (ref: (error)) (mut_tuple: I32, I32).missing
+//     (_: _56) = (mut: (error)) (mut_tuple: I32, I32).missing
+//     (mut_ref: _73) = (mut: (error)) (mut_tuple: I32, I32)
+//     (_: _65) = (ref: (error)) (mut_ref: _73).missing
+//     (_: _70) = (mut: (error)) (mut_ref: _73).missing
+//     (_: _74) = (mut: (error)) ((mut: (error)) ((ref: (error)) (tuple: I32, I32))).first
 
 // expected stderr:
-// examples/typechecking/field_diagnostics.an:4:9	error: `&` not found in scope
-//     _ = (&&tuple).first
+// examples/typechecking/field_diagnostics.an:4:9	error: `ref` not found in scope
+//     _ = (ref ref tuple).first
 // 
-// examples/typechecking/field_diagnostics.an:4:10	error: `&` not found in scope
-//     _ = (&&tuple).first
+// examples/typechecking/field_diagnostics.an:4:13	error: `ref` not found in scope
+//     _ = (ref ref tuple).first
 // 
-// examples/typechecking/field_diagnostics.an:4:17	error: Object type must be known by this point to access its field
-//     _ = (&&tuple).first
+// examples/typechecking/field_diagnostics.an:4:23	error: Object type must be known by this point to access its field
+//     _ = (ref ref tuple).first
 // 
-// examples/typechecking/field_diagnostics.an:6:13	error: I32, I32 has no field named `first`
-//     _ = tuple.!first
+// examples/typechecking/field_diagnostics.an:6:8	error: `mut` not found in scope
+//     _ = mut tuple.first
 // 
-// examples/typechecking/field_diagnostics.an:7:13	error: I32, I32 has no field named `missing`
-//     _ = tuple.!missing
+// examples/typechecking/field_diagnostics.an:6:17	error: I32, I32 has no field named `first`
+//     _ = mut tuple.first
 // 
-// examples/typechecking/field_diagnostics.an:9:14	error: `&` not found in scope
-//     imm_ref = &tuple
+// examples/typechecking/field_diagnostics.an:7:8	error: `mut` not found in scope
+//     _ = mut tuple.missing
 // 
-// examples/typechecking/field_diagnostics.an:10:15	error: Object type must be known by this point to access its field
-//     _ = imm_ref.!first
+// examples/typechecking/field_diagnostics.an:7:17	error: I32, I32 has no field named `missing`
+//     _ = mut tuple.missing
 // 
-// examples/typechecking/field_diagnostics.an:11:15	error: Object type must be known by this point to access its field
-//     _ = imm_ref.!missing
+// examples/typechecking/field_diagnostics.an:9:14	error: `ref` not found in scope
+//     imm_ref = ref tuple
 // 
-// examples/typechecking/field_diagnostics.an:15:17	error: I32, I32 has no field named `missing`
-//     _ = mut_tuple.&missing
+// examples/typechecking/field_diagnostics.an:10:8	error: `mut` not found in scope
+//     _ = mut imm_ref.first
 // 
-// examples/typechecking/field_diagnostics.an:16:17	error: I32, I32 has no field named `missing`
-//     _ = mut_tuple.!missing
+// examples/typechecking/field_diagnostics.an:10:19	error: Object type must be known by this point to access its field
+//     _ = mut imm_ref.first
 // 
-// examples/typechecking/field_diagnostics.an:18:14	error: `!` not found in scope
-//     mut_ref = !mut_tuple
+// examples/typechecking/field_diagnostics.an:11:8	error: `mut` not found in scope
+//     _ = mut imm_ref.missing
 // 
-// examples/typechecking/field_diagnostics.an:20:15	error: Object type must be known by this point to access its field
-//     _ = mut_ref.&missing
+// examples/typechecking/field_diagnostics.an:11:19	error: Object type must be known by this point to access its field
+//     _ = mut imm_ref.missing
 // 
-// examples/typechecking/field_diagnostics.an:21:15	error: Object type must be known by this point to access its field
-//     _ = mut_ref.!missing
+// examples/typechecking/field_diagnostics.an:15:8	error: `ref` not found in scope
+//     _ = ref mut_tuple.missing
 // 
-// examples/typechecking/field_diagnostics.an:23:9	error: `!` not found in scope
-//     _ = (!&tuple).!first
+// examples/typechecking/field_diagnostics.an:15:21	error: I32, I32 has no field named `missing`
+//     _ = ref mut_tuple.missing
 // 
-// examples/typechecking/field_diagnostics.an:23:10	error: `&` not found in scope
-//     _ = (!&tuple).!first
+// examples/typechecking/field_diagnostics.an:16:8	error: `mut` not found in scope
+//     _ = mut mut_tuple.missing
 // 
-// examples/typechecking/field_diagnostics.an:23:17	error: Object type must be known by this point to access its field
-//     _ = (!&tuple).!first
+// examples/typechecking/field_diagnostics.an:16:21	error: I32, I32 has no field named `missing`
+//     _ = mut mut_tuple.missing
 // 
-// Found 16 errors and 0 warnings
+// examples/typechecking/field_diagnostics.an:18:14	error: `mut` not found in scope
+//     mut_ref = mut mut_tuple
+// 
+// examples/typechecking/field_diagnostics.an:20:8	error: `ref` not found in scope
+//     _ = ref mut_ref.missing
+// 
+// examples/typechecking/field_diagnostics.an:20:19	error: Object type must be known by this point to access its field
+//     _ = ref mut_ref.missing
+// 
+// examples/typechecking/field_diagnostics.an:21:8	error: `mut` not found in scope
+//     _ = mut mut_ref.missing
+// 
+// examples/typechecking/field_diagnostics.an:21:19	error: Object type must be known by this point to access its field
+//     _ = mut mut_ref.missing
+// 
+// examples/typechecking/field_diagnostics.an:23:8	error: `mut` not found in scope
+//     _ = mut (mut ref tuple).first
+// 
+// examples/typechecking/field_diagnostics.an:23:13	error: `mut` not found in scope
+//     _ = mut (mut ref tuple).first
+// 
+// examples/typechecking/field_diagnostics.an:23:17	error: `ref` not found in scope
+//     _ = mut (mut ref tuple).first
+// 
+// examples/typechecking/field_diagnostics.an:23:27	error: Object type must be known by this point to access its field
+//     _ = mut (mut ref tuple).first
+// 
+// Found 25 errors and 0 warnings
 

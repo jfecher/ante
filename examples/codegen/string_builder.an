@@ -1,9 +1,9 @@
 import StringBuilder
 
-mut sb: StringBuilder = empty ()
-reserve !sb 10
-append !sb "你好，"
-append !sb " World!"
+var sb: StringBuilder = empty ()
+reserve (mut sb) 10
+append (mut sb) "你好，"
+append (mut sb) " World!"
 
 print (to_string sb)
 

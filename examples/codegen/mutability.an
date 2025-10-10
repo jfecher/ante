@@ -1,12 +1,12 @@
-mut num = 32
+var num = 32
 print num
 num := 7
 print num
 
-mutate !num
+mutate (mut num)
 print num
 
-mutate (n: !I32) =
+mutate (n: mut I32) =
     x = double @n
     n := x
 

@@ -1,9 +1,9 @@
 import Vec.empty push
 
-mut v = empty ()
+var v = empty ()
 
-push !v 3i32
-push !v 4
+push (mut v) 3i32
+push (mut v) 4
 
 print v
 
