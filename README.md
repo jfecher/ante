@@ -2,6 +2,10 @@
 
 [![Build Status](https://img.shields.io/endpoint.svg?url=https%3A%2F%2Factions-badge.atrox.dev%2Fjfecher%2Fante%2Fbadge&style=flat)](https://actions-badge.atrox.dev/jfecher/ante/goto)
 
+The compiler is currently undergoing a full rewrite! The master branch will be preserved as the old
+compiler implementing most of the language for now, while all commits for the compiler rewrite will
+go to the `incremental` branch.
+
 ---
 
 Ante is a low-level functional language for exploring refinement types, lifetime inference, and
