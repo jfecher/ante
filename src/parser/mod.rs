@@ -12,9 +12,9 @@ use crate::{
     diagnostics::{Diagnostic, ErrorDefault, Location, Span},
     incremental,
     iterator_extensions::vecmap,
-    lexer::{token::Token, Lexer},
+    lexer::{Lexer, token::Token},
     name_resolution::namespace::SourceFileId,
-    parser::{context::TopLevelContext, cst::HandlePattern},
+    parser::{context::TopLevelContext, cst::{Constructor, HandlePattern}},
 };
 
 use self::cst::{
