@@ -1200,8 +1200,61 @@ impl<'tokens> Parser<'tokens> {
             Token::Match => self.parse_match(),
             Token::Handle => self.parse_handle(),
             Token::Loop => self.parse_loop(),
+            Token::TypeName(_) => self.parse_named_constructor(),
             _ => self.parse_shunting_yard(),
         }
+    }
+
+    fn parse_named_constructor(&mut self) -> Result<ExprId> {
+        let typ = self.parse_type()?;
+
+        self.expect(Token::With, "with")?;
+
+        let constructor_expr_id = self.reserve_expr();
+        let fields: Vec<(NameId, ExprId)>;
+
+        if self.current_token() == &Token::Indent {
+            fields = 
+                self.parse_indented(|this| {
+                    let statements = this.delimited(Self::parse_named_constructor_field, Token::Newline, true);
+                    Ok(statements)
+                })?;
+        } else {
+            fields = self.parse_named_constructor_fields()?;
+        }
+        
+        Ok(self.push_expr(Expr::Constructor(Constructor{ typ, fields }), self.expr_location(constructor_expr_id)))
+    }
+
+    // Parse a single named constructor field
+    // ident ('=' expr)?
+    fn parse_named_constructor_field(&mut self) -> Result<(NameId, ExprId)> {
+        let field_identifier = self.parse_ident()?;
+        let field_name = self.push_name(Arc::new(field_identifier), self.current_token_location());
+        
+        if self.accept(Token::Equal) {
+            let value = self.parse_quark()?;
+            Ok((field_name, value))
+        } else {
+            // implied field: doesn't point to a particular expression
+            Ok((field_name, self.reserve_expr()))
+        }
+    }
+
+    // Parse comma-separated named constructor fields.
+    fn parse_named_constructor_fields(&mut self) -> Result<Vec<(NameId, ExprId)>> {
+        // keep parsing while we can successfully parse constructor fields 
+        // but break if we don't see a comma.
+        let mut fields = Vec::new();
+        while let Ok(field) = self.parse_named_constructor_field() {
+            fields.push(field);
+
+            if !self.accept(Token::Comma) {
+                break;
+            }
+        }
+        
+        Ok(fields)
     }
 
     /// Parse an arbitrary infix expression using the shunting-yard algorithm
