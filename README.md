@@ -4,12 +4,11 @@
 
 ---
 
-Ante is a low-level functional language for exploring refinement types, lifetime inference, and
+Ante is a low-level functional language for exploring safe, shared mutability, algebraic effects, and
 other fun features. Here's a quick taste:
 
 ```scala
-// No lifetime variables
-foo (x: !shared Bar) (y: &a) : a can Fail given Clone a =
+foo (x: mut Bar) (y: ref a) {Clone a}: a can Fail =
     // Algebraic effects
     if not valid x then fail ()
 
@@ -20,7 +19,7 @@ foo (x: !shared Bar) (y: &a) : a can Fail given Clone a =
     clone y
 ```
 
-In general, ante is low-level (no GC, values aren't boxed by default) while also trying to
+Ante is built upon a core of ownership and borrowing rules similar to rust but aims to
 be as readable as possible by encouraging high-level approaches that can be optimized with
 low-level details later on.
 
