@@ -1211,17 +1211,13 @@ impl<'tokens> Parser<'tokens> {
         self.expect(Token::With, "with")?;
 
         let constructor_expr_id = self.reserve_expr();
-        let fields: Vec<(NameId, ExprId)>;
-
-        if self.current_token() == &Token::Indent {
-            fields = 
-                self.parse_indented(|this| {
-                    let statements = this.delimited(Self::parse_named_constructor_field, Token::Newline, true);
-                    Ok(statements)
+        let fields = if self.current_token() == &Token::Indent {
+            self.parse_indented(|this| {
+                    Ok(this.delimited(Self::parse_named_constructor_field, Token::Newline, true))
                 })?;
         } else {
-            fields = self.parse_named_constructor_fields()?;
-        }
+            self.parse_named_constructor_fields()?
+        };
         
         Ok(self.push_expr(Expr::Constructor(Constructor{ typ, fields }), self.expr_location(constructor_expr_id)))
     }
