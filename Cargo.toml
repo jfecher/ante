@@ -10,6 +10,7 @@ colored = "2.0.0"
 deterministic-hash = "1.0.1"
 inc-complete = "0.8.1"
 petgraph = { version = "0.8.2", features = ["serde"] }
+rangemap = "1.6.0"
 rayon = "1.10.0"
 ron = "0.10.1"
 rustc-hash = "2.1.1"

@@ -69,6 +69,7 @@ dependencies = [
  "goldentests",
  "inc-complete",
  "petgraph",
+ "rangemap",
  "rayon",
  "ron",
  "rustc-hash",
@@ -409,6 +410,12 @@ checksum = "1885c039570dc00dcb4ff087a89e185fd56bae234ddc7f056a945bf36467248d"
 dependencies = [
  "proc-macro2",
 ]
+
+[[package]]
+name = "rangemap"
+version = "1.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f93e7e49bb0bf967717f7bd674458b3d6b0c5f48ec7e3038166026a69fc22223"
 
 [[package]]
 name = "rayon"

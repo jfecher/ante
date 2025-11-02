@@ -1,7 +1,16 @@
 use std::sync::Arc;
 
-use crate::{incremental::{DbHandle, GetItem, GetItemRaw}, iterator_extensions::vecmap, parser::{context::TopLevelContext, cst::{Constructor, Definition, Expr, Lambda, Pattern, TopLevelItem, TopLevelItemKind, TraitDefinition, TraitImpl, Type, TypeDefinitionBody}}};
-
+use crate::{
+    incremental::{DbHandle, GetItem, GetItemRaw},
+    iterator_extensions::vecmap,
+    parser::{
+        context::TopLevelContext,
+        cst::{
+            Constructor, Definition, Expr, Lambda, Pattern, TopLevelItem, TopLevelItemKind, TraitDefinition, TraitImpl,
+            Type, TypeDefinitionBody,
+        },
+    },
+};
 
 pub fn get_item_impl(context: &GetItem, db: &DbHandle) -> (Arc<TopLevelItem>, Arc<TopLevelContext>) {
     let (item, context) = GetItemRaw(context.0).get(db);
@@ -19,7 +28,7 @@ pub fn get_item_impl(context: &GetItem, db: &DbHandle) -> (Arc<TopLevelItem>, Ar
             let new_item = Arc::new(TopLevelItem { comments: item.comments.clone(), kind: new_kind, id: item.id });
             (new_item, Arc::new(new_context))
         },
-        _ => (item, context)
+        _ => (item, context),
     }
 }
 

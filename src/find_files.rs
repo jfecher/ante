@@ -4,7 +4,10 @@ use clap::builder::OsStr;
 use rustc_hash::FxHashSet;
 
 use crate::{
-    incremental::{Crate, Db, GetCrateGraph, SourceFile}, name_resolution::namespace::{CrateId, SourceFileId, LOCAL_CRATE, STDLIB_CRATE}, paths::stdlib_path, read_file
+    incremental::{Crate, Db, GetCrateGraph, SourceFile},
+    name_resolution::namespace::{CrateId, SourceFileId, LOCAL_CRATE, STDLIB_CRATE},
+    paths::stdlib_path,
+    read_file,
 };
 
 pub type CrateGraph = BTreeMap<CrateId, Crate>;

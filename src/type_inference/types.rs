@@ -5,10 +5,16 @@ use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    incremental::GetItem, iterator_extensions::vecmap, lexer::token::{FloatKind, IntegerKind}, name_resolution::{builtin::Builtin, Origin, ResolutionResult}, parser::{
+    incremental::GetItem,
+    iterator_extensions::vecmap,
+    lexer::token::{FloatKind, IntegerKind},
+    name_resolution::{builtin::Builtin, Origin, ResolutionResult},
+    parser::{
         cst::{self, Mutability, Sharedness},
         ids::NameId,
-    }, type_inference::{generics::Generic, type_context::TypeContext, type_id::TypeId}, vecmap::VecMap
+    },
+    type_inference::{generics::Generic, type_context::TypeContext, type_id::TypeId},
+    vecmap::VecMap,
 };
 
 /// A top-level type is a type which may be in a top-level signature.
@@ -91,7 +97,7 @@ impl TopLevelType {
             cst::Type::Unit => TopLevelType::unit(),
             cst::Type::Char => TopLevelType::Primitive(PrimitiveType::Char),
             cst::Type::String => TopLevelType::Primitive(PrimitiveType::String),
-            cst::Type::Pair  => TopLevelType::Primitive(PrimitiveType::Pair),
+            cst::Type::Pair => TopLevelType::Primitive(PrimitiveType::Pair),
             cst::Type::Named(path) => {
                 let origin = resolve.path_origins.get(path).copied();
                 Self::convert_origin_to_type(origin, TopLevelType::UserDefined)
@@ -99,7 +105,7 @@ impl TopLevelType {
             cst::Type::Variable(name) => {
                 let origin = resolve.name_origins.get(name).copied();
                 Self::convert_origin_to_type(origin, |origin| TopLevelType::Generic(Generic::Named(origin)))
-            }
+            },
             cst::Type::Integer(kind) => TopLevelType::Primitive(PrimitiveType::Int(*kind)),
             cst::Type::Float(kind) => TopLevelType::Primitive(PrimitiveType::Float(*kind)),
             cst::Type::Function(function_type) => {
@@ -124,7 +130,7 @@ impl TopLevelType {
             Some(Origin::Builtin(builtin)) => match builtin {
                 Builtin::Unit => Self::Primitive(PrimitiveType::Unit),
                 Builtin::Char => Self::Primitive(PrimitiveType::Char),
-                Builtin::Int => Self::error(), // TODO: Polymorphic integers
+                Builtin::Int => Self::error(),   // TODO: Polymorphic integers
                 Builtin::Float => Self::error(), // TODO: Polymorphic floats
                 Builtin::String => Self::Primitive(PrimitiveType::String),
                 Builtin::Ptr => Self::Primitive(PrimitiveType::Pointer),
@@ -133,7 +139,7 @@ impl TopLevelType {
                     // TODO: Error
                     Self::error()
                 },
-            }
+            },
             Some(origin) => {
                 if !origin.may_be_a_type() {
                     // TODO: Error
@@ -194,9 +200,7 @@ impl TopLevelType {
     pub fn substitute(&self, types: &mut TypeContext, substitutions: &GenericSubstitutions) -> TypeId {
         match self {
             TopLevelType::Primitive(primitive) => TypeId::primitive(*primitive),
-            TopLevelType::UserDefined(origin) => {
-                types.get_or_insert_type(Type::UserDefined(*origin))
-            },
+            TopLevelType::UserDefined(origin) => types.get_or_insert_type(Type::UserDefined(*origin)),
             TopLevelType::Generic(generic) => {
                 substitutions.get(generic).copied().unwrap_or_else(|| types.get_or_insert_type(Type::Generic(*generic)))
             },
@@ -227,8 +231,12 @@ pub type GenericSubstitutions = FxHashMap<Generic, TypeId>;
 #[allow(unused)]
 impl Type {
     pub fn display<'local, Db>(
-        &'local self, bindings: &'local TypeBindings, context: &'local TypeContext, names: &'local VecMap<NameId, Arc<String>>, db: &'local Db,
-    ) -> TypePrinter<'local, Db> where Db: DbGet<GetItem> {
+        &'local self, bindings: &'local TypeBindings, context: &'local TypeContext,
+        names: &'local VecMap<NameId, Arc<String>>, db: &'local Db,
+    ) -> TypePrinter<'local, Db>
+    where
+        Db: DbGet<GetItem>,
+    {
         TypePrinter { typ: self, bindings, context, names, db }
     }
 
@@ -249,13 +257,19 @@ pub struct TypePrinter<'a, Db> {
     db: &'a Db,
 }
 
-impl<Db> std::fmt::Display for TypePrinter<'_, Db> where Db: DbGet<GetItem> {
+impl<Db> std::fmt::Display for TypePrinter<'_, Db>
+where
+    Db: DbGet<GetItem>,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         self.fmt_type(self.typ, false, f)
     }
 }
 
-impl<Db> TypePrinter<'_, Db> where Db: DbGet<GetItem> {
+impl<Db> TypePrinter<'_, Db>
+where
+    Db: DbGet<GetItem>,
+{
     fn fmt_type_id(&self, id: TypeId, parenthesize: bool, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         self.fmt_type(self.context.get_type(id), parenthesize, f)
     }

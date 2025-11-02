@@ -1,4 +1,7 @@
-use std::{collections::{BTreeMap, BTreeSet}, sync::Arc};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+};
 
 use namespace::{Namespace, SourceFileId, LOCAL_CRATE};
 use rustc_hash::FxHashMap;
@@ -8,13 +11,20 @@ pub mod builtin;
 pub mod namespace;
 
 use crate::{
-    diagnostics::{Diagnostic, Location}, incremental::{
-        self, DbHandle, ExportedTypes, GetCrateGraph, GetItem, Resolve, VisibleDefinitions, VisibleDefinitionsResult
-    }, name_resolution::builtin::Builtin, parser::{
-        context::TopLevelContext, cst::{
-            Comptime, Constructor, Declaration, Definition, EffectDefinition, EffectType, Expr, Extern, Generics, ItemName, Path, Pattern, TopLevelItemKind, TraitDefinition, TraitImpl, Type, TypeDefinition, TypeDefinitionBody
-        }, ids::{ExprId, NameId, PathId, PatternId, TopLevelId, TopLevelName}
-    }
+    diagnostics::{Diagnostic, Location},
+    incremental::{
+        self, DbHandle, ExportedTypes, GetCrateGraph, GetItem, Resolve, VisibleDefinitions, VisibleDefinitionsResult,
+    },
+    name_resolution::builtin::Builtin,
+    parser::{
+        context::TopLevelContext,
+        cst::{
+            Comptime, Constructor, Declaration, Definition, EffectDefinition, EffectType, Expr, Extern, Generics,
+            ItemName, Path, Pattern, TopLevelItemKind, TraitDefinition, TraitImpl, Type, TypeDefinition,
+            TypeDefinitionBody,
+        },
+        ids::{ExprId, NameId, PathId, PatternId, TopLevelId, TopLevelName},
+    },
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -82,18 +92,14 @@ impl Origin {
             Origin::TopLevelDefinition(id) => {
                 let (item, item_context) = GetItem(id.top_level_item).get(db);
                 match &item.kind {
-                    TopLevelItemKind::TypeDefinition(type_definition) => {
-                        match &type_definition.body {
-                            TypeDefinitionBody::Error => FieldsResult::PriorError,
-                            TypeDefinitionBody::Enum(_) => FieldsResult::NotAStruct,
-                            TypeDefinitionBody::Alias(_) => todo!("get_fields_of_type: handle type aliases"),
-                            TypeDefinitionBody::Struct(fields) => {
-                                let names = fields.iter().map(|(name, _)| {
-                                    item_context.names[*name].clone()
-                                });
-                                FieldsResult::Fields(names.collect())
-                            },
-                        }
+                    TopLevelItemKind::TypeDefinition(type_definition) => match &type_definition.body {
+                        TypeDefinitionBody::Error => FieldsResult::PriorError,
+                        TypeDefinitionBody::Enum(_) => FieldsResult::NotAStruct,
+                        TypeDefinitionBody::Alias(_) => todo!("get_fields_of_type: handle type aliases"),
+                        TypeDefinitionBody::Struct(fields) => {
+                            let names = fields.iter().map(|(name, _)| item_context.names[*name].clone());
+                            FieldsResult::Fields(names.collect())
+                        },
                     },
                     _ => FieldsResult::NotAStruct,
                 }
@@ -489,7 +495,11 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
 
                     if let Some(first_location) = already_defined.get(&name).cloned() {
                         let second_location = location;
-                        self.emit_diagnostic(Diagnostic::ConstructorFieldDuplicate { name, first_location, second_location });
+                        self.emit_diagnostic(Diagnostic::ConstructorFieldDuplicate {
+                            name,
+                            first_location,
+                            second_location,
+                        });
                         return;
                     }
 
@@ -527,11 +537,9 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
     /// If the given type is a struct type, return its fields. Otherwise return None.
     fn get_fields_of_type(&self, typ: &Type) -> FieldsResult {
         match typ {
-            Type::Named(path) => {
-                match self.path_links.get(path) {
-                    Some(origin) => origin.get_fields_of_type(self.compiler),
-                    None => FieldsResult::PriorError,
-                }
+            Type::Named(path) => match self.path_links.get(path) {
+                Some(origin) => origin.get_fields_of_type(self.compiler),
+                None => FieldsResult::PriorError,
             },
             // NOTE: Once type aliases are added, the fields of an alias may depend
             // on its generic arguments
@@ -579,7 +587,14 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
     /// an error will be issued.
     fn resolve_type(&mut self, typ: &Type, declare_type_vars: bool) {
         match typ {
-            Type::Error | Type::Unit | Type::Integer(_) | Type::Float(_) | Type::String | Type::Char | Type::Pair | Type::Reference(..) => (),
+            Type::Error
+            | Type::Unit
+            | Type::Integer(_)
+            | Type::Float(_)
+            | Type::String
+            | Type::Char
+            | Type::Pair
+            | Type::Reference(..) => (),
             Type::Named(path) => self.link(*path, false),
             Type::Variable(name) => self.resolve_variable(*name, declare_type_vars),
             Type::Function(function) => {

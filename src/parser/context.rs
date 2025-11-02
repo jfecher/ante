@@ -1,6 +1,14 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{diagnostics::{Location, LocationData}, name_resolution::namespace::SourceFileId, parser::{cst::{Expr, Name, Path, Pattern}, ids::{ExprId, NameId, PathId, PatternId}}, vecmap::VecMap};
+use crate::{
+    diagnostics::{Location, LocationData},
+    name_resolution::namespace::SourceFileId,
+    parser::{
+        cst::{Expr, Name, Path, Pattern},
+        ids::{ExprId, NameId, PathId, PatternId},
+    },
+    vecmap::VecMap,
+};
 
 /// Metadata associated with a top level statement
 #[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]

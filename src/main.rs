@@ -58,8 +58,8 @@ mod cli;
 mod diagnostics;
 mod incremental;
 mod iterator_extensions;
-mod vecmap;
 mod paths;
+mod vecmap;
 
 /// Deserialize the compiler from our metadata file, returning it along with the file.
 ///

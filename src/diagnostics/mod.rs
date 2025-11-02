@@ -1,9 +1,9 @@
-use std::{cmp::Ordering, path::PathBuf, sync::Arc};
+use std::{cmp::Ordering, collections::BTreeSet, path::PathBuf, sync::Arc};
 
 use colored::{ColoredString, Colorize};
 use serde::{Deserialize, Serialize};
 
-use crate::{incremental::Db, lexer::token::Token, type_inference::errors::TypeErrorKind};
+use crate::{incremental::Db, iterator_extensions::vecmap, lexer::token::Token, type_inference::errors::TypeErrorKind};
 
 mod location;
 
@@ -35,6 +35,11 @@ pub enum Diagnostic {
     NoSuchFieldForType { name: Arc<String>, typ: String, location: Location },
     ParserComplexImplItemName { location: Location },
     TypeMustBeKnownMemberAccess { location: Location },
+    CannotMatchOnType { typ: String, location: Location },
+    UnreachableCase { location: Location },
+    MissingCases { cases: BTreeSet<String>, location: Location },
+    MissingManyCases { typ: String, location: Location },
+    InvalidRangeInPattern { start: u64, end: u64, location: Location },
 }
 
 impl Ord for Diagnostic {
@@ -57,7 +62,9 @@ impl Diagnostic {
     pub fn kind(&self) -> DiagnosticKind {
         use Diagnostic::*;
         match self {
-            NameAlreadyInScope { .. } | ImportedNameAlreadyInScope { .. } => DiagnosticKind::Warning,
+            NameAlreadyInScope { .. } | ImportedNameAlreadyInScope { .. } | UnreachableCase { .. } | InvalidRangeInPattern { .. } => {
+                DiagnosticKind::Warning
+            },
             _ => DiagnosticKind::Error,
         }
     }
@@ -73,7 +80,7 @@ impl Diagnostic {
             },
             Diagnostic::ParserComplexImplItemName { location: _ } => {
                 format!("Impl item names should only be a single identifier")
-            }
+            },
             Diagnostic::ExpectedPathForImport { .. } => {
                 "Imports paths should have at least 2 components (e.g. `Foo.Bar`), otherwise nothing gets imported"
                     .to_string()
@@ -120,21 +127,52 @@ impl Diagnostic {
             },
             Diagnostic::NoSuchFieldForType { name, typ, location: _ } => {
                 format!("{} has no field named `{name}`", typ.blue())
-            }
+            },
             Diagnostic::ConstructorFieldDuplicate { name, first_location: _, second_location: _ } => {
                 // TODO: Show both locations in same error
                 format!("Duplicate field `{name}`")
-            }
+            },
             Diagnostic::ConstructorMissingFields { missing_fields, location: _ } => {
                 let s = if missing_fields.len() == 1 { "" } else { "s" };
                 let fields = missing_fields.join(", ");
                 format!("Missing field{s}: {fields}")
-            }
+            },
             Diagnostic::ConstructorNotAStruct { typ, location: _ } => {
                 format!("{} is not a struct", typ.blue())
-            }
+            },
             Diagnostic::TypeMustBeKnownMemberAccess { location: _ } => {
                 format!("Object type must be known by this point to access its field")
+            },
+            Diagnostic::CannotMatchOnType { typ, location: _ } => {
+                format!("Cannot match on an object of type {}", typ.blue())
+            },
+            Diagnostic::UnreachableCase { location: _ } => {
+                format!("This case is already matched by prior patterns")
+            },
+            Diagnostic::MissingCases { cases, location: _ } => {
+                let cases_string = vecmap(cases.iter().take(5), |case| case.blue().to_string()).join(", ");
+
+                if cases.len() == 1 {
+                    format!("Missing case: {cases_string}")
+                } else if cases.len() <= 5 {
+                    format!("Missing cases: {cases_string}")
+                } else {
+                    format!("Missing cases: {cases_string}, ...")
+                }
+            },
+            Diagnostic::MissingManyCases { typ, location: _ } => {
+                format!(
+                    "Missing cases for type {}, values of this type require a catch-all pattern like `_`",
+                    typ.blue()
+                )
+            },
+            Diagnostic::InvalidRangeInPattern { start, end, location: _ } => {
+                if start == end {
+                    format!("Ranges in Ante are end-exclusive so a range from {} to {} will not match anything", start.to_string().purple(), end.to_string().purple())
+                } else {
+                    assert!(start > end);
+                    format!("Range from {} to {} is backwards and will not match anything", start.to_string().purple(), end.to_string().purple())
+                }
             }
         }
     }
@@ -161,6 +199,11 @@ impl Diagnostic {
             | Diagnostic::ConstructorMissingFields { location, .. }
             | Diagnostic::ConstructorNotAStruct { location, .. }
             | Diagnostic::ConstructorFieldDuplicate { second_location: location, .. }
+            | Diagnostic::CannotMatchOnType { location, .. }
+            | Diagnostic::UnreachableCase { location, .. }
+            | Diagnostic::MissingCases { location, .. }
+            | Diagnostic::MissingManyCases { location, .. }
+            | Diagnostic::InvalidRangeInPattern { location, .. }
             | Diagnostic::TypeMustBeKnownMemberAccess { location } => location,
         }
     }

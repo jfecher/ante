@@ -4,7 +4,18 @@ use petgraph::graph::DiGraph;
 use rustc_hash::{FxHashMap, FxHashSet};
 use serde::{Deserialize, Serialize};
 
-use crate::{incremental::{DbHandle, GetCrateGraph, GetItem, GetTypeCheckSCC, Parse, Resolve, TypeCheck, TypeCheckDependencyGraph, TypeCheckSCC}, iterator_extensions::vecmap, name_resolution::namespace::LOCAL_CRATE, parser::{cst::TopLevelItemKind, ids::TopLevelId}, type_inference::{get_type::try_get_type, type_context::TypeContext, types::TypeBindings, IndividualTypeCheckResult}};
+use crate::{
+    incremental::{
+        DbHandle, GetCrateGraph, GetItem, GetTypeCheckSCC, Parse, Resolve, TypeCheck, TypeCheckDependencyGraph,
+        TypeCheckSCC,
+    },
+    iterator_extensions::vecmap,
+    name_resolution::namespace::LOCAL_CRATE,
+    parser::{cst::TopLevelItemKind, ids::TopLevelId},
+    type_inference::{
+        get_type::try_get_type, type_context::TypeContext, types::TypeBindings, IndividualTypeCheckResult,
+    },
+};
 
 #[derive(Serialize, Deserialize, PartialEq, Eq)]
 pub struct TypeCheckDependencyGraphResult {
@@ -22,10 +33,9 @@ pub type SCC = Arc<Vec<TopLevelId>>;
 //   |
 //   V
 // GetSCC
-//   |  
+//   |
 //   V
 // TypeCheck <-> TypeCheckSCC
-
 
 /// Build a type inference dependency graph for the entire local crate, finding the
 /// SCCs in the graph, and deferring to TypeCheckSCC.
@@ -109,7 +119,7 @@ fn item_lacks_known_type(dependency_id: TopLevelId, db: &DbHandle) -> bool {
         TopLevelItemKind::Definition(definition) => {
             let resolve = Resolve(dependency_id).get(db);
             try_get_type(definition, &context, &resolve).is_none()
-        }
+        },
         TopLevelItemKind::TypeDefinition(_) => false,
         TopLevelItemKind::TraitDefinition(_) => false,
         TopLevelItemKind::TraitImpl(_) => false,

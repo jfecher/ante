@@ -8,10 +8,15 @@ use crate::{
     iterator_extensions::vecmap,
     name_resolution::{builtin::Builtin, Origin},
     parser::{
-        cst::{self, Definition, Expr, Literal, Pattern}, ids::{ExprId, NameId, PathId, PatternId, TopLevelName}
+        cst::{self, Definition, Expr, Literal, Pattern},
+        ids::{ExprId, NameId, PathId, PatternId, TopLevelName},
     },
     type_inference::{
-        errors::TypeErrorKind, get_type::try_get_type, type_id::TypeId, types::{self, Type}, Locateable, TypeChecker
+        errors::TypeErrorKind,
+        get_type::try_get_type,
+        type_id::TypeId,
+        types::{self, Type},
+        Locateable, TypeChecker,
     },
 };
 
@@ -154,7 +159,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         self.instantiate(&result)
     }
 
-    fn build_constructor_type<'a>(&mut self, id: TopLevelName, item: &cst::TypeDefinition, variant_args: impl ExactSizeIterator<Item = &'a cst::Type>) -> TypeId {
+    fn build_constructor_type<'a>(
+        &mut self, id: TopLevelName, item: &cst::TypeDefinition,
+        variant_args: impl ExactSizeIterator<Item = &'a cst::Type>,
+    ) -> TypeId {
         let mut substitutions = FxHashMap::default();
         let mut data_type = self.types.get_or_insert_type(Type::UserDefined(Origin::TopLevelDefinition(id)));
 
@@ -175,18 +183,15 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let item_resolution = Resolve(id.top_level_item).get(self.compiler);
         let parameters = vecmap(variant_args, |arg| {
             let mut param = self.convert_foreign_type(arg, &item_resolution);
-            
+
             if !substitutions.is_empty() {
                 param = self.substitute_generics(param, &substitutions);
             }
             param
         });
 
-        let function = Type::Function(types::FunctionType {
-            parameters,
-            return_type: data_type,
-            effects: TypeId::UNIT,
-        });
+        let function =
+            Type::Function(types::FunctionType { parameters, return_type: data_type, effects: TypeId::UNIT });
 
         self.types.get_or_insert_type(function)
     }
@@ -202,7 +207,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     fn try_find_type_namespace_for_type_resolution(&self, typ: TypeId) -> Option<TopLevelName> {
         match self.follow_type(typ) {
             Type::UserDefined(Origin::TopLevelDefinition(id)) => Some(*id),
-            Type::Function(function_type) => self.try_find_type_namespace_for_type_resolution(function_type.return_type),
+            Type::Function(function_type) => {
+                self.try_find_type_namespace_for_type_resolution(function_type.return_type)
+            },
             Type::Application(constructor, _) => self.try_find_type_namespace_for_type_resolution(*constructor),
             _ => None,
         }
@@ -390,14 +397,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
                         // Expect incorrect arg counts to be resolved beforehand
                         first_arg.unwrap()
-                    }
+                    },
                     _ => {
                         if self.unify(actual, expected, TypeErrorKind::ExpectedNonReference, expr) {
                             first_arg.unwrap()
                         } else {
                             TypeId::ERROR
                         }
-                    }
+                    },
                 }
             },
             Type::Variable(id) => {
@@ -411,7 +418,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             _ => {
                 self.unify(actual, expected, TypeErrorKind::ExpectedNonReference, expr);
                 TypeId::ERROR
-            }
+            },
         };
 
         self.check_expr(reference.rhs, expected_element_type);

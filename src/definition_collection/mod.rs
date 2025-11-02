@@ -8,7 +8,9 @@ use crate::{
     },
     name_resolution::namespace::{SourceFileId, STDLIB_CRATE},
     parser::{
-        context::TopLevelContext, cst::{Import, ItemName, Literal, Pattern, TopLevelItemKind, TypeDefinitionBody}, ids::{NameId, PatternId, TopLevelId, TopLevelName}
+        context::TopLevelContext,
+        cst::{Import, ItemName, Literal, Pattern, TopLevelItemKind, TypeDefinitionBody},
+        ids::{NameId, PatternId, TopLevelId, TopLevelName},
     },
 };
 

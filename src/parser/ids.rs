@@ -5,7 +5,8 @@ use serde::{Deserialize, Serialize};
 use crate::{
     diagnostics::Location,
     incremental::{DbHandle, Parse},
-    name_resolution::namespace::SourceFileId, parser::context::TopLevelContext,
+    name_resolution::namespace::SourceFileId,
+    parser::context::TopLevelContext,
 };
 
 /// A `TopLevelId` is a 64-bit hash uniquely identifying a particular
@@ -163,7 +164,7 @@ impl PatternId {
                 for arg in args {
                     arg.for_each_variable(context, f);
                 }
-            }
+            },
             super::cst::Pattern::TypeAnnotation(pattern, _) => pattern.for_each_variable(context, f),
         }
     }

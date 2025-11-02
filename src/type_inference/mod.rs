@@ -11,7 +11,9 @@ use crate::{
     lexer::token::{FloatKind, IntegerKind},
     name_resolution::{builtin::Builtin, Origin, ResolutionResult},
     parser::{
-        context::TopLevelContext, cst::{self, TopLevelItem, TopLevelItemKind, TypeDefinitionBody}, ids::{ExprId, NameId, PathId, TopLevelId, TopLevelName}
+        context::TopLevelContext,
+        cst::{self, TopLevelItem, TopLevelItemKind, TypeDefinitionBody},
+        ids::{ExprId, NameId, PathId, TopLevelId, TopLevelName},
     },
     type_inference::{
         errors::{Locateable, TypeErrorKind},
@@ -23,13 +25,14 @@ use crate::{
 };
 
 mod cst_traversal;
+pub mod dependency_graph;
 pub mod errors;
 mod generics;
 mod get_type;
+pub mod patterns;
 pub mod type_context;
 pub mod type_id;
 pub mod types;
-pub mod dependency_graph;
 
 pub use get_type::get_type_impl;
 
@@ -113,6 +116,7 @@ pub struct TypeMaps {
     pub path_origins: BTreeMap<PathId, Origin>,
 }
 
+/// Map from each TopLevelId to a tuple of (the item, parse context, resolution context)
 type ItemContexts = FxHashMap<TopLevelId, (Arc<TopLevelItem>, Arc<TopLevelContext>, ResolutionResult)>;
 
 impl<'local, 'inner> TypeChecker<'local, 'inner> {
@@ -147,11 +151,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     }
 
     fn item_contexts(items: &[TopLevelId], compiler: &DbHandle) -> ItemContexts {
-        items.iter().map(|item_id| {
-            let (item, item_context) = GetItem(*item_id).get(compiler);
-            let resolve = Resolve(*item_id).get(compiler);
-            (*item_id, (item, item_context, resolve))
-        }).collect()
+        items
+            .iter()
+            .map(|item_id| {
+                let (item, item_context) = GetItem(*item_id).get(compiler);
+                let resolve = Resolve(*item_id).get(compiler);
+                (*item_id, (item, item_context, resolve))
+            })
+            .collect()
     }
 
     fn current_context(&self) -> &'local TopLevelContext {
@@ -165,18 +172,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     }
 
     fn finish(mut self, items: Vec<TypeMaps>) -> TypeCheckSCCResult {
-        let items = self.generalize_all().into_iter().zip(items).map(|((id, generalized), maps)| {
-            (id, IndividualTypeCheckResult {
-                maps,
-                generalized,
-            })
-        }).collect();
+        let items = self
+            .generalize_all()
+            .into_iter()
+            .zip(items)
+            .map(|((id, generalized), maps)| (id, IndividualTypeCheckResult { maps, generalized }))
+            .collect();
 
-        TypeCheckSCCResult {
-            items,
-            types: self.types,
-            bindings: self.bindings,
-        }
+        TypeCheckSCCResult { items, types: self.types, bindings: self.bindings }
     }
 
     /// Finishes the current item, adding all bindings to the relevant entry in
@@ -377,7 +380,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     self.try_bind_type_variable(*expected, expected_id, actual_id)
                 }
             },
-            (Type::Primitive(types::PrimitiveType::Error), _) | (_, Type::Primitive(types::PrimitiveType::Error)) => Ok(()),
+            (Type::Primitive(types::PrimitiveType::Error), _) | (_, Type::Primitive(types::PrimitiveType::Error)) => {
+                Ok(())
+            },
             (Type::Function(actual), Type::Function(expected)) => {
                 if actual.parameters.len() != expected.parameters.len() {
                     return Err(());
@@ -499,7 +504,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                         TypeId::ERROR
                     },
                 }
-            }
+            },
             Some(origin) => {
                 if !origin.may_be_a_type() {
                     // TODO: Error
@@ -533,14 +538,15 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                         let resolve = Resolve(item.id).get(self.compiler);
                         return match &definition.body {
                             TypeDefinitionBody::Error => todo!(),
-                            TypeDefinitionBody::Struct(items) => {
-                                items.iter().map(|(name, typ)| {
+                            TypeDefinitionBody::Struct(items) => items
+                                .iter()
+                                .map(|(name, typ)| {
                                     let name = item_context.names[*name].clone();
                                     let typ2 = self.convert_foreign_type(typ, &resolve);
                                     let typ3 = self.substitute_generics(typ2, &substitutions);
                                     (name, typ3)
-                                }).collect()
-                            },
+                                })
+                                .collect(),
                             TypeDefinitionBody::Enum(_) => BTreeMap::default(),
                             TypeDefinitionBody::Alias(_) => todo!("Type aliases"),
                         };
@@ -551,13 +557,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Type::Primitive(types::PrimitiveType::String) => {
                 let mut fields = BTreeMap::default();
 
-                let c_string_type = self.types.get_or_insert_type(Type::Application(TypeId::POINTER, vec![TypeId::CHAR]));
+                let c_string_type =
+                    self.types.get_or_insert_type(Type::Application(TypeId::POINTER, vec![TypeId::CHAR]));
 
                 // TODO: Hide these and only expose them as unsafe builtins
                 fields.insert(Arc::new("c_string".into()), c_string_type);
                 fields.insert(Arc::new("length".into()), TypeId::U32);
                 fields
-            }
+            },
             _ => BTreeMap::default(),
         }
     }
@@ -571,7 +578,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// a combination of `convert_foreign_type` and `substitute_generics`.
     ///
     /// Does nothing if `replacements.len() != definition.generics.len()`
-    fn datatype_generic_substitutions(definition: &cst::TypeDefinition, replacements: &[TypeId]) -> FxHashMap<Generic, TypeId> {
+    fn datatype_generic_substitutions(
+        definition: &cst::TypeDefinition, replacements: &[TypeId],
+    ) -> FxHashMap<Generic, TypeId> {
         let mut substitutions = FxHashMap::default();
         if definition.generics.len() == replacements.len() {
             for (generic, replacement) in definition.generics.iter().zip(replacements) {

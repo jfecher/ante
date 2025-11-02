@@ -4,10 +4,13 @@ use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    lexer::token::{FloatKind, IntegerKind}, parser::cst::{Mutability, Sharedness}, type_inference::{
+    lexer::token::{FloatKind, IntegerKind},
+    parser::cst::{Mutability, Sharedness},
+    type_inference::{
         type_id::TypeId,
         types::{PrimitiveType, Type},
-    }, vecmap::VecMap
+    },
+    vecmap::VecMap,
 };
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Clone)]

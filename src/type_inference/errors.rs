@@ -64,10 +64,10 @@ impl TypeErrorKind {
             },
             TypeErrorKind::ReferenceKind => {
                 format!("A reference of kind {expected} was expected, but this constructs a {actual} reference")
-            }
+            },
             TypeErrorKind::ExpectedNonReference => {
                 format!("Expected non-reference type {expected}, but this expression always produces a reference")
-            }
+            },
         }
     }
 }

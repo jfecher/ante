@@ -4,7 +4,13 @@ use inc_complete::DbGet;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    incremental::GetItem, parser::{cst::{Mutability, Sharedness}, ids::NameId}, type_inference::{type_context::TypeContext, types::TypeBindings}, vecmap::VecMap
+    incremental::GetItem,
+    parser::{
+        cst::{Mutability, Sharedness},
+        ids::NameId,
+    },
+    type_inference::{type_context::TypeContext, types::TypeBindings},
+    vecmap::VecMap,
 };
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -103,7 +109,24 @@ impl TypeId {
     /// Convert this type to a string (without any coloring)
     pub fn to_string<Db>(
         self, context: &TypeContext, bindings: &TypeBindings, names: &VecMap<NameId, Arc<String>>, db: &Db,
-    ) -> String where Db: DbGet<GetItem> {
+    ) -> String
+    where
+        Db: DbGet<GetItem>,
+    {
         context.get_type(self).display(bindings, context, names, db).to_string()
+    }
+
+    /// Returns true if this is any of the primitive integer types I8, I16, .., Usz, etc.
+    pub(crate) fn is_integer(&self) -> bool {
+        *self == TypeId::I8
+            || *self == TypeId::I16
+            || *self == TypeId::I32
+            || *self == TypeId::I64
+            || *self == TypeId::ISZ
+            || *self == TypeId::U8
+            || *self == TypeId::U16
+            || *self == TypeId::U32
+            || *self == TypeId::U64
+            || *self == TypeId::USZ
     }
 }

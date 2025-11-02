@@ -17,8 +17,20 @@ use crate::{
         namespace::{CrateId, SourceFileId},
         ResolutionResult,
     },
-    parser::{self, context::TopLevelContext, cst::TopLevelItem, get_item, ids::{TopLevelId, TopLevelName}, ParseResult},
-    type_inference::{self, dependency_graph::{TypeCheckDependencyGraphResult, TypeCheckResult, SCC}, types::GeneralizedType, TypeCheckSCCResult},
+    parser::{
+        self,
+        context::TopLevelContext,
+        cst::TopLevelItem,
+        get_item,
+        ids::{TopLevelId, TopLevelName},
+        ParseResult,
+    },
+    type_inference::{
+        self,
+        dependency_graph::{TypeCheckDependencyGraphResult, TypeCheckResult, SCC},
+        types::GeneralizedType,
+        TypeCheckSCCResult,
+    },
 };
 
 /// A wrapper over inc-complete's database with our specific storage type to hold

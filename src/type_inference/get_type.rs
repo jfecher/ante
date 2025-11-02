@@ -2,7 +2,8 @@ use crate::{
     incremental::{self, DbHandle, GetItem, GetType, Resolve, TypeCheck},
     name_resolution::ResolutionResult,
     parser::{
-        context::TopLevelContext, cst::{Definition, Expr, Pattern, TopLevelItemKind}
+        context::TopLevelContext,
+        cst::{Definition, Expr, Pattern, TopLevelItemKind},
     },
     type_inference::types::{GeneralizedType, TopLevelType},
 };
