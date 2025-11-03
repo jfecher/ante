@@ -2,14 +2,14 @@
 //!
 //! This entire file is adapted from https://github.com/yorickpeterse/pattern-matching-in-rust/tree/main/jacobs2021
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::{borrow::Cow, collections::{BTreeMap, BTreeSet}};
 
 use rustc_hash::FxHashMap;
 
 use crate::{
     diagnostics::{Diagnostic, Location},
     iterator_extensions::{btree_map, try_vecmap, vecmap},
-    name_resolution::Origin,
+    name_resolution::{builtin::Builtin, Origin},
     parser::{
         cst::{Literal, Pattern},
         ids::{ExprId, NameId, PathId, PatternId},
@@ -63,6 +63,35 @@ impl Case {
     }
 }
 
+/// Anything that can appear before the `=>` in a match rule.
+#[derive(Debug, Clone)]
+enum Pattern {
+    /// A pattern checking for a tag and possibly binding variables such as `Some(42)`
+    Constructor(Constructor, Vec<Pattern>),
+
+    /// An integer literal pattern such as `4` or `12345`
+    /// TODO: Support negative literals
+    Int(u64),
+
+    /// A pattern binding a variable such as `a` or `_`
+    Variable(PathId),
+
+    /// Multiple patterns combined with `|` where we should match this pattern if any
+    /// constituent pattern matches. e.g. `Some(3) | None` or `Some(1) | Some(2) | None`
+    #[allow(unused)]
+    Or(Vec<Pattern>),
+
+    /// An integer range pattern such as `1..20` which will match any integer n such that
+    /// 1 <= n < 20.
+    #[allow(unused)]
+    Range(u64, u64),
+
+    /// An error occurred while translating this pattern. This Pattern kind always translates
+    /// to a Fail branch in the decision tree, although the compiler is expected to halt
+    /// with errors before execution.
+    Error,
+}
+
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Constructor {
     True,
@@ -79,6 +108,17 @@ impl Constructor {
     /// Structs are treated as a single-variant enum
     fn struct_(id: TypeId) -> Constructor {
         Constructor::Variant(id, 0)
+    }
+
+    fn variant_index(&self) -> usize {
+        match self {
+            Constructor::False
+            | Constructor::Int(_)
+            | Constructor::Unit
+            | Constructor::Range(_, _) => 0,
+            Constructor::True => 1,
+            Constructor::Variant(_, index) => *index,
+        }
     }
 }
 
@@ -515,8 +555,8 @@ impl<'local, 'db> MatchCompiler<'local, 'db> {
     /// case of the type is covered. This is the case for empty matches `match foo {}`.
     /// Note that this is expected not to error if the given type is an enum with zero variants.
     fn issue_missing_cases_error_for_type(&mut self, type_matched_on: TypeId, location: Location) {
-        let typ = type_matched_on.follow_bindings_shallow();
-        if let Type::DataType(shared, generics) = typ.as_ref() {
+        let typ = self.checker.follow_type(type_matched_on);
+        if let Type::UserDefined(shared, generics) = typ {
             if let Some(variants) = shared.borrow().get_variants(generics) {
                 let cases: BTreeSet<_> = variants.into_iter().map(|(name, _)| name).collect();
                 if !cases.is_empty() {
@@ -525,7 +565,7 @@ impl<'local, 'db> MatchCompiler<'local, 'db> {
                 return;
             }
         }
-        let typ = typ.to_string();
+        let typ = self.checker.type_to_string(type_matched_on);
         self.checker.compiler.accumulate(Diagnostic::MissingManyCases { typ, location });
     }
 
@@ -542,23 +582,23 @@ impl<'local, 'db> MatchCompiler<'local, 'db> {
                 let case = Self::construct_missing_case(starting_id, env);
                 missing_cases.insert(case);
             },
-            DecisionTree::Switch(definition_id, cases, else_case) => {
+            DecisionTree::Switch(variable, cases, else_case) => {
                 for case in cases {
-                    let name = case.constructor.to_string();
-                    env.insert(*definition_id, (name, case.arguments.clone()));
+                    let name = self.constructor_string(&case.constructor).to_string();
+                    env.insert(*variable, (name, case.arguments.clone()));
                     self.find_missing_values(&case.body, env, missing_cases, starting_id);
                 }
 
                 if let Some(else_case) = else_case {
-                    let typ = self.elaborator.interner.definition_type(*definition_id);
+                    let typ = self.checker.path_types[variable];
 
-                    for case in self.missing_cases(cases, &typ) {
-                        env.insert(*definition_id, case);
+                    for case in self.missing_cases(cases, typ) {
+                        env.insert(*variable, case);
                         self.find_missing_values(else_case, env, missing_cases, starting_id);
                     }
                 }
 
-                env.remove(definition_id);
+                env.remove(variable);
             },
         }
     }
@@ -572,7 +612,7 @@ impl<'local, 'db> MatchCompiler<'local, 'db> {
             return self.missing_integer_cases(cases, typ);
         }
 
-        let all_constructors = first.constructor.all_constructors();
+        let all_constructors = self.all_constructors(&first.constructor);
         let mut all_constructors = btree_map(all_constructors, |(constructor, arg_count)| (constructor, arg_count));
 
         for case in cases {
@@ -583,16 +623,16 @@ impl<'local, 'db> MatchCompiler<'local, 'db> {
             // Safety: this id should only be used in `env` of `find_missing_values` which
             //         only uses it for display and defaults to "_" on unknown ids.
             let args = vecmap(0..arg_count, |_| PathId::dummy_id());
-            (constructor.to_string(), args)
+            (self.constructor_string(&constructor), args)
         })
     }
 
-    fn missing_integer_cases(&self, cases: &[Case], typ: TypeId, location: Location) -> Vec<(String, Vec<PathId>)> {
+    fn missing_integer_cases(&self, cases: &[Case], typ: TypeId) -> Vec<(String, Vec<PathId>)> {
         // We could give missed cases for field ranges of `0 .. field_modulus` but since the field
         // used in Noir may change we recommend a match-all pattern instead.
         // If the type is a type variable, we don't know exactly which integer type this may
         // resolve to so also just suggest a catch-all in that case.
-        if typ.is_integer() || typ.is_bindable() {
+        if typ.is_integer() || self.type_is_bindable(typ) {
             return vec![(WILDCARD_PATTERN.to_string(), Vec::new())];
         }
 
@@ -604,11 +644,7 @@ impl<'local, 'db> MatchCompiler<'local, 'db> {
                 Constructor::Int(signed_field) => {
                     missing_cases.remove(*signed_field..=*signed_field);
                 },
-                Constructor::Range(start, end) if start >= end => {
-                    let start = *start;
-                    let end = *end;
-                    self.checker.compiler.accumulate(Diagnostic::InvalidRangeInPattern { start, end, location });
-                }
+                Constructor::Range(start, end) if start >= end => (),
                 Constructor::Range(start, end) => {
                     // Ranges `a..b` in ante are exclusive, so we need to adapt it to an inclusive range
                     missing_cases.remove(*start..=end.saturating_sub(1));
@@ -626,6 +662,11 @@ impl<'local, 'db> MatchCompiler<'local, 'db> {
         })
     }
 
+    /// True if the type can be bound to (= is an unbound type variable)
+    fn type_is_bindable(&self, typ: TypeId) -> bool {
+        matches!(self.checker.follow_type(typ), Type::Variable(_))
+    }
+
     fn construct_missing_case(starting_id: PathId, env: &FxHashMap<PathId, (String, Vec<PathId>)>) -> String {
         let Some((constructor, arguments)) = env.get(&starting_id) else {
             return WILDCARD_PATTERN.to_string();
@@ -641,4 +682,95 @@ impl<'local, 'db> MatchCompiler<'local, 'db> {
             format!("{constructor}({args})")
         }
     }
+
+    fn constructor_string<'this>(&'this self, constructor: &Constructor) -> Cow<'this, String> {
+        Cow::Owned(match constructor {
+            Constructor::True => "true".to_string(),
+            Constructor::False => "false".to_string(),
+            Constructor::Unit => "()".to_string(),
+            Constructor::Int(x) => format!("{x}"),
+            Constructor::Variant(typ, variant_index) => return self.user_defined_type_name(*typ, *variant_index),
+            Constructor::Range(start, end) => format!("{start} .. {end}"),
+        })
+    }
+
+    fn user_defined_type_name(&self, typ: TypeId, _variant_index: usize) -> Cow<String> {
+        if let Type::UserDefined(origin) = self.checker.follow_type(typ) {
+            match origin {
+                Origin::TopLevelDefinition(top_level_name) => {
+                    let item = &self.checker.item_contexts[&top_level_name.top_level_item].1;
+                    Cow::Borrowed(item.names[top_level_name.local_name_id].as_ref())
+                },
+                Origin::Local(name_id) => Cow::Borrowed(self.checker.current_context().names[*name_id].as_ref()),
+                Origin::TypeResolution => unreachable!("Types cannot be Origin::TypeResolution"),
+                Origin::Builtin(builtin) => Cow::Owned(builtin.to_string()),
+            }
+        } else {
+            unreachable!("Non-struct or enum datatype")
+        }
+    }
+
+    /// Return all the constructors of the result type of the given constructor. Intended to be used
+    /// for error reporting in cases where there are at least 2 constructors.
+    pub(crate) fn all_constructors(&self, constructor: &Constructor) -> Vec<(Constructor, /*arg count:*/ usize)> {
+        match constructor {
+            Constructor::True | Constructor::False => {
+                vec![(Constructor::True, 0), (Constructor::False, 0)]
+            }
+            Constructor::Unit => vec![(Constructor::Unit, 0)],
+            Constructor::Variant(typ, _) => {
+                let typ = self.checker.follow_type(*typ);
+                let Type::UserDefined(origin) = &typ else {
+                    unreachable!(
+                        "Constructor::Variant should have a DataType type, but found {typ:?}"
+                    );
+                };
+
+                let def_ref = def.borrow();
+                if let Some(variants) = def_ref.get_variants(generics) {
+                    vecmap(variants.into_iter().enumerate(), |(i, (_, fields))| {
+                        (Constructor::Variant(typ.clone(), i), fields.len())
+                    })
+                } else
+                /* def is a struct */
+                {
+                    let field_count = def_ref.fields_raw().map(|fields| fields.len()).unwrap_or(0);
+                    vec![(Constructor::Variant(typ.clone(), 0), field_count)]
+                }
+            }
+
+            // Nothing great to return for these
+            Constructor::Int(_) | Constructor::Range(..) => Vec::new(),
+        }
+    }
+
+    fn classify_type(&self, typ: TypeId) -> UserDefinedTypeKind {
+        match self.checker.follow_type(typ) {
+            other @ Type::Application(constructor, arguments) => {
+                match self.checker.follow_type(*constructor) {
+                    Type::UserDefined(origin) => self.classify_user_defined(origin, arguments),
+                    _ => UserDefinedTypeKind::NotUserDefined(other),
+                }
+            },
+            Type::UserDefined(origin) => self.classify_user_defined(origin, &[]),
+            other => UserDefinedTypeKind::NotUserDefined(other),
+        }
+    }
+
+    fn classify_user_defined(&self, origin: &Origin, arguments: &[TypeId]) -> UserDefinedTypeKind {
+        match origin {
+            Origin::TopLevelDefinition(top_level_name) => todo!(),
+            Origin::Builtin(builtin) => todo!(),
+            Origin::Local(_) => unreachable!(),
+            Origin::TypeResolution => unreachable!(),
+        }
+    }
+}
+
+/// Not to be confused with the "kind" of a type (type of a type), this
+/// is meant to classify user-defined types into product types or sum types.
+enum UserDefinedTypeKind<'a> {
+    NotUserDefined(&'a Type),
+    Product,
+    Sum,
 }

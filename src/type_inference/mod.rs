@@ -469,13 +469,15 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Retrieve a Type then follow all its type variable bindings so that we only return
     /// `Type::Variable` if the type variable is unbound. Note that this may still return
     /// a composite type such as `Type::Application` with bound type variables within.
-    fn follow_type(&self, id: TypeId) -> &Type {
-        match self.types.get_type(id) {
-            typ @ Type::Variable(id) => match self.bindings.get(&id) {
-                Some(binding) => self.follow_type(*binding),
-                None => typ,
-            },
-            other => other,
+    fn follow_type(&self, mut type_id: TypeId) -> &Type {
+        loop {
+            match self.types.get_type(type_id) {
+                typ @ Type::Variable(id) => match self.bindings.get(&id) {
+                    Some(binding) => type_id = *binding,
+                    None => break typ,
+                },
+                other => break other,
+            }
         }
     }
 
