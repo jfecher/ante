@@ -384,6 +384,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             // TODO: Specify if branch_type != type of first branch for better error messages
             self.check_expr(*branch, expected);
         }
+
+        let tree = self.compile_decision_tree(variable_to_match, &match_.cases, pattern_type, location);
     }
 
     fn check_reference(&mut self, reference: &cst::Reference, expected: TypeId, expr: ExprId) {

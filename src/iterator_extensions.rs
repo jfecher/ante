@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 /// Shorthand for `items.into_iter().map(f).collect()`
 #[inline]
-pub(crate) fn map<T, U, R>(items: impl IntoIterator<Item = T>, f: impl FnMut(T) -> U) -> R
+fn map<T, U, R>(items: impl IntoIterator<Item = T>, f: impl FnMut(T) -> U) -> R
 where
     R: FromIterator<U>,
 {
@@ -20,6 +20,14 @@ pub(crate) fn vecmap<T, U>(items: impl IntoIterator<Item = T>, f: impl FnMut(T) 
 pub(crate) fn try_vecmap<T, U, E>(
     items: impl IntoIterator<Item = T>, f: impl FnMut(T) -> Result<U, E>,
 ) -> Result<Vec<U>, E> {
+    map(items, f)
+}
+
+/// Shorthand for `items.into_iter().map(f).collect::<Option<Vec<_>, _>>()`
+#[inline]
+pub(crate) fn opt_vecmap<T, U>(
+    items: impl IntoIterator<Item = T>, f: impl FnMut(T) -> Option<U>,
+) -> Option<Vec<U>> {
     map(items, f)
 }
 

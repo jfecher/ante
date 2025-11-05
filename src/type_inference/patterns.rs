@@ -8,10 +8,10 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     diagnostics::{Diagnostic, Location},
-    iterator_extensions::{btree_map, try_vecmap, vecmap},
+    iterator_extensions::{btree_map, opt_vecmap, try_vecmap, vecmap},
     name_resolution::{builtin::Builtin, Origin},
     parser::{
-        cst::{Literal, Pattern},
+        cst::{self, Literal},
         ids::{ExprId, NameId, PathId, PatternId},
     },
     type_inference::{
@@ -64,6 +64,8 @@ impl Case {
 }
 
 /// Anything that can appear before the `=>` in a match rule.
+///
+/// This form is a bit easier to work with than a [cst::Pattern].
 #[derive(Debug, Clone)]
 enum Pattern {
     /// A pattern checking for a tag and possibly binding variables such as `Some(42)`
@@ -74,7 +76,7 @@ enum Pattern {
     Int(u64),
 
     /// A pattern binding a variable such as `a` or `_`
-    Variable(PathId),
+    Variable(NameId),
 
     /// Multiple patterns combined with `|` where we should match this pattern if any
     /// constituent pattern matches. e.g. `Some(3) | None` or `Some(1) | Some(2) | None`
@@ -125,11 +127,11 @@ impl Constructor {
 #[derive(Clone)]
 struct Column {
     variable_to_match: PathId,
-    pattern: PatternId,
+    pattern: Pattern,
 }
 
 impl Column {
-    fn new(variable_to_match: PathId, pattern: PatternId) -> Self {
+    fn new(variable_to_match: PathId, pattern: Pattern) -> Self {
         Column { variable_to_match, pattern }
     }
 }
@@ -160,16 +162,85 @@ impl Row {
 impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Creates a decision tree from the given match expression
     pub(super) fn compile_decision_tree(
-        &mut self, variable_to_match: PathId, rules: Vec<(PatternId, ExprId)>, pattern_type: TypeId, location: Location,
+        &mut self, variable_to_match: PathId, rules: &[(PatternId, ExprId)], pattern_type: TypeId, location: Location,
     ) -> DecisionTree {
         let rows = vecmap(rules, |(pattern, branch)| {
-            let pattern_location = self.current_context().pattern_locations[pattern].clone();
+            let pattern_location = self.current_context().pattern_locations[*pattern].clone();
+            let pattern = self.convert_pattern(*pattern);
             let columns = vec![Column::new(variable_to_match, pattern)];
             let guard = None;
-            Row::new(columns, guard, branch, pattern_location)
+            Row::new(columns, guard, *branch, pattern_location)
         });
 
         MatchCompiler::run(self, rows, pattern_type, location)
+    }
+
+    /// Converts a [cst::Pattern] into an easier form usable by the match compiler.
+    ///
+    /// If the given pattern is unable to be converted, an error is issued and None is returned.
+    fn convert_pattern(&self, pattern: PatternId) -> Option<Pattern> {
+        Some(match &self.current_context().patterns[pattern] {
+            cst::Pattern::Error => Pattern::Error,
+            cst::Pattern::Variable(name_id) => Pattern::Variable(*name_id),
+            cst::Pattern::Literal(Literal::Unit) => {
+                Pattern::Constructor(Constructor::Unit, Vec::new())
+            },
+            cst::Pattern::Literal(Literal::Bool(value)) => {
+                let constructor = if *value { Constructor::True } else { Constructor::False };
+                Pattern::Constructor(constructor, Vec::new())
+            },
+            cst::Pattern::Literal(Literal::Integer(value, _kind)) => {
+                Pattern::Constructor(Constructor::Int(*value), Vec::new())
+            },
+            cst::Pattern::Literal(_) => {
+                let location = self.current_context().pattern_locations[pattern].clone();
+                self.compiler.accumulate(Diagnostic::InvalidPattern { location });
+                return None;
+            }
+            cst::Pattern::Constructor(path_id, arguments) => {
+                let constructor = self.path_to_constructor(*path_id)?;
+                let arguments = opt_vecmap(arguments, |argument| self.convert_pattern(*argument))?;
+                Pattern::Constructor(constructor, arguments)
+            },
+            cst::Pattern::TypeAnnotation(pattern, _) => return self.convert_pattern(*pattern),
+            cst::Pattern::MethodName { .. } => {
+                let location = self.current_context().pattern_locations[pattern].clone();
+                self.compiler.accumulate(Diagnostic::InvalidPattern { location });
+                return None;
+            },
+        })
+    }
+
+    /// Try to convert the given path to a constructor, issuing an error and returning [None] on
+    /// failure.
+    fn path_to_constructor(&self, path: PathId) -> Option<Constructor> {
+        let mut origin = &self.current_resolve().path_origins[&path];
+        // Most times we can immediately grab the origin, but in the case of
+        // Origin::TypeResolution we need to grab it from another map. A loop
+        // is used here instead of recursion to prevent infinite recursion in the
+        // case of a bug elsewhere in the compiler.
+        for _ in 0 .. 2 {
+            match origin {
+                Origin::TopLevelDefinition(top_level_name) => {
+                    let item = &self.item_contexts[&top_level_name.top_level_item];
+                },
+                Origin::Local(_) => unreachable!("Origin::Local used in path_to_constructor"),
+                Origin::TypeResolution => {
+                    // The type checker should hold the origin of paths that require type resolution
+                    origin = &self.path_origins[&path];
+                },
+                Origin::Builtin(builtin) => {
+                    if let Some((type_id, variant_index)) = builtin.constructor() {
+                        return Some(Constructor::Variant(type_id, variant_index))
+                    } else {
+                        let location = self.current_context().path_locations[path].clone();
+                        self.compiler.accumulate(Diagnostic::InvalidPattern { location });
+                        return None;
+                    }
+                },
+            }
+        }
+        panic!("Unable to find origin of path in path_to_constructor!")
     }
 }
 
@@ -718,8 +789,8 @@ impl<'local, 'db> MatchCompiler<'local, 'db> {
                 vec![(Constructor::True, 0), (Constructor::False, 0)]
             }
             Constructor::Unit => vec![(Constructor::Unit, 0)],
-            Constructor::Variant(typ, _) => {
-                let typ = self.checker.follow_type(*typ);
+            Constructor::Variant(type_id, _) => {
+                let typ = self.checker.follow_type(*type_id);
                 let Type::UserDefined(origin) = &typ else {
                     unreachable!(
                         "Constructor::Variant should have a DataType type, but found {typ:?}"
@@ -729,13 +800,13 @@ impl<'local, 'db> MatchCompiler<'local, 'db> {
                 let def_ref = def.borrow();
                 if let Some(variants) = def_ref.get_variants(generics) {
                     vecmap(variants.into_iter().enumerate(), |(i, (_, fields))| {
-                        (Constructor::Variant(typ.clone(), i), fields.len())
+                        (Constructor::Variant(*type_id, i), fields.len())
                     })
                 } else
                 /* def is a struct */
                 {
                     let field_count = def_ref.fields_raw().map(|fields| fields.len()).unwrap_or(0);
-                    vec![(Constructor::Variant(typ.clone(), 0), field_count)]
+                    vec![(Constructor::Variant(*type_id, 0), field_count)]
                 }
             }
 

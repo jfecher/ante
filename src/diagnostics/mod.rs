@@ -40,6 +40,7 @@ pub enum Diagnostic {
     MissingCases { cases: BTreeSet<String>, location: Location },
     MissingManyCases { typ: String, location: Location },
     InvalidRangeInPattern { start: u64, end: u64, location: Location },
+    InvalidPattern { location: Location },
 }
 
 impl Ord for Diagnostic {
@@ -174,6 +175,9 @@ impl Diagnostic {
                     format!("Range from {} to {} is backwards and will not match anything", start.to_string().purple(), end.to_string().purple())
                 }
             }
+            Diagnostic::InvalidPattern { location: _ } => {
+                format!("Invalid pattern syntax, expected a variable, constructor, or integer")
+            }
         }
     }
 
@@ -204,6 +208,7 @@ impl Diagnostic {
             | Diagnostic::MissingCases { location, .. }
             | Diagnostic::MissingManyCases { location, .. }
             | Diagnostic::InvalidRangeInPattern { location, .. }
+            | Diagnostic::InvalidPattern { location }
             | Diagnostic::TypeMustBeKnownMemberAccess { location } => location,
         }
     }
