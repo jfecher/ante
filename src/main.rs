@@ -11,10 +11,10 @@
 //! bit differently.
 //!
 //! List of compiler passes and the source file to find more about them in:
-//! - Lexing `src/lexer/mod.rs`:
-//! - Parsing `src/parser/mod.rs`:
-//! - Name Resolution `src/name_resolution/mod.rs`:
-//! - Type Inference `src/type_inference/mod.rs`:
+//! - Lexing `src/lexer/mod.rs`
+//! - Parsing `src/parser/mod.rs`
+//! - Name Resolution `src/name_resolution/mod.rs`
+//! - Type Inference `src/type_inference/cst_traversal.rs`
 //!
 //! Non-passes:
 //! - `src/errors.rs`: Defines each error used in the program as well as the `Location` struct

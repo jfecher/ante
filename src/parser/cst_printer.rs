@@ -437,6 +437,12 @@ impl<'a> CstDisplay<'a> {
 
         write!(f, "type ")?;
         self.fmt_type_name(type_definition.name, context, f)?;
+
+        for generic in &type_definition.generics {
+            write!(f, " ")?;
+            self.fmt_type_name(*generic, context, f)?;
+        }
+
         write!(f, " =")?;
 
         match &type_definition.body {

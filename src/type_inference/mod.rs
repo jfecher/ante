@@ -9,18 +9,14 @@ use crate::{
     incremental::{self, DbHandle, GetItem, Resolve, TypeCheckSCC},
     iterator_extensions::vecmap,
     lexer::token::{FloatKind, IntegerKind},
-    name_resolution::{builtin::Builtin, Origin, ResolutionResult},
+    name_resolution::{Origin, ResolutionResult, builtin::Builtin},
     parser::{
         context::TopLevelContext,
-        cst::{self, TopLevelItem, TopLevelItemKind, TypeDefinitionBody},
+        cst::{self, Expr, Name, Path, TopLevelItem, TopLevelItemKind, TypeDefinitionBody},
         ids::{ExprId, NameId, PathId, TopLevelId, TopLevelName},
     },
     type_inference::{
-        errors::{Locateable, TypeErrorKind},
-        generics::Generic,
-        type_context::TypeContext,
-        type_id::TypeId,
-        types::{GeneralizedType, TopLevelType, TypeVariableId},
+        errors::{Locateable, TypeErrorKind}, fresh_expr::ExtendedTopLevelContext, generics::Generic, type_context::TypeContext, type_id::TypeId, types::{GeneralizedType, TopLevelType, TypeVariableId}
     },
 };
 
@@ -33,6 +29,7 @@ pub mod patterns;
 pub mod type_context;
 pub mod type_id;
 pub mod types;
+pub mod fresh_expr;
 
 pub use get_type::get_type_impl;
 
@@ -89,15 +86,48 @@ pub struct IndividualTypeCheckResult {
     pub generalized: BTreeMap<NameId, GeneralizedType>,
 }
 
+/// The TypeChecker is responsible for checking for type errors inside of an
+/// inference group. An inference group is a set of top-level items which form
+/// an SCC in the type inference dependency graph. Usually each group is only
+/// a single item but larger groups are possible for mutually recursive definitions
+/// without type signatures.
+///
+/// The TypeChecker is the main context object for the type inference incremental computation.
+/// Its outputs are:
+/// - A type for all [NameId], [PathId], and [ExprId] objects (possibly an error type)
+/// - Errors or warnings accumulated to the compiler's [Diagnostic] list
+/// - A new resolved [Origin] for each [Origin::TypeResolution] outputted from the name resolution pass
+/// - New expressions & paths resulting from the compilation of match expressions into decision trees
 struct TypeChecker<'local, 'inner> {
     compiler: &'local DbHandle<'inner>,
     types: TypeContext,
     name_types: BTreeMap<NameId, TypeId>,
     path_types: BTreeMap<PathId, TypeId>,
+
+    /// TODO: In the event we're working on an SCC of multiple functions, the same ExprId
+    /// may be used across different functions.
     expr_types: BTreeMap<ExprId, TypeId>,
     bindings: TypeBindings,
-    next_id: u32,
+
+    /// Type inference is the first pass where type variables are introduced.
+    /// This field starts from 0 to give each a unique ID within the current inference group.
+    next_type_variable_id: u32,
+
+    /// The TypeChecker may insert new expressions/names/paths as a result of match compilation.
+    /// Each of these are local to the function they are created in.
+    new_exprs: FxHashMap<ExprId, Expr>,
+    new_paths: FxHashMap<PathId, Path>,
+    new_names: FxHashMap<NameId, Name>,
+
+    /// Contains the ItemContext for each item in the TypeChecker's type check group.
+    /// Most often, this is just a single item. In the case of mutually recursive type
+    /// inference however, it will include every item in the recursive SCC to infer.
     item_contexts: &'local ItemContexts,
+
+    /// The type checker may output new expression, path, or name IDs so we
+    /// extend each [TopLevelContext] with these new ids.
+    id_contexts: FxHashMap<TopLevelId, ExtendedTopLevelContext>,
+
     current_item: Option<TopLevelId>,
 
     /// The TypeChecker also resolves any paths with Origin::TypeResolution to
@@ -121,11 +151,15 @@ type ItemContexts = FxHashMap<TopLevelId, (Arc<TopLevelItem>, Arc<TopLevelContex
 
 impl<'local, 'inner> TypeChecker<'local, 'inner> {
     fn new(item_contexts: &'local ItemContexts, compiler: &'local DbHandle<'inner>) -> Self {
+        let id_contexts = item_contexts.iter().map(|(id, (_, context, _))| {
+            (*id, ExtendedTopLevelContext::new(context.clone()))
+        }).collect();
+
         let mut this = Self {
             compiler,
             types: TypeContext::new(),
             bindings: Default::default(),
-            next_id: 0,
+            next_type_variable_id: 0,
             name_types: Default::default(),
             path_types: Default::default(),
             expr_types: Default::default(),
@@ -133,6 +167,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             path_origins: Default::default(),
             current_item: None,
             item_contexts,
+            id_contexts,
+            new_exprs: FxHashMap::default(),
+            new_paths: FxHashMap::default(),
+            new_names: FxHashMap::default(),
         };
 
         let mut item_types = FxHashMap::default();
@@ -161,6 +199,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             .collect()
     }
 
+    /// Returns the context of the current item, containing mappings for IDs set during parsing.
+    /// This will not contain any new IDs added by this type checking pass - for that use
+    /// [Self::current_extended_context_mut]. This method is still useful since the returned
+    /// context refers to a separate lifetime, so self may still be used mutably.
     fn current_context(&self) -> &'local TopLevelContext {
         let item = self.current_item.expect("TypeChecker: Expected current_item to be set");
         &self.item_contexts[&item].1
@@ -169,6 +211,16 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     fn current_resolve(&self) -> &'local ResolutionResult {
         let item = self.current_item.expect("TypeChecker: Expected current_item to be set");
         &self.item_contexts[&item].2
+    }
+
+    fn current_extended_context(&self) -> &ExtendedTopLevelContext {
+        let item = self.current_item.expect("TypeChecker: Expected current_item to be set");
+        self.id_contexts.get(&item).expect("Expected TopLevelId to be in id_contexts")
+    }
+
+    fn current_extended_context_mut(&mut self) -> &mut ExtendedTopLevelContext {
+        let item = self.current_item.expect("TypeChecker: Expected current_item to be set");
+        self.id_contexts.get_mut(&item).expect("Expected TopLevelId to be in id_contexts")
     }
 
     fn finish(mut self, items: Vec<TypeMaps>) -> TypeCheckSCCResult {
@@ -195,8 +247,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     }
 
     fn next_type_variable(&mut self) -> TypeId {
-        let id = TypeVariableId(self.next_id);
-        self.next_id += 1;
+        let id = TypeVariableId(self.next_type_variable_id);
+        self.next_type_variable_id += 1;
         self.types.get_or_insert_type(Type::Variable(id))
     }
 

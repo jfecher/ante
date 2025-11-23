@@ -2,29 +2,26 @@
 //!
 //! This entire file is adapted from https://github.com/yorickpeterse/pattern-matching-in-rust/tree/main/jacobs2021
 
-use std::{borrow::Cow, collections::{BTreeMap, BTreeSet}};
+use std::{
+    borrow::Cow,
+    collections::{BTreeMap, BTreeSet}, sync::Arc,
+};
 
 use rustc_hash::FxHashMap;
 
 use crate::{
-    diagnostics::{Diagnostic, Location},
-    iterator_extensions::{btree_map, opt_vecmap, try_vecmap, vecmap},
-    name_resolution::{builtin::Builtin, Origin},
-    parser::{
-        cst::{self, Literal},
-        ids::{ExprId, NameId, PathId, PatternId},
-    },
-    type_inference::{
-        type_id::TypeId,
-        types::{PrimitiveType, Type},
-        TypeChecker,
-    },
+    diagnostics::{Diagnostic, Location, UnimplementedItem}, incremental::{GetItem, Resolve}, iterator_extensions::{btree_map, opt_vecmap, try_vecmap, vecmap}, name_resolution::Origin, parser::{
+        cst::{self, Literal, Path, TopLevelItem},
+        ids::{ExprId, NameId, PathId, PatternId, TopLevelName},
+    }, type_inference::{
+        TypeChecker, type_id::TypeId, types::{PrimitiveType, Type}
+    }
 };
 
 const WILDCARD_PATTERN: &str = "_";
 
-struct MatchCompiler<'local, 'db> {
-    checker: &'local TypeChecker<'local, 'db>,
+struct MatchCompiler<'tc, 'local, 'db> {
+    checker: &'tc mut TypeChecker<'local, 'db>,
 
     has_missing_cases: bool,
 
@@ -32,7 +29,7 @@ struct MatchCompiler<'local, 'db> {
     unreachable_cases: BTreeMap<RowBody, Location>,
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum DecisionTree {
     /// Match succeeded, jump directly to the given branch
     Success(ExprId),
@@ -50,7 +47,7 @@ pub enum DecisionTree {
     Switch(PathId, Vec<Case>, Option<Box<DecisionTree>>),
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Case {
     pub constructor: Constructor,
     pub arguments: Vec<PathId>,
@@ -101,7 +98,7 @@ pub enum Constructor {
     Unit,
     Int(u64),
     Variant(TypeId, /* variant index */ usize),
-    
+
     /// Inclusive (!) range between start and end
     Range(u64, u64),
 }
@@ -114,10 +111,7 @@ impl Constructor {
 
     fn variant_index(&self) -> usize {
         match self {
-            Constructor::False
-            | Constructor::Int(_)
-            | Constructor::Unit
-            | Constructor::Range(_, _) => 0,
+            Constructor::False | Constructor::Int(_) | Constructor::Unit | Constructor::Range(_, _) => 0,
             Constructor::True => 1,
             Constructor::Variant(_, index) => *index,
         }
@@ -163,28 +157,26 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Creates a decision tree from the given match expression
     pub(super) fn compile_decision_tree(
         &mut self, variable_to_match: PathId, rules: &[(PatternId, ExprId)], pattern_type: TypeId, location: Location,
-    ) -> DecisionTree {
-        let rows = vecmap(rules, |(pattern, branch)| {
+    ) -> Option<DecisionTree> {
+        let rows = opt_vecmap(rules, |(pattern, branch)| {
             let pattern_location = self.current_context().pattern_locations[*pattern].clone();
-            let pattern = self.convert_pattern(*pattern);
+            let pattern = self.convert_pattern(*pattern)?;
             let columns = vec![Column::new(variable_to_match, pattern)];
             let guard = None;
-            Row::new(columns, guard, *branch, pattern_location)
-        });
+            Some(Row::new(columns, guard, *branch, pattern_location))
+        })?;
 
-        MatchCompiler::run(self, rows, pattern_type, location)
+        Some(MatchCompiler::run(self, rows, pattern_type, location))
     }
 
     /// Converts a [cst::Pattern] into an easier form usable by the match compiler.
     ///
     /// If the given pattern is unable to be converted, an error is issued and None is returned.
-    fn convert_pattern(&self, pattern: PatternId) -> Option<Pattern> {
+    fn convert_pattern(&mut self, pattern: PatternId) -> Option<Pattern> {
         Some(match &self.current_context().patterns[pattern] {
             cst::Pattern::Error => Pattern::Error,
             cst::Pattern::Variable(name_id) => Pattern::Variable(*name_id),
-            cst::Pattern::Literal(Literal::Unit) => {
-                Pattern::Constructor(Constructor::Unit, Vec::new())
-            },
+            cst::Pattern::Literal(Literal::Unit) => Pattern::Constructor(Constructor::Unit, Vec::new()),
             cst::Pattern::Literal(Literal::Bool(value)) => {
                 let constructor = if *value { Constructor::True } else { Constructor::False };
                 Pattern::Constructor(constructor, Vec::new())
@@ -196,7 +188,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 let location = self.current_context().pattern_locations[pattern].clone();
                 self.compiler.accumulate(Diagnostic::InvalidPattern { location });
                 return None;
-            }
+            },
             cst::Pattern::Constructor(path_id, arguments) => {
                 let constructor = self.path_to_constructor(*path_id)?;
                 let arguments = opt_vecmap(arguments, |argument| self.convert_pattern(*argument))?;
@@ -213,25 +205,26 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     /// Try to convert the given path to a constructor, issuing an error and returning [None] on
     /// failure.
-    fn path_to_constructor(&self, path: PathId) -> Option<Constructor> {
+    fn path_to_constructor(&mut self, path: PathId) -> Option<Constructor> {
         let mut origin = &self.current_resolve().path_origins[&path];
         // Most times we can immediately grab the origin, but in the case of
         // Origin::TypeResolution we need to grab it from another map. A loop
         // is used here instead of recursion to prevent infinite recursion in the
         // case of a bug elsewhere in the compiler.
-        for _ in 0 .. 2 {
+        for _ in 0..2 {
             match origin {
                 Origin::TopLevelDefinition(top_level_name) => {
-                    let item = &self.item_contexts[&top_level_name.top_level_item];
+                    let item = GetItem(top_level_name.top_level_item).get(self.compiler);
+                    return self.item_to_constructor(&item.0, top_level_name.local_name_id, path);
                 },
                 Origin::Local(_) => unreachable!("Origin::Local used in path_to_constructor"),
                 Origin::TypeResolution => {
                     // The type checker should hold the origin of paths that require type resolution
-                    origin = &self.path_origins[&path];
+                    origin = self.path_origins.get(&path)?;
                 },
                 Origin::Builtin(builtin) => {
                     if let Some((type_id, variant_index)) = builtin.constructor() {
-                        return Some(Constructor::Variant(type_id, variant_index))
+                        return Some(Constructor::Variant(type_id, variant_index));
                     } else {
                         let location = self.current_context().path_locations[path].clone();
                         self.compiler.accumulate(Diagnostic::InvalidPattern { location });
@@ -242,29 +235,80 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
         panic!("Unable to find origin of path in path_to_constructor!")
     }
+
+    /// Given a source item (must be a TypeDefinition), and a name in that item, return the constructor
+    /// corresponding to that name. The given `NameId` should be local to the given `TopLevelItem`.
+    /// The `PathId` provided should be the path used in the match expression - its location is
+    /// used for error messages.
+    fn item_to_constructor(&mut self, item: &TopLevelItem, name: NameId, path: PathId) -> Option<Constructor> {
+        let cst::TopLevelItemKind::TypeDefinition(type_definition) = &item.kind else {
+            return None;
+        };
+
+        let variant_index = match &type_definition.body {
+            cst::TypeDefinitionBody::Error => return None,
+            // A struct only has 1 constructor, and its name should be the only NameId externally
+            // visible.
+            cst::TypeDefinitionBody::Struct(_) => 0,
+            cst::TypeDefinitionBody::Enum(variants) => {
+                let result =
+                    variants.iter().enumerate().find_map(|(i, (variant_name, _))| (*variant_name == name).then_some(i));
+                // The only other name visible within the enum should be the type name.
+                // Issue an error suggesting using a constructor instead.
+                if result.is_none() {
+                    self.issue_constructor_expected_found_type_error(item, variants, type_definition.name, path);
+                }
+                result?
+            },
+            cst::TypeDefinitionBody::Alias(_) => {
+                let location = self.item_contexts[&item.id].1.name_locations[name].clone();
+                self.compiler.accumulate(Diagnostic::Unimplemented { item: UnimplementedItem::TypeAlias, location });
+                return None;
+            },
+        };
+
+        let type_name = TopLevelName::named(item.id, type_definition.name);
+        let type_id = self.types.get_or_insert_type(Type::UserDefined(Origin::TopLevelDefinition(type_name)));
+        Some(Constructor::Variant(type_id, variant_index))
+    }
+
+    /// Issue a [Diagnostic::ConstructorExpectedFoundType] error using the location of the given [PathId].
+    /// - `type_name` is local to `item` and is included as part of the error message.
+    /// - `path` is local to the match and is used for its location.
+    fn issue_constructor_expected_found_type_error(
+        &self, item: &TopLevelItem, variants: &[(NameId, Vec<cst::Type>)], type_name: NameId, path: PathId,
+    ) {
+        let item_context = &self.item_contexts[&item.id].1;
+        let constructor_names = vecmap(variants.iter().take(2), |(name, _)| item_context.names[*name].clone());
+
+        let type_name = item_context.names[type_name].clone();
+
+        let location = self.current_context().path_locations[path].clone();
+        self.compiler.accumulate(Diagnostic::ConstructorExpectedFoundType { type_name, constructor_names, location });
+    }
 }
 
-impl<'local, 'db> MatchCompiler<'local, 'db> {
+impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
     fn run(
-        checker: &'local TypeChecker<'local, 'db>, rows: Vec<Row>, pattern_type: TypeId, location: Location,
+        checker: &'tc mut TypeChecker<'local, 'db>, rows: Vec<Row>, pattern_type: TypeId, location: Location,
     ) -> DecisionTree {
-        let mut compiler = Self {
+        let mut matcher = Self {
             checker,
             has_missing_cases: false,
             unreachable_cases: rows.iter().map(|row| (row.body, row.location.clone())).collect(),
         };
 
-        let tree = compiler.compile_rows(rows).unwrap_or_else(|error| {
-            checker.compiler.accumulate(error);
+        let tree = matcher.compile_rows(rows).unwrap_or_else(|error| {
+            matcher.checker.compiler.accumulate(error);
             DecisionTree::Failure { missing_case: false }
         });
 
-        if compiler.has_missing_cases {
-            compiler.issue_missing_cases_error(&tree, pattern_type, location);
+        if matcher.has_missing_cases {
+            matcher.issue_missing_cases_error(&tree, pattern_type, location);
         }
 
-        if !compiler.unreachable_cases.is_empty() {
-            compiler.issue_unreachable_cases_warning();
+        if !matcher.unreachable_cases.is_empty() {
+            matcher.issue_unreachable_cases_warning();
         }
 
         tree
@@ -295,10 +339,10 @@ impl<'local, 'db> MatchCompiler<'local, 'db> {
         }
 
         let branch_var = self.branch_variable(&rows);
-        let location = self.parse_context.path_locations[branch_var].clone();
+        let location = self.checker.current_extended_context().path_location(branch_var);
 
-        let definition_type = self.elaborator.interner.definition_type(branch_var);
-        match definition_type.follow_bindings_shallow().into_owned() {
+        let definition_type = self.checker.path_types[&branch_var];
+        match self.checker.follow_type(definition_type) {
             Type::Primitive(PrimitiveType::Int(_)) => {
                 let (cases, fallback) = self.compile_int_cases(rows, branch_var)?;
                 Ok(DecisionTree::Switch(branch_var, cases, Some(fallback)))
@@ -315,7 +359,7 @@ impl<'local, 'db> MatchCompiler<'local, 'db> {
                 let (cases, fallback) = self.compile_constructor_cases(rows, branch_var, cases)?;
                 Ok(DecisionTree::Switch(branch_var, cases, fallback))
             },
-            Type::Application(constructor, arguments) => match types.get(constructor) {
+            Type::Application(constructor, arguments) => match self.checker.follow_type(*constructor) {
                 Type::Primitive(PrimitiveType::Pair) => {
                     let field_variables = self.fresh_match_variables(arguments.clone(), location);
                     let cases = vec![(Constructor::struct_(TypeId::PAIR), field_variables, Vec::new())];
@@ -323,47 +367,56 @@ impl<'local, 'db> MatchCompiler<'local, 'db> {
                     Ok(DecisionTree::Switch(branch_var, cases, fallback))
                 },
                 Type::UserDefined(origin) => {
-                    self.compile_userdefined_cases(rows, branch_var, origin, &arguments, location)
+                    let origin = *origin;
+                    let arguments = arguments.clone();
+                    self.compile_userdefined_cases(rows, branch_var, definition_type, origin, &arguments, location)
                 },
-                _ => Err(Diagnostic::CannotMatchOnType { typ, location }),
+                _ => {
+                    let typ = self.checker.type_to_string(definition_type);
+                    Err(Diagnostic::CannotMatchOnType { typ, location })
+                },
             },
-            Type::UserDefined(origin) => self.compile_userdefined_cases(rows, branch_var, origin, &[], location),
-            Type::Generic(_) | Type::Variable(_) | Type::Function(_) | Type::Reference(..) => {
+            Type::UserDefined(origin) => self.compile_userdefined_cases(rows, branch_var, definition_type, *origin, &[], location),
+            Type::Generic(_) | Type::Variable(_) | Type::Primitive(_) | Type::Function(_) | Type::Reference(..) => {
+                let typ = self.checker.type_to_string(definition_type);
                 Err(Diagnostic::CannotMatchOnType { typ, location })
             },
         }
     }
 
     fn compile_userdefined_cases(
-        &self, rows: Vec<Row>, branch_var: PathId, origin: Origin, generics: &[TypeId], location: Location,
+        &mut self, rows: Vec<Row>, branch_var: PathId, type_id: TypeId, origin: Origin, generics: &[TypeId], location: Location,
     ) -> Result<DecisionTree, Diagnostic> {
-        let def = type_def.borrow();
-        if let Some(variants) = def.get_variants(&generics) {
-            drop(def);
-            let typ = Type::DataType(type_def, generics);
+        match self.classify_type_origin(origin, generics) {
+            Some(UserDefinedTypeKind::Sum(variants)) => {
+                let cases = vecmap(variants.iter().enumerate(), |(idx, (_name, args))| {
+                    let constructor = Constructor::Variant(type_id, idx);
+                    let args = self.fresh_match_variables(args.clone(), location.clone());
+                    (constructor, args, Vec::new())
+                });
 
-            let cases = vecmap(variants.iter().enumerate(), |(idx, (_name, args))| {
-                let constructor = Constructor::Variant(typ.clone(), idx);
-                let args = self.fresh_match_variables(args.clone(), location);
-                (constructor, args, Vec::new())
-            });
-
-            let (cases, fallback) = self.compile_constructor_cases(rows, branch_var, cases)?;
-            Ok(DecisionTree::Switch(branch_var, cases, fallback))
-        } else if let Some(fields) = def.get_fields(&generics) {
-            drop(def);
-            let typ = Type::DataType(type_def, generics);
-
-            let fields = vecmap(fields, |(_name, typ, _)| typ);
-            let constructor = Constructor::struct_(typ);
-            let field_variables = self.fresh_match_variables(fields, location);
-            let cases = vec![(constructor, field_variables, Vec::new())];
-            let (cases, fallback) = self.compile_constructor_cases(rows, branch_var, cases)?;
-            Ok(DecisionTree::Switch(branch_var, cases, fallback))
-        } else {
-            drop(def);
-            let typ = Type::DataType(type_def, generics);
-            Err(Diagnostic::CannotMatchOnType { typ, location })
+                let (cases, fallback) = self.compile_constructor_cases(rows, branch_var, cases)?;
+                Ok(DecisionTree::Switch(branch_var, cases, fallback))
+            },
+            Some(UserDefinedTypeKind::Product(fields)) => {
+                let constructor = Constructor::struct_(type_id);
+                let field_variables = self.fresh_match_variables(fields, location);
+                let cases = vec![(constructor, field_variables, Vec::new())];
+                let (cases, fallback) = self.compile_constructor_cases(rows, branch_var, cases)?;
+                Ok(DecisionTree::Switch(branch_var, cases, fallback))
+            },
+            Some(UserDefinedTypeKind::NotUserDefined(typ)) => {
+                let typ = self.checker.type_to_string(typ);
+                Err(Diagnostic::CannotMatchOnType { typ, location })
+            },
+            // Name resolution error, assume a relevant diagnostic has already been issued
+            None => {
+                // Prevent irrelevant unreachable pattern errors
+                for row in rows {
+                    self.unreachable_cases.remove(&row.original_body);
+                }
+                Ok(DecisionTree::Failure { missing_case: true })
+            },
         }
     }
 
@@ -374,10 +427,9 @@ impl<'local, 'db> MatchCompiler<'local, 'db> {
     }
 
     fn fresh_match_variable(&mut self, index: usize, variable_type: TypeId, location: Location) -> PathId {
-        let name = format!("internal_match_variable_{index}");
-        let kind = DefinitionKind::Local(None);
-        let id = self.elaborator.interner.push_definition(name, false, false, kind, location);
-        self.elaborator.interner.push_definition_type(id, variable_type);
+        let name = Path { components: vec![(format!("internal_match_variable_{index}"), location.clone())] };
+        let id = self.checker.current_extended_context_mut().push_path(name, location);
+        self.checker.path_types.insert(id, variable_type);
         id
     }
 
@@ -394,9 +446,9 @@ impl<'local, 'db> MatchCompiler<'local, 'db> {
 
         for mut row in rows {
             if let Some(col) = row.remove_column(branch_var) {
-                let (key, cons) = match &self.parse_context.patterns[col.pattern] {
-                    Pattern::Literal(Literal::Integer(val, _kind)) => ((*val, *val), Constructor::Int(*val)),
-                    Pattern::Range(start, stop) => ((*start, *end), Constructor::Range(*start, *end)),
+                let (key, cons) = match &col.pattern {
+                    Pattern::Int(val) => ((*val, *val), Constructor::Int(*val)),
+                    Pattern::Range(start, stop) => ((*start, *stop), Constructor::Range(*start, *stop)),
                     // Any other pattern shouldn't have an integer type and we expect a type
                     // check error to already have been issued.
                     _ => continue,
@@ -460,7 +512,7 @@ impl<'local, 'db> MatchCompiler<'local, 'db> {
     ) -> Result<(Vec<Case>, Option<Box<DecisionTree>>), Diagnostic> {
         for mut row in rows {
             if let Some(col) = row.remove_column(branch_var) {
-                if let Pattern::Constructor(constructor, args) = &self.parse_context.patterns[col.pattern] {
+                if let Pattern::Constructor(constructor, args) = col.pattern {
                     // TODO: Convert to dedicated pattern enum
                     let idx = constructor.variant_index();
                     let mut cols = row.columns;
@@ -550,7 +602,7 @@ impl<'local, 'db> MatchCompiler<'local, 'db> {
     fn push_tests_against_bare_variables(&mut self, rows: &mut Vec<Row>) {
         for row in rows {
             row.columns.retain(|col| {
-                if let Pattern::Variable(variable) = &self.parse_context.patterns[col.pattern] {
+                if let Pattern::Variable(variable) = &col.pattern {
                     row.body = self.let_binding(*variable, col.variable_to_match, row.body);
                     false
                 } else {
@@ -561,40 +613,29 @@ impl<'local, 'db> MatchCompiler<'local, 'db> {
     }
 
     /// Creates:
-    /// `{ let <variable> = <rhs>; <body> }`
+    /// `<variable> = <rhs>; <body>`
     fn let_binding(&mut self, variable: NameId, rhs: PathId, body: ExprId) -> ExprId {
-        let location = self.elaborator.interner.definition(rhs).location;
+        let location = self.checker.current_extended_context().path_location(rhs);
+        let rhs_type = self.checker.path_types[&rhs];
+        let body_type = self.checker.expr_types[&body];
 
-        let r#type = self.elaborator.interner.definition_type(variable);
-        let rhs_type = self.elaborator.interner.definition_type(rhs);
-        let variable = HirIdent::non_trait_method(variable, location);
+        let pattern = cst::Pattern::Variable(variable);
+        let pattern = self.checker.push_pattern(pattern, location.clone());
 
-        let rhs = HirExpression::Ident(HirIdent::non_trait_method(rhs, location), None);
-        let rhs = self.elaborator.interner.push_expr(rhs);
-        self.elaborator.interner.push_expr_type(rhs, rhs_type);
-        self.elaborator.interner.push_expr_location(rhs, location);
+        let rhs = cst::Expr::Variable(rhs);
+        let rhs = self.checker.push_expr(rhs, rhs_type, location.clone());
 
-        let let_ = HirStatement::Let(HirLetStatement {
-            pattern: HirPattern::Identifier(variable),
-            r#type,
-            expression: rhs,
-            attributes: Vec::new(),
-            comptime: false,
-            is_global_let: false,
+        let definition = cst::Expr::Definition(cst::Definition {
+            implicit: false,
+            mutable: false,
+            pattern,
+            rhs,
         });
+        let definition = self.checker.push_expr(definition, TypeId::UNIT, location.clone());
 
-        let body_type = self.elaborator.interner.id_type(body);
-        let let_ = self.elaborator.interner.push_stmt(let_);
-        let body = self.elaborator.interner.push_stmt(HirStatement::Expression(body));
-
-        self.elaborator.interner.push_stmt_location(let_, location);
-        self.elaborator.interner.push_stmt_location(body, location);
-
-        let block = HirExpression::Block(HirBlockExpression { statements: vec![let_, body] });
-        let block = self.elaborator.interner.push_expr(block);
-        self.elaborator.interner.push_expr_type(block, body_type);
-        self.elaborator.interner.push_expr_location(block, location);
-        block
+        let seq_item = |expr| cst::SequenceItem { comments: Vec::new(), expr };
+        let block = cst::Expr::Sequence(vec![seq_item(definition), seq_item(body)]);
+        self.checker.push_expr(block, body_type, location)
     }
 
     /// Any case that isn't branched to when the match is finished must be covered by another
@@ -614,7 +655,7 @@ impl<'local, 'db> MatchCompiler<'local, 'db> {
         };
 
         let mut cases = BTreeSet::new();
-        self.find_missing_values(tree, &mut Default::default(), &mut cases, starting_id);
+        self.find_missing_values(tree, &mut Default::default(), &mut cases, starting_id, &location);
 
         // It's possible to trigger this matching on an empty enum like `enum Void {}`
         if !cases.is_empty() {
@@ -626,46 +667,46 @@ impl<'local, 'db> MatchCompiler<'local, 'db> {
     /// case of the type is covered. This is the case for empty matches `match foo {}`.
     /// Note that this is expected not to error if the given type is an enum with zero variants.
     fn issue_missing_cases_error_for_type(&mut self, type_matched_on: TypeId, location: Location) {
-        let typ = self.checker.follow_type(type_matched_on);
-        if let Type::UserDefined(shared, generics) = typ {
-            if let Some(variants) = shared.borrow().get_variants(generics) {
-                let cases: BTreeSet<_> = variants.into_iter().map(|(name, _)| name).collect();
-                if !cases.is_empty() {
-                    self.checker.compiler.accumulate(Diagnostic::MissingCases { cases, location });
-                }
-                return;
+        if let Some(UserDefinedTypeKind::Sum(variants)) = self.classify_type(type_matched_on) {
+            if !variants.is_empty() {
+                let cases: BTreeSet<_> = variants.into_iter().map(|(name, _)| {
+                    // TODO: These names should be in the variant's resolve data
+                    self.checker.current_context().names[name].clone()
+                }).collect();
+                self.checker.compiler.accumulate(Diagnostic::MissingCases { cases, location });
             }
+            return;
         }
         let typ = self.checker.type_to_string(type_matched_on);
         self.checker.compiler.accumulate(Diagnostic::MissingManyCases { typ, location });
     }
 
     fn find_missing_values(
-        &self, tree: &DecisionTree, env: &mut FxHashMap<PathId, (String, Vec<PathId>)>,
-        missing_cases: &mut BTreeSet<String>, starting_id: PathId,
+        &mut self, tree: &DecisionTree, env: &mut FxHashMap<PathId, (String, Vec<Option<PathId>>)>,
+        missing_cases: &mut BTreeSet<Arc<String>>, starting_id: PathId, location: &Location
     ) {
         match tree {
             DecisionTree::Success(_) | DecisionTree::Failure { missing_case: false } => (),
             DecisionTree::Guard { else_, .. } => {
-                self.find_missing_values(else_, env, missing_cases, starting_id);
+                self.find_missing_values(else_, env, missing_cases, starting_id, location);
             },
             DecisionTree::Failure { missing_case: true } => {
-                let case = Self::construct_missing_case(starting_id, env);
-                missing_cases.insert(case);
+                let case = Self::construct_missing_case(Some(starting_id), env);
+                missing_cases.insert(Arc::new(case));
             },
             DecisionTree::Switch(variable, cases, else_case) => {
                 for case in cases {
                     let name = self.constructor_string(&case.constructor).to_string();
-                    env.insert(*variable, (name, case.arguments.clone()));
-                    self.find_missing_values(&case.body, env, missing_cases, starting_id);
+                    env.insert(*variable, (name, vecmap(case.arguments.iter().copied(), Some)));
+                    self.find_missing_values(&case.body, env, missing_cases, starting_id, location);
                 }
 
                 if let Some(else_case) = else_case {
                     let typ = self.checker.path_types[variable];
 
-                    for case in self.missing_cases(cases, typ) {
+                    for case in self.missing_cases(cases, typ, location) {
                         env.insert(*variable, case);
-                        self.find_missing_values(else_case, env, missing_cases, starting_id);
+                        self.find_missing_values(else_case, env, missing_cases, starting_id, location);
                     }
                 }
 
@@ -674,16 +715,18 @@ impl<'local, 'db> MatchCompiler<'local, 'db> {
         }
     }
 
-    fn missing_cases(&self, cases: &[Case], typ: TypeId) -> Vec<(String, Vec<PathId>)> {
+    fn missing_cases(&mut self, cases: &[Case], typ: TypeId, location: &Location) -> Vec<(String, Vec<Option<PathId>>)> {
         // We expect `cases` to come from a `Switch` which should always have
         // at least 2 cases, otherwise it should be a Success or Failure node.
-        let first = &cases[0];
+        let Some(first) = cases.first() else {
+            return Vec::new()
+        };
 
         if matches!(&first.constructor, Constructor::Int(_) | Constructor::Range(..)) {
             return self.missing_integer_cases(cases, typ);
         }
 
-        let all_constructors = self.all_constructors(&first.constructor);
+        let all_constructors = self.all_constructors(&first.constructor, location);
         let mut all_constructors = btree_map(all_constructors, |(constructor, arg_count)| (constructor, arg_count));
 
         for case in cases {
@@ -691,14 +734,12 @@ impl<'local, 'db> MatchCompiler<'local, 'db> {
         }
 
         vecmap(all_constructors, |(constructor, arg_count)| {
-            // Safety: this id should only be used in `env` of `find_missing_values` which
-            //         only uses it for display and defaults to "_" on unknown ids.
-            let args = vecmap(0..arg_count, |_| PathId::dummy_id());
-            (self.constructor_string(&constructor), args)
+            let args = vec![None; arg_count];
+            (self.constructor_string(&constructor).into_owned(), args)
         })
     }
 
-    fn missing_integer_cases(&self, cases: &[Case], typ: TypeId) -> Vec<(String, Vec<PathId>)> {
+    fn missing_integer_cases(&self, cases: &[Case], typ: TypeId) -> Vec<(String, Vec<Option<PathId>>)> {
         // We could give missed cases for field ranges of `0 .. field_modulus` but since the field
         // used in Noir may change we recommend a match-all pattern instead.
         // If the type is a type variable, we don't know exactly which integer type this may
@@ -738,19 +779,19 @@ impl<'local, 'db> MatchCompiler<'local, 'db> {
         matches!(self.checker.follow_type(typ), Type::Variable(_))
     }
 
-    fn construct_missing_case(starting_id: PathId, env: &FxHashMap<PathId, (String, Vec<PathId>)>) -> String {
-        let Some((constructor, arguments)) = env.get(&starting_id) else {
+    fn construct_missing_case(starting_id: Option<PathId>, env: &FxHashMap<PathId, (String, Vec<Option<PathId>>)>) -> String {
+        let Some((constructor, arguments)) = starting_id.and_then(|id| env.get(&id)) else {
             return WILDCARD_PATTERN.to_string();
         };
 
-        let no_arguments = arguments.is_empty();
+        let args = vecmap(arguments, |arg| Self::construct_missing_case(*arg, env));
 
-        let args = vecmap(arguments, |arg| Self::construct_missing_case(*arg, env)).join(", ");
-
-        if no_arguments {
+        if args.is_empty() {
             constructor.clone()
+        } else if constructor == "," {
+            format!("{}", args.join(", "))
         } else {
-            format!("{constructor}({args})")
+            format!("{constructor} {}", args.join(" "))
         }
     }
 
@@ -776,72 +817,122 @@ impl<'local, 'db> MatchCompiler<'local, 'db> {
                 Origin::TypeResolution => unreachable!("Types cannot be Origin::TypeResolution"),
                 Origin::Builtin(builtin) => Cow::Owned(builtin.to_string()),
             }
+        } else if typ == TypeId::PAIR {
+            Cow::Owned(",".to_string())
         } else {
-            unreachable!("Non-struct or enum datatype")
+            unreachable!("Non-struct or enum datatype: {}", self.checker.type_to_string(typ))
         }
     }
 
     /// Return all the constructors of the result type of the given constructor. Intended to be used
     /// for error reporting in cases where there are at least 2 constructors.
-    pub(crate) fn all_constructors(&self, constructor: &Constructor) -> Vec<(Constructor, /*arg count:*/ usize)> {
+    pub(crate) fn all_constructors(&mut self, constructor: &Constructor, location: &Location) -> Vec<(Constructor, /*arg count:*/ usize)> {
         match constructor {
             Constructor::True | Constructor::False => {
                 vec![(Constructor::True, 0), (Constructor::False, 0)]
-            }
+            },
             Constructor::Unit => vec![(Constructor::Unit, 0)],
             Constructor::Variant(type_id, _) => {
-                let typ = self.checker.follow_type(*type_id);
-                let Type::UserDefined(origin) = &typ else {
-                    unreachable!(
-                        "Constructor::Variant should have a DataType type, but found {typ:?}"
-                    );
-                };
-
-                let def_ref = def.borrow();
-                if let Some(variants) = def_ref.get_variants(generics) {
-                    vecmap(variants.into_iter().enumerate(), |(i, (_, fields))| {
-                        (Constructor::Variant(*type_id, i), fields.len())
-                    })
-                } else
-                /* def is a struct */
-                {
-                    let field_count = def_ref.fields_raw().map(|fields| fields.len()).unwrap_or(0);
-                    vec![(Constructor::Variant(*type_id, 0), field_count)]
+                match self.classify_type(*type_id) {
+                    Some(UserDefinedTypeKind::Product(fields)) => {
+                        vec![(Constructor::Variant(*type_id, 0), fields.len())]
+                    }
+                    Some(UserDefinedTypeKind::Sum(variants)) => {
+                        vecmap(variants.into_iter().enumerate(), |(i, (_, fields))| {
+                            (Constructor::Variant(*type_id, i), fields.len())
+                        })
+                    }
+                    Some(UserDefinedTypeKind::NotUserDefined(type_id)) => {
+                        let typ = self.checker.type_to_string(type_id);
+                        let location = location.clone();
+                        self.checker.compiler.accumulate(Diagnostic::CannotMatchOnType { typ, location });
+                        Vec::new()
+                    }
+                    None => {
+                        unreachable!("Unresolved type encountered in all_constructors")
+                    }
                 }
-            }
+            },
 
             // Nothing great to return for these
             Constructor::Int(_) | Constructor::Range(..) => Vec::new(),
         }
     }
 
-    fn classify_type(&self, typ: TypeId) -> UserDefinedTypeKind {
+    fn classify_type(&mut self, typ: TypeId) -> Option<UserDefinedTypeKind> {
         match self.checker.follow_type(typ) {
-            other @ Type::Application(constructor, arguments) => {
-                match self.checker.follow_type(*constructor) {
-                    Type::UserDefined(origin) => self.classify_user_defined(origin, arguments),
-                    _ => UserDefinedTypeKind::NotUserDefined(other),
-                }
+            Type::Application(constructor, arguments) => match self.checker.follow_type(*constructor) {
+                Type::UserDefined(origin) => {
+                    let origin = *origin;
+                    let arguments = arguments.clone();
+                    self.classify_type_origin(origin, &arguments)
+                },
+                _ => Some(UserDefinedTypeKind::NotUserDefined(typ)),
             },
-            Type::UserDefined(origin) => self.classify_user_defined(origin, &[]),
-            other => UserDefinedTypeKind::NotUserDefined(other),
+            Type::UserDefined(origin) => self.classify_type_origin(*origin, &[]),
+            _ => Some(UserDefinedTypeKind::NotUserDefined(typ)),
         }
     }
 
-    fn classify_user_defined(&self, origin: &Origin, arguments: &[TypeId]) -> UserDefinedTypeKind {
+    /// Try to return this type's body (its fields or variants).
+    /// If we fail to do so, None is returned and no error is issued.
+    fn classify_type_origin(&mut self, origin: Origin, arguments: &[TypeId]) -> Option<UserDefinedTypeKind> {
+        // Most times we can immediately grab the origin, but in the case of
+        // Origin::TypeResolution we need to grab it from another map. A loop
+        // is used here instead of recursion to prevent infinite recursion in the
+        // case of a bug elsewhere in the compiler.
         match origin {
-            Origin::TopLevelDefinition(top_level_name) => todo!(),
-            Origin::Builtin(builtin) => todo!(),
-            Origin::Local(_) => unreachable!(),
-            Origin::TypeResolution => unreachable!(),
+            Origin::TopLevelDefinition(top_level_name) => {
+                let item = GetItem(top_level_name.top_level_item).get(self.checker.compiler);
+                self.classify_top_level_item(&item.0, top_level_name.local_name_id)
+            },
+            Origin::Local(_) => unreachable!("Origin::Local used in path_to_constructor"),
+            Origin::TypeResolution => {
+                unreachable!("Origin::TypeResolution encountered in classify_type_origin, should be unreachable in a type position")
+            },
+            Origin::Builtin(builtin) => {
+                let fields = builtin.fields(arguments.to_vec())?;
+                // There is no built-in sum type
+                Some(UserDefinedTypeKind::Product(fields))
+            },
+        }
+    }
+
+    fn classify_top_level_item(&mut self, item: &TopLevelItem, name: NameId) -> Option<UserDefinedTypeKind> {
+        let cst::TopLevelItemKind::TypeDefinition(type_definition) = &item.kind else {
+            return None;
+        };
+
+        if name != type_definition.name {
+            return None;
+        }
+
+        let resolve = Resolve(item.id).get(self.checker.compiler);
+        match &type_definition.body {
+            cst::TypeDefinitionBody::Error => None,
+            cst::TypeDefinitionBody::Struct(fields) => {
+                let fields = vecmap(fields, |(_, typ)| self.checker.convert_foreign_type(typ, &resolve));
+                Some(UserDefinedTypeKind::Product(fields))
+            },
+            cst::TypeDefinitionBody::Enum(variants) => {
+                Some(UserDefinedTypeKind::Sum(vecmap(variants, |(name, args)| {
+                    let args = vecmap(args, |arg| self.checker.convert_foreign_type(arg, &resolve));
+                    (*name, args)
+                })))
+            },
+            cst::TypeDefinitionBody::Alias(typ) => {
+                // TODO: Guard against infinite recursion
+                let typ = self.checker.convert_foreign_type(typ, &resolve);
+                self.classify_type(typ)
+            },
         }
     }
 }
 
 /// Not to be confused with the "kind" of a type (type of a type), this
 /// is meant to classify user-defined types into product types or sum types.
-enum UserDefinedTypeKind<'a> {
-    NotUserDefined(&'a Type),
-    Product,
-    Sum,
+enum UserDefinedTypeKind {
+    NotUserDefined(TypeId),
+    Product(Vec<TypeId>),
+    Sum(Vec<(NameId, Vec<TypeId>)>),
 }

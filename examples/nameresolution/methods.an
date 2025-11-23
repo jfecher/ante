@@ -30,7 +30,7 @@ Tree.map (self: Tree q) (f: fn q -> z): Tree z =
 //     | Some_td x_3 -> x_3
 // 
 // // id = c1m412_2966
-// shared type Tree_c1m412_2966_0 =
+// shared type Tree_c1m412_2966_0 t_1 =
 //     | Leaf_c1m412_2966_2 t_1
 //     | Node_c1m412_2966_4 (Tree_c1m412_2966_0 t_1) (Tree_c1m412_2966_0 t_1)
 // 

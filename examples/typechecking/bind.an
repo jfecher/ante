@@ -1,47 +1,40 @@
 bind opt f =
     match opt
-    | Some x -> f x
-    | None -> None
+    | Maybe.Some x -> f x
+    | Maybe.None -> Maybe.None
 
-ret x = Some x
+type Maybe2 t =
+   | None
+   | Some t
 
-x = Some 10i32
+ret x = Maybe.Some x
+
+x = Maybe.Some 10i32
 
 add_one x =
     bind x (fn x -> ret (x + 1i32))
 
 // args: --show-types
 // expected stdout:
-// (bind: fn (error) (fn _9 -> (error)) -> (error)) (opt: (error)) (f: fn _9 -> (error)) =
-//     match (opt: (error))
-//     | (Some: fn _9 -> (error)) (x: _9) -> (f: fn _9 -> (error)) (x: _9)
-//     | (None: (error)) -> (None: (error))
+// (bind: fn (Maybe _10) (fn _10 -> Maybe _13) -> Maybe _13) (opt: Maybe _10) (f: fn _10 -> Maybe _13) =
+//     match (opt: Maybe _10)
+//     | (Maybe.Some: fn _10 -> Maybe _10) (x: _10) -> (f: fn _10 -> Maybe _13) (x: _10)
+//     | (Maybe.None: Maybe _10) -> (Maybe.None: Maybe _13)
 // 
-// (ret: fn _5 -> _3) (x: _5) = (Some: fn _5 -> _3) (x: _5)
+// type Maybe2 t =
+//     | None
+//     | Some t
 // 
-// (x: _1) = (Some: fn I32 -> _1) 10_I32
+// (ret: fn _5 -> Maybe _5) (x: _5) = (Maybe.Some: fn _5 -> Maybe _5) (x: _5)
+// 
+// (x: Maybe I32) = (Maybe.Some: fn I32 -> Maybe I32) 10_I32
 // 
 // (add_one: fn _5 -> _3) (x: _5) =
 //     (bind: fn _5 (fn _15 -> _10) -> _3) (x: _5) (fn (x: _15) -> (ret: fn _12 -> _10) ((x: _15) (+: (error)) 1_I32))
 
 // expected stderr:
-// examples/typechecking/bind.an:3:6	error: `Some` not found in scope
-//     | Some x -> f x
-// 
-// examples/typechecking/bind.an:4:6	error: `None` not found in scope
-//     | None -> None
-// 
-// examples/typechecking/bind.an:4:14	error: `None` not found in scope
-//     | None -> None
-// 
-// examples/typechecking/bind.an:6:8	error: `Some` not found in scope
-// ret x = Some x
-// 
-// examples/typechecking/bind.an:8:4	error: `Some` not found in scope
-// x = Some 10i32
-// 
-// examples/typechecking/bind.an:11:27	error: `+` not found in scope
+// examples/typechecking/bind.an:15:27	error: `+` not found in scope
 //     bind x (fn x -> ret (x + 1i32))
 // 
-// Found 6 errors and 0 warnings
+// Found 1 error and 0 warnings
 

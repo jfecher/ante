@@ -76,6 +76,13 @@ impl Builtin {
             Builtin::PairConstructor => Some((TypeId::PAIR, 0)),
         }
     }
+
+    /// Returns the fields of this builtin type, if it has any (that are meant to be publically visible).
+    ///
+    /// Currently only the PairType has publically visible fields.
+    pub fn fields(self, generic_args: Vec<TypeId>) -> Option<Vec<TypeId>> {
+        (self == Builtin::PairType && generic_args.len() == 2).then_some(generic_args)
+    }
 }
 
 impl std::fmt::Display for Builtin {

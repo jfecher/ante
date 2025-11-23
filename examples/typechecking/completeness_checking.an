@@ -48,29 +48,41 @@ main () =
 //     | (,: (error)) ((,: (error)) ((,: (error)) (_: _98) (_: _99)) (_: _94)) (_: I32, (I32, I32)) -> 3
 
 // expected stderr:
-// examples/typechecking/completeness_checking.an:7:10	error: Expected fn _28 -> Maybe _16 but found Maybe _30
-//     | (_, Some _) -> ()
-// 
-// examples/typechecking/completeness_checking.an:11:6	error: Expected fn _34 -> Maybe _33 but found Maybe _36
-//     | Some (Some _) -> 0
-// 
 // examples/typechecking/completeness_checking.an:11:12	error: `Some` not found in scope
 //     | Some (Some _) -> 0
 // 
-// examples/typechecking/completeness_checking.an:12:6	error: Expected fn _39 -> Maybe _33 but found Maybe _41
-//     | Some _ -> 1
+// examples/typechecking/completeness_checking.an:17:6	warning: This case is already matched by prior patterns
+//     | (1, _) -> 0
+// 
+// examples/typechecking/completeness_checking.an:18:6	warning: This case is already matched by prior patterns
+//     | (1, 2) -> 1
+// 
+// examples/typechecking/completeness_checking.an:20:11	error: Missing case: _, _
+//     match (true, true)
+// 
+// examples/typechecking/completeness_checking.an:21:6	warning: This case is already matched by prior patterns
+//     | (false, true) -> 0
 // 
 // examples/typechecking/completeness_checking.an:21:7	error: Expected a parameter but found `false`
 //     | (false, true) -> 0
 // 
+// examples/typechecking/completeness_checking.an:22:6	warning: This case is already matched by prior patterns
+//     | (true, false) -> 1
+// 
 // examples/typechecking/completeness_checking.an:22:7	error: Expected a parameter but found `true`
 //     | (true, false) -> 1
+// 
+// examples/typechecking/completeness_checking.an:25:6	warning: This case is already matched by prior patterns
+//     | (1, 2) -> 1
 // 
 // examples/typechecking/completeness_checking.an:25:10	error: Expected I32, (I32, I32) but found I32
 //     | (1, 2) -> 1
 // 
+// examples/typechecking/completeness_checking.an:26:6	warning: This case is already matched by prior patterns
+//     | (_, _, _, _) -> 3
+// 
 // examples/typechecking/completeness_checking.an:26:11	error: Expected fn _93 _94 -> I32 but found fn _93 _94 -> _93, _94
 //     | (_, _, _, _) -> 3
 // 
-// Found 8 errors and 0 warnings
+// Found 6 errors and 6 warnings
 

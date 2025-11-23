@@ -168,6 +168,10 @@ impl PatternId {
             super::cst::Pattern::TypeAnnotation(pattern, _) => pattern.for_each_variable(context, f),
         }
     }
+
+    pub fn new(new_id: u32) -> Self {
+        Self(new_id)
+    }
 }
 
 /// Similar to ExprIds, PathIds are generated from a monotonically increasing counter,
@@ -175,6 +179,12 @@ impl PatternId {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct PathId(u32);
+
+impl PathId {
+    pub fn new(id: u32) -> Self {
+        Self(id)
+    }
+}
 
 impl From<PathId> for usize {
     fn from(value: PathId) -> Self {
@@ -193,6 +203,12 @@ impl From<usize> for PathId {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct NameId(u32);
+
+impl NameId {
+    pub fn new(id: u32) -> Self {
+        Self(id)
+    }
+}
 
 impl From<NameId> for usize {
     fn from(value: NameId) -> Self {

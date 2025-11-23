@@ -8,7 +8,7 @@ foo = hello_foo 42
 
 // args: --show-types
 // expected stdout:
-// type Foo =
+// type Foo a b =
 //     x: a
 //     y: b
 // 

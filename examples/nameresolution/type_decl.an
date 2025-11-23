@@ -31,22 +31,22 @@ type MyRef a = ref a
 // type Thingy_c1m929_1425_0 = Struct1_c1m929_4067_0
 // 
 // // id = c1m929_2424
-// type Generic_c1m929_2424_0 =
+// type Generic_c1m929_2424_0 a_1 b_2 =
 //     first_?: a_1
 //     second_?: b_2
 // 
 // // id = c1m929_5535
-// type Struct2_c1m929_5535_0 =
+// type Struct2_c1m929_5535_0 t_1 =
 //     a_?: Thingy_c1m929_1425_0
 //     b_?: Generic_c1m929_2424_0 t_1 Thingy_c1m929_1425_0
 // 
 // // id = c1m929_3992
-// type Union1_c1m929_3992_0 =
+// type Union1_c1m929_3992_0 a_1 b_2 =
 //     | Variant1_c1m929_3992_3
 //     | Variant2_c1m929_3992_4
 // 
 // // id = c1m929_1108
-// type Option_c1m929_1108_0 =
+// type Option_c1m929_1108_0 a_1 =
 //     | Just_c1m929_1108_2 a_1
 //     | Nothing_c1m929_1108_4
 // 
@@ -54,5 +54,5 @@ type MyRef a = ref a
 // t_c1m929_9396_1 = Option.Just_c1m929_1108_2 1
 // 
 // // id = c1m929_2555
-// type MyRef_c1m929_2555_0 = & a_1
+// type MyRef_c1m929_2555_0 a_1 = & a_1
 

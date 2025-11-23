@@ -6,8 +6,10 @@ use serde::{Deserialize, Serialize};
 use crate::{incremental::Db, iterator_extensions::vecmap, lexer::token::Token, type_inference::errors::TypeErrorKind};
 
 mod location;
+mod unimplemented_item;
 
 pub use location::*;
+pub use unimplemented_item::*;
 
 pub type Errors = Vec<Diagnostic>;
 
@@ -37,10 +39,13 @@ pub enum Diagnostic {
     TypeMustBeKnownMemberAccess { location: Location },
     CannotMatchOnType { typ: String, location: Location },
     UnreachableCase { location: Location },
-    MissingCases { cases: BTreeSet<String>, location: Location },
+    MissingCases { cases: BTreeSet<Arc<String>>, location: Location },
     MissingManyCases { typ: String, location: Location },
     InvalidRangeInPattern { start: u64, end: u64, location: Location },
     InvalidPattern { location: Location },
+    Unimplemented { item: UnimplementedItem, location: Location },
+    /// `constructor_names` here is limited to 2 for brevity
+    ConstructorExpectedFoundType { type_name: Arc<String>, constructor_names: Vec<Arc<String>>, location: Location },
 }
 
 impl Ord for Diagnostic {
@@ -178,6 +183,22 @@ impl Diagnostic {
             Diagnostic::InvalidPattern { location: _ } => {
                 format!("Invalid pattern syntax, expected a variable, constructor, or integer")
             }
+            Diagnostic::Unimplemented { item, location: _ } => {
+                format!("{item} are currently unimplemented")
+            }
+            Diagnostic::ConstructorExpectedFoundType { type_name, constructor_names, location: _ } => {
+                if constructor_names.is_empty() {
+                    format!("The type {} has no variants and thus cannot be matched on", type_name.blue())
+                } else if constructor_names.len() == 1 {
+                    let constructor = &constructor_names[0];
+                    format!("{} is a type name, not a constructor. Try {}.{} instead", type_name.blue(), type_name.blue(), constructor.blue())
+                } else {
+                    let first = &constructor_names[0];
+                    let second = &constructor_names[1];
+                    format!("{} is a type name, not a constructor. Try a constructor such as {}.{} or {}.{} instead",
+                        type_name.blue(), type_name.blue(), first.blue(), type_name.blue(), second.blue())
+                }
+            }
         }
     }
 
@@ -209,7 +230,9 @@ impl Diagnostic {
             | Diagnostic::MissingManyCases { location, .. }
             | Diagnostic::InvalidRangeInPattern { location, .. }
             | Diagnostic::InvalidPattern { location }
-            | Diagnostic::TypeMustBeKnownMemberAccess { location } => location,
+            | Diagnostic::TypeMustBeKnownMemberAccess { location }
+            | Diagnostic::ConstructorExpectedFoundType { location, .. }
+            | Diagnostic::Unimplemented { location, .. } => location,
         }
     }
 

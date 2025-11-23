@@ -159,12 +159,15 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         self.instantiate(&result)
     }
 
+    /// Build and returns a constructor type for a sum or product type.
+    /// `type_name` should be the name of the struct/product type rather than
+    /// the name for each individual variant, in the case of sum types.
     fn build_constructor_type<'a>(
-        &mut self, id: TopLevelName, item: &cst::TypeDefinition,
+        &mut self, type_name: TopLevelName, item: &cst::TypeDefinition,
         variant_args: impl ExactSizeIterator<Item = &'a cst::Type>,
     ) -> TypeId {
         let mut substitutions = FxHashMap::default();
-        let mut data_type = self.types.get_or_insert_type(Type::UserDefined(Origin::TopLevelDefinition(id)));
+        let mut data_type = self.types.get_or_insert_type(Type::UserDefined(Origin::TopLevelDefinition(type_name)));
 
         if !item.generics.is_empty() {
             let fresh_vars = vecmap(&item.generics, |_| self.next_type_variable());
@@ -180,7 +183,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             return data_type;
         }
 
-        let item_resolution = Resolve(id.top_level_item).get(self.compiler);
+        let item_resolution = Resolve(type_name.top_level_item).get(self.compiler);
         let parameters = vecmap(variant_args, |arg| {
             let mut param = self.convert_foreign_type(arg, &item_resolution);
 
@@ -385,7 +388,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             self.check_expr(*branch, expected);
         }
 
-        let tree = self.compile_decision_tree(variable_to_match, &match_.cases, pattern_type, location);
+        let location = self.current_context().expr_locations[match_.expression].clone();
+
+        let match_var_name = "match expression".to_string();
+        let path = cst::Path { components: vec![(match_var_name, location.clone())] };
+        let match_var = self.push_path(path, location.clone());
+        self.path_types.insert(match_var, expr_type);
+
+        let _tree = self.compile_decision_tree(match_var, &match_.cases, expr_type, location);
     }
 
     fn check_reference(&mut self, reference: &cst::Reference, expected: TypeId, expr: ExprId) {
@@ -469,11 +479,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             cst::TypeDefinitionBody::Enum(variants) => Cow::Borrowed(variants),
         };
 
-        for (name, args) in constructors.iter() {
-            let name = TopLevelName::named(id, *name);
-            let actual = self.build_constructor_type(name, definition, args.iter());
-            let expected = self.item_types[&name];
-            self.unify(actual, expected, TypeErrorKind::General, name.local_name_id);
+        let type_name = TopLevelName::named(id, definition.name);
+
+        for (constructor_name, args) in constructors.iter() {
+            let actual = self.build_constructor_type(type_name, definition, args.iter());
+
+            let constructor_name = TopLevelName::named(id, *constructor_name);
+            let expected = self.item_types[&constructor_name];
+            self.unify(actual, expected, TypeErrorKind::General, constructor_name.local_name_id);
         }
     }
 }

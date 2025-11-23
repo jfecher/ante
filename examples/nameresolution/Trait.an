@@ -14,7 +14,7 @@ main () =
 // args: --show-resolved
 // expected stdout:
 // // id = c1m488_1237
-// type Foo_c1m488_1237_0 =
+// type Foo_c1m488_1237_0 a_1 b_2 =
 //     foo_?: fn a_1 -> b_2
 //     bar_?: a_1
 // 

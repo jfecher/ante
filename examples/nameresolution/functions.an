@@ -20,7 +20,7 @@ map l f =
 //         recursion_c1m743_1986_0 (n_1 -_? 1) f_2
 // 
 // // id = c1m743_838
-// shared type List_c1m743_838_0 =
+// shared type List_c1m743_838_0 a_1 =
 //     | Nil_c1m743_838_2
 //     | Cons_c1m743_838_3 (a_1 (List_c1m743_838_0 a_1))
 // 
