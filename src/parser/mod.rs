@@ -638,9 +638,12 @@ impl<'tokens> Parser<'tokens> {
             Token::Identifier(_) | Token::ParenthesisLeft => this.parse_ident_id().map(Pattern::Variable),
             Token::TypeName(_) => {
                 let type_name = this.parse_type_name_id()?;
-                this.expect(Token::MemberAccess, "a `.` to separate this method's object type from its name")?;
-                let item_name = this.parse_ident_id()?;
-                Ok(Pattern::MethodName { type_name, item_name })
+                if this.accept(Token::MemberAccess) {
+                    let item_name = this.parse_ident_id()?;
+                    Ok(Pattern::MethodName { type_name, item_name })
+                } else {
+                    Ok(Pattern::Variable(type_name))
+                }
             },
             _ => this.expected("a definition name"),
         })
@@ -1062,6 +1065,10 @@ impl<'tokens> Parser<'tokens> {
             Token::CharLiteral(value) => {
                 self.advance();
                 Ok(Pattern::Literal(Literal::Char(*value)))
+            },
+            Token::BooleanLiteral(value) => {
+                self.advance();
+                Ok(Pattern::Literal(Literal::Bool(*value)))
             },
             Token::ParenthesisLeft if self.peek_next_token().is_overloadable_operator() => {
                 self.parse_ident_id().map(Pattern::Variable)

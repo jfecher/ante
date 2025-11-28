@@ -68,11 +68,6 @@ enum Pattern {
     /// A pattern checking for a tag and possibly binding variables such as `Some(42)`
     Constructor(Constructor, Vec<Pattern>),
 
-    /// An integer literal pattern such as `4` or `12345`
-    /// TODO: Support negative literals
-    #[allow(unused)]
-    Int(u64),
-
     /// A pattern binding a variable such as `a` or `_`
     Variable(NameId),
 
@@ -479,7 +474,7 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
         for mut row in rows {
             if let Some(col) = row.remove_column(branch_var) {
                 let (key, cons) = match &col.pattern {
-                    Pattern::Int(val) => ((*val, *val), Constructor::Int(*val)),
+                    Pattern::Constructor(Constructor::Int(val), _) => ((*val, *val), Constructor::Int(*val)),
                     Pattern::Range(start, stop) => ((*start, *stop), Constructor::Range(*start, *stop)),
                     // Any other pattern shouldn't have an integer type and we expect a type
                     // check error to already have been issued.
@@ -673,15 +668,23 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
     /// case of the type is covered. This is the case for empty matches `match foo {}`.
     /// Note that this is expected not to error if the given type is an enum with zero variants.
     fn issue_missing_cases_error_for_type(&mut self, type_matched_on: TypeId, location: Location) {
-        if let Some(UserDefinedTypeKind::Sum(variants)) = self.classify_type(type_matched_on) {
-            if !variants.is_empty() {
-                let cases: BTreeSet<_> = variants.into_iter().map(|(name, _)| {
-                    // TODO: These names should be in the variant's resolve data
-                    self.checker.current_context().names[name].clone()
-                }).collect();
-                self.checker.compiler.accumulate(Diagnostic::MissingCases { cases, location });
+        match self.classify_type(type_matched_on) {
+            Some(UserDefinedTypeKind::Sum(variants)) => {
+                if !variants.is_empty() {
+                    let cases: BTreeSet<_> = variants.into_iter().map(|(name, _)| {
+                        // TODO: These names should be in the variant's resolve data
+                        self.checker.current_context().names[name].clone()
+                    }).collect();
+                    self.checker.compiler.accumulate(Diagnostic::MissingCases { cases, location });
+                }
+                return;
             }
-            return;
+            Some(UserDefinedTypeKind::NotUserDefined(TypeId::BOOL)) => {
+                let cases = vec![Arc::new("false".to_string()), Arc::new("true".to_string())].into_iter().collect();
+                self.checker.compiler.accumulate(Diagnostic::MissingCases { cases, location });
+                return;
+            }
+            _ => (),
         }
         let typ = self.checker.type_to_string(type_matched_on);
         self.checker.compiler.accumulate(Diagnostic::MissingManyCases { typ, location });

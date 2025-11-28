@@ -8,14 +8,15 @@ main () =
 
     // This one is complete!
     match Maybe.None
-    | Some (Some _) -> 0
+    | Some (Maybe.Some _) -> 0
     | Some _ -> 1
     | None -> 2
 
     // Redundant patterns
     match (1, 2)
-    | (1, _) -> 0
-    | (1, 2) -> 1
+    | 1, _ -> 0
+    | 1, 2 -> 1
+    | _, 2 -> 2
     
     match (true, true)
     | (false, true) -> 0
@@ -34,55 +35,41 @@ main () =
 //     | (,: (error)) 0 (None: Maybe _16) -> ()
 //     | (,: (error)) (_: I32) ((Some: fn _28 -> Maybe _16) (_: _28)) -> ()
 //     match (Maybe.None: Maybe _33)
-//     | (Some: fn _34 -> Maybe _33) ((Some: fn _37 -> _34) (_: _37)) -> 0
-//     | (Some: fn _39 -> Maybe _33) (_: _39) -> 1
+//     | (Some: fn (Maybe _37) -> Maybe _33) ((Maybe.Some: fn _37 -> Maybe _37) (_: _37)) -> 0
+//     | (Some: fn _40 -> Maybe _33) (_: _40) -> 1
 //     | (None: Maybe _33) -> 2
 //     match 1 (,: (error)) 2
 //     | (,: (error)) 1 (_: I32) -> 0
 //     | (,: (error)) 1 2 -> 1
+//     | (,: (error)) (_: I32) 2 -> 2
 //     match true (,: (error)) true
-//     | (error) -> 0
-//     | (error) -> 1
+//     | (,: (error)) false true -> 0
+//     | (,: (error)) true false -> 1
 //     match 1 (,: (error)) (2 (,: (error)) (3 (,: (error)) 4))
 //     | (,: (error)) 1 2 -> 1
-//     | (,: (error)) ((,: (error)) ((,: (error)) (_: _98) (_: _99)) (_: _94)) (_: I32, (I32, I32)) -> 3
+//     | (,: (error)) ((,: (error)) ((,: (error)) (_: _114) (_: _115)) (_: _110)) (_: I32, (I32, I32)) -> 3
 
 // expected stderr:
-// examples/typechecking/completeness_checking.an:11:12	error: `Some` not found in scope
-//     | Some (Some _) -> 0
-// 
-// examples/typechecking/completeness_checking.an:17:6	warning: This case is already matched by prior patterns
-//     | (1, _) -> 0
+// examples/typechecking/completeness_checking.an:16:11	error: Missing cases: 0, 0..=1, 0, 3..=18446744073709551615, 2..=18446744073709551615, 0..=1, 2..=18446744073709551615, 3..=18446744073709551615
+//     match (1, 2)
 // 
 // examples/typechecking/completeness_checking.an:18:6	warning: This case is already matched by prior patterns
-//     | (1, 2) -> 1
+//     | 1, 2 -> 1
 // 
-// examples/typechecking/completeness_checking.an:20:11	error: Missing case: _, _
+// examples/typechecking/completeness_checking.an:21:11	error: Missing cases: false, false, true, true
 //     match (true, true)
 // 
-// examples/typechecking/completeness_checking.an:21:6	warning: This case is already matched by prior patterns
-//     | (false, true) -> 0
+// examples/typechecking/completeness_checking.an:25:11	error: Missing cases: 0, _, 2..=18446744073709551615, _
+//     match (1, 2, 3, 4)
 // 
-// examples/typechecking/completeness_checking.an:21:7	error: Expected a parameter but found `false`
-//     | (false, true) -> 0
-// 
-// examples/typechecking/completeness_checking.an:22:6	warning: This case is already matched by prior patterns
-//     | (true, false) -> 1
-// 
-// examples/typechecking/completeness_checking.an:22:7	error: Expected a parameter but found `true`
-//     | (true, false) -> 1
-// 
-// examples/typechecking/completeness_checking.an:25:6	warning: This case is already matched by prior patterns
+// examples/typechecking/completeness_checking.an:26:10	error: Expected I32, (I32, I32) but found I32
 //     | (1, 2) -> 1
 // 
-// examples/typechecking/completeness_checking.an:25:10	error: Expected I32, (I32, I32) but found I32
-//     | (1, 2) -> 1
-// 
-// examples/typechecking/completeness_checking.an:26:6	warning: This case is already matched by prior patterns
+// examples/typechecking/completeness_checking.an:27:6	warning: This case is already matched by prior patterns
 //     | (_, _, _, _) -> 3
 // 
-// examples/typechecking/completeness_checking.an:26:11	error: Expected fn _93 _94 -> I32 but found fn _93 _94 -> _93, _94
+// examples/typechecking/completeness_checking.an:27:11	error: Expected fn _109 _110 -> I32 but found fn _109 _110 -> _109, _110
 //     | (_, _, _, _) -> 3
 // 
-// Found 6 errors and 6 warnings
+// Found 5 errors and 2 warnings
 
