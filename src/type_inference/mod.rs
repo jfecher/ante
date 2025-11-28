@@ -12,11 +12,11 @@ use crate::{
     name_resolution::{Origin, ResolutionResult, builtin::Builtin},
     parser::{
         context::TopLevelContext,
-        cst::{self, Expr, Name, Path, TopLevelItem, TopLevelItemKind, TypeDefinitionBody},
+        cst::{self, TopLevelItem, TopLevelItemKind, TypeDefinitionBody},
         ids::{ExprId, NameId, PathId, TopLevelId, TopLevelName},
     },
     type_inference::{
-        errors::{Locateable, TypeErrorKind}, fresh_expr::ExtendedTopLevelContext, generics::Generic, type_context::TypeContext, type_id::TypeId, types::{GeneralizedType, TopLevelType, TypeVariableId}
+        errors::{Locateable, TypeErrorKind}, fresh_expr::ExtendedTopLevelContext, generics::Generic, patterns::DecisionTree, type_context::TypeContext, type_id::TypeId, types::{GeneralizedType, TopLevelType, TypeVariableId}
     },
 };
 
@@ -113,12 +113,6 @@ struct TypeChecker<'local, 'inner> {
     /// This field starts from 0 to give each a unique ID within the current inference group.
     next_type_variable_id: u32,
 
-    /// The TypeChecker may insert new expressions/names/paths as a result of match compilation.
-    /// Each of these are local to the function they are created in.
-    new_exprs: FxHashMap<ExprId, Expr>,
-    new_paths: FxHashMap<PathId, Path>,
-    new_names: FxHashMap<NameId, Name>,
-
     /// Contains the ItemContext for each item in the TypeChecker's type check group.
     /// Most often, this is just a single item. In the case of mutually recursive type
     /// inference however, it will include every item in the recursive SCC to infer.
@@ -136,6 +130,9 @@ struct TypeChecker<'local, 'inner> {
 
     /// Types of each top-level item in the current SCC being worked on
     item_types: Rc<FxHashMap<TopLevelName, TypeId>>,
+
+    /// Each match expression is lowered into a decision tree, stored here.
+    decision_trees: BTreeMap<ExprId, DecisionTree>,
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -168,9 +165,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             current_item: None,
             item_contexts,
             id_contexts,
-            new_exprs: FxHashMap::default(),
-            new_paths: FxHashMap::default(),
-            new_names: FxHashMap::default(),
+            decision_trees: BTreeMap::new(),
         };
 
         let mut item_types = FxHashMap::default();

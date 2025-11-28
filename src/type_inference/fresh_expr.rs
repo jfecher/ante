@@ -45,6 +45,10 @@ impl<'local, 'innter> TypeChecker<'local, 'innter> {
     pub(super) fn push_path(&mut self, path: Path, location: Location) -> PathId {
         self.current_extended_context_mut().push_path(path, location)
     }
+
+    pub(super) fn push_name(&mut self, name: Name, location: Location) -> NameId {
+        self.current_extended_context_mut().push_name(name, location)
+    }
 }
 
 impl ExtendedTopLevelContext {
@@ -60,6 +64,11 @@ impl ExtendedTopLevelContext {
             more_path_locations: Default::default(),
             more_name_locations: Default::default(),
         }
+    }
+
+    /// Inserts an expression with an existing Id, remapping it to a new value
+    pub fn insert_expr(&mut self, id: ExprId, expr: Expr) {
+        self.more_exprs.insert(id, expr);
     }
 
     /// Push a new expression to the context
@@ -83,7 +92,7 @@ impl ExtendedTopLevelContext {
         new_id
     }
 
-    pub(crate) fn push_pattern(&mut self, pattern: Pattern, location: Location) -> PatternId {
+    pub fn push_pattern(&mut self, pattern: Pattern, location: Location) -> PatternId {
         // We assume all nameessions are dense and thus no id is skipped
         let new_id = self.original.patterns.len() + self.more_patterns.len();
         let new_id = PatternId::new(new_id as u32);
@@ -93,11 +102,29 @@ impl ExtendedTopLevelContext {
         new_id
     }
 
+    /// Push a new name to the context
+    pub fn push_name(&mut self, name: Name, location: Location) -> NameId {
+        let new_id = self.original.names.len() + self.more_names.len();
+        let new_id = NameId::new(new_id as u32);
+
+        self.more_names.insert(new_id, name);
+        self.more_name_locations.insert(new_id, location);
+        new_id
+    }
+
     /// Retrieve the location of the corresponding [Path] of the given [PathId]
     pub fn path_location(&self, path: PathId) -> Location {
         match self.original.path_locations.get(path) {
             Some(location) => location.clone(),
             None => self.more_path_locations[&path].clone(),
+        }
+    }
+
+    /// Retrieve the location of the corresponding [Expr] of the given [ExprId]
+    pub(crate) fn expr_location(&self, expr: ExprId) -> Location {
+        match self.original.expr_locations.get(expr) {
+            Some(location) => location.clone(),
+            None => self.more_expr_locations[&expr].clone(),
         }
     }
 }

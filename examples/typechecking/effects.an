@@ -22,9 +22,43 @@ does_use x =
     set (y + x)
 
 // args: --show-types
-// expected exit status: 101
+// expected stdout:
+// effect Log with
+//     (log: (error)): fn String -> Unit
+// 
+// effect Use a with
+//     (get: (error)): fn Unit -> a
+//     (set: (error)): fn a -> Unit
+// 
+// (handle_basic: fn Unit -> _3) () =
+//     handle (log: (error)) "test1"
+//     | (log: (error)) (v: (error)) -> (set: (error)) (v: (error))
+// 
+// (use_resume: fn Unit -> _3) () =
+//     handle ()
+// 
+// (does_use: fn _12 -> _3) (x: _12) =
+//     (y: _11) = (get: (error)) ()
+//     (set: (error)) ((y: _11) (+: (error)) (x: _12))
+
 // expected stderr:
-// thread 'main' panicked at src/type_inference/cst_traversal.rs:455:9:
-// not yet implemented: check_handle
-// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+// examples/typechecking/effects.an:10:4	error: Effects and handle expressions are currently unimplemented
+//     handle log "test1"
+// 
+// examples/typechecking/effects.an:14:4	error: Effects and handle expressions are currently unimplemented
+//     handle ()
+// 
+// examples/typechecking/effects.an:15:4	error: Expected an unindent but found //// Test these two 'resume's refer to two different variables
+//     // Test these two 'resume's refer to two different variables
+// 
+// examples/typechecking/effects.an:21:8	error: `get` not found in scope
+//     y = get ()
+// 
+// examples/typechecking/effects.an:22:4	error: `set` not found in scope
+//     set (y + x)
+// 
+// examples/typechecking/effects.an:22:11	error: `+` not found in scope
+//     set (y + x)
+// 
+// Found 6 errors and 0 warnings
 

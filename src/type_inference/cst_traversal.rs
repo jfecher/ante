@@ -3,20 +3,16 @@ use std::{borrow::Cow, sync::Arc};
 use rustc_hash::FxHashMap;
 
 use crate::{
-    diagnostics::Diagnostic,
+    diagnostics::{Diagnostic, UnimplementedItem},
     incremental::{GetType, Resolve},
     iterator_extensions::vecmap,
-    name_resolution::{builtin::Builtin, Origin},
+    name_resolution::{Origin, builtin::Builtin},
     parser::{
         cst::{self, Definition, Expr, Literal, Pattern},
         ids::{ExprId, NameId, PathId, PatternId, TopLevelName},
     },
     type_inference::{
-        errors::TypeErrorKind,
-        get_type::try_get_type,
-        type_id::TypeId,
-        types::{self, Type},
-        Locateable, TypeChecker,
+        Locateable, TypeChecker, errors::TypeErrorKind, get_type::try_get_type, type_id::TypeId, types::{self, Type}
     },
 };
 
@@ -50,14 +46,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Expr::MemberAccess(member_access) => self.check_member_access(member_access, expected, expr),
             Expr::Index(index) => self.check_index(index, expected),
             Expr::If(if_) => self.check_if(if_, expected, expr),
-            Expr::Match(match_) => self.check_match(match_, expected),
+            Expr::Match(match_) => self.check_match(match_, expected, expr),
             Expr::Reference(reference) => self.check_reference(reference, expected, expr),
             Expr::TypeAnnotation(type_annotation) => {
                 let annotation = self.convert_ast_type(&type_annotation.rhs);
                 self.unify(expected, annotation, TypeErrorKind::TypeAnnotationMismatch, expr);
                 self.check_expr(type_annotation.lhs, annotation);
             },
-            Expr::Handle(handle) => self.check_handle(handle, expected),
+            Expr::Handle(handle) => self.check_handle(handle, expected, expr),
             Expr::Constructor(constructor) => self.check_constructor(constructor, expected, expr),
             Expr::Quoted(_) => todo!("type check Expr::Quoted"),
             Expr::Error => (),
@@ -328,7 +324,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         let fields = self.get_field_types(struct_type, None);
         if let Some(field) = fields.get(&member_access.member) {
-            // TODO: How should we differentiate between shared and owned variants?
             let result = match member_access.ownership {
                 cst::OwnershipMode::Owned => *field,
                 cst::OwnershipMode::Borrow => {
@@ -378,7 +373,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
-    fn check_match(&mut self, match_: &cst::Match, expected: TypeId) {
+    fn check_match(&mut self, match_: &cst::Match, expected: TypeId, expr: ExprId) {
         let expr_type = self.next_type_variable();
         self.check_expr(match_.expression, expr_type);
 
@@ -388,14 +383,26 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             self.check_expr(*branch, expected);
         }
 
+        // Now compile the match into a decision tree. The `match expr | ...` expression will be
+        // replaced with `<fresh> = expr; <decision tree>`
         let location = self.current_context().expr_locations[match_.expression].clone();
 
-        let match_var_name = "match expression".to_string();
-        let path = cst::Path { components: vec![(match_var_name, location.clone())] };
-        let match_var = self.push_path(path, location.clone());
-        self.path_types.insert(match_var, expr_type);
+        let match_var_name = self.push_name(Arc::new("match_variable".to_string()), location.clone());
+        let match_var = self.fresh_match_variable(0, expr_type, location.clone());
+        self.path_origins.insert(match_var, Origin::Local(match_var_name));
 
-        let _tree = self.compile_decision_tree(match_var, &match_.cases, expr_type, location);
+        // Create a fresh ExprId to map the decision tree to. It doesn't matter what expression
+        // is in the tree to begin with so use a unit literal.
+        let match_location = self.current_context().expr_locations[expr].clone();
+        let decision_tree_id = self.push_expr(Expr::Literal(Literal::Unit), expected, match_location);
+
+        let new_expr_id = self.let_binding(match_var_name, match_.expression, decision_tree_id);
+        let new_expr = self.current_extended_context_mut()[new_expr_id].clone();
+
+        if let Some(tree) = self.compile_decision_tree(match_var, &match_.cases, expr_type, location) {
+            self.current_extended_context_mut().insert_expr(expr, new_expr);
+            self.decision_trees.insert(expr, tree);
+        }
     }
 
     fn check_reference(&mut self, reference: &cst::Reference, expected: TypeId, expr: ExprId) {
@@ -451,8 +458,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
-    fn check_handle(&mut self, _handle: &cst::Handle, _expected: TypeId) {
-        todo!("check_handle")
+    fn check_handle(&mut self, _handle: &cst::Handle, _expected: TypeId, expr: ExprId) {
+        let location = self.current_context().expr_locations[expr].clone();
+        self.compiler.accumulate(Diagnostic::Unimplemented { item: UnimplementedItem::Effects, location });
     }
 
     pub(super) fn check_extern(&mut self, extern_: &cst::Extern) {
@@ -461,7 +469,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     }
 
     pub(super) fn check_comptime(&self, _comptime: &cst::Comptime) {
-        todo!("check_comptime")
+        let location = self.current_context().location.clone();
+        self.compiler.accumulate(Diagnostic::Unimplemented { item: UnimplementedItem::Comptime, location });
     }
 
     /// A type definition always returns a unit value, but we must still create the

@@ -14,9 +14,35 @@ handle_count f =
 handle_count foo
 
 // args: --show-types
-// expected exit status: 101
+// expected stdout:
+// effect Count with
+//     (count: (error)): fn Unit -> Unit
+// 
+// (foo: fn Unit -> Unit) () =
+//     (count: (error)) ()
+//     (repeat: fn Usz (fn Usz -> Unit) -> Unit) 10 (fn (_: Usz) -> (count: (error)) ())
+// 
+// (handle_count: fn _2 -> _3) (f: _2) =
+//     handle 
+//         (f: (error)) ()
+//         0
+//     | (count: (error)) () -> 1 (+: (error)) (resume: (error)) ()
+
 // expected stderr:
-// thread 'main' panicked at src/type_inference/cst_traversal.rs:455:9:
-// not yet implemented: check_handle
-// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+// examples/typechecking/count_effect.an:5:4	error: `count` not found in scope
+//     count ()
+// 
+// examples/typechecking/count_effect.an:6:11	error: Expected Usz but found I32
+//     repeat 10 fn _ -> count ()
+// 
+// examples/typechecking/count_effect.an:6:22	error: `count` not found in scope
+//     repeat 10 fn _ -> count ()
+// 
+// examples/typechecking/count_effect.an:9:4	error: Effects and handle expressions are currently unimplemented
+//     handle
+// 
+// examples/typechecking/count_effect.an:14:13	error: Expected `=` to begin the function body but found `foo`
+// handle_count foo
+// 
+// Found 5 errors and 0 warnings
 

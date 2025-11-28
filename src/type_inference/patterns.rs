@@ -70,6 +70,7 @@ enum Pattern {
 
     /// An integer literal pattern such as `4` or `12345`
     /// TODO: Support negative literals
+    #[allow(unused)]
     Int(u64),
 
     /// A pattern binding a variable such as `a` or `_`
@@ -286,6 +287,44 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let location = self.current_context().path_locations[path].clone();
         self.compiler.accumulate(Diagnostic::ConstructorExpectedFoundType { type_name, constructor_names, location });
     }
+
+    pub(super) fn fresh_match_variable(&mut self, index: usize, variable_type: TypeId, location: Location) -> PathId {
+        let name = Path { components: vec![(format!("internal_match_variable_{index}"), location.clone())] };
+        let id = self.push_path(name, location);
+        self.path_types.insert(id, variable_type);
+        id
+    }
+
+    /// Creates:
+    /// `<variable> = <rhs>; <body>`
+    fn let_binding_with_path(&mut self, variable: NameId, rhs: PathId, body: ExprId) -> ExprId {
+        let location = self.current_extended_context().path_location(rhs);
+        let rhs_type = self.path_types[&rhs];
+        let rhs = self.push_expr(cst::Expr::Variable(rhs)       , rhs_type, location.clone());
+        self.let_binding(variable, rhs, body)
+    }
+
+    /// Creates:
+    /// `<variable> = <rhs>; <body>`
+    pub(super) fn let_binding(&mut self, variable: NameId, rhs: ExprId, body: ExprId) -> ExprId {
+        let location = self.current_extended_context().expr_location(rhs);
+        let body_type = self.expr_types[&body];
+
+        let pattern = cst::Pattern::Variable(variable);
+        let pattern = self.push_pattern(pattern, location.clone());
+
+        let definition = cst::Expr::Definition(cst::Definition {
+            implicit: false,
+            mutable: false,
+            pattern,
+            rhs,
+        });
+        let definition = self.push_expr(definition, TypeId::UNIT, location.clone());
+
+        let seq_item = |expr| cst::SequenceItem { comments: Vec::new(), expr };
+        let block = cst::Expr::Sequence(vec![seq_item(definition), seq_item(body)]);
+        self.push_expr(block, body_type, location)
+    }
 }
 
 impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
@@ -422,15 +461,8 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
 
     fn fresh_match_variables(&mut self, variable_types: Vec<TypeId>, location: Location) -> Vec<PathId> {
         vecmap(variable_types.into_iter().enumerate(), |(index, typ)| {
-            self.fresh_match_variable(index, typ, location.clone())
+            self.checker.fresh_match_variable(index, typ, location.clone())
         })
-    }
-
-    fn fresh_match_variable(&mut self, index: usize, variable_type: TypeId, location: Location) -> PathId {
-        let name = Path { components: vec![(format!("internal_match_variable_{index}"), location.clone())] };
-        let id = self.checker.current_extended_context_mut().push_path(name, location);
-        self.checker.path_types.insert(id, variable_type);
-        id
     }
 
     /// Compiles the cases and fallback cases for integer and range patterns.
@@ -603,39 +635,13 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
         for row in rows {
             row.columns.retain(|col| {
                 if let Pattern::Variable(variable) = &col.pattern {
-                    row.body = self.let_binding(*variable, col.variable_to_match, row.body);
+                    row.body = self.checker.let_binding_with_path(*variable, col.variable_to_match, row.body);
                     false
                 } else {
                     true
                 }
             });
         }
-    }
-
-    /// Creates:
-    /// `<variable> = <rhs>; <body>`
-    fn let_binding(&mut self, variable: NameId, rhs: PathId, body: ExprId) -> ExprId {
-        let location = self.checker.current_extended_context().path_location(rhs);
-        let rhs_type = self.checker.path_types[&rhs];
-        let body_type = self.checker.expr_types[&body];
-
-        let pattern = cst::Pattern::Variable(variable);
-        let pattern = self.checker.push_pattern(pattern, location.clone());
-
-        let rhs = cst::Expr::Variable(rhs);
-        let rhs = self.checker.push_expr(rhs, rhs_type, location.clone());
-
-        let definition = cst::Expr::Definition(cst::Definition {
-            implicit: false,
-            mutable: false,
-            pattern,
-            rhs,
-        });
-        let definition = self.checker.push_expr(definition, TypeId::UNIT, location.clone());
-
-        let seq_item = |expr| cst::SequenceItem { comments: Vec::new(), expr };
-        let block = cst::Expr::Sequence(vec![seq_item(definition), seq_item(body)]);
-        self.checker.push_expr(block, body_type, location)
     }
 
     /// Any case that isn't branched to when the match is finished must be covered by another
