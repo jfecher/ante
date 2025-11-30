@@ -101,8 +101,8 @@ fn compile(args: Cli) {
         display_parse_tree(&compiler)
     } else if args.show_resolved {
         display_name_resolution(&compiler)
-    } else if args.show_types {
-        display_type_checking(&compiler)
+    } else if args.show_types || args.check {
+        display_type_checking(&compiler, args.show_types)
     } else {
         BTreeSet::new()
     };
@@ -201,7 +201,7 @@ fn display_name_resolution(compiler: &Db) -> BTreeSet<Diagnostic> {
     diagnostics
 }
 
-fn display_type_checking(compiler: &Db) -> BTreeSet<Diagnostic> {
+fn display_type_checking(compiler: &Db, show_types: bool) -> BTreeSet<Diagnostic> {
     let crates = GetCrateGraph.get(compiler);
     let local_crate = &crates[&LOCAL_CRATE];
     let mut diagnostics = BTreeSet::new();
@@ -214,7 +214,9 @@ fn display_type_checking(compiler: &Db) -> BTreeSet<Diagnostic> {
             diagnostics.extend(resolve_diagnostics);
         }
 
-        println!("{}", parse.cst.display_typed(&parse.top_level_data, compiler))
+        if show_types {
+            println!("{}", parse.cst.display_typed(&parse.top_level_data, compiler))
+        }
     }
     diagnostics
 }
