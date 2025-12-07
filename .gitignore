@@ -1,4 +1,5 @@
 /target
+ante-ls/target
 .vscode
 
 # Nix build artifacts

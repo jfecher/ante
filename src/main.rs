@@ -26,21 +26,17 @@ use clap::{CommandFactory, Parser};
 use cli::{Cli, Completions};
 use colored::Colorize;
 use diagnostics::Diagnostic;
-use find_files::populate_crates_and_files;
 use inc_complete::{Computation, StorageFor};
 use incremental::{CompileFile, Db, GetCrateGraph, Parse, Resolve};
 use name_resolution::namespace::{CrateId, LocalModuleId, SourceFileId, LOCAL_CRATE};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::{
     collections::BTreeSet,
-    fs::File,
-    io::{Read, Write},
-    path::{Path, PathBuf},
+    path::Path,
 };
 
 use crate::{
-    diagnostics::{DiagnosticKind, Errors},
-    incremental::{DbStorage, TypeCheck},
+    diagnostics::{DiagnosticKind, Errors}, files::{make_compiler, write_metadata}, incremental::{DbStorage, TypeCheck}
 };
 
 // All the compiler passes:
@@ -56,26 +52,11 @@ mod type_inference;
 // Util modules:
 mod cli;
 mod diagnostics;
+mod files;
 mod incremental;
 mod iterator_extensions;
 mod paths;
 mod vecmap;
-
-/// Deserialize the compiler from our metadata file, returning it along with the file.
-///
-/// If we fail, just default to a fresh compiler with no cached compilations.
-fn make_compiler(source_files: &[PathBuf], incremental: bool) -> (Db, Option<PathBuf>) {
-    if let Some(file) = source_files.first() {
-        let metadata_file = file.with_extension("inc");
-
-        if incremental {
-            if let Ok(text) = read_file(&metadata_file) {
-                return (ron::from_str(&text).unwrap_or_default(), Some(metadata_file));
-            }
-        }
-    }
-    (Db::default(), None)
-}
 
 fn main() {
     if let Ok(Completions { shell_completion }) = Completions::try_parse() {
@@ -88,11 +69,7 @@ fn main() {
 }
 
 fn compile(args: Cli) {
-    let (mut compiler, metadata_file) = make_compiler(&args.files, args.incremental);
-
-    // TODO: If the compiler is created from incremental metadata, any previous input
-    // files that are no longer used are never cleared.
-    populate_crates_and_files(&mut compiler, &args.files);
+    let (compiler, metadata_file) = make_compiler(&args.files, args.incremental);
 
     let diagnostics = if args.show_tokens {
         display_tokens(&compiler);
@@ -110,7 +87,7 @@ fn compile(args: Cli) {
     display_diagnostics(diagnostics, &compiler);
 
     if let Some(metadata_file) = metadata_file {
-        if let Err(error) = write_metadata(compiler, &metadata_file) {
+        if let Err(error) = write_metadata(&compiler, &metadata_file) {
             eprintln!("\n{error}");
         }
     }
@@ -241,33 +218,4 @@ where
     DbStorage: StorageFor<C>,
 {
     compiler.get_accumulated(step)
-}
-
-fn write_file(file_name: &Path, text: &str) -> Result<(), String> {
-    let mut metadata_file = File::create(file_name)
-        .map_err(|error| format!("Failed to create file `{}`:\n{error}", file_name.display()))?;
-
-    let text = text.as_bytes();
-    metadata_file
-        .write_all(text)
-        .map_err(|error| format!("Failed to write to file `{}`:\n{error}", file_name.display()))
-}
-
-/// This could be changed so that we only write if the metadata actually
-/// changed but to simplify things we just always write.
-fn write_metadata(compiler: Db, metadata_file: &Path) -> Result<(), String> {
-    // Using `to_writer` here would avoid the intermediate step of creating the string
-    let serialized = ron::to_string(&compiler).map_err(|error| format!("Failed to serialize database:\n{error}"))?;
-    write_file(metadata_file, &serialized)
-}
-
-fn read_file(file_name: &std::path::Path) -> Result<String, String> {
-    let mut file =
-        File::open(file_name).map_err(|error| format!("Failed to open `{}`:\n{error}", file_name.display()))?;
-
-    let mut text = String::new();
-    file.read_to_string(&mut text)
-        .map_err(|error| format!("Failed to read from file `{}`:\n{error}", file_name.display()))?;
-
-    Ok(text)
 }

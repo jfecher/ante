@@ -5,11 +5,8 @@ use std::{
 };
 
 use ante::{
-    cache::{cached_read, ModuleCache},
-    error::{location::Locatable, ErrorType},
-    frontend,
-    parser::ast::Ast,
-    types::typeprinter,
+    diagnostics::{Diagnostic, Location},
+    incremental::Db, name_resolution::namespace::SourceFileId,
 };
 
 use dashmap::DashMap;
@@ -24,10 +21,11 @@ use tower_lsp::{
 mod util;
 use util::{lsp_range_to_rope_range, node_at_index, position_to_index, rope_range_to_lsp_range};
 
-#[derive(Debug)]
 struct Backend {
     client: Client,
     document_map: DashMap<Url, Rope>,
+    compiler: Db,
+    metadata_file: Option<PathBuf>,
 }
 
 #[tower_lsp::async_trait]
@@ -162,7 +160,7 @@ impl LanguageServer for Backend {
             _ => Ok(None),
         };
 
-        self.save_cache(cache);
+        self.save_document();
         result
     }
 
@@ -226,33 +224,25 @@ impl LanguageServer for Backend {
             _ => Ok(None),
         };
 
-        self.save_cache(cache);
+        self.save_document();
         result
     }
 }
 
 impl Backend {
-    fn create_cache<'a>(&self, uri: &'a Url, rope: &Rope) -> ModuleCache<'a> {
-        // Urls always contain ablsoute canonical paths, so there's no need to canonicalize them.
-        let filename = Path::new(uri.path());
-        let cache_root = filename.parent().unwrap();
-
-        let file_cache =
-            self.document_map.iter().map(|item| (PathBuf::from(item.key().path()), item.value().to_string())).collect();
-        let mut cache = ModuleCache::new(cache_root, file_cache);
-
-        let _ = frontend::check(filename, rope.to_string(), &mut cache, frontend::FrontendPhase::TypeCheck, false);
-
-        cache
+    fn uri_to_source_file(&self, url: &Url) -> SourceFileId {
+        let path = Path::new(url.path());
+        SourceFileId::new_in_local_crate(path)
     }
 
-    fn save_cache(&self, cache: ModuleCache) {
-        for (path, content) in cache.file_cache {
-            let uri = Url::from_file_path(path).unwrap();
-            if self.document_map.get(&uri).is_none() {
-                self.document_map.insert(uri.clone(), Rope::from_str(&content));
-            }
-        }
+    /// Is this still needed?
+    fn save_document(&self) {
+        // for (path, content) in cache.file_cache {
+        //     let uri = Url::from_file_path(path).unwrap();
+        //     if self.document_map.get(&uri).is_none() {
+        //         self.document_map.insert(uri.clone(), Rope::from_str(&content));
+        //     }
+        // }
     }
 
     async fn update_diagnostics(&self, uri: Url, rope: &Rope) {
@@ -324,7 +314,7 @@ impl Backend {
             diagnostics.into_iter().map(|(uri, diagnostics)| self.client.publish_diagnostics(uri, diagnostics, None)),
         );
 
-        self.save_cache(cache);
+        self.save_document();
 
         handle.await;
     }

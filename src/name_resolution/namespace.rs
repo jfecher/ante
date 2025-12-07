@@ -37,6 +37,10 @@ impl SourceFileId {
         SourceFileId { crate_id, local_module_id }
     }
 
+    pub fn new_in_local_crate(path: &std::path::Path) -> SourceFileId {
+        SourceFileId::new(LOCAL_CRATE, path)
+    }
+
     pub fn prelude() -> SourceFileId {
         Self::new(STDLIB_CRATE, &crate::paths::prelude_path())
     }
