@@ -27,9 +27,6 @@ main () = is_even 4
 // (main: fn Unit -> _3) () = (is_even: fn I32 -> _3) 4
 
 // expected stderr:
-// /Users/jakefecher/Code/Ante/ante/stdlib/src/Prelude.an:369:4	error: `printne` not found in scope
-//     printne x
-// 
 // examples/typechecking/mutual_recursion.an:4:9	error: `==` not found in scope
 //     if n == 0 then true else
 // 
@@ -45,5 +42,5 @@ main () = is_even 4
 // examples/typechecking/mutual_recursion.an:9:26	error: Expected an unindent but found `(`
 //     n == 1 or not is_even (n - 1)
 // 
-// Found 6 errors and 0 warnings
+// Found 5 errors and 0 warnings
 

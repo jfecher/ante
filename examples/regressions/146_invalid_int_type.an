@@ -1,3 +1,9 @@
 a: Int String = 3
 
 // args: --check
+// expected stderr:
+// examples/regressions/146_invalid_int_type.an:1:17	error: Expected (error) String but found I32
+// a: Int String = 3
+// 
+// Found 1 error and 0 warnings
+

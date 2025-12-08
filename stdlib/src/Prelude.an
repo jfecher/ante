@@ -366,7 +366,7 @@ trait Print t with
     printne: fn t -> Unit
 
 print x =
-    printne x
+    Print.printne x
     putchar c"\n"
 
 impl print_u8:  Print U8  with printne x = print_unsigned (cast x)

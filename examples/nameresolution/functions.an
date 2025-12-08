@@ -15,7 +15,7 @@ map l f =
 // expected stdout:
 // // id = c1m743_1986
 // recursion_c1m743_1986_0 n_1 f_2 =
-//     if n_1 >_c0m710_4222_0 0 then 
+//     if n_1 >_c0m12_4222_0 0 then 
 //         f_2 ()
 //         recursion_c1m743_1986_0 (n_1 -_? 1) f_2
 // 

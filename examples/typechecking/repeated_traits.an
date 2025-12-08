@@ -10,9 +10,3 @@ foo a =
 //     (print: fn _9 -> _5) (a: _9)
 //     (print: fn _9 -> _3) (a: _9)
 
-// expected stderr:
-// /Users/jakefecher/Code/Ante/ante/stdlib/src/Prelude.an:369:4	error: `printne` not found in scope
-//     printne x
-// 
-// Found 1 error and 0 warnings
-

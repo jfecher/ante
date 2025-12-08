@@ -656,7 +656,7 @@ impl<'tokens> Parser<'tokens> {
         let generics = self.parse_generics();
         self.expect(Token::Equal, "`=` to begin the type definition")?;
         let body = self.parse_type_body()?;
-        Ok(TypeDefinition { shared, name, generics, body })
+        Ok(TypeDefinition { shared, name, generics, body, is_trait: false })
     }
 
     /// generics: ident*

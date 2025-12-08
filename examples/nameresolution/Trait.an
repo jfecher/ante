@@ -15,8 +15,8 @@ main () =
 // expected stdout:
 // // id = c1m488_1237
 // type Foo_c1m488_1237_0 a_1 b_2 =
-//     foo_?: fn a_1 -> b_2
-//     bar_?: a_1
+//     foo_c1m488_1237_3: fn a_1 -> b_2
+//     bar_c1m488_1237_6: a_1
 // 
 // // id = c1m488_7510
 // implicit foo_i32_string_c1m488_7510_0 = Foo_c1m488_1237_0 I32 String_b with

@@ -16,9 +16,3 @@ main () =
 // (main: fn Unit -> _3) () =
 //     (print: fn I32 -> _3) 2
 
-// expected stderr:
-// /Users/jakefecher/Code/Ante/ante/stdlib/src/Prelude.an:369:4	error: `printne` not found in scope
-//     printne x
-// 
-// Found 1 error and 0 warnings
-

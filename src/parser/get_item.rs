@@ -96,6 +96,7 @@ fn desugar_trait(trait_: &TraitDefinition) -> TopLevelItemKind {
 
     TopLevelItemKind::TypeDefinition(super::cst::TypeDefinition {
         shared: false,
+        is_trait: true,
         name: trait_.name,
         generics: trait_.generics.clone(),
         body: TypeDefinitionBody::Struct(fields),

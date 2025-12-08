@@ -33,7 +33,7 @@ main () =
 //     (puts2: fn (Ptr Char) -> I32)
 
 // expected stderr:
-// /Users/jakefecher/Code/Ante/ante/stdlib/src/Prelude.an:349:4	error: `builtin` not found in scope
+// /home/rndmprsn/Code/Ante/ante/stdlib/src/Prelude.an:349:4	error: `builtin` not found in scope
 //     builtin "Transmute" x
 // 
 // examples/typechecking/type_annotations.an:4:5	error: `a` not found in scope

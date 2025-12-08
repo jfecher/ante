@@ -3,7 +3,7 @@ use std::{
     sync::Arc,
 };
 
-use namespace::{Namespace, SourceFileId, LOCAL_CRATE};
+use namespace::{LOCAL_CRATE, Namespace, SourceFileId};
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 
@@ -654,7 +654,10 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
         match &type_definition.body {
             TypeDefinitionBody::Error => (),
             TypeDefinitionBody::Struct(fields) => {
-                for (_name, field_type) in fields {
+                for (name, field_type) in fields {
+                    if type_definition.is_trait {
+                        self.link_existing_union_variant(type_definition.name, *name);
+                    }
                     self.resolve_type(field_type, false);
                 }
             },
