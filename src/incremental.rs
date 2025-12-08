@@ -1,10 +1,10 @@
 use std::{cell::Cell, collections::BTreeMap, path::PathBuf, sync::Arc};
 
 use inc_complete::{
+    Storage,
     accumulate::Accumulator,
     define_input, define_intermediate,
     storage::{HashMapStorage, SingletonStorage},
-    Storage,
 };
 use serde::{Deserialize, Serialize};
 
@@ -13,23 +13,20 @@ use crate::{
     diagnostics::{Diagnostic, Location},
     find_files::CrateGraph,
     name_resolution::{
-        self,
+        self, ResolutionResult,
         namespace::{CrateId, SourceFileId},
-        ResolutionResult,
     },
     parser::{
-        self,
+        self, ParseResult,
         context::TopLevelContext,
         cst::TopLevelItem,
         get_item,
         ids::{TopLevelId, TopLevelName},
-        ParseResult,
     },
     type_inference::{
-        self,
-        dependency_graph::{TypeCheckDependencyGraphResult, TypeCheckResult, SCC},
+        self, TypeCheckSCCResult,
+        dependency_graph::{SCC, TypeCheckDependencyGraphResult, TypeCheckResult},
         types::GeneralizedType,
-        TypeCheckSCCResult,
     },
 };
 

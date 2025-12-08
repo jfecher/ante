@@ -12,7 +12,11 @@ use crate::{
         ids::{ExprId, NameId, PathId, PatternId, TopLevelName},
     },
     type_inference::{
-        Locateable, TypeChecker, errors::TypeErrorKind, get_type::try_get_type, type_id::TypeId, types::{self, Type}
+        Locateable, TypeChecker,
+        errors::TypeErrorKind,
+        get_type::try_get_type,
+        type_id::TypeId,
+        types::{self, Type},
     },
 };
 
@@ -44,7 +48,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 self.check_definition(definition);
             },
             Expr::MemberAccess(member_access) => self.check_member_access(member_access, expected, expr),
-            Expr::Index(index) => self.check_index(index, expected),
             Expr::If(if_) => self.check_if(if_, expected, expr),
             Expr::Match(match_) => self.check_match(match_, expected, expr),
             Expr::Reference(reference) => self.check_reference(reference, expected, expr),
@@ -55,7 +58,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
             Expr::Handle(handle) => self.check_handle(handle, expected, expr),
             Expr::Constructor(constructor) => self.check_constructor(constructor, expected, expr),
-            Expr::Quoted(_) => todo!("type check Expr::Quoted"),
+            Expr::Quoted(_) => {
+                let location = expr.locate(self);
+                self.compiler.accumulate(Diagnostic::Unimplemented { item: UnimplementedItem::Comptime, location });
+            },
             Expr::Error => (),
         };
         self.expr_types.insert(expr, expected);
@@ -324,19 +330,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         let fields = self.get_field_types(struct_type, None);
         if let Some(field) = fields.get(&member_access.member) {
-            let result = match member_access.ownership {
-                cst::OwnershipMode::Owned => *field,
-                cst::OwnershipMode::Borrow => {
-                    let reference = Type::Application(TypeId::REF, vec![*field]);
-                    self.types.get_or_insert_type(reference)
-                },
-                cst::OwnershipMode::BorrowMut => {
-                    let reference = Type::Application(TypeId::REF_MUT, vec![*field]);
-                    self.types.get_or_insert_type(reference)
-                },
-            };
-
-            self.unify(result, expected, TypeErrorKind::General, expr);
+            self.unify(*field, expected, TypeErrorKind::General, expr);
         } else if matches!(self.follow_type(struct_type), Type::Variable(_)) {
             let location = self.current_context().expr_locations[expr].clone();
             self.compiler.accumulate(Diagnostic::TypeMustBeKnownMemberAccess { location });
@@ -346,10 +340,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             let name = Arc::new(member_access.member.clone());
             self.compiler.accumulate(Diagnostic::NoSuchFieldForType { typ, location, name });
         }
-    }
-
-    fn check_index(&mut self, _index: &cst::Index, _expected: TypeId) {
-        todo!()
     }
 
     fn check_if(&mut self, if_: &cst::If, expected: TypeId, expr: ExprId) {
@@ -480,7 +470,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         let constructors = match &definition.body {
             cst::TypeDefinitionBody::Error => Cow::Owned(Vec::new()),
-            cst::TypeDefinitionBody::Alias(_) => todo!("check_type_definition alias"),
+            cst::TypeDefinitionBody::Alias(_) => {
+                let location = id.locate(self);
+                self.compiler.accumulate(Diagnostic::Unimplemented { item: UnimplementedItem::TypeAlias, location });
+                return;
+            },
             cst::TypeDefinitionBody::Struct(fields) => {
                 let fields = vecmap(fields, |(_, field_type)| field_type.clone());
                 Cow::Owned(vec![(definition.name, fields)])

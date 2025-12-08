@@ -40,7 +40,7 @@ pub mod token;
 
 use crate::diagnostics::{Position, Span};
 use std::{str::Chars, sync::Arc};
-use token::{lookup_keyword, ClosingBracket, FloatKind, IntegerKind, LexerError, Token, F64};
+use token::{ClosingBracket, F64, FloatKind, IntegerKind, LexerError, Token, lookup_keyword};
 
 #[derive(Clone)]
 struct OpenBraces {
@@ -564,24 +564,6 @@ impl<'contents> Iterator for Lexer<'contents> {
             ('-', '>') => {
                 self.previous_token_expects_indent = true;
                 self.advance2_with(Token::RightArrow)
-            },
-            ('.', '&') => {
-                self.advance();
-                self.advance();
-                if self.current == '[' {
-                    self.advance_with(Token::IndexRef)
-                } else {
-                    Some((Token::MemberRef, self.locate()))
-                }
-            },
-            ('.', '!') => {
-                self.advance();
-                self.advance();
-                if self.current == '[' {
-                    self.advance_with(Token::IndexMut)
-                } else {
-                    Some((Token::MemberMut, self.locate()))
-                }
             },
             ('.', '[') => self.advance2_with(Token::Index),
             ('.', _) => self.advance_with(Token::MemberAccess),

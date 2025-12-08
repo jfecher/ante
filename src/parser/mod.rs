@@ -1,9 +1,6 @@
 use std::{collections::BTreeMap, sync::Arc};
 
-use cst::{
-    Comptime, Declaration, EffectType, Index, Lambda, MemberAccess, Mutability, Name, OwnershipMode, Parameter,
-    Pattern, Sharedness,
-};
+use cst::{Comptime, Declaration, EffectType, Lambda, MemberAccess, Mutability, Name, Parameter, Pattern, Sharedness};
 use ids::{ExprId, NameId, PathId, PatternId, TopLevelId};
 use rustc_hash::FxHashSet;
 use serde::{Deserialize, Serialize};
@@ -12,7 +9,7 @@ use crate::{
     diagnostics::{Diagnostic, ErrorDefault, Location, Span},
     incremental,
     iterator_extensions::vecmap,
-    lexer::{token::Token, Lexer},
+    lexer::{Lexer, token::Token},
     name_resolution::namespace::SourceFileId,
     parser::{context::TopLevelContext, cst::HandlePattern},
 };
@@ -143,11 +140,7 @@ impl<'tokens> Parser<'tokens> {
 
     /// Advance the input if the current token matches the given token, or error otherwise.
     fn expect(&mut self, token: Token, message: &'static str) -> Result<()> {
-        if self.accept(token) {
-            Ok(())
-        } else {
-            self.expected(message)
-        }
+        if self.accept(token) { Ok(()) } else { self.expected(message) }
     }
 
     /// Return a `ParserExpected` error.
@@ -890,11 +883,7 @@ impl<'tokens> Parser<'tokens> {
         let typ = self.parse_type_arg()?;
         let args = self.many0(Self::parse_type_arg);
 
-        if args.is_empty() {
-            Ok(typ)
-        } else {
-            Ok(Type::Application(Box::new(typ), args))
-        }
+        if args.is_empty() { Ok(typ) } else { Ok(Type::Application(Box::new(typ), args)) }
     }
 
     // Parse a type in a function argument position. e.g. `a` in `Foo a b c`
@@ -1337,21 +1326,24 @@ impl<'tokens> Parser<'tokens> {
         loop {
             let token = self.current_token();
             match token {
-                Token::MemberAccess | Token::MemberRef | Token::MemberMut => {
+                Token::MemberAccess => {
                     result = self.with_expr_id_and_location(|this| {
                         this.advance();
-                        let ownership = OwnershipMode::from_token(token).unwrap();
                         let member = this.parse_ident()?;
-                        Ok(Expr::MemberAccess(MemberAccess { object: result, member, ownership }))
+                        Ok(Expr::MemberAccess(MemberAccess { object: result, member }))
                     })?;
                 },
-                Token::Index | Token::IndexRef | Token::IndexMut => {
+                Token::Index => {
                     result = self.with_expr_id_and_location(|this| {
+                        // `result.[i]` gets transformed into a function call `(.[) result i`
+                        let location = this.current_token_location();
                         this.advance();
-                        let ownership = OwnershipMode::from_token(token).unwrap();
                         let index = this.parse_expression()?;
                         this.expect(Token::BracketRight, "a `]` to terminate the index expression")?;
-                        Ok(Expr::Index(Index { object: result, index, ownership }))
+                        let path = Path::ident(".[".to_string(), location.clone());
+                        let path = this.push_path(path, location.clone());
+                        let function = this.push_expr(Expr::Variable(path), location);
+                        Ok(Expr::Call(Call { function, arguments: vec![result, index] }))
                     })?;
                 },
                 _ => break Ok(result),

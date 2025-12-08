@@ -365,6 +365,8 @@ trait In elem col with
 trait Print t with
     printne: fn t -> Unit
 
+printne = Print.printne
+
 print x =
     Print.printne x
     putchar c"\n"

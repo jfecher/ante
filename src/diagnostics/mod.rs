@@ -17,35 +17,125 @@ pub type Errors = Vec<Diagnostic>;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub enum Diagnostic {
     // TODO: `message` could be an enum to save allocation costs
-    ParserExpected { message: String, actual: Token, location: Location },
-    ExpectedPathForImport { location: Arc<LocationData> },
-    NameAlreadyInScope { name: Arc<String>, first_location: Location, second_location: Location },
-    ImportedNameAlreadyInScope { name: Arc<String>, first_location: Location, second_location: Location },
-    UnknownImportFile { crate_name: String, module_name: Arc<PathBuf>, location: Location },
-    NameNotInScope { name: Arc<String>, location: Location },
-    ExpectedType { actual: String, expected: String, location: Location },
-    RecursiveType { typ: String, location: Location },
-    NamespaceNotFound { name: String, location: Location },
-    MethodDeclaredOnUnknownType { name: Arc<String>, location: Location },
-    LiteralUsedAsName { location: Location },
-    ValueExpected { location: Location, typ: Arc<String> },
-    TypeError { actual: String, expected: String, kind: TypeErrorKind, location: Location },
-    FunctionArgCountMismatch { actual: usize, expected: usize, location: Location },
-    ConstructorFieldDuplicate { name: Arc<String>, first_location: Location, second_location: Location },
-    ConstructorMissingFields { missing_fields: Vec<String>, location: Location },
-    ConstructorNotAStruct { typ: String, location: Location },
-    NoSuchFieldForType { name: Arc<String>, typ: String, location: Location },
-    ParserComplexImplItemName { location: Location },
-    TypeMustBeKnownMemberAccess { location: Location },
-    CannotMatchOnType { typ: String, location: Location },
-    UnreachableCase { location: Location },
-    MissingCases { cases: BTreeSet<Arc<String>>, location: Location },
-    MissingManyCases { typ: String, location: Location },
-    InvalidRangeInPattern { start: u64, end: u64, location: Location },
-    InvalidPattern { location: Location },
-    Unimplemented { item: UnimplementedItem, location: Location },
+    ParserExpected {
+        message: String,
+        actual: Token,
+        location: Location,
+    },
+    ExpectedPathForImport {
+        location: Arc<LocationData>,
+    },
+    NameAlreadyInScope {
+        name: Arc<String>,
+        first_location: Location,
+        second_location: Location,
+    },
+    ImportedNameAlreadyInScope {
+        name: Arc<String>,
+        first_location: Location,
+        second_location: Location,
+    },
+    UnknownImportFile {
+        crate_name: String,
+        module_name: Arc<PathBuf>,
+        location: Location,
+    },
+    NameNotInScope {
+        name: Arc<String>,
+        location: Location,
+    },
+    ExpectedType {
+        actual: String,
+        expected: String,
+        location: Location,
+    },
+    RecursiveType {
+        typ: String,
+        location: Location,
+    },
+    NamespaceNotFound {
+        name: String,
+        location: Location,
+    },
+    MethodDeclaredOnUnknownType {
+        name: Arc<String>,
+        location: Location,
+    },
+    LiteralUsedAsName {
+        location: Location,
+    },
+    ValueExpected {
+        location: Location,
+        typ: Arc<String>,
+    },
+    TypeError {
+        actual: String,
+        expected: String,
+        kind: TypeErrorKind,
+        location: Location,
+    },
+    FunctionArgCountMismatch {
+        actual: usize,
+        expected: usize,
+        location: Location,
+    },
+    ConstructorFieldDuplicate {
+        name: Arc<String>,
+        first_location: Location,
+        second_location: Location,
+    },
+    ConstructorMissingFields {
+        missing_fields: Vec<String>,
+        location: Location,
+    },
+    ConstructorNotAStruct {
+        typ: String,
+        location: Location,
+    },
+    NoSuchFieldForType {
+        name: Arc<String>,
+        typ: String,
+        location: Location,
+    },
+    ParserComplexImplItemName {
+        location: Location,
+    },
+    TypeMustBeKnownMemberAccess {
+        location: Location,
+    },
+    CannotMatchOnType {
+        typ: String,
+        location: Location,
+    },
+    UnreachableCase {
+        location: Location,
+    },
+    MissingCases {
+        cases: BTreeSet<Arc<String>>,
+        location: Location,
+    },
+    MissingManyCases {
+        typ: String,
+        location: Location,
+    },
+    InvalidRangeInPattern {
+        start: u64,
+        end: u64,
+        location: Location,
+    },
+    InvalidPattern {
+        location: Location,
+    },
+    Unimplemented {
+        item: UnimplementedItem,
+        location: Location,
+    },
     /// `constructor_names` here is limited to 2 for brevity
-    ConstructorExpectedFoundType { type_name: Arc<String>, constructor_names: Vec<Arc<String>>, location: Location },
+    ConstructorExpectedFoundType {
+        type_name: Arc<String>,
+        constructor_names: Vec<Arc<String>>,
+        location: Location,
+    },
 }
 
 impl Ord for Diagnostic {
@@ -68,9 +158,10 @@ impl Diagnostic {
     pub fn kind(&self) -> DiagnosticKind {
         use Diagnostic::*;
         match self {
-            NameAlreadyInScope { .. } | ImportedNameAlreadyInScope { .. } | UnreachableCase { .. } | InvalidRangeInPattern { .. } => {
-                DiagnosticKind::Warning
-            },
+            NameAlreadyInScope { .. }
+            | ImportedNameAlreadyInScope { .. }
+            | UnreachableCase { .. }
+            | InvalidRangeInPattern { .. } => DiagnosticKind::Warning,
             _ => DiagnosticKind::Error,
         }
     }
@@ -174,31 +265,50 @@ impl Diagnostic {
             },
             Diagnostic::InvalidRangeInPattern { start, end, location: _ } => {
                 if start == end {
-                    format!("Ranges in Ante are end-exclusive so a range from {} to {} will not match anything", start.to_string().purple(), end.to_string().purple())
+                    format!(
+                        "Ranges in Ante are end-exclusive so a range from {} to {} will not match anything",
+                        start.to_string().purple(),
+                        end.to_string().purple()
+                    )
                 } else {
                     assert!(start > end);
-                    format!("Range from {} to {} is backwards and will not match anything", start.to_string().purple(), end.to_string().purple())
+                    format!(
+                        "Range from {} to {} is backwards and will not match anything",
+                        start.to_string().purple(),
+                        end.to_string().purple()
+                    )
                 }
-            }
+            },
             Diagnostic::InvalidPattern { location: _ } => {
                 format!("Invalid pattern syntax, expected a variable, constructor, or integer")
-            }
+            },
             Diagnostic::Unimplemented { item, location: _ } => {
                 format!("{item} are currently unimplemented")
-            }
+            },
             Diagnostic::ConstructorExpectedFoundType { type_name, constructor_names, location: _ } => {
                 if constructor_names.is_empty() {
                     format!("The type {} has no variants and thus cannot be matched on", type_name.blue())
                 } else if constructor_names.len() == 1 {
                     let constructor = &constructor_names[0];
-                    format!("{} is a type name, not a constructor. Try {}.{} instead", type_name.blue(), type_name.blue(), constructor.blue())
+                    format!(
+                        "{} is a type name, not a constructor. Try {}.{} instead",
+                        type_name.blue(),
+                        type_name.blue(),
+                        constructor.blue()
+                    )
                 } else {
                     let first = &constructor_names[0];
                     let second = &constructor_names[1];
-                    format!("{} is a type name, not a constructor. Try a constructor such as {}.{} or {}.{} instead",
-                        type_name.blue(), type_name.blue(), first.blue(), type_name.blue(), second.blue())
+                    format!(
+                        "{} is a type name, not a constructor. Try a constructor such as {}.{} or {}.{} instead",
+                        type_name.blue(),
+                        type_name.blue(),
+                        first.blue(),
+                        type_name.blue(),
+                        second.blue()
+                    )
                 }
-            }
+            },
         }
     }
 
@@ -331,11 +441,7 @@ fn os_agnostic_display_path(path: &std::path::Path, show_color: bool) -> Colored
         }
     }
 
-    if show_color {
-        ret.italic()
-    } else {
-        ret.normal()
-    }
+    if show_color { ret.italic() } else { ret.normal() }
 }
 
 pub struct DiagnosticDisplay<'a> {

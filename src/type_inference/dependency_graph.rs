@@ -13,7 +13,7 @@ use crate::{
     name_resolution::namespace::LOCAL_CRATE,
     parser::{cst::TopLevelItemKind, ids::TopLevelId},
     type_inference::{
-        get_type::try_get_type, type_context::TypeContext, types::TypeBindings, IndividualTypeCheckResult,
+        IndividualTypeCheckResult, get_type::try_get_type, type_context::TypeContext, types::TypeBindings,
     },
 };
 

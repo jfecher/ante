@@ -8,7 +8,7 @@ use crate::{
     incremental::GetItem,
     iterator_extensions::vecmap,
     lexer::token::{FloatKind, IntegerKind},
-    name_resolution::{builtin::Builtin, Origin, ResolutionResult},
+    name_resolution::{Origin, ResolutionResult, builtin::Builtin},
     parser::{
         cst::{self, Mutability, Sharedness},
         ids::NameId,

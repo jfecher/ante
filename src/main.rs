@@ -28,15 +28,14 @@ use colored::Colorize;
 use diagnostics::Diagnostic;
 use inc_complete::{Computation, StorageFor};
 use incremental::{CompileFile, Db, GetCrateGraph, Parse, Resolve};
-use name_resolution::namespace::{CrateId, LocalModuleId, SourceFileId, LOCAL_CRATE};
+use name_resolution::namespace::{CrateId, LOCAL_CRATE, LocalModuleId, SourceFileId};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
-use std::{
-    collections::BTreeSet,
-    path::Path,
-};
+use std::{collections::BTreeSet, path::Path};
 
 use crate::{
-    diagnostics::{DiagnosticKind, Errors}, files::{make_compiler, write_metadata}, incremental::{DbStorage, TypeCheck}
+    diagnostics::{DiagnosticKind, Errors},
+    files::{make_compiler, write_metadata},
+    incremental::{DbStorage, TypeCheck},
 };
 
 // All the compiler passes:

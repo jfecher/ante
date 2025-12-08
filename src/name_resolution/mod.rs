@@ -427,10 +427,6 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             Expr::MemberAccess(access) => {
                 self.resolve_expr(access.object);
             },
-            Expr::Index(index) => {
-                self.resolve_expr(index.object);
-                self.resolve_expr(index.index);
-            },
             Expr::If(if_) => {
                 self.resolve_expr(if_.condition);
 

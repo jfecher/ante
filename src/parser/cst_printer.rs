@@ -6,7 +6,8 @@ use std::{
 
 use crate::{
     incremental::{Db, GetItem, Resolve, TypeCheck},
-    name_resolution::{namespace::SourceFileId, Origin},
+    lexer::token::INDEX_OPERATOR_FUNCTION_NAME,
+    name_resolution::{Origin, namespace::SourceFileId},
     parser::{
         cst::{Constructor, TopLevelItemKind},
         ids::{NameId, PathId},
@@ -15,14 +16,14 @@ use crate::{
 };
 
 use super::{
+    TopLevelContext,
     cst::{
         Call, Comptime, Cst, Declaration, Definition, EffectDefinition, EffectType, Expr, Extern, FunctionType, Handle,
-        HandlePattern, If, Import, Index, Lambda, Literal, Match, MemberAccess, Mutability, OwnershipMode, Parameter,
-        Path, Pattern, Quoted, Reference, SequenceItem, Sharedness, TopLevelItem, TraitDefinition, TraitImpl, Type,
-        TypeAnnotation, TypeDefinition, TypeDefinitionBody,
+        HandlePattern, If, Import, Lambda, Literal, Match, MemberAccess, Mutability, Parameter, Path, Pattern, Quoted,
+        Reference, SequenceItem, Sharedness, TopLevelItem, TraitDefinition, TraitImpl, Type, TypeAnnotation,
+        TypeDefinition, TypeDefinitionBody,
     },
     ids::{ExprId, PatternId, TopLevelId},
-    TopLevelContext,
 };
 
 pub struct CstDisplayContext<'a> {
@@ -557,7 +558,6 @@ impl<'a> CstDisplay<'a> {
             Expr::Definition(definition) => self.fmt_definition(definition, context, f),
             Expr::Call(call) => self.fmt_call(call, context, f),
             Expr::MemberAccess(access) => self.fmt_member_access(access, context, f),
-            Expr::Index(index) => self.fmt_index(index, context, f),
             Expr::Lambda(lambda) => self.fmt_lambda(lambda, context, f),
             Expr::If(if_) => self.fmt_if(if_, context, f),
             Expr::Match(match_) => self.fmt_match(match_, context, f),
@@ -598,8 +598,12 @@ impl<'a> CstDisplay<'a> {
     }
 
     fn fmt_call(&mut self, call: &Call, context: &TopLevelContext, f: &mut Formatter) -> std::fmt::Result {
-        if call.arguments.len() == 2 && self.is_operator(call.function, context) {
-            return self.fmt_infix_operator(call, context, f);
+        if call.arguments.len() == 2 {
+            match self.classify_operator(call.function, context) {
+                FmtOperatorKind::Index => return self.fmt_index(call.arguments[0], call.arguments[1], context, f),
+                FmtOperatorKind::Infix => return self.fmt_infix_operator(call, context, f),
+                FmtOperatorKind::NotAnOperator => (),
+            }
         }
 
         self.fmt_expr(call.function, context, f)?;
@@ -619,7 +623,9 @@ impl<'a> CstDisplay<'a> {
         let rhs = call.arguments[1];
 
         let parenthesize = |this: &Self, expr| match &context.exprs[expr] {
-            Expr::Call(call) => this.is_operator(call.function, context),
+            Expr::Call(call) => {
+                !matches!(this.classify_operator(call.function, context), FmtOperatorKind::NotAnOperator)
+            },
             other => !other.is_atom(),
         };
 
@@ -644,17 +650,23 @@ impl<'a> CstDisplay<'a> {
         }
     }
 
-    fn is_operator(&self, function: ExprId, context: &TopLevelContext) -> bool {
-        if let Expr::Variable(path) = context.exprs[function] {
-            let path = &context.paths[path];
-            if path.components.len() == 1 {
-                let name = &path.components[0].0;
-                !name.chars().next().unwrap().is_alphanumeric()
-            } else {
-                false
-            }
+    fn classify_operator(&self, function: ExprId, context: &TopLevelContext) -> FmtOperatorKind {
+        let Expr::Variable(path) = context.exprs[function] else {
+            return FmtOperatorKind::NotAnOperator;
+        };
+
+        let path = &context.paths[path];
+        if path.components.len() != 1 {
+            return FmtOperatorKind::NotAnOperator;
+        }
+
+        let name = &path.components[0].0;
+        if name == INDEX_OPERATOR_FUNCTION_NAME {
+            FmtOperatorKind::Index
+        } else if !name.chars().next().unwrap().is_alphanumeric() {
+            FmtOperatorKind::Infix
         } else {
-            false
+            FmtOperatorKind::NotAnOperator
         }
     }
 
@@ -669,29 +681,22 @@ impl<'a> CstDisplay<'a> {
             write!(f, ")")?;
         }
 
-        match access.ownership {
-            OwnershipMode::Owned => write!(f, ".{}", access.member),
-            OwnershipMode::Borrow => write!(f, ".&{}", access.member),
-            OwnershipMode::BorrowMut => write!(f, ".!{}", access.member),
-        }
+        write!(f, ".{}", access.member)
     }
 
-    fn fmt_index(&mut self, index: &Index, context: &TopLevelContext, f: &mut Formatter) -> std::fmt::Result {
-        if context.exprs[index.object].is_atom() {
-            self.fmt_expr(index.object, context, f)?;
+    fn fmt_index(
+        &mut self, object: ExprId, index: ExprId, context: &TopLevelContext, f: &mut Formatter,
+    ) -> std::fmt::Result {
+        if context.exprs[object].is_atom() {
+            self.fmt_expr(object, context, f)?;
         } else {
             write!(f, "(")?;
-            self.fmt_expr(index.object, context, f)?;
+            self.fmt_expr(object, context, f)?;
             write!(f, ")")?;
         }
 
-        match index.ownership {
-            OwnershipMode::Owned => write!(f, ".[")?,
-            OwnershipMode::Borrow => write!(f, ".&[")?,
-            OwnershipMode::BorrowMut => write!(f, ".![")?,
-        }
-
-        self.fmt_expr(index.index, context, f)?;
+        write!(f, ".[")?;
+        self.fmt_expr(index, context, f)?;
         write!(f, "]")
     }
 
@@ -999,6 +1004,12 @@ impl<'a> CstDisplay<'a> {
         }
         Ok(())
     }
+}
+
+enum FmtOperatorKind {
+    Infix,
+    Index,
+    NotAnOperator,
 }
 
 impl Display for Mutability {

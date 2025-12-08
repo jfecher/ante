@@ -16,20 +16,26 @@ use crate::{
         ids::{ExprId, NameId, PathId, TopLevelId, TopLevelName},
     },
     type_inference::{
-        errors::{Locateable, TypeErrorKind}, fresh_expr::ExtendedTopLevelContext, generics::Generic, patterns::DecisionTree, type_context::TypeContext, type_id::TypeId, types::{GeneralizedType, TopLevelType, TypeVariableId}
+        errors::{Locateable, TypeErrorKind},
+        fresh_expr::ExtendedTopLevelContext,
+        generics::Generic,
+        patterns::DecisionTree,
+        type_context::TypeContext,
+        type_id::TypeId,
+        types::{GeneralizedType, TopLevelType, TypeVariableId},
     },
 };
 
 mod cst_traversal;
 pub mod dependency_graph;
 pub mod errors;
+pub mod fresh_expr;
 mod generics;
 mod get_type;
 pub mod patterns;
 pub mod type_context;
 pub mod type_id;
 pub mod types;
-pub mod fresh_expr;
 
 pub use get_type::get_type_impl;
 
@@ -148,9 +154,10 @@ type ItemContexts = FxHashMap<TopLevelId, (Arc<TopLevelItem>, Arc<TopLevelContex
 
 impl<'local, 'inner> TypeChecker<'local, 'inner> {
     fn new(item_contexts: &'local ItemContexts, compiler: &'local DbHandle<'inner>) -> Self {
-        let id_contexts = item_contexts.iter().map(|(id, (_, context, _))| {
-            (*id, ExtendedTopLevelContext::new(context.clone()))
-        }).collect();
+        let id_contexts = item_contexts
+            .iter()
+            .map(|(id, (_, context, _))| (*id, ExtendedTopLevelContext::new(context.clone())))
+            .collect();
 
         let mut this = Self {
             compiler,

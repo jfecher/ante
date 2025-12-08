@@ -32,7 +32,8 @@ impl<K, V> VecMap<K, V> {
     }
 
     pub fn get(&self, index: K) -> Option<&V>
-    where usize: From<K>
+    where
+        usize: From<K>,
     {
         self.items.get(usize::from(index))
     }

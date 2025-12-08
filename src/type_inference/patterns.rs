@@ -4,18 +4,26 @@
 
 use std::{
     borrow::Cow,
-    collections::{BTreeMap, BTreeSet}, sync::Arc,
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
 };
 
 use rustc_hash::FxHashMap;
 
 use crate::{
-    diagnostics::{Diagnostic, Location, UnimplementedItem}, incremental::{GetItem, Resolve}, iterator_extensions::{btree_map, opt_vecmap, try_vecmap, vecmap}, name_resolution::Origin, parser::{
+    diagnostics::{Diagnostic, Location, UnimplementedItem},
+    incremental::{GetItem, Resolve},
+    iterator_extensions::{btree_map, opt_vecmap, try_vecmap, vecmap},
+    name_resolution::Origin,
+    parser::{
         cst::{self, Literal, Path, TopLevelItem},
         ids::{ExprId, NameId, PathId, PatternId, TopLevelName},
-    }, type_inference::{
-        TypeChecker, type_id::TypeId, types::{PrimitiveType, Type}
-    }
+    },
+    type_inference::{
+        TypeChecker,
+        type_id::TypeId,
+        types::{PrimitiveType, Type},
+    },
 };
 
 const WILDCARD_PATTERN: &str = "_";
@@ -295,7 +303,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     fn let_binding_with_path(&mut self, variable: NameId, rhs: PathId, body: ExprId) -> ExprId {
         let location = self.current_extended_context().path_location(rhs);
         let rhs_type = self.path_types[&rhs];
-        let rhs = self.push_expr(cst::Expr::Variable(rhs)       , rhs_type, location.clone());
+        let rhs = self.push_expr(cst::Expr::Variable(rhs), rhs_type, location.clone());
         self.let_binding(variable, rhs, body)
     }
 
@@ -308,12 +316,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let pattern = cst::Pattern::Variable(variable);
         let pattern = self.push_pattern(pattern, location.clone());
 
-        let definition = cst::Expr::Definition(cst::Definition {
-            implicit: false,
-            mutable: false,
-            pattern,
-            rhs,
-        });
+        let definition = cst::Expr::Definition(cst::Definition { implicit: false, mutable: false, pattern, rhs });
         let definition = self.push_expr(definition, TypeId::UNIT, location.clone());
 
         let seq_item = |expr| cst::SequenceItem { comments: Vec::new(), expr };
@@ -410,7 +413,9 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
                     Err(Diagnostic::CannotMatchOnType { typ, location })
                 },
             },
-            Type::UserDefined(origin) => self.compile_userdefined_cases(rows, branch_var, definition_type, *origin, &[], location),
+            Type::UserDefined(origin) => {
+                self.compile_userdefined_cases(rows, branch_var, definition_type, *origin, &[], location)
+            },
             Type::Generic(_) | Type::Variable(_) | Type::Primitive(_) | Type::Function(_) | Type::Reference(..) => {
                 let typ = self.checker.type_to_string(definition_type);
                 Err(Diagnostic::CannotMatchOnType { typ, location })
@@ -419,7 +424,8 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
     }
 
     fn compile_userdefined_cases(
-        &mut self, rows: Vec<Row>, branch_var: PathId, type_id: TypeId, origin: Origin, generics: &[TypeId], location: Location,
+        &mut self, rows: Vec<Row>, branch_var: PathId, type_id: TypeId, origin: Origin, generics: &[TypeId],
+        location: Location,
     ) -> Result<DecisionTree, Diagnostic> {
         match self.classify_type_origin(origin, generics) {
             Some(UserDefinedTypeKind::Sum(variants)) => {
@@ -671,19 +677,22 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
         match self.classify_type(type_matched_on) {
             Some(UserDefinedTypeKind::Sum(variants)) => {
                 if !variants.is_empty() {
-                    let cases: BTreeSet<_> = variants.into_iter().map(|(name, _)| {
-                        // TODO: These names should be in the variant's resolve data
-                        self.checker.current_context().names[name].clone()
-                    }).collect();
+                    let cases: BTreeSet<_> = variants
+                        .into_iter()
+                        .map(|(name, _)| {
+                            // TODO: These names should be in the variant's resolve data
+                            self.checker.current_context().names[name].clone()
+                        })
+                        .collect();
                     self.checker.compiler.accumulate(Diagnostic::MissingCases { cases, location });
                 }
                 return;
-            }
+            },
             Some(UserDefinedTypeKind::NotUserDefined(TypeId::BOOL)) => {
                 let cases = vec![Arc::new("false".to_string()), Arc::new("true".to_string())].into_iter().collect();
                 self.checker.compiler.accumulate(Diagnostic::MissingCases { cases, location });
                 return;
-            }
+            },
             _ => (),
         }
         let typ = self.checker.type_to_string(type_matched_on);
@@ -692,7 +701,7 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
 
     fn find_missing_values(
         &mut self, tree: &DecisionTree, env: &mut FxHashMap<PathId, (String, Vec<Option<PathId>>)>,
-        missing_cases: &mut BTreeSet<Arc<String>>, starting_id: PathId, location: &Location
+        missing_cases: &mut BTreeSet<Arc<String>>, starting_id: PathId, location: &Location,
     ) {
         match tree {
             DecisionTree::Success(_) | DecisionTree::Failure { missing_case: false } => (),
@@ -724,12 +733,12 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
         }
     }
 
-    fn missing_cases(&mut self, cases: &[Case], typ: TypeId, location: &Location) -> Vec<(String, Vec<Option<PathId>>)> {
+    fn missing_cases(
+        &mut self, cases: &[Case], typ: TypeId, location: &Location,
+    ) -> Vec<(String, Vec<Option<PathId>>)> {
         // We expect `cases` to come from a `Switch` which should always have
         // at least 2 cases, otherwise it should be a Success or Failure node.
-        let Some(first) = cases.first() else {
-            return Vec::new()
-        };
+        let Some(first) = cases.first() else { return Vec::new() };
 
         if matches!(&first.constructor, Constructor::Int(_) | Constructor::Range(..)) {
             return self.missing_integer_cases(cases, typ);
@@ -788,7 +797,9 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
         matches!(self.checker.follow_type(typ), Type::Variable(_))
     }
 
-    fn construct_missing_case(starting_id: Option<PathId>, env: &FxHashMap<PathId, (String, Vec<Option<PathId>>)>) -> String {
+    fn construct_missing_case(
+        starting_id: Option<PathId>, env: &FxHashMap<PathId, (String, Vec<Option<PathId>>)>,
+    ) -> String {
         let Some((constructor, arguments)) = starting_id.and_then(|id| env.get(&id)) else {
             return WILDCARD_PATTERN.to_string();
         };
@@ -835,32 +846,32 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
 
     /// Return all the constructors of the result type of the given constructor. Intended to be used
     /// for error reporting in cases where there are at least 2 constructors.
-    pub(crate) fn all_constructors(&mut self, constructor: &Constructor, location: &Location) -> Vec<(Constructor, /*arg count:*/ usize)> {
+    pub(crate) fn all_constructors(
+        &mut self, constructor: &Constructor, location: &Location,
+    ) -> Vec<(Constructor, /*arg count:*/ usize)> {
         match constructor {
             Constructor::True | Constructor::False => {
                 vec![(Constructor::True, 0), (Constructor::False, 0)]
             },
             Constructor::Unit => vec![(Constructor::Unit, 0)],
-            Constructor::Variant(type_id, _) => {
-                match self.classify_type(*type_id) {
-                    Some(UserDefinedTypeKind::Product(fields)) => {
-                        vec![(Constructor::Variant(*type_id, 0), fields.len())]
-                    }
-                    Some(UserDefinedTypeKind::Sum(variants)) => {
-                        vecmap(variants.into_iter().enumerate(), |(i, (_, fields))| {
-                            (Constructor::Variant(*type_id, i), fields.len())
-                        })
-                    }
-                    Some(UserDefinedTypeKind::NotUserDefined(type_id)) => {
-                        let typ = self.checker.type_to_string(type_id);
-                        let location = location.clone();
-                        self.checker.compiler.accumulate(Diagnostic::CannotMatchOnType { typ, location });
-                        Vec::new()
-                    }
-                    None => {
-                        unreachable!("Unresolved type encountered in all_constructors")
-                    }
-                }
+            Constructor::Variant(type_id, _) => match self.classify_type(*type_id) {
+                Some(UserDefinedTypeKind::Product(fields)) => {
+                    vec![(Constructor::Variant(*type_id, 0), fields.len())]
+                },
+                Some(UserDefinedTypeKind::Sum(variants)) => {
+                    vecmap(variants.into_iter().enumerate(), |(i, (_, fields))| {
+                        (Constructor::Variant(*type_id, i), fields.len())
+                    })
+                },
+                Some(UserDefinedTypeKind::NotUserDefined(type_id)) => {
+                    let typ = self.checker.type_to_string(type_id);
+                    let location = location.clone();
+                    self.checker.compiler.accumulate(Diagnostic::CannotMatchOnType { typ, location });
+                    Vec::new()
+                },
+                None => {
+                    unreachable!("Unresolved type encountered in all_constructors")
+                },
             },
 
             // Nothing great to return for these
@@ -897,7 +908,9 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
             },
             Origin::Local(_) => unreachable!("Origin::Local used in path_to_constructor"),
             Origin::TypeResolution => {
-                unreachable!("Origin::TypeResolution encountered in classify_type_origin, should be unreachable in a type position")
+                unreachable!(
+                    "Origin::TypeResolution encountered in classify_type_origin, should be unreachable in a type position"
+                )
             },
             Origin::Builtin(builtin) => {
                 let fields = builtin.fields(arguments.to_vec())?;

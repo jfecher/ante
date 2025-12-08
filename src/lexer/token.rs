@@ -15,6 +15,10 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
+/// This constant is meant to match the "name" of the index operator when used as an identifier in
+/// source code.
+pub(crate) const INDEX_OPERATOR_FUNCTION_NAME: &str = ".[";
+
 /// Lexing can fail with these errors, though the Lexer just
 /// returns the LexerError inside of an Invalid token which
 /// the parser will fail on. Currently the parser fails immediately
@@ -221,8 +225,6 @@ pub enum Token {
     Semicolon,          // ;
     Comma,              // ,
     MemberAccess,       // .
-    MemberRef,          // .&
-    MemberMut,          // .!
     LessThan,           // <
     GreaterThan,        // >
     LessThanOrEqual,    // <=
@@ -234,8 +236,6 @@ pub enum Token {
     ExclamationMark,    // !
     QuestionMark,       // ?
     Index,              // .[]
-    IndexRef,           // .&[]
-    IndexMut,           // .![]
     Octothorpe,         // #
 }
 
@@ -267,8 +267,6 @@ impl Token {
                 | Divide
                 | Range
                 | Index
-                | IndexRef
-                | IndexMut
         )
     }
 }
@@ -278,22 +276,31 @@ impl Display for LexerError {
         use LexerError::*;
         match self {
             InvalidCharacterInSignificantWhitespace(c) => {
-                let char_str = if *c == '\t' {
-                    "a tab".to_string()
-                } else {
-                    format!("U+{:x}", *c as u32)
-                };
+                let char_str = if *c == '\t' { "a tab".to_string() } else { format!("U+{:x}", *c as u32) };
                 write!(f, "Only spaces are allowed in significant whitespace, {} is not allowed here", char_str)
             },
             InvalidEscapeSequence(c) => write!(f, "Invalid character in escape sequence: '{}' (U+{:x})", c, *c as u32),
-            InvalidIntegerSuffx => write!(f, "Invalid suffix after integer literal. Expected an integer type like i32 or a space to separate the two tokens"),
-            InvalidFloatSuffx => write!(f, "Invalid suffix after float literal. Expected either 'f', 'f32', 'f64', or a space to separate the two tokens"),
-            IndentChangeTooSmall => write!(f, "This indent/unindent is too small, it should be at least 2 spaces apart from the previous indentation level"),
+            InvalidIntegerSuffx => write!(
+                f,
+                "Invalid suffix after integer literal. Expected an integer type like i32 or a space to separate the two tokens"
+            ),
+            InvalidFloatSuffx => write!(
+                f,
+                "Invalid suffix after float literal. Expected either 'f', 'f32', 'f64', or a space to separate the two tokens"
+            ),
+            IndentChangeTooSmall => write!(
+                f,
+                "This indent/unindent is too small, it should be at least 2 spaces apart from the previous indentation level"
+            ),
             UnindentToNewLevel => write!(f, "This unindent doesn't return to any previous indentation level"),
             Expected(c) => write!(f, "Expected {} (U+{:x}) while lexing", *c, *c as u32),
             UnknownChar(c) => write!(f, "Unknown character '{}' (U+{:x}) in file", *c, *c as u32),
-            MismatchedBracketInQuote { expected } => write!(f, "Mismatched bracket in quoted expression, expected `{expected}`"),
-            QuoteWithEndBracketAndNoStart { unexpected } => write!(f, "Cannot quote a lone {unexpected}, all brackets and indentation must be matched"),
+            MismatchedBracketInQuote { expected } => {
+                write!(f, "Mismatched bracket in quoted expression, expected `{expected}`")
+            },
+            QuoteWithEndBracketAndNoStart { unexpected } => {
+                write!(f, "Cannot quote a lone {unexpected}, all brackets and indentation must be matched")
+            },
         }
     }
 }
@@ -418,8 +425,6 @@ impl Display for Token {
             Token::Semicolon => write!(f, ";"),
             Token::Comma => write!(f, ","),
             Token::MemberAccess => write!(f, "."),
-            Token::MemberRef => write!(f, ".&"),
-            Token::MemberMut => write!(f, ".!"),
             Token::LessThan => write!(f, "<"),
             Token::GreaterThan => write!(f, ">"),
             Token::LessThanOrEqual => write!(f, "<="),
@@ -431,8 +436,6 @@ impl Display for Token {
             Token::ExclamationMark => write!(f, "!"),
             Token::QuestionMark => write!(f, "?"),
             Token::Index => write!(f, ".[]"),
-            Token::IndexRef => write!(f, ".&[]"),
-            Token::IndexMut => write!(f, ".![]"),
             Token::Octothorpe => write!(f, "#"),
             Token::Quoted(tokens) => {
                 write!(f, "'")?;
@@ -447,11 +450,7 @@ impl Display for Token {
 
 impl std::fmt::Display for F64 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.0.fract() == 0.0 {
-            write!(f, "{}.0", self.0)
-        } else {
-            write!(f, "{}", self.0)
-        }
+        if self.0.fract() == 0.0 { write!(f, "{}.0", self.0) } else { write!(f, "{}", self.0) }
     }
 }
 

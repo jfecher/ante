@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     diagnostics::{ErrorDefault, Location},
-    lexer::token::{FloatKind, IntegerKind, Token, F64},
+    lexer::token::{F64, FloatKind, IntegerKind, Token},
 };
 
 use super::ids::{ExprId, NameId, PathId, PatternId, TopLevelId};
@@ -136,7 +136,6 @@ pub enum Expr {
     Sequence(Vec<SequenceItem>),
     Definition(Definition),
     MemberAccess(MemberAccess),
-    Index(Index),
     Call(Call),
     Lambda(Lambda),
     If(If),
@@ -157,15 +156,7 @@ impl ErrorDefault for Expr {
 impl Expr {
     /// Are parenthesis not required when printing this Expr within another?
     pub fn is_atom(&self) -> bool {
-        matches!(
-            self,
-            Expr::Error
-                | Expr::Literal(_)
-                | Expr::Variable(_)
-                | Expr::MemberAccess(_)
-                | Expr::Index(_)
-                | Expr::Reference(_)
-        )
+        matches!(self, Expr::Error | Expr::Literal(_) | Expr::Variable(_) | Expr::MemberAccess(_))
     }
 }
 
@@ -178,6 +169,10 @@ pub struct Path {
 }
 
 impl Path {
+    pub fn ident(name: String, location: Location) -> Path {
+        Path { components: vec![(name, location)] }
+    }
+
     pub fn into_file_path(self) -> Arc<PathBuf> {
         let mut path = PathBuf::new();
         for (component, _) in self.components {
@@ -244,32 +239,6 @@ pub struct Call {
 pub struct MemberAccess {
     pub object: ExprId,
     pub member: String,
-    pub ownership: OwnershipMode,
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
-pub struct Index {
-    pub object: ExprId,
-    pub index: ExprId,
-    pub ownership: OwnershipMode,
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
-pub enum OwnershipMode {
-    Owned,
-    Borrow,
-    BorrowMut,
-}
-
-impl OwnershipMode {
-    pub fn from_token(token: &Token) -> Option<Self> {
-        match token {
-            Token::MemberAccess | Token::Index => Some(Self::Owned),
-            Token::MemberRef | Token::IndexRef => Some(Self::Borrow),
-            Token::MemberMut | Token::IndexMut => Some(Self::BorrowMut),
-            _ => None,
-        }
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]

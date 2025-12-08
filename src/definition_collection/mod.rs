@@ -6,7 +6,7 @@ use crate::{
         self, DbHandle, Definitions, ExportedDefinitions, ExportedTypes, GetCrateGraph, GetImports, Methods, Parse,
         VisibleDefinitions, VisibleDefinitionsResult, VisibleTypes,
     },
-    name_resolution::namespace::{SourceFileId, STDLIB_CRATE},
+    name_resolution::namespace::{STDLIB_CRATE, SourceFileId},
     parser::{
         context::TopLevelContext,
         cst::{Import, ItemName, Literal, Pattern, TopLevelItemKind, TypeDefinitionBody},

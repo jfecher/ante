@@ -25,9 +25,7 @@ pub(crate) fn try_vecmap<T, U, E>(
 
 /// Shorthand for `items.into_iter().map(f).collect::<Option<Vec<_>, _>>()`
 #[inline]
-pub(crate) fn opt_vecmap<T, U>(
-    items: impl IntoIterator<Item = T>, f: impl FnMut(T) -> Option<U>,
-) -> Option<Vec<U>> {
+pub(crate) fn opt_vecmap<T, U>(items: impl IntoIterator<Item = T>, f: impl FnMut(T) -> Option<U>) -> Option<Vec<U>> {
     map(items, f)
 }
 

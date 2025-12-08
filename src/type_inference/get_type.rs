@@ -31,10 +31,17 @@ pub fn get_type_impl(context: &GetType, compiler: &DbHandle) -> GeneralizedType 
         },
         _ => {
             let check = TypeCheck(context.0.top_level_item).get(compiler);
-            check.result.generalized.get(&context.0.local_name_id).unwrap_or_else(|| {
-                panic!("No generalized type entry for {} {}",
-                    item_context.names[context.0.local_name_id], context.0)
-            }).clone()
+            check
+                .result
+                .generalized
+                .get(&context.0.local_name_id)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "No generalized type entry for {} {}",
+                        item_context.names[context.0.local_name_id], context.0
+                    )
+                })
+                .clone()
         },
     };
     incremental::exit_query();
