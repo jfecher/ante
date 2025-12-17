@@ -1,0 +1,146 @@
+use std::fmt::{Display, Formatter, Result};
+
+use crate::mir::{self, Block, BlockId, FloatConstant, FunctionId, IntConstant, Value};
+
+impl Display for mir::Function {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        fmt_function(self, f)
+    }
+}
+
+impl Display for Value {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            Value::Unit => write!(f, "()"),
+            Value::Bool(b) => write!(f, "{b}"),
+            Value::Char(c) => write!(f, "{c}"),
+            Value::Integer(int) => write!(f, "{int}"),
+            Value::Float(float) => write!(f, "{float}"),
+            Value::InstructionResult(instruction_id) => write!(f, "v{}", instruction_id.0),
+            Value::Parameter(block_id, i) => write!(f, "b{}_{}", block_id.0, i),
+            Value::Function(id) => write!(f, "f{id}"),
+            Value::Global(name) => write!(f, "g{name}"),
+        }
+    }
+}
+
+impl Display for IntConstant {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            IntConstant::U8(x) => write!(f, "{x}_u8"),
+            IntConstant::U16(x) => write!(f, "{x}_u16"),
+            IntConstant::U32(x) => write!(f, "{x}_u32"),
+            IntConstant::U64(x) => write!(f, "{x}_u64"),
+            IntConstant::Usz(x) => write!(f, "{x}_usz"),
+            IntConstant::I8(x) => write!(f, "{x}_i8"),
+            IntConstant::I16(x) => write!(f, "{x}_i16"),
+            IntConstant::I32(x) => write!(f, "{x}_i32"),
+            IntConstant::I64(x) => write!(f, "{x}_i64"),
+            IntConstant::Isz(x) => write!(f, "{x}_isz"),
+        }
+    }
+}
+
+impl Display for FloatConstant {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            FloatConstant::F32(x) => write!(f, "{x}_f32"),
+            FloatConstant::F64(x) => write!(f, "{x}_f64"),
+        }
+    }
+}
+
+impl Display for FunctionId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "f{}", self.item)?;
+        if self.index != 0 {
+            write!(f, "_{}", self.index)?;
+        }
+        Ok(())
+    }
+}
+
+impl Display for BlockId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "b{}", self.0)
+    }
+}
+
+fn fmt_function(function: &mir::Function, f: &mut Formatter) -> Result {
+    writeln!(f, "fun {}", function.id)?;
+    for (block_id, block) in function.blocks.iter() {
+        fmt_block(block_id, block, f)?;
+    }
+    Ok(())
+}
+
+fn fmt_block(id: BlockId, block: &Block, f: &mut Formatter) -> Result {
+    write!(f, "b{}(", id.0)?;
+    for i in 0..block.parameter_count {
+        if i != 0 {
+            write!(f, ", ")?;
+        }
+        write!(f, "_")?;
+    }
+    writeln!(f, "):")?;
+
+    for (instruction_id, instruction) in block.instructions.iter() {
+        fmt_instruction(instruction_id, instruction, f)?;
+    }
+
+    match block.terminator.as_ref() {
+        Some(terminator) => fmt_terminator(terminator, f)?,
+        None => write!(f, "  (no terminator)")?,
+    }
+
+    Ok(())
+}
+
+fn fmt_terminator(terminator: &mir::TerminatorInstruction, f: &mut Formatter<'_>) -> Result {
+    match terminator {
+        mir::TerminatorInstruction::Jmp(block_id, arguments) => {
+            write!(f, "  jmp {block_id}")?;
+            for argument in arguments {
+                write!(f, " {argument}")?;
+            }
+            Ok(())
+        },
+        mir::TerminatorInstruction::If { condition, then, else_ } => {
+            write!(f, "  if {condition} then {then} else {else_}")
+        },
+        mir::TerminatorInstruction::Unreachable => write!(f, "  unreachable"),
+        mir::TerminatorInstruction::Return(value) => write!(f, "  return {value}"),
+        mir::TerminatorInstruction::Switch { int_value, cases, else_ } => {
+            writeln!(f, "  switch {int_value}")?;
+            for (i, case) in cases.iter().enumerate() {
+                if i != 0 {
+                    writeln!(f)?;
+                }
+                write!(f, "  | {i} -> {case}")?;
+            }
+            if let Some(else_) = else_ {
+                write!(f, "\n  | _ -> {else_}")?;
+            }
+            Ok(())
+        },
+    }
+}
+
+fn fmt_instruction(
+    instruction_id: mir::InstructionId, instruction: &mir::Instruction, f: &mut Formatter<'_>,
+) -> Result {
+    write!(f, "  {} = ", Value::InstructionResult(instruction_id))?;
+
+    match instruction {
+        mir::Instruction::Call { function, arguments } => {
+            write!(f, "{function}")?;
+            for argument in arguments {
+                write!(f, " {argument}")?;
+            }
+        },
+        mir::Instruction::UnpackTuple { tuple, index } => write!(f, "{tuple}.{index}")?,
+        mir::Instruction::StackAlloc(value) => write!(f, "alloca {value}")?,
+    }
+
+    writeln!(f)
+}

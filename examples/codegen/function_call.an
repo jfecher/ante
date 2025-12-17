@@ -1,5 +1,6 @@
 show x = puts x.c_string
 
-show "foo"
+main () =
+    show "foo"
 
 // args: --delete-binary

@@ -60,7 +60,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Expr::Constructor(constructor) => self.check_constructor(constructor, expected, expr),
             Expr::Quoted(_) => {
                 let location = expr.locate(self);
-                self.compiler.accumulate(Diagnostic::Unimplemented { item: UnimplementedItem::Comptime, location });
+                UnimplementedItem::Comptime.issue(self.compiler, location);
             },
             Expr::Error => (),
         };
@@ -390,8 +390,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let new_expr = self.current_extended_context_mut()[new_expr_id].clone();
 
         if let Some(tree) = self.compile_decision_tree(match_var, &match_.cases, expr_type, location) {
-            self.current_extended_context_mut().insert_expr(expr, new_expr);
-            self.decision_trees.insert(expr, tree);
+            let context = self.current_extended_context_mut();
+            context.insert_expr(expr, new_expr);
+            context.insert_decision_tree(expr, tree);
         }
     }
 
@@ -450,7 +451,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     fn check_handle(&mut self, _handle: &cst::Handle, _expected: TypeId, expr: ExprId) {
         let location = self.current_context().expr_locations[expr].clone();
-        self.compiler.accumulate(Diagnostic::Unimplemented { item: UnimplementedItem::Effects, location });
+        UnimplementedItem::Effects.issue(self.compiler, location);
     }
 
     pub(super) fn check_extern(&mut self, extern_: &cst::Extern) {
@@ -460,7 +461,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     pub(super) fn check_comptime(&self, _comptime: &cst::Comptime) {
         let location = self.current_context().location.clone();
-        self.compiler.accumulate(Diagnostic::Unimplemented { item: UnimplementedItem::Comptime, location });
+        UnimplementedItem::Comptime.issue(self.compiler, location);
     }
 
     /// A type definition always returns a unit value, but we must still create the
@@ -472,7 +473,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             cst::TypeDefinitionBody::Error => Cow::Owned(Vec::new()),
             cst::TypeDefinitionBody::Alias(_) => {
                 let location = id.locate(self);
-                self.compiler.accumulate(Diagnostic::Unimplemented { item: UnimplementedItem::TypeAlias, location });
+                UnimplementedItem::TypeAlias.issue(self.compiler, location);
                 return;
             },
             cst::TypeDefinitionBody::Struct(fields) => {

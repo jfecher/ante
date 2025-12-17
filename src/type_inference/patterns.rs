@@ -9,6 +9,7 @@ use std::{
 };
 
 use rustc_hash::FxHashMap;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     diagnostics::{Diagnostic, Location, UnimplementedItem},
@@ -37,7 +38,7 @@ struct MatchCompiler<'tc, 'local, 'db> {
     unreachable_cases: BTreeMap<RowBody, Location>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DecisionTree {
     /// Match succeeded, jump directly to the given branch
     Success(ExprId),
@@ -55,7 +56,7 @@ pub enum DecisionTree {
     Switch(PathId, Vec<Case>, Option<Box<DecisionTree>>),
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Case {
     pub constructor: Constructor,
     pub arguments: Vec<PathId>,
@@ -95,7 +96,7 @@ enum Pattern {
     Error,
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Constructor {
     True,
     False,
@@ -266,7 +267,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
             cst::TypeDefinitionBody::Alias(_) => {
                 let location = self.item_contexts[&item.id].1.name_locations[name].clone();
-                self.compiler.accumulate(Diagnostic::Unimplemented { item: UnimplementedItem::TypeAlias, location });
+                UnimplementedItem::TypeAlias.issue(self.compiler, location);
                 return None;
             },
         };

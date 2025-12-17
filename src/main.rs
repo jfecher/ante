@@ -44,6 +44,7 @@ mod backend;
 mod definition_collection;
 mod find_files;
 mod lexer;
+mod mir;
 mod name_resolution;
 mod parser;
 mod type_inference;
@@ -79,6 +80,8 @@ fn compile(args: Cli) {
         display_name_resolution(&compiler)
     } else if args.show_types || args.check {
         display_type_checking(&compiler, args.show_types)
+    } else if args.show_mir {
+        display_mir(&compiler)
     } else {
         BTreeSet::new()
     };
@@ -192,6 +195,28 @@ fn display_type_checking(compiler: &Db, show_types: bool) -> BTreeSet<Diagnostic
 
         if show_types {
             println!("{}", parse.cst.display_typed(&parse.top_level_data, compiler))
+        }
+    }
+    diagnostics
+}
+
+fn display_mir(compiler: &Db) -> BTreeSet<Diagnostic> {
+    let crates = GetCrateGraph.get(compiler);
+    let local_crate = &crates[&LOCAL_CRATE];
+    let mut diagnostics = BTreeSet::new();
+
+    for file in local_crate.source_files.values() {
+        let parse = Parse(*file).get(compiler);
+
+        for item in &parse.cst.top_level_items {
+            let mir = mir::builder::build_initial_mir(compiler, item.id);
+            if let Some(functions) = mir {
+                for function in functions.into_values() {
+                    println!("{function}\n");
+                }
+            }
+            let resolve_diagnostics: BTreeSet<_> = compiler.get_accumulated(TypeCheck(item.id));
+            diagnostics.extend(resolve_diagnostics);
         }
     }
     diagnostics

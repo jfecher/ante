@@ -19,7 +19,6 @@ use crate::{
         errors::{Locateable, TypeErrorKind},
         fresh_expr::ExtendedTopLevelContext,
         generics::Generic,
-        patterns::DecisionTree,
         type_context::TypeContext,
         type_id::TypeId,
         types::{GeneralizedType, TopLevelType, TypeVariableId},
@@ -83,6 +82,13 @@ pub struct IndividualTypeCheckResult {
     #[serde(flatten)]
     pub maps: TypeMaps,
 
+    /// The type checker may create additional expressions, patterns, etc.,
+    /// which it places in this context. This is a full replacement for the
+    /// [TopLevelContext] output from the parser. Continuing to use the old
+    /// [TopLevelContext] will work for most expressions but lead to panics
+    /// when newly created items from the type checking pass are used.
+    pub context: ExtendedTopLevelContext,
+
     /// One or more names may be externally visible outside this top-level item.
     /// Each of these names will be generalized and placed in this map.
     /// Ex: in `foo = (bar = 1; bar + 2)` only `foo: I32` will be generalized,
@@ -136,9 +142,6 @@ struct TypeChecker<'local, 'inner> {
 
     /// Types of each top-level item in the current SCC being worked on
     item_types: Rc<FxHashMap<TopLevelName, TypeId>>,
-
-    /// Each match expression is lowered into a decision tree, stored here.
-    decision_trees: BTreeMap<ExprId, DecisionTree>,
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -172,7 +175,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             current_item: None,
             item_contexts,
             id_contexts,
-            decision_trees: BTreeMap::new(),
         };
 
         let mut item_types = FxHashMap::default();
@@ -230,7 +232,12 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             .generalize_all()
             .into_iter()
             .zip(items)
-            .map(|((id, generalized), maps)| (id, IndividualTypeCheckResult { maps, generalized }))
+            .map(|((id, generalized), maps)| {
+                let mut context = self.id_contexts.remove(&id).unwrap();
+                let item_context = self.item_contexts.get(&id).unwrap();
+                context.extend_from_resolution_result(&item_context.2);
+                (id, IndividualTypeCheckResult { maps, generalized, context })
+            })
             .collect();
 
         TypeCheckSCCResult { items, types: self.types, bindings: self.bindings }
@@ -577,7 +584,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     fn get_field_types(&mut self, typ: TypeId, generic_args: Option<&[TypeId]>) -> BTreeMap<Arc<String>, TypeId> {
         match self.follow_type(typ) {
             Type::Application(constructor, arguments) => {
-                // TODO: Error if `generics` is non-empty
+                // TODO: Error if `generic_args` is non-empty
                 let constructor = *constructor;
                 let arguments = arguments.clone();
                 self.get_field_types(constructor, Some(&arguments))

@@ -202,12 +202,12 @@ impl try_cast_from_cast {Cast a b}: TryCast a b with
 trait Add n with (+): fn n n -> n
 impl add_int: Add (Int a) with (+) x y = builtin "AddInt" x y
 impl add_float: Add (Float a) with (+) x y = builtin "AddFloat" x y
-impl add_char: Add Char with (+) (x: Char) (y: Char) : Char = builtin "AddInt" x y
+impl add_char: Add Char with (+) (x: Char) (y: Char): Char = builtin "AddInt" x y
 
 trait Sub n with (-): fn n n -> n
 impl sub_int: Sub (Int a) with (-) x y = builtin "SubInt" x y
 impl sub_float: Sub (Float a) with (-) x y = builtin "SubFloat" x y
-impl sub_char: Sub Char with (-) (x: Char) (y: Char) : Char = builtin "SubInt" x y
+impl sub_char: Sub Char with (-) (x: Char) (y: Char): Char = builtin "SubInt" x y
 
 trait Mul n with (*): fn n n -> n
 impl mul_int: Mul (Int a) with (*) x y = builtin "MulInt" x y
@@ -239,14 +239,14 @@ impl mod_u64: Mod U64 with (%) x y = builtin "ModUnsigned" x y
 impl mod_usz: Mod Usz with (%) x y = builtin "ModUnsigned" x y
 
 // Cranelift backend does not support floating-point remainder or modulus
-// impl Mod F64 with (%) (_: F64) (_: F64) : F64 = builtin "ModFloat"
+// impl Mod F64 with (%) (_: F64) (_: F64): F64 = builtin "ModFloat"
 
 trait Eq t with (==): fn t t -> Bool
 impl eq_int: Eq (Int a) with (==) x y = builtin "EqInt" x y
 impl eq_float: Eq (Float a) with (==) x y = builtin "EqFloat" x y
 
-impl eq_char: Eq Char with (==) (x: Char) (y: Char) : Bool = builtin "EqChar" x y
-impl eq_bool: Eq Bool with (==) (x: Bool) (y: Bool) : Bool = builtin "EqBool" x y
+impl eq_char: Eq Char with (==) (x: Char) (y: Char): Bool = builtin "EqChar" x y
+impl eq_bool: Eq Bool with (==) (x: Bool) (y: Bool): Bool = builtin "EqBool" x y
 
 (not) a = if a then false else true
 (!=) l r = not (l == r)
@@ -299,44 +299,44 @@ impl extract_ptr_usz: Extract (Ptr t) Usz t with
 //       which is limited to the prelude.
 
 // Should these be traits instead?
-band (x: Int a) (y: Int a) : Int a =
+band (x: Int a) (y: Int a): Int a =
     builtin "BitwiseAnd" x y
 
-bor (x: Int a) (y: Int a) : Int a =
+bor (x: Int a) (y: Int a): Int a =
     builtin "BitwiseOr" x y
 
-bxor (x: Int a) (y: Int a) : Int a =
+bxor (x: Int a) (y: Int a): Int a =
     builtin "BitwiseXor" x y
 
-bnot (x: Int a) : Int a =
+bnot (x: Int a): Int a =
     builtin "BitwiseNot" x
 
 
 type Type t = | MkType
 
-size_of (v: Type t) : Usz = builtin "SizeOf" v
+size_of (v: Type t): Usz = builtin "SizeOf" v
 
 // addr: Usz = transmute ptr
 // new_addr = addr + index * size_of (MkType: Type t)
 // transmute new_addr
-offset (ptr: Ptr t) (index: Usz) : Ptr t =
+offset (ptr: Ptr t) (index: Usz): Ptr t =
     builtin "Offset" ptr index
 
-deref (x: ref t) : t =
+deref (x: ref t): t =
     builtin "Deref" x
 
 // Temporary. We should instead be polymorphic over each reference type
-deref_mut (x: mut t) : t =
+deref_mut (x: mut t): t =
     builtin "Deref" x
 
-deref_ptr (p: Ptr t) : t =
+deref_ptr (p: Ptr t): t =
     deref <| transmute p
 
-ptr_store (p: Ptr a) (value: a) : Unit =
+ptr_store (p: Ptr a) (value: a): Unit =
     addr: mut a = transmute p
     addr := value
 
-array_insert (p: Ptr a) (index: Usz) (value: a) : Unit =
+array_insert (p: Ptr a) (index: Usz) (value: a): Unit =
     offset p index |> ptr_store value
 
 ptr_to_ref: fn (Ptr a) -> mut a = transmute
@@ -345,7 +345,7 @@ ptr_to_ref: fn (Ptr a) -> mut a = transmute
 
 null (): Ptr a = transmute 0usz
 
-transmute (x: a) : b =
+transmute (x: a): b =
     builtin "Transmute" x
 
 // TODO: 'mut' and special-case extract versus append
@@ -425,18 +425,18 @@ impl print_maybe {Print a}: Print (Maybe a) with
 impl print_ref {Print a}: Print (ref a) with
     printne r = printne @r
 
-unwrap (m: Maybe t) : t =
+unwrap (m: Maybe t): t =
     match m
     | Some x -> x
     | None -> panic "Tried to unwrap a None value"
 
 // Naive replacement for printf which isn't supported by the cranelift backend
-print_unsigned (x: U64) : Unit =
+print_unsigned (x: U64): Unit =
     if x >= 10 then print_unsigned (x / 10)
     digit: Char = cast (x % 10)
     putchar (digit + c"0")
 
-print_signed (x: I64) (min: I64) (min_string: String) : Unit =
+print_signed (x: I64) (min: I64) (min_string: String): Unit =
     if x < 0 then
         if x == min then
             printne min_string
@@ -446,7 +446,7 @@ print_signed (x: I64) (min: I64) (min_string: String) : Unit =
     else
         print_unsigned <| unwrap <| try_cast x
 
-_print_string (s: String) : Unit =
+_print_string (s: String): Unit =
     loop s (i = 0) ->
         if i < s.length then
             off = offset (s.c_string) i
@@ -454,7 +454,7 @@ _print_string (s: String) : Unit =
             putchar c
             recur s (i + 1)
 
-print_c_string (s: Ptr Char) : Unit =
+print_c_string (s: Ptr Char): Unit =
     loop s (i = 0) ->
         c = deref_ptr (offset s i)
         if c != c"\0" then
@@ -531,10 +531,10 @@ impl iterator_range {Cmp (Int a)}: Iterator (Range (Int a)) (Int a) with
             next = Range (range.start + 1) range.end
             Some (next, range.start)
 
-iter_range (from: Usz) (to: Usz) (f: fn Usz => Unit) : Unit =
+iter_range (from: Usz) (to: Usz) (f: fn Usz => Unit): Unit =
     iter (Range from to) f
 
-repeat (count: Usz) (f: fn Usz => Unit) : Unit =
+repeat (count: Usz) (f: fn Usz => Unit): Unit =
     iter (Range 0 count) f
 
 // Iterating through an InFile iterates through each line
@@ -587,21 +587,21 @@ impl extract_string: Extract String Usz Char with
 //     insert str index Char =
 //         str.c_string#index := Char
 
-open_infile (path: String) : InFile =
+open_infile (path: String): InFile =
     InFile (fopen path.c_string "r".c_string)
 
-open_outfile (path: String) : OutFile =
+open_outfile (path: String): OutFile =
     OutFile (fopen path.c_string "w".c_string)
 
 //Convenience function for using feof with better types
-eof (f: InFile) : Bool =
+eof (f: InFile): Bool =
     feof f != 0
 
-next_char (f: InFile) : Char =
+next_char (f: InFile): Char =
     cast (fgetc f)
 
 // TODO: Why is this being monomorphised twice?
-next_line (f: InFile) : String =
+next_line (f: InFile): String =
     if eof f then return ""
 
     var capacity = 32
@@ -629,7 +629,7 @@ next_line (f: InFile) : String =
     String (@cstr) len
 
 // Read a line from stdin, ending with (and not including) a terminating c"\n"
-read_line () : String =
+read_line (): String =
     buffer, len = loop (buffer = null ()) (len = 0) ->
         c = getchar ()
         c_char = cast c : Char

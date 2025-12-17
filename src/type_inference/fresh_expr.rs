@@ -2,23 +2,29 @@
 //! during type-inference. This is most notably used when compiling match expressions
 //! where intermediate variables are created to simplify the decision tree structure.
 
-use std::{ops::Index, sync::Arc};
+use std::{collections::BTreeMap, ops::Index, sync::Arc};
 
 use rustc_hash::FxHashMap;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     diagnostics::Location,
+    name_resolution::{Origin, ResolutionResult},
     parser::{
         context::TopLevelContext,
         cst::{Expr, Name, Path, Pattern},
         ids::{ExprId, NameId, PathId, PatternId},
     },
-    type_inference::{TypeChecker, type_id::TypeId},
+    type_inference::{TypeChecker, patterns::DecisionTree, type_id::TypeId},
 };
 
 /// Extends a [TopLevelContext] with additional expressions, names, and paths.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExtendedTopLevelContext {
     original: Arc<TopLevelContext>,
+
+    name_origins: BTreeMap<NameId, Origin>,
+    path_origins: BTreeMap<PathId, Origin>,
 
     more_exprs: FxHashMap<ExprId, Expr>,
     more_patterns: FxHashMap<PatternId, Pattern>,
@@ -29,6 +35,10 @@ pub struct ExtendedTopLevelContext {
     more_pattern_locations: FxHashMap<PatternId, Location>,
     more_path_locations: FxHashMap<PathId, Location>,
     more_name_locations: FxHashMap<NameId, Location>,
+
+    /// Type checking translates match expressions into decision trees,
+    /// which need to be stored here for later passes to use.
+    decision_trees: BTreeMap<ExprId, DecisionTree>,
 }
 
 impl<'local, 'innter> TypeChecker<'local, 'innter> {
@@ -55,6 +65,8 @@ impl ExtendedTopLevelContext {
     pub(crate) fn new(original: Arc<TopLevelContext>) -> Self {
         Self {
             original,
+            name_origins: Default::default(),
+            path_origins: Default::default(),
             more_exprs: Default::default(),
             more_patterns: Default::default(),
             more_paths: Default::default(),
@@ -63,6 +75,7 @@ impl ExtendedTopLevelContext {
             more_pattern_locations: Default::default(),
             more_path_locations: Default::default(),
             more_name_locations: Default::default(),
+            decision_trees: Default::default(),
         }
     }
 
@@ -127,6 +140,42 @@ impl ExtendedTopLevelContext {
             None => self.more_expr_locations[&expr].clone(),
         }
     }
+
+    /// Add each name & path origin from the given [ResolutionResult] to the current extended
+    /// context.
+    ///
+    /// TODO: Restructure type checking so we don't have to clone internally here
+    pub(crate) fn extend_from_resolution_result(&mut self, resolution_result: &ResolutionResult) {
+        self.name_origins.extend(resolution_result.name_origins.iter().map(|(name, origin)| (*name, *origin)));
+        self.path_origins.extend(resolution_result.path_origins.iter().map(|(path, origin)| (*path, *origin)));
+    }
+
+    #[allow(unused)]
+    pub(crate) fn path_origin(&self, path_id: PathId) -> Origin {
+        self.path_origins[&path_id]
+    }
+
+    #[allow(unused)]
+    pub(crate) fn name_origin(&self, name_id: NameId) -> Origin {
+        self.name_origins[&name_id]
+    }
+
+    /// Insert a decision tree, replacing the expression at the given id
+    ///
+    /// Note that because [DecisionTree] is a distinct type, this will not
+    /// be checked when indexing the [ExtendedTopLevelContext] with an [ExprId].
+    /// Instead, developers must remember to manually check for this case when
+    /// retrieving a match expression.
+    pub(crate) fn insert_decision_tree(&mut self, expr: ExprId, tree: DecisionTree) {
+        self.decision_trees.insert(expr, tree);
+    }
+
+    /// Retrieve a given tree from the given expression (expected to be a match expression)
+    /// or panic if there is none.
+    #[allow(unused)]
+    pub(crate) fn decision_tree(&self, expr: ExprId) -> &DecisionTree {
+        &self.decision_trees[&expr]
+    }
 }
 
 impl Index<ExprId> for ExtendedTopLevelContext {
@@ -158,6 +207,17 @@ impl Index<NameId> for ExtendedTopLevelContext {
         match self.original.names.get(index) {
             Some(name) => name,
             None => &self.more_names[&index],
+        }
+    }
+}
+
+impl Index<PatternId> for ExtendedTopLevelContext {
+    type Output = Pattern;
+
+    fn index(&self, index: PatternId) -> &Self::Output {
+        match self.original.patterns.get(index) {
+            Some(pattern) => pattern,
+            None => &self.more_patterns[&index],
         }
     }
 }

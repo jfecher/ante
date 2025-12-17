@@ -36,6 +36,10 @@ pub struct Cli {
     #[arg(long, group = "compile_mode")]
     pub show_types: bool,
 
+    /// Output the resulting MIR for the file
+    #[arg(long, group = "compile_mode")]
+    pub show_mir: bool,
+
     /// Check the file for errors without compiling
     #[arg(long, short, group = "compile_mode")]
     pub check: bool,

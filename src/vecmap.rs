@@ -37,6 +37,17 @@ impl<K, V> VecMap<K, V> {
     {
         self.items.get(usize::from(index))
     }
+
+    pub fn iter(&self) -> impl ExactSizeIterator<Item = (K, &V)>
+    where
+        K: From<usize>,
+    {
+        self.items.iter().enumerate().map(|(i, v)| (K::from(i), v))
+    }
+
+    pub fn values(&self) -> impl ExactSizeIterator<Item = &V> {
+        self.items.iter()
+    }
 }
 
 impl<K, V> Index<K> for VecMap<K, V>

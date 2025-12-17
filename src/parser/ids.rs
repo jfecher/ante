@@ -10,7 +10,8 @@ use crate::{
 };
 
 /// A `TopLevelId` is a 64-bit hash uniquely identifying a particular
-/// `TopLevelStatement` node. Since these are attached to each node, and we cache
+/// `TopLevelStatement` node along with the source file of that node.
+/// Since these are attached to each node, and we cache
 /// nodes by value, any time an Id changes, the compiler will see the
 /// associated node as having changed. For this reason, we want to try
 /// to make these Ids as stable as possible when the source program changes.
