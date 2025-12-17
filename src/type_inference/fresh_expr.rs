@@ -39,6 +39,19 @@ pub struct ExtendedTopLevelContext {
     /// Type checking translates match expressions into decision trees,
     /// which need to be stored here for later passes to use.
     decision_trees: BTreeMap<ExprId, DecisionTree>,
+
+    /// Each member access expression translates to a tuple access in the MIR
+    /// so the type checker records which field index into the type the member
+    /// access refers to to avoid later passes having to repeat this work.
+    member_access_indices: BTreeMap<ExprId, u32>,
+
+    /// For each constructor expression, we remember which order its type expects
+    /// the fields to be packed into, regardless of the order the fields were given
+    /// in the constructor.
+    ///
+    /// This maps expression to a map from each field name in the Constructor
+    /// expresssion to the field's expected index in its type.
+    constructor_field_orders: BTreeMap<ExprId, BTreeMap<NameId, u32>>,
 }
 
 impl<'local, 'innter> TypeChecker<'local, 'innter> {
@@ -76,6 +89,8 @@ impl ExtendedTopLevelContext {
             more_path_locations: Default::default(),
             more_name_locations: Default::default(),
             decision_trees: Default::default(),
+            member_access_indices: Default::default(),
+            constructor_field_orders: Default::default(),
         }
     }
 
@@ -175,6 +190,27 @@ impl ExtendedTopLevelContext {
     #[allow(unused)]
     pub(crate) fn decision_tree(&self, expr: ExprId) -> &DecisionTree {
         &self.decision_trees[&expr]
+    }
+
+    /// Remember that the field that the MemberAccess at the given [ExprId] refers
+    /// to is the Nth field of its type, where N is `field_index`.
+    pub(crate) fn push_member_access_index(&mut self, expr: ExprId, field_index: u32) {
+        self.member_access_indices.insert(expr, field_index);
+    }
+
+    /// Retrieve which field index the member access' field refers to in the object type
+    #[allow(unused)]
+    pub(crate) fn member_access_index(&self, expr: ExprId) -> Option<u32> {
+        self.member_access_indices.get(&expr).copied()
+    }
+
+    pub(crate) fn push_constructor_field_order(&mut self, id: ExprId, field_order: BTreeMap<NameId, u32>) {
+        self.constructor_field_orders.insert(id, field_order);
+    }
+
+    #[allow(unused)]
+    pub(crate) fn constructor_field_order(&self, id: ExprId) -> Option<&BTreeMap<NameId, u32>> {
+        self.constructor_field_orders.get(&id)
     }
 }
 

@@ -1,6 +1,9 @@
 use std::fmt::{Display, Formatter, Result};
 
-use crate::mir::{self, Block, BlockId, FloatConstant, FunctionId, IntConstant, Value};
+use crate::{
+    iterator_extensions::vecmap,
+    mir::{self, Block, BlockId, FloatConstant, FunctionId, IntConstant, Value},
+};
 
 impl Display for mir::Function {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
@@ -11,6 +14,7 @@ impl Display for mir::Function {
 impl Display for Value {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
+            Value::Error => write!(f, "#error"),
             Value::Unit => write!(f, "()"),
             Value::Bool(b) => write!(f, "{b}"),
             Value::Char(c) => write!(f, "{c}"),
@@ -138,9 +142,15 @@ fn fmt_instruction(
                 write!(f, " {argument}")?;
             }
         },
-        mir::Instruction::UnpackTuple { tuple, index } => write!(f, "{tuple}.{index}")?,
+        mir::Instruction::IndexTuple { tuple, index } => write!(f, "{tuple}.{index}")?,
+        mir::Instruction::MakeTuple(fields) => write!(f, "({})", comma_separated(fields))?,
+        mir::Instruction::MakeString(s) => write!(f, "\"{s}\"")?,
         mir::Instruction::StackAlloc(value) => write!(f, "alloca {value}")?,
     }
 
     writeln!(f)
+}
+
+fn comma_separated<T: ToString>(items: &[T]) -> String {
+    vecmap(items, ToString::to_string).join(", ")
 }

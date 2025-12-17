@@ -1,4 +1,4 @@
-show x = puts x.c_string
+show (x: String) = puts x.c_string
 
 main () =
     show "foo"

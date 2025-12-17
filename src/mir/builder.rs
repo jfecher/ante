@@ -6,6 +6,8 @@
 //! Although the MIR may eventually be monomorphized, the initial output of this builder uses a
 //! uniform representation instead, relying on a later pass to manually specialize each function
 //! if desired.
+use std::collections::BTreeMap;
+
 use rustc_hash::FxHashMap;
 
 use crate::{
@@ -126,7 +128,7 @@ impl<'local> Context<'local> {
             cst::Expr::Variable(path_id) => self.variable(*path_id),
             cst::Expr::Sequence(sequence) => self.sequence(sequence),
             cst::Expr::Definition(definition) => self.definition(definition),
-            cst::Expr::MemberAccess(member_access) => self.member_access(member_access),
+            cst::Expr::MemberAccess(member_access) => self.member_access(member_access, expr),
             cst::Expr::Call(call) => self.call(call),
             cst::Expr::Lambda(lambda) => self.lambda(lambda),
             cst::Expr::If(if_) => self.if_(if_),
@@ -134,7 +136,7 @@ impl<'local> Context<'local> {
             cst::Expr::Handle(handle) => self.handle(handle),
             cst::Expr::Reference(reference) => self.reference(reference),
             cst::Expr::TypeAnnotation(type_annotation) => self.expression(type_annotation.lhs),
-            cst::Expr::Constructor(constructor) => self.constructor(constructor),
+            cst::Expr::Constructor(constructor) => self.constructor(constructor, expr),
             cst::Expr::Quoted(quoted) => self.quoted(quoted),
         }
     }
@@ -164,12 +166,7 @@ impl<'local> Context<'local> {
             },
             Literal::Float(x, Some(FloatKind::F32)) => Value::Float(FloatConstant::F32(x.0 as f32)),
             Literal::Float(x, Some(FloatKind::F64)) => Value::Float(FloatConstant::F64(x.0)),
-            Literal::String(_) => {
-                // let location = self.context().expr_location(expr);
-                // UnimplementedItem::Strings.issue(self.compiler, location);
-                // Value::Unit
-                panic!("TODO: strings")
-            },
+            Literal::String(x) => self.push_instruction(Instruction::MakeString(x.clone())),
             Literal::Char(x) => Value::Char(*x),
         }
     }
@@ -178,11 +175,9 @@ impl<'local> Context<'local> {
         // Deliberately allow us to reference variables not in the context.
         // This allows us to convert all definitions to MIR in parallel, trusting
         // that the links will work out later.
-        let origin = self.context().path_origin(path_id);
-        println!("origin: {origin}");
-        match origin {
+        match self.context().path_origin(path_id) {
             Origin::TopLevelDefinition(item) => Value::Global(item),
-            _ => self.variables[&origin],
+            origin => self.variables[&origin],
         }
     }
 
@@ -195,10 +190,6 @@ impl<'local> Context<'local> {
     }
 
     fn definition(&mut self, definition: &cst::Definition) -> Value {
-        if let cst::Pattern::Variable(name) = self.context()[definition.pattern] {
-            println!("in definition {}", self.context()[name]);
-        }
-
         let mut value = self.expression(definition.rhs);
         if definition.mutable {
             value = self.push_instruction(Instruction::StackAlloc(value));
@@ -207,8 +198,10 @@ impl<'local> Context<'local> {
         Value::Unit
     }
 
-    fn member_access(&self, _member_access: &cst::MemberAccess) -> Value {
-        todo!("mir member_access")
+    fn member_access(&mut self, member_access: &cst::MemberAccess, expr: ExprId) -> Value {
+        let tuple = self.expression(member_access.object);
+        let index = self.context().member_access_index(expr).unwrap_or(u32::MAX);
+        self.push_instruction(Instruction::IndexTuple { tuple, index })
     }
 
     fn call(&mut self, call: &cst::Call) -> Value {
@@ -342,8 +335,18 @@ impl<'local> Context<'local> {
         todo!("mir reference")
     }
 
-    fn constructor(&self, _constructor: &cst::Constructor) -> Value {
-        todo!("mir constructor")
+    fn constructor(&mut self, constructor: &cst::Constructor, expr: ExprId) -> Value {
+        // Side-effects are executed in source order but the type must
+        // be packed in declaration order. So re-order fields afterward.
+        let mut fields = vecmap(&constructor.fields, |(name, field)| (*name, self.expression(*field)));
+
+        // We must be careful here so that we can still produce MIR even if type-checking failed
+        let no_order = BTreeMap::new();
+        let field_order = self.context().constructor_field_order(expr).unwrap_or(&no_order);
+        fields.sort_unstable_by_key(|(name, _)| field_order.get(name).unwrap_or(&0));
+
+        let fields = vecmap(fields, |(_name, value)| value);
+        self.push_instruction(Instruction::MakeTuple(fields))
     }
 
     fn quoted(&self, _quoted: &cst::Quoted) -> Value {

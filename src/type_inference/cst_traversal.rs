@@ -1,4 +1,4 @@
-use std::{borrow::Cow, sync::Arc};
+use std::{borrow::Cow, collections::BTreeMap, sync::Arc};
 
 use rustc_hash::FxHashMap;
 
@@ -329,7 +329,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         self.check_expr(member_access.object, struct_type);
 
         let fields = self.get_field_types(struct_type, None);
-        if let Some(field) = fields.get(&member_access.member) {
+        if let Some((field, field_index)) = fields.get(&member_access.member) {
+            self.current_extended_context_mut().push_member_access_index(expr, *field_index);
             self.unify(*field, expected, TypeErrorKind::General, expr);
         } else if matches!(self.follow_type(struct_type), Type::Variable(_)) {
             let location = self.current_context().expr_locations[expr].clone();
@@ -438,15 +439,23 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let typ = self.convert_ast_type(&constructor.typ);
         self.unify(typ, expected, TypeErrorKind::Constructor, id);
 
+        // Map each field name to its index in the type's declaration order.
+        // This is used when lowering to MIR when structs are converted into tuples.
+        let mut field_order = BTreeMap::new();
         let field_types = self.get_field_types(typ, None);
 
         for (name, expr) in &constructor.fields {
             let name_string = &self.current_context().names[*name];
-            let expected_field_type = field_types.get(name_string).copied().unwrap_or(TypeId::ERROR);
+            let (expected_field_type, field_index) =
+                field_types.get(name_string).copied().unwrap_or((TypeId::ERROR, 0));
 
             self.check_expr(*expr, expected_field_type);
             self.check_name(*name, expected_field_type);
+
+            field_order.insert(*name, field_index);
         }
+
+        self.current_extended_context_mut().push_constructor_field_order(id, field_order);
     }
 
     fn check_handle(&mut self, _handle: &cst::Handle, _expected: TypeId, expr: ExprId) {

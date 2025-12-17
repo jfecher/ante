@@ -73,6 +73,7 @@ impl From<usize> for InstructionId {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Value {
+    Error,
     Unit,
     Bool(bool),
     Char(char),
@@ -115,15 +116,10 @@ impl Block {
 }
 
 enum Instruction {
-    Call {
-        function: Value,
-        arguments: Vec<Value>,
-    },
-    #[allow(unused)]
-    UnpackTuple {
-        tuple: Value,
-        index: u32,
-    },
+    Call { function: Value, arguments: Vec<Value> },
+    IndexTuple { tuple: Value, index: u32 },
+    MakeString(String),
+    MakeTuple(Vec<Value>),
     StackAlloc(Value),
 }
 

@@ -581,7 +581,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     /// Try to retrieve the types of each field of the given type.
     /// Returns an empty map if unsuccessful.
-    fn get_field_types(&mut self, typ: TypeId, generic_args: Option<&[TypeId]>) -> BTreeMap<Arc<String>, TypeId> {
+    ///
+    /// The map maps from the field name to a pair of (field type, field index).
+    fn get_field_types(
+        &mut self, typ: TypeId, generic_args: Option<&[TypeId]>,
+    ) -> BTreeMap<Arc<String>, (TypeId, u32)> {
         match self.follow_type(typ) {
             Type::Application(constructor, arguments) => {
                 // TODO: Error if `generic_args` is non-empty
@@ -603,11 +607,12 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                             TypeDefinitionBody::Error => todo!(),
                             TypeDefinitionBody::Struct(items) => items
                                 .iter()
-                                .map(|(name, typ)| {
+                                .enumerate()
+                                .map(|(index, (name, typ))| {
                                     let name = item_context.names[*name].clone();
-                                    let typ2 = self.convert_foreign_type(typ, &resolve);
-                                    let typ3 = self.substitute_generics(typ2, &substitutions);
-                                    (name, typ3)
+                                    let typ = self.convert_foreign_type(typ, &resolve);
+                                    let typ = self.substitute_generics(typ, &substitutions);
+                                    (name, (typ, index as u32))
                                 })
                                 .collect(),
                             TypeDefinitionBody::Enum(_) => BTreeMap::default(),
@@ -624,8 +629,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     self.types.get_or_insert_type(Type::Application(TypeId::POINTER, vec![TypeId::CHAR]));
 
                 // TODO: Hide these and only expose them as unsafe builtins
-                fields.insert(Arc::new("c_string".into()), c_string_type);
-                fields.insert(Arc::new("length".into()), TypeId::U32);
+                fields.insert(Arc::new("c_string".into()), (c_string_type, 0));
+                fields.insert(Arc::new("length".into()), (TypeId::U32, 1));
                 fields
             },
             _ => BTreeMap::default(),
