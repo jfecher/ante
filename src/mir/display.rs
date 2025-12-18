@@ -71,8 +71,9 @@ impl Display for BlockId {
 }
 
 fn fmt_function(function: &mir::Function, f: &mut Formatter) -> Result {
-    writeln!(f, "fun {}", function.id)?;
+    write!(f, "fun {}", function.id)?;
     for (block_id, block) in function.blocks.iter() {
+        writeln!(f)?;
         fmt_block(block_id, block, f)?;
     }
     Ok(())

@@ -1,6 +1,10 @@
 show (x: String) = puts x.c_string
 
 main () =
+    match Maybe.Some 3
+    | Some x -> ()
+    | None -> ()
+
     show "foo"
 
 // args: --delete-binary

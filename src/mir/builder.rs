@@ -145,8 +145,9 @@ impl<'local> Context<'local> {
         match literal {
             Literal::Unit => Value::Unit,
             Literal::Bool(x) => Value::Bool(*x),
-            Literal::Integer(_, None) => {
-                panic!("TODO: polymorphic integers")
+            Literal::Integer(x, None) => {
+                Value::Integer(IntConstant::U32((*x).try_into().unwrap()))
+                // panic!("TODO: polymorphic integers")
             },
             Literal::Integer(x, Some(IntegerKind::I8)) => Value::Integer(IntConstant::I8((*x).try_into().unwrap())),
             Literal::Integer(x, Some(IntegerKind::I16)) => Value::Integer(IntConstant::I16((*x).try_into().unwrap())),
@@ -159,9 +160,6 @@ impl<'local> Context<'local> {
             Literal::Integer(x, Some(IntegerKind::U64)) => Value::Integer(IntConstant::U64((*x).try_into().unwrap())),
             Literal::Integer(x, Some(IntegerKind::Usz)) => Value::Integer(IntConstant::Usz((*x).try_into().unwrap())),
             Literal::Float(_, None) => {
-                // let location = self.context().expr_location(expr);
-                // UnimplementedItem::PolymorphicFloats.issue(self.compiler, location);
-                // Value::Unit
                 panic!("TODO: polymorphic floats")
             },
             Literal::Float(x, Some(FloatKind::F32)) => Value::Float(FloatConstant::F32(x.0 as f32)),
@@ -176,8 +174,9 @@ impl<'local> Context<'local> {
         // This allows us to convert all definitions to MIR in parallel, trusting
         // that the links will work out later.
         match self.context().path_origin(path_id) {
-            Origin::TopLevelDefinition(item) => Value::Global(item),
-            origin => self.variables[&origin],
+            Some(Origin::TopLevelDefinition(item)) => Value::Global(item),
+            Some(origin) => self.variables[&origin],
+            None => Value::Error,
         }
     }
 
@@ -260,17 +259,20 @@ impl<'local> Context<'local> {
     }
 
     fn match_(&mut self, expr: ExprId) -> Value {
-        let tree = self.context().decision_tree(expr).clone();
-        self.decision_tree(tree)
+        match self.context().decision_tree(expr) {
+            Some((define_match_var, tree)) => {
+                self.expression(*define_match_var);
+                self.decision_tree(tree.clone())
+            }
+            None => Value::Error,
+        }
     }
 
     fn decision_tree(&mut self, tree: DecisionTree) -> Value {
         match tree {
             DecisionTree::Success(expr) => self.expression(expr),
-            DecisionTree::Failure { .. } => {
-                // Expect an error to already be issued
-                Value::Unit
-            },
+            // Expect an error to already be issued
+            DecisionTree::Failure { .. } => Value::Error,
             DecisionTree::Guard { condition, then, else_ } => self.match_if_guard(condition, then, *else_),
             DecisionTree::Switch(tag, cases, else_) => self.switch(tag, cases, else_),
         }
@@ -358,8 +360,9 @@ impl<'local> Context<'local> {
         match &self.context()[pattern] {
             cst::Pattern::Error => unreachable!("Error pattern encountered in bind_pattern"),
             cst::Pattern::Variable(name) => {
-                let origin = self.context().name_origin(*name);
-                self.variables.insert(origin, value);
+                if let Some(origin) = self.context().name_origin(*name) {
+                    self.variables.insert(origin, value);
+                }
             },
             cst::Pattern::Literal(_) => (),
             cst::Pattern::Constructor(_type, _arguments) => {
@@ -367,8 +370,9 @@ impl<'local> Context<'local> {
             },
             cst::Pattern::TypeAnnotation(pattern, _) => self.bind_pattern(*pattern, value),
             cst::Pattern::MethodName { type_name: _, item_name } => {
-                let origin = self.context().name_origin(*item_name);
-                self.variables.insert(origin, value);
+                if let Some(origin) = self.context().name_origin(*item_name) {
+                    self.variables.insert(origin, value);
+                }
             },
         }
     }

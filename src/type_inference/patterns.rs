@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     diagnostics::{Diagnostic, Location, UnimplementedItem},
-    incremental::{GetItem, Resolve},
+    incremental::{GetItem, GetItemRaw, Resolve},
     iterator_extensions::{btree_map, opt_vecmap, try_vecmap, vecmap},
     name_resolution::Origin,
     parser::{
@@ -252,8 +252,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         let variant_index = match &type_definition.body {
             cst::TypeDefinitionBody::Error => return None,
-            // A struct only has 1 constructor, and its name should be the only NameId externally
-            // visible.
+            // A struct only has 1 constructor, and its name should be the only NameId externally visible.
             cst::TypeDefinitionBody::Struct(_) => 0,
             cst::TypeDefinitionBody::Enum(variants) => {
                 let result =
@@ -283,7 +282,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     fn issue_constructor_expected_found_type_error(
         &self, item: &TopLevelItem, variants: &[(NameId, Vec<cst::Type>)], type_name: NameId, path: PathId,
     ) {
-        let item_context = &self.item_contexts[&item.id].1;
+        // We don't need the desugaring [GetItem] provides since we don't need the item itself, only the context
+        let item_context = GetItemRaw(item.id).get(self.compiler).1;
         let constructor_names = vecmap(variants.iter().take(2), |(name, _)| item_context.names[*name].clone());
 
         let type_name = item_context.names[type_name].clone();

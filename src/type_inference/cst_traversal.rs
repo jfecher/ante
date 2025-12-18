@@ -4,7 +4,7 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     diagnostics::{Diagnostic, UnimplementedItem},
-    incremental::{GetType, Resolve},
+    incremental::{GetItemRaw, GetType, Resolve},
     iterator_extensions::vecmap,
     name_resolution::{Origin, builtin::Builtin},
     parser::{
@@ -152,10 +152,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     fn resolve_type_resolution(&mut self, path: PathId, expected: TypeId) -> TypeId {
         let path_value = &self.current_context().paths[path];
         assert_eq!(path_value.components.len(), 1, "Only single-component paths should have Origin::TypeResolution");
+        let name = path_value.last_ident();
 
-        let Some(id) = self.try_find_type_namespace_for_type_resolution(expected) else {
+        let Some(id) = self.try_find_type_namespace_for_type_resolution(expected, name) else {
             return self.issue_name_not_in_scope_error(path);
         };
+
+        // Remember what this `Origin::TypeResolution` path actually refers to from now on
+        self.path_origins.insert(path, Origin::TopLevelDefinition(id));
 
         let result = GetType(id).get(self.compiler);
         self.instantiate(&result)
@@ -209,13 +213,26 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         TypeId::ERROR
     }
 
-    fn try_find_type_namespace_for_type_resolution(&self, typ: TypeId) -> Option<TopLevelName> {
+    fn try_find_type_namespace_for_type_resolution(&self, typ: TypeId, constructor_name: &str) -> Option<TopLevelName> {
         match self.follow_type(typ) {
-            Type::UserDefined(Origin::TopLevelDefinition(id)) => Some(*id),
-            Type::Function(function_type) => {
-                self.try_find_type_namespace_for_type_resolution(function_type.return_type)
+            Type::UserDefined(Origin::TopLevelDefinition(id)) => {
+                // We found which type this name belongs to, but if it is a variant we have to
+                // check which constructor we want.
+                let (_, item_context) = GetItemRaw(id.top_level_item).get(self.compiler);
+                let resolve = Resolve(id.top_level_item).get(self.compiler);
+                let name_id = resolve
+                    .top_level_names
+                    .iter()
+                    .find(|&&name| item_context.names[name].as_str() == constructor_name)?;
+
+                Some(TopLevelName { top_level_item: id.top_level_item, local_name_id: *name_id })
             },
-            Type::Application(constructor, _) => self.try_find_type_namespace_for_type_resolution(*constructor),
+            Type::Function(function_type) => {
+                self.try_find_type_namespace_for_type_resolution(function_type.return_type, constructor_name)
+            },
+            Type::Application(constructor, _) => {
+                self.try_find_type_namespace_for_type_resolution(*constructor, constructor_name)
+            },
             _ => None,
         }
     }
@@ -385,15 +402,15 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // Create a fresh ExprId to map the decision tree to. It doesn't matter what expression
         // is in the tree to begin with so use a unit literal.
         let match_location = self.current_context().expr_locations[expr].clone();
-        let decision_tree_id = self.push_expr(Expr::Literal(Literal::Unit), expected, match_location);
+        let unit_literal = self.push_expr(Expr::Literal(Literal::Unit), expected, match_location);
 
-        let new_expr_id = self.let_binding(match_var_name, match_.expression, decision_tree_id);
-        let new_expr = self.current_extended_context_mut()[new_expr_id].clone();
+        // Re-using this function but we don't need a body for the let, so just use a unit literal.
+        // This can be cleaned up so we insert `match_var = ...` instead of `{ match_var = ...; () }`
+        let new_expr_id = self.let_binding(match_var_name, match_.expression, unit_literal);
 
         if let Some(tree) = self.compile_decision_tree(match_var, &match_.cases, expr_type, location) {
             let context = self.current_extended_context_mut();
-            context.insert_expr(expr, new_expr);
-            context.insert_decision_tree(expr, tree);
+            context.insert_decision_tree(expr, new_expr_id, tree);
         }
     }
 

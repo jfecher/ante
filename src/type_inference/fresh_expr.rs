@@ -38,7 +38,11 @@ pub struct ExtendedTopLevelContext {
 
     /// Type checking translates match expressions into decision trees,
     /// which need to be stored here for later passes to use.
-    decision_trees: BTreeMap<ExprId, DecisionTree>,
+    ///
+    /// The extra ExprId in the resulting pair refers to an extra Definition
+    /// expression created by type-checking meant to be executed before the decision tree is.
+    /// The final code should resemble `{ match_var = ...; decision_tree }`
+    decision_trees: BTreeMap<ExprId, (ExprId, DecisionTree)>,
 
     /// Each member access expression translates to a tuple access in the MIR
     /// so the type checker records which field index into the type the member
@@ -166,30 +170,34 @@ impl ExtendedTopLevelContext {
     }
 
     #[allow(unused)]
-    pub(crate) fn path_origin(&self, path_id: PathId) -> Origin {
-        self.path_origins[&path_id]
+    pub(crate) fn path_origin(&self, path_id: PathId) -> Option<Origin> {
+        self.path_origins.get(&path_id).copied()
     }
 
     #[allow(unused)]
-    pub(crate) fn name_origin(&self, name_id: NameId) -> Origin {
-        self.name_origins[&name_id]
+    pub(crate) fn name_origin(&self, name_id: NameId) -> Option<Origin> {
+        self.name_origins.get(&name_id).copied()
     }
 
     /// Insert a decision tree, replacing the expression at the given id
+    ///
+    /// The [match_var_decl_expr] parameter refers to the extra variable definition
+    /// created by type checking since the match compiler works only on variables rather than full
+    /// expressions. This definition is meant to precede the decision tree when executed.
     ///
     /// Note that because [DecisionTree] is a distinct type, this will not
     /// be checked when indexing the [ExtendedTopLevelContext] with an [ExprId].
     /// Instead, developers must remember to manually check for this case when
     /// retrieving a match expression.
-    pub(crate) fn insert_decision_tree(&mut self, expr: ExprId, tree: DecisionTree) {
-        self.decision_trees.insert(expr, tree);
+    pub(crate) fn insert_decision_tree(&mut self, expr: ExprId, match_var_decl_expr: ExprId, tree: DecisionTree) {
+        self.decision_trees.insert(expr, (match_var_decl_expr, tree));
     }
 
     /// Retrieve a given tree from the given expression (expected to be a match expression)
     /// or panic if there is none.
     #[allow(unused)]
-    pub(crate) fn decision_tree(&self, expr: ExprId) -> &DecisionTree {
-        &self.decision_trees[&expr]
+    pub(crate) fn decision_tree(&self, expr: ExprId) -> Option<&(ExprId, DecisionTree)> {
+        self.decision_trees.get(&expr)
     }
 
     /// Remember that the field that the MemberAccess at the given [ExprId] refers
