@@ -18,12 +18,18 @@ use crate::{
     type_inference::{TypeChecker, patterns::DecisionTree, type_id::TypeId},
 };
 
-/// Extends a [TopLevelContext] with additional expressions, names, and paths.
+/// Extends a [TopLevelContext] with additional expressions, names, and paths
+/// from the [TypeChecker] after performing type-checking and match compilation.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExtendedTopLevelContext {
     original: Arc<TopLevelContext>,
 
+    /// The TypeChecker may insert new variables into the code, most commonly
+    /// during match compilation where each step is broken into a new variable.
     name_origins: BTreeMap<NameId, Origin>,
+
+    /// The TypeChecker also resolves any paths with Origin::TypeResolution to
+    /// a more specific origin (a union variant) if possible.
     path_origins: BTreeMap<PathId, Origin>,
 
     more_exprs: FxHashMap<ExprId, Expr>,
@@ -167,6 +173,14 @@ impl ExtendedTopLevelContext {
     pub(crate) fn extend_from_resolution_result(&mut self, resolution_result: &ResolutionResult) {
         self.name_origins.extend(resolution_result.name_origins.iter().map(|(name, origin)| (*name, *origin)));
         self.path_origins.extend(resolution_result.path_origins.iter().map(|(path, origin)| (*path, *origin)));
+    }
+
+    pub(crate) fn insert_path_origin(&mut self, path_id: PathId, origin: Origin) {
+        self.path_origins.insert(path_id, origin);
+    }
+
+    pub(crate) fn insert_name_origin(&mut self, name_id: NameId, origin: Origin) {
+        self.name_origins.insert(name_id, origin);
     }
 
     #[allow(unused)]

@@ -173,10 +173,13 @@ impl<'local> Context<'local> {
         // Deliberately allow us to reference variables not in the context.
         // This allows us to convert all definitions to MIR in parallel, trusting
         // that the links will work out later.
-        match self.context().path_origin(path_id) {
+        match dbg!(self.context().path_origin(path_id)) {
             Some(Origin::TopLevelDefinition(item)) => Value::Global(item),
-            Some(origin) => self.variables[&origin],
-            None => Value::Error,
+            Some(origin) => dbg!(self.variables[&origin]),
+            None => {
+                println!("Warning: no origin for {path_id:?}: {}", self.context()[path_id]);
+                Value::Error
+            },
         }
     }
 
@@ -261,9 +264,9 @@ impl<'local> Context<'local> {
     fn match_(&mut self, expr: ExprId) -> Value {
         match self.context().decision_tree(expr) {
             Some((define_match_var, tree)) => {
-                self.expression(*define_match_var);
+                dbg!(self.expression(*define_match_var));
                 self.decision_tree(tree.clone())
-            }
+            },
             None => Value::Error,
         }
     }
@@ -301,6 +304,7 @@ impl<'local> Context<'local> {
     }
 
     fn switch(&mut self, tag: PathId, cases: Vec<Case>, else_: Option<Box<DecisionTree>>) -> Value {
+        println!("Switch tag = {tag:?}");
         let int_value = self.variable(tag);
         let start = self.current_block;
 
@@ -361,7 +365,10 @@ impl<'local> Context<'local> {
             cst::Pattern::Error => unreachable!("Error pattern encountered in bind_pattern"),
             cst::Pattern::Variable(name) => {
                 if let Some(origin) = self.context().name_origin(*name) {
+                    println!("defining {origin:?} = {value}");
                     self.variables.insert(origin, value);
+                } else {
+                    println!("No origin for {name:?}");
                 }
             },
             cst::Pattern::Literal(_) => (),

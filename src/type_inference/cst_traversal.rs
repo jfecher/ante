@@ -159,7 +159,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         };
 
         // Remember what this `Origin::TypeResolution` path actually refers to from now on
-        self.path_origins.insert(path, Origin::TopLevelDefinition(id));
+        self.current_extended_context_mut().insert_path_origin(path, Origin::TopLevelDefinition(id));
 
         let result = GetType(id).get(self.compiler);
         self.instantiate(&result)
@@ -397,20 +397,17 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         let match_var_name = self.push_name(Arc::new("match_variable".to_string()), location.clone());
         let match_var = self.fresh_match_variable(0, expr_type, location.clone());
-        self.path_origins.insert(match_var, Origin::Local(match_var_name));
 
-        // Create a fresh ExprId to map the decision tree to. It doesn't matter what expression
-        // is in the tree to begin with so use a unit literal.
-        let match_location = self.current_context().expr_locations[expr].clone();
-        let unit_literal = self.push_expr(Expr::Literal(Literal::Unit), expected, match_location);
+        let context = self.current_extended_context_mut();
+        context.insert_name_origin(match_var_name, Origin::Local(match_var_name));
+        context.insert_path_origin(match_var, Origin::Local(match_var_name));
 
-        // Re-using this function but we don't need a body for the let, so just use a unit literal.
-        // This can be cleaned up so we insert `match_var = ...` instead of `{ match_var = ...; () }`
-        let new_expr_id = self.let_binding(match_var_name, match_.expression, unit_literal);
+        // `<match_var> = <expression being matched>`
+        let preamble = self.let_binding(match_var_name, match_.expression);
 
         if let Some(tree) = self.compile_decision_tree(match_var, &match_.cases, expr_type, location) {
             let context = self.current_extended_context_mut();
-            context.insert_decision_tree(expr, new_expr_id, tree);
+            context.insert_decision_tree(expr, preamble, tree);
         }
     }
 

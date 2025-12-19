@@ -211,7 +211,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Try to convert the given path to a constructor, issuing an error and returning [None] on
     /// failure.
     fn path_to_constructor(&mut self, path: PathId) -> Option<Constructor> {
-        let mut origin = &self.current_resolve().path_origins[&path];
+        let mut origin = self.current_resolve().path_origins[&path];
         // Most times we can immediately grab the origin, but in the case of
         // Origin::TypeResolution we need to grab it from another map. A loop
         // is used here instead of recursion to prevent infinite recursion in the
@@ -225,7 +225,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 Origin::Local(_) => unreachable!("Origin::Local used in path_to_constructor"),
                 Origin::TypeResolution => {
                     // The type checker should hold the origin of paths that require type resolution
-                    origin = self.path_origins.get(&path)?;
+                    origin = self.current_extended_context().path_origin(path)?;
                 },
                 Origin::Builtin(builtin) => {
                     if let Some((type_id, variant_index)) = builtin.constructor() {
@@ -305,24 +305,32 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let location = self.current_extended_context().path_location(rhs);
         let rhs_type = self.path_types[&rhs];
         let rhs = self.push_expr(cst::Expr::Variable(rhs), rhs_type, location.clone());
-        self.let_binding(variable, rhs, body)
+        self.let_binding_and_body(variable, rhs, body)
     }
 
     /// Creates:
     /// `<variable> = <rhs>; <body>`
-    pub(super) fn let_binding(&mut self, variable: NameId, rhs: ExprId, body: ExprId) -> ExprId {
-        let location = self.current_extended_context().expr_location(rhs);
+    pub(super) fn let_binding_and_body(&mut self, variable: NameId, rhs: ExprId, body: ExprId) -> ExprId {
+        let definition = self.let_binding(variable, rhs);
+
+        let seq_item = |expr| cst::SequenceItem { comments: Vec::new(), expr };
+        let block = cst::Expr::Sequence(vec![seq_item(definition), seq_item(body)]);
+
         let body_type = self.expr_types[&body];
+        let location = self.current_extended_context().expr_location(rhs);
+        self.push_expr(block, body_type, location)
+    }
+
+    /// Creates:
+    /// `<variable> = <rhs>` (no body continuation, this is expected to be placed within a Sequence)
+    pub(super) fn let_binding(&mut self, variable: NameId, rhs: ExprId) -> ExprId {
+        let location = self.current_extended_context().expr_location(rhs);
 
         let pattern = cst::Pattern::Variable(variable);
         let pattern = self.push_pattern(pattern, location.clone());
 
         let definition = cst::Expr::Definition(cst::Definition { implicit: false, mutable: false, pattern, rhs });
-        let definition = self.push_expr(definition, TypeId::UNIT, location.clone());
-
-        let seq_item = |expr| cst::SequenceItem { comments: Vec::new(), expr };
-        let block = cst::Expr::Sequence(vec![seq_item(definition), seq_item(body)]);
-        self.push_expr(block, body_type, location)
+        self.push_expr(definition, TypeId::UNIT, location.clone())
     }
 }
 
@@ -816,7 +824,7 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
         }
     }
 
-    fn constructor_string<'this>(&'this self, constructor: &Constructor) -> Cow<'this, String> {
+    fn constructor_string<'this>(&'this mut self, constructor: &Constructor) -> Cow<'this, String> {
         Cow::Owned(match constructor {
             Constructor::True => "true".to_string(),
             Constructor::False => "false".to_string(),
@@ -827,21 +835,37 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
         })
     }
 
-    fn user_defined_type_name(&self, typ: TypeId, _variant_index: usize) -> Cow<String> {
-        if let Type::UserDefined(origin) = self.checker.follow_type(typ) {
-            match origin {
-                Origin::TopLevelDefinition(top_level_name) => {
-                    let item = &self.checker.item_contexts[&top_level_name.top_level_item].1;
-                    Cow::Borrowed(item.names[top_level_name.local_name_id].as_ref())
-                },
-                Origin::Local(name_id) => Cow::Borrowed(self.checker.current_context().names[*name_id].as_ref()),
-                Origin::TypeResolution => unreachable!("Types cannot be Origin::TypeResolution"),
-                Origin::Builtin(builtin) => Cow::Owned(builtin.to_string()),
-            }
-        } else if typ == TypeId::PAIR {
-            Cow::Owned(",".to_string())
-        } else {
-            unreachable!("Non-struct or enum datatype: {}", self.checker.type_to_string(typ))
+    fn user_defined_type_name(&mut self, typ: TypeId, variant_index: usize) -> Cow<String> {
+        match self.checker.follow_type(typ) {
+            Type::UserDefined(origin) => {
+                match origin {
+                    Origin::TopLevelDefinition(top_level_name) => {
+                        let (item, context) = GetItem(top_level_name.top_level_item).get(self.checker.compiler);
+                        let name = *top_level_name;
+                        match self.classify_top_level_item(&item, name.local_name_id) {
+                            Some(UserDefinedTypeKind::NotUserDefined(typ)) => {
+                                Cow::Owned(self.checker.type_to_string(typ))
+                            },
+                            Some(UserDefinedTypeKind::Product(_)) => {
+                                assert_eq!(variant_index, 0);
+                                Cow::Owned(context.names[name.local_name_id].as_ref().clone())
+                            },
+                            Some(UserDefinedTypeKind::Sum(variants)) => {
+                                let (variant_name, _) =
+                                    variants.get(variant_index).expect("Expected variant_index to be valid");
+                                Cow::Owned(context.names[*variant_name].as_ref().clone())
+                            },
+                            // Type failed to resolve
+                            None => Cow::Owned(WILDCARD_PATTERN.to_string()),
+                        }
+                    },
+                    Origin::Local(_) | Origin::TypeResolution => unreachable!(),
+                    Origin::Builtin(builtin) => Cow::Owned(builtin.to_string()),
+                }
+            },
+            Type::Application(constructor, _) => self.user_defined_type_name(*constructor, variant_index),
+            Type::Primitive(PrimitiveType::Pair) => Cow::Owned(",".to_string()),
+            _ => unreachable!("Non-struct or enum datatype: {}", self.checker.type_to_string(typ)),
         }
     }
 
@@ -907,7 +931,7 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
                 let item = GetItem(top_level_name.top_level_item).get(self.checker.compiler);
                 self.classify_top_level_item(&item.0, top_level_name.local_name_id)
             },
-            Origin::Local(_) => unreachable!("Origin::Local used in path_to_constructor"),
+            Origin::Local(_) => unreachable!("Origin::Local used in classify_type_origin"),
             Origin::TypeResolution => {
                 unreachable!(
                     "Origin::TypeResolution encountered in classify_type_origin, should be unreachable in a type position"

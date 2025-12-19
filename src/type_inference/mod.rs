@@ -136,10 +136,6 @@ struct TypeChecker<'local, 'inner> {
 
     current_item: Option<TopLevelId>,
 
-    /// The TypeChecker also resolves any paths with Origin::TypeResolution to
-    /// a more specific origin (a union variant) if possible.
-    path_origins: BTreeMap<PathId, Origin>,
-
     /// Types of each top-level item in the current SCC being worked on
     item_types: Rc<FxHashMap<TopLevelName, TypeId>>,
 }
@@ -149,7 +145,6 @@ pub struct TypeMaps {
     pub name_types: BTreeMap<NameId, TypeId>,
     pub path_types: BTreeMap<PathId, TypeId>,
     pub expr_types: BTreeMap<ExprId, TypeId>,
-    pub path_origins: BTreeMap<PathId, Origin>,
 }
 
 /// Map from each TopLevelId to a tuple of (the item, parse context, resolution context)
@@ -171,7 +166,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             path_types: Default::default(),
             expr_types: Default::default(),
             item_types: Default::default(),
-            path_origins: Default::default(),
             current_item: None,
             item_contexts,
             id_contexts,
@@ -251,7 +245,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             name_types: std::mem::take(&mut self.name_types),
             path_types: std::mem::take(&mut self.path_types),
             expr_types: std::mem::take(&mut self.expr_types),
-            path_origins: std::mem::take(&mut self.path_origins),
         }
     }
 

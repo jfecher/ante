@@ -1,4 +1,5 @@
 use std::{
+    borrow::Cow,
     collections::BTreeMap,
     fmt::{Display, Formatter},
     sync::Arc,
@@ -12,7 +13,7 @@ use crate::{
         cst::{Constructor, TopLevelItemKind},
         ids::{NameId, PathId},
     },
-    type_inference::type_id::TypeId,
+    type_inference::{patterns::DecisionTree, type_id::TypeId},
 };
 
 use super::{
@@ -246,7 +247,7 @@ impl<'a> CstDisplay<'a> {
             write!(f, "mut ")?;
         }
 
-        if let Expr::Lambda(lambda) = &context.exprs[definition.rhs] {
+        if let Some(Expr::Lambda(lambda)) = &context.exprs.get(definition.rhs) {
             return self.fmt_function(definition, lambda, context, f);
         }
 
@@ -287,7 +288,13 @@ impl<'a> CstDisplay<'a> {
             write!(f, "(")?;
         }
 
-        write!(f, "{}", &context.names[name])?;
+        let name_string = context.names.get(name).map(Cow::Borrowed).unwrap_or_else(|| {
+            let db = self.db_type_check().unwrap();
+            let check = TypeCheck(self.current_item_id.unwrap()).get(db);
+            Cow::Owned(check.result.context[name].clone())
+        });
+
+        write!(f, "{name_string}")?;
 
         if let Some(db) = self.db_resolve() {
             let resolved = Resolve(self.current_item_id.unwrap()).get(db);
@@ -322,7 +329,13 @@ impl<'a> CstDisplay<'a> {
             write!(f, "(")?;
         }
 
-        write!(f, "{}", &context.paths[path])?;
+        let path_string = context.paths.get(path).map(Cow::Borrowed).unwrap_or_else(|| {
+            let db = self.db_type_check().unwrap();
+            let check = TypeCheck(self.current_item_id.unwrap()).get(db);
+            Cow::Owned(check.result.context[path].clone())
+        });
+
+        write!(f, "{path_string}")?;
 
         if let Some(db) = self.db_resolve() {
             let resolved = Resolve(self.current_item_id.unwrap()).get(db);
@@ -549,8 +562,15 @@ impl<'a> CstDisplay<'a> {
         self.fmt_effect_clause(&function_type.effects, context, f)
     }
 
-    fn fmt_expr(&mut self, expr: ExprId, context: &TopLevelContext, f: &mut Formatter) -> std::fmt::Result {
-        match &context.exprs[expr] {
+    fn fmt_expr(&mut self, id: ExprId, context: &TopLevelContext, f: &mut Formatter) -> std::fmt::Result {
+        let expr = context.exprs.get(id).map(Cow::Borrowed).unwrap_or_else(|| {
+            // Check if this is an extra expr inserted by type-checking
+            let db = self.db_type_check().unwrap();
+            let check = TypeCheck(self.current_item_id.unwrap()).get(db);
+            Cow::Owned(check.result.context[id].clone())
+        });
+
+        match expr.as_ref() {
             Expr::Error => write!(f, "(error)"),
             Expr::Literal(literal) => self.fmt_literal(literal, f),
             Expr::Variable(path) => self.fmt_path(*path, context, f),
@@ -560,7 +580,7 @@ impl<'a> CstDisplay<'a> {
             Expr::MemberAccess(access) => self.fmt_member_access(access, context, f),
             Expr::Lambda(lambda) => self.fmt_lambda(lambda, context, f),
             Expr::If(if_) => self.fmt_if(if_, context, f),
-            Expr::Match(match_) => self.fmt_match(match_, context, f),
+            Expr::Match(match_) => self.fmt_match(match_, context, id, f),
             Expr::Handle(handle_) => self.fmt_handle(handle_, context, f),
             Expr::Reference(reference) => self.fmt_reference(reference, context, f),
             Expr::TypeAnnotation(type_annotation) => self.fmt_type_annotation(type_annotation, context, f),
@@ -594,7 +614,7 @@ impl<'a> CstDisplay<'a> {
     }
 
     fn is_block(&self, expr: ExprId, context: &TopLevelContext) -> bool {
-        matches!(&context.exprs[expr], Expr::Sequence(_))
+        matches!(context.exprs.get(expr), Some(Expr::Sequence(_)))
     }
 
     fn fmt_call(&mut self, call: &Call, context: &TopLevelContext, f: &mut Formatter) -> std::fmt::Result {
@@ -800,14 +820,7 @@ impl<'a> CstDisplay<'a> {
     }
 
     fn fmt_if(&mut self, if_: &If, context: &TopLevelContext, f: &mut Formatter) -> std::fmt::Result {
-        write!(f, "if ")?;
-        self.fmt_expr(if_.condition, context, f)?;
-
-        if !self.is_block(if_.condition, context) {
-            write!(f, " ")?;
-        }
-        write!(f, "then ")?;
-        self.fmt_expr(if_.then, context, f)?;
+        self.fmt_if_then(if_.condition, if_.then, context, f)?;
 
         if let Some(else_) = if_.else_ {
             if self.is_block(if_.then, context) {
@@ -821,7 +834,33 @@ impl<'a> CstDisplay<'a> {
         Ok(())
     }
 
-    fn fmt_match(&mut self, match_: &Match, context: &TopLevelContext, f: &mut Formatter) -> std::fmt::Result {
+    /// Format the `if c then t` portion, but not the else portion
+    fn fmt_if_then(
+        &mut self, condition: ExprId, then: ExprId, context: &TopLevelContext, f: &mut Formatter,
+    ) -> std::fmt::Result {
+        write!(f, "if ")?;
+        self.fmt_expr(condition, context, f)?;
+
+        if !self.is_block(condition, context) {
+            write!(f, " ")?;
+        }
+        write!(f, "then ")?;
+        self.fmt_expr(then, context, f)
+    }
+
+    fn fmt_match(
+        &mut self, match_: &Match, context: &TopLevelContext, expr: ExprId, f: &mut Formatter,
+    ) -> std::fmt::Result {
+        // Check if type-checking has compiled this into a decision tree
+        if let Some(db) = self.db_type_check() {
+            let check = TypeCheck(self.current_item_id.unwrap()).get(db);
+            if let Some((preamble, tree)) = check.result.context.decision_tree(expr) {
+                self.fmt_expr(*preamble, context, f)?;
+                self.newline(f)?;
+                return self.fmt_decision_tree(tree, context, f);
+            }
+        }
+
         write!(f, "match ")?;
         self.fmt_expr(match_.expression, context, f)?;
 
@@ -868,8 +907,14 @@ impl<'a> CstDisplay<'a> {
         Ok(())
     }
 
-    fn fmt_pattern(&mut self, pattern: PatternId, context: &TopLevelContext, f: &mut Formatter) -> std::fmt::Result {
-        match &context.patterns[pattern] {
+    fn fmt_pattern(&mut self, id: PatternId, context: &TopLevelContext, f: &mut Formatter) -> std::fmt::Result {
+        let pattern = context.patterns.get(id).map(Cow::Borrowed).unwrap_or_else(|| {
+            let db = self.db_type_check().unwrap();
+            let check = TypeCheck(self.current_item_id.unwrap()).get(db);
+            Cow::Owned(check.result.context[id].clone())
+        });
+
+        match pattern.as_ref() {
             Pattern::Variable(name) => self.fmt_name(*name, context, f),
             Pattern::Literal(literal) => self.fmt_literal(literal, f),
             Pattern::Constructor(path, args) => {
@@ -1003,6 +1048,65 @@ impl<'a> CstDisplay<'a> {
             }
         }
         Ok(())
+    }
+
+    fn fmt_decision_tree(
+        &mut self, tree: &DecisionTree, context: &TopLevelContext, f: &mut Formatter,
+    ) -> std::fmt::Result {
+        match tree {
+            DecisionTree::Success(expr_id) => self.fmt_expr(*expr_id, context, f),
+            DecisionTree::Failure { missing_case: false } => write!(f, "#match_fail"),
+            DecisionTree::Failure { missing_case: true } => write!(f, "#missing_case"),
+            DecisionTree::Guard { condition, then, else_ } => {
+                self.fmt_if_then(*condition, *then, context, f)?;
+
+                if self.is_block(*then, context) {
+                    self.newline(f)?;
+                } else {
+                    write!(f, " ")?;
+                }
+                write!(f, "else ")?;
+                self.fmt_decision_tree(else_, context, f)
+            },
+            DecisionTree::Switch(tag, cases, else_) => {
+                write!(f, "switch ")?;
+                self.fmt_path(*tag, context, f)?;
+                for case in cases {
+                    self.newline(f)?;
+                    write!(f, "| ")?;
+                    self.fmt_decision_tree_constructor(&case.constructor, f)?;
+                    for argument in &case.arguments {
+                        write!(f, ", ")?;
+                        self.fmt_path(*argument, context, f)?;
+                    }
+                    write!(f, " -> ")?;
+                    self.indent_level += 1;
+                    self.fmt_decision_tree(&case.body, context, f)?;
+                    self.indent_level -= 1;
+                }
+                if let Some(else_) = else_ {
+                    self.newline(f)?;
+                    write!(f, "| _ -> ")?;
+                    self.indent_level += 1;
+                    self.fmt_decision_tree(else_, context, f)?;
+                    self.indent_level -= 1;
+                }
+                Ok(())
+            },
+        }
+    }
+
+    fn fmt_decision_tree_constructor(
+        &mut self, constructor: &crate::type_inference::patterns::Constructor, f: &mut Formatter,
+    ) -> std::fmt::Result {
+        match constructor {
+            crate::type_inference::patterns::Constructor::True => write!(f, "true"),
+            crate::type_inference::patterns::Constructor::False => write!(f, "false"),
+            crate::type_inference::patterns::Constructor::Unit => write!(f, "()"),
+            crate::type_inference::patterns::Constructor::Int(x) => write!(f, "{x}"),
+            crate::type_inference::patterns::Constructor::Range(start, end) => write!(f, "{start}..={end}"),
+            crate::type_inference::patterns::Constructor::Variant(_, variant_index) => write!(f, "{variant_index}"),
+        }
     }
 }
 
