@@ -166,11 +166,15 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     }
 
     /// Build and returns a constructor type for a sum or product type.
+    ///
+    /// Expects the given sum or product type to be the current context. This cannot be called
+    /// within another definition that merely references the type in question.
+    ///
     /// `type_name` should be the name of the struct/product type rather than
     /// the name for each individual variant, in the case of sum types.
     fn build_constructor_type<'a>(
         &mut self, type_name: TopLevelName, item: &cst::TypeDefinition,
-        variant_args: impl ExactSizeIterator<Item = &'a cst::Type>,
+        variant_args: &[cst::Type],
     ) -> TypeId {
         let mut substitutions = FxHashMap::default();
         let mut data_type = self.types.get_or_insert_type(Type::UserDefined(Origin::TopLevelDefinition(type_name)));
@@ -189,9 +193,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             return data_type;
         }
 
-        let item_resolution = Resolve(type_name.top_level_item).get(self.compiler);
         let parameters = vecmap(variant_args, |arg| {
-            let mut param = self.convert_foreign_type(arg, &item_resolution);
+            let mut param = self.convert_ast_type(arg);
 
             if !substitutions.is_empty() {
                 param = self.substitute_generics(param, &substitutions);
@@ -395,8 +398,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // replaced with `<fresh> = expr; <decision tree>`
         let location = self.current_context().expr_locations[match_.expression].clone();
 
-        let match_var_name = self.push_name(Arc::new("match_variable".to_string()), location.clone());
-        let match_var = self.fresh_match_variable(0, expr_type, location.clone());
+        // This name does not actually match the one pushed by `fresh_match_variable` (and doesn't need to)
+        let match_var_name = self.push_name(Arc::new("internal_match_variable".to_string()), location.clone());
+        let match_var = self.fresh_match_variable(expr_type, location.clone());
 
         let context = self.current_extended_context_mut();
         context.insert_name_origin(match_var_name, Origin::Local(match_var_name));
@@ -509,7 +513,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let type_name = TopLevelName::named(id, definition.name);
 
         for (constructor_name, args) in constructors.iter() {
-            let actual = self.build_constructor_type(type_name, definition, args.iter());
+            let actual = self.build_constructor_type(type_name, definition, args);
 
             let constructor_name = TopLevelName::named(id, *constructor_name);
             let expected = self.item_types[&constructor_name];

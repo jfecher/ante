@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 
 /// Shorthand for `items.into_iter().map(f).collect()`
 #[inline]
@@ -35,4 +35,16 @@ pub(crate) fn btree_map<T, K: Ord, V>(
     items: impl IntoIterator<Item = T>, f: impl FnMut(T) -> (K, V),
 ) -> BTreeMap<K, V> {
     map(items, f)
+}
+
+pub(crate) fn join_arc_str(strings: Vec<Arc<String>>, separator: &str) -> String {
+    let mut strings_iter = strings.into_iter();
+    let Some(first) = strings_iter.next() else { return String::new(); };
+
+    let mut result = first.as_ref().clone();
+    for next in strings_iter {
+        result += separator;
+        result += &next;
+    }
+    result
 }

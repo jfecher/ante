@@ -75,10 +75,6 @@ impl<'local, 'innter> TypeChecker<'local, 'innter> {
         self.current_extended_context_mut().push_pattern(pattern, location)
     }
 
-    pub(super) fn push_path(&mut self, path: Path, location: Location) -> PathId {
-        self.current_extended_context_mut().push_path(path, location)
-    }
-
     pub(super) fn push_name(&mut self, name: Name, location: Location) -> NameId {
         self.current_extended_context_mut().push_name(name, location)
     }
@@ -126,6 +122,16 @@ impl ExtendedTopLevelContext {
         let new_id = PathId::new(new_id as u32);
 
         self.more_paths.insert(new_id, path);
+        self.more_path_locations.insert(new_id, location);
+        new_id
+    }
+
+    /// Push a new path to the context with the given id
+    pub fn push_path_with_id(&mut self, location: Location, make_path: impl FnOnce(PathId) -> Path) -> PathId {
+        let new_id = self.original.paths.len() + self.more_paths.len();
+        let new_id = PathId::new(new_id as u32);
+
+        self.more_paths.insert(new_id, make_path(new_id));
         self.more_path_locations.insert(new_id, location);
         new_id
     }

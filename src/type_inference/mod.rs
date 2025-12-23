@@ -6,13 +6,13 @@ use types::{Type, TypeBindings};
 
 use crate::{
     diagnostics::Diagnostic,
-    incremental::{self, DbHandle, GetItem, Resolve, TypeCheckSCC},
+    incremental::{self, DbHandle, GetItem, Resolve, TypeCheck, TypeCheckSCC},
     iterator_extensions::vecmap,
     lexer::token::{FloatKind, IntegerKind},
     name_resolution::{Origin, ResolutionResult, builtin::Builtin},
     parser::{
         context::TopLevelContext,
-        cst::{self, TopLevelItem, TopLevelItemKind, TypeDefinitionBody},
+        cst::{self, Name, TopLevelItem, TopLevelItemKind},
         ids::{ExprId, NameId, PathId, TopLevelId, TopLevelName},
     },
     type_inference::{
@@ -394,6 +394,18 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         typ.typ.substitute(&mut self.types, &substitutions)
     }
 
+    /// Apply a GeneralizedType to the given arguments. The given [TypeId]s of the arguments should
+    /// be [TypeId]s in the current context, and the returned [TypeId] will be in the current
+    /// context as well.
+    ///
+    /// Panics if `arguments.len() != typ.generics.len()`
+    fn apply_type(&mut self, typ: &GeneralizedType, arguments: &[TypeId]) -> TypeId {
+        assert_eq!(arguments.len(), typ.generics.len());
+        let substitutions =
+            typ.generics.iter().zip(arguments).map(|(generic, argument)| (*generic, *argument)).collect();
+        typ.typ.substitute(&mut self.types, &substitutions)
+    }
+
     /// Unifies the two types. Returns false on failure
     fn unify(&mut self, actual_id: TypeId, expected_id: TypeId, kind: TypeErrorKind, locator: impl Locateable) -> bool {
         if self.try_unify(actual_id, expected_id).is_err() {
@@ -535,15 +547,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
-    /// Convert an ast type to a TypeId as closely as possible.
-    /// This method does not emit any errors and relies on name resolution
-    /// to emit errors when resolving types.
-    pub fn convert_ast_type(&mut self, typ: &crate::parser::cst::Type) -> TypeId {
-        let resolve = self.current_resolve();
-        self.convert_foreign_type(typ, resolve)
-    }
-
-    /// Convert the given Origin to a type, issuing an error if the origin is not a type
     fn convert_origin_to_type(&mut self, origin: Option<Origin>, make_type: impl FnOnce(Origin) -> Type) -> TypeId {
         match origin {
             Some(Origin::Builtin(builtin)) => {
@@ -588,29 +591,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
             Type::UserDefined(origin) => {
                 if let Origin::TopLevelDefinition(id) = origin {
-                    let (item, item_context) = GetItem(id.top_level_item).get(self.compiler);
-                    if let TopLevelItemKind::TypeDefinition(definition) = &item.kind {
-                        let mut substitutions = FxHashMap::default();
-                        if let Some(generics) = generic_args {
-                            substitutions = Self::datatype_generic_substitutions(definition, generics);
-                        }
-
-                        let resolve = Resolve(item.id).get(self.compiler);
-                        return match &definition.body {
-                            TypeDefinitionBody::Error => todo!(),
-                            TypeDefinitionBody::Struct(items) => items
-                                .iter()
-                                .enumerate()
-                                .map(|(index, (name, typ))| {
-                                    let name = item_context.names[*name].clone();
-                                    let typ = self.convert_foreign_type(typ, &resolve);
-                                    let typ = self.substitute_generics(typ, &substitutions);
-                                    (name, (typ, index as u32))
-                                })
-                                .collect(),
-                            TypeDefinitionBody::Enum(_) => BTreeMap::default(),
-                            TypeDefinitionBody::Alias(_) => todo!("Type aliases"),
-                        };
+                    if let TypeBody::Product { fields, .. } = self.type_body(id.top_level_item, generic_args) {
+                        let fields = fields.into_iter().enumerate();
+                        return fields.map(|(i, (name, typ))| (name, (typ, i as u32))).collect();
                     }
                 }
                 BTreeMap::default()
@@ -651,10 +634,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         substitutions
     }
 
-    /// Converts a 'foreign' type to a TypeId.
-    /// A foreign type here is defined as a `cst::Type` with a TopLevelContext/ResolutionResult different to the one
-    /// in `self`, hence we need to take the other context as an argument.
-    fn convert_foreign_type(&mut self, typ: &crate::parser::cst::Type, resolve: &ResolutionResult) -> TypeId {
+    /// Convert an ast type to a TypeId as closely as possible.
+    /// This method does not emit any errors and relies on name resolution
+    /// to emit errors when resolving types.
+    /// Convert the given Origin to a type, issuing an error if the origin is not a type
+    fn convert_ast_type(&mut self, typ: &crate::parser::cst::Type) -> TypeId {
         match typ {
             crate::parser::cst::Type::Integer(kind) => match kind {
                 IntegerKind::I8 => TypeId::I8,
@@ -675,16 +659,18 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             crate::parser::cst::Type::String => TypeId::STRING,
             crate::parser::cst::Type::Char => TypeId::CHAR,
             crate::parser::cst::Type::Named(path) => {
-                let origin = resolve.path_origins.get(path).copied();
+                // TODO: is `current_resolve` sufficient or do we need the [ExtendedTopLevelContext]?
+                let origin = self.current_resolve().path_origins.get(path).copied();
                 self.convert_origin_to_type(origin, Type::UserDefined)
             },
             crate::parser::cst::Type::Variable(name) => {
-                let origin = resolve.name_origins.get(name).copied();
+                // TODO: is `current_resolve` sufficient or do we need the [ExtendedTopLevelContext]?
+                let origin = self.current_resolve().name_origins.get(name).copied();
                 self.convert_origin_to_type(origin, |origin| Type::Generic(Generic::Named(origin)))
             },
             crate::parser::cst::Type::Function(function) => {
-                let parameters = vecmap(&function.parameters, |typ| self.convert_foreign_type(typ, resolve));
-                let return_type = self.convert_foreign_type(&function.return_type, resolve);
+                let parameters = vecmap(&function.parameters, |typ| self.convert_ast_type(typ));
+                let return_type = self.convert_ast_type(&function.return_type);
                 // TODO: Effects
                 let effects = TypeId::UNIT;
                 let typ = Type::Function(types::FunctionType { parameters, return_type, effects });
@@ -694,8 +680,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             crate::parser::cst::Type::Unit => TypeId::UNIT,
             crate::parser::cst::Type::Pair => TypeId::PAIR,
             crate::parser::cst::Type::Application(f, args) => {
-                let f = self.convert_foreign_type(f, resolve);
-                let args = vecmap(args, |typ| self.convert_foreign_type(typ, resolve));
+                let f = self.convert_ast_type(f);
+                let args = vecmap(args, |typ| self.convert_ast_type(typ));
                 let typ = Type::Application(f, args);
                 self.types.get_or_insert_type(typ)
             },
@@ -705,4 +691,58 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
         }
     }
+
+    /// Returns the body of this user-defined type (the part after the `=` when declared).
+    /// The given [TopLevelId] should refer to a [TypeDefinition] or something which desugars to
+    /// one.
+    ///
+    /// If specified, `arguments` will be used to substitute any generics of the type.
+    /// Panics if the arguments are specified and differ in length to the type's generics.
+    ///
+    /// Note that if `arguments` are not provided (or are non-local to the current context), the
+    /// returned [TypeId]s of fields or variants will be in the context of the type itself, not
+    /// the current context, and will thus be invalid!
+    ///
+    /// - For a struct: returns each field name & type
+    /// - For a union: returns each variant with its name and arguments
+    fn type_body(&self, type_id: TopLevelId, arguments: Option<&[TypeId]>) -> TypeBody {
+        let result = TypeCheck(type_id).get(self.compiler);
+        let (item, item_context) = GetItem(type_id).get(self.compiler);
+
+        let TopLevelItemKind::TypeDefinition(type_definition) = &item.kind else {
+            panic!("type_body: passed type_id is not a type!")
+        };
+
+        let substitutions = arguments.map(|arguments| {
+            assert_eq!(arguments.len(), type_definition.generics.len());
+            Self::datatype_generic_substitutions(type_definition, arguments)
+        });
+
+        match &type_definition.body {
+            cst::TypeDefinitionBody::Error => (),
+            cst::TypeDefinitionBody::Struct(fields) => {
+                // This'd be easier with an explicit type data field
+                result.result.generalized
+
+
+                let type_name = item_context.names[type_definition.name].clone();
+                let fields = vecmap(fields, |(name, typ)| {
+                    // TODO: Still need convert_foreign_type
+                    let mut typ = self.convert_ast_type(typ);
+                    if let Some(substitutions) = substitutions.as_ref() {
+                        typ = self.substitute_generics(typ, substitutions);
+                    }
+                    (item_context.names[*name], typ)
+                });
+                TypeBody::Product { type_name, fields }
+            },
+            cst::TypeDefinitionBody::Enum(items) => todo!(),
+            cst::TypeDefinitionBody::Alias(_) => todo!(),
+        }
+    }
+}
+
+enum TypeBody {
+    Product { type_name: Name, fields: Vec<(Name, TypeId)> },
+    Sum(Vec<(Name, Vec<TypeId>)>),
 }
