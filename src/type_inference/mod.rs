@@ -699,13 +699,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// If specified, `arguments` will be used to substitute any generics of the type.
     /// Panics if the arguments are specified and differ in length to the type's generics.
     ///
-    /// Note that if `arguments` are not provided (or are non-local to the current context), the
-    /// returned [TypeId]s of fields or variants will be in the context of the type itself, not
-    /// the current context, and will thus be invalid!
+    /// Note that if `arguments` are not provided, the type will be instantiated and thus
+    /// any fields may refer to type type variables that have not been tracked.
     ///
     /// - For a struct: returns each field name & type
     /// - For a union: returns each variant with its name and arguments
-    fn type_body(&self, type_id: TopLevelId, arguments: Option<&[TypeId]>) -> TypeBody {
+    ///
+    /// TODO: This function is called somewhat often but is a lot of work to redo each time.
+    fn type_body(&mut self, type_id: TopLevelId, arguments: Option<&[TypeId]>) -> TypeBody {
         let result = TypeCheck(type_id).get(self.compiler);
         let (item, item_context) = GetItem(type_id).get(self.compiler);
 
@@ -713,31 +714,51 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             panic!("type_body: passed type_id is not a type!")
         };
 
-        let substitutions = arguments.map(|arguments| {
-            assert_eq!(arguments.len(), type_definition.generics.len());
-            Self::datatype_generic_substitutions(type_definition, arguments)
-        });
-
         match &type_definition.body {
-            cst::TypeDefinitionBody::Error => (),
             cst::TypeDefinitionBody::Struct(fields) => {
                 // This'd be easier with an explicit type data field
-                result.result.generalized
-
+                let constructor_type = &result.result.generalized[&type_definition.name];
+                let constructor = self.maybe_apply_type(constructor_type, arguments);
+                let field_types = self.function_parameter_types(constructor);
+                let fields = vecmap(fields.iter().zip(field_types), |((field_name, _), typ)| {
+                    (item_context.names[*field_name].clone(), typ)
+                });
 
                 let type_name = item_context.names[type_definition.name].clone();
-                let fields = vecmap(fields, |(name, typ)| {
-                    // TODO: Still need convert_foreign_type
-                    let mut typ = self.convert_ast_type(typ);
-                    if let Some(substitutions) = substitutions.as_ref() {
-                        typ = self.substitute_generics(typ, substitutions);
-                    }
-                    (item_context.names[*name], typ)
-                });
                 TypeBody::Product { type_name, fields }
             },
-            cst::TypeDefinitionBody::Enum(items) => todo!(),
-            cst::TypeDefinitionBody::Alias(_) => todo!(),
+            cst::TypeDefinitionBody::Enum(variants) => {
+                let variants = vecmap(variants, |(name, _)| {
+                    let constructor_type = &result.result.generalized[name];
+                    let constructor = self.maybe_apply_type(constructor_type, arguments);
+                    let fields = self.function_parameter_types(constructor);
+                    (item_context.names[*name].clone(), fields)
+                });
+                TypeBody::Sum(variants)
+            },
+            // TODO: Type aliases
+            cst::TypeDefinitionBody::Alias(_) | cst::TypeDefinitionBody::Error => {
+                // Just make some filler value - ideally we should return an error flag here
+                // to prevent future errors
+                let type_name = item_context.names[type_definition.name].clone();
+                TypeBody::Product { type_name, fields: Vec::new() }
+            },
+        }
+    }
+
+    fn maybe_apply_type(&mut self, typ: &GeneralizedType, args: Option<&[TypeId]>) -> TypeId {
+        match args {
+            Some(args) => self.apply_type(typ, args),
+            None => self.instantiate(typ),
+        }
+    }
+
+    /// Returns each argument of the given function type.
+    /// If the given type is not a function, an empty Vec is returned.
+    fn function_parameter_types(&self, function: TypeId) -> Vec<TypeId> {
+        match self.follow_type(function) {
+            Type::Function(function) => function.parameters.clone(),
+            _ => Vec::new(),
         }
     }
 }
