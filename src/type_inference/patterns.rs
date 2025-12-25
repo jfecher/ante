@@ -291,17 +291,19 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         self.compiler.accumulate(Diagnostic::ConstructorExpectedFoundType { type_name, constructor_names, location });
     }
 
-    pub(super) fn fresh_match_variable(&mut self, variable_type: TypeId, location: Location) -> PathId {
-        let id = self.current_extended_context_mut().push_path_with_id(location.clone(), move |id| Path {
-            components: vec![(format!("internal_match_variable_{}", usize::from(id)), location)],
+    pub(super) fn fresh_match_variable(&mut self, variable_type: TypeId, location: Location) -> (PathId, NameId) {
+        let mut name = String::new();
+        let path_id = self.current_extended_context_mut().push_path_with_id(location.clone(), |id| {
+            name = format!("internal_match_variable_{}", usize::from(id));
+            Path { components: vec![(name.clone(), location.clone())] }
         });
-        self.path_types.insert(id, variable_type);
-        println!(
-            "Created match variable: {}: {}",
-            self.current_extended_context()[id],
-            self.type_to_string(variable_type)
-        );
-        id
+
+        self.path_types.insert(path_id, variable_type);
+
+        let name_id = self.push_name(Arc::new(name), location);
+        self.current_extended_context_mut().insert_name_origin(name_id, Origin::Local(name_id));
+        self.current_extended_context_mut().insert_path_origin(path_id, Origin::Local(name_id));
+        (path_id, name_id)
     }
 
     /// Creates:
@@ -393,12 +395,6 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
         let location = self.checker.current_extended_context().path_location(branch_var);
 
         let definition_type = self.checker.path_types[&branch_var];
-        println!(
-            "branch var = {}: {}",
-            self.checker.current_extended_context()[branch_var],
-            self.checker.type_to_string(definition_type)
-        );
-
         match self.checker.follow_type(definition_type) {
             Type::Primitive(PrimitiveType::Int(_)) => {
                 let (cases, fallback) = self.compile_int_cases(rows, branch_var)?;
@@ -436,7 +432,7 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
             Type::UserDefined(origin) => {
                 self.compile_userdefined_cases(rows, branch_var, definition_type, *origin, &[], location)
             },
-            Type::Generic(_) | Type::Variable(_) | Type::Primitive(_) | Type::Function(_) | Type::Reference(..) => {
+            Type::Generic(_) | Type::Variable(_) | Type::Primitive(_) | Type::Function(_) => {
                 let typ = self.checker.type_to_string(definition_type);
                 Err(Diagnostic::CannotMatchOnType { typ, location })
             },
@@ -447,13 +443,6 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
         &mut self, rows: Vec<Row>, branch_var: PathId, type_id: TypeId, origin: Origin, generics: &[TypeId],
         location: Location,
     ) -> Result<DecisionTree, Diagnostic> {
-        let definition_type = self.checker.path_types[&branch_var];
-        println!(
-            "compile_userdefined_cases branch var = {}: {}",
-            self.checker.current_extended_context()[branch_var],
-            self.checker.type_to_string(definition_type)
-        );
-
         match self.classify_type_origin(origin, generics) {
             Some(UserDefinedTypeKind::Sum(variants)) => {
                 let cases = vecmap(variants.iter().enumerate(), |(idx, (_name, args))| {
@@ -488,7 +477,7 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
     }
 
     fn fresh_match_variables(&mut self, variable_types: Vec<TypeId>, location: Location) -> Vec<PathId> {
-        vecmap(variable_types.into_iter(), |typ| self.checker.fresh_match_variable(typ, location.clone()))
+        vecmap(variable_types.into_iter(), |typ| self.checker.fresh_match_variable(typ, location.clone()).0)
     }
 
     /// Compiles the cases and fallback cases for integer and range patterns.

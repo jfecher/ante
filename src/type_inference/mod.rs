@@ -13,7 +13,7 @@ use crate::{
     parser::{
         context::TopLevelContext,
         cst::{self, Name, TopLevelItem, TopLevelItemKind},
-        ids::{ExprId, NameId, PathId, TopLevelId, TopLevelName},
+        ids::{ExprId, NameId, PathId, PatternId, TopLevelId, TopLevelName},
     },
     type_inference::{
         errors::{Locateable, TypeErrorKind},
@@ -115,10 +115,9 @@ struct TypeChecker<'local, 'inner> {
     types: TypeContext,
     name_types: BTreeMap<NameId, TypeId>,
     path_types: BTreeMap<PathId, TypeId>,
-
-    /// TODO: In the event we're working on an SCC of multiple functions, the same ExprId
-    /// may be used across different functions.
+    pattern_types: BTreeMap<PatternId, TypeId>,
     expr_types: BTreeMap<ExprId, TypeId>,
+
     bindings: TypeBindings,
 
     /// Type inference is the first pass where type variables are introduced.
@@ -145,6 +144,7 @@ pub struct TypeMaps {
     pub name_types: BTreeMap<NameId, TypeId>,
     pub path_types: BTreeMap<PathId, TypeId>,
     pub expr_types: BTreeMap<ExprId, TypeId>,
+    pub pattern_types: BTreeMap<PatternId, TypeId>,
 }
 
 /// Map from each TopLevelId to a tuple of (the item, parse context, resolution context)
@@ -165,6 +165,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             name_types: Default::default(),
             path_types: Default::default(),
             expr_types: Default::default(),
+            pattern_types: Default::default(),
             item_types: Default::default(),
             current_item: None,
             item_contexts,
@@ -245,6 +246,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             name_types: std::mem::take(&mut self.name_types),
             path_types: std::mem::take(&mut self.path_types),
             expr_types: std::mem::take(&mut self.expr_types),
+            pattern_types: std::mem::take(&mut self.pattern_types),
         }
     }
 
@@ -282,7 +284,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     fn substitute(&mut self, typ: TypeId, bindings: &TypeBindings) -> TypeId {
         match self.follow_type(typ) {
-            Type::Primitive(_) | Type::Generic(_) | Type::Reference(..) | Type::UserDefined(_) => typ,
+            Type::Primitive(_) | Type::Generic(_) | Type::UserDefined(_) => typ,
             Type::Variable(id) => match bindings.get(id) {
                 Some(binding) => *binding,
                 None => typ,
@@ -307,7 +309,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Similar to substitute, but substitutes `Type::Generic` instead of `Type::TypeVariable`
     fn substitute_generics(&mut self, typ: TypeId, bindings: &FxHashMap<Generic, TypeId>) -> TypeId {
         match self.follow_type(typ) {
-            Type::Primitive(_) | Type::Variable(_) | Type::Reference(..) | Type::UserDefined(_) => typ,
+            Type::Primitive(_) | Type::Variable(_) | Type::UserDefined(_) => typ,
             Type::Generic(generic) => match bindings.get(generic) {
                 Some(binding) => *binding,
                 None => typ,
@@ -349,9 +351,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 let args = vecmap(args, |arg| self.promote_to_top_level_type(*arg));
                 TopLevelType::TypeApplication(constructor, args)
             },
-            Type::Reference(..) => {
-                todo!("convert Type::Reference to TopLevelType")
-            },
         }
     }
 
@@ -359,7 +358,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     fn free_vars(&self, typ: TypeId) -> Vec<TypeVariableId> {
         fn free_vars_helper(this: &TypeChecker, typ: TypeId, free_vars: &mut Vec<TypeVariableId>) {
             match this.follow_type(typ) {
-                Type::Primitive(_) | Type::Reference(..) | Type::Generic(_) | Type::UserDefined(_) => (),
+                Type::Primitive(_) | Type::Generic(_) | Type::UserDefined(_) => (),
                 Type::Variable(id) => {
                     // The number of free vars is expected to remain too small so we're
                     // not too worried about asymptotic behavior. It is more important we
@@ -476,16 +475,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 }
                 Ok(())
             },
-            (
-                Type::Reference(actual_mutability, actual_sharedness),
-                Type::Reference(expected_mutability, expected_sharedness),
-            ) => {
-                if actual_mutability == expected_mutability && actual_sharedness == expected_sharedness {
-                    Ok(())
-                } else {
-                    Err(())
-                }
-            },
             (actual, other) if actual == other => Ok(()),
             _ => Err(()),
         }
@@ -513,7 +502,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Used to prevent the creation of infinitely recursive types when binding type variables.
     fn occurs(&self, typ: TypeId, variable: TypeVariableId) -> bool {
         match self.types.get_type(typ) {
-            Type::Primitive(_) | Type::Reference(..) | Type::Generic(_) | Type::UserDefined(_) => false,
+            Type::Primitive(_) | Type::Generic(_) | Type::UserDefined(_) => false,
             Type::Variable(candidate_id) => {
                 if let Some(binding) = self.bindings.get(candidate_id) {
                     self.occurs(*binding, variable)
@@ -686,7 +675,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 self.types.get_or_insert_type(typ)
             },
             crate::parser::cst::Type::Reference(mutability, sharedness) => {
-                let typ = Type::Reference(*mutability, *sharedness);
+                let typ = Type::Primitive(types::PrimitiveType::Reference(*mutability, *sharedness));
                 self.types.get_or_insert_type(typ)
             },
         }

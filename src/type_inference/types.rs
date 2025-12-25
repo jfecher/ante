@@ -50,7 +50,6 @@ pub enum Type {
     Variable(TypeVariableId),
     Function(FunctionType),
     Application(TypeId, Vec<TypeId>),
-    Reference(Mutability, Sharedness),
     UserDefined(Origin),
 }
 
@@ -327,7 +326,6 @@ where
                 }
                 Ok(())
             },
-            Type::Reference(mutability, sharedness) => write!(f, "{mutability}{sharedness}"),
         }
     }
 

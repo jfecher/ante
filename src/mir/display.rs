@@ -2,7 +2,7 @@ use std::fmt::{Display, Formatter, Result};
 
 use crate::{
     iterator_extensions::vecmap,
-    mir::{self, Block, BlockId, FloatConstant, FunctionId, IntConstant, Value},
+    mir::{self, Block, BlockId, FloatConstant, FunctionId, IntConstant, PrimitiveType, Type, Value},
 };
 
 impl Display for mir::Function {
@@ -70,26 +70,71 @@ impl Display for BlockId {
     }
 }
 
+impl Display for Type {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            Type::Primitive(primitive_type) => primitive_type.fmt(f),
+            Type::Tuple(items) => {
+                let types = vecmap(items.iter(), |typ| {
+                    if matches!(typ, Type::Primitive(_)) {
+                        typ.to_string()
+                    } else {
+                        format!("({typ})")
+                    }
+                }).join(", ");
+                write!(f, "{types}")
+            },
+            Type::Function(function_type) => {
+                write!(f, "fn")?;
+                for parameter in &function_type.parameters {
+                    write!(f, " ")?;
+                    if matches!(parameter, Type::Primitive(_)) {
+                        write!(f, "{parameter}")?;
+                    } else {
+                        write!(f, "({parameter})")?;
+                    }
+                }
+                write!(f, " -> {}", function_type.return_type)
+            },
+        }
+    }
+}
+
+impl Display for PrimitiveType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            PrimitiveType::Error => write!(f, "error"),
+            PrimitiveType::Unit => write!(f, "Unit"),
+            PrimitiveType::Bool => write!(f, "Bool"),
+            PrimitiveType::Pointer => write!(f, "Pointer"),
+            PrimitiveType::Char => write!(f, "Char"),
+            PrimitiveType::Int(kind) => kind.fmt(f),
+            PrimitiveType::Float(kind) => kind.fmt(f),
+        }
+    }
+}
+
 fn fmt_function(function: &mir::Function, f: &mut Formatter) -> Result {
     write!(f, "fun {}", function.id)?;
     for (block_id, block) in function.blocks.iter() {
         writeln!(f)?;
-        fmt_block(block_id, block, f)?;
+        fmt_block(block_id, function, block, f)?;
     }
     Ok(())
 }
 
-fn fmt_block(id: BlockId, block: &Block, f: &mut Formatter) -> Result {
+fn fmt_block(id: BlockId, function: &mir::Function, block: &Block, f: &mut Formatter) -> Result {
     write!(f, "b{}(", id.0)?;
-    for i in 0..block.parameter_count {
+    for (i, typ) in block.parameter_types.iter().enumerate() {
         if i != 0 {
             write!(f, ", ")?;
         }
-        write!(f, "_")?;
+        write!(f, "{}: {}", Value::Parameter(id, i as u32), typ)?;
     }
     writeln!(f, "):")?;
 
-    for (instruction_id, instruction) in block.instructions.iter() {
+    for instruction_id in block.instructions.iter().copied() {
+        let instruction = &function.instructions[instruction_id];
         fmt_instruction(instruction_id, instruction, f)?;
     }
 
@@ -147,6 +192,7 @@ fn fmt_instruction(
         mir::Instruction::MakeTuple(fields) => write!(f, "({})", comma_separated(fields))?,
         mir::Instruction::MakeString(s) => write!(f, "\"{s}\"")?,
         mir::Instruction::StackAlloc(value) => write!(f, "alloca {value}")?,
+        mir::Instruction::Transmute(value) => write!(f, "transmute {value}")?,
     }
 
     writeln!(f)

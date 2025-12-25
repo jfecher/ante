@@ -6,7 +6,7 @@
 //! Although the MIR may eventually be monomorphized, the initial output of this builder uses a
 //! uniform representation instead, relying on a later pass to manually specialize each function
 //! if desired.
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 
 use rustc_hash::FxHashMap;
 
@@ -15,7 +15,7 @@ use crate::{
     iterator_extensions::vecmap,
     lexer::token::{FloatKind, IntegerKind},
     mir::{
-        Block, BlockId, FloatConstant, Function, FunctionId, Instruction, IntConstant, TerminatorInstruction, Value,
+        Block, BlockId, FloatConstant, Function, FunctionId, FunctionType, Instruction, IntConstant, TerminatorInstruction, Type, Value
     },
     name_resolution::Origin,
     parser::{
@@ -25,7 +25,7 @@ use crate::{
     type_inference::{
         dependency_graph::TypeCheckResult,
         fresh_expr::ExtendedTopLevelContext,
-        patterns::{Case, DecisionTree},
+        patterns::{Case, DecisionTree}, type_id,
     },
 };
 
@@ -90,6 +90,16 @@ impl<'local> Context<'local> {
         FunctionId { item: self.top_level_id, index }
     }
 
+    /// Returns the current function being built. Panics if thre is none.
+    fn current_function(&mut self) -> &mut Function {
+        self.current_function.as_mut().unwrap()
+    }
+
+    fn type_of_value(&self, value: Value) -> Type {
+        self.current_function.as_ref().unwrap().type_of_value(value)
+    }
+
+    /// Returns the current block being inserted into. Panics if there is no current function.
     fn current_block(&mut self) -> &mut Block {
         &mut self.current_function.as_mut().unwrap().blocks[self.current_block]
     }
@@ -99,14 +109,18 @@ impl<'local> Context<'local> {
     }
 
     /// Push an instruction and return its result.
-    fn push_instruction(&mut self, instruction: Instruction) -> Value {
-        let id = self.current_block().instructions.push(instruction);
+    fn push_instruction(&mut self, instruction: Instruction, result_type: Type) -> Value {
+        let current_block = self.current_block;
+        let function = self.current_function();
+        let id = function.instructions.push(instruction);
+        function.instruction_result_types.push_existing(id, result_type);
+        function.blocks[current_block].instructions.push(id);
         Value::InstructionResult(id)
     }
 
     /// Create a block (although do not switch to it) and return it
-    fn push_block(&mut self, parameter_count: u32) -> BlockId {
-        self.current_function.as_mut().unwrap().blocks.push(Block::new(parameter_count))
+    fn push_block(&mut self, parameter_types: Vec<Type>) -> BlockId {
+        self.current_function.as_mut().unwrap().blocks.push(Block::new(parameter_types))
     }
 
     /// Switch to a new block to start inserting instructions into
@@ -121,6 +135,50 @@ impl<'local> Context<'local> {
         block.terminator = Some(terminator);
     }
 
+    fn expr_type(&self, expr: ExprId) -> Type {
+        let type_id = self.types.result.maps.expr_types[&expr];
+        self.convert_type(type_id, None)
+    }
+
+    fn convert_type(&self, type_id: type_id::TypeId, args: Option<&[type_id::TypeId]>) -> Type {
+        match self.types.types.get_type(type_id) {
+            crate::type_inference::types::Type::Primitive(primitive_type) => self.convert_primitive_type(*primitive_type, args),
+            crate::type_inference::types::Type::Generic(_generic) => todo!("Convert Type::Generic"),
+            crate::type_inference::types::Type::Variable(_type_variable_id) => todo!("Convert Type::Variable"),
+            crate::type_inference::types::Type::Function(function_type) => {
+                // TODO: Effects
+                let parameters = vecmap(&function_type.parameters, |typ| self.convert_type(*typ, None));
+                let return_type = Box::new(self.convert_type(function_type.return_type, None));
+                Type::Function(Arc::new(FunctionType { parameters, return_type }))
+            },
+            crate::type_inference::types::Type::Application(type_id, new_args) => {
+                assert!(args.is_none());
+                self.convert_type(*type_id, Some(new_args))
+            },
+            crate::type_inference::types::Type::UserDefined(_origin) => todo!("Convert Type::UserDefined"),
+        }
+    }
+
+    fn convert_primitive_type(&self, typ: crate::type_inference::types::PrimitiveType, args: Option<&[type_id::TypeId]>) -> Type {
+        match typ {
+            crate::type_inference::types::PrimitiveType::Error => Type::ERROR,
+            crate::type_inference::types::PrimitiveType::Unit => Type::UNIT,
+            crate::type_inference::types::PrimitiveType::Bool => Type::BOOL,
+            crate::type_inference::types::PrimitiveType::Pointer => Type::POINTER,
+            crate::type_inference::types::PrimitiveType::Char => Type::CHAR,
+            crate::type_inference::types::PrimitiveType::String => Type::string(),
+            crate::type_inference::types::PrimitiveType::Pair => {
+                match args {
+                    Some(args) if args.len() == 2 => Type::Tuple(Arc::new(vecmap(args, |arg| self.convert_type(*arg, None)))),
+                    _ => Type::ERROR,
+                }
+            },
+            crate::type_inference::types::PrimitiveType::Int(kind) => Type::int(kind),
+            crate::type_inference::types::PrimitiveType::Float(kind) => Type::float(kind),
+            crate::type_inference::types::PrimitiveType::Reference(..) => Type::POINTER,
+        }
+    }
+
     fn expression(&mut self, expr: ExprId) -> Value {
         match &self.context()[expr] {
             cst::Expr::Error => unreachable!("Error expression encountered while generating boxed mir"),
@@ -129,9 +187,9 @@ impl<'local> Context<'local> {
             cst::Expr::Sequence(sequence) => self.sequence(sequence),
             cst::Expr::Definition(definition) => self.definition(definition),
             cst::Expr::MemberAccess(member_access) => self.member_access(member_access, expr),
-            cst::Expr::Call(call) => self.call(call),
+            cst::Expr::Call(call) => self.call(call, expr),
             cst::Expr::Lambda(lambda) => self.lambda(lambda),
-            cst::Expr::If(if_) => self.if_(if_),
+            cst::Expr::If(if_) => self.if_(if_, expr),
             cst::Expr::Match(_) => self.match_(expr),
             cst::Expr::Handle(handle) => self.handle(handle),
             cst::Expr::Reference(reference) => self.reference(reference),
@@ -164,7 +222,7 @@ impl<'local> Context<'local> {
             },
             Literal::Float(x, Some(FloatKind::F32)) => Value::Float(FloatConstant::F32(x.0 as f32)),
             Literal::Float(x, Some(FloatKind::F64)) => Value::Float(FloatConstant::F64(x.0)),
-            Literal::String(x) => self.push_instruction(Instruction::MakeString(x.clone())),
+            Literal::String(x) => self.push_instruction(Instruction::MakeString(x.clone()), Type::string()),
             Literal::Char(x) => Value::Char(*x),
         }
     }
@@ -173,9 +231,9 @@ impl<'local> Context<'local> {
         // Deliberately allow us to reference variables not in the context.
         // This allows us to convert all definitions to MIR in parallel, trusting
         // that the links will work out later.
-        match dbg!(self.context().path_origin(path_id)) {
+        match self.context().path_origin(path_id) {
             Some(Origin::TopLevelDefinition(item)) => Value::Global(item),
-            Some(origin) => dbg!(self.variables[&origin]),
+            Some(origin) => self.variables[&origin],
             None => {
                 println!("Warning: no origin for {path_id:?}: {}", self.context()[path_id]);
                 Value::Error
@@ -194,7 +252,7 @@ impl<'local> Context<'local> {
     fn definition(&mut self, definition: &cst::Definition) -> Value {
         let mut value = self.expression(definition.rhs);
         if definition.mutable {
-            value = self.push_instruction(Instruction::StackAlloc(value));
+            value = self.push_instruction(Instruction::StackAlloc(value), Type::POINTER);
         }
         self.bind_pattern(definition.pattern, value);
         Value::Unit
@@ -203,13 +261,18 @@ impl<'local> Context<'local> {
     fn member_access(&mut self, member_access: &cst::MemberAccess, expr: ExprId) -> Value {
         let tuple = self.expression(member_access.object);
         let index = self.context().member_access_index(expr).unwrap_or(u32::MAX);
-        self.push_instruction(Instruction::IndexTuple { tuple, index })
+        let element_type = match self.type_of_value(tuple) {
+            Type::Tuple(elements) => elements.get(index as usize).cloned().unwrap_or(Type::ERROR),
+            _ => Type::ERROR,
+        };
+        self.push_instruction(Instruction::IndexTuple { tuple, index }, element_type)
     }
 
-    fn call(&mut self, call: &cst::Call) -> Value {
+    fn call(&mut self, call: &cst::Call, id: ExprId) -> Value {
         let function = self.expression(call.function);
         let arguments = vecmap(&call.arguments, |expr| self.expression(*expr));
-        self.push_instruction(Instruction::Call { function, arguments })
+        let result_type = self.expr_type(id);
+        self.push_instruction(Instruction::Call { function, arguments }, result_type)
     }
 
     fn lambda(&mut self, lambda: &cst::Lambda) -> Value {
@@ -218,7 +281,12 @@ impl<'local> Context<'local> {
         let function_id = self.next_function_id();
 
         self.current_function = Some(Function::new(function_id));
-        self.current_block().parameter_count = lambda.parameters.len() as u32;
+
+        let parameter_types = vecmap(&lambda.parameters, |parameter| {
+            let parameter_type = self.types.result.maps.pattern_types[&parameter.pattern];
+            self.convert_type(parameter_type, None)
+        });
+        self.current_block().parameter_types = parameter_types;
 
         for (i, parameter) in lambda.parameters.iter().enumerate() {
             let parameter_value = Value::Parameter(self.current_block, i as u32);
@@ -237,18 +305,19 @@ impl<'local> Context<'local> {
         Value::Function(function_id)
     }
 
-    fn if_(&mut self, if_: &cst::If) -> Value {
+    fn if_(&mut self, if_: &cst::If, expr: ExprId) -> Value {
         let condition = self.expression(if_.condition);
 
-        let then = self.push_block(0);
-        let else_ = self.push_block(0);
+        let then = self.push_block(Vec::new());
+        let else_ = self.push_block(Vec::new());
         self.terminate_block(TerminatorInstruction::If { condition, then, else_ });
 
         self.switch_to_block(then);
         let then_value = self.expression(if_.then);
 
         if let Some(else_expr) = if_.else_ {
-            let end = self.push_block(1);
+            let result_type = self.expr_type(expr);
+            let end = self.push_block(vec![result_type]);
             self.terminate_block(TerminatorInstruction::Jmp(end, vec![then_value]));
 
             self.switch_to_block(else_);
@@ -264,29 +333,31 @@ impl<'local> Context<'local> {
     fn match_(&mut self, expr: ExprId) -> Value {
         match self.context().decision_tree(expr) {
             Some((define_match_var, tree)) => {
-                dbg!(self.expression(*define_match_var));
-                self.decision_tree(tree.clone())
+                self.expression(*define_match_var);
+                self.decision_tree(tree.clone(), expr)
             },
             None => Value::Error,
         }
     }
 
-    fn decision_tree(&mut self, tree: DecisionTree) -> Value {
+    fn decision_tree(&mut self, tree: DecisionTree, match_expr: ExprId) -> Value {
         match tree {
             DecisionTree::Success(expr) => self.expression(expr),
             // Expect an error to already be issued
             DecisionTree::Failure { .. } => Value::Error,
-            DecisionTree::Guard { condition, then, else_ } => self.match_if_guard(condition, then, *else_),
-            DecisionTree::Switch(tag, cases, else_) => self.switch(tag, cases, else_),
+            DecisionTree::Guard { condition, then, else_ } => self.match_if_guard(condition, then, *else_, match_expr),
+            DecisionTree::Switch(tag, cases, else_) => self.switch(tag, cases, else_, match_expr),
         }
     }
 
     /// Almost identical to an if-then-else, the main difference being the else is required
     /// and is of type [DecisionTree]
-    fn match_if_guard(&mut self, condition: ExprId, then_expr: ExprId, else_tree: DecisionTree) -> Value {
-        let then = self.push_block(0);
-        let else_ = self.push_block(0);
-        let end = self.push_block(1);
+    fn match_if_guard(&mut self, condition: ExprId, then_expr: ExprId, else_tree: DecisionTree, match_expr: ExprId) -> Value {
+        let then = self.push_block(Vec::new());
+        let else_ = self.push_block(Vec::new());
+
+        let result_type = self.expr_type(match_expr);
+        let end = self.push_block(vec![result_type]);
 
         let condition = self.expression(condition);
         self.terminate_block(TerminatorInstruction::If { condition, then, else_ });
@@ -296,34 +367,43 @@ impl<'local> Context<'local> {
         self.terminate_block(TerminatorInstruction::Jmp(end, vec![then_value]));
 
         self.switch_to_block(else_);
-        let else_value = self.decision_tree(else_tree);
+        let else_value = self.decision_tree(else_tree, match_expr);
         self.terminate_block(TerminatorInstruction::Jmp(end, vec![else_value]));
 
         self.switch_to_block(end);
         Value::Parameter(end, 0)
     }
 
-    fn switch(&mut self, tag: PathId, cases: Vec<Case>, else_: Option<Box<DecisionTree>>) -> Value {
-        println!("Switch tag = {tag:?}");
+    fn switch(&mut self, tag: PathId, cases: Vec<Case>, else_: Option<Box<DecisionTree>>, match_expr: ExprId) -> Value {
         let int_value = self.variable(tag);
         let start = self.current_block;
 
-        let case_blocks = vecmap(&cases, |_| self.push_block(0));
+        let case_blocks = vecmap(&cases, |_| self.push_block(Vec::new()));
         let mut else_block = None;
-        let end = self.push_block(1);
+
+        let result_type = self.expr_type(match_expr);
+        let end = self.push_block(vec![result_type]);
 
         for (case_block, case) in case_blocks.iter().zip(cases) {
             self.switch_to_block(*case_block);
-            // TODO: Bind constructor arguments
-            let result = self.decision_tree(case.body);
+
+            // TODO: Cast & deconstruct pattern value
+            for argument in &case.arguments {
+                if let Some(origin) = self.context().path_origin(*argument) {
+                    // TODO: Need a reinterpret cast & extract
+                    self.variables.insert(origin, int_value);
+                }
+            }
+
+            let result = self.decision_tree(case.body, match_expr);
             self.terminate_block(TerminatorInstruction::Jmp(end, vec![result]));
         }
 
         if let Some(else_) = else_ {
-            let block = self.push_block(0);
+            let block = self.push_block(Vec::new());
             else_block = Some(block);
             self.switch_to_block(block);
-            let result = self.decision_tree(*else_);
+            let result = self.decision_tree(*else_, match_expr);
             self.terminate_block(TerminatorInstruction::Jmp(end, vec![result]));
         }
 
@@ -352,7 +432,9 @@ impl<'local> Context<'local> {
         fields.sort_unstable_by_key(|(name, _)| field_order.get(name).unwrap_or(&0));
 
         let fields = vecmap(fields, |(_name, value)| value);
-        self.push_instruction(Instruction::MakeTuple(fields))
+        let tuple_type = Type::Tuple(Arc::new(vecmap(&fields, |value| self.type_of_value(*value))));
+
+        self.push_instruction(Instruction::MakeTuple(fields), tuple_type)
     }
 
     fn quoted(&self, _quoted: &cst::Quoted) -> Value {
@@ -365,10 +447,7 @@ impl<'local> Context<'local> {
             cst::Pattern::Error => unreachable!("Error pattern encountered in bind_pattern"),
             cst::Pattern::Variable(name) => {
                 if let Some(origin) = self.context().name_origin(*name) {
-                    println!("defining {origin:?} = {value}");
                     self.variables.insert(origin, value);
-                } else {
-                    println!("No origin for {name:?}");
                 }
             },
             cst::Pattern::Literal(_) => (),

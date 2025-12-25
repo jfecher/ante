@@ -397,14 +397,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // Now compile the match into a decision tree. The `match expr | ...` expression will be
         // replaced with `<fresh> = expr; <decision tree>`
         let location = self.current_context().expr_locations[match_.expression].clone();
-
-        // This name does not actually match the one pushed by `fresh_match_variable` (and doesn't need to)
-        let match_var_name = self.push_name(Arc::new("internal_match_variable".to_string()), location.clone());
-        let match_var = self.fresh_match_variable(expr_type, location.clone());
-
-        let context = self.current_extended_context_mut();
-        context.insert_name_origin(match_var_name, Origin::Local(match_var_name));
-        context.insert_path_origin(match_var, Origin::Local(match_var_name));
+        let (match_var, match_var_name) = self.fresh_match_variable(expr_type, location.clone());
 
         // `<match_var> = <expression being matched>`
         let preamble = self.let_binding(match_var_name, match_.expression);

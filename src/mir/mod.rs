@@ -11,7 +11,12 @@
 //! This file contains the various types which comprise the IR. See the submodules for the
 //! passes that translate the cst to the IR.
 
+use std::sync::Arc;
+
+use rustc_hash::FxHashMap;
+
 use crate::{
+    lexer::token::{FloatKind, IntegerKind},
     parser::ids::{TopLevelId, TopLevelName},
     vecmap::VecMap,
 };
@@ -26,14 +31,50 @@ pub(crate) struct Function {
     /// A function's blocks are always non-empty, consisting of at least an entry
     /// block with `BlockId(0)`
     blocks: VecMap<BlockId, Block>,
+
+    /// Each instruction in the function, in no particular order.
+    /// `Function::blocks` contains the logical order of each instruction. This
+    /// field is for storing instruction data itself so instructions may be assigned
+    /// unique IDs within a function.
+    instructions: VecMap<InstructionId, Instruction>,
+
+    /// The result type of each instruction in this function
+    instruction_result_types: VecMap<InstructionId, Type>,
+
+    global_types: FxHashMap<GlobalId, Type>,
+    function_types: FxHashMap<FunctionId, Type>,
 }
 
 impl Function {
     fn new(id: FunctionId) -> Function {
         let mut blocks = VecMap::default();
-        let entry = blocks.push(Block::new(0));
+        let entry = blocks.push(Block::new(Vec::new()));
         assert_eq!(entry, BlockId::ENTRY_BLOCK);
-        Function { id, blocks }
+        Function {
+            id,
+            blocks,
+            instructions: VecMap::default(),
+            instruction_result_types: VecMap::default(),
+            global_types: Default::default(),
+            function_types: Default::default(),
+        }
+    }
+
+    fn type_of_value(&self, value: Value) -> Type {
+        match value {
+            Value::Error => Type::ERROR,
+            Value::Unit => Type::UNIT,
+            Value::Bool(_) => Type::BOOL,
+            Value::Char(_) => Type::CHAR,
+            Value::Integer(constant) => Type::int(constant.kind()),
+            Value::Float(constant) => Type::float(constant.kind()),
+            Value::InstructionResult(instruction_id) => self.instruction_result_types[instruction_id].clone(),
+            Value::Parameter(block_id, parameter_index) => {
+                self.blocks[block_id].parameter_types[parameter_index as usize].clone()
+            },
+            Value::Function(function_id) => self.function_types[&function_id].clone(),
+            Value::Global(global_id) => self.global_types[&global_id].clone(),
+        }
     }
 }
 
@@ -95,6 +136,8 @@ enum Value {
     Global(GlobalId),
 }
 
+/// A function or lambda originally located within [Self::item], identified
+/// by its index in the CST traversal order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct FunctionId {
     item: TopLevelId,
@@ -104,23 +147,34 @@ pub(crate) struct FunctionId {
 type GlobalId = TopLevelName;
 
 struct Block {
-    parameter_count: u32,
-    instructions: VecMap<InstructionId, Instruction>,
+    parameter_types: Vec<Type>,
+    instructions: Vec<InstructionId>,
     terminator: Option<TerminatorInstruction>,
 }
 
 impl Block {
-    fn new(parameter_count: u32) -> Block {
-        Block { parameter_count, instructions: Default::default(), terminator: None }
+    fn new(parameter_types: Vec<Type>) -> Block {
+        Block { parameter_types, instructions: Default::default(), terminator: None }
     }
 }
 
 enum Instruction {
-    Call { function: Value, arguments: Vec<Value> },
-    IndexTuple { tuple: Value, index: u32 },
+    Call {
+        function: Value,
+        arguments: Vec<Value>,
+    },
+    IndexTuple {
+        tuple: Value,
+        index: u32,
+    },
     MakeString(String),
     MakeTuple(Vec<Value>),
     StackAlloc(Value),
+
+    /// Reinterpret one value as another type.
+    /// The destination type is given by the type of the resulting value.
+    /// Requires the destination type's size to be less than or equal to the original type's size.
+    Transmute(Value),
 }
 
 enum TerminatorInstruction {
@@ -156,10 +210,36 @@ enum IntConstant {
     Isz(isize),
 }
 
+impl IntConstant {
+    fn kind(self) -> IntegerKind {
+        match self {
+            IntConstant::U8(_) => IntegerKind::U8,
+            IntConstant::U16(_) => IntegerKind::U16,
+            IntConstant::U32(_) => IntegerKind::U32,
+            IntConstant::U64(_) => IntegerKind::U64,
+            IntConstant::Usz(_) => IntegerKind::Usz,
+            IntConstant::I8(_) => IntegerKind::I8,
+            IntConstant::I16(_) => IntegerKind::I16,
+            IntConstant::I32(_) => IntegerKind::I32,
+            IntConstant::I64(_) => IntegerKind::I64,
+            IntConstant::Isz(_) => IntegerKind::Isz,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 enum FloatConstant {
     F32(f32),
     F64(f64),
+}
+
+impl FloatConstant {
+    fn kind(self) -> FloatKind {
+        match self {
+            FloatConstant::F32(_) => FloatKind::F32,
+            FloatConstant::F64(_) => FloatKind::F64,
+        }
+    }
 }
 
 impl PartialEq for FloatConstant {
@@ -173,3 +253,48 @@ impl PartialEq for FloatConstant {
 }
 
 impl Eq for FloatConstant {}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Type {
+    Primitive(PrimitiveType),
+    Tuple(Arc<Vec<Type>>),
+    Function(Arc<FunctionType>),
+}
+
+impl Type {
+    const ERROR: Type = Type::Primitive(PrimitiveType::Error);
+    const UNIT: Type = Type::Primitive(PrimitiveType::Unit);
+    const BOOL: Type = Type::Primitive(PrimitiveType::Bool);
+    const POINTER: Type = Type::Primitive(PrimitiveType::Pointer);
+    const CHAR: Type = Type::Primitive(PrimitiveType::Char);
+
+    fn int(kind: IntegerKind) -> Type {
+        Type::Primitive(PrimitiveType::Int(kind))
+    }
+
+    fn float(kind: FloatKind) -> Type {
+        Type::Primitive(PrimitiveType::Float(kind))
+    }
+
+    fn string() -> Type {
+        Type::Tuple(Arc::new(vec![Type::POINTER, Type::int(IntegerKind::U32)]))
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+enum PrimitiveType {
+    Error,
+    Unit,
+    Bool,
+    /// An opaque pointer type
+    Pointer,
+    Char,
+    Int(IntegerKind),
+    Float(FloatKind),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct FunctionType {
+    pub parameters: Vec<Type>,
+    pub return_type: Box<Type>,
+}
