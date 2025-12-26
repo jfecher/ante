@@ -5,7 +5,7 @@ use crate::{
         context::TopLevelContext,
         cst::{Definition, Expr, Pattern, TopLevelItemKind},
     },
-    type_inference::types::{GeneralizedType, TopLevelType},
+    type_inference::top_level_types::{GeneralizedType, TopLevelType},
 };
 
 /// Get the type of the name defined by this TopLevelId.

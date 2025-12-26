@@ -27,7 +27,7 @@ bar "four" "five"
 // args: --show-types
 // expected exit status: 101
 // expected stderr:
-// thread 'main' panicked at src/type_inference/mod.rs:417:9:
+// thread 'main' panicked at src/type_inference/mod.rs:409:9:
 // assertion `left == right` failed
 //   left: 2
 //  right: 1

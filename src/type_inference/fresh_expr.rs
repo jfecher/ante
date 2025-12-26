@@ -15,7 +15,7 @@ use crate::{
         cst::{Expr, Name, Path, Pattern},
         ids::{ExprId, NameId, PathId, PatternId},
     },
-    type_inference::{TypeChecker, patterns::DecisionTree, type_id::TypeId},
+    type_inference::{TypeChecker, patterns::DecisionTree, types::Type},
 };
 
 /// Extends a [TopLevelContext] with additional expressions, names, and paths
@@ -65,7 +65,7 @@ pub struct ExtendedTopLevelContext {
 }
 
 impl<'local, 'innter> TypeChecker<'local, 'innter> {
-    pub(super) fn push_expr(&mut self, expr: Expr, typ: TypeId, location: Location) -> ExprId {
+    pub(super) fn push_expr(&mut self, expr: Expr, typ: Type, location: Location) -> ExprId {
         let id = self.current_extended_context_mut().push_expr(expr, location);
         self.expr_types.insert(id, typ);
         id

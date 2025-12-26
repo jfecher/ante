@@ -15,7 +15,6 @@ use crate::{
         Locateable, TypeChecker,
         errors::TypeErrorKind,
         get_type::try_get_type,
-        type_id::TypeId,
         types::{self, Type},
     },
 };
@@ -24,16 +23,16 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     pub(super) fn check_definition(&mut self, definition: &Definition) {
         let expected_generalized_type = try_get_type(definition, self.current_context(), &self.current_resolve());
         let expected_type = match expected_generalized_type.as_ref() {
-            Some(typ) => typ.as_type(&mut self.types),
+            Some(typ) => typ.as_type(),
             None => self.next_type_variable(),
         };
 
-        self.check_pattern(definition.pattern, expected_type);
-        self.check_expr(definition.rhs, expected_type);
+        self.check_pattern(definition.pattern, &expected_type);
+        self.check_expr(definition.rhs, &expected_type);
     }
 
-    fn check_expr(&mut self, expr: ExprId, expected: TypeId) {
-        self.expr_types.insert(expr, expected);
+    fn check_expr(&mut self, expr: ExprId, expected: &Type) {
+        self.expr_types.insert(expr, expected.clone());
 
         match &self.current_context().exprs[expr] {
             Expr::Literal(literal) => self.check_literal(literal, expr, expected),
@@ -42,7 +41,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Expr::Lambda(lambda) => self.check_lambda(lambda, expected, expr),
             Expr::Sequence(items) => {
                 for (i, item) in items.iter().enumerate() {
-                    let expected_type = if i == items.len() - 1 { expected } else { self.next_type_variable() };
+                    let expected_type = if i == items.len() - 1 { expected } else { &self.next_type_variable() };
                     self.check_expr(item.expr, expected_type);
                 }
             },
@@ -55,8 +54,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Expr::Reference(reference) => self.check_reference(reference, expected, expr),
             Expr::TypeAnnotation(type_annotation) => {
                 let annotation = self.convert_ast_type(&type_annotation.rhs);
-                self.unify(expected, annotation, TypeErrorKind::TypeAnnotationMismatch, expr);
-                self.check_expr(type_annotation.lhs, annotation);
+                self.unify(expected, &annotation, TypeErrorKind::TypeAnnotationMismatch, expr);
+                self.check_expr(type_annotation.lhs, &annotation);
             },
             Expr::Handle(handle) => self.check_handle(handle, expected, expr),
             Expr::Constructor(constructor) => self.check_constructor(constructor, expected, expr),
@@ -68,30 +67,30 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
-    fn check_literal(&mut self, literal: &Literal, locator: impl Locateable, expected: TypeId) {
+    fn check_literal(&mut self, literal: &Literal, locator: impl Locateable, expected: &Type) {
         let actual = match literal {
-            Literal::Unit => TypeId::UNIT,
-            Literal::Integer(_, Some(kind)) => TypeId::integer(*kind),
-            Literal::Float(_, Some(kind)) => TypeId::float(*kind),
-            Literal::Bool(_) => TypeId::BOOL,
-            Literal::Integer(_, None) => TypeId::I32, // TODO: Polymorphic integers
-            Literal::Float(_, None) => TypeId::F64,   // TODO: Polymorphic floats
-            Literal::String(_) => TypeId::STRING,
-            Literal::Char(_) => TypeId::CHAR,
+            Literal::Unit => Type::UNIT,
+            Literal::Integer(_, Some(kind)) => Type::integer(*kind),
+            Literal::Float(_, Some(kind)) => Type::float(*kind),
+            Literal::Bool(_) => Type::BOOL,
+            Literal::Integer(_, None) => Type::I32, // TODO: Polymorphic integers
+            Literal::Float(_, None) => Type::F64,   // TODO: Polymorphic floats
+            Literal::String(_) => Type::STRING,
+            Literal::Char(_) => Type::CHAR,
         };
-        self.unify(actual, expected, TypeErrorKind::General, locator);
+        self.unify(&actual, expected, TypeErrorKind::General, locator);
     }
 
-    fn check_name(&mut self, name: NameId, expected: TypeId) {
+    fn check_name(&mut self, name: NameId, expected: &Type) {
         if let Some(existing) = self.name_types.get(&name) {
-            self.unify(expected, *existing, TypeErrorKind::General, name);
+            self.unify(expected, &existing.clone(), TypeErrorKind::General, name);
         } else {
-            self.name_types.insert(name, expected);
+            self.name_types.insert(name, expected.clone());
         }
     }
 
-    fn check_pattern(&mut self, pattern: PatternId, expected: TypeId) {
-        self.pattern_types.insert(pattern, expected);
+    fn check_pattern(&mut self, pattern: PatternId, expected: &Type) {
+        self.pattern_types.insert(pattern, expected.clone());
         match &self.current_context().patterns[pattern] {
             Pattern::Error => (),
             Pattern::Variable(name) | Pattern::MethodName { item_name: name, .. } => {
@@ -102,49 +101,48 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 let parameters = vecmap(args, |_| self.next_type_variable());
 
                 let expected_function_type = if args.is_empty() {
-                    expected
+                    expected.clone()
                 } else {
-                    let function = Type::Function(types::FunctionType {
+                    Type::Function(Arc::new(types::FunctionType {
                         parameters: parameters.clone(),
-                        return_type: expected,
+                        return_type: expected.clone(),
                         effects: self.next_type_variable(),
-                    });
-                    self.types.get_or_insert_type(function)
+                    }))
                 };
 
-                self.check_path(*path, expected_function_type);
+                self.check_path(*path, &expected_function_type);
                 for (expected_arg_type, arg) in parameters.into_iter().zip(args) {
-                    self.check_pattern(*arg, expected_arg_type);
+                    self.check_pattern(*arg, &expected_arg_type);
                 }
             },
             Pattern::TypeAnnotation(inner_pattern, typ) => {
                 let annotated = self.convert_ast_type(typ);
-                self.unify(expected, annotated, TypeErrorKind::TypeAnnotationMismatch, pattern);
+                self.unify(expected, &annotated, TypeErrorKind::TypeAnnotationMismatch, pattern);
                 self.check_pattern(*inner_pattern, expected);
             },
         };
     }
 
-    fn check_path(&mut self, path: PathId, expected: TypeId) {
+    fn check_path(&mut self, path: PathId, expected: &Type) {
         let actual = match self.current_resolve().path_origins.get(&path).copied() {
             Some(Origin::TopLevelDefinition(id)) => {
                 if let Some(typ) = self.item_types.get(&id) {
-                    *typ
+                    typ.clone()
                 } else {
                     let typ = GetType(id).get(self.compiler);
                     self.instantiate(&typ)
                 }
             },
-            Some(Origin::Local(name)) => self.name_types[&name],
+            Some(Origin::Local(name)) => self.name_types[&name].clone(),
             Some(Origin::TypeResolution) => self.resolve_type_resolution(path, expected),
             Some(Origin::Builtin(builtin)) => self.check_builtin(builtin, path),
             None => return,
         };
-        self.unify(actual, expected, TypeErrorKind::General, path);
-        self.path_types.insert(path, expected);
+        self.unify(&actual, expected, TypeErrorKind::General, path);
+        self.path_types.insert(path, expected.clone());
     }
 
-    fn resolve_type_resolution(&mut self, path: PathId, expected: TypeId) -> TypeId {
+    fn resolve_type_resolution(&mut self, path: PathId, expected: &Type) -> Type {
         let path_value = &self.current_context().paths[path];
         assert_eq!(path_value.components.len(), 1, "Only single-component paths should have Origin::TypeResolution");
         let name = path_value.last_ident();
@@ -170,15 +168,15 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     fn build_constructor_type<'a>(
         &mut self, type_name: TopLevelName, item: &cst::TypeDefinition,
         variant_args: &[cst::Type],
-    ) -> TypeId {
+    ) -> Type {
         let mut substitutions = FxHashMap::default();
-        let mut data_type = self.types.get_or_insert_type(Type::UserDefined(Origin::TopLevelDefinition(type_name)));
+        let mut data_type = Type::UserDefined(Origin::TopLevelDefinition(type_name));
 
         if !item.generics.is_empty() {
             let fresh_vars = vecmap(&item.generics, |_| self.next_type_variable());
             substitutions = Self::datatype_generic_substitutions(item, &fresh_vars);
 
-            data_type = self.types.get_or_insert_type(Type::Application(data_type, fresh_vars));
+            data_type = Type::Application(Arc::new(data_type), Arc::new(fresh_vars));
         }
 
         // If there are no variant args, the result is not a function.
@@ -192,26 +190,23 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             let mut param = self.convert_ast_type(arg);
 
             if !substitutions.is_empty() {
-                param = self.substitute_generics(param, &substitutions);
+                param = self.substitute_generics(&param, &substitutions);
             }
             param
         });
 
-        let function =
-            Type::Function(types::FunctionType { parameters, return_type: data_type, effects: TypeId::UNIT });
-
-        self.types.get_or_insert_type(function)
+        Type::Function(Arc::new(types::FunctionType { parameters, return_type: data_type, effects: Type::UNIT }))
     }
 
-    /// Issue a NameNotInScope error and return TypeId::Error
-    fn issue_name_not_in_scope_error(&self, path: PathId) -> TypeId {
+    /// Issue a NameNotInScope error and return Type::Error
+    fn issue_name_not_in_scope_error(&self, path: PathId) -> Type {
         let name = Arc::new(self.current_context().paths[path].last_ident().to_owned());
         let location = self.current_context().path_locations[path].clone();
         self.compiler.accumulate(Diagnostic::NameNotInScope { name, location });
-        TypeId::ERROR
+        Type::ERROR
     }
 
-    fn try_find_type_namespace_for_type_resolution(&self, typ: TypeId, constructor_name: &str) -> Option<TopLevelName> {
+    fn try_find_type_namespace_for_type_resolution(&self, typ: &Type, constructor_name: &str) -> Option<TopLevelName> {
         match self.follow_type(typ) {
             Type::UserDefined(Origin::TopLevelDefinition(id)) => {
                 // We found which type this name belongs to, but if it is a variant we have to
@@ -226,10 +221,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 Some(TopLevelName { top_level_item: id.top_level_item, local_name_id: *name_id })
             },
             Type::Function(function_type) => {
-                self.try_find_type_namespace_for_type_resolution(function_type.return_type, constructor_name)
+                self.try_find_type_namespace_for_type_resolution(&function_type.return_type, constructor_name)
             },
             Type::Application(constructor, _) => {
-                self.try_find_type_namespace_for_type_resolution(*constructor, constructor_name)
+                self.try_find_type_namespace_for_type_resolution(constructor, constructor_name)
             },
             _ => None,
         }
@@ -238,139 +233,141 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Returns the instantiated type of a builtin value
     ///
     /// Will error if passed a builtin type
-    fn check_builtin(&mut self, builtin: Builtin, locator: impl Locateable) -> TypeId {
+    fn check_builtin(&mut self, builtin: Builtin, locator: impl Locateable) -> Type {
         match builtin {
-            Builtin::Unit => TypeId::UNIT,
+            Builtin::Unit => Type::UNIT,
             Builtin::Int | Builtin::Char | Builtin::Float | Builtin::String | Builtin::Ptr | Builtin::PairType => {
                 let typ = Arc::new(builtin.to_string());
                 let location = locator.locate(self);
                 self.compiler.accumulate(Diagnostic::ValueExpected { location, typ });
-                return TypeId::ERROR;
+                return Type::ERROR;
             },
             Builtin::PairConstructor => {
                 let a = self.next_type_variable();
                 let b = self.next_type_variable();
-                let pair = self.types.get_or_insert_type(Type::Application(TypeId::PAIR, vec![a, b]));
-                let function = Type::Function(types::FunctionType {
+                let pair = Type::Application(Arc::new(Type::PAIR), Arc::new(vec![a.clone(), b.clone()]));
+                Type::Function(Arc::new(types::FunctionType {
                     parameters: vec![a, b],
                     return_type: pair,
-                    effects: TypeId::UNIT,
-                });
-                self.types.get_or_insert_type(function)
+                    effects: Type::UNIT,
+                }))
             },
         }
     }
 
-    fn check_call(&mut self, call: &cst::Call, expected: TypeId) {
+    fn check_call(&mut self, call: &cst::Call, expected: &Type) {
         let expected_parameter_types = vecmap(&call.arguments, |_| self.next_type_variable());
 
         let expected_function_type = {
             let parameters = expected_parameter_types.clone();
             let effects = self.next_type_variable();
-            let function = Type::Function(types::FunctionType { parameters, return_type: expected, effects });
-            self.types.get_or_insert_type(function)
+            let return_type = expected.clone();
+            Type::Function(Arc::new(types::FunctionType { parameters, return_type, effects }))
         };
 
-        self.check_expr(call.function, expected_function_type);
+        self.check_expr(call.function, &expected_function_type);
         for (arg, expected_arg_type) in call.arguments.iter().zip(expected_parameter_types) {
-            self.check_expr(*arg, expected_arg_type);
+            self.check_expr(*arg, &expected_arg_type);
         }
     }
 
-    fn check_lambda(&mut self, lambda: &cst::Lambda, expected: TypeId, expr: ExprId) {
-        let mut function_type = match self.follow_type(expected) {
+    fn check_lambda(&mut self, lambda: &cst::Lambda, expected: &Type, expr: ExprId) {
+        let function_type = match self.follow_type(expected) {
             Type::Function(function_type) => function_type.clone(),
             _ => {
                 let parameters = vecmap(&lambda.parameters, |_| self.next_type_variable());
                 let expected_parameter_count = parameters.len();
                 let return_type = self.next_type_variable();
                 let effects = self.next_type_variable();
-                let new_type = types::FunctionType { parameters, return_type, effects };
-                let new_id = self.types.get_or_insert_type(Type::Function(new_type.clone()));
-                self.unify(expected, new_id, TypeErrorKind::Lambda { expected_parameter_count }, expr);
+                let new_type = Arc::new(types::FunctionType { parameters, return_type, effects });
+                let function_type = Type::Function(new_type.clone());
+                self.unify(expected, &function_type, TypeErrorKind::Lambda { expected_parameter_count }, expr);
                 new_type
             },
         };
 
-        self.check_function_parameter_count(&mut function_type.parameters, lambda.parameters.len(), expr);
+        self.check_function_parameter_count(&function_type.parameters, lambda.parameters.len(), expr);
         assert_eq!(lambda.parameters.len(), function_type.parameters.len());
 
-        for (parameter, expected_type) in lambda.parameters.iter().zip(function_type.parameters) {
+        for (parameter, expected_type) in lambda.parameters.iter().zip(function_type.parameters.iter()) {
             self.check_pattern(parameter.pattern, expected_type);
+        }
+
+        // Required in case `function_type` has fewer parameters, to ensure we check all of `lambda.parameters`
+        for parameter in lambda.parameters.iter().skip(function_type.parameters.len()) {
+            self.check_pattern(parameter.pattern, &Type::ERROR);
         }
 
         // TODO: Check lambda.effects
         let return_type = if let Some(return_type) = lambda.return_type.as_ref() {
             let return_type = self.convert_ast_type(return_type);
-            self.unify(return_type, function_type.return_type, TypeErrorKind::TypeAnnotationMismatch, expr);
-            return_type
+            self.unify(&return_type, &function_type.return_type, TypeErrorKind::TypeAnnotationMismatch, expr);
+            Cow::Owned(return_type)
         } else {
-            function_type.return_type
+            Cow::Borrowed(&function_type.return_type)
         };
 
-        self.check_expr(lambda.body, return_type);
+        self.check_expr(lambda.body, &return_type);
     }
 
     /// Check a function's parameter count using the given parameter types as the expected count.
-    /// Issues an error if the expected count does not match the actual count, and resizes the
-    /// given parameter type Vec.
-    fn check_function_parameter_count(&mut self, parameters: &mut Vec<TypeId>, actual_count: usize, expr: ExprId) {
+    /// Issues an error if the expected count does not match the actual count.
+    fn check_function_parameter_count(&mut self, parameters: &Vec<Type>, actual_count: usize, expr: ExprId) {
         if actual_count != parameters.len() {
             self.compiler.accumulate(Diagnostic::FunctionArgCountMismatch {
                 actual: actual_count,
                 expected: parameters.len(),
                 location: self.current_context().expr_locations[expr].clone(),
             });
-            parameters.resize_with(actual_count, || self.next_type_variable());
         }
     }
 
-    fn check_member_access(&mut self, member_access: &cst::MemberAccess, expected: TypeId, expr: ExprId) {
+    fn check_member_access(&mut self, member_access: &cst::MemberAccess, expected: &Type, expr: ExprId) {
         let struct_type = self.next_type_variable();
-        self.check_expr(member_access.object, struct_type);
+        self.check_expr(member_access.object, &struct_type);
 
-        let fields = self.get_field_types(struct_type, None);
+        let fields = self.get_field_types(&struct_type, None);
         if let Some((field, field_index)) = fields.get(&member_access.member) {
             self.current_extended_context_mut().push_member_access_index(expr, *field_index);
-            self.unify(*field, expected, TypeErrorKind::General, expr);
-        } else if matches!(self.follow_type(struct_type), Type::Variable(_)) {
+            self.unify(field, expected, TypeErrorKind::General, expr);
+        } else if matches!(self.follow_type(&struct_type), Type::Variable(_)) {
             let location = self.current_context().expr_locations[expr].clone();
             self.compiler.accumulate(Diagnostic::TypeMustBeKnownMemberAccess { location });
         } else {
-            let typ = self.type_to_string(struct_type);
+            let typ = self.type_to_string(&struct_type);
             let location = self.current_context().expr_locations[expr].clone();
             let name = Arc::new(member_access.member.clone());
             self.compiler.accumulate(Diagnostic::NoSuchFieldForType { typ, location, name });
         }
     }
 
-    fn check_if(&mut self, if_: &cst::If, expected: TypeId, expr: ExprId) {
-        self.check_expr(if_.condition, TypeId::BOOL);
+    fn check_if(&mut self, if_: &cst::If, expected: &Type, expr: ExprId) {
+        self.check_expr(if_.condition, &Type::BOOL);
 
         // If there's an else clause our expected return type should match the then/else clauses'
         // types. Otherwise, the then body may be any type.
         let expected = if if_.else_.is_some() {
-            expected
+            Cow::Borrowed(expected)
         } else {
-            self.unify(TypeId::UNIT, expected, TypeErrorKind::IfStatement, expr);
-            self.next_type_variable()
+            self.unify(&Type::UNIT, expected, TypeErrorKind::IfStatement, expr);
+            Cow::Owned(self.next_type_variable())
         };
 
-        self.check_expr(if_.then, expected);
+        self.check_expr(if_.then, &expected);
 
         // TODO: No way to identify if `then_type != else_type`. This would be useful to point out
         // for error messages.
         if let Some(else_) = if_.else_ {
-            self.check_expr(else_, expected);
+            self.check_expr(else_, &expected);
         }
     }
 
-    fn check_match(&mut self, match_: &cst::Match, expected: TypeId, expr: ExprId) {
+    fn check_match(&mut self, match_: &cst::Match, expected: &Type, expr: ExprId) {
         let expr_type = self.next_type_variable();
-        self.check_expr(match_.expression, expr_type);
+        self.check_expr(match_.expression, &expr_type);
 
         for (pattern, branch) in match_.cases.iter() {
-            self.check_pattern(*pattern, expr_type);
+            self.check_pattern(*pattern, &expr_type);
             // TODO: Specify if branch_type != type of first branch for better error messages
             self.check_expr(*branch, expected);
         }
@@ -378,7 +375,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // Now compile the match into a decision tree. The `match expr | ...` expression will be
         // replaced with `<fresh> = expr; <decision tree>`
         let location = self.current_context().expr_locations[match_.expression].clone();
-        let (match_var, match_var_name) = self.fresh_match_variable(expr_type, location.clone());
+        let (match_var, match_var_name) = self.fresh_match_variable(expr_type.clone(), location.clone());
 
         // `<match_var> = <expression being matched>`
         let preamble = self.let_binding(match_var_name, match_.expression);
@@ -389,23 +386,27 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
-    fn check_reference(&mut self, reference: &cst::Reference, expected: TypeId, expr: ExprId) {
-        let actual = TypeId::reference(reference.mutability, reference.sharedness);
+    fn check_reference(&mut self, reference: &cst::Reference, expected: &Type, expr: ExprId) {
+        let actual = Type::reference(reference.mutability, reference.sharedness);
+
         let expected_element_type = match self.follow_type(expected) {
             Type::Application(constructor, args) => {
-                let first_arg = args.first().copied();
-                match self.follow_type(*constructor) {
+                let constructor = constructor.clone();
+                let args = args.clone();
+                let first_arg = args.first();
+
+                match self.follow_type(&constructor) {
                     Type::Primitive(types::PrimitiveType::Reference(..)) => {
-                        self.unify(actual, *constructor, TypeErrorKind::ReferenceKind, expr);
+                        self.unify(&actual, &constructor, TypeErrorKind::ReferenceKind, expr);
 
                         // Expect incorrect arg counts to be resolved beforehand
-                        first_arg.unwrap()
+                        first_arg.unwrap().clone()
                     },
                     _ => {
-                        if self.unify(actual, expected, TypeErrorKind::ExpectedNonReference, expr) {
-                            first_arg.unwrap()
+                        if self.unify(&actual, expected, TypeErrorKind::ExpectedNonReference, expr) {
+                            first_arg.unwrap().clone()
                         } else {
-                            TypeId::ERROR
+                            Type::ERROR
                         }
                     },
                 }
@@ -413,36 +414,35 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Type::Variable(id) => {
                 let id = *id;
                 let element = self.next_type_variable();
-                let expected = Type::Application(actual, vec![element]);
-                let expected = self.types.get_or_insert_type(expected);
+                let expected = Type::Application(Arc::new(actual), Arc::new(vec![element.clone()]));
                 self.bindings.insert(id, expected);
                 element
             },
             _ => {
-                self.unify(actual, expected, TypeErrorKind::ExpectedNonReference, expr);
-                TypeId::ERROR
+                self.unify(&actual, expected, TypeErrorKind::ExpectedNonReference, expr);
+                Type::ERROR
             },
         };
 
-        self.check_expr(reference.rhs, expected_element_type);
+        self.check_expr(reference.rhs, &expected_element_type);
     }
 
-    fn check_constructor(&mut self, constructor: &cst::Constructor, expected: TypeId, id: ExprId) {
+    fn check_constructor(&mut self, constructor: &cst::Constructor, expected: &Type, id: ExprId) {
         let typ = self.convert_ast_type(&constructor.typ);
-        self.unify(typ, expected, TypeErrorKind::Constructor, id);
+        self.unify(&typ, expected, TypeErrorKind::Constructor, id);
 
         // Map each field name to its index in the type's declaration order.
         // This is used when lowering to MIR when structs are converted into tuples.
         let mut field_order = BTreeMap::new();
-        let field_types = self.get_field_types(typ, None);
+        let field_types = self.get_field_types(&typ, None);
 
         for (name, expr) in &constructor.fields {
             let name_string = &self.current_context().names[*name];
             let (expected_field_type, field_index) =
-                field_types.get(name_string).copied().unwrap_or((TypeId::ERROR, 0));
+                field_types.get(name_string).cloned().unwrap_or((Type::ERROR, 0));
 
-            self.check_expr(*expr, expected_field_type);
-            self.check_name(*name, expected_field_type);
+            self.check_expr(*expr, &expected_field_type);
+            self.check_name(*name, &expected_field_type);
 
             field_order.insert(*name, field_index);
         }
@@ -450,14 +450,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         self.current_extended_context_mut().push_constructor_field_order(id, field_order);
     }
 
-    fn check_handle(&mut self, _handle: &cst::Handle, _expected: TypeId, expr: ExprId) {
+    fn check_handle(&mut self, _handle: &cst::Handle, _expected: &Type, expr: ExprId) {
         let location = self.current_context().expr_locations[expr].clone();
         UnimplementedItem::Effects.issue(self.compiler, location);
     }
 
     pub(super) fn check_extern(&mut self, extern_: &cst::Extern) {
         let typ = self.convert_ast_type(&extern_.declaration.typ);
-        self.check_name(extern_.declaration.name, typ);
+        self.check_name(extern_.declaration.name, &typ);
     }
 
     pub(super) fn check_comptime(&self, _comptime: &cst::Comptime) {
@@ -490,8 +490,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             let actual = self.build_constructor_type(type_name, definition, args);
 
             let constructor_name = TopLevelName::new(id, *constructor_name);
-            let expected = self.item_types[&constructor_name];
-            self.unify(actual, expected, TypeErrorKind::General, constructor_name.local_name_id);
+            let expected = self.item_types[&constructor_name].clone();
+            self.unify(&actual, &expected, TypeErrorKind::General, constructor_name.local_name_id);
         }
     }
 }

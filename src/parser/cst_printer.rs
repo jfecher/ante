@@ -13,7 +13,7 @@ use crate::{
         cst::{Constructor, TopLevelItemKind},
         ids::{NameId, PathId},
     },
-    type_inference::{patterns::DecisionTree, type_id::TypeId},
+    type_inference::{patterns::DecisionTree, types},
 };
 
 use super::{
@@ -306,8 +306,8 @@ impl<'a> CstDisplay<'a> {
         if let Some(db) = self.db_type_check() {
             if show_type {
                 let check = TypeCheck(self.current_item_id.unwrap()).get(db);
-                let typ = check.result.maps.name_types.get(&name).copied().unwrap_or(TypeId::ERROR);
-                write!(f, ": {})", typ.to_string(&check.types, &check.bindings, &context.names, db))?
+                let typ = check.result.maps.name_types.get(&name).cloned().unwrap_or(types::Type::ERROR);
+                write!(f, ": {})", typ.to_string(&check.bindings, &context.names, db))?
             }
         }
 
@@ -347,8 +347,8 @@ impl<'a> CstDisplay<'a> {
         if show_type {
             if let Some(db) = self.db_type_check() {
                 let check = TypeCheck(self.current_item_id.unwrap()).get(db);
-                let typ = check.result.maps.path_types.get(&path).copied().unwrap_or(TypeId::ERROR);
-                write!(f, ": {})", typ.to_string(&check.types, &check.bindings, &context.names, db))?
+                let typ = check.result.maps.path_types.get(&path).cloned().unwrap_or(types::Type::ERROR);
+                write!(f, ": {})", typ.to_string(&check.bindings, &context.names, db))?
             }
         }
 

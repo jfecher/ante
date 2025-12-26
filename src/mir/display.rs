@@ -96,7 +96,7 @@ impl Display for Type {
                 }
                 write!(f, " -> {}", function_type.return_type)
             },
-            Type::TypeVar(id) => write!(f, "{id}"),
+            Type::Generic(id) => write!(f, "{id}"),
         }
     }
 }

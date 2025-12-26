@@ -26,7 +26,7 @@ use crate::{
     type_inference::{
         self, TypeCheckSCCResult,
         dependency_graph::{SCC, TypeCheckDependencyGraphResult, TypeCheckResult},
-        types::GeneralizedType,
+        top_level_types::GeneralizedType,
     },
 };
 

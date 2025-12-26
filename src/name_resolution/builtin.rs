@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::type_inference::type_id::TypeId;
+use crate::type_inference::types::Type;
 
 /// Contains only builtin items which can be redefined (are not keywords).
 /// This includes most builtin types except for sized-integer and float types `I8`, `I16`, `U32`, etc.
@@ -45,15 +45,15 @@ impl Builtin {
 
     /// If this is a type, return its id.
     /// This will return [None] for values such as [Builtin::PairConstructor]
-    pub fn type_id(self) -> Option<TypeId> {
+    pub fn as_type(self) -> Option<Type> {
         match self {
-            Builtin::Unit => Some(TypeId::UNIT),
+            Builtin::Unit => Some(Type::UNIT),
             Builtin::Int => None,
-            Builtin::Char => Some(TypeId::CHAR),
+            Builtin::Char => Some(Type::CHAR),
             Builtin::Float => None,
-            Builtin::String => Some(TypeId::STRING),
-            Builtin::Ptr => Some(TypeId::POINTER),
-            Builtin::PairType => Some(TypeId::PAIR),
+            Builtin::String => Some(Type::STRING),
+            Builtin::Ptr => Some(Type::POINTER),
+            Builtin::PairType => Some(Type::PAIR),
             Builtin::PairConstructor => None,
         }
     }
@@ -63,7 +63,7 @@ impl Builtin {
     /// constructor.
     /// Currently all built-in types only define one constructor so the index is always zero.
     /// Returns [None] if this is not a value constructor.
-    pub fn constructor(self) -> Option<(TypeId, usize)> {
+    pub fn constructor(self) -> Option<(Type, usize)> {
         match self {
             Builtin::Unit
             | Builtin::Int
@@ -73,14 +73,14 @@ impl Builtin {
             | Builtin::Ptr
             | Builtin::PairType => None,
 
-            Builtin::PairConstructor => Some((TypeId::PAIR, 0)),
+            Builtin::PairConstructor => Some((Type::PAIR, 0)),
         }
     }
 
     /// Returns the fields of this builtin type, if it has any (that are meant to be publically visible).
     ///
     /// Currently only the PairType has publically visible fields.
-    pub fn fields(self, generic_args: Vec<TypeId>) -> Option<Vec<TypeId>> {
+    pub fn fields(self, generic_args: Vec<Type>) -> Option<Vec<Type>> {
         (self == Builtin::PairType && generic_args.len() == 2).then_some(generic_args)
     }
 }

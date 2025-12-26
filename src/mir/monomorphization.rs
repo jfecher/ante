@@ -12,13 +12,13 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     incremental::{DbHandle, GetItem, TypeCheck},
-    mir,
+    mir::{self, Type},
     parser::{
         context::TopLevelContext,
         cst,
         ids::{NameId, TopLevelId},
     },
-    type_inference::{dependency_graph::TypeCheckResult, type_id::TypeId, types::TopLevelType},
+    type_inference::{dependency_graph::TypeCheckResult, top_level_types::TopLevelType},
 };
 
 /// Monomorphize the item, returning a MIR function if the item refers to a function.
@@ -47,7 +47,7 @@ struct FunctionContext<'local, 'db> {
     compiler: &'local DbHandle<'db>,
     types: Arc<TypeCheckResult>,
     item_context: Arc<TopLevelContext>,
-    generic_mapping: FxHashMap<NameId, TypeId>,
+    generic_mapping: FxHashMap<NameId, Type>,
 
     monomorphized_functions: FxHashMap<TopLevelId, mir::Function>,
     queue: Vec<(TopLevelId, TopLevelType)>,

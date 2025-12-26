@@ -13,7 +13,7 @@ use crate::{
     name_resolution::namespace::LOCAL_CRATE,
     parser::{cst::TopLevelItemKind, ids::TopLevelId},
     type_inference::{
-        IndividualTypeCheckResult, get_type::try_get_type, type_context::TypeContext, type_id::TypeId, types::{Type, TypeBindings}
+        IndividualTypeCheckResult, get_type::try_get_type, types::TypeBindings
     },
 };
 
@@ -145,17 +145,7 @@ pub fn get_type_check_scc_impl(context: &GetTypeCheckSCC, db: &DbHandle) -> SCC 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TypeCheckResult {
     pub result: IndividualTypeCheckResult,
-    pub types: TypeContext,
     pub bindings: TypeBindings,
-}
-
-impl TypeCheckResult {
-    /// Retrieve a Type then follow all its type variable bindings so that we only return
-    /// `Type::Variable` if the type variable is unbound. Note that this may still return
-    /// a composite type such as `Type::Application` with bound type variables within.
-    pub fn follow_type(&self, type_id: TypeId) -> &Type {
-        self.types.follow_type(type_id, &self.bindings)
-    }
 }
 
 pub fn type_check_impl(context: &TypeCheck, db: &DbHandle) -> Arc<TypeCheckResult> {
@@ -164,7 +154,6 @@ pub fn type_check_impl(context: &TypeCheck, db: &DbHandle) -> Arc<TypeCheckResul
 
     Arc::new(TypeCheckResult {
         result: result.items[&context.0].clone(),
-        types: result.types,
         bindings: result.bindings,
     })
 }

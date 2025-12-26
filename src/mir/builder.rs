@@ -15,9 +15,10 @@ use crate::{
     iterator_extensions::vecmap,
     lexer::token::{FloatKind, IntegerKind},
     mir::{
-        Block, BlockId, FloatConstant, Function, FunctionId, FunctionType, Instruction, IntConstant, TerminatorInstruction, Type, Value
+        Block, BlockId, FloatConstant, Function, FunctionId, FunctionType, Instruction, IntConstant,
+        TerminatorInstruction, Type, Value,
     },
-    name_resolution::Origin,
+    name_resolution::{Origin, builtin::Builtin},
     parser::{
         cst::{self, Literal, Name, SequenceItem},
         ids::{ExprId, PathId, PatternId, TopLevelId},
@@ -25,7 +26,7 @@ use crate::{
     type_inference::{
         dependency_graph::TypeCheckResult,
         fresh_expr::ExtendedTopLevelContext,
-        patterns::{Case, DecisionTree}, type_id,
+        patterns::{Case, DecisionTree}, types,
     },
 };
 
@@ -136,32 +137,65 @@ impl<'local> Context<'local> {
     }
 
     fn expr_type(&self, expr: ExprId) -> Type {
-        let type_id = self.types.result.maps.expr_types[&expr];
-        self.convert_type(type_id, None)
+        let typ = &self.types.result.maps.expr_types[&expr];
+        self.convert_type(typ, None)
     }
 
-    fn convert_type(&self, type_id: type_id::TypeId, args: Option<&[type_id::TypeId]>) -> Type {
-        match self.types.follow_type(type_id) {
-            crate::type_inference::types::Type::Primitive(primitive_type) => self.convert_primitive_type(*primitive_type, args),
-            crate::type_inference::types::Type::Generic(_generic) => todo!("Convert Type::Generic"),
-            crate::type_inference::types::Type::Variable(_type_variable_id) => {
-                Type::TypeVar(*_type_variable_id)
+    fn convert_type(&self, typ: &types::Type, args: Option<&[types::Type]>) -> Type {
+        match typ.follow_type(&self.types.bindings) {
+            crate::type_inference::types::Type::Primitive(primitive_type) => {
+                self.convert_primitive_type(*primitive_type, args)
             },
+            crate::type_inference::types::Type::Generic(generic) => Type::Generic(*generic),
+            // All type variables should be bound when we finish type inference
+            crate::type_inference::types::Type::Variable(_type_variable_id) => Type::ERROR,
             crate::type_inference::types::Type::Function(function_type) => {
                 // TODO: Effects
-                let parameters = vecmap(&function_type.parameters, |typ| self.convert_type(*typ, None));
-                let return_type = Box::new(self.convert_type(function_type.return_type, None));
+                let parameters = vecmap(&function_type.parameters, |typ| self.convert_type(typ, None));
+                let return_type = Box::new(self.convert_type(&function_type.return_type, None));
                 Type::Function(Arc::new(FunctionType { parameters, return_type }))
             },
             crate::type_inference::types::Type::Application(type_id, new_args) => {
                 assert!(args.is_none());
-                self.convert_type(*type_id, Some(new_args))
+                self.convert_type(type_id, Some(new_args))
             },
-            crate::type_inference::types::Type::UserDefined(_origin) => todo!("Convert Type::UserDefined"),
+            crate::type_inference::types::Type::UserDefined(origin) => self.convert_type_origin(*origin, args),
         }
     }
 
-    fn convert_primitive_type(&self, typ: crate::type_inference::types::PrimitiveType, args: Option<&[type_id::TypeId]>) -> Type {
+    fn convert_type_origin(&self, origin: Origin, args: Option<&[types::Type]>) -> Type {
+        match origin {
+            Origin::TopLevelDefinition(_) => todo!("convert Origin::TopLevelDefinition"),
+            Origin::Local(_) => unreachable!("Types cannot be declared locally"),
+            Origin::TypeResolution => unreachable!("Types should never be Origin::TypeResolution"),
+            Origin::Builtin(builtin) => self.convert_builtin_type(builtin, args),
+        }
+    }
+
+    fn convert_builtin_type(&self, builtin: Builtin, args: Option<&[types::Type]>) -> Type {
+        match builtin {
+            Builtin::Unit => Type::UNIT,
+            Builtin::Int => todo!(),
+            Builtin::Char => Type::CHAR,
+            Builtin::Float => todo!(),
+            Builtin::String => Type::string(),
+            Builtin::Ptr => Type::POINTER,
+            Builtin::PairType => {
+                if let Some(args) = args {
+                    let args = vecmap(args, |arg| self.convert_type(arg, None));
+                    Type::Tuple(Arc::new(args))
+                } else {
+                    // Relying on type checking to issue an error
+                    Type::ERROR
+                }
+            },
+            Builtin::PairConstructor => unreachable!("This is a constructor, not a type"),
+        }
+    }
+
+    fn convert_primitive_type(
+        &self, typ: crate::type_inference::types::PrimitiveType, args: Option<&[types::Type]>,
+    ) -> Type {
         match typ {
             crate::type_inference::types::PrimitiveType::Error => Type::ERROR,
             crate::type_inference::types::PrimitiveType::Unit => Type::UNIT,
@@ -169,11 +203,11 @@ impl<'local> Context<'local> {
             crate::type_inference::types::PrimitiveType::Pointer => Type::POINTER,
             crate::type_inference::types::PrimitiveType::Char => Type::CHAR,
             crate::type_inference::types::PrimitiveType::String => Type::string(),
-            crate::type_inference::types::PrimitiveType::Pair => {
-                match args {
-                    Some(args) if args.len() == 2 => Type::Tuple(Arc::new(vecmap(args, |arg| self.convert_type(*arg, None)))),
-                    _ => Type::ERROR,
-                }
+            crate::type_inference::types::PrimitiveType::Pair => match args {
+                Some(args) if args.len() == 2 => {
+                    Type::Tuple(Arc::new(vecmap(args, |arg| self.convert_type(arg, None))))
+                },
+                _ => Type::ERROR,
             },
             crate::type_inference::types::PrimitiveType::Int(kind) => Type::int(kind),
             crate::type_inference::types::PrimitiveType::Float(kind) => Type::float(kind),
@@ -253,9 +287,7 @@ impl<'local> Context<'local> {
 
     fn definition(&mut self, definition: &cst::Definition) -> Value {
         let mut value = match &self.context()[definition.rhs] {
-            cst::Expr::Lambda(lambda) => {
-                self.lambda(lambda, self.try_find_name(definition.pattern))
-            }
+            cst::Expr::Lambda(lambda) => self.lambda(lambda, self.try_find_name(definition.pattern)),
             _ => self.expression(definition.rhs),
         };
 
@@ -304,7 +336,7 @@ impl<'local> Context<'local> {
         self.current_function = Some(Function::new(name, function_id));
 
         let parameter_types = vecmap(&lambda.parameters, |parameter| {
-            let parameter_type = self.types.result.maps.pattern_types[&parameter.pattern];
+            let parameter_type = &self.types.result.maps.pattern_types[&parameter.pattern];
             self.convert_type(parameter_type, None)
         });
         self.current_block().parameter_types = parameter_types;
@@ -373,7 +405,9 @@ impl<'local> Context<'local> {
 
     /// Almost identical to an if-then-else, the main difference being the else is required
     /// and is of type [DecisionTree]
-    fn match_if_guard(&mut self, condition: ExprId, then_expr: ExprId, else_tree: DecisionTree, match_expr: ExprId) -> Value {
+    fn match_if_guard(
+        &mut self, condition: ExprId, then_expr: ExprId, else_tree: DecisionTree, match_expr: ExprId,
+    ) -> Value {
         let then = self.push_block(Vec::new());
         let else_ = self.push_block(Vec::new());
 

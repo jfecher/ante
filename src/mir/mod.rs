@@ -16,7 +16,7 @@ use std::sync::Arc;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    lexer::token::{FloatKind, IntegerKind}, parser::{cst::Name, ids::{TopLevelId, TopLevelName}}, type_inference::types::TypeVariableId, vecmap::VecMap
+    lexer::token::{FloatKind, IntegerKind}, parser::{cst::Name, ids::{TopLevelId, TopLevelName}}, type_inference::generics::Generic, vecmap::VecMap
 };
 pub(crate) mod builder;
 mod display;
@@ -255,14 +255,16 @@ impl PartialEq for FloatConstant {
 
 impl Eq for FloatConstant {}
 
+/// TODO: This is very similar to [TopLevelType] - do we really need both?
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Type {
     Primitive(PrimitiveType),
     Tuple(Arc<Vec<Type>>),
     Function(Arc<FunctionType>),
 
-    /// Temporary for debugging
-    TypeVar(TypeVariableId),
+    /// TODO: These should probably be in a simpler form.
+    /// E.g. numbered from the function they were declared in.
+    Generic(Generic),
 }
 
 impl Type {
