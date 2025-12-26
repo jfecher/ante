@@ -138,7 +138,7 @@ pub fn exported_types_impl(context: &ExportedTypes, db: &DbHandle) -> Definition
                 let name = name.clone();
                 db.accumulate(Diagnostic::NameAlreadyInScope { name, first_location, second_location });
             } else {
-                definitions.insert(name.clone(), TopLevelName::named(item.id, definition.name));
+                definitions.insert(name.clone(), TopLevelName::new(item.id, definition.name));
             }
         }
     }
@@ -249,7 +249,7 @@ impl<'local, 'db> Declarer<'local, 'db> {
             let second_location = context.name_locations[name_id].clone();
             self.db.accumulate(Diagnostic::NameAlreadyInScope { name, first_location, second_location });
         } else {
-            definitions(self).insert(name, TopLevelName::named(id, name_id));
+            definitions(self).insert(name, TopLevelName::new(id, name_id));
         }
     }
 

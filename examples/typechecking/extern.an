@@ -20,9 +20,9 @@ exit2_result = exit2 0
 // 
 // extern (exit2: fn I32 -> never_returns): fn I32 -> never_returns
 // 
-// (foo_result: _1) = (foo: fn I32 -> _1) 1
+// (foo_result: _0) = (foo: fn I32 -> _0) 1
 // 
-// (puts2_result: _1) = (puts2: fn String -> _1) "test"
+// (puts2_result: Unit) = (puts2: fn String -> Unit) "test"
 // 
-// (exit2_result: _1) = (exit2: fn I32 -> _1) 0
+// (exit2_result: _0) = (exit2: fn I32 -> _0) 0
 

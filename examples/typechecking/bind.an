@@ -17,9 +17,12 @@ add_one x =
 // args: --show-types
 // expected stdout:
 // (bind: fn (Maybe _10) (fn _10 -> Maybe _13) -> Maybe _13) (opt: Maybe _10) (f: fn _10 -> Maybe _13) =
-//     match (opt: Maybe _10)
-//     | (Maybe.Some: fn _10 -> Maybe _10) (x: _10) -> (f: fn _10 -> Maybe _13) (x: _10)
-//     | (Maybe.None: Maybe _10) -> (Maybe.None: Maybe _13)
+//     (internal_match_variable_6: (error)) = (opt: Maybe _10)
+//     switch (internal_match_variable_6: Maybe _10)
+//     | 0 -> (Maybe.None: Maybe _13)
+//     | 1, (internal_match_variable_7: _10) -> 
+//             (x: _10) = (internal_match_variable_7: _10)
+//             (f: fn _10 -> Maybe _13) (x: _10)
 // 
 // type Maybe2 t =
 //     | None
@@ -29,8 +32,8 @@ add_one x =
 // 
 // (x: Maybe I32) = (Maybe.Some: fn I32 -> Maybe I32) 10_I32
 // 
-// (add_one: fn _5 -> _3) (x: _5) =
-//     (bind: fn _5 (fn _15 -> _10) -> _3) (x: _5) (fn (x: _15) -> (ret: fn _12 -> _10) ((x: _15) (+: (error)) 1_I32))
+// (add_one: fn (Maybe _13) -> Maybe _9) (x: Maybe _13) =
+//     (bind: fn (Maybe _13) (fn _13 -> Maybe _9) -> Maybe _9) (x: Maybe _13) (fn (x: _13) -> (ret: fn _9 -> Maybe _9) ((x: _13) (+: (error)) 1_I32))
 
 // expected stderr:
 // examples/typechecking/bind.an:15:27	error: `+` not found in scope

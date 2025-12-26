@@ -96,6 +96,7 @@ impl Display for Type {
                 }
                 write!(f, " -> {}", function_type.return_type)
             },
+            Type::TypeVar(id) => write!(f, "{id}"),
         }
     }
 }
@@ -115,7 +116,7 @@ impl Display for PrimitiveType {
 }
 
 fn fmt_function(function: &mir::Function, f: &mut Formatter) -> Result {
-    write!(f, "fun {}", function.id)?;
+    write!(f, "fun {} {}", function.name, function.id)?;
     for (block_id, block) in function.blocks.iter() {
         writeln!(f)?;
         fmt_block(block_id, function, block, f)?;
@@ -124,7 +125,7 @@ fn fmt_function(function: &mir::Function, f: &mut Formatter) -> Result {
 }
 
 fn fmt_block(id: BlockId, function: &mir::Function, block: &Block, f: &mut Formatter) -> Result {
-    write!(f, "b{}(", id.0)?;
+    write!(f, "  b{}(", id.0)?;
     for (i, typ) in block.parameter_types.iter().enumerate() {
         if i != 0 {
             write!(f, ", ")?;
@@ -135,7 +136,7 @@ fn fmt_block(id: BlockId, function: &mir::Function, block: &Block, f: &mut Forma
 
     for instruction_id in block.instructions.iter().copied() {
         let instruction = &function.instructions[instruction_id];
-        fmt_instruction(instruction_id, instruction, f)?;
+        fmt_instruction(instruction_id, instruction, function, f)?;
     }
 
     match block.terminator.as_ref() {
@@ -147,21 +148,22 @@ fn fmt_block(id: BlockId, function: &mir::Function, block: &Block, f: &mut Forma
 }
 
 fn fmt_terminator(terminator: &mir::TerminatorInstruction, f: &mut Formatter<'_>) -> Result {
+    write!(f, "    ")?;
     match terminator {
         mir::TerminatorInstruction::Jmp(block_id, arguments) => {
-            write!(f, "  jmp {block_id}")?;
+            write!(f, "jmp {block_id}")?;
             for argument in arguments {
                 write!(f, " {argument}")?;
             }
             Ok(())
         },
         mir::TerminatorInstruction::If { condition, then, else_ } => {
-            write!(f, "  if {condition} then {then} else {else_}")
+            write!(f, "if {condition} then {then} else {else_}")
         },
-        mir::TerminatorInstruction::Unreachable => write!(f, "  unreachable"),
-        mir::TerminatorInstruction::Return(value) => write!(f, "  return {value}"),
+        mir::TerminatorInstruction::Unreachable => write!(f, "unreachable"),
+        mir::TerminatorInstruction::Return(value) => write!(f, "return {value}"),
         mir::TerminatorInstruction::Switch { int_value, cases, else_ } => {
-            writeln!(f, "  switch {int_value}")?;
+            writeln!(f, "switch {int_value}")?;
             for (i, case) in cases.iter().enumerate() {
                 if i != 0 {
                     writeln!(f)?;
@@ -177,9 +179,10 @@ fn fmt_terminator(terminator: &mir::TerminatorInstruction, f: &mut Formatter<'_>
 }
 
 fn fmt_instruction(
-    instruction_id: mir::InstructionId, instruction: &mir::Instruction, f: &mut Formatter<'_>,
+    instruction_id: mir::InstructionId, instruction: &mir::Instruction, function: &mir::Function, f: &mut Formatter<'_>,
 ) -> Result {
-    write!(f, "  {} = ", Value::InstructionResult(instruction_id))?;
+    let result_type = &function.instruction_result_types[instruction_id];
+    write!(f, "    {}: {result_type} = ", Value::InstructionResult(instruction_id))?;
 
     match instruction {
         mir::Instruction::Call { function, arguments } => {

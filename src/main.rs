@@ -15,6 +15,7 @@
 //! - Parsing `src/parser/mod.rs`
 //! - Name Resolution `src/name_resolution/mod.rs`
 //! - Type Inference `src/type_inference/cst_traversal.rs`
+//! - MIR Translation `src/mir/builder.rs`
 //!
 //! Non-passes:
 //! - `src/errors.rs`: Defines each error used in the program as well as the `Location` struct

@@ -15,7 +15,7 @@ foo () = baz bar
 // extern (bar: a): a
 // 
 // trait Baz a with
-//     (baz: (error)): fn a -> Unit
+//     (baz: _1): fn a -> Unit
 // 
 // (foo: fn Unit -> _3) () = (baz: (error)) (bar: _5)
 

@@ -19,7 +19,7 @@ use crate::{
     },
     name_resolution::Origin,
     parser::{
-        cst::{self, Literal, SequenceItem},
+        cst::{self, Literal, Name, SequenceItem},
         ids::{ExprId, PathId, PatternId, TopLevelId},
     },
     type_inference::{
@@ -141,10 +141,12 @@ impl<'local> Context<'local> {
     }
 
     fn convert_type(&self, type_id: type_id::TypeId, args: Option<&[type_id::TypeId]>) -> Type {
-        match self.types.types.get_type(type_id) {
+        match self.types.follow_type(type_id) {
             crate::type_inference::types::Type::Primitive(primitive_type) => self.convert_primitive_type(*primitive_type, args),
             crate::type_inference::types::Type::Generic(_generic) => todo!("Convert Type::Generic"),
-            crate::type_inference::types::Type::Variable(_type_variable_id) => todo!("Convert Type::Variable"),
+            crate::type_inference::types::Type::Variable(_type_variable_id) => {
+                Type::TypeVar(*_type_variable_id)
+            },
             crate::type_inference::types::Type::Function(function_type) => {
                 // TODO: Effects
                 let parameters = vecmap(&function_type.parameters, |typ| self.convert_type(*typ, None));
@@ -188,7 +190,7 @@ impl<'local> Context<'local> {
             cst::Expr::Definition(definition) => self.definition(definition),
             cst::Expr::MemberAccess(member_access) => self.member_access(member_access, expr),
             cst::Expr::Call(call) => self.call(call, expr),
-            cst::Expr::Lambda(lambda) => self.lambda(lambda),
+            cst::Expr::Lambda(lambda) => self.lambda(lambda, None),
             cst::Expr::If(if_) => self.if_(if_, expr),
             cst::Expr::Match(_) => self.match_(expr),
             cst::Expr::Handle(handle) => self.handle(handle),
@@ -250,7 +252,13 @@ impl<'local> Context<'local> {
     }
 
     fn definition(&mut self, definition: &cst::Definition) -> Value {
-        let mut value = self.expression(definition.rhs);
+        let mut value = match &self.context()[definition.rhs] {
+            cst::Expr::Lambda(lambda) => {
+                self.lambda(lambda, self.try_find_name(definition.pattern))
+            }
+            _ => self.expression(definition.rhs),
+        };
+
         if definition.mutable {
             value = self.push_instruction(Instruction::StackAlloc(value), Type::POINTER);
         }
@@ -275,12 +283,25 @@ impl<'local> Context<'local> {
         self.push_instruction(Instruction::Call { function, arguments }, result_type)
     }
 
-    fn lambda(&mut self, lambda: &cst::Lambda) -> Value {
+    fn try_find_name(&self, pattern: PatternId) -> Option<Name> {
+        match &self.context()[pattern] {
+            cst::Pattern::Error => None,
+            cst::Pattern::Literal(_) => None,
+            cst::Pattern::Constructor(..) => None,
+            cst::Pattern::TypeAnnotation(pattern, _) => self.try_find_name(*pattern),
+            cst::Pattern::Variable(name) | cst::Pattern::MethodName { item_name: name, .. } => {
+                Some(self.context()[*name].clone())
+            },
+        }
+    }
+
+    fn lambda(&mut self, lambda: &cst::Lambda, name: Option<Name>) -> Value {
         let previous_function = self.current_function.take();
         let previous_block = std::mem::replace(&mut self.current_block, BlockId::ENTRY_BLOCK);
         let function_id = self.next_function_id();
 
-        self.current_function = Some(Function::new(function_id));
+        let name = name.unwrap_or_else(|| Arc::new("lambda".to_string()));
+        self.current_function = Some(Function::new(name, function_id));
 
         let parameter_types = vecmap(&lambda.parameters, |parameter| {
             let parameter_type = self.types.result.maps.pattern_types[&parameter.pattern];

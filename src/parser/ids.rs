@@ -70,7 +70,7 @@ pub struct TopLevelName {
 
 impl TopLevelName {
     /// Create a TopLevelName referring to the given name within the larger top-level item
-    pub fn named(top_level_item: TopLevelId, local_name_id: NameId) -> Self {
+    pub fn new(top_level_item: TopLevelId, local_name_id: NameId) -> Self {
         Self { top_level_item, local_name_id }
     }
 

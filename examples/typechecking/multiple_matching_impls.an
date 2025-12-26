@@ -40,13 +40,13 @@ impl candidate2: Foo Thing with
 //     nothing: Unit
 // 
 // trait Foo a with
-//     (foo: (error)): fn a -> Unit
+//     (foo: _1): fn a -> Unit
 // 
 // trait Bar a with
-//     (bar: (error)): fn a -> Unit
+//     (bar: _1): fn a -> Unit
 // 
 // trait Baz a with
-//     (baz: (error)): fn a -> Unit
+//     (baz: _1): fn a -> Unit
 // 
 // (main: fn Unit -> _3) () =
 //     (foo: (error)) ((Thing: fn Unit -> Thing) ())
@@ -76,5 +76,8 @@ impl candidate2: Foo Thing with
 // examples/typechecking/multiple_matching_impls.an:19:16	error: Expected Baz _3 but found a
 //     foo a = bar a
 // 
-// Found 3 errors and 0 warnings
+// examples/typechecking/multiple_matching_impls.an:22:12	error: Expected fn _1 -> Unit but found Baz Thing
+//     bar a = baz a
+// 
+// Found 4 errors and 0 warnings
 

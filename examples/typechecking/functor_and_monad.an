@@ -24,24 +24,30 @@ impl monad_maybe: Monad Maybe with
 // args: --show-types
 // expected stdout:
 // trait Functor f with
-//     (map: (error)): fn (f a) (fn a -> b) -> f b
+//     (map: _1): fn (f a) (fn a -> b) -> f b
 // 
 // trait Monad m with
-//     (wrap: (error)): fn a -> m a
-//     (bind: (error)): fn (m a) (fn a -> m b) -> m b
+//     (wrap: _1): fn a -> m a
+//     (bind: _2): fn (m a) (fn a -> m b) -> m b
 // 
 // impl functor_maybe: (Functor: (error)) Maybe with
 //     (map: fn (Maybe (error)) (fn (error) -> (error)) -> Maybe (error)) (m: Maybe (error)) (f: fn (error) -> (error)) =
-//         match (m: Maybe (error))
-//         | (Some: fn (error) -> Maybe (error)) (x: (error)) -> (Some: fn (error) -> Maybe (error)) ((f: fn (error) -> (error)) (x: (error)))
-//         | (None: Maybe (error)) -> (None: Maybe (error))
+//         (internal_match_variable_9: (error)) = (m: Maybe (error))
+//         switch (internal_match_variable_9: Maybe (error))
+//         | 0 -> (None: Maybe (error))
+//         | 1, (internal_match_variable_10: (error)) -> 
+//                 (x: (error)) = (internal_match_variable_10: (error))
+//                 (Some: fn (error) -> Maybe (error)) ((f: fn (error) -> (error)) (x: (error)))
 // 
 // impl monad_maybe: (Monad: (error)) Maybe with
 //     (wrap: fn (error) -> Maybe (error)) (a: (error)) = (Some: fn (error) -> Maybe (error)) (a: (error))
 //     (bind: fn (Maybe (error)) (fn (error) -> Maybe (error)) -> Maybe (error)) (m: Maybe (error)) (f: fn (error) -> Maybe (error)) =
-//         match (m: Maybe (error))
-//         | (Some: fn (error) -> Maybe (error)) (x: (error)) -> (f: fn (error) -> Maybe (error)) (x: (error))
-//         | (None: Maybe (error)) -> (None: Maybe (error))
+//         (internal_match_variable_10: (error)) = (m: Maybe (error))
+//         switch (internal_match_variable_10: Maybe (error))
+//         | 0 -> (None: Maybe (error))
+//         | 1, (internal_match_variable_11: (error)) -> 
+//                 (x: (error)) = (internal_match_variable_11: (error))
+//                 (f: fn (error) -> Maybe (error)) (x: (error))
 
 // expected stderr:
 // examples/typechecking/functor_and_monad.an:3:13	error: `a` not found in scope

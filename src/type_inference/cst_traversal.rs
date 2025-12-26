@@ -33,6 +33,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     }
 
     fn check_expr(&mut self, expr: ExprId, expected: TypeId) {
+        self.expr_types.insert(expr, expected);
+
         match &self.current_context().exprs[expr] {
             Expr::Literal(literal) => self.check_literal(literal, expr, expected),
             Expr::Variable(path) => self.check_path(*path, expected),
@@ -63,8 +65,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 UnimplementedItem::Comptime.issue(self.compiler, location);
             },
             Expr::Error => (),
-        };
-        self.expr_types.insert(expr, expected);
+        }
     }
 
     fn check_literal(&mut self, literal: &Literal, locator: impl Locateable, expected: TypeId) {
@@ -90,14 +91,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     }
 
     fn check_pattern(&mut self, pattern: PatternId, expected: TypeId) {
+        self.pattern_types.insert(pattern, expected);
         match &self.current_context().patterns[pattern] {
             Pattern::Error => (),
             Pattern::Variable(name) | Pattern::MethodName { item_name: name, .. } => {
-                if let Some(existing) = self.name_types.get(name) {
-                    self.unify(expected, *existing, TypeErrorKind::General, pattern);
-                } else {
-                    self.name_types.insert(*name, expected);
-                }
+                self.check_name(*name, expected);
             },
             Pattern::Literal(literal) => self.check_literal(literal, pattern, expected),
             Pattern::Constructor(path, args) => {
@@ -139,10 +137,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
             Some(Origin::Local(name)) => self.name_types[&name],
             Some(Origin::TypeResolution) => self.resolve_type_resolution(path, expected),
-            Some(Origin::Builtin(builtin)) => {
-                self.check_builtin(builtin, expected, path);
-                return;
-            },
+            Some(Origin::Builtin(builtin)) => self.check_builtin(builtin, path),
             None => return,
         };
         self.unify(actual, expected, TypeErrorKind::General, path);
@@ -243,29 +238,16 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Returns the instantiated type of a builtin value
     ///
     /// Will error if passed a builtin type
-    fn check_builtin(&mut self, builtin: Builtin, expected: TypeId, locator: impl Locateable) {
-        let actual = match builtin {
+    fn check_builtin(&mut self, builtin: Builtin, locator: impl Locateable) -> TypeId {
+        match builtin {
             Builtin::Unit => TypeId::UNIT,
             Builtin::Int | Builtin::Char | Builtin::Float | Builtin::String | Builtin::Ptr | Builtin::PairType => {
                 let typ = Arc::new(builtin.to_string());
                 let location = locator.locate(self);
                 self.compiler.accumulate(Diagnostic::ValueExpected { location, typ });
-                return;
+                return TypeId::ERROR;
             },
             Builtin::PairConstructor => {
-                // Fast-track to avoid creating unnecessary type variables and a function type
-                // since each `a, b` will match any argument type anyway.
-                if let Type::Function(function) = self.types.get_type(expected) {
-                    if function.parameters.len() == 2 {
-                        if let Type::Application(constructor, args) = self.types.get_type(function.return_type) {
-                            if args.len() == 2 {
-                                self.unify(TypeId::PAIR, *constructor, TypeErrorKind::General, locator);
-                                return;
-                            }
-                        }
-                    }
-                }
-
                 let a = self.next_type_variable();
                 let b = self.next_type_variable();
                 let pair = self.types.get_or_insert_type(Type::Application(TypeId::PAIR, vec![a, b]));
@@ -276,8 +258,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 });
                 self.types.get_or_insert_type(function)
             },
-        };
-        self.unify(actual, expected, TypeErrorKind::General, locator);
+        }
     }
 
     fn check_call(&mut self, call: &cst::Call, expected: TypeId) {
@@ -503,12 +484,12 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             cst::TypeDefinitionBody::Enum(variants) => Cow::Borrowed(variants),
         };
 
-        let type_name = TopLevelName::named(id, definition.name);
+        let type_name = TopLevelName::new(id, definition.name);
 
         for (constructor_name, args) in constructors.iter() {
             let actual = self.build_constructor_type(type_name, definition, args);
 
-            let constructor_name = TopLevelName::named(id, *constructor_name);
+            let constructor_name = TopLevelName::new(id, *constructor_name);
             let expected = self.item_types[&constructor_name];
             self.unify(actual, expected, TypeErrorKind::General, constructor_name.local_name_id);
         }

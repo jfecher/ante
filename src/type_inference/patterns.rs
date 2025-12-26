@@ -270,7 +270,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
         };
 
-        let type_name = TopLevelName::named(item.id, type_definition.name);
+        let type_name = TopLevelName::new(item.id, type_definition.name);
         let type_id = self.types.get_or_insert_type(Type::UserDefined(Origin::TopLevelDefinition(type_name)));
         Some(Constructor::Variant(type_id, variant_index))
     }

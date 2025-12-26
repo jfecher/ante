@@ -13,6 +13,6 @@ main () =
 
 // args: --show-types
 // expected stdout:
-// (main: fn Unit -> _3) () =
-//     (print: fn I32 -> _3) 2
+// (main: fn Unit -> Unit) () =
+//     (print: fn I32 -> Unit) 2
 

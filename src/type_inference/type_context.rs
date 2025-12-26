@@ -8,7 +8,7 @@ use crate::{
     parser::cst::{Mutability, Sharedness},
     type_inference::{
         type_id::TypeId,
-        types::{PrimitiveType, Type},
+        types::{PrimitiveType, Type, TypeBindings},
     },
     vecmap::VecMap,
 };
@@ -102,4 +102,20 @@ impl TypeContext {
         self.type_to_id.insert(typ, next_id);
         next_id
     }
+
+    /// Retrieve a Type then follow all its type variable bindings so that we only return
+    /// `Type::Variable` if the type variable is unbound. Note that this may still return
+    /// a composite type such as `Type::Application` with bound type variables within.
+    pub fn follow_type<'a>(&'a self, mut type_id: TypeId, bindings: &TypeBindings) -> &'a Type {
+        loop {
+            match self.get_type(type_id) {
+                typ @ Type::Variable(id) => match bindings.get(&id) {
+                    Some(binding) => type_id = *binding,
+                    None => break typ,
+                },
+                other => break other,
+            }
+        }
+    }
+
 }

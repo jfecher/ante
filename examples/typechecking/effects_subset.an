@@ -46,7 +46,7 @@ main () =
 //         (resume: (error)) ()
 // 
 // (main: fn Unit -> _3) () =
-//     (iota: fn I32 -> _3) 10
+//     (iota: fn U32 -> _3) 10
 
 // expected stderr:
 // examples/typechecking/effects_subset.an:11:4	error: Effects and handle expressions are currently unimplemented
@@ -55,8 +55,11 @@ main () =
 // examples/typechecking/effects_subset.an:18:4	error: Effects and handle expressions are currently unimplemented
 //     handle stream ()
 // 
+// examples/typechecking/effects_subset.an:24:9	error: Expected U32 but found I32
+//     iota 10
+// 
 // examples/typechecking/effects_subset.an:25:8	error: Expected an unindent but found `with`
 //         with filter (fn x -> x % 2 == 0)
 // 
-// Found 3 errors and 0 warnings
+// Found 4 errors and 0 warnings
 

@@ -16,19 +16,25 @@ main () = is_even 4
 
 // args: --show-types
 // expected stdout:
-// (is_even: fn _23 -> Bool) (n: _23) =
-//     if (n: _23) (==: (error)) 0 then true else 
-//         (print: fn _23 -> _22) (n: _23)
-//         (not: fn _26 -> Bool) (is_odd: _26)
+// (is_even: Bool) (n: _22) =
+//     if (n: _22) (==: (error)) 0 then true else 
+//         (print: fn _22 -> Unit) (n: _22)
+//         (not: fn Bool -> Bool) (is_odd: Bool)
 // 
 // (is_odd: fn _9 -> _4) (n: _9) =
-//     (or: (error)) ((n: _9) (==: (error)) 1) ((not: fn _12 -> _7) (is_even: _12))
+//     (or: (error)) ((n: _9) (==: (error)) 1) ((not: fn Bool -> Bool) (is_even: Bool))
 // 
 // (main: fn Unit -> _3) () = (is_even: fn I32 -> _3) 4
 
 // expected stderr:
+// examples/typechecking/mutual_recursion.an:3:0	error: Expected a function with 1 parameter, but found Bool
+// is_even n =
+// 
 // examples/typechecking/mutual_recursion.an:4:9	error: `==` not found in scope
 //     if n == 0 then true else
+// 
+// examples/typechecking/mutual_recursion.an:6:12	error: Expected Bool but found fn _9 -> _4
+//         not is_odd (n - 1)
 // 
 // examples/typechecking/mutual_recursion.an:6:19	error: Expected an unindent but found `(`
 //         not is_odd (n - 1)
@@ -42,5 +48,8 @@ main () = is_even 4
 // examples/typechecking/mutual_recursion.an:9:26	error: Expected an unindent but found `(`
 //     n == 1 or not is_even (n - 1)
 // 
-// Found 5 errors and 0 warnings
+// examples/typechecking/mutual_recursion.an:11:10	error: Expected fn _5 -> _3 but found Bool
+// main () = is_even 4
+// 
+// Found 8 errors and 0 warnings
 

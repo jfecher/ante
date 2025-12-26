@@ -29,27 +29,68 @@ main () =
 // args: --show-types
 // expected stdout:
 // (main: fn Unit -> I32) () =
-//     match (Maybe.None: Maybe _7)
-//     | (None: Maybe _7) -> 1
-//     match 2 (,: (error)) (Maybe.None: Maybe _16)
-//     | (,: (error)) 0 (None: Maybe _16) -> ()
-//     | (,: (error)) (_: I32) ((Some: fn _28 -> Maybe _16) (_: _28)) -> ()
-//     match (Maybe.None: Maybe _33)
-//     | (Some: fn (Maybe _37) -> Maybe _33) ((Maybe.Some: fn _37 -> Maybe _37) (_: _37)) -> 0
-//     | (Some: fn _40 -> Maybe _33) (_: _40) -> 1
-//     | (None: Maybe _33) -> 2
-//     match 1 (,: (error)) 2
-//     | (,: (error)) 1 (_: I32) -> 0
-//     | (,: (error)) 1 2 -> 1
-//     | (,: (error)) (_: I32) 2 -> 2
-//     match true (,: (error)) true
-//     | (,: (error)) false true -> 0
-//     | (,: (error)) true false -> 1
-//     match 1 (,: (error)) (2 (,: (error)) (3 (,: (error)) 4))
-//     | (,: (error)) 1 2 -> 1
-//     | (,: (error)) ((,: (error)) ((,: (error)) (_: _114) (_: _115)) (_: _110)) (_: I32, (I32, I32)) -> 3
+//     (internal_match_variable_27: (error)) = (Maybe.None: Maybe _7)
+//     switch (internal_match_variable_27: Maybe _7)
+//     | 0 -> 1
+//     | 1, (internal_match_variable_28: _7) -> #missing_case
+//     (internal_match_variable_29: (error)) = 2 (,: fn I32 (Maybe _20) -> I32, (Maybe _20)) (Maybe.None: Maybe _20)
+//     switch (internal_match_variable_29: I32, (Maybe _20))
+//     | 0, (internal_match_variable_30: I32), (internal_match_variable_31: Maybe _20) -> switch (internal_match_variable_31: Maybe _20)
+//         | 0 -> switch (internal_match_variable_30: I32)
+//             | 0 -> ()
+//             | _ -> #missing_case
+//         | 1, (internal_match_variable_32: _20) -> 
+//                 (_: _20) = (internal_match_variable_32: _20)
+//                 
+//                     (_: I32) = (internal_match_variable_30: I32)
+//                     ()
+//     (internal_match_variable_33: (error)) = (Maybe.None: Maybe (Maybe _45))
+//     switch (internal_match_variable_33: Maybe (Maybe _45))
+//     | 0 -> 2
+//     | 1, (internal_match_variable_34: Maybe _45) -> switch (internal_match_variable_34: Maybe _45)
+//         | 0 -> 
+//                 (_: Maybe _45) = (internal_match_variable_34: Maybe _45)
+//                 1
+//         | 1, (internal_match_variable_35: _45) -> 
+//                 (_: _45) = (internal_match_variable_35: _45)
+//                 0
+//     (internal_match_variable_36: (error)) = 1 (,: fn I32 I32 -> I32, I32) 2
+//     switch (internal_match_variable_36: I32, I32)
+//     | 0, (internal_match_variable_37: I32), (internal_match_variable_38: I32) -> switch (internal_match_variable_37: I32)
+//         | 1 -> 
+//                 (_: I32) = (internal_match_variable_38: I32)
+//                 0
+//         | _ -> switch (internal_match_variable_38: I32)
+//             | 2 -> 
+//                     (_: I32) = (internal_match_variable_37: I32)
+//                     2
+//             | _ -> #missing_case
+//     (internal_match_variable_39: (error)) = true (,: fn Bool Bool -> Bool, Bool) true
+//     switch (internal_match_variable_39: Bool, Bool)
+//     | 0, (internal_match_variable_40: Bool), (internal_match_variable_41: Bool) -> switch (internal_match_variable_41: Bool)
+//         | false -> switch (internal_match_variable_40: Bool)
+//             | false -> #missing_case
+//             | true -> 1
+//         | true -> switch (internal_match_variable_40: Bool)
+//             | false -> 0
+//             | true -> #missing_case
+//     (internal_match_variable_42: (error)) = 1 (,: fn I32 (I32, (I32, I32)) -> I32, (I32, (I32, I32))) (2 (,: fn I32 (I32, I32) -> I32, (I32, I32)) (3 (,: fn I32 I32 -> I32, I32) 4))
+//     switch (internal_match_variable_42: I32, (I32, (I32, I32)))
+//     | 0, (internal_match_variable_43: I32), (internal_match_variable_44: I32, (I32, I32)) -> switch (internal_match_variable_43: I32)
+//         | 1 -> switch (internal_match_variable_44: I32, (I32, I32))
+//             | 0, (internal_match_variable_45: I32), (internal_match_variable_46: I32, I32) -> 1
+//         | _ -> #missing_case
 
 // expected stderr:
+// examples/typechecking/completeness_checking.an:2:10	error: Missing case: Some _
+//     match Maybe.None
+// 
+// examples/typechecking/completeness_checking.an:5:11	error: Missing case: 1..=18446744073709551615, None
+//     match (2, Maybe.None)
+// 
+// examples/typechecking/completeness_checking.an:7:6	warning: This case is already matched by prior patterns
+//     | (_, Some _) -> ()
+// 
 // examples/typechecking/completeness_checking.an:16:11	error: Missing cases: 0, 0..=1, 0, 3..=18446744073709551615, 2..=18446744073709551615, 0..=1, 2..=18446744073709551615, 3..=18446744073709551615
 //     match (1, 2)
 // 
@@ -68,8 +109,8 @@ main () =
 // examples/typechecking/completeness_checking.an:27:6	warning: This case is already matched by prior patterns
 //     | (_, _, _, _) -> 3
 // 
-// examples/typechecking/completeness_checking.an:27:11	error: Expected fn _109 _110 -> I32 but found fn _109 _110 -> _109, _110
+// examples/typechecking/completeness_checking.an:27:11	error: Expected fn _117 _118 -> I32 but found fn _117 _118 -> _117, _118
 //     | (_, _, _, _) -> 3
 // 
-// Found 5 errors and 2 warnings
+// Found 7 errors and 3 warnings
 

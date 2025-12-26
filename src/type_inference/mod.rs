@@ -48,7 +48,7 @@ pub fn type_check_impl(context: &TypeCheckSCC, compiler: &DbHandle) -> TypeCheck
 
     let items = vecmap(context.0.iter(), |item_id| {
         incremental::println(format!("Type checking {item_id:?}"));
-        checker.current_item = Some(*item_id);
+        checker.start_item(*item_id);
 
         let item = &checker.item_contexts[item_id].0;
         match &item.kind {
@@ -176,7 +176,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         for (item_id, (_, _, resolution)) in item_contexts.iter() {
             for name in resolution.top_level_names.iter() {
                 let variable = this.next_type_variable();
-                item_types.insert(TopLevelName::named(*item_id, *name), variable);
+                item_types.insert(TopLevelName::new(*item_id, *name), variable);
             }
         }
         // We have to go through this extra step since `generalize_all` needs an Rc
@@ -236,6 +236,21 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             .collect();
 
         TypeCheckSCCResult { items, types: self.types, bindings: self.bindings }
+    }
+
+    /// Prepare the TypeChecker to type check another item.
+    fn start_item(&mut self, item_id: TopLevelId) {
+        self.current_item = Some(item_id);
+
+        // Iterating over every item type here should be fine for performance.
+        // The expected length of `self.item_types` is 1 in the vast majority of cases,
+        // and is only a bit longer with mutually recursive type-inferred definitions
+        // and definitions defining multiple names (e.g. `a, b = 1, 2`).
+        for (name, typ) in self.item_types.iter() {
+            if name.top_level_item == item_id {
+                self.name_types.insert(name.local_name_id, *typ);
+            }
+        }
     }
 
     /// Finishes the current item, adding all bindings to the relevant entry in
@@ -524,16 +539,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Retrieve a Type then follow all its type variable bindings so that we only return
     /// `Type::Variable` if the type variable is unbound. Note that this may still return
     /// a composite type such as `Type::Application` with bound type variables within.
-    fn follow_type(&self, mut type_id: TypeId) -> &Type {
-        loop {
-            match self.types.get_type(type_id) {
-                typ @ Type::Variable(id) => match self.bindings.get(&id) {
-                    Some(binding) => type_id = *binding,
-                    None => break typ,
-                },
-                other => break other,
-            }
-        }
+    fn follow_type(&self, type_id: TypeId) -> &Type {
+        self.types.follow_type(type_id, &self.bindings)
     }
 
     fn convert_origin_to_type(&mut self, origin: Option<Origin>, make_type: impl FnOnce(Origin) -> Type) -> TypeId {

@@ -25,14 +25,14 @@ main () =
 // args: --show-types
 // expected stdout:
 // (main: fn Unit -> _3) () =
-//     (tuple: I32, I32) = 1 (,: (error)) 1
+//     (tuple: I32, I32) = 1 (,: fn I32 I32 -> I32, I32) 1
 //     (_: _13) = ((ref: (error)) ((ref: (error)) (tuple: I32, I32))).first
 //     (_: _20) = (mut: (error)) (tuple: I32, I32).first
 //     (_: _25) = (mut: (error)) (tuple: I32, I32).missing
 //     (imm_ref: _42) = (ref: (error)) (tuple: I32, I32)
 //     (_: _34) = (mut: (error)) (imm_ref: _42).first
 //     (_: _39) = (mut: (error)) (imm_ref: _42).missing
-//     mut (mut_tuple: I32, I32) = 1 (,: (error)) 1
+//     mut (mut_tuple: I32, I32) = 1 (,: fn I32 I32 -> I32, I32) 1
 //     (_: _51) = (ref: (error)) (mut_tuple: I32, I32).missing
 //     (_: _56) = (mut: (error)) (mut_tuple: I32, I32).missing
 //     (mut_ref: _73) = (mut: (error)) (mut_tuple: I32, I32)

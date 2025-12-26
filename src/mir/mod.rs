@@ -16,15 +16,15 @@ use std::sync::Arc;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    lexer::token::{FloatKind, IntegerKind},
-    parser::ids::{TopLevelId, TopLevelName},
-    vecmap::VecMap,
+    lexer::token::{FloatKind, IntegerKind}, parser::{cst::Name, ids::{TopLevelId, TopLevelName}}, type_inference::types::TypeVariableId, vecmap::VecMap
 };
 pub(crate) mod builder;
 mod display;
 pub(crate) mod monomorphization;
 
 pub(crate) struct Function {
+    name: Name,
+
     /// The unique FunctionId identifying this function
     id: FunctionId,
 
@@ -46,11 +46,12 @@ pub(crate) struct Function {
 }
 
 impl Function {
-    fn new(id: FunctionId) -> Function {
+    fn new(name: Name, id: FunctionId) -> Function {
         let mut blocks = VecMap::default();
         let entry = blocks.push(Block::new(Vec::new()));
         assert_eq!(entry, BlockId::ENTRY_BLOCK);
         Function {
+            name,
             id,
             blocks,
             instructions: VecMap::default(),
@@ -259,6 +260,9 @@ enum Type {
     Primitive(PrimitiveType),
     Tuple(Arc<Vec<Type>>),
     Function(Arc<FunctionType>),
+
+    /// Temporary for debugging
+    TypeVar(TypeVariableId),
 }
 
 impl Type {

@@ -407,3 +407,51 @@ impl GeneralizedType {
         self.typ.as_type(context)
     }
 }
+
+impl std::fmt::Display for GeneralizedType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if !self.generics.is_empty() {
+            write!(f, "forall")?;
+            for generic in &self.generics {
+                write!(f, " {generic}")?;
+            }
+            write!(f, ". ")?;
+        }
+        self.typ.fmt(f)
+    }
+}
+
+impl std::fmt::Display for TopLevelType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let display = |t: &TopLevelType, f: &mut std::fmt::Formatter| {
+            if matches!(t, TopLevelType::Primitive(_) | TopLevelType::Generic(_) | TopLevelType::UserDefined(_)) {
+                write!(f, "{t}")
+            } else {
+                write!(f, "({t})")
+            }
+        };
+
+        match self {
+            TopLevelType::Primitive(primitive_type) => write!(f, "{primitive_type}"),
+            TopLevelType::Generic(generic) => write!(f, "{generic}"),
+            TopLevelType::Function { parameters, return_type } => {
+                write!(f, "fn")?;
+                for parameter in parameters {
+                    write!(f, " ")?;
+                    display(parameter, f)?;
+                }
+                write!(f, " -> ")?;
+                display(return_type, f)
+            },
+            TopLevelType::TypeApplication(constructor, args) => {
+                display(constructor, f)?;
+                for arg in args {
+                    write!(f, " ")?;
+                    display(arg, f)?;
+                }
+                Ok(())
+            },
+            TopLevelType::UserDefined(origin) => write!(f, "{origin}"),
+        }
+    }
+}

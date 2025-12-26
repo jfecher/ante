@@ -30,9 +30,9 @@ main () =
 // 
 // (stringify: fn String -> String) ((s: String)) = (s: String)
 // 
-// (foo_and_bar: fn _7 _11 -> _4) (a: _7) (b: _11) =
+// (foo_and_bar: fn _7 _10 -> String) (a: _7) (b: _10) =
 //     (a: _7).foo
-//     (stringify: fn _8 -> _4) (b: _11).bar
+//     (stringify: fn String -> String) (b: _10).bar
 // 
 // (foobar: FooBar) = (FooBar: fn I32 String -> FooBar) 1 "one"
 // 
@@ -40,9 +40,9 @@ main () =
 // 
 // (bar: Bar) = (Bar: fn Char -> Bar) c"3"
 // 
-// (main: fn Unit -> _3) () =
-//     (foo_and_bar: fn _6 _7 -> _5) (foobar: _6) (foobar: _7)
-//     (foo_and_bar: fn _12 _13 -> _3) (foo: _12) (bar: _13)
+// (main: fn Unit -> String) () =
+//     (foo_and_bar: fn FooBar FooBar -> String) (foobar: FooBar) (foobar: FooBar)
+//     (foo_and_bar: fn Foo Bar -> String) (foo: Foo) (bar: Bar)
 
 // expected stderr:
 // examples/typechecking/member_access.an:8:5	error: Object type must be known by this point to access its field
