@@ -1,0 +1,8 @@
+main =
+    infile = open_infile "tests/fixtures/infile_iter.txt"
+    iter infile print
+
+// args: --delete-binary
+// expected stdout:
+// alpha
+// beta

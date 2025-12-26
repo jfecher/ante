@@ -621,29 +621,31 @@ next_char (f: InFile) : Char =
 next_line (f: InFile) : String =
     if eof f then return ""
 
-    mut capacity = 32
-    mut cstr = malloc @capacity
+    capacity = 32
+    cstr: Ptr Char = malloc capacity
 
-    len = loop (len = 0) ->
-        next = next_char f
-        if next < 0 then return len
+    (result_cstr, len) = loop (capacity: Usz) (cstr: Ptr Char) (len = 0) ->
+        next = fgetc f
+        if next < 0 then return (cstr, len)
         c: Char = cast next
+        mut next_capacity = capacity
+        mut next_cstr = cstr
 
         //Flag feof if eof occurs after terminating newline
         if c == '\n' then
-            peek = next_char f
+            peek = fgetc f
             if peek >= 0 then ungetc (cast peek) f
-            return len
+            return (cstr, len)
 
-        if len + 1 >= @capacity then
-            capacity := @capacity * 2
-            cstr := realloc (@cstr) (@capacity)
+        if len + 1 >= capacity then
+            next_capacity := capacity * 2
+            next_cstr := realloc (cstr) (next_capacity)
 
-        array_insert (@cstr) len c
-        recur (len + 1)
+        array_insert (next_cstr) len c
+        recur next_capacity next_cstr (len + 1)
 
-    array_insert (@cstr) len '\0'
-    String (@cstr) len
+    array_insert (result_cstr) len '\0'
+    String (result_cstr) len
 
 // Read a line from stdin, ending with (and not including) a terminating '\n'
 read_line () : String =
