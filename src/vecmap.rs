@@ -30,7 +30,8 @@ impl<K, V> VecMap<K, V> {
     /// Push the given value, asserting the index it is pushed into matches the expected.
     /// This will only push onto the end of the underlying [Vec], it will not insert into the middle.
     pub fn push_existing(&mut self, expected_key: K, value: V)
-        where K: Into<usize> + From<usize>
+    where
+        K: Into<usize> + From<usize>,
     {
         let next_id = self.items.len();
         assert_eq!(next_id, expected_key.into());

@@ -2,8 +2,15 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{iterator_extensions::vecmap, name_resolution::{Origin, ResolutionResult, builtin::Builtin}, parser::cst, type_inference::{generics::Generic, types::{FunctionType, GenericSubstitutions, PrimitiveType, Type}}};
-
+use crate::{
+    iterator_extensions::vecmap,
+    name_resolution::{Origin, ResolutionResult, builtin::Builtin},
+    parser::cst,
+    type_inference::{
+        generics::Generic,
+        types::{FunctionType, GenericSubstitutions, PrimitiveType, Type},
+    },
+};
 
 /// A top-level type is a type which may be in a top-level signature.
 /// This notably excludes unbound type variables. Unlike `Type`, top-level
@@ -18,7 +25,7 @@ pub enum TopLevelType {
         parameters: Vec<TopLevelType>,
         return_type: Box<TopLevelType>,
     },
-    TypeApplication(Box<TopLevelType>, Vec<TopLevelType>),
+    Application(Box<TopLevelType>, Vec<TopLevelType>),
     UserDefined(Origin),
 }
 
@@ -57,7 +64,7 @@ impl TopLevelType {
             cst::Type::Application(constructor, args) => {
                 let constructor = Box::new(Self::from_ast_type(constructor, resolve));
                 let args = vecmap(args, |arg| Self::from_ast_type(arg, resolve));
-                Self::TypeApplication(constructor, args)
+                Self::Application(constructor, args)
             },
             cst::Type::Reference(mutability, sharedness) => {
                 Self::Primitive(PrimitiveType::Reference(*mutability, *sharedness))
@@ -103,7 +110,7 @@ impl TopLevelType {
                     parameters.iter().for_each(|typ| find_generics_helper(typ, generics));
                     find_generics_helper(return_type, generics);
                 },
-                TopLevelType::TypeApplication(constructor, args) => {
+                TopLevelType::Application(constructor, args) => {
                     find_generics_helper(constructor, generics);
                     args.iter().for_each(|typ| find_generics_helper(typ, generics));
                 },
@@ -116,7 +123,7 @@ impl TopLevelType {
     }
 
     /// Convert this `TopLevelType` into a `Type` without instantiating it
-    fn as_type(&self) -> Type {
+    pub(crate) fn as_type(&self) -> Type {
         match self {
             TopLevelType::Primitive(primitive_type) => return Type::primitive(*primitive_type),
             TopLevelType::Generic(name) => Type::Generic(*name),
@@ -128,7 +135,7 @@ impl TopLevelType {
                     effects: Type::UNIT, // TODO: Effects
                 }))
             },
-            TopLevelType::TypeApplication(constructor, args) => {
+            TopLevelType::Application(constructor, args) => {
                 let constructor = Arc::new(constructor.as_type());
                 let args = Arc::new(vecmap(args, Self::as_type));
                 Type::Application(constructor, args)
@@ -150,7 +157,7 @@ impl TopLevelType {
                     effects: Type::UNIT, // TODO: Effects
                 }))
             },
-            TopLevelType::TypeApplication(constructor, args) => {
+            TopLevelType::Application(constructor, args) => {
                 let constructor = constructor.substitute(substitutions);
                 let args = vecmap(args, |arg| arg.substitute(substitutions));
                 Type::Application(Arc::new(constructor), Arc::new(args))
@@ -234,7 +241,7 @@ impl std::fmt::Display for TopLevelType {
                 write!(f, " -> ")?;
                 display(return_type, f)
             },
-            TopLevelType::TypeApplication(constructor, args) => {
+            TopLevelType::Application(constructor, args) => {
                 display(constructor, f)?;
                 for arg in args {
                     write!(f, " ")?;

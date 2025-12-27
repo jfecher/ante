@@ -2,9 +2,9 @@ show (x: String) = puts x.c_string
 
 main () =
     match Maybe.Some (Maybe.Some 3)
-    | Some (Maybe.Some x) -> ()
-    | Some _ -> ()
-    | None -> ()
+    | Some (Maybe.Some x) -> x
+    | Some _ -> 1
+    | None -> 0
 
     show "foo"
 

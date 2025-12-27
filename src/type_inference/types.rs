@@ -143,9 +143,7 @@ impl Type {
     }
 
     /// Convert this type to a string (without any coloring)
-    pub fn to_string<Db>(
-        &self, bindings: &TypeBindings, names: &VecMap<NameId, Arc<String>>, db: &Db,
-    ) -> String
+    pub fn to_string<Db>(&self, bindings: &TypeBindings, names: &VecMap<NameId, Arc<String>>, db: &Db) -> String
     where
         Db: DbGet<GetItem>,
     {
@@ -153,8 +151,7 @@ impl Type {
     }
 
     pub fn display<'local, Db>(
-        &'local self, bindings: &'local TypeBindings,
-        names: &'local VecMap<NameId, Arc<String>>, db: &'local Db,
+        &'local self, bindings: &'local TypeBindings, names: &'local VecMap<NameId, Arc<String>>, db: &'local Db,
     ) -> TypePrinter<'local, Db>
     where
         Db: DbGet<GetItem>,
@@ -172,7 +169,7 @@ impl Type {
     /// a composite type such as `Type::Application` with bound type variables within.
     pub fn follow_type<'a>(mut self: &'a Self, bindings: &'a TypeBindings) -> &'a Type {
         // Arbitrary upper limit
-        for _ in 0 .. 1000 {
+        for _ in 0..1000 {
             match self {
                 typ @ Type::Variable(id) => match bindings.get(&id) {
                     Some(binding) => self = binding,

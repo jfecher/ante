@@ -12,9 +12,7 @@ use crate::{
     iterator_extensions::vecmap,
     name_resolution::namespace::LOCAL_CRATE,
     parser::{cst::TopLevelItemKind, ids::TopLevelId},
-    type_inference::{
-        IndividualTypeCheckResult, get_type::try_get_type, types::TypeBindings
-    },
+    type_inference::{IndividualTypeCheckResult, get_type::try_get_type, types::TypeBindings},
 };
 
 #[derive(Serialize, Deserialize, PartialEq, Eq)]
@@ -152,8 +150,5 @@ pub fn type_check_impl(context: &TypeCheck, db: &DbHandle) -> Arc<TypeCheckResul
     let scc = GetTypeCheckSCC(context.0).get(db);
     let result = TypeCheckSCC(scc).get(db);
 
-    Arc::new(TypeCheckResult {
-        result: result.items[&context.0].clone(),
-        bindings: result.bindings,
-    })
+    Arc::new(TypeCheckResult { result: result.items[&context.0].clone(), bindings: result.bindings })
 }

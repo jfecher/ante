@@ -15,10 +15,10 @@ use crate::{
     iterator_extensions::vecmap,
     lexer::token::{FloatKind, IntegerKind},
     mir::{
-        Block, BlockId, FloatConstant, Function, FunctionId, FunctionType, Instruction, IntConstant,
-        TerminatorInstruction, Type, Value,
+        Block, BlockId, FloatConstant, Function, FunctionId, Instruction, IntConstant, TerminatorInstruction, Type,
+        Value,
     },
-    name_resolution::{Origin, builtin::Builtin},
+    name_resolution::Origin,
     parser::{
         cst::{self, Literal, Name, SequenceItem},
         ids::{ExprId, PathId, PatternId, TopLevelId},
@@ -26,9 +26,12 @@ use crate::{
     type_inference::{
         dependency_graph::TypeCheckResult,
         fresh_expr::ExtendedTopLevelContext,
-        patterns::{Case, DecisionTree}, types,
+        patterns::{Case, Constructor, DecisionTree},
+        top_level_types::TopLevelType,
     },
 };
+
+mod types;
 
 /// Convert the given item to an initial MIR representation. This may be done in parallel with all
 /// other items in the program.
@@ -42,11 +45,15 @@ pub(crate) fn build_initial_mir(compiler: &Db, item_id: TopLevelId) -> Option<Fx
 
     match &item.kind {
         cst::TopLevelItemKind::Definition(definition) => {
-            let mut context = Context::new(&types, item_id);
-            let _ = context.definition(definition);
+            let mut context = Context::new(compiler, &types, item_id);
+            context.definition(definition);
             Some(context.finish())
         },
-        cst::TopLevelItemKind::TypeDefinition(_) => None,
+        cst::TopLevelItemKind::TypeDefinition(type_definition) => {
+            let mut context = Context::new(compiler, &types, item_id);
+            context.type_definition(type_definition);
+            Some(context.finish())
+        },
         cst::TopLevelItemKind::TraitDefinition(_) => None,
         cst::TopLevelItemKind::TraitImpl(_) => None,
         cst::TopLevelItemKind::EffectDefinition(_) => None,
@@ -58,6 +65,7 @@ pub(crate) fn build_initial_mir(compiler: &Db, item_id: TopLevelId) -> Option<Fx
 /// The per-[TopLevelId] context. This pass is designed so that we can convert every top-level item
 /// to MIR in parallel.
 struct Context<'local> {
+    compiler: &'local Db,
     types: &'local TypeCheckResult,
 
     top_level_id: TopLevelId,
@@ -72,8 +80,9 @@ struct Context<'local> {
 }
 
 impl<'local> Context<'local> {
-    fn new(types: &'local TypeCheckResult, top_level_id: TopLevelId) -> Self {
+    fn new(compiler: &'local Db, types: &'local TypeCheckResult, top_level_id: TopLevelId) -> Self {
         Self {
+            compiler,
             types,
             top_level_id,
             variables: Default::default(),
@@ -124,9 +133,19 @@ impl<'local> Context<'local> {
         self.current_function.as_mut().unwrap().blocks.push(Block::new(parameter_types))
     }
 
+    /// Create a block with no block parameters (although do not switch to it) and return it
+    fn push_block_no_params(&mut self) -> BlockId {
+        self.push_block(Vec::new())
+    }
+
     /// Switch to a new block to start inserting instructions into
     fn switch_to_block(&mut self, block: BlockId) {
         self.current_block = block;
+    }
+
+    /// Add a parameter to the current block
+    fn push_parameter(&mut self, parameter_type: Type) {
+        self.current_block().parameter_types.push(parameter_type);
     }
 
     /// Terminate the current block with the given terminator instruction
@@ -139,80 +158,6 @@ impl<'local> Context<'local> {
     fn expr_type(&self, expr: ExprId) -> Type {
         let typ = &self.types.result.maps.expr_types[&expr];
         self.convert_type(typ, None)
-    }
-
-    fn convert_type(&self, typ: &types::Type, args: Option<&[types::Type]>) -> Type {
-        match typ.follow_type(&self.types.bindings) {
-            crate::type_inference::types::Type::Primitive(primitive_type) => {
-                self.convert_primitive_type(*primitive_type, args)
-            },
-            crate::type_inference::types::Type::Generic(generic) => Type::Generic(*generic),
-            // All type variables should be bound when we finish type inference
-            crate::type_inference::types::Type::Variable(_type_variable_id) => Type::ERROR,
-            crate::type_inference::types::Type::Function(function_type) => {
-                // TODO: Effects
-                let parameters = vecmap(&function_type.parameters, |typ| self.convert_type(typ, None));
-                let return_type = Box::new(self.convert_type(&function_type.return_type, None));
-                Type::Function(Arc::new(FunctionType { parameters, return_type }))
-            },
-            crate::type_inference::types::Type::Application(type_id, new_args) => {
-                assert!(args.is_none());
-                self.convert_type(type_id, Some(new_args))
-            },
-            crate::type_inference::types::Type::UserDefined(origin) => self.convert_type_origin(*origin, args),
-        }
-    }
-
-    fn convert_type_origin(&self, origin: Origin, args: Option<&[types::Type]>) -> Type {
-        match origin {
-            Origin::TopLevelDefinition(_) => todo!("convert Origin::TopLevelDefinition"),
-            Origin::Local(_) => unreachable!("Types cannot be declared locally"),
-            Origin::TypeResolution => unreachable!("Types should never be Origin::TypeResolution"),
-            Origin::Builtin(builtin) => self.convert_builtin_type(builtin, args),
-        }
-    }
-
-    fn convert_builtin_type(&self, builtin: Builtin, args: Option<&[types::Type]>) -> Type {
-        match builtin {
-            Builtin::Unit => Type::UNIT,
-            Builtin::Int => todo!(),
-            Builtin::Char => Type::CHAR,
-            Builtin::Float => todo!(),
-            Builtin::String => Type::string(),
-            Builtin::Ptr => Type::POINTER,
-            Builtin::PairType => {
-                if let Some(args) = args {
-                    let args = vecmap(args, |arg| self.convert_type(arg, None));
-                    Type::Tuple(Arc::new(args))
-                } else {
-                    // Relying on type checking to issue an error
-                    Type::ERROR
-                }
-            },
-            Builtin::PairConstructor => unreachable!("This is a constructor, not a type"),
-        }
-    }
-
-    fn convert_primitive_type(
-        &self, typ: crate::type_inference::types::PrimitiveType, args: Option<&[types::Type]>,
-    ) -> Type {
-        match typ {
-            crate::type_inference::types::PrimitiveType::Error => Type::ERROR,
-            crate::type_inference::types::PrimitiveType::Unit => Type::UNIT,
-            crate::type_inference::types::PrimitiveType::Bool => Type::BOOL,
-            crate::type_inference::types::PrimitiveType::Pointer => Type::POINTER,
-            crate::type_inference::types::PrimitiveType::Char => Type::CHAR,
-            crate::type_inference::types::PrimitiveType::String => Type::string(),
-            crate::type_inference::types::PrimitiveType::Pair => match args {
-                Some(args) if args.len() == 2 => {
-                    Type::Tuple(Arc::new(vecmap(args, |arg| self.convert_type(arg, None))))
-                },
-                _ => Type::ERROR,
-            },
-            crate::type_inference::types::PrimitiveType::Int(kind) => Type::int(kind),
-            crate::type_inference::types::PrimitiveType::Float(kind) => Type::float(kind),
-            crate::type_inference::types::PrimitiveType::Reference(..) => Type::POINTER,
-        }
     }
 
     fn expression(&mut self, expr: ExprId) -> Value {
@@ -327,29 +272,19 @@ impl<'local> Context<'local> {
         }
     }
 
-    fn lambda(&mut self, lambda: &cst::Lambda, name: Option<Name>) -> Value {
+    /// Save the current function state, create a new function,
+    /// run `f` to fill in the function's body, then restore the previous state
+    /// and return the new function value.
+    fn new_function(&mut self, name: Name, f: impl FnOnce(&mut Self)) -> Value {
         let previous_function = self.current_function.take();
         let previous_block = std::mem::replace(&mut self.current_block, BlockId::ENTRY_BLOCK);
         let function_id = self.next_function_id();
 
-        let name = name.unwrap_or_else(|| Arc::new("lambda".to_string()));
         self.current_function = Some(Function::new(name, function_id));
 
-        let parameter_types = vecmap(&lambda.parameters, |parameter| {
-            let parameter_type = &self.types.result.maps.pattern_types[&parameter.pattern];
-            self.convert_type(parameter_type, None)
-        });
-        self.current_block().parameter_types = parameter_types;
+        f(self);
 
-        for (i, parameter) in lambda.parameters.iter().enumerate() {
-            let parameter_value = Value::Parameter(self.current_block, i as u32);
-            self.bind_pattern(parameter.pattern, parameter_value);
-        }
-
-        let return_value = self.expression(lambda.body);
-        self.terminate_block(TerminatorInstruction::Return(return_value));
-
-        // safety: `self.current_function` should always be set since we set it above and `lambda`
+        // safety: `self.current_function` should always be set since we set it above and this
         // is the only method which modifies this field directly.
         let finished_function = std::mem::replace(&mut self.current_function, previous_function).unwrap();
         self.current_block = previous_block;
@@ -358,12 +293,28 @@ impl<'local> Context<'local> {
         Value::Function(function_id)
     }
 
+    fn lambda(&mut self, lambda: &cst::Lambda, name: Option<Name>) -> Value {
+        let name = name.unwrap_or_else(|| Arc::new("lambda".to_string()));
+        self.new_function(name, |this| {
+            for (i, parameter) in lambda.parameters.iter().enumerate() {
+                let parameter_value = Value::Parameter(this.current_block, i as u32);
+                this.bind_pattern(parameter.pattern, parameter_value);
+
+                let parameter_type = &this.types.result.maps.pattern_types[&parameter.pattern];
+                this.push_parameter(this.convert_type(parameter_type, None));
+            }
+
+            let return_value = this.expression(lambda.body);
+            this.terminate_block(TerminatorInstruction::Return(return_value));
+        })
+    }
+
     fn if_(&mut self, if_: &cst::If, expr: ExprId) -> Value {
         let condition = self.expression(if_.condition);
 
-        let then = self.push_block(Vec::new());
-        let else_ = self.push_block(Vec::new());
-        self.terminate_block(TerminatorInstruction::If { condition, then, else_ });
+        let then = self.push_block_no_params();
+        let else_ = self.push_block_no_params();
+        self.terminate_block(TerminatorInstruction::if_(condition, then, else_));
 
         self.switch_to_block(then);
         let then_value = self.expression(if_.then);
@@ -371,14 +322,14 @@ impl<'local> Context<'local> {
         if let Some(else_expr) = if_.else_ {
             let result_type = self.expr_type(expr);
             let end = self.push_block(vec![result_type]);
-            self.terminate_block(TerminatorInstruction::Jmp(end, vec![then_value]));
+            self.terminate_block(TerminatorInstruction::jmp(end, vec![then_value]));
 
             self.switch_to_block(else_);
             let else_value = self.expression(else_expr);
-            self.terminate_block(TerminatorInstruction::Jmp(end, vec![else_value]));
+            self.terminate_block(TerminatorInstruction::jmp(end, vec![else_value]));
             Value::Parameter(end, 0)
         } else {
-            self.terminate_block(TerminatorInstruction::Jmp(else_, Vec::new()));
+            self.terminate_block(TerminatorInstruction::jmp_no_args(else_));
             Value::Unit
         }
     }
@@ -408,22 +359,22 @@ impl<'local> Context<'local> {
     fn match_if_guard(
         &mut self, condition: ExprId, then_expr: ExprId, else_tree: DecisionTree, match_expr: ExprId,
     ) -> Value {
-        let then = self.push_block(Vec::new());
-        let else_ = self.push_block(Vec::new());
+        let then = self.push_block_no_params();
+        let else_ = self.push_block_no_params();
 
         let result_type = self.expr_type(match_expr);
         let end = self.push_block(vec![result_type]);
 
         let condition = self.expression(condition);
-        self.terminate_block(TerminatorInstruction::If { condition, then, else_ });
+        self.terminate_block(TerminatorInstruction::if_(condition, then, else_));
 
         self.switch_to_block(then);
         let then_value = self.expression(then_expr);
-        self.terminate_block(TerminatorInstruction::Jmp(end, vec![then_value]));
+        self.terminate_block(TerminatorInstruction::jmp(end, vec![then_value]));
 
         self.switch_to_block(else_);
         let else_value = self.decision_tree(else_tree, match_expr);
-        self.terminate_block(TerminatorInstruction::Jmp(end, vec![else_value]));
+        self.terminate_block(TerminatorInstruction::jmp(end, vec![else_value]));
 
         self.switch_to_block(end);
         Value::Parameter(end, 0)
@@ -433,33 +384,48 @@ impl<'local> Context<'local> {
         let int_value = self.variable(tag);
         let start = self.current_block;
 
-        let case_blocks = vecmap(&cases, |_| self.push_block(Vec::new()));
+        let case_blocks = vecmap(&cases, |_| (self.push_block_no_params(), Vec::new()));
         let mut else_block = None;
 
         let result_type = self.expr_type(match_expr);
         let end = self.push_block(vec![result_type]);
 
-        for (case_block, case) in case_blocks.iter().zip(cases) {
+        for ((case_block, _), case) in case_blocks.iter().zip(cases) {
             self.switch_to_block(*case_block);
 
-            // TODO: Cast & deconstruct pattern value
-            for argument in &case.arguments {
-                if let Some(origin) = self.context().path_origin(*argument) {
-                    // TODO: Need a reinterpret cast & extract
-                    self.variables.insert(origin, int_value);
+            if !case.arguments.is_empty() {
+                let Constructor::Variant(typ, variant_index) = &case.constructor else {
+                    unreachable!("For this constructor to define arguments it must be a Constructor::Variant")
+                };
+
+                // Cast the whole value being matched to the appropriate variant
+                let variant_type = self.convert_variant_type(typ, *variant_index, None);
+                let variant = self.push_instruction(Instruction::Transmute(int_value), variant_type.clone());
+
+                // And for each variable, extract the relevant field of the variant
+                for (i, argument) in case.arguments.iter().enumerate() {
+                    if let Some(origin) = self.context().path_origin(*argument) {
+                        // All indices below include the enum tag which can't be bound to a variable
+                        let index = i as u32 + 1;
+
+                        let field_type = Self::tuple_field_type(&variant_type, index);
+                        let index_tuple = Instruction::IndexTuple { tuple: variant, index };
+                        let field = self.push_instruction(index_tuple, field_type);
+                        self.variables.insert(origin, field);
+                    }
                 }
             }
 
             let result = self.decision_tree(case.body, match_expr);
-            self.terminate_block(TerminatorInstruction::Jmp(end, vec![result]));
+            self.terminate_block(TerminatorInstruction::jmp(end, vec![result]));
         }
 
         if let Some(else_) = else_ {
-            let block = self.push_block(Vec::new());
-            else_block = Some(block);
+            let block = self.push_block_no_params();
+            else_block = Some((block, Vec::new()));
             self.switch_to_block(block);
             let result = self.decision_tree(*else_, match_expr);
-            self.terminate_block(TerminatorInstruction::Jmp(end, vec![result]));
+            self.terminate_block(TerminatorInstruction::jmp(end, vec![result]));
         }
 
         self.switch_to_block(start);
@@ -520,5 +486,45 @@ impl<'local> Context<'local> {
 
     fn finish(self) -> FxHashMap<FunctionId, Function> {
         self.finished_functions
+    }
+
+    /// For type definitions we need to define their constructors
+    ///
+    /// TODO: How to define these generic definitions in a way which the types still match?
+    ///       We'll likely need some marker to allow parameter/argument type mismatches
+    ///       past the marker and mark the type as pass-by-reference only if its size is unknown.
+    ///       E.g. `Maybe a = None | Some a` becomes `unsized. (U8, ?)` or similar.
+    ///       Maybe the `unsized` is unneeded though, and it is just the presense of any `?`
+    ///       which would cause it to be unsized. These would naturally be hidden by pointers
+    ///       anyway so `Vec a = (Ptr a, Usz, Usz)` becomes `Ptr, Usz, Usz` with opaque pointers.
+    fn type_definition(&mut self, _type_definition: &cst::TypeDefinition) {
+        // For a type definition, each generalized name will be each publically visible constructor
+        for (constructor_name, constructor_type) in &self.types.result.generalized {
+            let constructor_name = self.context()[*constructor_name].clone();
+
+            if let TopLevelType::Function { parameters, .. } = &constructor_type.typ {
+                self.define_type_constructor(constructor_name, parameters)
+            } else {
+                todo!("Non-function type constructors")
+            }
+        }
+    }
+
+    fn define_type_constructor(&mut self, name: Name, parameter_types: &[TopLevelType]) {
+        self.new_function(name, |this| {
+            let (fields, field_types) = parameter_types
+                .iter()
+                .enumerate()
+                .map(|(i, field_type)| {
+                    let field_type = this.convert_top_level_type(field_type, None);
+                    this.push_parameter(field_type.clone());
+                    (Value::Parameter(BlockId::ENTRY_BLOCK, i as u32), field_type)
+                })
+                .unzip();
+
+            let result_type = Type::tuple(field_types);
+            let tuple = this.push_instruction(Instruction::MakeTuple(fields), result_type);
+            this.terminate_block(TerminatorInstruction::Return(tuple));
+        });
     }
 }

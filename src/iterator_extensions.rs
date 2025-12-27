@@ -39,7 +39,9 @@ pub(crate) fn btree_map<T, K: Ord, V>(
 
 pub(crate) fn join_arc_str(strings: Vec<Arc<String>>, separator: &str) -> String {
     let mut strings_iter = strings.into_iter();
-    let Some(first) = strings_iter.next() else { return String::new(); };
+    let Some(first) = strings_iter.next() else {
+        return String::new();
+    };
 
     let mut result = first.as_ref().clone();
     for next in strings_iter {

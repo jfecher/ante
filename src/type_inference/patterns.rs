@@ -838,7 +838,7 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
         match self.checker.follow_type(typ) {
             Type::UserDefined(origin) => match origin {
                 Origin::TopLevelDefinition(top_level_name) => {
-                    match self.checker.type_body(top_level_name.top_level_item, None) {
+                    match top_level_name.top_level_item.type_body(None, self.checker.compiler) {
                         TypeBody::Product { type_name, .. } => type_name,
                         TypeBody::Sum(variants) => variants[variant_index].0.clone(),
                     }
@@ -849,7 +849,7 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
             Type::Application(constructor, _) => {
                 let constructor = constructor.clone();
                 self.user_defined_type_name(&constructor, variant_index)
-            }
+            },
             Type::Primitive(PrimitiveType::Pair) => Arc::new(",".to_string()),
             _ => unreachable!("Non-struct or enum datatype: {}", self.checker.type_to_string(typ)),
         }
@@ -914,7 +914,7 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
         // case of a bug elsewhere in the compiler.
         match origin {
             Origin::TopLevelDefinition(top_level_name) => {
-                match self.checker.type_body(top_level_name.top_level_item, Some(arguments)) {
+                match top_level_name.top_level_item.type_body(Some(arguments), self.checker.compiler) {
                     TypeBody::Product { type_name: _, fields } => {
                         let fields = vecmap(fields, |(_name, typ)| typ);
                         Some(UserDefinedTypeKind::Product(fields))

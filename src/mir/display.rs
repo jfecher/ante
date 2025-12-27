@@ -76,13 +76,11 @@ impl Display for Type {
             Type::Primitive(primitive_type) => primitive_type.fmt(f),
             Type::Tuple(items) => {
                 let types = vecmap(items.iter(), |typ| {
-                    if matches!(typ, Type::Primitive(_)) {
-                        typ.to_string()
-                    } else {
-                        format!("({typ})")
-                    }
-                }).join(", ");
-                write!(f, "{types}")
+                    if matches!(typ, Type::Primitive(_)) { typ.to_string() } else { format!("({typ})") }
+                })
+                .join(", ");
+
+                if types.is_empty() { write!(f, "#empty_tuple") } else { write!(f, "{types}") }
             },
             Type::Function(function_type) => {
                 write!(f, "fn")?;
@@ -150,7 +148,7 @@ fn fmt_block(id: BlockId, function: &mir::Function, block: &Block, f: &mut Forma
 fn fmt_terminator(terminator: &mir::TerminatorInstruction, f: &mut Formatter<'_>) -> Result {
     write!(f, "    ")?;
     match terminator {
-        mir::TerminatorInstruction::Jmp(block_id, arguments) => {
+        mir::TerminatorInstruction::Jmp((block_id, arguments)) => {
             write!(f, "jmp {block_id}")?;
             for argument in arguments {
                 write!(f, " {argument}")?;
@@ -158,20 +156,34 @@ fn fmt_terminator(terminator: &mir::TerminatorInstruction, f: &mut Formatter<'_>
             Ok(())
         },
         mir::TerminatorInstruction::If { condition, then, else_ } => {
-            write!(f, "if {condition} then {then} else {else_}")
+            write!(f, "if {condition} then {}", then.0)?;
+            for argument in &then.1 {
+                write!(f, " {argument}")?;
+            }
+            write!(f, " else {}", else_.0)?;
+            for argument in &else_.1 {
+                write!(f, " {argument}")?;
+            }
+            Ok(())
         },
         mir::TerminatorInstruction::Unreachable => write!(f, "unreachable"),
         mir::TerminatorInstruction::Return(value) => write!(f, "return {value}"),
         mir::TerminatorInstruction::Switch { int_value, cases, else_ } => {
             writeln!(f, "switch {int_value}")?;
-            for (i, case) in cases.iter().enumerate() {
+            for (i, (case_block, case_args)) in cases.iter().enumerate() {
                 if i != 0 {
                     writeln!(f)?;
                 }
-                write!(f, "  | {i} -> {case}")?;
+                write!(f, "    | {i} -> {case_block}")?;
+                for arg in case_args {
+                    write!(f, " {arg}")?;
+                }
             }
-            if let Some(else_) = else_ {
-                write!(f, "\n  | _ -> {else_}")?;
+            if let Some((else_block, else_args)) = else_ {
+                write!(f, "\n    | _ -> {else_block}")?;
+                for arg in else_args {
+                    write!(f, " {arg}")?;
+                }
             }
             Ok(())
         },

@@ -16,7 +16,13 @@ use std::sync::Arc;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    lexer::token::{FloatKind, IntegerKind}, parser::{cst::Name, ids::{TopLevelId, TopLevelName}}, type_inference::generics::Generic, vecmap::VecMap
+    lexer::token::{FloatKind, IntegerKind},
+    parser::{
+        cst::Name,
+        ids::{TopLevelId, TopLevelName},
+    },
+    type_inference::generics::Generic,
+    vecmap::VecMap,
 };
 pub(crate) mod builder;
 mod display;
@@ -178,21 +184,42 @@ enum Instruction {
     Transmute(Value),
 }
 
+/// A block's arguments is MIR's equivalent of PHI values in other SSA-based IRs.
+type BlockArguments = Vec<Value>;
+
+/// A [JmpTarget] is a block to jump to with arguments for that block.
+/// A block's arguments is MIR's equivalent of PHI values in other SSA-based IRs.
+type JmpTarget = (BlockId, BlockArguments);
+
 enum TerminatorInstruction {
-    Jmp(BlockId, /* block arguments */ Vec<Value>),
+    Jmp(JmpTarget),
     If {
         condition: Value,
-        then: BlockId,
-        else_: BlockId,
+        then: JmpTarget,
+        else_: JmpTarget,
     },
     Switch {
         int_value: Value,
-        cases: Vec<BlockId>,
-        else_: Option<BlockId>,
+        cases: Vec<JmpTarget>,
+        else_: Option<JmpTarget>,
     },
     #[allow(unused)]
     Unreachable,
     Return(Value),
+}
+
+impl TerminatorInstruction {
+    fn jmp(target: BlockId, args: Vec<Value>) -> Self {
+        TerminatorInstruction::Jmp((target, args))
+    }
+
+    fn jmp_no_args(target: BlockId) -> Self {
+        TerminatorInstruction::Jmp((target, Vec::new()))
+    }
+
+    fn if_(condition: Value, then: BlockId, else_: BlockId) -> Self {
+        TerminatorInstruction::If { condition, then: (then, Vec::new()), else_: (else_, Vec::new()) }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -285,6 +312,10 @@ impl Type {
     fn string() -> Type {
         Type::Tuple(Arc::new(vec![Type::POINTER, Type::int(IntegerKind::U32)]))
     }
+
+    fn tuple(fields: Vec<Type>) -> Type {
+        if fields.is_empty() { Type::UNIT } else { Type::Tuple(Arc::new(fields)) }
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -302,5 +333,5 @@ enum PrimitiveType {
 #[derive(Debug, PartialEq, Eq)]
 struct FunctionType {
     pub parameters: Vec<Type>,
-    pub return_type: Box<Type>,
+    pub return_type: Type,
 }

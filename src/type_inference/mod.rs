@@ -1,5 +1,6 @@
 use std::{collections::BTreeMap, rc::Rc, sync::Arc};
 
+use inc_complete::DbGet;
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 
@@ -19,7 +20,7 @@ use crate::{
         fresh_expr::ExtendedTopLevelContext,
         generics::Generic,
         top_level_types::{GeneralizedType, TopLevelType},
-        types::{ TypeVariableId, Type, TypeBindings },
+        types::{Type, TypeBindings, TypeVariableId},
     },
 };
 
@@ -282,10 +283,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Generalize a type, making it generic. Any holes in the type become generic types.
     fn generalize(&mut self, typ: &Type) -> GeneralizedType {
         let free_vars = self.free_vars(&typ);
-        let substitutions = free_vars
-            .into_iter()
-            .map(|var| (var, Type::Generic(Generic::Inferred(var))))
-            .collect();
+        let substitutions = free_vars.into_iter().map(|var| (var, Type::Generic(Generic::Inferred(var)))).collect();
 
         let typ = self.substitute(&typ, &substitutions);
         self.promote_to_top_level_type(&typ).generalize()
@@ -356,7 +354,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Type::Application(constructor, args) => {
                 let constructor = Box::new(self.promote_to_top_level_type(constructor));
                 let args = vecmap(args.iter(), |arg| self.promote_to_top_level_type(arg));
-                TopLevelType::TypeApplication(constructor, args)
+                TopLevelType::Application(constructor, args)
             },
         }
     }
@@ -397,18 +395,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     fn instantiate(&mut self, typ: &GeneralizedType) -> Type {
         let substitutions = typ.generics.iter().map(|generic| (*generic, self.next_type_variable())).collect();
-        typ.typ.substitute(&substitutions)
-    }
-
-    /// Apply a GeneralizedType to the given arguments. The given [Type]s of the arguments should
-    /// be [Type]s in the current context, and the returned [Type] will be in the current
-    /// context as well.
-    ///
-    /// Panics if `arguments.len() != typ.generics.len()`
-    fn apply_type(&mut self, typ: &GeneralizedType, arguments: &[Type]) -> Type {
-        assert_eq!(arguments.len(), typ.generics.len());
-        let substitutions =
-            typ.generics.iter().zip(arguments).map(|(generic, argument)| (*generic, argument.clone())).collect();
         typ.typ.substitute(&substitutions)
     }
 
@@ -563,9 +549,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Returns an empty map if unsuccessful.
     ///
     /// The map maps from the field name to a pair of (field type, field index).
-    fn get_field_types(
-        &mut self, typ: &Type, generic_args: Option<&[Type]>,
-    ) -> BTreeMap<Arc<String>, (Type, u32)> {
+    fn get_field_types(&mut self, typ: &Type, generic_args: Option<&[Type]>) -> BTreeMap<Arc<String>, (Type, u32)> {
         match self.follow_type(typ) {
             Type::Application(constructor, arguments) => {
                 // TODO: Error if `generic_args` is non-empty
@@ -575,7 +559,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
             Type::UserDefined(origin) => {
                 if let Origin::TopLevelDefinition(id) = origin {
-                    if let TypeBody::Product { fields, .. } = self.type_body(id.top_level_item, generic_args) {
+                    let body = id.top_level_item.type_body(generic_args, self.compiler);
+                    if let TypeBody::Product { fields, .. } = body {
                         let fields = fields.into_iter().enumerate();
                         return fields.map(|(i, (name, typ))| (name, (typ, i as u32))).collect();
                     }
@@ -585,8 +570,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Type::Primitive(types::PrimitiveType::String) => {
                 let mut fields = BTreeMap::default();
 
-                let c_string_type =
-                    Type::Application(Arc::new(Type::POINTER), Arc::new(vec![Type::CHAR]));
+                let c_string_type = Type::Application(Arc::new(Type::POINTER), Arc::new(vec![Type::CHAR]));
 
                 // TODO: Hide these and only expose them as unsafe builtins
                 fields.insert(Arc::new("c_string".into()), (c_string_type, 0));
@@ -672,7 +656,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
         }
     }
+}
 
+pub enum TypeBody {
+    Product { type_name: Name, fields: Vec<(Name, Type)> },
+    Sum(Vec<(Name, Vec<Type>)>),
+}
+
+impl TopLevelId {
     /// Returns the body of this user-defined type (the part after the `=` when declared).
     /// The given [TopLevelId] should refer to a [TypeDefinition] or something which desugars to
     /// one.
@@ -687,9 +678,12 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// - For a union: returns each variant with its name and arguments
     ///
     /// TODO: This function is called somewhat often but is a lot of work to redo each time.
-    fn type_body(&mut self, type_id: TopLevelId, arguments: Option<&[Type]>) -> TypeBody {
-        let result = TypeCheck(type_id).get(self.compiler);
-        let (item, item_context) = GetItem(type_id).get(self.compiler);
+    pub fn type_body<Db>(self, arguments: Option<&[Type]>, compiler: &Db) -> TypeBody
+    where
+        Db: DbGet<TypeCheck> + DbGet<GetItem>,
+    {
+        let result = TypeCheck(self).get(compiler);
+        let (item, item_context) = GetItem(self).get(compiler);
 
         let TopLevelItemKind::TypeDefinition(type_definition) = &item.kind else {
             panic!("type_body: passed type_id is not a type!")
@@ -699,10 +693,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             cst::TypeDefinitionBody::Struct(fields) => {
                 // This'd be easier with an explicit type data field
                 let constructor_type = &result.result.generalized[&type_definition.name];
-                let constructor = self.maybe_apply_type(constructor_type, arguments);
-                let field_types = self.function_parameter_types(&constructor);
+                let constructor = maybe_apply_type(constructor_type, arguments);
+                let field_types = constructor.function_parameter_types();
                 let fields = vecmap(fields.iter().zip(field_types), |((field_name, _), typ)| {
-                    (item_context.names[*field_name].clone(), typ)
+                    (item_context.names[*field_name].clone(), typ.clone())
                 });
 
                 let type_name = item_context.names[type_definition.name].clone();
@@ -711,9 +705,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             cst::TypeDefinitionBody::Enum(variants) => {
                 let variants = vecmap(variants, |(name, _)| {
                     let constructor_type = &result.result.generalized[name];
-                    let constructor = self.maybe_apply_type(constructor_type, arguments);
-                    let fields = self.function_parameter_types(&constructor);
-                    (item_context.names[*name].clone(), fields)
+                    let constructor = maybe_apply_type(constructor_type, arguments);
+                    let fields = constructor.function_parameter_types();
+                    (item_context.names[*name].clone(), fields.to_vec())
                 });
                 TypeBody::Sum(variants)
             },
@@ -726,25 +720,40 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
         }
     }
+}
 
-    fn maybe_apply_type(&mut self, typ: &GeneralizedType, args: Option<&[Type]>) -> Type {
-        match args {
-            Some(args) => self.apply_type(typ, args),
-            None => self.instantiate(typ),
-        }
+fn maybe_apply_type(typ: &GeneralizedType, args: Option<&[Type]>) -> Type {
+    match args {
+        Some(args) => typ.apply_type(args),
+        None => {
+            // This should be an error if `!typ.generics.is_empty()`
+            let args = vecmap(&typ.generics, |_| Type::ERROR);
+            typ.apply_type(&args)
+        },
     }
+}
 
-    /// Returns each argument of the given function type.
-    /// If the given type is not a function, an empty Vec is returned.
-    fn function_parameter_types(&self, function: &Type) -> Vec<Type> {
-        match self.follow_type(function) {
-            Type::Function(function) => function.parameters.clone(),
-            _ => Vec::new(),
+/// Returns each argument of the given function type.
+/// If the given type is not a function, an empty Vec is returned.
+impl Type {
+    fn function_parameter_types(&self) -> &[Type] {
+        match self {
+            Type::Function(function) => &function.parameters,
+            _ => &[],
         }
     }
 }
 
-enum TypeBody {
-    Product { type_name: Name, fields: Vec<(Name, Type)> },
-    Sum(Vec<(Name, Vec<Type>)>),
+impl GeneralizedType {
+    /// Apply a GeneralizedType to the given arguments. The given [Type]s of the arguments should
+    /// be [Type]s in the current context, and the returned [Type] will be in the current
+    /// context as well.
+    ///
+    /// Panics if `arguments.len() != self.generics.len()`
+    fn apply_type(&self, arguments: &[Type]) -> Type {
+        assert_eq!(arguments.len(), self.generics.len());
+        let substitutions =
+            self.generics.iter().zip(arguments).map(|(generic, argument)| (*generic, argument.clone())).collect();
+        self.typ.substitute(&substitutions)
+    }
 }

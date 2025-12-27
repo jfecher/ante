@@ -166,8 +166,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// `type_name` should be the name of the struct/product type rather than
     /// the name for each individual variant, in the case of sum types.
     fn build_constructor_type<'a>(
-        &mut self, type_name: TopLevelName, item: &cst::TypeDefinition,
-        variant_args: &[cst::Type],
+        &mut self, type_name: TopLevelName, item: &cst::TypeDefinition, variant_args: &[cst::Type],
     ) -> Type {
         let mut substitutions = FxHashMap::default();
         let mut data_type = Type::UserDefined(Origin::TopLevelDefinition(type_name));
@@ -438,8 +437,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         for (name, expr) in &constructor.fields {
             let name_string = &self.current_context().names[*name];
-            let (expected_field_type, field_index) =
-                field_types.get(name_string).cloned().unwrap_or((Type::ERROR, 0));
+            let (expected_field_type, field_index) = field_types.get(name_string).cloned().unwrap_or((Type::ERROR, 0));
 
             self.check_expr(*expr, &expected_field_type);
             self.check_name(*name, &expected_field_type);
