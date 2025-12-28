@@ -381,7 +381,8 @@ impl<'local> Context<'local> {
     }
 
     fn switch(&mut self, tag: PathId, cases: Vec<Case>, else_: Option<Box<DecisionTree>>, match_expr: ExprId) -> Value {
-        let int_value = self.variable(tag);
+        let value_being_matched = self.variable(tag);
+        let int_value = self.extract_tag_value(value_being_matched);
         let start = self.current_block;
 
         let case_blocks = vecmap(&cases, |_| (self.push_block_no_params(), Vec::new()));
@@ -394,22 +395,20 @@ impl<'local> Context<'local> {
             self.switch_to_block(*case_block);
 
             if !case.arguments.is_empty() {
-                let Constructor::Variant(typ, variant_index) = &case.constructor else {
+                let Constructor::Variant(_, variant_index) = &case.constructor else {
                     unreachable!("For this constructor to define arguments it must be a Constructor::Variant")
                 };
 
-                // Cast the whole value being matched to the appropriate variant
-                let variant_type = self.convert_variant_type(typ, *variant_index, None);
-                let variant = self.push_instruction(Instruction::Transmute(int_value), variant_type.clone());
+                // Cast the whole value being matched `(tag, union)` to `(tag, this_variant)`
+                // and extract the variant from the tuple.
+                let variant = self.extract_variant(value_being_matched, *variant_index);
+                let variant_type = self.type_of_value(variant);
 
                 // And for each variable, extract the relevant field of the variant
                 for (i, argument) in case.arguments.iter().enumerate() {
                     if let Some(origin) = self.context().path_origin(*argument) {
-                        // All indices below include the enum tag which can't be bound to a variable
-                        let index = i as u32 + 1;
-
-                        let field_type = Self::tuple_field_type(&variant_type, index);
-                        let index_tuple = Instruction::IndexTuple { tuple: variant, index };
+                        let field_type = Self::tuple_field_type(&variant_type, i);
+                        let index_tuple = Instruction::IndexTuple { tuple: variant, index: i as u32 };
                         let field = self.push_instruction(index_tuple, field_type);
                         self.variables.insert(origin, field);
                     }
@@ -432,6 +431,49 @@ impl<'local> Context<'local> {
         self.terminate_block(TerminatorInstruction::Switch { int_value, cases: case_blocks, else_: else_block });
         self.switch_to_block(end);
         Value::Parameter(end, 0)
+    }
+
+    fn extract_tag_value(&mut self, value_being_matched: Value) -> Value {
+        match self.type_of_value(value_being_matched) {
+            Type::Primitive(_) => value_being_matched,
+            Type::Tuple(fields) => {
+                if fields.is_empty() {
+                    unreachable!("Cannot match on an empty tuple")
+                }
+                let tag_type = fields[0].clone();
+                let instruction = Instruction::IndexTuple { tuple: value_being_matched, index: 0 };
+                self.push_instruction(instruction, tag_type)
+            },
+            Type::Union(_) => unreachable!("Cannot match on a raw union type"),
+            Type::Function(_) => unreachable!("Cannot match on a function type"),
+            Type::Generic(_) => unreachable!("Cannot match on a generic type"),
+        }
+    }
+
+    /// Cast & Extract the variant value from the given `(tag, union)` tuple.
+    /// Returns the variant (as a tuple, no longer a union).
+    fn extract_variant(&mut self, value_being_matched: Value, variant_index: usize) -> Value {
+        let fields = match self.type_of_value(value_being_matched) {
+            Type::Tuple(fields) => fields,
+            _ => unreachable!("Only `(tag, union)` tuples may have fields to extract"),
+        };
+        assert_eq!(fields.len(), 2);
+
+        let union_type = &fields[1];
+        let Type::Union(variants) = union_type else {
+            unreachable!("The second field of a tagged union should always be either a union or unit value")
+        };
+
+        let variant_type = variants
+            .get(variant_index)
+            .unwrap_or_else(|| {
+                unreachable!("Expected variant index {variant_index} but only had {} variants", variants.len())
+            })
+            .clone();
+
+        let extract_union = Instruction::IndexTuple { tuple: value_being_matched, index: 1 };
+        let union = self.push_instruction(extract_union, union_type.clone());
+        self.push_instruction(Instruction::Transmute(union), variant_type)
     }
 
     fn handle(&self, _handle: &cst::Handle) -> Value {

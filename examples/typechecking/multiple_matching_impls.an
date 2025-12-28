@@ -40,19 +40,19 @@ impl candidate2: Foo Thing with
 //     nothing: Unit
 // 
 // trait Foo a with
-//     (foo: _1): fn a -> Unit
+//     (foo: _): fn a -> Unit
 // 
 // trait Bar a with
-//     (bar: _1): fn a -> Unit
+//     (bar: _): fn a -> Unit
 // 
 // trait Baz a with
-//     (baz: _1): fn a -> Unit
+//     (baz: _): fn a -> Unit
 // 
-// (main: fn Unit -> _3) () =
+// (main: fn Unit -> _) () =
 //     (foo: (error)) ((Thing: fn Unit -> Thing) ())
 // 
 // impl candidate1 {(_: Bar a)}: (Foo: (error)) a with
-//     (foo: fn a -> Unit) (a: a) = (bar: fn (Baz _3) -> Unit) (a: Baz _3)
+//     (foo: fn a -> Unit) (a: a) = (bar: fn (Baz _) -> Unit) (a: Baz _)
 // 
 // impl bar {(_: Baz a)}: (Bar: (error)) a with
 //     (bar: fn a -> Unit) (a: a) = (baz: fn a -> Unit) (a: a)
@@ -70,13 +70,13 @@ impl candidate2: Foo Thing with
 // examples/typechecking/multiple_matching_impls.an:15:4	error: `foo` not found in scope
 //     foo (Thing ())
 // 
-// examples/typechecking/multiple_matching_impls.an:19:12	error: Expected fn (Baz _3) -> Unit but found fn (Baz _3) -> Bar _3
+// examples/typechecking/multiple_matching_impls.an:19:12	error: Expected fn (Baz _) -> Unit but found fn (Baz _) -> Bar _
 //     foo a = bar a
 // 
-// examples/typechecking/multiple_matching_impls.an:19:16	error: Expected Baz _3 but found a
+// examples/typechecking/multiple_matching_impls.an:19:16	error: Expected Baz _ but found a
 //     foo a = bar a
 // 
-// examples/typechecking/multiple_matching_impls.an:22:12	error: Expected fn _1 -> Unit but found Baz Thing
+// examples/typechecking/multiple_matching_impls.an:22:12	error: Expected fn _ -> Unit but found Baz Thing
 //     bar a = baz a
 // 
 // Found 4 errors and 0 warnings

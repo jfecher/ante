@@ -6,7 +6,7 @@ foo a =
 
 // args: --show-types
 // expected stdout:
-// (foo: fn _9 -> Unit) (a: _9) =
-//     (print: fn _9 -> Unit) (a: _9)
-//     (print: fn _9 -> Unit) (a: _9)
+// (foo: fn _ -> Unit) (a: _) =
+//     (print: fn _ -> Unit) (a: _)
+//     (print: fn _ -> Unit) (a: _)
 

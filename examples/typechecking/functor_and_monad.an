@@ -24,11 +24,11 @@ impl monad_maybe: Monad Maybe with
 // args: --show-types
 // expected stdout:
 // trait Functor f with
-//     (map: _1): fn (f a) (fn a -> b) -> f b
+//     (map: _): fn (f a) (fn a -> b) -> f b
 // 
 // trait Monad m with
-//     (wrap: _1): fn a -> m a
-//     (bind: _2): fn (m a) (fn a -> m b) -> m b
+//     (wrap: _): fn a -> m a
+//     (bind: _): fn (m a) (fn a -> m b) -> m b
 // 
 // impl functor_maybe: (Functor: (error)) Maybe with
 //     (map: fn (Maybe (error)) (fn (error) -> (error)) -> Maybe (error)) (m: Maybe (error)) (f: fn (error) -> (error)) =

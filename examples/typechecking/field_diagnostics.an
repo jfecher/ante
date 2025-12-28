@@ -24,21 +24,21 @@ main () =
 
 // args: --show-types
 // expected stdout:
-// (main: fn Unit -> _3) () =
+// (main: fn Unit -> _) () =
 //     (tuple: I32, I32) = 1 (,: fn I32 I32 -> I32, I32) 1
-//     (_: _13) = ((ref: (error)) ((ref: (error)) (tuple: I32, I32))).first
-//     (_: _20) = (mut: (error)) (tuple: I32, I32).first
-//     (_: _25) = (mut: (error)) (tuple: I32, I32).missing
-//     (imm_ref: _42) = (ref: (error)) (tuple: I32, I32)
-//     (_: _34) = (mut: (error)) (imm_ref: _42).first
-//     (_: _39) = (mut: (error)) (imm_ref: _42).missing
+//     (_: _) = ((ref: (error)) ((ref: (error)) (tuple: I32, I32))).first
+//     (_: _) = (mut: (error)) (tuple: I32, I32).first
+//     (_: _) = (mut: (error)) (tuple: I32, I32).missing
+//     (imm_ref: _) = (ref: (error)) (tuple: I32, I32)
+//     (_: _) = (mut: (error)) (imm_ref: _).first
+//     (_: _) = (mut: (error)) (imm_ref: _).missing
 //     mut (mut_tuple: I32, I32) = 1 (,: fn I32 I32 -> I32, I32) 1
-//     (_: _51) = (ref: (error)) (mut_tuple: I32, I32).missing
-//     (_: _56) = (mut: (error)) (mut_tuple: I32, I32).missing
-//     (mut_ref: _73) = (mut: (error)) (mut_tuple: I32, I32)
-//     (_: _65) = (ref: (error)) (mut_ref: _73).missing
-//     (_: _70) = (mut: (error)) (mut_ref: _73).missing
-//     (_: _74) = (mut: (error)) ((mut: (error)) ((ref: (error)) (tuple: I32, I32))).first
+//     (_: _) = (ref: (error)) (mut_tuple: I32, I32).missing
+//     (_: _) = (mut: (error)) (mut_tuple: I32, I32).missing
+//     (mut_ref: _) = (mut: (error)) (mut_tuple: I32, I32)
+//     (_: _) = (ref: (error)) (mut_ref: _).missing
+//     (_: _) = (mut: (error)) (mut_ref: _).missing
+//     (_: _) = (mut: (error)) ((mut: (error)) ((ref: (error)) (tuple: I32, I32))).first
 
 // expected stderr:
 // examples/typechecking/field_diagnostics.an:4:9	error: `ref` not found in scope

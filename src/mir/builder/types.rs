@@ -51,21 +51,23 @@ impl<'local> Context<'local> {
                 Type::tuple(vecmap(fields, |(_, field)| self.convert_type(&field, None)))
             },
             TypeBody::Sum(variants) => {
-                // TODO: How should we select the largest variant when it may be generic?
-                // TODO: Arbitrarily select the first variant as the representation for now.
-                //       Perhaps MIR should have a dedicated union type.
-                let variant_index = variant_index.unwrap_or(0);
-                if let Some((_, variant_args)) = variants.get(variant_index) {
-                    // TODO: Unify sum types and product types
-                    if variants.len() == 1 {
-                        // Sum types with a single variant don't need a tag
+                // TODO: Unify sum types and product types
+                if variants.len() == 1 {
+                    // Sum types with a single variant don't need a tag
+                    let variant = &variants[0].1;
+                    Type::tuple(vecmap(variant, |field| self.convert_type(&field, None)))
+                } else {
+                    let union = if let Some((_, variant_args)) = variant_index.and_then(|i| variants.get(i)) {
+                        // If we want to retrieve 1 specific variant then create a tuple of each field
                         Type::tuple(vecmap(variant_args, |field| self.convert_type(&field, None)))
                     } else {
-                        let fields = std::iter::once(&TCType::U8).chain(variant_args);
-                        Type::tuple(vecmap(fields, |field| self.convert_type(&field, None)))
-                    }
-                } else {
-                    Type::UNIT // Void can't be constructed but a zero-sized type seems a good approximation
+                        // Otherwise we need a raw union of the fields of all variants
+                        Type::union(vecmap(variants, |(_, fields)| {
+                            Type::tuple(vecmap(fields, |field| self.convert_type(&field, None)))
+                        }))
+                    };
+                    // Then pack the result with a separate tag value.
+                    Type::tuple(vec![Type::tag_type(), union])
                 }
             },
         }
@@ -128,22 +130,10 @@ impl<'local> Context<'local> {
     }
 
     /// Returns the nth field of the tuple type, or [Type::ERROR] if there is none
-    pub(super) fn tuple_field_type(tuple: &Type, n: u32) -> Type {
+    pub(super) fn tuple_field_type(tuple: &Type, n: usize) -> Type {
         match tuple {
-            Type::Tuple(fields) => fields.get(n as usize).cloned().unwrap_or(Type::ERROR),
+            Type::Tuple(fields) => fields.get(n).cloned().unwrap_or(Type::ERROR),
             _ => Type::ERROR,
-        }
-    }
-
-    /// Convert the given sum-type variant into a [Type].
-    pub(super) fn convert_variant_type(&self, typ: &TCType, variant_index: usize, args: Option<&[TCType]>) -> Type {
-        match typ.follow_type(&self.types.bindings) {
-            TCType::Application(constructor, new_args) => {
-                assert!(args.is_none());
-                self.convert_variant_type(constructor, variant_index, Some(new_args))
-            },
-            TCType::UserDefined(origin) => self.convert_type_origin(*origin, args, Some(variant_index)),
-            other => unreachable!("{other:?} should never be a variant type"),
         }
     }
 }

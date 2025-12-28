@@ -15,19 +15,19 @@ id x = x
 
 // args: --show-types
 // expected stdout:
-// (add: fn (fn _15 _13 -> _10) (fn _15 _16 -> _13) -> fn _15 -> fn _16 -> _10) (m: fn _15 _13 -> _10) (n: fn _15 _16 -> _13) = fn (f: _15) -> fn (x: _16) -> (m: fn _15 _13 -> _10) (f: _15) ((n: fn _15 _16 -> _13) (f: _15) (x: _16))
+// (add: fn (fn _ _ -> _) (fn _ _ -> _) -> fn _ -> fn _ -> _) (m: fn _ _ -> _) (n: fn _ _ -> _) = fn (f: _) -> fn (x: _) -> (m: fn _ _ -> _) (f: _) ((n: fn _ _ -> _) (f: _) (x: _))
 // 
-// (one: fn (fn _6 -> _4) _6 -> _4) (f: fn _6 -> _4) (x: _6) = (f: fn _6 -> _4) (x: _6)
+// (one: fn (fn _ -> _) _ -> _) (f: fn _ -> _) (x: _) = (f: fn _ -> _) (x: _)
 // 
-// (two1: fn (fn _8 -> _8) _8 -> _8) (f: fn _8 -> _8) (x: _8) = (f: fn _8 -> _8) ((f: fn _8 -> _8) (x: _8))
+// (two1: fn (fn _ -> _) _ -> _) (f: fn _ -> _) (x: _) = (f: fn _ -> _) ((f: fn _ -> _) (x: _))
 // 
-// (two2: fn (fn _8 -> _8) -> fn _8 -> _8) = (add: fn (fn (fn _8 -> _8) _8 -> _8) (fn (fn _8 -> _8) _8 -> _8) -> fn (fn _8 -> _8) -> fn _8 -> _8) (one: fn (fn _8 -> _8) _8 -> _8) (one: fn (fn _8 -> _8) _8 -> _8)
+// (two2: fn (fn _ -> _) -> fn _ -> _) = (add: fn (fn (fn _ -> _) _ -> _) (fn (fn _ -> _) _ -> _) -> fn (fn _ -> _) -> fn _ -> _) (one: fn (fn _ -> _) _ -> _) (one: fn (fn _ -> _) _ -> _)
 // 
 // (main: fn Unit -> String) () =
 //     (id: fn I32 -> I32) 3
 //     (id: fn String -> String) "four"
 // 
-// (id: fn _3 -> _3) (x: _3) = (x: _3)
+// (id: fn _ -> _) (x: _) = (x: _)
 
 // expected stderr:
 // examples/typechecking/instantiation.an:2:39	error: Expected a newline after the top level item but found //// (a -> b -> c) -> (a -> d -> b) -> a -> d -> c

@@ -30,16 +30,16 @@ does_use x =
 //     (get: (error)): fn Unit -> a
 //     (set: (error)): fn a -> Unit
 // 
-// (handle_basic: fn Unit -> _3) () =
+// (handle_basic: fn Unit -> _) () =
 //     handle (log: (error)) "test1"
 //     | (log: (error)) (v: (error)) -> (set: (error)) (v: (error))
 // 
-// (use_resume: fn Unit -> _3) () =
+// (use_resume: fn Unit -> _) () =
 //     handle ()
 // 
-// (does_use: fn _12 -> _3) (x: _12) =
-//     (y: _11) = (get: (error)) ()
-//     (set: (error)) ((y: _11) (+: (error)) (x: _12))
+// (does_use: fn _ -> _) (x: _) =
+//     (y: _) = (get: (error)) ()
+//     (set: (error)) ((y: _) (+: (error)) (x: _))
 
 // expected stderr:
 // examples/typechecking/effects.an:10:4	error: Effects and handle expressions are currently unimplemented

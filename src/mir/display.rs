@@ -72,29 +72,54 @@ impl Display for BlockId {
 
 impl Display for Type {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let is_atom = |t: &Type| matches!(t, Type::Primitive(_) | Type::Generic(_) | Type::Union(_));
+
         match self {
             Type::Primitive(primitive_type) => primitive_type.fmt(f),
             Type::Tuple(items) => {
-                let types = vecmap(items.iter(), |typ| {
-                    if matches!(typ, Type::Primitive(_)) { typ.to_string() } else { format!("({typ})") }
-                })
-                .join(", ");
+                let mut type_string =
+                    vecmap(items.iter(), |typ| if is_atom(typ) { typ.to_string() } else { format!("({typ})") })
+                        .join(", ");
 
-                if types.is_empty() { write!(f, "#empty_tuple") } else { write!(f, "{types}") }
+                // Make single-element tuples distinct from other types
+                if items.len() == 1 {
+                    type_string.push(',');
+                }
+
+                if type_string.is_empty() { write!(f, "#empty_tuple") } else { write!(f, "{type_string}") }
             },
             Type::Function(function_type) => {
                 write!(f, "fn")?;
                 for parameter in &function_type.parameters {
                     write!(f, " ")?;
-                    if matches!(parameter, Type::Primitive(_)) {
+                    if is_atom(parameter) {
                         write!(f, "{parameter}")?;
                     } else {
                         write!(f, "({parameter})")?;
                     }
                 }
-                write!(f, " -> {}", function_type.return_type)
+
+                if is_atom(&function_type.return_type) {
+                    write!(f, " -> {}", function_type.return_type)
+                } else {
+                    write!(f, " -> ({})", function_type.return_type)
+                }
             },
             Type::Generic(id) => write!(f, "{id}"),
+            Type::Union(variants) => {
+                write!(f, "{{")?;
+                for (i, variant) in variants.iter().enumerate() {
+                    if i != 0 {
+                        write!(f, " | ")?;
+                    }
+                    if is_atom(variant) {
+                        write!(f, "{variant}")?;
+                    } else {
+                        write!(f, "({variant})")?;
+                    }
+                }
+                write!(f, "}}")
+            },
         }
     }
 }

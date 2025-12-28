@@ -212,7 +212,7 @@ where
                 if let Some(binding) = self.bindings.get(id) {
                     self.fmt_type(binding, parenthesize, f)
                 } else {
-                    write!(f, "_{id}")
+                    write!(f, "_")
                 }
             },
             Type::Function(function) => {

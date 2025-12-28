@@ -30,23 +30,23 @@ main () =
 // effect Emit a with
 //     (emit: (error)): fn a -> Unit
 // 
-// (iota: fn U32 -> _3) ((n: U32)) = (error)
+// (iota: fn U32 -> _) ((n: U32)) = (error)
 // 
-// (filter: fn _2 _3 -> _4) (stream: _2) (predicate: _3) =
+// (filter: fn _ _ -> _) (stream: _) (predicate: _) =
 //     handle (stream: (error)) ()
 //     | (emit: (error)) (x: (error)) -> 
 //         if (predicate: (error)) (x: (error)) then 
 //             (emit: (error)) (x: (error))
 //         (resume: (error)) ()
 // 
-// (for: fn _2 _3 -> _4) (stream: _2) (f: _3) =
+// (for: fn _ _ -> _) (stream: _) (f: _) =
 //     handle (stream: (error)) ()
 //     | (emit: (error)) (x: (error)) -> 
 //         (f: (error)) (x: (error))
 //         (resume: (error)) ()
 // 
-// (main: fn Unit -> _3) () =
-//     (iota: fn U32 -> _3) 10
+// (main: fn Unit -> _) () =
+//     (iota: fn U32 -> _) 10
 
 // expected stderr:
 // examples/typechecking/effects_subset.an:11:4	error: Effects and handle expressions are currently unimplemented

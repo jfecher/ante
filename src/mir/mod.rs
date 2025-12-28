@@ -288,6 +288,9 @@ enum Type {
     Primitive(PrimitiveType),
     Tuple(Arc<Vec<Type>>),
     Function(Arc<FunctionType>),
+    
+    /// A C-style union of the given types. Sum types are encoded as this + a tag.
+    Union(Arc<Vec<Type>>),
 
     /// TODO: These should probably be in a simpler form.
     /// E.g. numbered from the function they were declared in.
@@ -313,8 +316,23 @@ impl Type {
         Type::Tuple(Arc::new(vec![Type::POINTER, Type::int(IntegerKind::U32)]))
     }
 
+    /// The type of a tagged-union's tag
+    fn tag_type() -> Type {
+        Type::int(IntegerKind::U8)
+    }
+
     fn tuple(fields: Vec<Type>) -> Type {
         if fields.is_empty() { Type::UNIT } else { Type::Tuple(Arc::new(fields)) }
+    }
+
+    fn union(mut variants: Vec<Type>) -> Type {
+        if variants.is_empty() {
+            Type::UNIT
+        } else if variants.len() == 1 {
+            variants.pop().unwrap()
+        } else {
+            Type::Union(Arc::new(variants))
+        }
     }
 }
 

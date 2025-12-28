@@ -22,7 +22,7 @@ handle_count foo
 //     (count: (error)) ()
 //     (repeat: fn Usz (fn Usz -> Unit) -> Unit) 10 (fn (_: Usz) -> (count: (error)) ())
 // 
-// (handle_count: fn _2 -> _3) (f: _2) =
+// (handle_count: fn _ -> _) (f: _) =
 //     handle 
 //         (f: (error)) ()
 //         0

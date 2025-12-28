@@ -15,9 +15,9 @@ foo () = baz bar
 // extern (bar: a): a
 // 
 // trait Baz a with
-//     (baz: _1): fn a -> Unit
+//     (baz: _): fn a -> Unit
 // 
-// (foo: fn Unit -> _3) () = (baz: (error)) (bar: _5)
+// (foo: fn Unit -> _) () = (baz: (error)) (bar: _)
 
 // expected stderr:
 // examples/typechecking/trait_propagation.an:6:9	error: `baz` not found in scope

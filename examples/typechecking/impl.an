@@ -16,13 +16,13 @@ c = foo "one" "two"
 // args: --show-types
 // expected stdout:
 // trait Foo a with
-//     (foo: _1): fn a a -> a
+//     (foo: _): fn a a -> a
 // 
-// (a: _0) = (foo: (error)) 1 2_I32
+// (a: _) = (foo: (error)) 1 2_I32
 // 
-// (b: _0) = (foo: (error)) 1.0 2.0
+// (b: _) = (foo: (error)) 1.0 2.0
 // 
-// (c: _0) = (foo: (error)) "one" "two"
+// (c: _) = (foo: (error)) "one" "two"
 
 // expected stderr:
 // examples/typechecking/impl.an:5:5	error: Expected an identifier but found `Foo`

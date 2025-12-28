@@ -30,9 +30,9 @@ main () =
 // 
 // (stringify: fn String -> String) ((s: String)) = (s: String)
 // 
-// (foo_and_bar: fn _7 _10 -> String) (a: _7) (b: _10) =
-//     (a: _7).foo
-//     (stringify: fn String -> String) (b: _10).bar
+// (foo_and_bar: fn _ _ -> String) (a: _) (b: _) =
+//     (a: _).foo
+//     (stringify: fn String -> String) (b: _).bar
 // 
 // (foobar: FooBar) = (FooBar: fn I32 String -> FooBar) 1 "one"
 // 

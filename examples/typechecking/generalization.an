@@ -6,7 +6,7 @@ foo x =
 
 // args: --show-types
 // expected stdout:
-// (foo: fn _8 -> fn _7 -> _8) (x: _8) =
-//     (y: fn _7 -> _8) (_: _7) = (x: _8)
-//     (y: fn _7 -> _8)
+// (foo: fn _ -> fn _ -> _) (x: _) =
+//     (y: fn _ -> _) (_: _) = (x: _)
+//     (y: fn _ -> _)
 
