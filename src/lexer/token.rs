@@ -59,6 +59,13 @@ pub enum IntegerKind {
     Usz,
 }
 
+impl IntegerKind {
+    pub(crate) fn is_signed(&self) -> bool {
+        use IntegerKind::*;
+        matches!(self, I8 | I16 | I32 | I64 | Isz)
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Copy, Clone, Serialize, Deserialize, Hash)]
 pub enum ClosingBracket {
     /// `)`

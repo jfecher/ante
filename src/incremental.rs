@@ -9,25 +9,20 @@ use inc_complete::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    backend, definition_collection,
-    diagnostics::{Diagnostic, Location},
-    find_files::CrateGraph,
-    name_resolution::{
+    codegen::llvm::{self, CodegenLlvmResult}, definition_collection, diagnostics::{Diagnostic, Location}, find_files::CrateGraph, name_resolution::{
         self, ResolutionResult,
         namespace::{CrateId, SourceFileId},
-    },
-    parser::{
+    }, parser::{
         self, ParseResult,
         context::TopLevelContext,
         cst::TopLevelItem,
         get_item,
         ids::{TopLevelId, TopLevelName},
-    },
-    type_inference::{
+    }, type_inference::{
         self, TypeCheckSCCResult,
         dependency_graph::{SCC, TypeCheckDependencyGraphResult, TypeCheckResult},
         top_level_types::GeneralizedType,
-    },
+    }
 };
 
 /// A wrapper over inc-complete's database with our specific storage type to hold
@@ -68,7 +63,7 @@ pub struct DbStorage {
     type_checks: HashMapStorage<TypeCheck>,
     type_dependency_graph: SingletonStorage<TypeCheckDependencyGraph>,
     get_type_check_sccs: HashMapStorage<GetTypeCheckSCC>,
-    compiled_files: HashMapStorage<CompileFile>,
+    compiled_files: HashMapStorage<CodegenLlvm>,
 
     #[inc_complete(accumulate)]
     diagnostics: Accumulator<Diagnostic>,
@@ -328,8 +323,7 @@ pub struct GetTypeCheckSCC(pub TopLevelId);
 define_intermediate!(160, GetTypeCheckSCC -> SCC, DbStorage, type_inference::dependency_graph::get_type_check_scc_impl);
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-/// Compile a single file to a string representing python source code of that file.
-/// This will also return any errors originating in that file.
+/// Codegen a single file to an llvm module to be linked later
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CompileFile(pub SourceFileId);
-define_intermediate!(170, CompileFile -> String, DbStorage, backend::compile_file_impl);
+pub struct CodegenLlvm(pub TopLevelId);
+define_intermediate!(170, CodegenLlvm -> CodegenLlvmResult, DbStorage, llvm::codegen_llvm_impl);

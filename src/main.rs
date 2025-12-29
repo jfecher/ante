@@ -28,7 +28,7 @@ use cli::{Cli, Completions};
 use colored::Colorize;
 use diagnostics::Diagnostic;
 use inc_complete::{Computation, StorageFor};
-use incremental::{CompileFile, Db, GetCrateGraph, Parse, Resolve};
+use incremental::{Db, GetCrateGraph, Parse, Resolve};
 use name_resolution::namespace::{CrateId, LOCAL_CRATE, LocalModuleId, SourceFileId};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::{collections::BTreeSet, path::Path};
@@ -49,6 +49,7 @@ mod mir;
 mod name_resolution;
 mod parser;
 mod type_inference;
+mod codegen;
 
 // Util modules:
 mod cli;
@@ -228,15 +229,8 @@ pub fn path_to_id(crate_id: CrateId, path: &Path) -> SourceFileId {
     SourceFileId { crate_id, local_module_id }
 }
 
-/// Compile all the files in the set to python files. In a real compiler we may want
-/// to compile each as an independent llvm or cranelift module then link them all
-/// together at the end.
-#[allow(unused)]
-fn compile_all(files: BTreeSet<SourceFileId>, compiler: &mut Db) -> Errors {
-    files.into_par_iter().flat_map(|file| get_diagnostics_at_step(compiler, CompileFile(file))).collect()
-}
-
 /// Retrieve all diagnostics emitted after running the given compiler step
+#[allow(unused)]
 fn get_diagnostics_at_step<C>(compiler: &Db, step: C) -> BTreeSet<Diagnostic>
 where
     C: Computation + std::fmt::Debug,

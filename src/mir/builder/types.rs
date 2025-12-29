@@ -1,13 +1,19 @@
 use std::sync::Arc;
 
+use inc_complete::DbGet;
+
 use crate::{
+    incremental::{GetItem, TypeCheck},
     iterator_extensions::vecmap,
     mir::{FunctionType, Type, builder::Context},
     name_resolution::{Origin, builtin::Builtin},
     type_inference::{TypeBody, top_level_types::TopLevelType, types::Type as TCType},
 };
 
-impl<'local> Context<'local> {
+impl<'local, Db> Context<'local, Db>
+where
+    Db: DbGet<TypeCheck> + DbGet<GetItem>,
+{
     pub(super) fn convert_type(&self, typ: &TCType, args: Option<&[TCType]>) -> Type {
         match typ.follow_type(&self.types.bindings) {
             TCType::Primitive(primitive_type) => self.convert_primitive_type(*primitive_type, args),

@@ -180,7 +180,7 @@ fn fmt_terminator(terminator: &mir::TerminatorInstruction, f: &mut Formatter<'_>
             }
             Ok(())
         },
-        mir::TerminatorInstruction::If { condition, then, else_ } => {
+        mir::TerminatorInstruction::If { condition, then, else_, end } => {
             write!(f, "if {condition} then {}", then.0)?;
             for argument in &then.1 {
                 write!(f, " {argument}")?;
@@ -189,11 +189,11 @@ fn fmt_terminator(terminator: &mir::TerminatorInstruction, f: &mut Formatter<'_>
             for argument in &else_.1 {
                 write!(f, " {argument}")?;
             }
-            Ok(())
+            write!(f, " end {end}")
         },
         mir::TerminatorInstruction::Unreachable => write!(f, "unreachable"),
         mir::TerminatorInstruction::Return(value) => write!(f, "return {value}"),
-        mir::TerminatorInstruction::Switch { int_value, cases, else_ } => {
+        mir::TerminatorInstruction::Switch { int_value, cases, else_, end } => {
             writeln!(f, "switch {int_value}")?;
             for (i, (case_block, case_args)) in cases.iter().enumerate() {
                 if i != 0 {
@@ -210,7 +210,7 @@ fn fmt_terminator(terminator: &mir::TerminatorInstruction, f: &mut Formatter<'_>
                     write!(f, " {arg}")?;
                 }
             }
-            Ok(())
+            write!(f, "\n    end {end}")
         },
     }
 }

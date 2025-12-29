@@ -9,6 +9,7 @@ clap_complete = "4"
 colored = "2.0.0"
 deterministic-hash = "1.0.1"
 inc-complete = "0.8.1"
+inkwell = { version = "0.7.0", features = ["llvm21-1"] }
 petgraph = { version = "0.8.2", features = ["serde"] }
 rangemap = "1.6.0"
 rayon = "1.10.0"

@@ -8,10 +8,11 @@
 //! if desired.
 use std::{collections::BTreeMap, sync::Arc};
 
+use inc_complete::DbGet;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    incremental::{Db, GetItem, TypeCheck},
+    incremental::{GetItem, TypeCheck},
     iterator_extensions::vecmap,
     lexer::token::{FloatKind, IntegerKind},
     mir::{
@@ -39,7 +40,10 @@ mod types;
 /// The initial MIR representation uses a uniform-representation for generics, rather than
 /// a monomorphized one. If monomorphization is required, a separate monomorphization pass should
 /// be run on the MIR after collecting it all.
-pub(crate) fn build_initial_mir(compiler: &Db, item_id: TopLevelId) -> Option<FxHashMap<FunctionId, Function>> {
+pub(crate) fn build_initial_mir<T>(compiler: &T, item_id: TopLevelId) -> Option<FxHashMap<FunctionId, Function>>
+where
+    T: DbGet<TypeCheck> + DbGet<GetItem>,
+{
     let types = TypeCheck(item_id).get(compiler);
     let (item, _) = GetItem(item_id).get(compiler);
 
@@ -64,7 +68,7 @@ pub(crate) fn build_initial_mir(compiler: &Db, item_id: TopLevelId) -> Option<Fx
 
 /// The per-[TopLevelId] context. This pass is designed so that we can convert every top-level item
 /// to MIR in parallel.
-struct Context<'local> {
+struct Context<'local, Db> {
     compiler: &'local Db,
     types: &'local TypeCheckResult,
 
@@ -79,7 +83,10 @@ struct Context<'local> {
     finished_functions: FxHashMap<FunctionId, Function>,
 }
 
-impl<'local> Context<'local> {
+impl<'local, Db> Context<'local, Db>
+where
+    Db: DbGet<TypeCheck> + DbGet<GetItem>,
+{
     fn new(compiler: &'local Db, types: &'local TypeCheckResult, top_level_id: TopLevelId) -> Self {
         Self {
             compiler,
@@ -314,22 +321,29 @@ impl<'local> Context<'local> {
 
         let then = self.push_block_no_params();
         let else_ = self.push_block_no_params();
-        self.terminate_block(TerminatorInstruction::if_(condition, then, else_));
+        let end = if if_.else_.is_some() {
+            self.push_block_no_params()
+        } else {
+            else_
+        };
+        self.terminate_block(TerminatorInstruction::if_(condition, then, else_, end));
 
         self.switch_to_block(then);
         let then_value = self.expression(if_.then);
 
         if let Some(else_expr) = if_.else_ {
             let result_type = self.expr_type(expr);
-            let end = self.push_block(vec![result_type]);
             self.terminate_block(TerminatorInstruction::jmp(end, vec![then_value]));
 
             self.switch_to_block(else_);
             let else_value = self.expression(else_expr);
             self.terminate_block(TerminatorInstruction::jmp(end, vec![else_value]));
+            self.switch_to_block(end);
+            self.push_parameter(result_type);
             Value::Parameter(end, 0)
         } else {
-            self.terminate_block(TerminatorInstruction::jmp_no_args(else_));
+            self.terminate_block(TerminatorInstruction::jmp_no_args(end));
+            self.switch_to_block(end);
             Value::Unit
         }
     }
@@ -366,7 +380,7 @@ impl<'local> Context<'local> {
         let end = self.push_block(vec![result_type]);
 
         let condition = self.expression(condition);
-        self.terminate_block(TerminatorInstruction::if_(condition, then, else_));
+        self.terminate_block(TerminatorInstruction::if_(condition, then, else_, else_));
 
         self.switch_to_block(then);
         let then_value = self.expression(then_expr);
@@ -428,7 +442,7 @@ impl<'local> Context<'local> {
         }
 
         self.switch_to_block(start);
-        self.terminate_block(TerminatorInstruction::Switch { int_value, cases: case_blocks, else_: else_block });
+        self.terminate_block(TerminatorInstruction::Switch { int_value, cases: case_blocks, else_: else_block, end });
         self.switch_to_block(end);
         Value::Parameter(end, 0)
     }
