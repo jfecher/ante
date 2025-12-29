@@ -11,8 +11,6 @@ mod unimplemented_item;
 pub use location::*;
 pub use unimplemented_item::*;
 
-pub type Errors = Vec<Diagnostic>;
-
 /// Any diagnostic that the compiler can issue
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub enum Diagnostic {

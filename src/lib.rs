@@ -1,14 +1,13 @@
 #![allow(mismatched_lifetime_syntaxes)]
 
-mod backend;
+mod codegen;
 mod definition_collection;
 mod find_files;
 mod lexer;
+mod mir;
 pub mod name_resolution;
 mod parser;
 pub mod type_inference;
-mod codegen;
-mod mir;
 
 // Util modules:
 mod cli;

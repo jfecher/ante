@@ -30,18 +30,17 @@ use diagnostics::Diagnostic;
 use inc_complete::{Computation, StorageFor};
 use incremental::{Db, GetCrateGraph, Parse, Resolve};
 use name_resolution::namespace::{CrateId, LOCAL_CRATE, LocalModuleId, SourceFileId};
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::{collections::BTreeSet, path::Path};
 
 use crate::{
-    diagnostics::{DiagnosticKind, Errors},
+    diagnostics::DiagnosticKind,
     files::{make_compiler, write_metadata},
-    incremental::{DbStorage, TypeCheck},
+    incremental::{CodegenLlvm, DbStorage, TypeCheck},
 };
 
 // All the compiler passes:
 // (listed out of order because `cargo fmt` alphabetizes them)
-mod backend;
+mod codegen;
 mod definition_collection;
 mod find_files;
 mod lexer;
@@ -49,7 +48,6 @@ mod mir;
 mod name_resolution;
 mod parser;
 mod type_inference;
-mod codegen;
 
 // Util modules:
 mod cli;
@@ -85,7 +83,7 @@ fn compile(args: Cli) {
     } else if args.show_mir {
         display_mir(&compiler)
     } else {
-        BTreeSet::new()
+        llvm_codegen(&compiler)
     };
 
     display_diagnostics(diagnostics, &compiler);
@@ -212,13 +210,37 @@ fn display_mir(compiler: &Db) -> BTreeSet<Diagnostic> {
 
         for item in &parse.cst.top_level_items {
             let mir = mir::builder::build_initial_mir(compiler, item.id);
-            if let Some(functions) = mir {
-                for function in functions.into_values() {
+            if let Some(mir) = mir {
+                for function in mir.functions.into_values() {
                     println!("{function}\n");
                 }
             }
             let resolve_diagnostics: BTreeSet<_> = compiler.get_accumulated(TypeCheck(item.id));
             diagnostics.extend(resolve_diagnostics);
+        }
+    }
+    diagnostics
+}
+
+fn llvm_codegen(compiler: &Db) -> BTreeSet<Diagnostic> {
+    let crates = GetCrateGraph.get(compiler);
+    let mut diagnostics = BTreeSet::new();
+    crate::codegen::llvm::initialize_native_target();
+
+    // TODO: This could be parallel
+    for (_, crate_) in crates.iter() {
+        for file in crate_.source_files.values() {
+            let parse = Parse(*file).get(compiler);
+
+            for item in &parse.cst.top_level_items {
+                let llvm_result = CodegenLlvm(item.id).get(compiler);
+
+                if let Some(llvm) = &llvm_result.module_string {
+                    println!("{llvm}");
+                }
+                let resolve_diagnostics: BTreeSet<_> = compiler.get_accumulated(CodegenLlvm(item.id));
+                diagnostics.extend(resolve_diagnostics);
+            }
         }
     }
     diagnostics

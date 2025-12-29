@@ -11,12 +11,12 @@
 //! This file contains the various types which comprise the IR. See the submodules for the
 //! passes that translate the cst to the IR.
 
-use std::{collections::VecDeque, sync::Arc};
+use std::sync::Arc;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
-    lexer::token::{FloatKind, IntegerKind},
+    lexer::token::{F64, FloatKind, IntegerKind},
     parser::{
         cst::Name,
         ids::{TopLevelId, TopLevelName},
@@ -27,6 +27,10 @@ use crate::{
 pub(crate) mod builder;
 mod display;
 pub(crate) mod monomorphization;
+
+pub(crate) struct Mir {
+    pub(crate) functions: FxHashMap<FunctionId, Function>,
+}
 
 pub(crate) struct Function {
     pub(crate) name: Name,
@@ -168,7 +172,7 @@ impl From<usize> for BlockId {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct InstructionId(u32);
 
 impl From<InstructionId> for usize {
@@ -183,7 +187,7 @@ impl From<usize> for InstructionId {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Value {
     Error,
     Unit,
@@ -227,6 +231,10 @@ impl Block {
     fn new(parameter_types: Vec<Type>) -> Block {
         Block { parameter_types, instructions: Default::default(), terminator: None }
     }
+
+    pub fn parameters(&self, block_id: BlockId) -> impl ExactSizeIterator<Item = (Value, Type)> {
+        self.parameter_types.iter().enumerate().map(move |(i, typ)| (Value::Parameter(block_id, i as u32), typ.clone()))
+    }
 }
 
 pub enum Instruction {
@@ -248,12 +256,9 @@ pub enum Instruction {
     Transmute(Value),
 }
 
-/// A block's arguments is MIR's equivalent of PHI values in other SSA-based IRs.
-type BlockArguments = Vec<Value>;
-
 /// A [JmpTarget] is a block to jump to with arguments for that block.
 /// A block's arguments is MIR's equivalent of PHI values in other SSA-based IRs.
-type JmpTarget = (BlockId, BlockArguments);
+type JmpTarget = (BlockId, Option<Value>);
 
 pub enum TerminatorInstruction {
     Jmp(JmpTarget),
@@ -276,32 +281,30 @@ pub enum TerminatorInstruction {
 }
 
 impl TerminatorInstruction {
-    fn jmp(target: BlockId, args: Vec<Value>) -> Self {
-        TerminatorInstruction::Jmp((target, args))
+    fn jmp(target: BlockId, arg: Value) -> Self {
+        TerminatorInstruction::Jmp((target, Some(arg)))
     }
 
     fn jmp_no_args(target: BlockId) -> Self {
-        TerminatorInstruction::Jmp((target, Vec::new()))
+        TerminatorInstruction::Jmp((target, None))
     }
 
     fn if_(condition: Value, then: BlockId, else_: BlockId, end: BlockId) -> Self {
-        TerminatorInstruction::If { condition, then: (then, Vec::new()), else_: (else_, Vec::new()), end }
+        TerminatorInstruction::If { condition, then: (then, None), else_: (else_, None), end }
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum IntConstant {
     U8(u8),
     U16(u16),
     U32(u32),
     U64(u64),
-    /// TODO: This should depend on the target architecture
     Usz(usize),
     I8(i8),
     I16(i16),
     I32(i32),
     I64(i64),
-    /// TODO: This should depend on the target architecture
     Isz(isize),
 }
 
@@ -338,10 +341,10 @@ impl IntConstant {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FloatConstant {
-    F32(f32),
-    F64(f64),
+    F32(F64),
+    F64(F64),
 }
 
 impl FloatConstant {
@@ -352,18 +355,6 @@ impl FloatConstant {
         }
     }
 }
-
-impl PartialEq for FloatConstant {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::F32(l0), Self::F32(r0)) => l0.to_bits() == r0.to_bits(),
-            (Self::F64(l0), Self::F64(r0)) => l0.to_bits() == r0.to_bits(),
-            _ => false,
-        }
-    }
-}
-
-impl Eq for FloatConstant {}
 
 /// TODO: This is very similar to [TopLevelType] - do we really need both?
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -387,28 +378,28 @@ impl Type {
     pub const POINTER: Type = Type::Primitive(PrimitiveType::Pointer);
     pub const CHAR: Type = Type::Primitive(PrimitiveType::Char);
 
-    fn int(kind: IntegerKind) -> Type {
+    pub fn int(kind: IntegerKind) -> Type {
         Type::Primitive(PrimitiveType::Int(kind))
     }
 
-    fn float(kind: FloatKind) -> Type {
+    pub fn float(kind: FloatKind) -> Type {
         Type::Primitive(PrimitiveType::Float(kind))
     }
 
-    fn string() -> Type {
+    pub fn string() -> Type {
         Type::Tuple(Arc::new(vec![Type::POINTER, Type::int(IntegerKind::U32)]))
     }
 
     /// The type of a tagged-union's tag
-    fn tag_type() -> Type {
+    pub fn tag_type() -> Type {
         Type::int(IntegerKind::U8)
     }
 
-    fn tuple(fields: Vec<Type>) -> Type {
+    pub fn tuple(fields: Vec<Type>) -> Type {
         if fields.is_empty() { Type::UNIT } else { Type::Tuple(Arc::new(fields)) }
     }
 
-    fn union(mut variants: Vec<Type>) -> Type {
+    pub fn union(mut variants: Vec<Type>) -> Type {
         if variants.is_empty() {
             Type::UNIT
         } else if variants.len() == 1 {
@@ -469,13 +460,13 @@ mod tests {
 
         function.blocks[b0].terminator = Some(TerminatorInstruction::If {
             condition: Value::Bool(false),
-            then: (b1, Vec::new()),
-            else_: (b2, Vec::new()),
+            then: (b1, None),
+            else_: (b2, None),
             end: b3,
         });
 
-        function.blocks[b1].terminator = Some(TerminatorInstruction::jmp(b3, Vec::new()));
-        function.blocks[b2].terminator = Some(TerminatorInstruction::jmp(b3, Vec::new()));
+        function.blocks[b1].terminator = Some(TerminatorInstruction::jmp_no_args(b3));
+        function.blocks[b2].terminator = Some(TerminatorInstruction::jmp_no_args(b3));
         function.blocks[b3].terminator = Some(TerminatorInstruction::Return(Value::Unit));
 
         let order = function.topological_sort();
@@ -498,12 +489,12 @@ mod tests {
 
         function.blocks[b0].terminator = Some(TerminatorInstruction::If {
             condition: Value::Bool(false),
-            then: (b1, Vec::new()),
-            else_: (b2, Vec::new()),
+            then: (b1, None),
+            else_: (b2, None),
             end: b2,
         });
 
-        function.blocks[b1].terminator = Some(TerminatorInstruction::jmp(b2, Vec::new()));
+        function.blocks[b1].terminator = Some(TerminatorInstruction::jmp_no_args(b2));
         function.blocks[b2].terminator = Some(TerminatorInstruction::Return(Value::Unit));
 
         let order = function.topological_sort();
@@ -547,32 +538,32 @@ mod tests {
 
         function.blocks[b0].terminator = Some(TerminatorInstruction::If {
             condition: Value::Bool(false),
-            then: (b1, Vec::new()),
-            else_: (b2, Vec::new()),
+            then: (b1, None),
+            else_: (b2, None),
             end: b3,
         });
 
         function.blocks[b1].terminator = Some(TerminatorInstruction::If {
             condition: Value::Bool(false),
-            then: (b4, Vec::new()),
-            else_: (b5, Vec::new()),
+            then: (b4, None),
+            else_: (b5, None),
             end: b6,
         });
 
         function.blocks[b2].terminator = Some(TerminatorInstruction::If {
             condition: Value::Bool(false),
-            then: (b7, Vec::new()),
-            else_: (b8, Vec::new()),
+            then: (b7, None),
+            else_: (b8, None),
             end: b9,
         });
 
         function.blocks[b3].terminator = Some(TerminatorInstruction::Return(Value::Unit));
-        function.blocks[b4].terminator = Some(TerminatorInstruction::jmp(b6, Vec::new()));
-        function.blocks[b5].terminator = Some(TerminatorInstruction::jmp(b6, Vec::new()));
-        function.blocks[b6].terminator = Some(TerminatorInstruction::jmp(b3, Vec::new()));
-        function.blocks[b7].terminator = Some(TerminatorInstruction::jmp(b9, Vec::new()));
-        function.blocks[b8].terminator = Some(TerminatorInstruction::jmp(b9, Vec::new()));
-        function.blocks[b9].terminator = Some(TerminatorInstruction::jmp(b3, Vec::new()));
+        function.blocks[b4].terminator = Some(TerminatorInstruction::jmp_no_args(b6));
+        function.blocks[b5].terminator = Some(TerminatorInstruction::jmp_no_args(b6));
+        function.blocks[b6].terminator = Some(TerminatorInstruction::jmp_no_args(b3));
+        function.blocks[b7].terminator = Some(TerminatorInstruction::jmp_no_args(b9));
+        function.blocks[b8].terminator = Some(TerminatorInstruction::jmp_no_args(b9));
+        function.blocks[b9].terminator = Some(TerminatorInstruction::jmp_no_args(b3));
 
         let order = function.topological_sort();
         assert_eq!(order, vec![b0, b1, b4, b5, b6, b2, b7, b8, b9, b3]);
@@ -611,17 +602,17 @@ mod tests {
 
         function.blocks[b0].terminator = Some(TerminatorInstruction::Switch {
             int_value: Value::Unit,
-            cases: vec![(b1, Vec::new()), (b2, Vec::new()), (b3, Vec::new())],
-            else_: Some((b4, Vec::new())),
+            cases: vec![(b1, None), (b2, None), (b3, None)],
+            else_: Some((b4, None)),
             end: b5,
         });
 
-        function.blocks[b1].terminator = Some(TerminatorInstruction::jmp(b5, Vec::new()));
-        function.blocks[b2].terminator = Some(TerminatorInstruction::jmp(b5, Vec::new()));
-        function.blocks[b3].terminator = Some(TerminatorInstruction::jmp(b6, Vec::new()));
-        function.blocks[b4].terminator = Some(TerminatorInstruction::jmp(b5, Vec::new()));
+        function.blocks[b1].terminator = Some(TerminatorInstruction::jmp_no_args(b5));
+        function.blocks[b2].terminator = Some(TerminatorInstruction::jmp_no_args(b5));
+        function.blocks[b3].terminator = Some(TerminatorInstruction::jmp_no_args(b6));
+        function.blocks[b4].terminator = Some(TerminatorInstruction::jmp_no_args(b5));
         function.blocks[b5].terminator = Some(TerminatorInstruction::Return(Value::Unit));
-        function.blocks[b6].terminator = Some(TerminatorInstruction::jmp(b5, Vec::new()));
+        function.blocks[b6].terminator = Some(TerminatorInstruction::jmp_no_args(b5));
 
         let order = function.topological_sort();
         assert_eq!(order, vec![b0, b1, b2, b3, b6, b4, b5]);

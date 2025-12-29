@@ -16,8 +16,8 @@ use crate::{
     iterator_extensions::vecmap,
     lexer::token::{FloatKind, IntegerKind},
     mir::{
-        Block, BlockId, FloatConstant, Function, FunctionId, Instruction, IntConstant, TerminatorInstruction, Type,
-        Value,
+        Block, BlockId, FloatConstant, Function, FunctionId, Instruction, IntConstant, Mir, TerminatorInstruction,
+        Type, Value,
     },
     name_resolution::Origin,
     parser::{
@@ -40,14 +40,14 @@ mod types;
 /// The initial MIR representation uses a uniform-representation for generics, rather than
 /// a monomorphized one. If monomorphization is required, a separate monomorphization pass should
 /// be run on the MIR after collecting it all.
-pub(crate) fn build_initial_mir<T>(compiler: &T, item_id: TopLevelId) -> Option<FxHashMap<FunctionId, Function>>
+pub(crate) fn build_initial_mir<T>(compiler: &T, item_id: TopLevelId) -> Option<Mir>
 where
     T: DbGet<TypeCheck> + DbGet<GetItem>,
 {
     let types = TypeCheck(item_id).get(compiler);
     let (item, _) = GetItem(item_id).get(compiler);
 
-    match &item.kind {
+    let functions = match &item.kind {
         cst::TopLevelItemKind::Definition(definition) => {
             let mut context = Context::new(compiler, &types, item_id);
             context.definition(definition);
@@ -63,7 +63,9 @@ where
         cst::TopLevelItemKind::EffectDefinition(_) => None,
         cst::TopLevelItemKind::Extern(_) => None, // TODO
         cst::TopLevelItemKind::Comptime(_) => None,
-    }
+    }?;
+
+    Some(Mir { functions })
 }
 
 /// The per-[TopLevelId] context. This pass is designed so that we can convert every top-level item
@@ -208,8 +210,8 @@ where
             Literal::Float(_, None) => {
                 panic!("TODO: polymorphic floats")
             },
-            Literal::Float(x, Some(FloatKind::F32)) => Value::Float(FloatConstant::F32(x.0 as f32)),
-            Literal::Float(x, Some(FloatKind::F64)) => Value::Float(FloatConstant::F64(x.0)),
+            Literal::Float(x, Some(FloatKind::F32)) => Value::Float(FloatConstant::F32(*x)),
+            Literal::Float(x, Some(FloatKind::F64)) => Value::Float(FloatConstant::F64(*x)),
             Literal::String(x) => self.push_instruction(Instruction::MakeString(x.clone()), Type::string()),
             Literal::Char(x) => Value::Char(*x),
         }
@@ -321,11 +323,7 @@ where
 
         let then = self.push_block_no_params();
         let else_ = self.push_block_no_params();
-        let end = if if_.else_.is_some() {
-            self.push_block_no_params()
-        } else {
-            else_
-        };
+        let end = if if_.else_.is_some() { self.push_block_no_params() } else { else_ };
         self.terminate_block(TerminatorInstruction::if_(condition, then, else_, end));
 
         self.switch_to_block(then);
@@ -333,11 +331,11 @@ where
 
         if let Some(else_expr) = if_.else_ {
             let result_type = self.expr_type(expr);
-            self.terminate_block(TerminatorInstruction::jmp(end, vec![then_value]));
+            self.terminate_block(TerminatorInstruction::jmp(end, then_value));
 
             self.switch_to_block(else_);
             let else_value = self.expression(else_expr);
-            self.terminate_block(TerminatorInstruction::jmp(end, vec![else_value]));
+            self.terminate_block(TerminatorInstruction::jmp(end, else_value));
             self.switch_to_block(end);
             self.push_parameter(result_type);
             Value::Parameter(end, 0)
@@ -384,11 +382,11 @@ where
 
         self.switch_to_block(then);
         let then_value = self.expression(then_expr);
-        self.terminate_block(TerminatorInstruction::jmp(end, vec![then_value]));
+        self.terminate_block(TerminatorInstruction::jmp(end, then_value));
 
         self.switch_to_block(else_);
         let else_value = self.decision_tree(else_tree, match_expr);
-        self.terminate_block(TerminatorInstruction::jmp(end, vec![else_value]));
+        self.terminate_block(TerminatorInstruction::jmp(end, else_value));
 
         self.switch_to_block(end);
         Value::Parameter(end, 0)
@@ -399,7 +397,7 @@ where
         let int_value = self.extract_tag_value(value_being_matched);
         let start = self.current_block;
 
-        let case_blocks = vecmap(&cases, |_| (self.push_block_no_params(), Vec::new()));
+        let case_blocks = vecmap(&cases, |_| (self.push_block_no_params(), None));
         let mut else_block = None;
 
         let result_type = self.expr_type(match_expr);
@@ -430,15 +428,15 @@ where
             }
 
             let result = self.decision_tree(case.body, match_expr);
-            self.terminate_block(TerminatorInstruction::jmp(end, vec![result]));
+            self.terminate_block(TerminatorInstruction::jmp(end, result));
         }
 
         if let Some(else_) = else_ {
             let block = self.push_block_no_params();
-            else_block = Some((block, Vec::new()));
+            else_block = Some((block, None));
             self.switch_to_block(block);
             let result = self.decision_tree(*else_, match_expr);
-            self.terminate_block(TerminatorInstruction::jmp(end, vec![result]));
+            self.terminate_block(TerminatorInstruction::jmp(end, result));
         }
 
         self.switch_to_block(start);

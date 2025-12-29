@@ -9,20 +9,26 @@ use inc_complete::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    codegen::llvm::{self, CodegenLlvmResult}, definition_collection, diagnostics::{Diagnostic, Location}, find_files::CrateGraph, name_resolution::{
+    codegen::llvm::{self, CodegenLlvmResult},
+    definition_collection,
+    diagnostics::{Diagnostic, Location},
+    find_files::CrateGraph,
+    name_resolution::{
         self, ResolutionResult,
         namespace::{CrateId, SourceFileId},
-    }, parser::{
+    },
+    parser::{
         self, ParseResult,
         context::TopLevelContext,
         cst::TopLevelItem,
         get_item,
         ids::{TopLevelId, TopLevelName},
-    }, type_inference::{
+    },
+    type_inference::{
         self, TypeCheckSCCResult,
         dependency_graph::{SCC, TypeCheckDependencyGraphResult, TypeCheckResult},
         top_level_types::GeneralizedType,
-    }
+    },
 };
 
 /// A wrapper over inc-complete's database with our specific storage type to hold

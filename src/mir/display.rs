@@ -173,20 +173,20 @@ fn fmt_block(id: BlockId, function: &mir::Function, block: &Block, f: &mut Forma
 fn fmt_terminator(terminator: &mir::TerminatorInstruction, f: &mut Formatter<'_>) -> Result {
     write!(f, "    ")?;
     match terminator {
-        mir::TerminatorInstruction::Jmp((block_id, arguments)) => {
+        mir::TerminatorInstruction::Jmp((block_id, argument)) => {
             write!(f, "jmp {block_id}")?;
-            for argument in arguments {
+            if let Some(argument) = argument {
                 write!(f, " {argument}")?;
             }
             Ok(())
         },
         mir::TerminatorInstruction::If { condition, then, else_, end } => {
             write!(f, "if {condition} then {}", then.0)?;
-            for argument in &then.1 {
+            if let Some(argument) = then.1 {
                 write!(f, " {argument}")?;
             }
             write!(f, " else {}", else_.0)?;
-            for argument in &else_.1 {
+            if let Some(argument) = else_.1 {
                 write!(f, " {argument}")?;
             }
             write!(f, " end {end}")
@@ -195,18 +195,18 @@ fn fmt_terminator(terminator: &mir::TerminatorInstruction, f: &mut Formatter<'_>
         mir::TerminatorInstruction::Return(value) => write!(f, "return {value}"),
         mir::TerminatorInstruction::Switch { int_value, cases, else_, end } => {
             writeln!(f, "switch {int_value}")?;
-            for (i, (case_block, case_args)) in cases.iter().enumerate() {
+            for (i, (case_block, case_arg)) in cases.iter().enumerate() {
                 if i != 0 {
                     writeln!(f)?;
                 }
                 write!(f, "    | {i} -> {case_block}")?;
-                for arg in case_args {
+                if let Some(arg) = case_arg {
                     write!(f, " {arg}")?;
                 }
             }
-            if let Some((else_block, else_args)) = else_ {
+            if let Some((else_block, else_arg)) = else_ {
                 write!(f, "\n    | _ -> {else_block}")?;
-                for arg in else_args {
+                if let Some(arg) = else_arg {
                     write!(f, " {arg}")?;
                 }
             }
