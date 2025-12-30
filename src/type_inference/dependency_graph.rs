@@ -9,7 +9,7 @@ use crate::{
         DbHandle, GetCrateGraph, GetItem, GetTypeCheckSCC, Parse, Resolve, TypeCheck, TypeCheckDependencyGraph,
         TypeCheckSCC,
     },
-    iterator_extensions::vecmap,
+    iterator_extensions::mapvec,
     name_resolution::namespace::LOCAL_CRATE,
     parser::{cst::TopLevelItemKind, ids::TopLevelId},
     type_inference::{IndividualTypeCheckResult, get_type::try_get_type, types::TypeBindings},
@@ -76,8 +76,8 @@ pub fn get_type_check_graph_impl(_: &TypeCheckDependencyGraph, db: &DbHandle) ->
     // tarjan_scc returns SCCs in post_order, which is the order we want to analyze in.
     let sccs = petgraph::algo::tarjan_scc(&graph);
     let mut id_to_scc = BTreeMap::new();
-    let order = vecmap(sccs.into_iter().enumerate(), |(scc_index, scc)| {
-        let mut scc = vecmap(scc, |index| {
+    let order = mapvec(sccs.into_iter().enumerate(), |(scc_index, scc)| {
+        let mut scc = mapvec(scc, |index| {
             let item = index_to_item[&index];
             id_to_scc.insert(item, scc_index as u32);
             item

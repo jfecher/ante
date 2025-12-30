@@ -11,13 +11,13 @@ where
 
 /// Shorthand for `items.into_iter().map(f).collect::<Vec<_>>()`
 #[inline]
-pub(crate) fn vecmap<T, U>(items: impl IntoIterator<Item = T>, f: impl FnMut(T) -> U) -> Vec<U> {
+pub(crate) fn mapvec<T, U>(items: impl IntoIterator<Item = T>, f: impl FnMut(T) -> U) -> Vec<U> {
     map(items, f)
 }
 
 /// Shorthand for `items.into_iter().map(f).collect::<Result<Vec<_>, _>>()`
 #[inline]
-pub(crate) fn try_vecmap<T, U, E>(
+pub(crate) fn try_mapvec<T, U, E>(
     items: impl IntoIterator<Item = T>, f: impl FnMut(T) -> Result<U, E>,
 ) -> Result<Vec<U>, E> {
     map(items, f)
@@ -25,13 +25,13 @@ pub(crate) fn try_vecmap<T, U, E>(
 
 /// Shorthand for `items.into_iter().map(f).collect::<Option<Vec<_>, _>>()`
 #[inline]
-pub(crate) fn opt_vecmap<T, U>(items: impl IntoIterator<Item = T>, f: impl FnMut(T) -> Option<U>) -> Option<Vec<U>> {
+pub(crate) fn opt_mapvec<T, U>(items: impl IntoIterator<Item = T>, f: impl FnMut(T) -> Option<U>) -> Option<Vec<U>> {
     map(items, f)
 }
 
 /// Shorthand for `items.into_iter().map(f).collect::<BTreeMap<_>>()`
 #[inline]
-pub(crate) fn btree_map<T, K: Ord, V>(
+pub(crate) fn map_btree<T, K: Ord, V>(
     items: impl IntoIterator<Item = T>, f: impl FnMut(T) -> (K, V),
 ) -> BTreeMap<K, V> {
     map(items, f)

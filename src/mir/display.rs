@@ -1,7 +1,7 @@
 use std::fmt::{Display, Formatter, Result};
 
 use crate::{
-    iterator_extensions::vecmap,
+    iterator_extensions::mapvec,
     mir::{self, Block, BlockId, FloatConstant, FunctionId, IntConstant, PrimitiveType, Type, Value},
 };
 
@@ -78,7 +78,7 @@ impl Display for Type {
             Type::Primitive(primitive_type) => primitive_type.fmt(f),
             Type::Tuple(items) => {
                 let mut type_string =
-                    vecmap(items.iter(), |typ| if is_atom(typ) { typ.to_string() } else { format!("({typ})") })
+                    mapvec(items.iter(), |typ| if is_atom(typ) { typ.to_string() } else { format!("({typ})") })
                         .join(", ");
 
                 // Make single-element tuples distinct from other types
@@ -239,5 +239,5 @@ fn fmt_instruction(
 }
 
 fn comma_separated<T: ToString>(items: &[T]) -> String {
-    vecmap(items, ToString::to_string).join(", ")
+    mapvec(items, ToString::to_string).join(", ")
 }

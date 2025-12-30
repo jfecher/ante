@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     incremental::{CodegenLlvm, DbHandle},
-    iterator_extensions::vecmap,
+    iterator_extensions::mapvec,
     lexer::token::{FloatKind, IntegerKind},
     mir::{self, BlockId, FloatConstant, FunctionId, PrimitiveType, TerminatorInstruction},
     vecmap::VecMap,
@@ -92,11 +92,14 @@ impl<'ctx> ModuleContext<'ctx> {
     }
 
     fn codegen_function(&mut self, function: &mir::Function, id: mir::FunctionId) {
+        println!("Working on function {}", function.name);
+
         let function_value = match self.values.get(&mir::Value::Function(id)) {
             Some(existing) => existing.as_any_value_enum().into_function_value(),
             None => {
+                println!("  function exists");
                 let parameter_types =
-                    vecmap(&function.blocks[BlockId::ENTRY_BLOCK].parameter_types, |typ| self.convert_type(typ).into());
+                    mapvec(&function.blocks[BlockId::ENTRY_BLOCK].parameter_types, |typ| self.convert_type(typ).into());
 
                 let return_type = self.convert_type(&self.find_return_type(function));
                 let function_type = return_type.fn_type(&parameter_types, false);
@@ -120,12 +123,17 @@ impl<'ctx> ModuleContext<'ctx> {
         for block in function.topological_sort() {
             self.codegen_block(block, function);
         }
+
+        self.values.clear();
+        self.blocks.clear();
     }
 
     /// Create an empty block for each block in the given function
     fn create_blocks(&mut self, function: &mir::Function, function_value: FunctionValue<'ctx>) {
-        for (block_id, _) in function.blocks.iter() {
+        for (i, (block_id, _)) in function.blocks.iter().enumerate() {
             let block = self.llvm.append_basic_block(function_value, "");
+            println!("iter {i}: pushing {block_id}");
+            println!("  blocks = {:?}", self.blocks);
             self.blocks.push_existing(block_id, block);
         }
     }
@@ -165,7 +173,7 @@ impl<'ctx> ModuleContext<'ctx> {
         match typ {
             mir::Type::Primitive(primitive_type) => self.convert_primitive_type(*primitive_type),
             mir::Type::Tuple(fields) => {
-                let fields = vecmap(fields.iter(), |typ| self.convert_type(typ));
+                let fields = mapvec(fields.iter(), |typ| self.convert_type(typ));
                 let struct_type = self.llvm.struct_type(&fields, false);
                 BasicTypeEnum::StructType(struct_type)
             },
@@ -177,7 +185,7 @@ impl<'ctx> ModuleContext<'ctx> {
 
     fn convert_primitive_type(&self, primitive_type: PrimitiveType) -> BasicTypeEnum<'ctx> {
         match primitive_type {
-            PrimitiveType::Error => unreachable!("Cannot codegen llvm with errors"),
+            PrimitiveType::Error => self.llvm.struct_type(&[], false).into(),//unreachable!("Cannot codegen llvm with errors"),
             PrimitiveType::Unit => self.llvm.struct_type(&[], false).into(),
             PrimitiveType::Bool => self.llvm.bool_type().into(),
             PrimitiveType::Pointer => self.llvm.ptr_type(AddressSpace::default()).into(),
@@ -223,7 +231,7 @@ impl<'ctx> ModuleContext<'ctx> {
         };
 
         let return_type = self.convert_type(&function_type.return_type);
-        let parameters = vecmap(&function_type.parameters, |parameter| self.convert_type(parameter).into());
+        let parameters = mapvec(&function_type.parameters, |parameter| self.convert_type(parameter).into());
         return_type.fn_type(&parameters, false)
     }
 
@@ -279,7 +287,7 @@ impl<'ctx> ModuleContext<'ctx> {
         let result = match &function.instructions[id] {
             mir::Instruction::Call { function, arguments } => {
                 let function = self.lookup_value(*function).as_any_value_enum().into_function_value();
-                let arguments = vecmap(arguments, |arg| self.lookup_value(*arg).into());
+                let arguments = mapvec(arguments, |arg| self.lookup_value(*arg).into());
                 self.builder.build_call(function, &arguments, "").unwrap().try_as_basic_value().unwrap_basic()
             },
             mir::Instruction::IndexTuple { tuple, index } => {
@@ -292,7 +300,7 @@ impl<'ctx> ModuleContext<'ctx> {
                 self.llvm.const_struct(&[string_data, length], false).into()
             },
             mir::Instruction::MakeTuple(fields) => {
-                let fields = vecmap(fields, |field| self.lookup_value(*field));
+                let fields = mapvec(fields, |field| self.lookup_value(*field));
                 self.llvm.const_struct(&fields, false).into()
             },
             mir::Instruction::StackAlloc(value) => {
@@ -341,7 +349,7 @@ impl<'ctx> ModuleContext<'ctx> {
             TerminatorInstruction::Switch { int_value, cases, else_, end: _ } => {
                 let int_value = self.lookup_value(*int_value).into_int_value();
 
-                let cases = vecmap(cases.iter().enumerate(), |(i, (case_block, case_args))| {
+                let cases = mapvec(cases.iter().enumerate(), |(i, (case_block, case_args))| {
                     self.remember_incoming(*case_block, case_args);
                     let case_block = self.blocks[*case_block];
                     let int_value = int_value.get_type().const_int(i as u64, false);

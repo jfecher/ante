@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     diagnostics::Diagnostic,
     incremental::{self, DbHandle, GetItem, Resolve, TypeCheck, TypeCheckSCC},
-    iterator_extensions::vecmap,
+    iterator_extensions::mapvec,
     lexer::token::{FloatKind, IntegerKind},
     name_resolution::{Origin, ResolutionResult, builtin::Builtin},
     parser::{
@@ -19,8 +19,8 @@ use crate::{
         errors::{Locateable, TypeErrorKind},
         fresh_expr::ExtendedTopLevelContext,
         generics::Generic,
-        top_level_types::{GeneralizedType, TopLevelType},
-        types::{Type, TypeBindings, TypeVariableId},
+        top_level_types::{GeneralizedType, TopLevelParameterType, TopLevelType},
+        types::{ParameterType, Type, TypeBindings, TypeVariableId},
     },
 };
 
@@ -32,6 +32,7 @@ pub mod generics;
 mod get_type;
 pub mod patterns;
 pub mod top_level_types;
+mod type_definitions;
 pub mod types;
 
 pub use get_type::get_type_impl;
@@ -44,7 +45,7 @@ pub fn type_check_impl(context: &TypeCheckSCC, compiler: &DbHandle) -> TypeCheck
     let items = TypeChecker::item_contexts(&context.0, compiler);
     let mut checker = TypeChecker::new(&items, compiler);
 
-    let items = vecmap(context.0.iter(), |item_id| {
+    let items = mapvec(context.0.iter(), |item_id| {
         incremental::println(format!("Type checking {item_id:?}"));
         checker.start_item(*item_id);
 
@@ -298,7 +299,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
             Type::Function(function) => {
                 let function = function.clone();
-                let parameters = vecmap(&function.parameters, |param| self.substitute(param, bindings));
+                let parameters = mapvec(&function.parameters, |param| {
+                    let typ = self.substitute(&param.typ, bindings);
+                    ParameterType::new(typ, param.is_implicit)
+                });
                 let return_type = self.substitute(&function.return_type, bindings);
                 let effects = self.substitute(&function.effects, bindings);
                 Type::Function(Arc::new(types::FunctionType { parameters, return_type, effects }))
@@ -306,7 +310,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Type::Application(constructor, args) => {
                 let (constructor, args) = (constructor.clone(), args.clone());
                 let constructor = self.substitute(&constructor, bindings);
-                let args = vecmap(args.iter(), |arg| self.substitute(arg, bindings));
+                let args = mapvec(args.iter(), |arg| self.substitute(arg, bindings));
                 Type::Application(Arc::new(constructor), Arc::new(args))
             },
         }
@@ -322,7 +326,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
             Type::Function(function) => {
                 let function = function.clone();
-                let parameters = vecmap(&function.parameters, |param| self.substitute_generics(param, bindings));
+                let parameters = mapvec(&function.parameters, |param| {
+                    let typ = self.substitute_generics(&param.typ, bindings);
+                    ParameterType::new(typ, param.is_implicit)
+                });
                 let return_type = self.substitute_generics(&function.return_type, bindings);
                 let effects = self.substitute_generics(&function.effects, bindings);
                 Type::Function(Arc::new(types::FunctionType { parameters, return_type, effects }))
@@ -330,7 +337,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Type::Application(constructor, args) => {
                 let (constructor, args) = (constructor.clone(), args.clone());
                 let constructor = self.substitute_generics(&constructor, bindings);
-                let args = vecmap(args.iter(), |arg| self.substitute_generics(arg, bindings));
+                let args = mapvec(args.iter(), |arg| self.substitute_generics(arg, bindings));
                 Type::Application(Arc::new(constructor), Arc::new(args))
             },
         }
@@ -347,13 +354,16 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 panic!("promote_to_top_level_type called with type containing an unbound type variable")
             },
             Type::Function(function_type) => {
-                let parameters = vecmap(&function_type.parameters, |typ| self.promote_to_top_level_type(typ));
+                let parameters = mapvec(&function_type.parameters, |param| {
+                    let typ = self.promote_to_top_level_type(&param.typ);
+                    TopLevelParameterType::new(typ, param.is_implicit)
+                });
                 let return_type = Box::new(self.promote_to_top_level_type(&function_type.return_type));
                 TopLevelType::Function { parameters, return_type }
             },
             Type::Application(constructor, args) => {
                 let constructor = Box::new(self.promote_to_top_level_type(constructor));
-                let args = vecmap(args.iter(), |arg| self.promote_to_top_level_type(arg));
+                let args = mapvec(args.iter(), |arg| self.promote_to_top_level_type(arg));
                 TopLevelType::Application(constructor, args)
             },
         }
@@ -374,7 +384,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 },
                 Type::Function(function) => {
                     for parameter in &function.parameters {
-                        free_vars_helper(this, parameter, free_vars);
+                        free_vars_helper(this, &parameter.typ, free_vars);
                     }
                     free_vars_helper(this, &function.return_type, free_vars);
                     free_vars_helper(this, &function.effects, free_vars);
@@ -446,7 +456,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     return Err(());
                 }
                 for (actual, expected) in actual.parameters.iter().zip(&expected.parameters) {
-                    self.try_unify(actual, expected)?;
+                    // TODO: How does an implicit parameter interact with generics?
+                    self.try_unify(&actual.typ, &expected.typ)?;
                 }
                 self.try_unify(&actual.effects, &expected.effects)?;
                 self.try_unify(&actual.return_type, &expected.return_type)
@@ -500,7 +511,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 }
             },
             Type::Function(function_type) => {
-                function_type.parameters.iter().any(|param| self.occurs(param, variable))
+                function_type.parameters.iter().any(|param| self.occurs(&param.typ, variable))
                     || self.occurs(&function_type.return_type, variable)
                     || self.occurs(&function_type.effects, variable)
             },
@@ -637,7 +648,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 self.convert_origin_to_type(origin, |origin| Type::Generic(Generic::Named(origin)))
             },
             crate::parser::cst::Type::Function(function) => {
-                let parameters = vecmap(&function.parameters, |typ| self.convert_ast_type(typ));
+                let parameters = mapvec(&function.parameters, |param| {
+                    let typ = self.convert_ast_type(&param.typ);
+                    ParameterType::new(typ, param.is_implicit)
+                });
                 let return_type = self.convert_ast_type(&function.return_type);
                 // TODO: Effects
                 let effects = Type::UNIT;
@@ -648,7 +662,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             crate::parser::cst::Type::Pair => Type::PAIR,
             crate::parser::cst::Type::Application(f, args) => {
                 let f = self.convert_ast_type(f);
-                let args = vecmap(args, |typ| self.convert_ast_type(typ));
+                let args = mapvec(args, |typ| self.convert_ast_type(typ));
                 Type::Application(Arc::new(f), Arc::new(args))
             },
             crate::parser::cst::Type::Reference(mutability, sharedness) => {
@@ -695,19 +709,19 @@ impl TopLevelId {
                 let constructor_type = &result.result.generalized[&type_definition.name];
                 let constructor = maybe_apply_type(constructor_type, arguments);
                 let field_types = constructor.function_parameter_types();
-                let fields = vecmap(fields.iter().zip(field_types), |((field_name, _), typ)| {
-                    (item_context.names[*field_name].clone(), typ.clone())
+                let fields = mapvec(fields.iter().zip(field_types), |((field_name, _), typ)| {
+                    (item_context.names[*field_name].clone(), typ)
                 });
 
                 let type_name = item_context.names[type_definition.name].clone();
                 TypeBody::Product { type_name, fields }
             },
             cst::TypeDefinitionBody::Enum(variants) => {
-                let variants = vecmap(variants, |(name, _)| {
+                let variants = mapvec(variants, |(name, _)| {
                     let constructor_type = &result.result.generalized[name];
                     let constructor = maybe_apply_type(constructor_type, arguments);
-                    let fields = constructor.function_parameter_types();
-                    (item_context.names[*name].clone(), fields.to_vec())
+                    let fields = constructor.function_parameter_types().collect();
+                    (item_context.names[*name].clone(), fields)
                 });
                 TypeBody::Sum(variants)
             },
@@ -727,7 +741,7 @@ fn maybe_apply_type(typ: &GeneralizedType, args: Option<&[Type]>) -> Type {
         Some(args) => typ.apply_type(args),
         None => {
             // This should be an error if `!typ.generics.is_empty()`
-            let args = vecmap(&typ.generics, |_| Type::ERROR);
+            let args = mapvec(&typ.generics, |_| Type::ERROR);
             typ.apply_type(&args)
         },
     }
@@ -736,11 +750,12 @@ fn maybe_apply_type(typ: &GeneralizedType, args: Option<&[Type]>) -> Type {
 /// Returns each argument of the given function type.
 /// If the given type is not a function, an empty Vec is returned.
 impl Type {
-    fn function_parameter_types(&self) -> &[Type] {
-        match self {
-            Type::Function(function) => &function.parameters,
+    fn function_parameter_types(&self) -> impl ExactSizeIterator<Item = Type> {
+        let parameters = match self {
+            Type::Function(function) => function.parameters.as_slice(),
             _ => &[],
-        }
+        };
+        parameters.iter().map(|param| param.typ.clone())
     }
 }
 

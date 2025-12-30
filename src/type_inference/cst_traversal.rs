@@ -1,11 +1,9 @@
 use std::{borrow::Cow, collections::BTreeMap, sync::Arc};
 
-use rustc_hash::FxHashMap;
-
 use crate::{
     diagnostics::{Diagnostic, UnimplementedItem},
     incremental::{GetItemRaw, GetType, Resolve},
-    iterator_extensions::vecmap,
+    iterator_extensions::mapvec,
     name_resolution::{Origin, builtin::Builtin},
     parser::{
         cst::{self, Definition, Expr, Literal, Pattern},
@@ -81,11 +79,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         self.unify(&actual, expected, TypeErrorKind::General, locator);
     }
 
-    fn check_name(&mut self, name: NameId, expected: &Type) {
+    pub(super) fn check_name(&mut self, name: NameId, actual: &Type) {
         if let Some(existing) = self.name_types.get(&name) {
-            self.unify(expected, &existing.clone(), TypeErrorKind::General, name);
+            self.unify(actual, &existing.clone(), TypeErrorKind::General, name);
         } else {
-            self.name_types.insert(name, expected.clone());
+            self.name_types.insert(name, actual.clone());
         }
     }
 
@@ -98,7 +96,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
             Pattern::Literal(literal) => self.check_literal(literal, pattern, expected),
             Pattern::Constructor(path, args) => {
-                let parameters = vecmap(args, |_| self.next_type_variable());
+                let parameters = mapvec(args, |_| {
+                    types::ParameterType::explicit(self.next_type_variable())
+                });
 
                 let expected_function_type = if args.is_empty() {
                     expected.clone()
@@ -112,7 +112,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
                 self.check_path(*path, &expected_function_type);
                 for (expected_arg_type, arg) in parameters.into_iter().zip(args) {
-                    self.check_pattern(*arg, &expected_arg_type);
+                    self.check_pattern(*arg, &expected_arg_type.typ);
                 }
             },
             Pattern::TypeAnnotation(inner_pattern, typ) => {
@@ -156,45 +156,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         let result = GetType(id).get(self.compiler);
         self.instantiate(&result)
-    }
-
-    /// Build and returns a constructor type for a sum or product type.
-    ///
-    /// Expects the given sum or product type to be the current context. This cannot be called
-    /// within another definition that merely references the type in question.
-    ///
-    /// `type_name` should be the name of the struct/product type rather than
-    /// the name for each individual variant, in the case of sum types.
-    fn build_constructor_type<'a>(
-        &mut self, type_name: TopLevelName, item: &cst::TypeDefinition, variant_args: &[cst::Type],
-    ) -> Type {
-        let mut substitutions = FxHashMap::default();
-        let mut data_type = Type::UserDefined(Origin::TopLevelDefinition(type_name));
-
-        if !item.generics.is_empty() {
-            let fresh_vars = vecmap(&item.generics, |_| self.next_type_variable());
-            substitutions = Self::datatype_generic_substitutions(item, &fresh_vars);
-
-            data_type = Type::Application(Arc::new(data_type), Arc::new(fresh_vars));
-        }
-
-        // If there are no variant args, the result is not a function.
-        // Returning early here also lets us avoid a dependency on `Resolve(id)` since
-        // we do not need to resolve any types in `item`'s context when the variant has no arguments.
-        if variant_args.len() == 0 {
-            return data_type;
-        }
-
-        let parameters = vecmap(variant_args, |arg| {
-            let mut param = self.convert_ast_type(arg);
-
-            if !substitutions.is_empty() {
-                param = self.substitute_generics(&param, &substitutions);
-            }
-            param
-        });
-
-        Type::Function(Arc::new(types::FunctionType { parameters, return_type: data_type, effects: Type::UNIT }))
     }
 
     /// Issue a NameNotInScope error and return Type::Error
@@ -246,7 +207,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 let b = self.next_type_variable();
                 let pair = Type::Application(Arc::new(Type::PAIR), Arc::new(vec![a.clone(), b.clone()]));
                 Type::Function(Arc::new(types::FunctionType {
-                    parameters: vec![a, b],
+                    parameters: vec![types::ParameterType::explicit(a), types::ParameterType::explicit(b)],
                     return_type: pair,
                     effects: Type::UNIT,
                 }))
@@ -255,7 +216,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     }
 
     fn check_call(&mut self, call: &cst::Call, expected: &Type) {
-        let expected_parameter_types = vecmap(&call.arguments, |_| self.next_type_variable());
+        let expected_parameter_types = mapvec(&call.arguments, |_| {
+            types::ParameterType::explicit(self.next_type_variable())
+        });
 
         let expected_function_type = {
             let parameters = expected_parameter_types.clone();
@@ -266,7 +229,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         self.check_expr(call.function, &expected_function_type);
         for (arg, expected_arg_type) in call.arguments.iter().zip(expected_parameter_types) {
-            self.check_expr(*arg, &expected_arg_type);
+            self.check_expr(*arg, &expected_arg_type.typ);
         }
     }
 
@@ -274,7 +237,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let function_type = match self.follow_type(expected) {
             Type::Function(function_type) => function_type.clone(),
             _ => {
-                let parameters = vecmap(&lambda.parameters, |_| self.next_type_variable());
+                let parameters = mapvec(&lambda.parameters, |_| types::ParameterType::explicit(self.next_type_variable()));
                 let expected_parameter_count = parameters.len();
                 let return_type = self.next_type_variable();
                 let effects = self.next_type_variable();
@@ -289,7 +252,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         assert_eq!(lambda.parameters.len(), function_type.parameters.len());
 
         for (parameter, expected_type) in lambda.parameters.iter().zip(function_type.parameters.iter()) {
-            self.check_pattern(parameter.pattern, expected_type);
+            self.check_pattern(parameter.pattern, &expected_type.typ);
         }
 
         // Required in case `function_type` has fewer parameters, to ensure we check all of `lambda.parameters`
@@ -311,7 +274,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     /// Check a function's parameter count using the given parameter types as the expected count.
     /// Issues an error if the expected count does not match the actual count.
-    fn check_function_parameter_count(&mut self, parameters: &Vec<Type>, actual_count: usize, expr: ExprId) {
+    fn check_function_parameter_count(&mut self, parameters: &Vec<types::ParameterType>, actual_count: usize, expr: ExprId) {
         if actual_count != parameters.len() {
             self.compiler.accumulate(Diagnostic::FunctionArgCountMismatch {
                 actual: actual_count,
@@ -461,35 +424,5 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     pub(super) fn check_comptime(&self, _comptime: &cst::Comptime) {
         let location = self.current_context().location.clone();
         UnimplementedItem::Comptime.issue(self.compiler, location);
-    }
-
-    /// A type definition always returns a unit value, but we must still create the
-    /// types of the type constructors
-    pub(super) fn check_type_definition(&mut self, definition: &cst::TypeDefinition) {
-        let id = self.current_item.unwrap();
-
-        let constructors = match &definition.body {
-            cst::TypeDefinitionBody::Error => Cow::Owned(Vec::new()),
-            cst::TypeDefinitionBody::Alias(_) => {
-                let location = id.locate(self);
-                UnimplementedItem::TypeAlias.issue(self.compiler, location);
-                return;
-            },
-            cst::TypeDefinitionBody::Struct(fields) => {
-                let fields = vecmap(fields, |(_, field_type)| field_type.clone());
-                Cow::Owned(vec![(definition.name, fields)])
-            },
-            cst::TypeDefinitionBody::Enum(variants) => Cow::Borrowed(variants),
-        };
-
-        let type_name = TopLevelName::new(id, definition.name);
-
-        for (constructor_name, args) in constructors.iter() {
-            let actual = self.build_constructor_type(type_name, definition, args);
-
-            let constructor_name = TopLevelName::new(id, *constructor_name);
-            let expected = self.item_types[&constructor_name].clone();
-            self.unify(&actual, &expected, TypeErrorKind::General, constructor_name.local_name_id);
-        }
     }
 }

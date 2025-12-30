@@ -5,7 +5,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-#[derive(PartialEq, Eq, Hash, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct VecMap<K, V> {
     items: Vec<V>,
     id: PhantomData<K>,
@@ -58,6 +58,11 @@ impl<K, V> VecMap<K, V> {
 
     pub fn values(&self) -> impl ExactSizeIterator<Item = &V> {
         self.items.iter()
+    }
+
+    /// Clears the map, invalidating any existing ids.
+    pub(crate) fn clear(&mut self) {
+        self.items.clear();
     }
 }
 

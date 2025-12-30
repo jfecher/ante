@@ -37,9 +37,29 @@ pub enum Type {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct FunctionType {
-    pub parameters: Vec<Type>,
+    pub parameters: Vec<ParameterType>,
     pub return_type: Type,
     pub effects: Type,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct ParameterType {
+    pub is_implicit: bool,
+    pub typ: Type,
+}
+
+impl ParameterType {
+    pub fn new(typ: Type, is_implicit: bool) -> ParameterType {
+        ParameterType { typ, is_implicit }
+    }
+
+    pub fn explicit(typ: Type) -> ParameterType {
+        ParameterType { typ, is_implicit: false }
+    }
+
+    pub fn implicit(typ: Type) -> ParameterType {
+        ParameterType { typ, is_implicit: true }
+    }
 }
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -223,7 +243,13 @@ where
                 write!(f, "fn")?;
                 for parameter in &function.parameters {
                     write!(f, " ")?;
-                    self.fmt_type(parameter, true, f)?;
+                    if parameter.is_implicit {
+                        write!(f, "{{")?;
+                        self.fmt_type(&parameter.typ, false, f)?;
+                        write!(f, "}}")?;
+                    } else {
+                        self.fmt_type(&parameter.typ, true, f)?;
+                    }
                 }
                 write!(f, " -> ")?;
                 self.fmt_type(&function.return_type, false, f)?;

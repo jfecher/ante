@@ -13,7 +13,7 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     incremental::{GetItem, TypeCheck},
-    iterator_extensions::vecmap,
+    iterator_extensions::mapvec,
     lexer::token::{FloatKind, IntegerKind},
     mir::{
         Block, BlockId, FloatConstant, Function, FunctionId, Instruction, IntConstant, Mir, TerminatorInstruction,
@@ -28,7 +28,7 @@ use crate::{
         dependency_graph::TypeCheckResult,
         fresh_expr::ExtendedTopLevelContext,
         patterns::{Case, Constructor, DecisionTree},
-        top_level_types::TopLevelType,
+        top_level_types::{TopLevelParameterType, TopLevelType},
     },
 };
 
@@ -264,7 +264,7 @@ where
 
     fn call(&mut self, call: &cst::Call, id: ExprId) -> Value {
         let function = self.expression(call.function);
-        let arguments = vecmap(&call.arguments, |expr| self.expression(*expr));
+        let arguments = mapvec(&call.arguments, |expr| self.expression(*expr));
         let result_type = self.expr_type(id);
         self.push_instruction(Instruction::Call { function, arguments }, result_type)
     }
@@ -397,7 +397,7 @@ where
         let int_value = self.extract_tag_value(value_being_matched);
         let start = self.current_block;
 
-        let case_blocks = vecmap(&cases, |_| (self.push_block_no_params(), None));
+        let case_blocks = mapvec(&cases, |_| (self.push_block_no_params(), None));
         let mut else_block = None;
 
         let result_type = self.expr_type(match_expr);
@@ -499,15 +499,15 @@ where
     fn constructor(&mut self, constructor: &cst::Constructor, expr: ExprId) -> Value {
         // Side-effects are executed in source order but the type must
         // be packed in declaration order. So re-order fields afterward.
-        let mut fields = vecmap(&constructor.fields, |(name, field)| (*name, self.expression(*field)));
+        let mut fields = mapvec(&constructor.fields, |(name, field)| (*name, self.expression(*field)));
 
         // We must be careful here so that we can still produce MIR even if type-checking failed
         let no_order = BTreeMap::new();
         let field_order = self.context().constructor_field_order(expr).unwrap_or(&no_order);
         fields.sort_unstable_by_key(|(name, _)| field_order.get(name).unwrap_or(&0));
 
-        let fields = vecmap(fields, |(_name, value)| value);
-        let tuple_type = Type::Tuple(Arc::new(vecmap(&fields, |value| self.type_of_value(*value))));
+        let fields = mapvec(fields, |(_name, value)| value);
+        let tuple_type = Type::Tuple(Arc::new(mapvec(&fields, |value| self.type_of_value(*value))));
 
         self.push_instruction(Instruction::MakeTuple(fields), tuple_type)
     }
@@ -559,18 +559,19 @@ where
             if let TopLevelType::Function { parameters, .. } = &constructor_type.typ {
                 self.define_type_constructor(constructor_name, parameters)
             } else {
-                todo!("Non-function type constructors")
+                println!("{_type_definition:?}");
+                todo!("Non-function type constructors: {constructor_name}: {constructor_type}")
             }
         }
     }
 
-    fn define_type_constructor(&mut self, name: Name, parameter_types: &[TopLevelType]) {
+    fn define_type_constructor(&mut self, name: Name, parameter_types: &[TopLevelParameterType]) {
         self.new_function(name, |this| {
             let (fields, field_types) = parameter_types
                 .iter()
                 .enumerate()
                 .map(|(i, field_type)| {
-                    let field_type = this.convert_top_level_type(field_type, None);
+                    let field_type = this.convert_top_level_type(&field_type.typ, None);
                     this.push_parameter(field_type.clone());
                     (Value::Parameter(BlockId::ENTRY_BLOCK, i as u32), field_type)
                 })

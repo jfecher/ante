@@ -5,7 +5,7 @@ use crate::{
         context::TopLevelContext,
         cst::{Definition, Expr, Pattern, TopLevelItemKind},
     },
-    type_inference::top_level_types::{GeneralizedType, TopLevelType},
+    type_inference::top_level_types::{GeneralizedType, TopLevelParameterType, TopLevelType},
 };
 
 /// Get the type of the name defined by this TopLevelId.
@@ -71,7 +71,10 @@ pub(super) fn try_get_type(
             .parameters
             .iter()
             .map(|parameter| match &context.patterns[parameter.pattern] {
-                Pattern::TypeAnnotation(_, typ) => Some(TopLevelType::from_ast_type(typ, resolve)),
+                Pattern::TypeAnnotation(_, typ) => {
+                    let typ = TopLevelType::from_ast_type(typ, resolve);
+                    Some(TopLevelParameterType::new(typ, parameter.is_implicit))
+                }
                 _ => None,
             })
             .collect::<Option<Vec<_>>>()?;

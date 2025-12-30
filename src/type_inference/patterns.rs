@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     diagnostics::{Diagnostic, Location, UnimplementedItem},
     incremental::{GetItem, GetItemRaw},
-    iterator_extensions::{btree_map, join_arc_str, opt_vecmap, try_vecmap, vecmap},
+    iterator_extensions::{map_btree, join_arc_str, opt_mapvec, try_mapvec, mapvec},
     name_resolution::Origin,
     parser::{
         cst::{self, Literal, Name, Path, TopLevelItem},
@@ -161,7 +161,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     pub(super) fn compile_decision_tree(
         &mut self, variable_to_match: PathId, rules: &[(PatternId, ExprId)], pattern_type: Type, location: Location,
     ) -> Option<DecisionTree> {
-        let rows = opt_vecmap(rules, |(pattern, branch)| {
+        let rows = opt_mapvec(rules, |(pattern, branch)| {
             let pattern_location = self.current_context().pattern_locations[*pattern].clone();
             let pattern = self.convert_pattern(*pattern)?;
             let columns = vec![Column::new(variable_to_match, pattern)];
@@ -194,7 +194,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
             cst::Pattern::Constructor(path_id, arguments) => {
                 let constructor = self.path_to_constructor(*path_id)?;
-                let arguments = opt_vecmap(arguments, |argument| self.convert_pattern(*argument))?;
+                let arguments = opt_mapvec(arguments, |argument| self.convert_pattern(*argument))?;
                 Pattern::Constructor(constructor, arguments)
             },
             cst::Pattern::TypeAnnotation(pattern, _) => return self.convert_pattern(*pattern),
@@ -282,7 +282,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     ) {
         // We don't need the desugaring [GetItem] provides since we don't need the item itself, only the context
         let item_context = GetItemRaw(item.id).get(self.compiler).1;
-        let constructor_names = vecmap(variants.iter().take(2), |(name, _)| item_context.names[*name].clone());
+        let constructor_names = mapvec(variants.iter().take(2), |(name, _)| item_context.names[*name].clone());
 
         let type_name = item_context.names[type_name].clone();
 
@@ -447,7 +447,7 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
     ) -> Result<DecisionTree, Diagnostic> {
         match self.classify_type_origin(origin, generics) {
             Some(UserDefinedTypeKind::Sum(variants)) => {
-                let cases = vecmap(variants.iter().enumerate(), |(idx, (_name, args))| {
+                let cases = mapvec(variants.iter().enumerate(), |(idx, (_name, args))| {
                     let constructor = Constructor::Variant(typ.clone(), idx);
                     let args = self.fresh_match_variables(args, location.clone());
                     (constructor, args, Vec::new())
@@ -479,7 +479,7 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
     }
 
     fn fresh_match_variables(&mut self, variable_types: &[Type], location: Location) -> Vec<PathId> {
-        vecmap(variable_types, |typ| self.checker.fresh_match_variable(typ.clone(), location.clone()).0)
+        mapvec(variable_types, |typ| self.checker.fresh_match_variable(typ.clone(), location.clone()).0)
     }
 
     /// Compiles the cases and fallback cases for integer and range patterns.
@@ -523,7 +523,7 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
             }
         }
 
-        let cases = try_vecmap(raw_cases, |(cons, vars, rows)| {
+        let cases = try_mapvec(raw_cases, |(cons, vars, rows)| {
             let rows = self.compile_rows(rows)?;
             Ok::<_, Diagnostic>(Case::new(cons, vars, rows))
         })?;
@@ -578,7 +578,7 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
             }
         }
 
-        let cases = try_vecmap(cases, |(cons, vars, rows)| {
+        let cases = try_mapvec(cases, |(cons, vars, rows)| {
             let rows = self.compile_rows(rows)?;
             Ok::<_, Diagnostic>(Case::new(cons, vars, rows))
         })?;
@@ -724,7 +724,7 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
             DecisionTree::Switch(variable, cases, else_case) => {
                 for case in cases {
                     let name = self.constructor_string(&case.constructor);
-                    env.insert(*variable, (name, vecmap(case.arguments.iter().copied(), Some)));
+                    env.insert(*variable, (name, mapvec(case.arguments.iter().copied(), Some)));
                     self.find_missing_values(&case.body, env, missing_cases, starting_id, location);
                 }
 
@@ -752,13 +752,13 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
         }
 
         let all_constructors = self.all_constructors(&first.constructor, location);
-        let mut all_constructors = btree_map(all_constructors, |(constructor, arg_count)| (constructor, arg_count));
+        let mut all_constructors = map_btree(all_constructors, |(constructor, arg_count)| (constructor, arg_count));
 
         for case in cases {
             all_constructors.remove(&case.constructor);
         }
 
-        vecmap(all_constructors, |(constructor, arg_count)| {
+        mapvec(all_constructors, |(constructor, arg_count)| {
             let args = vec![None; arg_count];
             (self.constructor_string(&constructor), args)
         })
@@ -790,7 +790,7 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
             }
         }
 
-        vecmap(missing_cases, |range| {
+        mapvec(missing_cases, |range| {
             let name = if range.start() == range.end() {
                 format!("{}", range.start())
             } else {
@@ -812,7 +812,7 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
             return Arc::new(WILDCARD_PATTERN.to_string());
         };
 
-        let args = vecmap(arguments, |arg| Self::construct_missing_case(*arg, env));
+        let args = mapvec(arguments, |arg| Self::construct_missing_case(*arg, env));
 
         if args.is_empty() {
             constructor.clone()
@@ -870,7 +870,7 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
                     vec![(Constructor::Variant(typ.clone(), 0), fields.len())]
                 },
                 Some(UserDefinedTypeKind::Sum(variants)) => {
-                    vecmap(variants.into_iter().enumerate(), |(i, (_, fields))| {
+                    mapvec(variants.into_iter().enumerate(), |(i, (_, fields))| {
                         (Constructor::Variant(typ.clone(), i), fields.len())
                     })
                 },
@@ -916,7 +916,7 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
             Origin::TopLevelDefinition(top_level_name) => {
                 match top_level_name.top_level_item.type_body(Some(arguments), self.checker.compiler) {
                     TypeBody::Product { type_name: _, fields } => {
-                        let fields = vecmap(fields, |(_name, typ)| typ);
+                        let fields = mapvec(fields, |(_name, typ)| typ);
                         Some(UserDefinedTypeKind::Product(fields))
                     },
                     TypeBody::Sum(variants) => Some(UserDefinedTypeKind::Sum(variants)),

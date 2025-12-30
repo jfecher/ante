@@ -595,7 +595,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             Type::Variable(name) => self.resolve_variable(*name, declare_type_vars),
             Type::Function(function) => {
                 for parameter in &function.parameters {
-                    self.resolve_type(parameter, declare_type_vars);
+                    self.resolve_type(&parameter.typ, declare_type_vars);
                 }
                 self.resolve_type(&function.return_type, declare_type_vars);
 

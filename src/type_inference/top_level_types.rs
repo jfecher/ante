@@ -3,12 +3,12 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    iterator_extensions::vecmap,
+    iterator_extensions::mapvec,
     name_resolution::{Origin, ResolutionResult, builtin::Builtin},
     parser::cst,
     type_inference::{
         generics::Generic,
-        types::{FunctionType, GenericSubstitutions, PrimitiveType, Type},
+        types::{FunctionType, GenericSubstitutions, ParameterType, PrimitiveType, Type},
     },
 };
 
@@ -22,7 +22,7 @@ pub enum TopLevelType {
     /// A user-supplied generic type. We don't want to bind over these like we do with type variables.
     Generic(Generic),
     Function {
-        parameters: Vec<TopLevelType>,
+        parameters: Vec<TopLevelParameterType>,
         return_type: Box<TopLevelType>,
     },
     Application(Box<TopLevelType>, Vec<TopLevelType>),
@@ -57,13 +57,16 @@ impl TopLevelType {
             cst::Type::Float(kind) => TopLevelType::Primitive(PrimitiveType::Float(*kind)),
             cst::Type::Function(function_type) => {
                 // TODO: Effects
-                let parameters = vecmap(&function_type.parameters, |typ| Self::from_ast_type(typ, resolve));
+                let parameters = mapvec(&function_type.parameters, |param| {
+                    let typ = Self::from_ast_type(&param.typ, resolve);
+                    TopLevelParameterType::new(typ, param.is_implicit)
+                });
                 let return_type = Box::new(Self::from_ast_type(&function_type.return_type, resolve));
                 Self::Function { parameters, return_type }
             },
             cst::Type::Application(constructor, args) => {
                 let constructor = Box::new(Self::from_ast_type(constructor, resolve));
-                let args = vecmap(args, |arg| Self::from_ast_type(arg, resolve));
+                let args = mapvec(args, |arg| Self::from_ast_type(arg, resolve));
                 Self::Application(constructor, args)
             },
             cst::Type::Reference(mutability, sharedness) => {
@@ -107,7 +110,7 @@ impl TopLevelType {
                     }
                 },
                 TopLevelType::Function { parameters, return_type } => {
-                    parameters.iter().for_each(|typ| find_generics_helper(typ, generics));
+                    parameters.iter().for_each(|typ| find_generics_helper(&typ.typ, generics));
                     find_generics_helper(return_type, generics);
                 },
                 TopLevelType::Application(constructor, args) => {
@@ -130,14 +133,16 @@ impl TopLevelType {
             TopLevelType::UserDefined(origin) => Type::UserDefined(*origin),
             TopLevelType::Function { parameters, return_type } => {
                 Type::Function(Arc::new(FunctionType {
-                    parameters: vecmap(parameters, Self::as_type),
+                    parameters: mapvec(parameters, |param| {
+                        ParameterType::new(param.typ.as_type(), param.is_implicit)
+                    }),
                     return_type: return_type.as_type(),
                     effects: Type::UNIT, // TODO: Effects
                 }))
             },
             TopLevelType::Application(constructor, args) => {
                 let constructor = Arc::new(constructor.as_type());
-                let args = Arc::new(vecmap(args, Self::as_type));
+                let args = Arc::new(mapvec(args, Self::as_type));
                 Type::Application(constructor, args)
             },
         }
@@ -152,14 +157,17 @@ impl TopLevelType {
             },
             TopLevelType::Function { parameters, return_type } => {
                 Type::Function(Arc::new(FunctionType {
-                    parameters: vecmap(parameters, |typ| typ.substitute(substitutions)),
+                    parameters: mapvec(parameters, |param| {
+                        let typ = param.typ.substitute(substitutions);
+                        ParameterType::new(typ, param.is_implicit)
+                    }),
                     return_type: return_type.substitute(substitutions),
                     effects: Type::UNIT, // TODO: Effects
                 }))
             },
             TopLevelType::Application(constructor, args) => {
                 let constructor = constructor.substitute(substitutions);
-                let args = vecmap(args, |arg| arg.substitute(substitutions));
+                let args = mapvec(args, |arg| arg.substitute(substitutions));
                 Type::Application(Arc::new(constructor), Arc::new(args))
             },
         }
@@ -168,6 +176,18 @@ impl TopLevelType {
     /// Convert this into a GeneralizedType
     pub fn generalize(self) -> GeneralizedType {
         GeneralizedType::from_top_level_type(self)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TopLevelParameterType {
+    pub is_implicit: bool,
+    pub typ: TopLevelType,
+}
+
+impl TopLevelParameterType {
+    pub(crate) fn new(typ: TopLevelType, is_implicit: bool) -> TopLevelParameterType {
+        TopLevelParameterType { typ, is_implicit }
     }
 }
 
@@ -221,8 +241,10 @@ impl std::fmt::Display for GeneralizedType {
 
 impl std::fmt::Display for TopLevelType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let should_parenthesize = |t: &TopLevelType| matches!(t, TopLevelType::Primitive(_) | TopLevelType::Generic(_) | TopLevelType::UserDefined(_));
+
         let display = |t: &TopLevelType, f: &mut std::fmt::Formatter| {
-            if matches!(t, TopLevelType::Primitive(_) | TopLevelType::Generic(_) | TopLevelType::UserDefined(_)) {
+            if should_parenthesize(t) {
                 write!(f, "{t}")
             } else {
                 write!(f, "({t})")
@@ -236,7 +258,13 @@ impl std::fmt::Display for TopLevelType {
                 write!(f, "fn")?;
                 for parameter in parameters {
                     write!(f, " ")?;
-                    display(parameter, f)?;
+                    if parameter.is_implicit {
+                        write!(f, "{{{}}}", parameter.typ)?;
+                    } else if should_parenthesize(&parameter.typ) {
+                        write!(f, "({})", parameter.typ)?;
+                    } else {
+                        write!(f, "{}", parameter.typ)?;
+                    }
                 }
                 write!(f, " -> ")?;
                 display(return_type, f)

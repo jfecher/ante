@@ -556,7 +556,23 @@ impl<'a> CstDisplay<'a> {
         &self, function_type: &FunctionType, context: &TopLevelContext, f: &mut Formatter,
     ) -> std::fmt::Result {
         write!(f, "fn")?;
-        self.fmt_type_args(&function_type.parameters, context, f)?;
+
+        let requires_parens = |typ: &Type| matches!(typ, Type::Function(_) | Type::Application(..));
+        for parameter in &function_type.parameters {
+            write!(f, " ")?;
+            if parameter.is_implicit {
+                write!(f, "{{")?;
+                self.fmt_type(&parameter.typ, context, f)?;
+                write!(f, "}}")?;
+            } else if requires_parens(&parameter.typ) {
+                write!(f, "(")?;
+                self.fmt_type(&parameter.typ, context, f)?;
+                write!(f, ")")?;
+            } else {
+                self.fmt_type(&parameter.typ, context, f)?;
+            }
+        }
+
         write!(f, " -> ")?;
         self.fmt_type(&function_type.return_type, context, f)?;
         self.fmt_effect_clause(&function_type.effects, context, f)
@@ -1035,7 +1051,7 @@ impl<'a> CstDisplay<'a> {
     ) -> std::fmt::Result {
         for parameter in parameters {
             write!(f, " ")?;
-            if parameter.implicit {
+            if parameter.is_implicit {
                 write!(f, "{{")?;
                 self.fmt_pattern(parameter.pattern, context, f)?;
                 write!(f, "}}")?;

@@ -86,13 +86,33 @@ impl ErrorDefault for Type {
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
 pub struct FunctionType {
-    pub parameters: Vec<Type>,
+    pub parameters: Vec<ParameterType>,
     pub return_type: Box<Type>,
 
     /// Any effects that were specified on this function.
     /// - `None` means none were specified
     /// - `Some(Vec::new())` means it was specified to be `pure`
     pub effects: Option<Vec<EffectType>>,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
+pub struct ParameterType {
+    pub is_implicit: bool,
+    pub typ: Type,
+}
+
+impl ParameterType {
+    pub fn new(typ: Type, is_implicit: bool) -> ParameterType {
+        ParameterType { typ, is_implicit }
+    }
+
+    pub fn explicit(typ: Type) -> ParameterType {
+        Self::new(typ, false)
+    }
+
+    pub fn implicit(typ: Type) -> ParameterType {
+        Self::new(typ, true)
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
@@ -251,7 +271,7 @@ pub struct Lambda {
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct Parameter {
-    pub implicit: bool,
+    pub is_implicit: bool,
     pub pattern: PatternId,
 }
 

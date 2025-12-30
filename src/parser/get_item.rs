@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::{
     incremental::{DbHandle, GetItem, GetItemRaw},
-    iterator_extensions::vecmap,
+    iterator_extensions::mapvec,
     parser::{
         context::TopLevelContext,
         cst::{
@@ -92,7 +92,7 @@ fn desugar_impl(impl_: &TraitImpl, context: &mut TopLevelContext) -> TopLevelIte
 /// ```
 fn desugar_trait(trait_: &TraitDefinition) -> TopLevelItemKind {
     // TODO: handle trait_.functional_dependencies
-    let fields = vecmap(&trait_.body, |decl| (decl.name, decl.typ.clone()));
+    let fields = mapvec(&trait_.body, |decl| (decl.name, decl.typ.clone()));
 
     TopLevelItemKind::TypeDefinition(super::cst::TypeDefinition {
         shared: false,

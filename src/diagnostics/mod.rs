@@ -3,7 +3,7 @@ use std::{cmp::Ordering, collections::BTreeSet, path::PathBuf, sync::Arc};
 use colored::{ColoredString, Colorize};
 use serde::{Deserialize, Serialize};
 
-use crate::{incremental::Db, iterator_extensions::vecmap, lexer::token::Token, type_inference::errors::TypeErrorKind};
+use crate::{incremental::Db, iterator_extensions::mapvec, lexer::token::Token, type_inference::errors::TypeErrorKind};
 
 mod location;
 mod unimplemented_item;
@@ -245,7 +245,7 @@ impl Diagnostic {
                 format!("This case is already matched by prior patterns")
             },
             Diagnostic::MissingCases { cases, location: _ } => {
-                let cases_string = vecmap(cases.iter().take(5), |case| case.blue().to_string()).join(", ");
+                let cases_string = mapvec(cases.iter().take(5), |case| case.blue().to_string()).join(", ");
 
                 if cases.len() == 1 {
                     format!("Missing case: {cases_string}")

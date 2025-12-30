@@ -8,10 +8,10 @@ use serde::{Deserialize, Serialize};
 use crate::{
     diagnostics::{Diagnostic, ErrorDefault, Location, Span},
     incremental,
-    iterator_extensions::vecmap,
+    iterator_extensions::mapvec,
     lexer::{Lexer, token::Token},
     name_resolution::namespace::SourceFileId,
-    parser::{context::TopLevelContext, cst::HandlePattern},
+    parser::{context::TopLevelContext, cst::{HandlePattern, ParameterType}},
 };
 
 use self::cst::{
@@ -795,9 +795,9 @@ impl<'tokens> Parser<'tokens> {
     fn parse_function_type(&mut self) -> Result<Type> {
         self.expect(Token::Fn, "`fn` to start this function type")?;
 
-        let mut parameters = self.many0(Self::parse_type_arg);
+        let mut parameters = self.many0(Self::parse_parameter_type);
         if parameters.is_empty() {
-            parameters.push(Type::Unit);
+            parameters.push(ParameterType::explicit(Type::Unit));
         }
 
         // Temporarily allow the closure arrow as well
@@ -884,6 +884,23 @@ impl<'tokens> Parser<'tokens> {
         let args = self.many0(Self::parse_type_arg);
 
         if args.is_empty() { Ok(typ) } else { Ok(Type::Application(Box::new(typ), args)) }
+    }
+
+    // Parse a type in a function parameter position. e.g. `a` in `fn a b c -> d`.
+    // Compared to `parse_type_arg`, this version allows implicit parameters.
+    // This means we only support implicit parameters on function types currently.
+    // Implicit parameters on arbitrary types like `Foo {a} b c` are not supported.
+    fn parse_parameter_type(&mut self) -> Result<ParameterType> {
+        match self.current_token() {
+            Token::BraceLeft => {
+                self.advance();
+                let too_far = &[Token::Newline, Token::Indent, Token::Unindent];
+                let typ = self.parse_with_recovery(Self::parse_type, Token::BraceRight, too_far)?;
+                self.expect(Token::BraceRight, "a `}` to close the opening `{` from the implicit parameter type")?;
+                Ok(ParameterType::implicit(typ))
+            }
+            _ => Ok(ParameterType::explicit(self.parse_type_arg()?)),
+        }
     }
 
     // Parse a type in a function argument position. e.g. `a` in `Foo a b c`
@@ -1025,7 +1042,7 @@ impl<'tokens> Parser<'tokens> {
             (false, self.parse_function_parameter_pattern()?)
         };
 
-        Ok(Parameter { implicit, pattern })
+        Ok(Parameter { is_implicit: implicit, pattern })
     }
 
     fn parse_pattern(&mut self) -> Result<PatternId> {
@@ -1833,7 +1850,7 @@ impl<'tokens> Parser<'tokens> {
         self.expect(Token::With, "`with` to separate this trait impl's signature from its body")?;
 
         let body =
-            vecmap(self.parse_impl_body()?, |definition| match &self.current_context.patterns[definition.pattern] {
+            mapvec(self.parse_impl_body()?, |definition| match &self.current_context.patterns[definition.pattern] {
                 Pattern::Variable(name) => (*name, definition.rhs),
                 _ => {
                     let location = self.current_context.pattern_locations[definition.pattern].clone();

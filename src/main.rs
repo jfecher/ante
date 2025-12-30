@@ -189,8 +189,8 @@ fn display_type_checking(compiler: &Db, show_types: bool) -> BTreeSet<Diagnostic
         let parse = Parse(*file).get(compiler);
 
         for item in &parse.cst.top_level_items {
-            let resolve_diagnostics: BTreeSet<_> = compiler.get_accumulated(TypeCheck(item.id));
-            diagnostics.extend(resolve_diagnostics);
+            let more_diagnostics: BTreeSet<_> = compiler.get_accumulated(TypeCheck(item.id));
+            diagnostics.extend(more_diagnostics);
         }
 
         if show_types {
@@ -215,8 +215,8 @@ fn display_mir(compiler: &Db) -> BTreeSet<Diagnostic> {
                     println!("{function}\n");
                 }
             }
-            let resolve_diagnostics: BTreeSet<_> = compiler.get_accumulated(TypeCheck(item.id));
-            diagnostics.extend(resolve_diagnostics);
+            let more_diagnostics: BTreeSet<_> = compiler.get_accumulated(TypeCheck(item.id));
+            diagnostics.extend(more_diagnostics);
         }
     }
     diagnostics
@@ -233,13 +233,23 @@ fn llvm_codegen(compiler: &Db) -> BTreeSet<Diagnostic> {
             let parse = Parse(*file).get(compiler);
 
             for item in &parse.cst.top_level_items {
-                let llvm_result = CodegenLlvm(item.id).get(compiler);
+                let more_diagnostics: BTreeSet<_> = compiler.get_accumulated(CodegenLlvm(item.id));
+                let error_count = classify_diagnostics(&more_diagnostics).0;
 
-                if let Some(llvm) = &llvm_result.module_string {
-                    println!("{llvm}");
+                // We can't codegen if there were errors
+                // TODO: We should have this check be inside the CodegenLlvm pass itself but we
+                // can't call get_accumulated with only a `DbHandle`. If this limitation in
+                // inc-complete can't be fixed then we'd need to add a `has_errors: bool` field
+                // onto most compiler passes.
+                if error_count == 0 {
+                    let llvm_result = CodegenLlvm(item.id).get(compiler);
+
+                    if let Some(llvm) = &llvm_result.module_string {
+                        println!("{llvm}");
+                    }
                 }
-                let resolve_diagnostics: BTreeSet<_> = compiler.get_accumulated(CodegenLlvm(item.id));
-                diagnostics.extend(resolve_diagnostics);
+
+                diagnostics.extend(more_diagnostics);
             }
         }
     }
