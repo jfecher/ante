@@ -129,7 +129,7 @@ impl<'ctx> ModuleContext<'ctx> {
 
     /// Create an empty block for each block in the given function
     fn create_blocks(&mut self, function: &mir::Function, function_value: FunctionValue<'ctx>) {
-        for (i, (block_id, _)) in function.blocks.iter().enumerate() {
+        for (block_id, _) in function.blocks.iter() {
             let block = self.llvm.append_basic_block(function_value, "");
             self.blocks.push_existing(block_id, block);
         }

@@ -11,7 +11,10 @@ use crate::{
     iterator_extensions::mapvec,
     lexer::{Lexer, token::Token},
     name_resolution::namespace::SourceFileId,
-    parser::{context::TopLevelContext, cst::{HandlePattern, ParameterType}},
+    parser::{
+        context::TopLevelContext,
+        cst::{HandlePattern, ParameterType},
+    },
 };
 
 use self::cst::{
@@ -898,7 +901,7 @@ impl<'tokens> Parser<'tokens> {
                 let typ = self.parse_with_recovery(Self::parse_type, Token::BraceRight, too_far)?;
                 self.expect(Token::BraceRight, "a `}` to close the opening `{` from the implicit parameter type")?;
                 Ok(ParameterType::implicit(typ))
-            }
+            },
             _ => Ok(ParameterType::explicit(self.parse_type_arg()?)),
         }
     }
@@ -1028,14 +1031,11 @@ impl<'tokens> Parser<'tokens> {
         self.many0(Self::parse_function_parameter)
     }
 
-    /// function_parameter: '{' pattern '}'
+    /// function_parameter: implicit_function_parameter
     ///                   | function_parameter_pattern
     fn parse_function_parameter(&mut self) -> Result<Parameter> {
         let (implicit, pattern) = if *self.current_token() == Token::BraceLeft {
-            self.advance();
-            let pattern = self.with_pattern_id_and_location(|this| {
-                this.parse_with_recovery(Self::parse_pattern_inner, Token::BraceRight, &[Token::Newline, Token::Equal])
-            })?;
+            let pattern = self.parse_implicit_function_parameter()?;
             self.expect(Token::BraceRight, "a `}` to close the opening `{` from the implicit parameter")?;
             (true, pattern)
         } else {
@@ -1043,6 +1043,34 @@ impl<'tokens> Parser<'tokens> {
         };
 
         Ok(Parameter { is_implicit: implicit, pattern })
+    }
+
+    /// implicit_function_parameter: '{' type '}'
+    ///                            | '{' pattern ':' type '}'
+    fn parse_implicit_function_parameter(&mut self) -> Result<PatternId> {
+        self.expect(Token::BraceLeft, "parse_implicit_function_parameter")?;
+
+        self.or(
+            |this| {
+                let typ = this.parse_type()?;
+                this.expect(Token::BraceRight, "a `}` to close the opening `{` from the implicit parameter")?;
+                // Need to expand the type into a parameter with a fake name.
+                // We'll expand to: `_: typ`
+                this.with_pattern_id_and_location(|this| {
+                    let no_name = this.with_pattern_id_and_location(|this| {
+                        let location = this.current_token_location();
+                        let name_id = this.push_name(Arc::new("_".to_string()), location);
+                        Ok(Pattern::Variable(name_id))
+                    })?;
+                    Ok(Pattern::TypeAnnotation(no_name, typ))
+                })
+            },
+            |this| {
+                let pattern = this.parse_function_parameter_pattern()?;
+                this.expect(Token::BraceRight, "a `}` to close the opening `{` from the implicit parameter")?;
+                Ok(pattern)
+            },
+        )
     }
 
     fn parse_pattern(&mut self) -> Result<PatternId> {
@@ -1497,6 +1525,16 @@ impl<'tokens> Parser<'tokens> {
             self.diagnostics.truncate(diagnostic_count);
         }
         result
+    }
+
+    /// Try the first parser and return it if it succeeds. Otherwise, parse with the second parser.
+    ///
+    /// If the first parser parses part of the input successfully, the input (and errors) will be
+    /// restored to the starting state before running the second parser.
+    fn or<T>(
+        &mut self, parser1: impl FnOnce(&mut Self) -> Result<T>, parser2: impl FnOnce(&mut Self) -> Result<T>,
+    ) -> Result<T> {
+        self.try_(parser1).or_else(|_| parser2(self))
     }
 
     fn parse_statement(&mut self) -> Result<ExprId> {
