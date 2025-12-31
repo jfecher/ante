@@ -97,7 +97,6 @@ impl<'ctx> ModuleContext<'ctx> {
         let function_value = match self.values.get(&mir::Value::Function(id)) {
             Some(existing) => existing.as_any_value_enum().into_function_value(),
             None => {
-                println!("  function exists");
                 let parameter_types =
                     mapvec(&function.blocks[BlockId::ENTRY_BLOCK].parameter_types, |typ| self.convert_type(typ).into());
 
@@ -132,8 +131,6 @@ impl<'ctx> ModuleContext<'ctx> {
     fn create_blocks(&mut self, function: &mir::Function, function_value: FunctionValue<'ctx>) {
         for (i, (block_id, _)) in function.blocks.iter().enumerate() {
             let block = self.llvm.append_basic_block(function_value, "");
-            println!("iter {i}: pushing {block_id}");
-            println!("  blocks = {:?}", self.blocks);
             self.blocks.push_existing(block_id, block);
         }
     }

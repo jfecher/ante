@@ -19,7 +19,7 @@ use crate::{
         Block, BlockId, FloatConstant, Function, FunctionId, Instruction, IntConstant, Mir, TerminatorInstruction,
         Type, Value,
     },
-    name_resolution::Origin,
+    name_resolution::{Origin, builtin::Builtin},
     parser::{
         cst::{self, Literal, Name, SequenceItem},
         ids::{ExprId, PathId, PatternId, TopLevelId},
@@ -90,11 +90,13 @@ where
     Db: DbGet<TypeCheck> + DbGet<GetItem>,
 {
     fn new(compiler: &'local Db, types: &'local TypeCheckResult, top_level_id: TopLevelId) -> Self {
+        let mut variables = FxHashMap::default();
+        variables.insert(Origin::Builtin(Builtin::PairConstructor), Value::Global());
         Self {
             compiler,
             types,
             top_level_id,
-            variables: Default::default(),
+            variables,
             current_block: BlockId::ENTRY_BLOCK,
             current_function: None,
             finished_functions: Default::default(),
@@ -223,7 +225,10 @@ where
         // that the links will work out later.
         match self.context().path_origin(path_id) {
             Some(Origin::TopLevelDefinition(item)) => Value::Global(item),
-            Some(origin) => self.variables[&origin],
+            Some(Origin::Builtin(Builtin::PairConstructor)) => todo!("Pair constructor"),
+            Some(origin) => *self.variables.get(&origin).unwrap_or_else(|| {
+                panic!("No cached variable for {origin}")
+            }),
             None => {
                 println!("Warning: no origin for {path_id:?}: {}", self.context()[path_id]);
                 Value::Error
@@ -306,11 +311,11 @@ where
         let name = name.unwrap_or_else(|| Arc::new("lambda".to_string()));
         self.new_function(name, |this| {
             for (i, parameter) in lambda.parameters.iter().enumerate() {
-                let parameter_value = Value::Parameter(this.current_block, i as u32);
-                this.bind_pattern(parameter.pattern, parameter_value);
-
                 let parameter_type = &this.types.result.maps.pattern_types[&parameter.pattern];
                 this.push_parameter(this.convert_type(parameter_type, None));
+
+                let parameter_value = Value::Parameter(this.current_block, i as u32);
+                this.bind_pattern(parameter.pattern, parameter_value);
             }
 
             let return_value = this.expression(lambda.body);
@@ -523,11 +528,26 @@ where
             cst::Pattern::Variable(name) => {
                 if let Some(origin) = self.context().name_origin(*name) {
                     self.variables.insert(origin, value);
+                } else {
+                    println!("Warning: no name_origin for {name}");
                 }
             },
             cst::Pattern::Literal(_) => (),
-            cst::Pattern::Constructor(_type, _arguments) => {
-                todo!("Constructors")
+            cst::Pattern::Constructor(_type, arguments) => {
+                println!("current fn = {}", self.current_function().name);
+                println!("Deconstructing {value} of type {}", self.type_of_value(value));
+
+                match self.type_of_value(value) {
+                    Type::Union(_variants) => todo!("Deconstruct union"),
+                    Type::Tuple(fields) => {
+                        for (i, (field_type, argument)) in fields.iter().zip(arguments).enumerate() {
+                            let instruction = Instruction::IndexTuple { tuple: value, index: i as u32 };
+                            let field = self.push_instruction(instruction, field_type.clone());
+                            self.bind_pattern(*argument, field);
+                        }
+                    },
+                    other => unreachable!("Expected tuple or union when deconstructing pattern, found {other}"),
+                }
             },
             cst::Pattern::TypeAnnotation(pattern, _) => self.bind_pattern(*pattern, value),
             cst::Pattern::MethodName { type_name: _, item_name } => {
@@ -543,24 +563,17 @@ where
     }
 
     /// For type definitions we need to define their constructors
-    ///
-    /// TODO: How to define these generic definitions in a way which the types still match?
-    ///       We'll likely need some marker to allow parameter/argument type mismatches
-    ///       past the marker and mark the type as pass-by-reference only if its size is unknown.
-    ///       E.g. `Maybe a = None | Some a` becomes `unsized. (U8, ?)` or similar.
-    ///       Maybe the `unsized` is unneeded though, and it is just the presense of any `?`
-    ///       which would cause it to be unsized. These would naturally be hidden by pointers
-    ///       anyway so `Vec a = (Ptr a, Usz, Usz)` becomes `Ptr, Usz, Usz` with opaque pointers.
     fn type_definition(&mut self, _type_definition: &cst::TypeDefinition) {
         // For a type definition, each generalized name will be each publically visible constructor
         for (constructor_name, constructor_type) in &self.types.result.generalized {
             let constructor_name = self.context()[*constructor_name].clone();
 
+            // TODO: This doesn't include the tag for unions
             if let TopLevelType::Function { parameters, .. } = &constructor_type.typ {
                 self.define_type_constructor(constructor_name, parameters)
             } else {
-                println!("{_type_definition:?}");
-                todo!("Non-function type constructors: {constructor_name}: {constructor_type}")
+                // todo!("Non-function type constructors: {constructor_name}: {constructor_type}")
+                self.define_type_constructor(constructor_name, &[])
             }
         }
     }
