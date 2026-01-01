@@ -434,7 +434,7 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
                 let definition_type = definition_type.clone();
                 self.compile_userdefined_cases(rows, branch_var, &definition_type, *origin, &[], location)
             },
-            Type::Generic(_) | Type::Variable(_) | Type::Primitive(_) | Type::Function(_) => {
+            Type::Generic(_) | Type::Variable(_) | Type::Primitive(_) | Type::Function(_) | Type::Forall(..) => {
                 let typ = self.checker.type_to_string(&definition_type);
                 Err(Diagnostic::CannotMatchOnType { typ, location })
             },

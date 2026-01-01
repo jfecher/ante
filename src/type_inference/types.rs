@@ -33,6 +33,11 @@ pub enum Type {
     Function(Arc<FunctionType>),
     Application(Arc<Type>, Arc<Vec<Type>>),
     UserDefined(Origin),
+
+    /// A polytype such as `forall a. fn a -> a`.
+    /// During unification the ordering of the type variables matters.
+    /// `forall a b. (a, b)` will not unify with `forall b a. (a, b)`
+    Forall(Arc<Vec<Generic>>, Arc<Type>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -236,50 +241,47 @@ where
                 }
             },
             Type::Function(function) => {
-                if parenthesize {
-                    write!(f, "(")?;
-                }
-
-                write!(f, "fn")?;
-                for parameter in &function.parameters {
-                    write!(f, " ")?;
-                    if parameter.is_implicit {
-                        write!(f, "{{")?;
-                        self.fmt_type(&parameter.typ, false, f)?;
-                        write!(f, "}}")?;
-                    } else {
-                        self.fmt_type(&parameter.typ, true, f)?;
+                try_parenthesize(parenthesize, f, |f| {
+                    write!(f, "fn")?;
+                    for parameter in &function.parameters {
+                        write!(f, " ")?;
+                        if parameter.is_implicit {
+                            write!(f, "{{")?;
+                            self.fmt_type(&parameter.typ, false, f)?;
+                            write!(f, "}}")?;
+                        } else {
+                            self.fmt_type(&parameter.typ, true, f)?;
+                        }
                     }
-                }
-                write!(f, " -> ")?;
-                self.fmt_type(&function.return_type, false, f)?;
-
-                if parenthesize {
-                    write!(f, ")")?;
-                }
-                Ok(())
+                    write!(f, " -> ")?;
+                    self.fmt_type(&function.return_type, false, f)
+                })
             },
             Type::Application(constructor, args) => {
-                if parenthesize {
-                    write!(f, "(")?;
-                }
-
+                try_parenthesize(parenthesize, f, |f| {
                 if **constructor == Type::PAIR && args.len() == 2 {
                     self.fmt_type(&args[0], true, f)?;
                     write!(f, ", ")?;
-                    self.fmt_type(&args[1], true, f)?;
+                    self.fmt_type(&args[1], true, f)
                 } else {
                     self.fmt_type(constructor, true, f)?;
                     for arg in args.iter() {
                         write!(f, " ")?;
                         self.fmt_type(arg, true, f)?;
                     }
+                        Ok(())
                 }
-
-                if parenthesize {
-                    write!(f, ")")?;
-                }
-                Ok(())
+                })
+            },
+            Type::Forall(generics, typ) => {
+                try_parenthesize(parenthesize, f, |f| {
+                    write!(f, "forall")?;
+                    for generic in generics.iter() {
+                        write!(f, " {generic}")?;
+                    }
+                    write!(f, ". ")?;
+                    self.fmt_type(typ, parenthesize, f)
+                })
             },
         }
     }
@@ -299,6 +301,19 @@ where
             Origin::Builtin(builtin) => write!(f, "{builtin}"),
         }
     }
+}
+
+fn try_parenthesize(
+    parenthesize: bool, f: &mut std::fmt::Formatter, func: impl FnOnce(&mut std::fmt::Formatter) -> std::fmt::Result,
+) -> std::fmt::Result {
+    if parenthesize {
+        write!(f, "(")?;
+    }
+    func(f)?;
+    if parenthesize {
+        write!(f, ")")?;
+    }
+    Ok(())
 }
 
 impl std::fmt::Display for PrimitiveType {

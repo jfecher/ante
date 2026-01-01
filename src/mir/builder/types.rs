@@ -33,6 +33,7 @@ where
                 self.convert_type(constructor, Some(new_args))
             },
             TCType::UserDefined(origin) => self.convert_type_origin(*origin, args, None),
+            TCType::Forall(_, typ) => self.convert_type(typ, args),
         }
     }
 

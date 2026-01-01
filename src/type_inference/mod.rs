@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, rc::Rc, sync::Arc};
+use std::{borrow::Cow, collections::BTreeMap, rc::Rc, sync::Arc};
 
 use inc_complete::DbGet;
 use rustc_hash::FxHashMap;
@@ -313,6 +313,24 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 let args = mapvec(args.iter(), |arg| self.substitute(arg, bindings));
                 Type::Application(Arc::new(constructor), Arc::new(args))
             },
+            Type::Forall(generics, typ) => {
+                // We need to remove any generics in `generics` that are in `bindings`,
+                // but we wan't to avoid allocating a new map in the common case where there are
+                // no conflicts.
+                let mut bindings = Cow::Borrowed(bindings);
+
+                for generic in generics.iter() {
+                    if let Generic::Inferred(id) = generic {
+                        if bindings.contains_key(id) {
+                            let mut new_bindings = bindings.into_owned();
+                            new_bindings.remove(id);
+                            bindings = Cow::Owned(new_bindings);
+                        }
+                    }
+                }
+                let typ = typ.clone();
+                self.substitute(&typ, &bindings)
+            }
         }
     }
 
@@ -340,6 +358,22 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 let args = mapvec(args.iter(), |arg| self.substitute_generics(arg, bindings));
                 Type::Application(Arc::new(constructor), Arc::new(args))
             },
+            Type::Forall(generics, typ) => {
+                // We need to remove any generics in `generics` that are in `bindings`,
+                // but we wan't to avoid allocating a new map in the common case where there are
+                // no conflicts.
+                let mut bindings = Cow::Borrowed(bindings);
+
+                for generic in generics.iter() {
+                    if bindings.contains_key(generic) {
+                        let mut new_bindings = bindings.into_owned();
+                        new_bindings.remove(generic);
+                        bindings = Cow::Owned(new_bindings);
+                    }
+                }
+                let typ = typ.clone();
+                self.substitute_generics(&typ, &bindings)
+            }
         }
     }
 
@@ -366,6 +400,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 let args = mapvec(args.iter(), |arg| self.promote_to_top_level_type(arg));
                 TopLevelType::Application(constructor, args)
             },
+            Type::Forall(..) => todo!(),
         }
     }
 
@@ -395,6 +430,17 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                         free_vars_helper(this, arg, free_vars);
                     }
                 },
+                Type::Forall(generics, typ) => {
+                    free_vars_helper(this, typ, free_vars);
+
+                    // Remove any free variable contained within `generics`.
+                    // This is technically incorrect in the case any of these variables appeared in
+                    // `free_vars` before the previous call to `free_vars_helper(_, typ, _)`, but
+                    // we expect scoping rules to prevent these cases.
+                    free_vars.retain(|id| {
+                        !generics.contains(&Generic::Inferred(*id))
+                    });
+                }
             }
         }
 
@@ -475,6 +521,15 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 }
                 Ok(())
             },
+            (Type::Forall(actual_generics, actual), Type::Forall(expected_generics, expected)) => {
+                if actual_generics.len() != expected_generics.len() {
+                    return Err(());
+                }
+                for (actual, expected) in actual_generics.iter().zip(expected_generics.iter()) {
+                    self.try_unify(&actual.as_type(), &expected.as_type())?;
+                }
+                self.try_unify(actual, expected)
+            }
             (actual, other) if actual == other => Ok(()),
             _ => Err(()),
         }
@@ -518,6 +573,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Type::Application(constructor, args) => {
                 self.occurs(constructor, variable) || args.iter().any(|arg| self.occurs(arg, variable))
             },
+            Type::Forall(_, typ) => self.occurs(typ, variable),
         }
     }
 
