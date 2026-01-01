@@ -738,7 +738,18 @@ impl TopLevelId {
 
 fn maybe_apply_type(typ: &GeneralizedType, args: Option<&[Type]>) -> Type {
     match args {
-        Some(args) => typ.apply_type(args),
+        Some(args) => {
+            // TODO: We should be issuing an error either here or above somewhere
+            if args.len() < typ.generics.len() {
+                let mut new_args = args.to_vec();
+                for _ in args.len() .. typ.generics.len() {
+                    new_args.push(Type::ERROR);
+                }
+                typ.apply_type(&new_args)
+            } else {
+                typ.apply_type(args)
+            }
+        }
         None => {
             // This should be an error if `!typ.generics.is_empty()`
             let args = mapvec(&typ.generics, |_| Type::ERROR);
@@ -766,7 +777,8 @@ impl GeneralizedType {
     ///
     /// Panics if `arguments.len() != self.generics.len()`
     fn apply_type(&self, arguments: &[Type]) -> Type {
-        assert_eq!(arguments.len(), self.generics.len());
+        // TODO: Re-add
+        // assert_eq!(arguments.len(), self.generics.len());
         let substitutions =
             self.generics.iter().zip(arguments).map(|(generic, argument)| (*generic, argument.clone())).collect();
         self.typ.substitute(&substitutions)

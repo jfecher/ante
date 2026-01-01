@@ -90,13 +90,11 @@ where
     Db: DbGet<TypeCheck> + DbGet<GetItem>,
 {
     fn new(compiler: &'local Db, types: &'local TypeCheckResult, top_level_id: TopLevelId) -> Self {
-        let mut variables = FxHashMap::default();
-        variables.insert(Origin::Builtin(Builtin::PairConstructor), Value::Global());
         Self {
             compiler,
             types,
             top_level_id,
-            variables,
+            variables: FxHashMap::default(),
             current_block: BlockId::ENTRY_BLOCK,
             current_function: None,
             finished_functions: Default::default(),
@@ -219,21 +217,49 @@ where
         }
     }
 
-    fn variable(&self, path_id: PathId) -> Value {
+    fn variable(&mut self, path_id: PathId) -> Value {
         // Deliberately allow us to reference variables not in the context.
         // This allows us to convert all definitions to MIR in parallel, trusting
         // that the links will work out later.
         match self.context().path_origin(path_id) {
             Some(Origin::TopLevelDefinition(item)) => Value::Global(item),
-            Some(Origin::Builtin(Builtin::PairConstructor)) => todo!("Pair constructor"),
-            Some(origin) => *self.variables.get(&origin).unwrap_or_else(|| {
-                panic!("No cached variable for {origin}")
-            }),
+            Some(origin @ Origin::Builtin(Builtin::PairConstructor)) => {
+                if let Some(existing) = self.variables.get(&origin) {
+                    *existing
+                } else {
+                    let function = self.define_pair_constructor();
+                    self.variables.insert(origin, function);
+                    function
+                }
+            },
+            Some(origin) => *self.variables.get(&origin).unwrap_or_else(|| panic!("No cached variable for {origin}")),
             None => {
                 println!("Warning: no origin for {path_id:?}: {}", self.context()[path_id]);
                 Value::Error
             },
         }
+    }
+
+    /// Defines:
+    /// fn ,:
+    ///   b0(b0_0: ptr, b0_1: ptr):
+    ///     v0 = make_tuple(v0_0, v0_1)
+    ///     return v0
+    fn define_pair_constructor(&mut self) -> Value {
+        let name = Arc::new(Builtin::PairConstructor.to_string());
+        self.new_function(name, |this| {
+            this.push_parameter(Type::POINTER);
+            this.push_parameter(Type::POINTER);
+
+            let a = Value::Parameter(BlockId::ENTRY_BLOCK, 0);
+            let b = Value::Parameter(BlockId::ENTRY_BLOCK, 1);
+            let make_tuple = Instruction::MakeTuple(vec![a, b]);
+
+            // TODO: This tuple type is probably wrong
+            let tuple_type = Type::tuple(vec![Type::POINTER, Type::POINTER]);
+            let tuple = this.push_instruction(make_tuple, tuple_type);
+            this.terminate_block(TerminatorInstruction::Return(tuple));
+        })
     }
 
     fn sequence(&mut self, sequence: &[SequenceItem]) -> Value {

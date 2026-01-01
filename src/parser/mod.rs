@@ -1052,18 +1052,14 @@ impl<'tokens> Parser<'tokens> {
 
         self.or(
             |this| {
+                let location = this.current_token_location();
                 let typ = this.parse_type()?;
                 this.expect(Token::BraceRight, "a `}` to close the opening `{` from the implicit parameter")?;
                 // Need to expand the type into a parameter with a fake name.
                 // We'll expand to: `_: typ`
-                this.with_pattern_id_and_location(|this| {
-                    let no_name = this.with_pattern_id_and_location(|this| {
-                        let location = this.current_token_location();
-                        let name_id = this.push_name(Arc::new("_".to_string()), location);
-                        Ok(Pattern::Variable(name_id))
-                    })?;
-                    Ok(Pattern::TypeAnnotation(no_name, typ))
-                })
+                let name_id = this.push_name(Arc::new("_".to_string()), location.clone());
+                let no_name = this.push_pattern(Pattern::Variable(name_id), location.clone());
+                Ok(this.push_pattern(Pattern::TypeAnnotation(no_name, typ), location))
             },
             |this| {
                 let pattern = this.parse_function_parameter_pattern()?;

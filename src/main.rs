@@ -233,7 +233,7 @@ fn llvm_codegen(compiler: &Db) -> BTreeSet<Diagnostic> {
             let parse = Parse(*file).get(compiler);
 
             for item in &parse.cst.top_level_items {
-                let more_diagnostics: BTreeSet<_> = compiler.get_accumulated(CodegenLlvm(item.id));
+                let more_diagnostics: BTreeSet<_> = compiler.get_accumulated(TypeCheck(item.id));
                 let error_count = classify_diagnostics(&more_diagnostics).0;
 
                 // We can't codegen if there were errors
@@ -242,6 +242,7 @@ fn llvm_codegen(compiler: &Db) -> BTreeSet<Diagnostic> {
                 // inc-complete can't be fixed then we'd need to add a `has_errors: bool` field
                 // onto most compiler passes.
                 if error_count == 0 {
+                    println!("error count is 0, codegening");
                     let llvm_result = CodegenLlvm(item.id).get(compiler);
 
                     if let Some(llvm) = &llvm_result.module_string {
