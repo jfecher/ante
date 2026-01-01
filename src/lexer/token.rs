@@ -247,7 +247,6 @@ pub enum Token {
 }
 
 impl Token {
-    #[allow(unused)]
     pub fn is_overloadable_operator(&self) -> bool {
         use Token::*;
         matches!(

@@ -136,11 +136,12 @@ impl<'contents> Lexer<'contents> {
         self.current = self.next;
         self.next = self.chars.next().unwrap_or('\0');
         self.current_position.byte_index += ret.len_utf8();
-        self.current_position.column_number += 1;
 
         if ret == '\n' {
             self.current_position.column_number = 0;
             self.current_position.line_number += 1;
+        } else {
+            self.current_position.column_number += 1;
         }
 
         ret

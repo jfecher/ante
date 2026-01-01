@@ -247,7 +247,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
 
     /// Lookup the given path in the given namespace
     fn lookup_in<'a, Iter>(
-        &mut self, mut path: Iter, mut namespace: Namespace, allow_type_based_resolution: bool,
+        &mut self, mut path: Iter, mut namespace: Namespace, allow_type_based_resolution: bool, is_type: bool,
     ) -> Result<Origin, Diagnostic>
     where
         Iter: ExactSizeIterator<Item = &'a (String, Location)>,
@@ -282,7 +282,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
         let first_char = name.chars().next().unwrap();
         if allow_type_based_resolution && first_char.is_ascii_uppercase() && namespace == Namespace::Local {
             Ok(Origin::TypeResolution)
-        } else if let Some(origin) = self.lookup_builtin_name(name, !allow_type_based_resolution) {
+        } else if let Some(origin) = self.lookup_builtin_name(name, is_type) {
             Ok(origin)
         } else {
             let location = location.clone();
@@ -310,7 +310,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
         None
     }
 
-    fn lookup(&mut self, path: &Path, allow_type_based_resolution: bool) -> Result<Origin, Diagnostic> {
+    fn lookup(&mut self, path: &Path, allow_type_based_resolution: bool, is_type: bool) -> Result<Origin, Diagnostic> {
         let mut components = path.components.iter().peekable();
 
         if components.len() > 1 {
@@ -326,18 +326,18 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                 if **first == dependency.name {
                     // Discard the crate name
                     components.next();
-                    return self.lookup_in(components, Namespace::crate_(*dependency_id), allow_type_based_resolution);
+                    return self.lookup_in(components, Namespace::crate_(*dependency_id), allow_type_based_resolution, is_type);
                 }
             }
         }
 
         // Not an absolute path
-        self.lookup_in(components, Namespace::Local, allow_type_based_resolution)
+        self.lookup_in(components, Namespace::Local, allow_type_based_resolution, is_type)
     }
 
     /// Links a path to its definition or errors if it does not exist
-    fn link(&mut self, path: PathId, allow_type_based_resolution: bool) {
-        match self.lookup(&self.context.paths[path], allow_type_based_resolution) {
+    fn link(&mut self, path: PathId, allow_type_based_resolution: bool, is_type: bool) {
+        match self.lookup(&self.context.paths[path], allow_type_based_resolution, is_type) {
             Ok(origin) => {
                 self.path_links.insert(path, origin);
             },
@@ -377,7 +377,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             Pattern::Literal(_) => (),
             Pattern::Variable(name_id) => self.link_existing_global(*name_id),
             Pattern::Constructor(constructor, args) => {
-                self.link(*constructor, false);
+                self.link(*constructor, false, false);
                 for arg in args {
                     self.link_existing_pattern(*arg);
                 }
@@ -397,7 +397,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
     fn resolve_expr(&mut self, expr: ExprId) {
         match &self.context.exprs[expr] {
             Expr::Literal(_literal) => (),
-            Expr::Variable(path) => self.link(*path, true),
+            Expr::Variable(path) => self.link(*path, true, false),
             Expr::Call(call) => {
                 self.resolve_expr(call.function);
                 for arg in &call.arguments {
@@ -560,7 +560,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             // In a constructor pattern such as `Struct foo bar baz` or `(a, b)` the arguments
             // should be declared but the function itself should never be.
             Pattern::Constructor(function, args) => {
-                self.link(*function, allow_type_based_resolution);
+                self.link(*function, allow_type_based_resolution, false);
                 for arg in args {
                     self.declare_names_in_pattern(*arg, declare_type_vars, allow_type_based_resolution);
                 }
@@ -591,7 +591,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             | Type::Char
             | Type::Pair
             | Type::Reference(..) => (),
-            Type::Named(path) => self.link(*path, false),
+            Type::Named(path) => self.link(*path, false, true),
             Type::Variable(name) => self.resolve_variable(*name, declare_type_vars),
             Type::Function(function) => {
                 for parameter in &function.parameters {
@@ -618,7 +618,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
     fn resolve_effect_type(&mut self, effect: &EffectType, declare_type_vars: bool) {
         match effect {
             EffectType::Known(path, args) => {
-                self.link(*path, false);
+                self.link(*path, false, true);
 
                 for arg in args {
                     self.resolve_type(arg, declare_type_vars);
@@ -691,7 +691,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
     }
 
     fn resolve_trait_impl(&mut self, trait_impl: &TraitImpl) {
-        self.link(trait_impl.trait_path, false);
+        self.link(trait_impl.trait_path, false, true);
 
         for arg in &trait_impl.trait_arguments {
             self.resolve_type(arg, true);
@@ -729,7 +729,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             Comptime::Expr(expr_id) => self.resolve_expr(*expr_id),
             Comptime::Derive(paths) => {
                 for path in paths {
-                    self.link(*path, false);
+                    self.link(*path, false, true);
                 }
             },
             Comptime::Definition(definition) => self.resolve_definition(definition),
