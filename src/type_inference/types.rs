@@ -1,19 +1,14 @@
-use std::{collections::BTreeMap, sync::Arc};
+use std::{borrow::Cow, collections::BTreeMap, sync::Arc};
 
 use inc_complete::DbGet;
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    incremental::GetItem,
-    lexer::token::{FloatKind, IntegerKind},
-    name_resolution::Origin,
-    parser::{
+    incremental::GetItem, iterator_extensions::mapvec, lexer::token::{FloatKind, IntegerKind}, name_resolution::{Origin, builtin::Builtin}, parser::{
         cst::{self, Mutability, Sharedness},
         ids::NameId,
-    },
-    type_inference::generics::Generic,
-    vecmap::VecMap,
+    }, type_inference::generics::Generic, vecmap::VecMap
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -204,6 +199,165 @@ impl Type {
             }
         }
         panic!("Infinite loop in follow_type!")
+    }
+
+    /// Similar to substitute, but substitutes `Type::Generic` instead of `Type::TypeVariable`
+    pub fn substitute_generics(&self, bindings_to_substitute: &GenericSubstitutions, bindings_in_scope: &TypeBindings) -> Type {
+        match self.follow_type(bindings_in_scope) {
+            Type::Primitive(_) | Type::Variable(_) | Type::UserDefined(_) => self.clone(),
+            Type::Generic(generic) => match bindings_to_substitute.get(generic) {
+                Some(binding) => binding.clone(),
+                None => self.clone(),
+            },
+            Type::Function(function) => {
+                let function = function.clone();
+                let parameters = mapvec(&function.parameters, |param| {
+                    let typ = param.typ.substitute_generics(bindings_to_substitute, bindings_in_scope);
+                    ParameterType::new(typ, param.is_implicit)
+                });
+                let return_type = function.return_type.substitute_generics(bindings_to_substitute, bindings_in_scope);
+                let effects = function.effects.substitute_generics(bindings_to_substitute, bindings_in_scope);
+                Type::Function(Arc::new(FunctionType { parameters, return_type, effects }))
+            },
+            Type::Application(constructor, args) => {
+                let (constructor, args) = (constructor.clone(), args.clone());
+                let constructor = constructor.substitute_generics(bindings_to_substitute, bindings_in_scope);
+                let args = mapvec(args.iter(), |arg| arg.substitute_generics(bindings_to_substitute, bindings_in_scope));
+                Type::Application(Arc::new(constructor), Arc::new(args))
+            },
+            Type::Forall(generics, typ) => {
+                // We need to remove any generics in `generics` that are in `bindings`,
+                // but we wan't to avoid allocating a new map in the common case where there are
+                // no conflicts.
+                let mut bindings = Cow::Borrowed(bindings_to_substitute);
+
+                for generic in generics.iter() {
+                    if bindings.contains_key(generic) {
+                        let mut new_bindings = bindings.into_owned();
+                        new_bindings.remove(generic);
+                        bindings = Cow::Owned(new_bindings);
+                    }
+                }
+                let typ = typ.clone();
+                typ.substitute_generics(&bindings, bindings_in_scope)
+            },
+        }
+    }
+
+    /// Apply a [Type::Forall] to the given type arguments. The given arguments should
+    /// be [Type]s in the current context, and the returned [Type] will be in the current
+    /// context as well.
+    ///
+    /// If this type is not a [Type::Forall], nothing will be done aside from checking the
+    /// argument count is zero.
+    ///
+    /// Panics if `arguments.len() != self.generics.len()`
+    pub fn apply_type(&self, arguments: &[Type], bindings_in_scope: &TypeBindings) -> Type {
+        // TODO: Re-add
+        // assert_eq!(arguments.len(), self.generics.len());
+        match self {
+            Type::Forall(generics, typ) => {
+                let substitutions =
+                    generics.iter().zip(arguments).map(|(generic, argument)| (*generic, argument.clone())).collect();
+                typ.substitute_generics(&substitutions, bindings_in_scope)
+            }
+            other => other.clone(),
+        }
+    }
+
+    /// If this type is `Type::Forall(_, typ)`, return `typ`.
+    /// Otherwise, return the type as-is.
+    pub(crate) fn ignore_forall(&self) -> &Self {
+        match self {
+            Type::Forall(_, typ) => typ,
+            other => other,
+        }
+    }
+
+    /// Convert an ast type to a Type as closely as possible.
+    /// This method does not emit any errors and relies on name resolution
+    /// to emit errors when resolving types.
+    /// Convert the given Origin to a type, issuing an error if the origin is not a type
+    pub(crate) fn from_cst_type(typ: &cst::Type, resolve: &crate::name_resolution::ResolutionResult) -> Type {
+        match typ {
+            crate::parser::cst::Type::Integer(kind) => match kind {
+                IntegerKind::I8 => Type::I8,
+                IntegerKind::I16 => Type::I16,
+                IntegerKind::I32 => Type::I32,
+                IntegerKind::I64 => Type::I64,
+                IntegerKind::Isz => Type::ISZ,
+                IntegerKind::U8 => Type::U8,
+                IntegerKind::U16 => Type::U16,
+                IntegerKind::U32 => Type::U32,
+                IntegerKind::U64 => Type::U64,
+                IntegerKind::Usz => Type::USZ,
+            },
+            crate::parser::cst::Type::Float(kind) => match kind {
+                FloatKind::F32 => Type::F32,
+                FloatKind::F64 => Type::F64,
+            },
+            crate::parser::cst::Type::String => Type::STRING,
+            crate::parser::cst::Type::Char => Type::CHAR,
+            crate::parser::cst::Type::Named(path) => {
+                // TODO: is `current_resolve` sufficient or do we need the [ExtendedTopLevelContext]?
+                let origin = resolve.path_origins.get(path).copied();
+                Self::convert_origin_to_type(origin, Type::UserDefined)
+            },
+            crate::parser::cst::Type::Variable(name) => {
+                // TODO: is `current_resolve` sufficient or do we need the [ExtendedTopLevelContext]?
+                let origin = resolve.name_origins.get(name).copied();
+                Self::convert_origin_to_type(origin, |origin| Type::Generic(Generic::Named(origin)))
+            },
+            crate::parser::cst::Type::Function(function) => {
+                let parameters = mapvec(&function.parameters, |param| {
+                    let typ = Self::from_cst_type(&param.typ, resolve);
+                    ParameterType::new(typ, param.is_implicit)
+                });
+                let return_type = Self::from_cst_type(&function.return_type, resolve);
+                // TODO: Effects
+                let effects = Type::UNIT;
+                Type::Function(Arc::new(FunctionType { parameters, return_type, effects }))
+            },
+            crate::parser::cst::Type::Error => Type::ERROR,
+            crate::parser::cst::Type::Unit => Type::UNIT,
+            crate::parser::cst::Type::Pair => Type::PAIR,
+            crate::parser::cst::Type::Application(f, args) => {
+                let f = Self::from_cst_type(f, resolve);
+                let args = mapvec(args, |typ| Self::from_cst_type(typ, resolve));
+                Type::Application(Arc::new(f), Arc::new(args))
+            },
+            crate::parser::cst::Type::Reference(mutability, sharedness) => {
+                Type::Primitive(PrimitiveType::Reference(*mutability, *sharedness))
+            },
+        }
+    }
+
+    fn convert_origin_to_type(origin: Option<Origin>, make_type: impl FnOnce(Origin) -> Type) -> Type {
+        match origin {
+            Some(Origin::Builtin(builtin)) => {
+                match builtin {
+                    Builtin::Unit => Type::UNIT,
+                    Builtin::Int => Type::ERROR, // TODO: Polymorphic integers
+                    Builtin::Char => Type::CHAR,
+                    Builtin::Float => Type::ERROR, // TODO: Polymorphic floats
+                    Builtin::String => Type::STRING,
+                    Builtin::Ptr => Type::POINTER,
+                    Builtin::PairType => Type::PAIR,
+                    Builtin::PairConstructor => {
+                        // TODO: Error
+                        Type::ERROR
+                    },
+                }
+            },
+            Some(origin) => {
+                if !origin.may_be_a_type() {
+                    // TODO: Error
+                }
+                make_type(origin)
+            },
+            // Assume name resolution has already issued an error for this case
+            None => Type::ERROR,
+        }
     }
 }
 

@@ -28,7 +28,6 @@ use crate::{
         dependency_graph::TypeCheckResult,
         fresh_expr::ExtendedTopLevelContext,
         patterns::{Case, Constructor, DecisionTree},
-        top_level_types::{TopLevelParameterType, TopLevelType},
     },
 };
 
@@ -595,8 +594,8 @@ where
             let constructor_name = self.context()[*constructor_name].clone();
 
             // TODO: This doesn't include the tag for unions
-            if let TopLevelType::Function { parameters, .. } = &constructor_type.typ {
-                self.define_type_constructor(constructor_name, parameters)
+            if let crate::type_inference::types::Type::Function(function) = constructor_type.ignore_forall() {
+                self.define_type_constructor(constructor_name, &function.parameters)
             } else {
                 // todo!("Non-function type constructors: {constructor_name}: {constructor_type}")
                 self.define_type_constructor(constructor_name, &[])
@@ -604,13 +603,13 @@ where
         }
     }
 
-    fn define_type_constructor(&mut self, name: Name, parameter_types: &[TopLevelParameterType]) {
+    fn define_type_constructor(&mut self, name: Name, parameter_types: &[crate::type_inference::types::ParameterType]) {
         self.new_function(name, |this| {
             let (fields, field_types) = parameter_types
                 .iter()
                 .enumerate()
                 .map(|(i, field_type)| {
-                    let field_type = this.convert_top_level_type(&field_type.typ, None);
+                    let field_type = this.convert_type(&field_type.typ, None);
                     this.push_parameter(field_type.clone());
                     (Value::Parameter(BlockId::ENTRY_BLOCK, i as u32), field_type)
                 })

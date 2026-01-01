@@ -85,10 +85,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
 
         let parameters = mapvec(variant_args, |arg| {
-            let mut param = self.convert_ast_type(arg);
+            let mut param = self.from_cst_type(arg);
 
             if !substitutions.is_empty() {
-                param = self.substitute_generics(&param, &substitutions);
+                param = param.substitute_generics(&substitutions, &self.bindings);
             }
             types::ParameterType::explicit(param)
         });
@@ -109,7 +109,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         for (method_name, method_type) in fields.iter() {
             let (implicit_arg, substitutions) = self.type_definition_type(type_name, definition, false);
             assert!(substitutions.is_empty());
-            let method_type = self.convert_ast_type(&method_type);
+            let method_type = self.from_cst_type(&method_type);
             let modified_type = self.add_implicit_arg_to_function_type(method_type, implicit_arg);
             self.check_name(*method_name, &modified_type);
         }

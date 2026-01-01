@@ -3,9 +3,8 @@ use crate::{
     name_resolution::ResolutionResult,
     parser::{
         context::TopLevelContext,
-        cst::{Definition, Expr, Pattern, TopLevelItemKind},
-    },
-    type_inference::top_level_types::{GeneralizedType, TopLevelParameterType, TopLevelType},
+        cst::{self, Definition, Expr, Pattern, TopLevelItemKind},
+    }, type_inference::types::Type,
 };
 
 /// Get the type of the name defined by this TopLevelId.
@@ -16,7 +15,7 @@ use crate::{
 /// and we don't want other definitions to depend on the contents of another definition
 /// if the other definition provides a type annotation. Without type annotations the two
 /// functions should be mostly equivalent.
-pub fn get_type_impl(context: &GetType, compiler: &DbHandle) -> GeneralizedType {
+pub fn get_type_impl(context: &GetType, compiler: &DbHandle) -> Type {
     incremental::enter_query();
     let (item, item_context) = compiler.get(GetItem(context.0.top_level_item));
     incremental::println(format!("Get type of {:?}", item.id));
@@ -59,31 +58,35 @@ pub fn get_type_impl(context: &GetType, compiler: &DbHandle) -> GeneralizedType 
 /// errors.
 pub(super) fn try_get_type(
     definition: &Definition, context: &TopLevelContext, resolve: &ResolutionResult,
-) -> Option<GeneralizedType> {
+) -> Option<Type> {
     if let Pattern::TypeAnnotation(_, typ) = &context.patterns[definition.pattern] {
-        return Some(GeneralizedType::from_ast_type(typ, resolve));
+        return Some(Type::from_cst_type(typ, resolve));
     }
 
     if let Expr::Lambda(lambda) = &context.exprs[definition.rhs] {
-        let return_type = Box::new(TopLevelType::from_ast_type(lambda.return_type.as_ref()?, resolve));
+        let return_type = Box::new(lambda.return_type.as_ref()?.clone());
 
         let parameters = lambda
             .parameters
             .iter()
             .map(|parameter| match &context.patterns[parameter.pattern] {
                 Pattern::TypeAnnotation(_, typ) => {
-                    let typ = TopLevelType::from_ast_type(typ, resolve);
-                    Some(TopLevelParameterType::new(typ, parameter.is_implicit))
+                    Some(cst::ParameterType::new(typ.clone(), parameter.is_implicit))
                 }
                 _ => None,
             })
             .collect::<Option<Vec<_>>>()?;
 
-        // TODO: effects
-        // let effects = lambda.effects.as_ref();
-        let function = TopLevelType::Function { parameters, return_type };
-        return Some(GeneralizedType::from_top_level_type(function));
-    }
+        let cst_function_type = cst::FunctionType {
+            parameters,
+            return_type,
+            effects: lambda.effects.clone(),
+        };
 
-    None
+        // We construct a function type to convert wholesale instead of converting as we go
+        // to avoid repeating logic in [Type::from_cst_type], namely handling of effect types.
+        Some(Type::from_cst_type(&cst::Type::Function(cst_function_type), resolve))
+    } else {
+        None
+    }
 }

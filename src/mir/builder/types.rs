@@ -7,7 +7,7 @@ use crate::{
     iterator_extensions::mapvec,
     mir::{FunctionType, Type, builder::Context},
     name_resolution::{Origin, builtin::Builtin},
-    type_inference::{TypeBody, top_level_types::TopLevelType, types::Type as TCType},
+    type_inference::{TypeBody, types::Type as TCType},
 };
 
 impl<'local, Db> Context<'local, Db>
@@ -117,24 +117,6 @@ where
             Some(args) if args.len() == 2 => Type::tuple(mapvec(args, |arg| self.convert_type(arg, None))),
             // Rely on type-checking to issue this argument-count mismatch error to the user
             _ => Type::ERROR,
-        }
-    }
-
-    pub(super) fn convert_top_level_type(&self, typ: &TopLevelType, args: Option<&[TCType]>) -> Type {
-        match typ {
-            TopLevelType::Primitive(primitive_type) => self.convert_primitive_type(*primitive_type, args),
-            TopLevelType::Generic(generic) => Type::Generic(*generic),
-            TopLevelType::Function { parameters, return_type } => {
-                let parameters = mapvec(parameters, |parameter| self.convert_top_level_type(&parameter.typ, None));
-                let return_type = self.convert_top_level_type(return_type, None);
-                Type::Function(Arc::new(FunctionType { parameters, return_type }))
-            },
-            TopLevelType::Application(constructor, new_args) => {
-                assert!(args.is_none());
-                let new_args = mapvec(new_args.iter(), |arg| arg.as_type());
-                self.convert_top_level_type(constructor, Some(&new_args))
-            },
-            TopLevelType::UserDefined(origin) => self.convert_type_origin(*origin, args, None),
         }
     }
 

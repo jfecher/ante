@@ -27,7 +27,6 @@ use crate::{
     type_inference::{
         self, TypeCheckSCCResult,
         dependency_graph::{SCC, TypeCheckDependencyGraphResult, TypeCheckResult},
-        top_level_types::GeneralizedType,
     },
 };
 
@@ -290,7 +289,7 @@ define_intermediate!(115, GetItem -> (Arc<TopLevelItem>, Arc<TopLevelContext>), 
 /// name resolution results of those names.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GetType(pub TopLevelName);
-define_intermediate!(120, GetType -> GeneralizedType, DbStorage, type_inference::get_type_impl);
+define_intermediate!(120, GetType -> type_inference::types::Type, DbStorage, type_inference::get_type_impl);
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 /// Type check the contents of one or more top-level items. This isn't always necessary just to get

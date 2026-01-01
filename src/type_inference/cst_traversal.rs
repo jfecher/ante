@@ -20,8 +20,8 @@ use crate::{
 impl<'local, 'inner> TypeChecker<'local, 'inner> {
     pub(super) fn check_definition(&mut self, definition: &Definition) {
         let expected_generalized_type = try_get_type(definition, self.current_context(), &self.current_resolve());
-        let expected_type = match expected_generalized_type.as_ref() {
-            Some(typ) => typ.as_type(),
+        let expected_type = match expected_generalized_type {
+            Some(typ) => typ,
             None => self.next_type_variable(),
         };
 
@@ -51,7 +51,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Expr::Match(match_) => self.check_match(match_, expected, expr),
             Expr::Reference(reference) => self.check_reference(reference, expected, expr),
             Expr::TypeAnnotation(type_annotation) => {
-                let annotation = self.convert_ast_type(&type_annotation.rhs);
+                let annotation = self.from_cst_type(&type_annotation.rhs);
                 self.unify(expected, &annotation, TypeErrorKind::TypeAnnotationMismatch, expr);
                 self.check_expr(type_annotation.lhs, &annotation);
             },
@@ -116,7 +116,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 }
             },
             Pattern::TypeAnnotation(inner_pattern, typ) => {
-                let annotated = self.convert_ast_type(typ);
+                let annotated = self.from_cst_type(typ);
                 self.unify(expected, &annotated, TypeErrorKind::TypeAnnotationMismatch, pattern);
                 self.check_pattern(*inner_pattern, expected);
             },
@@ -130,7 +130,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     typ.clone()
                 } else {
                     let typ = GetType(id).get(self.compiler);
-                    self.instantiate(&typ)
+                    self.instantiate(typ)
                 }
             },
             Some(Origin::Local(name)) => self.name_types[&name].clone(),
@@ -155,7 +155,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         self.current_extended_context_mut().insert_path_origin(path, Origin::TopLevelDefinition(id));
 
         let result = GetType(id).get(self.compiler);
-        self.instantiate(&result)
+        self.instantiate(result)
     }
 
     /// Issue a NameNotInScope error and return Type::Error
@@ -262,7 +262,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         // TODO: Check lambda.effects
         let return_type = if let Some(return_type) = lambda.return_type.as_ref() {
-            let return_type = self.convert_ast_type(return_type);
+            let return_type = self.from_cst_type(return_type);
             self.unify(&return_type, &function_type.return_type, TypeErrorKind::TypeAnnotationMismatch, expr);
             Cow::Owned(return_type)
         } else {
@@ -390,7 +390,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     }
 
     fn check_constructor(&mut self, constructor: &cst::Constructor, expected: &Type, id: ExprId) {
-        let typ = self.convert_ast_type(&constructor.typ);
+        let typ = self.from_cst_type(&constructor.typ);
         self.unify(&typ, expected, TypeErrorKind::Constructor, id);
 
         // Map each field name to its index in the type's declaration order.
@@ -417,7 +417,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     }
 
     pub(super) fn check_extern(&mut self, extern_: &cst::Extern) {
-        let typ = self.convert_ast_type(&extern_.declaration.typ);
+        let typ = self.from_cst_type(&extern_.declaration.typ);
         self.check_name(extern_.declaration.name, &typ);
     }
 

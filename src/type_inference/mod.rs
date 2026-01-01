@@ -8,8 +8,7 @@ use crate::{
     diagnostics::Diagnostic,
     incremental::{self, DbHandle, GetItem, Resolve, TypeCheck, TypeCheckSCC},
     iterator_extensions::mapvec,
-    lexer::token::{FloatKind, IntegerKind},
-    name_resolution::{Origin, ResolutionResult, builtin::Builtin},
+    name_resolution::{Origin, ResolutionResult},
     parser::{
         context::TopLevelContext,
         cst::{self, Name, TopLevelItem, TopLevelItemKind},
@@ -19,7 +18,6 @@ use crate::{
         errors::{Locateable, TypeErrorKind},
         fresh_expr::ExtendedTopLevelContext,
         generics::Generic,
-        top_level_types::{GeneralizedType, TopLevelParameterType, TopLevelType},
         types::{ParameterType, Type, TypeBindings, TypeVariableId},
     },
 };
@@ -31,7 +29,6 @@ pub mod fresh_expr;
 pub mod generics;
 mod get_type;
 pub mod patterns;
-pub mod top_level_types;
 mod type_definitions;
 pub mod types;
 
@@ -93,7 +90,7 @@ pub struct IndividualTypeCheckResult {
     /// but in `a, b = 1, 2`, both `a` and `b` will be.
     /// Ex2: in `type Foo = | A | B`, `A` and `B` will both be generalized, and
     /// there is no need to generalize `Foo` itself.
-    pub generalized: BTreeMap<NameId, GeneralizedType>,
+    pub generalized: BTreeMap<NameId, Type>,
 }
 
 /// The TypeChecker is responsible for checking for type errors inside of an
@@ -269,7 +266,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     /// Generalize all types in the current SCC.
     /// The returned Vec is in the same order as the SCC.
-    fn generalize_all(&mut self) -> BTreeMap<TopLevelId, BTreeMap<NameId, GeneralizedType>> {
+    fn generalize_all(&mut self) -> BTreeMap<TopLevelId, BTreeMap<NameId, Type>> {
         let mut items: BTreeMap<_, BTreeMap<_, _>> = BTreeMap::new();
 
         for (name, typ) in self.item_types.clone().iter() {
@@ -282,12 +279,17 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     }
 
     /// Generalize a type, making it generic. Any holes in the type become generic types.
-    fn generalize(&mut self, typ: &Type) -> GeneralizedType {
+    fn generalize(&mut self, typ: &Type) -> Type {
         let free_vars = self.free_vars(&typ);
-        let substitutions = free_vars.into_iter().map(|var| (var, Type::Generic(Generic::Inferred(var)))).collect();
 
-        let typ = self.substitute(&typ, &substitutions);
-        self.promote_to_top_level_type(&typ).generalize()
+        if free_vars.is_empty() {
+            typ.clone()
+        } else {
+            let substitutions = free_vars.iter().map(|var| (*var, Type::Generic(Generic::Inferred(*var)))).collect();
+            let free_vars = mapvec(free_vars, Generic::Inferred);
+            let typ = self.substitute(&typ, &substitutions);
+            Type::Forall(Arc::new(free_vars), Arc::new(typ))
+        }
     }
 
     fn substitute(&mut self, typ: &Type, bindings: &TypeBindings) -> Type {
@@ -330,77 +332,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 }
                 let typ = typ.clone();
                 self.substitute(&typ, &bindings)
-            }
-        }
-    }
-
-    /// Similar to substitute, but substitutes `Type::Generic` instead of `Type::TypeVariable`
-    fn substitute_generics(&mut self, typ: &Type, bindings: &FxHashMap<Generic, Type>) -> Type {
-        match self.follow_type(typ) {
-            Type::Primitive(_) | Type::Variable(_) | Type::UserDefined(_) => typ.clone(),
-            Type::Generic(generic) => match bindings.get(generic) {
-                Some(binding) => binding.clone(),
-                None => typ.clone(),
             },
-            Type::Function(function) => {
-                let function = function.clone();
-                let parameters = mapvec(&function.parameters, |param| {
-                    let typ = self.substitute_generics(&param.typ, bindings);
-                    ParameterType::new(typ, param.is_implicit)
-                });
-                let return_type = self.substitute_generics(&function.return_type, bindings);
-                let effects = self.substitute_generics(&function.effects, bindings);
-                Type::Function(Arc::new(types::FunctionType { parameters, return_type, effects }))
-            },
-            Type::Application(constructor, args) => {
-                let (constructor, args) = (constructor.clone(), args.clone());
-                let constructor = self.substitute_generics(&constructor, bindings);
-                let args = mapvec(args.iter(), |arg| self.substitute_generics(arg, bindings));
-                Type::Application(Arc::new(constructor), Arc::new(args))
-            },
-            Type::Forall(generics, typ) => {
-                // We need to remove any generics in `generics` that are in `bindings`,
-                // but we wan't to avoid allocating a new map in the common case where there are
-                // no conflicts.
-                let mut bindings = Cow::Borrowed(bindings);
-
-                for generic in generics.iter() {
-                    if bindings.contains_key(generic) {
-                        let mut new_bindings = bindings.into_owned();
-                        new_bindings.remove(generic);
-                        bindings = Cow::Owned(new_bindings);
-                    }
-                }
-                let typ = typ.clone();
-                self.substitute_generics(&typ, &bindings)
-            }
-        }
-    }
-
-    /// Promotes a type to a top-level type.
-    /// Panics if the typ contains an unbound type variable.
-    fn promote_to_top_level_type(&self, typ: &Type) -> TopLevelType {
-        match self.follow_type(&typ) {
-            Type::Primitive(primitive) => TopLevelType::Primitive(*primitive),
-            Type::Generic(name) => TopLevelType::Generic(*name),
-            Type::UserDefined(origin) => TopLevelType::UserDefined(*origin),
-            Type::Variable(_) => {
-                panic!("promote_to_top_level_type called with type containing an unbound type variable")
-            },
-            Type::Function(function_type) => {
-                let parameters = mapvec(&function_type.parameters, |param| {
-                    let typ = self.promote_to_top_level_type(&param.typ);
-                    TopLevelParameterType::new(typ, param.is_implicit)
-                });
-                let return_type = Box::new(self.promote_to_top_level_type(&function_type.return_type));
-                TopLevelType::Function { parameters, return_type }
-            },
-            Type::Application(constructor, args) => {
-                let constructor = Box::new(self.promote_to_top_level_type(constructor));
-                let args = mapvec(args.iter(), |arg| self.promote_to_top_level_type(arg));
-                TopLevelType::Application(constructor, args)
-            },
-            Type::Forall(..) => todo!(),
         }
     }
 
@@ -437,10 +369,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     // This is technically incorrect in the case any of these variables appeared in
                     // `free_vars` before the previous call to `free_vars_helper(_, typ, _)`, but
                     // we expect scoping rules to prevent these cases.
-                    free_vars.retain(|id| {
-                        !generics.contains(&Generic::Inferred(*id))
-                    });
-                }
+                    free_vars.retain(|id| !generics.contains(&Generic::Inferred(*id)));
+                },
             }
         }
 
@@ -449,9 +379,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         free_vars
     }
 
-    fn instantiate(&mut self, typ: &GeneralizedType) -> Type {
-        let substitutions = typ.generics.iter().map(|generic| (*generic, self.next_type_variable())).collect();
-        typ.typ.substitute(&substitutions)
+    fn instantiate(&mut self, typ: Type) -> Type {
+        match typ {
+            Type::Forall(generics, typ) => {
+                let substitutions = generics.iter().map(|generic| (*generic, self.next_type_variable())).collect();
+                typ.substitute_generics(&substitutions, &self.bindings)
+            }
+            other => other,
+        }
     }
 
     /// Unifies the two types. Returns false on failure
@@ -529,7 +464,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     self.try_unify(&actual.as_type(), &expected.as_type())?;
                 }
                 self.try_unify(actual, expected)
-            }
+            },
             (actual, other) if actual == other => Ok(()),
             _ => Err(()),
         }
@@ -584,32 +519,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         typ.follow_type(&self.bindings)
     }
 
-    fn convert_origin_to_type(&mut self, origin: Option<Origin>, make_type: impl FnOnce(Origin) -> Type) -> Type {
-        match origin {
-            Some(Origin::Builtin(builtin)) => {
-                match builtin {
-                    Builtin::Unit => Type::UNIT,
-                    Builtin::Int => Type::ERROR, // TODO: Polymorphic integers
-                    Builtin::Char => Type::CHAR,
-                    Builtin::Float => Type::ERROR, // TODO: Polymorphic floats
-                    Builtin::String => Type::STRING,
-                    Builtin::Ptr => Type::POINTER,
-                    Builtin::PairType => Type::PAIR,
-                    Builtin::PairConstructor => {
-                        // TODO: Error
-                        Type::ERROR
-                    },
-                }
-            },
-            Some(origin) => {
-                if !origin.may_be_a_type() {
-                    // TODO: Error
-                }
-                make_type(origin)
-            },
-            // Assume name resolution has already issued an error for this case
-            None => Type::ERROR,
-        }
+    fn from_cst_type(&self, typ: &cst::Type) -> Type {
+        Type::from_cst_type(typ, self.current_resolve())
     }
 
     /// Try to retrieve the types of each field of the given type.
@@ -667,64 +578,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             }
         }
         substitutions
-    }
-
-    /// Convert an ast type to a Type as closely as possible.
-    /// This method does not emit any errors and relies on name resolution
-    /// to emit errors when resolving types.
-    /// Convert the given Origin to a type, issuing an error if the origin is not a type
-    fn convert_ast_type(&mut self, typ: &crate::parser::cst::Type) -> Type {
-        match typ {
-            crate::parser::cst::Type::Integer(kind) => match kind {
-                IntegerKind::I8 => Type::I8,
-                IntegerKind::I16 => Type::I16,
-                IntegerKind::I32 => Type::I32,
-                IntegerKind::I64 => Type::I64,
-                IntegerKind::Isz => Type::ISZ,
-                IntegerKind::U8 => Type::U8,
-                IntegerKind::U16 => Type::U16,
-                IntegerKind::U32 => Type::U32,
-                IntegerKind::U64 => Type::U64,
-                IntegerKind::Usz => Type::USZ,
-            },
-            crate::parser::cst::Type::Float(kind) => match kind {
-                FloatKind::F32 => Type::F32,
-                FloatKind::F64 => Type::F64,
-            },
-            crate::parser::cst::Type::String => Type::STRING,
-            crate::parser::cst::Type::Char => Type::CHAR,
-            crate::parser::cst::Type::Named(path) => {
-                // TODO: is `current_resolve` sufficient or do we need the [ExtendedTopLevelContext]?
-                let origin = self.current_resolve().path_origins.get(path).copied();
-                self.convert_origin_to_type(origin, Type::UserDefined)
-            },
-            crate::parser::cst::Type::Variable(name) => {
-                // TODO: is `current_resolve` sufficient or do we need the [ExtendedTopLevelContext]?
-                let origin = self.current_resolve().name_origins.get(name).copied();
-                self.convert_origin_to_type(origin, |origin| Type::Generic(Generic::Named(origin)))
-            },
-            crate::parser::cst::Type::Function(function) => {
-                let parameters = mapvec(&function.parameters, |param| {
-                    let typ = self.convert_ast_type(&param.typ);
-                    ParameterType::new(typ, param.is_implicit)
-                });
-                let return_type = self.convert_ast_type(&function.return_type);
-                // TODO: Effects
-                let effects = Type::UNIT;
-                Type::Function(Arc::new(types::FunctionType { parameters, return_type, effects }))
-            },
-            crate::parser::cst::Type::Error => Type::ERROR,
-            crate::parser::cst::Type::Unit => Type::UNIT,
-            crate::parser::cst::Type::Pair => Type::PAIR,
-            crate::parser::cst::Type::Application(f, args) => {
-                let f = self.convert_ast_type(f);
-                let args = mapvec(args, |typ| self.convert_ast_type(typ));
-                Type::Application(Arc::new(f), Arc::new(args))
-            },
-            crate::parser::cst::Type::Reference(mutability, sharedness) => {
-                Type::Primitive(types::PrimitiveType::Reference(*mutability, *sharedness))
-            },
-        }
     }
 }
 
@@ -792,24 +645,38 @@ impl TopLevelId {
     }
 }
 
-fn maybe_apply_type(typ: &GeneralizedType, args: Option<&[Type]>) -> Type {
+/// Try to apply the given type to the given type arguments. Note that this assumes there are no
+/// bound type variables within `typ`!
+fn maybe_apply_type(typ: &Type, args: Option<&[Type]>) -> Type {
+    let expected_generic_count = match typ {
+        Type::Forall(generics, _) => generics.len(),
+        _ => 0,
+    };
+
+    if args.map_or(0, |args| args.len()) != expected_generic_count {
+        // TODO: We should be issuing an error either here or above somewhere
+    }
+
+    let no_type_var_bindings = TypeBindings::default();
+
     match args {
         Some(args) => {
-            // TODO: We should be issuing an error either here or above somewhere
-            if args.len() < typ.generics.len() {
+            if args.len() < expected_generic_count {
                 let mut new_args = args.to_vec();
-                for _ in args.len() .. typ.generics.len() {
+                for _ in args.len()..expected_generic_count {
                     new_args.push(Type::ERROR);
                 }
-                typ.apply_type(&new_args)
+                typ.apply_type(&new_args, &no_type_var_bindings)
             } else {
-                typ.apply_type(args)
+                typ.apply_type(args, &no_type_var_bindings)
             }
-        }
+        },
+        None if expected_generic_count == 0 => typ.clone(),
         None => {
-            // This should be an error if `!typ.generics.is_empty()`
-            let args = mapvec(&typ.generics, |_| Type::ERROR);
-            typ.apply_type(&args)
+            // This should be an error in the future
+            let Type::Forall(generics, _) = typ else { unreachable!() };
+            let args = mapvec(generics.iter(), |_| Type::ERROR);
+            typ.apply_type(&args, &no_type_var_bindings)
         },
     }
 }
@@ -823,20 +690,5 @@ impl Type {
             _ => &[],
         };
         parameters.iter().map(|param| param.typ.clone())
-    }
-}
-
-impl GeneralizedType {
-    /// Apply a GeneralizedType to the given arguments. The given [Type]s of the arguments should
-    /// be [Type]s in the current context, and the returned [Type] will be in the current
-    /// context as well.
-    ///
-    /// Panics if `arguments.len() != self.generics.len()`
-    fn apply_type(&self, arguments: &[Type]) -> Type {
-        // TODO: Re-add
-        // assert_eq!(arguments.len(), self.generics.len());
-        let substitutions =
-            self.generics.iter().zip(arguments).map(|(generic, argument)| (*generic, argument.clone())).collect();
-        self.typ.substitute(&substitutions)
     }
 }

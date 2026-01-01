@@ -18,7 +18,7 @@ use crate::{
         cst,
         ids::{NameId, TopLevelId},
     },
-    type_inference::{dependency_graph::TypeCheckResult, top_level_types::TopLevelType},
+    type_inference::dependency_graph::TypeCheckResult,
 };
 
 /// Monomorphize the item, returning a MIR function if the item refers to a function.
@@ -50,7 +50,7 @@ struct FunctionContext<'local, 'db> {
     generic_mapping: FxHashMap<NameId, Type>,
 
     monomorphized_functions: FxHashMap<TopLevelId, mir::Function>,
-    queue: Vec<(TopLevelId, TopLevelType)>,
+    queue: Vec<(TopLevelId, Type)>,
 }
 
 impl<'local, 'db> FunctionContext<'local, 'db> {
