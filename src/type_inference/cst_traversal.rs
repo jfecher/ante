@@ -129,8 +129,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 if let Some(typ) = self.item_types.get(&id) {
                     typ.clone()
                 } else {
-                    let typ = GetType(id).get(self.compiler);
-                    self.instantiate(typ)
+                    let typ = dbg!(GetType(id).get(self.compiler));
+                    dbg!(self.instantiate(typ))
                 }
             },
             Some(Origin::Local(name)) => self.name_types[&name].clone(),

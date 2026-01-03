@@ -4,7 +4,7 @@ use crate::{
     parser::{
         context::TopLevelContext,
         cst::{self, Definition, Expr, Pattern, TopLevelItemKind},
-    }, type_inference::types::Type,
+    }, type_inference::types::{Type, TypeBindings},
 };
 
 /// Get the type of the name defined by this TopLevelId.
@@ -85,7 +85,8 @@ pub(super) fn try_get_type(
 
         // We construct a function type to convert wholesale instead of converting as we go
         // to avoid repeating logic in [Type::from_cst_type], namely handling of effect types.
-        Some(Type::from_cst_type(&cst::Type::Function(cst_function_type), resolve))
+        let typ = Type::from_cst_type(&cst::Type::Function(cst_function_type), resolve);
+        Some(typ.generalize(&TypeBindings::default()))
     } else {
         None
     }

@@ -1,4 +1,4 @@
-use std::{borrow::Cow, collections::BTreeMap, rc::Rc, sync::Arc};
+use std::{collections::BTreeMap, rc::Rc, sync::Arc};
 
 use inc_complete::DbGet;
 use rustc_hash::FxHashMap;
@@ -18,7 +18,7 @@ use crate::{
         errors::{Locateable, TypeErrorKind},
         fresh_expr::ExtendedTopLevelContext,
         generics::Generic,
-        types::{ParameterType, Type, TypeBindings, TypeVariableId},
+        types::{Type, TypeBindings, TypeVariableId},
     },
 };
 
@@ -271,112 +271,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         for (name, typ) in self.item_types.clone().iter() {
             self.current_item = Some(name.top_level_item);
-            let typ = self.generalize(typ);
+            let typ = typ.generalize(&self.bindings);
             items.entry(name.top_level_item).or_default().insert(name.local_name_id, typ);
         }
 
         items
-    }
-
-    /// Generalize a type, making it generic. Any holes in the type become generic types.
-    fn generalize(&mut self, typ: &Type) -> Type {
-        let free_vars = self.free_vars(&typ);
-
-        if free_vars.is_empty() {
-            typ.clone()
-        } else {
-            let substitutions = free_vars.iter().map(|var| (*var, Type::Generic(Generic::Inferred(*var)))).collect();
-            let free_vars = mapvec(free_vars, Generic::Inferred);
-            let typ = self.substitute(&typ, &substitutions);
-            Type::Forall(Arc::new(free_vars), Arc::new(typ))
-        }
-    }
-
-    fn substitute(&mut self, typ: &Type, bindings: &TypeBindings) -> Type {
-        match self.follow_type(typ) {
-            Type::Primitive(_) | Type::Generic(_) | Type::UserDefined(_) => typ.clone(),
-            Type::Variable(id) => match bindings.get(id) {
-                Some(binding) => binding.clone(),
-                None => typ.clone(),
-            },
-            Type::Function(function) => {
-                let function = function.clone();
-                let parameters = mapvec(&function.parameters, |param| {
-                    let typ = self.substitute(&param.typ, bindings);
-                    ParameterType::new(typ, param.is_implicit)
-                });
-                let return_type = self.substitute(&function.return_type, bindings);
-                let effects = self.substitute(&function.effects, bindings);
-                Type::Function(Arc::new(types::FunctionType { parameters, return_type, effects }))
-            },
-            Type::Application(constructor, args) => {
-                let (constructor, args) = (constructor.clone(), args.clone());
-                let constructor = self.substitute(&constructor, bindings);
-                let args = mapvec(args.iter(), |arg| self.substitute(arg, bindings));
-                Type::Application(Arc::new(constructor), Arc::new(args))
-            },
-            Type::Forall(generics, typ) => {
-                // We need to remove any generics in `generics` that are in `bindings`,
-                // but we wan't to avoid allocating a new map in the common case where there are
-                // no conflicts.
-                let mut bindings = Cow::Borrowed(bindings);
-
-                for generic in generics.iter() {
-                    if let Generic::Inferred(id) = generic {
-                        if bindings.contains_key(id) {
-                            let mut new_bindings = bindings.into_owned();
-                            new_bindings.remove(id);
-                            bindings = Cow::Owned(new_bindings);
-                        }
-                    }
-                }
-                let typ = typ.clone();
-                self.substitute(&typ, &bindings)
-            },
-        }
-    }
-
-    /// Return the list of unbound type variables within this type
-    fn free_vars(&self, typ: &Type) -> Vec<TypeVariableId> {
-        fn free_vars_helper(this: &TypeChecker, typ: &Type, free_vars: &mut Vec<TypeVariableId>) {
-            match this.follow_type(typ) {
-                Type::Primitive(_) | Type::Generic(_) | Type::UserDefined(_) => (),
-                Type::Variable(id) => {
-                    // The number of free vars is expected to remain too small so we're
-                    // not too worried about asymptotic behavior. It is more important we
-                    // maintain the ordering of insertion.
-                    if !free_vars.contains(id) {
-                        free_vars.push(*id);
-                    }
-                },
-                Type::Function(function) => {
-                    for parameter in &function.parameters {
-                        free_vars_helper(this, &parameter.typ, free_vars);
-                    }
-                    free_vars_helper(this, &function.return_type, free_vars);
-                    free_vars_helper(this, &function.effects, free_vars);
-                },
-                Type::Application(constructor, args) => {
-                    free_vars_helper(this, constructor, free_vars);
-                    for arg in args.iter() {
-                        free_vars_helper(this, arg, free_vars);
-                    }
-                },
-                Type::Forall(generics, typ) => {
-                    free_vars_helper(this, typ, free_vars);
-
-                    // Remove any free variable contained within `generics`.
-                    // This is technically incorrect in the case any of these variables appeared in
-                    // `free_vars` before the previous call to `free_vars_helper(_, typ, _)`, but
-                    // we expect scoping rules to prevent these cases.
-                    free_vars.retain(|id| !generics.contains(&Generic::Inferred(*id)));
-                },
-            }
-        }
-
-        let mut free_vars = Vec::new();
-        free_vars_helper(self, typ, &mut free_vars);
-        free_vars
     }
 
     fn instantiate(&mut self, typ: Type) -> Type {
