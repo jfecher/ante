@@ -326,7 +326,12 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                 if **first == dependency.name {
                     // Discard the crate name
                     components.next();
-                    return self.lookup_in(components, Namespace::crate_(*dependency_id), allow_type_based_resolution, is_type);
+                    return self.lookup_in(
+                        components,
+                        Namespace::crate_(*dependency_id),
+                        allow_type_based_resolution,
+                        is_type,
+                    );
                 }
             }
         }

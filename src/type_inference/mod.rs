@@ -282,8 +282,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         match typ {
             Type::Forall(generics, typ) => {
                 let substitutions = generics.iter().map(|generic| (*generic, self.next_type_variable())).collect();
-                typ.substitute_generics(&substitutions, &self.bindings)
-            }
+                typ.substitute(&substitutions, &self.bindings)
+            },
             other => other,
         }
     }

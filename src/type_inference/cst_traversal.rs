@@ -96,9 +96,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
             Pattern::Literal(literal) => self.check_literal(literal, pattern, expected),
             Pattern::Constructor(path, args) => {
-                let parameters = mapvec(args, |_| {
-                    types::ParameterType::explicit(self.next_type_variable())
-                });
+                let parameters = mapvec(args, |_| types::ParameterType::explicit(self.next_type_variable()));
 
                 let expected_function_type = if args.is_empty() {
                     expected.clone()
@@ -129,8 +127,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 if let Some(typ) = self.item_types.get(&id) {
                     typ.clone()
                 } else {
-                    let typ = dbg!(GetType(id).get(self.compiler));
-                    dbg!(self.instantiate(typ))
+                    let typ = GetType(id).get(self.compiler);
+                    self.instantiate(typ)
                 }
             },
             Some(Origin::Local(name)) => self.name_types[&name].clone(),
@@ -216,9 +214,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     }
 
     fn check_call(&mut self, call: &cst::Call, expected: &Type) {
-        let expected_parameter_types = mapvec(&call.arguments, |_| {
-            types::ParameterType::explicit(self.next_type_variable())
-        });
+        let expected_parameter_types =
+            mapvec(&call.arguments, |_| types::ParameterType::explicit(self.next_type_variable()));
 
         let expected_function_type = {
             let parameters = expected_parameter_types.clone();
@@ -237,7 +234,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let function_type = match self.follow_type(expected) {
             Type::Function(function_type) => function_type.clone(),
             _ => {
-                let parameters = mapvec(&lambda.parameters, |_| types::ParameterType::explicit(self.next_type_variable()));
+                let parameters =
+                    mapvec(&lambda.parameters, |_| types::ParameterType::explicit(self.next_type_variable()));
                 let expected_parameter_count = parameters.len();
                 let return_type = self.next_type_variable();
                 let effects = self.next_type_variable();
@@ -274,7 +272,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     /// Check a function's parameter count using the given parameter types as the expected count.
     /// Issues an error if the expected count does not match the actual count.
-    fn check_function_parameter_count(&mut self, parameters: &Vec<types::ParameterType>, actual_count: usize, expr: ExprId) {
+    fn check_function_parameter_count(
+        &mut self, parameters: &Vec<types::ParameterType>, actual_count: usize, expr: ExprId,
+    ) {
         if actual_count != parameters.len() {
             self.compiler.accumulate(Diagnostic::FunctionArgCountMismatch {
                 actual: actual_count,

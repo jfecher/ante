@@ -4,7 +4,8 @@ use crate::{
     parser::{
         context::TopLevelContext,
         cst::{self, Definition, Expr, Pattern, TopLevelItemKind},
-    }, type_inference::types::{Type, TypeBindings},
+    },
+    type_inference::types::{Type, TypeBindings},
 };
 
 /// Get the type of the name defined by this TopLevelId.
@@ -70,18 +71,12 @@ pub(super) fn try_get_type(
             .parameters
             .iter()
             .map(|parameter| match &context.patterns[parameter.pattern] {
-                Pattern::TypeAnnotation(_, typ) => {
-                    Some(cst::ParameterType::new(typ.clone(), parameter.is_implicit))
-                }
+                Pattern::TypeAnnotation(_, typ) => Some(cst::ParameterType::new(typ.clone(), parameter.is_implicit)),
                 _ => None,
             })
             .collect::<Option<Vec<_>>>()?;
 
-        let cst_function_type = cst::FunctionType {
-            parameters,
-            return_type,
-            effects: lambda.effects.clone(),
-        };
+        let cst_function_type = cst::FunctionType { parameters, return_type, effects: lambda.effects.clone() };
 
         // We construct a function type to convert wholesale instead of converting as we go
         // to avoid repeating logic in [Type::from_cst_type], namely handling of effect types.

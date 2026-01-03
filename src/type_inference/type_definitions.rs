@@ -2,7 +2,20 @@ use std::{borrow::Cow, sync::Arc};
 
 use rustc_hash::FxHashMap;
 
-use crate::{diagnostics::UnimplementedItem, iterator_extensions::mapvec, name_resolution::Origin, parser::{cst, ids::{NameId, TopLevelId, TopLevelName}}, type_inference::{Locateable, TypeChecker, generics::Generic, types::{self, GenericSubstitutions, ParameterType, Type}}};
+use crate::{
+    diagnostics::UnimplementedItem,
+    iterator_extensions::mapvec,
+    name_resolution::Origin,
+    parser::{
+        cst,
+        ids::{NameId, TopLevelId, TopLevelName},
+    },
+    type_inference::{
+        Locateable, TypeChecker,
+        generics::Generic,
+        types::{self, GenericSubstitutions, ParameterType, Type},
+    },
+};
 
 impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// A type definition always returns a unit value, but we must still create the
@@ -47,7 +60,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     ///
     /// For generic types, the type will be instantiated with fresh type
     /// variables that are returned along with the `Type::Application` of the user-defined type.
-    fn type_definition_type(&mut self, type_name: TopLevelName, item: &cst::TypeDefinition, instantiate: bool) -> (Type, GenericSubstitutions) {
+    fn type_definition_type(
+        &mut self, type_name: TopLevelName, item: &cst::TypeDefinition, instantiate: bool,
+    ) -> (Type, GenericSubstitutions) {
         let mut substitutions = FxHashMap::default();
         let mut data_type = Type::UserDefined(Origin::TopLevelDefinition(type_name));
 
@@ -88,7 +103,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             let mut param = self.from_cst_type(arg);
 
             if !substitutions.is_empty() {
-                param = param.substitute_generics(&substitutions, &self.bindings);
+                param = param.substitute(&substitutions, &self.bindings);
             }
             types::ParameterType::explicit(param)
         });
@@ -103,7 +118,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// ```
     /// The name `Eq.eq` is publically visible. We want to give it the type:
     /// `Eq.eq: fn t t {Eq t} -> Bool`
-    fn build_trait_method_types(&mut self, id: TopLevelId, definition: &cst::TypeDefinition, fields: &[(NameId, cst::Type)]) {
+    fn build_trait_method_types(
+        &mut self, id: TopLevelId, definition: &cst::TypeDefinition, fields: &[(NameId, cst::Type)],
+    ) {
         let type_name = TopLevelName::new(id, definition.name);
 
         for (method_name, method_type) in fields.iter() {

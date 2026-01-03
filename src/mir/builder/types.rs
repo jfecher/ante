@@ -22,9 +22,7 @@ where
             TCType::Variable(_type_variable_id) => Type::ERROR,
             TCType::Function(function_type) => {
                 // TODO: Effects
-                let parameters = mapvec(&function_type.parameters, |typ| {
-                    self.convert_type(&typ.typ, None)
-                });
+                let parameters = mapvec(&function_type.parameters, |typ| self.convert_type(&typ.typ, None));
                 let return_type = self.convert_type(&function_type.return_type, None);
                 Type::Function(Arc::new(FunctionType { parameters, return_type }))
             },

@@ -182,7 +182,7 @@ impl<'ctx> ModuleContext<'ctx> {
 
     fn convert_primitive_type(&self, primitive_type: PrimitiveType) -> BasicTypeEnum<'ctx> {
         match primitive_type {
-            PrimitiveType::Error => self.llvm.struct_type(&[], false).into(),//unreachable!("Cannot codegen llvm with errors"),
+            PrimitiveType::Error => self.llvm.struct_type(&[], false).into(), //unreachable!("Cannot codegen llvm with errors"),
             PrimitiveType::Unit => self.llvm.struct_type(&[], false).into(),
             PrimitiveType::Bool => self.llvm.bool_type().into(),
             PrimitiveType::Pointer => self.llvm.ptr_type(AddressSpace::default()).into(),

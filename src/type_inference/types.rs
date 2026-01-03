@@ -5,10 +5,16 @@ use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    incremental::GetItem, iterator_extensions::mapvec, lexer::token::{FloatKind, IntegerKind}, name_resolution::{Origin, builtin::Builtin}, parser::{
+    incremental::GetItem,
+    iterator_extensions::mapvec,
+    lexer::token::{FloatKind, IntegerKind},
+    name_resolution::{Origin, builtin::Builtin},
+    parser::{
         cst::{self, Mutability, Sharedness},
         ids::NameId,
-    }, type_inference::generics::Generic, vecmap::VecMap
+    },
+    type_inference::generics::Generic,
+    vecmap::VecMap,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -202,27 +208,31 @@ impl Type {
     }
 
     /// Similar to substitute, but substitutes `Type::Generic` instead of `Type::TypeVariable`
-    pub fn substitute_generics(&self, bindings_to_substitute: &GenericSubstitutions, bindings_in_scope: &TypeBindings) -> Type {
+    pub fn substitute(&self, bindings_to_substitute: &GenericSubstitutions, bindings_in_scope: &TypeBindings) -> Type {
         match self.follow_type(bindings_in_scope) {
-            Type::Primitive(_) | Type::Variable(_) | Type::UserDefined(_) => self.clone(),
+            Type::Primitive(_) | Type::UserDefined(_) => self.clone(),
             Type::Generic(generic) => match bindings_to_substitute.get(generic) {
+                Some(binding) => binding.clone(),
+                None => self.clone(),
+            },
+            Type::Variable(id) => match bindings_to_substitute.get(&Generic::Inferred(*id)) {
                 Some(binding) => binding.clone(),
                 None => self.clone(),
             },
             Type::Function(function) => {
                 let function = function.clone();
                 let parameters = mapvec(&function.parameters, |param| {
-                    let typ = param.typ.substitute_generics(bindings_to_substitute, bindings_in_scope);
+                    let typ = param.typ.substitute(bindings_to_substitute, bindings_in_scope);
                     ParameterType::new(typ, param.is_implicit)
                 });
-                let return_type = function.return_type.substitute_generics(bindings_to_substitute, bindings_in_scope);
-                let effects = function.effects.substitute_generics(bindings_to_substitute, bindings_in_scope);
+                let return_type = function.return_type.substitute(bindings_to_substitute, bindings_in_scope);
+                let effects = function.effects.substitute(bindings_to_substitute, bindings_in_scope);
                 Type::Function(Arc::new(FunctionType { parameters, return_type, effects }))
             },
             Type::Application(constructor, args) => {
                 let (constructor, args) = (constructor.clone(), args.clone());
-                let constructor = constructor.substitute_generics(bindings_to_substitute, bindings_in_scope);
-                let args = mapvec(args.iter(), |arg| arg.substitute_generics(bindings_to_substitute, bindings_in_scope));
+                let constructor = constructor.substitute(bindings_to_substitute, bindings_in_scope);
+                let args = mapvec(args.iter(), |arg| arg.substitute(bindings_to_substitute, bindings_in_scope));
                 Type::Application(Arc::new(constructor), Arc::new(args))
             },
             Type::Forall(generics, typ) => {
@@ -239,7 +249,7 @@ impl Type {
                     }
                 }
                 let typ = typ.clone();
-                typ.substitute_generics(&bindings, bindings_in_scope)
+                typ.substitute(&bindings, bindings_in_scope)
             },
         }
     }
@@ -259,8 +269,8 @@ impl Type {
             Type::Forall(generics, typ) => {
                 let substitutions =
                     generics.iter().zip(arguments).map(|(generic, argument)| (*generic, argument.clone())).collect();
-                typ.substitute_generics(&substitutions, bindings_in_scope)
-            }
+                typ.substitute(&substitutions, bindings_in_scope)
+            },
             other => other.clone(),
         }
     }
@@ -367,68 +377,29 @@ impl Type {
         if free_vars.is_empty() {
             self.clone()
         } else {
-            let substitutions = free_vars.iter().map(|var| (*var, Type::Generic(Generic::Inferred(*var)))).collect();
-            let free_vars = mapvec(free_vars, Generic::Inferred);
+            let substitutions = free_vars.iter().map(|var| (*var, Type::Generic(*var))).collect();
             let typ = self.substitute(&substitutions, bindings);
             Type::Forall(Arc::new(free_vars), Arc::new(typ))
         }
     }
 
-    pub fn substitute(&self, substitutions: &TypeBindings, bindings: &TypeBindings) -> Type {
-        match self.follow_type(bindings) {
-            Type::Primitive(_) | Type::Generic(_) | Type::UserDefined(_) => self.clone(),
-            Type::Variable(id) => match substitutions.get(id) {
-                Some(binding) => binding.clone(),
-                None => self.clone(),
-            },
-            Type::Function(function) => {
-                let function = function.clone();
-                let parameters = mapvec(&function.parameters, |param| {
-                    let typ = param.typ.substitute(substitutions, bindings);
-                    ParameterType::new(typ, param.is_implicit)
-                });
-                let return_type = function.return_type.substitute(substitutions, bindings);
-                let effects = function.effects.substitute(substitutions, bindings);
-                Type::Function(Arc::new(FunctionType { parameters, return_type, effects }))
-            },
-            Type::Application(constructor, args) => {
-                let (constructor, args) = (constructor.clone(), args.clone());
-                let constructor = constructor.substitute(substitutions, bindings);
-                let args = mapvec(args.iter(), |arg| arg.substitute(substitutions, bindings));
-                Type::Application(Arc::new(constructor), Arc::new(args))
-            },
-            Type::Forall(generics, typ) => {
-                // We need to remove any generics in `generics` that are in `bindings`,
-                // but we wan't to avoid allocating a new map in the common case where there are
-                // no conflicts.
-                let mut new_substitutions = Cow::Borrowed(substitutions);
-
-                for generic in generics.iter() {
-                    if let Generic::Inferred(id) = generic {
-                        if new_substitutions.contains_key(id) {
-                            let mut new_bindings = new_substitutions.into_owned();
-                            new_bindings.remove(id);
-                            new_substitutions = Cow::Owned(new_bindings);
-                        }
-                    }
-                }
-                let typ = typ.clone();
-                typ.substitute(&new_substitutions, bindings)
-            },
-        }
-    }
-
     /// Return the list of unbound type variables within this type
-    pub fn free_vars(&self, bindings: &TypeBindings) -> Vec<TypeVariableId> {
-        fn free_vars_helper(typ: &Type, bindings: &TypeBindings, free_vars: &mut Vec<TypeVariableId>) {
+    pub fn free_vars(&self, bindings: &TypeBindings) -> Vec<Generic> {
+        fn free_vars_helper(typ: &Type, bindings: &TypeBindings, free_vars: &mut Vec<Generic>) {
             match typ.follow_type(bindings) {
-                Type::Primitive(_) | Type::Generic(_) | Type::UserDefined(_) => (),
+                Type::Primitive(_) | Type::UserDefined(_) => (),
                 Type::Variable(id) => {
                     // The number of free vars is expected to remain too small so we're
                     // not too worried about asymptotic behavior. It is more important we
                     // maintain the ordering of insertion.
-                    if !free_vars.contains(id) {
-                        free_vars.push(*id);
+                    let generic = Generic::Inferred(*id);
+                    if !free_vars.contains(&generic) {
+                        free_vars.push(generic);
+                    }
+                },
+                Type::Generic(generic) => {
+                    if !free_vars.contains(&generic) {
+                        free_vars.push(*generic);
                     }
                 },
                 Type::Function(function) => {
@@ -451,7 +422,7 @@ impl Type {
                     // This is technically incorrect in the case any of these variables appeared in
                     // `free_vars` before the previous call to `free_vars_helper(_, typ, _)`, but
                     // we expect scoping rules to prevent these cases.
-                    free_vars.retain(|id| !generics.contains(&Generic::Inferred(*id)));
+                    free_vars.retain(|generic| !generics.contains(generic));
                 },
             }
         }
@@ -495,25 +466,22 @@ where
                     write!(f, "_")
                 }
             },
-            Type::Function(function) => {
-                try_parenthesize(parenthesize, f, |f| {
-                    write!(f, "fn")?;
-                    for parameter in &function.parameters {
-                        write!(f, " ")?;
-                        if parameter.is_implicit {
-                            write!(f, "{{")?;
-                            self.fmt_type(&parameter.typ, false, f)?;
-                            write!(f, "}}")?;
-                        } else {
-                            self.fmt_type(&parameter.typ, true, f)?;
-                        }
+            Type::Function(function) => try_parenthesize(parenthesize, f, |f| {
+                write!(f, "fn")?;
+                for parameter in &function.parameters {
+                    write!(f, " ")?;
+                    if parameter.is_implicit {
+                        write!(f, "{{")?;
+                        self.fmt_type(&parameter.typ, false, f)?;
+                        write!(f, "}}")?;
+                    } else {
+                        self.fmt_type(&parameter.typ, true, f)?;
                     }
-                    write!(f, " -> ")?;
-                    self.fmt_type(&function.return_type, false, f)
-                })
-            },
-            Type::Application(constructor, args) => {
-                try_parenthesize(parenthesize, f, |f| {
+                }
+                write!(f, " -> ")?;
+                self.fmt_type(&function.return_type, false, f)
+            }),
+            Type::Application(constructor, args) => try_parenthesize(parenthesize, f, |f| {
                 if **constructor == Type::PAIR && args.len() == 2 {
                     self.fmt_type(&args[0], true, f)?;
                     write!(f, ", ")?;
@@ -524,20 +492,17 @@ where
                         write!(f, " ")?;
                         self.fmt_type(arg, true, f)?;
                     }
-                        Ok(())
+                    Ok(())
                 }
-                })
-            },
-            Type::Forall(generics, typ) => {
-                try_parenthesize(parenthesize, f, |f| {
-                    write!(f, "forall")?;
-                    for generic in generics.iter() {
-                        write!(f, " {generic}")?;
-                    }
-                    write!(f, ". ")?;
-                    self.fmt_type(typ, parenthesize, f)
-                })
-            },
+            }),
+            Type::Forall(generics, typ) => try_parenthesize(parenthesize, f, |f| {
+                write!(f, "forall")?;
+                for generic in generics.iter() {
+                    write!(f, " {generic}")?;
+                }
+                write!(f, ". ")?;
+                self.fmt_type(typ, parenthesize, f)
+            }),
         }
     }
 

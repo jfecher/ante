@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     diagnostics::{Diagnostic, Location, UnimplementedItem},
     incremental::{GetItem, GetItemRaw},
-    iterator_extensions::{map_btree, join_arc_str, opt_mapvec, try_mapvec, mapvec},
+    iterator_extensions::{join_arc_str, map_btree, mapvec, opt_mapvec, try_mapvec},
     name_resolution::Origin,
     parser::{
         cst::{self, Literal, Name, Path, TopLevelItem},
