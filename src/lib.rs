@@ -6,7 +6,7 @@ mod find_files;
 mod lexer;
 mod mir;
 pub mod name_resolution;
-mod parser;
+pub mod parser;
 pub mod type_inference;
 
 // Util modules:

@@ -24,7 +24,7 @@ use crate::{
 /// Monomorphize the item, returning a MIR function if the item refers to a function.
 /// If the item does not refer to a function (e.g. it is a type definition), `None` is returned.
 #[allow(unused)]
-fn monomorphize(compiler: &DbHandle, item: TopLevelId) -> Option<mir::Function> {
+fn monomorphize(compiler: &DbHandle, item: TopLevelId) -> Option<mir::Definition> {
     let types = TypeCheck(item).get(compiler);
     let (item, item_context) = GetItem(item).get(compiler);
 
@@ -49,7 +49,7 @@ struct FunctionContext<'local, 'db> {
     item_context: Arc<TopLevelContext>,
     generic_mapping: FxHashMap<NameId, Type>,
 
-    monomorphized_functions: FxHashMap<TopLevelId, mir::Function>,
+    monomorphized_functions: FxHashMap<TopLevelId, mir::Definition>,
     queue: Vec<(TopLevelId, Type)>,
 }
 
@@ -65,7 +65,7 @@ impl<'local, 'db> FunctionContext<'local, 'db> {
         }
     }
 
-    fn monomorphize_function(&mut self, _definition: &cst::Definition) -> mir::Function {
+    fn monomorphize_function(&mut self, _definition: &cst::Definition) -> mir::Definition {
         todo!()
     }
 }

@@ -5,7 +5,7 @@ use std::{
 };
 
 use ante::{
-    diagnostics::{Diagnostic, Location},
+    diagnostics::{Diagnostic, DiagnosticKind, Location},
     incremental::Db, name_resolution::namespace::SourceFileId,
 };
 
@@ -186,7 +186,7 @@ impl LanguageServer for Backend {
         let hovered_node = node_at_index(ast, index);
 
         let result = match hovered_node {
-            Ast::Variable(v) => {
+            Cst::Variable(v) => {
                 let info = match v.definition {
                     Some(definition_id) => &cache[definition_id],
                     _ => return Ok(None),
@@ -237,12 +237,12 @@ impl Backend {
 
     /// Is this still needed?
     fn save_document(&self) {
-        // for (path, content) in cache.file_cache {
-        //     let uri = Url::from_file_path(path).unwrap();
-        //     if self.document_map.get(&uri).is_none() {
-        //         self.document_map.insert(uri.clone(), Rope::from_str(&content));
-        //     }
-        // }
+        for (path, content) in cache.file_cache {
+            let uri = Url::from_file_path(path).unwrap();
+            if self.document_map.get(&uri).is_none() {
+                self.document_map.insert(uri.clone(), Rope::from_str(content));
+            }
+        }
     }
 
     async fn update_diagnostics(&self, uri: Url, rope: &Rope) {
@@ -264,9 +264,9 @@ impl Backend {
 
         for diagnostic in cache.get_diagnostics() {
             let severity = Some(match diagnostic.error_type() {
-                ErrorType::Note => DiagnosticSeverity::HINT,
-                ErrorType::Warning => DiagnosticSeverity::WARNING,
-                ErrorType::Error => DiagnosticSeverity::ERROR,
+                DiagnosticKind::Note => DiagnosticSeverity::HINT,
+                DiagnosticKind::Warning => DiagnosticSeverity::WARNING,
+                DiagnosticKind::Error => DiagnosticSeverity::ERROR,
             });
 
             let loc = diagnostic.locate();

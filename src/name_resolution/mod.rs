@@ -362,17 +362,20 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
 
     /// Link a method whose name is expected to be in `self.names_in_global_scope`
     fn link_existing_union_variant(&mut self, type_name: NameId, item_name: NameId) {
-        let item_name_string = &self.context.names[item_name];
         let type_name_string = &self.context.names[type_name];
+        let item_name_string = &self.context.names[item_name];
 
         // panic safety: `type_name` should already be declared in global scope
         let type_id = self.names_in_global_scope.definitions[type_name_string];
 
-        let methods = &self.names_in_global_scope.methods[&type_id.top_level_item];
-        let method = methods[item_name_string];
-        self.top_level_names.push(item_name);
-        self.name_links.insert(type_name, Origin::TopLevelDefinition(type_id));
-        self.name_links.insert(item_name, Origin::TopLevelDefinition(method));
+        if let Some(methods) = &self.names_in_global_scope.methods.get(&type_id.top_level_item) {
+            let method = methods[item_name_string];
+            self.top_level_names.push(item_name);
+            self.name_links.insert(type_name, Origin::TopLevelDefinition(type_id));
+            self.name_links.insert(item_name, Origin::TopLevelDefinition(method));
+        } else {
+            println!("Warning: expected existing union variant {type_name_string}.{item_name_string} to be declared but it is not");
+        }
     }
 
     fn link_existing_pattern(&mut self, pattern: PatternId) {

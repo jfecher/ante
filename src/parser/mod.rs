@@ -952,6 +952,13 @@ impl<'tokens> Parser<'tokens> {
                 self.advance();
                 Ok(name.clone())
             },
+            Token::ParenthesisLeft if self.peek_next_token().is_overloadable_operator() => {
+                self.advance();
+                let operator = self.current_token().to_string();
+                self.advance();
+                self.expect(Token::ParenthesisRight, "a `)` to close the opening parenthesis from this operator")?;
+                Ok(operator)
+            }
             _ => self.expected("an identifier"),
         }
     }
@@ -1036,7 +1043,6 @@ impl<'tokens> Parser<'tokens> {
     fn parse_function_parameter(&mut self) -> Result<Parameter> {
         let (implicit, pattern) = if *self.current_token() == Token::BraceLeft {
             let pattern = self.parse_implicit_function_parameter()?;
-            self.expect(Token::BraceRight, "a `}` to close the opening `{` from the implicit parameter")?;
             (true, pattern)
         } else {
             (false, self.parse_function_parameter_pattern()?)

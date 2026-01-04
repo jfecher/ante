@@ -211,8 +211,8 @@ fn display_mir(compiler: &Db) -> BTreeSet<Diagnostic> {
         for item in &parse.cst.top_level_items {
             let mir = mir::builder::build_initial_mir(compiler, item.id);
             if let Some(mir) = mir {
-                for function in mir.functions.into_values() {
-                    println!("{function}\n");
+                for definition in mir.definitions.into_values() {
+                    println!("{definition}\n");
                 }
             }
             let more_diagnostics: BTreeSet<_> = compiler.get_accumulated(TypeCheck(item.id));

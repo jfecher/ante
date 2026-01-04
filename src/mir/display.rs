@@ -2,10 +2,10 @@ use std::fmt::{Display, Formatter, Result};
 
 use crate::{
     iterator_extensions::mapvec,
-    mir::{self, Block, BlockId, FloatConstant, FunctionId, IntConstant, PrimitiveType, Type, Value},
+    mir::{self, Block, BlockId, FloatConstant, DefinitionId, IntConstant, PrimitiveType, Type, Value},
 };
 
-impl Display for mir::Function {
+impl Display for mir::Definition {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         fmt_function(self, f)
     }
@@ -22,8 +22,8 @@ impl Display for Value {
             Value::Float(float) => write!(f, "{float}"),
             Value::InstructionResult(instruction_id) => write!(f, "v{}", instruction_id.0),
             Value::Parameter(block_id, i) => write!(f, "b{}_{}", block_id.0, i),
-            Value::Function(id) => write!(f, "f{id}"),
-            Value::Global(name) => write!(f, "g{name}"),
+            Value::Definition(id) => write!(f, "{id}"),
+            Value::External(id) => write!(f, "e{id}"),
         }
     }
 }
@@ -54,7 +54,7 @@ impl Display for FloatConstant {
     }
 }
 
-impl Display for FunctionId {
+impl Display for DefinitionId {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "f{}", self.item)?;
         if self.index != 0 {
@@ -138,7 +138,7 @@ impl Display for PrimitiveType {
     }
 }
 
-fn fmt_function(function: &mir::Function, f: &mut Formatter) -> Result {
+fn fmt_function(function: &mir::Definition, f: &mut Formatter) -> Result {
     write!(f, "fun {} {}", function.name, function.id)?;
     for (block_id, block) in function.blocks.iter() {
         writeln!(f)?;
@@ -147,7 +147,7 @@ fn fmt_function(function: &mir::Function, f: &mut Formatter) -> Result {
     Ok(())
 }
 
-fn fmt_block(id: BlockId, function: &mir::Function, block: &Block, f: &mut Formatter) -> Result {
+fn fmt_block(id: BlockId, function: &mir::Definition, block: &Block, f: &mut Formatter) -> Result {
     write!(f, "  b{}(", id.0)?;
     for (i, typ) in block.parameter_types.iter().enumerate() {
         if i != 0 {
@@ -216,7 +216,7 @@ fn fmt_terminator(terminator: &mir::TerminatorInstruction, f: &mut Formatter<'_>
 }
 
 fn fmt_instruction(
-    instruction_id: mir::InstructionId, instruction: &mir::Instruction, function: &mir::Function, f: &mut Formatter<'_>,
+    instruction_id: mir::InstructionId, instruction: &mir::Instruction, function: &mir::Definition, f: &mut Formatter<'_>,
 ) -> Result {
     let result_type = &function.instruction_result_types[instruction_id];
     write!(f, "    {}: {result_type} = ", Value::InstructionResult(instruction_id))?;

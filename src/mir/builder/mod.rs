@@ -16,13 +16,12 @@ use crate::{
     iterator_extensions::mapvec,
     lexer::token::{FloatKind, IntegerKind},
     mir::{
-        Block, BlockId, FloatConstant, Function, FunctionId, Instruction, IntConstant, Mir, TerminatorInstruction,
-        Type, Value,
+        Block, BlockId, Definition, DefinitionId, FloatConstant, Instruction, IntConstant, Mir, TerminatorInstruction, Type, Value
     },
     name_resolution::{Origin, builtin::Builtin},
     parser::{
         cst::{self, Literal, Name, SequenceItem},
-        ids::{ExprId, PathId, PatternId, TopLevelId},
+        ids::{ExprId, NameId, PathId, PatternId, TopLevelId, TopLevelName},
     },
     type_inference::{
         dependency_graph::TypeCheckResult,
@@ -46,7 +45,7 @@ where
     let types = TypeCheck(item_id).get(compiler);
     let (item, _) = GetItem(item_id).get(compiler);
 
-    let functions = match &item.kind {
+    match &item.kind {
         cst::TopLevelItemKind::Definition(definition) => {
             let mut context = Context::new(compiler, &types, item_id);
             context.definition(definition);
@@ -62,9 +61,7 @@ where
         cst::TopLevelItemKind::EffectDefinition(_) => None,
         cst::TopLevelItemKind::Extern(_) => None, // TODO
         cst::TopLevelItemKind::Comptime(_) => None,
-    }?;
-
-    Some(Mir { functions })
+    }
 }
 
 /// The per-[TopLevelId] context. This pass is designed so that we can convert every top-level item
@@ -75,13 +72,14 @@ struct Context<'local, Db> {
 
     top_level_id: TopLevelId,
 
-    current_function: Option<Function>,
+    current_function: Option<Definition>,
     current_block: BlockId,
 
     variables: FxHashMap<Origin, Value>,
 
     next_function_id: u32,
-    finished_functions: FxHashMap<FunctionId, Function>,
+    finished_functions: FxHashMap<DefinitionId, Definition>,
+    name_mappings: FxHashMap<TopLevelName, DefinitionId>,
 }
 
 impl<'local, Db> Context<'local, Db>
@@ -97,23 +95,25 @@ where
             current_block: BlockId::ENTRY_BLOCK,
             current_function: None,
             finished_functions: Default::default(),
+            name_mappings: Default::default(),
             next_function_id: 0,
         }
     }
 
     /// Return the next free function id, and increment the id after.
-    fn next_function_id(&mut self) -> FunctionId {
+    fn next_definition_id(&mut self) -> DefinitionId {
         let index = self.next_function_id;
         self.next_function_id += 1;
-        FunctionId { item: self.top_level_id, index }
+        DefinitionId { item: self.top_level_id, index }
     }
 
     /// Returns the current function being built. Panics if thre is none.
-    fn current_function(&mut self) -> &mut Function {
+    fn current_function(&mut self) -> &mut Definition {
         self.current_function.as_mut().unwrap()
     }
 
     fn type_of_value(&self, value: Value) -> Type {
+        dbg!(value);
         self.current_function.as_ref().unwrap().type_of_value(value)
     }
 
@@ -221,7 +221,13 @@ where
         // This allows us to convert all definitions to MIR in parallel, trusting
         // that the links will work out later.
         match self.context().path_origin(path_id) {
-            Some(Origin::TopLevelDefinition(item)) => Value::Global(item),
+            Some(Origin::TopLevelDefinition(name)) if name.top_level_item == self.top_level_id => {
+                let id = self.name_mappings[&name];
+                Value::Definition(id)
+            },
+            Some(Origin::TopLevelDefinition(name)) => {
+                Value::External(name)
+            }
             Some(origin @ Origin::Builtin(Builtin::PairConstructor)) => {
                 if let Some(existing) = self.variables.get(&origin) {
                     *existing
@@ -246,7 +252,7 @@ where
     ///     return v0
     fn define_pair_constructor(&mut self) -> Value {
         let name = Arc::new(Builtin::PairConstructor.to_string());
-        self.new_function(name, |this| {
+        let id = self.new_definition(name, |this| {
             this.push_parameter(Type::POINTER);
             this.push_parameter(Type::POINTER);
 
@@ -258,7 +264,8 @@ where
             let tuple_type = Type::tuple(vec![Type::POINTER, Type::POINTER]);
             let tuple = this.push_instruction(make_tuple, tuple_type);
             this.terminate_block(TerminatorInstruction::Return(tuple));
-        })
+        });
+        Value::Definition(id)
     }
 
     fn sequence(&mut self, sequence: &[SequenceItem]) -> Value {
@@ -270,16 +277,33 @@ where
     }
 
     fn definition(&mut self, definition: &cst::Definition) -> Value {
+        let previous_state = self.is_global(definition).then(|| {
+            let name = self.try_find_name(definition.pattern).unwrap_or_else(|| Arc::new("global".to_string()));
+            self.start_global(name)
+        });
+
         let mut value = match &self.context()[definition.rhs] {
             cst::Expr::Lambda(lambda) => self.lambda(lambda, self.try_find_name(definition.pattern)),
             _ => self.expression(definition.rhs),
         };
 
+        // TODO: Globals should probably never be stack allocated
         if definition.mutable {
             value = self.push_instruction(Instruction::StackAlloc(value), Type::POINTER);
         }
         self.bind_pattern(definition.pattern, value);
+
+        if let Some(state) = previous_state {
+            self.terminate_block(TerminatorInstruction::Return(value));
+            self.end_global(state);
+        }
         Value::Unit
+    }
+
+    /// True if the given definition is syntactically a global non-function variable.
+    fn is_global(&self, definition: &cst::Definition) -> bool {
+        self.current_function.is_none()
+            && !matches!(self.context()[definition.rhs], cst::Expr::Lambda(_))
     }
 
     fn member_access(&mut self, member_access: &cst::MemberAccess, expr: ExprId) -> Value {
@@ -314,27 +338,34 @@ where
     /// Save the current function state, create a new function,
     /// run `f` to fill in the function's body, then restore the previous state
     /// and return the new function value.
-    fn new_function(&mut self, name: Name, f: impl FnOnce(&mut Self)) -> Value {
+    fn new_definition(&mut self, name: Name, f: impl FnOnce(&mut Self)) -> DefinitionId {
+        let state = self.start_global(name);
+        f(self);
+        self.end_global(state)
+    }
+
+    fn start_global(&mut self, name: Name) -> (Option<Definition>, BlockId) {
+        // Safety: This function must always be paired with [Self::end_global]
         let previous_function = self.current_function.take();
         let previous_block = std::mem::replace(&mut self.current_block, BlockId::ENTRY_BLOCK);
-        let function_id = self.next_function_id();
+        let definition_id = self.next_definition_id();
+        self.current_function = Some(Definition::new(name, definition_id));
+        (previous_function, previous_block)
+    }
 
-        self.current_function = Some(Function::new(name, function_id));
+    fn end_global(&mut self, start_global_state: (Option<Definition>, BlockId)) -> DefinitionId {
+        // Safety: This function must always be paired with [Self::start_global]
+        let finished_function = std::mem::replace(&mut self.current_function, start_global_state.0).unwrap();
+        let definition_id = finished_function.id;
+        self.current_block = start_global_state.1;
 
-        f(self);
-
-        // safety: `self.current_function` should always be set since we set it above and this
-        // is the only method which modifies this field directly.
-        let finished_function = std::mem::replace(&mut self.current_function, previous_function).unwrap();
-        self.current_block = previous_block;
-
-        self.finished_functions.insert(function_id, finished_function);
-        Value::Function(function_id)
+        self.finished_functions.insert(definition_id, finished_function);
+        definition_id
     }
 
     fn lambda(&mut self, lambda: &cst::Lambda, name: Option<Name>) -> Value {
         let name = name.unwrap_or_else(|| Arc::new("lambda".to_string()));
-        self.new_function(name, |this| {
+        let id = self.new_definition(name, |this| {
             for (i, parameter) in lambda.parameters.iter().enumerate() {
                 let parameter_type = &this.types.result.maps.pattern_types[&parameter.pattern];
                 this.push_parameter(this.convert_type(parameter_type, None));
@@ -345,7 +376,8 @@ where
 
             let return_value = this.expression(lambda.body);
             this.terminate_block(TerminatorInstruction::Return(return_value));
-        })
+        });
+        Value::Definition(id)
     }
 
     fn if_(&mut self, if_: &cst::If, expr: ExprId) -> Value {
@@ -583,15 +615,18 @@ where
         }
     }
 
-    fn finish(self) -> FxHashMap<FunctionId, Function> {
-        self.finished_functions
+    fn finish(self) -> Mir {
+        Mir {
+            definitions: self.finished_functions,
+            names: self.name_mappings,
+        }
     }
 
     /// For type definitions we need to define their constructors
     fn type_definition(&mut self, _type_definition: &cst::TypeDefinition) {
         // For a type definition, each generalized name will be each publically visible constructor
         for (constructor_name, constructor_type) in &self.types.result.generalized {
-            let constructor_name = self.context()[*constructor_name].clone();
+            let constructor_name = *constructor_name;
 
             // TODO: This doesn't include the tag for unions
             if let crate::type_inference::types::Type::Function(function) = constructor_type.ignore_forall() {
@@ -603,8 +638,11 @@ where
         }
     }
 
-    fn define_type_constructor(&mut self, name: Name, parameter_types: &[crate::type_inference::types::ParameterType]) {
-        self.new_function(name, |this| {
+    fn define_type_constructor(&mut self, name_id: NameId, parameter_types: &[crate::type_inference::types::ParameterType]) {
+        let top_level_name = TopLevelName::new(self.top_level_id, name_id);
+        let name = self.context()[name_id].clone();
+
+        let id = self.new_definition(name, |this| {
             let (fields, field_types) = parameter_types
                 .iter()
                 .enumerate()
@@ -619,5 +657,6 @@ where
             let tuple = this.push_instruction(Instruction::MakeTuple(fields), result_type);
             this.terminate_block(TerminatorInstruction::Return(tuple));
         });
+        self.name_mappings.insert(top_level_name, id);
     }
 }

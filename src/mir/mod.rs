@@ -29,14 +29,20 @@ mod display;
 pub(crate) mod monomorphization;
 
 pub(crate) struct Mir {
-    pub(crate) functions: FxHashMap<FunctionId, Function>,
+    pub(crate) definitions: FxHashMap<DefinitionId, Definition>,
+
+    /// Maps [TopLevelName]s to their new [DefinitionId]
+    pub(crate) names: FxHashMap<TopLevelName, DefinitionId>,
 }
 
-pub(crate) struct Function {
+/// A Definition may be a function or global. Globals are represented
+/// as single blocks with no parameters to account for them needing to
+/// construct tuples which are instructions in this IR.
+pub(crate) struct Definition {
     pub(crate) name: Name,
 
     /// The unique FunctionId identifying this function
-    id: FunctionId,
+    id: DefinitionId,
 
     /// A function's blocks are always non-empty, consisting of at least an entry
     /// block with `BlockId(0)`
@@ -51,23 +57,23 @@ pub(crate) struct Function {
     /// The result type of each instruction in this function
     instruction_result_types: VecMap<InstructionId, Type>,
 
-    global_types: FxHashMap<GlobalId, Type>,
-    function_types: FxHashMap<FunctionId, Type>,
+    /// Types of any definition ids used in this [Definition]. This may include
+    /// external definitions not included in this [Mir] as well.
+    definition_types: FxHashMap<DefinitionId, Type>,
 }
 
-impl Function {
-    fn new(name: Name, id: FunctionId) -> Function {
+impl Definition {
+    fn new(name: Name, id: DefinitionId) -> Definition {
         let mut blocks = VecMap::default();
         let entry = blocks.push(Block::new(Vec::new()));
         assert_eq!(entry, BlockId::ENTRY_BLOCK);
-        Function {
+        Definition {
             name,
             id,
             blocks,
             instructions: VecMap::default(),
             instruction_result_types: VecMap::default(),
-            global_types: Default::default(),
-            function_types: Default::default(),
+            definition_types: Default::default(),
         }
     }
 
@@ -83,8 +89,14 @@ impl Function {
             Value::Parameter(block_id, parameter_index) => {
                 self.blocks[block_id].parameter_types[parameter_index as usize].clone()
             },
-            Value::Function(function_id) => self.function_types[&function_id].clone(),
-            Value::Global(global_id) => self.global_types[&global_id].clone(),
+            Value::Definition(definition_id) => self.definition_types.get(&definition_id).cloned().unwrap_or_else(|| {
+                println!("Warning: no definition type for {definition_id}");
+                Type::ERROR
+            }),
+            Value::External(_) => {
+                println!("Warning: unimplemented: external value type");
+                Type::ERROR
+            },
         }
     }
 
@@ -203,23 +215,32 @@ pub enum Value {
     /// If the block is the entry block, these are the function parameters
     Parameter(BlockId, u32),
 
-    /// A function or lambda originally local to the current definition, identified
-    /// by its index in the CST traversal order.
-    Function(FunctionId),
+    /// A global value identified by its index in the CST traversal order
+    /// of the [TopLevelName] that defined it. Usually this index is 0, but
+    /// since lambdas are broken out into their own definitions, these may
+    /// be assigned higher indices.
+    Definition(DefinitionId),
 
-    /// A global belonging to another top-level item.
-    Global(GlobalId),
+    /// A name external to the current [TopLevelItem]. This name will have to
+    /// be resolved to a [DefinitionId] later on via [Mir::names] once it is linked in.
+    External(TopLevelName),
+}
+
+impl Value {
+    fn from_top_level_name(item: TopLevelName) -> Value {
+        // The index should always be 0 for a globally visible TopLevelName.
+        // Lambdas and any new definitions expanded within won't have their own ids yet.
+        Value::Definition(DefinitionId { item: item.top_level_item, index: 0 })
+    }
 }
 
 /// A function or lambda originally located within [Self::item], identified
 /// by its index in the CST traversal order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct FunctionId {
+pub(crate) struct DefinitionId {
     item: TopLevelId,
     index: u32,
 }
-
-type GlobalId = TopLevelName;
 
 pub struct Block {
     pub parameter_types: Vec<Type>,
@@ -432,13 +453,13 @@ pub struct FunctionType {
 mod tests {
     use std::sync::Arc;
 
-    use crate::mir::{Block, BlockId, Function, FunctionId, TerminatorInstruction, Value};
+    use crate::mir::{Block, BlockId, Definition, DefinitionId, TerminatorInstruction, Value};
 
     /// Create an empty function for testing
-    fn make_function() -> Function {
+    fn make_function() -> Definition {
         // Safety: `FunctionId` is POD and this should never be read by `topological_sort` anyway
-        let id = unsafe { std::mem::zeroed::<FunctionId>() };
-        Function::new(Arc::new(String::new()), id)
+        let id = unsafe { std::mem::zeroed::<DefinitionId>() };
+        Definition::new(Arc::new(String::new()), id)
     }
 
     #[test]

@@ -13,10 +13,10 @@ use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    incremental::{CodegenLlvm, DbHandle},
+    incremental::{CodegenLlvm, DbHandle, GetItemRaw},
     iterator_extensions::mapvec,
     lexer::token::{FloatKind, IntegerKind},
-    mir::{self, BlockId, FloatConstant, FunctionId, PrimitiveType, TerminatorInstruction},
+    mir::{self, BlockId, DefinitionId, FloatConstant, PrimitiveType, TerminatorInstruction},
     vecmap::VecMap,
 };
 
@@ -33,11 +33,12 @@ pub fn initialize_native_target() {
 
 pub fn codegen_llvm_impl(context: &CodegenLlvm, compiler: &DbHandle) -> CodegenLlvmResult {
     let module_string = mir::builder::build_initial_mir(compiler, context.0).map(|mir| {
-        let name = &mir.functions.iter().next().unwrap().1.name;
-        let llvm = inkwell::context::Context::create();
-        let mut module = ModuleContext::new(&llvm, &mir, name);
+        let name = &mir.definitions.iter().next().map_or("_", |(_, function)| &function.name);
 
-        for (id, function) in &mir.functions {
+        let llvm = inkwell::context::Context::create();
+        let mut module = ModuleContext::new(&llvm, &mir, name, compiler);
+
+        for (id, function) in &mir.definitions {
             module.codegen_function(function, *id);
         }
 
@@ -50,10 +51,12 @@ pub fn codegen_llvm_impl(context: &CodegenLlvm, compiler: &DbHandle) -> CodegenL
     CodegenLlvmResult { module_string }
 }
 
-struct ModuleContext<'ctx> {
+struct ModuleContext<'ctx, 'db> {
     llvm: &'ctx inkwell::context::Context,
     module: Module<'ctx>,
     builder: Builder<'ctx>,
+
+    compiler: &'ctx DbHandle<'db>,
 
     mir: &'ctx mir::Mir,
 
@@ -61,7 +64,7 @@ struct ModuleContext<'ctx> {
 
     blocks: VecMap<BlockId, BasicBlock<'ctx>>,
 
-    current_function: Option<FunctionId>,
+    current_function: Option<DefinitionId>,
     current_function_value: Option<FunctionValue<'ctx>>,
 
     values: FxHashMap<mir::Value, BasicValueEnum<'ctx>>,
@@ -72,8 +75,10 @@ struct ModuleContext<'ctx> {
     incoming: FxHashMap<BlockId, Vec<(BasicBlock<'ctx>, BasicValueEnum<'ctx>)>>,
 }
 
-impl<'ctx> ModuleContext<'ctx> {
-    fn new(llvm: &'ctx inkwell::context::Context, mir: &'ctx mir::Mir, name: &str) -> Self {
+impl<'ctx, 'db> ModuleContext<'ctx, 'db> {
+    fn new(
+        llvm: &'ctx inkwell::context::Context, mir: &'ctx mir::Mir, name: &str, compiler: &'ctx DbHandle<'db>,
+    ) -> Self {
         let module = llvm.create_module(name);
         let target = TargetMachine::get_default_triple();
         module.set_triple(&target);
@@ -82,6 +87,7 @@ impl<'ctx> ModuleContext<'ctx> {
             module,
             target,
             mir,
+            compiler,
             current_function: None,
             current_function_value: None,
             values: Default::default(),
@@ -91,10 +97,10 @@ impl<'ctx> ModuleContext<'ctx> {
         }
     }
 
-    fn codegen_function(&mut self, function: &mir::Function, id: mir::FunctionId) {
+    fn codegen_function(&mut self, function: &mir::Definition, id: mir::DefinitionId) {
         println!("Working on function {}", function.name);
 
-        let function_value = match self.values.get(&mir::Value::Function(id)) {
+        let function_value = match self.values.get(&mir::Value::Definition(id)) {
             Some(existing) => existing.as_any_value_enum().into_function_value(),
             None => {
                 let parameter_types =
@@ -104,7 +110,7 @@ impl<'ctx> ModuleContext<'ctx> {
                 let function_type = return_type.fn_type(&parameter_types, false);
                 let function_value = self.module.add_function(&function.name, function_type, None);
                 self.values
-                    .insert(mir::Value::Function(id), function_value.as_global_value().as_pointer_value().into());
+                    .insert(mir::Value::Definition(id), function_value.as_global_value().as_pointer_value().into());
                 function_value
             },
         };
@@ -128,14 +134,14 @@ impl<'ctx> ModuleContext<'ctx> {
     }
 
     /// Create an empty block for each block in the given function
-    fn create_blocks(&mut self, function: &mir::Function, function_value: FunctionValue<'ctx>) {
+    fn create_blocks(&mut self, function: &mir::Definition, function_value: FunctionValue<'ctx>) {
         for (block_id, _) in function.blocks.iter() {
             let block = self.llvm.append_basic_block(function_value, "");
             self.blocks.push_existing(block_id, block);
         }
     }
 
-    fn codegen_block(&mut self, block_id: BlockId, function: &mir::Function) {
+    fn codegen_block(&mut self, block_id: BlockId, function: &mir::Definition) {
         let llvm_block = self.blocks[block_id];
         self.builder.position_at_end(llvm_block);
         let block = &function.blocks[block_id];
@@ -233,7 +239,7 @@ impl<'ctx> ModuleContext<'ctx> {
     }
 
     /// TODO: We could store the return type directly in the function to avoid searching for it
-    fn find_return_type(&self, function: &mir::Function) -> mir::Type {
+    fn find_return_type(&self, function: &mir::Definition) -> mir::Type {
         for (_, block) in function.blocks.iter() {
             if let Some(TerminatorInstruction::Return(value)) = &block.terminator {
                 return function.type_of_value(*value);
@@ -242,8 +248,8 @@ impl<'ctx> ModuleContext<'ctx> {
         mir::Type::ERROR
     }
 
-    fn get_function(&self, id: FunctionId) -> &'ctx mir::Function {
-        &self.mir.functions[&id]
+    fn get_function(&self, id: DefinitionId) -> &'ctx mir::Definition {
+        &self.mir.definitions[&id]
     }
 
     fn lookup_value(&mut self, value: mir::Value) -> BasicValueEnum<'ctx> {
@@ -262,7 +268,7 @@ impl<'ctx> ModuleContext<'ctx> {
             mir::Value::InstructionResult(_) | mir::Value::Parameter(..) => {
                 *self.values.get(&value).unwrap_or_else(|| panic!("llvm codegen: mir value is not cached: {value}"))
             },
-            mir::Value::Function(function_id) => {
+            mir::Value::Definition(function_id) => {
                 if let Some(value) = self.values.get(&value) {
                     return *value;
                 }
@@ -276,16 +282,30 @@ impl<'ctx> ModuleContext<'ctx> {
                 self.values.insert(value, function_value);
                 function_value
             },
-            mir::Value::Global(_top_level_name) => todo!("lookup_value for globals"),
+            mir::Value::External(name) => {
+                if let Some(value) = self.values.get(&value) {
+                    return *value;
+                }
+
+                let typ = self.get_function(self.current_function.unwrap()).type_of_value(value);
+                let typ = self.convert_type(&typ);
+
+                let (_, context) = GetItemRaw(name.top_level_item).get(self.compiler);
+                let name = &context.names[name.local_name_id];
+                let global_value = self.module.add_global(typ, None, name).as_pointer_value().into();
+                self.values.insert(value, global_value);
+                global_value
+            },
         }
     }
 
-    fn codegen_instruction(&mut self, function: &mir::Function, id: mir::InstructionId) {
+    fn codegen_instruction(&mut self, function: &mir::Definition, id: mir::InstructionId) {
         let result = match &function.instructions[id] {
-            mir::Instruction::Call { function, arguments } => {
-                let function = self.lookup_value(*function).as_any_value_enum().into_function_value();
+            mir::Instruction::Call { function: function_value, arguments } => {
+                let typ = self.convert_function_type(&function.type_of_value(*function_value));
+                let function = self.lookup_value(*function_value).into_pointer_value();
                 let arguments = mapvec(arguments, |arg| self.lookup_value(*arg).into());
-                self.builder.build_call(function, &arguments, "").unwrap().try_as_basic_value().unwrap_basic()
+                self.builder.build_indirect_call(typ, function, &arguments, "").unwrap().try_as_basic_value().unwrap_basic()
             },
             mir::Instruction::IndexTuple { tuple, index } => {
                 let tuple = self.lookup_value(*tuple).into_struct_value();

@@ -3,8 +3,7 @@ use std::{path::PathBuf, sync::Arc};
 use crate::{
     diagnostics::{Diagnostic, Location},
     incremental::{
-        self, DbHandle, Definitions, ExportedDefinitions, ExportedTypes, GetCrateGraph, GetImports, Methods, Parse,
-        VisibleDefinitions, VisibleDefinitionsResult, VisibleTypes,
+        self, DbHandle, Definitions, ExportedDefinitions, ExportedTypes, GetCrateGraph, GetImports, GetItem, Methods, Parse, VisibleDefinitions, VisibleDefinitionsResult, VisibleTypes
     },
     name_resolution::namespace::{STDLIB_CRATE, SourceFileId},
     parser::{
@@ -56,6 +55,9 @@ pub fn visible_definitions_impl(context: &VisibleDefinitions, db: &DbHandle) -> 
         let prelude = ExportedDefinitions(SourceFileId::prelude()).get(db);
         for (exported_name, exported_id) in &prelude.definitions {
             visible.definitions.entry(exported_name.clone()).or_insert(*exported_id);
+        }
+        for (id, methods) in &prelude.methods {
+            visible.methods.entry(*id).or_default().extend(methods.iter().map(|(k, v)| (k.clone(), *v)));
         }
     }
 
@@ -128,8 +130,9 @@ pub fn exported_types_impl(context: &ExportedTypes, db: &DbHandle) -> Definition
 
     // Collect each definition, issuing an error if there is a duplicate name (imports are not counted)
     for item in result.cst.top_level_items.iter() {
+        let (item, context) = GetItem(item.id).get(db);
+
         if let TopLevelItemKind::TypeDefinition(definition) = &item.kind {
-            let context = &result.top_level_data[&item.id];
             let name = &context.names[definition.name];
 
             if let Some(existing) = definitions.get(name) {
@@ -240,11 +243,11 @@ impl<'local, 'db> Declarer<'local, 'db> {
 
     fn declare_single_helper(
         &mut self, name_id: NameId, id: TopLevelId, context: &TopLevelContext,
-        definitions: impl FnOnce(&mut Self) -> &mut Definitions,
+        definitions: impl Fn(&mut Self) -> &mut Definitions,
     ) {
         let name = context.names[name_id].clone();
 
-        if let Some(existing) = self.definitions.get(&name) {
+        if let Some(existing) = definitions(self).get(&name).copied() {
             let first_location = existing.location(self.db);
             let second_location = context.name_locations[name_id].clone();
             self.db.accumulate(Diagnostic::NameAlreadyInScope { name, first_location, second_location });
