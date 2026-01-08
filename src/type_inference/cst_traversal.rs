@@ -160,6 +160,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     fn issue_name_not_in_scope_error(&self, path: PathId) -> Type {
         let name = Arc::new(self.current_context().paths[path].last_ident().to_owned());
         let location = self.current_context().path_locations[path].clone();
+        dbg!();
         self.compiler.accumulate(Diagnostic::NameNotInScope { name, location });
         Type::ERROR
     }

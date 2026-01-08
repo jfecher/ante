@@ -9,7 +9,7 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use inc_complete::DbGet;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
     incremental::{GetItem, TypeCheck},
@@ -80,6 +80,9 @@ struct Context<'local, Db> {
     next_function_id: u32,
     finished_functions: FxHashMap<DefinitionId, Definition>,
     name_mappings: FxHashMap<TopLevelName, DefinitionId>,
+
+    definition_types: FxHashMap<DefinitionId, Type>,
+    external_types: FxHashMap<TopLevelName, Type>,
 }
 
 impl<'local, Db> Context<'local, Db>
@@ -97,6 +100,8 @@ where
             finished_functions: Default::default(),
             name_mappings: Default::default(),
             next_function_id: 0,
+            definition_types: Default::default(),
+            external_types: Default::default(),
         }
     }
 
@@ -168,6 +173,16 @@ where
         self.convert_type(typ, None)
     }
 
+    fn reference_definition(&mut self, id: DefinitionId, typ: Type) -> Value {
+        self.definition_types.insert(id, typ);
+        Value::Definition(id)
+    }
+
+    fn reference_external(&mut self, name: TopLevelName, typ: Type) -> Value {
+        self.external_types.insert(name, typ);
+        Value::External(name)
+    }
+
     fn expression(&mut self, expr: ExprId) -> Value {
         match &self.context()[expr] {
             cst::Expr::Error => unreachable!("Error expression encountered while generating boxed mir"),
@@ -177,7 +192,7 @@ where
             cst::Expr::Definition(definition) => self.definition(definition),
             cst::Expr::MemberAccess(member_access) => self.member_access(member_access, expr),
             cst::Expr::Call(call) => self.call(call, expr),
-            cst::Expr::Lambda(lambda) => self.lambda(lambda, None),
+            cst::Expr::Lambda(lambda) => self.lambda(lambda, None, expr),
             cst::Expr::If(if_) => self.if_(if_, expr),
             cst::Expr::Match(_) => self.match_(expr),
             cst::Expr::Handle(handle) => self.handle(handle),
@@ -223,10 +238,12 @@ where
         match self.context().path_origin(path_id) {
             Some(Origin::TopLevelDefinition(name)) if name.top_level_item == self.top_level_id => {
                 let id = self.name_mappings[&name];
-                Value::Definition(id)
+                let typ = self.convert_type(&self.types.result.maps.path_types[&path_id], None);
+                self.reference_definition(id, typ)
             },
             Some(Origin::TopLevelDefinition(name)) => {
-                Value::External(name)
+                let typ = self.convert_type(&self.types.result.maps.path_types[&path_id], None);
+                self.reference_external(name, typ)
             }
             Some(origin @ Origin::Builtin(Builtin::PairConstructor)) => {
                 if let Some(existing) = self.variables.get(&origin) {
@@ -252,6 +269,8 @@ where
     ///     return v0
     fn define_pair_constructor(&mut self) -> Value {
         let name = Arc::new(Builtin::PairConstructor.to_string());
+        let tuple_type = Type::tuple(vec![Type::POINTER, Type::POINTER]);
+
         let id = self.new_definition(name, |this| {
             this.push_parameter(Type::POINTER);
             this.push_parameter(Type::POINTER);
@@ -260,12 +279,15 @@ where
             let b = Value::Parameter(BlockId::ENTRY_BLOCK, 1);
             let make_tuple = Instruction::MakeTuple(vec![a, b]);
 
-            // TODO: This tuple type is probably wrong
             let tuple_type = Type::tuple(vec![Type::POINTER, Type::POINTER]);
-            let tuple = this.push_instruction(make_tuple, tuple_type);
+            let tuple = this.push_instruction(make_tuple, tuple_type.clone());
             this.terminate_block(TerminatorInstruction::Return(tuple));
         });
-        Value::Definition(id)
+        let typ = Type::Function(Arc::new(super::FunctionType {
+            parameters: vec![Type::POINTER, Type::POINTER],
+            return_type: tuple_type,
+        }));
+        self.reference_definition(id, typ)
     }
 
     fn sequence(&mut self, sequence: &[SequenceItem]) -> Value {
@@ -283,7 +305,10 @@ where
         });
 
         let mut value = match &self.context()[definition.rhs] {
-            cst::Expr::Lambda(lambda) => self.lambda(lambda, self.try_find_name(definition.pattern)),
+            cst::Expr::Lambda(lambda) => {
+                let name = self.try_find_name(definition.pattern);
+                self.lambda(lambda, name, definition.rhs)
+            }
             _ => self.expression(definition.rhs),
         };
 
@@ -363,7 +388,7 @@ where
         definition_id
     }
 
-    fn lambda(&mut self, lambda: &cst::Lambda, name: Option<Name>) -> Value {
+    fn lambda(&mut self, lambda: &cst::Lambda, name: Option<Name>, expr: ExprId) -> Value {
         let name = name.unwrap_or_else(|| Arc::new("lambda".to_string()));
         let id = self.new_definition(name, |this| {
             for (i, parameter) in lambda.parameters.iter().enumerate() {
@@ -377,7 +402,8 @@ where
             let return_value = this.expression(lambda.body);
             this.terminate_block(TerminatorInstruction::Return(return_value));
         });
-        Value::Definition(id)
+        let typ = self.convert_type(&self.types.result.maps.expr_types[&expr].clone(), None);
+        self.reference_definition(id, typ)
     }
 
     fn if_(&mut self, if_: &cst::If, expr: ExprId) -> Value {
@@ -619,6 +645,7 @@ where
         Mir {
             definitions: self.finished_functions,
             names: self.name_mappings,
+            referenced_external_items: FxHashSet::default(),
         }
     }
 

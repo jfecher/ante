@@ -33,6 +33,10 @@ pub(crate) struct Mir {
 
     /// Maps [TopLevelName]s to their new [DefinitionId]
     pub(crate) names: FxHashMap<TopLevelName, DefinitionId>,
+
+    /// Any external names referenced in this MIR that need to be linked in later.
+    /// Note that this excludes any actual `extern` definitions which aren't expected to be linked in.
+    pub(crate) referenced_external_items: FxHashSet<TopLevelId>,
 }
 
 /// A Definition may be a function or global. Globals are represented
@@ -60,6 +64,8 @@ pub(crate) struct Definition {
     /// Types of any definition ids used in this [Definition]. This may include
     /// external definitions not included in this [Mir] as well.
     definition_types: FxHashMap<DefinitionId, Type>,
+
+    external_types: FxHashMap<TopLevelName, Type>,
 }
 
 impl Definition {
@@ -74,6 +80,7 @@ impl Definition {
             instructions: VecMap::default(),
             instruction_result_types: VecMap::default(),
             definition_types: Default::default(),
+            external_types: Default::default(),
         }
     }
 
@@ -93,10 +100,10 @@ impl Definition {
                 println!("Warning: no definition type for {definition_id}");
                 Type::ERROR
             }),
-            Value::External(_) => {
-                println!("Warning: unimplemented: external value type");
+            Value::External(name) => self.external_types.get(&name).cloned().unwrap_or_else(|| {
+                println!("Warning: no external type for {name}");
                 Type::ERROR
-            },
+            }), 
         }
     }
 

@@ -287,6 +287,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
         } else {
             let location = location.clone();
             let name = Arc::new(name.clone());
+            dbg!();
             Err(Diagnostic::NameNotInScope { name, location })
         }
     }
@@ -392,7 +393,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             },
             Pattern::TypeAnnotation(pattern, typ) => {
                 self.link_existing_pattern(*pattern);
-                self.resolve_type(typ, false);
+                self.resolve_type(typ, true);
             },
             Pattern::MethodName { type_name, item_name } => self.link_existing_union_variant(*type_name, *item_name),
         }
@@ -472,16 +473,11 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
     }
 
     fn resolve_definition(&mut self, definition: &Definition) {
-        let is_let_rec = matches!(&self.context.exprs[definition.rhs], Expr::Lambda(_));
-        if is_let_rec {
-            self.declare_names_in_pattern(definition.pattern, true, false);
-        }
-
+        // TODO: Non-lambdas shouldn't see their own name in scope of their rhs. But we need to
+        // resolve type variables in the pattern to resolve type annotations which declare new
+        // variables which should be in scope in the rhs.
+        self.declare_names_in_pattern(definition.pattern, true, false);
         self.resolve_expr(definition.rhs);
-
-        if !is_let_rec {
-            self.declare_names_in_pattern(definition.pattern, false, false);
-        }
     }
 
     fn resolve_constructor(&mut self, constructor: &Constructor, id: ExprId) {
@@ -648,6 +644,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
         } else {
             let location = self.context.name_locations[name_id].clone();
             let name = self.context.names[name_id].clone();
+            //panic!("`{name}` is unresolved");
             self.emit_diagnostic(Diagnostic::NameNotInScope { name, location });
         }
     }

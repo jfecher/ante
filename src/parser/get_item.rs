@@ -45,14 +45,17 @@ pub fn get_item_impl(context: &GetItem, db: &DbHandle) -> (Arc<TopLevelItem>, Ar
 ///     method2 = ...
 /// ```
 fn desugar_impl(impl_: &TraitImpl, context: &mut TopLevelContext) -> TopLevelItemKind {
-    let pattern = context.patterns.push(Pattern::Variable(impl_.name));
+    let variable = context.patterns.push(Pattern::Variable(impl_.name));
     let location = context.name_locations[impl_.name].clone();
-    assert_eq!(pattern, context.pattern_locations.push(location.clone()));
+    assert_eq!(variable, context.pattern_locations.push(location.clone()));
 
     let mut trait_type = Type::Named(impl_.trait_path);
     if !impl_.trait_arguments.is_empty() {
         trait_type = Type::Application(Box::new(trait_type), impl_.trait_arguments.clone());
     }
+
+    let pattern = context.patterns.push(Pattern::TypeAnnotation(variable, trait_type.clone()));
+    assert_eq!(pattern, context.pattern_locations.push(location.clone()));
 
     let fields = impl_.body.clone();
     let constructor = Expr::Constructor(Constructor { fields, typ: trait_type.clone() });
