@@ -14,3 +14,24 @@ handle_count f =
 handle_count foo |> print
 
 // args: --delete-binary
+// expected stderr:
+// examples/codegen/effects/count_effect.an:2:16	error: Expected an unindent but found `->`
+//     count: Unit -> Unit
+// 
+// examples/codegen/effects/count_effect.an:5:4	error: `count` not found in scope
+//     count ()
+// 
+// examples/codegen/effects/count_effect.an:6:4	error: `repeat` not found in scope
+//     repeat 10 fn _ -> count ()
+// 
+// examples/codegen/effects/count_effect.an:6:22	error: `count` not found in scope
+//     repeat 10 fn _ -> count ()
+// 
+// examples/codegen/effects/count_effect.an:9:4	error: Effects and handle expressions are currently unimplemented
+//     handle
+// 
+// examples/codegen/effects/count_effect.an:14:13	error: Expected `=` to begin the function body but found `foo`
+// handle_count foo |> print
+// 
+// Found 6 errors and 0 warnings
+

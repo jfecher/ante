@@ -33,7 +33,7 @@ map3 (l: List a) (f: fn a -> b pure) : List b pure = ()
 
 map4 (l: List a) (f: fn a -> b) : List b can Log = ()
 
-// args: --show-parse
+// args: -e ast
 // expected stdout:
 // effect Log with
 //     log: fn String -> Unit

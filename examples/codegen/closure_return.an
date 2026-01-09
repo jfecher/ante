@@ -7,3 +7,12 @@ foo = get_closure ()
 foo ()
 
 // args: --delete-binary
+// expected stderr:
+// examples/codegen/closure_return.an:3:15	error: `print` not found in scope
+//     stuff () = print foo
+// 
+// examples/codegen/closure_return.an:7:4	error: Expected `=` to begin the function body but found `()`
+// foo ()
+// 
+// Found 2 errors and 0 warnings
+

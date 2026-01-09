@@ -22,17 +22,17 @@ main () =
 
     _ = mut (mut ref tuple).first
 
-// args: --show-types
+// args: -e ast-t
 // expected stdout:
-// (main: fn Unit -> _) () =
-//     (tuple: I32, I32) = 1 (,: fn I32 I32 -> I32, I32) 1
+// (main: fn Unit -> _ can _) () =
+//     (tuple: I32, I32) = 1 (,: fn I32 I32 -> I32, I32 pure) 1
 //     (_: _) = ((ref: (error)) ((ref: (error)) (tuple: I32, I32))).first
 //     (_: _) = (mut: (error)) (tuple: I32, I32).first
 //     (_: _) = (mut: (error)) (tuple: I32, I32).missing
 //     (imm_ref: _) = (ref: (error)) (tuple: I32, I32)
 //     (_: _) = (mut: (error)) (imm_ref: _).first
 //     (_: _) = (mut: (error)) (imm_ref: _).missing
-//     mut (mut_tuple: I32, I32) = 1 (,: fn I32 I32 -> I32, I32) 1
+//     mut (mut_tuple: I32, I32) = 1 (,: fn I32 I32 -> I32, I32 pure) 1
 //     (_: _) = (ref: (error)) (mut_tuple: I32, I32).missing
 //     (_: _) = (mut: (error)) (mut_tuple: I32, I32).missing
 //     (mut_ref: _) = (mut: (error)) (mut_tuple: I32, I32)

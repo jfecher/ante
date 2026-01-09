@@ -3,7 +3,7 @@ main () =
 
     bar a b = if then else
 
-// args: --show-parse
+// args: -e ast
 // expected stdout: main () =
 
 

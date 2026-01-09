@@ -16,7 +16,7 @@ main () =
     match "empty"
     "done"
 
-// args: --show-parse
+// args: -e ast
 // expected stdout:
 // main () =
 //     "before"

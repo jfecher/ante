@@ -4,7 +4,7 @@ main () =
         with map (_ * 2)
         with for print
 
-// args: --show-parse
+// args: -e ast
 // expected stdout:
 // main () =
 //     iota 10

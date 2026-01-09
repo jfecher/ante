@@ -24,7 +24,7 @@ foo (e: Either) =
     | Up -> ()
     | Down -> ()
 
-// args: --show-types
+// args: -e ast-t
 // expected stdout:
 // type Either =
 //     | Left
@@ -36,7 +36,7 @@ foo (e: Either) =
 //     | Up
 //     | Down
 // 
-// (foo: fn Either -> Unit) ((e: Either)) =
+// (foo: fn Either -> Unit can _) ((e: Either)) =
 //     (internal_match_variable_9: (error)) = (e: Either)
 //     switch (internal_match_variable_9: Either)
 //     | 0 -> ()

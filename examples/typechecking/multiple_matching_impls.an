@@ -34,50 +34,59 @@ impl does_not_match {_: Print a}: Foo a with
 impl candidate2: Foo Thing with
     foo _ = ()
 
-// args: --show-types
+// args: -e ast-t
 // expected stdout:
 // type Thing =
 //     nothing: Unit
 // 
 // trait Foo a with
-//     (foo: _): fn a -> Unit
+//     (foo: fn a {Foo a} -> Unit pure): fn a -> Unit
 // 
 // trait Bar a with
-//     (bar: _): fn a -> Unit
+//     (bar: fn a {Bar a} -> Unit pure): fn a -> Unit
 // 
 // trait Baz a with
-//     (baz: _): fn a -> Unit
+//     (baz: fn a {Baz a} -> Unit pure): fn a -> Unit
 // 
-// (main: fn Unit -> _) () =
-//     (foo: (error)) ((Thing: fn Unit -> Thing) ())
+// (main: fn Unit -> _ can _) () =
+//     (foo: (error)) ((Thing: fn Unit -> Thing pure) ())
 // 
 // impl candidate1 {(_: Bar a)}: (Foo: (error)) a with
-//     (foo: fn a -> Unit) (a: a) = (bar: fn (Baz _) -> Unit) (a: Baz _)
+//     (foo: fn a -> Unit pure) (a: a) = (bar: fn a -> Unit can _) (a: a)
 // 
 // impl bar {(_: Baz a)}: (Bar: (error)) a with
-//     (bar: fn a -> Unit) (a: a) = (baz: fn a -> Unit) (a: a)
+//     (bar: fn a -> Unit pure) (a: a) = (baz: fn a -> Unit can _) (a: a)
 // 
 // impl baz: (Baz: (error)) Thing with
-//     (baz: fn Thing -> Unit) (_: Thing) = ()
+//     (baz: fn Thing -> Unit pure) (_: Thing) = ()
 // 
-// impl does_not_match {(_: Print a)}: (Foo: (error)) a with
-//     (foo: fn a -> Unit) (_: a) = ()
+// impl does_not_match {(_: (error) a)}: (Foo: (error)) a with
+//     (foo: fn a -> Unit pure) (_: a) = ()
 // 
 // impl candidate2: (Foo: (error)) Thing with
-//     (foo: fn Thing -> Unit) (_: Thing) = ()
+//     (foo: fn Thing -> Unit pure) (_: Thing) = ()
 
 // expected stderr:
 // examples/typechecking/multiple_matching_impls.an:15:4	error: `foo` not found in scope
 //     foo (Thing ())
 // 
-// examples/typechecking/multiple_matching_impls.an:19:12	error: Expected fn (Baz _) -> Unit but found fn (Baz _) -> Bar _
+// examples/typechecking/multiple_matching_impls.an:18:0	error: Expected a function with 1 parameter, but found Foo a
+// impl candidate1 {_: Bar a}: Foo a with
+// 
+// examples/typechecking/multiple_matching_impls.an:19:12	error: Expected fn _ -> Unit can _ but found Bar a
 //     foo a = bar a
 // 
-// examples/typechecking/multiple_matching_impls.an:19:16	error: Expected Baz _ but found a
-//     foo a = bar a
+// examples/typechecking/multiple_matching_impls.an:21:0	error: Expected a function with 1 parameter, but found Bar a
+// impl bar {_: Baz a}: Bar a with
 // 
-// examples/typechecking/multiple_matching_impls.an:22:12	error: Expected fn _ -> Unit but found Baz Thing
+// examples/typechecking/multiple_matching_impls.an:22:12	error: Expected fn _ -> Unit can _ but found Baz Thing
 //     bar a = baz a
 // 
-// Found 4 errors and 0 warnings
+// examples/typechecking/multiple_matching_impls.an:29:0	error: Expected a function with 1 parameter, but found Foo a
+// impl does_not_match {_: Print a}: Foo a with
+// 
+// examples/typechecking/multiple_matching_impls.an:29:24	error: `Print` not found in scope
+// impl does_not_match {_: Print a}: Foo a with
+// 
+// Found 7 errors and 0 warnings
 

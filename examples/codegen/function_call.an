@@ -9,3 +9,234 @@ main () =
     show "foo"
 
 // args: --delete-binary
+// expected exit status: 101
+// expected stdout:
+// External c0m710_6001_0: fn Pointer -> I32
+// External c0m710_5164_3: fn (U8, {Unit | (I32,)}) -> (U8, {Unit | ((U8, {Unit | (I32,)}),)})
+// External c0m710_5164_3: fn I32 -> (U8, {Unit | (I32,)})
+// External c1m430_5522_0: fn (Pointer, U32) -> I32
+
+// expected stderr:
+// ; ModuleID = 'File'
+// source_filename = "File"
+// target triple = "arm64-apple-darwin24.6.0"
+// 
+// define {} @File() {
+//   ret {} zeroinitializer
+// }
+// ; ModuleID = 'FilePos'
+// source_filename = "FilePos"
+// target triple = "arm64-apple-darwin24.6.0"
+// 
+// define {} @FilePos() {
+//   ret {} zeroinitializer
+// }
+// ; ModuleID = 'InFile'
+// source_filename = "InFile"
+// target triple = "arm64-apple-darwin24.6.0"
+// 
+// define {} @InFile() {
+//   ret {} zeroinitializer
+// }
+// ; ModuleID = 'OutFile'
+// source_filename = "OutFile"
+// target triple = "arm64-apple-darwin24.6.0"
+// 
+// define {} @OutFile() {
+//   ret {} zeroinitializer
+// }
+// ; ModuleID = 'Some'
+// source_filename = "Some"
+// target triple = "arm64-apple-darwin24.6.0"
+// 
+// define { ptr } @Some(ptr %0) {
+//   ret { ptr } { ptr %0 }
+// }
+// 
+// define {} @Maybe() {
+//   ret {} zeroinitializer
+// }
+// 
+// define {} @None() {
+//   ret {} zeroinitializer
+// }
+// ; ModuleID = 'Error'
+// source_filename = "Error"
+// target triple = "arm64-apple-darwin24.6.0"
+// 
+// define { ptr } @Error(ptr %0) {
+//   ret { ptr } { ptr %0 }
+// }
+// 
+// define {} @Result() {
+//   ret {} zeroinitializer
+// }
+// 
+// define { ptr } @Ok(ptr %0) {
+//   ret { ptr } { ptr %0 }
+// }
+// ; ModuleID = 'cast'
+// source_filename = "cast"
+// target triple = "arm64-apple-darwin24.6.0"
+// 
+// define { ptr, { ptr } } @cast(ptr %0, { ptr } %1) {
+//   ret { ptr, { ptr } } { ptr %0, { ptr } %1 }
+// }
+// 
+// define { ptr } @Cast(ptr %0) {
+//   ret { ptr } { ptr %0 }
+// }
+// ; ModuleID = 'Add'
+// source_filename = "Add"
+// target triple = "arm64-apple-darwin24.6.0"
+// 
+// define { ptr } @Add(ptr %0) {
+//   ret { ptr } { ptr %0 }
+// }
+// 
+// define { ptr, ptr, { ptr } } @"+"(ptr %0, ptr %1, { ptr } %2) {
+//   ret { ptr, ptr, { ptr } } { ptr %0, ptr %1, { ptr } %2 }
+// }
+// ; ModuleID = '-'
+// source_filename = "-"
+// target triple = "arm64-apple-darwin24.6.0"
+// 
+// define { ptr, ptr, { ptr } } @-(ptr %0, ptr %1, { ptr } %2) {
+//   ret { ptr, ptr, { ptr } } { ptr %0, ptr %1, { ptr } %2 }
+// }
+// 
+// define { ptr } @Sub(ptr %0) {
+//   ret { ptr } { ptr %0 }
+// }
+// ; ModuleID = 'Mul'
+// source_filename = "Mul"
+// target triple = "arm64-apple-darwin24.6.0"
+// 
+// define { ptr } @Mul(ptr %0) {
+//   ret { ptr } { ptr %0 }
+// }
+// 
+// define { ptr, ptr, { ptr } } @"*"(ptr %0, ptr %1, { ptr } %2) {
+//   ret { ptr, ptr, { ptr } } { ptr %0, ptr %1, { ptr } %2 }
+// }
+// ; ModuleID = '/'
+// source_filename = "/"
+// target triple = "arm64-apple-darwin24.6.0"
+// 
+// define { ptr, ptr, { ptr } } @"/"(ptr %0, ptr %1, { ptr } %2) {
+//   ret { ptr, ptr, { ptr } } { ptr %0, ptr %1, { ptr } %2 }
+// }
+// 
+// define { ptr } @Div(ptr %0) {
+//   ret { ptr } { ptr %0 }
+// }
+// ; ModuleID = '%'
+// source_filename = "%"
+// target triple = "arm64-apple-darwin24.6.0"
+// 
+// define { ptr, ptr, { ptr } } @"%"(ptr %0, ptr %1, { ptr } %2) {
+//   ret { ptr, ptr, { ptr } } { ptr %0, ptr %1, { ptr } %2 }
+// }
+// 
+// define { ptr } @Mod(ptr %0) {
+//   ret { ptr } { ptr %0 }
+// }
+// ; ModuleID = 'Eq'
+// source_filename = "Eq"
+// target triple = "arm64-apple-darwin24.6.0"
+// 
+// define { ptr } @Eq(ptr %0) {
+//   ret { ptr } { ptr %0 }
+// }
+// 
+// define { ptr, ptr, { ptr } } @"=="(ptr %0, ptr %1, { ptr } %2) {
+//   ret { ptr, ptr, { ptr } } { ptr %0, ptr %1, { ptr } %2 }
+// }
+// ; ModuleID = 'Cmp'
+// source_filename = "Cmp"
+// target triple = "arm64-apple-darwin24.6.0"
+// 
+// define { ptr } @Cmp(ptr %0) {
+//   ret { ptr } { ptr %0 }
+// }
+// 
+// define { ptr, ptr, { ptr } } @"<"(ptr %0, ptr %1, { ptr } %2) {
+//   ret { ptr, ptr, { ptr } } { ptr %0, ptr %1, { ptr } %2 }
+// }
+// ; ModuleID = 'show'
+// source_filename = "show"
+// target triple = "arm64-apple-darwin24.6.0"
+// 
+// define i32 @show({ ptr, i32 } %0) {
+//   %2 = extractvalue { ptr, i32 } %0, 0
+//   %3 = call i32 @puts(ptr %2)
+//   ret i32 %3
+// }
+// 
+// declare i32 @puts(ptr %0)
+// ; ModuleID = 'main'
+// source_filename = "main"
+// target triple = "arm64-apple-darwin24.6.0"
+// 
+// @string_literal = global [3 x i8] c"foo"
+// 
+// define i32 @main({} %0) {
+//   %2 = call { i8, ptr } @Some(i32 3)
+//   %3 = call { i8, ptr } @Some({ i8, ptr } %2)
+//   %4 = extractvalue { i8, ptr } %3, 0
+//   switch i8 %4, label %23 [
+//     i8 0, label %5
+//     i8 1, label %6
+//   ]
+// 
+// 5:                                                ; preds = %1
+//   br label %12
+// 
+// 6:                                                ; preds = %1
+//   %7 = extractvalue { i8, ptr } %3, 1
+//   %8 = alloca ptr, align 8
+//   store ptr %7, ptr %8, align 8
+//   %9 = load { { i8, ptr } }, ptr %8, align 8
+//   %10 = extractvalue { { i8, ptr } } %9, 0
+//   %11 = extractvalue { i8, ptr } %10, 0
+//   switch i8 %11, label %24 [
+//     i8 0, label %15
+//     i8 1, label %16
+//   ]
+// 
+// 12:                                               ; preds = %21, %5
+//   %13 = phi i32 [ 0, %5 ], [ %22, %21 ]
+//   %14 = call i32 @show({ ptr, i32 } { ptr @string_literal, i32 3 })
+//   ret i32 %14
+// 
+// 15:                                               ; preds = %6
+//   br label %21
+// 
+// 16:                                               ; preds = %6
+//   %17 = extractvalue { i8, ptr } %10, 1
+//   %18 = alloca ptr, align 8
+//   store ptr %17, ptr %18, align 8
+//   %19 = load { i32 }, ptr %18, align 4
+//   %20 = extractvalue { i32 } %19, 0
+//   br label %21
+// 
+// 21:                                               ; preds = %16, %15
+//   %22 = phi i32 [ 1, %15 ], [ %20, %16 ]
+//   br label %12
+// 
+// 23:                                               ; preds = %1
+//   unreachable
+// 
+// 24:                                               ; preds = %6
+//   unreachable
+// }
+// 
+// declare { i8, ptr } @Some(i32 %0)
+// 
+// declare i32 @show({ ptr, i32 } %0)
+// llvm module failed to verify: "Call parameter type does not match function signature!\n  %2 = call { i8, ptr } @Some(i32 3)\n i32  %3 = call { i8, ptr } @Some({ i8, ptr } %2)\n"
+// 
+// thread 'main' panicked at src/codegen/llvm/mod.rs:70:63:
+// Failed to parse llvm module bitcode: "Invalid record (Producer: \'LLVM21.1.8\' Reader: \'LLVM 21.1.8\')"
+// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+

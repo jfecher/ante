@@ -16,7 +16,7 @@ main () =
     foo_and_bar foobar foobar
     foo_and_bar foo bar
 
-// args: --show-types
+// args: -e ast-t
 // expected stdout:
 // type FooBar =
 //     foo: I32
@@ -28,21 +28,21 @@ main () =
 // type Bar =
 //     bar: Char
 // 
-// (stringify: fn String -> String) ((s: String)) = (s: String)
+// (stringify: fn String -> String can _) ((s: String)) = (s: String)
 // 
-// (foo_and_bar: fn _ _ -> String) (a: _) (b: _) =
+// (foo_and_bar: fn _ _ -> String can _) (a: _) (b: _) =
 //     (a: _).foo
-//     (stringify: fn String -> String) (b: _).bar
+//     (stringify: fn String -> String can _) (b: _).bar
 // 
-// (foobar: FooBar) = (FooBar: fn I32 String -> FooBar) 1 "one"
+// (foobar: FooBar) = (FooBar: fn I32 String -> FooBar pure) 1 "one"
 // 
-// (foo: Foo) = (Foo: fn F64 -> Foo) 2.0
+// (foo: Foo) = (Foo: fn F64 -> Foo pure) 2.0
 // 
-// (bar: Bar) = (Bar: fn Char -> Bar) c"3"
+// (bar: Bar) = (Bar: fn Char -> Bar pure) c"3"
 // 
-// (main: fn Unit -> String) () =
-//     (foo_and_bar: fn FooBar FooBar -> String) (foobar: FooBar) (foobar: FooBar)
-//     (foo_and_bar: fn Foo Bar -> String) (foo: Foo) (bar: Bar)
+// (main: fn Unit -> String can _) () =
+//     (foo_and_bar: fn FooBar FooBar -> String can _) (foobar: FooBar) (foobar: FooBar)
+//     (foo_and_bar: fn Foo Bar -> String can _) (foo: Foo) (bar: Bar)
 
 // expected stderr:
 // examples/typechecking/member_access.an:8:5	error: Object type must be known by this point to access its field

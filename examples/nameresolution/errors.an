@@ -15,7 +15,7 @@ foo a b =
 a = 2
 a = 3 // already declared
 
-// args: --show-resolved
+// args: -e ast-r
 // expected stdout:
 // // id = c1m416_9923
 // not_an_error_c1m416_9923_1 = 1
@@ -53,8 +53,5 @@ a = 3 // already declared
 // examples/nameresolution/errors.an:16:0	warning: `a` was already defined
 // a = 3 // already declared
 // 
-// examples/nameresolution/errors.an:16:6	error: Expected a newline after the top level item but found //// already declared
-// a = 3 // already declared
-// 
-// Found 5 errors and 1 warning
+// Found 4 errors and 1 warning
 

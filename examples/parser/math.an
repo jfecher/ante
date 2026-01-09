@@ -7,7 +7,7 @@ main () =
 
     foo a b = 1 + a * b
 
-// args: --show-parse
+// args: -e ast
 // expected stdout:
 // main () =
 //     (1 + (((2 * 3) / 4) * 5)) - 6

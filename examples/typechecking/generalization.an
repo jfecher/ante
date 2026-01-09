@@ -4,9 +4,9 @@ foo x =
 
 // type should be a -> (b -> a)
 
-// args: --show-types
+// args: -e ast-t
 // expected stdout:
-// (foo: fn _ -> fn _ -> _) (x: _) =
-//     (y: fn _ -> _) (_: _) = (x: _)
-//     (y: fn _ -> _)
+// (foo: fn _ -> fn _ -> _ can _ can _) (x: _) =
+//     (y: fn _ -> _ can _) (_: _) = (x: _)
+//     (y: fn _ -> _ can _)
 

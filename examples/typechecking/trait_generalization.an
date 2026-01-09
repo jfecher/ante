@@ -1,6 +1,6 @@
 a = "test".c_string
 
-// args: --show-types
+// args: -e ast-t
 // expected stdout: (a: Ptr Char) = "test".c_string
 
 

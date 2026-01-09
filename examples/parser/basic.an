@@ -16,7 +16,7 @@ Foo.print self =
     print " "
     print self.y
 
-// args: --show-parse
+// args: -e ast
 // expected stdout:
 // import Foo.Bar
 // 

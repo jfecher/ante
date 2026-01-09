@@ -16,31 +16,31 @@ main () =
 
 // TODO: This first error is duplicated
 
-// args: --show-types
+// args: -e ast-t
 // expected stdout:
-// (foo: fn I32 String -> Char) ((_: I32)) ((_: String)) : Char = c"a"
+// (foo: fn I32 String -> Char pure) ((_: I32)) ((_: String)) : Char = c"a"
 // 
-// (bar: fn (error) (error) -> I32) =
-//     fn (_: (error)) (b: (error)) -> (b: I32)
+// (bar: fn a a -> I32 pure) =
+//     fn (_: a) (b: a) -> (b: I32)
 // 
-// (baz: fn Usz -> Ptr a) ((a: Usz)) : Ptr a =
-//     (transmute: fn Usz -> Ptr a) (a: Usz)
+// (baz: forall _1. fn Usz -> Ptr a pure) ((a: Usz)) : Ptr a =
+//     (transmute: (error)) (a: Usz)
 // 
-// (main: fn Unit -> fn (Ptr Char) -> I32) () =
-//     (exit2: fn I32 -> Unit) = (exit: fn I32 -> Unit)
-//     (puts2: fn (Ptr Char) -> I32) = (puts: fn (Ptr Char) -> I32)
-//     (exit2: fn I32 -> Unit) "test"
-//     (puts2: fn (Ptr Char) -> I32)
+// (main: fn Unit -> fn (Ptr Char) -> I32 pure can _) () =
+//     (exit2: fn I32 -> Unit pure) = (exit: fn I32 -> Unit pure)
+//     (puts2: fn (Ptr Char) -> I32 pure) = (puts: fn (Ptr Char) -> I32 pure)
+//     (exit2: fn I32 -> Unit pure) "test"
+//     (puts2: fn (Ptr Char) -> I32 pure)
 
 // expected stderr:
-// /home/rndmprsn/Code/Ante/ante/stdlib/src/Prelude.an:349:4	error: `builtin` not found in scope
-//     builtin "Transmute" x
+// examples/typechecking/type_annotations.an:5:14	error: Expected I32 but found a
+//     fn _ b -> b
 // 
-// examples/typechecking/type_annotations.an:4:5	error: `a` not found in scope
-// bar: fn a a -> I32 =
+// examples/typechecking/type_annotations.an:7:0	error: Expected a function with 1 parameter, but found forall _1. fn Usz -> Ptr a pure
+// baz (a: Usz): Ptr a =
 // 
-// examples/typechecking/type_annotations.an:4:8	error: `a` not found in scope
-// bar: fn a a -> I32 =
+// examples/typechecking/type_annotations.an:8:4	error: `transmute` not found in scope
+//     transmute a
 // 
 // examples/typechecking/type_annotations.an:14:10	error: Expected I32 but found String
 //     exit2 "test"

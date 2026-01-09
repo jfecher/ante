@@ -33,3 +33,63 @@ print (cast (cast x : F64) : F32)
 // so we can no longer support this operation at all.
 
 // args: --delete-binary
+// expected stderr:
+// examples/codegen/builtin_float.an:4:14	error: `+` not found in scope
+// add_f64 = 3.0 + 4.0
+// 
+// examples/codegen/builtin_float.an:5:14	error: `-` not found in scope
+// sub_f64 = 7.0 - 8.0
+// 
+// examples/codegen/builtin_float.an:6:15	error: `*` not found in scope
+// mul_f64 = 11.0 * 12.0
+// 
+// examples/codegen/builtin_float.an:7:15	error: `/` not found in scope
+// div_f64 = 15.0 / 16.0
+// 
+// examples/codegen/builtin_float.an:10:6	error: Expected `=` to begin the function body but found `add_f64`
+// print add_f64
+// 
+// examples/codegen/builtin_float.an:11:6	error: Expected `=` to begin the function body but found `sub_f64`
+// print sub_f64
+// 
+// examples/codegen/builtin_float.an:12:6	error: Expected `=` to begin the function body but found `mul_f64`
+// print mul_f64
+// 
+// examples/codegen/builtin_float.an:13:6	error: Expected `=` to begin the function body but found `div_f64`
+// print div_f64
+// 
+// examples/codegen/builtin_float.an:17:10	error: Expected an expression but found `InvalidFloatSuffx`
+// add_f32 = 3.0f + 4.0f
+// 
+// examples/codegen/builtin_float.an:18:10	error: Expected an expression but found `InvalidFloatSuffx`
+// sub_f32 = 7.0f - 8.0f
+// 
+// examples/codegen/builtin_float.an:19:10	error: Expected an expression but found `InvalidFloatSuffx`
+// mul_f32 = 11.0f * 12.0f
+// 
+// examples/codegen/builtin_float.an:20:10	error: Expected an expression but found `InvalidFloatSuffx`
+// div_f32 = 15.0f / 16.0f
+// 
+// examples/codegen/builtin_float.an:21:6	error: Expected `=` to begin the function body but found `add_f32`
+// print add_f32
+// 
+// examples/codegen/builtin_float.an:22:6	error: Expected `=` to begin the function body but found `sub_f32`
+// print sub_f32
+// 
+// examples/codegen/builtin_float.an:23:6	error: Expected `=` to begin the function body but found `mul_f32`
+// print mul_f32
+// 
+// examples/codegen/builtin_float.an:24:6	error: Expected `=` to begin the function body but found `div_f32`
+// print div_f32
+// 
+// examples/codegen/builtin_float.an:27:4	error: Expected an expression but found `InvalidFloatSuffx`
+// x = 1.0f / 7.0f
+// 
+// examples/codegen/builtin_float.an:28:6	error: Expected `=` to begin the function body but found `x`
+// print x
+// 
+// examples/codegen/builtin_float.an:29:6	error: Expected `=` to begin the function body but found `(`
+// print (cast (cast x : F64) : F32)
+// 
+// Found 19 errors and 0 warnings
+

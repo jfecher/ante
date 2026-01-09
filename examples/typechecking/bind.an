@@ -14,26 +14,26 @@ x = Maybe.Some 10i32
 add_one x =
     bind x (fn x -> ret (x + 1i32))
 
-// args: --show-types
+// args: -e ast-t
 // expected stdout:
-// (bind: fn (Maybe _) (fn _ -> Maybe _) -> Maybe _) (opt: Maybe _) (f: fn _ -> Maybe _) =
+// (bind: fn (Maybe _) (fn _ -> Maybe _ can _) -> Maybe _ can _) (opt: Maybe _) (f: fn _ -> Maybe _ can _) =
 //     (internal_match_variable_6: (error)) = (opt: Maybe _)
 //     switch (internal_match_variable_6: Maybe _)
 //     | 0 -> (Maybe.None: Maybe _)
 //     | 1, (internal_match_variable_7: _) -> 
 //             (x: _) = (internal_match_variable_7: _)
-//             (f: fn _ -> Maybe _) (x: _)
+//             (f: fn _ -> Maybe _ can _) (x: _)
 // 
 // type Maybe2 t =
 //     | None
 //     | Some t
 // 
-// (ret: fn _ -> Maybe _) (x: _) = (Maybe.Some: fn _ -> Maybe _) (x: _)
+// (ret: fn _ -> Maybe _ can _) (x: _) = (Maybe.Some: fn _ -> Maybe _ pure) (x: _)
 // 
-// (x: Maybe I32) = (Maybe.Some: fn I32 -> Maybe I32) 10_I32
+// (x: Maybe I32) = (Maybe.Some: fn I32 -> Maybe I32 pure) 10_I32
 // 
-// (add_one: fn (Maybe _) -> Maybe _) (x: Maybe _) =
-//     (bind: fn (Maybe _) (fn _ -> Maybe _) -> Maybe _) (x: Maybe _) (fn (x: _) -> (ret: fn _ -> Maybe _) ((x: _) (+: (error)) 1_I32))
+// (add_one: fn (Maybe _) -> Maybe _ can _) (x: Maybe _) =
+//     (bind: fn (Maybe _) (fn _ -> Maybe _ can _) -> Maybe _ can _) (x: Maybe _) (fn (x: _) -> (ret: fn _ -> Maybe _ can _) ((x: _) (+: (error)) 1_I32))
 
 // expected stderr:
 // examples/typechecking/bind.an:15:27	error: `+` not found in scope

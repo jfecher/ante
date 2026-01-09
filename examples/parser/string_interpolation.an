@@ -8,7 +8,7 @@ main () =
             shout "\nEven ${bar}"
         }"
 
-// args: --show-parse
+// args: -e ast
 // expected stdout:
 // main () =
 //     shout x = ""

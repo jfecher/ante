@@ -4,9 +4,18 @@ foo a =
 
 // Make sure output is not "... given Print a, Print a"
 
-// args: --show-types
+// args: -e ast-t
 // expected stdout:
-// (foo: fn _ -> Unit) (a: _) =
-//     (print: fn _ -> Unit) (a: _)
-//     (print: fn _ -> Unit) (a: _)
+// (foo: fn _ -> _ can _) (a: _) =
+//     (print: (error)) (a: _)
+//     (print: (error)) (a: _)
+
+// expected stderr:
+// examples/typechecking/repeated_traits.an:2:4	error: `print` not found in scope
+//     print a
+// 
+// examples/typechecking/repeated_traits.an:3:4	error: `print` not found in scope
+//     print a
+// 
+// Found 2 errors and 0 warnings
 

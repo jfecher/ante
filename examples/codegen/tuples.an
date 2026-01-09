@@ -8,3 +8,15 @@ foo ("test", 2, 'c')
 foo ("hi", 7, 2.0, 3, 4, 5)
 
 // args: --delete-binary
+// expected stderr:
+// examples/codegen/tuples.an:4:4	error: `print` not found in scope
+//     print b
+// 
+// examples/codegen/tuples.an:6:4	error: Expected `=` to begin the function body but found `(`
+// foo ("test", 2, 'c')
+// 
+// examples/codegen/tuples.an:8:4	error: Expected `=` to begin the function body but found `(`
+// foo ("hi", 7, 2.0, 3, 4, 5)
+// 
+// Found 3 errors and 0 warnings
+

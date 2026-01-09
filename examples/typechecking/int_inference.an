@@ -11,8 +11,14 @@ main () =
 // The current solution of this is to sort out Int trait constraints to solve
 // them before other trait constraints.
 
-// args: --show-types
+// args: -e ast-t
 // expected stdout:
-// (main: fn Unit -> Unit) () =
-//     (print: fn I32 -> Unit) 2
+// (main: fn Unit -> _ can _) () =
+//     (print: (error)) 2
+
+// expected stderr:
+// examples/typechecking/int_inference.an:2:4	error: `print` not found in scope
+//     print 2
+// 
+// Found 1 error and 0 warnings
 

@@ -16,3 +16,30 @@ match s
 | None -> print "s = None"
 
 // args: --delete-binary
+// expected stderr:
+// examples/codegen/data.an:4:8	error: Expected `=` to begin the function body but found "t = "
+// printne "t = "
+// 
+// examples/codegen/data.an:5:8	error: Expected `=` to begin the function body but found `(`
+// printne (t.a)
+// 
+// examples/codegen/data.an:6:8	error: Expected `=` to begin the function body but found ", "
+// printne ", "
+// 
+// examples/codegen/data.an:8:5	error: Expected `=` to begin the function body but found `t`
+// puts t.b.c_string
+// 
+// examples/codegen/data.an:10:4	error: `Some` not found in scope
+// s = Some 2
+// 
+// examples/codegen/data.an:12:0	error: Expected a top-level item but found `match`
+// match s
+// 
+// examples/codegen/data.an:13:0	error: Expected a top-level item but found `|`
+// | Some x -> 
+// 
+// examples/codegen/data.an:16:0	error: Expected a top-level item but found `|`
+// | None -> print "s = None"
+// 
+// Found 8 errors and 0 warnings
+

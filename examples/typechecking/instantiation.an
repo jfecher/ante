@@ -13,31 +13,19 @@ main () =
 
 id x = x
 
-// args: --show-types
+// args: -e ast-t
 // expected stdout:
-// (add: fn (fn _ _ -> _) (fn _ _ -> _) -> fn _ -> fn _ -> _) (m: fn _ _ -> _) (n: fn _ _ -> _) = fn (f: _) -> fn (x: _) -> (m: fn _ _ -> _) (f: _) ((n: fn _ _ -> _) (f: _) (x: _))
+// (add: fn (fn _ _ -> _ can _) (fn _ _ -> _ can _) -> fn _ -> fn _ -> _ can _ can _ can _) (m: fn _ _ -> _ can _) (n: fn _ _ -> _ can _) = fn (f: _) -> fn (x: _) -> (m: fn _ _ -> _ can _) (f: _) ((n: fn _ _ -> _ can _) (f: _) (x: _))
 // 
-// (one: fn (fn _ -> _) _ -> _) (f: fn _ -> _) (x: _) = (f: fn _ -> _) (x: _)
+// (one: fn (fn _ -> _ can _) _ -> _ can _) (f: fn _ -> _ can _) (x: _) = (f: fn _ -> _ can _) (x: _)
 // 
-// (two1: fn (fn _ -> _) _ -> _) (f: fn _ -> _) (x: _) = (f: fn _ -> _) ((f: fn _ -> _) (x: _))
+// (two1: fn (fn _ -> _ can _) _ -> _ can _) (f: fn _ -> _ can _) (x: _) = (f: fn _ -> _ can _) ((f: fn _ -> _ can _) (x: _))
 // 
-// (two2: fn (fn _ -> _) -> fn _ -> _) = (add: fn (fn (fn _ -> _) _ -> _) (fn (fn _ -> _) _ -> _) -> fn (fn _ -> _) -> fn _ -> _) (one: fn (fn _ -> _) _ -> _) (one: fn (fn _ -> _) _ -> _)
+// (two2: fn (fn _ -> _ can _) -> fn _ -> _ can _ can _) = (add: fn (fn (fn _ -> _ can _) _ -> _ can _) (fn (fn _ -> _ can _) _ -> _ can _) -> fn (fn _ -> _ can _) -> fn _ -> _ can _ can _ can _) (one: fn (fn _ -> _ can _) _ -> _ can _) (one: fn (fn _ -> _ can _) _ -> _ can _)
 // 
-// (main: fn Unit -> String) () =
-//     (id: fn I32 -> I32) 3
-//     (id: fn String -> String) "four"
+// (main: fn Unit -> String can _) () =
+//     (id: fn I32 -> I32 can _) 3
+//     (id: fn String -> String can _) "four"
 // 
-// (id: fn _ -> _) (x: _) = (x: _)
-
-// expected stderr:
-// examples/typechecking/instantiation.an:2:39	error: Expected a newline after the top level item but found //// (a -> b -> c) -> (a -> d -> b) -> a -> d -> c
-// add m n = fn f -> fn x -> m f (n f x)  // (a -> b -> c) -> (a -> d -> b) -> a -> d -> c
-// 
-// examples/typechecking/instantiation.an:4:15	error: Expected a newline after the top level item but found //// (a -> b) -> a -> b
-// one f x = f x  // (a -> b) -> a -> b
-// 
-// examples/typechecking/instantiation.an:5:19	error: Expected a newline after the top level item but found //// (a -> a) -> a -> a
-// two1 f x = f (f x) // (a -> a) -> a -> a
-// 
-// Found 3 errors and 0 warnings
+// (id: fn _ -> _ can _) (x: _) = (x: _)
 

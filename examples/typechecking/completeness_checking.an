@@ -26,14 +26,14 @@ main () =
     | (1, 2) -> 1
     | (_, _, _, _) -> 3
 
-// args: --show-types
+// args: -e ast-t
 // expected stdout:
-// (main: fn Unit -> I32) () =
+// (main: fn Unit -> I32 can _) () =
 //     (internal_match_variable_27: (error)) = (Maybe.None: Maybe _)
 //     switch (internal_match_variable_27: Maybe _)
 //     | 0 -> 1
 //     | 1, (internal_match_variable_28: _) -> #missing_case
-//     (internal_match_variable_29: (error)) = 2 (,: fn I32 (Maybe _) -> I32, (Maybe _)) (Maybe.None: Maybe _)
+//     (internal_match_variable_29: (error)) = 2 (,: fn I32 (Maybe _) -> I32, (Maybe _) pure) (Maybe.None: Maybe _)
 //     switch (internal_match_variable_29: I32, (Maybe _))
 //     | 0, (internal_match_variable_30: I32), (internal_match_variable_31: Maybe _) -> switch (internal_match_variable_31: Maybe _)
 //         | 0 -> switch (internal_match_variable_30: I32)
@@ -54,7 +54,7 @@ main () =
 //         | 1, (internal_match_variable_35: _) -> 
 //                 (_: _) = (internal_match_variable_35: _)
 //                 0
-//     (internal_match_variable_36: (error)) = 1 (,: fn I32 I32 -> I32, I32) 2
+//     (internal_match_variable_36: (error)) = 1 (,: fn I32 I32 -> I32, I32 pure) 2
 //     switch (internal_match_variable_36: I32, I32)
 //     | 0, (internal_match_variable_37: I32), (internal_match_variable_38: I32) -> switch (internal_match_variable_37: I32)
 //         | 1 -> 
@@ -65,7 +65,7 @@ main () =
 //                     (_: I32) = (internal_match_variable_37: I32)
 //                     2
 //             | _ -> #missing_case
-//     (internal_match_variable_39: (error)) = true (,: fn Bool Bool -> Bool, Bool) true
+//     (internal_match_variable_39: (error)) = true (,: fn Bool Bool -> Bool, Bool pure) true
 //     switch (internal_match_variable_39: Bool, Bool)
 //     | 0, (internal_match_variable_40: Bool), (internal_match_variable_41: Bool) -> switch (internal_match_variable_41: Bool)
 //         | false -> switch (internal_match_variable_40: Bool)
@@ -74,7 +74,7 @@ main () =
 //         | true -> switch (internal_match_variable_40: Bool)
 //             | false -> 0
 //             | true -> #missing_case
-//     (internal_match_variable_42: (error)) = 1 (,: fn I32 (I32, (I32, I32)) -> I32, (I32, (I32, I32))) (2 (,: fn I32 (I32, I32) -> I32, (I32, I32)) (3 (,: fn I32 I32 -> I32, I32) 4))
+//     (internal_match_variable_42: (error)) = 1 (,: fn I32 (I32, (I32, I32)) -> I32, (I32, (I32, I32)) pure) (2 (,: fn I32 (I32, I32) -> I32, (I32, I32) pure) (3 (,: fn I32 I32 -> I32, I32 pure) 4))
 //     switch (internal_match_variable_42: I32, (I32, (I32, I32)))
 //     | 0, (internal_match_variable_43: I32), (internal_match_variable_44: I32, (I32, I32)) -> switch (internal_match_variable_43: I32)
 //         | 1 -> switch (internal_match_variable_44: I32, (I32, I32))
@@ -109,7 +109,7 @@ main () =
 // examples/typechecking/completeness_checking.an:27:6	warning: This case is already matched by prior patterns
 //     | (_, _, _, _) -> 3
 // 
-// examples/typechecking/completeness_checking.an:27:11	error: Expected fn _ _ -> I32 but found fn _ _ -> _, _
+// examples/typechecking/completeness_checking.an:27:11	error: Expected fn _ _ -> I32 pure but found fn _ _ -> _, _ pure
 //     | (_, _, _, _) -> 3
 // 
 // Found 7 errors and 3 warnings

@@ -16,7 +16,7 @@ Tree.map (self: Tree q) (f: fn q -> z): Tree z =
     | Leaf x -> Leaf (f x)
     | Node l r -> Node (l.map f) (r.map f)
 
-// args: --show-resolved
+// args: -e ast-r
 // expected stdout:
 // // id = c1m412_5261
 // type OptionI32_c1m412_5261_0 =

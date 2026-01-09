@@ -20,3 +20,33 @@ var x = S "original x string"
 foo x x
 
 // args: --delete-binary
+// expected stderr:
+// examples/codegen/pass_by_ref.an:3:14	error: `Print` not found in scope
+// impl print_s: Print S with
+// 
+// examples/codegen/pass_by_ref.an:4:16	error: `printne` not found in scope
+//     printne s = printne s.message
+// 
+// examples/codegen/pass_by_ref.an:4:25	error: Object type must be known by this point to access its field
+//     printne s = printne s.message
+// 
+// examples/codegen/pass_by_ref.an:12:4	error: `printne` not found in scope
+//     printne "x before: "
+// 
+// examples/codegen/pass_by_ref.an:13:4	error: `print` not found in scope
+//     print x
+// 
+// examples/codegen/pass_by_ref.an:16:4	error: `printne` not found in scope
+//     printne "x after:  "
+// 
+// examples/codegen/pass_by_ref.an:17:4	error: `print` not found in scope
+//     print x
+// 
+// examples/codegen/pass_by_ref.an:19:0	error: Expected a top-level item but found `var`
+// var x = S "original x string"
+// 
+// examples/codegen/pass_by_ref.an:20:4	error: Expected `=` to begin the function body but found `x`
+// foo x x
+// 
+// Found 9 errors and 0 warnings
+

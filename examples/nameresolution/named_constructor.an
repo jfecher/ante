@@ -10,7 +10,7 @@ t2 = T with y = 3.2, x
 // Declarations should not leak from the named constructor
 z = y * 2.0
 
-// args: --show-resolved
+// args: -e ast-r
 // expected stdout:
 // // id = c1m818_9305
 // type T_c1m818_9305_0 a_1 b_2 =

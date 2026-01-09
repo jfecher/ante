@@ -5,3 +5,12 @@ match 3
 | x -> x
 
 // args: --delete-binary
+// expected stderr:
+// examples/regressions/80_empty_match.an:4:0	error: Expected a top-level item but found `match`
+// match 3
+// 
+// examples/regressions/80_empty_match.an:5:0	error: Expected a top-level item but found `|`
+// | x -> x
+// 
+// Found 2 errors and 0 warnings
+

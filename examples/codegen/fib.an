@@ -5,3 +5,21 @@ fib n =
 print (fib 10)
 
 // args: --delete-binary
+// expected stderr:
+// examples/codegen/fib.an:2:9	error: `<` not found in scope
+//     if n < 2 then n
+// 
+// examples/codegen/fib.an:3:16	error: `-` not found in scope
+//     else fib (n - 2) + fib (n - 1)
+// 
+// examples/codegen/fib.an:3:21	error: `+` not found in scope
+//     else fib (n - 2) + fib (n - 1)
+// 
+// examples/codegen/fib.an:3:30	error: `-` not found in scope
+//     else fib (n - 2) + fib (n - 1)
+// 
+// examples/codegen/fib.an:5:6	error: Expected `=` to begin the function body but found `(`
+// print (fib 10)
+// 
+// Found 5 errors and 0 warnings
+

@@ -9,3 +9,9 @@ foo () =
 print (foo ())
 
 // args: --delete-binary
+// expected stderr:
+// examples/codegen/closure_nested.an:9:6	error: Expected `=` to begin the function body but found `(`
+// print (foo ())
+// 
+// Found 1 error and 0 warnings
+

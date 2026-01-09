@@ -23,7 +23,7 @@ main () =
             3
         else 4)
 
-// args: --show-parse
+// args: -e ast
 // expected stdout:
 // normal = 1
 // 

@@ -20,18 +20,18 @@ main () =
     | put () -> ()
     | three 0 1 -> ()
 
-// args: --show-resolved
+// args: -e ast-r
 // expected stdout:
 // // id = c1m485_8962
 // effect Three_c1m485_8962_0 with
-//     one_1: fn Unit_b -> Unit_b
+//     one_1: fn Unit_bUnit -> Unit_bUnit
 //     two_2: fn I32 -> I32
 //     three_3: fn I32 I32 -> I32
 // 
 // // id = c1m485_5987
 // effect State_c1m485_5987_0 a_1 with
-//     get_2: fn Unit_b -> a_1
-//     put_4: fn a_1 -> Unit_b
+//     get_2: fn Unit_bUnit -> a_1
+//     put_4: fn a_1 -> Unit_bUnit
 // 
 // // id = c1m485_1944
 // main_c1m485_1944_0 () =

@@ -14,3 +14,39 @@ debug <| cast 0
 debug <| cast 10
 
 // args: --delete-binary
+// expected stderr:
+// examples/codegen/int_string_cast.an:2:2	error: `print` not found in scope
+//   print <|
+// 
+// examples/codegen/int_string_cast.an:2:8	error: `<|` not found in scope
+//   print <|
+// 
+// examples/codegen/int_string_cast.an:3:15	error: `++` not found in scope
+//     "string: " ++
+// 
+// examples/codegen/int_string_cast.an:4:8	error: `++` not found in scope
+//     str ++
+// 
+// examples/codegen/int_string_cast.an:5:13	error: `++` not found in scope
+//     " len: " ++
+// 
+// examples/codegen/int_string_cast.an:6:4	error: `cast` not found in scope
+//     cast str.length
+// 
+// examples/codegen/int_string_cast.an:6:12	error: Object type must be known by this point to access its field
+//     cast str.length
+// 
+// examples/codegen/int_string_cast.an:8:6	error: Expected `=` to begin the function body but found `<|`
+// debug <| cast (255: U8)
+// 
+// examples/codegen/int_string_cast.an:10:6	error: Expected `=` to begin the function body but found `<|`
+// debug <| cast -1024
+// 
+// examples/codegen/int_string_cast.an:12:6	error: Expected `=` to begin the function body but found `<|`
+// debug <| cast 0
+// 
+// examples/codegen/int_string_cast.an:14:6	error: Expected `=` to begin the function body but found `<|`
+// debug <| cast 10
+// 
+// Found 11 errors and 0 warnings
+

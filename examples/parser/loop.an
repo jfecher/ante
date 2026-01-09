@@ -4,7 +4,7 @@ main () =
     loop a (b: I32) (c: I32 = 2) (d = 3) ->
         recur a b c d
 
-// args: --show-parse
+// args: -e ast
 // expected stdout:
 // main () =
 //     a = 0
@@ -14,8 +14,8 @@ main () =
 // examples/parser/loop.an:4:4	error: Expected an unindent but found `loop`
 //     loop a (b: I32) (c: I32 = 2) (d = 3) ->
 // 
-// examples/parser/loop.an:7:0	error: Expected a top-level item but found an unindent
-// // args: --show-parse
+// examples/parser/loop.an:22:0	error: Expected a top-level item but found an unindent
+// 
 // 
 // Found 2 errors and 0 warnings
 

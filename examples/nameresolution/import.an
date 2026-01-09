@@ -6,7 +6,7 @@ main () =
     foo 4 library_int
     foo 5 (library_fn ())
 
-// args: --show-resolved
+// args: -e ast-r
 // expected stdout:
 // import Library.library_int, library_fn
 // 

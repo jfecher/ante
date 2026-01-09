@@ -1,3 +1,9 @@
 puts "Hello, World!".c_string
 
 // args: --delete-binary
+// expected stderr:
+// examples/codegen/hello.an:1:6	error: Expected `=` to begin the function body but found "Hello, World!"
+// puts "Hello, World!".c_string
+// 
+// Found 1 error and 0 warnings
+

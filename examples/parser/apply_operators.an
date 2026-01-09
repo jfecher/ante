@@ -11,7 +11,7 @@ main () =
 
     1, 2 |> baz <| 3, 4
 
-// args: --show-parse
+// args: -e ast
 // expected stdout:
 // main () =
 //     a |> foo

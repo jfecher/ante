@@ -7,7 +7,7 @@ foo _ =
     a = 5
     ()
 
-// args: --show-resolved
+// args: -e ast-r
 // expected stdout:
 // // id = c1m779_7365
 // a_c1m779_7365_1 = 1

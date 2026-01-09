@@ -6,3 +6,18 @@ Vec.push (mut v) 4
 print v
 
 // args: --delete-binary
+// expected stderr:
+// examples/codegen/implicit_import.an:1:1	error: Expected a top-level item but found `var`
+// var v = Vec.empty ()
+// 
+// examples/codegen/implicit_import.an:3:4	error: Expected a capitalized type name but found `push`
+// Vec.push (mut v) 3i32
+// 
+// examples/codegen/implicit_import.an:4:4	error: Expected a capitalized type name but found `push`
+// Vec.push (mut v) 4
+// 
+// examples/codegen/implicit_import.an:6:6	error: Expected `=` to begin the function body but found `v`
+// print v
+// 
+// Found 4 errors and 0 warnings
+

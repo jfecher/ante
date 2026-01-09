@@ -1052,7 +1052,7 @@ impl<'tokens> Parser<'tokens> {
     }
 
     /// implicit_function_parameter: '{' type '}'
-    ///                            | '{' pattern ':' type '}'
+    ///                            | '{' pattern '}'
     fn parse_implicit_function_parameter(&mut self) -> Result<PatternId> {
         self.expect(Token::BraceLeft, "parse_implicit_function_parameter")?;
 
@@ -1068,7 +1068,7 @@ impl<'tokens> Parser<'tokens> {
                 Ok(this.push_pattern(Pattern::TypeAnnotation(no_name, typ), location))
             },
             |this| {
-                let pattern = this.parse_function_parameter_pattern()?;
+                let pattern = this.parse_pattern()?;
                 this.expect(Token::BraceRight, "a `}` to close the opening `{` from the implicit parameter")?;
                 Ok(pattern)
             },

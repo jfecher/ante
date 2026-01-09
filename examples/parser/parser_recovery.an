@@ -38,7 +38,7 @@ main () =
     else 
         true
 
-// args: --show-parse
+// args: -e ast
 // expected stdout:
 // type IntBinTreeNode =
 //     value: I32

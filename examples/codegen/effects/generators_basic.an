@@ -15,3 +15,15 @@ for stream f =
 for (fn () -> iota 10) print
 
 // args: --delete-binary
+// expected stderr:
+// examples/codegen/effects/generators_basic.an:2:12	error: Expected an unindent but found `->`
+//     emit: a -> Unit
+// 
+// examples/codegen/effects/generators_basic.an:9:0	error: Expected a top-level item but found `for`
+// for stream f =
+// 
+// examples/codegen/effects/generators_basic.an:15:0	error: Expected a top-level item but found `for`
+// for (fn () -> iota 10) print
+// 
+// Found 3 errors and 0 warnings
+

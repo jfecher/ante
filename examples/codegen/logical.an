@@ -2,3 +2,9 @@
 print (true and true or false and false)
 
 // args: --delete-binary
+// expected stderr:
+// examples/codegen/logical.an:2:6	error: Expected `=` to begin the function body but found `(`
+// print (true and true or false and false)
+// 
+// Found 1 error and 0 warnings
+

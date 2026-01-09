@@ -31,3 +31,30 @@ filtered () =
 for filtered print
 
 // args: --delete-binary
+// expected stderr:
+// examples/regressions/217_filter.an:2:12	error: Expected an unindent but found `->`
+//     emit: a -> Unit
+// 
+// examples/regressions/217_filter.an:10:7	error: Expected `=` to begin the function body but found `(`
+// filter (stream: Unit -> Unit) (f: a -> Bool pure) =
+// 
+// examples/regressions/217_filter.an:18:0	error: Expected a top-level item but found `for`
+// for (stream: Unit -> Unit can Emit a) (f: a -> Unit pure) =
+// 
+// examples/regressions/217_filter.an:26:9	error: Expected U32 but found I32
+//     iota 10
+// 
+// examples/regressions/217_filter.an:29:4	error: `filter` not found in scope
+//     filter zero_to_nine (fn x -> x % 2 == 0)
+// 
+// examples/regressions/217_filter.an:29:35	error: `%` not found in scope
+//     filter zero_to_nine (fn x -> x % 2 == 0)
+// 
+// examples/regressions/217_filter.an:29:39	error: `==` not found in scope
+//     filter zero_to_nine (fn x -> x % 2 == 0)
+// 
+// examples/regressions/217_filter.an:31:0	error: Expected a top-level item but found `for`
+// for filtered print
+// 
+// Found 8 errors and 0 warnings
+

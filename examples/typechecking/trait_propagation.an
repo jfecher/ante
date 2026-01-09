@@ -10,14 +10,14 @@ foo () = baz bar
 // because it has a typevariable.
 //
 
-// args: --show-types
+// args: -e ast-t
 // expected stdout:
 // extern (bar: a): a
 // 
 // trait Baz a with
-//     (baz: _): fn a -> Unit
+//     (baz: fn a {Baz a} -> Unit pure): fn a -> Unit
 // 
-// (foo: fn Unit -> _) () = (baz: (error)) (bar: _)
+// (foo: fn Unit -> _ can _) () = (baz: (error)) (bar: _)
 
 // expected stderr:
 // examples/typechecking/trait_propagation.an:6:9	error: `baz` not found in scope

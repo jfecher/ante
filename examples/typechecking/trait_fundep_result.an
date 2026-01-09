@@ -7,12 +7,22 @@ impl foo_impl: Foo I32 String with
 
 str = foo 0i32
 
-// args: --show-types
-// expected exit status: 101
+// args: -e ast-t
+// expected stdout:
+// trait Foo a -> b with
+//     (foo: fn a {Foo a} -> (error) pure): fn a -> b
+// 
+// impl foo_impl: (Foo: (error)) I32 String with
+//     (foo: fn I32 -> (error) pure) (_: I32) = "hi"
+// 
+// (str: _) = (foo: (error)) 0_I32
+
 // expected stderr:
-// thread 'main' panicked at src/type_inference/mod.rs:754:9:
-// assertion `left == right` failed
-//   left: 2
-//  right: 1
-// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+// examples/typechecking/trait_fundep_result.an:3:14	error: `b` not found in scope
+//     foo: fn a -> b
+// 
+// examples/typechecking/trait_fundep_result.an:8:6	error: `foo` not found in scope
+// str = foo 0i32
+// 
+// Found 2 errors and 0 warnings
 

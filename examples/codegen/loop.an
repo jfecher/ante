@@ -23,3 +23,15 @@ main () =
         else recur (s + 1) (t + 1)
 
 // args: --delete-binary
+// expected stderr:
+// examples/codegen/loop.an:7:4	error: `print` not found in scope
+//     print seq_sum
+// 
+// examples/codegen/loop.an:19:4	error: Expected an unindent but found `loop`
+//     loop (s: I32) (t: I32 = 0) ->
+// 
+// examples/codegen/loop.an:26:0	error: Expected a top-level item but found an unindent
+// 
+// 
+// Found 3 errors and 0 warnings
+

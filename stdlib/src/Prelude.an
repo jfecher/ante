@@ -8,55 +8,55 @@
 
 //C functions
 extern
-//     // varargs is not supported by the cranelift backend
-//     // printf: Ptr Char - ... -> Unit
+    // varargs is not supported by the cranelift backend
+    // printf: Ptr Char - ... -> Unit
     puts: fn (Ptr Char) -> I32
-//     putchar: fn Char -> Unit
-//     getchar: fn Unit -> I32
-//     exit: fn I32 -> Unit
-//     malloc: fn Usz -> Ptr a
-//     calloc: fn /*items:*/Usz /*size:*/Usz -> Ptr a
-//     realloc: fn (Ptr a) Usz -> Ptr a
-//     free: fn (Ptr a) -> Unit
-//     memcpy: fn (Ptr a) (Ptr b) Usz -> Ptr a
-//     system: fn (Ptr Char) -> I32
-//     strlen: fn (Ptr Char) -> Usz
-// 
-// //C stdio
-// type File = f: Ptr Unit
-// type FilePos = f: Ptr Unit
-// 
-// type InFile = f: File
-// type OutFile = f: File
-// 
-// extern
-//     fopen: fn (Ptr Char) (Ptr Char) -> File
-//     fclose: fn File -> Unit
-// 
-//     fputs: fn (Ptr Char) OutFile -> I32
-//     fputc: fn I32 OutFile -> I32
-//     fwrite: fn (Ptr U8) Usz Usz OutFile -> Usz
-// 
-//     fgetc: fn InFile -> I32
-//     fgets: fn (Ptr Char) I32 InFile -> (Ptr Char)
-//     ungetc: fn I32 InFile -> I32
-// 
-//     fgetpos: fn File FilePos -> Unit
-//     ftell: fn File -> I32
-//     fsetpos: fn File FilePos -> Unit
-//     fseek: fn File I32 I32 -> I32
-// 
-//     feof: fn InFile -> I32
-//     ferror: fn File -> I32
-// 
+    putchar: fn Char -> Unit
+    getchar: fn Unit -> I32
+    exit: fn I32 -> Unit
+    malloc: fn Usz -> Ptr a
+    calloc: fn /*items:*/Usz /*size:*/Usz -> Ptr a
+    realloc: fn (Ptr a) Usz -> Ptr a
+    free: fn (Ptr a) -> Unit
+    memcpy: fn (Ptr a) (Ptr b) Usz -> Ptr a
+    system: fn (Ptr Char) -> I32
+    strlen: fn (Ptr Char) -> Usz
+
+//C stdio
+type File = f: Ptr Unit
+type FilePos = f: Ptr Unit
+
+type InFile = f: File
+type OutFile = f: File
+
+extern
+    fopen: fn (Ptr Char) (Ptr Char) -> File
+    fclose: fn File -> Unit
+
+    fputs: fn (Ptr Char) OutFile -> I32
+    fputc: fn I32 OutFile -> I32
+    fwrite: fn (Ptr U8) Usz Usz OutFile -> Usz
+
+    fgetc: fn InFile -> I32
+    fgets: fn (Ptr Char) I32 InFile -> (Ptr Char)
+    ungetc: fn I32 InFile -> I32
+
+    fgetpos: fn File FilePos -> Unit
+    ftell: fn File -> I32
+    fsetpos: fn File FilePos -> Unit
+    fseek: fn File I32 I32 -> I32
+
+    feof: fn InFile -> I32
+    ferror: fn File -> I32
+
 type Maybe t =
    | None
    | Some t
 
-// type Result t e =
-//    | Ok t
-//    | Error e
-// 
+type Result t e =
+   | Ok t
+   | Error e
+
 // impl eq_maybe {Eq e}: Eq (Maybe e) with
 //     (==) l r =
 //         match l, r
@@ -70,10 +70,10 @@ type Maybe t =
 // fourth (_, _, _, d) = d
 // fifth (_, _, _, _, e) = e
 // 
-// /// A type conversion from a to b
-// trait Cast a b with
-//     cast: fn a -> b
-// 
+/// A type conversion from a to b
+trait Cast a b with
+    cast: fn a -> b
+
 // cast = Cast.cast
 // 
 // impl cast_same: Cast a a with
@@ -201,7 +201,7 @@ type Maybe t =
 // 
 // 
 // // Huge block of builtin numeric operators incoming
-// trait Add n with (+): fn n n -> n
+trait Add n with (+): fn n n -> n
 // impl add_int: Add (Int a) with (+) x y = builtin "AddInt" x y
 // impl add_float: Add (Float a) with (+) x y = builtin "AddFloat" x y
 // impl add_char: Add Char with (+) (x: Char) (y: Char): Char = builtin "AddInt" x y
@@ -212,16 +212,16 @@ type Maybe t =
 // (/) = Div.(/)
 // (%) = Mod.(%)
 // 
-// trait Sub n with (-): fn n n -> n
+trait Sub n with (-): fn n n -> n
 // impl sub_int: Sub (Int a) with (-) x y = builtin "SubInt" x y
 // impl sub_float: Sub (Float a) with (-) x y = builtin "SubFloat" x y
 // impl sub_char: Sub Char with (-) (x: Char) (y: Char): Char = builtin "SubInt" x y
 // 
-// trait Mul n with (*): fn n n -> n
+trait Mul n with (*): fn n n -> n
 // impl mul_int: Mul (Int a) with (*) x y = builtin "MulInt" x y
 // impl mul_float: Mul (Float a) with (*) x y = builtin "MulFloat" x y
 // 
-// trait Div n with (/): fn n n -> n
+trait Div n with (/): fn n n -> n
 // impl div_i8: Div I8  with (/) x y = builtin "DivSigned" x y
 // impl div_i16: Div I16 with (/) x y = builtin "DivSigned" x y
 // impl div_i32: Div I32 with (/) x y = builtin "DivSigned" x y
@@ -234,7 +234,7 @@ type Maybe t =
 // impl div_usz: Div Usz with (/) x y = builtin "DivUnsigned" x y
 // impl div_float: Div (Float a) with (/) x y = builtin "DivFloat" x y
 // 
-// trait Mod n with (%): fn n n -> n
+trait Mod n with (%): fn n n -> n
 // impl mod_i8: Mod I8  with (%) x y = builtin "ModSigned" x y
 // impl mod_i16: Mod I16 with (%) x y = builtin "ModSigned" x y
 // impl mod_i32: Mod I32 with (%) x y = builtin "ModSigned" x y
@@ -249,7 +249,7 @@ type Maybe t =
 // // Cranelift backend does not support floating-point remainder or modulus
 // // impl Mod F64 with (%) (_: F64) (_: F64): F64 = builtin "ModFloat"
 // 
-// trait Eq t with (==): fn t t -> Bool
+trait Eq t with (==): fn t t -> Bool
 // impl eq_int: Eq (Int a) with (==) x y = builtin "EqInt" x y
 // impl eq_float: Eq (Float a) with (==) x y = builtin "EqFloat" x y
 // 
@@ -260,10 +260,10 @@ type Maybe t =
 // (!=) l r = not (l == r)
 // (not) a = if a then false else true
 // 
-// trait Cmp a with
-//     (<): fn a a -> Bool
-// 
-// // TODO: Partial ordering screws everything up
+trait Cmp a with
+    (<): fn a a -> Bool
+
+// TODO: Partial ordering screws everything up
 // (<) = Cmp.(<)
 // (>) a b = b < a
 // (<=) a b = not (b < a)
@@ -297,7 +297,7 @@ type Maybe t =
 //     (++): fn a a -> a
 // 
 // (++) = Append.(++)
-// 
+
 // trait Extract collection index -> elem with
 //     (.[): fn collection index -> elem
 // 
@@ -380,11 +380,11 @@ type Maybe t =
 //     printne: fn t -> Unit
 // 
 // printne = Print.printne
-// 
+
 // print x =
 //     Print.printne x
 //     putchar c"\n"
-// 
+
 // impl print_u8:  Print U8  with printne x = print_unsigned (cast x)
 // impl print_u16: Print U16 with printne x = print_unsigned (cast x)
 // impl print_u32: Print U32 with printne x = print_unsigned (cast x)

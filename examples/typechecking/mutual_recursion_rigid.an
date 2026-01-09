@@ -28,32 +28,32 @@ ex2b (a: u) b =
 ex2c (a: v) b =
     ex2a a b
 
-// args: --show-types
+// args: -e ast-t
 // expected stdout:
-// (ex1a: fn t _ -> U32) ((a: t)) (b: _) =
-//     (ex1b: fn t _ -> U32) (a: t) (b: _)
+// (ex1a: fn t _ -> U32 can _) ((a: t)) (b: _) =
+//     (ex1b: fn t _ -> U32 can _) (a: t) (b: _)
 //     0_U32
 // 
-// (ex1b: fn u _ -> U32) ((a: u)) (b: _) =
-//     (ex1a: fn u _ -> U32) (a: u) (b: _)
+// (ex1b: fn u _ -> U32 can _) ((a: u)) (b: _) =
+//     (ex1a: fn u _ -> U32 can _) (a: u) (b: _)
 //     1_U32
 // 
 // trait T1 a with
-//     (trait1: _): fn a -> Unit
+//     (trait1: fn a {T1 a} -> Unit pure): fn a -> Unit
 // 
 // trait T2 a with
-//     (trait2: _): fn a -> Unit
+//     (trait2: fn a {T2 a} -> Unit pure): fn a -> Unit
 // 
-// (ex2a: fn t _ -> _) ((a: t)) (b: _) =
-//     (ex2b: fn t _ -> _) (a: t) (b: _)
+// (ex2a: fn t _ -> _ can _) ((a: t)) (b: _) =
+//     (ex2b: fn t _ -> _ can _) (a: t) (b: _)
 //     (trait1: (error)) (a: t)
 // 
-// (ex2b: fn u _ -> _) ((a: u)) (b: _) =
-//     (ex2c: fn u _ -> _) (a: u) (b: _)
+// (ex2b: fn u _ -> _ can _) ((a: u)) (b: _) =
+//     (ex2c: fn u _ -> _ can _) (a: u) (b: _)
 //     (trait2: (error)) (a: u)
 // 
-// (ex2c: fn v _ -> _) ((a: v)) (b: _) =
-//     (ex2a: fn v _ -> _) (a: v) (b: _)
+// (ex2c: fn v _ -> _ can _) ((a: v)) (b: _) =
+//     (ex2a: fn v _ -> _ can _) (a: v) (b: _)
 
 // expected stderr:
 // examples/typechecking/mutual_recursion_rigid.an:22:4	error: `trait1` not found in scope

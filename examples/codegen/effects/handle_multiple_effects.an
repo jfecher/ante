@@ -17,3 +17,24 @@ foo () =
 print <| read_or_zero foo
 
 // args: --delete-binary
+// expected stderr:
+// examples/codegen/effects/handle_multiple_effects.an:3:15	error: Expected an unindent but found `->`
+//     fail: Unit -> a
+// 
+// examples/codegen/effects/handle_multiple_effects.an:6:15	error: Expected an unindent but found `->`
+//     read: Unit -> a
+// 
+// examples/codegen/effects/handle_multiple_effects.an:9:4	error: Effects and handle expressions are currently unimplemented
+//     handle Some <| f ()
+// 
+// examples/codegen/effects/handle_multiple_effects.an:14:18	error: `fail` not found in scope
+//     if false then fail ()
+// 
+// examples/codegen/effects/handle_multiple_effects.an:15:4	error: `read` not found in scope
+//     read ()
+// 
+// examples/codegen/effects/handle_multiple_effects.an:17:6	error: Expected `=` to begin the function body but found `<|`
+// print <| read_or_zero foo
+// 
+// Found 6 errors and 0 warnings
+

@@ -24,12 +24,42 @@ bar 3 2
 
 bar "four" "five"
 
-// args: --show-types
-// expected exit status: 101
+// args: -e ast-t
+// expected stdout:
+// trait Bar a -> b with
+//     (bar: fn a a {Bar a} -> (error) pure): fn a a -> b
+// 
+// impl bar1: (Bar: (error)) I32 String with
+//     (bar: fn I32 I32 -> (error) pure) (_: I32) (_: I32) = "good"
+// 
+// impl bar2: (Bar: (error)) I32 I32 with
+//     (bar: fn I32 I32 -> (error) pure) (_: I32) (_: I32) = "bad return type"
+// 
+// impl bar3: (Bar: (error)) I32 Char String F64 Unit with
+//     (bar: fn I32 I32 -> (error) pure) (_: I32) (_: I32) = "bad impl args"
+// 
+// impl bar4: (Bar: (error)) I32 F64 with
+//     (bar: fn I32 I32 -> (error) pure) (_: I32) (_: I32) = 23.2
+// 
+// (foo: fn _ _ -> _ can _) (a: _) (b: _) = (bar: (error)) (a: _) (b: _)
+// 
+// (baz: fn String _ -> _ can _) ((x: String)) (y: _) = (bar: (error)) (x: String) (y: _)
+
 // expected stderr:
-// thread 'main' panicked at src/type_inference/mod.rs:754:9:
-// assertion `left == right` failed
-//   left: 2
-//  right: 1
-// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+// examples/typechecking/trait_impls.an:3:16	error: `b` not found in scope
+//     bar: fn a a -> b
+// 
+// examples/typechecking/trait_impls.an:20:10	error: `bar` not found in scope
+// foo a b = bar a b
+// 
+// examples/typechecking/trait_impls.an:22:20	error: `bar` not found in scope
+// baz (x: String) y = bar x y
+// 
+// examples/typechecking/trait_impls.an:23:4	error: Expected `=` to begin the function body but found `3`
+// bar 3 2
+// 
+// examples/typechecking/trait_impls.an:25:4	error: Expected `=` to begin the function body but found `"four"`
+// bar "four" "five"
+// 
+// Found 5 errors and 0 warnings
 

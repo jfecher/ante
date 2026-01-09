@@ -48,3 +48,42 @@ iota 10
     with for my_print
 
 // args: --delete-binary
+// expected stderr:
+// examples/codegen/effects/generators_complex.an:2:12	error: Expected an unindent but found `->`
+//     emit: a -> Unit
+// 
+// examples/codegen/effects/generators_complex.an:9:7	error: Expected `=` to begin the function body but found `(`
+// filter (stream: Unit -> Unit can Emit a) (f: a -> Bool pure) =
+// 
+// examples/codegen/effects/generators_complex.an:16:4	error: Expected `=` to begin the function body but found `(`
+// map (stream: Unit -> Unit can Emit a) (f: a -> b pure): Unit can Emit b =
+// 
+// examples/codegen/effects/generators_complex.an:22:10	error: Expected `=` to begin the function body but found `(`
+// enumerate (stream: Unit -> Unit can Emit a): Unit can Emit (U32, a) =
+// 
+// examples/codegen/effects/generators_complex.an:31:0	error: Expected a top-level item but found `for`
+// for (stream: Unit -> Unit can Emit a) (f: a -> Unit pure) =
+// 
+// examples/codegen/effects/generators_complex.an:37:11	error: `%` not found in scope
+// even x = x % 2 == 0
+// 
+// examples/codegen/effects/generators_complex.an:37:15	error: `==` not found in scope
+// even x = x % 2 == 0
+// 
+// examples/codegen/effects/generators_complex.an:39:14	error: Expected a type but found `!`
+// my_print (x1: !U32, U32) =
+// 
+// examples/codegen/effects/generators_complex.an:40:8	error: `@` not found in scope
+//     x = @first x1
+// 
+// examples/codegen/effects/generators_complex.an:40:9	error: `first` not found in scope
+//     x = @first x1
+// 
+// examples/codegen/effects/generators_complex.an:40:15	error: Expected an unindent but found `x1`
+//     x = @first x1
+// 
+// examples/codegen/effects/generators_complex.an:44:5	error: Expected `=` to begin the function body but found `10`
+// iota 10
+// 
+// Found 12 errors and 0 warnings
+

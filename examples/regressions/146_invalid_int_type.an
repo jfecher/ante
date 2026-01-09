@@ -2,6 +2,152 @@ a: Int String = 3
 
 // args: --check
 // expected stderr:
+// ; ModuleID = 'File'
+// source_filename = "File"
+// target triple = "arm64-apple-darwin24.6.0"
+// 
+// define {} @File() {
+//   ret {} zeroinitializer
+// }
+// ; ModuleID = 'FilePos'
+// source_filename = "FilePos"
+// target triple = "arm64-apple-darwin24.6.0"
+// 
+// define {} @FilePos() {
+//   ret {} zeroinitializer
+// }
+// ; ModuleID = 'InFile'
+// source_filename = "InFile"
+// target triple = "arm64-apple-darwin24.6.0"
+// 
+// define {} @InFile() {
+//   ret {} zeroinitializer
+// }
+// ; ModuleID = 'OutFile'
+// source_filename = "OutFile"
+// target triple = "arm64-apple-darwin24.6.0"
+// 
+// define {} @OutFile() {
+//   ret {} zeroinitializer
+// }
+// ; ModuleID = 'Some'
+// source_filename = "Some"
+// target triple = "arm64-apple-darwin24.6.0"
+// 
+// define { ptr } @Some(ptr %0) {
+//   ret { ptr } { ptr %0 }
+// }
+// 
+// define {} @Maybe() {
+//   ret {} zeroinitializer
+// }
+// 
+// define {} @None() {
+//   ret {} zeroinitializer
+// }
+// ; ModuleID = 'Error'
+// source_filename = "Error"
+// target triple = "arm64-apple-darwin24.6.0"
+// 
+// define { ptr } @Error(ptr %0) {
+//   ret { ptr } { ptr %0 }
+// }
+// 
+// define {} @Result() {
+//   ret {} zeroinitializer
+// }
+// 
+// define { ptr } @Ok(ptr %0) {
+//   ret { ptr } { ptr %0 }
+// }
+// ; ModuleID = 'cast'
+// source_filename = "cast"
+// target triple = "arm64-apple-darwin24.6.0"
+// 
+// define { ptr, { ptr } } @cast(ptr %0, { ptr } %1) {
+//   ret { ptr, { ptr } } { ptr %0, { ptr } %1 }
+// }
+// 
+// define { ptr } @Cast(ptr %0) {
+//   ret { ptr } { ptr %0 }
+// }
+// ; ModuleID = 'Add'
+// source_filename = "Add"
+// target triple = "arm64-apple-darwin24.6.0"
+// 
+// define { ptr } @Add(ptr %0) {
+//   ret { ptr } { ptr %0 }
+// }
+// 
+// define { ptr, ptr, { ptr } } @"+"(ptr %0, ptr %1, { ptr } %2) {
+//   ret { ptr, ptr, { ptr } } { ptr %0, ptr %1, { ptr } %2 }
+// }
+// ; ModuleID = '-'
+// source_filename = "-"
+// target triple = "arm64-apple-darwin24.6.0"
+// 
+// define { ptr, ptr, { ptr } } @-(ptr %0, ptr %1, { ptr } %2) {
+//   ret { ptr, ptr, { ptr } } { ptr %0, ptr %1, { ptr } %2 }
+// }
+// 
+// define { ptr } @Sub(ptr %0) {
+//   ret { ptr } { ptr %0 }
+// }
+// ; ModuleID = 'Mul'
+// source_filename = "Mul"
+// target triple = "arm64-apple-darwin24.6.0"
+// 
+// define { ptr } @Mul(ptr %0) {
+//   ret { ptr } { ptr %0 }
+// }
+// 
+// define { ptr, ptr, { ptr } } @"*"(ptr %0, ptr %1, { ptr } %2) {
+//   ret { ptr, ptr, { ptr } } { ptr %0, ptr %1, { ptr } %2 }
+// }
+// ; ModuleID = '/'
+// source_filename = "/"
+// target triple = "arm64-apple-darwin24.6.0"
+// 
+// define { ptr, ptr, { ptr } } @"/"(ptr %0, ptr %1, { ptr } %2) {
+//   ret { ptr, ptr, { ptr } } { ptr %0, ptr %1, { ptr } %2 }
+// }
+// 
+// define { ptr } @Div(ptr %0) {
+//   ret { ptr } { ptr %0 }
+// }
+// ; ModuleID = '%'
+// source_filename = "%"
+// target triple = "arm64-apple-darwin24.6.0"
+// 
+// define { ptr, ptr, { ptr } } @"%"(ptr %0, ptr %1, { ptr } %2) {
+//   ret { ptr, ptr, { ptr } } { ptr %0, ptr %1, { ptr } %2 }
+// }
+// 
+// define { ptr } @Mod(ptr %0) {
+//   ret { ptr } { ptr %0 }
+// }
+// ; ModuleID = 'Eq'
+// source_filename = "Eq"
+// target triple = "arm64-apple-darwin24.6.0"
+// 
+// define { ptr } @Eq(ptr %0) {
+//   ret { ptr } { ptr %0 }
+// }
+// 
+// define { ptr, ptr, { ptr } } @"=="(ptr %0, ptr %1, { ptr } %2) {
+//   ret { ptr, ptr, { ptr } } { ptr %0, ptr %1, { ptr } %2 }
+// }
+// ; ModuleID = 'Cmp'
+// source_filename = "Cmp"
+// target triple = "arm64-apple-darwin24.6.0"
+// 
+// define { ptr } @Cmp(ptr %0) {
+//   ret { ptr } { ptr %0 }
+// }
+// 
+// define { ptr, ptr, { ptr } } @"<"(ptr %0, ptr %1, { ptr } %2) {
+//   ret { ptr, ptr, { ptr } } { ptr %0, ptr %1, { ptr } %2 }
+// }
 // examples/regressions/146_invalid_int_type.an:1:17	error: Expected (error) String but found I32
 // a: Int String = 3
 // 

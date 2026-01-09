@@ -13,16 +13,16 @@ handle_count f =
 
 handle_count foo
 
-// args: --show-types
+// args: -e ast-t
 // expected stdout:
 // effect Count with
 //     (count: (error)): fn Unit -> Unit
 // 
-// (foo: fn Unit -> Unit) () =
+// (foo: fn Unit -> _ can _) () =
 //     (count: (error)) ()
-//     (repeat: fn Usz (fn Usz -> Unit) -> Unit) 10 (fn (_: Usz) -> (count: (error)) ())
+//     (repeat: (error)) 10 (fn (_: _) -> (count: (error)) ())
 // 
-// (handle_count: fn _ -> _) (f: _) =
+// (handle_count: fn _ -> _ can _) (f: _) =
 //     handle 
 //         (f: (error)) ()
 //         0
@@ -32,7 +32,7 @@ handle_count foo
 // examples/typechecking/count_effect.an:5:4	error: `count` not found in scope
 //     count ()
 // 
-// examples/typechecking/count_effect.an:6:11	error: Expected Usz but found I32
+// examples/typechecking/count_effect.an:6:4	error: `repeat` not found in scope
 //     repeat 10 fn _ -> count ()
 // 
 // examples/typechecking/count_effect.an:6:22	error: `count` not found in scope

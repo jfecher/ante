@@ -37,7 +37,7 @@ main () =
             )
         bar = "bar"
 
-// args: --show-parse
+// args: -e ast
 // expected stdout:
 // main () =
 //     T
@@ -70,8 +70,8 @@ main () =
 // examples/parser/named_constructor.an:33:6	error: Expected `=` to begin the function body but found `with`
 //     T with
 // 
-// examples/parser/named_constructor.an:40:0	error: Expected a top-level item but found an unindent
-// // args: --show-parse
+// examples/parser/named_constructor.an:78:0	error: Expected a top-level item but found an unindent
+// 
 // 
 // Found 10 errors and 0 warnings
 

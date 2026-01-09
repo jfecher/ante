@@ -26,3 +26,33 @@ sum_all () =
 sum_all () |> print
 
 // args: --delete-binary
+// expected stderr:
+// examples/codegen/effects/add_effect.an:2:13	error: Expected an unindent but found `->`
+//     add: U32 -> Unit
+// 
+// examples/codegen/effects/add_effect.an:5:4	error: `print` not found in scope
+//     print "foo"
+// 
+// examples/codegen/effects/add_effect.an:6:4	error: `add` not found in scope
+//     add 1
+// 
+// examples/codegen/effects/add_effect.an:7:4	error: `add` not found in scope
+//     add 2
+// 
+// examples/codegen/effects/add_effect.an:10:4	error: `print` not found in scope
+//     print "bar"
+// 
+// examples/codegen/effects/add_effect.an:11:4	error: `add` not found in scope
+//     add 3
+// 
+// examples/codegen/effects/add_effect.an:12:4	error: `add` not found in scope
+//     add 4
+// 
+// examples/codegen/effects/add_effect.an:15:4	error: Effects and handle expressions are currently unimplemented
+//     handle
+// 
+// examples/codegen/effects/add_effect.an:26:8	error: Expected `=` to begin the function body but found `()`
+// sum_all () |> print
+// 
+// Found 9 errors and 0 warnings
+

@@ -293,7 +293,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         if self.try_unify(actual, expected).is_err() {
             let actual = self.type_to_string(actual);
             let expected = self.type_to_string(expected);
-            panic!();
             let location = locator.locate(self);
             self.compiler.accumulate(Diagnostic::TypeError { actual, expected, kind, location });
             false

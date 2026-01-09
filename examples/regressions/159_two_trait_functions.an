@@ -10,3 +10,9 @@ impl MultiTrait Unit with
 one ()
 
 // args: --delete-binary
+// expected exit status: 101
+// expected stderr:
+// thread 'main' panicked at src/type_inference/type_definitions.rs:144:22:
+// internal error: entered unreachable code: add_implicit_arg_to_function_type expected function type, found Primitive(Unit)
+// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+

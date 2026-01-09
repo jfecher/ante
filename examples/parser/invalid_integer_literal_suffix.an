@@ -1,6 +1,6 @@
 main () = 3_2_fdsa
 
-// args: --show-parse
+// args: -e ast
 // expected stdout: main () = (error)
 
 

@@ -8,3 +8,21 @@ push (mut v) 4
 print v
 
 // args: --delete-binary
+// expected stderr:
+// examples/codegen/vec_basic.an:1:18	error: Expected a newline after the import but found `push`
+// import Vec.empty push
+// 
+// examples/codegen/vec_basic.an:3:0	error: Expected a top-level item but found `var`
+// var v = empty ()
+// 
+// examples/codegen/vec_basic.an:5:5	error: Expected `=` to begin the function body but found `(`
+// push (mut v) 3i32
+// 
+// examples/codegen/vec_basic.an:6:5	error: Expected `=` to begin the function body but found `(`
+// push (mut v) 4
+// 
+// examples/codegen/vec_basic.an:8:6	error: Expected `=` to begin the function body but found `v`
+// print v
+// 
+// Found 5 errors and 0 warnings
+

@@ -13,10 +13,10 @@ a = foo 1 2i32
 b = foo 1.0 2.0
 c = foo "one" "two"
 
-// args: --show-types
+// args: -e ast-t
 // expected stdout:
 // trait Foo a with
-//     (foo: _): fn a a -> a
+//     (foo: fn a a {Foo a} -> a pure): fn a a -> a
 // 
 // (a: _) = (foo: (error)) 1 2_I32
 // 

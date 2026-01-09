@@ -19,3 +19,42 @@ insert (mut map) 7 21
 print map
 
 // args: --delete-binary
+// expected stderr:
+// examples/codegen/map.an:1:8	error: Could not find crate `Std`
+// import Std.HashMap
+// 
+// examples/codegen/map.an:3:14	error: `Hash` not found in scope
+// impl hash_u8: Hash U8 with
+// 
+// examples/codegen/map.an:4:13	error: `cast` not found in scope
+//     hash x = cast x
+// 
+// examples/codegen/map.an:6:0	error: Expected a top-level item but found `var`
+// var map = empty ()
+// 
+// examples/codegen/map.an:11:7	error: Expected `=` to begin the function body but found `(`
+// insert (mut map) 1u8 3u16
+// 
+// examples/codegen/map.an:12:7	error: Expected `=` to begin the function body but found `(`
+// insert (mut map) 2 6
+// 
+// examples/codegen/map.an:13:7	error: Expected `=` to begin the function body but found `(`
+// insert (mut map) 3 9
+// 
+// examples/codegen/map.an:14:7	error: Expected `=` to begin the function body but found `(`
+// insert (mut map) 4 12
+// 
+// examples/codegen/map.an:15:7	error: Expected `=` to begin the function body but found `(`
+// insert (mut map) 5 15
+// 
+// examples/codegen/map.an:16:7	error: Expected `=` to begin the function body but found `(`
+// insert (mut map) 6 18
+// 
+// examples/codegen/map.an:17:7	error: Expected `=` to begin the function body but found `(`
+// insert (mut map) 7 21
+// 
+// examples/codegen/map.an:19:6	error: Expected `=` to begin the function body but found `map`
+// print map
+// 
+// Found 12 errors and 0 warnings
+

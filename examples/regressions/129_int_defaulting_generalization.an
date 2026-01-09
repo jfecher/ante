@@ -17,9 +17,11 @@ second b + 2i64
 // args: --check --show-types
 // expected exit status: 2
 // expected stderr:
-// error: the argument '--check' cannot be used with '--show-types'
+// error: unexpected argument '--show-types' found
 // 
-// Usage: ante --check <FILES>...
+//   tip: a similar argument exists: '--show-time'
+// 
+// Usage: ante --check --show-time [FILES]...
 // 
 // For more information, try '--help'.
 

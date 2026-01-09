@@ -7,3 +7,21 @@ print y
 // This used to print 4, 5
 
 // args: --delete-binary
+// expected stderr:
+// examples/regressions/201_mutable_variables_copy.an:1:1	error: Expected a top-level item but found `var`
+// var x = 4
+// 
+// examples/regressions/201_mutable_variables_copy.an:2:4	error: `x` not found in scope
+// y = x
+// 
+// examples/regressions/201_mutable_variables_copy.an:3:6	error: Expected `=` to begin the function body but found `y`
+// print y
+// 
+// examples/regressions/201_mutable_variables_copy.an:4:2	error: Expected `=` to begin the function body but found `:=`
+// x := 5
+// 
+// examples/regressions/201_mutable_variables_copy.an:5:6	error: Expected `=` to begin the function body but found `y`
+// print y
+// 
+// Found 5 errors and 0 warnings
+

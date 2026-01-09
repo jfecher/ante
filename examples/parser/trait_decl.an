@@ -24,7 +24,7 @@ impl _: Collection (fn a -> a) Unit with
     pop c = ()
     empty = fn a -> a
 
-// args: --show-parse
+// args: -e ast
 // expected stdout:
 // trait Show a with
 //     show: fn a -> String

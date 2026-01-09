@@ -536,7 +536,6 @@ where
                     write!(f, " pure")
                 } else {
                     write!(f, " can ")?;
-                    dbg!(effects);
                     self.fmt_type(effects, false, f)
                 }
             }),

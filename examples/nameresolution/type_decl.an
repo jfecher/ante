@@ -19,13 +19,13 @@ t = Option.Just 1
 
 type MyRef a = ref a
 
-// args: --show-resolved
+// args: -e ast-r
 // expected stdout:
 // // id = c1m929_4067
 // type Struct1_c1m929_4067_0 =
 //     a_?: I32
 //     b_?: F64
-//     c_?: String_b
+//     c_?: String_bString
 // 
 // // id = c1m929_1425
 // type Thingy_c1m929_1425_0 = Struct1_c1m929_4067_0

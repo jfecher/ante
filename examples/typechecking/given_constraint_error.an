@@ -2,14 +2,20 @@
 impl print_impl {_: DoesNotExist a}: Print a with
     printne _ = ()
 
-// args: --show-types
+// args: -e ast-t
 // expected stdout:
 // impl print_impl {(_: (error) a)}: (Print: (error)) a with
-//     (printne: fn a -> Unit) (_: a) = ()
+//     (printne: (error)) (_: _) = ()
 
 // expected stderr:
+// examples/typechecking/given_constraint_error.an:2:0	error: Expected a function with 1 parameter, but found (error) a
+// impl print_impl {_: DoesNotExist a}: Print a with
+// 
 // examples/typechecking/given_constraint_error.an:2:20	error: `DoesNotExist` not found in scope
 // impl print_impl {_: DoesNotExist a}: Print a with
 // 
-// Found 1 error and 0 warnings
+// examples/typechecking/given_constraint_error.an:2:37	error: `Print` not found in scope
+// impl print_impl {_: DoesNotExist a}: Print a with
+// 
+// Found 3 errors and 0 warnings
 

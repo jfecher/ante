@@ -9,3 +9,12 @@ twice foo bar =
 twice 1u8 2u16
 
 // args: --delete-binary
+// expected stderr:
+// examples/regressions/96_rebind_origin.an:3:4	error: `cast` not found in scope
+//     cast foo : U64
+// 
+// examples/regressions/96_rebind_origin.an:9:6	error: Expected `=` to begin the function body but found `1_U8`
+// twice 1u8 2u16
+// 
+// Found 2 errors and 0 warnings
+

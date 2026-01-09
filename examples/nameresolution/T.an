@@ -3,7 +3,7 @@ import U.u
 // Recursive module imports are allowed!
 t x = u x
 
-// args: --show-resolved examples/nameresolution/U.an
+// args: -e ast-r examples/nameresolution/U.an
 // expected stdout:
 // import U.u
 // 

@@ -18,3 +18,27 @@ my_iter iterable f =
 my_iter 10 print
 
 // args: --delete-binary
+// expected stderr:
+// examples/codegen/iter.an:3:27	error: `elem` not found in scope
+//     mynext: fn it -> Maybe (elem, it)
+// 
+// examples/codegen/iter.an:8:13	error: `<=` not found in scope
+//         if x <= 0 then None
+// 
+// examples/codegen/iter.an:9:24	error: `-` not found in scope
+//         else Some (x, x - 1)
+// 
+// examples/codegen/iter.an:12:10	error: `mynext` not found in scope
+//     match mynext iterable
+// 
+// examples/codegen/iter.an:13:6	error: `None` not found in scope
+//     | None -> ()
+// 
+// examples/codegen/iter.an:14:6	error: `Some` not found in scope
+//     | Some (elem, rest) ->
+// 
+// examples/codegen/iter.an:18:8	error: Expected `=` to begin the function body but found `10`
+// my_iter 10 print
+// 
+// Found 7 errors and 0 warnings
+

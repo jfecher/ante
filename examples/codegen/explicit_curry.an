@@ -11,3 +11,30 @@ print <| plus2 38 2
 4 |> (_ + 2) |> print
 
 // args: --delete-binary
+// expected stderr:
+// examples/codegen/explicit_curry.an:3:6	error: `+` not found in scope
+//     a + b + c
+// 
+// examples/codegen/explicit_curry.an:3:10	error: `+` not found in scope
+//     a + b + c
+// 
+// examples/codegen/explicit_curry.an:5:12	error: `_` not found in scope
+// plus2 = foo _ 2 _
+// 
+// examples/codegen/explicit_curry.an:5:16	error: `_` not found in scope
+// plus2 = foo _ 2 _
+// 
+// examples/codegen/explicit_curry.an:6:16	error: `_` not found in scope
+// plus4 = foo 2 2 _
+// 
+// examples/codegen/explicit_curry.an:8:6	error: Expected `=` to begin the function body but found `<|`
+// print <| plus4 2
+// 
+// examples/codegen/explicit_curry.an:9:6	error: Expected `=` to begin the function body but found `<|`
+// print <| plus2 38 2
+// 
+// examples/codegen/explicit_curry.an:11:0	error: Expected a top-level item but found `4`
+// 4 |> (_ + 2) |> print
+// 
+// Found 8 errors and 0 warnings
+

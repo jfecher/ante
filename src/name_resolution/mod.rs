@@ -287,7 +287,6 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
         } else {
             let location = location.clone();
             let name = Arc::new(name.clone());
-            dbg!();
             Err(Diagnostic::NameNotInScope { name, location })
         }
     }

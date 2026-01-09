@@ -10,19 +10,19 @@ foo_result = foo 1
 puts2_result = puts2 "test"
 exit2_result = exit2 0
 
-// args: --show-types
+// args: -e ast-t
 // expected stdout:
-// extern (foo: fn a -> b): fn a -> b
+// extern (foo: fn a -> b pure): fn a -> b
 // 
-// extern (add: fn I32 I32 -> I32): fn I32 I32 -> I32
+// extern (add: fn I32 I32 -> I32 pure): fn I32 I32 -> I32
 // 
-// extern (puts2: fn String -> Unit): fn String -> Unit
+// extern (puts2: fn String -> Unit pure): fn String -> Unit
 // 
-// extern (exit2: fn I32 -> never_returns): fn I32 -> never_returns
+// extern (exit2: fn I32 -> never_returns pure): fn I32 -> never_returns
 // 
-// (foo_result: _) = (foo: fn I32 -> _) 1
+// (foo_result: _) = (foo: fn I32 -> _ pure) 1
 // 
-// (puts2_result: Unit) = (puts2: fn String -> Unit) "test"
+// (puts2_result: Unit) = (puts2: fn String -> Unit pure) "test"
 // 
-// (exit2_result: _) = (exit2: fn I32 -> _) 0
+// (exit2_result: _) = (exit2: fn I32 -> _ pure) 0
 
