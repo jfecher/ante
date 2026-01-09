@@ -16,7 +16,8 @@ use crate::{
     iterator_extensions::mapvec,
     lexer::token::{FloatKind, IntegerKind},
     mir::{
-        Block, BlockId, Definition, DefinitionId, FloatConstant, Instruction, IntConstant, Mir, TerminatorInstruction, Type, Value
+        Block, BlockId, Definition, DefinitionId, FloatConstant, Instruction, IntConstant, Mir, TerminatorInstruction,
+        Type, Value,
     },
     name_resolution::{Origin, builtin::Builtin},
     parser::{
@@ -118,8 +119,11 @@ where
     }
 
     fn type_of_value(&self, value: Value) -> Type {
-        dbg!(value);
-        self.current_function.as_ref().unwrap().type_of_value(value)
+        match value {
+            Value::Definition(id) => self.definition_types[&id].clone(),
+            Value::External(id) => self.external_types[&id].clone(),
+            other => self.current_function.as_ref().unwrap().type_of_value(other),
+        }
     }
 
     /// Returns the current block being inserted into. Panics if there is no current function.
@@ -179,6 +183,7 @@ where
     }
 
     fn reference_external(&mut self, name: TopLevelName, typ: Type) -> Value {
+        println!("External {}: {}", name, typ);
         self.external_types.insert(name, typ);
         Value::External(name)
     }
@@ -244,7 +249,7 @@ where
             Some(Origin::TopLevelDefinition(name)) => {
                 let typ = self.convert_type(&self.types.result.maps.path_types[&path_id], None);
                 self.reference_external(name, typ)
-            }
+            },
             Some(origin @ Origin::Builtin(Builtin::PairConstructor)) => {
                 if let Some(existing) = self.variables.get(&origin) {
                     *existing
@@ -308,7 +313,7 @@ where
             cst::Expr::Lambda(lambda) => {
                 let name = self.try_find_name(definition.pattern);
                 self.lambda(lambda, name, definition.rhs)
-            }
+            },
             _ => self.expression(definition.rhs),
         };
 
@@ -327,8 +332,7 @@ where
 
     /// True if the given definition is syntactically a global non-function variable.
     fn is_global(&self, definition: &cst::Definition) -> bool {
-        self.current_function.is_none()
-            && !matches!(self.context()[definition.rhs], cst::Expr::Lambda(_))
+        self.current_function.is_none() && !matches!(self.context()[definition.rhs], cst::Expr::Lambda(_))
     }
 
     fn member_access(&mut self, member_access: &cst::MemberAccess, expr: ExprId) -> Value {
@@ -380,7 +384,10 @@ where
 
     fn end_global(&mut self, start_global_state: (Option<Definition>, BlockId)) -> DefinitionId {
         // Safety: This function must always be paired with [Self::start_global]
-        let finished_function = std::mem::replace(&mut self.current_function, start_global_state.0).unwrap();
+        let mut finished_function = std::mem::replace(&mut self.current_function, start_global_state.0).unwrap();
+        finished_function.definition_types = std::mem::take(&mut self.definition_types);
+        finished_function.external_types = std::mem::take(&mut self.external_types);
+
         let definition_id = finished_function.id;
         self.current_block = start_global_state.1;
 
@@ -616,21 +623,16 @@ where
                 }
             },
             cst::Pattern::Literal(_) => (),
-            cst::Pattern::Constructor(_type, arguments) => {
-                println!("current fn = {}", self.current_function().name);
-                println!("Deconstructing {value} of type {}", self.type_of_value(value));
-
-                match self.type_of_value(value) {
-                    Type::Union(_variants) => todo!("Deconstruct union"),
-                    Type::Tuple(fields) => {
-                        for (i, (field_type, argument)) in fields.iter().zip(arguments).enumerate() {
-                            let instruction = Instruction::IndexTuple { tuple: value, index: i as u32 };
-                            let field = self.push_instruction(instruction, field_type.clone());
-                            self.bind_pattern(*argument, field);
-                        }
-                    },
-                    other => unreachable!("Expected tuple or union when deconstructing pattern, found {other}"),
-                }
+            cst::Pattern::Constructor(_type, arguments) => match self.type_of_value(value) {
+                Type::Union(_variants) => todo!("Deconstruct union"),
+                Type::Tuple(fields) => {
+                    for (i, (field_type, argument)) in fields.iter().zip(arguments).enumerate() {
+                        let instruction = Instruction::IndexTuple { tuple: value, index: i as u32 };
+                        let field = self.push_instruction(instruction, field_type.clone());
+                        self.bind_pattern(*argument, field);
+                    }
+                },
+                other => unreachable!("Expected tuple or union when deconstructing pattern, found {other}"),
             },
             cst::Pattern::TypeAnnotation(pattern, _) => self.bind_pattern(*pattern, value),
             cst::Pattern::MethodName { type_name: _, item_name } => {
@@ -665,7 +667,9 @@ where
         }
     }
 
-    fn define_type_constructor(&mut self, name_id: NameId, parameter_types: &[crate::type_inference::types::ParameterType]) {
+    fn define_type_constructor(
+        &mut self, name_id: NameId, parameter_types: &[crate::type_inference::types::ParameterType],
+    ) {
         let top_level_name = TopLevelName::new(self.top_level_id, name_id);
         let name = self.context()[name_id].clone();
 

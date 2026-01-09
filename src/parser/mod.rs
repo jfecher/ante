@@ -958,7 +958,7 @@ impl<'tokens> Parser<'tokens> {
                 self.advance();
                 self.expect(Token::ParenthesisRight, "a `)` to close the opening parenthesis from this operator")?;
                 Ok(operator)
-            }
+            },
             _ => self.expected("an identifier"),
         }
     }

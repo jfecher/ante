@@ -415,6 +415,7 @@ impl<'contents> Lexer<'contents> {
                 self.advance_with(Token::Error(error))
             },
 
+            ('/', '/') => self.lex_singleline_comment(),
             ('/', '*') => self.lex_multiline_comment(),
 
             _ if new_indent > self.current_indent_level => self.lex_indent(new_indent),
@@ -469,8 +470,9 @@ impl<'contents> Lexer<'contents> {
         self.advance();
         self.advance();
 
-        let comment = self.advance_while(|current, _| current != '\n').to_string();
-        Some((Token::LineComment(comment), self.locate()))
+        let _comment = self.advance_while(|current, _| current != '\n').to_string();
+        // Some((Token::LineComment(comment), self.locate()))
+        self.next()
     }
 
     fn lex_multiline_comment(&mut self) -> IterElem {

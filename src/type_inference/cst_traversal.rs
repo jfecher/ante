@@ -160,7 +160,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     fn issue_name_not_in_scope_error(&self, path: PathId) -> Type {
         let name = Arc::new(self.current_context().paths[path].last_ident().to_owned());
         let location = self.current_context().path_locations[path].clone();
-        dbg!();
         self.compiler.accumulate(Diagnostic::NameNotInScope { name, location });
         Type::ERROR
     }
@@ -195,7 +194,13 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     fn check_builtin(&mut self, builtin: Builtin, locator: impl Locateable) -> Type {
         match builtin {
             Builtin::Unit => Type::UNIT,
-            Builtin::Int | Builtin::Char | Builtin::Float | Builtin::String | Builtin::Ptr | Builtin::PairType => {
+            Builtin::Int
+            | Builtin::Char
+            | Builtin::Bool
+            | Builtin::Float
+            | Builtin::String
+            | Builtin::Ptr
+            | Builtin::PairType => {
                 let typ = Arc::new(builtin.to_string());
                 let location = locator.locate(self);
                 self.compiler.accumulate(Diagnostic::ValueExpected { location, typ });

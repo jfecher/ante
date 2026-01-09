@@ -96,14 +96,14 @@ impl Definition {
             Value::Parameter(block_id, parameter_index) => {
                 self.blocks[block_id].parameter_types[parameter_index as usize].clone()
             },
-            Value::Definition(definition_id) => self.definition_types.get(&definition_id).cloned().unwrap_or_else(|| {
-                println!("Warning: no definition type for {definition_id}");
-                Type::ERROR
-            }),
-            Value::External(name) => self.external_types.get(&name).cloned().unwrap_or_else(|| {
-                println!("Warning: no external type for {name}");
-                Type::ERROR
-            }), 
+            Value::Definition(definition_id) => self
+                .definition_types
+                .get(&definition_id)
+                .cloned()
+                .unwrap_or_else(|| panic!("No definition type for {definition_id}")),
+            Value::External(name) => {
+                self.external_types.get(&name).cloned().unwrap_or_else(|| panic!("No external type for {name}"))
+            },
         }
     }
 

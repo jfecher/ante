@@ -15,7 +15,7 @@ where
     Db: DbGet<TypeCheck> + DbGet<GetItem>,
 {
     pub(super) fn convert_type(&self, typ: &TCType, args: Option<&[TCType]>) -> Type {
-        match typ.follow_type(&self.types.bindings) {
+        match typ.follow(&self.types.bindings) {
             TCType::Primitive(primitive_type) => self.convert_primitive_type(*primitive_type, args),
             TCType::Generic(generic) => Type::Generic(*generic),
             // All type variables should be bound when we finish type inference
@@ -85,6 +85,7 @@ where
             Builtin::Unit => Type::UNIT,
             Builtin::Int => todo!(),
             Builtin::Char => Type::CHAR,
+            Builtin::Bool => Type::BOOL,
             Builtin::Float => todo!(),
             Builtin::String => Type::string(),
             Builtin::Ptr => Type::POINTER,

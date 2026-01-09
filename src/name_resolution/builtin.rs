@@ -12,6 +12,8 @@ pub enum Builtin {
     Int,
     /// The Char type
     Char,
+    /// The Bool type
+    Bool,
     /// The polymorphic Float type
     Float,
     /// The String type
@@ -34,6 +36,7 @@ impl Builtin {
             "Unit" => Some(Unit),
             "Int" => Some(Int),
             "Char" => Some(Char),
+            "Bool" => Some(Bool),
             "Float" => Some(Float),
             "String" => Some(String),
             "Ptr" => Some(Ptr),
@@ -50,6 +53,7 @@ impl Builtin {
             Builtin::Unit => Some(Type::UNIT),
             Builtin::Int => None,
             Builtin::Char => Some(Type::CHAR),
+            Builtin::Bool => Some(Type::BOOL),
             Builtin::Float => None,
             Builtin::String => Some(Type::STRING),
             Builtin::Ptr => Some(Type::POINTER),
@@ -68,6 +72,7 @@ impl Builtin {
             Builtin::Unit
             | Builtin::Int
             | Builtin::Char
+            | Builtin::Bool
             | Builtin::Float
             | Builtin::String
             | Builtin::Ptr
@@ -91,6 +96,7 @@ impl std::fmt::Display for Builtin {
             Builtin::Unit => write!(f, "Unit"),
             Builtin::Int => write!(f, "Int"),
             Builtin::Char => write!(f, "Char"),
+            Builtin::Bool => write!(f, "Bool"),
             Builtin::Float => write!(f, "Float"),
             Builtin::String => write!(f, "String"),
             Builtin::Ptr => write!(f, "Ptr"),

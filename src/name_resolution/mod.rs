@@ -375,7 +375,9 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             self.name_links.insert(type_name, Origin::TopLevelDefinition(type_id));
             self.name_links.insert(item_name, Origin::TopLevelDefinition(method));
         } else {
-            println!("Warning: expected existing union variant {type_name_string}.{item_name_string} to be declared but it is not");
+            println!(
+                "Warning: expected existing union variant {type_name_string}.{item_name_string} to be declared but it is not"
+            );
         }
     }
 

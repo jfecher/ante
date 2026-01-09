@@ -2,7 +2,7 @@ use std::fmt::{Display, Formatter, Result};
 
 use crate::{
     iterator_extensions::mapvec,
-    mir::{self, Block, BlockId, FloatConstant, DefinitionId, IntConstant, PrimitiveType, Type, Value},
+    mir::{self, Block, BlockId, DefinitionId, FloatConstant, IntConstant, PrimitiveType, Type, Value},
 };
 
 impl Display for mir::Definition {
@@ -216,7 +216,8 @@ fn fmt_terminator(terminator: &mir::TerminatorInstruction, f: &mut Formatter<'_>
 }
 
 fn fmt_instruction(
-    instruction_id: mir::InstructionId, instruction: &mir::Instruction, function: &mir::Definition, f: &mut Formatter<'_>,
+    instruction_id: mir::InstructionId, instruction: &mir::Instruction, function: &mir::Definition,
+    f: &mut Formatter<'_>,
 ) -> Result {
     let result_type = &function.instruction_result_types[instruction_id];
     write!(f, "    {}: {result_type} = ", Value::InstructionResult(instruction_id))?;

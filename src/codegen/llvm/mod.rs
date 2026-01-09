@@ -4,8 +4,9 @@ use inkwell::{
     AddressSpace,
     basic_block::BasicBlock,
     builder::Builder,
+    memory_buffer::MemoryBuffer,
     module::Module,
-    targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple},
+    targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine},
     types::{BasicType, BasicTypeEnum, IntType},
     values::{AnyValue, BasicValueEnum, FunctionValue},
 };
@@ -22,7 +23,7 @@ use crate::{
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CodegenLlvmResult {
-    pub module_string: Option<Arc<String>>,
+    pub module_bitcode: Arc<Vec<u8>>,
 }
 
 #[allow(unused)]
@@ -31,24 +32,63 @@ pub fn initialize_native_target() {
     Target::initialize_native(&config).unwrap();
 }
 
-pub fn codegen_llvm_impl(context: &CodegenLlvm, compiler: &DbHandle) -> CodegenLlvmResult {
-    let module_string = mir::builder::build_initial_mir(compiler, context.0).map(|mir| {
-        let name = &mir.definitions.iter().next().map_or("_", |(_, function)| &function.name);
+pub fn codegen_llvm_impl(context: &CodegenLlvm, compiler: &DbHandle) -> Option<CodegenLlvmResult> {
+    let mir = mir::builder::build_initial_mir(compiler, context.0)?;
+    let name = &mir.definitions.iter().next().map_or("_", |(_, function)| &function.name);
 
-        let llvm = inkwell::context::Context::create();
-        let mut module = ModuleContext::new(&llvm, &mir, name, compiler);
+    let llvm = inkwell::context::Context::create();
+    let mut module = ModuleContext::new(&llvm, &mir, name, compiler);
 
-        for (id, function) in &mir.definitions {
-            module.codegen_function(function, *id);
-        }
+    for (id, function) in &mir.definitions {
+        module.codegen_function(function, *id);
+    }
+    module.module.print_to_stderr();
 
-        Arc::new(module.module.to_string())
-    });
+    if let Err(error) = module.module.verify() {
+        eprintln!("llvm module failed to verify: {error}");
+    }
+
+    // TODO: This is inefficient
+    let bitcode = module.module.write_bitcode_to_memory();
+    let bitcode = bitcode.as_slice().to_vec();
+    let module_bitcode = Arc::new(bitcode);
 
     // Compiling each function separately and linking them together later is probably slower than
     // doing them all together to begin with but oh well. It is easier to start more incremental
     // and be less incremental later than the reverse.
-    CodegenLlvmResult { module_string }
+    Some(CodegenLlvmResult { module_bitcode })
+}
+
+/// Link the given list of llvm bitcode modules into an executable.
+pub fn link(modules: Vec<Arc<Vec<u8>>>, binary_name: &str) {
+    let llvm = inkwell::context::Context::create();
+    let module = llvm.create_module(binary_name);
+
+    for bitcode in modules {
+        let buffer = MemoryBuffer::create_from_memory_range(&bitcode, "buffer");
+        let new_module =
+            Module::parse_bitcode_from_buffer(&buffer, &llvm).expect("Failed to parse llvm module bitcode");
+        module.link_in_module(new_module).expect("Failed to link in llvm module");
+    }
+
+    println!("final:\n{}", module.print_to_string());
+
+    // generate the bitcode to a .bc file
+    let path = std::path::Path::new(binary_name).with_extension("o");
+    let target_machine = native_target_machine();
+
+    target_machine.write_to_file(&module, FileType::Object, &path).unwrap();
+
+    // call gcc to compile the bitcode to a binary
+    super::link_with_gcc(path.to_string_lossy().as_ref(), binary_name);
+}
+
+fn native_target_machine() -> TargetMachine {
+    let triple = TargetMachine::get_default_triple();
+    let target = Target::from_triple(&triple).unwrap();
+    target
+        .create_target_machine(&triple, "", "", inkwell::OptimizationLevel::None, RelocMode::PIC, CodeModel::Default)
+        .unwrap()
 }
 
 struct ModuleContext<'ctx, 'db> {
@@ -59,8 +99,6 @@ struct ModuleContext<'ctx, 'db> {
     compiler: &'ctx DbHandle<'db>,
 
     mir: &'ctx mir::Mir,
-
-    target: TargetTriple,
 
     blocks: VecMap<BlockId, BasicBlock<'ctx>>,
 
@@ -85,7 +123,6 @@ impl<'ctx, 'db> ModuleContext<'ctx, 'db> {
         Self {
             llvm,
             module,
-            target,
             mir,
             compiler,
             current_function: None,
@@ -98,8 +135,6 @@ impl<'ctx, 'db> ModuleContext<'ctx, 'db> {
     }
 
     fn codegen_function(&mut self, function: &mir::Definition, id: mir::DefinitionId) {
-        println!("Working on function {}", function.name);
-
         let function_value = match self.values.get(&mir::Value::Definition(id)) {
             Some(existing) => existing.as_any_value_enum().into_function_value(),
             None => {
@@ -206,36 +241,24 @@ impl<'ctx, 'db> ModuleContext<'ctx, 'db> {
             IntegerKind::I32 | IntegerKind::U32 => self.llvm.i32_type(),
             IntegerKind::I64 | IntegerKind::U64 => self.llvm.i64_type(),
             IntegerKind::Isz | IntegerKind::Usz => {
-                let triple = self.target.as_str().to_string_lossy();
-                let triple = TargetTriple::create(&triple);
-                let target = Target::from_triple(&triple).unwrap();
-                let machine = target
-                    .create_target_machine(
-                        &triple,
-                        "",
-                        "",
-                        inkwell::OptimizationLevel::None,
-                        RelocMode::PIC,
-                        CodeModel::Default,
-                    )
-                    .unwrap();
+                let machine = native_target_machine();
                 let target_data = machine.get_target_data();
                 self.llvm.ptr_sized_int_type(&target_data, None)
             },
         }
     }
 
-    /// Convert a type into a function type, panics if the given type is not a function.
+    /// Convert a type into a function type, returns None if the given type is not a function.
     /// When passed to [Self::convert_type], function types are translated to pointers by default,
     /// necessitating this function when an actual function type is required.
-    fn convert_function_type(&self, typ: &mir::Type) -> inkwell::types::FunctionType<'ctx> {
+    fn convert_function_type(&self, typ: &mir::Type) -> Option<inkwell::types::FunctionType<'ctx>> {
         let mir::Type::Function(function_type) = typ else {
-            panic!("Non-function type `{typ}` passed to `convert_function_type`")
+            return None;
         };
 
         let return_type = self.convert_type(&function_type.return_type);
         let parameters = mapvec(&function_type.parameters, |parameter| self.convert_type(parameter).into());
-        return_type.fn_type(&parameters, false)
+        Some(return_type.fn_type(&parameters, false))
     }
 
     /// TODO: We could store the return type directly in the function to avoid searching for it
@@ -274,7 +297,7 @@ impl<'ctx, 'db> ModuleContext<'ctx, 'db> {
                 }
 
                 let typ = self.get_function(self.current_function.unwrap()).type_of_value(value);
-                let typ = self.convert_function_type(&typ);
+                let typ = self.convert_function_type(&typ).unwrap();
 
                 let name = &self.get_function(function_id).name;
                 let function_value =
@@ -288,13 +311,21 @@ impl<'ctx, 'db> ModuleContext<'ctx, 'db> {
                 }
 
                 let typ = self.get_function(self.current_function.unwrap()).type_of_value(value);
-                let typ = self.convert_type(&typ);
-
                 let (_, context) = GetItemRaw(name.top_level_item).get(self.compiler);
                 let name = &context.names[name.local_name_id];
-                let global_value = self.module.add_global(typ, None, name).as_pointer_value().into();
-                self.values.insert(value, global_value);
-                global_value
+
+                let global = match self.convert_function_type(&typ) {
+                    Some(function_type) => {
+                        self.module.add_function(name, function_type, None).as_global_value().as_pointer_value().into()
+                    },
+                    None => {
+                        let typ = self.convert_type(&typ);
+                        self.module.add_global(typ, None, name).as_pointer_value().into()
+                    },
+                };
+
+                self.values.insert(value, global);
+                global
             },
         }
     }
@@ -302,19 +333,27 @@ impl<'ctx, 'db> ModuleContext<'ctx, 'db> {
     fn codegen_instruction(&mut self, function: &mir::Definition, id: mir::InstructionId) {
         let result = match &function.instructions[id] {
             mir::Instruction::Call { function: function_value, arguments } => {
-                let typ = self.convert_function_type(&function.type_of_value(*function_value));
+                let typ = self.convert_function_type(&function.type_of_value(*function_value)).unwrap();
                 let function = self.lookup_value(*function_value).into_pointer_value();
                 let arguments = mapvec(arguments, |arg| self.lookup_value(*arg).into());
-                self.builder.build_indirect_call(typ, function, &arguments, "").unwrap().try_as_basic_value().unwrap_basic()
+                self.builder
+                    .build_indirect_call(typ, function, &arguments, "")
+                    .unwrap()
+                    .try_as_basic_value()
+                    .unwrap_basic()
             },
             mir::Instruction::IndexTuple { tuple, index } => {
                 let tuple = self.lookup_value(*tuple).into_struct_value();
                 self.builder.build_extract_value(tuple, *index, "").unwrap()
             },
             mir::Instruction::MakeString(string) => {
-                let string_data = self.llvm.const_string(string.as_bytes(), false).into();
+                let string_data = self.llvm.const_string(string.as_bytes(), false);
+                let global = self.module.add_global(string_data.get_type(), None, "string_literal");
+                global.set_initializer(&string_data);
+                let c_string = global.as_pointer_value().into();
+
                 let length = self.llvm.i32_type().const_int(string.len() as u64, false).into();
-                self.llvm.const_struct(&[string_data, length], false).into()
+                self.llvm.const_struct(&[c_string, length], false).into()
             },
             mir::Instruction::MakeTuple(fields) => {
                 let fields = mapvec(fields, |field| self.lookup_value(*field));

@@ -293,6 +293,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         if self.try_unify(actual, expected).is_err() {
             let actual = self.type_to_string(actual);
             let expected = self.type_to_string(expected);
+            panic!();
             let location = locator.locate(self);
             self.compiler.accumulate(Diagnostic::TypeError { actual, expected, kind, location });
             false
@@ -415,7 +416,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// `Type::Variable` if the type variable is unbound. Note that this may still return
     /// a composite type such as `Type::Application` with bound type variables within.
     fn follow_type<'a>(&'a self, typ: &'a Type) -> &'a Type {
-        typ.follow_type(&self.bindings)
+        typ.follow(&self.bindings)
     }
 
     fn from_cst_type(&self, typ: &cst::Type) -> Type {

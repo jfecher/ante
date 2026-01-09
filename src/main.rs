@@ -30,9 +30,14 @@ use diagnostics::Diagnostic;
 use inc_complete::{Computation, StorageFor};
 use incremental::{Db, GetCrateGraph, Parse, Resolve};
 use name_resolution::namespace::{CrateId, LOCAL_CRATE, LocalModuleId, SourceFileId};
-use std::{collections::BTreeSet, path::Path};
+use std::{
+    collections::BTreeSet,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use crate::{
+    cli::EmitTarget,
     diagnostics::DiagnosticKind,
     files::{make_compiler, write_metadata},
     incremental::{CodegenLlvm, DbStorage, TypeCheck},
@@ -71,19 +76,17 @@ fn main() {
 fn compile(args: Cli) {
     let (compiler, metadata_file) = make_compiler(&args.files, args.incremental);
 
-    let diagnostics = if args.show_tokens {
-        display_tokens(&compiler);
-        BTreeSet::new()
-    } else if args.show_parse {
-        display_parse_tree(&compiler)
-    } else if args.show_resolved {
-        display_name_resolution(&compiler)
-    } else if args.show_types || args.check {
-        display_type_checking(&compiler, args.show_types)
-    } else if args.show_mir {
-        display_mir(&compiler)
-    } else {
-        llvm_codegen(&compiler)
+    let diagnostics = match args.emit {
+        Some(EmitTarget::Tokens) => {
+            display_tokens(&compiler);
+            BTreeSet::new()
+        },
+        Some(EmitTarget::Ast) => display_parse_tree(&compiler),
+        Some(EmitTarget::AstR) => display_name_resolution(&compiler),
+        Some(EmitTarget::AstT) => display_type_checking(&compiler, true),
+        Some(EmitTarget::Mir) => display_mir(&compiler),
+        Some(EmitTarget::Ir) => llvm_codegen_separate(&compiler).2,
+        None => llvm_codegen_all(&compiler, &args.files),
     };
 
     display_diagnostics(diagnostics, &compiler);
@@ -222,10 +225,15 @@ fn display_mir(compiler: &Db) -> BTreeSet<Diagnostic> {
     diagnostics
 }
 
-fn llvm_codegen(compiler: &Db) -> BTreeSet<Diagnostic> {
+/// Codegen each item as a separate llvm module
+/// Returns (module strings, true if there are any errors, diagnostics)
+fn llvm_codegen_separate(compiler: &Db) -> (Vec<Arc<Vec<u8>>>, bool, BTreeSet<Diagnostic>) {
     let crates = GetCrateGraph.get(compiler);
     let mut diagnostics = BTreeSet::new();
     crate::codegen::llvm::initialize_native_target();
+
+    let mut modules = Vec::new();
+    let mut has_errors = false;
 
     // TODO: This could be parallel
     for (_, crate_) in crates.iter() {
@@ -235,6 +243,7 @@ fn llvm_codegen(compiler: &Db) -> BTreeSet<Diagnostic> {
             for item in &parse.cst.top_level_items {
                 let more_diagnostics: BTreeSet<_> = compiler.get_accumulated(TypeCheck(item.id));
                 let error_count = classify_diagnostics(&more_diagnostics).0;
+                has_errors |= error_count != 0;
 
                 // We can't codegen if there were errors
                 // TODO: We should have this check be inside the CodegenLlvm pass itself but we
@@ -242,11 +251,8 @@ fn llvm_codegen(compiler: &Db) -> BTreeSet<Diagnostic> {
                 // inc-complete can't be fixed then we'd need to add a `has_errors: bool` field
                 // onto most compiler passes.
                 if error_count == 0 {
-                    println!("error count is 0, codegening");
-                    let llvm_result = CodegenLlvm(item.id).get(compiler);
-
-                    if let Some(llvm) = &llvm_result.module_string {
-                        println!("{llvm}");
+                    if let Some(result) = CodegenLlvm(item.id).get(compiler) {
+                        modules.push(result.module_bitcode);
                     }
                 }
 
@@ -254,6 +260,20 @@ fn llvm_codegen(compiler: &Db) -> BTreeSet<Diagnostic> {
             }
         }
     }
+    (modules, has_errors, diagnostics)
+}
+
+/// Codegen everything, linking together each separate llvm module
+fn llvm_codegen_all(compiler: &Db, files: &[PathBuf]) -> BTreeSet<Diagnostic> {
+    let (modules, has_errors, diagnostics) = llvm_codegen_separate(compiler);
+    if has_errors {
+        return diagnostics;
+    }
+
+    let module_name = files.first().map_or_else(|| "a.out".into(), |file| file.with_extension(""));
+    let module_name = module_name.to_string_lossy();
+
+    codegen::llvm::link(modules, &module_name);
     diagnostics
 }
 

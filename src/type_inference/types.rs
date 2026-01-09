@@ -193,7 +193,7 @@ impl Type {
     /// Follow all of this type's type variable bindings so that we only return
     /// `Type::Variable` if the type variable is unbound. Note that this may still return
     /// a composite type such as `Type::Application` with bound type variables within.
-    pub fn follow_type<'a>(mut self: &'a Self, bindings: &'a TypeBindings) -> &'a Type {
+    pub fn follow<'a>(mut self: &'a Self, bindings: &'a TypeBindings) -> &'a Type {
         // Arbitrary upper limit
         for _ in 0..1000 {
             match self {
@@ -207,9 +207,58 @@ impl Type {
         panic!("Infinite loop in follow_type!")
     }
 
+    /// Similar to [Self::follow] but will replace all bound type variables reachable within
+    /// this type with their bindings if found. This is sometimes referred to as "zonking."
+    pub fn follow_all(self: &Self, bindings: &TypeBindings) -> Type {
+        match self {
+            Type::Primitive(_) | Type::Generic(Generic::Named(_)) => self.clone(),
+            Type::Generic(Generic::Inferred(id)) => {
+                if let Some(binding) = bindings.get(id) {
+                    binding.follow_all(bindings)
+                } else {
+                    Type::Generic(Generic::Inferred(*id))
+                }
+            },
+            Type::Variable(id) => {
+                if let Some(binding) = bindings.get(id) {
+                    binding.follow_all(bindings)
+                } else {
+                    Type::Variable(*id)
+                }
+            },
+            Type::Function(function) => {
+                let parameters = mapvec(function.parameters.iter(), |param| {
+                    let typ = param.typ.follow_all(bindings);
+                    ParameterType::new(typ, param.is_implicit)
+                });
+
+                Type::Function(Arc::new(FunctionType {
+                    parameters,
+                    return_type: function.return_type.follow_all(bindings),
+                    effects: function.effects.follow_all(bindings),
+                }))
+            },
+            Type::Application(constructor, args) => {
+                let constructor = Arc::new(constructor.follow_all(bindings));
+                let args = Arc::new(mapvec(args.iter(), |arg| arg.follow_all(bindings)));
+                Type::Application(constructor, args)
+            },
+            Type::UserDefined(origin) => Type::UserDefined(*origin),
+            Type::Forall(generics, typ) => {
+                for generic in generics.iter() {
+                    if let Generic::Inferred(id) = generic {
+                        assert!(!bindings.contains_key(id));
+                    }
+                }
+                let typ = Arc::new(typ.follow_all(bindings));
+                Type::Forall(generics.clone(), typ)
+            },
+        }
+    }
+
     /// Similar to substitute, but substitutes `Type::Generic` instead of `Type::TypeVariable`
     pub fn substitute(&self, bindings_to_substitute: &GenericSubstitutions, bindings_in_scope: &TypeBindings) -> Type {
-        match self.follow_type(bindings_in_scope) {
+        match self.follow(bindings_in_scope) {
             Type::Primitive(_) | Type::UserDefined(_) => self.clone(),
             Type::Generic(generic) => match bindings_to_substitute.get(generic) {
                 Some(binding) => binding.clone(),
@@ -349,6 +398,7 @@ impl Type {
                     Builtin::Unit => Type::UNIT,
                     Builtin::Int => Type::ERROR, // TODO: Polymorphic integers
                     Builtin::Char => Type::CHAR,
+                    Builtin::Bool => Type::BOOL,
                     Builtin::Float => Type::ERROR, // TODO: Polymorphic floats
                     Builtin::String => Type::STRING,
                     Builtin::Ptr => Type::POINTER,
@@ -386,7 +436,7 @@ impl Type {
     /// Return the list of unbound type variables within this type
     pub fn free_vars(&self, bindings: &TypeBindings) -> Vec<Generic> {
         fn free_vars_helper(typ: &Type, bindings: &TypeBindings, free_vars: &mut Vec<Generic>) {
-            match typ.follow_type(bindings) {
+            match typ.follow(bindings) {
                 Type::Primitive(_) | Type::UserDefined(_) => (),
                 Type::Variable(id) => {
                     // The number of free vars is expected to remain too small so we're
@@ -479,7 +529,16 @@ where
                     }
                 }
                 write!(f, " -> ")?;
-                self.fmt_type(&function.return_type, false, f)
+                self.fmt_type(&function.return_type, false, f)?;
+
+                let effects = function.effects.follow(self.bindings);
+                if matches!(effects, &Type::Primitive(PrimitiveType::Unit)) {
+                    write!(f, " pure")
+                } else {
+                    write!(f, " can ")?;
+                    dbg!(effects);
+                    self.fmt_type(effects, false, f)
+                }
             }),
             Type::Application(constructor, args) => try_parenthesize(parenthesize, f, |f| {
                 if **constructor == Type::PAIR && args.len() == 2 {

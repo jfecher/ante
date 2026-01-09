@@ -20,26 +20,6 @@ pub struct Cli {
     #[arg(long, short = 'L')]
     pub show_lifetimes: bool,
 
-    /// Lex the file and output the resulting list of tokens
-    #[arg(long, group = "compile_mode")]
-    pub show_tokens: bool,
-
-    /// Parse the file and output the resulting Ast
-    #[arg(long, group = "compile_mode")]
-    pub show_parse: bool,
-
-    /// Resolve the file and show the resulting resolved Ast
-    #[arg(long, short, group = "compile_mode")]
-    pub show_resolved: bool,
-
-    /// Type check the file and show the resulting typed Ast
-    #[arg(long, group = "compile_mode")]
-    pub show_types: bool,
-
-    /// Output the resulting MIR for the file
-    #[arg(long, group = "compile_mode")]
-    pub show_mir: bool,
-
     /// Check the file for errors without compiling
     #[arg(long, short, group = "compile_mode")]
     pub check: bool,
@@ -82,11 +62,23 @@ pub struct Cli {
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone, ValueEnum)]
 pub enum EmitTarget {
+    /// The tokens issued from the lexer
+    Tokens,
+
+    /// The parse tree
+    Ast,
+
+    /// The parse tree annotated with the origin of each name
+    AstR,
+
+    /// The parse tree annotated with the type of all names
+    AstT,
+
+    /// A representation of the program with simpler control-flow created after type checking
+    Mir,
+
     /// LLVM-IR or Cranelift IR depending on the selected backend
     Ir,
-
-    /// Ante's post-monomorphisation HIR representation
-    Hir,
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone, ValueEnum)]

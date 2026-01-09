@@ -331,4 +331,4 @@ define_intermediate!(160, GetTypeCheckSCC -> SCC, DbStorage, type_inference::dep
 /// Codegen a single file to an llvm module to be linked later
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CodegenLlvm(pub TopLevelId);
-define_intermediate!(170, CodegenLlvm -> CodegenLlvmResult, DbStorage, llvm::codegen_llvm_impl);
+define_intermediate!(170, CodegenLlvm -> Option<CodegenLlvmResult>, DbStorage, llvm::codegen_llvm_impl);

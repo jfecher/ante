@@ -7,10 +7,10 @@
 */
 
 //C functions
-// extern
+extern
 //     // varargs is not supported by the cranelift backend
 //     // printf: Ptr Char - ... -> Unit
-//     puts: fn (Ptr Char) -> I32
+    puts: fn (Ptr Char) -> I32
 //     putchar: fn Char -> Unit
 //     getchar: fn Unit -> I32
 //     exit: fn I32 -> Unit
@@ -201,30 +201,30 @@ type Maybe t =
 // 
 // 
 // // Huge block of builtin numeric operators incoming
-trait Add n with (+): fn n n -> n
-impl add_int: Add (Int a) with (+) x y = builtin "AddInt" x y
+// trait Add n with (+): fn n n -> n
+// impl add_int: Add (Int a) with (+) x y = builtin "AddInt" x y
 // impl add_float: Add (Float a) with (+) x y = builtin "AddFloat" x y
 // impl add_char: Add Char with (+) (x: Char) (y: Char): Char = builtin "AddInt" x y
 
-(+) = Add.(+)
-(-) = Sub.(-)
-(*) = Mul.(*)
-(/) = Div.(/)
-(%) = Mod.(%)
-
-trait Sub n with (-): fn n n -> n
-impl sub_int: Sub (Int a) with (-) x y = builtin "SubInt" x y
+// (+) = Add.(+)
+// (-) = Sub.(-)
+// (*) = Mul.(*)
+// (/) = Div.(/)
+// (%) = Mod.(%)
+// 
+// trait Sub n with (-): fn n n -> n
+// impl sub_int: Sub (Int a) with (-) x y = builtin "SubInt" x y
 // impl sub_float: Sub (Float a) with (-) x y = builtin "SubFloat" x y
 // impl sub_char: Sub Char with (-) (x: Char) (y: Char): Char = builtin "SubInt" x y
 // 
-trait Mul n with (*): fn n n -> n
-impl mul_int: Mul (Int a) with (*) x y = builtin "MulInt" x y
+// trait Mul n with (*): fn n n -> n
+// impl mul_int: Mul (Int a) with (*) x y = builtin "MulInt" x y
 // impl mul_float: Mul (Float a) with (*) x y = builtin "MulFloat" x y
 // 
-trait Div n with (/): fn n n -> n
+// trait Div n with (/): fn n n -> n
 // impl div_i8: Div I8  with (/) x y = builtin "DivSigned" x y
 // impl div_i16: Div I16 with (/) x y = builtin "DivSigned" x y
-impl div_i32: Div I32 with (/) x y = builtin "DivSigned" x y
+// impl div_i32: Div I32 with (/) x y = builtin "DivSigned" x y
 // impl div_i64: Div I64 with (/) x y = builtin "DivSigned" x y
 // impl div_isz: Div Isz with (/) x y = builtin "DivSigned" x y
 // impl div_u8: Div U8  with (/) x y = builtin "DivUnsigned" x y
@@ -234,10 +234,10 @@ impl div_i32: Div I32 with (/) x y = builtin "DivSigned" x y
 // impl div_usz: Div Usz with (/) x y = builtin "DivUnsigned" x y
 // impl div_float: Div (Float a) with (/) x y = builtin "DivFloat" x y
 // 
-trait Mod n with (%): fn n n -> n
+// trait Mod n with (%): fn n n -> n
 // impl mod_i8: Mod I8  with (%) x y = builtin "ModSigned" x y
 // impl mod_i16: Mod I16 with (%) x y = builtin "ModSigned" x y
-impl mod_i32: Mod I32 with (%) x y = builtin "ModSigned" x y
+// impl mod_i32: Mod I32 with (%) x y = builtin "ModSigned" x y
 // impl mod_i64: Mod I64 with (%) x y = builtin "ModSigned" x y
 // impl mod_isz: Mod Isz with (%) x y = builtin "ModSigned" x y
 // impl mod_u8: Mod U8  with (%) x y = builtin "ModUnsigned" x y
@@ -249,25 +249,25 @@ impl mod_i32: Mod I32 with (%) x y = builtin "ModSigned" x y
 // // Cranelift backend does not support floating-point remainder or modulus
 // // impl Mod F64 with (%) (_: F64) (_: F64): F64 = builtin "ModFloat"
 // 
-trait Eq t with (==): fn t t -> Bool
+// trait Eq t with (==): fn t t -> Bool
 // impl eq_int: Eq (Int a) with (==) x y = builtin "EqInt" x y
 // impl eq_float: Eq (Float a) with (==) x y = builtin "EqFloat" x y
 // 
 // impl eq_char: Eq Char with (==) (x: Char) (y: Char): Bool = builtin "EqChar" x y
 // impl eq_bool: Eq Bool with (==) (x: Bool) (y: Bool): Bool = builtin "EqBool" x y
 // 
-(==) = Eq.(==)
-(!=) l r = not (l == r)
-(not) a = if a then false else true
-
-trait Cmp a with
-    (<): fn a a -> Bool
-
-// TODO: Partial ordering screws everything up
-(<) = Cmp.(<)
-(>) a b = b < a
-(<=) a b = not (b < a)
-(>=) a b = not (a < b)
+// (==) = Eq.(==)
+// (!=) l r = not (l == r)
+// (not) a = if a then false else true
+// 
+// trait Cmp a with
+//     (<): fn a a -> Bool
+// 
+// // TODO: Partial ordering screws everything up
+// (<) = Cmp.(<)
+// (>) a b = b < a
+// (<=) a b = not (b < a)
+// (>=) a b = not (a < b)
 
 // impl cmp_i8: Cmp I8  with (<) x y = builtin "LessSigned" x y
 // impl cmp_i16: Cmp I16 with (<) x y = builtin "LessSigned" x y
