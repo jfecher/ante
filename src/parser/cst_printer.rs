@@ -10,7 +10,7 @@ use crate::{
     lexer::token::INDEX_OPERATOR_FUNCTION_NAME,
     name_resolution::{Origin, namespace::SourceFileId},
     parser::{
-        cst::{Constructor, TopLevelItemKind},
+        cst::{Argument, Constructor, TopLevelItemKind},
         ids::{NameId, PathId},
     },
     type_inference::{patterns::DecisionTree, types},
@@ -636,7 +636,9 @@ impl<'a> CstDisplay<'a> {
     fn fmt_call(&mut self, call: &Call, context: &TopLevelContext, f: &mut Formatter) -> std::fmt::Result {
         if call.arguments.len() == 2 {
             match self.classify_operator(call.function, context) {
-                FmtOperatorKind::Index => return self.fmt_index(call.arguments[0], call.arguments[1], context, f),
+                FmtOperatorKind::Index => {
+                    return self.fmt_index(call.arguments[0].expr, call.arguments[1].expr, context, f);
+                },
                 FmtOperatorKind::Infix => return self.fmt_infix_operator(call, context, f),
                 FmtOperatorKind::NotAnOperator => (),
             }
@@ -645,12 +647,22 @@ impl<'a> CstDisplay<'a> {
         self.fmt_expr(call.function, context, f)?;
 
         for arg in call.arguments.iter().copied() {
-            let parenthesize = !context.exprs[arg].is_atom();
             write!(f, " ")?;
-            self.parenthesize(arg, parenthesize, context, f)?;
+            self.fmt_argument(&arg, context, f)?;
         }
 
         Ok(())
+    }
+
+    fn fmt_argument(&mut self, arg: &Argument, context: &TopLevelContext, f: &mut Formatter) -> std::fmt::Result {
+        if arg.is_implicit {
+            write!(f, "{{")?;
+            self.fmt_expr(arg.expr, context, f)?;
+            write!(f, "}}")
+        } else {
+            let parenthesize = !context.exprs[arg.expr].is_atom();
+            self.parenthesize(arg.expr, parenthesize, context, f)
+        }
     }
 
     fn fmt_infix_operator(&mut self, call: &Call, context: &TopLevelContext, f: &mut Formatter) -> std::fmt::Result {
@@ -665,11 +677,11 @@ impl<'a> CstDisplay<'a> {
             other => !other.is_atom(),
         };
 
-        self.parenthesize(lhs, parenthesize(self, lhs), context, f)?;
+        self.parenthesize(lhs.expr, parenthesize(self, lhs.expr), context, f)?;
         write!(f, " ")?;
         self.fmt_expr(call.function, context, f)?;
         write!(f, " ")?;
-        self.parenthesize(rhs, parenthesize(self, rhs), context, f)
+        self.parenthesize(rhs.expr, parenthesize(self, rhs.expr), context, f)
     }
 
     /// If `should_parenthesize` is true, format the given expression surrounded by parenthesis.

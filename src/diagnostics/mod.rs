@@ -134,6 +134,12 @@ pub enum Diagnostic {
         constructor_names: Vec<Arc<String>>,
         location: Location,
     },
+    NoImplicitFound {
+        type_string: String,
+        function_name: Option<String>,
+        parameter_index: usize,
+        location: Location,
+    },
 }
 
 impl Ord for Diagnostic {
@@ -307,6 +313,11 @@ impl Diagnostic {
                     )
                 }
             },
+            Diagnostic::NoImplicitFound { type_string, function_name, parameter_index, location: _ } => {
+                let function = function_name.as_ref().map(|s| s.as_str()).unwrap_or("function");
+                let parameter = parameter_index + 1;
+                format!("No implicit found for type {} required by parameter {parameter} of {function}", type_string.blue(), )
+            }
         }
     }
 
@@ -340,6 +351,7 @@ impl Diagnostic {
             | Diagnostic::InvalidPattern { location }
             | Diagnostic::TypeMustBeKnownMemberAccess { location }
             | Diagnostic::ConstructorExpectedFoundType { location, .. }
+            | Diagnostic::NoImplicitFound { location, .. }
             | Diagnostic::Unimplemented { location, .. } => location,
         }
     }

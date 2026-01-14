@@ -73,36 +73,36 @@ impl TypeErrorKind {
 }
 
 pub(super) trait Locateable {
-    fn locate(self, context: &TypeChecker) -> Location;
+    fn locate(&self, context: &TypeChecker) -> Location;
 }
 
 impl Locateable for ExprId {
-    fn locate(self, context: &TypeChecker) -> Location {
-        context.current_context().expr_locations[self].clone()
+    fn locate(&self, context: &TypeChecker) -> Location {
+        context.current_context().expr_locations[*self].clone()
     }
 }
 
 impl Locateable for PatternId {
-    fn locate(self, context: &TypeChecker) -> Location {
-        context.current_context().pattern_locations[self].clone()
+    fn locate(&self, context: &TypeChecker) -> Location {
+        context.current_context().pattern_locations[*self].clone()
     }
 }
 
 impl Locateable for PathId {
-    fn locate(self, context: &TypeChecker) -> Location {
-        context.current_context().path_locations[self].clone()
+    fn locate(&self, context: &TypeChecker) -> Location {
+        context.current_context().path_locations[*self].clone()
     }
 }
 
 impl Locateable for NameId {
-    fn locate(self, context: &TypeChecker) -> Location {
-        context.current_context().name_locations[self].clone()
+    fn locate(&self, context: &TypeChecker) -> Location {
+        context.current_context().name_locations[*self].clone()
     }
 }
 
 impl Locateable for TopLevelId {
-    fn locate(self, context: &TypeChecker) -> Location {
-        let (_, context, _) = &context.item_contexts[&self];
+    fn locate(&self, context: &TypeChecker) -> Location {
+        let (_, context, _) = &context.item_contexts[self];
         context.location.clone()
     }
 }

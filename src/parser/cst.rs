@@ -252,7 +252,23 @@ pub struct Definition {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
 pub struct Call {
     pub function: ExprId,
-    pub arguments: Vec<ExprId>,
+    pub arguments: Vec<Argument>,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Copy, Clone)]
+pub struct Argument {
+    pub is_implicit: bool,
+    pub expr: ExprId,
+}
+
+impl Argument {
+    pub fn explicit(expr: ExprId) -> Self {
+        Self { expr, is_implicit: false }
+    }
+
+    pub fn implicit(expr: ExprId) -> Self {
+        Self { expr, is_implicit: true }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]

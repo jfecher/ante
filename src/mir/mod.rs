@@ -384,7 +384,7 @@ impl FloatConstant {
     }
 }
 
-/// TODO: This is very similar to [TopLevelType] - do we really need both?
+/// TODO: This is very similar to [crate::type_inference::types::Type] - do we really need both?
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
     Primitive(PrimitiveType),

@@ -347,7 +347,7 @@ where
 
     fn call(&mut self, call: &cst::Call, id: ExprId) -> Value {
         let function = self.expression(call.function);
-        let arguments = mapvec(&call.arguments, |expr| self.expression(*expr));
+        let arguments = mapvec(&call.arguments, |expr| self.expression(expr.expr));
         let result_type = self.expr_type(id);
         self.push_instruction(Instruction::Call { function, arguments }, result_type)
     }

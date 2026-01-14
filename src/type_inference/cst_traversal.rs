@@ -29,14 +29,20 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         self.check_expr(definition.rhs, &expected_type);
     }
 
-    fn check_expr(&mut self, expr: ExprId, expected: &Type) {
-        self.expr_types.insert(expr, expected.clone());
+    /// Check an expression's type matches the expected type.
+    fn check_expr(&mut self, id: ExprId, expected: &Type) {
+        self.expr_types.insert(id, expected.clone());
 
-        match &self.current_context().exprs[expr] {
-            Expr::Literal(literal) => self.check_literal(literal, expr, expected),
-            Expr::Variable(path) => self.check_path(*path, expected),
+        let expr = match self.current_extended_context().extended_expr(id) {
+            Some(expr) => Cow::Owned(expr.clone()),
+            None => Cow::Borrowed(&self.current_context().exprs[id]),
+        };
+
+        match expr.as_ref() {
+            Expr::Literal(literal) => self.check_literal(literal, id, expected),
+            Expr::Variable(path) => self.check_path(*path, expected, Some(id)),
             Expr::Call(call) => self.check_call(call, expected),
-            Expr::Lambda(lambda) => self.check_lambda(lambda, expected, expr),
+            Expr::Lambda(lambda) => self.check_lambda(lambda, expected, id),
             Expr::Sequence(items) => {
                 for (i, item) in items.iter().enumerate() {
                     let expected_type = if i == items.len() - 1 { expected } else { &self.next_type_variable() };
@@ -46,19 +52,19 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Expr::Definition(definition) => {
                 self.check_definition(definition);
             },
-            Expr::MemberAccess(member_access) => self.check_member_access(member_access, expected, expr),
-            Expr::If(if_) => self.check_if(if_, expected, expr),
-            Expr::Match(match_) => self.check_match(match_, expected, expr),
-            Expr::Reference(reference) => self.check_reference(reference, expected, expr),
+            Expr::MemberAccess(member_access) => self.check_member_access(member_access, expected, id),
+            Expr::If(if_) => self.check_if(if_, expected, id),
+            Expr::Match(match_) => self.check_match(match_, expected, id),
+            Expr::Reference(reference) => self.check_reference(reference, expected, id),
             Expr::TypeAnnotation(type_annotation) => {
                 let annotation = self.from_cst_type(&type_annotation.rhs);
-                self.unify(expected, &annotation, TypeErrorKind::TypeAnnotationMismatch, expr);
+                self.unify(expected, &annotation, TypeErrorKind::TypeAnnotationMismatch, id);
                 self.check_expr(type_annotation.lhs, &annotation);
             },
-            Expr::Handle(handle) => self.check_handle(handle, expected, expr),
-            Expr::Constructor(constructor) => self.check_constructor(constructor, expected, expr),
+            Expr::Handle(handle) => self.check_handle(handle, expected, id),
+            Expr::Constructor(constructor) => self.check_constructor(constructor, expected, id),
             Expr::Quoted(_) => {
-                let location = expr.locate(self);
+                let location = id.locate(self);
                 UnimplementedItem::Comptime.issue(self.compiler, location);
             },
             Expr::Error => (),
@@ -87,14 +93,20 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
-    fn check_pattern(&mut self, pattern: PatternId, expected: &Type) {
-        self.pattern_types.insert(pattern, expected.clone());
-        match &self.current_context().patterns[pattern] {
+    fn check_pattern(&mut self, id: PatternId, expected: &Type) {
+        self.pattern_types.insert(id, expected.clone());
+
+        let pattern = match self.current_extended_context().extended_pattern(id) {
+            Some(pattern) => Cow::Owned(pattern.clone()),
+            None => Cow::Borrowed(&self.current_context().patterns[id]),
+        };
+
+        match pattern.as_ref() {
             Pattern::Error => (),
             Pattern::Variable(name) | Pattern::MethodName { item_name: name, .. } => {
                 self.check_name(*name, expected);
             },
-            Pattern::Literal(literal) => self.check_literal(literal, pattern, expected),
+            Pattern::Literal(literal) => self.check_literal(literal, id, expected),
             Pattern::Constructor(path, args) => {
                 let parameters = mapvec(args, |_| types::ParameterType::explicit(self.next_type_variable()));
 
@@ -108,21 +120,25 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     }))
                 };
 
-                self.check_path(*path, &expected_function_type);
+                self.check_path(*path, &expected_function_type, None);
                 for (expected_arg_type, arg) in parameters.into_iter().zip(args) {
                     self.check_pattern(*arg, &expected_arg_type.typ);
                 }
             },
             Pattern::TypeAnnotation(inner_pattern, typ) => {
                 let annotated = self.from_cst_type(typ);
-                self.unify(expected, &annotated, TypeErrorKind::TypeAnnotationMismatch, pattern);
+                self.unify(expected, &annotated, TypeErrorKind::TypeAnnotationMismatch, id);
                 self.check_pattern(*inner_pattern, expected);
             },
         };
     }
 
-    fn check_path(&mut self, path: PathId, expected: &Type) {
-        let actual = match self.current_resolve().path_origins.get(&path).copied() {
+    fn check_path(&mut self, path: PathId, expected: &Type, expr: Option<ExprId>) {
+        let origin = self.current_resolve().path_origins.get(&path).copied().or_else(|| {
+            self.current_extended_context().path_origin(path)
+        });
+
+        let actual = match origin {
             Some(Origin::TopLevelDefinition(id)) => {
                 if let Some(typ) = self.item_types.get(&id) {
                     typ.clone()
@@ -136,8 +152,16 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Some(Origin::Builtin(builtin)) => self.check_builtin(builtin, path),
             None => return,
         };
+        if let Some(expr) = expr {
+            if self.try_coercion(&actual, expected, path, expr) {
+                self.check_expr(expr, expected);
+                return;
+                // no need to unify or modify self.path_types, that will be handled in the
+                // recursive check_expr call since we've just changed the expression at this ExprId.
+            }
+        }
         self.unify(&actual, expected, TypeErrorKind::General, path);
-        self.path_types.insert(path, expected.clone());
+        self.path_types.insert(path, actual);
     }
 
     fn resolve_type_resolution(&mut self, path: PathId, expected: &Type) -> Type {
@@ -221,7 +245,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     fn check_call(&mut self, call: &cst::Call, expected: &Type) {
         let expected_parameter_types =
-            mapvec(&call.arguments, |_| types::ParameterType::explicit(self.next_type_variable()));
+            mapvec(&call.arguments, |arg| types::ParameterType::new(self.next_type_variable(), arg.is_implicit));
 
         let expected_function_type = {
             let parameters = expected_parameter_types.clone();
@@ -232,7 +256,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         self.check_expr(call.function, &expected_function_type);
         for (arg, expected_arg_type) in call.arguments.iter().zip(expected_parameter_types) {
-            self.check_expr(*arg, &expected_arg_type.typ);
+            self.check_expr(arg.expr, &expected_arg_type.typ);
         }
     }
 
@@ -253,10 +277,12 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         };
 
         self.check_function_parameter_count(&function_type.parameters, lambda.parameters.len(), expr);
-        assert_eq!(lambda.parameters.len(), function_type.parameters.len());
+        let parameter_lengths_match = function_type.parameters.len() == lambda.parameters.len();
 
         for (parameter, expected_type) in lambda.parameters.iter().zip(function_type.parameters.iter()) {
-            self.check_pattern(parameter.pattern, &expected_type.typ);
+            // Avoid extra errors if the parameter length isn't as expected
+            let expected_type = if parameter_lengths_match { &expected_type.typ } else { &Type::ERROR };
+            self.check_pattern(parameter.pattern, expected_type);
         }
 
         // Required in case `function_type` has fewer parameters, to ensure we check all of `lambda.parameters`

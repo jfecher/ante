@@ -411,7 +411,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             Expr::Call(call) => {
                 self.resolve_expr(call.function);
                 for arg in &call.arguments {
-                    self.resolve_expr(*arg);
+                    self.resolve_expr(arg.expr);
                 }
             },
             Expr::Lambda(lambda) => {

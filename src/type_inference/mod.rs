@@ -18,7 +18,7 @@ use crate::{
         errors::{Locateable, TypeErrorKind},
         fresh_expr::ExtendedTopLevelContext,
         generics::Generic,
-        types::{Type, TypeBindings, TypeVariableId},
+        types::{FunctionType, ParameterType, Type, TypeBindings, TypeVariableId},
     },
 };
 
@@ -301,6 +301,156 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
+    /// Try to apply a coercion between `actual` and `expected`, returning a new expression
+    /// if successful.
+    ///
+    /// Possible coercions:
+    /// - If `actual` is a function type with more implicit parameters than `expected` has,
+    /// search for implicit values in scope and create a new wrapper function over `expr`.
+    ///
+    /// Returns `true` if `expr` was modified, or `false` otherwise
+    fn try_coercion(
+        &mut self, actual: &Type, expected: &Type, locator: impl Locateable, expr: ExprId,
+    ) -> bool {
+        match (self.follow_type(actual), self.follow_type(expected)) {
+            (Type::Function(actual), Type::Function(expected))
+                if actual.parameters.len() != expected.parameters.len() =>
+            {
+                let new_expr = self.implicit_parameter_coercion(actual.clone(), expected.clone(), locator, expr);
+                self.current_extended_context_mut().insert_expr(expr, new_expr);
+                true
+            },
+            _ => false,
+        }
+    }
+
+    /// Perform an implicit parameter coercion.
+    ///
+    /// Given a function `expr` which requires some implicit parameters present in the `actual`
+    /// type but not the `expected` type, find values for those implicits (issuing errors for any
+    /// that cannot be found) an create a new wrapper function. E.g:
+    ///
+    /// ```ante
+    /// fn a c -> <expr> a <new-implicit> c
+    /// ```
+    /// where `<new-implicit>` is a new implicit that was successfully found. In the case a
+    /// matching implicit value cannot be found, an error is issued and an error expression is
+    /// slotted in as the argument instead. In this way, this function will always return a new
+    /// closure wrapper.
+    fn implicit_parameter_coercion(
+        &mut self, actual: Arc<FunctionType>, expected: Arc<FunctionType>, locator: impl Locateable, expr: ExprId,
+    ) -> cst::Expr {
+        // Looking for implicit parameters that are in `actual` but not `expected`.
+        // The reverse would be a type error.
+        let mut new_expected = Vec::new();
+
+        let mut actual_params = actual.parameters.iter();
+        let mut expected_params = expected.parameters.iter().cloned();
+        let mut current_expected = expected_params.next();
+
+        // For each parameter, this is either `None` if no new implicit was inserted
+        // at that position, or it is `Some(expr_id)` of the new expression.
+        let mut implicits_added = Vec::new();
+
+        while let Some(actual) = actual_params.next() {
+            match (actual.is_implicit, current_expected.as_ref()) {
+                // actual is implicit, but expected isn't, search for an implicit in scope
+                (true, expected) if expected.map_or(true, |param| !param.is_implicit) => {
+                    let (value, typ) = self.find_implicit_value(&actual.typ).unwrap_or_else(|| {
+                        // error: No implicit found for parameter N of type T
+                        let location = locator.locate(self);
+                        let type_string = self.type_to_string(&actual.typ);
+                        let error_expr =
+                            self.current_extended_context_mut().push_expr(cst::Expr::Error, location.clone());
+
+                        let parameter_index = new_expected.len();
+                        let function_name = self.try_get_name(expr);
+                        self.compiler.accumulate(Diagnostic::NoImplicitFound {
+                            type_string,
+                            function_name,
+                            parameter_index,
+                            location,
+                        });
+                        (error_expr, Type::ERROR)
+                    });
+                    implicits_added.push(Some(value));
+                    new_expected.push(ParameterType::implicit(typ));
+                },
+                _ => {
+                    new_expected.push(current_expected.unwrap());
+                    implicits_added.push(None);
+                    current_expected = expected_params.next();
+                },
+            }
+        }
+        self.create_closure_wrapper_for_implicit(expr, implicits_added, new_expected, locator)
+    }
+
+    /// If the expression is a variable, return its name
+    fn try_get_name(&self, expr: ExprId) -> Option<String> {
+        match &self.current_extended_context()[expr] {
+            cst::Expr::Variable(path) => Some(self.current_extended_context()[*path].last_ident().to_string()),
+            _ => None,
+        }
+    }
+
+    /// Search for an implicit value in scope with the given type
+    fn find_implicit_value(&self, _typ: &Type) -> Option<(ExprId, Type)> {
+        None
+    }
+
+    /// Given:
+    /// - A function `f`
+    /// - `implicits_added = [None, Some(i), None]` (e.g.)
+    /// - `argument_types = [t, u, v]`
+    ///
+    /// Create:
+    /// `fn (a: t) (c: v) -> f a {i} c`
+    fn create_closure_wrapper_for_implicit(
+        &mut self, function: ExprId, implicits_added: Vec<Option<ExprId>>, argument_types: Vec<ParameterType>,
+        locator: impl Locateable,
+    ) -> cst::Expr {
+        // We should always have at least 1 added implicit parameter
+        assert!(implicits_added.iter().any(|param| param.is_some()));
+        assert_eq!(implicits_added.len(), argument_types.len());
+
+        let mut parameters = Vec::new();
+        let mut arguments = Vec::new();
+
+        for (implicit, arg_type) in implicits_added.into_iter().zip(argument_types) {
+            match implicit {
+                // We want new implicit arguments to be in the call but not the lambda parameters
+                Some(arg) => {
+                    arguments.push(cst::Argument::implicit(arg));
+                },
+                None => {
+                    let location = locator.locate(self);
+                    let (var_path, var_name) = self.fresh_match_variable(arg_type.typ.clone(), location.clone());
+
+                    let pattern = self.push_pattern(cst::Pattern::Variable(var_name), location.clone());
+                    let expr = self.push_expr(cst::Expr::Variable(var_path), arg_type.typ, location);
+
+                    arguments.push(cst::Argument { is_implicit: arg_type.is_implicit, expr });
+                    parameters.push(cst::Parameter { is_implicit: arg_type.is_implicit, pattern });
+                },
+            }
+        }
+        
+        // Since `function` is the ExprId we'll be replacing, we can't use it directly here. We
+        // have to copy it to a new id.
+        let location = locator.locate(self);
+        let expr = self.current_extended_context()[function].clone();
+
+        // This type should be overwritten later when cst_traversal traverses this new expr
+        let function = self.push_expr(expr, Type::ERROR, location.clone());
+
+        let body = cst::Expr::Call(cst::Call { function, arguments });
+        let body_type = Type::ERROR;
+        let body = self.push_expr(body, body_type, location);
+
+        cst::Expr::Lambda(cst::Lambda { parameters, body, return_type: None, effects: None })
+    }
+
     fn type_to_string(&self, typ: &Type) -> String {
         typ.to_string(&self.bindings, &self.current_context().names, self.compiler)
     }
@@ -335,10 +485,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 if actual.parameters.len() != expected.parameters.len() {
                     return Err(());
                 }
-                for (actual, expected) in actual.parameters.iter().zip(&expected.parameters) {
-                    // TODO: How does an implicit parameter interact with generics?
+
+                for (actual, expected) in actual.parameters.iter().zip(expected.parameters.iter()) {
+                    if actual.is_implicit != expected.is_implicit {
+                        return Err(());
+                    }
                     self.try_unify(&actual.typ, &expected.typ)?;
                 }
+
                 self.try_unify(&actual.effects, &expected.effects)?;
                 self.try_unify(&actual.return_type, &expected.return_type)
             },

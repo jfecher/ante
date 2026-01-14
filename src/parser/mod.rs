@@ -13,7 +13,7 @@ use crate::{
     name_resolution::namespace::SourceFileId,
     parser::{
         context::TopLevelContext,
-        cst::{HandlePattern, ParameterType},
+        cst::{Argument, HandlePattern, ParameterType},
     },
 };
 
@@ -1222,6 +1222,9 @@ impl<'tokens> Parser<'tokens> {
         let lhs = results.pop().unwrap();
         let location = self.expr_location(lhs).to(&self.expr_location(rhs));
 
+        let lhs = Argument::explicit(lhs);
+        let rhs = Argument::explicit(rhs);
+
         let call = self.reserve_expr();
         let function = self.reserve_expr();
 
@@ -1321,6 +1324,7 @@ impl<'tokens> Parser<'tokens> {
                 self.advance();
                 let rhs = self.parse_left_unary()?;
                 let location = operator_location.to(&self.expr_location(rhs));
+                let rhs = Argument::explicit(rhs);
 
                 let components = vec![(operator.to_string(), operator_location.clone())];
                 let path_id = self.push_path(Path { components }, operator_location.clone());
@@ -1336,12 +1340,12 @@ impl<'tokens> Parser<'tokens> {
 
     /// Very similar to `parse_unary` but excludes unary minus since otherwise
     /// we may parse `{function_name} -{arg}` instead of `{lhs} - {rhs}`.
-    fn parse_function_arg(&mut self) -> Result<ExprId> {
-        match self.current_token() {
+    fn parse_function_arg(&mut self) -> Result<Argument> {
+        let expr = match self.current_token() {
             Token::At => self.with_expr_id_and_location(|this| {
                 let operator_location = this.current_token_location();
                 this.advance();
-                let rhs = this.parse_left_unary()?;
+                let rhs = Argument { expr: this.parse_left_unary()?, is_implicit: false };
                 let components = vec![(Token::At.to_string(), operator_location.clone())];
                 let path_id = this.push_path(Path { components }, operator_location.clone());
                 let function = this.push_expr(Expr::Variable(path_id), operator_location);
@@ -1361,8 +1365,15 @@ impl<'tokens> Parser<'tokens> {
                     Ok(Expr::Reference(cst::Reference { mutability, sharedness, rhs }))
                 })
             },
+            Token::BraceLeft => {
+                self.advance();
+                let expr = self.parse_expression()?;
+                self.expect(Token::BraceRight, "a `}` to close the opening `{` of this implicit argument")?;
+                return Ok(Argument::implicit(expr));
+            }
             _ => self.parse_atom(),
-        }
+        }?;
+        Ok(Argument::explicit(expr))
     }
 
     /// An atom is a very small unit of parsing, but one that can still be divided further.
@@ -1383,9 +1394,10 @@ impl<'tokens> Parser<'tokens> {
                 Token::Index => {
                     result = self.with_expr_id_and_location(|this| {
                         // `result.[i]` gets transformed into a function call `(.[) result i`
+                        let result = Argument::explicit(result);
                         let location = this.current_token_location();
                         this.advance();
-                        let index = this.parse_expression()?;
+                        let index = Argument::explicit(this.parse_expression()?);
                         this.expect(Token::BracketRight, "a `]` to terminate the index expression")?;
                         let path = Path::ident(".[".to_string(), location.clone());
                         let path = this.push_path(path, location.clone());
@@ -1745,7 +1757,7 @@ impl<'tokens> Parser<'tokens> {
         let function = self.parse_atom()?;
 
         if let Ok(arguments) = self.many1(Self::parse_function_arg) {
-            let last_arg_location = self.expr_location(*arguments.last().unwrap());
+            let last_arg_location = self.expr_location(arguments.last().unwrap().expr);
             let location = self.expr_location(function).to(&last_arg_location);
             let call = Expr::Call(Call { function, arguments });
             Ok(self.push_expr(call, location))

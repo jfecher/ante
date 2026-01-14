@@ -105,6 +105,18 @@ impl ExtendedTopLevelContext {
         self.more_exprs.insert(id, expr);
     }
 
+    /// Return the given expression only if it is extended, and thus not part
+    /// of `Self::original`. This can be used to prevent cloning in some cases.
+    pub fn extended_expr(&self, id: ExprId) -> Option<&Expr> {
+        self.more_exprs.get(&id)
+    }
+
+    /// Return the given pattern only if it is extended, and thus not part
+    /// of `Self::original`. This can be used to prevent cloning in some cases.
+    pub fn extended_pattern(&self, id: PatternId) -> Option<&Pattern> {
+        self.more_patterns.get(&id)
+    }
+
     /// Push a new expression to the context
     pub fn push_expr(&mut self, expr: Expr, location: Location) -> ExprId {
         // We assume all expressions are dense and thus no id is skipped
