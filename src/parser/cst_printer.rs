@@ -1,5 +1,4 @@
 use std::{
-    borrow::Cow,
     collections::BTreeMap,
     fmt::{Display, Formatter},
     sync::Arc,
@@ -11,7 +10,7 @@ use crate::{
     name_resolution::{Origin, namespace::SourceFileId},
     parser::{
         cst::{Argument, Constructor, TopLevelItemKind},
-        ids::{NameId, PathId},
+        ids::{IdStore, NameId, PathId},
     },
     type_inference::{patterns::DecisionTree, types},
 };
@@ -168,10 +167,13 @@ impl<'a> CstDisplay<'a> {
         for item in &cst.top_level_items {
             if let Some(db) = self.db_resolve() {
                 let (item, context) = GetItem(item.id).get(db);
-                self.fmt_top_level_item(&item, &context, f)?;
+                self.fmt_top_level_item(&item, context.as_ref(), f)?;
+            } else if let Some(db) = self.db_type_check() {
+                let result = TypeCheck(item.id).get(db);
+                self.fmt_top_level_item(&item, &result.result.context, f)?;
             } else {
                 let context = &self.context[&item.id];
-                self.fmt_top_level_item(item, context, f)?;
+                self.fmt_top_level_item(item, context.as_ref(), f)?;
             }
             writeln!(f)?;
         }
@@ -199,7 +201,7 @@ impl<'a> CstDisplay<'a> {
     }
 
     fn fmt_top_level_item(
-        &mut self, item: &TopLevelItem, context: &TopLevelContext, f: &mut Formatter,
+        &mut self, item: &TopLevelItem, context: &impl IdStore, f: &mut Formatter,
     ) -> std::fmt::Result {
         self.current_item_id = Some(item.id);
 
@@ -237,7 +239,7 @@ impl<'a> CstDisplay<'a> {
     }
 
     fn fmt_definition(
-        &mut self, definition: &Definition, context: &TopLevelContext, f: &mut Formatter,
+        &mut self, definition: &Definition, context: &impl IdStore, f: &mut Formatter,
     ) -> std::fmt::Result {
         if definition.implicit {
             write!(f, "implicit ")?;
@@ -247,7 +249,7 @@ impl<'a> CstDisplay<'a> {
             write!(f, "mut ")?;
         }
 
-        if let Some(Expr::Lambda(lambda)) = &context.exprs.get(definition.rhs) {
+        if let Expr::Lambda(lambda) = &context.get_expr(definition.rhs) {
             return self.fmt_function(definition, lambda, context, f);
         }
 
@@ -273,27 +275,22 @@ impl<'a> CstDisplay<'a> {
             .then(|| self.config.db.expect("Expected `CstDisplayConfig::db` to be set when `show_types` is set"))
     }
 
-    fn fmt_name(&self, name: NameId, context: &TopLevelContext, f: &mut Formatter) -> std::fmt::Result {
+    fn fmt_name(&self, name: NameId, context: &impl IdStore, f: &mut Formatter) -> std::fmt::Result {
         self.fmt_name_helper(name, context, f, true)
     }
 
-    fn fmt_type_name(&self, name: NameId, context: &TopLevelContext, f: &mut Formatter) -> std::fmt::Result {
+    fn fmt_type_name(&self, name: NameId, context: &impl IdStore, f: &mut Formatter) -> std::fmt::Result {
         self.fmt_name_helper(name, context, f, false)
     }
 
     fn fmt_name_helper(
-        &self, name: NameId, context: &TopLevelContext, f: &mut Formatter, show_type: bool,
+        &self, name: NameId, context: &impl IdStore, f: &mut Formatter, show_type: bool,
     ) -> std::fmt::Result {
         if self.config.show_types && show_type {
             write!(f, "(")?;
         }
 
-        let name_string = context.names.get(name).map(Cow::Borrowed).unwrap_or_else(|| {
-            let db = self.db_type_check().unwrap();
-            let check = TypeCheck(self.current_item_id.unwrap()).get(db);
-            Cow::Owned(check.result.context[name].clone())
-        });
-
+        let name_string = context.get_name(name);
         write!(f, "{name_string}")?;
 
         if let Some(db) = self.db_resolve() {
@@ -307,34 +304,29 @@ impl<'a> CstDisplay<'a> {
             if show_type {
                 let check = TypeCheck(self.current_item_id.unwrap()).get(db);
                 let typ = check.result.maps.name_types.get(&name).cloned().unwrap_or(types::Type::ERROR);
-                write!(f, ": {})", typ.to_string(&check.bindings, &context.names, db))?
+                write!(f, ": {})", typ.to_string(&check.bindings, context, db))?
             }
         }
 
         Ok(())
     }
 
-    fn fmt_path(&self, path: PathId, context: &TopLevelContext, f: &mut Formatter) -> std::fmt::Result {
+    fn fmt_path(&self, path: PathId, context: &impl IdStore, f: &mut Formatter) -> std::fmt::Result {
         self.fmt_path_helper(path, context, f, true)
     }
 
-    fn fmt_type_path(&self, path: PathId, context: &TopLevelContext, f: &mut Formatter) -> std::fmt::Result {
+    fn fmt_type_path(&self, path: PathId, context: &impl IdStore, f: &mut Formatter) -> std::fmt::Result {
         self.fmt_path_helper(path, context, f, false)
     }
 
     fn fmt_path_helper(
-        &self, path: PathId, context: &TopLevelContext, f: &mut Formatter, show_type: bool,
+        &self, path: PathId, context: &impl IdStore, f: &mut Formatter, show_type: bool,
     ) -> std::fmt::Result {
         if self.config.show_types && show_type {
             write!(f, "(")?;
         }
 
-        let path_string = context.paths.get(path).map(Cow::Borrowed).unwrap_or_else(|| {
-            let db = self.db_type_check().unwrap();
-            let check = TypeCheck(self.current_item_id.unwrap()).get(db);
-            Cow::Owned(check.result.context[path].clone())
-        });
-
+        let path_string = context.get_path(path);
         write!(f, "{path_string}")?;
 
         if let Some(db) = self.db_resolve() {
@@ -348,7 +340,7 @@ impl<'a> CstDisplay<'a> {
             if let Some(db) = self.db_type_check() {
                 let check = TypeCheck(self.current_item_id.unwrap()).get(db);
                 let typ = check.result.maps.path_types.get(&path).cloned().unwrap_or(types::Type::ERROR);
-                write!(f, ": {})", typ.to_string(&check.bindings, &context.names, db))?
+                write!(f, ": {})", typ.to_string(&check.bindings, context, db))?
             }
         }
 
@@ -356,7 +348,7 @@ impl<'a> CstDisplay<'a> {
     }
 
     fn fmt_function(
-        &mut self, definition: &Definition, lambda: &Lambda, context: &TopLevelContext, f: &mut Formatter,
+        &mut self, definition: &Definition, lambda: &Lambda, context: &impl IdStore, f: &mut Formatter,
     ) -> std::fmt::Result {
         self.fmt_pattern(definition.pattern, context, f)?;
         self.fmt_lambda_inner(lambda, context, f, false)
@@ -366,7 +358,7 @@ impl<'a> CstDisplay<'a> {
     ///
     /// If `write_arrow` is true, `->` will be used as the body separator. Otherwise `=` is used.
     fn fmt_lambda_inner(
-        &mut self, lambda: &Lambda, context: &TopLevelContext, f: &mut Formatter, write_arrow: bool,
+        &mut self, lambda: &Lambda, context: &impl IdStore, f: &mut Formatter, write_arrow: bool,
     ) -> std::fmt::Result {
         self.fmt_parameters(&lambda.parameters, context, f)?;
 
@@ -385,7 +377,7 @@ impl<'a> CstDisplay<'a> {
 
     /// Formats an effect clause with a leading space
     fn fmt_effect_clause(
-        &self, effects: &Option<Vec<EffectType>>, context: &TopLevelContext, f: &mut std::fmt::Formatter,
+        &self, effects: &Option<Vec<EffectType>>, context: &impl IdStore, f: &mut std::fmt::Formatter,
     ) -> std::fmt::Result {
         if let Some(effects) = effects {
             if effects.is_empty() {
@@ -403,7 +395,7 @@ impl<'a> CstDisplay<'a> {
         Ok(())
     }
 
-    fn fmt_effect_type(&self, effect: &EffectType, context: &TopLevelContext, f: &mut Formatter) -> std::fmt::Result {
+    fn fmt_effect_type(&self, effect: &EffectType, context: &impl IdStore, f: &mut Formatter) -> std::fmt::Result {
         match effect {
             EffectType::Known(path_id, args) => {
                 self.fmt_path(*path_id, context, f)?;
@@ -414,7 +406,7 @@ impl<'a> CstDisplay<'a> {
     }
 
     /// Formats type arguments with a leading space in front of each (including the first)
-    fn fmt_type_args(&self, args: &[Type], context: &TopLevelContext, f: &mut Formatter) -> std::fmt::Result {
+    fn fmt_type_args(&self, args: &[Type], context: &impl IdStore, f: &mut Formatter) -> std::fmt::Result {
         let requires_parens = |typ: &Type| matches!(typ, Type::Function(_) | Type::Application(..));
 
         for arg in args {
@@ -443,7 +435,7 @@ impl<'a> CstDisplay<'a> {
     }
 
     fn fmt_type_definition(
-        &mut self, type_definition: &TypeDefinition, context: &TopLevelContext, f: &mut Formatter,
+        &mut self, type_definition: &TypeDefinition, context: &impl IdStore, f: &mut Formatter,
     ) -> std::fmt::Result {
         if type_definition.shared {
             write!(f, "shared ")?;
@@ -491,7 +483,7 @@ impl<'a> CstDisplay<'a> {
         Ok(())
     }
 
-    fn fmt_type(&self, typ: &Type, context: &TopLevelContext, f: &mut Formatter) -> std::fmt::Result {
+    fn fmt_type(&self, typ: &Type, context: &impl IdStore, f: &mut Formatter) -> std::fmt::Result {
         match typ {
             Type::Error => write!(f, "(error)"),
             Type::Named(path) => self.fmt_type_path(*path, context, f),
@@ -513,7 +505,7 @@ impl<'a> CstDisplay<'a> {
     }
 
     fn fmt_type_application(
-        &self, constructor: &Type, args: &[Type], context: &TopLevelContext, f: &mut Formatter,
+        &self, constructor: &Type, args: &[Type], context: &impl IdStore, f: &mut Formatter,
     ) -> std::fmt::Result {
         if *constructor == Type::Pair {
             return self.fmt_pair_type(args, context, f);
@@ -531,7 +523,7 @@ impl<'a> CstDisplay<'a> {
         self.fmt_type_args(args, context, f)
     }
 
-    fn fmt_pair_type(&self, args: &[Type], context: &TopLevelContext, f: &mut Formatter) -> std::fmt::Result {
+    fn fmt_pair_type(&self, args: &[Type], context: &impl IdStore, f: &mut Formatter) -> std::fmt::Result {
         assert_eq!(args.len(), 2);
 
         let lhs_requires_parens = |typ: &Type| match typ {
@@ -553,7 +545,7 @@ impl<'a> CstDisplay<'a> {
     }
 
     fn fmt_function_type(
-        &self, function_type: &FunctionType, context: &TopLevelContext, f: &mut Formatter,
+        &self, function_type: &FunctionType, context: &impl IdStore, f: &mut Formatter,
     ) -> std::fmt::Result {
         write!(f, "fn")?;
 
@@ -578,15 +570,8 @@ impl<'a> CstDisplay<'a> {
         self.fmt_effect_clause(&function_type.effects, context, f)
     }
 
-    fn fmt_expr(&mut self, id: ExprId, context: &TopLevelContext, f: &mut Formatter) -> std::fmt::Result {
-        let expr = context.exprs.get(id).map(Cow::Borrowed).unwrap_or_else(|| {
-            // Check if this is an extra expr inserted by type-checking
-            let db = self.db_type_check().unwrap();
-            let check = TypeCheck(self.current_item_id.unwrap()).get(db);
-            Cow::Owned(check.result.context[id].clone())
-        });
-
-        match expr.as_ref() {
+    fn fmt_expr(&mut self, id: ExprId, context: &impl IdStore, f: &mut Formatter) -> std::fmt::Result {
+        match context.get_expr(id) {
             Expr::Error => write!(f, "(error)"),
             Expr::Literal(literal) => self.fmt_literal(literal, f),
             Expr::Variable(path) => self.fmt_path(*path, context, f),
@@ -618,7 +603,7 @@ impl<'a> CstDisplay<'a> {
         }
     }
 
-    fn fmt_sequence(&mut self, seq: &[SequenceItem], context: &TopLevelContext, f: &mut Formatter) -> std::fmt::Result {
+    fn fmt_sequence(&mut self, seq: &[SequenceItem], context: &impl IdStore, f: &mut Formatter) -> std::fmt::Result {
         self.indent_level += 1;
         for item in seq {
             self.newline(f)?;
@@ -629,11 +614,11 @@ impl<'a> CstDisplay<'a> {
         Ok(())
     }
 
-    fn is_block(&self, expr: ExprId, context: &TopLevelContext) -> bool {
-        matches!(context.exprs.get(expr), Some(Expr::Sequence(_)))
+    fn is_block(&self, expr: ExprId, context: &impl IdStore) -> bool {
+        matches!(context.get_expr(expr), Expr::Sequence(_))
     }
 
-    fn fmt_call(&mut self, call: &Call, context: &TopLevelContext, f: &mut Formatter) -> std::fmt::Result {
+    fn fmt_call(&mut self, call: &Call, context: &impl IdStore, f: &mut Formatter) -> std::fmt::Result {
         if call.arguments.len() == 2 {
             match self.classify_operator(call.function, context) {
                 FmtOperatorKind::Index => {
@@ -644,7 +629,8 @@ impl<'a> CstDisplay<'a> {
             }
         }
 
-        self.fmt_expr(call.function, context, f)?;
+        let parenthesize = !context.get_expr(call.function).is_atom();
+        self.parenthesize(call.function, parenthesize, context, f)?;
 
         for arg in call.arguments.iter().copied() {
             write!(f, " ")?;
@@ -654,23 +640,23 @@ impl<'a> CstDisplay<'a> {
         Ok(())
     }
 
-    fn fmt_argument(&mut self, arg: &Argument, context: &TopLevelContext, f: &mut Formatter) -> std::fmt::Result {
+    fn fmt_argument(&mut self, arg: &Argument, context: &impl IdStore, f: &mut Formatter) -> std::fmt::Result {
         if arg.is_implicit {
             write!(f, "{{")?;
             self.fmt_expr(arg.expr, context, f)?;
             write!(f, "}}")
         } else {
-            let parenthesize = !context.exprs[arg.expr].is_atom();
+            let parenthesize = !context.get_expr(arg.expr).is_atom();
             self.parenthesize(arg.expr, parenthesize, context, f)
         }
     }
 
-    fn fmt_infix_operator(&mut self, call: &Call, context: &TopLevelContext, f: &mut Formatter) -> std::fmt::Result {
+    fn fmt_infix_operator(&mut self, call: &Call, context: &impl IdStore, f: &mut Formatter) -> std::fmt::Result {
         assert_eq!(call.arguments.len(), 2);
         let lhs = call.arguments[0];
         let rhs = call.arguments[1];
 
-        let parenthesize = |this: &Self, expr| match &context.exprs[expr] {
+        let parenthesize = |this: &Self, expr| match context.get_expr(expr) {
             Expr::Call(call) => {
                 !matches!(this.classify_operator(call.function, context), FmtOperatorKind::NotAnOperator)
             },
@@ -687,7 +673,7 @@ impl<'a> CstDisplay<'a> {
     /// If `should_parenthesize` is true, format the given expression surrounded by parenthesis.
     /// Otherwise, format it normally.
     fn parenthesize(
-        &mut self, expr: ExprId, should_parenthesize: bool, context: &TopLevelContext, f: &mut Formatter,
+        &mut self, expr: ExprId, should_parenthesize: bool, context: &impl IdStore, f: &mut Formatter,
     ) -> std::fmt::Result {
         if should_parenthesize {
             write!(f, "(")?;
@@ -698,12 +684,12 @@ impl<'a> CstDisplay<'a> {
         }
     }
 
-    fn classify_operator(&self, function: ExprId, context: &TopLevelContext) -> FmtOperatorKind {
-        let Expr::Variable(path) = context.exprs[function] else {
+    fn classify_operator(&self, function: ExprId, context: &impl IdStore) -> FmtOperatorKind {
+        let Expr::Variable(path) = context.get_expr(function) else {
             return FmtOperatorKind::NotAnOperator;
         };
 
-        let path = &context.paths[path];
+        let path = context.get_path(*path);
         if path.components.len() != 1 {
             return FmtOperatorKind::NotAnOperator;
         }
@@ -719,9 +705,9 @@ impl<'a> CstDisplay<'a> {
     }
 
     fn fmt_member_access(
-        &mut self, access: &MemberAccess, context: &TopLevelContext, f: &mut Formatter,
+        &mut self, access: &MemberAccess, context: &impl IdStore, f: &mut Formatter,
     ) -> std::fmt::Result {
-        if context.exprs[access.object].is_atom() {
+        if context.get_expr(access.object).is_atom() {
             self.fmt_expr(access.object, context, f)?;
         } else {
             write!(f, "(")?;
@@ -733,9 +719,9 @@ impl<'a> CstDisplay<'a> {
     }
 
     fn fmt_index(
-        &mut self, object: ExprId, index: ExprId, context: &TopLevelContext, f: &mut Formatter,
+        &mut self, object: ExprId, index: ExprId, context: &impl IdStore, f: &mut Formatter,
     ) -> std::fmt::Result {
-        if context.exprs[object].is_atom() {
+        if context.get_expr(object).is_atom() {
             self.fmt_expr(object, context, f)?;
         } else {
             write!(f, "(")?;
@@ -749,7 +735,7 @@ impl<'a> CstDisplay<'a> {
     }
 
     fn fmt_declaration(
-        &self, declaration: &Declaration, context: &TopLevelContext, f: &mut Formatter,
+        &self, declaration: &Declaration, context: &impl IdStore, f: &mut Formatter,
     ) -> std::fmt::Result {
         self.fmt_name(declaration.name, context, f)?;
         write!(f, ": ")?;
@@ -757,7 +743,7 @@ impl<'a> CstDisplay<'a> {
     }
 
     fn fmt_trait_definition(
-        &mut self, trait_definition: &TraitDefinition, context: &TopLevelContext, f: &mut Formatter,
+        &mut self, trait_definition: &TraitDefinition, context: &impl IdStore, f: &mut Formatter,
     ) -> std::fmt::Result {
         write!(f, "trait ")?;
         self.fmt_type_name(trait_definition.name, context, f)?;
@@ -786,7 +772,7 @@ impl<'a> CstDisplay<'a> {
     }
 
     fn fmt_trait_impl(
-        &mut self, trait_impl: &TraitImpl, context: &TopLevelContext, f: &mut Formatter,
+        &mut self, trait_impl: &TraitImpl, context: &impl IdStore, f: &mut Formatter,
     ) -> std::fmt::Result {
         write!(f, "impl ")?;
         self.fmt_type_name(trait_impl.name, context, f)?;
@@ -802,7 +788,7 @@ impl<'a> CstDisplay<'a> {
             self.newline(f)?;
             self.fmt_name(*name, context, f)?;
 
-            if let Expr::Lambda(lambda) = &context.exprs[*expr] {
+            if let Expr::Lambda(lambda) = &context.get_expr(*expr) {
                 self.fmt_lambda_inner(lambda, context, f, false)?;
             } else {
                 write!(f, " =")?;
@@ -817,7 +803,7 @@ impl<'a> CstDisplay<'a> {
     }
 
     fn fmt_effect_definition(
-        &mut self, effect_definition: &EffectDefinition, context: &TopLevelContext, f: &mut Formatter,
+        &mut self, effect_definition: &EffectDefinition, context: &impl IdStore, f: &mut Formatter,
     ) -> std::fmt::Result {
         write!(f, "effect ")?;
         self.fmt_type_name(effect_definition.name, context, f)?;
@@ -837,17 +823,17 @@ impl<'a> CstDisplay<'a> {
         Ok(())
     }
 
-    fn fmt_extern(&mut self, extern_: &Extern, context: &TopLevelContext, f: &mut Formatter) -> std::fmt::Result {
+    fn fmt_extern(&mut self, extern_: &Extern, context: &impl IdStore, f: &mut Formatter) -> std::fmt::Result {
         write!(f, "extern ")?;
         self.fmt_declaration(&extern_.declaration, context, f)
     }
 
-    fn fmt_lambda(&mut self, lambda: &Lambda, context: &TopLevelContext, f: &mut Formatter) -> std::fmt::Result {
+    fn fmt_lambda(&mut self, lambda: &Lambda, context: &impl IdStore, f: &mut Formatter) -> std::fmt::Result {
         write!(f, "fn")?;
         self.fmt_lambda_inner(lambda, context, f, true)
     }
 
-    fn fmt_if(&mut self, if_: &If, context: &TopLevelContext, f: &mut Formatter) -> std::fmt::Result {
+    fn fmt_if(&mut self, if_: &If, context: &impl IdStore, f: &mut Formatter) -> std::fmt::Result {
         self.fmt_if_then(if_.condition, if_.then, context, f)?;
 
         if let Some(else_) = if_.else_ {
@@ -864,7 +850,7 @@ impl<'a> CstDisplay<'a> {
 
     /// Format the `if c then t` portion, but not the else portion
     fn fmt_if_then(
-        &mut self, condition: ExprId, then: ExprId, context: &TopLevelContext, f: &mut Formatter,
+        &mut self, condition: ExprId, then: ExprId, context: &impl IdStore, f: &mut Formatter,
     ) -> std::fmt::Result {
         write!(f, "if ")?;
         self.fmt_expr(condition, context, f)?;
@@ -877,7 +863,7 @@ impl<'a> CstDisplay<'a> {
     }
 
     fn fmt_match(
-        &mut self, match_: &Match, context: &TopLevelContext, expr: ExprId, f: &mut Formatter,
+        &mut self, match_: &Match, context: &impl IdStore, expr: ExprId, f: &mut Formatter,
     ) -> std::fmt::Result {
         // Check if type-checking has compiled this into a decision tree
         if let Some(db) = self.db_type_check() {
@@ -903,7 +889,7 @@ impl<'a> CstDisplay<'a> {
         Ok(())
     }
 
-    fn fmt_handle(&mut self, handle_: &Handle, context: &TopLevelContext, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt_handle(&mut self, handle_: &Handle, context: &impl IdStore, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "handle ")?;
         self.fmt_expr(handle_.expression, context, f)?;
 
@@ -919,7 +905,7 @@ impl<'a> CstDisplay<'a> {
     }
 
     fn fmt_handle_pattern(
-        &mut self, pattern: &HandlePattern, context: &TopLevelContext, f: &mut Formatter,
+        &mut self, pattern: &HandlePattern, context: &impl IdStore, f: &mut Formatter,
     ) -> std::fmt::Result {
         self.fmt_name(pattern.function, context, f)?;
         for arg in pattern.args.iter() {
@@ -935,14 +921,8 @@ impl<'a> CstDisplay<'a> {
         Ok(())
     }
 
-    fn fmt_pattern(&mut self, id: PatternId, context: &TopLevelContext, f: &mut Formatter) -> std::fmt::Result {
-        let pattern = context.patterns.get(id).map(Cow::Borrowed).unwrap_or_else(|| {
-            let db = self.db_type_check().unwrap();
-            let check = TypeCheck(self.current_item_id.unwrap()).get(db);
-            Cow::Owned(check.result.context[id].clone())
-        });
-
-        match pattern.as_ref() {
+    fn fmt_pattern(&mut self, id: PatternId, context: &impl IdStore, f: &mut Formatter) -> std::fmt::Result {
+        match context.get_pattern(id) {
             Pattern::Variable(name) => self.fmt_name(*name, context, f),
             Pattern::Literal(literal) => self.fmt_literal(literal, f),
             Pattern::Constructor(path, args) => {
@@ -964,7 +944,7 @@ impl<'a> CstDisplay<'a> {
                 self.fmt_pattern(*pattern, context, f)?;
 
                 // If show types is set we don't want to print annotations twice
-                if !(matches!(&context.patterns[*pattern], Pattern::Variable(_)) && self.config.show_types) {
+                if !(matches!(context.get_pattern(*pattern), Pattern::Variable(_)) && self.config.show_types) {
                     write!(f, ": ")?;
                     self.fmt_type(typ, context, f)?;
                 }
@@ -979,7 +959,7 @@ impl<'a> CstDisplay<'a> {
     }
 
     fn fmt_reference(
-        &mut self, reference: &Reference, context: &TopLevelContext, f: &mut Formatter,
+        &mut self, reference: &Reference, context: &impl IdStore, f: &mut Formatter,
     ) -> std::fmt::Result {
         write!(f, "{}{}", reference.mutability, reference.sharedness)?;
         if reference.sharedness != Sharedness::Shared {
@@ -989,12 +969,12 @@ impl<'a> CstDisplay<'a> {
     }
 
     fn fmt_type_annotation(
-        &mut self, type_annotation: &TypeAnnotation, context: &TopLevelContext, f: &mut Formatter,
+        &mut self, type_annotation: &TypeAnnotation, context: &impl IdStore, f: &mut Formatter,
     ) -> std::fmt::Result {
         self.fmt_expr(type_annotation.lhs, context, f)?;
 
         // If show types is set we don't want to print annotations twice
-        if !(matches!(&context.exprs[type_annotation.lhs], Expr::Variable(_)) && self.config.show_types) {
+        if !(matches!(context.get_expr(type_annotation.lhs), Expr::Variable(_)) && self.config.show_types) {
             write!(f, ": ")?;
             self.fmt_type(&type_annotation.rhs, context, f)?;
         }
@@ -1002,7 +982,7 @@ impl<'a> CstDisplay<'a> {
     }
 
     fn fmt_constructor(
-        &mut self, constructor: &Constructor, context: &TopLevelContext, f: &mut Formatter,
+        &mut self, constructor: &Constructor, context: &impl IdStore, f: &mut Formatter,
     ) -> std::fmt::Result {
         self.fmt_type(&constructor.typ, context, f)?;
         write!(f, " with")?;
@@ -1017,7 +997,7 @@ impl<'a> CstDisplay<'a> {
         Ok(())
     }
 
-    fn fmt_comptime(&mut self, comptime: &Comptime, context: &TopLevelContext, f: &mut Formatter) -> std::fmt::Result {
+    fn fmt_comptime(&mut self, comptime: &Comptime, context: &impl IdStore, f: &mut Formatter) -> std::fmt::Result {
         match comptime {
             Comptime::Expr(expr_id) => {
                 write!(f, "#")?;
@@ -1049,9 +1029,9 @@ impl<'a> CstDisplay<'a> {
     }
 
     /// True if this pattern never requires parenthesis
-    fn is_pattern_atom(&self, pattern: PatternId, context: &TopLevelContext) -> bool {
+    fn is_pattern_atom(&self, pattern: PatternId, context: &impl IdStore) -> bool {
         use Pattern::*;
-        match &context.patterns[pattern] {
+        match context.get_pattern(pattern) {
             Error | Variable(_) | Literal(_) | MethodName { .. } => true,
             Constructor(_, args) => args.is_empty(),
             TypeAnnotation(_, _) => false,
@@ -1059,7 +1039,7 @@ impl<'a> CstDisplay<'a> {
     }
 
     fn fmt_parameters(
-        &mut self, parameters: &[Parameter], context: &TopLevelContext, f: &mut Formatter,
+        &mut self, parameters: &[Parameter], context: &impl IdStore, f: &mut Formatter,
     ) -> std::fmt::Result {
         for parameter in parameters {
             write!(f, " ")?;
@@ -1079,7 +1059,7 @@ impl<'a> CstDisplay<'a> {
     }
 
     fn fmt_decision_tree(
-        &mut self, tree: &DecisionTree, context: &TopLevelContext, f: &mut Formatter,
+        &mut self, tree: &DecisionTree, context: &impl IdStore, f: &mut Formatter,
     ) -> std::fmt::Result {
         match tree {
             DecisionTree::Success(expr_id) => self.fmt_expr(*expr_id, context, f),

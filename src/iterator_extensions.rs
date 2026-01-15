@@ -37,8 +37,8 @@ pub(crate) fn map_btree<T, K: Ord, V>(
     map(items, f)
 }
 
-pub(crate) fn join_arc_str(strings: Vec<Arc<String>>, separator: &str) -> String {
-    let mut strings_iter = strings.into_iter();
+pub(crate) fn join_arc_str(strings: &[Arc<String>], separator: &str) -> String {
+    let mut strings_iter = strings.iter();
     let Some(first) = strings_iter.next() else {
         return String::new();
     };

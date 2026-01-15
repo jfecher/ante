@@ -1,0 +1,41 @@
+greet {prefix: String} (n: I32): Unit =
+    ()
+
+zero_matching () = greet 0
+
+one_matching () =
+    implicit hello = "hello"
+    greet 1
+
+multiple_matching () =
+    implicit one = "1"
+    implicit two = "2"
+    implicit three = "3"
+    greet 2
+
+// args: -e ast-t
+// expected stdout:
+// (greet: fn {String} I32 -> Unit pure) {(prefix: String)} ((n: I32)) : Unit =
+//     ()
+// 
+// (zero_matching: fn Unit -> Unit can _) () = (fn (p1: I32) -> (greet: fn {String} I32 -> Unit pure) {(error)} (p1: I32)) 0
+// 
+// (one_matching: fn Unit -> Unit can _) () =
+//     implicit (hello: String) = "hello"
+//     (fn (p2: I32) -> (greet: fn {String} I32 -> Unit pure) {(hello: String)} (p2: I32)) 1
+// 
+// (multiple_matching: fn Unit -> Unit can _) () =
+//     implicit (one: String) = "1"
+//     implicit (two: String) = "2"
+//     implicit (three: String) = "3"
+//     (fn (p1: I32) -> (greet: fn {String} I32 -> Unit pure) {(error)} (p1: I32)) 2
+
+// expected stderr:
+// examples/typechecking/implicit.an:4:19	error: No implicit found for type String required by parameter 1 of greet
+// zero_matching () = greet 0
+// 
+// examples/typechecking/implicit.an:14:4	error: Multiple matching implicits found for type String required by parameter 1 of greet: one, two, three
+//     greet 2
+// 
+// Found 2 errors and 0 warnings
+

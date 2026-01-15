@@ -37,12 +37,12 @@ foo (e: Either) =
 //     | Down
 // 
 // (foo: fn Either -> Unit can _) ((e: Either)) =
-//     (internal_match_variable_9: (error)) = (e: Either)
-//     switch (internal_match_variable_9: Either)
+//     (match_var9: (error)) = (e: Either)
+//     switch (match_var9: Either)
 //     | 0 -> ()
 //     | 1 -> ()
-//     (internal_match_variable_10: (error)) = (Directions.Up: Directions)
-//     switch (internal_match_variable_10: Directions)
+//     (match_var10: (error)) = (Directions.Up: Directions)
+//     switch (match_var10: Directions)
 //     | 0 -> ()
 //     | 1 -> ()
 //     | 2 -> ()

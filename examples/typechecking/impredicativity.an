@@ -34,14 +34,14 @@ a7 = choose id auto
 // 
 // (ids: _) = (error)
 // 
-// (auto: fn (error) -> _ can _) ((x: (error))) = (x: fn _ -> _ can _) (error)
+// (auto: fn (error) -> _ can _) ((x: (error))) = (x: (error)) (error)
 // 
-// (auto_prime: fn (error) -> _ can _) ((x: (error))) = (x: fn (error) -> _ can _) (x: (error))
+// (auto_prime: fn (error) -> _ can _) ((x: (error))) = (x: (error)) (x: (error))
 // 
 // (f5: _) = (auto: fn (error) -> _ can _) (error)
 // 
 // (poly: fn (error) -> _, _ can _) ((f: (error))) =
-//     (f: fn I32 -> _ can _) 42 (,: fn _ _ -> _, _ pure) (f: fn Bool -> _ can _) true
+//     (f: (error)) 42 (,: fn _ _ -> _, _ pure) (f: (error)) true
 // 
 // (f9: _) =
 //     (f: fn (fn (error) -> _, _ can _) -> _ can _) = (revapp: (error)) (error)

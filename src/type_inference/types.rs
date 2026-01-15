@@ -11,10 +11,9 @@ use crate::{
     name_resolution::{Origin, builtin::Builtin},
     parser::{
         cst::{self, Mutability, Sharedness},
-        ids::NameId,
+        ids::NameStore,
     },
     type_inference::generics::Generic,
-    vecmap::VecMap,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -169,16 +168,16 @@ impl Type {
     }
 
     /// Convert this type to a string (without any coloring)
-    pub fn to_string<Db>(&self, bindings: &TypeBindings, names: &VecMap<NameId, Arc<String>>, db: &Db) -> String
+    pub fn to_string<Db>(&self, bindings: &TypeBindings, names: &impl NameStore, db: &Db) -> String
     where
         Db: DbGet<GetItem>,
     {
         self.display(bindings, names, db).to_string()
     }
 
-    pub fn display<'local, Db>(
-        &'local self, bindings: &'local TypeBindings, names: &'local VecMap<NameId, Arc<String>>, db: &'local Db,
-    ) -> TypePrinter<'local, Db>
+    pub fn display<'local, Db, Names>(
+        &'local self, bindings: &'local TypeBindings, names: &'local Names, db: &'local Db,
+    ) -> TypePrinter<'local, Db, Names>
     where
         Db: DbGet<GetItem>,
     {
@@ -483,25 +482,27 @@ impl Type {
     }
 }
 
-pub struct TypePrinter<'a, Db> {
+pub struct TypePrinter<'a, Db, Names> {
     typ: &'a Type,
     bindings: &'a TypeBindings,
-    names: &'a VecMap<NameId, Arc<String>>,
+    names: &'a Names,
     db: &'a Db,
 }
 
-impl<Db> std::fmt::Display for TypePrinter<'_, Db>
+impl<Db, Names> std::fmt::Display for TypePrinter<'_, Db, Names>
 where
     Db: DbGet<GetItem>,
+    Names: NameStore,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         self.fmt_type(self.typ, false, f)
     }
 }
 
-impl<Db> TypePrinter<'_, Db>
+impl<Db, Names> TypePrinter<'_, Db, Names>
 where
     Db: DbGet<GetItem>,
+    Names: NameStore,
 {
     fn fmt_type(&self, typ: &Type, parenthesize: bool, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match typ {
@@ -574,7 +575,7 @@ where
                     unreachable!()
                 }
             },
-            Origin::Local(name) => write!(f, "{}", self.names[name]),
+            Origin::Local(name) => write!(f, "{}", self.names.get_name(name)),
             Origin::TypeResolution => write!(f, "TypeResolution"),
             Origin::Builtin(builtin) => write!(f, "{builtin}"),
         }

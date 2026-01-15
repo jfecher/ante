@@ -290,10 +290,12 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         self.compiler.accumulate(Diagnostic::ConstructorExpectedFoundType { type_name, constructor_names, location });
     }
 
-    pub(super) fn fresh_match_variable(&mut self, variable_type: Type, location: Location) -> (PathId, NameId) {
+    pub(super) fn fresh_variable(
+        &mut self, name_prefix: &str, variable_type: Type, location: Location,
+    ) -> (PathId, NameId) {
         let mut name = String::new();
         let path_id = self.current_extended_context_mut().push_path_with_id(location.clone(), |id| {
-            name = format!("internal_match_variable_{}", usize::from(id));
+            name = format!("{name_prefix}{}", usize::from(id));
             Path { components: vec![(name.clone(), location.clone())] }
         });
 
@@ -479,7 +481,7 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
     }
 
     fn fresh_match_variables(&mut self, variable_types: &[Type], location: Location) -> Vec<PathId> {
-        mapvec(variable_types, |typ| self.checker.fresh_match_variable(typ.clone(), location.clone()).0)
+        mapvec(variable_types, |typ| self.checker.fresh_variable("match_var", typ.clone(), location.clone()).0)
     }
 
     /// Compiles the cases and fallback cases for integer and range patterns.
@@ -817,9 +819,9 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
         if args.is_empty() {
             constructor.clone()
         } else if constructor.as_ref() == "," {
-            Arc::new(format!("{}", join_arc_str(args, ", ")))
+            Arc::new(format!("{}", join_arc_str(&args, ", ")))
         } else {
-            Arc::new(format!("{constructor} {}", join_arc_str(args, " ")))
+            Arc::new(format!("{constructor} {}", join_arc_str(&args, " ")))
         }
     }
 

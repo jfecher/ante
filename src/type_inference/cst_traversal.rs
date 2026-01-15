@@ -27,6 +27,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         self.check_pattern(definition.pattern, &expected_type);
         self.check_expr(definition.rhs, &expected_type);
+
+        if definition.implicit {
+            self.add_implicit(definition.pattern);
+        }
     }
 
     /// Check an expression's type matches the expected type.
@@ -44,10 +48,12 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Expr::Call(call) => self.check_call(call, expected),
             Expr::Lambda(lambda) => self.check_lambda(lambda, expected, id),
             Expr::Sequence(items) => {
+                self.push_scope();
                 for (i, item) in items.iter().enumerate() {
                     let expected_type = if i == items.len() - 1 { expected } else { &self.next_type_variable() };
                     self.check_expr(item.expr, expected_type);
                 }
+                self.pop_scope();
             },
             Expr::Definition(definition) => {
                 self.check_definition(definition);
@@ -134,9 +140,12 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     }
 
     fn check_path(&mut self, path: PathId, expected: &Type, expr: Option<ExprId>) {
-        let origin = self.current_resolve().path_origins.get(&path).copied().or_else(|| {
-            self.current_extended_context().path_origin(path)
-        });
+        let origin = self
+            .current_resolve()
+            .path_origins
+            .get(&path)
+            .copied()
+            .or_else(|| self.current_extended_context().path_origin(path));
 
         let actual = match origin {
             Some(Origin::TopLevelDefinition(id)) => {
@@ -153,7 +162,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             None => return,
         };
         if let Some(expr) = expr {
-            if self.try_coercion(&actual, expected, path, expr) {
+            if self.try_coercion(&actual, expected, expr) {
                 self.check_expr(expr, expected);
                 return;
                 // no need to unify or modify self.path_types, that will be handled in the
@@ -299,7 +308,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Cow::Borrowed(&function_type.return_type)
         };
 
+        self.push_scope();
         self.check_expr(lambda.body, &return_type);
+        self.pop_scope();
     }
 
     /// Check a function's parameter count using the given parameter types as the expected count.
@@ -347,12 +358,16 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Cow::Owned(self.next_type_variable())
         };
 
+        self.push_scope();
         self.check_expr(if_.then, &expected);
+        self.pop_scope();
 
         // TODO: No way to identify if `then_type != else_type`. This would be useful to point out
         // for error messages.
         if let Some(else_) = if_.else_ {
+            self.push_scope();
             self.check_expr(else_, &expected);
+            self.pop_scope();
         }
     }
 
@@ -363,13 +378,15 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         for (pattern, branch) in match_.cases.iter() {
             self.check_pattern(*pattern, &expr_type);
             // TODO: Specify if branch_type != type of first branch for better error messages
+            self.push_scope();
             self.check_expr(*branch, expected);
+            self.pop_scope();
         }
 
         // Now compile the match into a decision tree. The `match expr | ...` expression will be
         // replaced with `<fresh> = expr; <decision tree>`
         let location = self.current_context().expr_locations[match_.expression].clone();
-        let (match_var, match_var_name) = self.fresh_match_variable(expr_type.clone(), location.clone());
+        let (match_var, match_var_name) = self.fresh_variable("match_var", expr_type.clone(), location.clone());
 
         // `<match_var> = <expression being matched>`
         let preamble = self.let_binding(match_var_name, match_.expression);

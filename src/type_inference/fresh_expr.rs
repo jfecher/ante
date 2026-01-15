@@ -13,7 +13,7 @@ use crate::{
     parser::{
         context::TopLevelContext,
         cst::{Expr, Name, Path, Pattern},
-        ids::{ExprId, NameId, PathId, PatternId},
+        ids::{ExprId, IdStore, NameId, NameStore, PathId, PatternId},
     },
     type_inference::{TypeChecker, patterns::DecisionTree, types::Type},
 };
@@ -77,6 +77,12 @@ impl<'local, 'innter> TypeChecker<'local, 'innter> {
 
     pub(super) fn push_name(&mut self, name: Name, location: Location) -> NameId {
         self.current_extended_context_mut().push_name(name, location)
+    }
+
+    pub(super) fn push_path(&mut self, path: Path, typ: Type, location: Location) -> PathId {
+        let id = self.current_extended_context_mut().push_path(path, location);
+        self.path_types.insert(id, typ);
+        id
     }
 }
 
@@ -258,9 +264,9 @@ impl Index<ExprId> for ExtendedTopLevelContext {
     type Output = Expr;
 
     fn index(&self, index: ExprId) -> &Self::Output {
-        match self.original.exprs.get(index) {
+        match self.more_exprs.get(&index) {
             Some(expr) => expr,
-            None => &self.more_exprs[&index],
+            None => &self.original.exprs[index],
         }
     }
 }
@@ -269,9 +275,9 @@ impl Index<PathId> for ExtendedTopLevelContext {
     type Output = Path;
 
     fn index(&self, index: PathId) -> &Self::Output {
-        match self.original.paths.get(index) {
+        match self.more_paths.get(&index) {
             Some(path) => path,
-            None => &self.more_paths[&index],
+            None => &self.original.paths[index],
         }
     }
 }
@@ -280,9 +286,9 @@ impl Index<NameId> for ExtendedTopLevelContext {
     type Output = Name;
 
     fn index(&self, index: NameId) -> &Self::Output {
-        match self.original.names.get(index) {
+        match self.more_names.get(&index) {
             Some(name) => name,
-            None => &self.more_names[&index],
+            None => &self.original.names[index],
         }
     }
 }
@@ -291,9 +297,29 @@ impl Index<PatternId> for ExtendedTopLevelContext {
     type Output = Pattern;
 
     fn index(&self, index: PatternId) -> &Self::Output {
-        match self.original.patterns.get(index) {
+        match self.more_patterns.get(&index) {
             Some(pattern) => pattern,
-            None => &self.more_patterns[&index],
+            None => &self.original.patterns[index],
         }
+    }
+}
+
+impl IdStore for ExtendedTopLevelContext {
+    fn get_expr(&self, id: ExprId) -> &crate::parser::cst::Expr {
+        &self[id]
+    }
+
+    fn get_pattern(&self, id: PatternId) -> &crate::parser::cst::Pattern {
+        &self[id]
+    }
+
+    fn get_path(&self, id: PathId) -> &crate::parser::cst::Path {
+        &self[id]
+    }
+}
+
+impl NameStore for ExtendedTopLevelContext {
+    fn get_name(&self, id: NameId) -> &Name {
+        &self[id]
     }
 }

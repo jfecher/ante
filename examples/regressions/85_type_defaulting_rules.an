@@ -21,33 +21,9 @@ main () =
 main ()
 
 // args: --delete-binary
+// expected exit status: 101
 // expected stderr:
-// examples/regressions/85_type_defaulting_rules.an:7:9	error: `>` not found in scope
-//     if n > 0 then
-// 
-// examples/regressions/85_type_defaulting_rules.an:9:22	error: `-` not found in scope
-//         count_down (n - 1) f
-// 
-// examples/regressions/85_type_defaulting_rules.an:14:4	error: Expected fn _ -> _ can _ but found fn _ (fn _ -> _ can _) -> Unit can _
-//     count_down 3 fn x ->
-// 
-// examples/regressions/85_type_defaulting_rules.an:14:17	error: Expected an unindent but found `fn`
-//     count_down 3 fn x ->
-// 
-// examples/regressions/85_type_defaulting_rules.an:17:21	error: `print` not found in scope
-//     print_offset _ = print offset
-// 
-// examples/regressions/85_type_defaulting_rules.an:17:27	error: `offset` not found in scope
-//     print_offset _ = print offset
-// 
-// examples/regressions/85_type_defaulting_rules.an:18:25	error: `_` not found in scope
-//     closure = count_down _ print_offset
-// 
-// examples/regressions/85_type_defaulting_rules.an:19:12	error: Expected `=` to begin the function body but found `2`
-//     closure 2
-// 
-// examples/regressions/85_type_defaulting_rules.an:21:5	error: Expected `=` to begin the function body but found `()`
-// main ()
-// 
-// Found 9 errors and 0 warnings
+// thread 'main' panicked at src/type_inference/mod.rs:377:56:
+// called `Option::unwrap()` on a `None` value
+// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 

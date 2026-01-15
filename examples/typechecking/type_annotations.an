@@ -21,7 +21,7 @@ main () =
 // (foo: fn I32 String -> Char pure) ((_: I32)) ((_: String)) : Char = c"a"
 // 
 // (bar: fn a a -> I32 pure) =
-//     fn (_: a) (b: a) -> (b: I32)
+//     fn (_: a) (b: a) -> (b: a)
 // 
 // (baz: forall _1. fn Usz -> Ptr a pure) ((a: Usz)) : Ptr a =
 //     (transmute: (error)) (a: Usz)

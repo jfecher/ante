@@ -11,7 +11,7 @@ use crate::{
     name_resolution::{Origin, ResolutionResult},
     parser::{
         context::TopLevelContext,
-        cst::{self, Name, TopLevelItem, TopLevelItemKind},
+        cst::{self, Name, Pattern, TopLevelItem, TopLevelItemKind},
         ids::{ExprId, NameId, PathId, PatternId, TopLevelId, TopLevelName},
     },
     type_inference::{
@@ -131,6 +131,8 @@ struct TypeChecker<'local, 'inner> {
 
     /// Types of each top-level item in the current SCC being worked on
     item_types: Rc<FxHashMap<TopLevelName, Type>>,
+
+    implicits_in_scope: Vec<Vec<NameId>>,
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -163,6 +165,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             current_item: None,
             item_contexts,
             id_contexts,
+            implicits_in_scope: vec![Vec::new()],
         };
 
         let mut item_types = FxHashMap::default();
@@ -189,6 +192,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 (*item_id, (item, item_context, resolve))
             })
             .collect()
+    }
+
+    fn push_scope(&mut self) {
+        self.implicits_in_scope.push(Vec::new());
+    }
+
+    fn pop_scope(&mut self) {
+        self.implicits_in_scope.pop();
     }
 
     /// Returns the context of the current item, containing mappings for IDs set during parsing.
@@ -309,14 +320,12 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// search for implicit values in scope and create a new wrapper function over `expr`.
     ///
     /// Returns `true` if `expr` was modified, or `false` otherwise
-    fn try_coercion(
-        &mut self, actual: &Type, expected: &Type, locator: impl Locateable, expr: ExprId,
-    ) -> bool {
+    fn try_coercion(&mut self, actual: &Type, expected: &Type, expr: ExprId) -> bool {
         match (self.follow_type(actual), self.follow_type(expected)) {
             (Type::Function(actual), Type::Function(expected))
                 if actual.parameters.len() != expected.parameters.len() =>
             {
-                let new_expr = self.implicit_parameter_coercion(actual.clone(), expected.clone(), locator, expr);
+                let new_expr = self.implicit_parameter_coercion(actual.clone(), expected.clone(), expr);
                 self.current_extended_context_mut().insert_expr(expr, new_expr);
                 true
             },
@@ -338,7 +347,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// slotted in as the argument instead. In this way, this function will always return a new
     /// closure wrapper.
     fn implicit_parameter_coercion(
-        &mut self, actual: Arc<FunctionType>, expected: Arc<FunctionType>, locator: impl Locateable, expr: ExprId,
+        &mut self, actual: Arc<FunctionType>, expected: Arc<FunctionType>, function: ExprId,
     ) -> cst::Expr {
         // Looking for implicit parameters that are in `actual` but not `expected`.
         // The reverse would be a type error.
@@ -356,25 +365,13 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             match (actual.is_implicit, current_expected.as_ref()) {
                 // actual is implicit, but expected isn't, search for an implicit in scope
                 (true, expected) if expected.map_or(true, |param| !param.is_implicit) => {
-                    let (value, typ) = self.find_implicit_value(&actual.typ).unwrap_or_else(|| {
-                        // error: No implicit found for parameter N of type T
-                        let location = locator.locate(self);
-                        let type_string = self.type_to_string(&actual.typ);
-                        let error_expr =
-                            self.current_extended_context_mut().push_expr(cst::Expr::Error, location.clone());
-
-                        let parameter_index = new_expected.len();
-                        let function_name = self.try_get_name(expr);
-                        self.compiler.accumulate(Diagnostic::NoImplicitFound {
-                            type_string,
-                            function_name,
-                            parameter_index,
-                            location,
-                        });
-                        (error_expr, Type::ERROR)
+                    let value = self.find_implicit_value(&actual.typ, new_expected.len(), function);
+                    let value = value.unwrap_or_else(|| {
+                        let location = function.locate(self);
+                        self.push_expr(cst::Expr::Error, Type::ERROR, location)
                     });
                     implicits_added.push(Some(value));
-                    new_expected.push(ParameterType::implicit(typ));
+                    new_expected.push(ParameterType::implicit(self.expr_types[&value].clone()));
                 },
                 _ => {
                     new_expected.push(current_expected.unwrap());
@@ -383,7 +380,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 },
             }
         }
-        self.create_closure_wrapper_for_implicit(expr, implicits_added, new_expected, locator)
+        self.create_closure_wrapper_for_implicit(function, implicits_added, new_expected)
     }
 
     /// If the expression is a variable, return its name
@@ -394,9 +391,71 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
-    /// Search for an implicit value in scope with the given type
-    fn find_implicit_value(&self, _typ: &Type) -> Option<(ExprId, Type)> {
-        None
+    /// Search for an implicit value in scope with the given type, issuing an error if no implicit
+    /// is found or if multiple matching implicits are found.
+    fn find_implicit_value(&mut self, target_type: &Type, parameter_index: usize, function: ExprId) -> Option<ExprId> {
+        // TODO: We shouldn't commit unification bindings until we actually select a candidate
+
+        let mut matching = Vec::with_capacity(1);
+
+        // TODO: Remove clone by making try_unify no longer require a mutable self
+        for scope in self.implicits_in_scope.clone() {
+            for name in scope {
+                let name_type = self.name_types[&name].clone();
+                if self.try_unify(&name_type, target_type).is_ok() {
+                    matching.push((name, name_type));
+                }
+            }
+        }
+
+        let (name, name_type) = if matching.is_empty() {
+            self.issue_no_implicit_found_error(target_type, parameter_index, function);
+            return None;
+        } else if matching.len() == 1 {
+            matching.first().unwrap().clone()
+        } else {
+            self.issue_multiple_matching_implicits_error(matching, target_type, parameter_index, function);
+            return None;
+        };
+
+        let location = function.locate(self);
+        let name = self.current_extended_context()[name].as_ref().clone();
+        let path = self.push_path(cst::Path::ident(name, location.clone()), name_type.clone(), location.clone());
+        Some(self.push_expr(cst::Expr::Variable(path), name_type, location))
+    }
+
+    // error: No implicit found for parameter N of type T
+    fn issue_no_implicit_found_error(&self, implicit_type: &Type, parameter_index: usize, function: ExprId) {
+        let type_string = self.type_to_string(&implicit_type);
+        let function_name = self.try_get_name(function);
+        let location = function.locate(self);
+        self.compiler.accumulate(Diagnostic::NoImplicitFound { type_string, function_name, parameter_index, location });
+    }
+
+    // error: No implicit found for parameter N of type T
+    fn issue_multiple_matching_implicits_error(
+        &self, matching: Vec<(NameId, Type)>, implicit_type: &Type, parameter_index: usize, function: ExprId,
+    ) {
+        let type_string = self.type_to_string(&implicit_type);
+        let function_name = self.try_get_name(function);
+        let location = function.locate(self);
+        let matches = mapvec(matching, |(name, _)| self.current_extended_context()[name].clone());
+        self.compiler.accumulate(Diagnostic::MultipleImplicitsFound { matches, type_string, function_name, parameter_index, location });
+    }
+
+    /// Try to add the given implicit into scope
+    fn add_implicit(&mut self, id: PatternId) {
+        let name = match &self.current_extended_context()[id] {
+            Pattern::Error => return,
+            Pattern::Variable(name) => *name,
+            Pattern::TypeAnnotation(inner_id, _) => return self.add_implicit(*inner_id),
+            _ => {
+                let location = id.locate(self);
+                self.compiler.accumulate(Diagnostic::ImplicitNotAVariable { location });
+                return;
+            },
+        };
+        self.implicits_in_scope.last_mut().unwrap().push(name);
     }
 
     /// Given:
@@ -408,7 +467,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// `fn (a: t) (c: v) -> f a {i} c`
     fn create_closure_wrapper_for_implicit(
         &mut self, function: ExprId, implicits_added: Vec<Option<ExprId>>, argument_types: Vec<ParameterType>,
-        locator: impl Locateable,
     ) -> cst::Expr {
         // We should always have at least 1 added implicit parameter
         assert!(implicits_added.iter().any(|param| param.is_some()));
@@ -424,8 +482,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     arguments.push(cst::Argument::implicit(arg));
                 },
                 None => {
-                    let location = locator.locate(self);
-                    let (var_path, var_name) = self.fresh_match_variable(arg_type.typ.clone(), location.clone());
+                    let location = function.locate(self);
+                    let (var_path, var_name) = self.fresh_variable("p", arg_type.typ.clone(), location.clone());
 
                     let pattern = self.push_pattern(cst::Pattern::Variable(var_name), location.clone());
                     let expr = self.push_expr(cst::Expr::Variable(var_path), arg_type.typ, location);
@@ -435,10 +493,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 },
             }
         }
-        
+
         // Since `function` is the ExprId we'll be replacing, we can't use it directly here. We
         // have to copy it to a new id.
-        let location = locator.locate(self);
+        let location = function.locate(self);
         let expr = self.current_extended_context()[function].clone();
 
         // This type should be overwritten later when cst_traversal traverses this new expr

@@ -3,7 +3,10 @@ use std::{cmp::Ordering, collections::BTreeSet, path::PathBuf, sync::Arc};
 use colored::{ColoredString, Colorize};
 use serde::{Deserialize, Serialize};
 
-use crate::{incremental::Db, iterator_extensions::mapvec, lexer::token::Token, type_inference::errors::TypeErrorKind};
+use crate::{
+    incremental::Db, iterator_extensions::mapvec, lexer::token::Token, parser::cst::Name,
+    type_inference::errors::TypeErrorKind,
+};
 
 mod location;
 mod unimplemented_item;
@@ -135,6 +138,16 @@ pub enum Diagnostic {
         location: Location,
     },
     NoImplicitFound {
+        type_string: String,
+        function_name: Option<String>,
+        parameter_index: usize,
+        location: Location,
+    },
+    ImplicitNotAVariable {
+        location: Location,
+    },
+    MultipleImplicitsFound {
+        matches: Vec<Name>,
         type_string: String,
         function_name: Option<String>,
         parameter_index: usize,
@@ -316,7 +329,22 @@ impl Diagnostic {
             Diagnostic::NoImplicitFound { type_string, function_name, parameter_index, location: _ } => {
                 let function = function_name.as_ref().map(|s| s.as_str()).unwrap_or("function");
                 let parameter = parameter_index + 1;
-                format!("No implicit found for type {} required by parameter {parameter} of {function}", type_string.blue(), )
+                format!(
+                    "No implicit found for type {} required by parameter {parameter} of {function}",
+                    type_string.blue(),
+                )
+            },
+            Diagnostic::ImplicitNotAVariable { location: _ } => {
+                format!("Implicits must be a simple variable, more complex patterns are not supported")
+            },
+            Diagnostic::MultipleImplicitsFound { matches, type_string, function_name, parameter_index, location: _ } => {
+                let function = function_name.as_ref().map(|s| s.as_str()).unwrap_or("function");
+                let parameter = parameter_index + 1;
+                let matches = crate::iterator_extensions::join_arc_str(matches, ", ");
+                format!(
+                    "Multiple matching implicits found for type {} required by parameter {parameter} of {function}: {matches}",
+                    type_string.blue(),
+                )
             }
         }
     }
@@ -351,7 +379,9 @@ impl Diagnostic {
             | Diagnostic::InvalidPattern { location }
             | Diagnostic::TypeMustBeKnownMemberAccess { location }
             | Diagnostic::ConstructorExpectedFoundType { location, .. }
+            | Diagnostic::ImplicitNotAVariable { location }
             | Diagnostic::NoImplicitFound { location, .. }
+            | Diagnostic::MultipleImplicitsFound { location, .. }
             | Diagnostic::Unimplemented { location, .. } => location,
         }
     }

@@ -29,56 +29,56 @@ main () =
 // args: -e ast-t
 // expected stdout:
 // (main: fn Unit -> I32 can _) () =
-//     (internal_match_variable_27: (error)) = (Maybe.None: Maybe _)
-//     switch (internal_match_variable_27: Maybe _)
+//     (match_var27: (error)) = (Maybe.None: Maybe _)
+//     switch (match_var27: Maybe _)
 //     | 0 -> 1
-//     | 1, (internal_match_variable_28: _) -> #missing_case
-//     (internal_match_variable_29: (error)) = 2 (,: fn I32 (Maybe _) -> I32, (Maybe _) pure) (Maybe.None: Maybe _)
-//     switch (internal_match_variable_29: I32, (Maybe _))
-//     | 0, (internal_match_variable_30: I32), (internal_match_variable_31: Maybe _) -> switch (internal_match_variable_31: Maybe _)
-//         | 0 -> switch (internal_match_variable_30: I32)
+//     | 1, (match_var28: _) -> #missing_case
+//     (match_var29: (error)) = 2 (,: fn I32 (Maybe _) -> I32, (Maybe _) pure) (Maybe.None: Maybe _)
+//     switch (match_var29: I32, (Maybe _))
+//     | 0, (match_var30: I32), (match_var31: Maybe _) -> switch (match_var31: Maybe _)
+//         | 0 -> switch (match_var30: I32)
 //             | 0 -> ()
 //             | _ -> #missing_case
-//         | 1, (internal_match_variable_32: _) -> 
-//                 (_: _) = (internal_match_variable_32: _)
+//         | 1, (match_var32: _) -> 
+//                 (_: _) = (match_var32: _)
 //                 
-//                     (_: I32) = (internal_match_variable_30: I32)
+//                     (_: I32) = (match_var30: I32)
 //                     ()
-//     (internal_match_variable_33: (error)) = (Maybe.None: Maybe (Maybe _))
-//     switch (internal_match_variable_33: Maybe (Maybe _))
+//     (match_var33: (error)) = (Maybe.None: Maybe (Maybe _))
+//     switch (match_var33: Maybe (Maybe _))
 //     | 0 -> 2
-//     | 1, (internal_match_variable_34: Maybe _) -> switch (internal_match_variable_34: Maybe _)
+//     | 1, (match_var34: Maybe _) -> switch (match_var34: Maybe _)
 //         | 0 -> 
-//                 (_: Maybe _) = (internal_match_variable_34: Maybe _)
+//                 (_: Maybe _) = (match_var34: Maybe _)
 //                 1
-//         | 1, (internal_match_variable_35: _) -> 
-//                 (_: _) = (internal_match_variable_35: _)
+//         | 1, (match_var35: _) -> 
+//                 (_: _) = (match_var35: _)
 //                 0
-//     (internal_match_variable_36: (error)) = 1 (,: fn I32 I32 -> I32, I32 pure) 2
-//     switch (internal_match_variable_36: I32, I32)
-//     | 0, (internal_match_variable_37: I32), (internal_match_variable_38: I32) -> switch (internal_match_variable_37: I32)
+//     (match_var36: (error)) = 1 (,: fn I32 I32 -> I32, I32 pure) 2
+//     switch (match_var36: I32, I32)
+//     | 0, (match_var37: I32), (match_var38: I32) -> switch (match_var37: I32)
 //         | 1 -> 
-//                 (_: I32) = (internal_match_variable_38: I32)
+//                 (_: I32) = (match_var38: I32)
 //                 0
-//         | _ -> switch (internal_match_variable_38: I32)
+//         | _ -> switch (match_var38: I32)
 //             | 2 -> 
-//                     (_: I32) = (internal_match_variable_37: I32)
+//                     (_: I32) = (match_var37: I32)
 //                     2
 //             | _ -> #missing_case
-//     (internal_match_variable_39: (error)) = true (,: fn Bool Bool -> Bool, Bool pure) true
-//     switch (internal_match_variable_39: Bool, Bool)
-//     | 0, (internal_match_variable_40: Bool), (internal_match_variable_41: Bool) -> switch (internal_match_variable_41: Bool)
-//         | false -> switch (internal_match_variable_40: Bool)
+//     (match_var39: (error)) = true (,: fn Bool Bool -> Bool, Bool pure) true
+//     switch (match_var39: Bool, Bool)
+//     | 0, (match_var40: Bool), (match_var41: Bool) -> switch (match_var41: Bool)
+//         | false -> switch (match_var40: Bool)
 //             | false -> #missing_case
 //             | true -> 1
-//         | true -> switch (internal_match_variable_40: Bool)
+//         | true -> switch (match_var40: Bool)
 //             | false -> 0
 //             | true -> #missing_case
-//     (internal_match_variable_42: (error)) = 1 (,: fn I32 (I32, (I32, I32)) -> I32, (I32, (I32, I32)) pure) (2 (,: fn I32 (I32, I32) -> I32, (I32, I32) pure) (3 (,: fn I32 I32 -> I32, I32 pure) 4))
-//     switch (internal_match_variable_42: I32, (I32, (I32, I32)))
-//     | 0, (internal_match_variable_43: I32), (internal_match_variable_44: I32, (I32, I32)) -> switch (internal_match_variable_43: I32)
-//         | 1 -> switch (internal_match_variable_44: I32, (I32, I32))
-//             | 0, (internal_match_variable_45: I32), (internal_match_variable_46: I32, I32) -> 1
+//     (match_var42: (error)) = 1 (,: fn I32 (I32, (I32, I32)) -> I32, (I32, (I32, I32)) pure) (2 (,: fn I32 (I32, I32) -> I32, (I32, I32) pure) (3 (,: fn I32 I32 -> I32, I32 pure) 4))
+//     switch (match_var42: I32, (I32, (I32, I32)))
+//     | 0, (match_var43: I32), (match_var44: I32, (I32, I32)) -> switch (match_var43: I32)
+//         | 1 -> switch (match_var44: I32, (I32, I32))
+//             | 0, (match_var45: I32), (match_var46: I32, I32) -> 1
 //         | _ -> #missing_case
 
 // expected stderr:

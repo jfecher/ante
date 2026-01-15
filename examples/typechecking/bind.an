@@ -17,11 +17,11 @@ add_one x =
 // args: -e ast-t
 // expected stdout:
 // (bind: fn (Maybe _) (fn _ -> Maybe _ can _) -> Maybe _ can _) (opt: Maybe _) (f: fn _ -> Maybe _ can _) =
-//     (internal_match_variable_6: (error)) = (opt: Maybe _)
-//     switch (internal_match_variable_6: Maybe _)
+//     (match_var6: (error)) = (opt: Maybe _)
+//     switch (match_var6: Maybe _)
 //     | 0 -> (Maybe.None: Maybe _)
-//     | 1, (internal_match_variable_7: _) -> 
-//             (x: _) = (internal_match_variable_7: _)
+//     | 1, (match_var7: _) -> 
+//             (x: _) = (match_var7: _)
 //             (f: fn _ -> Maybe _ can _) (x: _)
 // 
 // type Maybe2 t =

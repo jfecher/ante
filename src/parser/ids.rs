@@ -6,7 +6,7 @@ use crate::{
     diagnostics::Location,
     incremental::{DbHandle, Parse},
     name_resolution::namespace::SourceFileId,
-    parser::context::TopLevelContext,
+    parser::{context::TopLevelContext, cst::Name}, vecmap::VecMap,
 };
 
 /// A `TopLevelId` is a 64-bit hash uniquely identifying a particular
@@ -226,5 +226,21 @@ impl From<usize> for NameId {
 impl Display for NameId {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+pub trait IdStore : NameStore {
+    fn get_expr(&self, id: ExprId) -> &crate::parser::cst::Expr;
+    fn get_pattern(&self, id: PatternId) -> &crate::parser::cst::Pattern;
+    fn get_path(&self, id: PathId) -> &crate::parser::cst::Path;
+}
+
+pub trait NameStore {
+    fn get_name(&self, id: NameId) -> &Name;
+}
+
+impl NameStore for VecMap<NameId, Name> {
+    fn get_name(&self, id: NameId) -> &Name {
+        &self[id]
     }
 }

@@ -52,10 +52,10 @@ impl candidate2: Foo Thing with
 //     (foo: (error)) ((Thing: fn Unit -> Thing pure) ())
 // 
 // impl candidate1 {(_: Bar a)}: (Foo: (error)) a with
-//     (foo: fn a -> Unit pure) (a: a) = (bar: fn a -> Unit can _) (a: a)
+//     (foo: fn a -> Unit pure) (a: a) = (bar: Bar a) (a: a)
 // 
 // impl bar {(_: Baz a)}: (Bar: (error)) a with
-//     (bar: fn a -> Unit pure) (a: a) = (baz: fn a -> Unit can _) (a: a)
+//     (bar: fn a -> Unit pure) (a: a) = (baz: Baz Thing) (a: a)
 // 
 // impl baz: (Baz: (error)) Thing with
 //     (baz: fn Thing -> Unit pure) (_: Thing) = ()

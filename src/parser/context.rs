@@ -5,7 +5,7 @@ use crate::{
     name_resolution::namespace::SourceFileId,
     parser::{
         cst::{Expr, Name, Path, Pattern},
-        ids::{ExprId, NameId, PathId, PatternId},
+        ids::{ExprId, IdStore, NameId, NameStore, PathId, PatternId},
     },
     vecmap::VecMap,
 };
@@ -38,5 +38,25 @@ impl TopLevelContext {
             path_locations: VecMap::default(),
             name_locations: VecMap::default(),
         }
+    }
+}
+
+impl IdStore for TopLevelContext {
+    fn get_expr(&self, id: ExprId) -> &crate::parser::cst::Expr {
+        &self.exprs[id]
+    }
+
+    fn get_pattern(&self, id: PatternId) -> &crate::parser::cst::Pattern {
+        &self.patterns[id]
+    }
+
+    fn get_path(&self, id: PathId) -> &crate::parser::cst::Path {
+        &self.paths[id]
+    }
+}
+
+impl NameStore for TopLevelContext {
+    fn get_name(&self, id: NameId) -> &crate::parser::cst::Name {
+        &self.names[id]
     }
 }
