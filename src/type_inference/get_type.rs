@@ -66,6 +66,7 @@ pub(super) fn try_get_type(
             .iter()
             .map(|parameter| match &context.patterns[parameter.pattern] {
                 Pattern::TypeAnnotation(_, typ) => Some(cst::ParameterType::new(typ.clone(), parameter.is_implicit)),
+                Pattern::Literal(cst::Literal::Unit) => Some(cst::ParameterType::explicit(cst::Type::Unit)),
                 _ => None,
             })
             .collect::<Option<Vec<_>>>()?;

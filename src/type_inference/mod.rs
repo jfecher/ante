@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     diagnostics::Diagnostic,
-    incremental::{self, DbHandle, GetItem, Resolve, TypeCheck, TypeCheckSCC},
+    incremental::{self, DbHandle, GetItem, Resolve, TypeCheck, TypeCheckSCC, VisibleImplicits},
     iterator_extensions::mapvec,
     name_resolution::{Origin, ResolutionResult},
     parser::{
@@ -322,12 +322,15 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Returns `true` if `expr` was modified, or `false` otherwise
     fn try_coercion(&mut self, actual: &Type, expected: &Type, expr: ExprId) -> bool {
         match (self.follow_type(actual), self.follow_type(expected)) {
-            (Type::Function(actual), Type::Function(expected))
-                if actual.parameters.len() != expected.parameters.len() =>
+            (Type::Function(actual_fn), Type::Function(expected_fn))
+                if actual_fn.parameters.len() != expected_fn.parameters.len() =>
             {
-                let new_expr = self.implicit_parameter_coercion(actual.clone(), expected.clone(), expr);
-                self.current_extended_context_mut().insert_expr(expr, new_expr);
-                true
+                if let Some(new_expr) = self.implicit_parameter_coercion(actual_fn.clone(), expected_fn.clone(), expr) {
+                    self.current_extended_context_mut().insert_expr(expr, new_expr);
+                    true
+                } else {
+                    false
+                }
             },
             _ => false,
         }
@@ -348,7 +351,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// closure wrapper.
     fn implicit_parameter_coercion(
         &mut self, actual: Arc<FunctionType>, expected: Arc<FunctionType>, function: ExprId,
-    ) -> cst::Expr {
+    ) -> Option<cst::Expr> {
         // Looking for implicit parameters that are in `actual` but not `expected`.
         // The reverse would be a type error.
         let mut new_expected = Vec::new();
@@ -374,7 +377,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     new_expected.push(ParameterType::implicit(self.expr_types[&value].clone()));
                 },
                 _ => {
-                    new_expected.push(current_expected.unwrap());
+                    let expected = current_expected.unwrap_or(ParameterType::explicit(Type::ERROR));
+                    new_expected.push(expected);
                     implicits_added.push(None);
                     current_expected = expected_params.next();
                 },
@@ -396,19 +400,33 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     fn find_implicit_value(&mut self, target_type: &Type, parameter_index: usize, function: ExprId) -> Option<ExprId> {
         // TODO: We shouldn't commit unification bindings until we actually select a candidate
 
-        let mut matching = Vec::with_capacity(1);
+        let mut matching: Vec<(Name, Origin, Type)> = Vec::new();
 
         // TODO: Remove clone by making try_unify no longer require a mutable self
         for scope in self.implicits_in_scope.clone() {
             for name in scope {
                 let name_type = self.name_types[&name].clone();
                 if self.try_unify(&name_type, target_type).is_ok() {
-                    matching.push((name, name_type));
+                    let origin = Origin::Local(name);
+                    let name = self.current_extended_context()[name].clone();
+                    matching.push((name, origin, name_type));
                 }
             }
         }
 
-        let (name, name_type) = if matching.is_empty() {
+        // Need to check globally visible implicits separately
+        // TODO: Make this more efficient so we don't need to go through every single implicit
+        if let Some(item) = self.current_item {
+            for (name, name_id) in VisibleImplicits(item.source_file).get(self.compiler).iter() {
+                let name_type = self.type_of_top_level_name(name_id);
+                if self.try_unify(&name_type, target_type).is_ok() {
+                    let origin = Origin::TopLevelDefinition(*name_id);
+                    matching.push((name.clone(), origin, name_type));
+                }
+            }
+        }
+
+        let (name, origin, name_type) = if matching.is_empty() {
             self.issue_no_implicit_found_error(target_type, parameter_index, function);
             return None;
         } else if matching.len() == 1 {
@@ -419,8 +437,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         };
 
         let location = function.locate(self);
-        let name = self.current_extended_context()[name].as_ref().clone();
+        let name = name.as_ref().clone();
         let path = self.push_path(cst::Path::ident(name, location.clone()), name_type.clone(), location.clone());
+        self.current_extended_context_mut().insert_path_origin(path, origin);
         Some(self.push_expr(cst::Expr::Variable(path), name_type, location))
     }
 
@@ -434,13 +453,19 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     // error: No implicit found for parameter N of type T
     fn issue_multiple_matching_implicits_error(
-        &self, matching: Vec<(NameId, Type)>, implicit_type: &Type, parameter_index: usize, function: ExprId,
+        &self, matching: Vec<(Name, Origin, Type)>, implicit_type: &Type, parameter_index: usize, function: ExprId,
     ) {
         let type_string = self.type_to_string(&implicit_type);
         let function_name = self.try_get_name(function);
         let location = function.locate(self);
-        let matches = mapvec(matching, |(name, _)| self.current_extended_context()[name].clone());
-        self.compiler.accumulate(Diagnostic::MultipleImplicitsFound { matches, type_string, function_name, parameter_index, location });
+        let matches = mapvec(matching, |(name, _, _)| name);
+        self.compiler.accumulate(Diagnostic::MultipleImplicitsFound {
+            matches,
+            type_string,
+            function_name,
+            parameter_index,
+            location,
+        });
     }
 
     /// Try to add the given implicit into scope
@@ -467,10 +492,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// `fn (a: t) (c: v) -> f a {i} c`
     fn create_closure_wrapper_for_implicit(
         &mut self, function: ExprId, implicits_added: Vec<Option<ExprId>>, argument_types: Vec<ParameterType>,
-    ) -> cst::Expr {
+    ) -> Option<cst::Expr> {
         // We should always have at least 1 added implicit parameter
-        assert!(implicits_added.iter().any(|param| param.is_some()));
-        assert_eq!(implicits_added.len(), argument_types.len());
+        let implicit_added = implicits_added.iter().any(|param| param.is_some());
+
+        // A type-error is expected when type checking this call
+        if !implicit_added || implicits_added.len() != argument_types.len() {
+            return None;
+        }
 
         let mut parameters = Vec::new();
         let mut arguments = Vec::new();
@@ -506,7 +535,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let body_type = Type::ERROR;
         let body = self.push_expr(body, body_type, location);
 
-        cst::Expr::Lambda(cst::Lambda { parameters, body, return_type: None, effects: None })
+        Some(cst::Expr::Lambda(cst::Lambda { parameters, body, return_type: None, effects: None }))
     }
 
     fn type_to_string(&self, typ: &Type) -> String {

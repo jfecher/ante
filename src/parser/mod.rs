@@ -521,7 +521,7 @@ impl<'tokens> Parser<'tokens> {
         let id: TopLevelId;
 
         let kind = match self.current_token() {
-            Token::Identifier(_) | Token::TypeName(_) | Token::ParenthesisLeft => {
+            Token::Identifier(_) | Token::TypeName(_) | Token::ParenthesisLeft | Token::Implicit => {
                 let definition = self.parse_definition()?;
                 // parse_definition can eat the trailing newline
                 if *self.previous_token() == Token::Newline {
@@ -1016,7 +1016,6 @@ impl<'tokens> Parser<'tokens> {
                 },
                 Err(_) if allow_trailing => break,
                 Err(error) => {
-                    eprintln!("1 push error {:?}", error);
                     self.diagnostics.push(error);
                     break;
                 },

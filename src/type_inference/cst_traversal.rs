@@ -148,14 +148,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             .or_else(|| self.current_extended_context().path_origin(path));
 
         let actual = match origin {
-            Some(Origin::TopLevelDefinition(id)) => {
-                if let Some(typ) = self.item_types.get(&id) {
-                    typ.clone()
-                } else {
-                    let typ = GetType(id).get(self.compiler);
-                    self.instantiate(typ)
-                }
-            },
+            Some(Origin::TopLevelDefinition(id)) => self.type_of_top_level_name(&id),
             Some(Origin::Local(name)) => self.name_types[&name].clone(),
             Some(Origin::TypeResolution) => self.resolve_type_resolution(path, expected),
             Some(Origin::Builtin(builtin)) => self.check_builtin(builtin, path),
@@ -171,6 +164,16 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
         self.unify(&actual, expected, TypeErrorKind::General, path);
         self.path_types.insert(path, actual);
+    }
+
+    /// Returns the instantiated type of the given TopLevelName.
+    pub(super) fn type_of_top_level_name(&mut self, name: &TopLevelName) -> Type {
+        if let Some(typ) = self.item_types.get(name) {
+            typ.clone()
+        } else {
+            let typ = GetType(*name).get(self.compiler);
+            self.instantiate(typ)
+        }
     }
 
     fn resolve_type_resolution(&mut self, path: PathId, expected: &Type) -> Type {
@@ -273,8 +276,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let function_type = match self.follow_type(expected) {
             Type::Function(function_type) => function_type.clone(),
             _ => {
-                let parameters =
-                    mapvec(&lambda.parameters, |_| types::ParameterType::explicit(self.next_type_variable()));
+                let parameters = mapvec(&lambda.parameters, |param| {
+                    types::ParameterType::new(self.next_type_variable(), param.is_implicit)
+                });
                 let expected_parameter_count = parameters.len();
                 let return_type = self.next_type_variable();
                 let effects = self.next_type_variable();
