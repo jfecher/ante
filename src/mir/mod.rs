@@ -28,16 +28,21 @@ pub(crate) mod builder;
 mod display;
 pub(crate) mod monomorphization;
 
+#[derive(Default)]
 pub(crate) struct Mir {
-    pub(crate) definitions: FxHashMap<DefinitionId, Definition>,
+    pub(crate) definitions: Definitions,
 
     /// Maps [TopLevelName]s to their new [DefinitionId]
+    #[allow(unused)]
     pub(crate) names: FxHashMap<TopLevelName, DefinitionId>,
 
     /// Any external names referenced in this MIR that need to be linked in later.
     /// Note that this excludes any actual `extern` definitions which aren't expected to be linked in.
+    #[allow(unused)]
     pub(crate) referenced_external_items: FxHashSet<TopLevelId>,
 }
+
+pub(crate) type Definitions = FxHashMap<DefinitionId, Definition>;
 
 /// A Definition may be a function or global. Globals are represented
 /// as single blocks with no parameters to account for them needing to
@@ -231,14 +236,6 @@ pub enum Value {
     /// A name external to the current [TopLevelItem]. This name will have to
     /// be resolved to a [DefinitionId] later on via [Mir::names] once it is linked in.
     External(TopLevelName),
-}
-
-impl Value {
-    fn from_top_level_name(item: TopLevelName) -> Value {
-        // The index should always be 0 for a globally visible TopLevelName.
-        // Lambdas and any new definitions expanded within won't have their own ids yet.
-        Value::Definition(DefinitionId { item: item.top_level_item, index: 0 })
-    }
 }
 
 /// A function or lambda originally located within [Self::item], identified

@@ -1,45 +1,37 @@
-//! This file contains the logic for translating the type-checked CST into a monomorphized MIR
-//! where any functions with generics are specialized by compiling a separate version of them for
-//! each combination of generics that it is called with.
+//! This file contains the logic for specializing generics out of the MIR. This process is called
+//! monomorphization and in Ante it is a Mir -> Mir transformation.
 //!
 //! The monomorphizer starts from the entry point to the program and from there builds a queue
 //! of functions which need to be monomorphized. This queue can be processed concurrently with
 //! each individual function being handled by a single [FunctionContext] object.
 
-use std::sync::Arc;
+#![allow(unused)]
+use std::{collections::LinkedList, sync::Arc};
 
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rustc_hash::FxHashMap;
 
 use crate::{
-    incremental::{DbHandle, GetItem, TypeCheck},
-    mir::{self, Type},
-    parser::{
+    incremental::DbHandle, mir::{self, Definitions, Type, builder::build_initial_mir}, parser::{
         context::TopLevelContext,
         cst,
         ids::{NameId, TopLevelId},
-    },
-    type_inference::dependency_graph::TypeCheckResult,
+    }, type_inference::dependency_graph::TypeCheckResult
 };
 
-/// Monomorphize the item, returning a MIR function if the item refers to a function.
+/// Monomorphize the whole program, returning a MIR function if the item refers to a function.
 /// If the item does not refer to a function (e.g. it is a type definition), `None` is returned.
 #[allow(unused)]
-fn monomorphize(compiler: &DbHandle, item: TopLevelId) -> Option<mir::Definition> {
-    let types = TypeCheck(item).get(compiler);
-    let (item, item_context) = GetItem(item).get(compiler);
+fn monomorphize(compiler: &DbHandle, items: impl IntoParallelIterator<Item = TopLevelId>) -> Option<mir::Definition> {
+    let mir = collect_all_mir(compiler, items);
+    todo!()
+}
 
-    match &item.kind {
-        cst::TopLevelItemKind::Definition(definition) => {
-            let mut context = FunctionContext::new(compiler, types, item_context);
-            Some(context.monomorphize_function(definition))
-        },
-        cst::TopLevelItemKind::TypeDefinition(_) => None,
-        cst::TopLevelItemKind::TraitDefinition(_) => None,
-        cst::TopLevelItemKind::TraitImpl(_) => None,
-        cst::TopLevelItemKind::EffectDefinition(_) => None,
-        cst::TopLevelItemKind::Extern(_) => None, // TODO
-        cst::TopLevelItemKind::Comptime(_) => None,
-    }
+/// To monomorphize we necessarily need access to all of the Mir.
+fn collect_all_mir(compiler: &DbHandle, items: impl IntoParallelIterator<Item = TopLevelId>) -> LinkedList<Vec<Definitions>> {
+    items.into_par_iter().flat_map(|item| {
+        build_initial_mir(compiler, item).map(|mir| mir.definitions)
+    }).collect_vec_list()
 }
 
 #[allow(unused)]

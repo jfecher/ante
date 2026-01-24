@@ -6,19 +6,19 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     diagnostics::Diagnostic,
-    incremental::{self, DbHandle, GetItem, Resolve, TypeCheck, TypeCheckSCC, VisibleImplicits},
+    incremental::{self, DbHandle, GetItem, Resolve, TypeCheck, TypeCheckSCC},
     iterator_extensions::mapvec,
     name_resolution::{Origin, ResolutionResult},
     parser::{
         context::TopLevelContext,
-        cst::{self, Name, Pattern, TopLevelItem, TopLevelItemKind},
+        cst::{self, Name, TopLevelItem, TopLevelItemKind},
         ids::{ExprId, NameId, PathId, PatternId, TopLevelId, TopLevelName},
     },
     type_inference::{
         errors::{Locateable, TypeErrorKind},
         fresh_expr::ExtendedTopLevelContext,
         generics::Generic,
-        types::{FunctionType, ParameterType, Type, TypeBindings, TypeVariableId},
+        types::{Type, TypeBindings, TypeVariableId},
     },
 };
 
