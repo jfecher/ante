@@ -480,6 +480,14 @@ impl Type {
         free_vars_helper(self, bindings, &mut free_vars);
         free_vars
     }
+
+    /// If this is a function, return its return type. Otherwise return None.
+    pub(crate) fn return_type(&self) -> Option<&Type> {
+        match self {
+            Type::Function(function) => Some(&function.return_type),
+            _ => None,
+        }
+    }
 }
 
 pub struct TypePrinter<'a, Db, Names> {

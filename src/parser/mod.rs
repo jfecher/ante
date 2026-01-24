@@ -579,7 +579,7 @@ impl<'tokens> Parser<'tokens> {
     /// definition: non_function_definition | function_definition
     fn parse_definition(&mut self) -> Result<Definition> {
         match self.current_token() {
-            Token::Implicit | Token::Var => self.parse_non_function_definition(),
+            Token::Var => self.parse_non_function_definition(),
             _ => {
                 if let Ok(function) = self.try_(Self::parse_function_definition) {
                     Ok(function)
@@ -607,6 +607,7 @@ impl<'tokens> Parser<'tokens> {
     /// function_definition: function_name_pattern parameter+ (':' typ)? effects_clause '=' expression
     fn parse_function_definition(&mut self) -> Result<Definition> {
         let start_location = self.current_token_location();
+        let implicit = self.accept(Token::Implicit);
         let name = self.parse_function_name_pattern()?;
         let parameters = self.parse_function_parameters()?;
 
@@ -626,7 +627,7 @@ impl<'tokens> Parser<'tokens> {
 
         let lambda = Expr::Lambda(Lambda { parameters, return_type, effects, body });
         self.insert_expr(lambda_id, lambda, start_location);
-        Ok(Definition { implicit: false, mutable: false, pattern: name, rhs: lambda_id })
+        Ok(Definition { implicit, mutable: false, pattern: name, rhs: lambda_id })
     }
 
     fn parse_function_name_pattern(&mut self) -> Result<PatternId> {
@@ -1369,7 +1370,7 @@ impl<'tokens> Parser<'tokens> {
                 let expr = self.parse_expression()?;
                 self.expect(Token::BraceRight, "a `}` to close the opening `{` of this implicit argument")?;
                 return Ok(Argument::implicit(expr));
-            }
+            },
             _ => self.parse_atom(),
         }?;
         Ok(Argument::explicit(expr))

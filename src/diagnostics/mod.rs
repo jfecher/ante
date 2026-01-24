@@ -337,7 +337,13 @@ impl Diagnostic {
             Diagnostic::ImplicitNotAVariable { location: _ } => {
                 format!("Implicits must be a simple variable, more complex patterns are not supported")
             },
-            Diagnostic::MultipleImplicitsFound { matches, type_string, function_name, parameter_index, location: _ } => {
+            Diagnostic::MultipleImplicitsFound {
+                matches,
+                type_string,
+                function_name,
+                parameter_index,
+                location: _,
+            } => {
                 let function = function_name.as_ref().map(|s| s.as_str()).unwrap_or("function");
                 let parameter = parameter_index + 1;
                 let matches = crate::iterator_extensions::join_arc_str(matches, ", ");
@@ -345,7 +351,7 @@ impl Diagnostic {
                     "Multiple matching implicits found for type {} required by parameter {parameter} of {function}: {matches}",
                     type_string.blue(),
                 )
-            }
+            },
         }
     }
 

@@ -25,6 +25,10 @@ multiple_matching_with_global () =
 implicit false_ = false
 implicit one = 1u32
 
+implicit_call () =
+    implicit make_string {Bool} = ""
+    requires_string ()
+
 // args: -e ast-t
 // expected stdout:
 // (requires_string: fn {String} Unit -> Unit pure) {(s: String)} () : Unit = ()

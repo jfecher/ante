@@ -958,9 +958,7 @@ impl<'a> CstDisplay<'a> {
         }
     }
 
-    fn fmt_reference(
-        &mut self, reference: &Reference, context: &impl IdStore, f: &mut Formatter,
-    ) -> std::fmt::Result {
+    fn fmt_reference(&mut self, reference: &Reference, context: &impl IdStore, f: &mut Formatter) -> std::fmt::Result {
         write!(f, "{}{}", reference.mutability, reference.sharedness)?;
         if reference.sharedness != Sharedness::Shared {
             write!(f, " ")?;

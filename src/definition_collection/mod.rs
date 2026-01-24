@@ -3,7 +3,8 @@ use std::{path::PathBuf, sync::Arc};
 use crate::{
     diagnostics::{Diagnostic, Location},
     incremental::{
-        self, DbHandle, Definitions, ExportedDefinitions, ExportedTypes, GetCrateGraph, GetImports, GetItem, GetItemRaw, Methods, Parse, VisibleDefinitions, VisibleDefinitionsResult, VisibleImplicits, VisibleTypes
+        self, DbHandle, Definitions, ExportedDefinitions, ExportedTypes, GetCrateGraph, GetImports, GetItem,
+        GetItemRaw, Methods, Parse, VisibleDefinitions, VisibleDefinitionsResult, VisibleImplicits, VisibleTypes,
     },
     name_resolution::namespace::{STDLIB_CRATE, SourceFileId},
     parser::{
