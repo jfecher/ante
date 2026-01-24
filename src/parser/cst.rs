@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     diagnostics::{ErrorDefault, Location},
     lexer::token::{F64, FloatKind, IntegerKind, Token},
+    parser::context::TopLevelContext,
 };
 
 use super::ids::{ExprId, NameId, PathId, PatternId, TopLevelId};
@@ -60,6 +61,30 @@ pub enum ItemName {
     Single(NameId),
     Pattern(PatternId),
     None,
+}
+
+impl ItemName {
+    /// Give an approximate name for this item for debugging.
+    pub fn to_string(&self, context: &TopLevelContext) -> String {
+        match self {
+            ItemName::Single(name) => context.names[*name].to_string(),
+            ItemName::Pattern(pattern) => pattern_name(*pattern, context),
+            ItemName::None => "no-name".to_string(),
+        }
+    }
+}
+
+fn pattern_name(pattern: PatternId, context: &TopLevelContext) -> String {
+    match &context.patterns[pattern] {
+        Pattern::Error => "#error".to_string(),
+        Pattern::Variable(name) => context.names[*name].to_string(),
+        Pattern::Literal(_) => "#literal".to_string(),
+        Pattern::Constructor(..) => "#constructor".to_string(),
+        Pattern::TypeAnnotation(pattern, _) => pattern_name(*pattern, context),
+        Pattern::MethodName { type_name, item_name } => {
+            format!("{}.{}", context.names[*type_name], context.names[*item_name])
+        },
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]

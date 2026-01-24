@@ -23,7 +23,7 @@ iter i print
 // args: --delete-binary
 // expected exit status: 101
 // expected stderr:
-// thread 'main' panicked at src/type_inference/types.rs:575:21:
+// thread 'main' panicked at src/type_inference/types.rs:583:21:
 // internal error: entered unreachable code
 // note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 

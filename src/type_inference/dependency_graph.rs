@@ -10,7 +10,6 @@ use crate::{
         TypeCheckSCC,
     },
     iterator_extensions::mapvec,
-    name_resolution::namespace::LOCAL_CRATE,
     parser::{cst::TopLevelItemKind, ids::TopLevelId},
     type_inference::{IndividualTypeCheckResult, get_type::try_get_type, types::TypeBindings},
 };
@@ -92,15 +91,12 @@ pub fn get_type_check_graph_impl(_: &TypeCheckDependencyGraph, db: &DbHandle) ->
 fn get_all_top_level_ids(db: &DbHandle) -> Vec<TopLevelId> {
     let crates = GetCrateGraph.get(db);
     let mut ids = Vec::new();
-    // The Stdlib still has many errors preventing it from type-checking so we skip it until
-    // the compiler has more implemented.
-    //for crate_ in crates.values() {
-    let crate_ = &crates[&LOCAL_CRATE];
-    for file in crate_.source_files.values() {
-        let parse = Parse(*file).get(db);
-        ids.extend(parse.top_level_data.keys().copied());
+    for crate_ in crates.values() {
+        for file in crate_.source_files.values() {
+            let parse = Parse(*file).get(db);
+            ids.extend(parse.top_level_data.keys().copied());
+        }
     }
-    //}
     ids
 }
 

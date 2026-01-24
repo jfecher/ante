@@ -42,9 +42,9 @@ pub fn codegen_llvm_impl(context: &CodegenLlvm, compiler: &DbHandle) -> Option<C
     for (id, function) in &mir.definitions {
         module.codegen_function(function, *id);
     }
-    module.module.print_to_stderr();
 
     if let Err(error) = module.module.verify() {
+        module.module.print_to_stderr();
         eprintln!("llvm module failed to verify: {error}");
     }
 
@@ -70,8 +70,6 @@ pub fn link(modules: Vec<Arc<Vec<u8>>>, binary_name: &str) {
             Module::parse_bitcode_from_buffer(&buffer, &llvm).expect("Failed to parse llvm module bitcode");
         module.link_in_module(new_module).expect("Failed to link in llvm module");
     }
-
-    println!("final:\n{}", module.print_to_string());
 
     // generate the bitcode to a .bc file
     let path = std::path::Path::new(binary_name).with_extension("o");

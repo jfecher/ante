@@ -6,7 +6,7 @@ use crate::{
         self, DbHandle, Definitions, ExportedDefinitions, ExportedTypes, GetCrateGraph, GetImports, GetItem,
         GetItemRaw, Methods, Parse, VisibleDefinitions, VisibleDefinitionsResult, VisibleImplicits, VisibleTypes,
     },
-    name_resolution::namespace::{STDLIB_CRATE, SourceFileId},
+    name_resolution::namespace::{CrateId, SourceFileId},
     parser::{
         context::TopLevelContext,
         cst::{Import, ItemName, Literal, Pattern, TopLevelItemKind, TypeDefinitionBody},
@@ -52,7 +52,7 @@ pub fn visible_definitions_impl(context: &VisibleDefinitions, db: &DbHandle) -> 
 
     // If this file is not in the Std, implicitly import the Prelude.
     // Skip any names that are imported elsewhere instead of erroring.
-    if context.0.crate_id != STDLIB_CRATE {
+    if context.0.crate_id != CrateId::STDLIB {
         let prelude = ExportedDefinitions(SourceFileId::prelude()).get(db);
         for (exported_name, exported_id) in &prelude.definitions {
             visible.definitions.entry(exported_name.clone()).or_insert(*exported_id);

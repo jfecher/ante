@@ -3,7 +3,7 @@ use std::{
     sync::Arc,
 };
 
-use namespace::{LOCAL_CRATE, Namespace, SourceFileId};
+use namespace::{Namespace, SourceFileId};
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 
@@ -15,7 +15,7 @@ use crate::{
     incremental::{
         self, DbHandle, ExportedTypes, GetCrateGraph, GetItem, Resolve, VisibleDefinitions, VisibleDefinitionsResult,
     },
-    name_resolution::builtin::Builtin,
+    name_resolution::{builtin::Builtin, namespace::CrateId},
     parser::{
         context::TopLevelContext,
         cst::{
@@ -318,7 +318,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
 
             // Check if it is an absolute path
             let crates = GetCrateGraph.get(self.compiler);
-            let local_crate = &crates[&LOCAL_CRATE];
+            let local_crate = &crates[&CrateId::LOCAL];
 
             for dependency_id in &local_crate.dependencies {
                 let dependency = &crates[dependency_id];

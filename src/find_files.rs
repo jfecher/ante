@@ -6,7 +6,7 @@ use rustc_hash::FxHashSet;
 use crate::{
     files::read_file,
     incremental::{Crate, Db, GetCrateGraph, SourceFile},
-    name_resolution::namespace::{CrateId, LOCAL_CRATE, STDLIB_CRATE, SourceFileId},
+    name_resolution::namespace::{CrateId, SourceFileId},
     paths::stdlib_path,
 };
 
@@ -25,9 +25,9 @@ pub fn populate_crates_and_files(compiler: &mut Db, starting_files: &[PathBuf]) 
     add_stdlib_crate(&mut crates);
     populate_local_crate_with_starting_files(compiler, &mut crates, starting_files);
 
-    let mut stack = vec![LOCAL_CRATE, STDLIB_CRATE];
+    let mut stack = vec![CrateId::LOCAL, CrateId::STDLIB];
     let mut finished = FxHashSet::default();
-    finished.insert(STDLIB_CRATE);
+    finished.insert(CrateId::STDLIB);
 
     while let Some(crate_id) = stack.pop() {
         add_source_files_of_crate(compiler, &mut crates, crate_id);
@@ -48,7 +48,7 @@ pub fn populate_crates_and_files(compiler: &mut Db, starting_files: &[PathBuf]) 
 /// The Prelude should always be at a known ID for every file to import it implicitly.
 /// We manually populate the stdlib crate with the prelude here to ensure it has that ID.
 fn add_stdlib_crate(crates: &mut CrateGraph) {
-    crates.insert(STDLIB_CRATE, Crate::new("Std".to_string(), stdlib_path()));
+    crates.insert(CrateId::STDLIB, Crate::new("Std".to_string(), stdlib_path()));
 }
 
 /// Create the local crate's Crate entry in the graph and populate it with the given starting files.
@@ -57,7 +57,7 @@ fn populate_local_crate_with_starting_files(compiler: &mut Db, crates: &mut Crat
 
     for path in starting_files {
         let path = path.to_path_buf();
-        let id = SourceFileId::new(LOCAL_CRATE, &path);
+        let id = SourceFileId::new(CrateId::LOCAL, &path);
         let data = read_file_data(path.clone());
         id.set(compiler, Arc::new(data));
         source_files.insert(Arc::new(path), id);
@@ -67,7 +67,7 @@ fn populate_local_crate_with_starting_files(compiler: &mut Db, crates: &mut Crat
     // but have the infrastructure here to collect source files of crates and their dependencies.
     // We're only missing CLI options.
     let crate_ = Crate { name: "Local".to_string(), path: PathBuf::from("."), dependencies: Vec::new(), source_files };
-    crates.insert(LOCAL_CRATE, crate_);
+    crates.insert(CrateId::LOCAL, crate_);
 }
 
 /// Set each CrateId -> Crate mapping as an input to the Db
@@ -135,7 +135,7 @@ fn find_crate_dependencies(crates: &mut CrateGraph, crate_id: CrateId) -> Vec<Cr
     deps_folder.push("deps");
 
     // Every crate currently depends on the stdlib
-    let mut dependencies = vec![STDLIB_CRATE];
+    let mut dependencies = vec![CrateId::STDLIB];
     let mut remaining = vec![deps_folder];
 
     // Push every crate in the `deps` folder as a new crate

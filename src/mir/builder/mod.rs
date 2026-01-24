@@ -183,7 +183,6 @@ where
     }
 
     fn reference_external(&mut self, name: TopLevelName, typ: Type) -> Value {
-        println!("External {}: {}", name, typ);
         self.external_types.insert(name, typ);
         Value::External(name)
     }

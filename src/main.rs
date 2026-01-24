@@ -29,7 +29,7 @@ use colored::Colorize;
 use diagnostics::Diagnostic;
 use inc_complete::{Computation, StorageFor};
 use incremental::{Db, GetCrateGraph, Parse, Resolve};
-use name_resolution::namespace::{CrateId, LOCAL_CRATE, LocalModuleId, SourceFileId};
+use name_resolution::namespace::{CrateId, LocalModuleId, SourceFileId};
 use std::{
     collections::BTreeSet,
     path::{Path, PathBuf},
@@ -38,6 +38,7 @@ use std::{
 
 use crate::{
     cli::EmitTarget,
+    codegen::llvm::CodegenLlvmResult,
     diagnostics::DiagnosticKind,
     files::{make_compiler, write_metadata},
     incremental::{CodegenLlvm, DbStorage, TypeCheck},
@@ -85,7 +86,7 @@ fn compile(args: Cli) {
         Some(EmitTarget::AstR) => display_name_resolution(&compiler),
         Some(EmitTarget::AstT) => display_type_checking(&compiler, true),
         Some(EmitTarget::Mir) => display_mir(&compiler),
-        Some(EmitTarget::Ir) => llvm_codegen_separate(&compiler).2,
+        Some(EmitTarget::Ir) => llvm_codegen_separate(&compiler, true).2,
         None => llvm_codegen_all(&compiler, &args.files),
     };
 
@@ -139,7 +140,7 @@ fn display_diagnostics(diagnostics: BTreeSet<Diagnostic>, compiler: &Db) {
 
 fn display_tokens(compiler: &Db) {
     let crates = GetCrateGraph.get(compiler);
-    let local_crate = &crates[&LOCAL_CRATE];
+    let local_crate = &crates[&CrateId::LOCAL];
 
     for file_id in local_crate.source_files.values() {
         let file = file_id.get(compiler);
@@ -152,7 +153,7 @@ fn display_tokens(compiler: &Db) {
 
 fn display_parse_tree(compiler: &Db) -> BTreeSet<Diagnostic> {
     let crates = GetCrateGraph.get(compiler);
-    let local_crate = &crates[&LOCAL_CRATE];
+    let local_crate = &crates[&CrateId::LOCAL];
     let mut diagnostics = BTreeSet::new();
 
     for file in local_crate.source_files.values() {
@@ -167,7 +168,7 @@ fn display_parse_tree(compiler: &Db) -> BTreeSet<Diagnostic> {
 
 fn display_name_resolution(compiler: &Db) -> BTreeSet<Diagnostic> {
     let crates = GetCrateGraph.get(compiler);
-    let local_crate = &crates[&LOCAL_CRATE];
+    let local_crate = &crates[&CrateId::LOCAL];
     let mut diagnostics = BTreeSet::new();
 
     for file in local_crate.source_files.values() {
@@ -185,7 +186,7 @@ fn display_name_resolution(compiler: &Db) -> BTreeSet<Diagnostic> {
 
 fn display_type_checking(compiler: &Db, show_types: bool) -> BTreeSet<Diagnostic> {
     let crates = GetCrateGraph.get(compiler);
-    let local_crate = &crates[&LOCAL_CRATE];
+    let local_crate = &crates[&CrateId::LOCAL];
     let mut diagnostics = BTreeSet::new();
 
     for file in local_crate.source_files.values() {
@@ -205,7 +206,7 @@ fn display_type_checking(compiler: &Db, show_types: bool) -> BTreeSet<Diagnostic
 
 fn display_mir(compiler: &Db) -> BTreeSet<Diagnostic> {
     let crates = GetCrateGraph.get(compiler);
-    let local_crate = &crates[&LOCAL_CRATE];
+    let local_crate = &crates[&CrateId::LOCAL];
     let mut diagnostics = BTreeSet::new();
 
     for file in local_crate.source_files.values() {
@@ -227,7 +228,7 @@ fn display_mir(compiler: &Db) -> BTreeSet<Diagnostic> {
 
 /// Codegen each item as a separate llvm module
 /// Returns (module strings, true if there are any errors, diagnostics)
-fn llvm_codegen_separate(compiler: &Db) -> (Vec<Arc<Vec<u8>>>, bool, BTreeSet<Diagnostic>) {
+fn llvm_codegen_separate(compiler: &Db, display_ir: bool) -> (Vec<Arc<Vec<u8>>>, bool, BTreeSet<Diagnostic>) {
     let crates = GetCrateGraph.get(compiler);
     let mut diagnostics = BTreeSet::new();
     crate::codegen::llvm::initialize_native_target();
@@ -236,7 +237,7 @@ fn llvm_codegen_separate(compiler: &Db) -> (Vec<Arc<Vec<u8>>>, bool, BTreeSet<Di
     let mut has_errors = false;
 
     // TODO: This could be parallel
-    for (_, crate_) in crates.iter() {
+    for (crate_id, crate_) in crates.iter() {
         for file in crate_.source_files.values() {
             let parse = Parse(*file).get(compiler);
 
@@ -250,8 +251,13 @@ fn llvm_codegen_separate(compiler: &Db) -> (Vec<Arc<Vec<u8>>>, bool, BTreeSet<Di
                 // can't call get_accumulated with only a `DbHandle`. If this limitation in
                 // inc-complete can't be fixed then we'd need to add a `has_errors: bool` field
                 // onto most compiler passes.
-                if error_count == 0 {
+                if !has_errors {
                     if let Some(result) = CodegenLlvm(item.id).get(compiler) {
+                        if display_ir && *crate_id == CrateId::LOCAL {
+                            let context = &parse.top_level_data[&item.id];
+                            let name = item.kind.name().to_string(context);
+                            display_llvm_bitcode(&result, name);
+                        }
                         modules.push(result.module_bitcode);
                     }
                 }
@@ -263,9 +269,18 @@ fn llvm_codegen_separate(compiler: &Db) -> (Vec<Arc<Vec<u8>>>, bool, BTreeSet<Di
     (modules, has_errors, diagnostics)
 }
 
+fn display_llvm_bitcode(result: &CodegenLlvmResult, module_name: String) {
+    let buffer = inkwell::memory_buffer::MemoryBuffer::create_from_memory_range(&result.module_bitcode, &module_name);
+    let context = inkwell::context::Context::create();
+    let new_module = inkwell::module::Module::parse_bitcode_from_buffer(&buffer, &context).expect("Failed to parse llvm module bitcode");
+    let module = new_module.print_to_string();
+    let module = module.to_string_lossy();
+    println!("{module}");
+}
+
 /// Codegen everything, linking together each separate llvm module
 fn llvm_codegen_all(compiler: &Db, files: &[PathBuf]) -> BTreeSet<Diagnostic> {
-    let (modules, has_errors, diagnostics) = llvm_codegen_separate(compiler);
+    let (modules, has_errors, diagnostics) = llvm_codegen_separate(compiler, false);
     if has_errors {
         return diagnostics;
     }

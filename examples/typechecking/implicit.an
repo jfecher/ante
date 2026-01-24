@@ -60,6 +60,10 @@ implicit_call () =
 // implicit (false_: Bool) = false
 // 
 // implicit (one: U32) = 1_U32
+// 
+// (implicit_call: fn Unit -> Unit can _) () =
+//     implicit (make_string: fn {Bool} -> String can _) {(_: Bool)} = ""
+//     (fn (p4: Unit) -> (requires_string: fn {String} Unit -> Unit pure) {(make_string: fn {Bool} -> String can _) {(false_: Bool)}} (p4: Unit)) ()
 
 // expected stderr:
 // examples/typechecking/implicit.an:6:4	error: No implicit found for type String required by parameter 1 of requires_string

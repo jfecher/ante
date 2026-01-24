@@ -38,11 +38,11 @@ impl SourceFileId {
     }
 
     pub fn new_in_local_crate(path: &std::path::Path) -> SourceFileId {
-        SourceFileId::new(LOCAL_CRATE, path)
+        SourceFileId::new(CrateId::LOCAL, path)
     }
 
     pub fn prelude() -> SourceFileId {
-        Self::new(STDLIB_CRATE, &crate::paths::prelude_path())
+        Self::new(CrateId::STDLIB, &crate::paths::prelude_path())
     }
 }
 
@@ -51,11 +51,14 @@ impl SourceFileId {
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct CrateId(pub u32);
 
-/// `Std` always has id 0
-pub const STDLIB_CRATE: CrateId = CrateId(0);
+impl CrateId {
+    /// `Std` always has id 0
+    pub const STDLIB: CrateId = CrateId(0);
 
-/// The local crate always has id 1
-pub const LOCAL_CRATE: CrateId = CrateId(1);
+    /// The local crate always has id 1.
+    /// It is the root of the crate graph currently being compiled.
+    pub const LOCAL: CrateId = CrateId(1);
+}
 
 /// A local module id is a hash of the module path from the crate root.
 /// Module ids are expected to be unique only within the same crate.
