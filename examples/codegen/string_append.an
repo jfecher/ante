@@ -1,10 +1,14 @@
-a = "你好"
-print (a ++ "，世界")
+main () =
+    a = "你好"
+    print (a ++ "，世界")
 
 // args: --delete-binary
 // expected stderr:
-// examples/codegen/string_append.an:2:6	error: Expected `=` to begin the function body but found `(`
-// print (a ++ "，世界")
+// examples/codegen/string_append.an:3:4	error: `print` not found in scope
+//     print (a ++ "，世界")
 // 
-// Found 1 error and 0 warnings
+// examples/codegen/string_append.an:3:13	error: `++` not found in scope
+//     print (a ++ "，世界")
+// 
+// Found 2 errors and 0 warnings
 

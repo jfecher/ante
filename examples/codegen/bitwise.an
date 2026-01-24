@@ -1,25 +1,37 @@
+main () =
+    x = 3
+    y = 5
 
-x = 3
-y = 5
-
-print (band x y)
-print (bor x y)
-print (bxor x y)
-print (bnot x)
+    print (band x y)
+    print (bor x y)
+    print (bxor x y)
+    print (bnot x)
 
 // args: --delete-binary
 // expected stderr:
-// examples/codegen/bitwise.an:5:6	error: Expected `=` to begin the function body but found `(`
-// print (band x y)
+// examples/codegen/bitwise.an:5:4	error: `print` not found in scope
+//     print (band x y)
 // 
-// examples/codegen/bitwise.an:6:6	error: Expected `=` to begin the function body but found `(`
-// print (bor x y)
+// examples/codegen/bitwise.an:5:11	error: `band` not found in scope
+//     print (band x y)
 // 
-// examples/codegen/bitwise.an:7:6	error: Expected `=` to begin the function body but found `(`
-// print (bxor x y)
+// examples/codegen/bitwise.an:6:4	error: `print` not found in scope
+//     print (bor x y)
 // 
-// examples/codegen/bitwise.an:8:6	error: Expected `=` to begin the function body but found `(`
-// print (bnot x)
+// examples/codegen/bitwise.an:6:11	error: `bor` not found in scope
+//     print (bor x y)
 // 
-// Found 4 errors and 0 warnings
+// examples/codegen/bitwise.an:7:4	error: `print` not found in scope
+//     print (bxor x y)
+// 
+// examples/codegen/bitwise.an:7:11	error: `bxor` not found in scope
+//     print (bxor x y)
+// 
+// examples/codegen/bitwise.an:8:4	error: `print` not found in scope
+//     print (bnot x)
+// 
+// examples/codegen/bitwise.an:8:11	error: `bnot` not found in scope
+//     print (bnot x)
+// 
+// Found 8 errors and 0 warnings
 

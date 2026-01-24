@@ -1,11 +1,12 @@
 import StringBuilder
 
-var sb: StringBuilder = empty ()
-reserve (mut sb) 10
-append (mut sb) "你好，"
-append (mut sb) " World!"
+main () =
+    var sb: StringBuilder = empty ()
+    reserve (mut sb) 10
+    append (mut sb) "你好，"
+    append (mut sb) " World!"
 
-print (to_string sb)
+    print (to_string sb)
 
 // args: --delete-binary
 // expected stderr:
@@ -13,22 +14,37 @@ print (to_string sb)
 // import StringBuilder
 // 
 // examples/codegen/string_builder.an:3:0	error: Expected a top-level item but found a newline
-// var sb: StringBuilder = empty ()
+// main () =
 // 
-// examples/codegen/string_builder.an:3:0	error: Expected a top-level item but found `var`
-// var sb: StringBuilder = empty ()
+// examples/codegen/string_builder.an:4:12	error: `StringBuilder` not found in scope
+//     var sb: StringBuilder = empty ()
 // 
-// examples/codegen/string_builder.an:4:8	error: Expected `=` to begin the function body but found `(`
-// reserve (mut sb) 10
+// examples/codegen/string_builder.an:4:28	error: `empty` not found in scope
+//     var sb: StringBuilder = empty ()
 // 
-// examples/codegen/string_builder.an:5:7	error: Expected `=` to begin the function body but found `(`
-// append (mut sb) "你好，"
+// examples/codegen/string_builder.an:5:4	error: `reserve` not found in scope
+//     reserve (mut sb) 10
 // 
-// examples/codegen/string_builder.an:6:7	error: Expected `=` to begin the function body but found `(`
-// append (mut sb) " World!"
+// examples/codegen/string_builder.an:5:13	error: `mut` not found in scope
+//     reserve (mut sb) 10
 // 
-// examples/codegen/string_builder.an:8:6	error: Expected `=` to begin the function body but found `(`
-// print (to_string sb)
+// examples/codegen/string_builder.an:6:4	error: `append` not found in scope
+//     append (mut sb) "你好，"
 // 
-// Found 7 errors and 0 warnings
+// examples/codegen/string_builder.an:6:12	error: `mut` not found in scope
+//     append (mut sb) "你好，"
+// 
+// examples/codegen/string_builder.an:7:4	error: `append` not found in scope
+//     append (mut sb) " World!"
+// 
+// examples/codegen/string_builder.an:7:12	error: `mut` not found in scope
+//     append (mut sb) " World!"
+// 
+// examples/codegen/string_builder.an:9:4	error: `print` not found in scope
+//     print (to_string sb)
+// 
+// examples/codegen/string_builder.an:9:11	error: `to_string` not found in scope
+//     print (to_string sb)
+// 
+// Found 12 errors and 0 warnings
 

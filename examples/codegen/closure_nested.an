@@ -6,12 +6,13 @@ foo () =
 
     bar ()
 
-print (foo ())
+main () =
+    print (foo ())
 
 // args: --delete-binary
 // expected stderr:
-// examples/codegen/closure_nested.an:9:6	error: Expected `=` to begin the function body but found `(`
-// print (foo ())
+// examples/codegen/closure_nested.an:10:4	error: `print` not found in scope
+//     print (foo ())
 // 
 // Found 1 error and 0 warnings
 

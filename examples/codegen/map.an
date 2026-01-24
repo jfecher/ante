@@ -3,20 +3,21 @@ import Std.HashMap
 impl hash_u8: Hash U8 with
     hash x = cast x
 
-var map = empty ()
+main () =
+    var map = empty ()
 
-// Test several inserts. HashMap is linear-scan so it 
-// should keep resizing so that it is at least half-empty 
-// (ie. its capacity should be >= 2 * its length).
-insert (mut map) 1u8 3u16
-insert (mut map) 2 6
-insert (mut map) 3 9
-insert (mut map) 4 12
-insert (mut map) 5 15
-insert (mut map) 6 18
-insert (mut map) 7 21
+    // Test several inserts. HashMap is linear-scan so it 
+    // should keep resizing so that it is at least half-empty 
+    // (ie. its capacity should be >= 2 * its length).
+    insert (mut map) 1u8 3u16
+    insert (mut map) 2 6
+    insert (mut map) 3 9
+    insert (mut map) 4 12
+    insert (mut map) 5 15
+    insert (mut map) 6 18
+    insert (mut map) 7 21
 
-print map
+    print map
 
 // args: --delete-binary
 // expected stderr:
@@ -29,32 +30,53 @@ print map
 // examples/codegen/map.an:4:13	error: `cast` not found in scope
 //     hash x = cast x
 // 
-// examples/codegen/map.an:6:0	error: Expected a top-level item but found `var`
-// var map = empty ()
+// examples/codegen/map.an:7:14	error: `empty` not found in scope
+//     var map = empty ()
 // 
-// examples/codegen/map.an:11:7	error: Expected `=` to begin the function body but found `(`
-// insert (mut map) 1u8 3u16
+// examples/codegen/map.an:12:4	error: `insert` not found in scope
+//     insert (mut map) 1u8 3u16
 // 
-// examples/codegen/map.an:12:7	error: Expected `=` to begin the function body but found `(`
-// insert (mut map) 2 6
+// examples/codegen/map.an:12:12	error: `mut` not found in scope
+//     insert (mut map) 1u8 3u16
 // 
-// examples/codegen/map.an:13:7	error: Expected `=` to begin the function body but found `(`
-// insert (mut map) 3 9
+// examples/codegen/map.an:13:4	error: `insert` not found in scope
+//     insert (mut map) 2 6
 // 
-// examples/codegen/map.an:14:7	error: Expected `=` to begin the function body but found `(`
-// insert (mut map) 4 12
+// examples/codegen/map.an:13:12	error: `mut` not found in scope
+//     insert (mut map) 2 6
 // 
-// examples/codegen/map.an:15:7	error: Expected `=` to begin the function body but found `(`
-// insert (mut map) 5 15
+// examples/codegen/map.an:14:4	error: `insert` not found in scope
+//     insert (mut map) 3 9
 // 
-// examples/codegen/map.an:16:7	error: Expected `=` to begin the function body but found `(`
-// insert (mut map) 6 18
+// examples/codegen/map.an:14:12	error: `mut` not found in scope
+//     insert (mut map) 3 9
 // 
-// examples/codegen/map.an:17:7	error: Expected `=` to begin the function body but found `(`
-// insert (mut map) 7 21
+// examples/codegen/map.an:15:4	error: `insert` not found in scope
+//     insert (mut map) 4 12
 // 
-// examples/codegen/map.an:19:6	error: Expected `=` to begin the function body but found `map`
-// print map
+// examples/codegen/map.an:15:12	error: `mut` not found in scope
+//     insert (mut map) 4 12
 // 
-// Found 12 errors and 0 warnings
+// examples/codegen/map.an:16:4	error: `insert` not found in scope
+//     insert (mut map) 5 15
+// 
+// examples/codegen/map.an:16:12	error: `mut` not found in scope
+//     insert (mut map) 5 15
+// 
+// examples/codegen/map.an:17:4	error: `insert` not found in scope
+//     insert (mut map) 6 18
+// 
+// examples/codegen/map.an:17:12	error: `mut` not found in scope
+//     insert (mut map) 6 18
+// 
+// examples/codegen/map.an:18:4	error: `insert` not found in scope
+//     insert (mut map) 7 21
+// 
+// examples/codegen/map.an:18:12	error: `mut` not found in scope
+//     insert (mut map) 7 21
+// 
+// examples/codegen/map.an:20:4	error: `print` not found in scope
+//     print map
+// 
+// Found 19 errors and 0 warnings
 

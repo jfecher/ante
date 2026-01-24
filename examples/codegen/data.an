@@ -1,45 +1,58 @@
 type T = a: I32, b: String
 
-t = T 1 "one"
-printne "t = "
-printne (t.a)
-printne ", "
+main () =
+    t = T 1 "one"
+    printne "t = "
+    printne (t.a)
+    printne ", "
 
-puts t.b.c_string
+    puts t.b.c_string
 
-s = Some 2
+    s = Some 2
 
-match s
-| Some x -> 
-    printne "s = "
-    print x
-| None -> print "s = None"
+    match s
+    | Some x -> 
+        printne "s = "
+        print x
+    | None -> print "s = None"
 
 // args: --delete-binary
 // expected stderr:
-// examples/codegen/data.an:4:8	error: Expected `=` to begin the function body but found "t = "
-// printne "t = "
+// examples/codegen/data.an:5:4	error: `printne` not found in scope
+//     printne "t = "
 // 
-// examples/codegen/data.an:5:8	error: Expected `=` to begin the function body but found `(`
-// printne (t.a)
+// examples/codegen/data.an:6:4	error: `printne` not found in scope
+//     printne (t.a)
 // 
-// examples/codegen/data.an:6:8	error: Expected `=` to begin the function body but found ", "
-// printne ", "
+// examples/codegen/data.an:6:14	error: T has no field named `a`
+//     printne (t.a)
 // 
-// examples/codegen/data.an:8:5	error: Expected `=` to begin the function body but found `t`
-// puts t.b.c_string
+// examples/codegen/data.an:7:4	error: `printne` not found in scope
+//     printne ", "
 // 
-// examples/codegen/data.an:10:4	error: `Some` not found in scope
-// s = Some 2
+// examples/codegen/data.an:9:10	error: T has no field named `b`
+//     puts t.b.c_string
 // 
-// examples/codegen/data.an:12:0	error: Expected a top-level item but found `match`
-// match s
+// examples/codegen/data.an:9:12	error: Object type must be known by this point to access its field
+//     puts t.b.c_string
 // 
-// examples/codegen/data.an:13:0	error: Expected a top-level item but found `|`
-// | Some x -> 
+// examples/codegen/data.an:11:8	error: `Some` not found in scope
+//     s = Some 2
 // 
-// examples/codegen/data.an:16:0	error: Expected a top-level item but found `|`
-// | None -> print "s = None"
+// examples/codegen/data.an:14:6	error: `Some` not found in scope
+//     | Some x -> 
 // 
-// Found 8 errors and 0 warnings
+// examples/codegen/data.an:15:8	error: `printne` not found in scope
+//         printne "s = "
+// 
+// examples/codegen/data.an:16:8	error: `print` not found in scope
+//         print x
+// 
+// examples/codegen/data.an:17:6	error: `None` not found in scope
+//     | None -> print "s = None"
+// 
+// examples/codegen/data.an:17:14	error: `print` not found in scope
+//     | None -> print "s = None"
+// 
+// Found 12 errors and 0 warnings
 

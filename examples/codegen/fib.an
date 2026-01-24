@@ -2,7 +2,7 @@ fib n =
     if n < 2 then n
     else fib (n - 2) + fib (n - 1)
 
-print (fib 10)
+main () = print (fib 10)
 
 // args: --delete-binary
 // expected stderr:
@@ -18,8 +18,8 @@ print (fib 10)
 // examples/codegen/fib.an:3:30	error: `-` not found in scope
 //     else fib (n - 2) + fib (n - 1)
 // 
-// examples/codegen/fib.an:5:6	error: Expected `=` to begin the function body but found `(`
-// print (fib 10)
+// examples/codegen/fib.an:5:10	error: `print` not found in scope
+// main () = print (fib 10)
 // 
 // Found 5 errors and 0 warnings
 

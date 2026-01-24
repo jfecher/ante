@@ -15,7 +15,7 @@ my_iter iterable f =
         f elem
         my_iter rest f
 
-my_iter 10 print
+main () = my_iter 10 print
 
 // args: --delete-binary
 // expected stderr:
@@ -37,8 +37,8 @@ my_iter 10 print
 // examples/codegen/iter.an:14:6	error: `Some` not found in scope
 //     | Some (elem, rest) ->
 // 
-// examples/codegen/iter.an:18:8	error: Expected `=` to begin the function body but found `10`
-// my_iter 10 print
+// examples/codegen/iter.an:18:21	error: `print` not found in scope
+// main () = my_iter 10 print
 // 
 // Found 7 errors and 0 warnings
 

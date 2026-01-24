@@ -1,10 +1,11 @@
-var num = 32
-print num
-num := 7
-print num
+main () =
+    var num = 32
+    print num
+    num := 7
+    print num
 
-mutate (mut num)
-print num
+    mutate (mut num)
+    print num
 
 mutate (n: mut I32) =
     x = double @n
@@ -14,29 +15,23 @@ double x = x * 2
 
 // args: --delete-binary
 // expected stderr:
-// examples/codegen/mutability.an:1:1	error: Expected a top-level item but found `var`
-// var num = 32
+// examples/codegen/mutability.an:3:4	error: `print` not found in scope
+//     print num
 // 
-// examples/codegen/mutability.an:2:6	error: Expected `=` to begin the function body but found `num`
-// print num
+// examples/codegen/mutability.an:5:4	error: `print` not found in scope
+//     print num
 // 
-// examples/codegen/mutability.an:3:4	error: Expected `=` to begin the function body but found `:=`
-// num := 7
+// examples/codegen/mutability.an:7:12	error: `mut` not found in scope
+//     mutate (mut num)
 // 
-// examples/codegen/mutability.an:4:6	error: Expected `=` to begin the function body but found `num`
-// print num
+// examples/codegen/mutability.an:8:4	error: `print` not found in scope
+//     print num
 // 
-// examples/codegen/mutability.an:6:7	error: Expected `=` to begin the function body but found `(`
-// mutate (mut num)
-// 
-// examples/codegen/mutability.an:7:6	error: Expected `=` to begin the function body but found `num`
-// print num
-// 
-// examples/codegen/mutability.an:10:15	error: `@` not found in scope
+// examples/codegen/mutability.an:11:15	error: `@` not found in scope
 //     x = double @n
 // 
-// examples/codegen/mutability.an:13:13	error: `*` not found in scope
+// examples/codegen/mutability.an:14:13	error: `*` not found in scope
 // double x = x * 2
 // 
-// Found 8 errors and 0 warnings
+// Found 6 errors and 0 warnings
 

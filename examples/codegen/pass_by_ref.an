@@ -16,8 +16,9 @@ foo (x: S) (y: S) =
     printne "x after:  "
     print x
 
-var x = S "original x string"
-foo x x
+main () =
+    var x = S "original x string"
+    foo x x
 
 // args: --delete-binary
 // expected stderr:
@@ -42,11 +43,5 @@ foo x x
 // examples/codegen/pass_by_ref.an:17:4	error: `print` not found in scope
 //     print x
 // 
-// examples/codegen/pass_by_ref.an:19:0	error: Expected a top-level item but found `var`
-// var x = S "original x string"
-// 
-// examples/codegen/pass_by_ref.an:20:4	error: Expected `=` to begin the function body but found `x`
-// foo x x
-// 
-// Found 9 errors and 0 warnings
+// Found 7 errors and 0 warnings
 

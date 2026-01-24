@@ -1,10 +1,19 @@
-
-print (true and true or false and false)
+main () =
+    print (true and true or false and false)
 
 // args: --delete-binary
 // expected stderr:
-// examples/codegen/logical.an:2:6	error: Expected `=` to begin the function body but found `(`
-// print (true and true or false and false)
+// examples/codegen/logical.an:2:4	error: `print` not found in scope
+//     print (true and true or false and false)
 // 
-// Found 1 error and 0 warnings
+// examples/codegen/logical.an:2:16	error: `and` not found in scope
+//     print (true and true or false and false)
+// 
+// examples/codegen/logical.an:2:25	error: `or` not found in scope
+//     print (true and true or false and false)
+// 
+// examples/codegen/logical.an:2:34	error: `and` not found in scope
+//     print (true and true or false and false)
+// 
+// Found 4 errors and 0 warnings
 
