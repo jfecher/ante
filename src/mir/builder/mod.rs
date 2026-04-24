@@ -271,6 +271,7 @@ where
             cst::Expr::Lambda(lambda) => self.lambda(lambda, None, None, expr, false),
             cst::Expr::If(if_) => self.if_(if_, expr),
             cst::Expr::Match(_) => self.match_(expr),
+            cst::Expr::Is(_) => unreachable!("Expr::Is should be desugared during GetItem"),
             cst::Expr::Handle(handle) => self.handle(handle, expr),
             cst::Expr::Reference(reference) => self.reference(reference),
             cst::Expr::TypeAnnotation(type_annotation) => self.expression(type_annotation.lhs),

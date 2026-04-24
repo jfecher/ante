@@ -1,0 +1,17 @@
+main () =
+    x = Maybe.Some 3
+
+    // a shouldn't be visible before it is bound
+    if a < 10 and x is Some a and a < 10 and a < 10 then
+        println "should get an error above"
+
+// args: --check
+// expected exit status: 1
+// expected stderr:
+// examples/nameresolution/if.an:5:8
+// 4 |     // a shouldn't be visible before it is bound
+// 5 |     if a < 10 and x is Some a and a < 10 and a < 10 then	// error: `a` not found in scope
+// 6 |         println "should get an error above"
+// 
+// Found 1 error and 0 warnings
+

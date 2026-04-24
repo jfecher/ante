@@ -112,6 +112,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Expr::If(if_) => self.check_if(if_, expected, id),
             Expr::Match(match_) => self.check_match(match_, expected, id),
             Expr::Reference(reference) => self.check_reference(reference, expected, id),
+            Expr::Is(_) => unreachable!("Expr::Is should be desugared during GetItem"),
             Expr::TypeAnnotation(type_annotation) => {
                 let annotation = self.from_cst_type(&type_annotation.rhs, true);
                 self.unify(expected, &annotation, TypeErrorKind::TypeAnnotationMismatch, id);

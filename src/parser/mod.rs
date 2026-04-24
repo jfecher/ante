@@ -1396,6 +1396,11 @@ impl<'tokens> Parser<'tokens> {
                 self.pop_operator(&mut operator_stack, &mut results);
             }
 
+            if *self.current_token() == Token::Is {
+                self.parse_is(&mut results)?;
+                continue;
+            }
+
             operator_stack.push(self.current_token_and_span());
             self.advance();
 
@@ -1411,6 +1416,21 @@ impl<'tokens> Parser<'tokens> {
         assert!(operator_stack.is_empty());
         assert!(results.len() == 1);
         Ok(results.pop().unwrap())
+    }
+
+    /// Parse an `is` operator. Special-cased from other operators since
+    /// the rhs is a pattern.
+    fn parse_is(&mut self, shunting_yard_results: &mut Vec<ExprId>) -> Result<()> {
+        self.advance(); // `is`
+        let pattern = self.parse_pattern()?;
+        let lhs = shunting_yard_results.pop().unwrap();
+        let lhs_loc = self.expr_location(lhs);
+        let pattern_loc = self.current_context.pattern_locations[pattern].clone();
+        let location = lhs_loc.to(&pattern_loc);
+        let is_expr = Expr::Is(cst::Is { lhs, pattern });
+        let id = self.push_expr(is_expr, location);
+        shunting_yard_results.push(id);
+        Ok(())
     }
 
     /// term: term ':' type

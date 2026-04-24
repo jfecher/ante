@@ -223,6 +223,7 @@ pub enum Expr {
     Lambda(Lambda),
     If(If),
     Match(Match),
+    Is(Is),
     Handle(Handle),
     Reference(Reference),
     TypeAnnotation(TypeAnnotation),
@@ -415,6 +416,13 @@ pub struct Handle {
     /// The effectful expression being handled
     pub expression: ExprId,
     pub cases: Vec<(HandlePattern, ExprId)>,
+}
+
+/// `lhs is pattern` - always desugared during `GetItem`.
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
+pub struct Is {
+    pub lhs: ExprId,
+    pub pattern: PatternId,
 }
 
 /// `&rhs`, `!rhs`

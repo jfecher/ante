@@ -101,6 +101,7 @@ impl FreeVars {
                     self.find_free_variables(*branch, checker);
                 }
             },
+            cst::Expr::Is(_) => unreachable!("Expr::Is should be desugared during GetItem"),
             cst::Expr::Handle(handle) => {
                 self.find_free_variables(handle.expression, checker);
                 for (pattern, branch) in handle.cases.iter() {

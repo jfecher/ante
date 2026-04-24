@@ -32,7 +32,7 @@ export String, from_parts, Maybe, None, Some, unwrap, Result, Ok, Error, (,),
     Type, MkType, size_of,
     offset, offset_bytes, deref, deref_ptr, ptr_store, array_insert, ptr_to_mut,
     Clone, clone, Drop, drop, drop_string,
-    Copy, (.*), copy_i8, copy_i16, copy_i32, copy_i64, copy_isz, copy_u8, copy_u16, copy_u32, copy_u64, copy_usz, copy_f32, copy_f64, copy_unit, copy_bool, copy_char, copy_ptr, copy_ref, copy_mut, copy_imm, clone_string, copy_pair,
+    Copy, (.*), copy_i8, copy_i16, copy_i32, copy_i64, copy_isz, copy_u8, copy_u16, copy_u32, copy_u64, copy_usz, copy_f32, copy_f64, copy_unit, copy_bool, copy_char, copy_ptr, copy_ref, copy_mut, copy_imm, clone_string, copy_pair, copy_maybe,
     null, transmute,
     In, (in),
     Print, print, println, print_unsigned, print_signed, print_float, print_u8, print_u16, print_u32, print_u64, print_usz, print_i8, print_i16, print_i32, print_i64, print_isz, print_char, print_f64, print_f32, print_pair, print_string, print_maybe, print_ref, print_bool,
@@ -627,6 +627,11 @@ impl copy_imm: Copy (imm t) with (.*) = deref
 
 impl copy_pair {Copy a} {Copy b}: Copy (a, b) with
     (.*) pair = (pair.first, pair.second)
+
+impl copy_maybe {Copy a}: Copy (Maybe a) with
+    (.*) m = match deref m
+        | Some x -> Some (x.*)
+        | None -> None
 
 impl clone_string: Clone String with
     clone (s: ref String) =

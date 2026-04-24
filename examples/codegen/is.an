@@ -1,0 +1,35 @@
+main () =
+    x = Maybe.Some 5
+    y = Maybe.Some 4
+
+    println (x is Some _)
+    println (x is None)
+
+    b = x is Some n and n > 0
+    println b
+
+    if x is Some n then println n
+    if x is Some n then println n else println 0
+
+    if x is Some n and n > 3
+    then println "big"
+    else println "small"
+
+    if x is Some a and y is Some b and a + b > 5
+    then println (a + b)
+    else println 0
+
+    z = Maybe.Some y
+    if z is Some (Some n) then
+        println n
+
+// args: --delete-binary --no-color
+// expected stdout:
+// true
+// false
+// true
+// 5
+// 5
+// big
+// 9
+// 4

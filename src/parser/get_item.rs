@@ -11,7 +11,7 @@ use crate::{
             TopLevelItem, TopLevelItemKind, TraitDefinition, TraitImpl, Type, TypeDefinitionBody, TypeKind,
         },
         desugar_context::DesugarContext,
-        ids::{ExprId, PathId},
+        ids::{ExprId, PathId, PatternId},
     },
 };
 
@@ -231,6 +231,13 @@ fn collect_expressions_to_desugar(expr: ExprId, context: &DesugarContext, to_des
             }
         },
         Expr::Call(call) => {
+            if is_and_call(expr, context) && and_chain_contains_is(expr, context) {
+                let parts = flatten_and_chain(expr, context);
+                collect_chain_sub_expressions(&parts, context, to_desugar);
+                to_desugar.push(ExprDesugar::AndWithIs(expr));
+                return;
+            }
+
             collect_expressions_to_desugar(call.function, context, to_desugar);
             for arg in call.arguments.iter() {
                 collect_expressions_to_desugar(arg.expr, context, to_desugar);
@@ -245,11 +252,25 @@ fn collect_expressions_to_desugar(expr: ExprId, context: &DesugarContext, to_des
             }
         },
         Expr::If(if_) => {
-            collect_expressions_to_desugar(if_.condition, context, to_desugar);
-            collect_expressions_to_desugar(if_.then, context, to_desugar);
-            if let Some(else_) = if_.else_ {
-                collect_expressions_to_desugar(else_, context, to_desugar);
+            if and_chain_contains_is(if_.condition, context) {
+                let parts = flatten_and_chain(if_.condition, context);
+                collect_chain_sub_expressions(&parts, context, to_desugar);
+                collect_expressions_to_desugar(if_.then, context, to_desugar);
+                if let Some(else_) = if_.else_ {
+                    collect_expressions_to_desugar(else_, context, to_desugar);
+                }
+                to_desugar.push(ExprDesugar::IfWithIs(expr));
+            } else {
+                collect_expressions_to_desugar(if_.condition, context, to_desugar);
+                collect_expressions_to_desugar(if_.then, context, to_desugar);
+                if let Some(else_) = if_.else_ {
+                    collect_expressions_to_desugar(else_, context, to_desugar);
+                }
             }
+        },
+        Expr::Is(is_) => {
+            collect_expressions_to_desugar(is_.lhs, context, to_desugar);
+            to_desugar.push(ExprDesugar::BareIs(expr));
         },
         Expr::Match(match_) => {
             collect_expressions_to_desugar(match_.expression, context, to_desugar);
@@ -434,6 +455,18 @@ enum ExprDesugar {
 
     /// `"a${x}b${y}c"` desugars to `"a" ++ cast x : String ++ "b" ++ cast y : String ++ "c"`
     StringInterpolation(ExprId),
+
+    /// `if <and-chain containing is> then T else E` — rewrite the whole If into
+    /// a nested match so each `is`'s pattern bindings scope over subsequent
+    /// chain elements and the then-branch.
+    IfWithIs(ExprId),
+
+    /// Value-position `and`-chain containing at least one `is` — rewrite the
+    /// whole chain (used as a Bool) into a nested match.
+    AndWithIs(ExprId),
+
+    /// A bare `x is P` not absorbed by a parent IfWithIs / AndWithIs.
+    BareIs(ExprId),
 }
 
 /// Classifies this call based on the called function.
@@ -501,6 +534,9 @@ impl ExprDesugar {
             ExprDesugar::TypeCast { call, target_type } => desugar_type_cast(call, target_type, context),
             ExprDesugar::Loop(expr) => desugar_loop(expr, context),
             ExprDesugar::StringInterpolation(expr) => desugar_string_interpolation(expr, context),
+            ExprDesugar::IfWithIs(expr) => desugar_if_with_is(expr, context),
+            ExprDesugar::AndWithIs(expr) => desugar_and_with_is(expr, context),
+            ExprDesugar::BareIs(expr) => desugar_bare_is(expr, context),
         }
     }
 }
@@ -662,4 +698,124 @@ fn desugar_tilde_arrow(expr: ExprId, context: &mut DesugarContext) {
         cst::Call { function: b, arguments: vec![Argument::explicit(lambda)] }
     };
     context.set_expr(expr, Expr::Call(new_call));
+}
+
+/// Element of a flattened `and`-chain.
+enum ChainElement {
+    /// Opaque boolean subexpression — no pattern bindings to propagate.
+    Cond(ExprId),
+    /// `lhs is pattern` — pattern bindings scope over subsequent chain elements.
+    Is(cst::Is),
+}
+
+/// Is this Call-node `foo and bar`?
+fn is_and_call(expr: ExprId, context: &DesugarContext) -> bool {
+    let Expr::Call(c) = &context[expr] else { return false };
+    if c.arguments.len() != 2 {
+        return false;
+    }
+    let Expr::Variable(p) = &context[c.function] else { return false };
+    let path = &context[*p];
+    path.components.len() == 1 && path.last_ident() == "and"
+}
+
+/// True if this `and`-call chain contains an `is` expression
+fn and_chain_contains_is(expr: ExprId, context: &DesugarContext) -> bool {
+    match &context[expr] {
+        Expr::Is(_) => true,
+        _ if is_and_call(expr, context) => {
+            let Expr::Call(c) = &context[expr] else { unreachable!() };
+            let l = c.arguments[0].expr;
+            let r = c.arguments[1].expr;
+            and_chain_contains_is(l, context) || and_chain_contains_is(r, context)
+        },
+        _ => false,
+    }
+}
+
+/// Flatten an expression tree along its `and` joins.
+fn flatten_and_chain(expr: ExprId, context: &DesugarContext) -> Vec<ChainElement> {
+    match &context[expr] {
+        Expr::Is(is_) => vec![ChainElement::Is(is_.clone())],
+        _ if is_and_call(expr, context) => {
+            let Expr::Call(c) = &context[expr] else { unreachable!() };
+            let l = c.arguments[0].expr;
+            let r = c.arguments[1].expr;
+            let mut parts = flatten_and_chain(l, context);
+            parts.extend(flatten_and_chain(r, context));
+            parts
+        },
+        _ => vec![ChainElement::Cond(expr)],
+    }
+}
+
+/// Recurse into the non-structural sub-expressions of a flattened chain:
+/// `Is.lhs` for each is-element, and the full expression for each cond-leaf.
+fn collect_chain_sub_expressions(parts: &[ChainElement], context: &DesugarContext, to_desugar: &mut Vec<ExprDesugar>) {
+    for part in parts {
+        match part {
+            ChainElement::Is(is_) => collect_expressions_to_desugar(is_.lhs, context, to_desugar),
+            ChainElement::Cond(e) => collect_expressions_to_desugar(*e, context, to_desugar),
+        }
+    }
+}
+
+/// Build `match scrutinee | pattern -> then_branch | _ -> else_branch`.
+fn build_match_from_is(
+    scrutinee: ExprId, pattern: PatternId, then_branch: ExprId, else_branch: ExprId, location: Location,
+    context: &mut DesugarContext,
+) -> Expr {
+    let underscore = context.push_name(Arc::new("_".to_string()), location.clone());
+    let wildcard = context.push_pattern(Pattern::Variable(underscore), location);
+    Expr::Match(cst::Match { expression: scrutinee, cases: vec![(pattern, then_branch), (wildcard, else_branch)] })
+}
+
+/// Compile a flat and-chain into an expression that evaluates to `then_expr`
+/// iff every element succeeds (with each `Is`'s bindings in scope for every
+/// element after it), else `else_expr`.
+///
+/// `else_expr` is shared across all fallthrough positions — only one fallthrough
+/// ever runs, so side effects are executed at most once.
+fn compile_chain(parts: &[ChainElement], then_expr: ExprId, else_expr: ExprId, context: &mut DesugarContext) -> ExprId {
+    let Some((head, tail)) = parts.split_first() else { return then_expr };
+    let inner = compile_chain(tail, then_expr, else_expr, context);
+    match head {
+        ChainElement::Is(is_) => {
+            let location = context.expr_location(is_.lhs).clone();
+            let match_expr = build_match_from_is(is_.lhs, is_.pattern, inner, else_expr, location.clone(), context);
+            context.push_expr(match_expr, location)
+        },
+        ChainElement::Cond(cond) => {
+            let location = context.expr_location(*cond).clone();
+            let if_expr = Expr::If(If { condition: *cond, then: inner, else_: Some(else_expr) });
+            context.push_expr(if_expr, location)
+        },
+    }
+}
+
+fn desugar_if_with_is(expr: ExprId, context: &mut DesugarContext) {
+    let Expr::If(if_) = context[expr].clone() else { unreachable!() };
+    let location = context.expr_location(expr).clone();
+    let else_branch = if_.else_.unwrap_or_else(|| context.push_expr(Expr::Literal(Literal::Unit), location));
+    let parts = flatten_and_chain(if_.condition, context);
+    let compiled = compile_chain(&parts, if_.then, else_branch, context);
+    context.set_expr(expr, context[compiled].clone());
+}
+
+fn desugar_and_with_is(expr: ExprId, context: &mut DesugarContext) {
+    let location = context.expr_location(expr).clone();
+    let true_expr = context.push_expr(Expr::Literal(Literal::Bool(true)), location.clone());
+    let false_expr = context.push_expr(Expr::Literal(Literal::Bool(false)), location);
+    let parts = flatten_and_chain(expr, context);
+    let compiled = compile_chain(&parts, true_expr, false_expr, context);
+    context.set_expr(expr, context[compiled].clone());
+}
+
+fn desugar_bare_is(expr: ExprId, context: &mut DesugarContext) {
+    let Expr::Is(is_) = context[expr].clone() else { unreachable!() };
+    let location = context.expr_location(expr).clone();
+    let true_expr = context.push_expr(Expr::Literal(Literal::Bool(true)), location.clone());
+    let false_expr = context.push_expr(Expr::Literal(Literal::Bool(false)), location.clone());
+    let replacement = build_match_from_is(is_.lhs, is_.pattern, true_expr, false_expr, location, context);
+    context.set_expr(expr, replacement);
 }

@@ -8,9 +8,9 @@ use crate::{
     diagnostics::Location,
     incremental::{Db, GetItem, Resolve, TypeCheck},
     lexer::token::INDEX_OPERATOR_FUNCTION_NAME,
-    name_resolution::{Origin, namespace::SourceFileId},
+    name_resolution::{namespace::SourceFileId, Origin},
     parser::{
-        cst::{Argument, Constructor, For, Loop, LoopParameter, ReferenceKind, TopLevelItemKind, While},
+        cst::{Argument, Constructor, For, Is, Loop, LoopParameter, ReferenceKind, TopLevelItemKind, While},
         ids::{IdStore, NameId, PathId},
     },
     type_inference::{
@@ -616,6 +616,7 @@ impl<'a> CstDisplay<'a> {
             Expr::Lambda(lambda) => self.fmt_lambda(lambda, id, context, f),
             Expr::If(if_) => self.fmt_if(if_, context, f),
             Expr::Match(match_) => self.fmt_match(match_, context, id, f),
+            Expr::Is(is_) => self.fmt_is(is_, context, f),
             Expr::Handle(handle_) => self.fmt_handle(handle_, context, f),
             Expr::Reference(reference) => self.fmt_reference(reference, context, f),
             Expr::TypeAnnotation(type_annotation) => self.fmt_type_annotation(type_annotation, context, f),
@@ -919,6 +920,13 @@ impl<'a> CstDisplay<'a> {
             self.fmt_expr(else_, context, f)?;
         }
         Ok(())
+    }
+
+    fn fmt_is(&mut self, is_: &Is, context: &impl IdStore, f: &mut Formatter) -> std::fmt::Result {
+        let paren_lhs = !context.get_expr(is_.lhs).is_atom();
+        self.parenthesize(is_.lhs, paren_lhs, context, f)?;
+        write!(f, " is ")?;
+        self.fmt_pattern(is_.pattern, context, f)
     }
 
     /// Format the `if c then t` portion, but not the else portion
