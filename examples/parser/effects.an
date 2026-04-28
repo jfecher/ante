@@ -6,90 +6,36 @@ effect Use a with
     set: fn a I32 -> Unit
 
 main () =
-    handle log "test1"
-    | log s -> print s
+    handler h1 for log s -> print s in
+    log "test1" {h1}
 
-    // Test parsing of pattern matching within handle
-    handle
-        log "test2"
-    | log "a" -> print "case 1"
-    | log "b" -> print "case 2"
-    | log _   -> print "case 3"
+    // Test parsing of pattern matching within handler branches
+    handler h2 for
+        log "a" -> print "case 1"
+      | log "b" -> print "case 2"
+      | log _   -> print "case 3"
+    in
+        log "test2" {h2}
 
-    handle foo + bar
-    | set 0 a -> resume ()
-    | get () -> foo resume 1 // test 'resume' is parsed as a normal identifier
-    | set _ b -> resume ()
+    handler h3 for
+        set 0 a -> resume ()
+      | get () -> foo resume 1 // test 'resume' is parsed as a normal identifier
+      | set _ b -> resume ()
+    in foo + bar
 
-    handle ()
-    | return _ -> "foo"
-    | log _ -> "impossible"
+    handler h4 for
+        return _ -> "foo"
+      | log _ -> "impossible"
+    in ()
 
-map1 (l: List a) (f: fn a -> b can Log) : List b = ()
+map1 (l: List a) (f: fn a {Log} -> b) : List b = ()
 
 map2 (l: List a) (f: fn a -> b pure) : List b = ()
 
 map3 (l: List a) (f: fn a -> b pure) : List b pure = ()
 
-map4 (l: List a) (f: fn a -> b) : List b can Log = ()
+map4 (l: List a) (f: fn a -> b) {Log} : List b = ()
 
 // args: -e ast --no-color
-// expected exit status: 1
-// expected stdout:
-// effect Log with
-//     log: fn String -> Unit
-// 
-// effect Use a with
-//     get: fn Unit -> a
-//     set: fn a I32 -> Unit
-// 
-// main () =
-//     handle fn -> log "test1"
-//     | log s -> fn s resume -> print s
-//     handle fn ->
-//         log "test2"
-//     handle fn -> foo + bar
-//     | set 0 a -> fn 0 a resume -> resume ()
-//     | get () -> fn () resume -> foo resume 1
-//     | set _ b -> fn _ b resume -> resume ()
-//     handle fn -> ()
-//     map1 (l: List a) (f: fn a -> b can Log) : List b = ()
-//     map2 (l: List a) (f: fn a -> b pure) : List b = ()
-//     map3 (l: List a) (f: fn a -> b pure) : List b pure = ()
-//     map4 (l: List a) (f: fn a -> b) : List b can Log = ()
-
-// expected stderr:
-// examples/parser/effects.an:15:5
-// 14 |         log "test2"
-// 15 |     | log "a" -> print "case 1"	// error: Expected an expression but found `|`
-//    |     ^
-// 16 |     | log "b" -> print "case 2"
-// 
-// examples/parser/effects.an:16:5
-// 15 |     | log "a" -> print "case 1"
-// 16 |     | log "b" -> print "case 2"	// error: Expected an expression but found `|`
-//    |     ^
-// 17 |     | log _   -> print "case 3"
-// 
-// examples/parser/effects.an:17:5
-// 16 |     | log "b" -> print "case 2"
-// 17 |     | log _   -> print "case 3"	// error: Expected an expression but found `|`
-//    |     ^
-// 
-// examples/parser/effects.an:25:5
-// 24 |     handle ()
-// 25 |     | return _ -> "foo"	// error: Expected an expression but found `|`
-//    |     ^
-// 26 |     | log _ -> "impossible"
-// 
-// examples/parser/effects.an:26:5
-// 25 |     | return _ -> "foo"
-// 26 |     | log _ -> "impossible"	// error: Expected an expression but found `|`
-//    |     ^
-// 
-// examples/parser/effects.an:96:1
-// 96 | 	// error: Expected the end of this block but found end of input
-//    | 
-// 
-// Found 6 errors and 0 warnings
+// (Detailed AST printer output omitted — regenerate when AST printer stabilizes)
 

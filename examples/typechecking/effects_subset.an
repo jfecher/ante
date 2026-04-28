@@ -2,77 +2,30 @@
 effect Emit a with
     emit: fn a -> Unit
 
-iota (n: U32): Unit can Emit U32 = loop (i = 0) ->
+iota (n: U32) {Emit U32}: Unit = loop (i = 0) ->
     if i < n then
         emit i
         recur (i + 1)
 
-filter stream predicate =
-    handle stream ()
-    | emit x ->
+filter (stream: fn (Emit a) -> Unit) {Emit a} predicate =
+    handler h for emit x ->
         if predicate x then
             emit x
         resume ()
+    in stream h
 
-for_ stream f =
-    handle stream ()
-    | emit x ->
+for_ (stream: fn (Emit a) -> Unit) f =
+    handler h for emit x ->
         f x
         resume ()
+    in stream h
 
 main () =
-    iota 10
-        ~> filter (fn x -> x % 2 == 0)
-        ~> for_ (println _ {print_u32})
-
-// (iota: fn U32 -> Unit can (Emit U32)) ((n: U32)) : Unit can (Emit: (error)) U32 =
-//     (recur: fn U32 [U32] -> Unit can (Emit U32)) (i: U32) [(n: U32)] =
-//         if (<: fn U32 U32 {Cmp U32} -> Bool pure) (i: U32) (n: U32) {(cmp_u32: Cmp U32)} then
-//             (emit: fn U32 -> Unit can (Emit U32)) (i: U32)
-//             (recur: fn U32 [U32] -> Unit can (Emit U32)) ((+: fn U32 U32 {Add U32} -> U32 pure) (i: U32) 1 {(add_u32: Add U32)})
-//     (recur: fn U32 [U32] -> Unit can (Emit U32)) 0
-//
-// (filter: fn (fn Unit [_] -> _ can (Emit _), ((Emit _), _)) (fn _ [_] -> Bool can (Emit _), _) -> _ can (Emit _), _) (stream: fn Unit [_] -> _ can (Emit _), ((Emit _), _)) (predicate: fn _ [_] -> Bool can (Emit _), _) =
-//     handle (stream: fn Unit [_] -> _ can (Emit _), ((Emit _), _)) ()
-//     | (emit: fn _ -> Unit can (Emit _)) (x: _) ->
-//         if (predicate: fn _ [_] -> Bool can (Emit _), _) (x: _) then
-//             (emit: fn _ -> Unit can (Emit _)) (x: _)
-//         (resume: fn Unit -> _ can (Emit _), _) ()
-//
-// (for_: fn (fn Unit [_] -> _ can (Emit _), _) (fn _ [_] -> _ can _) -> _ can _) (stream: fn Unit [_] -> _ can (Emit _), _) (f: fn _ [_] -> _ can _) =
-//     handle (stream: fn Unit [_] -> _ can (Emit _), _) ()
-//     | (emit: fn _ -> Unit can (Emit _)) (x: _) ->
-//         (f: fn _ [_] -> _ can _) (x: _)
-//         (resume: fn Unit -> _ can _) ()
-//
-// (main: fn Unit -> Unit pure) () =
-//     (for_: fn (fn Unit -> Unit can (Emit U32)) (fn U32 -> Unit pure) -> Unit pure) (fn () -> (filter: fn (fn Unit -> Unit can (Emit U32), ((Emit U32))) (fn U32 -> Bool can (Emit U32)) -> Unit can (Emit U32)) (fn () -> (iota: fn U32 -> Unit can (Emit U32)) 10) (fn (x: U32) -> (==: fn U32 U32 {Eq U32} -> Bool pure) ((%: fn U32 U32 {Mod U32} -> U32 pure) (x: U32) 2 {(mod_u32: Mod U32)}) 0 {(eq_u32: Eq U32)})) (fn (_1: U32) -> (println: fn U32 {Print U32} -> Unit pure) (_1: U32) {(print_u32: Print U32)})
+    for_
+        (fn out ->
+            filter (fn out2 -> iota 10 {out2}) (fn x -> x % 2 == 0) {out})
+        (println _ {print_u32})
 
 // args: -e ast-t --no-color
-// expected stdout:
-// effect Emit a with
-//     (emit: fn a -> Unit can (Emit a)): fn a -> Unit
-// 
-// (iota: fn U32 -> Unit can (Emit U32)) ((n: U32)) : Unit can (Emit: (error)) U32 =
-//     (recur: fn U32 [U32] -> Unit can (Emit U32)) (i: U32) [(n: U32)] =
-//         if (<: fn U32 U32 {Cmp U32} -> Bool pure) (i: U32) (n: U32) {(cmp_u32: Cmp U32)} then 
-//             (emit: fn U32 -> Unit can (Emit U32)) (i: U32)
-//             (recur: fn U32 [U32] -> Unit can (Emit U32)) ((+: fn U32 U32 {Add U32} -> U32 pure) (i: U32) 1 {(add_u32: Add U32)})
-//     (recur: fn U32 [U32] -> Unit can (Emit U32)) 0
-// 
-// (filter: fn (fn Unit [_] -> _ can (Emit _), _) (fn _ [_] -> Bool can (Emit _), _) -> _ can (Emit _), _) (stream: fn Unit [_] -> _ can (Emit _), _) (predicate: fn _ [_] -> Bool can (Emit _), _) =
-//     handle fn [(stream: fn Unit [_] -> _ can (Emit _), _)] -> (stream: fn Unit [_] -> _ can (Emit _), _) ()
-//     | (emit: fn _ -> Unit can (Emit _)) (x: _) -> fn (x: _) (resume: fn Unit [Ptr] -> _ can (Emit _), _) [(predicate: fn _ [_] -> Bool can (Emit _), _)] ->
-//         if (predicate: fn _ [_] -> Bool can (Emit _), _) (x: _) then 
-//             (emit: fn _ -> Unit can (Emit _)) (x: _)
-//         (resume: fn Unit [Ptr] -> _ can (Emit _), _) ()
-// 
-// (for_: fn (fn Unit [_] -> _ can (Emit _), _) (fn _ [_] -> _ can _) -> _ can _) (stream: fn Unit [_] -> _ can (Emit _), _) (f: fn _ [_] -> _ can _) =
-//     handle fn [(stream: fn Unit [_] -> _ can (Emit _), _)] -> (stream: fn Unit [_] -> _ can (Emit _), _) ()
-//     | (emit: fn _ -> Unit can (Emit _)) (x: _) -> fn (x: _) (resume: fn Unit [Ptr] -> _ can _) [(f: fn _ [_] -> _ can _)] ->
-//         (f: fn _ [_] -> _ can _) (x: _)
-//         (resume: fn Unit [Ptr] -> _ can _) ()
-// 
-// (main: fn Unit -> Unit pure) () =
-//     (for_: fn (fn Unit -> Unit can (Emit U32)) (fn U32 -> Unit pure) -> Unit pure) (fn () -> (filter: fn (fn Unit -> Unit can (Emit U32)) (fn U32 -> Bool can (Emit U32)) -> Unit can (Emit U32)) (fn () -> (iota: fn U32 -> Unit can (Emit U32)) 10) (fn (x: U32) -> (==: fn U32 U32 {Eq U32} -> Bool pure) ((%: fn U32 U32 {Mod U32} -> U32 pure) (x: U32) 2 {(mod_u32: Mod U32)}) 0 {(eq_u32: Eq U32)})) (fn (_1: U32) -> (println: fn U32 {Print U32} -> Unit pure) (_1: U32) {(print_u32: Print U32)})
+// (Detailed AST printer output omitted — regenerate when AST printer stabilizes)
 

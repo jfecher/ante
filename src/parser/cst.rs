@@ -412,9 +412,10 @@ pub struct Match {
     pub cases: Vec<(PatternId, ExprId)>,
 }
 
+/// `handler <name> for <cases> in <expression>`
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
 pub struct Handle {
-    /// The effectful expression being handled
+    pub handler_name: NameId,
     pub expression: ExprId,
     pub cases: Vec<(HandlePattern, ExprId)>,
 }

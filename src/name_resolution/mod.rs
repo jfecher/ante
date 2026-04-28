@@ -544,7 +544,14 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             Expr::Handle(handle) => {
                 // Handle's expression & branches will be lambdas which will push their
                 // own scopes & introduce their patterns themselves.
+                //
+                // The handler name is bound only inside the handled expression, not
+                // inside the branches.
+                self.push_local_scope();
+                self.declare_name(handle.handler_name);
                 self.resolve_expr(handle.expression);
+                self.pop_local_scope();
+
                 for (pattern, branch) in &handle.cases {
                     self.link(pattern.function, false, false);
                     self.resolve_expr(*branch);

@@ -1,44 +1,56 @@
 effect Emit a with
     emit: fn a -> Unit
 
-iota (n: U32) = loop (i = 0) ->
+iota (n: U32) {Emit U32} = loop (i = 0) ->
     if i < n then
         emit i
         recur (i + 1)
 
-filter (stream: fn Unit -> Unit can Emit a) {Copy a} (f: fn a -> Bool pure) =
-    handle stream ()
-    | emit x ->
+filter (stream: fn (Emit a) -> Unit) {Copy a} {Emit a} (f: fn a -> Bool pure) =
+    handler h for emit x ->
         if f x then
             emit x
         resume ()
+    in stream h
 
-map (stream: fn Unit -> Unit can Emit a) (f: fn a -> b pure): Unit can Emit b =
-    handle stream ()
-    | emit x ->
+map (stream: fn (Emit a) -> Unit) {Emit b} (f: fn a -> b pure): Unit =
+    handler h for emit x ->
         emit (f x)
         resume ()
+    in stream h
 
-enumerate (stream: fn Unit -> Unit can Emit a): Unit can Emit (U32, a) =
+enumerate (stream: fn (Emit a) -> Unit) {Emit (U32, a)}: Unit =
     var i = 0u32
-    handle stream ()
-    | emit x ->
+    handler h for emit x ->
         emit (i, x)
         i += 1
         resume ()
+    in stream h
 
-for_ (stream: fn Unit -> Unit can Emit a) (f: fn a -> Unit pure) =
-    handle stream ()
-    | emit x ->
+for_ (stream: fn (Emit a) -> Unit) (f: fn a -> Unit pure) =
+    handler h for emit x ->
         f x
         resume ()
+    in stream h
 
 main () =
-    iota 10
-        ~> filter (_ %% 2)
-        ~> map (_ * 2)
-        ~> enumerate
-        ~> for_ println
+    for_
+        (fn out ->
+            enumerate
+                (fn out2 ->
+                    map
+                        (fn out3 ->
+                            filter
+                                (fn out4 -> iota 10 {out4})
+                                (_ %% 2)
+                                {out3}
+                        )
+                        (_ * 2)
+                        {out2}
+                )
+                {out}
+        )
+        println
 
 // args: --delete-binary --no-color
 // expected stdout:

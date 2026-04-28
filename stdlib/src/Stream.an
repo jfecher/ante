@@ -15,11 +15,11 @@ impl stream_vec: Stream (imm Vec a) (imm a) with
             emit (vec.get_unchecked i)
 
 for_ (s: s) {Stream s a} (f: fn a [env] -> b): Unit =
-    handler h with emit a = f a in
+    handler h for emit a -> f a in
     Stream.stream s h
 
 filter_map (s: s) {Stream s a} {Emit b} (f: fn a [env] -> Maybe b): Unit can Emit b =
-    handler h with emit a =
+    handler h for emit a ->
         match f a
         | Some b -> e.emit b
         | None -> ()
@@ -28,14 +28,14 @@ filter_map (s: s) {Stream s a} {Emit b} (f: fn a [env] -> Maybe b): Unit can Emi
     Stream.stream s h
 
 map (s: s) {Stream s a} {Emit b} (f: fn a [env] -> b): Unit =
-    handler h with emit a =
+    handler h for emit a ->
         emit (f a)
         resume ()
     in
     Stream.stream s h
 
 filter (s: s) {Stream s a} {Emit a} (f: fn (ref a) [env] -> Bool): Unit =
-    handler h with emit a ->
+    handler h for emit a ->
         if f (ref a) then emit a
         resume ()
     in
@@ -44,7 +44,7 @@ filter (s: s) {Stream s a} {Emit a} (f: fn (ref a) [env] -> Bool): Unit =
 foldl (s: s) {Stream s b} (initial: a) (f: fn a b [env] -> a): a =
     var result = initial
 
-    handler h with emit value ->
+    handler h for emit value ->
         result := f result value
         resume ()
     in Stream.stream s h
@@ -52,7 +52,7 @@ foldl (s: s) {Stream s b} (initial: a) (f: fn a b [env] -> a): a =
     result
 
 foldr (s: s) {Stream s a} (acc: b) (f: fn a b [env] -> b): b =
-    handler h with emit value ->
+    handler h for emit value ->
         rest = resume ()
         f value rest
     in
@@ -73,12 +73,12 @@ map2 (s1: s1) (s2: s2) {Stream s1 a} {Stream s2 b} (f: fn a b [env] -> c): Unit 
             resume_b ()
         | _ -> ()
 
-    handler h1 with emit a ->
+    handler h1 for emit a ->
         left := Some (a, resume)
         try_emit ()
     in Stream.stream s1 h1
 
-    handler h2 with emit b ->
+    handler h2 for emit b ->
         right := Some (b, resume)
         try_emit ()
     in Stream.stream s2 h2

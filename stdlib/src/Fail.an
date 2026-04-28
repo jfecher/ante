@@ -1,17 +1,17 @@
 effect Fail with
     fail: fn Unit -> a
 
-try (f: fn Unit -> a can Fail): Maybe a =
-    handle Some (f ())
-    | fail () -> None
+try (f: fn Fail -> a): Maybe a =
+    handler h for fail () -> None in
+    Some (f h)
 
-try_or (f: fn Unit -> a can Fail) (default: a): a =
-    handle f ()
-    | fail () -> default
+try_or (f: fn Fail -> a) (default: a): a =
+    handler h for fail () -> default in
+    f h
 
-try_or_else (f: fn Unit -> a can Fail) (default: fn Unit [env] -> a): a =
-    handle f ()
-    | fail () -> default ()
+try_or_else (f: fn Fail -> a) (default: fn Unit [env] -> a): a =
+    handler h for fail () -> default () in
+    f h
 
 assert (cond: Bool) : Unit can Fail =
     if not cond then fail ()
@@ -28,6 +28,6 @@ assert (cond: Bool) : Unit can Fail =
 ///     input = get_input ()
 ///     parse input
 /// ```
-retry_until_success (f: fn Unit -> a can Fail) : a =
-    handle f ()
-    | fail () -> retry_until_success f
+retry_until_success (f: fn Fail -> a): a =
+    handler h for fail () -> retry_until_success f in
+    f h

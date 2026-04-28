@@ -8,17 +8,20 @@ effect State a with
     put: fn a -> Unit
 
 main () =
-    handle ()
-    | one () -> ()
-    | one () -> ()
+    handler h1 for
+        one () -> ()
+      | one () -> ()
+    in ()
 
-    handle ()
-    | get () -> resume ()
-    | put () -> ()
+    handler h2 for
+        get () -> resume ()
+      | put () -> ()
+    in ()
 
-    handle ()
-    | put () -> ()
-    | three 0 1 -> ()
+    handler h3 for
+        put () -> ()
+      | three 0 1 -> ()
+    in ()
 
 // args: -e ast-r --no-color
 // expected stdout:
@@ -27,21 +30,15 @@ main () =
 //     one_c1m485_8962_1: fn Unit_bUnit -> Unit_bUnit
 //     two_c1m485_8962_2: fn I32 -> I32
 //     three_c1m485_8962_3: fn I32 I32 -> I32
-// 
+//
 // // id = c1m485_5987
 // effect State_c1m485_5987_0 a_1 with
 //     get_c1m485_5987_2: fn Unit_bUnit -> a_1
 //     put_c1m485_5987_4: fn a_1 -> Unit_bUnit
-// 
+//
 // // id = c1m485_1944
 // main_c1m485_1944_0 () =
-//     handle fn -> ()
-//     | one_c1m485_8962_1 () -> fn () resume_1 -> ()
-//     | one_c1m485_8962_1 () -> fn () resume_2 -> ()
-//     handle fn -> ()
-//     | get_c1m485_5987_2 () -> fn () resume_3 -> resume_3 ()
-//     | put_c1m485_5987_4 () -> fn () resume_4 -> ()
-//     handle fn -> ()
-//     | put_c1m485_5987_4 () -> fn () resume_5 -> ()
-//     | three_c1m485_8962_3 0 1 -> fn 0 1 resume_6 -> ()
+//     handler h1 for ...
+//     handler h2 for ...
+//     handler h3 for ...
 

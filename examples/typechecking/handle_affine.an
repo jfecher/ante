@@ -7,26 +7,26 @@ effect Emit a with
 
 // Moving a non-copy outer variable in a handler branch should error
 move_outer_in_branch (r: Resource) (x: I32) =
-    handle emit ()
-    | emit () ->
+    handler h for emit () ->
         consume x
         consume r
         resume ()
+    in emit () {h}
 
 // Moving branch-local variables is fine
 move_handler_param () =
-    handle emit (Resource 1)
-    | emit x ->
+    handler h for emit x ->
         consume x
         local = Resource 2
         consume local
         resume ()
+    in emit (Resource 1) {h}
 
 // The handled expression runs once so moves there are fine
 move_in_expression () =
     r = Resource 3
-    handle consume r
-    | emit () -> resume ()
+    handler h for emit () -> resume () in
+    consume r
 
 main () = ()
 
@@ -39,6 +39,6 @@ main () = ()
 // 13 |         consume r
 //    |                 ^
 // 14 |         resume ()
-// 
+//
 // Found 1 error and 0 warnings
 

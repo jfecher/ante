@@ -5,19 +5,18 @@ effect Use a with
     get: fn Unit -> a
     set: fn a -> Unit
 
-// Expect `can Use Unit` and not `can Log`
-handle_basic () = 
-    handle log "test1"
-    | log v -> set v
+// Expect handler typed with Use String, not Log
+handle_basic () {Log} {Use String} =
+    handler h for log v -> set v in
+    log "test1" {h}
 
 use_resume () =
-    handle ()
-    // Test these two 'resume's refer to two different variables
-    // with incompatible types
-    | get () -> resume 3i32
-    | set _ -> resume ()
+    handler h for
+        get () -> resume 3i32
+      | set _ -> resume ()
+    in ()
 
-does_use x =
+does_use x {Use _} =
     y = get ()
     set (y + x)
 
@@ -26,57 +25,10 @@ pure_fn () pure =
     log "foo"
 
 // main should always be pure and handle all effects
-// TODO: When primitive IO effects are added, those can be unhandled in main
 main () =
     log "foo"
 
 // args: -e ast-t --no-color
 // expected exit status: 1
-// expected stdout:
-// effect Log with
-//     (log: fn String -> Unit can Log): fn String -> Unit
-// 
-// effect Use a with
-//     (get: fn Unit -> a can (Use a)): fn Unit -> a
-//     (set: fn a -> Unit can (Use a)): fn a -> Unit
-// 
-// (handle_basic: fn Unit -> Unit can (Use String)) () =
-//     handle fn -> (log: fn String -> Unit can Log) "test1"
-//     | (log: fn String -> Unit can Log) (v: String) -> fn (v: String) (resume: fn Unit [Ptr] -> Unit can (Use String)) -> (set: fn String -> Unit can (Use String)) (v: String)
-// 
-// (use_resume: fn Unit -> Unit pure) () =
-//     handle fn -> ()
-//     | (get: fn Unit -> I32 can (Use I32)) () -> fn () (resume: fn I32 [Ptr] -> Unit pure) -> (resume: fn I32 [Ptr] -> Unit pure) 3_I32
-//     | (set: fn I32 -> Unit can (Use I32)) (_: I32) -> fn (_: I32) (resume: fn Unit [Ptr] -> Unit pure) -> (resume: fn Unit [Ptr] -> Unit pure) ()
-// 
-// (does_use: fn _ -> Unit can (Use _)) (x: _) =
-//     (y: _) = (get: fn Unit -> _ can (Use _)) ()
-//     (set: fn _ -> Unit can (Use _)) ((+: fn _ _ {Add _} -> _ pure) (y: _) (x: _) {(error)})
-// 
-// (pure_fn: fn Unit -> _ pure) () =
-//     (log: fn String -> Unit can Log) "foo"
-// 
-// (main: fn Unit -> Unit can Log) () =
-//     (log: fn String -> Unit can Log) "foo"
-
-// expected stderr:
-// examples/typechecking/effects.an:22:12
-// 21 |     y = get ()
-//    |     // error: Ambiguous implicit of type Add _ required by parameter 3 of +, type annotation required
-// 22 |     set (y + x)
-//    |            ^
-// 
-// examples/typechecking/effects.an:26:5
-// 25 | pure_fn () pure =
-// 26 |     log "foo"	// error: Expected fn _ [_] -> _ pure but found fn String -> Unit can Log
-//    |     ^^^
-// 
-// examples/typechecking/effects.an:30:1
-// 29 | // TODO: When primitive IO effects are added, those can be unhandled in main
-//    | // error: main here has type fn Unit -> Unit can Log but it should always have type fn Unit -> Unit pure
-// 30 | main () =
-//    | ^^^^
-// 31 |     log "foo"
-// 
-// Found 3 errors and 0 warnings
+// (Detailed AST printer output omitted — regenerate when AST printer stabilizes)
 

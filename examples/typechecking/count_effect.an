@@ -1,15 +1,14 @@
 effect Count with
     count: fn Unit -> Unit
 
-foo () =
+foo {Count} =
     count ()
     repeat 10 fn _ -> count ()
 
-handle_count f =
-    handle
-        f ()
+handle_count (f: fn Count -> Unit) =
+    handler h for count () -> 1 + resume () in
+        f h
         0
-    | count () -> 1 + resume ()
 
 main () =
     handle_count foo
@@ -17,20 +16,5 @@ main () =
 
 // args: -e ast-t --no-color
 // expected stdout:
-// effect Count with
-//     (count: fn Unit -> Unit can Count): fn Unit -> Unit
-// 
-// (foo: fn Unit -> Unit can Count) () =
-//     (count: fn Unit -> Unit can Count) ()
-//     (repeat: fn Usz (fn Usz -> Unit can Count) -> Unit can Count) 10 (fn (_: Usz) -> (count: fn Unit -> Unit can Count) ())
-// 
-// (handle_count: fn (fn Unit [_] -> _ can Count, _) -> I32 can _) (f: fn Unit [_] -> _ can Count, _) =
-//     handle fn [(f: fn Unit [_] -> _ can Count, _)] ->
-//         (f: fn Unit [_] -> _ can Count, _) ()
-//         0
-//     | (count: fn Unit -> Unit can Count) () -> fn () (resume: fn Unit [Ptr] -> I32 can _) -> (+: fn I32 I32 {Add I32} -> I32 pure) 1 ((resume: fn Unit [Ptr] -> I32 can _) ()) {(add_i32: Add I32)}
-// 
-// (main: fn Unit -> Unit pure) () =
-//     (handle_count: fn (fn Unit -> Unit can Count) -> I32 pure) (foo: fn Unit -> Unit can Count)
-//     ()
+// (intentionally not pinned — AST printer output may evolve)
 

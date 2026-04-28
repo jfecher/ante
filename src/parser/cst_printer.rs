@@ -993,8 +993,9 @@ impl<'a> CstDisplay<'a> {
     }
 
     fn fmt_handle(&mut self, handle_: &Handle, context: &impl IdStore, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "handle ")?;
-        self.fmt_expr(handle_.expression, context, f)?;
+        write!(f, "handler ")?;
+        self.fmt_name(handle_.handler_name, context, f)?;
+        write!(f, " for")?;
 
         for (pattern, branch) in &handle_.cases {
             self.newline(f)?;
@@ -1003,6 +1004,10 @@ impl<'a> CstDisplay<'a> {
             write!(f, " -> ")?;
             self.fmt_expr(*branch, context, f)?;
         }
+
+        self.newline(f)?;
+        write!(f, "in ")?;
+        self.fmt_expr(handle_.expression, context, f)?;
 
         Ok(())
     }

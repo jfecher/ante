@@ -1,35 +1,29 @@
 effect Emit a with
     emit: fn a -> Unit
 
-iota (n: U32) = loop (i = 0) ->
+iota (n: U32) {Emit U32} = loop (i = 0) ->
     if i < n then
         emit i
         recur (i + 1)
 
-// Removing the `can` here used to panic
-filter (stream: fn Unit -> Unit) (f: fn a -> Bool pure) =
-    handle 
-        stream ()
-    | emit x ->
+filter (stream: fn (Emit a) -> Unit) {Emit a} (f: fn a -> Bool pure) =
+    handler h for emit x ->
         if f x then
             emit x
         resume ()
+    in stream h
 
-for_ (stream: fn Unit -> Unit can Emit a) (f: fn a -> Unit pure) =
-    handle 
-        stream ()
-    | emit x ->
+for_ (stream: fn (Emit a) -> Unit) (f: fn a -> Unit pure) =
+    handler h for emit x ->
         f x
         resume ()
-
-zero_to_nine () =
-    iota 10
-
-filtered () =
-    filter zero_to_nine (_ %% 2)
+    in stream h
 
 main () =
-    for_ filtered println
+    for_
+        (fn out ->
+            filter (fn out2 -> iota 10 {out2}) (_ %% 2) {out})
+        println
 
 // args: --delete-binary --no-color
 // expected stdout:

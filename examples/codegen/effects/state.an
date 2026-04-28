@@ -2,23 +2,24 @@ effect Use a with
     get: fn Unit -> a
     set: fn a -> Unit
 
-use_state (y: I32) =
-    x = get () : I32
+use_state (y: I32) {Use I32} =
+    x = get ()
     set (x + y)
-    state = get () : I32
+    state = get ()
     println "Ending state = ${state}"
 
-state (f: fn Unit -> a can Use s) (initial: s) {Copy s}: a =
-    var state = initial
-    handle f ()
-    | get () -> resume state
-    | set new_state ->
-        state := new_state
-        resume ()
+state (f: fn (Use s) -> a) (initial: s) {Copy s}: a =
+    var current = initial
+    handler h for
+        get () -> resume current
+      | set new_state ->
+            current := new_state
+            resume ()
+    in f h
 
 main () =
-    use_state 10 ~> state 1
-    use_state 20 ~> state 2
+    state (fn h -> use_state 10 {h}) 1
+    state (fn h -> use_state 20 {h}) 2
 
 // args: --delete-binary --no-color
 // expected stdout:

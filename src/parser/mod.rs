@@ -1371,7 +1371,7 @@ impl<'tokens> Parser<'tokens> {
         match self.current_token() {
             Token::If => self.parse_if_expr(),
             Token::Match => self.parse_match(),
-            Token::Handle => self.parse_handle(),
+            Token::Handler => self.parse_handler(),
             Token::Loop => self.parse_loop(),
             Token::While => self.parse_while(),
             Token::For => self.parse_for(),
@@ -1943,23 +1943,16 @@ impl<'tokens> Parser<'tokens> {
         })
     }
 
-    fn parse_handle(&mut self) -> Result<ExprId> {
+    fn parse_handler(&mut self) -> Result<ExprId> {
         self.with_expr_id_and_location(|this| {
-            this.expect(Token::Handle, "`handle` to start this match expression")?;
+            this.expect(Token::Handler, "`handler` to start this handler expression")?;
 
-            let expression = this.parse_block_or_expression()?;
-            // Wrap the handled expression in a `fn () -> _ = <expression>` lambda
-            // so downstream passes can reuse the existing closure conversion & free-variable analysis
-            let expression = this.wrap_in_lambda(Vec::new(), expression);
+            let handler_name = this.parse_ident_id()?;
+            this.expect(Token::For, "`for` to introduce the handler branches")?;
 
-            let cases = this.many0(|this| {
-                if *this.peek_next_token() == Token::Pipe {
-                    this.accept(Token::Newline);
-                }
-
-                this.expect(Token::Pipe, "a `|` to start a new pattern")?;
+            let parse_branch = |this: &mut Self| -> Result<(HandlePattern, ExprId)> {
                 let pattern = this.parse_handle_pattern()?;
-                this.expect(Token::RightArrow, "a `->` to separate the handle pattern from the match branch")?;
+                this.expect(Token::RightArrow, "a `->` to separate the handle pattern from the branch body")?;
                 let branch = this.parse_block_or_expression()?;
 
                 // Wrap the branch in a lambda whose parameters are each of the pattern args followed by `resume`.
@@ -1969,9 +1962,42 @@ impl<'tokens> Parser<'tokens> {
                 params.push(cst::Parameter::new(resume_pattern));
 
                 Ok((pattern, this.wrap_in_lambda(params, branch)))
-            });
+            };
 
-            Ok(Expr::Handle(cst::Handle { expression, cases }))
+            // Allow an optional leading newline before the first `|` in the pipe-prefixed form.
+            let starts_with_pipe = *this.current_token() == Token::Pipe
+                || (*this.current_token() == Token::Newline && *this.peek_next_token() == Token::Pipe);
+
+            let mut cases = Vec::new();
+            if starts_with_pipe {
+                let mut first = true;
+                loop {
+                    if *this.peek_next_token() == Token::Pipe {
+                        this.accept(Token::Newline);
+                    }
+                    if !this.accept(Token::Pipe) {
+                        if first {
+                            return this.expected("a `|` to start a handler branch");
+                        }
+                        break;
+                    }
+                    first = false;
+                    cases.push(parse_branch(this)?);
+                }
+            } else {
+                // Single branch with no leading `|`.
+                cases.push(parse_branch(this)?);
+            }
+
+            this.accept(Token::Newline);
+            this.expect(Token::In, "`in` to introduce the handled expression")?;
+
+            let expression = this.parse_block_or_expression()?;
+            // Wrap the handled expression in a `fn () -> _ = <expression>` lambda
+            // so downstream passes can reuse the existing closure conversion & free-variable analysis
+            let expression = this.wrap_in_lambda(Vec::new(), expression);
+
+            Ok(Expr::Handle(cst::Handle { handler_name, expression, cases }))
         })
     }
 

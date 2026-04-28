@@ -1,26 +1,26 @@
 effect Add with
     add: fn U32 -> Unit
 
-foo () can Add =
+foo () {Add} =
     println "foo"
     add 1
     add 2
 
-bar () =
+bar () {Add} =
     println "bar"
     add 3
     add 4
 
 sum_all () =
-    handle
-        foo ()
-        bar ()
-        0u32 // TODO: remove suffix
-    | add y ->
+    handler h for add y ->
         println "add called"
         r = resume ()
         println "add resume finished"
         y + r
+    in
+        foo () {h}
+        bar () {h}
+        0u32 // TODO: remove suffix
 
 // 10
 main () =

@@ -916,6 +916,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // `can expected_effect, e`
         let expected_and_e = self.next_type_variable();
 
+        let handler_effect_type = self.next_type_variable();
+        self.name_types.insert(handle.handler_name, handler_effect_type.clone());
+
         // Body: fn () -> expected can expected_and_e
         let body_env = self.next_type_variable();
         let body_type = Type::Function(Arc::new(FunctionType {
@@ -938,14 +941,19 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let outer_names = self.name_types.keys().copied().collect::<FxHashSet<_>>();
 
         // For each case:
-        // - pattern.function: fn args.. -> r can e  (the effect op declared type)
+        // - pattern.function: fn args.. {Effect..} -> r can e  (the effect op declared type)
         // - branch lambda:    fn args.. resume -> expected can expected_effect
         // - resume:           fn r -> expected can expected_effect
         //
         // `resume` doesn't raise `e` since handlers in Ante are deep: each call to
         // resume is automatically handled by the same handler.
         for (pattern, branch) in &handle.cases {
-            let parameter_types = mapvec(&pattern.args, |_| ParameterType::explicit(self.next_type_variable()));
+            let mut parameter_types =
+                mapvec(&pattern.args, |_| ParameterType::explicit(self.next_type_variable()));
+
+            // The effect operation has an implicit trailing parameter of its parent
+            // effect type (e.g. `Emit a`, `Fail`).
+            parameter_types.push(ParameterType::implicit(handler_effect_type.clone()));
             let r = self.next_type_variable();
             let e = self.next_type_variable();
 
@@ -953,10 +961,12 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 parameters: parameter_types.clone(),
                 environment: Type::NO_CLOSURE_ENV,
                 return_type: r.clone(),
-                // effects: e.clone(),
             }));
             self.check_path(pattern.function, &function_type, None, None);
             self.unify(&e, &expected_and_e, TypeErrorKind::General, pattern.function);
+
+            // Branches accept the operation's explicit args plus `resume`.
+            parameter_types.pop();
 
             // resume is a closure capturing its environment by reference.
             // The coroutine lowering pass supplies a closure with an env pointing to `(coro, handlers..)`.
