@@ -122,6 +122,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Expr::If(if_) => self.check_if(if_, expected, expected_effect, id),
             Expr::Match(match_) => self.check_match(match_, expected, expected_effect, id),
             Expr::Is(_) => unreachable!("Expr::Is should be desugared during GetItem"),
+            Expr::Bind(_) => unreachable!("Expr::Bind should be desugared during GetItem"),
             Expr::Reference(reference) => self.check_reference(reference, expected, expected_effect, id),
             Expr::TypeAnnotation(type_annotation) => {
                 let annotation = self.from_cst_type(&type_annotation.rhs, true);

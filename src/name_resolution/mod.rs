@@ -546,6 +546,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                 }
             },
             Expr::Is(_) => unreachable!("Expr::Is should be desugared during GetItem"),
+            Expr::Bind(_) => unreachable!("Expr::Bind should be desugared during GetItem"),
             Expr::Handle(handle) => {
                 // Handle's expression & branches will be lambdas which will push their
                 // own scopes & introduce their patterns themselves.

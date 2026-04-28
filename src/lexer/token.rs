@@ -249,6 +249,7 @@ pub enum Token {
     RightArrow,         // ->
     FatArrow,           // =>
     TildeArrow,         // ~>
+    LeftArrow,          // <-
     ApplyLeft,          // <|
     ApplyRight,         // |>
     Append,             // ++
@@ -465,6 +466,7 @@ impl Display for Token {
             Token::RightArrow => write!(f, "->"),
             Token::FatArrow => write!(f, "=>"),
             Token::TildeArrow => write!(f, "~>"),
+            Token::LeftArrow => write!(f, "<-"),
             Token::ApplyLeft => write!(f, "<|"),
             Token::ApplyRight => write!(f, "|>"),
             Token::Append => write!(f, "++"),
