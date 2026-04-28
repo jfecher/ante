@@ -61,7 +61,7 @@ pub fn type_check_impl(context: &TypeCheckSCC, compiler: &DbHandle) -> TypeCheck
 
         let item = &checker.item_contexts[item_id].0;
         match &item.kind {
-            TopLevelItemKind::Definition(definition) => checker.check_definition(definition, &Type::no_effects()),
+            TopLevelItemKind::Definition(definition) => checker.check_definition(definition),
             TopLevelItemKind::TypeDefinition(type_definition) => checker.check_type_definition(type_definition),
             TopLevelItemKind::TraitDefinition(_) => unreachable!("Traits should be desugared into types by this point"),
             TopLevelItemKind::TraitImpl(_) => unreachable!("Impls should be simplified into definitions by this point"),
@@ -545,7 +545,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             parameters: vec![ParameterType::explicit(original_type)],
             environment: Type::NO_CLOSURE_ENV,
             return_type: element_type,
-            effects: Type::no_effects(),
         }));
         let func_expr = self.push_expr(cst::Expr::Variable(deref_path), function_type, location);
         cst::Expr::Call(cst::Call { function: func_expr, arguments: vec![cst::Argument::explicit(arg_id)] })
@@ -630,7 +629,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 }
 
                 self.try_unify_with_bindings(&actual.environment, &expected.environment, new_bindings)?;
-                self.try_unify_with_bindings(&actual.effects, &expected.effects, new_bindings)?;
                 self.try_unify_with_bindings(&actual.return_type, &expected.return_type, new_bindings)
             },
             (
@@ -765,7 +763,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 function_type.parameters.iter().any(|param| self.occurs(&param.typ, variable, new_bindings))
                     || self.occurs(&function_type.environment, variable, new_bindings)
                     || self.occurs(&function_type.return_type, variable, new_bindings)
-                    || self.occurs(&function_type.effects, variable, new_bindings)
             },
             Type::Application(constructor, args) => {
                 self.occurs(constructor, variable, new_bindings)
@@ -881,7 +878,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             parameters: vec![ParameterType::explicit(Type::UNIT)],
             environment: Type::NO_CLOSURE_ENV,
             return_type: Type::UNIT,
-            effects: Type::no_effects(),
         }));
 
         self.unify(typ, &expected, TypeErrorKind::MainFn, pattern);

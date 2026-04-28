@@ -160,14 +160,8 @@ impl ErrorDefault for Type {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
 pub struct FunctionType {
     pub parameters: Vec<ParameterType>,
-    pub return_type: Box<Type>,
-
     pub environment: Option<Box<Type>>,
-
-    /// Any effects that were specified on this function.
-    /// - `None` means none were specified
-    /// - `Some(Vec::new())` means it was specified to be `pure`
-    pub effects: Option<Vec<EffectType>>,
+    pub return_type: Box<Type>,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
@@ -188,12 +182,6 @@ impl ParameterType {
     pub fn implicit(typ: Type) -> ParameterType {
         Self::new(typ, true)
     }
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
-pub enum EffectType {
-    Known(PathId, Vec<Type>),
-    Variable(NameId),
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -375,7 +363,6 @@ pub struct MemberAccess {
 pub struct Lambda {
     pub parameters: Vec<Parameter>,
     pub return_type: Option<Type>,
-    pub effects: Option<Vec<EffectType>>,
     pub body: ExprId,
     pub is_move: bool,
 }

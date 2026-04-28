@@ -22,10 +22,10 @@ use crate::{
 use super::{
     TopLevelContext,
     cst::{
-        Call, CompoundAssignOp, Comptime, Cst, Declaration, Definition, EffectDefinition, EffectType, Expr, Extern,
-        FunctionType, Handle, HandlePattern, If, Import, InterpolatedString, Lambda, Literal, Match, MemberAccess,
-        Parameter, Path, Pattern, Quoted, Reference, SequenceItem, TopLevelItem, TraitDefinition, TraitImpl, Type,
-        TypeAnnotation, TypeDefinition, TypeDefinitionBody, TypeKind,
+        Call, CompoundAssignOp, Comptime, Cst, Declaration, Definition, EffectDefinition, Expr, Extern, FunctionType,
+        Handle, HandlePattern, If, Import, InterpolatedString, Lambda, Literal, Match, MemberAccess, Parameter, Path,
+        Pattern, Quoted, Reference, SequenceItem, TopLevelItem, TraitDefinition, TraitImpl, Type, TypeAnnotation,
+        TypeDefinition, TypeDefinitionBody, TypeKind,
     },
     ids::{ExprId, PatternId, TopLevelId},
 };
@@ -401,7 +401,6 @@ impl<'a> CstDisplay<'a> {
         if let Some(typ) = &lambda.return_type {
             write!(f, " : ")?;
             self.fmt_type(typ, context, f)?;
-            self.fmt_effect_clause(&lambda.effects, context, f)?;
         }
 
         write!(f, " {}", if write_arrow { "->" } else { "=" })?;
@@ -409,36 +408,6 @@ impl<'a> CstDisplay<'a> {
             write!(f, " ")?;
         }
         self.fmt_expr(lambda.body, context, f)
-    }
-
-    /// Formats an effect clause with a leading space
-    fn fmt_effect_clause(
-        &self, effects: &Option<Vec<EffectType>>, context: &impl IdStore, f: &mut std::fmt::Formatter,
-    ) -> std::fmt::Result {
-        if let Some(effects) = effects {
-            if effects.is_empty() {
-                write!(f, " pure")?;
-            } else {
-                write!(f, " can ")?;
-                for (i, effect) in effects.iter().enumerate() {
-                    if i != 0 {
-                        write!(f, ", ")?;
-                    }
-                    self.fmt_effect_type(effect, context, f)?;
-                }
-            }
-        }
-        Ok(())
-    }
-
-    fn fmt_effect_type(&self, effect: &EffectType, context: &impl IdStore, f: &mut Formatter) -> std::fmt::Result {
-        match effect {
-            EffectType::Known(path_id, args) => {
-                self.fmt_path(*path_id, context, f)?;
-                self.fmt_type_args(args, context, f)
-            },
-            EffectType::Variable(name_id) => self.fmt_type_name(*name_id, context, f),
-        }
     }
 
     /// Formats type arguments with a leading space in front of each (including the first)
@@ -632,8 +601,7 @@ impl<'a> CstDisplay<'a> {
         }
 
         write!(f, " -> ")?;
-        self.fmt_type(&function_type.return_type, context, f)?;
-        self.fmt_effect_clause(&function_type.effects, context, f)
+        self.fmt_type(&function_type.return_type, context, f)
     }
 
     fn fmt_expr(&mut self, id: ExprId, context: &impl IdStore, f: &mut Formatter) -> std::fmt::Result {

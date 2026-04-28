@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, sync::Arc};
 
-use cst::{Comptime, Declaration, EffectType, Lambda, MemberAccess, Name, Parameter, Pattern};
+use cst::{Comptime, Declaration, Lambda, MemberAccess, Name, Parameter, Pattern};
 use ids::{ExprId, NameId, PathId, PatternId, TopLevelId};
 use rustc_hash::FxHashSet;
 use serde::{Deserialize, Serialize};
@@ -683,7 +683,6 @@ impl<'tokens> Parser<'tokens> {
             None
         };
 
-        let effects = self.parse_effects_clause();
         self.expect(Token::Equal, "`=` to begin the function body")?;
 
         let lambda_id = self.reserve_expr();
@@ -691,7 +690,7 @@ impl<'tokens> Parser<'tokens> {
             .try_parse_or_recover_to_newline(|this| this.parse_block_or_expression())
             .unwrap_or_else(|| self.push_expr(Expr::Error, self.current_token_location()));
 
-        let lambda = Expr::Lambda(Lambda { parameters, return_type, effects, body, is_move: false });
+        let lambda = Expr::Lambda(Lambda { parameters, return_type, body, is_move: false });
         self.insert_expr(lambda_id, lambda, start_location);
         Ok(Definition { implicit, mutable: false, pattern: name, rhs: lambda_id })
     }
@@ -890,44 +889,9 @@ impl<'tokens> Parser<'tokens> {
         }
 
         let return_type = Box::new(self.parse_type()?);
-        let effects = self.parse_effects_clause();
         let location = start.to(&self.previous_token_location());
 
-        Ok(Type::new(TypeKind::Function(cst::FunctionType { parameters, environment, return_type, effects }), location))
-    }
-
-    /// The effect clause on a function or function type.
-    ///
-    /// effects_clause: 'can' effect_type (',' effect_type)*
-    ///               | 'pure'
-    ///               | %empty
-    fn parse_effects_clause(&mut self) -> Option<Vec<EffectType>> {
-        match self.current_token() {
-            Token::Can => {
-                self.advance();
-                Some(self.delimited(Self::parse_effect_type, Token::Comma, false))
-            },
-            Token::Pure => {
-                self.advance();
-                Some(Vec::new())
-            },
-            _ => None,
-        }
-    }
-
-    fn parse_effect_type(&mut self) -> Result<EffectType> {
-        match self.current_token() {
-            Token::TypeName(_) => {
-                let path = self.parse_type_path_id()?;
-                let args = self.many0(Self::parse_type_arg);
-                Ok(EffectType::Known(path, args))
-            },
-            Token::Identifier(_) => {
-                let name = self.parse_ident_id()?;
-                Ok(EffectType::Variable(name))
-            },
-            _ => self.expected("an effect name"),
-        }
+        Ok(Type::new(TypeKind::Function(cst::FunctionType { parameters, environment, return_type }), location))
     }
 
     /// pair_type: type_no_pair ',' pair_type
@@ -1701,12 +1665,10 @@ impl<'tokens> Parser<'tokens> {
                 None
             };
 
-            let effects = this.parse_effects_clause();
-
             this.expect(Token::RightArrow, "a `->` to separate this lambda's parameters from its body")?;
             let body = this.parse_block_or_expression()?;
 
-            Ok(Expr::Lambda(Lambda { parameters, return_type, effects, body, is_move }))
+            Ok(Expr::Lambda(Lambda { parameters, return_type, body, is_move }))
         })
     }
 
@@ -1959,7 +1921,7 @@ impl<'tokens> Parser<'tokens> {
 
     fn wrap_in_lambda(&mut self, parameters: Vec<cst::Parameter>, body: ExprId) -> ExprId {
         let location = self.current_context.expr_locations[body].clone();
-        let lambda = Expr::Lambda(cst::Lambda { parameters, return_type: None, effects: None, body, is_move: false });
+        let lambda = Expr::Lambda(cst::Lambda { parameters, return_type: None, body, is_move: false });
         self.push_expr(lambda, location)
     }
 

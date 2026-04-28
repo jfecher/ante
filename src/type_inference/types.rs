@@ -70,7 +70,6 @@ pub struct FunctionType {
     pub environment: Type,
 
     pub return_type: Type,
-    pub effects: Type,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -273,7 +272,6 @@ impl Type {
                     parameters,
                     environment: function.environment.follow_all_two(bindings, more_bindings),
                     return_type: function.return_type.follow_all_two(bindings, more_bindings),
-                    effects: function.effects.follow_all_two(bindings, more_bindings),
                 }))
             },
             Type::Application(constructor, args) => {
@@ -322,8 +320,7 @@ impl Type {
                 });
                 let environment = function.environment.substitute(bindings_to_substitute, bindings_in_scope);
                 let return_type = function.return_type.substitute(bindings_to_substitute, bindings_in_scope);
-                let effects = function.effects.substitute(bindings_to_substitute, bindings_in_scope);
-                Type::Function(Arc::new(FunctionType { parameters, environment, return_type, effects }))
+                Type::Function(Arc::new(FunctionType { parameters, environment, return_type }))
             },
             Type::Application(constructor, args) => {
                 let (constructor, args) = (constructor.clone(), args.clone());
@@ -491,19 +488,7 @@ impl Type {
                 let return_type =
                     Self::from_cst_type(&function.return_type, resolve, db, next_id, insert_implicit_type_vars);
 
-                let effects = match &function.effects {
-                    Some(effects) => Type::Effects(Arc::new(mapvec(effects, |effect| {
-                        Self::from_cst_effect(effect, &typ.location, resolve, db, next_id, insert_implicit_type_vars)
-                    }))),
-                    None if insert_implicit_type_vars => {
-                        let any = Type::Variable(TypeVariableId(*next_id));
-                        *next_id += 1;
-                        any
-                    },
-                    None => Type::no_effects(),
-                };
-
-                let f = Type::Function(Arc::new(FunctionType { parameters, environment, return_type, effects }));
+                let f = Type::Function(Arc::new(FunctionType { parameters, environment, return_type }));
                 (f, Kind::Type)
             },
             crate::parser::cst::TypeKind::Error => (Type::ERROR, Kind::Error),
@@ -561,28 +546,6 @@ impl Type {
                 db.accumulate(Diagnostic::HoleCantBeUsed { location: typ.location.clone() });
                 (Type::ERROR, Kind::Error)
             },
-        }
-    }
-
-    /// Converts a [cst::EffectType] into a [Type::Effects] holding the relevant set of effects.
-    /// An empty set of effects corresponds to the `pure` keyword.
-    fn from_cst_effect(
-        effect: &cst::EffectType, location: &Location, resolve: &crate::name_resolution::ResolutionResult,
-        db: &DbHandle, next_id: &mut u32, insert_implicit_type_vars: bool,
-    ) -> Type {
-        match effect {
-            cst::EffectType::Known(path, arguments) => {
-                let constructor = cst::Type::new(cst::TypeKind::Named(*path), location.clone());
-
-                let effect = if arguments.is_empty() {
-                    constructor
-                } else {
-                    let application = cst::TypeKind::Application(Box::new(constructor), arguments.clone());
-                    cst::Type::new(application, location.clone())
-                };
-                Self::from_cst_type_with_kind(&effect, Kind::Effect, resolve, db, next_id, insert_implicit_type_vars)
-            },
-            cst::EffectType::Variable(name) => Type::Generic(Generic::Named(Origin::Local(*name))),
         }
     }
 
@@ -659,7 +622,6 @@ impl Type {
                     }
                     free_vars_helper(&function.environment, bindings, free_vars);
                     free_vars_helper(&function.return_type, bindings, free_vars);
-                    free_vars_helper(&function.effects, bindings, free_vars);
                 },
                 Type::Application(constructor, args) => {
                     free_vars_helper(constructor, bindings, free_vars);
@@ -880,15 +842,7 @@ where
                 }
 
                 write!(f, " -> ")?;
-                self.fmt_type(&function.return_type, false, f)?;
-
-                let effects = function.effects.follow(self.bindings);
-                if effects == &Type::no_effects() {
-                    write!(f, " pure")
-                } else {
-                    write!(f, " can ")?;
-                    self.fmt_type(effects, false, f)
-                }
+                self.fmt_type(&function.return_type, false, f)
             }),
             Type::Application(constructor, args) => try_parenthesize(parenthesize, f, |f| {
                 // Hack: If the constructor formats to `,` then print it infix

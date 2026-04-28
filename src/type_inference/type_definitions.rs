@@ -108,7 +108,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 parameters,
                 environment: Type::NO_CLOSURE_ENV,
                 return_type: result,
-                effects: Type::no_effects(),
             }));
         }
 
@@ -165,19 +164,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 let mut fn_type = Arc::unwrap_or_clone(fn_arc);
                 fn_type.environment = Type::NO_CLOSURE_ENV;
 
-                // Prepend this effect to whatever effects the declaration
-                // already had.
-                let existing = std::mem::replace(&mut fn_type.effects, Type::no_effects());
-                fn_type.effects = match existing {
-                    Type::Effects(existing) => {
-                        let mut v = Vec::with_capacity(existing.len() + 1);
-                        v.push(effect_as_type.clone());
-                        v.extend(existing.iter().cloned());
-                        Type::Effects(Arc::new(v))
-                    },
-                    other => Type::Effects(Arc::new(vec![effect_as_type.clone(), other])),
-                };
-
+                // Require the capability when calling this function
+                fn_type.parameters.push(ParameterType::implicit(effect_as_type.clone()));
                 Type::Function(Arc::new(fn_type))
             } else {
                 // Non-function effect operations are unusual; leave them as-is.

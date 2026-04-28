@@ -18,9 +18,8 @@ use crate::{
     name_resolution::{builtin::Builtin, namespace::CrateId},
     parser::{
         cst::{
-            Comptime, Constructor, Declaration, Definition, EffectDefinition, EffectType, Expr, Generics, ItemName,
-            Name, Path, Pattern, TopLevelItemKind, TraitDefinition, TraitImpl, Type, TypeDefinition,
-            TypeDefinitionBody, TypeKind,
+            Comptime, Constructor, Declaration, Definition, EffectDefinition, Expr, Generics, ItemName, Name, Path,
+            Pattern, TopLevelItemKind, TraitDefinition, TraitImpl, Type, TypeDefinition, TypeDefinitionBody, TypeKind,
         },
         desugar_context::DesugarContext,
         ids::{ExprId, NameId, PathId, PatternId, TopLevelId, TopLevelName},
@@ -504,11 +503,6 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                 if let Some(return_type) = &lambda.return_type {
                     self.resolve_type(return_type, true);
                 }
-                if let Some(effects) = &lambda.effects {
-                    for effect in effects {
-                        self.resolve_effect_type(effect, true);
-                    }
-                }
                 self.resolve_expr(lambda.body);
                 self.pop_local_scope();
             },
@@ -752,12 +746,6 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                     self.resolve_type(environment, declare_type_vars);
                 }
                 self.resolve_type(&function.return_type, declare_type_vars);
-
-                if let Some(effects) = function.effects.as_ref() {
-                    for effect in effects {
-                        self.resolve_effect_type(effect, declare_type_vars);
-                    }
-                }
             },
             TypeKind::Application(f, args) => {
                 self.resolve_type(f, declare_type_vars);
@@ -770,20 +758,6 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                     self.resolve_type(element, declare_type_vars);
                 }
             },
-        }
-    }
-
-    /// Resolve an effect type, ensuring all names used are in scope
-    fn resolve_effect_type(&mut self, effect: &EffectType, declare_type_vars: bool) {
-        match effect {
-            EffectType::Known(path, args) => {
-                self.link(*path, false, true);
-
-                for arg in args {
-                    self.resolve_type(arg, declare_type_vars);
-                }
-            },
-            EffectType::Variable(name_id) => self.resolve_variable(*name_id, declare_type_vars),
         }
     }
 
