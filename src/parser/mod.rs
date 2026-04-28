@@ -1698,6 +1698,36 @@ impl<'tokens> Parser<'tokens> {
         Ok(SequenceItem { comments, expr })
     }
 
+    /// bind_prefix: pattern "<-"
+    ///
+    /// Split from parse_bind_statement so that we can commit to returning any errors there
+    /// after we know we're parsing a bind statement from a successful parse here.
+    fn parse_bind_prefix(&mut self) -> Result<PatternId> {
+        let pattern = self.parse_pattern()?;
+        self.expect(Token::LeftArrow, "a `<-` to begin this bind statement")?;
+        Ok(pattern)
+    }
+
+    /// bind_statement: expr sequence_items
+    fn parse_bind_statement(&mut self, start: Span, pattern: PatternId) -> Result<ExprId> {
+        let rhs = self.parse_expression()?;
+        self.accept(Token::Newline);
+
+        let body_start = self.current_token_span();
+        let body_items = self.parse_sequence_items();
+
+        let body_location = if body_items.is_empty() {
+            body_start.in_file(self.file_id)
+        } else {
+            body_start.to(&self.previous_token_span()).in_file(self.file_id)
+        };
+        let body = self.push_expr(Expr::Sequence(body_items), body_location);
+
+        let end = self.previous_token_span();
+        let location = start.to(&end).in_file(self.file_id);
+        Ok(self.push_expr(Expr::Bind(cst::Bind { pattern, rhs, body }), location))
+    }
+
     /// Run the given parser, resetting to the original token position on error.
     ///
     /// Useful for parsers which parse some input, then fail without restoring the
@@ -1726,6 +1756,12 @@ impl<'tokens> Parser<'tokens> {
 
     fn parse_statement(&mut self) -> Result<ExprId> {
         let start = self.current_token_span();
+
+        if self.try_peek_next_token() == Some(&Token::LeftArrow)
+            && let Ok(pattern) = self.try_(Self::parse_bind_prefix)
+        {
+            return self.parse_bind_statement(start, pattern);
+        }
 
         if let Ok(definition) = self.try_(Self::parse_definition) {
             let end = self.previous_token_span();
@@ -1996,24 +2032,28 @@ impl<'tokens> Parser<'tokens> {
     }
 
     fn parse_block(&mut self) -> Result<ExprId> {
-        let (expr, location) = self.with_location(|this| {
-            this.parse_indented(|this| {
-                let mut statements = Vec::new();
-                loop {
-                    if *this.current_token() == Token::Unindent || this.at_end_of_input() {
-                        break;
-                    }
-                    if let Some(item) = this.try_parse_or_recover_to_newline(Self::parse_sequence_item) {
-                        statements.push(item);
-                    }
-                    if !this.accept(Token::Newline) {
-                        break;
-                    }
-                }
-                Ok(Expr::Sequence(statements))
-            })
-        })?;
+        let (expr, location) =
+            self.with_location(|this| this.parse_indented(|this| Ok(Expr::Sequence(this.parse_sequence_items()))))?;
         Ok(self.push_expr(expr, location))
+    }
+
+    /// Parse zero or more sequence items separated by Newline, terminating at
+    /// Unindent or end-of-input. Used both by `parse_block` and by bind-statement
+    /// body absorption so both paths share identical termination/recovery logic.
+    fn parse_sequence_items(&mut self) -> Vec<SequenceItem> {
+        let mut statements = Vec::new();
+        loop {
+            if *self.current_token() == Token::Unindent || self.at_end_of_input() {
+                break;
+            }
+            if let Some(item) = self.try_parse_or_recover_to_newline(Self::parse_sequence_item) {
+                statements.push(item);
+            }
+            if !self.accept(Token::Newline) {
+                break;
+            }
+        }
+        statements
     }
 
     /// Create a location from the current token before running the given parse function to the

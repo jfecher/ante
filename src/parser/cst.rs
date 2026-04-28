@@ -224,6 +224,7 @@ pub enum Expr {
     If(If),
     Match(Match),
     Is(Is),
+    Bind(Bind),
     Handle(Handle),
     Reference(Reference),
     TypeAnnotation(TypeAnnotation),
@@ -423,6 +424,15 @@ pub struct Handle {
 pub struct Is {
     pub lhs: ExprId,
     pub pattern: PatternId,
+}
+
+/// `<pattern> <- <rhs>` followed by newline-separated statements.
+/// Always desugared during `GetItem`
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
+pub struct Bind {
+    pub pattern: PatternId,
+    pub rhs: ExprId,
+    pub body: ExprId,
 }
 
 /// `&rhs`, `!rhs`

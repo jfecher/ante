@@ -22,10 +22,10 @@ use crate::{
 use super::{
     TopLevelContext,
     cst::{
-        Call, CompoundAssignOp, Comptime, Cst, Declaration, Definition, EffectDefinition, Expr, Extern, FunctionType,
-        Handle, HandlePattern, If, Import, InterpolatedString, Lambda, Literal, Match, MemberAccess, Parameter, Path,
-        Pattern, Quoted, Reference, SequenceItem, TopLevelItem, TraitDefinition, TraitImpl, Type, TypeAnnotation,
-        TypeDefinition, TypeDefinitionBody, TypeKind,
+        Bind, Call, CompoundAssignOp, Comptime, Cst, Declaration, Definition, EffectDefinition, Expr,
+        Extern, FunctionType, Handle, HandlePattern, If, Import, InterpolatedString, Lambda, Literal, Match,
+        MemberAccess, Parameter, Path, Pattern, Quoted, Reference, SequenceItem, TopLevelItem, TraitDefinition,
+        TraitImpl, Type, TypeAnnotation, TypeDefinition, TypeDefinitionBody, TypeKind,
     },
     ids::{ExprId, PatternId, TopLevelId},
 };
@@ -617,6 +617,7 @@ impl<'a> CstDisplay<'a> {
             Expr::If(if_) => self.fmt_if(if_, context, f),
             Expr::Match(match_) => self.fmt_match(match_, context, id, f),
             Expr::Is(is_) => self.fmt_is(is_, context, f),
+            Expr::Bind(bind) => self.fmt_bind(bind, context, f),
             Expr::Handle(handle_) => self.fmt_handle(handle_, context, f),
             Expr::Reference(reference) => self.fmt_reference(reference, context, f),
             Expr::TypeAnnotation(type_annotation) => self.fmt_type_annotation(type_annotation, context, f),
@@ -927,6 +928,27 @@ impl<'a> CstDisplay<'a> {
         self.parenthesize(is_.lhs, paren_lhs, context, f)?;
         write!(f, " is ")?;
         self.fmt_pattern(is_.pattern, context, f)
+    }
+
+    fn fmt_bind(&mut self, bind: &Bind, context: &impl IdStore, f: &mut Formatter) -> std::fmt::Result {
+        self.fmt_pattern(bind.pattern, context, f)?;
+        write!(f, " <- ")?;
+        self.fmt_expr(bind.rhs, context, f)?;
+
+        // The body is a Sequence whose items are siblings of the bind line in the
+        // surrounding block — print them at the current indent level rather than
+        // further nesting them via fmt_sequence's indent increment.
+        if let Expr::Sequence(items) = context.get_expr(bind.body) {
+            for item in items {
+                self.newline(f)?;
+                self.fmt_comments(&item.comments, f)?;
+                self.fmt_expr(item.expr, context, f)?;
+            }
+            Ok(())
+        } else {
+            self.newline(f)?;
+            self.fmt_expr(bind.body, context, f)
+        }
     }
 
     /// Format the `if c then t` portion, but not the else portion

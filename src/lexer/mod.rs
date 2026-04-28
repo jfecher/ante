@@ -598,6 +598,7 @@ impl<'contents> Iterator for Lexer<'contents> {
             ('-', _) => self.lex_negative(),
             ('!', '=') => self.advance2_with(Token::NotEqual),
             ('<', '|') => self.advance2_with(Token::ApplyLeft),
+            ('<', '-') => self.advance2_with(Token::LeftArrow),
             ('|', '>') => self.advance2_with(Token::ApplyRight),
             ('+', '=') => {
                 self.previous_token_expects_indent = true;
