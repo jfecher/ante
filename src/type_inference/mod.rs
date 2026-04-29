@@ -697,9 +697,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     || args.iter().any(|arg| self.occurs(arg, variable, new_bindings))
             },
             Type::Forall(_, typ) => self.occurs(typ, variable, new_bindings),
-            Type::Tuple(elements) => {
-                elements.iter().any(|element| self.occurs(element, variable, new_bindings))
-            },
+            Type::Tuple(elements) => elements.iter().any(|element| self.occurs(element, variable, new_bindings)),
         }
     }
 

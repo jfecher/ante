@@ -38,6 +38,9 @@ struct AminicoroFns {
     suspend: AminicoroFn,
     resume: AminicoroFn,
     get_user_data: AminicoroFn,
+    running: AminicoroFn,
+    bytes_stored: AminicoroFn,
+    transfer: AminicoroFn,
 }
 
 fn ptr_fn(parameters: Vec<Type>, return_type: Type) -> Type {
@@ -58,6 +61,9 @@ fn aminicoro_fns() -> AminicoroFns {
         suspend: AminicoroFn { name: "mco_coro_suspend", typ: ptr_fn(vec![ptr()], u8_t()) },
         resume: AminicoroFn { name: "mco_coro_resume", typ: ptr_fn(vec![ptr()], u8_t()) },
         get_user_data: AminicoroFn { name: "mco_coro_get_user_data", typ: ptr_fn(vec![ptr()], ptr()) },
+        running: AminicoroFn { name: "mco_coro_running", typ: ptr_fn(vec![], ptr()) },
+        bytes_stored: AminicoroFn { name: "mco_coro_bytes_stored", typ: ptr_fn(vec![ptr()], usize_t()) },
+        transfer: AminicoroFn { name: "mco_coro_transfer", typ: ptr_fn(vec![ptr(), ptr(), usize_t()], u8_t()) },
     }
 }
 
@@ -529,8 +535,13 @@ fn rewrite_single_handle(mir: &mut Mir, definition_id: DefinitionId, site: Handl
     definition.blocks[block].instructions.splice(index..=index, pending);
 }
 
-/// Generate `wrap_i op_args.. (env: Pointer) -> ret_i`. Pulls `coro` out of env, pushes
-/// op_args.. + tag=i onto coro, suspends, pops the resumed result, returns it.
+/// Generate `wrap_i op_args.. (env: Pointer) -> ret_i`. The closure env carries the
+/// statically-bound target coro (the one whose Handle owns this op). The wrapper
+/// pushes (op_args, case_index, target) onto whichever coro is currently running and
+/// suspends that coro. Each intermediate drive then either dispatches (if its own
+/// coro == target) or forwards the message up through `mco_coro_transfer` until it
+/// reaches the target's drive. After being resumed, the result has been pushed back
+/// onto the originally-running coro.
 fn generate_capability_wrapper(mir: &mut Mir, case_index: u32, shape: &CaseShape, context: Context) -> DefinitionId {
     let wrap_id = next_definition_id();
     let mut params: Vec<Type> = shape.op_arg_types.clone();
@@ -555,24 +566,28 @@ fn generate_capability_wrapper(mir: &mut Mir, case_index: u32, shape: &CaseShape
 
     let mut emitter = Emitter::in_block(&mut definition, entry);
 
-    // env: &(coro,)
+    // env: &(target_coro,)
     let state_type = Type::Tuple(Arc::new(vec![Type::POINTER]));
     let state = emitter.push_instruction(Instruction::Deref(env_value), state_type);
-    let coro = emitter.push_instruction(Instruction::IndexTuple { tuple: state, index: 0 }, Type::POINTER);
+    let target = emitter.push_instruction(Instruction::IndexTuple { tuple: state, index: 0 }, Type::POINTER);
 
-    // push op_args.. then tag, suspend, pop result.
+    // current = mco_coro_running()
+    let current = emitter.call_extern(&context.mco.running, vec![]);
+
+    // push op_args.. then case_index then target, suspend current, pop result.
     for (arg, arg_type) in op_arg_values.iter().zip(shape.op_arg_types.iter()) {
-        emitter.push_bytes(context.mco, coro, *arg, arg_type, context.ptr_size);
+        emitter.push_bytes(context.mco, current, *arg, arg_type, context.ptr_size);
     }
     emitter.push_bytes(
         context.mco,
-        coro,
+        current,
         Value::Integer(IntConstant::U32(case_index)),
         &Type::int(IntegerKind::U32),
         context.ptr_size,
     );
-    emitter.call_extern(&context.mco.suspend, vec![coro]);
-    let result = emitter.pop_bytes(context.mco, coro, &shape.op_return_type, context.ptr_size);
+    emitter.push_bytes(context.mco, current, target, &Type::POINTER, context.ptr_size);
+    emitter.call_extern(&context.mco.suspend, vec![current]);
+    let result = emitter.pop_bytes(context.mco, current, &shape.op_return_type, context.ptr_size);
 
     definition.blocks[entry].terminator = Some(TerminatorInstruction::Return(result));
     mir.definitions.insert(wrap_id, definition);
@@ -626,7 +641,12 @@ fn generate_body_wrapper(
     wrapper_id
 }
 
-/// Per-Handle drive: switches over only this Handle's cases (0..N-1, by case index)
+/// Per-Handle drive. The body coroutine is resumed in a loop. Each yield carries
+/// (args, case_idx, target_coro) on the running coro's storage. The drive checks
+/// `target == my_coro`; if so, it dispatches to the matching handler by `case_idx`;
+/// otherwise it forwards the entire message bytewise to the parent coro
+/// (`mco_running()` here, since we are running on parent's stack), suspends the
+/// parent, then transfers the result back and loops.
 fn generate_drive_function(
     mir: &mut Mir, cases: &[HandlerCase], handler_types: &[Type], case_shapes: &[CaseShape], result_type: &Type,
     context: Context,
@@ -650,15 +670,23 @@ fn generate_drive_function(
     let coro = Value::Parameter(entry, 0);
     let handler_parameters = mapvec(0..handler_types.len(), |i| Value::Parameter(entry, (i + 1) as u32));
 
+    let loop_header = definition.blocks.push(Block::new(Vec::new()));
     let dispatch_block = definition.blocks.push(Block::new(Vec::new()));
     let complete_block = definition.blocks.push(Block::new(Vec::new()));
+    let my_dispatch_block = definition.blocks.push(Block::new(Vec::new()));
+    let forward_block = definition.blocks.push(Block::new(Vec::new()));
     let final_block = definition.blocks.push(Block::new(vec![result_type.clone()]));
 
-    let mut emitter = Emitter::in_block(&mut definition, entry);
-    emitter.call_extern(&context.mco.resume, vec![coro]);
-    let suspended = emitter.call_extern(&context.mco.is_suspended, vec![coro]);
+    // entry: jmp loop_header
+    definition.blocks[entry].terminator = Some(TerminatorInstruction::jmp_no_args(loop_header));
 
-    definition.blocks[entry].terminator = Some(TerminatorInstruction::If {
+    // loop_header: resume my_coro; if suspended -> dispatch else -> complete
+    let suspended = {
+        let mut emitter = Emitter::in_block(&mut definition, loop_header);
+        emitter.call_extern(&context.mco.resume, vec![coro]);
+        emitter.call_extern(&context.mco.is_suspended, vec![coro])
+    };
+    definition.blocks[loop_header].terminator = Some(TerminatorInstruction::If {
         condition: suspended,
         then: (dispatch_block, None),
         else_: (complete_block, None),
@@ -668,14 +696,32 @@ fn generate_drive_function(
     // complete_block: pop R, jmp final_block(R)
     emit_pop_and_jmp(&mut definition, complete_block, coro, result_type, final_block, context);
 
-    // dispatch_block: pop u32 case-tag, switch over local case indices 0..N-1.
-    let mut emitter = Emitter::in_block(&mut definition, dispatch_block);
-    let tag = emitter.pop_bytes(context.mco, coro, &Type::int(IntegerKind::U32), context.ptr_size);
+    // dispatch_block: pop target, pop case_idx, branch on (target == my_coro)
+    let usz_t = Type::int(IntegerKind::Usz);
+    let (target, case_idx) = {
+        let mut emitter = Emitter::in_block(&mut definition, dispatch_block);
+        let target = emitter.pop_bytes(context.mco, coro, &Type::POINTER, context.ptr_size);
+        let case_idx = emitter.pop_bytes(context.mco, coro, &Type::int(IntegerKind::U32), context.ptr_size);
+        let target_int = emitter.push_instruction(Instruction::Transmute(target), usz_t.clone());
+        let my_int = emitter.push_instruction(Instruction::Transmute(coro), usz_t.clone());
+        let eq = emitter.push_instruction(Instruction::EqInt(target_int, my_int), Type::BOOL);
+        // The two branches don't converge (dispatch ends in switch→cases→final,
+        // forward loops back to loop_header). Setting end = else_ matches the
+        // sentinel pattern used elsewhere in this file to skip the merge_point.
+        definition.blocks[dispatch_block].terminator = Some(TerminatorInstruction::If {
+            condition: eq,
+            then: (my_dispatch_block, None),
+            else_: (forward_block, None),
+            end: forward_block,
+        });
+        (target, case_idx)
+    };
 
-    let mut case_blocks = Vec::with_capacity(cases.len());
+    // my_dispatch_block: switch case_idx over our local case indices.
+    let mut switch_cases = Vec::with_capacity(cases.len());
     for (case_index, _case) in cases.iter().enumerate() {
         let case_block = definition.blocks.push(Block::new(Vec::new()));
-        case_blocks.push((case_index as u32, (case_block, None)));
+        switch_cases.push((case_index as u32, (case_block, None)));
 
         emit_handler_case(
             &mut definition,
@@ -695,12 +741,27 @@ fn generate_drive_function(
     let unreachable_else = definition.blocks.push(Block::new(Vec::new()));
     definition.blocks[unreachable_else].terminator = Some(TerminatorInstruction::Unreachable);
 
-    definition.blocks[dispatch_block].terminator = Some(TerminatorInstruction::Switch {
-        int_value: tag,
-        cases: case_blocks,
+    definition.blocks[my_dispatch_block].terminator = Some(TerminatorInstruction::Switch {
+        int_value: case_idx,
+        cases: switch_cases,
         else_: Some((unreachable_else, None)),
         end: final_block,
     });
+
+    // forward_block: bulk-transfer args to parent, re-push (case_idx, target),
+    // suspend parent, transfer result back, loop.
+    {
+        let mut emitter = Emitter::in_block(&mut definition, forward_block);
+        let parent = emitter.call_extern(&context.mco.running, vec![]);
+        let n_args = emitter.call_extern(&context.mco.bytes_stored, vec![coro]);
+        emitter.call_extern(&context.mco.transfer, vec![coro, parent, n_args]);
+        emitter.push_bytes(context.mco, parent, case_idx, &Type::int(IntegerKind::U32), context.ptr_size);
+        emitter.push_bytes(context.mco, parent, target, &Type::POINTER, context.ptr_size);
+        emitter.call_extern(&context.mco.suspend, vec![parent]);
+        let n_result = emitter.call_extern(&context.mco.bytes_stored, vec![parent]);
+        emitter.call_extern(&context.mco.transfer, vec![parent, coro, n_result]);
+    }
+    definition.blocks[forward_block].terminator = Some(TerminatorInstruction::jmp_no_args(loop_header));
 
     definition.blocks[final_block].terminator = Some(TerminatorInstruction::Return(Value::Parameter(final_block, 0)));
 

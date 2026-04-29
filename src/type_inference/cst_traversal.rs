@@ -933,13 +933,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // Predeclare `handler_name` for the body's free-vars analysis: `h` is accessed at runtime
         // through the coroutine's user_data, so it must not be tracked as a captured variable in
         // the body lambda's environment.
-        self.check_lambda_impl(
-            &body_lambda,
-            &body_type,
-            handle.expression,
-            Some(handle.handler_name),
-            options,
-        );
+        self.check_lambda_impl(&body_lambda, &body_type, handle.expression, Some(handle.handler_name), options);
 
         // Prevent any names visible from before the handler branches from being moved
         // TODO: This is inefficient, remove the need for collecting here
