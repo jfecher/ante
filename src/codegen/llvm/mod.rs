@@ -34,8 +34,7 @@ pub fn initialize_native_target() {
 }
 
 pub fn codegen_llvm(compiler: &Db, show_time: bool, opt_level: OptLevel) -> Option<CodegenLlvmResult> {
-    // Monomorphize everything - ideally we could only monomorphize some items so that the
-    // `CodegenLlvmResult` later can be split up and combined but for now it is whole program only.
+    // Whole-program for now; ideally `CodegenLlvmResult` could be split per item.
     let mir =
         crate::timings::time_phase("Monomorphization", show_time, || mir::monomorphization::monomorphize(compiler));
     crate::timings::time_phase("LLVM codegen", show_time, || codegen_llvm_for_mir(&mir, opt_level))
@@ -75,9 +74,8 @@ pub(crate) fn codegen_llvm_for_mir(mir: &mir::Mir, opt_level: OptLevel) -> Optio
     let bitcode = bitcode.as_slice().to_vec();
     let module_bitcode = Arc::new(bitcode);
 
-    // Compiling each function separately and linking them together later is probably slower than
-    // doing them all together to begin with but oh well. It is easier to start more incremental
-    // and be less incremental later than the reverse.
+    // Per-function codegen + later link is likely slower than all-at-once, but easier to relax
+    // back into the whole-program path than the reverse.
     Some(CodegenLlvmResult { module_bitcode })
 }
 
@@ -87,8 +85,7 @@ pub fn link(modules: Vec<Arc<Vec<u8>>>, binary_name: &str, show_time: bool, opt_
     let llvm = inkwell::context::Context::create();
     let module = llvm.create_module(binary_name);
 
-    // Re-parse each bitcode module and merge them into `module`. For a whole-program
-    // single module this is still O(program-size) so it's worth its own bucket.
+    // O(program-size) even for a whole-program single module, so it gets its own bucket.
     crate::timings::time_phase("Bitcode assembly", show_time, || {
         for bitcode in modules {
             let buffer = MemoryBuffer::create_from_memory_range(&bitcode, "buffer");
@@ -98,17 +95,14 @@ pub fn link(modules: Vec<Arc<Vec<u8>>>, binary_name: &str, show_time: bool, opt_
         }
     });
 
-    // generate the bitcode to a .bc file
     let path = std::path::Path::new(binary_name).with_extension("o");
     let target_machine = native_target_machine(opt_level);
 
-    // Object emission runs the LLVM backend (IR -> machine code), typically the most
-    // expensive LLVM step, so it gets its own phase bucket.
+    // Typically the most expensive LLVM step (IR -> machine code).
     crate::timings::time_phase("Object emission", show_time, || {
         target_machine.write_to_file(&module, FileType::Object, &path).unwrap();
     });
 
-    // call gcc to compile the bitcode to a binary
     crate::timings::time_phase("Linking", show_time, || {
         super::link_with_gcc(path.to_string_lossy().as_ref(), binary_name)
     })
@@ -176,23 +170,20 @@ impl<'ctx> ModuleContext<'ctx> {
         let mangled_name = format!("{}_{}", self.get_name(id), id);
         let global_var = self.module.add_global(typ, None, &mangled_name);
 
-        // Save the current values map (may be non-empty if called from within function codegen)
+        // Stash `values` since this may be called mid function-codegen.
         let saved_values = std::mem::take(&mut self.values);
 
-        // Evaluate each instruction in the entry block as a constant
         for instruction in global.entry_block().instructions.iter().copied() {
             let value = self.codegen_constant_instruction(global, instruction);
             self.values.insert(mir::Value::InstructionResult(instruction), value);
         }
 
-        // Get the Result value and use it as the initializer
         let TerminatorInstruction::Result(result_value) = global.entry_block().terminator.as_ref().unwrap() else {
             panic!("Global definition missing Result terminator");
         };
         let initializer = self.constant_value(*result_value);
         global_var.set_initializer(&initializer);
 
-        // Restore the saved values map
         self.values = saved_values;
 
         self.global_values.insert(mir::Value::Definition(id), global_var);
@@ -262,15 +253,10 @@ impl<'ctx> ModuleContext<'ctx> {
                 self.constant_value(value)
             },
             mir::Instruction::Transmute(value) => {
-                // In global initializer context the builder cannot emit SSA instructions, so we
-                // cannot use alloca/store/load. When the source is zero-sized (e.g. unit `{}`
-                // being reinterpreted as a None variant's inner field) the content is undefined,
-                // so we use undef of the destination type. If the source has a non-zero size,
-                // the transmute cannot be evaluated as a compile-time constant.
+                // Const context can't alloca/store/load, so only zero-sized sources
+                // (e.g. unit `{}` reinterpreted as a None variant's inner field) work
+                // here, producing undef of the destination type.
                 let source = self.constant_value(*value);
-                // Only zero-sized sources (e.g. unit `{}` reinterpreted as a None variant's
-                // inner field) can be represented as a compile-time constant. The result is
-                // undef since no source bytes exist to define the destination value.
                 let is_empty_struct = matches!(
                     source.get_type(),
                     BasicTypeEnum::StructType(s) if s.count_fields() == 0
@@ -347,8 +333,7 @@ impl<'ctx> ModuleContext<'ctx> {
             self.codegen_block(block, function);
         }
 
-        // Fill in PHI incomings now that every block (including back-edge sources) has been
-        // processed and has recorded its outgoing arguments in `self.incoming`.
+        // Done after all blocks are processed so back-edge sources are included.
         for (block_id, phi) in self.phi_nodes.drain() {
             let incoming = self
                 .incoming
@@ -364,7 +349,7 @@ impl<'ctx> ModuleContext<'ctx> {
         self.incoming.clear();
     }
 
-    /// Emit a `main (): I32` wrapper that calls the renamed source `main` and returns 0
+    /// Emit a `main (): I32` wrapper around the source `main` that returns 0.
     fn codegen_main_wrapper(&mut self) {
         let Some(ante_main) = self.ante_main else { return };
 
@@ -380,7 +365,6 @@ impl<'ctx> ModuleContext<'ctx> {
         self.builder.build_return(Some(&i32_type.const_int(0, false))).unwrap();
     }
 
-    /// Create an empty block for each block in the given function
     fn create_blocks(&mut self, function: &mir::Definition, function_value: FunctionValue<'ctx>) {
         for (block_id, _) in function.blocks.iter() {
             let block = self.llvm.append_basic_block(function_value, "");
@@ -393,9 +377,7 @@ impl<'ctx> ModuleContext<'ctx> {
         self.builder.position_at_end(llvm_block);
         let block = &function.blocks[block_id];
 
-        // Create PHI instructions for each block parameter. Incomings are filled in later
-        // (see `codegen_function`) so that back edges from blocks processed after this one
-        // are included.
+        // PHI incomings are filled in by `codegen_function` after every block is processed.
         if block_id != BlockId::ENTRY_BLOCK {
             for (parameter, parameter_type) in block.parameters(block_id) {
                 let parameter_type = self.convert_type(&parameter_type);
@@ -570,6 +552,9 @@ impl<'ctx> ModuleContext<'ctx> {
             },
             mir::Instruction::Handle { .. } => {
                 unreachable!("Instruction::Handle remaining LLVM codegen")
+            },
+            mir::Instruction::HandlerCap => {
+                unreachable!("Instruction::HandlerCap remaining in LLVM codegen")
             },
             mir::Instruction::CallClosure { closure, arguments } => {
                 let typ = self.convert_function_type(&self.mir.type_of_value(closure, function)).unwrap();
@@ -806,7 +791,6 @@ impl<'ctx> ModuleContext<'ctx> {
     }
 
     fn transmute(&mut self, value: &mir::Value, function: &mir::Definition, id: InstructionId) -> BasicValueEnum<'ctx> {
-        // Transmute the value by storing it in an alloca and loading it as a different type
         let result_type = self.convert_type(function.instruction_result_type(id));
         let value = self.lookup_value(value);
         let alloca = self.builder.build_alloca(value.get_type(), "").unwrap();
@@ -863,7 +847,6 @@ impl<'ctx> ModuleContext<'ctx> {
                 let then_target = self.blocks[then.0];
                 let else_target = self.blocks[else_.0];
 
-                // remember_incoming needs to be called before we insert the terminator instruction
                 self.remember_incoming(then.0, &then.1);
                 self.remember_incoming(else_.0, &else_.1);
 

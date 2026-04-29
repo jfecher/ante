@@ -85,6 +85,9 @@ pub enum EmitTarget {
     /// A representation of the program with simpler control-flow created after type checking
     Mir,
 
+    /// Mir after tail-resume calls have been optimized out
+    MirTail,
+
     /// Monomorphized Mir
     MirMono,
 

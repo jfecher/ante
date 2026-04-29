@@ -45,8 +45,6 @@ use crate::{
     paths::binary_name,
 };
 
-// All the compiler passes:
-// (listed out of order because `cargo fmt` alphabetizes them)
 mod codegen;
 mod definition_collection;
 mod find_files;
@@ -56,7 +54,6 @@ mod name_resolution;
 mod parser;
 mod type_inference;
 
-// Util modules:
 mod cli;
 mod diagnostics;
 mod files;
@@ -100,7 +97,8 @@ fn compile(args: Cli) {
         Some(EmitTarget::Ast) => display_parse_tree(&mut compiler, args.emit_all),
         Some(EmitTarget::AstR) => display_name_resolution(&mut compiler, args.emit_all),
         Some(EmitTarget::AstT) => display_type_checking(&mut compiler, true, args.emit_all),
-        Some(EmitTarget::Mir) => display_mir(&mut compiler, args.emit_all),
+        Some(EmitTarget::Mir) => display_mir(&mut compiler, args.emit_all, false),
+        Some(EmitTarget::MirTail) => display_mir(&mut compiler, args.emit_all, true),
         Some(EmitTarget::MirMono) => display_mir_mono(&mut compiler),
         Some(EmitTarget::Ir) => llvm_codegen_separate(&mut compiler, true, args.show_time, opt_level).2,
         None => {
@@ -145,17 +143,14 @@ fn print_phase_timings(compiler: &mut Db) {
         item_ids
     });
 
-    // Name resolution: per-item. Transitively forces definition collection queries
-    // (VisibleDefinitions, ExportedDefinitions, VisibleTypes, ...) so those roll up
-    // into this bucket.
+    // Per-item: rolls up dependent definition-collection queries into this bucket.
     time_phase("Name resolution", true, || {
         for id in &item_ids {
             Resolve(*id).get(&*compiler);
         }
     });
 
-    // Type inference: per-item. Transitively forces the type-check dependency graph
-    // and SCC partitioning.
+    // Per-item: rolls up the type-check dependency graph and SCC partitioning.
     time_phase("Type inference", true, || {
         for id in &item_ids {
             incremental::TypeCheck(*id).get(&*compiler);
@@ -290,7 +285,7 @@ fn display_type_checking(compiler: &mut Db, show_types: bool, emit_all: bool) ->
     diagnostics
 }
 
-fn display_mir(compiler: &mut Db, emit_all: bool) -> BTreeSet<Diagnostic> {
+fn display_mir(compiler: &mut Db, emit_all: bool, optimize_tail_calls: bool) -> BTreeSet<Diagnostic> {
     let crates = GetCrateGraph.get(compiler);
     let mut diagnostics = BTreeSet::new();
 
@@ -301,7 +296,11 @@ fn display_mir(compiler: &mut Db, emit_all: bool) -> BTreeSet<Diagnostic> {
 
                 for item in &parse.cst.top_level_items {
                     let mir = mir::builder::build_initial_mir_with_shared_map(compiler, item.id);
-                    if let Some(mir) = mir {
+                    if let Some(mut mir) = mir {
+                        if optimize_tail_calls {
+                            mir = mir.optimize_tail_resume();
+                        }
+
                         print!("{mir}");
                     }
                     let more_diagnostics = compiler.get_accumulated_uncached(TypeCheck(item.id));
@@ -373,9 +372,7 @@ fn llvm_codegen_all(
         return diagnostics;
     }
 
-    // Monomorphization currently needs all definitions to compile, so each llvm call currently
-    // compiles the whole program. This should be fixed in the future, but for now each module is
-    // the whole program so we just need one.
+    // Each module is currently the whole program (monomorphization isn't yet incremental).
     modules.truncate(1);
 
     let module_name = files.first().map_or_else(|| "a.out".into(), |file| file.with_extension(""));
@@ -387,7 +384,6 @@ fn llvm_codegen_all(
     }
 
     if run {
-        // Run the program
         // Use an absolute path so the binary can be found regardless of PATH.
         let binary_path = binary_name(&module_name);
 

@@ -113,7 +113,11 @@ fn monomorphize_non_generic_definition(
         context.monomorphize_definition(definition);
     }
 
-    Mir { definitions: context.finished_definitions, externals: Default::default() }
+    Mir {
+        definitions: context.finished_definitions,
+        externals: Default::default(),
+        preserved_op_indices: Default::default(),
+    }
 }
 
 struct FunctionContext<'local> {
@@ -303,6 +307,7 @@ impl<'local> FunctionContext<'local> {
             | Instruction::Deref(v) => self.remap_value(v),
             Instruction::SizeOf(typ) => self.specialize_type(typ),
             Instruction::MakeString(_) | Instruction::Instantiate(..) | Instruction::Extern(_) => {},
+            Instruction::HandlerCap => {},
             Instruction::GetFieldPtr { struct_ptr, struct_type, .. } => {
                 self.remap_value(struct_ptr);
                 if !self.generic_mapping.is_empty() {

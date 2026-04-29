@@ -40,6 +40,11 @@ pub(crate) struct Mir {
 
     /// Any extern symbols used but not defined in this [Mir]
     pub(crate) externals: FxHashMap<DefinitionId, Extern>,
+
+    /// Effect op → position-within-effect mappings recovered from Handles removed by
+    /// [crate::mir::effects::tail_resume_optimization], so [crate::mir::effects::effect_lowering]
+    /// can still resolve `Perform`s that lived inside an optimized Handle's body.
+    pub(crate) preserved_op_indices: FxHashMap<DefinitionId, u32>,
 }
 
 #[derive(Debug)]
@@ -54,6 +59,7 @@ impl Mir {
     pub fn extend(mut self, other: Mir) -> Mir {
         self.definitions.extend(other.definitions);
         self.externals.extend(other.externals);
+        self.preserved_op_indices.extend(other.preserved_op_indices);
         self
     }
 
@@ -396,6 +402,13 @@ pub enum Instruction {
         body: Value,
         cases: Vec<HandlerCase>,
     },
+    /// Placeholder bound to the handler binding `h` inside a `handle` body lambda. Emitted by
+    /// the MIR builder so the body can reference `h` without committing to a particular lowering
+    /// strategy. The body's lowering pass is responsible for replacing each `HandlerCap` with the
+    /// appropriate value: [crate::mir::effect_lowering] expands it into a coroutine `user_data`
+    /// fetch, and [crate::mir::tail_resume_optimization] rewrites it to `Id(cap)` where `cap` is
+    /// a directly-built capability tuple. Must be removed before LLVM codegen.
+    HandlerCap,
     /// Returns a closure value after packing the function with the given environment.
     /// This is equivalent to a `MakeTuple` instruction but is distinguished because the
     /// compiler will optimize closure values & calls into free functions, removing the
@@ -445,7 +458,6 @@ pub enum Instruction {
     /// compilation unit.
     Extern(String),
 
-    // Arithmetic ops
     AddInt(Value, Value),
     AddFloat(Value, Value),
     SubInt(Value, Value),
@@ -469,7 +481,6 @@ pub enum Instruction {
     BitwiseXor(Value, Value),
     BitwiseNot(Value),
 
-    // Casting
     SignExtend(Value),
     ZeroExtend(Value),
     SignedToFloat(Value),
@@ -516,6 +527,7 @@ impl Instruction {
                     f(&case.handler);
                 }
             },
+            Instruction::HandlerCap => (),
             Instruction::PackClosure { function, environment } => two(function, environment),
             Instruction::IndexTuple { tuple, index: _ } => f(tuple),
             Instruction::MakeString(_) => (),
@@ -802,7 +814,7 @@ impl Type {
             Type::Function(_) => ptr_size,
             // This is a raw union so the tag isn't counted here
             Type::Union(variants) => variants.iter().map(|typ| typ.size_in_bytes(ptr_size)).max().unwrap_or(0),
-            Type::Generic(_) => 100, //panic!("Type::size_in_bytes: Encountered generic"),
+            Type::Generic(_) => 100, // FIXME
         }
     }
 

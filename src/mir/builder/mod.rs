@@ -159,7 +159,7 @@ impl<'local, Db> Context<'local, Db> {
         }
     }
 
-    /// Returns the current function being built. Panics if thre is none.
+    /// Panics if there is no current function.
     fn current_function(&mut self) -> &mut Definition {
         self.current_function.as_mut().unwrap()
     }
@@ -168,7 +168,7 @@ impl<'local, Db> Context<'local, Db> {
         self.current_function.as_ref().unwrap().type_of_value(value, &self.external, &self.finished_functions)
     }
 
-    /// Returns the current block being inserted into. Panics if there is no current function.
+    /// Panics if there is no current function.
     fn current_block(&mut self) -> &mut Block {
         &mut self.current_function.as_mut().unwrap().blocks[self.current_block]
     }
@@ -182,7 +182,6 @@ impl<'local, Db> Context<'local, Db>
 where
     Db: DbGet<TypeCheck> + DbGet<GetItem> + DbGet<GetItemRaw>,
 {
-    /// Push an instruction and return its result.
     fn push_instruction(&mut self, instruction: Instruction, result_type: Type) -> Value {
         let current_block = self.current_block;
         let function = self.current_function();
@@ -192,27 +191,22 @@ where
         Value::InstructionResult(id)
     }
 
-    /// Create a block (although do not switch to it) and return it
     fn push_block(&mut self, parameter_types: Vec<Type>) -> BlockId {
         self.current_function.as_mut().unwrap().blocks.push(Block::new(parameter_types))
     }
 
-    /// Create a block with no block parameters (although do not switch to it) and return it
     fn push_block_no_params(&mut self) -> BlockId {
         self.push_block(Vec::new())
     }
 
-    /// Switch to a new block to start inserting instructions into
     fn switch_to_block(&mut self, block: BlockId) {
         self.current_block = block;
     }
 
-    /// Add a parameter to the current block
     fn push_parameter(&mut self, parameter_type: Type) {
         self.current_block().parameter_types.push(parameter_type);
     }
 
-    /// Terminate the current block with the given terminator instruction
     fn terminate_block(&mut self, terminator: TerminatorInstruction) {
         let block = self.current_block();
         if block.terminator.is_none() {
@@ -225,7 +219,6 @@ where
         self.convert_type(typ, None)
     }
 
-    /// Defines the given value in local or global scope depending on its origin
     fn define_variable(&mut self, origin: Origin, value: Value) {
         match origin {
             Origin::Local(name) => self.local_variables.insert(name, value),
@@ -594,7 +587,6 @@ where
 
         let is_move = self.context().is_move_closure(expr);
 
-        // Determine which captured variables are mutable in the outer scope.
         let mutable_captures: rustc_hash::FxHashSet<NameId> =
             if let Some(free_vars) = self.context().get_closure_environment(expr) {
                 free_vars.iter().filter(|v| self.mutable_locals.contains(v)).copied().collect()
@@ -648,44 +640,15 @@ where
                 }
             }
 
-            // For a `handle` expression's body lambda, the handler name `h` is not part of
-            // the closure environment (`mco_coro_init` requires a no-arg entry function).
-            // Instead, the capability lives in the coroutine's user_data slot,
-            // populated by the effect-lowering pass. Inject a prelude here that loads it
-            // and binds it to `h` so any references inside the body resolve.
+            // For a `handle` expression's body lambda, bind `h` to a placeholder
+            // [Instruction::HandlerCap]. The lowering passes are responsible for replacing it:
+            // [crate::mir::effects::effect_lowering] expands it into a coroutine `user_data`
+            // fetch, while [crate::mir::effects::tail_resume_optimization] rewrites it to refer
+            // to a directly-built capability tuple.
             if let Some(handler_name) = handle_body_handler_name {
                 let h_tc_type = this.types.result.maps.name_types[&handler_name].clone();
                 let h_type = this.convert_type(&h_tc_type, None);
-
-                let mco_running = this.push_instruction(
-                    Instruction::Extern("mco_coro_running".to_string()),
-                    Type::Function(Arc::new(crate::mir::FunctionType {
-                        parameters: vec![],
-                        environment: Type::NO_CLOSURE_ENV,
-                        return_type: Type::POINTER,
-                    })),
-                );
-                let coro = this
-                    .push_instruction(Instruction::Call { function: mco_running, arguments: vec![] }, Type::POINTER);
-
-                let mco_get_user_data = this.push_instruction(
-                    Instruction::Extern("mco_coro_get_user_data".to_string()),
-                    Type::Function(Arc::new(crate::mir::FunctionType {
-                        parameters: vec![Type::POINTER],
-                        environment: Type::NO_CLOSURE_ENV,
-                        return_type: Type::POINTER,
-                    })),
-                );
-                let user_data = this.push_instruction(
-                    Instruction::Call { function: mco_get_user_data, arguments: vec![coro] },
-                    Type::POINTER,
-                );
-
-                // user_data layout is `(cap, env)` where `env` is `Unit` when the body has no captures
-                let env_type = function_type.environment().cloned().unwrap_or(Type::UNIT);
-                let user_data_type = Type::Tuple(Arc::new(vec![h_type.clone(), env_type]));
-                let cap_and_env = this.push_instruction(Instruction::Deref(user_data), user_data_type);
-                let cap = this.push_instruction(Instruction::IndexTuple { tuple: cap_and_env, index: 0 }, h_type);
+                let cap = this.push_instruction(Instruction::HandlerCap, h_type);
                 this.local_variables.insert(handler_name, cap);
             }
 
@@ -714,8 +677,7 @@ where
         self.mutable_locals = old_mutables;
         self.loop_targets = old_loop_targets;
 
-        // If this is a generic lambda, it will have generics forward from the currenty context
-        // which we need to manually instantiate.
+        // Generic lambdas inherit generics from the surrounding context; instantiate manually.
         let mut value = self.make_definition_value(id, name, full_type.clone());
         if !is_global && !self.generics_in_scope.is_empty() {
             let bindings = Arc::new(mapvec(0..self.generics_in_scope.len() as u32, |i| Type::Generic(Generic(i))));
@@ -1171,7 +1133,6 @@ where
             let current = self.push_instruction(Instruction::Deref(pointer), value_type.clone());
             let rhs = self.expression(assignment.rhs);
 
-            // Resolve the operator function through normal trait dispatch
             let function = self.expression(op_expr);
             let instruction = if self.type_of_value(&function).is_closure() {
                 Instruction::CallClosure { closure: function, arguments: vec![current, rhs] }
@@ -1263,7 +1224,8 @@ where
     }
 
     fn finish(self) -> Mir {
-        Mir { definitions: self.finished_functions, externals: self.external }.remove_internal_externs()
+        Mir { definitions: self.finished_functions, externals: self.external, preserved_op_indices: Default::default() }
+            .remove_internal_externs()
     }
 
     /// Sets [self.generics_in_scope] to a map mapping each generic from the given type to a
@@ -1336,7 +1298,6 @@ where
             None => typ.clone(),
         };
 
-        // This is the raw union type without the tag
         let raw_union_type = result_type.without_union_tag();
 
         let generic_count = self.generics_in_scope.len() as u32;
@@ -1385,11 +1346,9 @@ where
             let generic_count = self.generics_in_scope.len() as u32;
             let constructor_mir_type = self.convert_type(constructor_type, None);
 
-            // The struct's type is the return type of the constructor
             let struct_type =
                 constructor_mir_type.function_return_type().cloned().unwrap_or_else(|| constructor_mir_type.clone());
 
-            // The field types are the parameter types of the constructor
             let field_mir_types: Vec<Type> =
                 if let Type::Function(fn_type) = &constructor_mir_type { fn_type.parameters.clone() } else { vec![] };
 
@@ -1399,21 +1358,16 @@ where
                 // Only generate wrappers for fields whose type is a function or closure (all trait methods)
                 // TODO: We should still generate wrappers for other types
                 let (value_param_types, return_type) = match field_type {
-                    Type::Function(fn_type) => {
-                        // Plain function (no captured environment)
-                        (fn_type.parameters.clone(), fn_type.return_type.clone())
-                    },
+                    Type::Function(fn_type) => (fn_type.parameters.clone(), fn_type.return_type.clone()),
+                    // Closure: Type::Tuple([fn(value_args..., env) -> ret, env])
                     Type::Tuple(tuple_fields) if tuple_fields.len() == 2 => {
-                        // Closure: Type::Tuple([fn(value_args..., env) -> ret, env])
                         let Type::Function(fn_type) = &tuple_fields[0] else { continue };
-                        // Strip the trailing env parameter to get the value params
                         let n = fn_type.parameters.len().saturating_sub(1);
                         (fn_type.parameters[..n].to_vec(), fn_type.return_type.clone())
                     },
                     _ => continue,
                 };
 
-                // Wrapper: fn <value_args...> (struct_type) -> return_type
                 let mut wrapper_params = value_param_types;
                 wrapper_params.push(struct_type.clone());
                 let wrapper_type = Type::Function(Arc::new(super::FunctionType {
@@ -1432,14 +1386,12 @@ where
                     for pt in &wrapper_params {
                         this.push_parameter(pt.clone());
                     }
-                    // Last parameter is the struct (implicit receiver)
+                    // Last parameter is the implicit struct receiver.
                     let struct_param = Value::Parameter(BlockId::ENTRY_BLOCK, n_params as u32 - 1);
-                    // Extract the method (function or closure) stored at field index i inside the struct tuple
                     let extracted = this.push_instruction(
                         Instruction::IndexTuple { tuple: struct_param, index: i as u32 },
                         field_type_clone,
                     );
-                    // Call the extracted function/closure with the value arguments (all params except last)
                     let value_args = mapvec(0..n_params - 1, |j| Value::Parameter(BlockId::ENTRY_BLOCK, j as u32));
                     let instruction = if field_is_closure {
                         Instruction::CallClosure { closure: extracted, arguments: value_args }

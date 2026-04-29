@@ -123,6 +123,17 @@ fn build_op_index(mir: &Mir) -> OpIndex {
             }
         }
     }
+    // Merge in entries recovered from Handles that the tail-resume optimization removed before
+    // this pass ran. These are op→index pairs that lower_effects would have built itself if the
+    // Handles were still around. The position is uniform for an op (it's the op's slot within
+    // its effect's declaration), so a debug-only sanity check matches the same constraint the
+    // Handle-walking loop above enforces.
+    for (op, idx) in &mir.preserved_op_indices {
+        let prev = index.insert(*op, *idx);
+        if let Some(prev) = prev {
+            debug_assert_eq!(prev, *idx, "op_index disagreement between live Handle and preserved entry");
+        }
+    }
     index
 }
 
@@ -292,10 +303,6 @@ fn pop_operation_arguments(emitter: &mut Emitter, context: Context, coro: Value,
     popped
 }
 
-// ---------------------------------------------------------------------------
-// Perform lowering
-// ---------------------------------------------------------------------------
-
 struct PerformSite {
     block: BlockId,
     index: usize,
@@ -370,10 +377,6 @@ fn rewrite_single_perform(mir: &mut Mir, definition_id: DefinitionId, site: Perf
     definition.blocks[block].instructions.splice(index..=index, pending);
 }
 
-// ---------------------------------------------------------------------------
-// Handle lowering
-// ---------------------------------------------------------------------------
-
 struct HandleSite {
     block: BlockId,
     index: usize,
@@ -403,14 +406,14 @@ fn collect_handle_sites(definition: &Definition) -> Vec<HandleSite> {
 /// Op-shape info extracted from a handler's MIR type.
 /// Handlers are typed `fn op_args.., resume -> result`, where resume is
 /// `fn r1 [Pointer] -> result`. We extract `op_args` and `r1`.
-struct CaseShape {
-    op_arg_types: Vec<Type>,
+pub(super) struct CaseShape {
+    pub(super) op_arg_types: Vec<Type>,
     /// The op's return type (= resume's parameter type).
-    op_return_type: Type,
-    handler_is_closure: bool,
+    pub(super) op_return_type: Type,
+    pub(super) handler_is_closure: bool,
 }
 
-fn case_shape_from_handler_type(handler_type: &Type) -> Option<CaseShape> {
+pub(super) fn case_shape_from_handler_type(handler_type: &Type) -> Option<CaseShape> {
     let Type::Function(ft) = handler_type else { return None };
     let (resume_param, op_args) = ft.parameters.split_last()?;
     let Type::Function(resume_ft) = resume_param else { return None };
@@ -421,7 +424,7 @@ fn case_shape_from_handler_type(handler_type: &Type) -> Option<CaseShape> {
 /// Resolve a `handle` body Value down to the underlying function `DefinitionId` plus an
 /// optional closure environment value. Recurses through `Id` (the post-monomorphization form
 /// of `Instantiate`) and unwraps a single layer of `PackClosure`.
-fn resolve_body_function(body: Value, definition: &Definition) -> (DefinitionId, Option<Value>) {
+pub(super) fn resolve_body_function(body: Value, definition: &Definition) -> (DefinitionId, Option<Value>) {
     fn resolve_id(value: Value, definition: &Definition) -> DefinitionId {
         match value {
             Value::Definition(id) => id,
@@ -448,19 +451,26 @@ fn resolve_body_function(body: Value, definition: &Definition) -> (DefinitionId,
 fn rewrite_single_handle(mir: &mut Mir, definition_id: DefinitionId, site: HandleSite, context: Context) {
     let HandleSite { block, index, id: original_id, body, cases, result_type } = site;
 
-    let definition = mir.definitions.get(&definition_id).expect("definition vanished mid-rewrite");
+    let (body_fn_id, body_env, env_type, handler_types, case_shapes) = {
+        let definition = mir.definitions.get(&definition_id).expect("definition vanished mid-rewrite");
 
-    let (body_fn_id, body_env) = resolve_body_function(body, definition);
-    let env_type = match body_env {
-        Some(env) => definition.type_of_value(&env, &mir.externals, &mir.definitions),
-        None => Type::UNIT,
+        let (body_fn_id, body_env) = resolve_body_function(body, definition);
+        let env_type = match body_env {
+            Some(env) => definition.type_of_value(&env, &mir.externals, &mir.definitions),
+            None => Type::UNIT,
+        };
+        let handler_types =
+            mapvec(&cases, |case| definition.type_of_value(&case.handler, &mir.externals, &mir.definitions));
+        let case_shapes: Vec<CaseShape> = handler_types
+            .iter()
+            .map(|t| case_shape_from_handler_type(t).expect("handler type must be `fn op_args.., resume -> r`"))
+            .collect();
+        (body_fn_id, body_env, env_type, handler_types, case_shapes)
     };
-    let handler_types =
-        mapvec(&cases, |case| definition.type_of_value(&case.handler, &mir.externals, &mir.definitions));
-    let case_shapes: Vec<CaseShape> = handler_types
-        .iter()
-        .map(|t| case_shape_from_handler_type(t).expect("handler type must be `fn op_args.., resume -> r`"))
-        .collect();
+
+    // Replace `HandlerCap` placeholders in the body with the user_data fetch chain.
+    // After this pass the body contains only normal MIR; the placeholder is gone.
+    expand_handler_caps_in_body(mir, body_fn_id, &env_type, context);
 
     // Per-case capability-wrapper free function definitions. wrap_i(op_args.., env: Pointer)
     // suspends `coro` (held in env) with op_args + case-tag i. After the body resumes, it
@@ -535,6 +545,50 @@ fn rewrite_single_handle(mir: &mut Mir, definition_id: DefinitionId, site: Handl
     definition.blocks[block].instructions.splice(index..=index, pending);
 }
 
+/// Replace each [Instruction::HandlerCap] within `body_fn_id`'s blocks with the chain that
+/// recovers the capability from the running coroutine's user_data:
+///
+/// ```text
+/// coro        = mco_coro_running()
+/// user_data   = mco_coro_get_user_data(coro)
+/// cap_and_env = Deref(user_data)              // (cap, env)
+/// cap         = IndexTuple(cap_and_env, 0)    // reuses the HandlerCap's instruction id
+/// ```
+///
+/// The HandlerCap's existing instruction id is reused for the final `IndexTuple` so any
+/// downstream consumer of its result Value continues to work without rewriting.
+fn expand_handler_caps_in_body(mir: &mut Mir, body_fn_id: DefinitionId, env_type: &Type, context: Context) {
+    let Some(body) = mir.definitions.get_mut(&body_fn_id) else { return };
+
+    struct CapSite {
+        block: BlockId,
+        index: usize,
+        id: InstructionId,
+        cap_type: Type,
+    }
+    let sites: Vec<CapSite> = collect_sites(body, |block, index, id| {
+        if matches!(body.instructions[id], Instruction::HandlerCap) {
+            let cap_type = body.instruction_result_types[id].clone();
+            Some(CapSite { block, index, id, cap_type })
+        } else {
+            None
+        }
+    });
+
+    for site in sites {
+        let cap_and_env_type = Type::Tuple(Arc::new(vec![site.cap_type.clone(), env_type.clone()]));
+        let mut pending = Vec::new();
+        {
+            let mut emitter = Emitter::pending(body, &mut pending);
+            let coro = emitter.call_extern(&context.mco.running, vec![]);
+            let user_data = emitter.call_extern(&context.mco.get_user_data, vec![coro]);
+            let cap_and_env = emitter.push_instruction(Instruction::Deref(user_data), cap_and_env_type);
+            emitter.reuse_instruction(site.id, Instruction::IndexTuple { tuple: cap_and_env, index: 0 }, site.cap_type);
+        }
+        body.blocks[site.block].instructions.splice(site.index..=site.index, pending);
+    }
+}
+
 /// Generate `wrap_i op_args.. (env: Pointer) -> ret_i`. The closure env carries the
 /// statically-bound target coro (the one whose Handle owns this op). The wrapper
 /// pushes (op_args, case_index, target) onto whichever coro is currently running and
@@ -545,10 +599,8 @@ fn rewrite_single_handle(mir: &mut Mir, definition_id: DefinitionId, site: Handl
 fn generate_capability_wrapper(mir: &mut Mir, case_index: u32, shape: &CaseShape, context: Context) -> DefinitionId {
     let wrap_id = next_definition_id();
     let mut params: Vec<Type> = shape.op_arg_types.clone();
-    params.push(Type::POINTER); // env (last entry-block parameter, matching closure layout)
+    params.push(Type::POINTER); // env (last entry-block parameter)
 
-    // The wrapper is always a closure with a single captured pointer containing
-    // any necessary captures
     let wrap_type = Type::Function(Arc::new(FunctionType {
         parameters: shape.op_arg_types.clone(),
         environment: Type::POINTER,
@@ -571,10 +623,8 @@ fn generate_capability_wrapper(mir: &mut Mir, case_index: u32, shape: &CaseShape
     let state = emitter.push_instruction(Instruction::Deref(env_value), state_type);
     let target = emitter.push_instruction(Instruction::IndexTuple { tuple: state, index: 0 }, Type::POINTER);
 
-    // current = mco_coro_running()
     let current = emitter.call_extern(&context.mco.running, vec![]);
 
-    // push op_args.. then case_index then target, suspend current, pop result.
     for (arg, arg_type) in op_arg_values.iter().zip(shape.op_arg_types.iter()) {
         emitter.push_bytes(context.mco, current, *arg, arg_type, context.ptr_size);
     }
@@ -677,7 +727,6 @@ fn generate_drive_function(
     let forward_block = definition.blocks.push(Block::new(Vec::new()));
     let final_block = definition.blocks.push(Block::new(vec![result_type.clone()]));
 
-    // entry: jmp loop_header
     definition.blocks[entry].terminator = Some(TerminatorInstruction::jmp_no_args(loop_header));
 
     // loop_header: resume my_coro; if suspended -> dispatch else -> complete
@@ -813,7 +862,6 @@ fn emit_handler_case(
         resume_function_type,
     );
 
-    // Call the handler: handler(args.., resume_closure)
     let mut handler_arguments = popped_arguments;
     handler_arguments.push(resume_closure);
     let call_instruction = if shape.handler_is_closure {
