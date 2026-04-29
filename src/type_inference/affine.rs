@@ -10,7 +10,7 @@ use crate::{
         cst::{Expr, TopLevelItemKind},
         ids::{ExprId, NameId, TopLevelName},
     },
-    type_inference::{types::Type, Locateable, TypeChecker},
+    type_inference::{Locateable, TypeChecker, types::Type},
 };
 
 use super::fresh_expr::ExtendedTopLevelContext;
@@ -201,17 +201,13 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     fn is_trait_or_effect(&self, typ: &Type) -> bool {
         match typ.follow(&self.bindings) {
             // TODO: This is broken when type aliases are implemented.
-            Type::Application(constructor, _) => {
-                self.is_trait_or_effect(&constructor)
-            }
-            Type::UserDefined(origin) => {
-                match origin {
-                    Origin::TopLevelDefinition(name) => {
-                        let (item, _) = GetItemRaw(name.top_level_item).get(self.compiler);
-                        matches!(&item.kind, TopLevelItemKind::TraitDefinition(_) | TopLevelItemKind::EffectDefinition(_))
-                    },
-                    _ => false,
-                }
+            Type::Application(constructor, _) => self.is_trait_or_effect(&constructor),
+            Type::UserDefined(origin) => match origin {
+                Origin::TopLevelDefinition(name) => {
+                    let (item, _) = GetItemRaw(name.top_level_item).get(self.compiler);
+                    matches!(&item.kind, TopLevelItemKind::TraitDefinition(_) | TopLevelItemKind::EffectDefinition(_))
+                },
+                _ => false,
             },
             _ => false,
         }

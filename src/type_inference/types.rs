@@ -525,14 +525,16 @@ impl Type {
 
                 assert!(!converted_args.is_empty());
                 let typ = Type::Application(Arc::new(f), Arc::new(converted_args));
-                (typ, f_kind.result_kind())
+                (typ, Kind::Type)
             },
             crate::parser::cst::TypeKind::Reference(kind) => (
                 Type::Primitive(PrimitiveType::Reference(*kind)),
                 Kind::TypeConstructorSimple(NonZeroUsize::new(1).unwrap()),
             ),
             crate::parser::cst::TypeKind::NoClosureEnv => (Type::NO_CLOSURE_ENV, Kind::Type),
-            crate::parser::cst::TypeKind::Pointer => (Type::POINTER, Kind::TypeConstructorSimple(NonZeroUsize::new(1).unwrap())),
+            crate::parser::cst::TypeKind::Pointer => {
+                (Type::POINTER, Kind::TypeConstructorSimple(NonZeroUsize::new(1).unwrap()))
+            },
             crate::parser::cst::TypeKind::Tuple(elements) => {
                 let elements =
                     mapvec(elements, |t| Self::from_cst_type(t, resolve, db, next_id, insert_implicit_type_vars));
@@ -566,10 +568,6 @@ impl Type {
                 match &item.kind {
                     cst::TopLevelItemKind::TypeDefinition(definition) => {
                         let kind = crate::definition_collection::kind_of_type_definition(definition);
-                        (make_type(origin), kind)
-                    },
-                    cst::TopLevelItemKind::EffectDefinition(effect) => {
-                        let kind = crate::definition_collection::kind_of_effect_definition(effect);
                         (make_type(origin), kind)
                     },
                     _ => {

@@ -1,5 +1,6 @@
 effect Fail with
-    fail: fn Unit -> a
+    // TODO: Allow `forall a.`, implicit quantification, or add Bottom type
+    fail: fn Unit -> Unit
 
 try (f: fn Fail -> a): Maybe a =
     handler h for fail () -> None

@@ -356,10 +356,9 @@ fn rewrite_single_perform(mir: &mut Mir, definition_id: DefinitionId, site: Perf
 
     let return_type = mir.definitions[&definition_id].instruction_result_types[original_id].clone();
 
-    let op_index = *context
-        .op_index
-        .get(&op)
-        .unwrap_or_else(|| panic!("effect_lowering: effect op {op:?} has no Handle in the program — cannot resolve op-position"));
+    let op_index = *context.op_index.get(&op).unwrap_or_else(|| {
+        panic!("effect_lowering: effect op {op:?} has no Handle in the program — cannot resolve op-position")
+    });
 
     // Capability is the implicit trailing argument, appended by implicit-arg resolution.
     let (cap_value, op_args) = arguments
@@ -392,10 +391,8 @@ fn rewrite_single_perform(mir: &mut Mir, definition_id: DefinitionId, site: Perf
     let mut pending = Vec::new();
     {
         let mut emitter = Emitter::pending(definition, &mut pending);
-        let wrapper = emitter.push_instruction(
-            Instruction::IndexTuple { tuple: cap_value, index: op_index },
-            wrapper_type,
-        );
+        let wrapper =
+            emitter.push_instruction(Instruction::IndexTuple { tuple: cap_value, index: op_index }, wrapper_type);
         emitter.reuse_instruction(
             original_id,
             Instruction::CallClosure { closure: wrapper, arguments: op_args },
@@ -450,11 +447,7 @@ fn case_shape_from_handler_type(handler_type: &Type) -> Option<CaseShape> {
     let (resume_param, op_args) = ft.parameters.split_last()?;
     let Type::Function(resume_ft) = resume_param else { return None };
     let op_return_type = resume_ft.parameters.first().cloned().unwrap_or(Type::UNIT);
-    Some(CaseShape {
-        op_arg_types: op_args.to_vec(),
-        op_return_type,
-        handler_is_closure: ft.is_closure(),
-    })
+    Some(CaseShape { op_arg_types: op_args.to_vec(), op_return_type, handler_is_closure: ft.is_closure() })
 }
 
 fn rewrite_single_handle(mir: &mut Mir, definition_id: DefinitionId, site: HandleSite, context: Context) {
@@ -481,8 +474,7 @@ fn rewrite_single_handle(mir: &mut Mir, definition_id: DefinitionId, site: Handl
         wrapper_ids.iter().map(|id| mir.definitions[id].typ.clone()).map(closurize_wrapper_type).collect();
     let cap_tuple_type = Type::Tuple(Arc::new(wrapper_closure_types.clone()));
 
-    let body_wrapper_id =
-        generate_body_wrapper(mir, body_type.clone(), &cap_tuple_type, &result_type, context);
+    let body_wrapper_id = generate_body_wrapper(mir, body_type.clone(), &cap_tuple_type, &result_type, context);
     let drive_id = generate_drive_function(mir, &cases, &handler_types, &case_shapes, &result_type, context);
 
     let definition = mir.definitions.get_mut(&definition_id).expect("definition disappeared mid-rewrite");
@@ -500,8 +492,7 @@ fn rewrite_single_handle(mir: &mut Mir, definition_id: DefinitionId, site: Handl
         // The same `coro` is passed to drive below; consistency between body's wrappers and
         // drive's pop sequence is what makes this Handle site self-consistent.
         let cap_state_type = Type::Tuple(Arc::new(vec![Type::POINTER]));
-        let cap_state =
-            emitter.push_instruction(Instruction::MakeTuple(vec![coro]), cap_state_type.clone());
+        let cap_state = emitter.push_instruction(Instruction::MakeTuple(vec![coro]), cap_state_type.clone());
         let cap_state_ptr = emitter.push_instruction(Instruction::StackAlloc(cap_state), Type::POINTER);
 
         let cap_closures: Vec<Value> = wrapper_ids
@@ -571,9 +562,7 @@ fn closurize_wrapper_type(wrapper_type: Type) -> Type {
 
 /// Generate `wrap_i(op_args.., env: Pointer) -> ret_i`. Pulls `coro` out of env, pushes
 /// op_args.. + tag=i onto coro, suspends, pops the resumed result, returns it.
-fn generate_capability_wrapper(
-    mir: &mut Mir, case_index: u32, shape: &CaseShape, context: Context,
-) -> DefinitionId {
+fn generate_capability_wrapper(mir: &mut Mir, case_index: u32, shape: &CaseShape, context: Context) -> DefinitionId {
     let wrap_id = next_definition_id();
     let mut params: Vec<Type> = shape.op_arg_types.clone();
     params.push(Type::POINTER); // env
@@ -633,14 +622,10 @@ fn generate_body_wrapper(
     let user_data = emitter.call_extern(&context.mco.get_user_data, vec![coro]);
     let body_and_cap_type = Type::Tuple(Arc::new(vec![body_type.clone(), cap_type.clone()]));
     let body_and_cap = emitter.push_instruction(Instruction::Deref(user_data), body_and_cap_type);
-    let body_value = emitter.push_instruction(
-        Instruction::IndexTuple { tuple: body_and_cap, index: 0 },
-        body_type.clone(),
-    );
-    let cap_value = emitter.push_instruction(
-        Instruction::IndexTuple { tuple: body_and_cap, index: 1 },
-        cap_type.clone(),
-    );
+    let body_value =
+        emitter.push_instruction(Instruction::IndexTuple { tuple: body_and_cap, index: 0 }, body_type.clone());
+    let cap_value =
+        emitter.push_instruction(Instruction::IndexTuple { tuple: body_and_cap, index: 1 }, cap_type.clone());
 
     let call = match &body_type {
         Type::Function(function_type) if function_type.is_closure() => {
@@ -674,7 +659,9 @@ fn generate_drive_function(
     // re-invoke drive with the same handler set when the body resumes.
     let resume_functions: Vec<DefinitionId> = case_shapes
         .iter()
-        .map(|shape| generate_resume_function(mir, shape.op_return_type.clone(), drive_id, handler_types, result_type, context))
+        .map(|shape| {
+            generate_resume_function(mir, shape.op_return_type.clone(), drive_id, handler_types, result_type, context)
+        })
         .collect();
 
     let mut definition = Definition::new(Arc::new("handle_drive".to_string()), drive_id, 0, drive_type);

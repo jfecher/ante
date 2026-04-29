@@ -8,7 +8,7 @@ use crate::{
     diagnostics::Location,
     incremental::{Db, GetItem, Resolve, TypeCheck},
     lexer::token::INDEX_OPERATOR_FUNCTION_NAME,
-    name_resolution::{namespace::SourceFileId, Origin},
+    name_resolution::{Origin, namespace::SourceFileId},
     parser::{
         cst::{Argument, Constructor, For, Loop, LoopParameter, ReferenceKind, TopLevelItemKind, While},
         ids::{IdStore, NameId, PathId},
@@ -22,10 +22,10 @@ use crate::{
 use super::{
     TopLevelContext,
     cst::{
-        Bind, Call, CompoundAssignOp, Comptime, Cst, Declaration, Definition, EffectDefinition, Expr,
-        Extern, FunctionType, Handle, HandlePattern, If, Import, InterpolatedString, Is, Lambda, Literal, Match,
-        MemberAccess, Parameter, Path, Pattern, Quoted, Reference, SequenceItem, TopLevelItem, TraitDefinition,
-        TraitImpl, Type, TypeAnnotation, TypeDefinition, TypeDefinitionBody, TypeKind,
+        Bind, Call, CompoundAssignOp, Comptime, Cst, Declaration, Definition, EffectDefinition, Expr, Extern,
+        FunctionType, Handle, HandlePattern, If, Import, InterpolatedString, Is, Lambda, Literal, Match, MemberAccess,
+        Parameter, Path, Pattern, Quoted, Reference, SequenceItem, TopLevelItem, TraitDefinition, TraitImpl, Type,
+        TypeAnnotation, TypeDefinition, TypeDefinitionBody, TypeKind,
     },
     ids::{ExprId, PatternId, TopLevelId},
 };

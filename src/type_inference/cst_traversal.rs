@@ -947,8 +947,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // `resume` doesn't raise `e` since handlers in Ante are deep: each call to
         // resume is automatically handled by the same handler.
         for (pattern, branch) in &handle.cases {
-            let mut parameter_types =
-                mapvec(&pattern.args, |_| ParameterType::explicit(self.next_type_variable()));
+            let mut parameter_types = mapvec(&pattern.args, |_| ParameterType::explicit(self.next_type_variable()));
 
             // The effect operation has an implicit trailing parameter of its parent
             // effect type (e.g. `Emit a`, `Fail`).

@@ -1,6 +1,5 @@
 use std::{
     collections::{BTreeMap, HashSet},
-    num::NonZeroUsize,
     path::PathBuf,
     sync::Arc,
 };
@@ -17,10 +16,7 @@ use crate::{
     name_resolution::namespace::SourceFileId,
     parser::{
         context::TopLevelContext,
-        cst::{
-            EffectDefinition, Import, ItemName, Literal, Name, Pattern, TopLevelItemKind, TypeDefinition,
-            TypeDefinitionBody,
-        },
+        cst::{Import, ItemName, Literal, Name, Pattern, TopLevelItemKind, TypeDefinition, TypeDefinitionBody},
         ids::{NameId, PatternId, TopLevelId, TopLevelName},
     },
     type_inference::kinds::Kind,
@@ -230,10 +226,6 @@ pub(crate) fn kind_of_type_definition(definition: &TypeDefinition) -> Kind {
     }
 }
 
-pub(crate) fn kind_of_effect_definition(definition: &EffectDefinition) -> Kind {
-    if let Some(n) = NonZeroUsize::new(definition.generics.len()) { Kind::EffectConstructor(n) } else { Kind::Effect }
-}
-
 /// Collect all type definitions within a file (unfiltered by export list).
 pub fn all_types_impl(context: &AllTypes, db: &DbHandle) -> TypeDefinitions {
     incremental::enter_query();
@@ -257,20 +249,6 @@ pub fn all_types_impl(context: &AllTypes, db: &DbHandle) -> TypeDefinitions {
             } else {
                 let kind = kind_of_type_definition(definition);
                 definitions.insert(name.clone(), (TopLevelName::new(item.id, definition.name), kind));
-            }
-        } else if let TopLevelItemKind::EffectDefinition(effect) = &item.kind {
-            // Effect names are usable in type position (e.g. `can Use a`),
-            // so register them in the type namespace with Kind::Effect.
-            let name = &context[effect.name];
-
-            if let Some((existing, _)) = definitions.get(name) {
-                let first_location = existing.location(db);
-                let second_location = context.name_location(effect.name).clone();
-                let name = name.clone();
-                db.accumulate(Diagnostic::NameAlreadyInScope { name, first_location, second_location });
-            } else {
-                let kind = kind_of_effect_definition(effect);
-                definitions.insert(name.clone(), (TopLevelName::new(item.id, effect.name), kind));
             }
         }
     }
