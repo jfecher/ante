@@ -4,7 +4,7 @@ effect Ping with
 effect Pong with
     do_pong: fn U64 -> U64
 
-foo () {Ping} {Pong} =
+foo {Ping} {Pong} =
     a = do_ping 1
     b = do_pong 2
     c = do_ping 3
@@ -28,7 +28,10 @@ pong (f: fn Pong [env] -> a) =
     in f h
 
 main () =
-    a, b = ping (fn p -> pong (fn q -> foo () {p} {q}))
+    a, b = ping fn pinger ->
+        ponger <- pong
+        foo {pinger} {ponger}
+
     println a //=> (1*2 + 3*2) = 8
     println b //=> (2*3 + 4*3) = 18
 

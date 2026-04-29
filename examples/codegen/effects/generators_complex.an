@@ -1,44 +1,12 @@
-effect Emit a with
-    emit: fn a -> Unit
-
-iota (n: U32) {Emit U32} = loop (i = 0) ->
-    if i < n then
-        emit i
-        recur (i + 1)
-
-filter {Emit a} {Copy a} (f: fn a -> Bool) (stream: fn (Emit a) -> Unit) =
-    handler h for emit x ->
-        if f x then
-            emit x
-        resume ()
-    in stream h
-
-map {Emit b} (f: fn a -> b) (stream: fn (Emit a) -> Unit): Unit =
-    handler h for emit x ->
-        emit (f x)
-        resume ()
-    in stream h
-
-enumerate {Emit (U32, a)} (stream: fn (Emit a) -> Unit): Unit =
-    var i = 0u32
-    handler h for emit x ->
-        emit (i, x)
-        i += 1
-        resume ()
-    in stream h
-
-for_ (f: fn a -> Unit) (stream: fn (Emit a) -> Unit) =
-    handler h for emit x ->
-        f x
-        resume ()
-    in stream h
+import Std.Stream.iota, enumerate, map, filter, for_, stream_fn_e
 
 main () =
-    for_ println fn out ->
-        out2 <- enumerate {out}
-        out3 <- map {out2} (_ * 2)
-        out4 <- filter {out3} (_ %% 2)
-        iota 10 {out4}
+    iota 10
+        // TODO: why does filter require an explicit {stream_fn_e}?
+        |> filter {stream_fn_e} (fn x -> x.* %% 2usz)
+        |> map (_ * 2)
+        |> enumerate
+        |> for_ println
 
 // args: --delete-binary --no-color
 // expected stdout:
