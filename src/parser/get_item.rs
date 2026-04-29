@@ -228,7 +228,10 @@ fn desugar_effect(effect: &EffectDefinition, context: &mut DesugarContext) -> To
         let typ = match &decl.typ.kind {
             cst::TypeKind::Function(f) => {
                 let mut f = f.clone();
-                f.environment = Some(Box::new(Type::new(cst::TypeKind::Pointer, name_location.clone())));
+                let ptr = Type::new(cst::TypeKind::Pointer, name_location.clone());
+                let unit = Type::new(TypeKind::Unit, name_location.clone());
+                let ptr_unit = Type::new(TypeKind::Application(Box::new(ptr), vec![unit]), name_location.clone());
+                f.environment = Some(Box::new(ptr_unit));
                 Type::new(cst::TypeKind::Function(f), decl.typ.location.clone())
             },
             _ => decl.typ.clone(),

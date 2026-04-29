@@ -18,8 +18,8 @@ use crate::{
     name_resolution::{builtin::Builtin, namespace::CrateId},
     parser::{
         cst::{
-            Comptime, Constructor, Declaration, Definition, EffectDefinition, Expr, Generics, ItemName, Name, Path,
-            Pattern, TopLevelItemKind, TraitDefinition, TraitImpl, Type, TypeDefinition, TypeDefinitionBody, TypeKind,
+            Comptime, Constructor, Definition, Expr, Generics, ItemName, Name, Path, Pattern, TopLevelItemKind, Type,
+            TypeDefinition, TypeDefinitionBody, TypeKind,
         },
         desugar_context::DesugarContext,
         ids::{ExprId, NameId, PathId, PatternId, TopLevelId, TopLevelName},
@@ -128,10 +128,10 @@ pub fn resolve_impl(context: &Resolve, compiler: &DbHandle) -> ResolutionResult 
     match &statement.kind {
         TopLevelItemKind::Definition(definition) => resolver.resolve_expr(definition.rhs),
         TopLevelItemKind::TypeDefinition(type_definition) => resolver.resolve_type_definition(type_definition),
-        TopLevelItemKind::TraitDefinition(trait_definition) => resolver.resolve_trait_definition(trait_definition),
-        TopLevelItemKind::TraitImpl(trait_impl) => resolver.resolve_trait_impl(trait_impl),
-        TopLevelItemKind::EffectDefinition(effect_definition) => resolver.resolve_effect_definition(effect_definition),
         TopLevelItemKind::Comptime(comptime_) => resolver.resolve_comptime(comptime_),
+        TopLevelItemKind::TraitDefinition(_) => unreachable!("Desugared by GetItem"),
+        TopLevelItemKind::EffectDefinition(_) => unreachable!("Desugared by GetItem"),
+        TopLevelItemKind::TraitImpl(_) => unreachable!("Desugared by GetItem"),
     }
 
     incremental::exit_query();
@@ -818,48 +818,6 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
     fn declare_generics(&mut self, generics: &Generics) {
         for generic in generics {
             self.declare_name(*generic);
-        }
-    }
-
-    fn declare(&mut self, declaration: &Declaration) {
-        self.declare_name(declaration.name);
-        self.resolve_type(&declaration.typ, true);
-    }
-
-    fn resolve_trait_definition(&mut self, trait_definition: &TraitDefinition) {
-        self.declare_generics(&trait_definition.generics);
-        self.declare_generics(&trait_definition.functional_dependencies);
-        for declaration in &trait_definition.body {
-            self.declare(declaration);
-        }
-    }
-
-    fn resolve_trait_impl(&mut self, trait_impl: &TraitImpl) {
-        self.link(trait_impl.trait_path, false, true);
-
-        for arg in &trait_impl.trait_arguments {
-            self.resolve_type(arg, true);
-        }
-
-        for (name, rhs) in &trait_impl.body {
-            let is_let_rec = matches!(&self.context[*rhs], Expr::Lambda(_));
-            if is_let_rec {
-                self.declare_name(*name);
-            }
-
-            self.resolve_expr(*rhs);
-
-            if !is_let_rec {
-                self.declare_name(*name);
-            }
-        }
-    }
-
-    fn resolve_effect_definition(&mut self, effect_definition: &EffectDefinition) {
-        self.declare_generics(&effect_definition.generics);
-        for declaration in &effect_definition.body {
-            self.link_existing_union_variant(effect_definition.name, declaration.name);
-            self.resolve_type(&declaration.typ, true);
         }
     }
 
