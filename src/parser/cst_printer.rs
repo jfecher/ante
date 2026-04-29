@@ -10,7 +10,7 @@ use crate::{
     lexer::token::INDEX_OPERATOR_FUNCTION_NAME,
     name_resolution::{namespace::SourceFileId, Origin},
     parser::{
-        cst::{Argument, Constructor, For, Is, Loop, LoopParameter, ReferenceKind, TopLevelItemKind, While},
+        cst::{Argument, Constructor, For, Loop, LoopParameter, ReferenceKind, TopLevelItemKind, While},
         ids::{IdStore, NameId, PathId},
     },
     type_inference::{
@@ -23,7 +23,7 @@ use super::{
     TopLevelContext,
     cst::{
         Bind, Call, CompoundAssignOp, Comptime, Cst, Declaration, Definition, EffectDefinition, Expr,
-        Extern, FunctionType, Handle, HandlePattern, If, Import, InterpolatedString, Lambda, Literal, Match,
+        Extern, FunctionType, Handle, HandlePattern, If, Import, InterpolatedString, Is, Lambda, Literal, Match,
         MemberAccess, Parameter, Path, Pattern, Quoted, Reference, SequenceItem, TopLevelItem, TraitDefinition,
         TraitImpl, Type, TypeAnnotation, TypeDefinition, TypeDefinitionBody, TypeKind,
     },
