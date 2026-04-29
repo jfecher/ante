@@ -911,7 +911,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         self.current_extended_context_mut().push_constructor_field_order(id, field_order);
     }
 
-    // TODO: Capabilities
     fn check_handle(&mut self, handle: &cst::Handle, expected: &Type) {
         // `can expected_effect, e`
         let expected_and_e = self.next_type_variable();
@@ -919,10 +918,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let handler_effect_type = self.next_type_variable();
         self.name_types.insert(handle.handler_name, handler_effect_type.clone());
 
-        // Body: fn () -> expected can expected_and_e
+        // Body: fn handler_name -> expected can expected_and_e
         let body_env = self.next_type_variable();
         let body_type = Type::Function(Arc::new(FunctionType {
-            parameters: Vec::new(),
+            parameters: vec![ParameterType::explicit(handler_effect_type.clone())],
             environment: body_env,
             return_type: expected.clone(),
             // effects: expected_and_e.clone(),
@@ -959,7 +958,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
             let function_type = Type::Function(Arc::new(FunctionType {
                 parameters: parameter_types.clone(),
-                environment: Type::NO_CLOSURE_ENV,
+                environment: Type::POINTER,
                 return_type: r.clone(),
             }));
             self.check_path(pattern.function, &function_type, None, None);

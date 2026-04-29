@@ -7,8 +7,9 @@ use crate::{
     lexer::token::{FloatKind, IntegerKind},
     parser::{
         cst::{
-            self, Argument, Constructor, Definition, Expr, If, Lambda, Literal, Parameter, Path, Pattern, SequenceItem,
-            TopLevelItem, TopLevelItemKind, TraitDefinition, TraitImpl, Type, TypeDefinitionBody, TypeKind,
+            self, Argument, Constructor, Definition, EffectDefinition, Expr, If, Lambda, Literal, Parameter, Path,
+            Pattern, SequenceItem, TopLevelItem, TopLevelItemKind, TraitDefinition, TraitImpl, Type,
+            TypeDefinitionBody, TypeKind,
         },
         desugar_context::DesugarContext,
         ids::{ExprId, PathId, PatternId},
@@ -22,6 +23,12 @@ pub fn get_item_impl(context: &GetItem, db: &DbHandle) -> (Arc<TopLevelItem>, Ar
         TopLevelItemKind::TraitDefinition(trait_definition) => {
             let mut new_context = DesugarContext::new(context);
             let new_kind = desugar_trait(trait_definition, &mut new_context);
+            let new_item = Arc::new(TopLevelItem { comments: item.comments.clone(), kind: new_kind, id: item.id });
+            (new_item, Arc::new(new_context))
+        },
+        TopLevelItemKind::EffectDefinition(effect_definition) => {
+            let mut new_context = DesugarContext::new(context);
+            let new_kind = desugar_effect(effect_definition, &mut new_context);
             let new_item = Arc::new(TopLevelItem { comments: item.comments.clone(), kind: new_kind, id: item.id });
             (new_item, Arc::new(new_context))
         },
@@ -193,17 +200,54 @@ fn desugar_trait(trait_: &TraitDefinition, context: &mut DesugarContext) -> TopL
     TopLevelItemKind::TypeDefinition(super::cst::TypeDefinition {
         shared: false,
         is_trait: true,
+        is_effect: false,
         name: trait_.name,
         generics,
         body: TypeDefinitionBody::Struct(fields),
     })
 }
 
-/// Traverse the expression recursively, desugaring along the way looking for the following cases:
-/// - `loop`: All loops are sugar for an immediately invoked helper function
-/// - `|>` and `<|`: Apply operators are sugar for direct application
-/// - `foo _ x _`: Function calls with `_` as arguments are automatically converted into lambdas
-///                with the `_` parameters as the remaining lambda parameters in source order.
+/// Desugars
+/// ```ante
+/// effect Add with
+///     add: fn U32 -> Unit
+/// ```
+/// Into
+/// ```ante
+/// type Add =
+///     add: fn U32 [Ptr Unit] -> Unit
+/// ```
+/// Each effect operation becomes a struct field whose type is a closure capturing the
+/// local scope of the handler. These capability objects are second class to prevent them
+/// from escaping, so capturing the entire environment by reference should be fine.
+fn desugar_effect(effect: &EffectDefinition, context: &mut DesugarContext) -> TopLevelItemKind {
+    let name_location = context.name_location(effect.name).clone();
+    let generics = effect.generics.clone();
+
+    let fields = mapvec(&effect.body, |decl| {
+        let typ = match &decl.typ.kind {
+            cst::TypeKind::Function(f) => {
+                let mut f = f.clone();
+                f.environment = Some(Box::new(Type::new(cst::TypeKind::Pointer, name_location.clone())));
+                Type::new(cst::TypeKind::Function(f), decl.typ.location.clone())
+            },
+            _ => decl.typ.clone(),
+        };
+        (decl.name, typ)
+    });
+
+    TopLevelItemKind::TypeDefinition(super::cst::TypeDefinition {
+        shared: false,
+        is_trait: false,
+        is_effect: true,
+        name: effect.name,
+        generics,
+        body: TypeDefinitionBody::Struct(fields),
+    })
+}
+
+/// Traverse the expression recursively, desugaring along the way looking for
+/// any desugaring in [ExprDesugar].
 fn desugar_expression(expr: ExprId, context: &mut DesugarContext) {
     let mut desugars = Vec::new();
     collect_expressions_to_desugar(expr, context, &mut desugars);

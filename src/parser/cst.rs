@@ -125,6 +125,10 @@ pub enum TypeKind {
     /// trait types into in some cases.
     NoClosureEnv,
 
+    /// This type can't be parsed, it is only used by `GetItem` to desugar
+    /// effect operation environments to a pointer type.
+    Pointer,
+
     /// A filler type which corresponds to an unbound type variable to be inferred later
     Hole,
 }
@@ -187,11 +191,10 @@ impl ParameterType {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct TypeDefinition {
     pub shared: bool,
-    /// TraitDefinitions are desugared into type definitions, but for
-    /// some checks, we still need to know the origin. Namely, only
-    /// traits allow rank-1 fields, and only traits expose their fields
-    /// under the type's namespace.
+    /// TraitDefinitions are desugared into type definitions
     pub is_trait: bool,
+    /// EffectDefinitions are also desugared into type definitions
+    pub is_effect: bool,
     pub name: NameId,
     pub generics: Generics,
     pub body: TypeDefinitionBody,

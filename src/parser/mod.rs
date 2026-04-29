@@ -718,7 +718,7 @@ impl<'tokens> Parser<'tokens> {
         let generics = self.parse_generics();
         self.expect(Token::Equal, "`=` to begin the type definition")?;
         let body = self.parse_type_body()?;
-        Ok(TypeDefinition { shared, name, generics, body, is_trait: false })
+        Ok(TypeDefinition { shared, name, generics, body, is_trait: false, is_effect: false })
     }
 
     /// generics: ident*
@@ -1713,15 +1713,7 @@ impl<'tokens> Parser<'tokens> {
         let rhs = self.parse_expression()?;
         self.accept(Token::Newline);
 
-        let body_start = self.current_token_span();
-        let body_items = self.parse_sequence_items();
-
-        let body_location = if body_items.is_empty() {
-            body_start.in_file(self.file_id)
-        } else {
-            body_start.to(&self.previous_token_span()).in_file(self.file_id)
-        };
-        let body = self.push_expr(Expr::Sequence(body_items), body_location);
+        let body = self.parse_sequence_items_expr();
 
         let end = self.previous_token_span();
         let location = start.to(&end).in_file(self.file_id);
@@ -1990,12 +1982,18 @@ impl<'tokens> Parser<'tokens> {
             }
 
             this.accept(Token::Newline);
-            this.expect(Token::In, "`in` to introduce the handled expression")?;
 
-            let expression = this.parse_block_or_expression()?;
-            // Wrap the handled expression in a `fn () -> _ = <expression>` lambda
-            // so downstream passes can reuse the existing closure conversion & free-variable analysis
-            let expression = this.wrap_in_lambda(Vec::new(), expression);
+            let body = if this.accept(Token::In) {
+                this.parse_block_or_expression()?
+            } else {
+                this.parse_sequence_items_expr()
+            };
+
+            // Wrap the handled expression in a `fn () = <expression>`. This will be the init
+            // function for the coroutine.
+            let body_location = this.current_context.expr_locations[body].clone();
+            let unit_pattern = this.push_pattern(Pattern::Literal(Literal::Unit), body_location);
+            let expression = this.wrap_in_lambda(vec![cst::Parameter::new(unit_pattern)], body);
 
             Ok(Expr::Handle(cst::Handle { handler_name, expression, cases }))
         })
@@ -2080,6 +2078,20 @@ impl<'tokens> Parser<'tokens> {
             }
         }
         statements
+    }
+
+    /// Wraps the result of `parse_sequence_items` in a Sequence expression
+    fn parse_sequence_items_expr(&mut self) -> ExprId {
+        let start = self.current_token_span();
+        let items = self.parse_sequence_items();
+
+        let location = if items.is_empty() {
+            start.in_file(self.file_id)
+        } else {
+            start.to(&self.previous_token_span()).in_file(self.file_id)
+        };
+
+        self.push_expr(Expr::Sequence(items), location)
     }
 
     /// Create a location from the current token before running the given parse function to the

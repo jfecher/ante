@@ -743,6 +743,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             | TypeKind::Float(_)
             | TypeKind::Char
             | TypeKind::NoClosureEnv
+            | TypeKind::Pointer
             | TypeKind::Hole
             | TypeKind::Reference(..) => (),
             TypeKind::Named(path) => self.link(*path, false, true),
@@ -794,7 +795,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             TypeDefinitionBody::Error => (),
             TypeDefinitionBody::Struct(fields) => {
                 for (name, field_type) in fields {
-                    if type_definition.is_trait {
+                    if type_definition.is_trait || type_definition.is_effect {
                         self.link_existing_union_variant(type_definition.name, *name);
                     }
                     self.resolve_type(field_type, false);

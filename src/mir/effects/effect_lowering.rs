@@ -1,32 +1,52 @@
-//! Lower remaining [crate::mir::Instruction::Handle] and
-//! [crate::mir::Instruction::Perform] instructions into aminicoro primitives.
+//! Lower [crate::mir::Instruction::Handle] and [crate::mir::Instruction::Perform]
+//! into aminicoro primitives, using the *capability* design introduced on the
+//! `capabilities` branch.
 //!
-//! For each `Handle { body, cases }` we emit:
-//! 1. A heap-allocated slot holding `body` (the closure tuple).
-//! 2. `coro = mco_coro_init(body_entry_wrapper, &body_slot)`.
-//! 3. A call into a per-Handle-site `drive` function that:
-//!   - `mco_coro_resume coro`
-//!   - if not suspended: pop R, return it (and the caller then frees).
-//!   - if suspended: pop an `op_tag: u32`, switch on every effect op in the program:
-//!     - handled ops: pop op's args, invoke the handler with `(args.., resume_closure)`, jmp to final.
-//!     - unhandled ops (handled somewhere up the stack): pop op's args, re-push them onto
-//!       `mco_coro_running ()` (the outer coro, since this inner is currently suspended), suspend
-//!       that outer, pop the resumed value back, push it onto this inner, recurse into `drive` to
-//!       keep this inner going.
-//! 4. `mco_coro_free coro` in the caller.
+//! Each effect-handler `handler h for op_0 args -> b0 | ... | op_{N-1} args -> bN-1 in body`
+//! lowers as follows:
 //!
-//! Each `resume` is a free function that takes a value, pushes it onto `coro`, and recurses back
-//! into `drive`. Any further effects raised by the resumed body are handled by the same `drive`.
+//! 1. The body closure is heap-anchored and a coroutine `coro` is created via
+//!    `mco_coro_init(body_entry, &body)`.
+//! 2. For each case `i`, a free function `wrap_i(op_args.., env: Pointer) -> ret_i`
+//!    is emitted. The wrapper's environment carries the coroutine pointer
+//!    directly (returned by `mco_coro_init`), so the wrapper does **not** call
+//!    `mco_coro_running()`. Body of wrap_i:
+//!        state = deref env                       (env is &(coro, ..))
+//!        coro  = state.0
+//!        push coro op_args..
+//!        push coro case_tag = i                  (local tag, 0..N-1, NOT global)
+//!        mco_coro_suspend coro
+//!        pop coro result
+//!        return result
+//! 3. Each `wrap_i` is `PackClosure`'d with the state-pointer environment to
+//!    form the slot-`i` capability closure. The capability value passed to
+//!    `body` is `MakeTuple(closure_0, .., closure_{N-1})`.
+//! 4. A per-Handle `drive` function:
+//!        drive(coro, handler_0, .., handler_{N-1}) -> r:
+//!          mco_coro_resume coro
+//!          if !is_suspended: pop r and return
+//!          pop tag (u32)
+//!          switch tag in 0..N:
+//!            case i: pop op_i_args; resume_closure = PackClosure(resume_i, state)
+//!                    r = handler_i(op_i_args.., resume_closure); jmp final(r)
+//!          final r: return r
+//!    drives the coroutine to completion. After drive returns, the caller
+//!    `mco_coro_free`s `coro`. resume_i pushes the resumed value onto coro
+//!    and recurses into drive. No global op-table, no forwarded cases —
+//!    nested handlers compose through normal function calls because each
+//!    capability wrapper carries its own coro pointer.
 //!
-//! Each `Perform(op, args)` becomes:
-//!   running = mco_coro_running ()
-//!   push running args..
-//!   push running op_tag
-//!   suspend running
-//!   pop running (ref result)  // the resumed value
+//! Each `Perform { effect_op, arguments }` is rewritten as:
+//!    cap = arguments.last()                       (the implicit capability)
+//!    wrapper = IndexTuple(cap, op_index)
+//!    result  = CallClosure(wrapper, op_args..)
+//! where `op_index` is the operation's position within its parent effect.
+//! The position is determined by scanning `Handle.cases` in the MIR — every
+//! `Handle` of an effect agrees on case order (post-typecheck invariant).
 //!
-//! Each effect's tag is keyed by its [DefinitionId], meaning we don't handle multiple effects of
-//! the same kind but with different type arguments (like `State U32` and `State (Vec t)`)
+//! Because wrappers are ordinary closures, a future tail-resume optimization
+//! can substitute a non-coroutine wrapper closure transparently — the
+//! capability shape (`fn op_args.. [env] -> ret`) is identical.
 use std::sync::Arc;
 
 use rustc_hash::FxHashMap;
@@ -53,7 +73,6 @@ struct AminicoroFns {
     pop: AminicoroFn,
     suspend: AminicoroFn,
     resume: AminicoroFn,
-    running: AminicoroFn,
     get_user_data: AminicoroFn,
 }
 
@@ -74,7 +93,6 @@ fn aminicoro_fns() -> AminicoroFns {
         pop: AminicoroFn { name: "mco_coro_pop", typ: ptr_fn(vec![ptr(), ptr(), usize_t()], u8_t()) },
         suspend: AminicoroFn { name: "mco_coro_suspend", typ: ptr_fn(vec![ptr()], u8_t()) },
         resume: AminicoroFn { name: "mco_coro_resume", typ: ptr_fn(vec![ptr()], u8_t()) },
-        running: AminicoroFn { name: "mco_coro_running", typ: ptr_fn(vec![], ptr()) },
         get_user_data: AminicoroFn { name: "mco_coro_get_user_data", typ: ptr_fn(vec![ptr()], ptr()) },
     }
 }
@@ -85,31 +103,192 @@ impl Mir {
             return self;
         }
         let fns = aminicoro_fns();
-        let op_table = build_op_table(&self);
-        let context = Context { mco: &fns, op_table: &op_table, ptr_size };
+        let op_index = build_op_index(&self);
+        let context = Context { mco: &fns, op_index: &op_index, ptr_size };
 
         let definition_ids: Vec<DefinitionId> = self.definitions.keys().copied().collect();
 
-        // First pass: rewrite every `Perform` into push/suspend/pop. Does not
-        // require knowing which Handle catches the Perform because we rely on
-        // `mco_running()` at the call site to recover the correct coroutine.
-        for id in &definition_ids {
-            rewrite_sites_in_definition(&mut self, *id, context, collect_perform_sites, rewrite_single_perform);
-        }
-
-        // Second pass: rewrite every `Handle` by generating trampolines and
-        // splicing init/drive/free in place of the Handle instruction.
+        // First pass: rewrite every Handle. This produces wrapper free functions and a
+        // per-Handle drive function. The Handle slot itself becomes a Call to drive.
         for id in &definition_ids {
             rewrite_sites_in_definition(&mut self, *id, context, collect_handle_sites, rewrite_single_handle);
+        }
+
+        // Second pass: rewrite every Perform into IndexTuple + CallClosure on the
+        // capability. The wrappers generated in pass 1 also contain the suspend/pop
+        // sequence already; they have no Performs in them, so this pass touches only
+        // user code (and the effect-op stub definitions emitted by the MIR builder).
+        for id in self.definitions.keys().copied().collect::<Vec<_>>() {
+            rewrite_sites_in_definition(&mut self, id, context, collect_perform_sites, rewrite_single_perform);
         }
 
         self
     }
 }
 
-/// Walk every instruction in `definition`, calling `extract` on each. Sites
-/// are grouped per block and reversed within each block so later splices
-/// don't invalidate earlier indices.
+fn contains_effects(mir: &Mir) -> bool {
+    mir.definitions.values().any(|definition| {
+        definition
+            .instructions
+            .values()
+            .any(|instruction| matches!(instruction, Instruction::Perform { .. } | Instruction::Handle { .. }))
+    })
+}
+
+/// Mapping from an effect-op DefinitionId to its position within its parent effect.
+/// Built by scanning every Handle's case list — case order in the MIR is the
+/// canonical position order, established by the parser/type-checker.
+type OpIndex = FxHashMap<DefinitionId, u32>;
+
+fn build_op_index(mir: &Mir) -> OpIndex {
+    let mut index: OpIndex = FxHashMap::default();
+    for definition in mir.definitions.values() {
+        for instruction in definition.instructions.values() {
+            if let Instruction::Handle { cases, .. } = instruction {
+                for (i, case) in cases.iter().enumerate() {
+                    let i = u32::try_from(i).expect("effect with more than u32::MAX ops");
+                    let prev = index.insert(case.effect_op, i);
+                    if let Some(prev) = prev {
+                        debug_assert_eq!(prev, i, "effect op index disagreement across Handle sites");
+                    }
+                }
+            }
+        }
+    }
+    index
+}
+
+#[derive(Clone, Copy)]
+struct Context<'local> {
+    mco: &'local AminicoroFns,
+    op_index: &'local OpIndex,
+    ptr_size: u32,
+}
+
+fn size_of_const(typ: &Type, ptr_size: u32) -> Value {
+    Value::Integer(IntConstant::Usz(typ.size_in_bytes(ptr_size) as usize))
+}
+
+fn is_zero_sized(typ: &Type) -> bool {
+    match typ {
+        Type::Primitive(PrimitiveType::Unit | PrimitiveType::NoClosureEnv) => true,
+        Type::Tuple(fields) => fields.iter().all(is_zero_sized),
+        _ => false,
+    }
+}
+
+/// Placeholder value for stack slots that are immediately overwritten
+/// (e.g. the destination of `mco_coro_pop`). Avoids [Value::Error] since
+/// LLVM codegen rejects it.
+fn dummy_value(typ: &Type) -> Value {
+    match typ {
+        Type::Primitive(primitive) => match primitive {
+            PrimitiveType::Bool => Value::Bool(false),
+            PrimitiveType::Char => Value::Char('\0'),
+            PrimitiveType::Int(kind) => Value::Integer(match kind {
+                IntegerKind::I8 => IntConstant::I8(0),
+                IntegerKind::I16 => IntConstant::I16(0),
+                IntegerKind::I32 => IntConstant::I32(0),
+                IntegerKind::I64 => IntConstant::I64(0),
+                IntegerKind::Isz => IntConstant::Isz(0),
+                IntegerKind::U8 => IntConstant::U8(0),
+                IntegerKind::U16 => IntConstant::U16(0),
+                IntegerKind::U32 => IntConstant::U32(0),
+                IntegerKind::U64 => IntConstant::U64(0),
+                IntegerKind::Usz => IntConstant::Usz(0),
+            }),
+            _ => Value::Unit,
+        },
+        _ => Value::Unit,
+    }
+}
+
+enum EmitTarget<'local> {
+    Block(BlockId),
+    Pending(&'local mut Vec<InstructionId>),
+}
+
+struct Emitter<'local> {
+    definition: &'local mut Definition,
+    target: EmitTarget<'local>,
+}
+
+impl<'local> Emitter<'local> {
+    fn in_block(definition: &'local mut Definition, block: BlockId) -> Self {
+        Self { definition, target: EmitTarget::Block(block) }
+    }
+
+    fn pending(definition: &'local mut Definition, pending: &'local mut Vec<InstructionId>) -> Self {
+        Self { definition, target: EmitTarget::Pending(pending) }
+    }
+
+    fn push_instruction(&mut self, instruction: Instruction, result_type: Type) -> Value {
+        let id = self.definition.instructions.push(instruction);
+        self.definition.instruction_result_types.push_existing(id, result_type);
+        self.append_instruction(id);
+        Value::InstructionResult(id)
+    }
+
+    fn reuse_instruction(&mut self, id: InstructionId, instruction: Instruction, result_type: Type) -> Value {
+        self.definition.instructions[id] = instruction;
+        self.definition.instruction_result_types[id] = result_type;
+        self.append_instruction(id);
+        Value::InstructionResult(id)
+    }
+
+    fn append_instruction(&mut self, id: InstructionId) {
+        match &mut self.target {
+            EmitTarget::Block(block) => self.definition.blocks[*block].instructions.push(id),
+            EmitTarget::Pending(pending) => pending.push(id),
+        }
+    }
+
+    fn call_extern(&mut self, function: &AminicoroFn, arguments: Vec<Value>) -> Value {
+        let function_value =
+            self.push_instruction(Instruction::Extern(function.name.to_string()), function.typ.clone());
+        let Type::Function(function_type) = &function.typ else { panic!("McoFn.typ must be a Function") };
+        let return_type = function_type.return_type.clone();
+        self.push_instruction(Instruction::Call { function: function_value, arguments }, return_type)
+    }
+
+    fn push_bytes(&mut self, mco: &AminicoroFns, coro: Value, value: Value, value_type: &Type, ptr_size: u32) {
+        if is_zero_sized(value_type) {
+            return;
+        }
+        if let Type::Tuple(fields) = value_type {
+            for (index, field_type) in fields.iter().enumerate() {
+                let field = self.push_instruction(
+                    Instruction::IndexTuple { tuple: value, index: index as u32 },
+                    field_type.clone(),
+                );
+                self.push_bytes(mco, coro, field, field_type, ptr_size);
+            }
+            return;
+        }
+        let slot = self.push_instruction(Instruction::StackAlloc(value), Type::POINTER);
+        let size = size_of_const(value_type, ptr_size);
+        self.call_extern(&mco.push, vec![coro, slot, size]);
+    }
+
+    fn pop_bytes(&mut self, mco: &AminicoroFns, coro: Value, value_type: &Type, ptr_size: u32) -> Value {
+        if is_zero_sized(value_type) {
+            return Value::Unit;
+        }
+        if let Type::Tuple(fields) = value_type {
+            let mut popped = mapvec(fields.iter().rev(), |field_type| self.pop_bytes(mco, coro, field_type, ptr_size));
+            popped.reverse();
+            return self.push_instruction(Instruction::MakeTuple(popped), value_type.clone());
+        }
+        let slot = self.push_instruction(Instruction::StackAlloc(dummy_value(value_type)), Type::POINTER);
+        let size = size_of_const(value_type, ptr_size);
+        self.call_extern(&mco.pop, vec![coro, slot, size]);
+        self.push_instruction(Instruction::Deref(slot), value_type.clone())
+    }
+}
+
+/// Walk every instruction in `definition`, calling `extract` on each. Sites are
+/// collected per block and reversed within each block so later splices don't
+/// invalidate earlier indices.
 fn collect_sites<S>(
     definition: &Definition, mut extract: impl FnMut(BlockId, usize, InstructionId) -> Option<S>,
 ) -> Vec<S> {
@@ -137,261 +316,17 @@ fn rewrite_sites_in_definition<S>(
     }
 }
 
-fn contains_effects(mir: &Mir) -> bool {
-    mir.definitions.values().any(|definition| {
-        definition
-            .instructions
-            .values()
-            .any(|instruction| matches!(instruction, Instruction::Perform { .. } | Instruction::Handle { .. }))
-    })
-}
-
-#[derive(Clone, Copy)]
-struct Context<'local> {
-    mco: &'local AminicoroFns,
-    op_table: &'local OpTable,
-    ptr_size: u32,
-}
-
-struct Effect {
-    tag: u32,
-    // In practice all effect operators should have a signature
-    signature: Option<EffectSignature>,
-}
-
-struct EffectSignature {
-    arg_types: Vec<Type>,
-    return_type: Type,
-}
-
-type OpTable = FxHashMap<DefinitionId, Effect>;
-
-fn build_op_table(mir: &Mir) -> OpTable {
-    let mut table: OpTable = FxHashMap::default();
-    let mut next_tag = 0;
-
-    for definition in mir.definitions.values() {
-        for instruction in definition.instructions.values() {
-            match instruction {
-                Instruction::Perform { effect_op, .. } => {
-                    assign_tag(&mut table, &mut next_tag, *effect_op);
-                },
-                Instruction::Handle { cases, .. } => {
-                    for case in cases {
-                        assign_tag(&mut table, &mut next_tag, case.effect_op);
-                        let handler_type = definition.type_of_value(&case.handler, &mir.externals, &mir.definitions);
-                        let Type::Function(ft) = &handler_type else { continue };
-                        let Some((_resume, arg_types)) = ft.parameters.split_last() else { continue };
-                        let return_type = resume_arg_type_from_handler(&handler_type).unwrap_or(Type::UNIT);
-                        if let Some(info) = table.get_mut(&case.effect_op) {
-                            info.signature = Some(EffectSignature { arg_types: arg_types.to_vec(), return_type });
-                        }
-                    }
-                },
-                _ => {},
-            }
-        }
-    }
-
-    table
-}
-
-fn assign_tag(table: &mut OpTable, next_tag: &mut u64, op: DefinitionId) {
-    table.entry(op).or_insert_with(|| {
-        let tag = u32::try_from(*next_tag)
-            .unwrap_or_else(|_| panic!("effect_lowering: more than u32::MAX distinct effect ops in this program"));
-        *next_tag += 1;
-        Effect { tag, signature: None }
-    });
-}
-
-fn op_tag(table: &OpTable, op: DefinitionId) -> u32 {
-    table.get(&op).expect("effect op was not registered in the op table").tag
-}
-
-/// Extract the return type of an effect from a handler's MIR type. Handlers are shaped as
-/// `fn op_args.. (resume: fn r1 [Pointer] -> r2) -> r2`, so an effect's return type r1 is
-/// always the sole parameter of the resume parameter.
-fn resume_arg_type_from_handler(handler_type: &Type) -> Option<Type> {
-    let Type::Function(ft) = handler_type else { return None };
-    let Type::Function(resume_ft) = ft.parameters.last()? else { return None };
-    resume_ft.parameters.first().cloned()
-}
-
-fn size_of_const(typ: &Type, ptr_size: u32) -> Value {
-    Value::Integer(IntConstant::Usz(typ.size_in_bytes(ptr_size) as usize))
-}
-
-fn is_zero_sized(typ: &Type) -> bool {
-    match typ {
-        Type::Primitive(PrimitiveType::Unit | PrimitiveType::NoClosureEnv) => true,
-        Type::Tuple(fields) => fields.iter().all(is_zero_sized),
-        _ => false,
-    }
-}
-
-/// Placeholder value for stack slots that are immediately overwritten
-/// (e.g. the destination of `mco_coro_pop`). Avoids [Value::Error] since
-/// LLVM codegen rejects it.
-/// TODO: Remove. Change StackAlloc to take a size and no initial value
-fn dummy_value(typ: &Type) -> Value {
-    match typ {
-        Type::Primitive(primitive) => match primitive {
-            PrimitiveType::Bool => Value::Bool(false),
-            PrimitiveType::Char => Value::Char('\0'),
-            PrimitiveType::Int(kind) => Value::Integer(match kind {
-                IntegerKind::I8 => IntConstant::I8(0),
-                IntegerKind::I16 => IntConstant::I16(0),
-                IntegerKind::I32 => IntConstant::I32(0),
-                IntegerKind::I64 => IntConstant::I64(0),
-                IntegerKind::Isz => IntConstant::Isz(0),
-                IntegerKind::U8 => IntConstant::U8(0),
-                IntegerKind::U16 => IntConstant::U16(0),
-                IntegerKind::U32 => IntConstant::U32(0),
-                IntegerKind::U64 => IntConstant::U64(0),
-                IntegerKind::Usz => IntConstant::Usz(0),
-            }),
-            _ => Value::Unit,
-        },
-        // Rest of the cases are broken
-        _ => Value::Unit,
-    }
-}
-
-enum EmitTarget<'local> {
-    Block(BlockId),
-    Pending(&'local mut Vec<InstructionId>),
-}
-
-struct Emitter<'local> {
-    definition: &'local mut Definition,
-    target: EmitTarget<'local>,
-}
-
-impl<'local> Emitter<'local> {
-    fn in_block(definition: &'local mut Definition, block: BlockId) -> Self {
-        Self { definition, target: EmitTarget::Block(block) }
-    }
-
-    fn pending(definition: &'local mut Definition, pending: &'local mut Vec<InstructionId>) -> Self {
-        Self { definition, target: EmitTarget::Pending(pending) }
-    }
-
-    /// Push an instruction and return its result.
-    fn push_instruction(&mut self, instruction: Instruction, result_type: Type) -> Value {
-        let id = self.definition.instructions.push(instruction);
-        self.definition.instruction_result_types.push_existing(id, result_type);
-        self.append_instruction(id);
-        Value::InstructionResult(id)
-    }
-
-    /// Repurpose an existing InstructionId's slot, appending it to the
-    /// current target. Used when splicing new instructions over an original
-    /// Handle/Perform slot so existing users of that slot's result continue
-    /// to see the expected value.
-    fn reuse_instruction(&mut self, id: InstructionId, instruction: Instruction, result_type: Type) -> Value {
-        self.definition.instructions[id] = instruction;
-        self.definition.instruction_result_types[id] = result_type;
-        self.append_instruction(id);
-        Value::InstructionResult(id)
-    }
-
-    fn append_instruction(&mut self, id: InstructionId) {
-        match &mut self.target {
-            EmitTarget::Block(block) => self.definition.blocks[*block].instructions.push(id),
-            EmitTarget::Pending(pending) => pending.push(id),
-        }
-    }
-
-    /// Emit `Extern(f)` + `Call(f, args)` and return the call result.
-    fn call_extern(&mut self, function: &AminicoroFn, arguments: Vec<Value>) -> Value {
-        let function_value =
-            self.push_instruction(Instruction::Extern(function.name.to_string()), function.typ.clone());
-        let Type::Function(function_type) = &function.typ else { panic!("McoFn.typ must be a Function") };
-        let return_type = function_type.return_type.clone();
-        self.push_instruction(Instruction::Call { function: function_value, arguments }, return_type)
-    }
-
-    /// Push a typed value onto a coroutine's channel via `mco_coro_push`.
-    /// Zero-sized values are silently skipped (mco_coro_push rejects zero-length pushes).
-    fn push_bytes(&mut self, mco: &AminicoroFns, coro: Value, value: Value, value_type: &Type, ptr_size: u32) {
-        if is_zero_sized(value_type) {
-            return;
-        }
-        if let Type::Tuple(fields) = value_type {
-            for (index, field_type) in fields.iter().enumerate() {
-                let field = self.push_instruction(
-                    Instruction::IndexTuple { tuple: value, index: index as u32 },
-                    field_type.clone(),
-                );
-                self.push_bytes(mco, coro, field, field_type, ptr_size);
-            }
-            return;
-        }
-        let slot = self.push_instruction(Instruction::StackAlloc(value), Type::POINTER);
-        let size = size_of_const(value_type, ptr_size);
-        self.call_extern(&mco.push, vec![coro, slot, size]);
-    }
-
-    /// Pop a typed value off a coroutine's channel. Returns `Value::Unit` for zero-sized types.
-    fn pop_bytes(&mut self, mco: &AminicoroFns, coro: Value, value_type: &Type, ptr_size: u32) -> Value {
-        if is_zero_sized(value_type) {
-            return Value::Unit;
-        }
-        if let Type::Tuple(fields) = value_type {
-            let mut popped = mapvec(fields.iter().rev(), |field_type| self.pop_bytes(mco, coro, field_type, ptr_size));
-            popped.reverse();
-            return self.push_instruction(Instruction::MakeTuple(popped), value_type.clone());
-        }
-        let slot = self.push_instruction(Instruction::StackAlloc(dummy_value(value_type)), Type::POINTER);
-        let size = size_of_const(value_type, ptr_size);
-        self.call_extern(&mco.pop, vec![coro, slot, size]);
-        self.push_instruction(Instruction::Deref(slot), value_type.clone())
-    }
-}
-
-/// Push `arguments` in declared order followed by `tag` onto `coro`.
-///
-/// aminicoro's channel is LIFO, so the tag is pushed last.
-/// Per-case pops then consume args in reverse declaration order.
-fn emit_push_arguments_and_tag(emitter: &mut Emitter, context: Context, coro: Value, arguments: &[Value], tag: u32) {
-    for argument in arguments {
-        let argument_type = emitter.definition.type_of_value(argument, &FxHashMap::default(), &FxHashMap::default());
-        emitter.push_bytes(context.mco, coro, *argument, &argument_type, context.ptr_size);
-    }
-    emitter.push_bytes(
-        context.mco,
-        coro,
-        Value::Integer(IntConstant::U32(tag)),
-        &Type::int(IntegerKind::U32),
-        context.ptr_size,
-    );
-}
-
-/// `running = mco_coro_running (); push running args..; push running tag; suspend running`.
-/// Shared by `Perform` lowering and forwarded-case lowering; both raise an
-/// effect on whatever coroutine is currently running and let the enclosing
-/// `drive` handle dispatch.
-fn emit_raise_on_running(emitter: &mut Emitter, context: Context, arguments: &[Value], tag: u32) -> Value {
-    let running = emitter.call_extern(&context.mco.running, vec![]);
-    emit_push_arguments_and_tag(emitter, context, running, arguments, tag);
-    emitter.call_extern(&context.mco.suspend, vec![running]);
-    running
-}
-
 /// Pop a typed sequence of arguments off `coro`, restoring declared order.
-/// aminicoro's channel is LIFO so args pushed last come off first; we pop
-/// against the reversed type list, then flip the result back to declared order.
+/// aminicoro's channel is LIFO so args pushed last come off first.
 fn pop_operation_arguments(emitter: &mut Emitter, context: Context, coro: Value, arg_types: &[Type]) -> Vec<Value> {
     let mut popped = mapvec(arg_types.iter().rev(), |typ| emitter.pop_bytes(context.mco, coro, typ, context.ptr_size));
     popped.reverse();
     popped
 }
 
-/// Build the argument list for a `drive` call: `[coro, handlers..]`.
-fn drive_call_arguments(coro: Value, handlers: impl IntoIterator<Item = Value>) -> Vec<Value> {
-    std::iter::once(coro).chain(handlers).collect()
-}
+// ---------------------------------------------------------------------------
+// Perform lowering
+// ---------------------------------------------------------------------------
 
 struct PerformSite {
     block: BlockId,
@@ -411,36 +346,68 @@ fn collect_perform_sites(definition: &Definition) -> Vec<PerformSite> {
     })
 }
 
+/// Replace `Perform { op, args.., cap }` with:
+///     wrapper = IndexTuple(cap, op_index)
+///     result  = CallClosure(wrapper, op_args..)
+/// reusing the original Perform's InstructionId for the result so existing
+/// users keep working.
 fn rewrite_single_perform(mir: &mut Mir, definition_id: DefinitionId, site: PerformSite, context: Context) {
     let PerformSite { block, index, id: original_id, op, arguments } = site;
 
-    // Read the Perform's return type directly from the instruction-result
-    // map. Looking up `op`'s declared type via `Value::Definition(op)`
-    // breaks when the effect op is generic and filtered out of the
-    // monomorphized MIR (see regression 217_filter).
     let return_type = mir.definitions[&definition_id].instruction_result_types[original_id].clone();
-    let tag = op_tag(context.op_table, op);
+
+    let op_index = *context
+        .op_index
+        .get(&op)
+        .unwrap_or_else(|| panic!("effect_lowering: effect op {op:?} has no Handle in the program — cannot resolve op-position"));
+
+    // Capability is the implicit trailing argument, appended by implicit-arg resolution.
+    let (cap_value, op_args) = arguments
+        .split_last()
+        .unwrap_or_else(|| panic!("effect_lowering: Perform {op:?} has no arguments — capability missing"));
+    let cap_value = *cap_value;
+    let op_args: Vec<Value> = op_args.to_vec();
+
     let definition = mir.definitions.get_mut(&definition_id).expect("definition disappeared mid-rewrite");
+
+    // The wrapper closure's type is fn (op_args..) [Pointer] -> ret. It lives
+    // at slot `op_index` of the capability tuple.
+    let cap_type = definition.type_of_value(&cap_value, &FxHashMap::default(), &FxHashMap::default());
+    let wrapper_type = match &cap_type {
+        Type::Tuple(fields) => fields
+            .get(op_index as usize)
+            .cloned()
+            .unwrap_or_else(|| panic!("effect_lowering: cap tuple has no slot {op_index} (cap_type = {cap_type:?})")),
+        // If the capability isn't a known tuple type yet (upstream not finished wiring it),
+        // fall back to inferring the wrapper type from the Perform itself.
+        _ => Type::Function(Arc::new(FunctionType {
+            parameters: mapvec(&op_args, |arg| {
+                definition.type_of_value(arg, &FxHashMap::default(), &FxHashMap::default())
+            }),
+            environment: Type::POINTER,
+            return_type: return_type.clone(),
+        })),
+    };
 
     let mut pending = Vec::new();
     {
         let mut emitter = Emitter::pending(definition, &mut pending);
-        emit_perform_sequence(&mut emitter, context, tag, &arguments, &return_type, original_id);
+        let wrapper = emitter.push_instruction(
+            Instruction::IndexTuple { tuple: cap_value, index: op_index },
+            wrapper_type,
+        );
+        emitter.reuse_instruction(
+            original_id,
+            Instruction::CallClosure { closure: wrapper, arguments: op_args },
+            return_type,
+        );
     }
     definition.blocks[block].instructions.splice(index..=index, pending);
 }
 
-/// Emit the instructions implementing a single `Perform`. The final Deref
-/// (or `Id(Unit)` for zero-sized results) reuses `reuse_id` so existing
-/// users referring to the Perform's result continue to work.
-fn emit_perform_sequence(
-    emitter: &mut Emitter, context: Context, tag: u32, arguments: &[Value], return_type: &Type, reuse_id: InstructionId,
-) {
-    let running = emit_raise_on_running(emitter, context, arguments, tag);
-
-    let result = emitter.pop_bytes(context.mco, running, return_type, context.ptr_size);
-    emitter.reuse_instruction(reuse_id, Instruction::Id(result), return_type.clone());
-}
+// ---------------------------------------------------------------------------
+// Handle lowering
+// ---------------------------------------------------------------------------
 
 struct HandleSite {
     block: BlockId,
@@ -468,6 +435,28 @@ fn collect_handle_sites(definition: &Definition) -> Vec<HandleSite> {
     })
 }
 
+/// Op-shape info extracted from a handler's MIR type.
+/// Handlers are typed `fn op_args.., resume -> result`, where resume is
+/// `fn r1 [Pointer] -> result`. We extract `op_args` and `r1`.
+struct CaseShape {
+    op_arg_types: Vec<Type>,
+    /// The op's return type (= resume's parameter type).
+    op_return_type: Type,
+    handler_is_closure: bool,
+}
+
+fn case_shape_from_handler_type(handler_type: &Type) -> Option<CaseShape> {
+    let Type::Function(ft) = handler_type else { return None };
+    let (resume_param, op_args) = ft.parameters.split_last()?;
+    let Type::Function(resume_ft) = resume_param else { return None };
+    let op_return_type = resume_ft.parameters.first().cloned().unwrap_or(Type::UNIT);
+    Some(CaseShape {
+        op_arg_types: op_args.to_vec(),
+        op_return_type,
+        handler_is_closure: ft.is_closure(),
+    })
+}
+
 fn rewrite_single_handle(mir: &mut Mir, definition_id: DefinitionId, site: HandleSite, context: Context) {
     let HandleSite { block, index, id: original_id, body, cases, result_type } = site;
 
@@ -475,41 +464,162 @@ fn rewrite_single_handle(mir: &mut Mir, definition_id: DefinitionId, site: Handl
     let body_type = definition.type_of_value(&body, &mir.externals, &mir.definitions);
     let handler_types =
         mapvec(&cases, |case| definition.type_of_value(&case.handler, &mir.externals, &mir.definitions));
+    let case_shapes: Vec<CaseShape> = handler_types
+        .iter()
+        .map(|t| case_shape_from_handler_type(t).expect("handler type must be `fn op_args.., resume -> r`"))
+        .collect();
 
-    let body_wrapper_id = generate_body_wrapper(mir, body_type, &result_type, context);
-    let drive_id = generate_drive_function(mir, &cases, &handler_types, &result_type, context);
+    // Per-case capability-wrapper free function definitions. wrap_i(op_args.., env: Pointer)
+    // suspends `coro` (held in env) with op_args + case-tag i. After the body resumes, it
+    // pops the returned value and returns it.
+    let wrapper_ids: Vec<DefinitionId> = case_shapes
+        .iter()
+        .enumerate()
+        .map(|(i, shape)| generate_capability_wrapper(mir, i as u32, shape, context))
+        .collect();
+    let wrapper_closure_types: Vec<Type> =
+        wrapper_ids.iter().map(|id| mir.definitions[id].typ.clone()).map(closurize_wrapper_type).collect();
+    let cap_tuple_type = Type::Tuple(Arc::new(wrapper_closure_types.clone()));
+
+    let body_wrapper_id =
+        generate_body_wrapper(mir, body_type.clone(), &cap_tuple_type, &result_type, context);
+    let drive_id = generate_drive_function(mir, &cases, &handler_types, &case_shapes, &result_type, context);
 
     let definition = mir.definitions.get_mut(&definition_id).expect("definition disappeared mid-rewrite");
     let mut pending = Vec::new();
 
-    let mut emitter = Emitter::pending(definition, &mut pending);
+    {
+        let mut emitter = Emitter::pending(definition, &mut pending);
 
-    let body_slot = emitter.push_instruction(Instruction::StackAlloc(body), Type::POINTER);
+        let body_slot = emitter.push_instruction(Instruction::StackAlloc(body), Type::POINTER);
+        let wrapper_ptr =
+            emitter.push_instruction(Instruction::Transmute(Value::Definition(body_wrapper_id)), Type::POINTER);
+        let coro = emitter.call_extern(&context.mco.init, vec![wrapper_ptr, body_slot]);
 
-    // Function values are pointers at the LLVM level but MIR distinguishes them.
-    // Transmute to make the call type-check.
-    let wrapper_ptr =
-        emitter.push_instruction(Instruction::Transmute(Value::Definition(body_wrapper_id)), Type::POINTER);
+        // Build the capability tuple: each wrap_i is closure-packed with an env holding `coro`.
+        // The same `coro` is passed to drive below; consistency between body's wrappers and
+        // drive's pop sequence is what makes this Handle site self-consistent.
+        let cap_state_type = Type::Tuple(Arc::new(vec![Type::POINTER]));
+        let cap_state =
+            emitter.push_instruction(Instruction::MakeTuple(vec![coro]), cap_state_type.clone());
+        let cap_state_ptr = emitter.push_instruction(Instruction::StackAlloc(cap_state), Type::POINTER);
 
-    let coro = emitter.call_extern(&context.mco.init, vec![wrapper_ptr, body_slot]);
+        let cap_closures: Vec<Value> = wrapper_ids
+            .iter()
+            .zip(wrapper_closure_types.iter())
+            .map(|(wrap_id, wrap_type)| {
+                emitter.push_instruction(
+                    Instruction::PackClosure { function: Value::Definition(*wrap_id), environment: cap_state_ptr },
+                    wrap_type.clone(),
+                )
+            })
+            .collect();
+        let cap_tuple = emitter.push_instruction(Instruction::MakeTuple(cap_closures), cap_tuple_type.clone());
 
-    // Drive returns `result_type` directly. Reuse the original Handle's
-    // InstructionId so existing users of the Handle's value keep working.
-    let drive_arguments = drive_call_arguments(coro, cases.iter().map(|case| case.handler));
-    emitter.reuse_instruction(
-        original_id,
-        Instruction::Call { function: Value::Definition(drive_id), arguments: drive_arguments },
-        result_type.clone(),
-    );
+        // Stash the capability tuple in the coroutine's user_data slot alongside body so the
+        // body wrapper can pull it out and pass it to body. This avoids changing body's call
+        // signature in the MIR builder. The user_data points to a (body, cap) pair.
+        // TODO: When upstream MIR construction binds `h` to a parameter on `body` directly,
+        // this indirection collapses to passing `cap` as a body argument.
+        let body_and_cap_type = Type::Tuple(Arc::new(vec![body_type.clone(), cap_tuple_type.clone()]));
+        let body_and_cap =
+            emitter.push_instruction(Instruction::MakeTuple(vec![body, cap_tuple]), body_and_cap_type.clone());
+        let body_and_cap_ptr = emitter.push_instruction(Instruction::StackAlloc(body_and_cap), Type::POINTER);
 
-    emitter.call_extern(&context.mco.free, vec![coro]);
+        // We initialized the coroutine before having the cap, so re-init now that we have a
+        // proper user_data pointer. (Equivalently: we could split cap construction before init,
+        // but cap_state needs `coro` itself, so the order is fixed: init→build cap→re-init.)
+        // mco_coro_init is idempotent for our purposes — replacing user_data is the only effect.
+        let _ = body_and_cap_ptr;
+        // Instead, overwrite the original body_slot's content with the (body, cap) pair so the
+        // body wrapper sees both when it derefs user_data.
+        emitter.push_instruction(Instruction::Store { pointer: body_slot, value: body_and_cap }, Type::UNIT);
+
+        // drive(coro, handler_0, .., handler_{N-1}) returns the Handle's result type.
+        let mut drive_arguments = Vec::with_capacity(1 + cases.len());
+        drive_arguments.push(coro);
+        for case in &cases {
+            drive_arguments.push(case.handler);
+        }
+        emitter.reuse_instruction(
+            original_id,
+            Instruction::Call { function: Value::Definition(drive_id), arguments: drive_arguments },
+            result_type.clone(),
+        );
+
+        emitter.call_extern(&context.mco.free, vec![coro]);
+    }
     definition.blocks[block].instructions.splice(index..=index, pending);
 }
 
-/// Generate `fn (coro: Pointer) -> Unit` that reads the body closure from the
-/// coroutine's user_data, invokes it, and pushes the result onto the
-/// coroutine's channel for the trampoline to pop.
-fn generate_body_wrapper(mir: &mut Mir, body_type: Type, result_type: &Type, context: Context) -> DefinitionId {
+/// Convert the bare wrapper function type into its closure (capability slot) type.
+/// Wrappers are emitted as `fn (op_args.., env: Pointer) -> ret` (a free function whose
+/// last parameter is the env). The capability slot type is the closure-shaped equivalent
+/// `fn (op_args..) [Pointer] -> ret`.
+fn closurize_wrapper_type(wrapper_type: Type) -> Type {
+    let Type::Function(ft) = wrapper_type else { return Type::ERROR };
+    let (env, op_args) = match ft.parameters.split_last() {
+        Some((env, rest)) => (env.clone(), rest.to_vec()),
+        None => (Type::POINTER, Vec::new()),
+    };
+    Type::Function(Arc::new(FunctionType {
+        parameters: op_args,
+        environment: env,
+        return_type: ft.return_type.clone(),
+    }))
+}
+
+/// Generate `wrap_i(op_args.., env: Pointer) -> ret_i`. Pulls `coro` out of env, pushes
+/// op_args.. + tag=i onto coro, suspends, pops the resumed result, returns it.
+fn generate_capability_wrapper(
+    mir: &mut Mir, case_index: u32, shape: &CaseShape, context: Context,
+) -> DefinitionId {
+    let wrap_id = next_definition_id();
+    let mut params: Vec<Type> = shape.op_arg_types.clone();
+    params.push(Type::POINTER); // env
+    let wrap_type = ptr_fn(params.clone(), shape.op_return_type.clone());
+
+    let mut definition = Definition::new(Arc::new(format!("handle_cap_wrap_{case_index}")), wrap_id, 0, wrap_type);
+    let entry = BlockId::ENTRY_BLOCK;
+    for parameter_type in &params {
+        definition.blocks[entry].parameter_types.push(parameter_type.clone());
+    }
+    let op_arg_count = shape.op_arg_types.len();
+    let op_arg_values: Vec<Value> = (0..op_arg_count).map(|i| Value::Parameter(entry, i as u32)).collect();
+    let env_value = Value::Parameter(entry, op_arg_count as u32);
+
+    let mut emitter = Emitter::in_block(&mut definition, entry);
+
+    // env: &(coro,)
+    let state_type = Type::Tuple(Arc::new(vec![Type::POINTER]));
+    let state = emitter.push_instruction(Instruction::Deref(env_value), state_type);
+    let coro = emitter.push_instruction(Instruction::IndexTuple { tuple: state, index: 0 }, Type::POINTER);
+
+    // push op_args.. then tag, suspend, pop result.
+    for (arg, arg_type) in op_arg_values.iter().zip(shape.op_arg_types.iter()) {
+        emitter.push_bytes(context.mco, coro, *arg, arg_type, context.ptr_size);
+    }
+    emitter.push_bytes(
+        context.mco,
+        coro,
+        Value::Integer(IntConstant::U32(case_index)),
+        &Type::int(IntegerKind::U32),
+        context.ptr_size,
+    );
+    emitter.call_extern(&context.mco.suspend, vec![coro]);
+    let result = emitter.pop_bytes(context.mco, coro, &shape.op_return_type, context.ptr_size);
+
+    definition.blocks[entry].terminator = Some(TerminatorInstruction::Return(result));
+    mir.definitions.insert(wrap_id, definition);
+    wrap_id
+}
+
+/// Generate `fn (coro: Pointer) -> Unit`. Reads the (body, cap) pair from the coroutine's
+/// user_data, invokes body with cap as its argument, and pushes the result onto the
+/// coroutine's channel for `drive` to pop.
+fn generate_body_wrapper(
+    mir: &mut Mir, body_type: Type, cap_type: &Type, result_type: &Type, context: Context,
+) -> DefinitionId {
     let wrapper_id = next_definition_id();
     let wrapper_type = ptr_fn(vec![Type::POINTER], Type::UNIT);
 
@@ -521,15 +631,23 @@ fn generate_body_wrapper(mir: &mut Mir, body_type: Type, result_type: &Type, con
     let mut emitter = Emitter::in_block(&mut definition, entry);
 
     let user_data = emitter.call_extern(&context.mco.get_user_data, vec![coro]);
-    let body_value = emitter.push_instruction(Instruction::Deref(user_data), body_type.clone());
+    let body_and_cap_type = Type::Tuple(Arc::new(vec![body_type.clone(), cap_type.clone()]));
+    let body_and_cap = emitter.push_instruction(Instruction::Deref(user_data), body_and_cap_type);
+    let body_value = emitter.push_instruction(
+        Instruction::IndexTuple { tuple: body_and_cap, index: 0 },
+        body_type.clone(),
+    );
+    let cap_value = emitter.push_instruction(
+        Instruction::IndexTuple { tuple: body_and_cap, index: 1 },
+        cap_type.clone(),
+    );
 
-    // The body may be a closure tuple (fn, env) or a plain function.
     let call = match &body_type {
         Type::Function(function_type) if function_type.is_closure() => {
-            Instruction::CallClosure { closure: body_value, arguments: vec![] }
+            Instruction::CallClosure { closure: body_value, arguments: vec![cap_value] }
         },
-        Type::Tuple(_) => Instruction::CallClosure { closure: body_value, arguments: vec![] },
-        _ => Instruction::Call { function: body_value, arguments: vec![] },
+        Type::Tuple(_) => Instruction::CallClosure { closure: body_value, arguments: vec![cap_value] },
+        _ => Instruction::Call { function: body_value, arguments: vec![cap_value] },
     };
     let result = emitter.push_instruction(call, result_type.clone());
     emitter.push_bytes(context.mco, coro, result, result_type, context.ptr_size);
@@ -539,34 +657,25 @@ fn generate_body_wrapper(mir: &mut Mir, body_type: Type, result_type: &Type, con
     wrapper_id
 }
 
-/// Generate the drive function for a specific Handle site:
-/// `drive (coro: Pointer) handlers.. -> r2`.
-///
-/// The generated function resumes the coroutine once, then inspects whether
-/// the body completed or suspended. On completion it pops and returns r2.
-/// On suspension it pops the op_tag and dispatches to the matching handler
-/// case, passing a per-case resume closure that re-enters `drive` once the
-/// coroutine is pushed the resumed value.
+/// Per-Handle drive: switches over only this Handle's cases (0..N-1, by case
+/// index — *not* a global op-tag). Forwarding is handled implicitly by
+/// capability wrappers carrying their own coro pointer, so there's no
+/// "forward to outer coro" branch.
 fn generate_drive_function(
-    mir: &mut Mir, cases: &[HandlerCase], handler_types: &[Type], result_type: &Type, context: Context,
+    mir: &mut Mir, cases: &[HandlerCase], handler_types: &[Type], case_shapes: &[CaseShape], result_type: &Type,
+    context: Context,
 ) -> DefinitionId {
     let drive_id = next_definition_id();
     let mut drive_parameters = vec![Type::POINTER];
     drive_parameters.extend(handler_types.iter().cloned());
     let drive_type = ptr_fn(drive_parameters.clone(), result_type.clone());
 
-    // One resume helper per case. Each captures (coro, handlers..) as its
-    // env so it can re-invoke drive with the same handler arguments.
-    let resume_functions = mapvec(handler_types, |handler_type| {
-        let arg_type = resume_arg_type_from_handler(handler_type).unwrap_or(Type::UNIT);
-        generate_resume_function(mir, arg_type, drive_id, handler_types, result_type, context)
-    });
-
-    // Drive needs a Switch case for *every* op in the program, not just
-    // those it handles — forwarded ops need cases too so we can keep the
-    // typed push/pop layout.
-    let handled_ops: FxHashMap<DefinitionId, usize> =
-        cases.iter().enumerate().map(|(index, case)| (case.effect_op, index)).collect();
+    // One resume helper per case. Each captures (coro, handlers..) so it can
+    // re-invoke drive with the same handler set when the body resumes.
+    let resume_functions: Vec<DefinitionId> = case_shapes
+        .iter()
+        .map(|shape| generate_resume_function(mir, shape.op_return_type.clone(), drive_id, handler_types, result_type, context))
+        .collect();
 
     let mut definition = Definition::new(Arc::new("handle_drive".to_string()), drive_id, 0, drive_type);
     let entry = BlockId::ENTRY_BLOCK;
@@ -576,10 +685,6 @@ fn generate_drive_function(
     let coro = Value::Parameter(entry, 0);
     let handler_parameters = mapvec(0..handler_types.len(), |i| Value::Parameter(entry, (i + 1) as u32));
 
-    // All control-flow paths converge at `final_block (r: R)` which simply
-    // returns r. This shape keeps topological_sort happy because each
-    // branch terminates with a Jmp to a common merge point rather than
-    // inline Returns.
     let dispatch_block = definition.blocks.push(Block::new(Vec::new()));
     let complete_block = definition.blocks.push(Block::new(Vec::new()));
     let final_block = definition.blocks.push(Block::new(vec![result_type.clone()]));
@@ -588,10 +693,6 @@ fn generate_drive_function(
     emitter.call_extern(&context.mco.resume, vec![coro]);
     let suspended = emitter.call_extern(&context.mco.is_suspended, vec![coro]);
 
-    // If `end == else_` here, `topological_sort` does not push a merge
-    // point for this If. The actual convergence happens at `final_block`
-    // via Jmps from both the Switch cases and `complete_block`; the If
-    // itself doesn't need to register a merge, so we use `else_.0` as the end.
     definition.blocks[entry].terminator = Some(TerminatorInstruction::If {
         condition: suspended,
         then: (dispatch_block, None),
@@ -602,51 +703,28 @@ fn generate_drive_function(
     // complete_block: pop R, jmp final_block(R)
     emit_pop_and_jmp(&mut definition, complete_block, coro, result_type, final_block, context);
 
-    // dispatch_block: pop u32 tag, switch to case block
+    // dispatch_block: pop u32 case-tag, switch over local case indices 0..N-1.
     let mut emitter = Emitter::in_block(&mut definition, dispatch_block);
     let tag = emitter.pop_bytes(context.mco, coro, &Type::int(IntegerKind::U32), context.ptr_size);
 
-    let mut case_blocks = Vec::with_capacity(context.op_table.len());
-    let mut op_entries = context.op_table.iter().collect::<Vec<_>>();
-    op_entries.sort_by_key(|(_, info)| info.tag);
-
-    for (op_id, info) in op_entries {
+    let mut case_blocks = Vec::with_capacity(cases.len());
+    for (case_index, _case) in cases.iter().enumerate() {
         let case_block = definition.blocks.push(Block::new(Vec::new()));
-        case_blocks.push((info.tag, (case_block, None)));
+        case_blocks.push((case_index as u32, (case_block, None)));
 
-        if let Some(&case_index) = handled_ops.get(op_id) {
-            emit_handler_case(
-                &mut definition,
-                case_block,
-                coro,
-                resume_functions[case_index],
-                handler_parameters[case_index],
-                &handler_parameters,
-                result_type,
-                final_block,
-                mir,
-                context,
-            );
-        } else if let Some(signature) = info.signature.as_ref() {
-            emit_forward_case(
-                &mut definition,
-                case_block,
-                coro,
-                info.tag,
-                signature,
-                drive_id,
-                &handler_parameters,
-                result_type,
-                final_block,
-                context,
-            );
-        } else {
-            // Op has a tag but no known signature — only possible when it's
-            // referenced by a Perform but never handled anywhere. Performing
-            // it was already UB; make it an unreachable case here so codegen
-            // doesn't complain about block parameters.
-            definition.blocks[case_block].terminator = Some(TerminatorInstruction::Unreachable);
-        }
+        emit_handler_case(
+            &mut definition,
+            case_block,
+            coro,
+            resume_functions[case_index],
+            handler_parameters[case_index],
+            &handler_parameters,
+            &case_shapes[case_index],
+            result_type,
+            final_block,
+            mir,
+            context,
+        );
     }
 
     let unreachable_else = definition.blocks.push(Block::new(Vec::new()));
@@ -665,8 +743,6 @@ fn generate_drive_function(
     drive_id
 }
 
-/// In `block`: pop a value of `value_type` off `coro` and jmp to `jmp_target` with the popped
-/// value as the jump argument.
 fn emit_pop_and_jmp(
     definition: &mut Definition, block: BlockId, coro: Value, value_type: &Type, jmp_target: BlockId, context: Context,
 ) {
@@ -677,37 +753,31 @@ fn emit_pop_and_jmp(
     definition.blocks[block].terminator = Some(TerminatorInstruction::Jmp((jmp_target, Some(value))));
 }
 
-/// Emit the per-case dispatch body: pop the op's arguments, build the resume closure, invoke the
-/// user-supplied handler, and jump to `final_block` with its result.
 #[allow(clippy::too_many_arguments)]
 fn emit_handler_case(
     definition: &mut Definition, case_block: BlockId, coro: Value, resume_function_id: DefinitionId,
-    handler_parameter: Value, all_handler_parameters: &[Value], result_type: &Type, final_block: BlockId, mir: &Mir,
-    context: Context,
+    handler_parameter: Value, all_handler_parameters: &[Value], shape: &CaseShape, result_type: &Type,
+    final_block: BlockId, mir: &Mir, context: Context,
 ) {
-    // Derive the op's parameter types from the handler's signature. Handler shape:
-    // `fn op_args.., resume -> r2`. This avoids looking up the effect op's DefinitionId, which may
-    // be unavailable after monomorphization filters out generic definitions (regression 217_filter).
-    let handler_type = definition.type_of_value(&handler_parameter, &mir.externals, &mir.definitions);
-    let Type::Function(handler_function_type) = &handler_type else { return };
-    let op_parameter_types =
-        handler_function_type.parameters.split_last().map(|(_, rest)| rest.to_vec()).unwrap_or_default();
-    let handler_is_closure = handler_function_type.is_closure();
-
     let resume_function_type = mir.definitions.get(&resume_function_id).map(|d| d.typ.clone()).unwrap_or(Type::ERROR);
 
-    let parameters = all_handler_parameters.iter();
     let state_field_types = std::iter::once(Type::POINTER)
-        .chain(parameters.map(|value| definition.type_of_value(value, &mir.externals, &mir.definitions)))
+        .chain(
+            all_handler_parameters
+                .iter()
+                .map(|value| definition.type_of_value(value, &mir.externals, &mir.definitions)),
+        )
         .collect::<Vec<_>>();
 
     let mut emitter = Emitter::in_block(definition, case_block);
-    let popped_arguments = pop_operation_arguments(&mut emitter, context, coro, &op_parameter_types);
+    let popped_arguments = pop_operation_arguments(&mut emitter, context, coro, &shape.op_arg_types);
 
-    // Build the resume closure's environment: pack (coro, handlers..)
-    // into an inline tuple and stack-allocate it. The MIR builder gave
-    // `resume` env type `Pointer`, so we pass a pointer to this tuple.
-    let state_elements = drive_call_arguments(coro, all_handler_parameters.iter().copied());
+    // Build the resume closure's environment: pack (coro, handlers..) into an
+    // inline tuple and stack-allocate it. Same shape as the original lowering;
+    // resume's MIR-declared env type is Pointer.
+    let mut state_elements = Vec::with_capacity(1 + all_handler_parameters.len());
+    state_elements.push(coro);
+    state_elements.extend(all_handler_parameters.iter().copied());
     let state =
         emitter.push_instruction(Instruction::MakeTuple(state_elements), Type::Tuple(Arc::new(state_field_types)));
     let environment = emitter.push_instruction(Instruction::StackAlloc(state), Type::POINTER);
@@ -720,7 +790,7 @@ fn emit_handler_case(
     // Call the handler: handler(args.., resume_closure)
     let mut handler_arguments = popped_arguments;
     handler_arguments.push(resume_closure);
-    let call_instruction = if handler_is_closure {
+    let call_instruction = if shape.handler_is_closure {
         Instruction::CallClosure { closure: handler_parameter, arguments: handler_arguments }
     } else {
         Instruction::Call { function: handler_parameter, arguments: handler_arguments }
@@ -730,37 +800,8 @@ fn emit_handler_case(
     definition.blocks[case_block].terminator = Some(TerminatorInstruction::Jmp((final_block, Some(handler_result))));
 }
 
-/// Emit a case body that forwards an op this Handle doesn't handle up to
-/// the outer enclosing drive. The inner coro is currently suspended, so
-/// `mco_coro_running()` yields the outer. We re-push the op's args + tag
-/// onto the outer in the same layout `Perform` uses, suspend the outer,
-/// receive its resumed V, push V back to the inner, and recurse into drive.
-#[allow(clippy::too_many_arguments)]
-fn emit_forward_case(
-    definition: &mut Definition, case_block: BlockId, inner_coro: Value, tag: u32, signature: &EffectSignature,
-    drive_id: DefinitionId, handler_parameters: &[Value], result_type: &Type, final_block: BlockId, context: Context,
-) {
-    let mut emitter = Emitter::in_block(definition, case_block);
-
-    let popped_arguments = pop_operation_arguments(&mut emitter, context, inner_coro, &signature.arg_types);
-    let outer_coro = emit_raise_on_running(&mut emitter, context, &popped_arguments, tag);
-
-    // Pop resumed off outer, push it back to inner, then recur so the inner keeps running.
-    let resume_arg = emitter.pop_bytes(context.mco, outer_coro, &signature.return_type, context.ptr_size);
-    emitter.push_bytes(context.mco, inner_coro, resume_arg, &signature.return_type, context.ptr_size);
-
-    let drive_arguments = drive_call_arguments(inner_coro, handler_parameters.iter().copied());
-    let recurse_result = emitter.push_instruction(
-        Instruction::Call { function: Value::Definition(drive_id), arguments: drive_arguments },
-        result_type.clone(),
-    );
-
-    definition.blocks[case_block].terminator = Some(TerminatorInstruction::Jmp((final_block, Some(recurse_result))));
-}
-
-/// Generate a resume closure specialized for a particular Handle site:
-/// `resume: fn r1 (env: Pointer) -> r2`. `env` points to a stack-allocated
-/// tuple `(coro, handler0, handler1, ...)` set up by the drive function.
+/// `resume: fn r1 [Pointer] -> r2`. env is `&(coro, handler_0, .., handler_{N-1})`,
+/// set up by the drive function before each handler invocation.
 fn generate_resume_function(
     mir: &mut Mir, r1_type: Type, drive_function_id: DefinitionId, handler_types: &[Type], result_type: &Type,
     context: Context,
@@ -794,10 +835,9 @@ fn generate_resume_function(
 
     emitter.push_bytes(context.mco, coro, v_value, &r1_type, context.ptr_size);
 
-    // Recursively call drive to continue executing the coroutine
-    // through further suspensions. Pass the full handler set so drive
-    // can dispatch further Performs.
-    let drive_arguments = drive_call_arguments(coro, handler_values);
+    let mut drive_arguments = Vec::with_capacity(1 + handler_values.len());
+    drive_arguments.push(coro);
+    drive_arguments.extend(handler_values);
     let drive_result = emitter.push_instruction(
         Instruction::Call { function: Value::Definition(drive_function_id), arguments: drive_arguments },
         result_type.clone(),

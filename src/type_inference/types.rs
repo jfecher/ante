@@ -532,6 +532,7 @@ impl Type {
                 Kind::TypeConstructorSimple(NonZeroUsize::new(1).unwrap()),
             ),
             crate::parser::cst::TypeKind::NoClosureEnv => (Type::NO_CLOSURE_ENV, Kind::Type),
+            crate::parser::cst::TypeKind::Pointer => (Type::POINTER, Kind::TypeConstructorSimple(NonZeroUsize::new(1).unwrap())),
             crate::parser::cst::TypeKind::Tuple(elements) => {
                 let elements =
                     mapvec(elements, |t| Self::from_cst_type(t, resolve, db, next_id, insert_implicit_type_vars));
