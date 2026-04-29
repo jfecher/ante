@@ -47,17 +47,6 @@ pub enum Type {
     /// could use this type instead, using a UserDefinedType for them lets us reuse the existing
     /// mechanisms to automatically define their constructor and retrieve their fields.
     Tuple(Arc<Vec<Type>>),
-
-    /// Zero or more effects.
-    ///   pure = an empty Vec
-    ///   IO, Throw a = vec![IO, Throw a]
-    ///
-    /// Unlike a `Type::Tuple`, an effect set is flat and can be made extensible by adding a type variable.
-    /// Thus `Effects([A, Effects(vec![B])])` is equal to `Effects([A, B])`
-    ///
-    /// Effect sets containing only a single type variable and no concrete
-    /// effects should just be represented as a Type::Variable variant directly instead.
-    Effects(Arc<Vec<Type>>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -167,13 +156,6 @@ impl Type {
 
     pub fn reference(kind: ReferenceKind) -> Type {
         Type::Primitive(PrimitiveType::Reference(kind))
-    }
-
-    /// An empty effect set (non-extensible)
-    ///
-    /// For an empty but extensible effect set, just use a regular type variable
-    pub fn no_effects() -> Type {
-        Type::Effects(Arc::new(Vec::new()))
     }
 
     /// Convert this type to a string (without any coloring)
@@ -294,9 +276,6 @@ impl Type {
             Type::Tuple(elements) => {
                 Type::Tuple(Arc::new(mapvec(elements.iter(), |t| t.follow_all_two(bindings, more_bindings))))
             },
-            Type::Effects(effects) => {
-                Type::Effects(Arc::new(mapvec(effects.iter(), |t| t.follow_all_two(bindings, more_bindings))))
-            },
         }
     }
 
@@ -345,9 +324,6 @@ impl Type {
                 typ.substitute(&bindings, bindings_in_scope)
             },
             Type::Tuple(elements) => Type::Tuple(Arc::new(mapvec(elements.iter(), |t| {
-                t.substitute(bindings_to_substitute, bindings_in_scope)
-            }))),
-            Type::Effects(effects) => Type::Effects(Arc::new(mapvec(effects.iter(), |t| {
                 t.substitute(bindings_to_substitute, bindings_in_scope)
             }))),
         }
@@ -642,11 +618,6 @@ impl Type {
                         free_vars_helper(element, bindings, free_vars);
                     }
                 },
-                Type::Effects(effects) => {
-                    for element in effects.iter() {
-                        free_vars_helper(element, bindings, free_vars);
-                    }
-                },
             }
         }
 
@@ -721,65 +692,6 @@ impl Type {
                     || constructor.reference_constructor(bindings).is_some() =>
             {
                 args.get(0)
-            },
-            _ => None,
-        }
-    }
-
-    /// Flatten this type as an effect row, returning the set of concrete
-    /// effects (with nested `Type::Effects` inlined) along with the type
-    /// variable marking it open to extension, if present.
-    ///
-    /// Any duplicates in the set are removed
-    pub fn collect_effects_in_type(
-        typ: &Type, bindings: &TypeBindings, more_bindings: &TypeBindings,
-    ) -> (Vec<Type>, Option<TypeVariableId>) {
-        match typ.follow_two(bindings, more_bindings) {
-            Type::Variable(id) => (Vec::new(), Some(id)),
-            Type::Effects(effects) => Self::collect_effects_in_types(&effects, bindings, more_bindings),
-            other => (vec![other], None),
-        }
-    }
-
-    /// See [Type::collect_effects_in_type]
-    pub fn collect_effects_in_types(
-        types: &[Type], bindings: &TypeBindings, more_bindings: &TypeBindings,
-    ) -> (Vec<Type>, Option<TypeVariableId>) {
-        let mut collected: Vec<Type> = Vec::new();
-        let mut variable = None;
-
-        for typ in types {
-            let (found, found_variable) = Self::collect_effects_in_type(typ, bindings, more_bindings);
-            for effect in found {
-                let zonked = effect.follow_all_two(bindings, more_bindings);
-
-                // Effect sets tend to be small so this is probably okay
-                if !collected.contains(&zonked) {
-                    collected.push(zonked);
-                }
-            }
-
-            // TODO: How to type check sets with multiple unbound type variables?
-            if variable.is_none() {
-                variable = found_variable;
-            }
-        }
-
-        (collected, variable)
-    }
-
-    /// If this type is an effect set which is open to extension, return the row variable
-    /// representing the rest of the effect set.
-    pub fn effect_row(&self, bindings: &TypeBindings) -> Option<TypeVariableId> {
-        match self.follow(bindings) {
-            Type::Variable(id) => Some(*id),
-            Type::Effects(effects) => {
-                for effect in effects.iter() {
-                    if let Some(row) = effect.effect_row(bindings) {
-                        return Some(row);
-                    }
-                }
-                None
             },
             _ => None,
         }
@@ -890,36 +802,6 @@ where
                     }
                     // TODO: Improve parenthesization here
                     self.fmt_type(element, true, f)?;
-                }
-                Ok(())
-            }),
-            Type::Effects(elements) => try_parenthesize(parenthesize, f, |f| {
-                if elements.is_empty() {
-                    return write!(f, "pure");
-                }
-
-                // `Type::Effects` can nest — a row variable may be bound to
-                // another effect set — so flatten through bindings. This is
-                // the same logic the unifier uses (dedupe by exact equality
-                // included), so the printed row matches the row the type
-                // checker sees.
-                let empty = TypeBindings::default();
-                let (concrete, row_var) = Type::collect_effects_in_types(elements, self.bindings, &empty);
-
-                let mut first = true;
-                for element in &concrete {
-                    if !first {
-                        write!(f, ", ")?;
-                    }
-                    first = false;
-                    // TODO: Improve parenthesization here
-                    self.fmt_type(element, true, f)?;
-                }
-                if let Some(id) = row_var {
-                    if !first {
-                        write!(f, ", ")?;
-                    }
-                    self.fmt_type(&Type::Variable(id), true, f)?;
                 }
                 Ok(())
             }),

@@ -129,9 +129,7 @@ fn compile(args: Cli) {
 
 /// Force the front-end passes (parse, name resolution, type inference) in dependency
 /// order so each has its own `--show-time` line. inc-complete caches the results, so
-/// the downstream compile mode reuses them. Later phases — monomorphization, LLVM
-/// codegen, object emission, gcc link, and diagnostic collection — are timed where
-/// they actually run, via `time_phase`, so `--show-time` doesn't double-count work.
+/// the downstream compile mode reuses them.
 fn print_phase_timings(compiler: &mut Db) {
     let item_ids = time_phase("Parsing", true, || {
         let crates = GetCrateGraph.get(compiler);

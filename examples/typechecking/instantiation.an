@@ -16,18 +16,17 @@ id x = x
 
 // args: -e ast-t --no-color
 // expected stdout:
-// (add: fn (fn _ _ [_] -> _ can _) (fn _ _ [_] -> _ can _) -> fn _ [(fn _ _ [_] -> _ can _), (fn _ _ [_] -> _ can _)] -> fn _ [(fn _ _ [_] -> _ can _), (fn _ _ [_] -> _ can _), _] -> _ can _ pure pure) (m: fn _ _ [_] -> _ can _) (n: fn _ _ [_] -> _ can _) = fn (f: _) [(m: fn _ _ [_] -> _ can _), (n: fn _ _ [_] -> _ can _)] -> fn (x: _) [(m: fn _ _ [_] -> _ can _), (n: fn _ _ [_] -> _ can _), (f: _)] -> (m: fn _ _ [_] -> _ can _) (f: _) ((n: fn _ _ [_] -> _ can _) (f: _) (x: _))
+// (add: fn (fn _ _ [_] -> _) (fn _ _ [_] -> _) -> fn _ [(fn _ _ [_] -> _), (fn _ _ [_] -> _)] -> fn _ [(fn _ _ [_] -> _), (fn _ _ [_] -> _), _] -> _) (m: fn _ _ [_] -> _) (n: fn _ _ [_] -> _) = fn (f: _) [(m: fn _ _ [_] -> _), (n: fn _ _ [_] -> _)] -> fn (x: _) [(m: fn _ _ [_] -> _), (n: fn _ _ [_] -> _), (f: _)] -> (m: fn _ _ [_] -> _) (f: _) ((n: fn _ _ [_] -> _) (f: _) (x: _))
 // 
-// (one: fn (fn _ [_] -> _ can _) _ -> _ can _) (f: fn _ [_] -> _ can _) (x: _) = (f: fn _ [_] -> _ can _) (x: _)
+// (one: fn (fn _ [_] -> _) _ -> _) (f: fn _ [_] -> _) (x: _) = (f: fn _ [_] -> _) (x: _)
 // 
-// (two1: fn (fn _ [_] -> _ can _) _ -> _ can _) (f: fn _ [_] -> _ can _) (x: _) = (f: fn _ [_] -> _ can _) ((f: fn _ [_] -> _ can _) (x: _))
+// (two1: fn (fn _ [_] -> _) _ -> _) (f: fn _ [_] -> _) (x: _) = (f: fn _ [_] -> _) ((f: fn _ [_] -> _) (x: _))
 // 
-// (two2: fn (fn _ [_] -> _ can _) [(fn (fn _ [_] -> _ can _) _ -> _ can _), (fn (fn _ [_] -> _ can _) _ -> _ can _)] -> fn _ [(fn (fn _ [_] -> _ can _) _ -> _ can _), (fn (fn _ [_] -> _ can _) _ -> _ can _), (fn _ [_] -> _ can _)] -> _ can _ pure) = (add: fn (fn (fn _ [_] -> _ can _) _ -> _ can _) (fn (fn _ [_] -> _ can _) _ -> _ can _) -> fn (fn _ [_] -> _ can _) [(fn (fn _ [_] -> _ can _) _ -> _ can _), (fn (fn _ [_] -> _ can _) _ -> _ can _)] -> fn _ [(fn (fn _ [_] -> _ can _) _ -> _ can _), (fn (fn _ [_] -> _ can _) _ -> _ can _), (fn _ [_] -> _ can _)] -> _ can _ pure pure) (one: fn (fn _ [_] -> _ can _) _ -> _ can _) (one: fn (fn _ [_] -> _ can _) _ -> _ can _)
+// (two2: fn (fn _ [_] -> _) [(fn (fn _ [_] -> _) _ -> _), (fn (fn _ [_] -> _) _ -> _)] -> fn _ [(fn (fn _ [_] -> _) _ -> _), (fn (fn _ [_] -> _) _ -> _), (fn _ [_] -> _)] -> _) = (add: fn (fn (fn _ [_] -> _) _ -> _) (fn (fn _ [_] -> _) _ -> _) -> fn (fn _ [_] -> _) [(fn (fn _ [_] -> _) _ -> _), (fn (fn _ [_] -> _) _ -> _)] -> fn _ [(fn (fn _ [_] -> _) _ -> _), (fn (fn _ [_] -> _) _ -> _), (fn _ [_] -> _)] -> _) (one: fn (fn _ [_] -> _) _ -> _) (one: fn (fn _ [_] -> _) _ -> _)
 // 
-// (main: fn Unit -> Unit pure) () =
-//     (id: fn I32 -> I32 pure) 3
-//     (id: fn String -> String pure) "four"
-//     (id: fn Unit -> Unit pure) ()
+// (main: fn Unit -> Unit) () =
+//     (id: fn I32 -> I32) 3
+//     (id: fn String -> String) "four"
+//     (id: fn Unit -> Unit) ()
 // 
-// (id: fn _ -> _ pure) (x: _) = (x: _)
-
+// (id: fn _ -> _) (x: _) = (x: _)

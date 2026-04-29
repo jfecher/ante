@@ -22,22 +22,22 @@ use y = ()
 
 // args: -east-t --no-color
 // expected stdout:
-// (main: fn Unit -> Unit pure) () =
+// (main: fn Unit -> Unit) () =
 //     (a: I32) = 1
 //     (b: I32) = 2
 //     (c: I32) = 3
-//     (free_function: fn I32 -> Unit pure) (x: I32) = (use: fn I32 -> Unit pure) (x: I32)
-//     (captures1: fn I32 [I32] -> Unit pure) (x: I32) [(a: I32)] = (use: fn (I32, I32) -> Unit pure) ((x: I32) (,: fn I32 I32 -> I32, I32 pure) (a: I32))
-//     (captures2: fn I32 [I32, I32] -> Unit pure) (x: I32) [(a: I32), (b: I32)] = (use: fn (I32, (I32, I32)) -> Unit pure) ((x: I32) (,: fn I32 (I32, I32) -> I32, (I32, I32) pure) ((a: I32) (,: fn I32 I32 -> I32, I32 pure) (b: I32)))
-//     (captures_closure: fn I32 [(fn I32 [I32, I32] -> Unit pure)] -> Unit pure) (x: I32) [(captures2: fn I32 [I32, I32] -> Unit pure)] = (captures2: fn I32 [I32, I32] -> Unit pure) (x: I32)
-//     (captures_nested: fn I32 [I32] -> Unit pure) (x: I32) [(a: I32)] =
-//         (nested: fn Unit [I32] -> I32 pure) () [(a: I32)] = (a: I32)
-//         (use: fn (I32, I32) -> Unit pure) ((x: I32) (,: fn I32 I32 -> I32, I32 pure) (nested: fn Unit [I32] -> I32 pure) ())
-//     (_: Unit) = (free_function: fn I32 -> Unit pure) 0
-//     (_: Unit) = (captures1: fn I32 [I32] -> Unit pure) 0
-//     (_: Unit) = (captures2: fn I32 [I32, I32] -> Unit pure) 0
-//     (_: Unit) = (captures_closure: fn I32 [(fn I32 [I32, I32] -> Unit pure)] -> Unit pure) 0
-//     (_: Unit) = (captures_nested: fn I32 [I32] -> Unit pure) 0
+//     (free_function: fn I32 -> Unit) (x: I32) = (use: fn I32 -> Unit) (x: I32)
+//     (captures1: fn I32 [I32] -> Unit) (x: I32) [(a: I32)] = (use: fn (I32, I32) -> Unit) ((x: I32) (,: fn I32 I32 -> I32, I32) (a: I32))
+//     (captures2: fn I32 [I32, I32] -> Unit) (x: I32) [(a: I32), (b: I32)] = (use: fn (I32, (I32, I32)) -> Unit) ((x: I32) (,: fn I32 (I32, I32) -> I32, (I32, I32)) ((a: I32) (,: fn I32 I32 -> I32, I32) (b: I32)))
+//     (captures_closure: fn I32 [(fn I32 [I32, I32] -> Unit)] -> Unit) (x: I32) [(captures2: fn I32 [I32, I32] -> Unit)] = (captures2: fn I32 [I32, I32] -> Unit) (x: I32)
+//     (captures_nested: fn I32 [I32] -> Unit) (x: I32) [(a: I32)] =
+//         (nested: fn Unit [I32] -> I32) () [(a: I32)] = (a: I32)
+//         (use: fn (I32, I32) -> Unit) ((x: I32) (,: fn I32 I32 -> I32, I32) (nested: fn Unit [I32] -> I32) ())
+//     (_: Unit) = (free_function: fn I32 -> Unit) 0
+//     (_: Unit) = (captures1: fn I32 [I32] -> Unit) 0
+//     (_: Unit) = (captures2: fn I32 [I32, I32] -> Unit) 0
+//     (_: Unit) = (captures_closure: fn I32 [(fn I32 [I32, I32] -> Unit)] -> Unit) 0
+//     (_: Unit) = (captures_nested: fn I32 [I32] -> Unit) 0
 // 
-// (use: fn _ -> Unit pure) (y: _) = ()
+// (use: fn _ -> Unit) (y: _) = ()
 

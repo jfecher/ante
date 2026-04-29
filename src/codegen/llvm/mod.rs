@@ -520,7 +520,6 @@ impl<'ctx> ModuleContext<'ctx> {
                 if self.global_values.contains_key(&value) {
                     let gv = self.global_values[&value];
                     if is_function && !is_let_global && gv.as_any_value_enum().is_function_value() {
-                        // Actual LLVM function — return the pointer directly
                         return gv.as_pointer_value().into();
                     } else {
                         // Global variable (non-function type, or `let` holding a function pointer)
@@ -530,8 +529,8 @@ impl<'ctx> ModuleContext<'ctx> {
                 }
 
                 if is_function && !is_let_global {
-                    // True function definition — create a forward declaration with the mangled
-                    // name matching codegen_function, to avoid colliding with C extern names.
+                    // Create a forward declaration with the mangled name matching codegen_function,
+                    // to avoid colliding with C extern names.
                     let fn_type = self.convert_function_type(&typ).unwrap();
                     let mangled_name = format!("{}_{}", self.get_name(*function_id), function_id);
                     let function_value = self.module.add_function(&mangled_name, fn_type, None).as_global_value();
@@ -567,16 +566,10 @@ impl<'ctx> ModuleContext<'ctx> {
                     .unwrap_basic()
             },
             mir::Instruction::Perform { .. } => {
-                unreachable!(
-                    "Instruction::Perform reached LLVM codegen — it must be removed by the \
-                     tail-resume optimization or coroutine lowering passes first"
-                )
+                unreachable!("Instruction::Perform remaining in LLVM codegen")
             },
             mir::Instruction::Handle { .. } => {
-                unreachable!(
-                    "Instruction::Handle reached LLVM codegen — it must be removed by the \
-                     tail-resume optimization or coroutine lowering passes first"
-                )
+                unreachable!("Instruction::Handle remaining LLVM codegen")
             },
             mir::Instruction::CallClosure { closure, arguments } => {
                 let typ = self.convert_function_type(&self.mir.type_of_value(closure, function)).unwrap();

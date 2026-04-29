@@ -25,7 +25,7 @@ move_handler_param () =
 // The handled expression runs once so moves there are fine
 move_in_expression () =
     r = Resource 3
-    handler h for emit () -> resume () in
+    handler h for emit () -> resume ()
     consume r
 
 main () = ()
@@ -33,12 +33,11 @@ main () = ()
 // args: --check --no-color
 // expected exit status: 1
 // expected stderr:
-// examples/typechecking/handle_affine.an:13:17
-// 12 |         consume x
+// examples/typechecking/handle_affine.an:12:17
+// 11 |         consume x
 //    |         // error: Cannot move r in a handler branch because it may be executed multiple times
-// 13 |         consume r
+// 12 |         consume r
 //    |                 ^
-// 14 |         resume ()
-//
+// 13 |         resume ()
+// 
 // Found 1 error and 0 warnings
-

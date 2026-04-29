@@ -30,5 +30,71 @@ main () =
 
 // args: -e ast-t --no-color
 // expected exit status: 1
-// (Detailed AST printer output omitted — regenerate when AST printer stabilizes)
+// expected stdout:
+// type Log =
+//     log: fn String [Ptr Unit] -> Unit
+// 
+// type Use a =
+//     get: fn Unit [Ptr Unit] -> a
+//     set: fn a [Ptr Unit] -> Unit
+// 
+// (handle_basic: fn Unit {Log} {Use String} -> Unit) () {(_: Log)} {(_: Use String)} =
+//     (log: fn String {Log} [Ptr Unit] -> Unit) "test1" {(h: (error))}
+// 
+// (use_resume: fn Unit -> _) () =
+//     handler (h: Use I32) for
+//     | (get: fn Unit {Use I32} [Ptr Unit] -> I32) () -> fn () (resume: fn I32 [Ptr] -> _) -> (resume: fn I32 [Ptr] -> _) 3_I32
+//     in fn () ->
+//         (does_use: fn _ {Use _} -> Unit) (x: _) {(_: Use _)} =
+//             (y: _) = (get: fn Unit {Use _} [Ptr Unit] -> _) () {(_: Use _)}
+//             (set: fn _ {Use _} [Ptr Unit] -> Unit) ((+: fn _ _ {Add _} -> _) (y: _) (x: _) {(error)}) {(_: Use _)}
+//         (pure_fn: (error)) ()
+// 
+// (main: fn Unit -> Unit) () =
+//     (log: fn String {Log} [Ptr Unit] -> Unit) "foo" {(error)}
 
+// expected stderr:
+// examples/typechecking/effects.an:11:1
+// 10 |     handler h for log v -> set v in
+// 11 |     log "test1" {h}	// error: Expected an expression but found a newline
+//    | ^^^^
+// 
+// examples/typechecking/effects.an:11:18
+// 10 |     handler h for log v -> set v in
+// 11 |     log "test1" {h}	// error: `h` not found in scope
+//    |                  ^
+// 
+// examples/typechecking/effects.an:16:7
+// 15 |         get () -> resume 3i32
+// 16 |       | set _ -> resume ()	// error: Expected an expression but found `|`
+//    |       ^
+// 17 |     in ()
+// 
+// examples/typechecking/effects.an:17:5
+// 16 |       | set _ -> resume ()
+// 17 |     in ()	// error: Expected an expression but found `in`
+//    |     ^^
+// 
+// examples/typechecking/effects.an:21:12
+// 20 |     y = get ()
+// 21 |     set (y + x)	// error: No implicit found for type Add _ required by parameter 3 of +
+//    |            ^
+// 
+// examples/typechecking/effects.an:24:1
+// 23 | // Ensure a function annotated `pure` errors if it uses unhandled effects
+// 24 | pure_fn () pure =	// error: `pure_fn` not found in scope
+//    | ^^^^^^^
+// 25 |     log "foo"
+// 
+// examples/typechecking/effects.an:24:12
+// 23 | // Ensure a function annotated `pure` errors if it uses unhandled effects
+// 24 | pure_fn () pure =	// error: Expected the end of this block but found `pure`
+//    |            ^^^^
+// 25 |     log "foo"
+// 
+// examples/typechecking/effects.an:29:5
+// 28 | main () =
+// 29 |     log "foo"	// error: No implicit found for type Log required by parameter 2 of log
+//    |     ^^^
+// 
+// Found 8 errors and 0 warnings

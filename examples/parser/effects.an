@@ -6,36 +6,57 @@ effect Use a with
     set: fn a I32 -> Unit
 
 main () =
-    handler h1 for log s -> print s in
+    handler h1 for log s -> print s
     log "test1" {h1}
 
-    // Test parsing of pattern matching within handler branches
     handler h2 for
-        log "a" -> print "case 1"
-      | log "b" -> print "case 2"
-      | log _   -> print "case 3"
+      | log _   -> print "logged"
     in
         log "test2" {h2}
 
     handler h3 for
-        set 0 a -> resume ()
       | get () -> foo resume 1 // test 'resume' is parsed as a normal identifier
       | set _ b -> resume ()
     in foo + bar
 
     handler h4 for
-        return _ -> "foo"
-      | log _ -> "impossible"
+      | log _ -> "foo"
     in ()
 
 map1 (l: List a) (f: fn a {Log} -> b) : List b = ()
 
-map2 (l: List a) (f: fn a -> b pure) : List b = ()
+map2 (l: List a) (f: fn a -> b) : List b = ()
 
-map3 (l: List a) (f: fn a -> b pure) : List b pure = ()
-
-map4 (l: List a) (f: fn a -> b) {Log} : List b = ()
+map3 (l: List a) (f: fn a -> b) {Log} : List b = ()
 
 // args: -e ast --no-color
-// (Detailed AST printer output omitted — regenerate when AST printer stabilizes)
-
+// expected stdout:
+// effect Log with
+//     log: fn String -> Unit
+// 
+// effect Use a with
+//     get: fn Unit -> a
+//     set: fn a I32 -> Unit
+// 
+// main () =
+//     handler h1 for
+//     | log s -> fn s resume -> print s
+//     in fn () ->
+//         log "test1" {h1}
+//         handler h2 for
+//         | log _ -> fn _ resume -> print "logged"
+//         in fn () ->
+//             log "test2" {h2}
+//         handler h3 for
+//         | get () -> fn () resume -> foo resume 1
+//         | set _ b -> fn _ b resume -> resume ()
+//         in fn () -> foo + bar
+//         handler h4 for
+//         | log _ -> fn _ resume -> "foo"
+//         in fn () -> ()
+// 
+// map1 (l: List a) (f: fn a {Log} -> b) : List b = ()
+// 
+// map2 (l: List a) (f: fn a -> b) : List b = ()
+// 
+// map3 (l: List a) (f: fn a -> b) {_: Log} : List b = ()

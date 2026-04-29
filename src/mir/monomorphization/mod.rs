@@ -106,8 +106,7 @@ fn monomorphize_non_generic_definition(
             item.bindings.clone()
         };
         // Derive the monomorphized definition type by specializing the original's type
-        // rather than using item.monomorphized_type (which is the Instantiate instruction's
-        // result type — the value type from the caller, not the function's own type).
+        // rather than item.monomorphized_type, the type from the caller.
         if !context.generic_mapping.is_empty() {
             context.specialize_type(&mut definition.typ);
         }

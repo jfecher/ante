@@ -479,14 +479,14 @@ pub struct Assignment {
     pub op: Option<(CompoundAssignOp, ExprId)>,
 }
 
-/// `while cond do body` — imperative loop, body is Unit, whole expression is Unit.
+/// `while cond do body`
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
 pub struct While {
     pub condition: ExprId,
     pub body: ExprId,
 }
 
-/// `for variable in start .. end do body` — end-exclusive numeric range loop.
+/// `for variable in start .. end do body`
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
 pub struct For {
     pub variable: NameId,

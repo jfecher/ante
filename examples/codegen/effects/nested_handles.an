@@ -11,7 +11,7 @@ foo () {Ping} {Pong} =
     d = do_pong 4
     a + c, b + d
 
-ping (f: fn Ping -> a) =
+ping (f: fn Ping [env] -> a) =
     handler h for do_ping x ->
         println "ping?"
         r = resume (x * 2)
@@ -19,7 +19,7 @@ ping (f: fn Ping -> a) =
         r
     in f h
 
-pong (f: fn Pong -> a) =
+pong (f: fn Pong [env] -> a) =
     handler h for do_pong x ->
         println "pong?"
         r = resume (x * 3)
@@ -28,7 +28,7 @@ pong (f: fn Pong -> a) =
     in f h
 
 main () =
-    a, b = ping fn p -> pong fn q -> foo () {p} {q}
+    a, b = ping (fn p -> pong (fn q -> foo () {p} {q}))
     println a //=> (1*2 + 3*2) = 8
     println b //=> (2*3 + 4*3) = 18
 

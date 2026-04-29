@@ -430,8 +430,7 @@ impl<'tokens> Parser<'tokens> {
                     items.push(item);
                 }
 
-                // Parse any extra items `, b, c, d` — accepts both lowercase identifiers
-                // and uppercase type/trait names (e.g. `import Std.HashMap.empty, Hash`).
+                // Parse any extra items e.g. `, b, c, d`
                 while self.accept(Token::Comma) {
                     match self.current_token() {
                         Token::Identifier(name) | Token::TypeName(name) => {

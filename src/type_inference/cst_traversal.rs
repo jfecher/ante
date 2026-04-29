@@ -241,8 +241,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             match self.try_coercion(&actual, expected, expr, call_expr) {
                 super::CoercionOutcome::ReplacedExpr => {
                     // If the coercion wrapped a local variable (e.g. auto-ref `seq` → `ref seq`),
-                    // the move recorded above no longer applies — the wrapper doesn't consume its
-                    // operand. Clear it so subsequent uses don't wrongly see the variable as moved.
+                    // the move recorded above no longer applies.
                     if let Some(Origin::Local(name)) = self.path_origin(path) {
                         self.move_tracker.clear_moves(&super::affine::MovePath::Variable(name));
                     }
@@ -463,7 +462,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         // Build the new Call: `push (mut v) 3`
         // If the call is in the form `obj.method ()` and the method only takes 1 parameter,
-        // strip the `()` — it's only there to make the expression a call.
+        // strip the `()`.
         let single_unit_arg = call.arguments.len() == 1
             && func_type.parameters.len() == 1
             && matches!(self.current_context()[call.arguments[0].expr], Expr::Literal(Literal::Unit));
@@ -604,7 +603,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     fn check_member_access(&mut self, member_access: &cst::MemberAccess, expected: &Type, expr: ExprId) {
         let struct_type = self.next_type_variable();
 
-        // Suppress moves on the object — we handle partial move tracking here at the field level
+        // Suppress moves on the object - we handle partial move tracking here at the field level
         let old_suppress_check = self.suppress_move_check;
         let old_suppress_record = self.suppress_move_record;
         self.suppress_move_check = true;
@@ -918,24 +917,31 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let handler_effect_type = self.next_type_variable();
         self.name_types.insert(handle.handler_name, handler_effect_type.clone());
 
-        // Body: fn handler_name -> expected can expected_and_e
+        // The parser wraps the handled expression in `fn () -> <body>` to serve as the
+        // coroutine's init function.
         let body_env = self.next_type_variable();
         let body_type = Type::Function(Arc::new(FunctionType {
-            parameters: vec![ParameterType::explicit(handler_effect_type.clone())],
+            parameters: vec![ParameterType::explicit(Type::UNIT)],
             environment: body_env,
             return_type: expected.clone(),
-            // effects: expected_and_e.clone(),
         }));
         self.expr_types.insert(handle.expression, body_type.clone());
 
         let options = LambdaOptions::default();
         let body_lambda = self.unwrap_lambda(handle.expression);
-        self.check_lambda_impl(&body_lambda, &body_type, handle.expression, None, options);
 
-        // Snapshot the set of names visible before any handler branch runs.
-        // Each branch is checked against this snapshot so moves of non-Copy
-        // outer variables inside a branch are reported — a branch can fire
-        // more than once, so those moves are not safe.
+        // Predeclare `handler_name` for the body's free-vars analysis: `h` is accessed at runtime
+        // through the coroutine's user_data, so it must not be tracked as a captured variable in
+        // the body lambda's environment.
+        self.check_lambda_impl(
+            &body_lambda,
+            &body_type,
+            handle.expression,
+            Some(handle.handler_name),
+            options,
+        );
+
+        // Prevent any names visible from before the handler branches from being moved
         // TODO: This is inefficient, remove the need for collecting here
         let outer_names = self.name_types.keys().copied().collect::<FxHashSet<_>>();
 
@@ -957,7 +963,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
             let function_type = Type::Function(Arc::new(FunctionType {
                 parameters: parameter_types.clone(),
-                environment: Type::POINTER,
+                environment: Type::Application(Arc::new(Type::POINTER), Arc::new(vec![Type::UNIT])),
                 return_type: r.clone(),
             }));
             self.check_path(pattern.function, &function_type, None, None);

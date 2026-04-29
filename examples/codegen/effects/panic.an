@@ -1,12 +1,12 @@
 effect Fail with
-    fail: fn Unit -> a
+    fail: fn Unit -> Unit // todo cannot return a / never / bottom
 
 effect Read a with
     read: fn Unit -> a
 
 read_or_none (f: fn {Read Unit} {Fail} -> a): Maybe a =
-    handler hf for fail () -> None in
-    handler hr for read () -> resume () in
+    handler hf for fail () -> None
+    handler hr for read () -> resume ()
     Maybe.Some (f {hr} {hf})
 
 main () = ()

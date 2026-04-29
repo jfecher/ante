@@ -5,13 +5,15 @@ foo {Count} =
     count ()
     repeat 10 fn _ -> count ()
 
-handle_count (f: fn Count -> Unit) =
-    handler h for count () -> 1 + resume () in
-        f h
+handle_count (f: fn {Count} -> Unit) =
+    handler h for count () ->
+        1 + resume ()
+    in
+        f {h}
         0
 
 main () =
-    handle_count foo |> print
+    handle_count foo |> println
 
 // args: --delete-binary --no-color
 // expected stdout: 11

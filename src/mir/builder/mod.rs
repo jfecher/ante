@@ -84,10 +84,7 @@ where
         },
         cst::TopLevelItemKind::TraitDefinition(_) => unreachable!("Traits should be desguared to types"),
         cst::TopLevelItemKind::TraitImpl(_) => unreachable!("Trait impls should be desguared to definitions"),
-        cst::TopLevelItemKind::EffectDefinition(effect_definition) => {
-            context.effect_definition(effect_definition);
-            Some(context.finish())
-        },
+        cst::TopLevelItemKind::EffectDefinition(_) => unreachable!("Effects should be desugared to types"),
         cst::TopLevelItemKind::Comptime(_) => None,
     }
 }
@@ -514,7 +511,7 @@ where
         }
 
         // Cold path: this TopLevelId is an effect definition. Verify that the
-        // referenced NameId is one of its ops (defensive — every name pointing
+        // referenced NameId is one of its ops (every name pointing
         // into an effect def should be an op, but we confirm to be safe).
         let (item, _) = GetItemRaw(name.top_level_item).get(self.compiler);
         if let cst::TopLevelItemKind::EffectDefinition(effect) = &item.kind {
@@ -522,7 +519,7 @@ where
                 return Some(self.get_definition_id(&name));
             }
         }
-        None
+        unreachable!()
     }
 
     fn try_find_name(&self, pattern: PatternId) -> Option<(Name, NameId)> {
@@ -580,6 +577,16 @@ where
 
     fn lambda(
         &mut self, lambda: &cst::Lambda, name_id: Option<NameId>, name: Option<Name>, expr: ExprId, is_global: bool,
+    ) -> Value {
+        self.lambda_impl(lambda, name_id, name, expr, is_global, None)
+    }
+
+    /// When `handle_body_handler_name` is `Some(h)`, this lambda is the body of a `handle` expression.
+    /// Inject a prelude that loads the capability from the coroutine's user_data and binds it
+    /// to `h` in `local_variables` so the body's references to `h` resolve.
+    fn lambda_impl(
+        &mut self, lambda: &cst::Lambda, name_id: Option<NameId>, name: Option<Name>, expr: ExprId, is_global: bool,
+        handle_body_handler_name: Option<NameId>,
     ) -> Value {
         let name = name.unwrap_or_else(|| Arc::new("lambda".to_string()));
         let full_type = self.convert_expr_type(expr);
@@ -639,6 +646,47 @@ where
                         }
                     }
                 }
+            }
+
+            // For a `handle` expression's body lambda, the handler name `h` is not part of
+            // the closure environment (`mco_coro_init` requires a no-arg entry function).
+            // Instead, the capability lives in the coroutine's user_data slot,
+            // populated by the effect-lowering pass. Inject a prelude here that loads it
+            // and binds it to `h` so any references inside the body resolve.
+            if let Some(handler_name) = handle_body_handler_name {
+                let h_tc_type = this.types.result.maps.name_types[&handler_name].clone();
+                let h_type = this.convert_type(&h_tc_type, None);
+
+                let mco_running = this.push_instruction(
+                    Instruction::Extern("mco_coro_running".to_string()),
+                    Type::Function(Arc::new(crate::mir::FunctionType {
+                        parameters: vec![],
+                        environment: Type::NO_CLOSURE_ENV,
+                        return_type: Type::POINTER,
+                    })),
+                );
+                let coro = this
+                    .push_instruction(Instruction::Call { function: mco_running, arguments: vec![] }, Type::POINTER);
+
+                let mco_get_user_data = this.push_instruction(
+                    Instruction::Extern("mco_coro_get_user_data".to_string()),
+                    Type::Function(Arc::new(crate::mir::FunctionType {
+                        parameters: vec![Type::POINTER],
+                        environment: Type::NO_CLOSURE_ENV,
+                        return_type: Type::POINTER,
+                    })),
+                );
+                let user_data = this.push_instruction(
+                    Instruction::Call { function: mco_get_user_data, arguments: vec![coro] },
+                    Type::POINTER,
+                );
+
+                // user_data layout is `(cap, env)` where `env` is `Unit` when the body has no captures
+                let env_type = function_type.environment().cloned().unwrap_or(Type::UNIT);
+                let user_data_type = Type::Tuple(Arc::new(vec![h_type.clone(), env_type]));
+                let cap_and_env = this.push_instruction(Instruction::Deref(user_data), user_data_type);
+                let cap = this.push_instruction(Instruction::IndexTuple { tuple: cap_and_env, index: 0 }, h_type);
+                this.local_variables.insert(handler_name, cap);
             }
 
             // Pre-populate the self-reference so recursive calls within the body
@@ -960,9 +1008,8 @@ where
             _ => unreachable!("Only `(tag, union)` tuples may have fields to extract"),
         };
 
-        // Tagged unions have the form `(u8_tag, Union[...])`.
-        // Product types (pairs, structs) are plain tuples — return the value directly
-        // so the caller can index its fields at positions 0, 1, etc.
+        // Tagged unions have the form `(u8_tag, Union[...])` while
+        // product types are plain tuples and should be returned directly
         if fields.len() != 2 || !matches!(fields[1], Type::Union(_)) {
             return value_being_matched;
         }
@@ -985,8 +1032,17 @@ where
     fn handle(&mut self, handle: &cst::Handle, expr: ExprId) -> Value {
         let result_type = self.expr_type(expr);
 
-        // The parser wraps both the handled expression and each branch in closures already
-        let body = self.expression(handle.expression);
+        // The parser wraps the handled expression in `fn () -> <body>` so it can serve as a
+        // coroutine entry. Build that body lambda with a prelude that loads `h` from the
+        // coroutine's user_data.
+        let body = match &self.context()[handle.expression] {
+            cst::Expr::Lambda(body_lambda) => {
+                let body_lambda = body_lambda.clone();
+                self.lambda_impl(&body_lambda, None, None, handle.expression, false, Some(handle.handler_name))
+            },
+            _ => unreachable!("handle.expression should be a Lambda after parsing"),
+        };
+
         let cases = mapvec(&handle.cases, |(pattern, branch)| {
             let effect_op =
                 self.try_resolve_effect_op(pattern.function).expect("Couldn't find effect op in MIR handle");
@@ -1001,12 +1057,11 @@ where
     /// body of each stub is `fn op args.. = perform op args..`, ensuring the
     /// operation can be used as a first-class value (passed to higher-order code)
     /// while also unambiguously naming the effect via its [DefinitionId].
-    fn effect_definition(&mut self, effect: &cst::EffectDefinition) {
-        for declaration in &effect.body {
-            let name_id = declaration.name;
+    fn define_effect_operations(&mut self, op_names: impl IntoIterator<Item = NameId>) {
+        for name_id in op_names {
             let top_level_name = TopLevelName::new(self.top_level_id, name_id);
 
-            // Skip non-function operations — unusual, treated as values elsewhere.
+            // TODO: Error on non-function effect operations
             let generalized = self.types.get_generalized(name_id);
             self.set_generics_in_scope(generalized);
             let typ = self.convert_type(generalized, None);
@@ -1028,6 +1083,11 @@ where
                     })
                     .collect();
 
+                // Effect operations are typed as closures with an environment type of `Ptr Unit`,
+                if let Some(env) = fn_type.environment() {
+                    this.push_parameter(env.clone());
+                }
+
                 // Self-reference: the operation's own DefinitionId is the effect-op tag.
                 let self_id = this.current_function.as_ref().unwrap().id;
                 let perform = Instruction::Perform { effect_op: self_id, arguments: param_values };
@@ -1042,8 +1102,8 @@ where
         let rhs = reference.rhs;
         let context = self.context();
 
-        // If the RHS is a locally mutable variable, its value in local_variables is already the
-        // StackAlloc pointer — return it directly as the reference.
+        // If the RHS is a locally mutable variable, its value in local_variables
+        // is already the StackAlloc pointer.
         if let cst::Expr::Variable(path_id) = &context[rhs] {
             let path_id = *path_id;
             if let Some(Origin::Local(name)) = context.path_origin(path_id) {
@@ -1251,6 +1311,16 @@ where
         // appropriate arguments to the `cast` field.
         if type_definition.is_trait {
             self.define_trait_methods(type_definition);
+        }
+
+        // Effects are also desugared to a struct, but each field is an effect operation that
+        // must be callable as a free identifier (e.g. `get ()` rather than `Use.get ()`). Emit a
+        // `perform`-stub function for each so the operation has a stable, first-class identity.
+        if type_definition.is_effect {
+            if let cst::TypeDefinitionBody::Struct(fields) = &type_definition.body {
+                let op_names = fields.iter().map(|(name, _)| *name).collect::<Vec<_>>();
+                self.define_effect_operations(op_names);
+            }
         }
     }
 

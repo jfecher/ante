@@ -463,12 +463,27 @@ impl<'contents> Lexer<'contents> {
         // of checking the last_indent level that was just popped.
         self.return_newline = !self.newlines_ignored();
 
-        if new_indent > last_indent.column {
+        let token = if new_indent > last_indent.column {
             Some((Token::Error(LexerError::UnindentToNewLevel), self.locate()))
         } else if last_indent.ignored {
-            self.next()
+            None
         } else {
             Some((Token::Unindent, self.locate()))
+        };
+
+        // If unindenting landed between two existing stack levels (e.g. popping a
+        // col-8 ignored block leaves us at col 6 above col 4), record that
+        // intermediate column as an ignored level so the stack stays in sync with
+        // current_indent_level. Without this the next unindent would pop a level
+        // we still need (eventually emptying the stack and panicking).
+        let new_top = self.indent_levels.last().map(|l| l.column).unwrap_or(0);
+        if new_indent > new_top {
+            self.indent_levels.push(IndentLevel::ignored(new_indent));
+        }
+
+        match token {
+            Some(t) => Some(t),
+            None => self.next(),
         }
     }
 

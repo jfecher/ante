@@ -25,21 +25,21 @@ main () =
 // args: -e ast-t --no-color
 // expected exit status: 1
 // expected stdout:
-// (main: fn Unit -> Unit pure) () =
-//     (tuple: I32, I32) = 1 (,: fn I32 I32 -> I32, I32 pure) 1
-//     (_: ref I32) = (ref ref (tuple: I32, I32)).first (.*: fn (ref (ref I32)) {Copy (ref I32)} -> ref I32 pure) (copy_ref: Copy (ref I32))
+// (main: fn Unit -> Unit) () =
+//     (tuple: I32, I32) = 1 (,: fn I32 I32 -> I32, I32) 1
+//     (_: ref I32) = (ref ref (tuple: I32, I32)).first (.*: fn (ref (ref I32)) {Copy (ref I32)} -> ref I32) (copy_ref: Copy (ref I32))
 //     (_: mut I32) = mut (tuple: I32, I32).first
 //     (_: mut _) = mut (tuple: I32, I32).missing
 //     (imm_ref: ref (I32, I32)) = ref (tuple: I32, I32)
-//     (_: mut I32) = mut (imm_ref: ref (I32, I32)).first (.*: fn (ref I32) {Copy I32} -> I32 pure) (copy_i32: Copy I32)
+//     (_: mut I32) = mut (imm_ref: ref (I32, I32)).first (.*: fn (ref I32) {Copy I32} -> I32) (copy_i32: Copy I32)
 //     (_: mut _) = mut (imm_ref: ref (I32, I32)).missing
-//     mut (mut_tuple: I32, I32) = 1 (,: fn I32 I32 -> I32, I32 pure) 1
+//     mut (mut_tuple: I32, I32) = 1 (,: fn I32 I32 -> I32, I32) 1
 //     (_: ref _) = ref (mut_tuple: I32, I32).missing
 //     (_: mut _) = mut (mut_tuple: I32, I32).missing
 //     (mut_ref: mut (I32, I32)) = mut (mut_tuple: I32, I32)
 //     (_: ref _) = ref (mut_ref: mut (I32, I32)).missing
 //     (_: mut _) = mut (mut_ref: mut (I32, I32)).missing
-//     (_: mut (ref I32)) = mut (mut ref (tuple: I32, I32)).first (.*: fn (ref (ref I32)) {Copy (ref I32)} -> ref I32 pure) (copy_ref: Copy (ref I32))
+//     (_: mut (ref I32)) = mut (mut ref (tuple: I32, I32)).first (.*: fn (ref (ref I32)) {Copy (ref I32)} -> ref I32) (copy_ref: Copy (ref I32))
 
 // expected stderr:
 // examples/typechecking/field_diagnostics.an:7:18
@@ -73,4 +73,3 @@ main () =
 //    |                    ^^^^^^^^
 // 
 // Found 6 errors and 0 warnings
-

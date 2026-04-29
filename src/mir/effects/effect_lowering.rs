@@ -1,52 +1,16 @@
 //! Lower [crate::mir::Instruction::Handle] and [crate::mir::Instruction::Perform]
-//! into aminicoro primitives, using the *capability* design introduced on the
-//! `capabilities` branch.
+//! into aminicoro primitives.
 //!
-//! Each effect-handler `handler h for op_0 args -> b0 | ... | op_{N-1} args -> bN-1 in body`
-//! lowers as follows:
+//! Each Handler expression lowers into:
+//! - An init function wrapping the handled expression
+//! - Creating the coroutine via `mco_coro_init` with the init function
+//! - Creating a `drive` function to resume the coroutine, which gets passed
+//!   as the capability value.
 //!
-//! 1. The body closure is heap-anchored and a coroutine `coro` is created via
-//!    `mco_coro_init(body_entry, &body)`.
-//! 2. For each case `i`, a free function `wrap_i(op_args.., env: Pointer) -> ret_i`
-//!    is emitted. The wrapper's environment carries the coroutine pointer
-//!    directly (returned by `mco_coro_init`), so the wrapper does **not** call
-//!    `mco_coro_running()`. Body of wrap_i:
-//!        state = deref env                       (env is &(coro, ..))
-//!        coro  = state.0
-//!        push coro op_args..
-//!        push coro case_tag = i                  (local tag, 0..N-1, NOT global)
-//!        mco_coro_suspend coro
-//!        pop coro result
-//!        return result
-//! 3. Each `wrap_i` is `PackClosure`'d with the state-pointer environment to
-//!    form the slot-`i` capability closure. The capability value passed to
-//!    `body` is `MakeTuple(closure_0, .., closure_{N-1})`.
-//! 4. A per-Handle `drive` function:
-//!        drive(coro, handler_0, .., handler_{N-1}) -> r:
-//!          mco_coro_resume coro
-//!          if !is_suspended: pop r and return
-//!          pop tag (u32)
-//!          switch tag in 0..N:
-//!            case i: pop op_i_args; resume_closure = PackClosure(resume_i, state)
-//!                    r = handler_i(op_i_args.., resume_closure); jmp final(r)
-//!          final r: return r
-//!    drives the coroutine to completion. After drive returns, the caller
-//!    `mco_coro_free`s `coro`. resume_i pushes the resumed value onto coro
-//!    and recurses into drive. No global op-table, no forwarded cases —
-//!    nested handlers compose through normal function calls because each
-//!    capability wrapper carries its own coro pointer.
-//!
-//! Each `Perform { effect_op, arguments }` is rewritten as:
-//!    cap = arguments.last()                       (the implicit capability)
-//!    wrapper = IndexTuple(cap, op_index)
-//!    result  = CallClosure(wrapper, op_args..)
-//! where `op_index` is the operation's position within its parent effect.
-//! The position is determined by scanning `Handle.cases` in the MIR — every
-//! `Handle` of an effect agrees on case order (post-typecheck invariant).
-//!
-//! Because wrappers are ordinary closures, a future tail-resume optimization
-//! can substitute a non-coroutine wrapper closure transparently — the
-//! capability shape (`fn op_args.. [env] -> ret`) is identical.
+//! Each effect performed uses `mco_coro_push` to push the relevant arguments
+//! to the effect, followed by the tag of the effect performed, before calling
+//! the driver function which will resume the handler, match on the effect,
+//! and dispatch to the relevant handler branch.
 use std::sync::Arc;
 
 use rustc_hash::FxHashMap;
@@ -136,8 +100,6 @@ fn contains_effects(mir: &Mir) -> bool {
 }
 
 /// Mapping from an effect-op DefinitionId to its position within its parent effect.
-/// Built by scanning every Handle's case list — case order in the MIR is the
-/// canonical position order, established by the parser/type-checker.
 type OpIndex = FxHashMap<DefinitionId, u32>;
 
 fn build_op_index(mir: &Mir) -> OpIndex {
@@ -356,14 +318,14 @@ fn rewrite_single_perform(mir: &mut Mir, definition_id: DefinitionId, site: Perf
 
     let return_type = mir.definitions[&definition_id].instruction_result_types[original_id].clone();
 
-    let op_index = *context.op_index.get(&op).unwrap_or_else(|| {
-        panic!("effect_lowering: effect op {op:?} has no Handle in the program — cannot resolve op-position")
-    });
+    let op_index = *context
+        .op_index
+        .get(&op)
+        .unwrap_or_else(|| panic!("effect_lowering: effect op {op:?} has no Handle in the program"));
 
     // Capability is the implicit trailing argument, appended by implicit-arg resolution.
-    let (cap_value, op_args) = arguments
-        .split_last()
-        .unwrap_or_else(|| panic!("effect_lowering: Perform {op:?} has no arguments — capability missing"));
+    let (cap_value, op_args) =
+        arguments.split_last().unwrap_or_else(|| panic!("effect_lowering: Perform {op:?} has no arguments"));
     let cap_value = *cap_value;
     let op_args: Vec<Value> = op_args.to_vec();
 
@@ -450,11 +412,43 @@ fn case_shape_from_handler_type(handler_type: &Type) -> Option<CaseShape> {
     Some(CaseShape { op_arg_types: op_args.to_vec(), op_return_type, handler_is_closure: ft.is_closure() })
 }
 
+/// Resolve a `handle` body Value down to the underlying function `DefinitionId` plus an
+/// optional closure environment value. Recurses through `Id` (the post-monomorphization form
+/// of `Instantiate`) and unwraps a single layer of `PackClosure`.
+fn resolve_body_function(body: Value, definition: &Definition) -> (DefinitionId, Option<Value>) {
+    fn resolve_id(value: Value, definition: &Definition) -> DefinitionId {
+        match value {
+            Value::Definition(id) => id,
+            Value::InstructionResult(iid) => match &definition.instructions[iid] {
+                Instruction::Id(inner) => resolve_id(*inner, definition),
+                Instruction::Instantiate(id, _) => *id,
+                other => panic!("handle body function did not resolve to a definition: {other:?}"),
+            },
+            other => panic!("handle body function has unexpected Value shape: {other:?}"),
+        }
+    }
+
+    match body {
+        Value::InstructionResult(iid) => match &definition.instructions[iid] {
+            Instruction::PackClosure { function, environment } => {
+                (resolve_id(*function, definition), Some(*environment))
+            },
+            _ => (resolve_id(body, definition), None),
+        },
+        _ => (resolve_id(body, definition), None),
+    }
+}
+
 fn rewrite_single_handle(mir: &mut Mir, definition_id: DefinitionId, site: HandleSite, context: Context) {
     let HandleSite { block, index, id: original_id, body, cases, result_type } = site;
 
     let definition = mir.definitions.get(&definition_id).expect("definition vanished mid-rewrite");
-    let body_type = definition.type_of_value(&body, &mir.externals, &mir.definitions);
+
+    let (body_fn_id, body_env) = resolve_body_function(body, definition);
+    let env_type = match body_env {
+        Some(env) => definition.type_of_value(&env, &mir.externals, &mir.definitions),
+        None => Type::UNIT,
+    };
     let handler_types =
         mapvec(&cases, |case| definition.type_of_value(&case.handler, &mir.externals, &mir.definitions));
     let case_shapes: Vec<CaseShape> = handler_types
@@ -470,11 +464,10 @@ fn rewrite_single_handle(mir: &mut Mir, definition_id: DefinitionId, site: Handl
         .enumerate()
         .map(|(i, shape)| generate_capability_wrapper(mir, i as u32, shape, context))
         .collect();
-    let wrapper_closure_types: Vec<Type> =
-        wrapper_ids.iter().map(|id| mir.definitions[id].typ.clone()).map(closurize_wrapper_type).collect();
+    let wrapper_closure_types: Vec<Type> = wrapper_ids.iter().map(|id| mir.definitions[id].typ.clone()).collect();
     let cap_tuple_type = Type::Tuple(Arc::new(wrapper_closure_types.clone()));
 
-    let body_wrapper_id = generate_body_wrapper(mir, body_type.clone(), &cap_tuple_type, &result_type, context);
+    let body_wrapper_id = generate_body_wrapper(mir, body_fn_id, &env_type, &cap_tuple_type, &result_type, context);
     let drive_id = generate_drive_function(mir, &cases, &handler_types, &case_shapes, &result_type, context);
 
     let definition = mir.definitions.get_mut(&definition_id).expect("definition disappeared mid-rewrite");
@@ -483,17 +476,15 @@ fn rewrite_single_handle(mir: &mut Mir, definition_id: DefinitionId, site: Handl
     {
         let mut emitter = Emitter::pending(definition, &mut pending);
 
-        let body_slot = emitter.push_instruction(Instruction::StackAlloc(body), Type::POINTER);
-        let wrapper_ptr =
-            emitter.push_instruction(Instruction::Transmute(Value::Definition(body_wrapper_id)), Type::POINTER);
-        let coro = emitter.call_extern(&context.mco.init, vec![wrapper_ptr, body_slot]);
-
-        // Build the capability tuple: each wrap_i is closure-packed with an env holding `coro`.
-        // The same `coro` is passed to drive below; consistency between body's wrappers and
-        // drive's pop sequence is what makes this Handle site self-consistent.
+        // Allocate cap_state up front with a placeholder coro pointer. The wrappers reference
+        // cap_state by address (PackClosure env = cap_state_ptr), so the closures can be built
+        // before we have the real `coro`; we patch the placeholder once `mco_coro_init` returns.
         let cap_state_type = Type::Tuple(Arc::new(vec![Type::POINTER]));
-        let cap_state = emitter.push_instruction(Instruction::MakeTuple(vec![coro]), cap_state_type.clone());
-        let cap_state_ptr = emitter.push_instruction(Instruction::StackAlloc(cap_state), Type::POINTER);
+        let null_ptr =
+            emitter.push_instruction(Instruction::Transmute(Value::Integer(IntConstant::Usz(0))), Type::POINTER);
+        let initial_cap_state =
+            emitter.push_instruction(Instruction::MakeTuple(vec![null_ptr]), cap_state_type.clone());
+        let cap_state_ptr = emitter.push_instruction(Instruction::StackAlloc(initial_cap_state), Type::POINTER);
 
         let cap_closures: Vec<Value> = wrapper_ids
             .iter()
@@ -507,26 +498,21 @@ fn rewrite_single_handle(mir: &mut Mir, definition_id: DefinitionId, site: Handl
             .collect();
         let cap_tuple = emitter.push_instruction(Instruction::MakeTuple(cap_closures), cap_tuple_type.clone());
 
-        // Stash the capability tuple in the coroutine's user_data slot alongside body so the
-        // body wrapper can pull it out and pass it to body. This avoids changing body's call
-        // signature in the MIR builder. The user_data points to a (body, cap) pair.
-        // TODO: When upstream MIR construction binds `h` to a parameter on `body` directly,
-        // this indirection collapses to passing `cap` as a body argument.
-        let body_and_cap_type = Type::Tuple(Arc::new(vec![body_type.clone(), cap_tuple_type.clone()]));
-        let body_and_cap =
-            emitter.push_instruction(Instruction::MakeTuple(vec![body, cap_tuple]), body_and_cap_type.clone());
-        let body_and_cap_ptr = emitter.push_instruction(Instruction::StackAlloc(body_and_cap), Type::POINTER);
+        // user_data layout is `cap, env` - `env` is `()` when the body has no captures
+        let env_value = body_env.unwrap_or(Value::Unit);
+        let cap_and_env_type = Type::Tuple(Arc::new(vec![cap_tuple_type.clone(), env_type.clone()]));
+        let cap_and_env =
+            emitter.push_instruction(Instruction::MakeTuple(vec![cap_tuple, env_value]), cap_and_env_type.clone());
+        let cap_and_env_ptr = emitter.push_instruction(Instruction::StackAlloc(cap_and_env), Type::POINTER);
 
-        // We initialized the coroutine before having the cap, so re-init now that we have a
-        // proper user_data pointer. (Equivalently: we could split cap construction before init,
-        // but cap_state needs `coro` itself, so the order is fixed: init→build cap→re-init.)
-        // mco_coro_init is idempotent for our purposes — replacing user_data is the only effect.
-        let _ = body_and_cap_ptr;
-        // Instead, overwrite the original body_slot's content with the (body, cap) pair so the
-        // body wrapper sees both when it derefs user_data.
-        emitter.push_instruction(Instruction::Store { pointer: body_slot, value: body_and_cap }, Type::UNIT);
+        let wrapper_ptr =
+            emitter.push_instruction(Instruction::Transmute(Value::Definition(body_wrapper_id)), Type::POINTER);
+        let coro = emitter.call_extern(&context.mco.init, vec![wrapper_ptr, cap_and_env_ptr]);
 
-        // drive(coro, handler_0, .., handler_{N-1}) returns the Handle's result type.
+        // Patch cap_state to hold the real `coro` now that we have it
+        let real_cap_state = emitter.push_instruction(Instruction::MakeTuple(vec![coro]), cap_state_type);
+        emitter.push_instruction(Instruction::Store { pointer: cap_state_ptr, value: real_cap_state }, Type::UNIT);
+
         let mut drive_arguments = Vec::with_capacity(1 + cases.len());
         drive_arguments.push(coro);
         for case in &cases {
@@ -543,30 +529,20 @@ fn rewrite_single_handle(mir: &mut Mir, definition_id: DefinitionId, site: Handl
     definition.blocks[block].instructions.splice(index..=index, pending);
 }
 
-/// Convert the bare wrapper function type into its closure (capability slot) type.
-/// Wrappers are emitted as `fn (op_args.., env: Pointer) -> ret` (a free function whose
-/// last parameter is the env). The capability slot type is the closure-shaped equivalent
-/// `fn (op_args..) [Pointer] -> ret`.
-fn closurize_wrapper_type(wrapper_type: Type) -> Type {
-    let Type::Function(ft) = wrapper_type else { return Type::ERROR };
-    let (env, op_args) = match ft.parameters.split_last() {
-        Some((env, rest)) => (env.clone(), rest.to_vec()),
-        None => (Type::POINTER, Vec::new()),
-    };
-    Type::Function(Arc::new(FunctionType {
-        parameters: op_args,
-        environment: env,
-        return_type: ft.return_type.clone(),
-    }))
-}
-
-/// Generate `wrap_i(op_args.., env: Pointer) -> ret_i`. Pulls `coro` out of env, pushes
+/// Generate `wrap_i op_args.. (env: Pointer) -> ret_i`. Pulls `coro` out of env, pushes
 /// op_args.. + tag=i onto coro, suspends, pops the resumed result, returns it.
 fn generate_capability_wrapper(mir: &mut Mir, case_index: u32, shape: &CaseShape, context: Context) -> DefinitionId {
     let wrap_id = next_definition_id();
     let mut params: Vec<Type> = shape.op_arg_types.clone();
-    params.push(Type::POINTER); // env
-    let wrap_type = ptr_fn(params.clone(), shape.op_return_type.clone());
+    params.push(Type::POINTER); // env (last entry-block parameter, matching closure layout)
+
+    // The wrapper is always a closure with a single captured pointer containing
+    // any necessary captures
+    let wrap_type = Type::Function(Arc::new(FunctionType {
+        parameters: shape.op_arg_types.clone(),
+        environment: Type::POINTER,
+        return_type: shape.op_return_type.clone(),
+    }));
 
     let mut definition = Definition::new(Arc::new(format!("handle_cap_wrap_{case_index}")), wrap_id, 0, wrap_type);
     let entry = BlockId::ENTRY_BLOCK;
@@ -603,14 +579,16 @@ fn generate_capability_wrapper(mir: &mut Mir, case_index: u32, shape: &CaseShape
     wrap_id
 }
 
-/// Generate `fn (coro: Pointer) -> Unit`. Reads the (body, cap) pair from the coroutine's
-/// user_data, invokes body with cap as its argument, and pushes the result onto the
-/// coroutine's channel for `drive` to pop.
+/// Generate `fn (coro: Pointer) -> Unit`. The body function is statically known
+/// (`body_fn_id`); the only thing this wrapper has to fish out of `user_data` is the body's
+/// closure environment, when the body has one. Pushes the body's result onto the coroutine
+/// channel for `drive` to pop.
 fn generate_body_wrapper(
-    mir: &mut Mir, body_type: Type, cap_type: &Type, result_type: &Type, context: Context,
+    mir: &mut Mir, body_fn_id: DefinitionId, env_type: &Type, cap_type: &Type, result_type: &Type, context: Context,
 ) -> DefinitionId {
     let wrapper_id = next_definition_id();
     let wrapper_type = ptr_fn(vec![Type::POINTER], Type::UNIT);
+    let body_type = mir.definitions[&body_fn_id].typ.clone();
 
     let mut definition = Definition::new(Arc::new("handle_body_wrapper".to_string()), wrapper_id, 0, wrapper_type);
     let entry = BlockId::ENTRY_BLOCK;
@@ -619,22 +597,28 @@ fn generate_body_wrapper(
 
     let mut emitter = Emitter::in_block(&mut definition, entry);
 
-    let user_data = emitter.call_extern(&context.mco.get_user_data, vec![coro]);
-    let body_and_cap_type = Type::Tuple(Arc::new(vec![body_type.clone(), cap_type.clone()]));
-    let body_and_cap = emitter.push_instruction(Instruction::Deref(user_data), body_and_cap_type);
-    let body_value =
-        emitter.push_instruction(Instruction::IndexTuple { tuple: body_and_cap, index: 0 }, body_type.clone());
-    let cap_value =
-        emitter.push_instruction(Instruction::IndexTuple { tuple: body_and_cap, index: 1 }, cap_type.clone());
+    let body_is_closure = matches!(&body_type, Type::Function(ft) if ft.is_closure());
 
-    let call = match &body_type {
-        Type::Function(function_type) if function_type.is_closure() => {
-            Instruction::CallClosure { closure: body_value, arguments: vec![cap_value] }
-        },
-        Type::Tuple(_) => Instruction::CallClosure { closure: body_value, arguments: vec![cap_value] },
-        _ => Instruction::Call { function: body_value, arguments: vec![cap_value] },
+    let result = if body_is_closure {
+        // user_data: `cap, env`. Load env, reconstruct the closure with the statically-known
+        // body function, and CallClosure it. The body's prelude reads cap from user_data.
+        let user_data = emitter.call_extern(&context.mco.get_user_data, vec![coro]);
+        let cap_and_env_type = Type::Tuple(Arc::new(vec![cap_type.clone(), env_type.clone()]));
+        let cap_and_env = emitter.push_instruction(Instruction::Deref(user_data), cap_and_env_type);
+        let env_value =
+            emitter.push_instruction(Instruction::IndexTuple { tuple: cap_and_env, index: 1 }, env_type.clone());
+        let closure = emitter.push_instruction(
+            Instruction::PackClosure { function: Value::Definition(body_fn_id), environment: env_value },
+            body_type,
+        );
+        emitter
+            .push_instruction(Instruction::CallClosure { closure, arguments: vec![Value::Unit] }, result_type.clone())
+    } else {
+        emitter.push_instruction(
+            Instruction::Call { function: Value::Definition(body_fn_id), arguments: vec![Value::Unit] },
+            result_type.clone(),
+        )
     };
-    let result = emitter.push_instruction(call, result_type.clone());
     emitter.push_bytes(context.mco, coro, result, result_type, context.ptr_size);
 
     definition.blocks[entry].terminator = Some(TerminatorInstruction::Return(Value::Unit));
@@ -642,10 +626,7 @@ fn generate_body_wrapper(
     wrapper_id
 }
 
-/// Per-Handle drive: switches over only this Handle's cases (0..N-1, by case
-/// index — *not* a global op-tag). Forwarding is handled implicitly by
-/// capability wrappers carrying their own coro pointer, so there's no
-/// "forward to outer coro" branch.
+/// Per-Handle drive: switches over only this Handle's cases (0..N-1, by case index)
 fn generate_drive_function(
     mir: &mut Mir, cases: &[HandlerCase], handler_types: &[Type], case_shapes: &[CaseShape], result_type: &Type,
     context: Context,
@@ -657,12 +638,9 @@ fn generate_drive_function(
 
     // One resume helper per case. Each captures (coro, handlers..) so it can
     // re-invoke drive with the same handler set when the body resumes.
-    let resume_functions: Vec<DefinitionId> = case_shapes
-        .iter()
-        .map(|shape| {
-            generate_resume_function(mir, shape.op_return_type.clone(), drive_id, handler_types, result_type, context)
-        })
-        .collect();
+    let resume_functions = mapvec(case_shapes, |shape| {
+        generate_resume_function(mir, shape.op_return_type.clone(), drive_id, handler_types, result_type, context)
+    });
 
     let mut definition = Definition::new(Arc::new("handle_drive".to_string()), drive_id, 0, drive_type);
     let entry = BlockId::ENTRY_BLOCK;

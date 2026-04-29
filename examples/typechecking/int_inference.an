@@ -1,15 +1,7 @@
 main () =
     print 2
 
-// This example is actually more problematic than it initially appears.
-// Because integer literals with no suffix have a polymorphic type
-// and print has the type `forall a. fn a {Print a} -> Unit`
-// Then even with defaulting rules for `a` to `I32` we can still get
-// a "No impl found for Print a" error if the Print trait constraint is
-// resolved before the integer defaulting rules are.
-
 // args: -e ast-t --no-color
 // expected stdout:
-// (main: fn Unit -> Unit pure) () =
-//     (print: fn I32 {Print I32} -> Unit pure) 2 {(print_i32: Print I32)}
-
+// (main: fn Unit -> Unit) () =
+//     (print: fn I32 {Print I32} -> Unit) 2 {(print_i32: Print I32)}

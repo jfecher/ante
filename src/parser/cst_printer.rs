@@ -936,9 +936,7 @@ impl<'a> CstDisplay<'a> {
         write!(f, " <- ")?;
         self.fmt_expr(bind.rhs, context, f)?;
 
-        // The body is a Sequence whose items are siblings of the bind line in the
-        // surrounding block — print them at the current indent level rather than
-        // further nesting them via fmt_sequence's indent increment.
+        // Print the rest of the body at the same indent level
         if let Expr::Sequence(items) = context.get_expr(bind.body) {
             for item in items {
                 self.newline(f)?;

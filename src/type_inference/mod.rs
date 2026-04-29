@@ -578,23 +578,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         &self, actual: &Type, expected: &Type, new_bindings: &mut TypeBindings,
     ) -> Result<(), ()> {
         match (actual, expected) {
-            // Treat a bare unbound variable paired with an Effects set as an open empty effect
-            // row: wrap the variable as `Effects([Variable])` and delegate to the row-subsumption
-            // arm below. Without this, unifying a fresh effect-row variable against a concrete
-            // effect set (e.g. `pure = Effects([])`) via the generic Variable arm would bind the
-            // variable to that concrete set, closing the row and rejecting later effectful calls.
-            (Type::Variable(actual_id), Type::Effects(_))
-                if self.bindings.get(actual_id).is_none() && new_bindings.get(actual_id).is_none() =>
-            {
-                let wrapped = Type::Effects(Arc::new(vec![Type::Variable(*actual_id)]));
-                self.try_unify_with_bindings(&wrapped, expected, new_bindings)
-            },
-            (Type::Effects(_), Type::Variable(expected_id))
-                if self.bindings.get(expected_id).is_none() && new_bindings.get(expected_id).is_none() =>
-            {
-                let wrapped = Type::Effects(Arc::new(vec![Type::Variable(*expected_id)]));
-                self.try_unify_with_bindings(actual, &wrapped, new_bindings)
-            },
             (Type::Variable(actual_id), expected) => {
                 if let Some(actual) = self.bindings.get(actual_id).cloned() {
                     self.try_unify_with_bindings(&actual, &expected, new_bindings)
@@ -666,64 +649,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     _ => Err(()),
                 }
             },
-            (Type::Effects(actual), Type::Effects(expected)) => {
-                // Allow `expected` to be potentially larger than `actual`.
-                let (mut actual_effects, actual_var) = self.collect_effects_in_types(actual, new_bindings);
-                let (mut expected_effects, expected_var) = self.collect_effects_in_types(expected, new_bindings);
-
-                // Every member of `actual_effects` must be within `expected_effects`
-                // Filter out each element of `actual` in `expected`
-                actual_effects.retain(|actual| {
-                    let actual = actual.follow_all(new_bindings);
-
-                    for (i, expected) in expected_effects.iter().enumerate() {
-                        let expected = expected.follow_all(new_bindings);
-
-                        if let Ok(bindings) = self.try_unify(&actual, &expected) {
-                            new_bindings.extend(bindings);
-                            // Remove the matching effect from both sets
-                            expected_effects.remove(i);
-                            return false;
-                        }
-                    }
-
-                    // Went through all of `expected` but this was not found
-                    true
-                });
-
-                // By this point `actual_effects` contains only the actual effects not in `expected_effects`
-                // and `execpected_effects` contains only the effects not in `actual_effects`.
-
-                if !actual_effects.is_empty() {
-                    if let Some(id) = expected_var {
-                        // Add a type variable to keep it extensible
-                        actual_effects.push(self.next_type_variable());
-                        new_bindings.insert(id, Type::Effects(Arc::new(actual_effects)));
-                    } else {
-                        // `actual` has effects that weren't expected
-                        return Err(());
-                    }
-                }
-
-                if let Some(id) = actual_var
-                    && !expected_effects.is_empty()
-                {
-                    // Add a type variable to keep this set extensible
-                    expected_effects.push(self.next_type_variable());
-                    new_bindings.insert(id, Type::Effects(Arc::new(expected_effects)));
-                }
-
-                Ok(())
-            },
             (actual, other) if actual == other => Ok(()),
             _ => Err(()),
         }
-    }
-
-    /// Collect all the effects in this type, returning the set of concrete effects
-    /// along with the type variable marking it open to extension, if present.
-    fn collect_effects_in_types(&self, types: &[Type], bindings: &TypeBindings) -> (Vec<Type>, Option<TypeVariableId>) {
-        Type::collect_effects_in_types(types, &self.bindings, bindings)
     }
 
     /// Try to bind a type variable, possibly erroring instead if the binding would lead
@@ -769,7 +697,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     || args.iter().any(|arg| self.occurs(arg, variable, new_bindings))
             },
             Type::Forall(_, typ) => self.occurs(typ, variable, new_bindings),
-            Type::Tuple(elements) | Type::Effects(elements) => {
+            Type::Tuple(elements) => {
                 elements.iter().any(|element| self.occurs(element, variable, new_bindings))
             },
         }

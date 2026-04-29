@@ -15,6 +15,32 @@ main () =
     ()
 
 // args: -e ast-t --no-color
+// expected exit status: 1
 // expected stdout:
-// (intentionally not pinned — AST printer output may evolve)
+// type Count =
+//     count: fn Unit [Ptr Unit] -> Unit
+// 
+// (foo: fn {Count} -> Unit) {(_: Count)} =
+//     (count: fn Unit {Count} [Ptr Unit] -> Unit) () {(_: Count)}
+//     (repeat: fn Usz (fn Usz [Count] -> Unit) -> Unit) 10 (fn (_: Usz) [(_: Count)] -> (count: fn Unit {Count} [Ptr Unit] -> Unit) () {(_: Count)})
+// 
+// (handle_count: fn (fn Count -> Unit) -> _) ((f: fn Count -> Unit)) =
+// 
+// (main: fn Unit -> Unit) () =
+//     (handle_count: fn (fn Count -> Unit) -> _) (foo: fn {Count} -> Unit)
+//     ()
 
+// expected stderr:
+// examples/typechecking/count_effect.an:10:1
+//  9 |     handler h for count () -> 1 + resume () in
+// 10 |         f h	// error: Expected an expression but found an indent
+//    | ^^^^^^^^
+// 11 |         0
+// 
+// examples/typechecking/count_effect.an:14:18
+// 13 | main () =
+// 14 |     handle_count foo	// error: Expected fn Count -> Unit but found fn {Count} -> Unit
+//    |                  ^^^
+// 15 |     ()
+// 
+// Found 2 errors and 0 warnings

@@ -512,16 +512,16 @@ enum ExprDesugar {
     /// `"a${x}b${y}c"` desugars to `"a" ++ cast x : String ++ "b" ++ cast y : String ++ "c"`
     StringInterpolation(ExprId),
 
-    /// `if <and-chain containing is> then T else E` — rewrite the whole If into
-    /// a nested match so each `is`'s pattern bindings scope over subsequent
-    /// chain elements and the then-branch.
+    /// `if <and-chain containing is> then T else E`: rewrite the whole If into
+    /// a nested match so each `is`'s pattern bindings are in scope for any
+    /// subsequent chain elements and the then branch.
     IfWithIs(ExprId),
 
-    /// Value-position `and`-chain containing at least one `is` — rewrite the
-    /// whole chain (used as a Bool) into a nested match.
+    /// Value-position `and`-chain containing at least one `is`: rewrite the
+    /// whole chain into a nested match.
     AndWithIs(ExprId),
 
-    /// A bare `x is P` not absorbed by a parent IfWithIs / AndWithIs.
+    /// A bare `x is P` not in a parent if/and expression.
     BareIs(ExprId),
 }
 
@@ -785,9 +785,9 @@ fn desugar_tilde_arrow(expr: ExprId, context: &mut DesugarContext) {
 
 /// Element of a flattened `and`-chain.
 enum ChainElement {
-    /// Opaque boolean subexpression — no pattern bindings to propagate.
+    /// No pattern bindings to propagate.
     Cond(ExprId),
-    /// `lhs is pattern` — pattern bindings scope over subsequent chain elements.
+    /// `lhs is pattern`: pattern bindings scope over subsequent chain elements.
     Is(cst::Is),
 }
 
@@ -857,7 +857,7 @@ fn build_match_from_is(
 /// iff every element succeeds (with each `Is`'s bindings in scope for every
 /// element after it), else `else_expr`.
 ///
-/// `else_expr` is shared across all fallthrough positions — only one fallthrough
+/// `else_expr` is shared across all fallthrough positions. Only one fallthrough
 /// ever runs, so side effects are executed at most once.
 fn compile_chain(parts: &[ChainElement], then_expr: ExprId, else_expr: ExprId, context: &mut DesugarContext) -> ExprId {
     let Some((head, tail)) = parts.split_first() else { return then_expr };
