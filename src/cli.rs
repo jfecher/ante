@@ -13,7 +13,7 @@ pub struct Completions {
 #[command(author, version, about, long_about = None)]
 pub struct Cli {
     /// Path to the source files
-    #[arg(value_hint=ValueHint::FilePath)]
+    #[arg(value_hint = ValueHint::FilePath, required = true)]
     pub files: Vec<PathBuf>,
 
     /// Print out the input file annotated with inferred lifetimes of heap allocations
