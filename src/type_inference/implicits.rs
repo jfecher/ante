@@ -158,7 +158,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 parameters: new_expected,
                 environment: expected.environment.clone(),
                 return_type: expected.return_type.clone(),
-                effects: expected.effects.clone(),
             }));
             self.unify(&Type::Function(actual), &new_fn, TypeErrorKind::General, function);
 
@@ -665,14 +664,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let body_type = Type::ERROR;
         let body = self.push_expr(body, body_type, location);
 
-        // TODO: This should have the same effects as `function`
-        Some(cst::Expr::Lambda(cst::Lambda {
-            parameters,
-            body,
-            return_type: None,
-            effects: Some(Vec::new()),
-            is_move: false,
-        }))
+        Some(cst::Expr::Lambda(cst::Lambda { parameters, body, return_type: None, is_move: false }))
     }
 
     /// Creates a new expression referring to the given implicit value.

@@ -26,37 +26,36 @@ a6 = id auto_prime
 a6_ = id (freeze auto_prime)
 
 a7 = choose id auto
-// a8 = choose id auto_prime // error expected
 
 // args: -e ast-t --no-color
 // expected exit status: 1
 // expected stdout:
-// (id: fn _ -> _ pure) (x: _) = (x: _)
+// (id: fn _ -> _) (x: _) = (x: _)
 // 
 // (ids: _) = (error)
 // 
-// (auto: fn (error) -> _ pure) ((x: (error))) = (x: (error)) (error)
+// (auto: fn (error) -> _) ((x: (error))) = (x: (error)) (error)
 // 
-// (auto_prime: fn (error) -> _ pure) ((x: (error))) = (x: (error)) (x: (error))
+// (auto_prime: fn (error) -> _) ((x: (error))) = (x: (error)) (x: (error))
 // 
-// (f5: _) = (auto: fn (error) -> _ pure) (error)
+// (f5: _) = (auto: fn (error) -> _) (error)
 // 
-// (poly: fn (error) -> _, _ pure) ((f: (error))) =
-//     (f: (error)) 42 (,: fn _ _ -> _, _ pure) (f: (error)) true
+// (poly: fn (error) -> _, _) ((f: (error))) =
+//     (f: (error)) 42 (,: fn _ _ -> _, _) (f: (error)) true
 // 
 // (f9: _) =
-//     (f: fn (fn (error) -> _, _ pure) [_] -> _ pure) = (revapp: (error)) (error)
-//     (f: fn (fn (error) -> _, _ pure) [_] -> _ pure) (poly: fn (error) -> _, _ pure)
+//     (f: fn (fn (error) -> _, _) [_] -> _) = (revapp: (error)) (error)
+//     (f: fn (fn (error) -> _, _) [_] -> _) (poly: fn (error) -> _, _)
 // 
-// (choose: fn a a -> a pure) ((x: a)) ((y: a)) = (x: a)
+// (choose: fn a a -> a) ((x: a)) ((y: a)) = (x: a)
 // 
-// (a5: fn (error) -> _ pure) = (id: fn (fn (error) -> _ pure) -> fn (error) -> _ pure pure) (auto: fn (error) -> _ pure)
+// (a5: fn (error) -> _) = (id: fn (fn (error) -> _) -> fn (error) -> _) (auto: fn (error) -> _)
 // 
-// (a6: fn (error) -> _ pure) = (id: fn (fn (error) -> _ pure) -> fn (error) -> _ pure pure) (auto_prime: fn (error) -> _ pure)
+// (a6: fn (error) -> _) = (id: fn (fn (error) -> _) -> fn (error) -> _) (auto_prime: fn (error) -> _)
 // 
-// (a6_: _) = (id: fn _ -> _ pure) (error)
+// (a6_: _) = (id: fn _ -> _) (error)
 // 
-// (a7: fn (error) -> (error) pure) = (choose: fn (fn (error) -> (error) pure) (fn (error) -> (error) pure) -> fn (error) -> (error) pure pure) (id: fn (error) -> (error) pure) (auto: fn (error) -> (error) pure)
+// (a7: fn (error) -> (error)) = (choose: fn (fn (error) -> (error)) (fn (error) -> (error)) -> fn (error) -> (error)) (id: fn (error) -> (error)) (auto: fn (error) -> (error))
 
 // expected stderr:
 // examples/typechecking/impredicativity.an:4:7
@@ -103,4 +102,3 @@ a7 = choose id auto
 //    |           ^^^^^^
 // 
 // Found 9 errors and 0 warnings
-

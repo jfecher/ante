@@ -13,9 +13,9 @@ foo = hello_foo 42
 //     x: a
 //     y: b
 // 
-// (hello_foo: fn _ -> fn _ _ -> Foo _ _ pure pure) (y: _) = (Foo: fn _ _ -> Foo _ _ pure)
+// (hello_foo: fn _ -> fn _ _ -> Foo _ _) (y: _) = (Foo: fn _ _ -> Foo _ _)
 // 
-// (foo: fn _ _ -> Foo _ _ pure) = (hello_foo: fn I32 -> fn _ _ -> Foo _ _ pure pure) 42
+// (foo: fn _ _ -> Foo _ _) = (hello_foo: fn I32 -> fn _ _ -> Foo _ _) 42
 
 // expected stderr:
 // examples/typechecking/named_constructor.an:5:19
@@ -24,4 +24,3 @@ foo = hello_foo 42
 //   |                   ^^^^
 // 
 // Found 1 error and 0 warnings
-

@@ -125,6 +125,10 @@ pub enum TypeKind {
     /// trait types into in some cases.
     NoClosureEnv,
 
+    /// This type can't be parsed, it is only used by `GetItem` to desugar
+    /// effect operation environments to a pointer type.
+    Pointer,
+
     /// A filler type which corresponds to an unbound type variable to be inferred later
     Hole,
 }
@@ -160,14 +164,8 @@ impl ErrorDefault for Type {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
 pub struct FunctionType {
     pub parameters: Vec<ParameterType>,
-    pub return_type: Box<Type>,
-
     pub environment: Option<Box<Type>>,
-
-    /// Any effects that were specified on this function.
-    /// - `None` means none were specified
-    /// - `Some(Vec::new())` means it was specified to be `pure`
-    pub effects: Option<Vec<EffectType>>,
+    pub return_type: Box<Type>,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
@@ -190,20 +188,13 @@ impl ParameterType {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
-pub enum EffectType {
-    Known(PathId, Vec<Type>),
-    Variable(NameId),
-}
-
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct TypeDefinition {
     pub shared: bool,
-    /// TraitDefinitions are desugared into type definitions, but for
-    /// some checks, we still need to know the origin. Namely, only
-    /// traits allow rank-1 fields, and only traits expose their fields
-    /// under the type's namespace.
+    /// TraitDefinitions are desugared into type definitions
     pub is_trait: bool,
+    /// EffectDefinitions are also desugared into type definitions
+    pub is_effect: bool,
     pub name: NameId,
     pub generics: Generics,
     pub body: TypeDefinitionBody,
@@ -377,7 +368,6 @@ pub struct MemberAccess {
 pub struct Lambda {
     pub parameters: Vec<Parameter>,
     pub return_type: Option<Type>,
-    pub effects: Option<Vec<EffectType>>,
     pub body: ExprId,
     pub is_move: bool,
 }
@@ -425,9 +415,10 @@ pub struct Match {
     pub cases: Vec<(PatternId, ExprId)>,
 }
 
+/// `handler <name> for <cases> in <expression>`
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
 pub struct Handle {
-    /// The effectful expression being handled
+    pub handler_name: NameId,
     pub expression: ExprId,
     pub cases: Vec<(HandlePattern, ExprId)>,
 }
@@ -488,14 +479,14 @@ pub struct Assignment {
     pub op: Option<(CompoundAssignOp, ExprId)>,
 }
 
-/// `while cond do body` — imperative loop, body is Unit, whole expression is Unit.
+/// `while cond do body`
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
 pub struct While {
     pub condition: ExprId,
     pub body: ExprId,
 }
 
-/// `for variable in start .. end do body` — end-exclusive numeric range loop.
+/// `for variable in start .. end do body`
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
 pub struct For {
     pub variable: NameId,

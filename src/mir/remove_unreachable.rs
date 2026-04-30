@@ -8,8 +8,7 @@ impl Mir {
         let seeds: Vec<DefinitionId> =
             self.definitions.iter().filter(|(_, def)| def.name.as_str() == "main").map(|(id, _)| *id).collect();
 
-        // No main found — likely a library build or `--emit mir` on a non-exec input.
-        // Leave the MIR alone rather than deleting everything.
+        // No main found, leave the MIR alone
         if seeds.is_empty() {
             return self;
         }

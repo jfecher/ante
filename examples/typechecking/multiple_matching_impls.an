@@ -49,23 +49,23 @@ impl candidate2: Foo Thing with
 // type Baz a [env] =
 //     baz: fn a [[env]] -> Unit
 // 
-// (main: fn Unit -> Unit pure) () =
-//     (Foo.foo: fn Thing {Foo Thing} -> Unit pure) ((Thing: fn Unit -> Thing pure) ()) {(error)}
+// (main: fn Unit -> Unit) () =
+//     (Foo.foo: fn Thing {Foo Thing} -> Unit) ((Thing: fn Unit -> Thing) ()) {(error)}
 // 
-// implicit (candidate1: fn {Bar a} -> Foo a pure) {(_: Bar a)} : Foo a (Bar a [env_0]) pure = Foo a (Bar a [env_0]) with
-//     (foo: fn a [(Bar a)] -> Unit pure) = fn (a: a) [(_: Bar a)] -> (Bar.bar: fn a {Bar a} -> Unit pure) (a: a) {(_: Bar a)}
+// implicit (candidate1: fn {Bar a} -> Foo a) {(_: Bar a)} : Foo a (Bar a [env_0]) = Foo a (Bar a [env_0]) with
+//     (foo: fn a [(Bar a)] -> Unit) = fn (a: a) [(_: Bar a)] -> (Bar.bar: fn a {Bar a} -> Unit) (a: a) {(_: Bar a)}
 // 
-// implicit (bar: fn {Baz a} -> Bar a pure) {(_: Baz a)} : Bar a (Baz a [env_0]) pure = Bar a (Baz a [env_0]) with
-//     (bar: fn a [(Baz a)] -> Unit pure) = fn (a: a) [(_: Baz a)] -> (Baz.baz: fn a {Baz a} -> Unit pure) (a: a) {(_: Baz a)}
+// implicit (bar: fn {Baz a} -> Bar a) {(_: Baz a)} : Bar a (Baz a [env_0]) = Bar a (Baz a [env_0]) with
+//     (bar: fn a [(Baz a)] -> Unit) = fn (a: a) [(_: Baz a)] -> (Baz.baz: fn a {Baz a} -> Unit) (a: a) {(_: Baz a)}
 // 
 // implicit (baz: Baz Thing) = Baz Thing NoClosureEnv with
-//     (baz: fn Thing -> Unit pure) = fn (_: Thing) -> ()
+//     (baz: fn Thing -> Unit) = fn (_: Thing) -> ()
 // 
-// implicit (does_not_match: fn {Print a} -> Foo a pure) {(_: Print a)} : Foo a (Print a [env_0]) pure = Foo a (Print a [env_0]) with
-//     (foo: fn a [(Print a)] -> Unit pure) = fn (_: a) -> ()
+// implicit (does_not_match: fn {Print a} -> Foo a) {(_: Print a)} : Foo a (Print a [env_0]) = Foo a (Print a [env_0]) with
+//     (foo: fn a [(Print a)] -> Unit) = fn (_: a) -> ()
 // 
 // implicit (candidate2: Foo Thing) = Foo Thing NoClosureEnv with
-//     (foo: fn Thing -> Unit pure) = fn (_: Thing) -> ()
+//     (foo: fn Thing -> Unit) = fn (_: Thing) -> ()
 
 // expected stderr:
 // examples/typechecking/multiple_matching_impls.an:15:5
@@ -81,4 +81,3 @@ impl candidate2: Foo Thing with
 //    |     ^^^
 // 
 // Found 2 errors and 0 warnings
-

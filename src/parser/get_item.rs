@@ -7,8 +7,9 @@ use crate::{
     lexer::token::{FloatKind, IntegerKind},
     parser::{
         cst::{
-            self, Argument, Constructor, Definition, Expr, If, Lambda, Literal, Parameter, Path, Pattern, SequenceItem,
-            TopLevelItem, TopLevelItemKind, TraitDefinition, TraitImpl, Type, TypeDefinitionBody, TypeKind,
+            self, Argument, Constructor, Definition, EffectDefinition, Expr, If, Lambda, Literal, Parameter, Path,
+            Pattern, SequenceItem, TopLevelItem, TopLevelItemKind, TraitDefinition, TraitImpl, Type,
+            TypeDefinitionBody, TypeKind,
         },
         desugar_context::DesugarContext,
         ids::{ExprId, PathId, PatternId},
@@ -22,6 +23,12 @@ pub fn get_item_impl(context: &GetItem, db: &DbHandle) -> (Arc<TopLevelItem>, Ar
         TopLevelItemKind::TraitDefinition(trait_definition) => {
             let mut new_context = DesugarContext::new(context);
             let new_kind = desugar_trait(trait_definition, &mut new_context);
+            let new_item = Arc::new(TopLevelItem { comments: item.comments.clone(), kind: new_kind, id: item.id });
+            (new_item, Arc::new(new_context))
+        },
+        TopLevelItemKind::EffectDefinition(effect_definition) => {
+            let mut new_context = DesugarContext::new(context);
+            let new_kind = desugar_effect(effect_definition, &mut new_context);
             let new_item = Arc::new(TopLevelItem { comments: item.comments.clone(), kind: new_kind, id: item.id });
             (new_item, Arc::new(new_context))
         },
@@ -133,7 +140,6 @@ fn desugar_impl(impl_: &TraitImpl, context: &mut DesugarContext) -> Definition {
         let lambda = Expr::Lambda(Lambda {
             parameters: expanded_parameters,
             return_type: Some(trait_type),
-            effects: Some(Vec::new()),
             body: constructor,
             is_move: false,
         });
@@ -194,17 +200,57 @@ fn desugar_trait(trait_: &TraitDefinition, context: &mut DesugarContext) -> TopL
     TopLevelItemKind::TypeDefinition(super::cst::TypeDefinition {
         shared: false,
         is_trait: true,
+        is_effect: false,
         name: trait_.name,
         generics,
         body: TypeDefinitionBody::Struct(fields),
     })
 }
 
-/// Traverse the expression recursively, desugaring along the way looking for the following cases:
-/// - `loop`: All loops are sugar for an immediately invoked helper function
-/// - `|>` and `<|`: Apply operators are sugar for direct application
-/// - `foo _ x _`: Function calls with `_` as arguments are automatically converted into lambdas
-///                with the `_` parameters as the remaining lambda parameters in source order.
+/// Desugars
+/// ```ante
+/// effect Add with
+///     add: fn U32 -> Unit
+/// ```
+/// Into
+/// ```ante
+/// type Add =
+///     add: fn U32 [Ptr Unit] -> Unit
+/// ```
+/// Each effect operation becomes a struct field whose type is a closure capturing the
+/// local scope of the handler. These capability objects are second class to prevent them
+/// from escaping, so capturing the entire environment by reference should be fine.
+fn desugar_effect(effect: &EffectDefinition, context: &mut DesugarContext) -> TopLevelItemKind {
+    let name_location = context.name_location(effect.name).clone();
+    let generics = effect.generics.clone();
+
+    let fields = mapvec(&effect.body, |decl| {
+        let typ = match &decl.typ.kind {
+            cst::TypeKind::Function(f) => {
+                let mut f = f.clone();
+                let ptr = Type::new(cst::TypeKind::Pointer, name_location.clone());
+                let unit = Type::new(TypeKind::Unit, name_location.clone());
+                let ptr_unit = Type::new(TypeKind::Application(Box::new(ptr), vec![unit]), name_location.clone());
+                f.environment = Some(Box::new(ptr_unit));
+                Type::new(cst::TypeKind::Function(f), decl.typ.location.clone())
+            },
+            _ => decl.typ.clone(),
+        };
+        (decl.name, typ)
+    });
+
+    TopLevelItemKind::TypeDefinition(super::cst::TypeDefinition {
+        shared: false,
+        is_trait: false,
+        is_effect: true,
+        name: effect.name,
+        generics,
+        body: TypeDefinitionBody::Struct(fields),
+    })
+}
+
+/// Traverse the expression recursively, desugaring along the way looking for
+/// any desugaring in [ExprDesugar].
 fn desugar_expression(expr: ExprId, context: &mut DesugarContext) {
     let mut desugars = Vec::new();
     collect_expressions_to_desugar(expr, context, &mut desugars);
@@ -371,7 +417,7 @@ fn desugar_loop(expr: ExprId, context: &mut DesugarContext) {
     let recur = cst::Pattern::Variable(name_id);
     let recur = context.push_pattern(recur, location.clone());
 
-    let lambda = cst::Expr::Lambda(cst::Lambda { parameters, return_type: None, effects: None, body, is_move: false });
+    let lambda = cst::Expr::Lambda(cst::Lambda { parameters, return_type: None, body, is_move: false });
     let lambda = context.push_expr(lambda, location.clone());
 
     let definition =
@@ -428,10 +474,7 @@ fn desugar_call_wildcards(expr: ExprId, context: &mut DesugarContext) {
     let new_call = Expr::Call(cst::Call { function: call.function, arguments: new_arguments });
     let new_call_id = context.push_expr(new_call, location.clone());
 
-    context.set_expr(
-        expr,
-        Expr::Lambda(Lambda { parameters, return_type: None, effects: None, body: new_call_id, is_move: false }),
-    );
+    context.set_expr(expr, Expr::Lambda(Lambda { parameters, return_type: None, body: new_call_id, is_move: false }));
 }
 
 enum ExprDesugar {
@@ -469,16 +512,16 @@ enum ExprDesugar {
     /// `"a${x}b${y}c"` desugars to `"a" ++ cast x : String ++ "b" ++ cast y : String ++ "c"`
     StringInterpolation(ExprId),
 
-    /// `if <and-chain containing is> then T else E` — rewrite the whole If into
-    /// a nested match so each `is`'s pattern bindings scope over subsequent
-    /// chain elements and the then-branch.
+    /// `if <and-chain containing is> then T else E`: rewrite the whole If into
+    /// a nested match so each `is`'s pattern bindings are in scope for any
+    /// subsequent chain elements and the then branch.
     IfWithIs(ExprId),
 
-    /// Value-position `and`-chain containing at least one `is` — rewrite the
-    /// whole chain (used as a Bool) into a nested match.
+    /// Value-position `and`-chain containing at least one `is`: rewrite the
+    /// whole chain into a nested match.
     AndWithIs(ExprId),
 
-    /// A bare `x is P` not absorbed by a parent IfWithIs / AndWithIs.
+    /// A bare `x is P` not in a parent if/and expression.
     BareIs(ExprId),
 }
 
@@ -693,7 +736,6 @@ fn desugar_bind(expr: ExprId, context: &mut DesugarContext) {
     let lambda = Expr::Lambda(cst::Lambda {
         parameters: vec![Parameter::new(bind.pattern)],
         return_type: None,
-        effects: None,
         body: bind.body,
         is_move: false,
     });
@@ -724,7 +766,6 @@ fn desugar_tilde_arrow(expr: ExprId, context: &mut DesugarContext) {
     let lambda = Expr::Lambda(cst::Lambda {
         parameters: vec![cst::Parameter::new(pattern)],
         return_type: None,
-        effects: None,
         body: a,
         is_move: false,
     });
@@ -744,9 +785,9 @@ fn desugar_tilde_arrow(expr: ExprId, context: &mut DesugarContext) {
 
 /// Element of a flattened `and`-chain.
 enum ChainElement {
-    /// Opaque boolean subexpression — no pattern bindings to propagate.
+    /// No pattern bindings to propagate.
     Cond(ExprId),
-    /// `lhs is pattern` — pattern bindings scope over subsequent chain elements.
+    /// `lhs is pattern`: pattern bindings scope over subsequent chain elements.
     Is(cst::Is),
 }
 
@@ -816,7 +857,7 @@ fn build_match_from_is(
 /// iff every element succeeds (with each `Is`'s bindings in scope for every
 /// element after it), else `else_expr`.
 ///
-/// `else_expr` is shared across all fallthrough positions — only one fallthrough
+/// `else_expr` is shared across all fallthrough positions. Only one fallthrough
 /// ever runs, so side effects are executed at most once.
 fn compile_chain(parts: &[ChainElement], then_expr: ExprId, else_expr: ExprId, context: &mut DesugarContext) -> ExprId {
     let Some((head, tail)) = parts.split_first() else { return then_expr };

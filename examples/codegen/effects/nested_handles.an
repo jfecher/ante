@@ -4,31 +4,34 @@ effect Ping with
 effect Pong with
     do_pong: fn U64 -> U64
 
-foo () =
+foo {Ping} {Pong} =
     a = do_ping 1
     b = do_pong 2
     c = do_ping 3
     d = do_pong 4
     a + c, b + d
 
-ping f =
-    handle f ()
-    | do_ping x ->
+ping (f: fn Ping [env] -> a) =
+    handler h for do_ping x ->
         println "ping?"
         r = resume (x * 2)
         println "ping!"
         r
+    in f h
 
-pong f =
-    handle f ()
-    | do_pong x ->
+pong (f: fn Pong [env] -> a) =
+    handler h for do_pong x ->
         println "pong?"
         r = resume (x * 3)
         println "pong!"
         r
+    in f h
 
 main () =
-    a, b = foo () ~> ping ~> pong
+    a, b = ping fn pinger ->
+        ponger <- pong
+        foo {pinger} {ponger}
+
     println a //=> (1*2 + 3*2) = 8
     println b //=> (2*3 + 4*3) = 18
 
@@ -38,9 +41,9 @@ main () =
 // pong?
 // ping?
 // pong?
-// ping!
-// ping!
 // pong!
 // pong!
+// ping!
+// ping!
 // 8
 // 18

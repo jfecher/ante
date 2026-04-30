@@ -20,19 +20,6 @@ bad_app (x: Foo Bool) : Foo Bool = x
 // Error case: Box has Kind::TypeConstructorSimple(1), not Kind::Type
 bad_unapplied (x: Box) : Box = x
 
-// type Box a =
-//     value: a
-//
-// (use_foo: fn Foo -> Foo pure) ((x: Foo)) : Foo = (x: Foo)
-//
-// (use_box: fn (Box I32) -> Box I32 pure) ((x: Box I32)) : Box I32 = (x: Box I32)
-//
-// (identity: fn t -> t pure) ((a: t)) : t = (a: t)
-//
-// (bad_app: fn (error) -> (error) pure) ((x: (error))) : Foo Bool = (x: (error))
-//
-// (bad_unapplied: fn (error) -> (error) pure) ((x: (error))) : Box = (x: (error))
-
 // args: -e ast-t --no-color
 // expected exit status: 1
 // expected stdout:
@@ -42,15 +29,15 @@ bad_unapplied (x: Box) : Box = x
 // type Box a =
 //     value: a
 // 
-// (use_foo: fn Foo -> Foo pure) ((x: Foo)) : Foo = (x: Foo)
+// (use_foo: fn Foo -> Foo) ((x: Foo)) : Foo = (x: Foo)
 // 
-// (use_box: fn (Box I32) -> Box I32 pure) ((x: Box I32)) : Box I32 = (x: Box I32)
+// (use_box: fn (Box I32) -> Box I32) ((x: Box I32)) : Box I32 = (x: Box I32)
 // 
-// (identity: fn t -> t pure) ((a: t)) : t = (a: t)
+// (identity: fn t -> t) ((a: t)) : t = (a: t)
 // 
-// (bad_app: fn (error) -> (error) pure) ((x: (error))) : Foo Bool = (x: (error))
+// (bad_app: fn (error) -> (error)) ((x: (error))) : Foo Bool = (x: (error))
 // 
-// (bad_unapplied: fn Box -> Box pure) ((x: Box)) : Box = (x: Box)
+// (bad_unapplied: fn Box -> Box) ((x: Box)) : Box = (x: Box)
 
 // expected stderr:
 // examples/typechecking/kinds.an:18:13
@@ -76,4 +63,3 @@ bad_unapplied (x: Box) : Box = x
 //    |                          ^^^
 // 
 // Found 4 errors and 0 warnings
-

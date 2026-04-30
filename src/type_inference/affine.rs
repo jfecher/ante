@@ -4,10 +4,10 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
     diagnostics::{Diagnostic, Location, RepeatedContext},
-    incremental::{ExportedTypes, VisibleImplicits},
+    incremental::{ExportedTypes, GetItemRaw, VisibleImplicits},
     name_resolution::Origin,
     parser::{
-        cst::Expr,
+        cst::{Expr, TopLevelItemKind},
         ids::{ExprId, NameId, TopLevelName},
     },
     type_inference::{Locateable, TypeChecker, types::Type},
@@ -151,6 +151,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             return elems.iter().all(|e| self.type_is_copy(e));
         }
 
+        if self.is_trait_or_effect(&typ) {
+            return true;
+        }
+
         let copy_name = self.get_copy_type_name();
         let copy_constructor = Type::UserDefined(Origin::TopLevelDefinition(copy_name));
         // Traits have an extra [env] generic parameter from desugaring, so Copy t is actually
@@ -192,6 +196,21 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
 
         false
+    }
+
+    fn is_trait_or_effect(&self, typ: &Type) -> bool {
+        match typ.follow(&self.bindings) {
+            // TODO: This is broken when type aliases are implemented.
+            Type::Application(constructor, _) => self.is_trait_or_effect(&constructor),
+            Type::UserDefined(origin) => match origin {
+                Origin::TopLevelDefinition(name) => {
+                    let (item, _) = GetItemRaw(name.top_level_item).get(self.compiler);
+                    matches!(&item.kind, TopLevelItemKind::TraitDefinition(_) | TopLevelItemKind::EffectDefinition(_))
+                },
+                _ => false,
+            },
+            _ => false,
+        }
     }
 
     /// Check if using `path` is valid (not already moved or partially moved).

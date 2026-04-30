@@ -96,8 +96,6 @@ impl DesugarContext {
         new_id
     }
 
-    /// Replace an existing expression (id < original.exprs.len()) with a desugared form.
-    /// Also used when adding new expressions — stores in `more_exprs` regardless of id.
     pub fn set_expr(&mut self, id: ExprId, expr: Expr) {
         self.more_exprs.insert(id, expr);
     }

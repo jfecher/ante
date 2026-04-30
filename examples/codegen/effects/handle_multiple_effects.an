@@ -1,21 +1,22 @@
 
 effect Fail with
-    fail: fn Unit -> a
+    // TODO: forall-quantification not allowed here yet, and now bottom type
+    fail: fn Unit -> Unit
 
 effect Read a with
     read: fn Unit -> a
 
-read_or_none f =
-    handle Maybe.Some <| f ()
-    | fail () -> Maybe.None
-    | read () -> resume 5u32
+read_or_none (f: fn {Fail} {Read U32} -> U32) =
+    handler hf for fail () -> Maybe.None
+    handler hr for read () -> resume 5u32
+    Maybe.Some (f {hf} {hr})
 
-foo () =
+foo {Fail} {Read U32} =
     if false then fail ()
     read ()
 
 main () =
-    print <| read_or_none foo
+    println <| read_or_none foo
 
 // args: --delete-binary --no-color
 // expected stdout: Some 5

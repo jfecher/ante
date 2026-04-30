@@ -4,59 +4,72 @@ effect Emit a with
     emit: fn a -> Unit
 
 trait Stream t a with
-    stream: fn t -> Unit can Emit a
+    stream: fn t (Emit a) -> Unit
 
-impl stream_fn: Stream (fn Unit [env] -> Unit can Emit a) a with
-    stream f = f ()
+impl stream_fn_i: Stream (fn {Emit a} [env] -> Unit) a with
+    stream f e = f {e}
+
+impl stream_fn_e: Stream (fn (Emit a) [env] -> Unit) a with
+    stream f e = f e
 
 impl stream_vec: Stream (imm Vec a) (imm a) with
-    stream vec =
+    stream vec e =
         for i in 0 .. vec.len do
-            emit (vec.get_unchecked i)
+            e.emit (vec.get_unchecked i)
 
 for_ (s: s) {Stream s a} (f: fn a [env] -> b): Unit =
-    handle Stream.stream s
-    | emit a ->
+    handler h for emit a ->
         f a
         resume ()
+    Stream.stream s h
 
-filter_map (s: s) {Stream s a} (f: fn a [env] -> Maybe b): Unit can Emit b =
-    handle Stream.stream s
-    | emit a ->
+filter_map (s: s) {Stream s a} (f: fn a [env] -> Maybe b) = fn (e: Emit b) ->
+    handler h for emit a ->
         match f a
-        | Some b -> emit b
+        | Some b -> e.emit b
         | None -> ()
         resume ()
+    Stream.stream s h
 
-map (s: s) {stream: Stream s a} (f: fn a [env] -> b): Unit can Emit b =
-    handle Stream.stream s
-    | emit a ->
-        emit (f a)
+map (s: s) {Stream s a} (f: fn a [env] -> b) = fn (e: Emit b) ->
+    handler h for emit a ->
+        e.emit (f a)
         resume ()
+    Stream.stream s h
 
-filter (s: s) {stream: Stream s a} (f: fn (ref a) [env] -> Bool): Unit can Emit a =
-    handle Stream.stream s
-    | emit a ->
-        if f (ref a) then emit a
+filter (s: s) {Stream s a} (f: fn (ref a) [env] -> Bool) = fn (e: Emit a) ->
+    handler h for emit a ->
+        if f (ref a) then e.emit a
         resume ()
+    Stream.stream s h
+
+enumerate (s: s) {Stream s a} = fn (e: Emit (Usz, a)) ->
+    var i = 0
+    handler h for emit a ->
+        e.emit (i, a)
+        i += 1
+        resume ()
+    in Stream.stream s h
 
 foldl (s: s) {Stream s b} (initial: a) (f: fn a b [env] -> a): a =
     var result = initial
-    handle Stream.stream s
-    | emit value ->
+
+    handler h for emit value ->
         result := f result value
         resume ()
+    in Stream.stream s h
+
     result
 
 foldr (s: s) {Stream s a} (acc: b) (f: fn a b [env] -> b): b =
-    handle
-        Stream.stream s
-        acc
-    | emit value ->
+    handler h for emit value ->
         rest = resume ()
         f value rest
 
-map2 (s1: s1) (s2: s2) {Stream s1 a} {Stream s2 b} (f: fn a b [env] -> c): Unit can Emit c =
+    Stream.stream s h
+    acc
+
+map2 (s1: s1) (s2: s2) {Stream s1 a} {Stream s2 b} (f: fn a b [env] -> c) = fn (e: Emit c) ->
     var left = Maybe.None
     var right = Maybe.None
 
@@ -65,24 +78,23 @@ map2 (s1: s1) (s2: s2) {Stream s1 a} {Stream s2 b} (f: fn a b [env] -> c): Unit 
         | Some (a, resume_a), Some (b, resume_b) ->
             left := None
             right := None
-            emit (f a b)
+            e.emit (f a b)
             resume_a ()
             resume_b ()
         | _ -> ()
 
-    handle Stream.stream s1
-    | emit a ->
+    handler h1 for emit a ->
         left := Some (a, resume)
         try_emit ()
+    in Stream.stream s1 h1
 
-    handle Stream.stream s2
-    | emit b ->
+    handler h2 for emit b ->
         right := Some (b, resume)
         try_emit ()
+    in Stream.stream s2 h2
 
-iota n =
-    for i in 0usz .. n do emit i
+iota n = fn (e: Emit Usz) ->
+    for i in 0usz .. n do emit i {e}
 
 zip a b {sa: Stream sa a} {sb: Stream sb b} =
     map2 a b {sa} {sb} (,)
-

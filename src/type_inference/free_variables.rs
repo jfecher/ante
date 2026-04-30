@@ -104,6 +104,11 @@ impl FreeVars {
             cst::Expr::Is(_) => unreachable!("Expr::Is should be desugared during GetItem"),
             cst::Expr::Bind(_) => unreachable!("Expr::Bind should be desugared during GetItem"),
             cst::Expr::Handle(handle) => {
+                // The handler name is declared by the `handle` itself, not by any
+                // surrounding scope. Treat it as defined-in-fn so references to it
+                // inside the wrapped body lambda aren't reported as captures of the
+                // surrounding function.
+                self.defined_in_fn.insert(handle.handler_name);
                 self.find_free_variables(handle.expression, checker);
                 for (pattern, branch) in handle.cases.iter() {
                     for argument in pattern.args.iter() {
@@ -185,11 +190,11 @@ impl FreeVars {
 fn make_env_type_with_names(free_vars: &BTreeSet<NameId>, checker: &TypeChecker, is_move: bool) -> Type {
     let free_vars = free_vars.iter().map(|name| {
         let typ = checker.name_types[name].clone();
-        // Regular closures capture mutable variables by reference (as pointers in MIR).
-        // Wrap their type in a `mut` reference so the environment type matches.
-        // Immutable variables are captured by value — this is safe for escaping closures
-        // and observationally equivalent to by-reference since the value can't change.
-        // `move` closures capture all variables by value — no wrapping needed.
+
+        // Closures:
+        // - Capture mutable variables by reference (so we wrap in a Mut ref here)
+        // - Capture immutable variables by value (FIXME)
+        // - Capture everything by move if it is a `move` closure
         if !is_move && checker.mutable_definitions.contains(name) {
             Type::Application(Arc::new(Type::MUT), Arc::new(vec![typ]))
         } else {

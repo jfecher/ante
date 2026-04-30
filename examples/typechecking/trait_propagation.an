@@ -5,11 +5,6 @@ trait Baz a with baz: fn a -> Unit
 
 foo () = baz bar
 
-// This test ensures the Baz constraint is solved in foo
-// rather than being propagated up into its signature just
-// because it has a typevariable.
-//
-
 // args: -e ast-t --no-color
 // expected exit status: 1
 // expected stdout:
@@ -18,7 +13,7 @@ foo () = baz bar
 // type Baz a [env] =
 //     baz: fn a [[env]] -> Unit
 // 
-// (foo: fn Unit -> _ pure) () = (baz: (error)) (bar: _)
+// (foo: fn Unit -> _) () = (baz: (error)) (bar: _)
 
 // expected stderr:
 // examples/typechecking/trait_propagation.an:6:10
@@ -26,4 +21,3 @@ foo () = baz bar
 //   |          ^^^
 // 
 // Found 1 error and 0 warnings
-

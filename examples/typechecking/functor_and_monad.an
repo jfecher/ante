@@ -32,16 +32,16 @@ impl monad_maybe: Monad Maybe with
 //     bind: fn (m a) (fn a -> m b) [[env]] -> m b
 // 
 // implicit (functor_maybe: Functor Maybe) = Functor Maybe NoClosureEnv with
-//     (map: fn (error) (fn (error) -> (error) pure) -> (error) pure) = fn (m: (error)) (f: fn (error) -> (error) pure) ->
+//     (map: fn (error) (fn (error) -> (error)) -> (error)) = fn (m: (error)) (f: fn (error) -> (error)) ->
 //         match (m: (error))
-//         | (Some: (error)) (x: (error)) -> (Some: (error)) ((f: fn (error) -> (error) pure) (x: (error)))
+//         | (Some: (error)) (x: (error)) -> (Some: (error)) ((f: fn (error) -> (error)) (x: (error)))
 //         | (None: (error)) -> (None: (error))
 // 
 // implicit (monad_maybe: Monad Maybe) = Monad Maybe NoClosureEnv with
-//     (wrap: fn (error) -> (error) pure) = fn (a: (error)) -> (Some: (error)) (a: (error))
-//     (bind: fn (error) (fn (error) -> (error) pure) -> (error) pure) = fn (m: (error)) (f: fn (error) -> (error) pure) ->
+//     (wrap: fn (error) -> (error)) = fn (a: (error)) -> (Some: (error)) (a: (error))
+//     (bind: fn (error) (fn (error) -> (error)) -> (error)) = fn (m: (error)) (f: fn (error) -> (error)) ->
 //         match (m: (error))
-//         | (Some: (error)) (x: (error)) -> (f: fn (error) -> (error) pure) (x: (error))
+//         | (Some: (error)) (x: (error)) -> (f: fn (error) -> (error)) (x: (error))
 //         | (None: (error)) -> (None: (error))
 
 // expected stderr:
@@ -185,4 +185,3 @@ impl monad_maybe: Monad Maybe with
 //    |                   ^^^^
 // 
 // Found 26 errors and 0 warnings
-

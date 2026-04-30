@@ -15,7 +15,7 @@ use crate::{
         Locateable, TypeChecker,
         errors::TypeErrorKind,
         get_type::get_partial_type,
-        types::{self, FunctionType, ParameterType, Type, TypeBindings},
+        types::{self, FunctionType, ParameterType, Type},
     },
 };
 
@@ -23,11 +23,6 @@ use crate::{
 /// `Default` on this is intended to be the default behavior for a non-handle lambda.
 #[derive(Default)]
 struct LambdaOptions {
-    /// When true, skip `try_close_lambda_effects` for this lambda. Used for a `handle`'s
-    /// body & branches whose effect rows need to be set up by `check_handle` after
-    /// `check_lambda` returns. Without this they're closed too early and set to `pure`.
-    suppress_effect_closure: bool,
-
     /// When `Some`, the lambda's body is a context that may execute more than
     /// once (e.g. a handler branch), and moves of outer non-Copy variables inside
     /// it should be reported. The set is the names visible before the branch
@@ -36,14 +31,14 @@ struct LambdaOptions {
 }
 
 impl<'local, 'inner> TypeChecker<'local, 'inner> {
-    pub(super) fn check_definition(&mut self, definition: &Definition, expected_effect: &Type) {
+    pub(super) fn check_definition(&mut self, definition: &Definition) {
         let next_id = &mut self.next_type_variable_id.get();
         let expected_type =
             get_partial_type(definition, self.current_context(), &self.current_resolve(), self.compiler, next_id);
 
         self.next_type_variable_id.set(*next_id);
 
-        self.check_pattern(definition.pattern, &expected_type, expected_effect);
+        self.check_pattern(definition.pattern, &expected_type);
 
         // Track mutable definitions so closure capture analysis can wrap them in reference types
         if definition.mutable {
@@ -73,7 +68,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 self.expr_types.insert(rhs, expected_type.clone());
                 self.check_lambda(&lambda, &expected_type, rhs, self_name);
             },
-            _ => self.check_expr(rhs, &expected_type, expected_effect),
+            _ => self.check_expr(rhs, &expected_type),
         }
 
         if definition.implicit {
@@ -84,16 +79,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     }
 
     /// Check an expression's type matches the expected type.
-    ///
-    /// `expected_effect` is the effect expected when this expression is evaluated.
-    /// For a Lambda or Variable, it should always be none, but for an expression
-    /// like a call, it will be the effects from calling the function.
-    fn check_expr(&mut self, id: ExprId, expected: &Type, expected_effect: &Type) {
-        self.check_expr_inner(id, expected, expected_effect, None);
+    fn check_expr(&mut self, id: ExprId, expected: &Type) {
+        self.check_expr_inner(id, expected, None);
     }
 
-    /// Check an expression's type matches the expected type.
-    fn check_expr_inner(&mut self, id: ExprId, expected: &Type, expected_effect: &Type, call_expr: Option<ExprId>) {
+    fn check_expr_inner(&mut self, id: ExprId, expected: &Type, call_expr: Option<ExprId>) {
         self.expr_types.insert(id, expected.clone());
 
         let expr = match self.current_extended_context().extended_expr(id) {
@@ -103,46 +93,46 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         match expr.as_ref() {
             Expr::Literal(literal) => self.check_literal(literal, id, expected),
-            Expr::Variable(path) => self.check_path(*path, expected, expected_effect, Some(id), call_expr),
-            Expr::Call(call) => self.check_call(call, expected, expected_effect, id),
+            Expr::Variable(path) => self.check_path(*path, expected, Some(id), call_expr),
+            Expr::Call(call) => self.check_call(call, expected, id),
             Expr::Lambda(lambda) => self.check_lambda(lambda, expected, id, None),
             Expr::Sequence(items) => {
                 self.push_implicits_scope();
                 for (i, item) in items.iter().enumerate() {
                     let expected_type = if i == items.len() - 1 { expected } else { &self.next_type_variable() };
-                    self.check_expr(item.expr, expected_type, expected_effect);
+                    self.check_expr(item.expr, expected_type);
                 }
                 self.pop_implicits_scope();
             },
             Expr::Definition(definition) => {
-                self.check_definition(definition, expected_effect);
+                self.check_definition(definition);
                 self.unify(&Type::UNIT, expected, TypeErrorKind::General, id);
             },
-            Expr::MemberAccess(member_access) => self.check_member_access(member_access, expected, expected_effect, id),
-            Expr::If(if_) => self.check_if(if_, expected, expected_effect, id),
-            Expr::Match(match_) => self.check_match(match_, expected, expected_effect, id),
+            Expr::MemberAccess(member_access) => self.check_member_access(member_access, expected, id),
+            Expr::If(if_) => self.check_if(if_, expected, id),
+            Expr::Match(match_) => self.check_match(match_, expected, id),
+            Expr::Reference(reference) => self.check_reference(reference, expected, id),
             Expr::Is(_) => unreachable!("Expr::Is should be desugared during GetItem"),
             Expr::Bind(_) => unreachable!("Expr::Bind should be desugared during GetItem"),
-            Expr::Reference(reference) => self.check_reference(reference, expected, expected_effect, id),
             Expr::TypeAnnotation(type_annotation) => {
                 let annotation = self.from_cst_type(&type_annotation.rhs, true);
                 self.unify(expected, &annotation, TypeErrorKind::TypeAnnotationMismatch, id);
-                self.check_expr(type_annotation.lhs, &annotation, expected_effect);
+                self.check_expr(type_annotation.lhs, &annotation);
             },
-            Expr::Handle(handle) => self.check_handle(handle, expected, expected_effect, id),
-            Expr::Constructor(constructor) => self.check_constructor(constructor, expected, expected_effect, id),
+            Expr::Handle(handle) => self.check_handle(handle, expected),
+            Expr::Constructor(constructor) => self.check_constructor(constructor, expected, id),
             Expr::Quoted(_) => {
                 let location = id.locate(self);
                 UnimplementedItem::Comptime.issue(self.compiler, location);
             },
             Expr::Loop(_) => unreachable!("Loops should be desugared before type inference"),
-            Expr::While(while_) => self.check_while(while_, expected, expected_effect, id),
-            Expr::For(for_) => self.check_for(for_, expected, expected_effect, id),
+            Expr::While(while_) => self.check_while(while_, expected, id),
+            Expr::For(for_) => self.check_for(for_, expected, id),
             // Allow break/continue to return any type
             // TODO: Add bottom type
             Expr::Break | Expr::Continue => (),
-            Expr::Return(return_) => self.check_return(return_.expression, expected_effect, id),
-            Expr::Assignment(assignment) => self.check_assignment(assignment, expected, expected_effect, id),
+            Expr::Return(return_) => self.check_return(return_.expression, id),
+            Expr::Assignment(assignment) => self.check_assignment(assignment, expected, id),
             Expr::Error => (),
             Expr::Extern(_) => (),
             Expr::InterpolatedString(_) => {
@@ -184,7 +174,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
-    fn check_pattern(&mut self, id: PatternId, expected: &Type, expected_effect: &Type) {
+    fn check_pattern(&mut self, id: PatternId, expected: &Type) {
         self.pattern_types.insert(id, expected.clone());
 
         let pattern = match self.current_extended_context().extended_pattern(id) {
@@ -209,27 +199,23 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                         // Any type constructor we can match on shouldn't be a closure
                         environment: Type::NO_CLOSURE_ENV,
                         return_type: expected.clone(),
-                        effects: self.next_type_variable(),
                     }))
                 };
 
-                self.check_path(*path, &expected_function_type, expected_effect, None, None);
+                self.check_path(*path, &expected_function_type, None, None);
                 for (expected_arg_type, arg) in parameters.into_iter().zip(args) {
-                    self.check_pattern(*arg, &expected_arg_type.typ, expected_effect);
+                    self.check_pattern(*arg, &expected_arg_type.typ);
                 }
             },
             Pattern::TypeAnnotation(inner_pattern, typ) => {
                 let annotated = self.from_cst_type(typ, true);
                 self.unify(expected, &annotated, TypeErrorKind::TypeAnnotationMismatch, id);
-                self.check_pattern(*inner_pattern, expected, expected_effect);
+                self.check_pattern(*inner_pattern, expected);
             },
         };
     }
 
-    fn check_path(
-        &mut self, path: PathId, expected: &Type, expected_effect: &Type, expr: Option<ExprId>,
-        call_expr: Option<ExprId>,
-    ) {
+    fn check_path(&mut self, path: PathId, expected: &Type, expr: Option<ExprId>, call_expr: Option<ExprId>) {
         let actual = match self.path_origin(path) {
             Some(Origin::TopLevelDefinition(id)) => self.type_of_top_level_name(&id, path),
             Some(Origin::Local(name)) => {
@@ -255,12 +241,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             match self.try_coercion(&actual, expected, expr, call_expr) {
                 super::CoercionOutcome::ReplacedExpr => {
                     // If the coercion wrapped a local variable (e.g. auto-ref `seq` → `ref seq`),
-                    // the move recorded above no longer applies — the wrapper doesn't consume its
-                    // operand. Clear it so subsequent uses don't wrongly see the variable as moved.
+                    // the move recorded above no longer applies.
                     if let Some(Origin::Local(name)) = self.path_origin(path) {
                         self.move_tracker.clear_moves(&super::affine::MovePath::Variable(name));
                     }
-                    self.check_expr(expr, expected, expected_effect);
+                    self.check_expr(expr, expected);
                     return;
                     // no need to unify or modify self.path_types, that will be handled in the
                     // recursive check_expr call since we've just changed the expression at this ExprId.
@@ -391,10 +376,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
-    fn check_call(&mut self, call: &cst::Call, expected: &Type, expected_effect: &Type, call_expr: ExprId) {
+    fn check_call(&mut self, call: &cst::Call, expected: &Type, call_expr: ExprId) {
         // If the function is a MemberAccess, try to resolve it as a method call.
         // E.g. `vec.push 3` is rewritten to `push (mut vec) 3`.
-        if self.try_rewrite_method_call(call, expected, expected_effect, call_expr) {
+        if self.try_rewrite_method_call(call, expected, call_expr) {
             return;
         }
 
@@ -404,23 +389,20 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let expected_function_type = {
             let parameters = expected_parameter_types.clone();
             let environment = self.next_type_variable();
-            let effects = expected_effect.clone();
             let return_type = expected.clone();
-            Type::Function(Arc::new(FunctionType { parameters, environment, return_type, effects }))
+            Type::Function(Arc::new(FunctionType { parameters, environment, return_type }))
         };
 
-        self.check_expr_inner(call.function, &expected_function_type, expected_effect, Some(call_expr));
+        self.check_expr_inner(call.function, &expected_function_type, Some(call_expr));
         for (arg, expected_arg_type) in call.arguments.iter().zip(expected_parameter_types) {
-            self.check_expr(arg.expr, &expected_arg_type.typ, expected_effect);
+            self.check_expr(arg.expr, &expected_arg_type.typ);
         }
     }
 
     /// If `call` is `v.push 3` (MemberAccess + args), try to resolve `push` as a function
     /// in the module where `v`'s type is defined. If found, rewrite the Call expression to
     /// `push (mut v) 3` in the extended context and type-check that instead.
-    fn try_rewrite_method_call(
-        &mut self, call: &cst::Call, expected: &Type, expected_effect: &Type, call_expr: ExprId,
-    ) -> bool {
+    fn try_rewrite_method_call(&mut self, call: &cst::Call, expected: &Type, call_expr: ExprId) -> bool {
         let func_expr = match self.current_extended_context().extended_expr(call.function) {
             Some(expr) => expr.clone(),
             None => self.current_context()[call.function].clone(),
@@ -441,7 +423,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let old_suppress_record = self.suppress_move_record;
         self.suppress_move_check = true;
         self.suppress_move_record = true;
-        self.check_expr(object, &struct_type, expected_effect);
+        self.check_expr(object, &struct_type);
         self.suppress_move_check = old_suppress_check;
         self.suppress_move_record = old_suppress_record;
 
@@ -480,7 +462,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         // Build the new Call: `push (mut v) 3`
         // If the call is in the form `obj.method ()` and the method only takes 1 parameter,
-        // strip the `()` — it's only there to make the expression a call.
+        // strip the `()`.
         let single_unit_arg = call.arguments.len() == 1
             && func_type.parameters.len() == 1
             && matches!(self.current_context()[call.arguments[0].expr], Expr::Literal(Literal::Unit));
@@ -494,7 +476,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         self.current_extended_context_mut().insert_expr(call_expr, new_call);
 
         // Type-check the rewritten expression (handles implicit parameter resolution too)
-        self.check_expr(call_expr, expected, expected_effect);
+        self.check_expr(call_expr, expected);
         true
     }
 
@@ -515,8 +497,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 let expected_parameter_count = parameters.len();
                 let environment = self.next_type_variable();
                 let return_type = self.next_type_variable();
-                let effects = self.next_type_variable();
-                let new_type = Arc::new(FunctionType { parameters, environment, return_type, effects });
+                let new_type = Arc::new(FunctionType { parameters, environment, return_type });
                 let function_type = Type::Function(new_type.clone());
                 self.unify(expected, &function_type, TypeErrorKind::Lambda { expected_parameter_count }, expr);
                 new_type
@@ -536,7 +517,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         for (parameter, expected_type) in lambda.parameters.iter().zip(function_type.parameters.iter()) {
             // Avoid extra errors if the parameter length isn't as expected
             let expected_type = if parameter_lengths_match { &expected_type.typ } else { &Type::ERROR };
-            self.check_pattern(parameter.pattern, expected_type, &Type::no_effects());
+            self.check_pattern(parameter.pattern, expected_type);
 
             if parameter.is_mutable {
                 if let Pattern::Variable(name) = &self.current_extended_context()[parameter.pattern] {
@@ -551,7 +532,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         // Required in case `function_type` has fewer parameters, to ensure we check all of `lambda.parameters`
         for parameter in lambda.parameters.iter().skip(function_type.parameters.len()) {
-            self.check_pattern(parameter.pattern, &Type::ERROR, &Type::no_effects());
+            self.check_pattern(parameter.pattern, &Type::ERROR);
         }
 
         let return_type = if let Some(return_type) = lambda.return_type.as_ref() {
@@ -562,7 +543,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Cow::Borrowed(&function_type.return_type)
         };
 
-        self.check_expr(lambda.body, &return_type, &function_type.effects);
+        self.check_expr(lambda.body, &return_type);
 
         // If this lambda's body may execute more than once (e.g. a handler
         // branch), report any non-Copy outer variables moved inside it before
@@ -589,10 +570,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             self.check_for_closure(expr, &function_type.environment, self_name, lambda.is_move);
         }
 
-        if !options.suppress_effect_closure {
-            self.try_close_lambda_effects(&function_type);
-        }
-
         // For `move` closures, record that each captured non-Copy variable has been moved
         // in the outer scope. Copy types are simply copied into the environment.
         if lambda.is_move {
@@ -606,26 +583,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     }
                 }
             }
-        }
-    }
-
-    /// If a lambda is polymorphic over its effect set `a` but `a` is not mentioned elsewhere
-    /// in the lambda's type, we simplify the type be closing the effect set (removing `a`).
-    ///
-    /// This results in `fn a -> b can e` being closed into `fn a -> b pure` or similarly
-    /// `fn a -> b can IO, Throw t, e` being closed into `fn a -> b can IO, Throw t`. However,
-    /// `fn (fn a -> b can e) a -> b can e` will not remove the `e`.
-    fn try_close_lambda_effects(&mut self, function: &FunctionType) {
-        let Some(row) = function.effects.effect_row(&self.bindings) else { return };
-
-        // Check if `row` is mentioned anywhere in the function except its effect set
-        let no_bindings = TypeBindings::default();
-        let occurs = function.parameters.iter().any(|param| self.occurs(&param.typ, row, &no_bindings))
-            || self.occurs(&function.environment, row, &no_bindings)
-            || self.occurs(&function.return_type, row, &no_bindings);
-
-        if !occurs {
-            self.bindings.insert(row, Type::no_effects());
         }
     }
 
@@ -643,17 +600,15 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
-    fn check_member_access(
-        &mut self, member_access: &cst::MemberAccess, expected: &Type, expected_effect: &Type, expr: ExprId,
-    ) {
+    fn check_member_access(&mut self, member_access: &cst::MemberAccess, expected: &Type, expr: ExprId) {
         let struct_type = self.next_type_variable();
 
-        // Suppress moves on the object — we handle partial move tracking here at the field level
+        // Suppress moves on the object - we handle partial move tracking here at the field level
         let old_suppress_check = self.suppress_move_check;
         let old_suppress_record = self.suppress_move_record;
         self.suppress_move_check = true;
         self.suppress_move_record = true;
-        self.check_expr(member_access.object, &struct_type, expected_effect);
+        self.check_expr(member_access.object, &struct_type);
         self.suppress_move_check = old_suppress_check;
         self.suppress_move_record = old_suppress_record;
 
@@ -690,13 +645,13 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     self.unify(&inner_field_type, expected, TypeErrorKind::General, expr);
                     let new_expr = self.auto_deref_coercion(expr, inner_field_type);
                     self.current_extended_context_mut().insert_expr(expr, new_expr);
-                    self.check_expr(expr, expected, expected_effect);
+                    self.check_expr(expr, expected);
                     return;
                 }
             }
 
             match self.try_coercion(&field, expected, expr, None) {
-                super::CoercionOutcome::ReplacedExpr => self.check_expr(expr, expected, expected_effect),
+                super::CoercionOutcome::ReplacedExpr => self.check_expr(expr, expected),
                 super::CoercionOutcome::InPlaceCall | super::CoercionOutcome::None => {
                     self.unify(&field, expected, TypeErrorKind::General, expr);
                 },
@@ -795,8 +750,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         Some(object)
     }
 
-    fn check_if(&mut self, if_: &cst::If, expected: &Type, expected_effect: &Type, expr: ExprId) {
-        self.check_expr(if_.condition, &Type::BOOL, expected_effect);
+    fn check_if(&mut self, if_: &cst::If, expected: &Type, expr: ExprId) {
+        self.check_expr(if_.condition, &Type::BOOL);
 
         // If there's an else clause our expected return type should match the then/else clauses'
         // types. Otherwise, the then body may be any type.
@@ -811,7 +766,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let pre_branch_moves = self.move_tracker.clone();
 
         self.push_implicits_scope();
-        self.check_expr(if_.then, &expected, expected_effect);
+        self.check_expr(if_.then, &expected);
         self.pop_implicits_scope();
         let then_moves = self.move_tracker.clone();
 
@@ -823,7 +778,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             // Reset to pre-branch state for else branch
             self.move_tracker = pre_branch_moves.clone();
             self.push_implicits_scope();
-            self.check_expr(else_, &expected, expected_effect);
+            self.check_expr(else_, &expected);
             self.pop_implicits_scope();
             let else_moves = self.move_tracker.clone();
             let else_diverges = self.expr_always_diverges(else_);
@@ -848,14 +803,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
-    fn check_match(&mut self, match_: &cst::Match, expected: &Type, expected_effect: &Type, expr: ExprId) {
+    fn check_match(&mut self, match_: &cst::Match, expected: &Type, expr: ExprId) {
         let expr_type = self.next_type_variable();
 
         // Push an implicits scope here so we can default any integers used in the match
         // to an `I32` before the decision tree checks occur. This lets us compile `match 1 | ...`
         // without errors that the type of `1` is not yet known.
         self.push_implicits_scope();
-        self.check_expr(match_.expression, &expr_type, expected_effect);
+        self.check_expr(match_.expression, &expr_type);
 
         // Save move state before branches
         let pre_branch_moves = self.move_tracker.clone();
@@ -863,10 +818,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         for (pattern, branch) in match_.cases.iter() {
             self.move_tracker = pre_branch_moves.clone();
-            self.check_pattern(*pattern, &expr_type, expected_effect);
+            self.check_pattern(*pattern, &expr_type);
             // TODO: Specify if branch_type != type of first branch for better error messages
             self.push_implicits_scope();
-            self.check_expr(*branch, expected, expected_effect);
+            self.check_expr(*branch, expected);
             self.pop_implicits_scope();
             branch_trackers.push(self.move_tracker.clone());
         }
@@ -887,7 +842,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
-    fn check_reference(&mut self, reference: &cst::Reference, expected: &Type, expected_effect: &Type, expr: ExprId) {
+    fn check_reference(&mut self, reference: &cst::Reference, expected: &Type, expr: ExprId) {
         let actual = Type::reference(reference.kind);
 
         let expected_element_type = match self.follow_type(expected) {
@@ -929,13 +884,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // check that the rhs isn't already moved.
         let old_suppress_record = self.suppress_move_record;
         self.suppress_move_record = true;
-        self.check_expr(reference.rhs, &expected_element_type, expected_effect);
+        self.check_expr(reference.rhs, &expected_element_type);
         self.suppress_move_record = old_suppress_record;
     }
 
-    fn check_constructor(
-        &mut self, constructor: &cst::Constructor, expected: &Type, expected_effect: &Type, id: ExprId,
-    ) {
+    fn check_constructor(&mut self, constructor: &cst::Constructor, expected: &Type, id: ExprId) {
         let typ = self.from_cst_type(&constructor.typ, true);
         self.unify(&typ, expected, TypeErrorKind::Constructor, id);
 
@@ -948,7 +901,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             let name_string = &self.current_context()[*name];
             let (expected_field_type, field_index) = field_types.get(name_string).cloned().unwrap_or((Type::ERROR, 0));
 
-            self.check_expr(*expr, &expected_field_type, expected_effect);
+            self.check_expr(*expr, &expected_field_type);
             self.check_name(*name, &expected_field_type);
 
             field_order.insert(*name, field_index);
@@ -957,53 +910,61 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         self.current_extended_context_mut().push_constructor_field_order(id, field_order);
     }
 
-    fn check_handle(&mut self, handle: &cst::Handle, expected: &Type, expected_effect: &Type, expr: ExprId) {
+    fn check_handle(&mut self, handle: &cst::Handle, expected: &Type) {
         // `can expected_effect, e`
         let expected_and_e = self.next_type_variable();
 
-        // Body: fn () -> expected can expected_and_e
+        let handler_effect_type = self.next_type_variable();
+        self.name_types.insert(handle.handler_name, handler_effect_type.clone());
+
+        // The parser wraps the handled expression in `fn () -> <body>` to serve as the
+        // coroutine's init function.
         let body_env = self.next_type_variable();
         let body_type = Type::Function(Arc::new(FunctionType {
-            parameters: Vec::new(),
+            parameters: vec![ParameterType::explicit(Type::UNIT)],
             environment: body_env,
             return_type: expected.clone(),
-            effects: expected_and_e.clone(),
         }));
         self.expr_types.insert(handle.expression, body_type.clone());
 
-        // `check_lambda_impl` typically closes polymorphic effectful functions for simpler
-        // function signatures. We need to stop that here since we're going to add an effect to it later.
-        let options = LambdaOptions { suppress_effect_closure: true, ..Default::default() };
+        let options = LambdaOptions::default();
         let body_lambda = self.unwrap_lambda(handle.expression);
-        self.check_lambda_impl(&body_lambda, &body_type, handle.expression, None, options);
 
-        // Snapshot the set of names visible before any handler branch runs.
-        // Each branch is checked against this snapshot so moves of non-Copy
-        // outer variables inside a branch are reported — a branch can fire
-        // more than once, so those moves are not safe.
+        // Predeclare `handler_name` for the body's free-vars analysis: `h` is accessed at runtime
+        // through the coroutine's user_data, so it must not be tracked as a captured variable in
+        // the body lambda's environment.
+        self.check_lambda_impl(&body_lambda, &body_type, handle.expression, Some(handle.handler_name), options);
+
+        // Prevent any names visible from before the handler branches from being moved
         // TODO: This is inefficient, remove the need for collecting here
         let outer_names = self.name_types.keys().copied().collect::<FxHashSet<_>>();
 
         // For each case:
-        // - pattern.function: fn args.. -> r can e  (the effect op declared type)
+        // - pattern.function: fn args.. {Effect..} -> r can e  (the effect op declared type)
         // - branch lambda:    fn args.. resume -> expected can expected_effect
         // - resume:           fn r -> expected can expected_effect
         //
         // `resume` doesn't raise `e` since handlers in Ante are deep: each call to
         // resume is automatically handled by the same handler.
         for (pattern, branch) in &handle.cases {
-            let parameter_types = mapvec(&pattern.args, |_| ParameterType::explicit(self.next_type_variable()));
+            let mut parameter_types = mapvec(&pattern.args, |_| ParameterType::explicit(self.next_type_variable()));
+
+            // The effect operation has an implicit trailing parameter of its parent
+            // effect type (e.g. `Emit a`, `Fail`).
+            parameter_types.push(ParameterType::implicit(handler_effect_type.clone()));
             let r = self.next_type_variable();
             let e = self.next_type_variable();
 
             let function_type = Type::Function(Arc::new(FunctionType {
                 parameters: parameter_types.clone(),
-                environment: Type::NO_CLOSURE_ENV,
+                environment: Type::Application(Arc::new(Type::POINTER), Arc::new(vec![Type::UNIT])),
                 return_type: r.clone(),
-                effects: e.clone(),
             }));
-            self.check_path(pattern.function, &function_type, expected_effect, None, None);
+            self.check_path(pattern.function, &function_type, None, None);
             self.unify(&e, &expected_and_e, TypeErrorKind::General, pattern.function);
+
+            // Branches accept the operation's explicit args plus `resume`.
+            parameter_types.pop();
 
             // resume is a closure capturing its environment by reference.
             // The coroutine lowering pass supplies a closure with an env pointing to `(coro, handlers..)`.
@@ -1011,7 +972,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 parameters: vec![ParameterType::explicit(r)],
                 environment: Type::Primitive(types::PrimitiveType::Pointer),
                 return_type: expected.clone(),
-                effects: expected_effect.clone(),
             }));
 
             let mut handler_params = parameter_types;
@@ -1020,7 +980,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 parameters: handler_params,
                 environment: self.next_type_variable(),
                 return_type: expected.clone(),
-                effects: expected_effect.clone(),
             }));
 
             // Only allow moving variables into this branch if `resume` is never mentioned.
@@ -1029,18 +988,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 .handler_branch_uses_resume(pattern.resume_name, *branch)
                 .then(|| (RepeatedContext::HandlerBranch, outer_names.clone()));
 
-            let options = LambdaOptions { suppress_effect_closure: true, repeated_context };
+            let options = LambdaOptions { repeated_context };
 
             let branch_lambda = self.unwrap_lambda(*branch);
             self.expr_types.insert(*branch, handler_type.clone());
             self.check_lambda_impl(&branch_lambda, &handler_type, *branch, None, options);
-        }
-
-        // Link expected_effect to the unhandled effects remaining in expected_and_e.
-        // The per-case unify calls extracted each handled effect, so the row tail
-        // represents effects the handler does not handle.
-        if let Some(row_id) = expected_and_e.effect_row(&self.bindings) {
-            self.unify(expected_effect, &Type::Variable(row_id), TypeErrorKind::General, expr);
         }
     }
 
@@ -1052,7 +1004,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
-    fn check_assignment(&mut self, assignment: &cst::Assignment, expected: &Type, expected_effect: &Type, id: ExprId) {
+    fn check_assignment(&mut self, assignment: &cst::Assignment, expected: &Type, id: ExprId) {
         let lhs_type = self.next_type_variable();
 
         // Allow `x := v` to use `x` even if moved but `x += v` cannot since it reads `x`
@@ -1060,11 +1012,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         if is_plain {
             let old_suppress_check = std::mem::replace(&mut self.suppress_move_check, true);
             let old_suppress_record = std::mem::replace(&mut self.suppress_move_record, true);
-            self.check_expr(assignment.lhs, &lhs_type, expected_effect);
+            self.check_expr(assignment.lhs, &lhs_type);
             self.suppress_move_check = old_suppress_check;
             self.suppress_move_record = old_suppress_record;
         } else {
-            self.check_expr(assignment.lhs, &lhs_type, expected_effect);
+            self.check_expr(assignment.lhs, &lhs_type);
         }
 
         // If the LHS is a reference type (e.g. `p.x` where `p: mut Point` yields `mut I32`),
@@ -1092,12 +1044,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 ],
                 environment: self.next_type_variable(),
                 return_type: value_type.clone(),
-                effects: self.next_type_variable(),
             }));
-            self.check_expr(op_expr, &expected_fn_type, expected_effect);
+            self.check_expr(op_expr, &expected_fn_type);
         }
 
-        self.check_expr(assignment.rhs, &value_type, expected_effect);
+        self.check_expr(assignment.rhs, &value_type);
 
         // The LHS always holds a value after an assignment
         if let Some(path) = self.try_build_move_path(assignment.lhs) {
@@ -1108,10 +1059,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     }
 
     /// Return can unify with any type locally so we don't need the expected type here
-    fn check_return(&mut self, returned_expr: ExprId, expected_effect: &Type, id: ExprId) {
+    fn check_return(&mut self, returned_expr: ExprId, id: ExprId) {
         match self.function_return_type.as_ref().cloned() {
             Some(expected_return) => {
-                self.check_expr(returned_expr, &expected_return, expected_effect);
+                self.check_expr(returned_expr, &expected_return);
             },
             None => {
                 let location = id.locate(self);
@@ -1120,14 +1071,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
-    fn check_while(&mut self, while_: &cst::While, expected: &Type, expected_effect: &Type, id: ExprId) {
+    fn check_while(&mut self, while_: &cst::While, expected: &Type, id: ExprId) {
         // Both the condition and body may execute more than once, so moves of
         // outer non-Copy values inside either are unsound.
         let outer_names = self.name_types.keys().copied().collect::<FxHashSet<_>>();
         let old_tracker = std::mem::take(&mut self.move_tracker);
 
-        self.check_expr(while_.condition, &Type::BOOL, expected_effect);
-        self.check_expr(while_.body, &Type::UNIT, expected_effect);
+        self.check_expr(while_.condition, &Type::BOOL);
+        self.check_expr(while_.body, &Type::UNIT);
 
         self.check_moves_in_repeated_context(&outer_names, RepeatedContext::WhileLoop);
         self.move_tracker = old_tracker;
@@ -1135,7 +1086,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         self.unify(&Type::UNIT, expected, TypeErrorKind::General, id);
     }
 
-    fn check_for(&mut self, for_: &cst::For, expected: &Type, expected_effect: &Type, id: ExprId) {
+    fn check_for(&mut self, for_: &cst::For, expected: &Type, id: ExprId) {
         let int_ty = self.next_type_variable_id();
         // Hack: use 0 for the integer value here since it fits into all integer types.
         // We just need this to ensure the user actually uses integer ranges. Any actual integer
@@ -1144,8 +1095,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let int_ty = Type::Variable(int_ty);
 
         // Range expressions run exactly once, so normal move semantics apply here.
-        self.check_expr(for_.start, &int_ty, expected_effect);
-        self.check_expr(for_.end, &int_ty, expected_effect);
+        self.check_expr(for_.start, &int_ty);
+        self.check_expr(for_.end, &int_ty);
 
         // Snapshot outer names before introducing the loop variable so the
         // loop variable itself is not counted as an outer binding.
@@ -1153,7 +1104,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         self.name_types.insert(for_.variable, int_ty);
 
         let old_tracker = std::mem::take(&mut self.move_tracker);
-        self.check_expr(for_.body, &Type::UNIT, expected_effect);
+        self.check_expr(for_.body, &Type::UNIT);
         self.check_moves_in_repeated_context(&outer_names, RepeatedContext::ForLoop);
         self.move_tracker = old_tracker;
 

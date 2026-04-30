@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, sync::Arc};
 
-use cst::{Comptime, Declaration, EffectType, Lambda, MemberAccess, Name, Parameter, Pattern};
+use cst::{Comptime, Declaration, Lambda, MemberAccess, Name, Parameter, Pattern};
 use ids::{ExprId, NameId, PathId, PatternId, TopLevelId};
 use rustc_hash::FxHashSet;
 use serde::{Deserialize, Serialize};
@@ -430,8 +430,7 @@ impl<'tokens> Parser<'tokens> {
                     items.push(item);
                 }
 
-                // Parse any extra items `, b, c, d` — accepts both lowercase identifiers
-                // and uppercase type/trait names (e.g. `import Std.HashMap.empty, Hash`).
+                // Parse any extra items e.g. `, b, c, d`
                 while self.accept(Token::Comma) {
                     match self.current_token() {
                         Token::Identifier(name) | Token::TypeName(name) => {
@@ -683,7 +682,6 @@ impl<'tokens> Parser<'tokens> {
             None
         };
 
-        let effects = self.parse_effects_clause();
         self.expect(Token::Equal, "`=` to begin the function body")?;
 
         let lambda_id = self.reserve_expr();
@@ -691,7 +689,7 @@ impl<'tokens> Parser<'tokens> {
             .try_parse_or_recover_to_newline(|this| this.parse_block_or_expression())
             .unwrap_or_else(|| self.push_expr(Expr::Error, self.current_token_location()));
 
-        let lambda = Expr::Lambda(Lambda { parameters, return_type, effects, body, is_move: false });
+        let lambda = Expr::Lambda(Lambda { parameters, return_type, body, is_move: false });
         self.insert_expr(lambda_id, lambda, start_location);
         Ok(Definition { implicit, mutable: false, pattern: name, rhs: lambda_id })
     }
@@ -719,7 +717,7 @@ impl<'tokens> Parser<'tokens> {
         let generics = self.parse_generics();
         self.expect(Token::Equal, "`=` to begin the type definition")?;
         let body = self.parse_type_body()?;
-        Ok(TypeDefinition { shared, name, generics, body, is_trait: false })
+        Ok(TypeDefinition { shared, name, generics, body, is_trait: false, is_effect: false })
     }
 
     /// generics: ident*
@@ -890,44 +888,9 @@ impl<'tokens> Parser<'tokens> {
         }
 
         let return_type = Box::new(self.parse_type()?);
-        let effects = self.parse_effects_clause();
         let location = start.to(&self.previous_token_location());
 
-        Ok(Type::new(TypeKind::Function(cst::FunctionType { parameters, environment, return_type, effects }), location))
-    }
-
-    /// The effect clause on a function or function type.
-    ///
-    /// effects_clause: 'can' effect_type (',' effect_type)*
-    ///               | 'pure'
-    ///               | %empty
-    fn parse_effects_clause(&mut self) -> Option<Vec<EffectType>> {
-        match self.current_token() {
-            Token::Can => {
-                self.advance();
-                Some(self.delimited(Self::parse_effect_type, Token::Comma, false))
-            },
-            Token::Pure => {
-                self.advance();
-                Some(Vec::new())
-            },
-            _ => None,
-        }
-    }
-
-    fn parse_effect_type(&mut self) -> Result<EffectType> {
-        match self.current_token() {
-            Token::TypeName(_) => {
-                let path = self.parse_type_path_id()?;
-                let args = self.many0(Self::parse_type_arg);
-                Ok(EffectType::Known(path, args))
-            },
-            Token::Identifier(_) => {
-                let name = self.parse_ident_id()?;
-                Ok(EffectType::Variable(name))
-            },
-            _ => self.expected("an effect name"),
-        }
+        Ok(Type::new(TypeKind::Function(cst::FunctionType { parameters, environment, return_type }), location))
     }
 
     /// pair_type: type_no_pair ',' pair_type
@@ -1407,7 +1370,7 @@ impl<'tokens> Parser<'tokens> {
         match self.current_token() {
             Token::If => self.parse_if_expr(),
             Token::Match => self.parse_match(),
-            Token::Handle => self.parse_handle(),
+            Token::Handler => self.parse_handler(),
             Token::Loop => self.parse_loop(),
             Token::While => self.parse_while(),
             Token::For => self.parse_for(),
@@ -1721,12 +1684,10 @@ impl<'tokens> Parser<'tokens> {
                 None
             };
 
-            let effects = this.parse_effects_clause();
-
             this.expect(Token::RightArrow, "a `->` to separate this lambda's parameters from its body")?;
             let body = this.parse_block_or_expression()?;
 
-            Ok(Expr::Lambda(Lambda { parameters, return_type, effects, body, is_move }))
+            Ok(Expr::Lambda(Lambda { parameters, return_type, body, is_move }))
         })
     }
 
@@ -1751,15 +1712,7 @@ impl<'tokens> Parser<'tokens> {
         let rhs = self.parse_expression()?;
         self.accept(Token::Newline);
 
-        let body_start = self.current_token_span();
-        let body_items = self.parse_sequence_items();
-
-        let body_location = if body_items.is_empty() {
-            body_start.in_file(self.file_id)
-        } else {
-            body_start.to(&self.previous_token_span()).in_file(self.file_id)
-        };
-        let body = self.push_expr(Expr::Sequence(body_items), body_location);
+        let body = self.parse_sequence_items_expr();
 
         let end = self.previous_token_span();
         let location = start.to(&end).in_file(self.file_id);
@@ -1981,23 +1934,16 @@ impl<'tokens> Parser<'tokens> {
         })
     }
 
-    fn parse_handle(&mut self) -> Result<ExprId> {
+    fn parse_handler(&mut self) -> Result<ExprId> {
         self.with_expr_id_and_location(|this| {
-            this.expect(Token::Handle, "`handle` to start this match expression")?;
+            this.expect(Token::Handler, "`handler` to start this handler expression")?;
 
-            let expression = this.parse_block_or_expression()?;
-            // Wrap the handled expression in a `fn () -> _ = <expression>` lambda
-            // so downstream passes can reuse the existing closure conversion & free-variable analysis
-            let expression = this.wrap_in_lambda(Vec::new(), expression);
+            let handler_name = this.parse_ident_id()?;
+            this.expect(Token::For, "`for` to introduce the handler branches")?;
 
-            let cases = this.many0(|this| {
-                if *this.peek_next_token() == Token::Pipe {
-                    this.accept(Token::Newline);
-                }
-
-                this.expect(Token::Pipe, "a `|` to start a new pattern")?;
+            let parse_branch = |this: &mut Self| -> Result<(HandlePattern, ExprId)> {
                 let pattern = this.parse_handle_pattern()?;
-                this.expect(Token::RightArrow, "a `->` to separate the handle pattern from the match branch")?;
+                this.expect(Token::RightArrow, "a `->` to separate the handle pattern from the branch body")?;
                 let branch = this.parse_block_or_expression()?;
 
                 // Wrap the branch in a lambda whose parameters are each of the pattern args followed by `resume`.
@@ -2007,15 +1953,54 @@ impl<'tokens> Parser<'tokens> {
                 params.push(cst::Parameter::new(resume_pattern));
 
                 Ok((pattern, this.wrap_in_lambda(params, branch)))
-            });
+            };
 
-            Ok(Expr::Handle(cst::Handle { expression, cases }))
+            // Allow an optional leading newline before the first `|` in the pipe-prefixed form.
+            let starts_with_pipe = *this.current_token() == Token::Pipe
+                || (*this.current_token() == Token::Newline && *this.peek_next_token() == Token::Pipe);
+
+            let mut cases = Vec::new();
+            if starts_with_pipe {
+                let mut first = true;
+                loop {
+                    if *this.peek_next_token() == Token::Pipe {
+                        this.accept(Token::Newline);
+                    }
+                    if !this.accept(Token::Pipe) {
+                        if first {
+                            return this.expected("a `|` to start a handler branch");
+                        }
+                        break;
+                    }
+                    first = false;
+                    cases.push(parse_branch(this)?);
+                }
+            } else {
+                // Single branch with no leading `|`.
+                cases.push(parse_branch(this)?);
+            }
+
+            this.accept(Token::Newline);
+
+            let body = if this.accept(Token::In) {
+                this.parse_block_or_expression()?
+            } else {
+                this.parse_sequence_items_expr()
+            };
+
+            // Wrap the handled expression in a `fn () = <expression>`. This will be the init
+            // function for the coroutine.
+            let body_location = this.current_context.expr_locations[body].clone();
+            let unit_pattern = this.push_pattern(Pattern::Literal(Literal::Unit), body_location);
+            let expression = this.wrap_in_lambda(vec![cst::Parameter::new(unit_pattern)], body);
+
+            Ok(Expr::Handle(cst::Handle { handler_name, expression, cases }))
         })
     }
 
     fn wrap_in_lambda(&mut self, parameters: Vec<cst::Parameter>, body: ExprId) -> ExprId {
         let location = self.current_context.expr_locations[body].clone();
-        let lambda = Expr::Lambda(cst::Lambda { parameters, return_type: None, effects: None, body, is_move: false });
+        let lambda = Expr::Lambda(cst::Lambda { parameters, return_type: None, body, is_move: false });
         self.push_expr(lambda, location)
     }
 
@@ -2092,6 +2077,20 @@ impl<'tokens> Parser<'tokens> {
             }
         }
         statements
+    }
+
+    /// Wraps the result of `parse_sequence_items` in a Sequence expression
+    fn parse_sequence_items_expr(&mut self) -> ExprId {
+        let start = self.current_token_span();
+        let items = self.parse_sequence_items();
+
+        let location = if items.is_empty() {
+            start.in_file(self.file_id)
+        } else {
+            start.to(&self.previous_token_span()).in_file(self.file_id)
+        };
+
+        self.push_expr(Expr::Sequence(items), location)
     }
 
     /// Create a location from the current token before running the given parse function to the

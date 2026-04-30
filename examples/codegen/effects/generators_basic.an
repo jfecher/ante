@@ -1,19 +1,19 @@
 effect Emit a with
     emit: fn a -> Unit
 
-iota (n: U32) = loop (i = 0) ->
+iota (n: U32) {Emit U32} = loop (i = 0) ->
     if i < n then
         emit i
         recur (i + 1)
 
-for_ stream f =
-    handle stream ()
-    | emit x ->
+for_ (stream: fn (Emit a) -> Unit) (f: fn a [env] -> Unit) =
+    handler h for emit x ->
         f x
         resume ()
+    in stream h
 
 main () =
-    iota 10 ~> for_ print
+    for_ (fn h -> iota 10 {h}) print
 
 // args: --delete-binary --no-color
 // expected stdout: 0123456789

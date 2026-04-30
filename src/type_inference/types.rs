@@ -47,17 +47,6 @@ pub enum Type {
     /// could use this type instead, using a UserDefinedType for them lets us reuse the existing
     /// mechanisms to automatically define their constructor and retrieve their fields.
     Tuple(Arc<Vec<Type>>),
-
-    /// Zero or more effects.
-    ///   pure = an empty Vec
-    ///   IO, Throw a = vec![IO, Throw a]
-    ///
-    /// Unlike a `Type::Tuple`, an effect set is flat and can be made extensible by adding a type variable.
-    /// Thus `Effects([A, Effects(vec![B])])` is equal to `Effects([A, B])`
-    ///
-    /// Effect sets containing only a single type variable and no concrete
-    /// effects should just be represented as a Type::Variable variant directly instead.
-    Effects(Arc<Vec<Type>>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -70,7 +59,6 @@ pub struct FunctionType {
     pub environment: Type,
 
     pub return_type: Type,
-    pub effects: Type,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -170,13 +158,6 @@ impl Type {
         Type::Primitive(PrimitiveType::Reference(kind))
     }
 
-    /// An empty effect set (non-extensible)
-    ///
-    /// For an empty but extensible effect set, just use a regular type variable
-    pub fn no_effects() -> Type {
-        Type::Effects(Arc::new(Vec::new()))
-    }
-
     /// Convert this type to a string (without any coloring)
     pub fn to_string<Db>(&self, bindings: &TypeBindings, names: &impl NameStore, db: &Db) -> String
     where
@@ -273,7 +254,6 @@ impl Type {
                     parameters,
                     environment: function.environment.follow_all_two(bindings, more_bindings),
                     return_type: function.return_type.follow_all_two(bindings, more_bindings),
-                    effects: function.effects.follow_all_two(bindings, more_bindings),
                 }))
             },
             Type::Application(constructor, args) => {
@@ -295,9 +275,6 @@ impl Type {
             },
             Type::Tuple(elements) => {
                 Type::Tuple(Arc::new(mapvec(elements.iter(), |t| t.follow_all_two(bindings, more_bindings))))
-            },
-            Type::Effects(effects) => {
-                Type::Effects(Arc::new(mapvec(effects.iter(), |t| t.follow_all_two(bindings, more_bindings))))
             },
         }
     }
@@ -322,8 +299,7 @@ impl Type {
                 });
                 let environment = function.environment.substitute(bindings_to_substitute, bindings_in_scope);
                 let return_type = function.return_type.substitute(bindings_to_substitute, bindings_in_scope);
-                let effects = function.effects.substitute(bindings_to_substitute, bindings_in_scope);
-                Type::Function(Arc::new(FunctionType { parameters, environment, return_type, effects }))
+                Type::Function(Arc::new(FunctionType { parameters, environment, return_type }))
             },
             Type::Application(constructor, args) => {
                 let (constructor, args) = (constructor.clone(), args.clone());
@@ -348,9 +324,6 @@ impl Type {
                 typ.substitute(&bindings, bindings_in_scope)
             },
             Type::Tuple(elements) => Type::Tuple(Arc::new(mapvec(elements.iter(), |t| {
-                t.substitute(bindings_to_substitute, bindings_in_scope)
-            }))),
-            Type::Effects(effects) => Type::Effects(Arc::new(mapvec(effects.iter(), |t| {
                 t.substitute(bindings_to_substitute, bindings_in_scope)
             }))),
         }
@@ -491,19 +464,7 @@ impl Type {
                 let return_type =
                     Self::from_cst_type(&function.return_type, resolve, db, next_id, insert_implicit_type_vars);
 
-                let effects = match &function.effects {
-                    Some(effects) => Type::Effects(Arc::new(mapvec(effects, |effect| {
-                        Self::from_cst_effect(effect, &typ.location, resolve, db, next_id, insert_implicit_type_vars)
-                    }))),
-                    None if insert_implicit_type_vars => {
-                        let any = Type::Variable(TypeVariableId(*next_id));
-                        *next_id += 1;
-                        any
-                    },
-                    None => Type::no_effects(),
-                };
-
-                let f = Type::Function(Arc::new(FunctionType { parameters, environment, return_type, effects }));
+                let f = Type::Function(Arc::new(FunctionType { parameters, environment, return_type }));
                 (f, Kind::Type)
             },
             crate::parser::cst::TypeKind::Error => (Type::ERROR, Kind::Error),
@@ -540,13 +501,16 @@ impl Type {
 
                 assert!(!converted_args.is_empty());
                 let typ = Type::Application(Arc::new(f), Arc::new(converted_args));
-                (typ, f_kind.result_kind())
+                (typ, Kind::Type)
             },
             crate::parser::cst::TypeKind::Reference(kind) => (
                 Type::Primitive(PrimitiveType::Reference(*kind)),
                 Kind::TypeConstructorSimple(NonZeroUsize::new(1).unwrap()),
             ),
             crate::parser::cst::TypeKind::NoClosureEnv => (Type::NO_CLOSURE_ENV, Kind::Type),
+            crate::parser::cst::TypeKind::Pointer => {
+                (Type::POINTER, Kind::TypeConstructorSimple(NonZeroUsize::new(1).unwrap()))
+            },
             crate::parser::cst::TypeKind::Tuple(elements) => {
                 let elements =
                     mapvec(elements, |t| Self::from_cst_type(t, resolve, db, next_id, insert_implicit_type_vars));
@@ -561,28 +525,6 @@ impl Type {
                 db.accumulate(Diagnostic::HoleCantBeUsed { location: typ.location.clone() });
                 (Type::ERROR, Kind::Error)
             },
-        }
-    }
-
-    /// Converts a [cst::EffectType] into a [Type::Effects] holding the relevant set of effects.
-    /// An empty set of effects corresponds to the `pure` keyword.
-    fn from_cst_effect(
-        effect: &cst::EffectType, location: &Location, resolve: &crate::name_resolution::ResolutionResult,
-        db: &DbHandle, next_id: &mut u32, insert_implicit_type_vars: bool,
-    ) -> Type {
-        match effect {
-            cst::EffectType::Known(path, arguments) => {
-                let constructor = cst::Type::new(cst::TypeKind::Named(*path), location.clone());
-
-                let effect = if arguments.is_empty() {
-                    constructor
-                } else {
-                    let application = cst::TypeKind::Application(Box::new(constructor), arguments.clone());
-                    cst::Type::new(application, location.clone())
-                };
-                Self::from_cst_type_with_kind(&effect, Kind::Effect, resolve, db, next_id, insert_implicit_type_vars)
-            },
-            cst::EffectType::Variable(name) => Type::Generic(Generic::Named(Origin::Local(*name))),
         }
     }
 
@@ -602,10 +544,6 @@ impl Type {
                 match &item.kind {
                     cst::TopLevelItemKind::TypeDefinition(definition) => {
                         let kind = crate::definition_collection::kind_of_type_definition(definition);
-                        (make_type(origin), kind)
-                    },
-                    cst::TopLevelItemKind::EffectDefinition(effect) => {
-                        let kind = crate::definition_collection::kind_of_effect_definition(effect);
                         (make_type(origin), kind)
                     },
                     _ => {
@@ -659,7 +597,6 @@ impl Type {
                     }
                     free_vars_helper(&function.environment, bindings, free_vars);
                     free_vars_helper(&function.return_type, bindings, free_vars);
-                    free_vars_helper(&function.effects, bindings, free_vars);
                 },
                 Type::Application(constructor, args) => {
                     free_vars_helper(constructor, bindings, free_vars);
@@ -678,11 +615,6 @@ impl Type {
                 },
                 Type::Tuple(elements) => {
                     for element in elements.iter() {
-                        free_vars_helper(element, bindings, free_vars);
-                    }
-                },
-                Type::Effects(effects) => {
-                    for element in effects.iter() {
                         free_vars_helper(element, bindings, free_vars);
                     }
                 },
@@ -764,65 +696,6 @@ impl Type {
             _ => None,
         }
     }
-
-    /// Flatten this type as an effect row, returning the set of concrete
-    /// effects (with nested `Type::Effects` inlined) along with the type
-    /// variable marking it open to extension, if present.
-    ///
-    /// Any duplicates in the set are removed
-    pub fn collect_effects_in_type(
-        typ: &Type, bindings: &TypeBindings, more_bindings: &TypeBindings,
-    ) -> (Vec<Type>, Option<TypeVariableId>) {
-        match typ.follow_two(bindings, more_bindings) {
-            Type::Variable(id) => (Vec::new(), Some(id)),
-            Type::Effects(effects) => Self::collect_effects_in_types(&effects, bindings, more_bindings),
-            other => (vec![other], None),
-        }
-    }
-
-    /// See [Type::collect_effects_in_type]
-    pub fn collect_effects_in_types(
-        types: &[Type], bindings: &TypeBindings, more_bindings: &TypeBindings,
-    ) -> (Vec<Type>, Option<TypeVariableId>) {
-        let mut collected: Vec<Type> = Vec::new();
-        let mut variable = None;
-
-        for typ in types {
-            let (found, found_variable) = Self::collect_effects_in_type(typ, bindings, more_bindings);
-            for effect in found {
-                let zonked = effect.follow_all_two(bindings, more_bindings);
-
-                // Effect sets tend to be small so this is probably okay
-                if !collected.contains(&zonked) {
-                    collected.push(zonked);
-                }
-            }
-
-            // TODO: How to type check sets with multiple unbound type variables?
-            if variable.is_none() {
-                variable = found_variable;
-            }
-        }
-
-        (collected, variable)
-    }
-
-    /// If this type is an effect set which is open to extension, return the row variable
-    /// representing the rest of the effect set.
-    pub fn effect_row(&self, bindings: &TypeBindings) -> Option<TypeVariableId> {
-        match self.follow(bindings) {
-            Type::Variable(id) => Some(*id),
-            Type::Effects(effects) => {
-                for effect in effects.iter() {
-                    if let Some(row) = effect.effect_row(bindings) {
-                        return Some(row);
-                    }
-                }
-                None
-            },
-            _ => None,
-        }
-    }
 }
 
 pub struct TypePrinter<'a, Db, Names> {
@@ -880,15 +753,7 @@ where
                 }
 
                 write!(f, " -> ")?;
-                self.fmt_type(&function.return_type, false, f)?;
-
-                let effects = function.effects.follow(self.bindings);
-                if effects == &Type::no_effects() {
-                    write!(f, " pure")
-                } else {
-                    write!(f, " can ")?;
-                    self.fmt_type(effects, false, f)
-                }
+                self.fmt_type(&function.return_type, false, f)
             }),
             Type::Application(constructor, args) => try_parenthesize(parenthesize, f, |f| {
                 // Hack: If the constructor formats to `,` then print it infix
@@ -937,36 +802,6 @@ where
                     }
                     // TODO: Improve parenthesization here
                     self.fmt_type(element, true, f)?;
-                }
-                Ok(())
-            }),
-            Type::Effects(elements) => try_parenthesize(parenthesize, f, |f| {
-                if elements.is_empty() {
-                    return write!(f, "pure");
-                }
-
-                // `Type::Effects` can nest — a row variable may be bound to
-                // another effect set — so flatten through bindings. This is
-                // the same logic the unifier uses (dedupe by exact equality
-                // included), so the printed row matches the row the type
-                // checker sees.
-                let empty = TypeBindings::default();
-                let (concrete, row_var) = Type::collect_effects_in_types(elements, self.bindings, &empty);
-
-                let mut first = true;
-                for element in &concrete {
-                    if !first {
-                        write!(f, ", ")?;
-                    }
-                    first = false;
-                    // TODO: Improve parenthesization here
-                    self.fmt_type(element, true, f)?;
-                }
-                if let Some(id) = row_var {
-                    if !first {
-                        write!(f, ", ")?;
-                    }
-                    self.fmt_type(&Type::Variable(id), true, f)?;
                 }
                 Ok(())
             }),

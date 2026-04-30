@@ -9,7 +9,7 @@ use inkwell::{
     passes::PassBuilderOptions,
     targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine},
     types::{BasicType, BasicTypeEnum, IntType},
-    values::{AggregateValue, AnyValue, BasicValue, BasicValueEnum, FunctionValue, GlobalValue, PhiValue},
+    values::{AggregateValue, BasicValue, BasicValueEnum, FunctionValue, PhiValue},
 };
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
@@ -34,8 +34,7 @@ pub fn initialize_native_target() {
 }
 
 pub fn codegen_llvm(compiler: &Db, show_time: bool, opt_level: OptLevel) -> Option<CodegenLlvmResult> {
-    // Monomorphize everything - ideally we could only monomorphize some items so that the
-    // `CodegenLlvmResult` later can be split up and combined but for now it is whole program only.
+    // Whole-program for now; ideally `CodegenLlvmResult` could be split per item.
     let mir =
         crate::timings::time_phase("Monomorphization", show_time, || mir::monomorphization::monomorphize(compiler));
     crate::timings::time_phase("LLVM codegen", show_time, || codegen_llvm_for_mir(&mir, opt_level))
@@ -75,9 +74,8 @@ pub(crate) fn codegen_llvm_for_mir(mir: &mir::Mir, opt_level: OptLevel) -> Optio
     let bitcode = bitcode.as_slice().to_vec();
     let module_bitcode = Arc::new(bitcode);
 
-    // Compiling each function separately and linking them together later is probably slower than
-    // doing them all together to begin with but oh well. It is easier to start more incremental
-    // and be less incremental later than the reverse.
+    // Per-function codegen + later link is likely slower than all-at-once, but easier to relax
+    // back into the whole-program path than the reverse.
     Some(CodegenLlvmResult { module_bitcode })
 }
 
@@ -87,8 +85,7 @@ pub fn link(modules: Vec<Arc<Vec<u8>>>, binary_name: &str, show_time: bool, opt_
     let llvm = inkwell::context::Context::create();
     let module = llvm.create_module(binary_name);
 
-    // Re-parse each bitcode module and merge them into `module`. For a whole-program
-    // single module this is still O(program-size) so it's worth its own bucket.
+    // O(program-size) even for a whole-program single module, so it gets its own bucket.
     crate::timings::time_phase("Bitcode assembly", show_time, || {
         for bitcode in modules {
             let buffer = MemoryBuffer::create_from_memory_range(&bitcode, "buffer");
@@ -98,17 +95,14 @@ pub fn link(modules: Vec<Arc<Vec<u8>>>, binary_name: &str, show_time: bool, opt_
         }
     });
 
-    // generate the bitcode to a .bc file
     let path = std::path::Path::new(binary_name).with_extension("o");
     let target_machine = native_target_machine(opt_level);
 
-    // Object emission runs the LLVM backend (IR -> machine code), typically the most
-    // expensive LLVM step, so it gets its own phase bucket.
+    // Typically the most expensive LLVM step (IR -> machine code).
     crate::timings::time_phase("Object emission", show_time, || {
         target_machine.write_to_file(&module, FileType::Object, &path).unwrap();
     });
 
-    // call gcc to compile the bitcode to a binary
     crate::timings::time_phase("Linking", show_time, || {
         super::link_with_gcc(path.to_string_lossy().as_ref(), binary_name)
     })
@@ -118,6 +112,28 @@ fn native_target_machine(opt_level: OptLevel) -> TargetMachine {
     let triple = TargetMachine::get_default_triple();
     let target = Target::from_triple(&triple).unwrap();
     target.create_target_machine(&triple, "", "", opt_level.inkwell(), RelocMode::PIC, CodeModel::Default).unwrap()
+}
+
+/// The codegen-side representation of a [mir::Definition].
+///
+/// Functions get a real LLVM function definition/declaration; "let"-style globals
+/// constant-fold to a value that's inlined at every use site so we don't need to
+/// allocate a backing global slot or emit a load before each call.
+#[derive(Copy, Clone)]
+enum CodegenValue<'ctx> {
+    Function(FunctionValue<'ctx>),
+    Literal(BasicValueEnum<'ctx>),
+}
+
+impl<'ctx> CodegenValue<'ctx> {
+    /// Project this codegen value to the [BasicValueEnum] callers see when referencing
+    /// the definition: a function pointer for functions, the inlined literal otherwise.
+    fn into_basic_value(self) -> BasicValueEnum<'ctx> {
+        match self {
+            CodegenValue::Function(fv) => fv.as_global_value().as_pointer_value().into(),
+            CodegenValue::Literal(v) => v,
+        }
+    }
 }
 
 struct ModuleContext<'ctx> {
@@ -137,7 +153,7 @@ struct ModuleContext<'ctx> {
     /// This is `None` for libraries that do not define `main`.
     ante_main: Option<FunctionValue<'ctx>>,
 
-    global_values: FxHashMap<mir::Value, GlobalValue<'ctx>>,
+    definitions: FxHashMap<DefinitionId, CodegenValue<'ctx>>,
     values: FxHashMap<mir::Value, BasicValueEnum<'ctx>>,
 
     /// Block arguments are added here to later insert them as PHI values.
@@ -162,7 +178,7 @@ impl<'ctx> ModuleContext<'ctx> {
             current_function: None,
             current_function_value: None,
             ante_main: None,
-            global_values: Default::default(),
+            definitions: Default::default(),
             values: Default::default(),
             builder: llvm.create_builder(),
             blocks: Default::default(),
@@ -172,30 +188,25 @@ impl<'ctx> ModuleContext<'ctx> {
     }
 
     fn codegen_global(&mut self, global: &mir::Definition, id: mir::DefinitionId) {
-        let typ = self.convert_type(&global.typ);
-        let mangled_name = format!("{}_{}", self.get_name(id), id);
-        let global_var = self.module.add_global(typ, None, &mangled_name);
-
-        // Save the current values map (may be non-empty if called from within function codegen)
+        // Stash `values` since this may be called mid function-codegen.
         let saved_values = std::mem::take(&mut self.values);
 
-        // Evaluate each instruction in the entry block as a constant
         for instruction in global.entry_block().instructions.iter().copied() {
             let value = self.codegen_constant_instruction(global, instruction);
             self.values.insert(mir::Value::InstructionResult(instruction), value);
         }
 
-        // Get the Result value and use it as the initializer
         let TerminatorInstruction::Result(result_value) = global.entry_block().terminator.as_ref().unwrap() else {
             panic!("Global definition missing Result terminator");
         };
         let initializer = self.constant_value(*result_value);
-        global_var.set_initializer(&initializer);
 
-        // Restore the saved values map
         self.values = saved_values;
 
-        self.global_values.insert(mir::Value::Definition(id), global_var);
+        // Inlined at every use site rather than emitted as an LLVM global with backing storage.
+        // Globals' bodies are already restricted to constant-foldable instructions
+        // (see `codegen_constant_instruction`), so a backing slot is pure indirection.
+        self.definitions.insert(id, CodegenValue::Literal(initializer));
     }
 
     fn constant_value(&mut self, value: mir::Value) -> BasicValueEnum<'ctx> {
@@ -213,37 +224,7 @@ impl<'ctx> ModuleContext<'ctx> {
             mir::Value::InstructionResult(_) | mir::Value::Parameter(..) => {
                 *self.values.get(&value).expect("constant value not cached")
             },
-            mir::Value::Definition(id) => {
-                let def = self.mir.definitions.get(&id).expect("constant_value: definition not found");
-                let is_global = def.is_global();
-                if let Some(gv) = self.global_values.get(&mir::Value::Definition(id)) {
-                    // For non-function globals (structs/constants), embed the initializer value
-                    // inline rather than a pointer since build_load is unavailable in constant context.
-                    // For actual function definitions, return the function pointer as usual.
-                    if is_global {
-                        return gv.get_initializer().expect("constant_value: global missing initializer");
-                    } else {
-                        return gv.as_pointer_value().into();
-                    }
-                }
-                if is_global {
-                    // Non-function global not yet compiled: compile it on demand then embed inline.
-                    let def = def.clone();
-                    self.codegen_global(&def, id);
-                    let gv = self.global_values.get(&mir::Value::Definition(id)).unwrap();
-                    gv.get_initializer().expect("global has no initializer after codegen_global")
-                } else {
-                    let def = self.mir.definitions.get(&id).expect("constant_value: definition not found");
-                    let fn_type = self
-                        .convert_function_type(&def.typ)
-                        .expect("constant_value: definition in global initializer is not a function");
-                    let name = self.get_name(id);
-                    let fn_val = self.module.add_function(name, fn_type, None);
-                    let gv = fn_val.as_global_value();
-                    self.global_values.insert(mir::Value::Definition(id), gv);
-                    gv.as_pointer_value().into()
-                }
-            },
+            mir::Value::Definition(id) => self.codegen_value_for(id).into_basic_value(),
             mir::Value::Error => unreachable!("Error value in global initializer"),
         }
     }
@@ -262,15 +243,10 @@ impl<'ctx> ModuleContext<'ctx> {
                 self.constant_value(value)
             },
             mir::Instruction::Transmute(value) => {
-                // In global initializer context the builder cannot emit SSA instructions, so we
-                // cannot use alloca/store/load. When the source is zero-sized (e.g. unit `{}`
-                // being reinterpreted as a None variant's inner field) the content is undefined,
-                // so we use undef of the destination type. If the source has a non-zero size,
-                // the transmute cannot be evaluated as a compile-time constant.
+                // Const context can't alloca/store/load, so only zero-sized sources
+                // (e.g. unit `{}` reinterpreted as a None variant's inner field) work
+                // here, producing undef of the destination type.
                 let source = self.constant_value(*value);
-                // Only zero-sized sources (e.g. unit `{}` reinterpreted as a None variant's
-                // inner field) can be represented as a compile-time constant. The result is
-                // undef since no source bytes exist to define the destination value.
                 let is_empty_struct = matches!(
                     source.get_type(),
                     BasicTypeEnum::StructType(s) if s.count_fields() == 0
@@ -313,8 +289,11 @@ impl<'ctx> ModuleContext<'ctx> {
         }
 
         let is_ante_main = function.name.as_str() == "main";
-        let function_value = match self.global_values.get(&mir::Value::Definition(id)) {
-            Some(existing) => existing.as_any_value_enum().into_function_value(),
+        let function_value = match self.definitions.get(&id) {
+            Some(CodegenValue::Function(fv)) => *fv,
+            Some(CodegenValue::Literal(_)) => panic!(
+                "codegen_function: definition {id} was already codegen'd as a literal global, but its body is a function"
+            ),
             None => {
                 let function_type = self.convert_function_type(&function.typ).unwrap();
                 // Rename `main`: see `codegen_main_wrapper`.
@@ -324,7 +303,7 @@ impl<'ctx> ModuleContext<'ctx> {
                     format!("{}_{}", function.name, function.id)
                 };
                 let function_value = self.module.add_function(&mangled_name, function_type, None);
-                self.global_values.insert(mir::Value::Definition(id), function_value.as_global_value());
+                self.definitions.insert(id, CodegenValue::Function(function_value));
                 function_value
             },
         };
@@ -347,8 +326,7 @@ impl<'ctx> ModuleContext<'ctx> {
             self.codegen_block(block, function);
         }
 
-        // Fill in PHI incomings now that every block (including back-edge sources) has been
-        // processed and has recorded its outgoing arguments in `self.incoming`.
+        // Done after all blocks are processed so back-edge sources are included.
         for (block_id, phi) in self.phi_nodes.drain() {
             let incoming = self
                 .incoming
@@ -364,7 +342,7 @@ impl<'ctx> ModuleContext<'ctx> {
         self.incoming.clear();
     }
 
-    /// Emit a `main (): I32` wrapper that calls the renamed source `main` and returns 0
+    /// Emit a `main (): I32` wrapper around the source `main` that returns 0.
     fn codegen_main_wrapper(&mut self) {
         let Some(ante_main) = self.ante_main else { return };
 
@@ -380,7 +358,6 @@ impl<'ctx> ModuleContext<'ctx> {
         self.builder.build_return(Some(&i32_type.const_int(0, false))).unwrap();
     }
 
-    /// Create an empty block for each block in the given function
     fn create_blocks(&mut self, function: &mir::Definition, function_value: FunctionValue<'ctx>) {
         for (block_id, _) in function.blocks.iter() {
             let block = self.llvm.append_basic_block(function_value, "");
@@ -393,9 +370,7 @@ impl<'ctx> ModuleContext<'ctx> {
         self.builder.position_at_end(llvm_block);
         let block = &function.blocks[block_id];
 
-        // Create PHI instructions for each block parameter. Incomings are filled in later
-        // (see `codegen_function`) so that back edges from blocks processed after this one
-        // are included.
+        // PHI incomings are filled in by `codegen_function` after every block is processed.
         if block_id != BlockId::ENTRY_BLOCK {
             for (parameter, parameter_type) in block.parameters(block_id) {
                 let parameter_type = self.convert_type(&parameter_type);
@@ -481,15 +456,34 @@ impl<'ctx> ModuleContext<'ctx> {
         Some(return_type.fn_type(&parameters, false))
     }
 
-    /// Return the given [mir::Definition] if it is within `self.mir`. Return `None` otherwise.
-    fn try_get_function(&self, id: DefinitionId) -> Option<&'ctx mir::Definition> {
-        self.mir.definitions.get(&id)
-    }
-
     /// Returns the name of the given [DefinitionId].
     /// As long as the [DefinitionId] is referenced in `self.mir`, this should never panic.
     fn get_name(&self, id: DefinitionId) -> &'ctx str {
         self.mir.get_name(id).unwrap().as_ref()
+    }
+
+    /// Resolve a [DefinitionId] to its [CodegenValue], codegen-ing the definition on demand
+    /// when this is the first reference to it (e.g. a forward reference from another function,
+    /// or a global referenced inside another global initializer).
+    fn codegen_value_for(&mut self, id: DefinitionId) -> CodegenValue<'ctx> {
+        if let Some(existing) = self.definitions.get(&id) {
+            return *existing;
+        }
+
+        let def = self.mir.definitions.get(&id).expect("codegen_value_for: definition not found").clone();
+        if def.is_global() {
+            self.codegen_global(&def, id);
+        } else {
+            // Forward-declare the function with the mangled name `codegen_function` will use,
+            // to avoid colliding with C extern names.
+            let fn_type = self
+                .convert_function_type(&def.typ)
+                .expect("codegen_value_for: non-global definition must have a function type");
+            let mangled_name = format!("{}_{}", self.get_name(id), id);
+            let fv = self.module.add_function(&mangled_name, fn_type, None);
+            self.definitions.insert(id, CodegenValue::Function(fv));
+        }
+        self.definitions[&id]
     }
 
     fn lookup_value(&mut self, value: &mir::Value) -> BasicValueEnum<'ctx> {
@@ -508,45 +502,7 @@ impl<'ctx> ModuleContext<'ctx> {
             mir::Value::InstructionResult(_) | mir::Value::Parameter(..) => {
                 *self.values.get(&value).unwrap_or_else(|| panic!("llvm codegen: mir value is not cached: {value}"))
             },
-            mir::Value::Definition(function_id) => {
-                let function = self.try_get_function(self.current_function.unwrap()).unwrap();
-                let typ = self.mir.type_of_value(&value, function);
-                let is_function = self.convert_function_type(&typ).is_some();
-
-                // A `let` definition is a global variable even if its type is a function type.
-                // It stores a function pointer that must be loaded, not called directly.
-                let is_let_global = self.mir.definitions.get(function_id).map_or(false, |d| d.is_global());
-
-                if self.global_values.contains_key(&value) {
-                    let gv = self.global_values[&value];
-                    if is_function && !is_let_global && gv.as_any_value_enum().is_function_value() {
-                        // Actual LLVM function — return the pointer directly
-                        return gv.as_pointer_value().into();
-                    } else {
-                        // Global variable (non-function type, or `let` holding a function pointer)
-                        let llvm_type = self.convert_type(&typ);
-                        return self.builder.build_load(llvm_type, gv.as_pointer_value(), "").unwrap();
-                    }
-                }
-
-                if is_function && !is_let_global {
-                    // True function definition — create a forward declaration with the mangled
-                    // name matching codegen_function, to avoid colliding with C extern names.
-                    let fn_type = self.convert_function_type(&typ).unwrap();
-                    let mangled_name = format!("{}_{}", self.get_name(*function_id), function_id);
-                    let function_value = self.module.add_function(&mangled_name, fn_type, None).as_global_value();
-                    self.global_values.insert(*value, function_value);
-                    function_value.as_pointer_value().into()
-                } else {
-                    // Global variable (non-function type, or `let` holding a function pointer)
-                    let def =
-                        self.mir.definitions.get(&function_id).expect("lookup_value: definition not found").clone();
-                    self.codegen_global(&def, *function_id);
-                    let global_var = self.global_values[&value];
-                    let llvm_type = self.convert_type(&typ);
-                    self.builder.build_load(llvm_type, global_var.as_pointer_value(), "").unwrap()
-                }
-            },
+            mir::Value::Definition(function_id) => self.codegen_value_for(*function_id).into_basic_value(),
         }
     }
 
@@ -567,16 +523,13 @@ impl<'ctx> ModuleContext<'ctx> {
                     .unwrap_basic()
             },
             mir::Instruction::Perform { .. } => {
-                unreachable!(
-                    "Instruction::Perform reached LLVM codegen — it must be removed by the \
-                     tail-resume optimization or coroutine lowering passes first"
-                )
+                unreachable!("Instruction::Perform remaining in LLVM codegen")
             },
             mir::Instruction::Handle { .. } => {
-                unreachable!(
-                    "Instruction::Handle reached LLVM codegen — it must be removed by the \
-                     tail-resume optimization or coroutine lowering passes first"
-                )
+                unreachable!("Instruction::Handle remaining LLVM codegen")
+            },
+            mir::Instruction::HandlerCap => {
+                unreachable!("Instruction::HandlerCap remaining in LLVM codegen")
             },
             mir::Instruction::CallClosure { closure, arguments } => {
                 let typ = self.convert_function_type(&self.mir.type_of_value(closure, function)).unwrap();
@@ -813,7 +766,6 @@ impl<'ctx> ModuleContext<'ctx> {
     }
 
     fn transmute(&mut self, value: &mir::Value, function: &mir::Definition, id: InstructionId) -> BasicValueEnum<'ctx> {
-        // Transmute the value by storing it in an alloca and loading it as a different type
         let result_type = self.convert_type(function.instruction_result_type(id));
         let value = self.lookup_value(value);
         let alloca = self.builder.build_alloca(value.get_type(), "").unwrap();
@@ -870,7 +822,6 @@ impl<'ctx> ModuleContext<'ctx> {
                 let then_target = self.blocks[then.0];
                 let else_target = self.blocks[else_.0];
 
-                // remember_incoming needs to be called before we insert the terminator instruction
                 self.remember_incoming(then.0, &then.1);
                 self.remember_incoming(else_.0, &else_.1);
 

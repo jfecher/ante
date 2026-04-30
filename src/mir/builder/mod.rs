@@ -84,10 +84,7 @@ where
         },
         cst::TopLevelItemKind::TraitDefinition(_) => unreachable!("Traits should be desguared to types"),
         cst::TopLevelItemKind::TraitImpl(_) => unreachable!("Trait impls should be desguared to definitions"),
-        cst::TopLevelItemKind::EffectDefinition(effect_definition) => {
-            context.effect_definition(effect_definition);
-            Some(context.finish())
-        },
+        cst::TopLevelItemKind::EffectDefinition(_) => unreachable!("Effects should be desugared to types"),
         cst::TopLevelItemKind::Comptime(_) => None,
     }
 }
@@ -162,7 +159,7 @@ impl<'local, Db> Context<'local, Db> {
         }
     }
 
-    /// Returns the current function being built. Panics if thre is none.
+    /// Panics if there is no current function.
     fn current_function(&mut self) -> &mut Definition {
         self.current_function.as_mut().unwrap()
     }
@@ -171,7 +168,7 @@ impl<'local, Db> Context<'local, Db> {
         self.current_function.as_ref().unwrap().type_of_value(value, &self.external, &self.finished_functions)
     }
 
-    /// Returns the current block being inserted into. Panics if there is no current function.
+    /// Panics if there is no current function.
     fn current_block(&mut self) -> &mut Block {
         &mut self.current_function.as_mut().unwrap().blocks[self.current_block]
     }
@@ -185,7 +182,6 @@ impl<'local, Db> Context<'local, Db>
 where
     Db: DbGet<TypeCheck> + DbGet<GetItem> + DbGet<GetItemRaw>,
 {
-    /// Push an instruction and return its result.
     fn push_instruction(&mut self, instruction: Instruction, result_type: Type) -> Value {
         let current_block = self.current_block;
         let function = self.current_function();
@@ -195,27 +191,22 @@ where
         Value::InstructionResult(id)
     }
 
-    /// Create a block (although do not switch to it) and return it
     fn push_block(&mut self, parameter_types: Vec<Type>) -> BlockId {
         self.current_function.as_mut().unwrap().blocks.push(Block::new(parameter_types))
     }
 
-    /// Create a block with no block parameters (although do not switch to it) and return it
     fn push_block_no_params(&mut self) -> BlockId {
         self.push_block(Vec::new())
     }
 
-    /// Switch to a new block to start inserting instructions into
     fn switch_to_block(&mut self, block: BlockId) {
         self.current_block = block;
     }
 
-    /// Add a parameter to the current block
     fn push_parameter(&mut self, parameter_type: Type) {
         self.current_block().parameter_types.push(parameter_type);
     }
 
-    /// Terminate the current block with the given terminator instruction
     fn terminate_block(&mut self, terminator: TerminatorInstruction) {
         let block = self.current_block();
         if block.terminator.is_none() {
@@ -228,7 +219,6 @@ where
         self.convert_type(typ, None)
     }
 
-    /// Defines the given value in local or global scope depending on its origin
     fn define_variable(&mut self, origin: Origin, value: Value) {
         match origin {
             Origin::Local(name) => self.local_variables.insert(name, value),
@@ -514,7 +504,7 @@ where
         }
 
         // Cold path: this TopLevelId is an effect definition. Verify that the
-        // referenced NameId is one of its ops (defensive — every name pointing
+        // referenced NameId is one of its ops (every name pointing
         // into an effect def should be an op, but we confirm to be safe).
         let (item, _) = GetItemRaw(name.top_level_item).get(self.compiler);
         if let cst::TopLevelItemKind::EffectDefinition(effect) = &item.kind {
@@ -522,7 +512,7 @@ where
                 return Some(self.get_definition_id(&name));
             }
         }
-        None
+        unreachable!()
     }
 
     fn try_find_name(&self, pattern: PatternId) -> Option<(Name, NameId)> {
@@ -581,13 +571,22 @@ where
     fn lambda(
         &mut self, lambda: &cst::Lambda, name_id: Option<NameId>, name: Option<Name>, expr: ExprId, is_global: bool,
     ) -> Value {
+        self.lambda_impl(lambda, name_id, name, expr, is_global, None)
+    }
+
+    /// When `handle_body_handler_name` is `Some(h)`, this lambda is the body of a `handle` expression.
+    /// Inject a prelude that loads the capability from the coroutine's user_data and binds it
+    /// to `h` in `local_variables` so the body's references to `h` resolve.
+    fn lambda_impl(
+        &mut self, lambda: &cst::Lambda, name_id: Option<NameId>, name: Option<Name>, expr: ExprId, is_global: bool,
+        handle_body_handler_name: Option<NameId>,
+    ) -> Value {
         let name = name.unwrap_or_else(|| Arc::new("lambda".to_string()));
         let full_type = self.convert_expr_type(expr);
         let Type::Function(function_type) = &full_type else { unreachable!("Lambda does not have a function type") };
 
         let is_move = self.context().is_move_closure(expr);
 
-        // Determine which captured variables are mutable in the outer scope.
         let mutable_captures: rustc_hash::FxHashSet<NameId> =
             if let Some(free_vars) = self.context().get_closure_environment(expr) {
                 free_vars.iter().filter(|v| self.mutable_locals.contains(v)).copied().collect()
@@ -641,6 +640,18 @@ where
                 }
             }
 
+            // For a `handle` expression's body lambda, bind `h` to a placeholder
+            // [Instruction::HandlerCap]. The lowering passes are responsible for replacing it:
+            // [crate::mir::effects::effect_lowering] expands it into a coroutine `user_data`
+            // fetch, while [crate::mir::effects::tail_resume_optimization] rewrites it to refer
+            // to a directly-built capability tuple.
+            if let Some(handler_name) = handle_body_handler_name {
+                let h_tc_type = this.types.result.maps.name_types[&handler_name].clone();
+                let h_type = this.convert_type(&h_tc_type, None);
+                let cap = this.push_instruction(Instruction::HandlerCap, h_type);
+                this.local_variables.insert(handler_name, cap);
+            }
+
             // Pre-populate the self-reference so recursive calls within the body
             // (e.g. `recur` in desugared loop expressions) can resolve via Origin::Local.
             // The entry is discarded automatically when `old_scope` is restored after
@@ -666,8 +677,7 @@ where
         self.mutable_locals = old_mutables;
         self.loop_targets = old_loop_targets;
 
-        // If this is a generic lambda, it will have generics forward from the currenty context
-        // which we need to manually instantiate.
+        // Generic lambdas inherit generics from the surrounding context; instantiate manually.
         let mut value = self.make_definition_value(id, name, full_type.clone());
         if !is_global && !self.generics_in_scope.is_empty() {
             let bindings = Arc::new(mapvec(0..self.generics_in_scope.len() as u32, |i| Type::Generic(Generic(i))));
@@ -960,9 +970,8 @@ where
             _ => unreachable!("Only `(tag, union)` tuples may have fields to extract"),
         };
 
-        // Tagged unions have the form `(u8_tag, Union[...])`.
-        // Product types (pairs, structs) are plain tuples — return the value directly
-        // so the caller can index its fields at positions 0, 1, etc.
+        // Tagged unions have the form `(u8_tag, Union[...])` while
+        // product types are plain tuples and should be returned directly
         if fields.len() != 2 || !matches!(fields[1], Type::Union(_)) {
             return value_being_matched;
         }
@@ -985,8 +994,17 @@ where
     fn handle(&mut self, handle: &cst::Handle, expr: ExprId) -> Value {
         let result_type = self.expr_type(expr);
 
-        // The parser wraps both the handled expression and each branch in closures already
-        let body = self.expression(handle.expression);
+        // The parser wraps the handled expression in `fn () -> <body>` so it can serve as a
+        // coroutine entry. Build that body lambda with a prelude that loads `h` from the
+        // coroutine's user_data.
+        let body = match &self.context()[handle.expression] {
+            cst::Expr::Lambda(body_lambda) => {
+                let body_lambda = body_lambda.clone();
+                self.lambda_impl(&body_lambda, None, None, handle.expression, false, Some(handle.handler_name))
+            },
+            _ => unreachable!("handle.expression should be a Lambda after parsing"),
+        };
+
         let cases = mapvec(&handle.cases, |(pattern, branch)| {
             let effect_op =
                 self.try_resolve_effect_op(pattern.function).expect("Couldn't find effect op in MIR handle");
@@ -1001,12 +1019,11 @@ where
     /// body of each stub is `fn op args.. = perform op args..`, ensuring the
     /// operation can be used as a first-class value (passed to higher-order code)
     /// while also unambiguously naming the effect via its [DefinitionId].
-    fn effect_definition(&mut self, effect: &cst::EffectDefinition) {
-        for declaration in &effect.body {
-            let name_id = declaration.name;
+    fn define_effect_operations(&mut self, op_names: impl IntoIterator<Item = NameId>) {
+        for name_id in op_names {
             let top_level_name = TopLevelName::new(self.top_level_id, name_id);
 
-            // Skip non-function operations — unusual, treated as values elsewhere.
+            // TODO: Error on non-function effect operations
             let generalized = self.types.get_generalized(name_id);
             self.set_generics_in_scope(generalized);
             let typ = self.convert_type(generalized, None);
@@ -1028,6 +1045,11 @@ where
                     })
                     .collect();
 
+                // Effect operations are typed as closures with an environment type of `Ptr Unit`,
+                if let Some(env) = fn_type.environment() {
+                    this.push_parameter(env.clone());
+                }
+
                 // Self-reference: the operation's own DefinitionId is the effect-op tag.
                 let self_id = this.current_function.as_ref().unwrap().id;
                 let perform = Instruction::Perform { effect_op: self_id, arguments: param_values };
@@ -1042,8 +1064,8 @@ where
         let rhs = reference.rhs;
         let context = self.context();
 
-        // If the RHS is a locally mutable variable, its value in local_variables is already the
-        // StackAlloc pointer — return it directly as the reference.
+        // If the RHS is a locally mutable variable, its value in local_variables
+        // is already the StackAlloc pointer.
         if let cst::Expr::Variable(path_id) = &context[rhs] {
             let path_id = *path_id;
             if let Some(Origin::Local(name)) = context.path_origin(path_id) {
@@ -1111,7 +1133,6 @@ where
             let current = self.push_instruction(Instruction::Deref(pointer), value_type.clone());
             let rhs = self.expression(assignment.rhs);
 
-            // Resolve the operator function through normal trait dispatch
             let function = self.expression(op_expr);
             let instruction = if self.type_of_value(&function).is_closure() {
                 Instruction::CallClosure { closure: function, arguments: vec![current, rhs] }
@@ -1203,7 +1224,8 @@ where
     }
 
     fn finish(self) -> Mir {
-        Mir { definitions: self.finished_functions, externals: self.external }.remove_internal_externs()
+        Mir { definitions: self.finished_functions, externals: self.external, preserved_op_indices: Default::default() }
+            .remove_internal_externs()
     }
 
     /// Sets [self.generics_in_scope] to a map mapping each generic from the given type to a
@@ -1252,6 +1274,16 @@ where
         if type_definition.is_trait {
             self.define_trait_methods(type_definition);
         }
+
+        // Effects are also desugared to a struct, but each field is an effect operation that
+        // must be callable as a free identifier (e.g. `get ()` rather than `Use.get ()`). Emit a
+        // `perform`-stub function for each so the operation has a stable, first-class identity.
+        if type_definition.is_effect {
+            if let cst::TypeDefinitionBody::Struct(fields) = &type_definition.body {
+                let op_names = fields.iter().map(|(name, _)| *name).collect::<Vec<_>>();
+                self.define_effect_operations(op_names);
+            }
+        }
     }
 
     fn define_type_constructor(
@@ -1266,7 +1298,6 @@ where
             None => typ.clone(),
         };
 
-        // This is the raw union type without the tag
         let raw_union_type = result_type.without_union_tag();
 
         let generic_count = self.generics_in_scope.len() as u32;
@@ -1315,11 +1346,9 @@ where
             let generic_count = self.generics_in_scope.len() as u32;
             let constructor_mir_type = self.convert_type(constructor_type, None);
 
-            // The struct's type is the return type of the constructor
             let struct_type =
                 constructor_mir_type.function_return_type().cloned().unwrap_or_else(|| constructor_mir_type.clone());
 
-            // The field types are the parameter types of the constructor
             let field_mir_types: Vec<Type> =
                 if let Type::Function(fn_type) = &constructor_mir_type { fn_type.parameters.clone() } else { vec![] };
 
@@ -1329,21 +1358,16 @@ where
                 // Only generate wrappers for fields whose type is a function or closure (all trait methods)
                 // TODO: We should still generate wrappers for other types
                 let (value_param_types, return_type) = match field_type {
-                    Type::Function(fn_type) => {
-                        // Plain function (no captured environment)
-                        (fn_type.parameters.clone(), fn_type.return_type.clone())
-                    },
+                    Type::Function(fn_type) => (fn_type.parameters.clone(), fn_type.return_type.clone()),
+                    // Closure: Type::Tuple([fn(value_args..., env) -> ret, env])
                     Type::Tuple(tuple_fields) if tuple_fields.len() == 2 => {
-                        // Closure: Type::Tuple([fn(value_args..., env) -> ret, env])
                         let Type::Function(fn_type) = &tuple_fields[0] else { continue };
-                        // Strip the trailing env parameter to get the value params
                         let n = fn_type.parameters.len().saturating_sub(1);
                         (fn_type.parameters[..n].to_vec(), fn_type.return_type.clone())
                     },
                     _ => continue,
                 };
 
-                // Wrapper: fn <value_args...> (struct_type) -> return_type
                 let mut wrapper_params = value_param_types;
                 wrapper_params.push(struct_type.clone());
                 let wrapper_type = Type::Function(Arc::new(super::FunctionType {
@@ -1362,14 +1386,12 @@ where
                     for pt in &wrapper_params {
                         this.push_parameter(pt.clone());
                     }
-                    // Last parameter is the struct (implicit receiver)
+                    // Last parameter is the implicit struct receiver.
                     let struct_param = Value::Parameter(BlockId::ENTRY_BLOCK, n_params as u32 - 1);
-                    // Extract the method (function or closure) stored at field index i inside the struct tuple
                     let extracted = this.push_instruction(
                         Instruction::IndexTuple { tuple: struct_param, index: i as u32 },
                         field_type_clone,
                     );
-                    // Call the extracted function/closure with the value arguments (all params except last)
                     let value_args = mapvec(0..n_params - 1, |j| Value::Parameter(BlockId::ENTRY_BLOCK, j as u32));
                     let instruction = if field_is_closure {
                         Instruction::CallClosure { closure: extracted, arguments: value_args }

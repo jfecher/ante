@@ -2,14 +2,12 @@ foo a =
     print a
     print a
 
-// Make sure output is not "... {Print a} {Print a}" when inference is used
-
 // args: -e ast-t --no-color
 // expected exit status: 1
 // expected stdout:
-// (foo: fn _ -> Unit pure) (a: _) =
-//     (print: fn _ {Print _} -> Unit pure) (a: _) {(error)}
-//     (print: fn _ {Print _} -> Unit pure) (a: _) {(error)}
+// (foo: fn _ -> Unit) (a: _) =
+//     (print: fn _ {Print _} -> Unit) (a: _) {(error)}
+//     (print: fn _ {Print _} -> Unit) (a: _) {(error)}
 
 // expected stderr:
 // examples/typechecking/repeated_traits.an:2:5
@@ -26,4 +24,3 @@ foo a =
 //   |     ^^^^^
 // 
 // Found 2 errors and 0 warnings
-

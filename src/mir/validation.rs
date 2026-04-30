@@ -1,4 +1,5 @@
 //! Various methods for validating the well-formedness of [Mir]
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use rustc_hash::FxHashSet;
 
 use crate::{
@@ -10,8 +11,7 @@ impl Mir {
     /// Ensures:
     /// - Each referenced [DefinitionId] corresponds to a [Definition] or extern item in this Mir
     pub(crate) fn assert_fully_linked(self) -> Self {
-        //self.definitions.par_iter().for_each(|(_, definition)| {
-        self.definitions.iter().for_each(|(_, definition)| {
+        self.definitions.par_iter().for_each(|(_, definition)| {
             definition.assert_fully_linked(&self);
         });
         self
@@ -19,8 +19,7 @@ impl Mir {
 
     /// Asserts the types given to and returned from each instruction are valid
     pub(crate) fn assert_type_checks(self) -> Self {
-        //self.definitions.par_iter().for_each(|(_, definition)| {
-        self.definitions.iter().for_each(|(_, definition)| {
+        self.definitions.par_iter().for_each(|(_, definition)| {
             definition.assert_type_checks(&self);
         });
         self
@@ -29,8 +28,7 @@ impl Mir {
     /// Union and generic types should be lowered into more explicit forms before handing off the
     /// Mir to the backend.
     pub(crate) fn assert_no_unions_or_generics(self) -> Self {
-        //self.definitions.par_iter().for_each(|(_, definition)| {
-        self.definitions.iter().for_each(|(_, definition)| {
+        self.definitions.par_iter().for_each(|(_, definition)| {
             definition.assert_no_unions_or_generics(&self);
         });
         self
@@ -372,6 +370,13 @@ impl Definition {
                     instr_assert_eq!(*result_type, Type::POINTER, self, id, mir, "GetFieldPtr result must be a pointer");
                 },
                 Instruction::Extern(_) => (),
+                Instruction::HandlerCap => {
+                    instr_assert!(
+                        matches!(result_type, Type::Tuple(_)) || *result_type == Type::ERROR,
+                        self, id, mir,
+                        "HandlerCap result type should be a Tuple (capability), got `{result_type}`"
+                    );
+                },
             }
         }
     }

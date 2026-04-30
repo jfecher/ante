@@ -116,8 +116,9 @@ impl<'contents> Lexer<'contents> {
                 | Token::Do
                 | Token::Else
                 | Token::Extern
-                | Token::Handle
+                | Token::Handler
                 | Token::If
+                | Token::In
                 | Token::Match
                 | Token::Then
                 | Token::While
@@ -264,7 +265,7 @@ impl<'contents> Lexer<'contents> {
     }
 
     fn lex_negative(&mut self) -> IterElem {
-        self.advance(); // consume '-'
+        self.advance();
 
         if self.current.is_numeric() {
             self.lex_number().map(|(token, location)| {
@@ -332,7 +333,6 @@ impl<'contents> Lexer<'contents> {
     }
 
     fn lex_quoted(&mut self) -> IterElem {
-        // skip the single quote
         let start = self.current_position;
         let mut span = Span { start, end: start };
         self.advance();
@@ -340,8 +340,6 @@ impl<'contents> Lexer<'contents> {
         let mut tokens = Vec::new();
         let mut bracket_stack = Vec::new();
 
-        // Keep track of the stack of brackets so that we always match them.
-        // This includes quoted blocks
         while {
             let (token, token_span) = self.next()?;
             span.end = token_span.end;
@@ -379,7 +377,6 @@ impl<'contents> Lexer<'contents> {
 
     /// The char literal syntax is: c"_" where _ is an arbitrary character
     fn lex_char_literal(&mut self) -> IterElem {
-        // Skip c"
         self.advance();
         self.advance();
 
@@ -462,23 +459,65 @@ impl<'contents> Lexer<'contents> {
         // of checking the last_indent level that was just popped.
         self.return_newline = !self.newlines_ignored();
 
-        if new_indent > last_indent.column {
+        let token = if new_indent > last_indent.column {
             Some((Token::Error(LexerError::UnindentToNewLevel), self.locate()))
         } else if last_indent.ignored {
-            self.next()
+            None
         } else {
             Some((Token::Unindent, self.locate()))
+        };
+
+        // If unindenting landed between two existing stack levels, record the
+        // intermediate column as an ignored level. Without this the next unindent
+        // would pop a level we still need, eventually emptying the stack and panicking.
+        let new_top = self.indent_levels.last().map(|l| l.column).unwrap_or(0);
+        if new_indent > new_top {
+            self.indent_levels.push(IndentLevel::ignored(new_indent));
+        }
+
+        match token {
+            Some(t) => Some(t),
+            None => self.next(),
         }
     }
 
     fn lex_singleline_comment(&mut self) -> IterElem {
-        // Skip the leading `//`
-        self.advance();
-        self.advance();
+        // Outer loop avoids tail recursion when scanning a run of consecutive `//` lines.
+        loop {
+            self.advance();
+            self.advance();
+            self.advance_while(|current, _| current != '\n');
 
-        let _comment = self.advance_while(|current, _| current != '\n').to_string();
-        // Some((Token::LineComment(comment), self.locate()))
+            if !self.advance_to_consecutive_line_comment() {
+                break;
+            }
+        }
         self.next()
+    }
+
+    /// If the input from the current position consists only of `\n` / `\r` / ` ` characters
+    /// followed by another `//` line comment, advance past those whitespace characters and
+    /// return true (caller continues consuming). Otherwise leave state untouched and return
+    /// false.
+    fn advance_to_consecutive_line_comment(&mut self) -> bool {
+        let saved_current = self.current;
+        let saved_next = self.next;
+        let saved_position = self.current_position;
+        let saved_chars = self.chars.clone();
+
+        while !self.at_end_of_input() && (self.current == '\n' || self.current == '\r' || self.current == ' ') {
+            self.advance();
+        }
+
+        if self.current == '/' && self.next == '/' {
+            true
+        } else {
+            self.current = saved_current;
+            self.next = saved_next;
+            self.current_position = saved_position;
+            self.chars = saved_chars;
+            false
+        }
     }
 
     fn lex_multiline_comment(&mut self) -> IterElem {
@@ -526,7 +565,6 @@ impl<'contents> Iterator for Lexer<'contents> {
 
         self.previous_token_expects_indent = false;
 
-        // Checks if there is the same number of open parenthesis as when interpolation last began
         let matched_interpolation = match self.pending_interpolations.last() {
             Some(open_braces) => open_braces == &self.open_braces.curly,
             None => false,
@@ -537,7 +575,6 @@ impl<'contents> Iterator for Lexer<'contents> {
         // don't cause a premature end of input.
         if self.at_end_of_input() {
             return if self.current_indent_level != 0 {
-                // Issue any pending unindent tokens before EndOfInput
                 self.lex_unindent(0)
             } else if self.current_position.byte_index > self.file_contents.len() {
                 None
@@ -551,7 +588,6 @@ impl<'contents> Iterator for Lexer<'contents> {
             ('c', '"') => self.lex_char_literal(),
             (c, _) if c.is_alphanumeric() || c == '_' => self.lex_alphanumeric(),
             ('\0', _) => {
-                // Literal null byte in source file - skip it
                 self.advance();
                 self.next()
             },

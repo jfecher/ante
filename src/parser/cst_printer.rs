@@ -22,10 +22,10 @@ use crate::{
 use super::{
     TopLevelContext,
     cst::{
-        Bind, Call, CompoundAssignOp, Comptime, Cst, Declaration, Definition, EffectDefinition, EffectType, Expr,
-        Extern, FunctionType, Handle, HandlePattern, If, Import, InterpolatedString, Is, Lambda, Literal, Match,
-        MemberAccess, Parameter, Path, Pattern, Quoted, Reference, SequenceItem, TopLevelItem, TraitDefinition,
-        TraitImpl, Type, TypeAnnotation, TypeDefinition, TypeDefinitionBody, TypeKind,
+        Bind, Call, CompoundAssignOp, Comptime, Cst, Declaration, Definition, EffectDefinition, Expr, Extern,
+        FunctionType, Handle, HandlePattern, If, Import, InterpolatedString, Is, Lambda, Literal, Match, MemberAccess,
+        Parameter, Path, Pattern, Quoted, Reference, SequenceItem, TopLevelItem, TraitDefinition, TraitImpl, Type,
+        TypeAnnotation, TypeDefinition, TypeDefinitionBody, TypeKind,
     },
     ids::{ExprId, PatternId, TopLevelId},
 };
@@ -401,7 +401,6 @@ impl<'a> CstDisplay<'a> {
         if let Some(typ) = &lambda.return_type {
             write!(f, " : ")?;
             self.fmt_type(typ, context, f)?;
-            self.fmt_effect_clause(&lambda.effects, context, f)?;
         }
 
         write!(f, " {}", if write_arrow { "->" } else { "=" })?;
@@ -409,36 +408,6 @@ impl<'a> CstDisplay<'a> {
             write!(f, " ")?;
         }
         self.fmt_expr(lambda.body, context, f)
-    }
-
-    /// Formats an effect clause with a leading space
-    fn fmt_effect_clause(
-        &self, effects: &Option<Vec<EffectType>>, context: &impl IdStore, f: &mut std::fmt::Formatter,
-    ) -> std::fmt::Result {
-        if let Some(effects) = effects {
-            if effects.is_empty() {
-                write!(f, " pure")?;
-            } else {
-                write!(f, " can ")?;
-                for (i, effect) in effects.iter().enumerate() {
-                    if i != 0 {
-                        write!(f, ", ")?;
-                    }
-                    self.fmt_effect_type(effect, context, f)?;
-                }
-            }
-        }
-        Ok(())
-    }
-
-    fn fmt_effect_type(&self, effect: &EffectType, context: &impl IdStore, f: &mut Formatter) -> std::fmt::Result {
-        match effect {
-            EffectType::Known(path_id, args) => {
-                self.fmt_path(*path_id, context, f)?;
-                self.fmt_type_args(args, context, f)
-            },
-            EffectType::Variable(name_id) => self.fmt_type_name(*name_id, context, f),
-        }
     }
 
     /// Formats type arguments with a leading space in front of each (including the first)
@@ -532,6 +501,7 @@ impl<'a> CstDisplay<'a> {
             TypeKind::Char => write!(f, "Char"),
             TypeKind::Reference(kind) => self.fmt_reference_type(*kind, f),
             TypeKind::NoClosureEnv => write!(f, "{}", NO_CLOSURE_ENV_STRING),
+            TypeKind::Pointer => write!(f, "Ptr"),
             TypeKind::Tuple(elements) => self.fmt_tuple_type(elements, context, f),
             TypeKind::Hole => write!(f, "_"),
         }
@@ -632,8 +602,7 @@ impl<'a> CstDisplay<'a> {
         }
 
         write!(f, " -> ")?;
-        self.fmt_type(&function_type.return_type, context, f)?;
-        self.fmt_effect_clause(&function_type.effects, context, f)
+        self.fmt_type(&function_type.return_type, context, f)
     }
 
     fn fmt_expr(&mut self, id: ExprId, context: &impl IdStore, f: &mut Formatter) -> std::fmt::Result {
@@ -967,9 +936,7 @@ impl<'a> CstDisplay<'a> {
         write!(f, " <- ")?;
         self.fmt_expr(bind.rhs, context, f)?;
 
-        // The body is a Sequence whose items are siblings of the bind line in the
-        // surrounding block — print them at the current indent level rather than
-        // further nesting them via fmt_sequence's indent increment.
+        // Print the rest of the body at the same indent level
         if let Expr::Sequence(items) = context.get_expr(bind.body) {
             for item in items {
                 self.newline(f)?;
@@ -1025,8 +992,9 @@ impl<'a> CstDisplay<'a> {
     }
 
     fn fmt_handle(&mut self, handle_: &Handle, context: &impl IdStore, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "handle ")?;
-        self.fmt_expr(handle_.expression, context, f)?;
+        write!(f, "handler ")?;
+        self.fmt_name(handle_.handler_name, context, f)?;
+        write!(f, " for")?;
 
         for (pattern, branch) in &handle_.cases {
             self.newline(f)?;
@@ -1035,6 +1003,10 @@ impl<'a> CstDisplay<'a> {
             write!(f, " -> ")?;
             self.fmt_expr(*branch, context, f)?;
         }
+
+        self.newline(f)?;
+        write!(f, "in ")?;
+        self.fmt_expr(handle_.expression, context, f)?;
 
         Ok(())
     }

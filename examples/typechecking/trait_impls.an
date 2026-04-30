@@ -42,9 +42,9 @@ bar "four" "five"
 // implicit (bar4: (error)) = Bar I32 F64 NoClosureEnv with
 //     (bar: (error)) = fn (_: _) (_: _) -> 23.2
 // 
-// (foo: fn _ _ -> _ pure) (a: _) (b: _) = (bar: (error)) (a: _) (b: _)
+// (foo: fn _ _ -> _) (a: _) (b: _) = (bar: (error)) (a: _) (b: _)
 // 
-// (baz: fn String _ -> _ pure) ((x: String)) (y: _) = (bar: (error)) (x: String) (y: _)
+// (baz: fn String _ -> _) ((x: String)) (y: _) = (bar: (error)) (x: String) (y: _)
 
 // expected stderr:
 // examples/typechecking/trait_impls.an:3:20
@@ -92,4 +92,3 @@ bar "four" "five"
 //    |     ^^^^^^
 // 
 // Found 9 errors and 0 warnings
-

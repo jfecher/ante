@@ -310,6 +310,7 @@ fn fmt_instruction(
                 write!(f, " | {} -> {}", case.effect_op, v(&case.handler))?;
             }
         },
+        mir::Instruction::HandlerCap => write!(f, "handler_cap")?,
         mir::Instruction::PackClosure { function, environment } => {
             write!(f, "pack-closure {}, {}", function, environment)?;
         },

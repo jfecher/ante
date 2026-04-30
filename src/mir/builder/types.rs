@@ -101,8 +101,6 @@ where
                 let elements = mapvec(elements.iter(), |t| self.convert_type(t, None));
                 Type::Tuple(Arc::new(elements))
             },
-            // Nothing should actually use this result
-            TCType::Effects(_effects) => Type::UNIT,
         }
     }
 

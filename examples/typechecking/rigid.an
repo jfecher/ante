@@ -10,12 +10,12 @@ main () = ()
 // args: -e ast-t --no-color
 // expected exit status: 1
 // expected stdout:
-// (ex1: fn a -> b pure) ((x: a)) : b = (+: fn b b {Add b} -> b pure) (x: a) 1_U32 {(error)}
+// (ex1: fn a -> b) ((x: a)) : b = (+: fn b b {Add b} -> b) (x: a) 1_U32 {(error)}
 // 
-// (ex2: fn a -> b pure) =
+// (ex2: fn a -> b) =
 //     fn (x: a) -> (x: a)
 // 
-// (main: fn Unit -> Unit pure) () = ()
+// (main: fn Unit -> Unit) () = ()
 
 // expected stderr:
 // examples/typechecking/rigid.an:2:17
@@ -37,4 +37,3 @@ main () = ()
 //   |             ^
 // 
 // Found 4 errors and 0 warnings
-
