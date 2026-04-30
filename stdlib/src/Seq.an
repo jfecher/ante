@@ -17,7 +17,7 @@ type Data t =
 Seq.empty (): Seq t =
     Seq 0 (null ())
 
-Seq.push (seq: ref Seq t) (elem: t): Seq t =
+Seq.push (seq: Seq t) (elem: t): Seq t =
     if seq.data == null () then
         data_ptr = malloc (size_of (MkType: Type (Data t)))
         ptr_store data_ptr (Data 1 1 1 elem)
