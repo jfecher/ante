@@ -605,9 +605,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 }
 
                 for (actual, expected) in actual.parameters.iter().zip(expected.parameters.iter()) {
-                    if actual.is_implicit != expected.is_implicit {
-                        return Err(());
-                    }
                     self.try_unify_with_bindings(&actual.typ, &expected.typ, new_bindings)?;
                 }
 

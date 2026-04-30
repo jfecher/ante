@@ -1981,8 +1981,10 @@ impl<'tokens> Parser<'tokens> {
             }
 
             this.accept(Token::Newline);
+            let expect_block = this.accept(Token::In);
+            this.accept(Token::Newline);
 
-            let body = if this.accept(Token::In) {
+            let body = if expect_block {
                 this.parse_block_or_expression()?
             } else {
                 this.parse_sequence_items_expr()

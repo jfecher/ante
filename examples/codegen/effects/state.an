@@ -18,7 +18,7 @@ state (f: fn {Use s} -> a) (initial: s) {Copy s}: a =
     in f {h}
 
 main () =
-    state (fn h -> use_state 10 {h}) 1
+    state (use_state 10 {_}) 1
     state (fn h -> use_state 20 {h}) 2
 
 // args: --delete-binary --no-color

@@ -14,10 +14,36 @@ type Data t =
     // element2...
     // element3...
 
+/// Return an empty Seq
 Seq.empty (): Seq t =
     Seq 0 (null ())
 
-Seq.push (seq: Seq t) (elem: t): Seq t =
+/// Push an element to this sequence, returning a new sequence.
+///
+/// This requires `Copy t` for the elements in case this push would
+/// overwrite shared data in another sequence.
+Seq.push (seq: Seq t) (elem: t) {Copy t}: Seq t =
+    push_inner seq elem
+
+/// Push an element to this sequence, returning a new sequence.
+///
+/// This requires `Clone t` for the elements in case this push would
+/// overwrite shared data in another sequence.
+///
+/// Compared to `Seq.push`, this version is more expensive since it
+/// requires we loop over each element to clone them in the overwrite case.
+/// If the elements implement Copy, prefer `Seq.push` to perform a simple memcpy.
+Seq.push_clone (seq: Seq t) (elem: t) {Clone t}: Seq t =
+    var seq = push_inner seq elem
+
+    for i in 0 .. seq.len do
+        elem = offset seq.data.elements (Usz i)
+        elem_ref = ptr_to_mut elem
+        ptr_store elem (clone elem_ref)
+
+    seq
+
+push_inner (seq: Seq t) (elem: t): Seq t =
     if seq.data == null () then
         data_ptr = malloc (size_of (MkType: Type (Data t)))
         ptr_store data_ptr (Data 1 1 1 elem)
@@ -42,11 +68,10 @@ Seq.push (seq: Seq t) (elem: t): Seq t =
         // owned, we can realloc
         realloc seq.data size
     else
-        // shared case, need to malloc
-        // TODO: This should require a Copy/Clone constraint
-        memcpy (malloc size) seq.data size
-
-    data_ref.rc -= 1
+        // shared case, need to malloc. This is why we require Copy/Clone
+        buf = memcpy (malloc size) seq.data size
+        data_ref.rc -= 1
+        buf
 
     buffer_ref = ptr_to_mut buffer
     buffer_ref.len := seq.len + 1

@@ -37,10 +37,5 @@ main () =
 //    | ^^^^^^^^
 // 11 |         0
 // 
-// examples/typechecking/count_effect.an:14:18
-// 13 | main () =
-// 14 |     handle_count foo	// error: Expected fn Count -> Unit but found fn {Count} -> Unit
-//    |                  ^^^
-// 15 |     ()
-// 
-// Found 2 errors and 0 warnings
+// Found 1 error and 0 warnings
+
