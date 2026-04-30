@@ -1,5 +1,6 @@
 import Std.C.realloc
 import Std.Stream.Stream, for_
+import Std.Fail.Fail, fail
 
 export Vec, empty, is_empty, len, capacity, reserve, push, pop, get, get_unchecked,
     remove_index, remove_first, remove_indices, remove_all, swap_last,
@@ -46,21 +47,20 @@ Vec.push (v: mut Vec t) (elem: t) : Unit =
     array_insert v.data v.len elem
     v.len := v.len + 1usz
 
-//pop the last element off if it exists
-//this will never resize the vector.
-Vec.pop (v: mut Vec t) : Maybe t =
+/// Removes the last element of this vector and returns it.
+/// Returns None if the vector is empty.
+Vec.pop (v: mut Vec t): Maybe t =
     if v.is_empty () then None
     else
         v.len := v.len - 1
         Some (v.data.[v.len])
 
-/// Retrieves the element at the given index or returns None
-/// if the index is out of bounds
-Vec.get (v: imm Vec t) (i: Usz): Maybe (imm t) =
-    if i < v.len then
-        Some (v.get_unchecked i)
-    else
-        None
+/// Retrieves the element at the given 0-based index.
+/// Fails if the index is out of bounds
+Vec.get (v: imm Vec t) (i: Usz) {Fail}: imm t =
+    if i < v.len
+    then v.get_unchecked i
+    else fail ()
 
 /// An unsafe function to retrieve an element at the given index
 /// without checking if the index is inbounds

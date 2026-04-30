@@ -60,6 +60,15 @@ macro_rules! instr_assert_eq {
     }};
 }
 
+macro_rules! instr_assert_subtype {
+    ($lhs: expr, $rhs: expr, $this: expr, $instruction_id: expr, $mir: expr, $($msg: tt)*) => {{
+        if !$lhs.is_subtype(&$rhs) {
+            $this.annotate_error($instruction_id, $mir, &format!($($msg)*));
+            panic!()
+        }
+    }};
+}
+
 impl Definition {
     fn assert_fully_linked(&self, mir: &Mir) {
         let mut referenced_ids = FxHashSet::default();
@@ -165,23 +174,23 @@ impl Definition {
                     for (i, (param, arg)) in op_fn.parameters.iter().zip(arguments).enumerate() {
                         let arg_type = mir.type_of_value(arg, self);
                         if *param != Type::ERROR && arg_type != Type::ERROR {
-                            instr_assert_eq!(*param, arg_type, self, id, mir, "Type mismatch in arg {i} of perform");
+                            instr_assert_subtype!(*param, arg_type, self, id, mir, "Type mismatch in arg {i} of perform");
                         }
                     }
-                    instr_assert_eq!(op_fn.return_type, *result_type, self, id, mir, "Perform result type does not match effect op return type");
+                    instr_assert_subtype!(op_fn.return_type, *result_type, self, id, mir, "Perform result type does not match effect op return type");
                 },
                 Instruction::Handle { body, cases } => {
                     let Type::Function(body) = mir.type_of_value(body, self) else {
                         instr_panic!(self, id, mir, "Handle body is not a function");
                     };
 
-                    instr_assert_eq!(body.return_type, *result_type, self, id, mir, "Handle body return type does not match Handle result type");
+                    instr_assert_subtype!(body.return_type, *result_type, self, id, mir, "Handle body return type does not match Handle result type");
 
                     for case in cases {
                         let Type::Function(handler) = mir.type_of_value(&case.handler, self) else {
                             instr_panic!(self, id, mir, "Handle branch is not a function");
                         };
-                        instr_assert_eq!(handler.return_type, *result_type, self, id, mir, "Handle branch return type does not match Handle result type");
+                        instr_assert_subtype!(handler.return_type, *result_type, self, id, mir, "Handle branch return type does not match Handle result type");
                     }
                 },
                 Instruction::PackClosure { function, environment } => {
@@ -192,7 +201,7 @@ impl Definition {
                         instr_panic!(self, id, mir, "PackClosure function is not a function type, it is a(n) `{function_type}`")
                     };
 
-                    instr_assert_eq!(function_type.environment, environment_type, self, id, mir, "Closure env type doesn't match the environment value packed here");
+                    instr_assert_subtype!(function_type.environment, environment_type, self, id, mir, "Closure env type doesn't match the environment value packed here");
 
                     let Type::Function(closure_type) = result_type else {
                         instr_panic!(self, id, mir, "PackClosure result is not a function type, it is a(n) `{result_type}`")
@@ -206,10 +215,10 @@ impl Definition {
                     };
 
                     instr_assert!((*index as usize) < tuple_type.len(), self, id, mir, "Index OOB");
-                    instr_assert_eq!(tuple_type[*index as usize], *result_type, self, id, mir, "Element type from tuple != result type");
+                    instr_assert_subtype!(tuple_type[*index as usize], *result_type, self, id, mir, "Element type from tuple != result type");
                 },
                 Instruction::MakeString(_) => {
-                    instr_assert_eq!(*result_type, Type::string(), self, id, mir, "MakeString returns a non-string");
+                    instr_assert_subtype!(*result_type, Type::string(), self, id, mir, "MakeString returns a non-string");
                 },
                 Instruction::MakeTuple(elements) => {
                     let Type::Tuple(tuple_type) = result_type else {
@@ -218,20 +227,20 @@ impl Definition {
                     instr_assert_eq!(tuple_type.len(), elements.len(), self, id, mir, "Tuple type element length mismatch vs the actual elements length");
                     for (result, element) in tuple_type.iter().zip(elements) {
                         let element_type = mir.type_of_value(element, self);
-                        instr_assert_eq!(*result, element_type, self, id, mir, "Tuple elem `{result}` != `{element_type}`");
+                        instr_assert_subtype!(*result, element_type, self, id, mir, "Tuple elem `{result}` != `{element_type}`");
                     }
                 },
                 Instruction::StackAlloc(_) => {
-                    instr_assert_eq!(*result_type, Type::POINTER, self, id, mir, "Result type is not a pointer, it is `{result_type}`");
+                    instr_assert_subtype!(*result_type, Type::POINTER, self, id, mir, "Result type is not a pointer, it is `{result_type}`");
                 },
                 Instruction::Transmute(_) => (),
                 Instruction::Instantiate(def_id, generic_args) => {
                     let target_type = &mir.type_of_value(&Value::Definition(*def_id), self).substitute(generic_args);
-                    instr_assert_eq!(result_type, target_type, self, id, mir, "Result type `{result_type}` does not match manually substited type `{target_type}`");
+                    instr_assert_subtype!(result_type, target_type, self, id, mir, "Result type `{result_type}` does not match manually substited type `{target_type}`");
                 },
                 Instruction::Id(value) => {
                     let value_type = mir.type_of_value(value, self);
-                    instr_assert_eq!(*result_type, value_type, self, id, mir, "Value type `{value_type}` != result type `{result_type}`");
+                    instr_assert_subtype!(*result_type, value_type, self, id, mir, "Value type `{value_type}` != result type `{result_type}`");
                 },
                 Instruction::AddInt(a, b)
                 | Instruction::SubInt(a, b)
@@ -242,8 +251,8 @@ impl Definition {
                     let a_type = mir.type_of_value(a, self);
                     let b_type = mir.type_of_value(b, self);
                     instr_assert!(a_type.is_int(), self, id, mir, "Argument type is not an integer");
-                    instr_assert_eq!(a_type, b_type, self, id, mir, "Argument types do not match: {a_type} != {b_type}");
-                    instr_assert_eq!(a_type, *result_type, self, id, mir, "Argument type does not match result type `{a_type}` != `{result_type}`");
+                    instr_assert_subtype!(a_type, b_type, self, id, mir, "Argument types do not match: {a_type} != {b_type}");
+                    instr_assert_subtype!(a_type, *result_type, self, id, mir, "Argument type does not match result type `{a_type}` != `{result_type}`");
                 },
 
                 Instruction::AddFloat(a, b)
@@ -254,48 +263,48 @@ impl Definition {
                     let a_type = mir.type_of_value(a, self);
                     let b_type = mir.type_of_value(b, self);
                     instr_assert!(a_type.is_float(), self, id, mir, "Argument type is not a float");
-                    instr_assert_eq!(a_type, b_type, self, id, mir, "Argument types do not match: {a_type} != {b_type}");
-                    instr_assert_eq!(a_type, *result_type, self, id, mir, "Argument type does not match result type `{a_type}` != `{result_type}`");
+                    instr_assert_subtype!(a_type, b_type, self, id, mir, "Argument types do not match: {a_type} != {b_type}");
+                    instr_assert_subtype!(a_type, *result_type, self, id, mir, "Argument type does not match result type `{a_type}` != `{result_type}`");
                 },
 
                 Instruction::DivSigned(a, b) | Instruction::ModSigned(a, b) => {
                     let a_type = mir.type_of_value(a, self);
                     let b_type = mir.type_of_value(b, self);
                     instr_assert!(a_type.is_signed_int(), self, id, mir, "Argument type is not a signed int");
-                    instr_assert_eq!(a_type, b_type, self, id, mir, "Argument types do not match: {a_type} != {b_type}");
-                    instr_assert_eq!(a_type, *result_type, self, id, mir, "Argument type does not match result type `{a_type}` != `{result_type}`");
+                    instr_assert_subtype!(a_type, b_type, self, id, mir, "Argument types do not match: {a_type} != {b_type}");
+                    instr_assert_subtype!(a_type, *result_type, self, id, mir, "Argument type does not match result type `{a_type}` != `{result_type}`");
                 },
 
                 Instruction::DivUnsigned(a, b) | Instruction::ModUnsigned(a, b) => {
                     let a_type = mir.type_of_value(a, self);
                     let b_type = mir.type_of_value(b, self);
                     instr_assert!(a_type.is_unsigned_int(), self, id, mir, "Argument type is not an unsigned int");
-                    instr_assert_eq!(a_type, b_type, self, id, mir, "Argument types do not match: {a_type} != {b_type}");
-                    instr_assert_eq!(a_type, *result_type, self, id, mir, "Argument type does not match result type `{a_type}` != `{result_type}`");
+                    instr_assert_subtype!(a_type, b_type, self, id, mir, "Argument types do not match: {a_type} != {b_type}");
+                    instr_assert_subtype!(a_type, *result_type, self, id, mir, "Argument type does not match result type `{a_type}` != `{result_type}`");
                 }
 
                 Instruction::LessSigned(a, b) => {
                     let a_type = mir.type_of_value(a, self);
                     let b_type = mir.type_of_value(b, self);
                     instr_assert!(a_type.is_signed_int(), self, id, mir, "Argument type is not a signed int");
-                    instr_assert_eq!(a_type, b_type, self, id, mir, "Argument types do not match: {a_type} != {b_type}");
-                    instr_assert_eq!(*result_type, Type::BOOL, self, id, mir, "Result type `{result_type}` is not a Bool");
+                    instr_assert_subtype!(a_type, b_type, self, id, mir, "Argument types do not match: {a_type} != {b_type}");
+                    instr_assert_subtype!(*result_type, Type::BOOL, self, id, mir, "Result type `{result_type}` is not a Bool");
                 },
 
                 Instruction::LessUnsigned(a, b) => {
                     let a_type = mir.type_of_value(a, self);
                     let b_type = mir.type_of_value(b, self);
                     instr_assert!(a_type.is_unsigned_int(), self, id, mir, "Argument type is not an unsigned int");
-                    instr_assert_eq!(a_type, b_type, self, id, mir, "Argument types do not match: {a_type} != {b_type}");
-                    instr_assert_eq!(*result_type, Type::BOOL, self, id, mir, "Result type `{result_type}` is not a Bool");
+                    instr_assert_subtype!(a_type, b_type, self, id, mir, "Argument types do not match: {a_type} != {b_type}");
+                    instr_assert_subtype!(*result_type, Type::BOOL, self, id, mir, "Result type `{result_type}` is not a Bool");
                 },
 
                 Instruction::LessFloat(a, b) | Instruction::EqFloat(a, b) => {
                     let a_type = mir.type_of_value(a, self);
                     let b_type = mir.type_of_value(b, self);
                     instr_assert!(a_type.is_float(), self, id, mir, "Argument type is not a float");
-                    instr_assert_eq!(a_type, b_type, self, id, mir, "Argument types do not match: {a_type} != {b_type}");
-                    instr_assert_eq!(*result_type, Type::BOOL, self, id, mir, "Result type `{result_type}` is not a Bool");
+                    instr_assert_subtype!(a_type, b_type, self, id, mir, "Argument types do not match: {a_type} != {b_type}");
+                    instr_assert_subtype!(*result_type, Type::BOOL, self, id, mir, "Result type `{result_type}` is not a Bool");
                 },
 
                 Instruction::EqInt(a, b) => {
@@ -303,14 +312,14 @@ impl Definition {
                     let b_type = mir.type_of_value(b, self);
                     let valid = a_type.is_int() || a_type == Type::BOOL || a_type == Type::CHAR;
                     instr_assert!(valid, self, id, mir, "Argument type is not an integer, bool, or char");
-                    instr_assert_eq!(a_type, b_type, self, id, mir, "Argument types do not match: {a_type} != {b_type}");
-                    instr_assert_eq!(*result_type, Type::BOOL, self, id, mir, "Result type `{result_type}` is not a Bool");
+                    instr_assert_subtype!(a_type, b_type, self, id, mir, "Argument types do not match: {a_type} != {b_type}");
+                    instr_assert_subtype!(*result_type, Type::BOOL, self, id, mir, "Result type `{result_type}` is not a Bool");
                 },
 
                 Instruction::BitwiseNot(value) => {
                     let value_type = mir.type_of_value(value, self);
                     instr_assert!(value_type.is_int(), self, id, mir, "Argument type is not an integer");
-                    instr_assert_eq!(value_type, *result_type, self, id, mir, "Argument type does not match result type `{value_type}` != `{result_type}`");
+                    instr_assert_subtype!(value_type, *result_type, self, id, mir, "Argument type does not match result type `{value_type}` != `{result_type}`");
                 },
 
                 Instruction::SignExtend(value) => {
@@ -358,16 +367,16 @@ impl Definition {
                 },
                 Instruction::Store { pointer, value: _ } => {
                     let pointer_type = mir.type_of_value(pointer, self);
-                    instr_assert_eq!(pointer_type, Type::POINTER, self, id, mir, "Store pointer must be a pointer type, got `{pointer_type}`");
-                    instr_assert_eq!(*result_type, Type::UNIT, self, id, mir, "Store result must be unit");
+                    instr_assert_subtype!(pointer_type, Type::POINTER, self, id, mir, "Store pointer must be a pointer type, got `{pointer_type}`");
+                    instr_assert_subtype!(*result_type, Type::UNIT, self, id, mir, "Store result must be unit");
                 },
                 Instruction::SizeOf(_) => {
-                    instr_assert_eq!(*result_type, Type::int(IntegerKind::Usz), self, id, mir, "SizeOf result must be Usz");
+                    instr_assert_subtype!(*result_type, Type::int(IntegerKind::Usz), self, id, mir, "SizeOf result must be Usz");
                 },
                 Instruction::GetFieldPtr { struct_ptr, .. } => {
                     let ptr_type = mir.type_of_value(struct_ptr, self);
                     instr_assert!(matches!(ptr_type, Type::POINTER), self, id, mir, "GetFieldPtr struct_ptr must be a pointer");
-                    instr_assert_eq!(*result_type, Type::POINTER, self, id, mir, "GetFieldPtr result must be a pointer");
+                    instr_assert_subtype!(*result_type, Type::POINTER, self, id, mir, "GetFieldPtr result must be a pointer");
                 },
                 Instruction::Extern(_) => (),
                 Instruction::HandlerCap => {
@@ -394,10 +403,10 @@ impl Definition {
             // Skip type mismatch checks involving Error types. Error occurs when a
             // value's type is unknown (e.g., captured env params not yet converted).
             if *parameter != Type::ERROR && arg_type != Type::ERROR {
-                instr_assert_eq!(*parameter, arg_type, self, id, mir, "Type mismatch in arg {i} of call");
+                instr_assert_subtype!(*parameter, arg_type, self, id, mir, "Type mismatch in arg {i} of call");
             }
         }
-        instr_assert_eq!(function_type.return_type, *result_type, self, id, mir, "Function type result type does not match result type of call instruction");
+        instr_assert_subtype!(function_type.return_type, *result_type, self, id, mir, "Function type result type does not match result type of call instruction");
     }
 
     fn type_check_block_terminators(&self, mir: &Mir) {
@@ -406,7 +415,12 @@ impl Definition {
             match arg {
                 Some(arg) => {
                     assert_eq!(target_block.parameter_types.len(), 1);
-                    assert_eq!(target_block.parameter_types[0], mir.type_of_value(arg, self));
+                    let arg_type = mir.type_of_value(arg, self);
+                    assert!(
+                        target_block.parameter_types[0].is_subtype(&arg_type),
+                        "Block parameter type `{}` does not match jmp argument type `{}`",
+                        target_block.parameter_types[0], arg_type
+                    );
                 },
                 None => {
                     assert_eq!(target_block.parameter_types.len(), 0);
@@ -418,13 +432,20 @@ impl Definition {
             match block.terminator.as_ref() {
                 Some(TerminatorInstruction::Jmp(target)) => block_arg_type_checks(target),
                 Some(TerminatorInstruction::If { condition, then, else_, end: _ }) => {
-                    assert_eq!(mir.type_of_value(condition, self), Type::BOOL);
+                    let cond_type = mir.type_of_value(condition, self);
+                    assert!(
+                        cond_type.is_subtype(&Type::BOOL),
+                        "If condition type is not Bool, got `{cond_type}`"
+                    );
                     block_arg_type_checks(then);
                     block_arg_type_checks(else_);
                 },
                 Some(TerminatorInstruction::Switch { int_value, cases, else_, end: _ }) => {
                     let int_type = mir.type_of_value(int_value, self);
-                    assert!(matches!(int_type, Type::Primitive(PrimitiveType::Int(_))));
+                    assert!(
+                        matches!(int_type, Type::Primitive(PrimitiveType::Int(_) | PrimitiveType::Never)),
+                        "Switch value type is not an integer, got `{int_type}`"
+                    );
 
                     for (_, jmp) in cases {
                         block_arg_type_checks(jmp);
@@ -440,18 +461,19 @@ impl Definition {
                         Some(return_type) => return_type,
                         None => &self.typ,
                     };
-                    assert_eq!(
-                        mir.type_of_value(value, self),
-                        *return_type,
-                        "Returned value's type does not match function return type:\n{}",
+                    let value_type = mir.type_of_value(value, self);
+                    assert!(
+                        value_type.is_subtype(return_type),
+                        "Returned value's type `{value_type}` does not match function return type `{return_type}`:\n{}",
                         self.display(Some(mir))
                     );
                 },
                 Some(TerminatorInstruction::Result(value)) => {
-                    assert_eq!(
-                        mir.type_of_value(value, self),
+                    let value_type = mir.type_of_value(value, self);
+                    assert!(
+                        value_type.is_subtype(&self.typ),
+                        "Result value's type `{value_type}` does not match the type of the global `{}`:\n{}",
                         self.typ,
-                        "Result value's type does not match the type of the global:\n{}",
                         self.display(Some(mir))
                     );
                 },

@@ -1,5 +1,4 @@
-effect Fail with
-    fail: fn Unit -> Unit // todo cannot return a / never / bottom
+import Std.Fail.Fail, fail
 
 effect Read a with
     read: fn Unit -> a

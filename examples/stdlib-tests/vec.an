@@ -1,0 +1,23 @@
+import Std.Vec.Vec, push, print_vec, remove_index
+import Std.Fail.try_or
+
+main () =
+    var v = Vec.empty ()
+    push (mut v) 3i32
+    v.push 4
+    v.push 5
+    v.remove_index 1
+    println (ref v)
+
+    v.pop ()
+    println (ref v)
+
+    // println (v.get 0 ~> try_or 0)
+    println (try_or (fn fail -> (v.get 0 {fail}).*) 0)
+
+// args: --delete-binary --no-color
+// expected stdout:
+// [3, 5]
+// [3]
+// 3
+

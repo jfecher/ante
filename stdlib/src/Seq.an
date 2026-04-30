@@ -163,12 +163,12 @@ Seq.get (seq: ref Seq t) (index: U32): Maybe (ref t) =
         Some (ptr_to_mut elem)
     else None
 
-Seq.iter (seq: ref Seq t) (f: fn (ref t) [env] -> Unit): Unit =
+Seq.iter (seq: ref Seq t) (f: fn (ref t) => Unit): Unit =
     for i in 0 .. seq.len do
         elem = offset seq.data.elements (Usz i)
         f (ptr_to_mut elem)
 
-Seq.iter_mut (seq: mut Seq t) (f: fn (mut t) [env] -> Unit): Unit =
+Seq.iter_mut (seq: mut Seq t) (f: fn (mut t) => Unit): Unit =
     for i in 0 .. seq.len do
         elem = offset seq.data.elements (Usz i)
         f (ptr_to_mut elem)

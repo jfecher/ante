@@ -1,16 +1,15 @@
 effect Fail with
-    // TODO: Allow `forall a.`, implicit quantification, or add Bottom type
-    fail: fn Unit -> Unit
+    fail: fn Unit -> Never
 
-try (f: fn Fail -> a): Maybe a =
+try (f: fn Fail => a): Maybe a =
     handler h for fail () -> None
     Some (f h)
 
-try_or (f: fn Fail -> a) (default: a): a =
+try_or (f: fn Fail => a) (default: a): a =
     handler h for fail () -> default
     f h
 
-try_or_else (f: fn Fail -> a) (default: fn Unit [env] -> a): a =
+try_or_else (f: fn Fail => a) (default: fn Unit => a): a =
     handler h for fail () -> default ()
     f h
 
@@ -29,6 +28,6 @@ assert (cond: Bool) {Fail} : Unit =
 ///     input = get_input ()
 ///     parse input
 /// ```
-retry_until_success (f: fn Fail -> a): a =
+retry_until_success (f: fn Fail [env] -> a) {Copy env}: a =
     handler h for fail () -> retry_until_success f
     f h

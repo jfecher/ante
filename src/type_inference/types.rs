@@ -93,6 +93,9 @@ pub enum PrimitiveType {
     Float(FloatKind),
     Reference(ReferenceKind),
 
+    /// The bottom type
+    Never,
+
     /// A special tag a closure's environment can be unified to, at
     /// which point it becomes a free function
     NoClosureEnv,
@@ -109,6 +112,7 @@ impl Type {
     pub const BOOL: Type = Type::Primitive(PrimitiveType::Bool);
     pub const POINTER: Type = Type::Primitive(PrimitiveType::Pointer);
     pub const CHAR: Type = Type::Primitive(PrimitiveType::Char);
+    pub const NEVER: Type = Type::Primitive(PrimitiveType::Never);
 
     pub const I8: Type = Type::Primitive(PrimitiveType::Int(IntegerKind::I8));
     pub const I16: Type = Type::Primitive(PrimitiveType::Int(IntegerKind::I16));
@@ -537,6 +541,7 @@ impl Type {
                 Builtin::Char => (Type::CHAR, Kind::Type),
                 Builtin::Bool => (Type::BOOL, Kind::Type),
                 Builtin::Ptr => (Type::POINTER, Kind::TypeConstructorSimple(NonZeroUsize::new(1).unwrap())),
+                Builtin::Never => (Type::NEVER, Kind::Type),
                 Builtin::Intrinsic => (Type::ERROR, Kind::Error),
             },
             Some(origin @ Origin::TopLevelDefinition(type_name)) => {
@@ -864,6 +869,7 @@ impl std::fmt::Display for PrimitiveType {
             PrimitiveType::Int(kind) => write!(f, "{kind}"),
             PrimitiveType::Float(kind) => write!(f, "{kind}"),
             PrimitiveType::Char => write!(f, "Char"),
+            PrimitiveType::Never => write!(f, "Never"),
             PrimitiveType::Reference(kind) => write!(f, "{kind}"),
             PrimitiveType::NoClosureEnv => write!(f, "{NO_CLOSURE_ENV_STRING}"),
         }

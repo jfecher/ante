@@ -171,6 +171,7 @@ impl Display for PrimitiveType {
             PrimitiveType::Char => write!(f, "Char"),
             PrimitiveType::Int(kind) => kind.fmt(f),
             PrimitiveType::Float(kind) => kind.fmt(f),
+            PrimitiveType::Never => write!(f, "Never"),
             PrimitiveType::NoClosureEnv => write!(f, "NoClosureEnv"),
         }
     }

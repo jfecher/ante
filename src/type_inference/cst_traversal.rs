@@ -362,8 +362,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Will error if passed a builtin type
     fn check_builtin(&mut self, builtin: Builtin, locator: impl Locateable) -> Type {
         match builtin {
-            Builtin::Unit => Type::UNIT,
-            Builtin::Char | Builtin::Bool | Builtin::Ptr => {
+            Builtin::Unit | Builtin::Char | Builtin::Bool | Builtin::Ptr | Builtin::Never => {
                 let typ = Arc::new(builtin.to_string());
                 let location = locator.locate(self);
                 self.compiler.accumulate(Diagnostic::ValueExpected { location, typ });

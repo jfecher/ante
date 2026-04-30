@@ -598,6 +598,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     self.try_bind_type_variable(*expected_id, actual, new_bindings)
                 }
             },
+            // The bottom type should unify with any expected type
+            (Type::Primitive(PrimitiveType::Never), _) => Ok(()),
+            // And the error type should unify with everything to prevent future errors
             (Type::Primitive(PrimitiveType::Error), _) | (_, Type::Primitive(PrimitiveType::Error)) => Ok(()),
             (Type::Function(actual), Type::Function(expected)) => {
                 if actual.parameters.len() != expected.parameters.len() {

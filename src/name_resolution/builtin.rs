@@ -14,6 +14,8 @@ pub enum Builtin {
     Bool,
     /// The Ptr type constructor of kind `* -> *`
     Ptr,
+    /// The bottom type
+    Never,
     /// The core `intrinsic` function used in the stdlib as a placeholder for compiler intrinsics
     Intrinsic,
 }
@@ -30,6 +32,7 @@ impl Builtin {
             "Char" => Some(Char),
             "Bool" => Some(Bool),
             "Ptr" => Some(Ptr),
+            "Never" => Some(Never),
             // `Intrinsic` is excluded here since it should not be imported into
             // modules outside the stdlib
             _ => None,
@@ -44,6 +47,7 @@ impl Builtin {
             Builtin::Char => Some(Type::CHAR),
             Builtin::Bool => Some(Type::BOOL),
             Builtin::Ptr => Some(Type::POINTER),
+            Builtin::Never => Some(Type::NEVER),
             Builtin::Intrinsic => None,
         }
     }
@@ -56,6 +60,7 @@ impl std::fmt::Display for Builtin {
             Builtin::Char => write!(f, "Char"),
             Builtin::Bool => write!(f, "Bool"),
             Builtin::Ptr => write!(f, "Ptr"),
+            Builtin::Never => write!(f, "Never"),
             Builtin::Intrinsic => write!(f, "intrinsic"),
         }
     }

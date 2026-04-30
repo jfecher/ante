@@ -288,6 +288,13 @@ impl<'ctx> ModuleContext<'ctx> {
             return;
         }
 
+        // A function whose signature exposes `Never` to LLVM type lowering can never
+        // actually be called. Emit it with a Never-free placeholder signature and an
+        // `unreachable`-only body.
+        let body_is_unreachable = Self::function_signature_reaches_never(&function.typ);
+        let signature_typ =
+            if body_is_unreachable { Self::replace_never_with_unit(&function.typ) } else { function.typ.clone() };
+
         let is_ante_main = function.name.as_str() == "main";
         let function_value = match self.definitions.get(&id) {
             Some(CodegenValue::Function(fv)) => *fv,
@@ -295,7 +302,7 @@ impl<'ctx> ModuleContext<'ctx> {
                 "codegen_function: definition {id} was already codegen'd as a literal global, but its body is a function"
             ),
             None => {
-                let function_type = self.convert_function_type(&function.typ).unwrap();
+                let function_type = self.convert_function_type(&signature_typ).unwrap();
                 // Rename `main`: see `codegen_main_wrapper`.
                 let mangled_name = if is_ante_main {
                     format!("main_{}%", function.id)
@@ -314,6 +321,14 @@ impl<'ctx> ModuleContext<'ctx> {
 
         self.current_function = Some(id);
         self.current_function_value = Some(function_value);
+
+        if body_is_unreachable {
+            let entry = self.llvm.append_basic_block(function_value, "");
+            self.builder.position_at_end(entry);
+            self.builder.build_unreachable().unwrap();
+            return;
+        }
+
         self.create_blocks(function, function_value);
 
         for i in 0..function.blocks[BlockId::ENTRY_BLOCK].parameter_types.len() as u32 {
@@ -421,6 +436,7 @@ impl<'ctx> ModuleContext<'ctx> {
             PrimitiveType::Int(kind) => self.convert_integer_kind(kind).into(),
             PrimitiveType::Float(FloatKind::F32) => self.llvm.f32_type().into(),
             PrimitiveType::Float(FloatKind::F64) => self.llvm.f64_type().into(),
+            PrimitiveType::Never => unreachable!("Cannot codegen llvm with a bare Never type"),
             PrimitiveType::NoClosureEnv => unreachable!("Cannot convert NoClosureEnv"),
         }
     }
@@ -437,6 +453,67 @@ impl<'ctx> ModuleContext<'ctx> {
                 let target_data = machine.get_target_data();
                 self.llvm.ptr_sized_int_type(&target_data, None)
             },
+        }
+    }
+
+    /// If `typ` is a function type whose return is `Never`, return a copy with
+    /// the return type swapped for `result_type`. Otherwise return `typ`
+    /// unchanged.
+    fn fixup_never_return(typ: mir::Type, result_type: &mir::Type) -> mir::Type {
+        match typ {
+            mir::Type::Function(f) if f.return_type == mir::Type::NEVER => {
+                mir::Type::Function(Arc::new(mir::FunctionType {
+                    parameters: f.parameters.clone(),
+                    environment: f.environment.clone(),
+                    return_type: result_type.clone(),
+                }))
+            },
+            other => other,
+        }
+    }
+
+    fn replace_never_with_unit(typ: &mir::Type) -> mir::Type {
+        match typ {
+            mir::Type::Primitive(mir::PrimitiveType::Never) => mir::Type::UNIT,
+            mir::Type::Primitive(_) | mir::Type::Generic(_) => typ.clone(),
+            mir::Type::Tuple(fields) => {
+                mir::Type::Tuple(Arc::new(fields.iter().map(Self::replace_never_with_unit).collect()))
+            },
+            mir::Type::Union(fields) => {
+                mir::Type::Union(Arc::new(fields.iter().map(Self::replace_never_with_unit).collect()))
+            },
+            mir::Type::Function(f) => mir::Type::Function(Arc::new(mir::FunctionType {
+                parameters: f.parameters.iter().map(Self::replace_never_with_unit).collect(),
+                environment: Self::replace_never_with_unit(&f.environment),
+                return_type: Self::replace_never_with_unit(&f.return_type),
+            })),
+        }
+    }
+
+    /// True if [`Self::convert_type`] would reach `convert_primitive_type(Never)`
+    /// when invoked on this type. Mirrors `convert_type`'s recursion exactly:
+    /// primitives are checked directly; tuples and unions recurse into fields;
+    /// nested function types only recurse into their environment (their own
+    /// parameters / return types become opaque function pointers and are not
+    /// followed). Generics never reach a primitive.
+    fn convert_reaches_never(typ: &mir::Type) -> bool {
+        match typ {
+            mir::Type::Primitive(mir::PrimitiveType::Never) => true,
+            mir::Type::Primitive(_) | mir::Type::Generic(_) => false,
+            mir::Type::Tuple(fields) | mir::Type::Union(fields) => fields.iter().any(Self::convert_reaches_never),
+            mir::Type::Function(f) => Self::convert_reaches_never(&f.environment),
+        }
+    }
+
+    /// True if `convert_function_type(typ)` would reach a `Never` while lowering.
+    fn function_signature_reaches_never(typ: &mir::Type) -> bool {
+        match typ {
+            mir::Type::Function(f) => {
+                Self::convert_reaches_never(&f.return_type)
+                    || f.parameters.iter().any(Self::convert_reaches_never)
+                    || Self::convert_reaches_never(&f.environment)
+            },
+            _ => false,
         }
     }
 
@@ -475,9 +552,17 @@ impl<'ctx> ModuleContext<'ctx> {
             self.codegen_global(&def, id);
         } else {
             // Forward-declare the function with the mangled name `codegen_function` will use,
-            // to avoid colliding with C extern names.
+            // to avoid colliding with C extern names. If the signature would
+            // expose `Never` to LLVM type lowering, swap it for `Unit` here so
+            // the LLVM signature is valid; the body emitted later is just
+            // `unreachable`.
+            let signature_typ = if Self::function_signature_reaches_never(&def.typ) {
+                Self::replace_never_with_unit(&def.typ)
+            } else {
+                def.typ.clone()
+            };
             let fn_type = self
-                .convert_function_type(&def.typ)
+                .convert_function_type(&signature_typ)
                 .expect("codegen_value_for: non-global definition must have a function type");
             let mangled_name = format!("{}_{}", self.get_name(id), id);
             let fv = self.module.add_function(&mangled_name, fn_type, None);
@@ -513,7 +598,10 @@ impl<'ctx> ModuleContext<'ctx> {
     fn codegen_instruction(&mut self, function: &mir::Definition, id: mir::InstructionId) {
         let result = match &function.instructions[id] {
             mir::Instruction::Call { function: function_value, arguments } => {
-                let typ = self.convert_function_type(&self.mir.type_of_value(function_value, function)).unwrap();
+                let raw = self.mir.type_of_value(function_value, function);
+                let result_type = function.instruction_result_type(id);
+                let fn_type = Self::fixup_never_return(raw, result_type);
+                let typ = self.convert_function_type(&fn_type).unwrap();
                 let function = self.lookup_value(function_value).into_pointer_value();
                 let arguments = mapvec(arguments, |arg| self.lookup_value(arg).into());
                 self.builder
@@ -532,7 +620,10 @@ impl<'ctx> ModuleContext<'ctx> {
                 unreachable!("Instruction::HandlerCap remaining in LLVM codegen")
             },
             mir::Instruction::CallClosure { closure, arguments } => {
-                let typ = self.convert_function_type(&self.mir.type_of_value(closure, function)).unwrap();
+                let raw = self.mir.type_of_value(closure, function);
+                let result_type = function.instruction_result_type(id);
+                let fn_type = Self::fixup_never_return(raw, result_type);
+                let typ = self.convert_function_type(&fn_type).unwrap();
                 let closure = self.lookup_value(closure).into_struct_value();
                 let mut arguments = mapvec(arguments, |arg| self.lookup_value(arg).into());
                 let function = self.builder.build_extract_value(closure, 0, "").unwrap().into_pointer_value();

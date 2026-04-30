@@ -799,10 +799,10 @@ impl iterator_range: Iterator (Range Usz) Usz with
             next = Range (range.start + 1) range.end
             Some (next, range.start)
 
-iter_range (from: Usz) (to: Usz) (f: fn Usz [env] -> Unit): Unit =
+iter_range (from: Usz) (to: Usz) (f: fn Usz => Unit): Unit =
     iter (Range from to) f
 
-repeat (count: Usz) (f: fn Usz [env] -> Unit): Unit =
+repeat (count: Usz) (f: fn Usz => Unit): Unit =
     loop (i = 0) ->
         if i < count then
             f i
