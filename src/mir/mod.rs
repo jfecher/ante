@@ -814,7 +814,7 @@ impl Type {
             Type::Function(_) => ptr_size,
             // This is a raw union so the tag isn't counted here
             Type::Union(variants) => variants.iter().map(|typ| typ.size_in_bytes(ptr_size)).max().unwrap_or(0),
-            Type::Generic(_) => 100, // FIXME
+            Type::Generic(_) => panic!("size_in_bytes called on Type::Generic"),
         }
     }
 

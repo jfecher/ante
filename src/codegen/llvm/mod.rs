@@ -9,7 +9,7 @@ use inkwell::{
     passes::PassBuilderOptions,
     targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine},
     types::{BasicType, BasicTypeEnum, IntType},
-    values::{AggregateValue, AnyValue, BasicValue, BasicValueEnum, FunctionValue, GlobalValue, PhiValue},
+    values::{AggregateValue, BasicValue, BasicValueEnum, FunctionValue, PhiValue},
 };
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
@@ -114,6 +114,28 @@ fn native_target_machine(opt_level: OptLevel) -> TargetMachine {
     target.create_target_machine(&triple, "", "", opt_level.inkwell(), RelocMode::PIC, CodeModel::Default).unwrap()
 }
 
+/// The codegen-side representation of a [mir::Definition].
+///
+/// Functions get a real LLVM function definition/declaration; "let"-style globals
+/// constant-fold to a value that's inlined at every use site so we don't need to
+/// allocate a backing global slot or emit a load before each call.
+#[derive(Copy, Clone)]
+enum CodegenValue<'ctx> {
+    Function(FunctionValue<'ctx>),
+    Literal(BasicValueEnum<'ctx>),
+}
+
+impl<'ctx> CodegenValue<'ctx> {
+    /// Project this codegen value to the [BasicValueEnum] callers see when referencing
+    /// the definition: a function pointer for functions, the inlined literal otherwise.
+    fn into_basic_value(self) -> BasicValueEnum<'ctx> {
+        match self {
+            CodegenValue::Function(fv) => fv.as_global_value().as_pointer_value().into(),
+            CodegenValue::Literal(v) => v,
+        }
+    }
+}
+
 struct ModuleContext<'ctx> {
     llvm: &'ctx inkwell::context::Context,
     module: Module<'ctx>,
@@ -131,7 +153,7 @@ struct ModuleContext<'ctx> {
     /// This is `None` for libraries that do not define `main`.
     ante_main: Option<FunctionValue<'ctx>>,
 
-    global_values: FxHashMap<mir::Value, GlobalValue<'ctx>>,
+    definitions: FxHashMap<DefinitionId, CodegenValue<'ctx>>,
     values: FxHashMap<mir::Value, BasicValueEnum<'ctx>>,
 
     /// Block arguments are added here to later insert them as PHI values.
@@ -156,7 +178,7 @@ impl<'ctx> ModuleContext<'ctx> {
             current_function: None,
             current_function_value: None,
             ante_main: None,
-            global_values: Default::default(),
+            definitions: Default::default(),
             values: Default::default(),
             builder: llvm.create_builder(),
             blocks: Default::default(),
@@ -166,10 +188,6 @@ impl<'ctx> ModuleContext<'ctx> {
     }
 
     fn codegen_global(&mut self, global: &mir::Definition, id: mir::DefinitionId) {
-        let typ = self.convert_type(&global.typ);
-        let mangled_name = format!("{}_{}", self.get_name(id), id);
-        let global_var = self.module.add_global(typ, None, &mangled_name);
-
         // Stash `values` since this may be called mid function-codegen.
         let saved_values = std::mem::take(&mut self.values);
 
@@ -182,11 +200,13 @@ impl<'ctx> ModuleContext<'ctx> {
             panic!("Global definition missing Result terminator");
         };
         let initializer = self.constant_value(*result_value);
-        global_var.set_initializer(&initializer);
 
         self.values = saved_values;
 
-        self.global_values.insert(mir::Value::Definition(id), global_var);
+        // Inlined at every use site rather than emitted as an LLVM global with backing storage.
+        // Globals' bodies are already restricted to constant-foldable instructions
+        // (see `codegen_constant_instruction`), so a backing slot is pure indirection.
+        self.definitions.insert(id, CodegenValue::Literal(initializer));
     }
 
     fn constant_value(&mut self, value: mir::Value) -> BasicValueEnum<'ctx> {
@@ -204,37 +224,7 @@ impl<'ctx> ModuleContext<'ctx> {
             mir::Value::InstructionResult(_) | mir::Value::Parameter(..) => {
                 *self.values.get(&value).expect("constant value not cached")
             },
-            mir::Value::Definition(id) => {
-                let def = self.mir.definitions.get(&id).expect("constant_value: definition not found");
-                let is_global = def.is_global();
-                if let Some(gv) = self.global_values.get(&mir::Value::Definition(id)) {
-                    // For non-function globals (structs/constants), embed the initializer value
-                    // inline rather than a pointer since build_load is unavailable in constant context.
-                    // For actual function definitions, return the function pointer as usual.
-                    if is_global {
-                        return gv.get_initializer().expect("constant_value: global missing initializer");
-                    } else {
-                        return gv.as_pointer_value().into();
-                    }
-                }
-                if is_global {
-                    // Non-function global not yet compiled: compile it on demand then embed inline.
-                    let def = def.clone();
-                    self.codegen_global(&def, id);
-                    let gv = self.global_values.get(&mir::Value::Definition(id)).unwrap();
-                    gv.get_initializer().expect("global has no initializer after codegen_global")
-                } else {
-                    let def = self.mir.definitions.get(&id).expect("constant_value: definition not found");
-                    let fn_type = self
-                        .convert_function_type(&def.typ)
-                        .expect("constant_value: definition in global initializer is not a function");
-                    let name = self.get_name(id);
-                    let fn_val = self.module.add_function(name, fn_type, None);
-                    let gv = fn_val.as_global_value();
-                    self.global_values.insert(mir::Value::Definition(id), gv);
-                    gv.as_pointer_value().into()
-                }
-            },
+            mir::Value::Definition(id) => self.codegen_value_for(id).into_basic_value(),
             mir::Value::Error => unreachable!("Error value in global initializer"),
         }
     }
@@ -299,8 +289,11 @@ impl<'ctx> ModuleContext<'ctx> {
         }
 
         let is_ante_main = function.name.as_str() == "main";
-        let function_value = match self.global_values.get(&mir::Value::Definition(id)) {
-            Some(existing) => existing.as_any_value_enum().into_function_value(),
+        let function_value = match self.definitions.get(&id) {
+            Some(CodegenValue::Function(fv)) => *fv,
+            Some(CodegenValue::Literal(_)) => panic!(
+                "codegen_function: definition {id} was already codegen'd as a literal global, but its body is a function"
+            ),
             None => {
                 let function_type = self.convert_function_type(&function.typ).unwrap();
                 // Rename `main`: see `codegen_main_wrapper`.
@@ -310,7 +303,7 @@ impl<'ctx> ModuleContext<'ctx> {
                     format!("{}_{}", function.name, function.id)
                 };
                 let function_value = self.module.add_function(&mangled_name, function_type, None);
-                self.global_values.insert(mir::Value::Definition(id), function_value.as_global_value());
+                self.definitions.insert(id, CodegenValue::Function(function_value));
                 function_value
             },
         };
@@ -463,15 +456,34 @@ impl<'ctx> ModuleContext<'ctx> {
         Some(return_type.fn_type(&parameters, false))
     }
 
-    /// Return the given [mir::Definition] if it is within `self.mir`. Return `None` otherwise.
-    fn try_get_function(&self, id: DefinitionId) -> Option<&'ctx mir::Definition> {
-        self.mir.definitions.get(&id)
-    }
-
     /// Returns the name of the given [DefinitionId].
     /// As long as the [DefinitionId] is referenced in `self.mir`, this should never panic.
     fn get_name(&self, id: DefinitionId) -> &'ctx str {
         self.mir.get_name(id).unwrap().as_ref()
+    }
+
+    /// Resolve a [DefinitionId] to its [CodegenValue], codegen-ing the definition on demand
+    /// when this is the first reference to it (e.g. a forward reference from another function,
+    /// or a global referenced inside another global initializer).
+    fn codegen_value_for(&mut self, id: DefinitionId) -> CodegenValue<'ctx> {
+        if let Some(existing) = self.definitions.get(&id) {
+            return *existing;
+        }
+
+        let def = self.mir.definitions.get(&id).expect("codegen_value_for: definition not found").clone();
+        if def.is_global() {
+            self.codegen_global(&def, id);
+        } else {
+            // Forward-declare the function with the mangled name `codegen_function` will use,
+            // to avoid colliding with C extern names.
+            let fn_type = self
+                .convert_function_type(&def.typ)
+                .expect("codegen_value_for: non-global definition must have a function type");
+            let mangled_name = format!("{}_{}", self.get_name(id), id);
+            let fv = self.module.add_function(&mangled_name, fn_type, None);
+            self.definitions.insert(id, CodegenValue::Function(fv));
+        }
+        self.definitions[&id]
     }
 
     fn lookup_value(&mut self, value: &mir::Value) -> BasicValueEnum<'ctx> {
@@ -490,44 +502,7 @@ impl<'ctx> ModuleContext<'ctx> {
             mir::Value::InstructionResult(_) | mir::Value::Parameter(..) => {
                 *self.values.get(&value).unwrap_or_else(|| panic!("llvm codegen: mir value is not cached: {value}"))
             },
-            mir::Value::Definition(function_id) => {
-                let function = self.try_get_function(self.current_function.unwrap()).unwrap();
-                let typ = self.mir.type_of_value(&value, function);
-                let is_function = self.convert_function_type(&typ).is_some();
-
-                // A `let` definition is a global variable even if its type is a function type.
-                // It stores a function pointer that must be loaded, not called directly.
-                let is_let_global = self.mir.definitions.get(function_id).map_or(false, |d| d.is_global());
-
-                if self.global_values.contains_key(&value) {
-                    let gv = self.global_values[&value];
-                    if is_function && !is_let_global && gv.as_any_value_enum().is_function_value() {
-                        return gv.as_pointer_value().into();
-                    } else {
-                        // Global variable (non-function type, or `let` holding a function pointer)
-                        let llvm_type = self.convert_type(&typ);
-                        return self.builder.build_load(llvm_type, gv.as_pointer_value(), "").unwrap();
-                    }
-                }
-
-                if is_function && !is_let_global {
-                    // Create a forward declaration with the mangled name matching codegen_function,
-                    // to avoid colliding with C extern names.
-                    let fn_type = self.convert_function_type(&typ).unwrap();
-                    let mangled_name = format!("{}_{}", self.get_name(*function_id), function_id);
-                    let function_value = self.module.add_function(&mangled_name, fn_type, None).as_global_value();
-                    self.global_values.insert(*value, function_value);
-                    function_value.as_pointer_value().into()
-                } else {
-                    // Global variable (non-function type, or `let` holding a function pointer)
-                    let def =
-                        self.mir.definitions.get(&function_id).expect("lookup_value: definition not found").clone();
-                    self.codegen_global(&def, *function_id);
-                    let global_var = self.global_values[&value];
-                    let llvm_type = self.convert_type(&typ);
-                    self.builder.build_load(llvm_type, global_var.as_pointer_value(), "").unwrap()
-                }
-            },
+            mir::Value::Definition(function_id) => self.codegen_value_for(*function_id).into_basic_value(),
         }
     }
 
