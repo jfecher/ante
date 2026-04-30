@@ -25,6 +25,7 @@ free_: fn (Ptr U8) -> Unit = extern "free"
 memcpy_: fn (Ptr U8) (Ptr U8) Usz -> Ptr U8 = extern "memcpy"
 memcmp_: fn (Ptr U8) (Ptr U8) Usz -> I32 = extern "memcmp"
 
+// Generic wrappers for some extern fns
 malloc (size: Usz): Ptr a =
     transmute (malloc_ size)
 

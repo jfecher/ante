@@ -1,29 +1,51 @@
 import Std.Vec.Vec, get_unchecked
 
+/// Emit a single item of type `a`. Another name for this is `Yield`.
 effect Emit a with
     emit: fn a -> Unit
 
+/// Stream the contents of `t` into the `Emit a` capability
 trait Stream t a with
     stream: fn t (Emit a) -> Unit
 
-impl stream_fn_i: Stream (fn {Emit a} [env] -> Unit) a with
-    stream f e = f {e}
-
-impl stream_fn_e: Stream (fn (Emit a) [env] -> Unit) a with
+/// This is the most common stream impl. Most streams will just be functions
+/// with an `Emit` capability. This impl is most common in the middle of
+/// stream chains since functions like `map` and `filter` return functions taking
+/// an `Emit` argument.
+impl stream_fn: Stream (fn (Emit a) => Unit) a with
     stream f e = f e
 
-impl stream_vec: Stream (imm Vec a) (imm a) with
-    stream vec e =
-        for i in 0 .. vec.len do
-            e.emit (vec.get_unchecked i)
-
-for_ (s: s) {Stream s a} (f: fn a [env] -> b): Unit =
+/// Consumes the given stream, applying `f` to each element
+/// 
+/// E.g. `for_ (iota 5) print` will print `01234`
+for_ (s: s) {Stream s a} (f: fn a => b): Unit =
     handler h for emit a ->
         f a
         resume ()
     Stream.stream s h
 
-filter_map (s: s) {Stream s a} (f: fn a [env] -> Maybe b) = fn (e: Emit b) ->
+/// Applies `f` to each element from the stream, re-emitting each result.
+/// 
+/// Given `a1, a2, .., aN`, emit `f a1, f a2, .., f aN`
+map (s: s) {Stream s a} (f: fn a => b) = fn (e: Emit b) ->
+    handler h for emit a ->
+        e.emit (f a)
+        resume ()
+    Stream.stream s h
+
+/// Re-emits only the elements from the original stream for which `f elem` is true
+///
+/// E.g. `filter (iota 5) (_ > 2)` will emit `3` and `4`.
+filter (s: s) {Stream s a} (f: fn (ref a) => Bool) = fn (e: Emit a) ->
+    handler h for emit a ->
+        if f (ref a) then e.emit a
+        resume ()
+    Stream.stream s h
+
+/// Performs a combined map and filter opereration, applying `f` to each element in
+/// the stream, filtering out any elements for which `None` is returned, leaving only
+/// the `Some` elements.
+filter_map (s: s) {Stream s a} (f: fn a => Maybe b) = fn (e: Emit b) ->
     handler h for emit a ->
         match f a
         | Some b -> e.emit b
@@ -31,18 +53,7 @@ filter_map (s: s) {Stream s a} (f: fn a [env] -> Maybe b) = fn (e: Emit b) ->
         resume ()
     Stream.stream s h
 
-map (s: s) {Stream s a} (f: fn a [env] -> b) = fn (e: Emit b) ->
-    handler h for emit a ->
-        e.emit (f a)
-        resume ()
-    Stream.stream s h
-
-filter (s: s) {Stream s a} (f: fn (ref a) [env] -> Bool) = fn (e: Emit a) ->
-    handler h for emit a ->
-        if f (ref a) then e.emit a
-        resume ()
-    Stream.stream s h
-
+/// Given `a1, a2, .., aN`, emit `(0, a1), (1, a2), .., (N-1, aN)`
 enumerate (s: s) {Stream s a} = fn (e: Emit (Usz, a)) ->
     var i = 0
     handler h for emit a ->
@@ -51,7 +62,11 @@ enumerate (s: s) {Stream s a} = fn (e: Emit (Usz, a)) ->
         resume ()
     in Stream.stream s h
 
-foldl (s: s) {Stream s b} (initial: a) (f: fn a b [env] -> a): a =
+/// Given `a1, a2, .., aN` and an initial value `initial`, return `(f (.. (f (f initial a1) a2) ..) aN)`
+///
+/// Unlike `foldr`, `foldl` is tail-resumptive and thus more efficient. If `f` is commutative, prefer
+/// `foldl` over `foldr`.
+foldl (s: s) {Stream s b} (initial: a) (f: fn a b => a): a =
     var result = initial
 
     handler h for emit value ->
@@ -61,15 +76,23 @@ foldl (s: s) {Stream s b} (initial: a) (f: fn a b [env] -> a): a =
 
     result
 
-foldr (s: s) {Stream s a} (acc: b) (f: fn a b [env] -> b): b =
+/// Given `a1, a2, .., aN` and an initial value `initial`, return `f a1 (f a2 (.. (f aN initial)))`
+///
+/// Unlike `foldl`, `foldr` is not tail-resumptive (the initial `f a1 _` call does not finish
+/// until the rest of the stream has been consumed) which limits performance. Prefer `foldl`
+/// when `f` is commutative.
+foldr (s: s) {Stream s a} (initial: b) (f: fn a b => b): b =
     handler h for emit value ->
         rest = resume ()
         f value rest
 
     Stream.stream s h
-    acc
+    initial
 
-map2 (s1: s1) (s2: s2) {Stream s1 a} {Stream s2 b} (f: fn a b [env] -> c) = fn (e: Emit c) ->
+/// Given `a1, a2, .., aN` and `b1, b2, .., bN`, emit `f a1 b1, f a2 b2, .., f aN bN`.
+/// If the two input streams are not the same length, the length of the resulting stream
+/// will be the shorter of the two.
+map2 (s1: s1) (s2: s2) {Stream s1 a} {Stream s2 b} (f: fn a b => c) = fn (e: Emit c) ->
     var left = Maybe.None
     var right = Maybe.None
 
@@ -93,8 +116,73 @@ map2 (s1: s1) (s2: s2) {Stream s1 a} {Stream s2 b} (f: fn a b [env] -> c) = fn (
         try_emit ()
     in Stream.stream s2 h2
 
+/// Emit numbers from 0 to `n`, end-exclusive
 iota n = fn (e: Emit Usz) ->
     for i in 0usz .. n do emit i {e}
 
+/// Zip the two streams together, emitting `x, y` for each
+/// `x` returned by the first stream and each `y` returned by the second.
+/// The length of the resulting stream will be the length of the shorter
+/// of the two streams given.
 zip a b {sa: Stream sa a} {sb: Stream sb b} =
     map2 a b {sa} {sb} (,)
+
+/// Apply the function `f` to all elements of the given stream,
+/// returning `true` if `f e` was true for all elements `e`. If the
+/// stream is empty, this will be vacuously true.
+///
+/// If `false` is returned for any element, the stream will not
+/// be pulled any further and `false` will be returned early.
+all (s: s) {Stream s a} (f: fn a => Bool): Bool =
+    handler h for emit a ->
+        if f a then resume ()
+        else false
+
+    Stream.stream s h
+    true
+
+/// Apply the function `f` to all elements of the given stream,
+/// returning `true` if `f e` was true for any element `e`. If the
+/// stream is empty, this will be vacuously false.
+///
+/// If `true` is returned for any element, the stream will not
+/// be pulled any further and `true` will be returned early.
+any (s: s) {Stream s a} (f: fn a => Bool): Bool =
+    handler h for emit a ->
+        if f a then true
+        else resume ()
+
+    Stream.stream s h
+    false
+
+/// Intersperse an item from the given function before each element
+/// of the stream.
+///
+/// Given `a1, a2, .., aN` and `item`, emit `a1, item, a2, item, .., item, aN`
+intersperse (s: s) {Stream s a} (item: fn Unit => a) = fn (e: Emit a) ->
+    var not_first = false
+    handler h for emit a ->
+        if not_first then e.emit (item ())
+        not_first := true
+        e.emit a
+        resume ()
+
+    Stream.stream s h
+
+/// Emits all elements from the first stream followed by all elements from the second stream
+chain (s1: s1) {Stream s1 a} (s2: s2) {Stream s2 a} = fn (e: Emit a) ->
+    Stream.stream s1 e
+    Stream.stream s2 e
+
+/// Consume the stream, returning the total number of elements in it
+count (s: s) {Stream s a}: U32 =
+    map s (fn _ -> 1) |> foldl 0 (+)
+
+/// Find an element in the stream for which `predicate` returns true
+find (s: s) {Stream s a} (predicate: fn (ref a) => Bool): Maybe a =
+    handler h for emit a ->
+        if predicate (ref a) then Some a
+        else resume ()
+
+    Stream.stream s h
+    None

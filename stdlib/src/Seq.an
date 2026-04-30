@@ -1,7 +1,51 @@
 import Std.C.malloc, realloc, memcpy, free
+import Std.Stream.Stream, foldl
 
-export empty, push, pop, remove_last, get, get_copied, iter, clone_seq, print_seq
+export empty, of, push, pop, remove_last, get, get_copied, iter, clone_seq, print_seq, stream_seq
 
+/// A persistent, contiguous, and growable sequence of elements.
+/// Performance is meant to be comparable to a mutable Vec.
+/// 
+/// Common operations:
+/// - push: O(1) amortized but can be O(N) with worst-case sharing patterns.
+/// - pop: O(1)
+/// - get: O(1)
+/// - clone: O(1)
+///
+/// Internally, each Seq holds its length as well as a Data object shared by potentially
+/// many Seq objects. Each Data object holds the furthest length it has been pushed to,
+/// its capacity, its reference count, and the inline array of elements. 
+///
+/// Many Seqs can share the same data even after the data is pushed to. When pushing an element,
+/// we can push without copying to a new array if:
+/// - The underlying array has capacity for more elements and
+/// - The inner reference count is 1 or
+/// - The index we're pushing to is greater than the largest index previously written to the shared data
+///
+/// The last point is the basis for the Seq data type. As long as each Seq stores its length
+/// individually and does not read past that point, we can safely push past it without reallocating.
+///
+/// If there is not enough capacity in the Seq or the index written to has been written to before
+/// and our reference count is not one, we will need to reallocate (if rc is 1) or copy to a new
+/// array (if rc > 1). When this happens, the reference count becomes one again.
+///
+/// We can exploit the above to force push to re-allocate on each push, making it O(N) due to copying.
+/// Since the rc becomes one after each copy, its not enough to reuse a Seq and one clone, we must clone
+/// at every step and push to both the original and the clone to overwrite the same element in both Seqs
+/// at every step, e.g:
+/// ```
+/// var seq = Seq.empty ()
+/// while true do
+///     other = clone seq // clone seq forcing both this and seq to be shared
+///     seq = seq.push 0  // push
+///     other.push 1      // then immediately overwrite the element, forcing an allocation
+/// ```
+/// This scenario should be rare but if optimal sharing is required here, a linked-list
+/// can be used instead. A more common usage would be for each clone to be a snapshot of the sequence
+/// at a point in time, or for the clone to be reused - in either of these scenarios, the original
+/// sequence would still be O(1) amortized when pushed to.
+///
+/// Note that Seq is not thread-safe
 type Seq t =
     len: U32
     data: Ptr (Data t)
@@ -17,6 +61,12 @@ type Data t =
 /// Return an empty Seq
 Seq.empty (): Seq t =
     Seq 0 (null ())
+
+/// Create a Seq holding each item from the given stream
+Seq.of (s: s) {Stream s t}: Seq t =
+    seq = Seq.empty ()
+    // Seq is guaranteed to be owned here so we can use push_inner
+    foldl s seq push_inner
 
 /// Push an element to this sequence, returning a new sequence.
 ///
@@ -43,6 +93,10 @@ Seq.push_clone (seq: Seq t) (elem: t) {Clone t}: Seq t =
 
     seq
 
+/// Helper for pushing to a Seq - unsafe since elements may be copied
+/// if we try to push over an element that a shared seq already pushed to.
+/// To be safe we need a `Copy` constraint or a `Clone` constraint and to
+/// call `clone` for each element when this happens.
 push_inner (seq: Seq t) (elem: t): Seq t =
     if seq.data == null () then
         data_ptr = malloc (size_of (MkType: Type (Data t)))
@@ -143,3 +197,9 @@ impl drop_seq {Drop t}: Drop (Seq t) with
         else
             seq.iter_mut Drop.drop
             free seq.data
+
+impl stream_seq: Stream (Seq a) (ref a) with
+    stream seq e =
+        for i in 0 .. seq.len do
+            elem = offset seq.data.elements (Usz i)
+            e.emit (ptr_to_mut elem)

@@ -874,7 +874,7 @@ impl<'tokens> Parser<'tokens> {
             parameters.push(ParameterType::explicit(Type::new(TypeKind::Unit, start.clone())));
         }
 
-        let environment = if self.accept(Token::BracketLeft) {
+        let mut environment = if self.accept(Token::BracketLeft) {
             let typ = self.parse_type()?;
             self.expect(Token::BracketRight, "`]` to terminate the closure's `[` from the environment parameter")?;
             Some(Box::new(typ))
@@ -882,8 +882,15 @@ impl<'tokens> Parser<'tokens> {
             None
         };
 
-        // Temporarily allow the closure arrow as well
-        if !self.accept(Token::FatArrow) {
+        // Allow `=>` as a shortcut for an unnamed type variable in the closure environment.
+        // We synthesize a fresh `_`-named type variable per occurrence so name resolution
+        // auto-declares it (when in a context that allows it) and treats it like any other
+        // generic env parameter rather than as an anonymous hole.
+        if environment.is_none() && self.accept(Token::FatArrow) {
+            let location = self.previous_token_location();
+            let name_id = self.push_name(Arc::new("_".to_string()), location.clone());
+            environment = Some(Box::new(Type::new(TypeKind::Variable(name_id), location)));
+        } else {
             self.expect(Token::RightArrow, "`->` to separate this function type's parameters from its return type")?;
         }
 
@@ -1311,8 +1318,8 @@ impl<'tokens> Parser<'tokens> {
     fn precedence(token: &Token) -> Option<(i8, bool)> {
         match token {
             Token::Semicolon => Some((0, false)),
-            Token::ApplyRight | Token::TildeArrow => Some((1, false)),
-            Token::ApplyLeft => Some((2, true)),
+            Token::ApplyLeft => Some((1, true)),
+            Token::ApplyRight | Token::TildeArrow => Some((2, false)),
             Token::Comma => Some((3, true)),
             Token::Or => Some((4, false)),
             Token::And => Some((5, false)),

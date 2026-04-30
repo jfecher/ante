@@ -1,12 +1,25 @@
-import Std.Stream.iota, enumerate, map, filter, for_, stream_fn_e
+import Std.Stream.iota, enumerate, map, filter, for_, stream_fn, all, foldl, foldr
 
 main () =
     iota 10
-        // TODO: why does filter require an explicit {stream_fn_e}?
-        |> filter {stream_fn_e} (fn x -> x.* %% 2usz)
+        // TODO: why does filter require an explicit {stream_fn}?
+        |> filter {stream_fn} (fn x -> x.* %% 2usz)
         |> map (_ * 2)
         |> enumerate
         |> for_ println
+
+    evens = iota 10 |> map (_ * 2)
+    println <| all evens (_ %% 2)
+
+    fold_tests ()
+
+fold_tests () =
+    foldl_result = iota 5 |> foldl 0 (-) // (((0 - 1) - 2) - 3) - 4 = -10
+    foldr_result = iota 5 |> foldr 0 (-) // 0 - (1 - (2 - (3 - 4))) = 2
+
+    // pain point: No `Cast Usz I64` nor a `TryCast Usz I64`
+    println (transmute foldl_result : I64)
+    println foldr_result
 
 // args: --delete-binary --no-color
 // expected stdout:
@@ -15,4 +28,7 @@ main () =
 // 2, 8
 // 3, 12
 // 4, 16
+// true
+// -10
+// 2
 

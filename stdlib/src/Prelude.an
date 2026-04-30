@@ -528,6 +528,22 @@ trait Append a with
 
 (++) = Append.(++)
 
+// TODO: This needs to be in the prelude to keep string interpolation working
+impl append_string: Append String with
+    (++) s1 s2 =
+        if s1.length == 0 then return s2
+        if s2.length == 0 then return s1
+
+        len = s1.length + s2.length
+        buf = malloc (Usz len + 1usz)
+
+        memcpy buf (s1.data) (Usz s1.length)
+
+        buf_offset = cast (Usz buf + Usz s1.length)
+
+        memcpy buf_offset (s2.data) (Usz s2.length)
+        String.from_parts buf len
+
 (|>) x f = f x
 (<|) f x = f x
 
@@ -791,26 +807,6 @@ repeat (count: Usz) (f: fn Usz [env] -> Unit): Unit =
         if i < count then
             f i
             recur (i + 1)
-
-impl eq_string: Eq String with
-    (==) l r =
-        l.length == r.length and
-            memcmp l.data r.data (Usz l.length) == 0
-
-impl append_string: Append String with
-    (++) s1 s2 =
-        if s1.length == 0 then return s2
-        if s2.length == 0 then return s1
-
-        len = s1.length + s2.length
-        buf = malloc (Usz len + 1usz)
-
-        memcpy buf (s1.data) (Usz s1.length)
-
-        buf_offset = cast (Usz buf + Usz s1.length)
-
-        memcpy buf_offset (s2.data) (Usz s2.length)
-        String.from_parts buf len
 
 panic (msg: t) {Print t} =
     print msg

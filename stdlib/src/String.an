@@ -1,6 +1,14 @@
 import Std.Vec
-import Std.C.malloc
-import Std.Stream.Emit, emit
+import Std.C.malloc, memcpy, memcmp
+import Std.Stream.Emit, emit, Stream, foldl, map, stream_fn
+import Std.Vec.Vec
+
+// TODO: All functions in this file should be a method on String, but String isn't defined in this file
+
+impl eq_string: Eq String with
+    (==) l r =
+        l.length == r.length and
+            memcmp l.data r.data (Usz l.length) == 0
 
 reverse (s: String): String =
     if deref_ptr s.refcount == 1 then
@@ -44,6 +52,35 @@ substr (var s: String) (begin: Usz) (end: Usz): String =
     if end > Usz s.length or begin >= Usz s.length then
         return ""
 
-    buf = offset s.data begin
+    buf = offset_bytes s.data begin
     len = U32 end - U32 begin
     String buf s.refcount len (s.offset + U32 begin)
+
+/// Collect each character from the given stream into a String
+string_of (s: s) {Stream s Char}: String =
+    var chars = Vec.of s
+    result = String.from_parts (chars.data) (U32 chars.len)
+    // Leak the Vec, it has been transferred to the String
+    chars.data := null ()
+    result
+
+/// Join each string from the stream into one string.
+/// 
+/// If a separator is desired between each string, use this
+/// in combination with `intersperse`, e.g. `join <| intersperse my_stream (fn () -> "")`
+join (s: s) {Stream s String}: String =
+    foldl s "" (++)
+
+/// Emits each byte in this string
+bytes (s: String) = fn (e: Emit U8) ->
+    var data = transmute s.data : Usz
+    for i in 0 .. s.length do
+        ptr = data + Usz i
+        c = deref_ptr <| transmute ptr : Ptr U8
+        e.emit c
+
+/// Emits each character in this string
+///
+/// TODO: No utf-8 checking is done and this currently just emits each byte
+chars (s: String) =
+    bytes s |> map (fn b -> Char b)

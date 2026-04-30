@@ -1,8 +1,0 @@
-type Maybe t =
-   | None
-   | Some t
-
-Maybe.unwrap (m: Maybe t): t =
-    match m
-    | Some x -> x
-    | None -> panic "Tried to unwrap a None value"

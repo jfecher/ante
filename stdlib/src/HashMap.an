@@ -1,7 +1,8 @@
 import Std.C.putchar, calloc
+import Std.Stream.Stream, for_, stream_fn
 
-export HashMap, Entry, Hash, hash, empty, clear, resize, should_resize,
-    insert, get_entry, get, remove, print_hashmap, print_helper
+export HashMap, Entry, Hash, hash, empty, of, clear, resize, should_resize,
+    insert, get_entry, get, remove, print_hashmap, print_helper, stream_map
 
 // A linear-scan mutable HashMap using a resize factor of 2.0
 type HashMap k v =
@@ -19,6 +20,11 @@ trait Hash t with
     hash: fn t -> U64
 
 HashMap.empty () = HashMap 0 0 (null ())
+
+HashMap.of (s: s) {Stream s (k, v)} {Hash k} {Copy k} {Copy v}: HashMap k v =
+    var map = HashMap.empty ()
+    for_ s (fn (k, v) -> map.insert k v)
+    map
  
 HashMap.clear (map: mut HashMap k v) : Unit =
     if map.capacity != 0 then
@@ -123,19 +129,23 @@ HashMap.remove (map: mut HashMap k v) (key: k) {Hash k} {Eq k} : Maybe v =
 impl print_hashmap {Print k} {Print v}: Print (ref HashMap k v) with
     print map =
         putchar c"["
-        print_helper map false 0
+        var printed_first = false
+        for i in 0 .. map.capacity do
+            entry: Entry k v = map.entries.[i]
+            if entry.occupied then
+                if printed_first then
+                    print ", "
+
+                print entry.key
+                print " -> "
+                print entry.value
+                printed_first := true
+
         putchar c"]"
 
-print_helper (map: ref HashMap k v) (did_first: Bool) (i: Usz) {Print k} {Print v} =
-    if i < map.capacity then
-        entry: Entry k v = map.entries.[i]
-        if entry.occupied then
-            if did_first then
-                print ", "
-
-            print entry.key
-            print " -> "
-            print entry.value
-
-        printed = did_first or entry.occupied
-        print_helper map printed (i + 1)
+impl stream_map: Stream (HashMap k v) (k, v) with
+    stream map e =
+        for i in 0 .. map.capacity do
+            entry: Entry k v = map.entries.[i]
+            if entry.occupied then
+                e.emit (entry.key, entry.value)

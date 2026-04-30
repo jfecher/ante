@@ -417,10 +417,11 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
         };
 
         if let Some(methods) = &self.names_in_global_scope.methods.get(&type_id.top_level_item) {
-            let method = methods[item_name_string];
-            self.top_level_names.push(item_name);
-            self.name_links.insert(type_name, Origin::TopLevelDefinition(type_id));
-            self.name_links.insert(item_name, Origin::TopLevelDefinition(method));
+            if let Some(method) = methods.get(item_name_string) {
+                self.top_level_names.push(item_name);
+                self.name_links.insert(type_name, Origin::TopLevelDefinition(type_id));
+                self.name_links.insert(item_name, Origin::TopLevelDefinition(*method));
+            }
         } else {
             println!(
                 "Warning: expected existing union variant {type_name_string}.{item_name_string} to be declared but it is not"
