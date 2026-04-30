@@ -609,6 +609,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 return;
             },
         };
+        self.add_implicit_name(name);
+    }
+
+    /// Add the given implicit into scope
+    pub(super) fn add_implicit_name(&mut self, name: NameId) {
         self.implicits.last_mut().unwrap().implicits_in_scope.push(name);
     }
 

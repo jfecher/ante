@@ -927,14 +927,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }));
         self.expr_types.insert(handle.expression, body_type.clone());
 
-        let options = LambdaOptions::default();
-        let body_lambda = self.unwrap_lambda(handle.expression);
-
-        // Predeclare `handler_name` for the body's free-vars analysis: `h` is accessed at runtime
-        // through the coroutine's user_data, so it must not be tracked as a captured variable in
-        // the body lambda's environment.
-        self.check_lambda_impl(&body_lambda, &body_type, handle.expression, Some(handle.handler_name), options);
-
         // Prevent any names visible from before the handler branches from being moved
         // TODO: This is inefficient, remove the need for collecting here
         let outer_names = self.name_types.keys().copied().collect::<FxHashSet<_>>();
@@ -994,6 +986,17 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             self.expr_types.insert(*branch, handler_type.clone());
             self.check_lambda_impl(&branch_lambda, &handler_type, *branch, None, options);
         }
+
+        self.push_implicits_scope();
+        self.add_implicit_name(handle.handler_name);
+
+        let options = LambdaOptions::default();
+        let body_lambda = self.unwrap_lambda(handle.expression);
+
+        // `Some(handler_name)` exempts the variable from being captured as a closure.
+        // This is instead handled as a special case in mir generation
+        self.check_lambda_impl(&body_lambda, &body_type, handle.expression, Some(handle.handler_name), options);
+        self.pop_implicits_scope();
     }
 
     /// Retrieve the [`cst::Lambda`] at `expr_id` or panic otherwise.

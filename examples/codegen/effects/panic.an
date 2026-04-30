@@ -7,7 +7,7 @@ effect Read a with
 read_or_none (f: fn {Read Unit} {Fail} -> a): Maybe a =
     handler hf for fail () -> None
     handler hr for read () -> resume ()
-    Maybe.Some (f {hr} {hf})
+    Some (f {hr} {hf})
 
 main () = ()
 

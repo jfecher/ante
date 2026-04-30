@@ -12,7 +12,7 @@ handle_basic () {Log} {Use String} =
 
 use_resume () =
     handler h for
-        get () -> resume 3i32
+      | get () -> resume 3i32
       | set _ -> resume ()
     in ()
 
@@ -20,11 +20,11 @@ does_use x {Use _} =
     y = get ()
     set (y + x)
 
-// Ensure a function annotated `pure` errors if it uses unhandled effects
-pure_fn () pure =
+// Ensure a function with unhandled effects errors
+pure_fn () =
     log "foo"
 
-// main should always be pure and handle all effects
+// main should always handle all non-primitive effects
 main () =
     log "foo"
 
@@ -41,14 +41,18 @@ main () =
 // (handle_basic: fn Unit {Log} {Use String} -> Unit) () {(_: Log)} {(_: Use String)} =
 //     (log: fn String {Log} [Ptr Unit] -> Unit) "test1" {(h: (error))}
 // 
-// (use_resume: fn Unit -> _) () =
+// (use_resume: fn Unit -> Unit) () =
 //     handler (h: Use I32) for
-//     | (get: fn Unit {Use I32} [Ptr Unit] -> I32) () -> fn () (resume: fn I32 [Ptr] -> _) -> (resume: fn I32 [Ptr] -> _) 3_I32
-//     in fn () ->
-//         (does_use: fn _ {Use _} -> Unit) (x: _) {(_: Use _)} =
-//             (y: _) = (get: fn Unit {Use _} [Ptr Unit] -> _) () {(_: Use _)}
-//             (set: fn _ {Use _} [Ptr Unit] -> Unit) ((+: fn _ _ {Add _} -> _) (y: _) (x: _) {(error)}) {(_: Use _)}
-//         (pure_fn: (error)) ()
+//     | (get: fn Unit {Use I32} [Ptr Unit] -> I32) () -> fn () (resume: fn I32 [Ptr] -> Unit) -> (resume: fn I32 [Ptr] -> Unit) 3_I32
+//     | (set: fn I32 {Use I32} [Ptr Unit] -> Unit) (_: I32) -> fn (_: I32) (resume: fn Unit [Ptr] -> Unit) -> (resume: fn Unit [Ptr] -> Unit) ()
+//     in fn () -> ()
+// 
+// (does_use: fn _ {Use _} -> Unit) (x: _) {(_: Use _)} =
+//     (y: _) = (get: fn Unit {Use _} [Ptr Unit] -> _) () {(_: Use _)}
+//     (set: fn _ {Use _} [Ptr Unit] -> Unit) ((+: fn _ _ {Add _} -> _) (y: _) (x: _) {(error)}) {(_: Use _)}
+// 
+// (pure_fn: fn Unit -> Unit) () =
+//     (log: fn String {Log} [Ptr Unit] -> Unit) "foo" {(error)}
 // 
 // (main: fn Unit -> Unit) () =
 //     (log: fn String {Log} [Ptr Unit] -> Unit) "foo" {(error)}
@@ -64,37 +68,20 @@ main () =
 // 11 |     log "test1" {h}	// error: `h` not found in scope
 //    |                  ^
 // 
-// examples/typechecking/effects.an:16:7
-// 15 |         get () -> resume 3i32
-// 16 |       | set _ -> resume ()	// error: Expected an expression but found `|`
-//    |       ^
-// 17 |     in ()
-// 
-// examples/typechecking/effects.an:17:5
-// 16 |       | set _ -> resume ()
-// 17 |     in ()	// error: Expected an expression but found `in`
-//    |     ^^
-// 
 // examples/typechecking/effects.an:21:12
 // 20 |     y = get ()
 // 21 |     set (y + x)	// error: No implicit found for type Add _ required by parameter 3 of +
 //    |            ^
 // 
-// examples/typechecking/effects.an:24:1
-// 23 | // Ensure a function annotated `pure` errors if it uses unhandled effects
-// 24 | pure_fn () pure =	// error: `pure_fn` not found in scope
-//    | ^^^^^^^
-// 25 |     log "foo"
-// 
-// examples/typechecking/effects.an:24:12
-// 23 | // Ensure a function annotated `pure` errors if it uses unhandled effects
-// 24 | pure_fn () pure =	// error: Expected the end of this block but found `pure`
-//    |            ^^^^
-// 25 |     log "foo"
+// examples/typechecking/effects.an:25:5
+// 24 | pure_fn () =
+// 25 |     log "foo"	// error: No implicit found for type Log required by parameter 2 of log
+//    |     ^^^
 // 
 // examples/typechecking/effects.an:29:5
 // 28 | main () =
 // 29 |     log "foo"	// error: No implicit found for type Log required by parameter 2 of log
 //    |     ^^^
 // 
-// Found 8 errors and 0 warnings
+// Found 5 errors and 0 warnings
+

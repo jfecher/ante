@@ -8,14 +8,14 @@ use_state (y: I32) {Use I32} =
     state = get ()
     println "Ending state = ${state}"
 
-state (f: fn (Use s) -> a) (initial: s) {Copy s}: a =
+state (f: fn {Use s} -> a) (initial: s) {Copy s}: a =
     var current = initial
     handler h for
-      | get () -> resume current
-      | set new_state ->
-            current := new_state
-            resume ()
-    in f h
+    | get () -> resume current
+    | set new_state ->
+        current := new_state
+        resume ()
+    in f {h}
 
 main () =
     state (fn h -> use_state 10 {h}) 1

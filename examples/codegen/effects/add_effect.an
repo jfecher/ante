@@ -17,10 +17,10 @@ sum_all () =
         r = resume ()
         println "add resume finished"
         y + r
-    in
-        foo () {h}
-        bar () {h}
-        0u32 // TODO: remove suffix
+
+    foo ()
+    bar ()
+    0
 
 // 10
 main () =

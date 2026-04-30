@@ -6,12 +6,12 @@ effect Fail with
 effect Read a with
     read: fn Unit -> a
 
-read_or_none (f: fn {Fail} {Read U32} -> U32) =
-    handler hf for fail () -> Maybe.None
+read_or_none (f: fn Unit {Fail} {Read U32} -> U32): Maybe U32 =
+    handler hf for fail () -> None
     handler hr for read () -> resume 5u32
-    Maybe.Some (f {hf} {hr})
+    Some (f ())
 
-foo {Fail} {Read U32} =
+foo () {Fail} {Read U32} =
     if false then fail ()
     read ()
 
