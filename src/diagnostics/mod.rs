@@ -172,6 +172,7 @@ pub enum Diagnostic {
         function_name: Option<String>,
         parameter_index: usize,
         location: Location,
+        suggestions: Vec<ImportSuggestion>,
     },
     ImplicitNotAVariable {
         location: Location,
@@ -232,6 +233,14 @@ pub enum Diagnostic {
     FreeVarsInTypeConstructor {
         location: Location,
     },
+}
+
+/// A suggestion to import an out-of-scope item, attached to a diagnostic.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
+pub struct ImportSuggestion {
+    /// Fully-qualified import path, e.g. `Std.HashMap.empty`
+    pub qualified_path: String,
+    pub location: Location,
 }
 
 /// Identifies a syntactic context whose body may execute more than once.
@@ -433,7 +442,7 @@ impl Diagnostic {
                     )
                 }
             },
-            Diagnostic::NoImplicitFound { type_string, function_name, parameter_index, location: _ } => {
+            Diagnostic::NoImplicitFound { type_string, function_name, parameter_index, location: _, suggestions: _ } => {
                 let function = function_name.as_ref().map(|s| format!(" of {}", s.purple()));
                 let of_function = function.as_ref().map(String::as_str).unwrap_or("");
                 let parameter = parameter_index + 1;
@@ -579,6 +588,21 @@ impl Diagnostic {
                 let message = format!("{} was previously moved here", name.purple());
                 Some((moved_in, message))
             },
+            Diagnostic::NoImplicitFound { suggestions, .. } if !suggestions.is_empty() => {
+                let first = suggestions[0].qualified_path.purple();
+                let message = match suggestions.len() {
+                    1 => format!("did you mean to import {first}?"),
+                    2 => {
+                        let second = suggestions[1].qualified_path.purple();
+                        format!("did you mean to import {first} or {second}?")
+                    },
+                    n => {
+                        let second = suggestions[1].qualified_path.purple();
+                        format!("did you mean to import {first} or {second}? (or {} more)", n - 2)
+                    },
+                };
+                Some((&suggestions[0].location, message))
+            },
             _ => None,
         }
     }
@@ -603,7 +627,10 @@ impl Diagnostic {
             start.column_number
         )?;
 
-        let blocks = line_blocks(location, note.as_ref().map(|(loc, _)| *loc));
+        // When the note is in another file, render the main block normally and emit
+        // the note as a trailing standalone line.
+        let inline_note = note.as_ref().filter(|(loc, _)| loc.file_id == location.file_id);
+        let blocks = line_blocks(location, inline_note.map(|(loc, _)| *loc));
         let digit_len = blocks.iter().map(|b| b.end).max().unwrap_or(1).ilog10() as usize + 1;
 
         for (i, block) in blocks.iter().enumerate() {
@@ -613,14 +640,23 @@ impl Diagnostic {
             }
             for line_no in block.clone() {
                 let main = (start.line_number == line_no).then(|| (location.span, &message));
-                let note_span = note
-                    .as_ref()
+                let note_span = inline_note
                     .and_then(|(loc, msg)| (loc.span.start.line_number == line_no).then(|| (loc.span, msg)));
                 output_source_line(&file, line_no as usize, digit_len, main, note_span, show_color, kind, f)?;
             }
         }
+
+        if let Some((_, msg)) = note.as_ref().filter(|(loc, _)| loc.file_id != location.file_id) {
+            write_trailing_note(f, digit_len, msg, show_color)?;
+        }
         Ok(())
     }
+}
+
+/// Emit a `= note: <msg>` line for a note whose location is in a different file
+/// than the primary diagnostic.
+fn write_trailing_note(f: &mut Formatter, digit_len: usize, msg: &str, show_color: bool) -> std::fmt::Result {
+    writeln!(f, "{:digit_len$} = {} {}", "", DiagnosticKind::Note.marker(show_color), msg)
 }
 
 /// Given a location, return the line numbers to display the code for

@@ -1,13 +1,15 @@
+use std::collections::BTreeSet;
+use std::path::Path;
 use std::sync::Arc;
 
 use crate::{
-    diagnostics::{Diagnostic, Location},
-    incremental::VisibleImplicits,
+    diagnostics::{Diagnostic, ImportSuggestion, Location},
+    incremental::{ExportedDefinitions, GetCrateGraph, GetItem, VisibleImplicits},
     iterator_extensions::mapvec,
     lexer::token::{FloatKind, IntegerKind},
-    name_resolution::Origin,
+    name_resolution::{Origin, namespace::CrateId},
     parser::{
-        cst::{self, Name, Pattern},
+        cst::{self, Name, Pattern, TopLevelItemKind},
         ids::{ExprId, NameId, PatternId},
     },
     type_inference::{
@@ -105,7 +107,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     ///
     /// If the function is immediately used in a Call (`call` is `Some`), the resolved implicit
     /// arguments are spliced directly into that Call's argument list and this returns
-    /// [`CoercionKind::DirectCallInsertion`]. Otherwise a new wrapper lambda is created, e.g.:
+    /// [CoercionKind::DirectCallInsertion]. Otherwise a new wrapper lambda is created, e.g.:
     ///
     /// ```ante
     /// fn a c -> <expr> a <new-implicit> c
@@ -237,8 +239,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // multiple `Add X` candidates (ambiguous on an unbound integer), but after defaulting
         // `_ := I32` exactly one candidate remains. If the retry still fails, accumulate the
         // original error so the diagnostic reflects the unbound type the user wrote.
-        for (implicit, original_error) in failed_implicits {
-            if let Err(_) = self.find_implicit_value(implicit, &implicits_in_scope) {
+        for (implicit, mut original_error) in failed_implicits {
+            if self.find_implicit_value(implicit, &implicits_in_scope).is_err() {
+                self.try_attach_import_suggestions(&implicit, &mut original_error);
                 self.compiler.accumulate(original_error);
             }
         }
@@ -569,7 +572,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let type_string = self.type_to_string(&implicit_type);
         let function_name = self.try_get_name(function);
         let location = function.locate(self);
-        Diagnostic::NoImplicitFound { type_string, function_name, parameter_index, location }
+        Diagnostic::NoImplicitFound { type_string, function_name, parameter_index, location, suggestions: Vec::new() }
     }
 
     // error: Implicit type T is ambiguous, type annotations needed
@@ -595,6 +598,81 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
 
         Diagnostic::MultipleImplicitsFound { matches, type_string, function_name, parameter_index, location }
+    }
+
+    /// If `error` is `NoImplicitFound`, populate its `suggestions` field with
+    /// out-of-scope implicits that match the missing type. This is done separately
+    /// to avoid unnecessary work if the initial error is later fixed by defaulting
+    /// integer/float type variables.
+    fn try_attach_import_suggestions(&mut self, implicit: &DelayedImplicit, error: &mut Diagnostic) {
+        let Diagnostic::NoImplicitFound { suggestions, .. } = error else { return };
+        let target = self.expr_types[&implicit.destination].clone();
+        let target = target.follow_all_two(&self.bindings, &TypeBindings::default());
+        *suggestions = self.collect_import_suggestions(&target);
+    }
+
+    /// Search out-of-scope implicits for "did you mean to import X.Y?" hints.
+    ///
+    /// Excludes unrelated user crates to limit the search space.
+    fn collect_import_suggestions(&mut self, target_type: &Type) -> Vec<ImportSuggestion> {
+        // TODO: Is the `or N more` at the end of the note message useful?
+        const SUGGESTION_CAP: usize = 5;
+
+        let Some(item) = self.current_item else { return Vec::new() };
+
+        // Skip names already visible in the current file so we don't suggest imports the user already has.
+        let visible = VisibleImplicits(item.source_file).get(self.compiler);
+        let mut skip = BTreeSet::new();
+        visible.iter_possibly_matching_impls(target_type, |_, top_level_name| {
+            skip.insert(*top_level_name);
+            false
+        });
+
+        // Candidate crates: stdlib + crates that define types referenced by target_type.
+        let mut candidate_crates = BTreeSet::new();
+        candidate_crates.insert(CrateId::STDLIB);
+        collect_user_defined_crates(target_type, &mut candidate_crates);
+
+        let mut suggestions = Vec::new();
+        let crates = GetCrateGraph.get(self.compiler);
+
+        for crate_id in &candidate_crates {
+            let Some(crate_) = crates.get(crate_id) else { continue };
+            for (rel_path, source_file_id) in &crate_.source_files {
+                let exports = ExportedDefinitions(*source_file_id).get(self.compiler);
+
+                for (name, top_level_name) in &exports.definitions {
+                    if skip.contains(top_level_name) {
+                        continue;
+                    }
+
+                    let (item, _ctx) = GetItem(top_level_name.top_level_item).get(self.compiler);
+                    let TopLevelItemKind::Definition(definition) = &item.kind else { continue };
+                    if !definition.implicit {
+                        continue;
+                    }
+
+                    let (name_type, _) = self.type_and_bindings_of_top_level_name(top_level_name);
+
+                    if matches!(
+                        self.implicit_type_matches(&name_type, target_type, &TypeBindings::default()),
+                        ImplicitMatch::NoMatch
+                    ) {
+                        continue;
+                    }
+
+                    suggestions.push(ImportSuggestion {
+                        qualified_path: format_module_path(&crate_.name, rel_path, name),
+                        location: top_level_name.location(self.compiler),
+                    });
+                    if suggestions.len() >= SUGGESTION_CAP {
+                        return suggestions;
+                    }
+                }
+            }
+        }
+
+        suggestions
     }
 
     /// Try to add the given implicit into scope
@@ -727,4 +805,48 @@ enum ImplicitMatch {
     NoMatch,
     MatchedAsIs(TypeBindings),
     Call(Arc<FunctionType>, TypeBindings),
+}
+
+/// Format an import path: `CrateName.module.path.itemName`.
+fn format_module_path(crate_name: &str, rel_path: &Path, item_name: &str) -> String {
+    let stem = rel_path.with_extension("");
+    let dotted = stem.to_string_lossy().replace(std::path::MAIN_SEPARATOR, ".");
+    if dotted.is_empty() {
+        format!("{crate_name}.{item_name}")
+    } else {
+        format!("{crate_name}.{dotted}.{item_name}")
+    }
+}
+
+/// Walk a type and collect the crate ids of any type it references.
+/// references, used to scope an out-of-scope implicit search to relevant crates.
+fn collect_user_defined_crates(typ: &Type, out: &mut BTreeSet<CrateId>) {
+    // TODO: Should we switch to only collecting source files? This greatly limits
+    // the search space, thus improving performance for these errors but also means
+    // fewer possibly matching implicits will be found
+    match typ {
+        Type::UserDefined(Origin::TopLevelDefinition(name)) => {
+            out.insert(name.top_level_item.source_file.crate_id);
+        },
+        Type::Application(ctor, args) => {
+            collect_user_defined_crates(ctor, out);
+            for arg in args.iter() {
+                collect_user_defined_crates(arg, out);
+            }
+        },
+        Type::Function(f) => {
+            for p in &f.parameters {
+                collect_user_defined_crates(&p.typ, out);
+            }
+            collect_user_defined_crates(&f.return_type, out);
+            collect_user_defined_crates(&f.environment, out);
+        },
+        Type::Forall(_, t) => collect_user_defined_crates(t, out),
+        Type::Tuple(ts) => {
+            for t in ts.iter() {
+                collect_user_defined_crates(t, out);
+            }
+        },
+        Type::UserDefined(_) | Type::Variable(_) | Type::Generic(_) | Type::Primitive(_) => {},
+    }
 }
