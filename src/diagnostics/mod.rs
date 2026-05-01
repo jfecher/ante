@@ -442,7 +442,13 @@ impl Diagnostic {
                     )
                 }
             },
-            Diagnostic::NoImplicitFound { type_string, function_name, parameter_index, location: _, suggestions: _ } => {
+            Diagnostic::NoImplicitFound {
+                type_string,
+                function_name,
+                parameter_index,
+                location: _,
+                suggestions: _,
+            } => {
                 let function = function_name.as_ref().map(|s| format!(" of {}", s.purple()));
                 let of_function = function.as_ref().map(String::as_str).unwrap_or("");
                 let parameter = parameter_index + 1;
@@ -640,8 +646,8 @@ impl Diagnostic {
             }
             for line_no in block.clone() {
                 let main = (start.line_number == line_no).then(|| (location.span, &message));
-                let note_span = inline_note
-                    .and_then(|(loc, msg)| (loc.span.start.line_number == line_no).then(|| (loc.span, msg)));
+                let note_span =
+                    inline_note.and_then(|(loc, msg)| (loc.span.start.line_number == line_no).then(|| (loc.span, msg)));
                 output_source_line(&file, line_no as usize, digit_len, main, note_span, show_color, kind, f)?;
             }
         }

@@ -27,9 +27,9 @@ use crate::{
 };
 
 pub(crate) mod builder;
-mod closure_deconversion;
 mod display;
 mod effects;
+mod lower_closures;
 pub(crate) mod monomorphization;
 mod remove_unreachable;
 mod validation;
@@ -241,6 +241,7 @@ impl Definition {
                     stack.push(*target);
                 },
                 Some(TerminatorInstruction::If { condition: _, then, else_, end }) => {
+                    stack.push(*end);
                     stack.push(else_.0);
                     stack.push(then.0);
                     if else_.0 != *end {
@@ -249,10 +250,9 @@ impl Definition {
                 },
                 Some(TerminatorInstruction::Switch { int_value: _, cases, else_, end }) => {
                     let mut blocks = Vec::with_capacity(cases.len() + 1);
-                    if let Some(else_) = else_ {
-                        stack.push(else_.0);
-                        blocks.push(else_.0);
-                    }
+                    stack.push(*end);
+                    stack.push(else_.0);
+                    blocks.push(else_.0);
                     for (_, case) in cases.iter().rev() {
                         stack.push(case.0);
                         blocks.push(case.0);
@@ -421,7 +421,9 @@ pub enum Instruction {
         tuple: Value,
         index: u32,
     },
-    MakeString(String),
+    /// Embed an immutable byte array into the binary and return a [`Type::POINTER`] to it.
+    /// Used for string literals.
+    MakeBytes(Vec<u8>),
     MakeTuple(Vec<Value>),
     StackAlloc(Value),
 
@@ -530,7 +532,7 @@ impl Instruction {
             Instruction::HandlerCap => (),
             Instruction::PackClosure { function, environment } => two(function, environment),
             Instruction::IndexTuple { tuple, index: _ } => f(tuple),
-            Instruction::MakeString(_) => (),
+            Instruction::MakeBytes(_) => (),
             Instruction::MakeTuple(elements) => elements.iter().for_each(f),
             Instruction::StackAlloc(value) => f(value),
             Instruction::Store { pointer, value } => two(pointer, value),
@@ -592,7 +594,7 @@ pub enum TerminatorInstruction {
     Switch {
         int_value: Value,
         cases: Vec<(/*tag_to_match*/ u32, JmpTarget)>,
-        else_: Option<JmpTarget>,
+        else_: JmpTarget,
         end: BlockId,
     },
     #[allow(unused)]
@@ -637,10 +639,8 @@ impl TerminatorInstruction {
                         f(value);
                     }
                 }
-                if let Some(else_) = else_ {
-                    if let Some(else_value) = &else_.1 {
-                        f(else_value);
-                    }
+                if let Some(else_value) = &else_.1 {
+                    f(else_value);
                 }
             },
             TerminatorInstruction::Unreachable => (),
@@ -731,7 +731,6 @@ impl Type {
     pub const BOOL: Type = Type::Primitive(PrimitiveType::Bool);
     pub const POINTER: Type = Type::Primitive(PrimitiveType::Pointer);
     pub const CHAR: Type = Type::Primitive(PrimitiveType::Char);
-    pub const NEVER: Type = Type::Primitive(PrimitiveType::Never);
     pub const NO_CLOSURE_ENV: Type = Type::Primitive(PrimitiveType::NoClosureEnv);
 
     pub fn int(kind: IntegerKind) -> Type {
@@ -802,36 +801,6 @@ impl Type {
                 Type::Function(Arc::new(FunctionType { parameters, environment, return_type }))
             },
             Type::Union(variants) => Type::Union(Arc::new(mapvec(variants.iter(), |typ| typ.substitute(generic_args)))),
-        }
-    }
-
-    /// Structural subtype check that treats `Never` as a subtype of every type
-    /// (the bottom-type rule from type inference). Recurses into Tuple,
-    /// Function, and Union.
-    ///
-    /// Intentionally NOT [`PartialEq`] / [`Eq`]: [`Type`] is used as a
-    /// `HashMap` key in several places, and a wildcard equivalence would
-    /// break the hashing invariant. Use `==` for hashing/keying and this for
-    /// validation or any other place that asks "do these types unify".
-    pub fn is_subtype(&self, other: &Type) -> bool {
-        if self == other {
-            return true;
-        }
-        match (self, other) {
-            (Type::Primitive(PrimitiveType::Never), _) | (_, Type::Primitive(PrimitiveType::Never)) => true,
-            (Type::Tuple(a), Type::Tuple(b)) => {
-                a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| x.is_subtype(y))
-            },
-            (Type::Union(a), Type::Union(b)) => {
-                a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| x.is_subtype(y))
-            },
-            (Type::Function(a), Type::Function(b)) => {
-                a.parameters.len() == b.parameters.len()
-                    && a.parameters.iter().zip(b.parameters.iter()).all(|(x, y)| x.is_subtype(y))
-                    && a.environment.is_subtype(&b.environment)
-                    && a.return_type.is_subtype(&b.return_type)
-            },
-            _ => false,
         }
     }
 
@@ -916,16 +885,13 @@ pub enum PrimitiveType {
     Char,
     Int(IntegerKind),
     Float(FloatKind),
-    /// The bottom type. No values of this type can ever be obtained, so it is
-    /// considered a subtype of every other type (see [`Type::is_subtype`]).
-    Never,
     NoClosureEnv,
 }
 
 impl PrimitiveType {
     fn size_in_bytes(self, ptr_size: u32) -> u32 {
         match self {
-            PrimitiveType::Error | PrimitiveType::NoClosureEnv | PrimitiveType::Unit | PrimitiveType::Never => 0,
+            PrimitiveType::Error | PrimitiveType::NoClosureEnv | PrimitiveType::Unit => 0,
             PrimitiveType::Bool => 1,
             PrimitiveType::Pointer => ptr_size,
             PrimitiveType::Char => 1,
@@ -1132,7 +1098,7 @@ mod tests {
         function.blocks[b0].terminator = Some(TerminatorInstruction::Switch {
             int_value: Value::Unit,
             cases: vec![(0, (b1, None)), (1, (b2, None)), (2, (b3, None))],
-            else_: Some((b4, None)),
+            else_: (b4, None),
             end: b5,
         });
 

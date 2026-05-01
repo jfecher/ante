@@ -97,6 +97,22 @@ enum LhsKind {
     Other,
 }
 
+/// True if `typ` is a function whose return type is `Never`. Checked before `convert_type`
+/// erases `Never`, since we need the divergence info to emit `Unreachable` after the call.
+fn function_returns_never<'a>(mut typ: &'a TCType, bindings: &'a type_inference::types::TypeBindings) -> bool {
+    use type_inference::types::PrimitiveType::Never;
+    loop {
+        typ = typ.follow(bindings);
+        match typ {
+            TCType::Forall(_, inner) => typ = inner,
+            TCType::Function(f) => {
+                return matches!(f.return_type.follow(bindings), TCType::Primitive(Never));
+            },
+            _ => return false,
+        }
+    }
+}
+
 /// The per-[TopLevelId] context. This pass is designed so that we can convert every top-level item
 /// to MIR in parallel.
 struct Context<'local, Db> {
@@ -183,6 +199,10 @@ where
     Db: DbGet<TypeCheck> + DbGet<GetItem> + DbGet<GetItemRaw>,
 {
     fn push_instruction(&mut self, instruction: Instruction, result_type: Type) -> Value {
+        // Check if the block is already sealed and ignore any instructions if so
+        if self.current_block().terminator.is_some() {
+            return Value::Unit;
+        }
         let current_block = self.current_block;
         let function = self.current_function();
         let id = function.instructions.push(instruction);
@@ -306,9 +326,26 @@ where
             },
             Literal::Float(x, Some(FloatKind::F32)) => Value::Float(FloatConstant::F32(*x)),
             Literal::Float(x, Some(FloatKind::F64)) => Value::Float(FloatConstant::F64(*x)),
-            Literal::String(x) => self.push_instruction(Instruction::MakeString(x.clone()), Type::string()),
+            Literal::String(x) => self.string_literal(x),
             Literal::Char(x) => Value::Char(*x),
         }
+    }
+
+    /// Lower a string literal to the prelude String representation:
+    /// `(data: Ptr Char, refcount: Ptr U32, length: U32, offset: U32)`.
+    fn string_literal(&mut self, s: &str) -> Value {
+        let len = s.len() as u32;
+
+        let mut bytes = Vec::with_capacity(s.len() + 1);
+        bytes.extend_from_slice(s.as_bytes());
+        bytes.push(0);
+
+        let data_ptr = self.push_instruction(Instruction::MakeBytes(bytes), Type::POINTER);
+        let null_rc = self.push_instruction(Instruction::Transmute(Value::Integer(IntConstant::Usz(0))), Type::POINTER);
+        let length = Value::Integer(IntConstant::U32(len));
+        let offset = Value::Integer(IntConstant::U32(0));
+
+        self.push_instruction(Instruction::MakeTuple(vec![data_ptr, null_rc, length, offset]), Type::string())
     }
 
     fn integer(value: u64, kind: IntegerKind) -> Value {
@@ -462,7 +499,11 @@ where
 
         let function = self.expression(call.function);
         let arguments = mapvec(&call.arguments, |expr| self.expression(expr.expr));
-        let result_type = self.expr_type(id);
+
+        // `Never` gets translated into `Unit` + an `unreachable` instruction so we have
+        // to match the unit type here.
+        let diverges = self.callee_diverges(call.function);
+        let result_type = if diverges { Type::UNIT } else { self.expr_type(id) };
 
         // TODO: This doesn't handle effect functions used as first-class values
         // TODO: Effect functions in MIR could be wrapper functions over a single Perform
@@ -470,8 +511,11 @@ where
         if let cst::Expr::Variable(path_id) = &self.context()[call.function] {
             if let Some(effect_op) = self.try_resolve_effect_op(*path_id) {
                 let arguments = mapvec(&call.arguments, |expr| self.expression(expr.expr));
-                let result_type = self.expr_type(id);
-                return self.push_instruction(Instruction::Perform { effect_op, arguments }, result_type);
+                let value = self.push_instruction(Instruction::Perform { effect_op, arguments }, result_type);
+                if diverges {
+                    self.terminate_block(TerminatorInstruction::Unreachable);
+                }
+                return value;
             }
         }
 
@@ -481,7 +525,25 @@ where
             Instruction::Call { function, arguments }
         };
 
-        self.push_instruction(instruction, result_type)
+        let value = self.push_instruction(instruction, result_type);
+        if diverges {
+            self.terminate_block(TerminatorInstruction::Unreachable);
+        }
+        value
+    }
+
+    /// Looks up the callee via `path_types` rather than `expr_types`: the latter is overwritten
+    /// with the post-unification expected type, which may have erased `Never`.
+    fn callee_diverges(&self, callee_expr: ExprId) -> bool {
+        // TODO: Test whether this and `Never` handling in MIR in general holds up for generic functions.
+        // if a return type is a generic bound to Never by monomorphization we won't find it here.
+        let cst::Expr::Variable(path_id) = &self.context()[callee_expr] else {
+            return false;
+        };
+        let Some(typ) = self.types.result.maps.path_types.get(path_id) else {
+            return false;
+        };
+        function_returns_never(typ, &self.types.bindings)
     }
 
     /// If `path` resolves to an effect-operation declaration, return its
@@ -890,7 +952,6 @@ where
         let start = self.current_block;
 
         let case_blocks = mapvec(0..cases.len(), |i| (i as u32, (self.push_block_no_params(), None)));
-        let mut else_block = None;
 
         let result_type = self.expr_type(match_expr);
         let end = self.push_block(vec![result_type]);
@@ -923,16 +984,24 @@ where
             self.terminate_block(TerminatorInstruction::jmp(end, result));
         }
 
-        if let Some(else_) = else_ {
-            let block = self.push_block_no_params();
-            else_block = Some((block, None));
-            self.switch_to_block(block);
-            let result = self.decision_tree(*else_, match_expr);
-            self.terminate_block(TerminatorInstruction::jmp(end, result));
-        }
+        let else_block = self.push_block_no_params();
+        self.switch_to_block(else_block);
+        let terminator = match else_ {
+            Some(else_) => {
+                let result = self.decision_tree(*else_, match_expr);
+                TerminatorInstruction::jmp(end, result)
+            },
+            None => TerminatorInstruction::Unreachable,
+        };
+        self.terminate_block(terminator);
 
         self.switch_to_block(start);
-        self.terminate_block(TerminatorInstruction::Switch { int_value, cases: case_blocks, else_: else_block, end });
+        self.terminate_block(TerminatorInstruction::Switch {
+            int_value,
+            cases: case_blocks,
+            else_: (else_block, None),
+            end,
+        });
         self.switch_to_block(end);
         Value::Parameter(end, 0)
     }
@@ -1026,6 +1095,8 @@ where
             // TODO: Error on non-function effect operations
             let generalized = self.types.get_generalized(name_id);
             self.set_generics_in_scope(generalized);
+            // Check before `convert_type` since it erases `Never` to `Unit`.
+            let diverges = function_returns_never(generalized, &self.types.bindings);
             let typ = self.convert_type(generalized, None);
             let Type::Function(fn_type) = &typ else { continue };
             let fn_type = fn_type.clone();
@@ -1054,7 +1125,11 @@ where
                 let self_id = this.current_function.as_ref().unwrap().id;
                 let perform = Instruction::Perform { effect_op: self_id, arguments: param_values };
                 let result = this.push_instruction(perform, fn_type.return_type.clone());
-                this.terminate_block(TerminatorInstruction::Return(result));
+                if diverges {
+                    this.terminate_block(TerminatorInstruction::Unreachable);
+                } else {
+                    this.terminate_block(TerminatorInstruction::Return(result));
+                }
             });
             self.name_to_id.insert(top_level_name, id);
         }

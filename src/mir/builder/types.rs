@@ -153,7 +153,9 @@ where
             Builtin::Char => Type::CHAR,
             Builtin::Bool => Type::BOOL,
             Builtin::Ptr => Type::POINTER,
-            Builtin::Never => Type::NEVER,
+            // LLVM has no bottom type. The builder pairs every divergent call with an
+            // `Unreachable` terminator, so the erased Unit is dead at runtime.
+            Builtin::Never => Type::UNIT,
             Builtin::Intrinsic => unreachable!("Builtin::Intrinsic is not a type"),
         }
     }
@@ -165,7 +167,8 @@ where
             crate::type_inference::types::PrimitiveType::Bool => Type::BOOL,
             crate::type_inference::types::PrimitiveType::Pointer => Type::POINTER,
             crate::type_inference::types::PrimitiveType::Char => Type::CHAR,
-            crate::type_inference::types::PrimitiveType::Never => Type::NEVER,
+            // See `Builtin::Never` above.
+            crate::type_inference::types::PrimitiveType::Never => Type::UNIT,
             crate::type_inference::types::PrimitiveType::Int(kind) => Type::int(kind),
             crate::type_inference::types::PrimitiveType::Float(kind) => Type::float(kind),
             crate::type_inference::types::PrimitiveType::Reference(..) => Type::POINTER,

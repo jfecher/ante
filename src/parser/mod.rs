@@ -1991,11 +1991,7 @@ impl<'tokens> Parser<'tokens> {
             let expect_block = this.accept(Token::In);
             this.accept(Token::Newline);
 
-            let body = if expect_block {
-                this.parse_block_or_expression()?
-            } else {
-                this.parse_sequence_items_expr()
-            };
+            let body = if expect_block { this.parse_block_or_expression()? } else { this.parse_sequence_items_expr() };
 
             // Wrap the handled expression in a `fn () = <expression>`. This will be the init
             // function for the coroutine.

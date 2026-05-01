@@ -171,7 +171,6 @@ impl Display for PrimitiveType {
             PrimitiveType::Char => write!(f, "Char"),
             PrimitiveType::Int(kind) => kind.fmt(f),
             PrimitiveType::Float(kind) => kind.fmt(f),
-            PrimitiveType::Never => write!(f, "Never"),
             PrimitiveType::NoClosureEnv => write!(f, "NoClosureEnv"),
         }
     }
@@ -266,11 +265,10 @@ fn fmt_terminator(terminator: &mir::TerminatorInstruction, mir: Option<&mir::Mir
                     write!(f, " {}", v(arg))?;
                 }
             }
-            if let Some((else_block, else_arg)) = else_ {
-                write!(f, "\n    | _ -> {else_block}")?;
-                if let Some(arg) = else_arg {
-                    write!(f, " {}", v(arg))?;
-                }
+            let (else_block, else_arg) = else_;
+            write!(f, "\n    | _ -> {else_block}")?;
+            if let Some(arg) = else_arg {
+                write!(f, " {}", v(arg))?;
             }
             write!(f, "\n    end {end}")
         },
@@ -317,7 +315,10 @@ fn fmt_instruction(
         },
         mir::Instruction::IndexTuple { tuple, index } => write!(f, "{}.{index}", v(tuple))?,
         mir::Instruction::MakeTuple(fields) => write!(f, "({})", comma_separated(fields, mir))?,
-        mir::Instruction::MakeString(s) => write!(f, "\"{s}\"")?,
+        mir::Instruction::MakeBytes(bytes) => {
+            let preview = String::from_utf8_lossy(bytes);
+            write!(f, "bytes {preview:?}")?;
+        },
         mir::Instruction::StackAlloc(value) => write!(f, "alloca {}", v(value))?,
         mir::Instruction::Store { pointer, value } => write!(f, "store {}, {}", v(pointer), v(value))?,
         mir::Instruction::GetFieldPtr { struct_ptr, index, .. } => write!(f, "field_ptr {}.{index}", v(struct_ptr))?,

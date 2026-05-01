@@ -547,7 +547,7 @@ fn substitute_value(definition: &mut Definition, find: Value, replace: Value) {
             | Instruction::Truncate(v)
             | Instruction::Deref(v) => sub(v),
             Instruction::GetFieldPtr { struct_ptr, .. } => sub(struct_ptr),
-            Instruction::MakeString(_)
+            Instruction::MakeBytes(_)
             | Instruction::Instantiate(_, _)
             | Instruction::Extern(_)
             | Instruction::SizeOf(_)
@@ -578,10 +578,8 @@ fn substitute_value(definition: &mut Definition, find: Value, replace: Value) {
                         sub(a);
                     }
                 }
-                if let Some(jt) = else_ {
-                    if let Some(a) = &mut jt.1 {
-                        sub(a);
-                    }
+                if let Some(a) = &mut else_.1 {
+                    sub(a);
                 }
             },
             TerminatorInstruction::Unreachable => (),

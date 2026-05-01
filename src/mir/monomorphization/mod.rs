@@ -66,16 +66,17 @@ where
         .into_par_iter()
         .fold(Mir::default, |acc, definition| {
             let monomorphized = monomorphize_non_generic_definition(definition, &shared, &initial_mir)
-                .select_largest_variants(compiler)
-                .closure_deconvert();
+                .select_largest_variants(compiler);
             acc.extend(monomorphized)
         })
         .reduce(Mir::default, Mir::extend)
         .optimize_tail_resume()
         .lower_effects(TargetPointerSize.get(compiler))
+        .lower_closures()
         .assert_fully_linked()
         .assert_type_checks()
         .assert_no_unions_or_generics()
+        .assert_no_closure_types()
 }
 
 /// The entry point to monomorphization is any non-generic definition.
@@ -306,7 +307,7 @@ impl<'local> FunctionContext<'local> {
             | Instruction::Truncate(v)
             | Instruction::Deref(v) => self.remap_value(v),
             Instruction::SizeOf(typ) => self.specialize_type(typ),
-            Instruction::MakeString(_) | Instruction::Instantiate(..) | Instruction::Extern(_) => {},
+            Instruction::MakeBytes(_) | Instruction::Instantiate(..) | Instruction::Extern(_) => {},
             Instruction::HandlerCap => {},
             Instruction::GetFieldPtr { struct_ptr, struct_type, .. } => {
                 self.remap_value(struct_ptr);

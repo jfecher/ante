@@ -793,7 +793,7 @@ fn generate_drive_function(
     definition.blocks[my_dispatch_block].terminator = Some(TerminatorInstruction::Switch {
         int_value: case_idx,
         cases: switch_cases,
-        else_: Some((unreachable_else, None)),
+        else_: (unreachable_else, None),
         end: final_block,
     });
 

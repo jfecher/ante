@@ -62,7 +62,7 @@ macro_rules! instr_assert_eq {
 
 macro_rules! instr_assert_subtype {
     ($lhs: expr, $rhs: expr, $this: expr, $instruction_id: expr, $mir: expr, $($msg: tt)*) => {{
-        if !$lhs.is_subtype(&$rhs) {
+        if $lhs != $rhs {
             $this.annotate_error($instruction_id, $mir, &format!($($msg)*));
             panic!()
         }
@@ -217,8 +217,8 @@ impl Definition {
                     instr_assert!((*index as usize) < tuple_type.len(), self, id, mir, "Index OOB");
                     instr_assert_subtype!(tuple_type[*index as usize], *result_type, self, id, mir, "Element type from tuple != result type");
                 },
-                Instruction::MakeString(_) => {
-                    instr_assert_subtype!(*result_type, Type::string(), self, id, mir, "MakeString returns a non-string");
+                Instruction::MakeBytes(_) => {
+                    instr_assert_subtype!(*result_type, Type::POINTER, self, id, mir, "MakeBytes returns a non-pointer, it is `{result_type}`");
                 },
                 Instruction::MakeTuple(elements) => {
                     let Type::Tuple(tuple_type) = result_type else {
@@ -417,9 +417,10 @@ impl Definition {
                     assert_eq!(target_block.parameter_types.len(), 1);
                     let arg_type = mir.type_of_value(arg, self);
                     assert!(
-                        target_block.parameter_types[0].is_subtype(&arg_type),
+                        target_block.parameter_types[0] == arg_type,
                         "Block parameter type `{}` does not match jmp argument type `{}`",
-                        target_block.parameter_types[0], arg_type
+                        target_block.parameter_types[0],
+                        arg_type
                     );
                 },
                 None => {
@@ -433,17 +434,14 @@ impl Definition {
                 Some(TerminatorInstruction::Jmp(target)) => block_arg_type_checks(target),
                 Some(TerminatorInstruction::If { condition, then, else_, end: _ }) => {
                     let cond_type = mir.type_of_value(condition, self);
-                    assert!(
-                        cond_type.is_subtype(&Type::BOOL),
-                        "If condition type is not Bool, got `{cond_type}`"
-                    );
+                    assert!(cond_type == Type::BOOL, "If condition type is not Bool, got `{cond_type}`");
                     block_arg_type_checks(then);
                     block_arg_type_checks(else_);
                 },
                 Some(TerminatorInstruction::Switch { int_value, cases, else_, end: _ }) => {
                     let int_type = mir.type_of_value(int_value, self);
                     assert!(
-                        matches!(int_type, Type::Primitive(PrimitiveType::Int(_) | PrimitiveType::Never)),
+                        matches!(int_type, Type::Primitive(PrimitiveType::Int(_))),
                         "Switch value type is not an integer, got `{int_type}`"
                     );
 
@@ -451,9 +449,7 @@ impl Definition {
                         block_arg_type_checks(jmp);
                     }
 
-                    if let Some(else_) = else_ {
-                        block_arg_type_checks(else_);
-                    }
+                    block_arg_type_checks(else_);
                 },
                 Some(TerminatorInstruction::Unreachable) => (),
                 Some(TerminatorInstruction::Return(value)) => {
@@ -463,7 +459,7 @@ impl Definition {
                     };
                     let value_type = mir.type_of_value(value, self);
                     assert!(
-                        value_type.is_subtype(return_type),
+                        value_type == *return_type,
                         "Returned value's type `{value_type}` does not match function return type `{return_type}`:\n{}",
                         self.display(Some(mir))
                     );
@@ -471,7 +467,7 @@ impl Definition {
                 Some(TerminatorInstruction::Result(value)) => {
                     let value_type = mir.type_of_value(value, self);
                     assert!(
-                        value_type.is_subtype(&self.typ),
+                        value_type == self.typ,
                         "Result value's type `{value_type}` does not match the type of the global `{}`:\n{}",
                         self.typ,
                         self.display(Some(mir))

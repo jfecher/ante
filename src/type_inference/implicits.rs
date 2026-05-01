@@ -811,11 +811,7 @@ enum ImplicitMatch {
 fn format_module_path(crate_name: &str, rel_path: &Path, item_name: &str) -> String {
     let stem = rel_path.with_extension("");
     let dotted = stem.to_string_lossy().replace(std::path::MAIN_SEPARATOR, ".");
-    if dotted.is_empty() {
-        format!("{crate_name}.{item_name}")
-    } else {
-        format!("{crate_name}.{dotted}.{item_name}")
-    }
+    if dotted.is_empty() { format!("{crate_name}.{item_name}") } else { format!("{crate_name}.{dotted}.{item_name}") }
 }
 
 /// Walk a type and collect the crate ids of any type it references.
