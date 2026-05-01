@@ -425,7 +425,10 @@ pub enum Instruction {
     /// Used for string literals.
     MakeBytes(Vec<u8>),
     MakeTuple(Vec<Value>),
+
+    // TODO: Should we remove this in favor of StackAllocUninit + Store?
     StackAlloc(Value),
+    StackAllocUninit(Type),
 
     /// Store a value into a pointer location. Returns unit.
     Store {
@@ -535,6 +538,7 @@ impl Instruction {
             Instruction::MakeBytes(_) => (),
             Instruction::MakeTuple(elements) => elements.iter().for_each(f),
             Instruction::StackAlloc(value) => f(value),
+            Instruction::StackAllocUninit(_) => (),
             Instruction::Store { pointer, value } => two(pointer, value),
             Instruction::Transmute(value) => f(value),
             Instruction::Instantiate(_, _) => (),
@@ -804,17 +808,45 @@ impl Type {
         }
     }
 
-    /// Retrieves the size in bytes of this type. Result depends on the target machine.
+    /// Retrieves the size in bytes of this type as it sits in memory, including any
+    /// trailing alignment padding (the equivalent of LLVM's `getTypeAllocSize`).
+    /// Result depends on the target machine.
     ///
     /// Panics if there is a generic within this type.
     fn size_in_bytes(&self, ptr_size: u32) -> u32 {
         match self {
             Type::Primitive(primitive) => primitive.size_in_bytes(ptr_size),
-            Type::Tuple(fields) => fields.iter().map(|typ| typ.size_in_bytes(ptr_size)).sum(),
+            Type::Tuple(fields) => {
+                // The tuple's total size is rounded up to the tuple's own alignment
+                let mut offset: u32 = 0;
+                let mut max_align: u32 = 1;
+                for field in fields.iter() {
+                    let a = field.align_in_bytes(ptr_size).max(1);
+                    let s = field.size_in_bytes(ptr_size);
+                    offset = (offset + a - 1) & !(a - 1);
+                    offset += s;
+                    if a > max_align {
+                        max_align = a;
+                    }
+                }
+                (offset + max_align - 1) & !(max_align - 1)
+            },
             Type::Function(_) => ptr_size,
             // This is a raw union so the tag isn't counted here
             Type::Union(variants) => variants.iter().map(|typ| typ.size_in_bytes(ptr_size)).max().unwrap_or(0),
             Type::Generic(_) => panic!("size_in_bytes called on Type::Generic"),
+        }
+    }
+
+    /// Natural alignment of this type in bytes (LLVM's `getABITypeAlignment`).
+    /// For tuples this is the maximum alignment of any field. Panics on generics.
+    fn align_in_bytes(&self, ptr_size: u32) -> u32 {
+        match self {
+            Type::Primitive(primitive) => primitive.size_in_bytes(ptr_size).max(1),
+            Type::Tuple(fields) => fields.iter().map(|f| f.align_in_bytes(ptr_size)).max().unwrap_or(1),
+            Type::Function(_) => ptr_size,
+            Type::Union(variants) => variants.iter().map(|v| v.align_in_bytes(ptr_size)).max().unwrap_or(1),
+            Type::Generic(_) => panic!("align_in_bytes called on Type::Generic"),
         }
     }
 
@@ -873,7 +905,15 @@ impl Type {
 pub struct Generic(u32);
 
 /// Each nth item in the bindings Vec corresponds to the nth generic of a definition.
-type GenericBindings = Vec<Type>;
+pub(crate) type GenericBindings = Vec<Type>;
+
+/// `[Generic(0), Generic(1), ..., Generic(N-1)]`. Used inside generated
+/// definitions whose `generic_count == N` to forward identity bindings to
+/// other generated defs that share the same generics.
+pub(crate) fn identity_bindings(generic_count: u32) -> Option<Arc<GenericBindings>> {
+    let bindings = mapvec(0..generic_count, Type::generic);
+    (!bindings.is_empty()).then(|| Arc::new(bindings))
+}
 
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum PrimitiveType {

@@ -19,8 +19,8 @@ use crate::{
     iterator_extensions::mapvec,
     lexer::token::IntegerKind,
     mir::{
-        Block, BlockId, Definition, DefinitionId, FunctionType, HandlerCase, Instruction, InstructionId, IntConstant,
-        Mir, PrimitiveType, TerminatorInstruction, Type, Value, next_definition_id,
+        Block, BlockId, Definition, DefinitionId, FunctionType, GenericBindings, HandlerCase, Instruction,
+        InstructionId, IntConstant, Mir, PrimitiveType, TerminatorInstruction, Type, Value, next_definition_id,
     },
 };
 
@@ -68,13 +68,13 @@ fn aminicoro_fns() -> AminicoroFns {
 }
 
 impl Mir {
-    pub(crate) fn lower_effects(mut self, ptr_size: u32) -> Self {
+    pub(crate) fn lower_effects(mut self) -> Self {
         if !contains_effects(&self) {
             return self;
         }
         let fns = aminicoro_fns();
         let op_index = build_op_index(&self);
-        let context = Context { mco: &fns, op_index: &op_index, ptr_size };
+        let context = Context { mco: &fns, op_index: &op_index };
 
         let definition_ids: Vec<DefinitionId> = self.definitions.keys().copied().collect();
 
@@ -141,11 +141,6 @@ fn build_op_index(mir: &Mir) -> OpIndex {
 struct Context<'local> {
     mco: &'local AminicoroFns,
     op_index: &'local OpIndex,
-    ptr_size: u32,
-}
-
-fn size_of_const(typ: &Type, ptr_size: u32) -> Value {
-    Value::Integer(IntConstant::Usz(typ.size_in_bytes(ptr_size) as usize))
 }
 
 fn is_zero_sized(typ: &Type) -> bool {
@@ -153,32 +148,6 @@ fn is_zero_sized(typ: &Type) -> bool {
         Type::Primitive(PrimitiveType::Unit | PrimitiveType::NoClosureEnv) => true,
         Type::Tuple(fields) => fields.iter().all(is_zero_sized),
         _ => false,
-    }
-}
-
-/// Placeholder value for stack slots that are immediately overwritten
-/// (e.g. the destination of `mco_coro_pop`). Avoids [Value::Error] since
-/// LLVM codegen rejects it.
-fn dummy_value(typ: &Type) -> Value {
-    match typ {
-        Type::Primitive(primitive) => match primitive {
-            PrimitiveType::Bool => Value::Bool(false),
-            PrimitiveType::Char => Value::Char('\0'),
-            PrimitiveType::Int(kind) => Value::Integer(match kind {
-                IntegerKind::I8 => IntConstant::I8(0),
-                IntegerKind::I16 => IntConstant::I16(0),
-                IntegerKind::I32 => IntConstant::I32(0),
-                IntegerKind::I64 => IntConstant::I64(0),
-                IntegerKind::Isz => IntConstant::Isz(0),
-                IntegerKind::U8 => IntConstant::U8(0),
-                IntegerKind::U16 => IntConstant::U16(0),
-                IntegerKind::U32 => IntConstant::U32(0),
-                IntegerKind::U64 => IntConstant::U64(0),
-                IntegerKind::Usz => IntConstant::Usz(0),
-            }),
-            _ => Value::Unit,
-        },
-        _ => Value::Unit,
     }
 }
 
@@ -230,7 +199,23 @@ impl<'local> Emitter<'local> {
         self.push_instruction(Instruction::Call { function: function_value, arguments }, return_type)
     }
 
-    fn push_bytes(&mut self, mco: &AminicoroFns, coro: Value, value: Value, value_type: &Type, ptr_size: u32) {
+    fn emit_size_of(&mut self, typ: &Type) -> Value {
+        self.push_instruction(Instruction::SizeOf(typ.clone()), Type::int(IntegerKind::Usz))
+    }
+
+    /// Returns `Value::Definition(target_id)` when `bindings` is None; otherwise emits
+    /// an `Instruction::Instantiate(target_id, bindings)` and returns its result Value.
+    fn emit_definition_value(
+        &mut self, target_id: DefinitionId, target_typ: Type, bindings: Option<Arc<GenericBindings>>,
+    ) -> Value {
+        if let Some(bindings) = bindings {
+            self.push_instruction(Instruction::Instantiate(target_id, bindings), target_typ)
+        } else {
+            Value::Definition(target_id)
+        }
+    }
+
+    fn push_bytes(&mut self, mco: &AminicoroFns, coro: Value, value: Value, value_type: &Type) {
         if is_zero_sized(value_type) {
             return;
         }
@@ -240,26 +225,29 @@ impl<'local> Emitter<'local> {
                     Instruction::IndexTuple { tuple: value, index: index as u32 },
                     field_type.clone(),
                 );
-                self.push_bytes(mco, coro, field, field_type, ptr_size);
+                self.push_bytes(mco, coro, field, field_type);
             }
             return;
         }
         let slot = self.push_instruction(Instruction::StackAlloc(value), Type::POINTER);
-        let size = size_of_const(value_type, ptr_size);
+        let size = self.emit_size_of(value_type);
         self.call_extern(&mco.push, vec![coro, slot, size]);
     }
 
-    fn pop_bytes(&mut self, mco: &AminicoroFns, coro: Value, value_type: &Type, ptr_size: u32) -> Value {
+    fn pop_bytes(&mut self, mco: &AminicoroFns, coro: Value, value_type: &Type) -> Value {
         if is_zero_sized(value_type) {
             return Value::Unit;
         }
         if let Type::Tuple(fields) = value_type {
-            let mut popped = mapvec(fields.iter().rev(), |field_type| self.pop_bytes(mco, coro, field_type, ptr_size));
+            let mut popped = mapvec(fields.iter().rev(), |field_type| self.pop_bytes(mco, coro, field_type));
             popped.reverse();
             return self.push_instruction(Instruction::MakeTuple(popped), value_type.clone());
         }
-        let slot = self.push_instruction(Instruction::StackAlloc(dummy_value(value_type)), Type::POINTER);
-        let size = size_of_const(value_type, ptr_size);
+        // Allocate a slot sized to value_type. We use StackAllocUninit (which carries the type
+        // explicitly) instead of StackAlloc(zeroed_value) so the slot is correctly sized even when
+        // value_type is a generic that mono will later replace with a larger concrete type.
+        let slot = self.push_instruction(Instruction::StackAllocUninit(value_type.clone()), Type::POINTER);
+        let size = self.emit_size_of(value_type);
         self.call_extern(&mco.pop, vec![coro, slot, size]);
         self.push_instruction(Instruction::Deref(slot), value_type.clone())
     }
@@ -298,7 +286,7 @@ fn rewrite_sites_in_definition<S>(
 /// Pop a typed sequence of arguments off `coro`, restoring declared order.
 /// aminicoro's channel is LIFO so args pushed last come off first.
 fn pop_operation_arguments(emitter: &mut Emitter, context: Context, coro: Value, arg_types: &[Type]) -> Vec<Value> {
-    let mut popped = mapvec(arg_types.iter().rev(), |typ| emitter.pop_bytes(context.mco, coro, typ, context.ptr_size));
+    let mut popped = mapvec(arg_types.iter().rev(), |typ| emitter.pop_bytes(context.mco, coro, typ));
     popped.reverse();
     popped
 }
@@ -421,52 +409,54 @@ pub(super) fn case_shape_from_handler_type(handler_type: &Type) -> Option<CaseSh
     Some(CaseShape { op_arg_types: op_args.to_vec(), op_return_type, handler_is_closure: ft.is_closure() })
 }
 
-/// Resolve a `handle` body Value down to the underlying function `DefinitionId` plus an
-/// optional closure environment value. Recurses through `Id` (the post-monomorphization form
-/// of `Instantiate`) and unwraps a single layer of `PackClosure`.
-pub(super) fn resolve_body_function(body: Value, definition: &Definition) -> (DefinitionId, Option<Value>) {
-    fn resolve_id(value: Value, definition: &Definition) -> DefinitionId {
-        match value {
-            Value::Definition(id) => id,
-            Value::InstructionResult(iid) => match &definition.instructions[iid] {
-                Instruction::Id(inner) => resolve_id(*inner, definition),
-                Instruction::Instantiate(id, _) => *id,
-                other => panic!("handle body function did not resolve to a definition: {other:?}"),
-            },
-            other => panic!("handle body function has unexpected Value shape: {other:?}"),
-        }
-    }
+/// Resolve a `handle` body Value down to the underlying function `DefinitionId`, an
+/// optional closure environment value, and the generic bindings the body Value was
+/// originally instantiated with - if any.
+pub(super) fn resolve_body_function(
+    mut body: Value, definition: &Definition,
+) -> (DefinitionId, Option<Value>, Option<Arc<GenericBindings>>) {
+    let mut env = None;
 
-    match body {
+    if let Value::InstructionResult(instruction) = body
+        && let Instruction::PackClosure { function, environment } = &definition.instructions[instruction]
+    {
+        body = *function;
+        env = Some(*environment);
+    }
+    let (id, bindings) = resolve_id(body, definition);
+    (id, env, bindings)
+}
+
+fn resolve_id(value: Value, definition: &Definition) -> (DefinitionId, Option<Arc<GenericBindings>>) {
+    match value {
+        Value::Definition(id) => (id, None),
         Value::InstructionResult(iid) => match &definition.instructions[iid] {
-            Instruction::PackClosure { function, environment } => {
-                (resolve_id(*function, definition), Some(*environment))
-            },
-            _ => (resolve_id(body, definition), None),
+            Instruction::Id(inner) => resolve_id(*inner, definition),
+            Instruction::Instantiate(id, bindings) => (*id, Some(bindings.clone())),
+            other => panic!("handle body function did not resolve to a definition: {other:?}"),
         },
-        _ => (resolve_id(body, definition), None),
+        other => panic!("handle body function has unexpected Value shape: {other:?}"),
     }
 }
 
 fn rewrite_single_handle(mir: &mut Mir, definition_id: DefinitionId, site: HandleSite, context: Context) {
     let HandleSite { block, index, id: original_id, body, cases, result_type } = site;
 
-    let (body_fn_id, body_env, env_type, handler_types, case_shapes) = {
-        let definition = mir.definitions.get(&definition_id).expect("definition vanished mid-rewrite");
+    let caller_generic_count = mir.definitions[&definition_id].generic_count;
+    let caller_bindings = crate::mir::identity_bindings(caller_generic_count);
 
-        let (body_fn_id, body_env) = resolve_body_function(body, definition);
-        let env_type = match body_env {
-            Some(env) => definition.type_of_value(&env, &mir.externals, &mir.definitions),
-            None => Type::UNIT,
-        };
-        let handler_types =
-            mapvec(&cases, |case| definition.type_of_value(&case.handler, &mir.externals, &mir.definitions));
-        let case_shapes: Vec<CaseShape> = handler_types
-            .iter()
-            .map(|t| case_shape_from_handler_type(t).expect("handler type must be `fn op_args.., resume -> r`"))
-            .collect();
-        (body_fn_id, body_env, env_type, handler_types, case_shapes)
-    };
+    let definition = mir.definitions.get(&definition_id).expect("definition vanished mid-rewrite");
+    let (body_fn_id, body_env, body_bindings) = resolve_body_function(body, definition);
+
+    let env_type =
+        body_env.map(|env| definition.type_of_value(&env, &mir.externals, &mir.definitions)).unwrap_or(Type::UNIT);
+
+    let handler_types =
+        mapvec(&cases, |case| definition.type_of_value(&case.handler, &mir.externals, &mir.definitions));
+
+    let case_shapes = mapvec(&handler_types, |t| {
+        case_shape_from_handler_type(t).expect("handler type must be `fn op_args.., resume -> r`")
+    });
 
     // Replace `HandlerCap` placeholders in the body with the user_data fetch chain.
     // After this pass the body contains only normal MIR; the placeholder is gone.
@@ -475,73 +465,77 @@ fn rewrite_single_handle(mir: &mut Mir, definition_id: DefinitionId, site: Handl
     // Per-case capability-wrapper free function definitions. wrap_i(op_args.., env: Pointer)
     // suspends `coro` (held in env) with op_args + case-tag i. After the body resumes, it
     // pops the returned value and returns it.
-    let wrapper_ids: Vec<DefinitionId> = case_shapes
-        .iter()
-        .enumerate()
-        .map(|(i, shape)| generate_capability_wrapper(mir, i as u32, shape, context))
-        .collect();
-    let wrapper_closure_types: Vec<Type> = wrapper_ids.iter().map(|id| mir.definitions[id].typ.clone()).collect();
+    let wrapper_ids = mapvec(case_shapes.iter().enumerate(), |(i, shape)| {
+        generate_capability_wrapper(mir, i as u32, shape, context, caller_generic_count)
+    });
+    let wrapper_closure_types = mapvec(&wrapper_ids, |id| mir.definitions[id].typ.clone());
     let cap_tuple_type = Type::Tuple(Arc::new(wrapper_closure_types.clone()));
 
-    let body_wrapper_id = generate_body_wrapper(mir, body_fn_id, &env_type, &cap_tuple_type, &result_type, context);
-    let drive_id = generate_drive_function(mir, &cases, &handler_types, &case_shapes, &result_type, context);
+    let body_wrapper_id = generate_body_wrapper(
+        mir,
+        body_fn_id,
+        body_bindings.clone(),
+        &env_type,
+        &cap_tuple_type,
+        &result_type,
+        context,
+        caller_generic_count,
+    );
+    let drive_id =
+        generate_drive_function(mir, &cases, &handler_types, &case_shapes, &result_type, context, caller_generic_count);
+
+    // Read generated def types up-front; the mutable borrow below precludes accessing them later.
+    let body_wrapper_typ = mir.definitions[&body_wrapper_id].typ.clone();
+    let drive_typ = mir.definitions[&drive_id].typ.clone();
 
     let definition = mir.definitions.get_mut(&definition_id).expect("definition disappeared mid-rewrite");
     let mut pending = Vec::new();
 
-    {
-        let mut emitter = Emitter::pending(definition, &mut pending);
+    let mut emitter = Emitter::pending(definition, &mut pending);
 
-        // Allocate cap_state up front with a placeholder coro pointer. The wrappers reference
-        // cap_state by address (PackClosure env = cap_state_ptr), so the closures can be built
-        // before we have the real `coro`; we patch the placeholder once `mco_coro_init` returns.
-        let cap_state_type = Type::Tuple(Arc::new(vec![Type::POINTER]));
-        let null_ptr =
-            emitter.push_instruction(Instruction::Transmute(Value::Integer(IntConstant::Usz(0))), Type::POINTER);
-        let initial_cap_state =
-            emitter.push_instruction(Instruction::MakeTuple(vec![null_ptr]), cap_state_type.clone());
-        let cap_state_ptr = emitter.push_instruction(Instruction::StackAlloc(initial_cap_state), Type::POINTER);
+    // Allocate cap_state up front with a placeholder coro pointer. The wrappers reference
+    // cap_state by address (PackClosure env = cap_state_ptr), so the closures can be built
+    // before we have the real `coro`; we patch the placeholder once `mco_coro_init` returns.
+    let cap_state_type = Type::Tuple(Arc::new(vec![Type::POINTER]));
+    let null_ptr = emitter.push_instruction(Instruction::Transmute(Value::Integer(IntConstant::Usz(0))), Type::POINTER);
+    let initial_cap_state = emitter.push_instruction(Instruction::MakeTuple(vec![null_ptr]), cap_state_type.clone());
+    let cap_state_ptr = emitter.push_instruction(Instruction::StackAlloc(initial_cap_state), Type::POINTER);
 
-        let cap_closures: Vec<Value> = wrapper_ids
-            .iter()
-            .zip(wrapper_closure_types.iter())
-            .map(|(wrap_id, wrap_type)| {
-                emitter.push_instruction(
-                    Instruction::PackClosure { function: Value::Definition(*wrap_id), environment: cap_state_ptr },
-                    wrap_type.clone(),
-                )
-            })
-            .collect();
-        let cap_tuple = emitter.push_instruction(Instruction::MakeTuple(cap_closures), cap_tuple_type.clone());
+    let cap_closures = mapvec(wrapper_ids.iter().zip(wrapper_closure_types.iter()), |(wrap_id, wrap_type)| {
+        let pack = Instruction::PackClosure { function: Value::Definition(*wrap_id), environment: cap_state_ptr };
+        emitter.push_instruction(pack, wrap_type.clone())
+    });
 
-        // user_data layout is `cap, env` - `env` is `()` when the body has no captures
-        let env_value = body_env.unwrap_or(Value::Unit);
-        let cap_and_env_type = Type::Tuple(Arc::new(vec![cap_tuple_type.clone(), env_type.clone()]));
-        let cap_and_env =
-            emitter.push_instruction(Instruction::MakeTuple(vec![cap_tuple, env_value]), cap_and_env_type.clone());
-        let cap_and_env_ptr = emitter.push_instruction(Instruction::StackAlloc(cap_and_env), Type::POINTER);
+    let cap_tuple = emitter.push_instruction(Instruction::MakeTuple(cap_closures), cap_tuple_type.clone());
 
-        let wrapper_ptr =
-            emitter.push_instruction(Instruction::Transmute(Value::Definition(body_wrapper_id)), Type::POINTER);
-        let coro = emitter.call_extern(&context.mco.init, vec![wrapper_ptr, cap_and_env_ptr]);
+    // user_data layout is `cap, env` - `env` is `()` when the body has no captures
+    let env_value = body_env.unwrap_or(Value::Unit);
+    let cap_and_env_type = Type::Tuple(Arc::new(vec![cap_tuple_type.clone(), env_type.clone()]));
+    let cap_and_env =
+        emitter.push_instruction(Instruction::MakeTuple(vec![cap_tuple, env_value]), cap_and_env_type.clone());
+    let cap_and_env_ptr = emitter.push_instruction(Instruction::StackAlloc(cap_and_env), Type::POINTER);
 
-        // Patch cap_state to hold the real `coro` now that we have it
-        let real_cap_state = emitter.push_instruction(Instruction::MakeTuple(vec![coro]), cap_state_type);
-        emitter.push_instruction(Instruction::Store { pointer: cap_state_ptr, value: real_cap_state }, Type::UNIT);
+    let body_wrapper_value = emitter.emit_definition_value(body_wrapper_id, body_wrapper_typ, caller_bindings.clone());
+    let wrapper_ptr = emitter.push_instruction(Instruction::Transmute(body_wrapper_value), Type::POINTER);
+    let coro = emitter.call_extern(&context.mco.init, vec![wrapper_ptr, cap_and_env_ptr]);
 
-        let mut drive_arguments = Vec::with_capacity(1 + cases.len());
-        drive_arguments.push(coro);
-        for case in &cases {
-            drive_arguments.push(case.handler);
-        }
-        emitter.reuse_instruction(
-            original_id,
-            Instruction::Call { function: Value::Definition(drive_id), arguments: drive_arguments },
-            result_type.clone(),
-        );
+    // Patch cap_state to hold the real `coro` now that we have it
+    let real_cap_state = emitter.push_instruction(Instruction::MakeTuple(vec![coro]), cap_state_type);
+    emitter.push_instruction(Instruction::Store { pointer: cap_state_ptr, value: real_cap_state }, Type::UNIT);
 
-        emitter.call_extern(&context.mco.free, vec![coro]);
+    let mut drive_arguments = Vec::with_capacity(1 + cases.len());
+    drive_arguments.push(coro);
+    for case in &cases {
+        drive_arguments.push(case.handler);
     }
+    let drive_value = emitter.emit_definition_value(drive_id, drive_typ, caller_bindings.clone());
+    emitter.reuse_instruction(
+        original_id,
+        Instruction::Call { function: drive_value, arguments: drive_arguments },
+        result_type.clone(),
+    );
+
+    emitter.call_extern(&context.mco.free, vec![coro]);
     definition.blocks[block].instructions.splice(index..=index, pending);
 }
 
@@ -566,25 +560,21 @@ fn expand_handler_caps_in_body(mir: &mut Mir, body_fn_id: DefinitionId, env_type
         id: InstructionId,
         cap_type: Type,
     }
-    let sites: Vec<CapSite> = collect_sites(body, |block, index, id| {
-        if matches!(body.instructions[id], Instruction::HandlerCap) {
+    let sites = collect_sites(body, |block, index, id| {
+        matches!(body.instructions[id], Instruction::HandlerCap).then(|| {
             let cap_type = body.instruction_result_types[id].clone();
-            Some(CapSite { block, index, id, cap_type })
-        } else {
-            None
-        }
+            CapSite { block, index, id, cap_type }
+        })
     });
 
     for site in sites {
         let cap_and_env_type = Type::Tuple(Arc::new(vec![site.cap_type.clone(), env_type.clone()]));
         let mut pending = Vec::new();
-        {
-            let mut emitter = Emitter::pending(body, &mut pending);
-            let coro = emitter.call_extern(&context.mco.running, vec![]);
-            let user_data = emitter.call_extern(&context.mco.get_user_data, vec![coro]);
-            let cap_and_env = emitter.push_instruction(Instruction::Deref(user_data), cap_and_env_type);
-            emitter.reuse_instruction(site.id, Instruction::IndexTuple { tuple: cap_and_env, index: 0 }, site.cap_type);
-        }
+        let mut emitter = Emitter::pending(body, &mut pending);
+        let coro = emitter.call_extern(&context.mco.running, vec![]);
+        let user_data = emitter.call_extern(&context.mco.get_user_data, vec![coro]);
+        let cap_and_env = emitter.push_instruction(Instruction::Deref(user_data), cap_and_env_type);
+        emitter.reuse_instruction(site.id, Instruction::IndexTuple { tuple: cap_and_env, index: 0 }, site.cap_type);
         body.blocks[site.block].instructions.splice(site.index..=site.index, pending);
     }
 }
@@ -596,7 +586,9 @@ fn expand_handler_caps_in_body(mir: &mut Mir, body_fn_id: DefinitionId, env_type
 /// coro == target) or forwards the message up through `mco_coro_transfer` until it
 /// reaches the target's drive. After being resumed, the result has been pushed back
 /// onto the originally-running coro.
-fn generate_capability_wrapper(mir: &mut Mir, case_index: u32, shape: &CaseShape, context: Context) -> DefinitionId {
+fn generate_capability_wrapper(
+    mir: &mut Mir, case_index: u32, shape: &CaseShape, context: Context, caller_generic_count: u32,
+) -> DefinitionId {
     let wrap_id = next_definition_id();
     let mut params: Vec<Type> = shape.op_arg_types.clone();
     params.push(Type::POINTER); // env (last entry-block parameter)
@@ -607,7 +599,8 @@ fn generate_capability_wrapper(mir: &mut Mir, case_index: u32, shape: &CaseShape
         return_type: shape.op_return_type.clone(),
     }));
 
-    let mut definition = Definition::new(Arc::new(format!("handle_cap_wrap_{case_index}")), wrap_id, 0, wrap_type);
+    let mut definition =
+        Definition::new(Arc::new(format!("handle_cap_wrap_{case_index}")), wrap_id, caller_generic_count, wrap_type);
     let entry = BlockId::ENTRY_BLOCK;
     for parameter_type in &params {
         definition.blocks[entry].parameter_types.push(parameter_type.clone());
@@ -626,18 +619,17 @@ fn generate_capability_wrapper(mir: &mut Mir, case_index: u32, shape: &CaseShape
     let current = emitter.call_extern(&context.mco.running, vec![]);
 
     for (arg, arg_type) in op_arg_values.iter().zip(shape.op_arg_types.iter()) {
-        emitter.push_bytes(context.mco, current, *arg, arg_type, context.ptr_size);
+        emitter.push_bytes(context.mco, current, *arg, arg_type);
     }
     emitter.push_bytes(
         context.mco,
         current,
         Value::Integer(IntConstant::U32(case_index)),
         &Type::int(IntegerKind::U32),
-        context.ptr_size,
     );
-    emitter.push_bytes(context.mco, current, target, &Type::POINTER, context.ptr_size);
+    emitter.push_bytes(context.mco, current, target, &Type::POINTER);
     emitter.call_extern(&context.mco.suspend, vec![current]);
-    let result = emitter.pop_bytes(context.mco, current, &shape.op_return_type, context.ptr_size);
+    let result = emitter.pop_bytes(context.mco, current, &shape.op_return_type);
 
     definition.blocks[entry].terminator = Some(TerminatorInstruction::Return(result));
     mir.definitions.insert(wrap_id, definition);
@@ -647,15 +639,18 @@ fn generate_capability_wrapper(mir: &mut Mir, case_index: u32, shape: &CaseShape
 /// Generate `fn (coro: Pointer) -> Unit`. The body function is statically known
 /// (`body_fn_id`); the only thing this wrapper has to fish out of `user_data` is the body's
 /// closure environment, when the body has one. Pushes the body's result onto the coroutine
-/// channel for `drive` to pop.
+/// channel for `drive` to pop. Pre-monomorphization, the wrapper inherits the calling
+/// definition's `generic_count` and forwards `body_bindings` to body_fn via Instantiate.
 fn generate_body_wrapper(
-    mir: &mut Mir, body_fn_id: DefinitionId, env_type: &Type, cap_type: &Type, result_type: &Type, context: Context,
+    mir: &mut Mir, body_fn_id: DefinitionId, body_bindings: Option<Arc<GenericBindings>>, env_type: &Type,
+    cap_type: &Type, result_type: &Type, context: Context, caller_generic_count: u32,
 ) -> DefinitionId {
     let wrapper_id = next_definition_id();
     let wrapper_type = ptr_fn(vec![Type::POINTER], Type::UNIT);
     let body_type = mir.definitions[&body_fn_id].typ.clone();
 
-    let mut definition = Definition::new(Arc::new("handle_body_wrapper".to_string()), wrapper_id, 0, wrapper_type);
+    let mut definition =
+        Definition::new(Arc::new("handle_body_wrapper".to_string()), wrapper_id, caller_generic_count, wrapper_type);
     let entry = BlockId::ENTRY_BLOCK;
     definition.blocks[entry].parameter_types.push(Type::POINTER);
     let coro = Value::Parameter(entry, 0);
@@ -672,19 +667,19 @@ fn generate_body_wrapper(
         let cap_and_env = emitter.push_instruction(Instruction::Deref(user_data), cap_and_env_type);
         let env_value =
             emitter.push_instruction(Instruction::IndexTuple { tuple: cap_and_env, index: 1 }, env_type.clone());
-        let closure = emitter.push_instruction(
-            Instruction::PackClosure { function: Value::Definition(body_fn_id), environment: env_value },
-            body_type,
-        );
+        let body_fn_value = emitter.emit_definition_value(body_fn_id, body_type.clone(), body_bindings);
+        let closure = emitter
+            .push_instruction(Instruction::PackClosure { function: body_fn_value, environment: env_value }, body_type);
         emitter
             .push_instruction(Instruction::CallClosure { closure, arguments: vec![Value::Unit] }, result_type.clone())
     } else {
+        let body_fn_value = emitter.emit_definition_value(body_fn_id, body_type, body_bindings);
         emitter.push_instruction(
-            Instruction::Call { function: Value::Definition(body_fn_id), arguments: vec![Value::Unit] },
+            Instruction::Call { function: body_fn_value, arguments: vec![Value::Unit] },
             result_type.clone(),
         )
     };
-    emitter.push_bytes(context.mco, coro, result, result_type, context.ptr_size);
+    emitter.push_bytes(context.mco, coro, result, result_type);
 
     definition.blocks[entry].terminator = Some(TerminatorInstruction::Return(Value::Unit));
     mir.definitions.insert(wrapper_id, definition);
@@ -699,7 +694,7 @@ fn generate_body_wrapper(
 /// parent, then transfers the result back and loops.
 fn generate_drive_function(
     mir: &mut Mir, cases: &[HandlerCase], handler_types: &[Type], case_shapes: &[CaseShape], result_type: &Type,
-    context: Context,
+    context: Context, caller_generic_count: u32,
 ) -> DefinitionId {
     let drive_id = next_definition_id();
     let mut drive_parameters = vec![Type::POINTER];
@@ -709,10 +704,20 @@ fn generate_drive_function(
     // One resume helper per case. Each captures (coro, handlers..) so it can
     // re-invoke drive with the same handler set when the body resumes.
     let resume_functions = mapvec(case_shapes, |shape| {
-        generate_resume_function(mir, shape.op_return_type.clone(), drive_id, handler_types, result_type, context)
+        generate_resume_function(
+            mir,
+            shape.op_return_type.clone(),
+            drive_id,
+            drive_type.clone(),
+            handler_types,
+            result_type,
+            context,
+            caller_generic_count,
+        )
     });
 
-    let mut definition = Definition::new(Arc::new("handle_drive".to_string()), drive_id, 0, drive_type);
+    let mut definition =
+        Definition::new(Arc::new("handle_drive".to_string()), drive_id, caller_generic_count, drive_type);
     let entry = BlockId::ENTRY_BLOCK;
     for parameter_type in &drive_parameters {
         definition.blocks[entry].parameter_types.push(parameter_type.clone());
@@ -749,8 +754,8 @@ fn generate_drive_function(
     let usz_t = Type::int(IntegerKind::Usz);
     let (target, case_idx) = {
         let mut emitter = Emitter::in_block(&mut definition, dispatch_block);
-        let target = emitter.pop_bytes(context.mco, coro, &Type::POINTER, context.ptr_size);
-        let case_idx = emitter.pop_bytes(context.mco, coro, &Type::int(IntegerKind::U32), context.ptr_size);
+        let target = emitter.pop_bytes(context.mco, coro, &Type::POINTER);
+        let case_idx = emitter.pop_bytes(context.mco, coro, &Type::int(IntegerKind::U32));
         let target_int = emitter.push_instruction(Instruction::Transmute(target), usz_t.clone());
         let my_int = emitter.push_instruction(Instruction::Transmute(coro), usz_t.clone());
         let eq = emitter.push_instruction(Instruction::EqInt(target_int, my_int), Type::BOOL);
@@ -784,6 +789,7 @@ fn generate_drive_function(
             final_block,
             mir,
             context,
+            caller_generic_count,
         );
     }
 
@@ -799,21 +805,18 @@ fn generate_drive_function(
 
     // forward_block: bulk-transfer args to parent, re-push (case_idx, target),
     // suspend parent, transfer result back, loop.
-    {
-        let mut emitter = Emitter::in_block(&mut definition, forward_block);
-        let parent = emitter.call_extern(&context.mco.running, vec![]);
-        let n_args = emitter.call_extern(&context.mco.bytes_stored, vec![coro]);
-        emitter.call_extern(&context.mco.transfer, vec![coro, parent, n_args]);
-        emitter.push_bytes(context.mco, parent, case_idx, &Type::int(IntegerKind::U32), context.ptr_size);
-        emitter.push_bytes(context.mco, parent, target, &Type::POINTER, context.ptr_size);
-        emitter.call_extern(&context.mco.suspend, vec![parent]);
-        let n_result = emitter.call_extern(&context.mco.bytes_stored, vec![parent]);
-        emitter.call_extern(&context.mco.transfer, vec![parent, coro, n_result]);
-    }
+    let mut emitter = Emitter::in_block(&mut definition, forward_block);
+    let parent = emitter.call_extern(&context.mco.running, vec![]);
+    let n_args = emitter.call_extern(&context.mco.bytes_stored, vec![coro]);
+    emitter.call_extern(&context.mco.transfer, vec![coro, parent, n_args]);
+    emitter.push_bytes(context.mco, parent, case_idx, &Type::int(IntegerKind::U32));
+    emitter.push_bytes(context.mco, parent, target, &Type::POINTER);
+    emitter.call_extern(&context.mco.suspend, vec![parent]);
+    let n_result = emitter.call_extern(&context.mco.bytes_stored, vec![parent]);
+    emitter.call_extern(&context.mco.transfer, vec![parent, coro, n_result]);
+
     definition.blocks[forward_block].terminator = Some(TerminatorInstruction::jmp_no_args(loop_header));
-
     definition.blocks[final_block].terminator = Some(TerminatorInstruction::Return(Value::Parameter(final_block, 0)));
-
     mir.definitions.insert(drive_id, definition);
     drive_id
 }
@@ -821,10 +824,8 @@ fn generate_drive_function(
 fn emit_pop_and_jmp(
     definition: &mut Definition, block: BlockId, coro: Value, value_type: &Type, jmp_target: BlockId, context: Context,
 ) {
-    let value = {
-        let mut emitter = Emitter::in_block(definition, block);
-        emitter.pop_bytes(context.mco, coro, value_type, context.ptr_size)
-    };
+    let mut emitter = Emitter::in_block(definition, block);
+    let value = emitter.pop_bytes(context.mco, coro, value_type);
     definition.blocks[block].terminator = Some(TerminatorInstruction::Jmp((jmp_target, Some(value))));
 }
 
@@ -832,17 +833,14 @@ fn emit_pop_and_jmp(
 fn emit_handler_case(
     definition: &mut Definition, case_block: BlockId, coro: Value, resume_function_id: DefinitionId,
     handler_parameter: Value, all_handler_parameters: &[Value], shape: &CaseShape, result_type: &Type,
-    final_block: BlockId, mir: &Mir, context: Context,
+    final_block: BlockId, mir: &Mir, context: Context, caller_generic_count: u32,
 ) {
     let resume_function_type = mir.definitions.get(&resume_function_id).map(|d| d.typ.clone()).unwrap_or(Type::ERROR);
 
-    let state_field_types = std::iter::once(Type::POINTER)
-        .chain(
-            all_handler_parameters
-                .iter()
-                .map(|value| definition.type_of_value(value, &mir.externals, &mir.definitions)),
-        )
-        .collect::<Vec<_>>();
+    let param_types =
+        all_handler_parameters.iter().map(|value| definition.type_of_value(value, &mir.externals, &mir.definitions));
+
+    let state_field_types = std::iter::once(Type::POINTER).chain(param_types).collect::<Vec<_>>();
 
     let mut emitter = Emitter::in_block(definition, case_block);
     let popped_arguments = pop_operation_arguments(&mut emitter, context, coro, &shape.op_arg_types);
@@ -857,8 +855,13 @@ fn emit_handler_case(
         emitter.push_instruction(Instruction::MakeTuple(state_elements), Type::Tuple(Arc::new(state_field_types)));
     let environment = emitter.push_instruction(Instruction::StackAlloc(state), Type::POINTER);
 
+    let resume_function_value = emitter.emit_definition_value(
+        resume_function_id,
+        resume_function_type.clone(),
+        crate::mir::identity_bindings(caller_generic_count),
+    );
     let resume_closure = emitter.push_instruction(
-        Instruction::PackClosure { function: Value::Definition(resume_function_id), environment },
+        Instruction::PackClosure { function: resume_function_value, environment },
         resume_function_type,
     );
 
@@ -876,9 +879,10 @@ fn emit_handler_case(
 
 /// `resume: fn r1 [Pointer] -> r2`. env is `&(coro, handler_0, .., handler_{N-1})`,
 /// set up by the drive function before each handler invocation.
+#[allow(clippy::too_many_arguments)]
 fn generate_resume_function(
-    mir: &mut Mir, r1_type: Type, drive_function_id: DefinitionId, handler_types: &[Type], result_type: &Type,
-    context: Context,
+    mir: &mut Mir, r1_type: Type, drive_function_id: DefinitionId, drive_function_type: Type, handler_types: &[Type],
+    result_type: &Type, context: Context, caller_generic_count: u32,
 ) -> DefinitionId {
     let mut state_field_types = Vec::with_capacity(1 + handler_types.len());
     state_field_types.push(Type::POINTER);
@@ -892,7 +896,8 @@ fn generate_resume_function(
     }));
 
     let resume_id = next_definition_id();
-    let mut definition = Definition::new(Arc::new("handle_resume".to_string()), resume_id, 0, function_type);
+    let mut definition =
+        Definition::new(Arc::new("handle_resume".to_string()), resume_id, caller_generic_count, function_type);
     let entry = BlockId::ENTRY_BLOCK;
     definition.blocks[entry].parameter_types.push(r1_type.clone());
     definition.blocks[entry].parameter_types.push(Type::POINTER);
@@ -907,15 +912,18 @@ fn generate_resume_function(
         emitter.push_instruction(Instruction::IndexTuple { tuple: state, index: (i + 1) as u32 }, handler_type.clone())
     });
 
-    emitter.push_bytes(context.mco, coro, v_value, &r1_type, context.ptr_size);
+    emitter.push_bytes(context.mco, coro, v_value, &r1_type);
 
     let mut drive_arguments = Vec::with_capacity(1 + handler_values.len());
     drive_arguments.push(coro);
     drive_arguments.extend(handler_values);
-    let drive_result = emitter.push_instruction(
-        Instruction::Call { function: Value::Definition(drive_function_id), arguments: drive_arguments },
-        result_type.clone(),
+    let drive_value = emitter.emit_definition_value(
+        drive_function_id,
+        drive_function_type,
+        crate::mir::identity_bindings(caller_generic_count),
     );
+    let drive_result = emitter
+        .push_instruction(Instruction::Call { function: drive_value, arguments: drive_arguments }, result_type.clone());
 
     definition.blocks[entry].terminator = Some(TerminatorInstruction::Return(drive_result));
 

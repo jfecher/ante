@@ -12,7 +12,7 @@ use std::sync::Arc;
 use rustc_hash::FxHashSet;
 
 use crate::mir::{
-    BlockId, Definition, DefinitionId, FunctionType, HandlerCase, Instruction, InstructionId, Mir,
+    BlockId, Definition, DefinitionId, FunctionType, GenericBindings, HandlerCase, Instruction, InstructionId, Mir,
     TerminatorInstruction, Type, Value, next_definition_id,
 };
 
@@ -77,6 +77,8 @@ fn collect_handle_sites(mir: &Mir, definition_id: DefinitionId) -> Vec<HandleSit
 struct CaseDecision {
     handler_def_id: DefinitionId,
     handler_env: Option<Value>,
+    /// Generic bindings from the original `Instantiate` of `case.handler`,
+    handler_bindings: Option<Arc<GenericBindings>>,
     shape: CaseShape,
 }
 
@@ -87,25 +89,28 @@ fn analyze_handle(mir: &Mir, definition_id: DefinitionId, site: &HandleSite) -> 
     for case in &site.cases {
         let handler_type = definition.type_of_value(&case.handler, &mir.externals, &mir.definitions);
         let shape = case_shape_from_handler_type(&handler_type)?;
-        let (handler_def_id, handler_env) = resolve_handler(case.handler, definition)?;
+        let (handler_def_id, handler_env, handler_bindings) = resolve_handler(case.handler, definition)?;
         let handler_def = mir.definitions.get(&handler_def_id)?;
         if !case_is_tail_resumptive(handler_def, &shape) {
             return None;
         }
-        decisions.push(CaseDecision { handler_def_id, handler_env, shape });
+        decisions.push(CaseDecision { handler_def_id, handler_env, handler_bindings, shape });
     }
     Some(decisions)
 }
 
-/// Resolve the handler value to its underlying [DefinitionId] and (optional) closure env.
-/// Mirrors [resolve_body_function] but tolerates handler shapes specifically.
-fn resolve_handler(handler: Value, definition: &Definition) -> Option<(DefinitionId, Option<Value>)> {
-    fn resolve_id(value: Value, definition: &Definition) -> Option<DefinitionId> {
+/// Resolve the handler value to its underlying [DefinitionId], optional closure env,
+/// and optional generic bindings recovered from any `Instantiate` along the chain. Mirrors
+/// [resolve_body_function] but tolerates handler shapes specifically.
+fn resolve_handler(
+    handler: Value, definition: &Definition,
+) -> Option<(DefinitionId, Option<Value>, Option<Arc<GenericBindings>>)> {
+    fn resolve_id(value: Value, definition: &Definition) -> Option<(DefinitionId, Option<Arc<GenericBindings>>)> {
         match value {
-            Value::Definition(id) => Some(id),
+            Value::Definition(id) => Some((id, None)),
             Value::InstructionResult(iid) => match &definition.instructions[iid] {
                 Instruction::Id(inner) => resolve_id(*inner, definition),
-                Instruction::Instantiate(id, _) => Some(*id),
+                Instruction::Instantiate(id, bindings) => Some((*id, Some(bindings.clone()))),
                 _ => None,
             },
             _ => None,
@@ -115,11 +120,18 @@ fn resolve_handler(handler: Value, definition: &Definition) -> Option<(Definitio
     match handler {
         Value::InstructionResult(iid) => match &definition.instructions[iid] {
             Instruction::PackClosure { function, environment } => {
-                Some((resolve_id(*function, definition)?, Some(*environment)))
+                let (id, bindings) = resolve_id(*function, definition)?;
+                Some((id, Some(*environment), bindings))
             },
-            _ => Some((resolve_id(handler, definition)?, None)),
+            _ => {
+                let (id, bindings) = resolve_id(handler, definition)?;
+                Some((id, None, bindings))
+            },
         },
-        _ => Some((resolve_id(handler, definition)?, None)),
+        _ => {
+            let (id, bindings) = resolve_id(handler, definition)?;
+            Some((id, None, bindings))
+        },
     }
 }
 
@@ -225,7 +237,7 @@ fn try_optimize_handle(mir: &mut Mir, definition_id: DefinitionId, site: HandleS
     let cap_tuple_type = Type::Tuple(Arc::new(wrapper_closure_types.clone()));
 
     // Resolve the body once more (we re-fetched definition because `mir` may have changed).
-    let (orig_body_fn_id, body_env_value) = {
+    let (orig_body_fn_id, body_env_value, body_bindings) = {
         let definition = &mir.definitions[&definition_id];
         resolve_body_function(site.body, definition)
     };
@@ -260,6 +272,7 @@ fn try_optimize_handle(mir: &mut Mir, definition_id: DefinitionId, site: HandleS
         &decisions,
         body_fn_id,
         body_env_value,
+        body_bindings,
         &cap_tuple_type,
         &original_env_layout,
     );
@@ -551,6 +564,7 @@ fn substitute_value(definition: &mut Definition, find: Value, replace: Value) {
             | Instruction::Instantiate(_, _)
             | Instruction::Extern(_)
             | Instruction::SizeOf(_)
+            | Instruction::StackAllocUninit(_)
             | Instruction::HandlerCap => (),
         }
     }
@@ -592,8 +606,8 @@ fn substitute_value(definition: &mut Definition, find: Value, replace: Value) {
 #[allow(clippy::too_many_arguments)]
 fn splice_in_handle_replacement(
     mir: &mut Mir, definition_id: DefinitionId, site: HandleSite, wrapper_ids: &[DefinitionId],
-    decisions: &[CaseDecision], body_fn_id: DefinitionId, body_env_value: Option<Value>, cap_tuple_type: &Type,
-    layout: &OriginalEnvLayout,
+    decisions: &[CaseDecision], body_fn_id: DefinitionId, body_env_value: Option<Value>,
+    body_bindings: Option<Arc<GenericBindings>>, cap_tuple_type: &Type, layout: &OriginalEnvLayout,
 ) {
     // We need the wrapper closure types, the new body env type, and the body fn type *after*
     // mutation. Read them all up front (immutable borrows) before getting the &mut to the def.
@@ -615,6 +629,21 @@ fn splice_in_handle_replacement(
         Value::InstructionResult(id)
     };
 
+    // Helper: emit either Value::Definition(target) or an Instantiate instruction
+    // depending on whether bindings were recovered from the original use site.
+    let make_def_value = |def: &mut Definition,
+                          push_fn: &mut dyn FnMut(&mut Definition, Instruction, Type) -> Value,
+                          target,
+                          target_typ,
+                          bindings|
+     -> Value {
+        if let Some(bindings) = bindings {
+            push_fn(def, Instruction::Instantiate(target, bindings), target_typ)
+        } else {
+            Value::Definition(target)
+        }
+    };
+
     // 1. PackClosure each wrapper with a Pointer env: a StackAlloc of the handler's env tuple,
     //    or a null pointer when the handler had no env.
     let mut cap_closures: Vec<Value> = Vec::with_capacity(wrapper_ids.len());
@@ -626,12 +655,19 @@ fn splice_in_handle_replacement(
             },
         };
         let closure_type = wrapper_closure_types[i].clone();
-        let v = push(
+        let wrapper_value = make_def_value(
             definition,
-            Instruction::PackClosure { function: Value::Definition(*wrapper_id), environment: env_pointer_value },
+            &mut push,
+            *wrapper_id,
+            closure_type.clone(),
+            decisions[i].handler_bindings.clone(),
+        );
+        let value = push(
+            definition,
+            Instruction::PackClosure { function: wrapper_value, environment: env_pointer_value },
             closure_type,
         );
-        cap_closures.push(v);
+        cap_closures.push(value);
     }
 
     // 2. Tuple the wrappers into the cap value.
@@ -651,9 +687,10 @@ fn splice_in_handle_replacement(
         push(definition, Instruction::MakeTuple(vec![cap]), new_env_type.clone())
     };
 
+    let body_fn_value = make_def_value(definition, &mut push, body_fn_id, body_fn_type.clone(), body_bindings);
     let body_closure = push(
         definition,
-        Instruction::PackClosure { function: Value::Definition(body_fn_id), environment: new_env_value },
+        Instruction::PackClosure { function: body_fn_value, environment: new_env_value },
         body_fn_type,
     );
 

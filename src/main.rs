@@ -298,7 +298,7 @@ fn display_mir(compiler: &mut Db, emit_all: bool, optimize_tail_calls: bool) -> 
                     let mir = mir::builder::build_initial_mir_with_shared_map(compiler, item.id);
                     if let Some(mut mir) = mir {
                         if optimize_tail_calls {
-                            mir = mir.optimize_tail_resume();
+                            mir = mir.optimize_tail_resume().lower_effects();
                         }
 
                         print!("{mir}");

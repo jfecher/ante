@@ -48,6 +48,8 @@ impl Definition {
                 typ.select_largest_variants(ptr_size);
                 let size = typ.size_in_bytes(ptr_size) as usize;
                 *instruction = Instruction::Id(Value::Integer(IntConstant::Usz(size)));
+            } else if let Instruction::StackAllocUninit(typ) = instruction {
+                typ.select_largest_variants(ptr_size);
             }
         }
     }

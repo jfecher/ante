@@ -44,7 +44,9 @@ where
         .fold(Mir::default, Mir::extend)
         .reduce(Mir::default, Mir::extend)
         .remove_internal_externs()
-        .remove_unreachable_functions();
+        .remove_unreachable_functions()
+        .optimize_tail_resume()
+        .lower_effects();
 
     let shared = SharedDefinitions::default();
 
@@ -70,8 +72,6 @@ where
             acc.extend(monomorphized)
         })
         .reduce(Mir::default, Mir::extend)
-        .optimize_tail_resume()
-        .lower_effects(TargetPointerSize.get(compiler))
         .lower_closures()
         .assert_fully_linked()
         .assert_type_checks()
@@ -268,6 +268,11 @@ impl<'local> FunctionContext<'local> {
                 }
             },
             Instruction::StackAlloc(v) | Instruction::Transmute(v) | Instruction::Id(v) => self.remap_value(v),
+            Instruction::StackAllocUninit(typ) => {
+                if !self.generic_mapping.is_empty() {
+                    self.specialize_type(typ);
+                }
+            },
             Instruction::Store { pointer, value } => {
                 self.remap_value(pointer);
                 self.remap_value(value);

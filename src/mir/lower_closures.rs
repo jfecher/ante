@@ -69,6 +69,12 @@ impl Mir {
                     Instruction::SizeOf(typ) => {
                         assert_no_closure_in_type(typ, &format!("definition {id} instruction {instr_id:?} SizeOf"));
                     },
+                    Instruction::StackAllocUninit(typ) => {
+                        assert_no_closure_in_type(
+                            typ,
+                            &format!("definition {id} instruction {instr_id:?} StackAllocUninit"),
+                        );
+                    },
                     Instruction::GetFieldPtr { struct_type, .. } => {
                         assert_no_closure_in_type(
                             struct_type,
@@ -206,6 +212,9 @@ fn rewrite_types_in_definition(definition: &mut Definition) {
     for (_, instr) in definition.instructions.iter_mut() {
         match instr {
             Instruction::SizeOf(typ) => {
+                *typ = rewrite_value_type(typ);
+            },
+            Instruction::StackAllocUninit(typ) => {
                 *typ = rewrite_value_type(typ);
             },
             Instruction::GetFieldPtr { struct_type, .. } => {

@@ -548,6 +548,10 @@ impl<'ctx> ModuleContext<'ctx> {
                 self.builder.build_store(alloca, value).unwrap();
                 alloca.into()
             },
+            mir::Instruction::StackAllocUninit(typ) => {
+                let typ = self.convert_type(typ);
+                self.builder.build_alloca(typ, "").unwrap().into()
+            },
             mir::Instruction::Transmute(value) => self.transmute(value, function, id),
             mir::Instruction::Id(value) => self.lookup_value(value),
             mir::Instruction::Instantiate(..) => {
