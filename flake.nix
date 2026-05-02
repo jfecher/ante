@@ -56,8 +56,6 @@
                         ./Cargo.toml
                         ./Cargo.lock
                         ./build.rs
-                        ./tests
-                        ./goldentests.toml
                       ];
                     };
 
@@ -74,11 +72,6 @@
                         --bash <($out/bin/ante --shell-completion bash) \
                         --fish <($out/bin/ante --shell-completion fish) \
                         --zsh <($out/bin/ante --shell-completion zsh)
-                    '';
-
-                    postPatch = ''
-                      substituteInPlace tests/goldentests.rs --replace \
-                        'target/debug' "target/$(rustc -vV | sed -n 's|host: ||p')/release"
                     '';
                   };
                   
