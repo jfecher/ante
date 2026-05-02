@@ -1,5 +1,5 @@
 import Std.C.realloc
-import Std.Stream.Stream, for_
+import Std.Stream.Stream, iter
 import Std.Fail.Fail, fail
 
 export Vec, empty, is_empty, len, capacity, reserve, push, pop, get, get_unchecked,
@@ -22,7 +22,7 @@ Vec.capacity (v: ref Vec a) = v.cap
 // Create a new Vec with the elements from the given stream
 Vec.of (s: s) {Stream s t}: Vec t =
     var vec = Vec.empty ()
-    for_ s (vec.push _)
+    iter s (vec.push _)
     vec
 
 //reserve numElements in Vec v, elements will be uninitialized

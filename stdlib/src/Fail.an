@@ -1,3 +1,4 @@
+// TODO: Should this be merged with the Throw effect?
 effect Fail with
     fail: fn Unit -> Never
 
@@ -15,6 +16,12 @@ try_or_else (f: fn Fail => a) (default: fn Unit => a): a =
 
 assert (cond: Bool) {Fail} : Unit =
     if not cond then fail ()
+
+/// Ignores a `Fail` effect, discarding it and returning Unit
+ignore_fail (f: fn Fail => a): Unit =
+    h <- try_or _ ()
+    f h
+    ()
 
 /// Retry a function until it succeeds (doesn't call fail).
 /// This should be used with functions using a Fail effect

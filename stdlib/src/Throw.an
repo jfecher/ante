@@ -1,0 +1,32 @@
+import Std.Fail.Fail, fail
+
+effect Throw t with
+    throw: fn t -> Never
+
+type Result t e =
+   | Ok t
+   | Err e
+
+catch (f: fn (Throw e) => a): Result a e =
+    handler h for throw e -> Err e
+    Ok (f h)
+
+catch_or (f: fn (Throw e) => a) (default: a): a =
+    handler h for throw _ -> default
+    f h
+
+catch_or_else (f: fn (Throw e) => a) (default: fn Unit => a): a =
+    handler h for throw _ -> default ()
+    f h
+
+/// Apply the given function to the thrown value and re-throw it
+map_err (f: fn (Throw e1) => t) (f2: fn e1 => e2) {Throw e2}: t =
+    handler h for throw e ->
+        throw (f2 e)
+    f h
+
+/// Returns the error when thrown or fails if the operation finishes without throwing.
+unwrap_err (f: fn (Throw e) => t) {Fail}: e =
+    handler h for throw e -> e
+    f h
+    fail ()

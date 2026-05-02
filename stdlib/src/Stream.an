@@ -1,8 +1,17 @@
 import Std.Vec.Vec, get_unchecked
+import Std.Fail.Fail, fail
 
 /// Emit a single item of type `a`. Another name for this is `Yield`.
 effect Emit a with
     emit: fn a -> Unit
+
+/// Common control-flow effects for looping
+effect Loop with
+    /// End the loop early
+    break_: fn Unit -> Never
+
+    /// End the current iteration of the loop early, continuing to the next iteration if there is one
+    continue_: fn Unit -> Never
 
 /// Stream the contents of `t` into the `Emit a` capability
 trait Stream t a with
@@ -17,10 +26,34 @@ impl stream_fn: Stream (fn (Emit a) => Unit) a with
 
 /// Consumes the given stream, applying `f` to each element
 /// 
-/// E.g. `for_ (iota 5) print` will print `01234`
-for_ (s: s) {Stream s a} (f: fn a => b): Unit =
+/// E.g. `iter (iota 5) print` will print `01234`
+iter (s: s) {Stream s a} (f: fn a => b): Unit =
     handler h for emit a ->
+        handler l for
+        | break_ () -> return ()
+        | continue_ () -> ()
+
         f a
+        resume ()
+    Stream.stream s h
+
+/// Consumes the given stream, applying `f` to each element, with
+/// an additional Loop handler installed to allow breaking/continuing
+/// within the overall loop.
+/// 
+/// E.g. The following will print 012
+/// ```
+/// for_ (iota 5) fn i {l} ->
+///     if i > 2 then break_ ()
+///     print i
+/// ```
+for_ (s: s) {Stream s a} (f: fn a Loop => b): Unit =
+    handler h for emit a ->
+        handler l for
+        | break_ () -> return ()
+        | continue_ () -> ()
+
+        f a l
         resume ()
     Stream.stream s h
 
@@ -155,11 +188,23 @@ any (s: s) {Stream s a} (f: fn a => Bool): Bool =
     Stream.stream s h
     false
 
-/// Intersperse an item from the given function before each element
-/// of the stream.
+/// Intersperse an item in between each element of the stream.
 ///
 /// Given `a1, a2, .., aN` and `item`, emit `a1, item, a2, item, .., item, aN`
-intersperse (s: s) {Stream s a} (item: fn Unit => a) = fn (e: Emit a) ->
+intersperse (s: s) {Stream s a} (item: a) {Clone a} = fn (e: Emit a) ->
+    var not_first = false
+    handler h for emit a ->
+        if not_first then e.emit (clone item)
+        not_first := true
+        e.emit a
+        resume ()
+
+    Stream.stream s h
+
+/// Intersperse an item from the given function in between each element of the stream.
+///
+/// Given `a1, a2, .., aN` and `item`, emit `a1, item, a2, item, .., item, aN`
+intersperse_with (s: s) {Stream s a} (item: fn Unit => a) = fn (e: Emit a) ->
     var not_first = false
     handler h for emit a ->
         if not_first then e.emit (item ())
@@ -178,11 +223,33 @@ chain (s1: s1) {Stream s1 a} (s2: s2) {Stream s2 a} = fn (e: Emit a) ->
 count (s: s) {Stream s a}: U32 =
     map s (fn _ -> 1) |> foldl 0 (+)
 
-/// Find an element in the stream for which `predicate` returns true
-find (s: s) {Stream s a} (predicate: fn (ref a) => Bool): Maybe a =
+/// Find an element in the stream for which `predicate` returns true.
+/// Fails if there is no such element
+find (s: s) {Stream s a} (predicate: fn (ref a) => Bool) {Fail}: a =
     handler h for emit a ->
-        if predicate (ref a) then Some a
+        if predicate (ref a) then a
         else resume ()
 
     Stream.stream s h
-    None
+    fail ()
+
+/// Re-emit only the first `n` items from the stream
+take (s: s) {Stream s a} (n: U32) = fn {Emit a} ->
+    handler h for emit a ->
+        if n != 0 then
+            emit a
+            n -= 1
+            resume ()
+
+    Stream.stream s h
+
+/// Skips the first `n` items from the stream, emitting the rest as normal.
+skip (s: s) {Stream s a} (n: U32) = fn {Emit a} ->
+    handler h for emit a ->
+        if n == 0 then
+            emit a
+        else
+            n -= 1
+        resume ()
+
+    Stream.stream s h

@@ -1,5 +1,5 @@
 import Std.C.putchar, calloc
-import Std.Stream.Stream, for_, stream_fn
+import Std.Stream.Stream, iter, stream_fn
 
 export HashMap, Entry, Hash, hash, empty, of, clear, resize, should_resize,
     insert, get_entry, get, remove, print_hashmap, print_helper, stream_map
@@ -23,7 +23,7 @@ HashMap.empty () = HashMap 0 0 (null ())
 
 HashMap.of (s: s) {Stream s (k, v)} {Hash k} {Copy k} {Copy v}: HashMap k v =
     var map = HashMap.empty ()
-    for_ s (fn (k, v) -> map.insert k v)
+    iter s (fn (k, v) -> map.insert k v)
     map
  
 HashMap.clear (map: mut HashMap k v) : Unit =
