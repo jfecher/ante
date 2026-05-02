@@ -23,7 +23,12 @@ main () =
       | three 0 1 -> ()
     in ()
 
+    handler h4 for
+      | get () -> resume ()
+    in ()
+
 // args: -e ast-r --no-color
+// expected exit status: 1
 // expected stdout:
 // // id = c1m485_8962
 // type Three_c1m485_8962_0 =
@@ -50,3 +55,39 @@ main () =
 //     | put_c1m485_5987_4 () -> fn () resume_8 -> ()
 //     | three_c1m485_8962_3 0 1 -> fn 0 1 resume_9 -> ()
 //     in fn () -> ()
+//     handler h4_10 for
+//     | get_c1m485_5987_2 () -> fn () resume_11 -> resume_11 ()
+//     in fn () -> ()
+
+// expected stderr:
+// examples/nameresolution/effects.an:11:5
+// 10 | main () =
+// 11 |     handler h1 for	// error: Handler for effect Three is missing methods: three, two
+//    |     ^^^^^^^^^^^^^^
+// 12 |       | one () -> ()
+// 
+// examples/nameresolution/effects.an:13:9
+// 11 |     handler h1 for
+// 12 |       | one () -> ()	// note: one was previously handled here
+//    |         ---
+// 13 |       | one () -> ()	// error: Effect method one is handled more than once
+//    |         ^^^
+// 14 |     in ()
+// 
+// examples/nameresolution/effects.an:21:5
+// 21 |     handler h3 for	// error: Handler for effect State is missing method: get
+//    |     ^^^^^^^^^^^^^^
+// 22 |       | put () -> ()
+// 
+// examples/nameresolution/effects.an:21:5
+// 21 |     handler h3 for	// error: Handler mixes methods from effects State and Three
+//    |     ^^^^^^^^^^^^^^
+// 22 |       | put () -> ()
+// 
+// examples/nameresolution/effects.an:26:5
+// 26 |     handler h4 for	// error: Handler for effect State is missing method: put
+//    |     ^^^^^^^^^^^^^^
+// 27 |       | get () -> resume ()
+// 
+// Found 5 errors and 0 warnings
+

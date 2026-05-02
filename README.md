@@ -4,15 +4,15 @@
 
 ---
 
-Ante is a low-level functional language for exploring safe, shared mutability, algebraic effects, and
+Ante is a low-level functional language for exploring safe, shared mutability, effects, and
 other fun features. Here's a quick taste:
 
 ```scala
-foo (x: mut Bar) (y: ref a) {Clone a}: a can Fail =
-    // Algebraic effects
+foo (x: mut Bar) (y: ref a) {Clone a} {Fail}: a =
+    // The `Fail` capability above lets us call `fail`
     if not valid x then fail ()
 
-    // Safe, aliasable mutable references
+    // Safe, aliasable, borrowed mutable references
     baz x x
 
     // Traits via implicits (no more forced newtype wrappers)

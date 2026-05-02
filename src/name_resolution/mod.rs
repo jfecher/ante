@@ -15,11 +15,12 @@ use crate::{
     incremental::{
         self, DbHandle, ExportedTypes, GetCrateGraph, GetItem, Resolve, VisibleDefinitions, VisibleDefinitionsResult,
     },
+    iterator_extensions::mapvec,
     name_resolution::{builtin::Builtin, namespace::CrateId},
     parser::{
         cst::{
-            Comptime, Constructor, Definition, Expr, Generics, ItemName, Name, Path, Pattern, TopLevelItemKind, Type,
-            TypeDefinition, TypeDefinitionBody, TypeKind,
+            Comptime, Constructor, Definition, Expr, Generics, Handle, ItemName, Name, Path, Pattern, TopLevelItemKind,
+            Type, TypeDefinition, TypeDefinitionBody, TypeKind,
         },
         desugar_context::DesugarContext,
         ids::{ExprId, NameId, PathId, PatternId, TopLevelId, TopLevelName},
@@ -545,18 +546,11 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             Expr::Handle(handle) => {
                 // Handle's expression & branches will be lambdas which will push their
                 // own scopes & introduce their patterns themselves.
-                //
-                // The handler name is bound only inside the handled expression, not
-                // inside the branches.
                 self.push_local_scope();
                 self.declare_name(handle.handler_name);
                 self.resolve_expr(handle.expression);
                 self.pop_local_scope();
-
-                for (pattern, branch) in &handle.cases {
-                    self.link(pattern.function, false, false);
-                    self.resolve_expr(*branch);
-                }
+                self.check_handler_methods(handle, expr);
             },
             Expr::Reference(reference) => {
                 self.resolve_expr(reference.rhs);
@@ -833,6 +827,73 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                 }
             },
             Comptime::Definition(definition) => self.resolve_definition(definition),
+        }
+    }
+
+    /// Resolve each effect case and report any duplicates, missing cases, or cases from other effects.
+    fn check_handler_methods(&mut self, handle: &Handle, expr: ExprId) {
+        // The BTreeSet here determines ordering in the 'missing methods' error so we can't use a FxHashSet
+        let mut effect_info: Option<(TopLevelId, Name, BTreeSet<Name>)> = None;
+        let mut seen_methods: BTreeMap<Name, Location> = BTreeMap::new();
+
+        for (pattern, branch) in &handle.cases {
+            let path = pattern.function;
+            self.link(path, false, false);
+            self.resolve_expr(*branch);
+
+            let Some(Origin::TopLevelDefinition(name)) = self.path_links.get(&path).copied() else {
+                continue;
+            };
+            let (item, item_context) = GetItem(name.top_level_item).get(self.compiler);
+            let TopLevelItemKind::TypeDefinition(type_definition) = &item.kind else { continue };
+            if !type_definition.is_effect {
+                continue;
+            }
+            let TypeDefinitionBody::Struct(fields) = &type_definition.body else { continue };
+
+            let method_name = item_context[name.local_name_id].clone();
+            let method_location = self.context.path_location(path).clone();
+
+            let mut is_same_effect = true;
+            if let Some((effect_id, first_name, _)) = &effect_info {
+                if *effect_id != name.top_level_item {
+                    is_same_effect = false;
+
+                    let first_effect = first_name.clone();
+                    let second_effect = item_context[type_definition.name].clone();
+                    let location = self.context.expr_location(expr).clone();
+                    self.emit_diagnostic(Diagnostic::HandlerCrossEffect { first_effect, second_effect, location });
+                }
+            } else {
+                let effect_name = item_context[type_definition.name].clone();
+                let all_methods = fields.iter().map(|(n, _)| item_context[*n].clone()).collect();
+                effect_info = Some((name.top_level_item, effect_name, all_methods));
+            }
+
+            if is_same_effect {
+                if let Some(prev_location) = seen_methods.get(&method_name).cloned() {
+                    self.emit_diagnostic(Diagnostic::HandlerDuplicateMethod {
+                        name: method_name,
+                        first_location: prev_location,
+                        second_location: method_location,
+                    });
+                } else {
+                    seen_methods.insert(method_name, method_location);
+                }
+            }
+        }
+
+        if let Some((_, effect_name, all_methods)) = effect_info {
+            let missing = mapvec(all_methods.iter().filter(|m| !seen_methods.contains_key(*m)), |n| n.to_string());
+
+            if !missing.is_empty() {
+                let location = self.context.expr_location(expr).clone();
+                self.emit_diagnostic(Diagnostic::HandlerMissingMethods {
+                    effect_name,
+                    missing_methods: missing,
+                    location,
+                });
+            }
         }
     }
 }

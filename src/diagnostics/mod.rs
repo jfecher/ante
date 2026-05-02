@@ -233,6 +233,21 @@ pub enum Diagnostic {
     FreeVarsInTypeConstructor {
         location: Location,
     },
+    HandlerMissingMethods {
+        effect_name: Name,
+        missing_methods: Vec<String>,
+        location: Location,
+    },
+    HandlerDuplicateMethod {
+        name: Name,
+        first_location: Location,
+        second_location: Location,
+    },
+    HandlerCrossEffect {
+        first_effect: Name,
+        second_effect: Name,
+        location: Location,
+    },
 }
 
 /// A suggestion to import an out-of-scope item, attached to a diagnostic.
@@ -529,6 +544,18 @@ impl Diagnostic {
             Diagnostic::FreeVarsInTypeConstructor { location: _ } => {
                 format!("Internal compiler error: there are free variables in this type constructor")
             },
+            Diagnostic::HandlerMissingMethods { effect_name, missing_methods, location: _ } => {
+                let s = if missing_methods.len() == 1 { "" } else { "s" };
+                let methods = missing_methods.join(", ");
+                format!("Handler for effect {} is missing method{s}: {methods}", effect_name.blue())
+            },
+            Diagnostic::HandlerDuplicateMethod { name, first_location: _, second_location: _ } => {
+                // TODO: Show both locations in same error
+                format!("Effect method {} is handled more than once", name.blue())
+            },
+            Diagnostic::HandlerCrossEffect { first_effect, second_effect, location: _ } => {
+                format!("Handler mixes methods from effects {} and {}", first_effect.blue(), second_effect.blue())
+            },
         }
     }
 
@@ -583,6 +610,9 @@ impl Diagnostic {
             | Diagnostic::TraitTypeCantBeUsed { location, .. }
             | Diagnostic::HoleCantBeUsed { location, .. }
             | Diagnostic::FreeVarsInTypeConstructor { location, .. }
+            | Diagnostic::HandlerMissingMethods { location, .. }
+            | Diagnostic::HandlerDuplicateMethod { second_location: location, .. }
+            | Diagnostic::HandlerCrossEffect { location, .. }
             | Diagnostic::NoMainFunction { location } => location,
         }
     }
@@ -608,6 +638,10 @@ impl Diagnostic {
                     },
                 };
                 Some((&suggestions[0].location, message))
+            },
+            Diagnostic::HandlerDuplicateMethod { name, first_location, .. } => {
+                let message = format!("{} was previously handled here", name.purple());
+                Some((first_location, message))
             },
             _ => None,
         }

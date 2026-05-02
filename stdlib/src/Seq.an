@@ -50,6 +50,10 @@ type Seq t =
     len: U32
     data: Ptr (Data t)
 
+// NOTE: These extra fields before the array unfortunately prevent us from cheaply moving
+// pointers to create Seqs from a Vec or vice-versa. When going from Seq to Vec its not
+// enough to give it an offset pointer since when the Vec later tries to reallocate or free
+// that pointer, it won't point to the start of this allocation.
 type Data t =
     len: U32
     cap: U32
