@@ -234,7 +234,7 @@ find (s: s) {Stream s a} (predicate: fn (ref a) => Bool) {Fail}: a =
     fail ()
 
 /// Re-emit only the first `n` items from the stream
-take (s: s) {Stream s a} (n: U32) = fn {Emit a} ->
+take (s: s) {Stream s a} (var n: U32) = fn {Emit a} ->
     handler h for emit a ->
         if n != 0 then
             emit a
@@ -244,7 +244,7 @@ take (s: s) {Stream s a} (n: U32) = fn {Emit a} ->
     Stream.stream s h
 
 /// Skips the first `n` items from the stream, emitting the rest as normal.
-skip (s: s) {Stream s a} (n: U32) = fn {Emit a} ->
+skip (s: s) {Stream s a} (var n: U32) = fn {Emit a} ->
     handler h for emit a ->
         if n == 0 then
             emit a

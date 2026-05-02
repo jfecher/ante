@@ -248,6 +248,10 @@ pub enum Diagnostic {
         second_effect: Name,
         location: Location,
     },
+    AssignToImmutable {
+        name: Option<Name>,
+        location: Location,
+    },
 }
 
 /// A suggestion to import an out-of-scope item, attached to a diagnostic.
@@ -371,7 +375,7 @@ impl Diagnostic {
                 format!("Expected {expected} argument{s} but found {actual}")
             },
             Diagnostic::NoSuchFieldForType { name, typ, location: _ } => {
-                format!("{} has no field named `{name}`", typ.blue())
+                format!("{} has no field named `{name}`", color_type(typ))
             },
             Diagnostic::ConstructorFieldDuplicate { name, first_location: _, second_location: _ } => {
                 // TODO: Show both locations in same error
@@ -383,19 +387,19 @@ impl Diagnostic {
                 format!("Missing field{s}: {fields}")
             },
             Diagnostic::ConstructorNotAStruct { typ, location: _ } => {
-                format!("{} is not a struct", typ.blue())
+                format!("{} is not a struct", color_type(typ))
             },
             Diagnostic::TypeMustBeKnownMemberAccess { location: _ } => {
                 format!("Object type must be known by this point to access its field")
             },
             Diagnostic::CannotMatchOnType { typ, location: _ } => {
-                format!("Cannot match on an object of type {}", typ.blue())
+                format!("Cannot match on an object of type {}", color_type(typ))
             },
             Diagnostic::UnreachableCase { location: _ } => {
                 format!("This case is already matched by prior patterns")
             },
             Diagnostic::MissingCases { cases, location: _ } => {
-                let cases_string = mapvec(cases.iter().take(5), |case| case.blue().to_string()).join(", ");
+                let cases_string = mapvec(cases.iter().take(5), |case| color_type(case).to_string()).join(", ");
 
                 if cases.len() == 1 {
                     format!("Missing case: {cases_string}")
@@ -408,22 +412,22 @@ impl Diagnostic {
             Diagnostic::MissingManyCases { typ, location: _ } => {
                 format!(
                     "Missing cases for type {}, values of this type require a catch-all pattern like `_`",
-                    typ.blue()
+                    color_type(typ)
                 )
             },
             Diagnostic::InvalidRangeInPattern { start, end, location: _ } => {
                 if start == end {
                     format!(
                         "Ranges in Ante are end-exclusive so a range from {} to {} will not match anything",
-                        start.to_string().purple(),
-                        end.to_string().purple()
+                        color_constant(&start.to_string()),
+                        color_constant(&end.to_string())
                     )
                 } else {
                     assert!(start > end);
                     format!(
                         "Range from {} to {} is backwards and will not match anything",
-                        start.to_string().purple(),
-                        end.to_string().purple()
+                        color_constant(&start.to_string()),
+                        color_constant(&end.to_string())
                     )
                 }
             },
@@ -435,25 +439,25 @@ impl Diagnostic {
             },
             Diagnostic::ConstructorExpectedFoundType { type_name, constructor_names, location: _ } => {
                 if constructor_names.is_empty() {
-                    format!("The type {} has no variants and thus cannot be matched on", type_name.blue())
+                    format!("The type {} has no variants and thus cannot be matched on", color_type(type_name))
                 } else if constructor_names.len() == 1 {
                     let constructor = &constructor_names[0];
                     format!(
                         "{} is a type name, not a constructor. Try {}.{} instead",
-                        type_name.blue(),
-                        type_name.blue(),
-                        constructor.blue()
+                        color_type(type_name),
+                        color_type(type_name),
+                        color_type(constructor)
                     )
                 } else {
                     let first = &constructor_names[0];
                     let second = &constructor_names[1];
                     format!(
                         "{} is a type name, not a constructor. Try a constructor such as {}.{} or {}.{} instead",
-                        type_name.blue(),
-                        type_name.blue(),
-                        first.blue(),
-                        type_name.blue(),
-                        second.blue()
+                        color_type(type_name),
+                        color_type(type_name),
+                        color_type(first),
+                        color_type(type_name),
+                        color_type(second)
                     )
                 }
             },
@@ -464,12 +468,12 @@ impl Diagnostic {
                 location: _,
                 suggestions: _,
             } => {
-                let function = function_name.as_ref().map(|s| format!(" of {}", s.purple()));
+                let function = function_name.as_ref().map(|s| format!(" of {}", color_name(s)));
                 let of_function = function.as_ref().map(String::as_str).unwrap_or("");
                 let parameter = parameter_index + 1;
                 format!(
                     "No implicit found for type {} required by parameter {parameter}{of_function}",
-                    type_string.blue(),
+                    color_type(type_string),
                 )
             },
             Diagnostic::ImplicitNotAVariable { location: _ } => {
@@ -482,22 +486,22 @@ impl Diagnostic {
                 parameter_index,
                 location: _,
             } => {
-                let function = function_name.as_ref().map(|s| format!(" of {}", s.purple()));
+                let function = function_name.as_ref().map(|s| format!(" of {}", color_name(s)));
                 let of_function = function.as_ref().map(String::as_str).unwrap_or("");
                 let parameter = parameter_index + 1;
                 let matches = crate::iterator_extensions::join_arc_str(matches, ", ");
                 format!(
                     "Multiple matching implicits found for type {} required by parameter {parameter}{of_function}: {matches}",
-                    type_string.blue(),
+                    color_type(type_string),
                 )
             },
             Diagnostic::AmbiguousImplicit { type_string, function_name, parameter_index, location: _ } => {
-                let function = function_name.as_ref().map(|s| format!(" of {}", s.purple()));
+                let function = function_name.as_ref().map(|s| format!(" of {}", color_name(s)));
                 let of_function = function.as_ref().map(String::as_str).unwrap_or("");
                 let parameter = parameter_index + 1;
                 format!(
                     "Ambiguous implicit of type {} required by parameter {parameter}{of_function}, type annotation required",
-                    type_string.blue(),
+                    color_type(type_string),
                 )
             },
             Diagnostic::ExpectedTypeKind { actual, location: _ } => {
@@ -509,8 +513,8 @@ impl Diagnostic {
                 if *expected == Kind::Type {
                     Diagnostic::ExpectedTypeKind { actual: actual.clone(), location: location.clone() }.message()
                 } else {
-                    let expected = expected.to_string().blue();
-                    let actual = actual.to_string().blue();
+                    let expected = color_type(&expected.to_string());
+                    let actual = color_type(&actual.to_string());
                     format!("Expected a type constructor of kind {expected}, but found one of kind {actual}")
                 }
             },
@@ -518,20 +522,20 @@ impl Diagnostic {
             Diagnostic::BreakNotInLoop { location: _ } => "`break` can only be used inside a loop".to_string(),
             Diagnostic::ContinueNotInLoop { location: _ } => "`continue` can only be used inside a loop".to_string(),
             Diagnostic::IntegerTooLarge { value, kind, location: _ } => {
-                format!("{} is too large for type {}", value.to_string().purple(), kind.to_string().blue())
+                format!("{} is too large for type {}", color_name(&value.to_string()), color_type(&kind.to_string()))
             },
             Diagnostic::NoMainFunction { location: _ } => "This program has no `main` function".to_string(),
             Diagnostic::TypeAnnotationNeeded { location: _ } => "Type annotation needed".to_string(),
             Diagnostic::NotAType { name, location: _ } => {
-                format!("{} is not a type", name.purple())
+                format!("{} is not a type", color_name(name))
             },
             Diagnostic::UseOfMovedValue { name, location: _, moved_in: _ } => {
-                format!("Use of moved value {}", name.purple())
+                format!("Use of moved value {}", color_name(name))
             },
             Diagnostic::MoveInRepeatedContext { name, context, location: _ } => {
                 format!(
                     "Cannot move {} in {} because it may be executed multiple times",
-                    name.purple(),
+                    color_name(name),
                     context.description()
                 )
             },
@@ -547,14 +551,24 @@ impl Diagnostic {
             Diagnostic::HandlerMissingMethods { effect_name, missing_methods, location: _ } => {
                 let s = if missing_methods.len() == 1 { "" } else { "s" };
                 let methods = missing_methods.join(", ");
-                format!("Handler for effect {} is missing method{s}: {methods}", effect_name.blue())
+                format!("Handler for effect {} is missing method{s}: {methods}", color_type(effect_name))
             },
             Diagnostic::HandlerDuplicateMethod { name, first_location: _, second_location: _ } => {
-                // TODO: Show both locations in same error
-                format!("Effect method {} is handled more than once", name.blue())
+                format!("Effect method {} is handled more than once", color_type(name))
             },
             Diagnostic::HandlerCrossEffect { first_effect, second_effect, location: _ } => {
-                format!("Handler mixes methods from effects {} and {}", first_effect.blue(), second_effect.blue())
+                let first = color_type(first_effect);
+                let second = color_type(second_effect);
+                format!("Handler mixes methods from effects {first} and {second}",)
+            },
+            Diagnostic::AssignToImmutable { name, location: _ } => {
+                let var = color_keyword("var");
+                if let Some(name) = name {
+                    let name = color_name(name);
+                    format!("Cannot assign to {name}, declare it with {var} to make it mutable")
+                } else {
+                    format!("Cannot assign to lvalue, declare it as a mutable variable first with {var}")
+                }
             },
         }
     }
@@ -613,6 +627,7 @@ impl Diagnostic {
             | Diagnostic::HandlerMissingMethods { location, .. }
             | Diagnostic::HandlerDuplicateMethod { second_location: location, .. }
             | Diagnostic::HandlerCrossEffect { location, .. }
+            | Diagnostic::AssignToImmutable { location, .. }
             | Diagnostic::NoMainFunction { location } => location,
         }
     }
@@ -621,26 +636,26 @@ impl Diagnostic {
     fn note(&self) -> Option<(&Location, String)> {
         match self {
             Diagnostic::UseOfMovedValue { name, location: _, moved_in } => {
-                let message = format!("{} was previously moved here", name.purple());
+                let message = format!("{} was previously moved here", color_name(name));
                 Some((moved_in, message))
             },
             Diagnostic::NoImplicitFound { suggestions, .. } if !suggestions.is_empty() => {
-                let first = suggestions[0].qualified_path.purple();
+                let first = color_name(&suggestions[0].qualified_path);
                 let message = match suggestions.len() {
                     1 => format!("did you mean to import {first}?"),
                     2 => {
-                        let second = suggestions[1].qualified_path.purple();
+                        let second = color_name(&suggestions[1].qualified_path);
                         format!("did you mean to import {first} or {second}?")
                     },
                     n => {
-                        let second = suggestions[1].qualified_path.purple();
+                        let second = color_name(&suggestions[1].qualified_path);
                         format!("did you mean to import {first} or {second}? (or {} more)", n - 2)
                     },
                 };
                 Some((&suggestions[0].location, message))
             },
             Diagnostic::HandlerDuplicateMethod { name, first_location, .. } => {
-                let message = format!("{} was previously handled here", name.purple());
+                let message = format!("{} was previously handled here", color_name(name));
                 Some((first_location, message))
             },
             _ => None,
@@ -693,6 +708,22 @@ impl Diagnostic {
     }
 }
 
+fn color_type(s: &str) -> ColoredString {
+    s.color(TYPE_COLOR)
+}
+
+fn color_name(s: &str) -> ColoredString {
+    s.color(NAME_COLOR)
+}
+
+fn color_constant(s: &str) -> ColoredString {
+    s.color(CONSTANT_COLOR)
+}
+
+fn color_keyword(s: &str) -> ColoredString {
+    s.color(KEYWORD_COLOR)
+}
+
 /// Emit a `= note: <msg>` line for a note whose location is in a different file
 /// than the primary diagnostic.
 fn write_trailing_note(f: &mut Formatter, digit_len: usize, msg: &str, show_color: bool) -> std::fmt::Result {
@@ -735,19 +766,24 @@ fn span_to_columns(span: Span, line_len: usize) -> (usize, usize) {
     (start, start + len)
 }
 
+const KEYWORD_COLOR: Color = Color::Cyan;
+const TYPE_COLOR: Color = Color::Blue;
+const CONSTANT_COLOR: Color = Color::BrightMagenta;
+const NAME_COLOR: Color = Color::Magenta;
+
 /// Map a lexer token to a syntax highlight color.
 fn syntax_color(token: &Token, snippet: &str) -> Option<Color> {
     match token {
-        Token::TypeName(_) | Token::IntegerType(_) | Token::FloatType(_) => Some(Color::Blue),
+        Token::TypeName(_) | Token::IntegerType(_) | Token::FloatType(_) => Some(TYPE_COLOR),
 
         Token::StringLiteral(_)
         | Token::CharLiteral(_)
         | Token::IntegerLiteral(..)
         | Token::FloatLiteral(..)
         | Token::BooleanLiteral(_)
-        | Token::UnitLiteral => Some(Color::BrightMagenta),
+        | Token::UnitLiteral => Some(CONSTANT_COLOR),
 
-        _ if lookup_keyword(snippet).is_some() => Some(Color::Cyan),
+        _ if lookup_keyword(snippet).is_some() => Some(KEYWORD_COLOR),
         _ => None,
     }
 }

@@ -1,4 +1,4 @@
-import Std.Stream.iota, enumerate, map, filter, for_, stream_fn, all, foldl, foldr
+import Std.Stream.iota, enumerate, map, filter, iter, stream_fn, all, foldl, foldr
 
 main () =
     iota 10
@@ -6,7 +6,7 @@ main () =
         |> filter {stream_fn} (fn x -> x.* %% 2usz)
         |> map (_ * 2)
         |> enumerate
-        |> for_ println
+        |> iter println
 
     evens = iota 10 |> map (_ * 2)
     println <| all evens (_ %% 2)

@@ -1,0 +1,40 @@
+invalid (x: I32) =
+    x := 5
+    x -= 1
+
+// Top-level binding is not assignable
+top_level = 0
+mutate_top () =
+    top_level := 1
+
+main () =
+    y = 32
+    y += 1
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/assign_to_immutable.an:2:5
+// 1 | invalid (x: I32) =
+// 2 |     x := 5	// error: Cannot assign to x, declare it with var to make it mutable
+//   |     ^
+// 3 |     x -= 1
+// 
+// examples/typechecking/assign_to_immutable.an:3:5
+// 2 |     x := 5
+// 3 |     x -= 1	// error: Cannot assign to x, declare it with var to make it mutable
+//   |     ^
+// 
+// examples/typechecking/assign_to_immutable.an:8:5
+//  7 | mutate_top () =
+//    |     // error: Cannot assign to top_level, declare it with var to make it mutable
+//  8 |     top_level := 1
+//    |     ^^^^^^^^^
+// 
+// examples/typechecking/assign_to_immutable.an:12:5
+// 11 |     y = 32
+// 12 |     y += 1	// error: Cannot assign to y, declare it with var to make it mutable
+//    |     ^
+// 
+// Found 4 errors and 0 warnings
+

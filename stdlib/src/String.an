@@ -10,7 +10,7 @@ impl eq_string: Eq String with
         l.length == r.length and
             memcmp l.data r.data (Usz l.length) == 0
 
-reverse (s: String): String =
+reverse (var s: String): String =
     if deref_ptr s.refcount == 1 then
         // in-place reverse
         len = s.length

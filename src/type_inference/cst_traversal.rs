@@ -8,7 +8,7 @@ use crate::{
     iterator_extensions::mapvec,
     name_resolution::{Origin, builtin::Builtin, namespace::SourceFileId},
     parser::{
-        cst::{self, Definition, Expr, Literal, Pattern},
+        cst::{self, Definition, Expr, Literal, Name, Pattern, ReferenceKind},
         ids::{ExprId, NameId, PathId, PatternId, TopLevelId, TopLevelName},
     },
     type_inference::{
@@ -42,9 +42,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         // Track mutable definitions so closure capture analysis can wrap them in reference types
         if definition.mutable {
-            if let Pattern::Variable(name) = &self.current_extended_context()[definition.pattern] {
-                self.mutable_definitions.insert(*name);
-            }
+            self.record_mutable_pattern(definition.pattern);
         }
 
         // If the RHS is a lambda, call check_lambda directly so we can pass the definition's
@@ -519,9 +517,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             self.check_pattern(parameter.pattern, expected_type);
 
             if parameter.is_mutable {
-                if let Pattern::Variable(name) = &self.current_extended_context()[parameter.pattern] {
-                    self.mutable_definitions.insert(*name);
-                }
+                self.record_mutable_pattern(parameter.pattern);
             }
 
             if parameter.is_implicit {
@@ -1021,6 +1017,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             self.check_expr(assignment.lhs, &lhs_type);
         }
 
+        if let Err((name, location)) = self.check_lhs_mutable(assignment.lhs) {
+            self.compiler.accumulate(Diagnostic::AssignToImmutable { name, location });
+        }
+
         // If the LHS is a reference type (e.g. `p.x` where `p: mut Point` yields `mut I32`),
         // the RHS should match the inner (pointee) type rather than the reference wrapper.
         let lhs_followed = self.follow_type(&lhs_type);
@@ -1058,6 +1058,94 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
 
         self.unify(&Type::UNIT, expected, TypeErrorKind::General, id);
+    }
+
+    /// Walk a pattern declared with `var` and add every variable name it
+    /// introduces to `mutable_definitions`.
+    fn record_mutable_pattern(&mut self, pattern: PatternId) {
+        match &self.current_context()[pattern] {
+            Pattern::Variable(name) => {
+                self.mutable_definitions.insert(*name);
+            },
+            Pattern::TypeAnnotation(inner, _) => {
+                let inner = *inner;
+                self.record_mutable_pattern(inner);
+            },
+            Pattern::Error => (),
+            Pattern::Literal(_) => (),
+            Pattern::Constructor(_, patterns) => {
+                patterns.iter().for_each(|pattern| self.record_mutable_pattern(*pattern))
+            },
+            // This may be reachable on a parse error but these should only be for
+            // top-level methods which should never be mutable
+            Pattern::MethodName { .. } => (),
+        }
+    }
+
+    /// A place is mutable if any of these hold:
+    /// - it is declared with `var`
+    /// - the local's type is a `mut`/`uniq` reference
+    /// - it is a deref of a mutable place
+    /// - it is a field access `l.r` where `l` is a mutable place
+    ///
+    /// On error, returns the first offending name not matching the above rules if found
+    fn check_lhs_mutable(&self, lhs: ExprId) -> Result<(), (Option<Name>, Location)> {
+        match &self.current_extended_context()[lhs] {
+            Expr::Variable(path) => {
+                let path_id = *path;
+                match self.path_origin(path_id) {
+                    Some(Origin::Local(name)) => {
+                        if self.mutable_definitions.contains(&name) {
+                            return Ok(());
+                        }
+                        if let Some(typ) = self.name_types.get(&name) {
+                            if self.is_mut_or_uniq_reference(typ) {
+                                return Ok(());
+                            }
+                        }
+                        let name = self.current_extended_context()[name].clone();
+                        Err((Some(name), path_id.locate(self)))
+                    },
+                    // Top-level definitions, builtins, and type-resolution paths are not assignable.
+                    Some(_) => {
+                        let path = self.current_extended_context()[path_id].to_string();
+                        Err((Some(Arc::new(path)), path_id.locate(self)))
+                    },
+                    // Unresolved name, ignore further errors
+                    None => Ok(()),
+                }
+            },
+            Expr::TypeAnnotation(ta) => self.check_lhs_mutable(ta.lhs),
+            Expr::MemberAccess(access) => {
+                let object = access.object;
+                // TODO: This allows `x: ref (mut a, b)` to assign to the inner `mut a`
+                if let Some(typ) = self.expr_types.get(&object) {
+                    if self.is_mut_or_uniq_reference(typ) {
+                        return Ok(());
+                    }
+                }
+                self.check_lhs_mutable(object)
+            },
+            Expr::Call(call) => {
+                // If this is a call, just assume it is something like `a.* :=` or `a.[0] :=` and check the obj type.
+                // TODO: Make this check more rigorous
+                if let Some(obj) = call.arguments.first() {
+                    self.check_lhs_mutable(obj.expr)
+                } else {
+                    let location = self.current_extended_context().expr_location(lhs);
+                    Err((None, location))
+                }
+            },
+            // TODO: We could have a different variant for lvalues instead of reusing ExprIds
+            _ => Ok(()),
+        }
+    }
+
+    fn is_mut_or_uniq_reference(&self, typ: &Type) -> bool {
+        match typ.reference_element(&self.bindings) {
+            Some((kind, _)) => matches!(kind, ReferenceKind::Mut | ReferenceKind::Uniq),
+            None => false,
+        }
     }
 
     /// Return can unify with any type locally so we don't need the expected type here
