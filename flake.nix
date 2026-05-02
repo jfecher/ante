@@ -56,6 +56,8 @@
                         ./Cargo.toml
                         ./Cargo.lock
                         ./build.rs
+                        ./tests
+                        ./goldentests.toml
                       ];
                     };
 
@@ -74,10 +76,10 @@
                         --zsh <($out/bin/ante --shell-completion zsh)
                     '';
 
-                    /*postPatch = ''
+                    postPatch = ''
                       substituteInPlace tests/goldentests.rs --replace \
                         'target/debug' "target/$(rustc -vV | sed -n 's|host: ||p')/release"
-                    '';*/
+                    '';
                   };
                   
                   ante-ls = craneLib.buildPackage {
@@ -111,6 +113,7 @@
                 buildInputs = anteDeps;
 
                 LLVM_SYS_211_PREFIX = "${pkgs.llvmPackages_21.llvm.dev}";
+                NIX_CFLAGS_COMPILE = "-U_FORTIFY_SOURCE";
               };
             })
         ));
