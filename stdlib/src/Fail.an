@@ -35,6 +35,6 @@ ignore_fail (f: fn Fail => a): Unit =
 ///     input = get_input ()
 ///     parse input
 /// ```
-retry_until_success (f: fn Fail [env] -> a) {Copy env}: a =
+retry_until_success (f: fn Fail [env] -> a): a =
     handler h for fail () -> retry_until_success f
     f h

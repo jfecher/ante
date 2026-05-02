@@ -29,10 +29,10 @@ HashMap.of (s: s) {Stream s (k, v)} {Hash k} {Copy k} {Copy v}: HashMap k v =
 HashMap.clear (map: mut HashMap k v) : Unit =
     if map.capacity != 0 then
         repeat map.capacity fn i ->
-            // TODO: Test `clear` more - this looks like it is only writing to a copy of the entry
-            var entry = deref_ptr <| offset map.entries i
+            entry = ptr_to_mut (offset map.entries i)
             entry.occupied := false
             entry.tombstone := false
+        map.len := 0usz
 
 HashMap.resize (map: mut HashMap k v) (new_capacity: Usz) {Hash k} {Copy k} {Copy v} : Unit =
     if new_capacity > map.capacity then

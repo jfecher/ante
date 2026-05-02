@@ -2,9 +2,9 @@ import Std.C.realloc
 import Std.Stream.Stream, iter
 import Std.Fail.Fail, fail
 
-export Vec, empty, is_empty, len, capacity, reserve, push, pop, get, get_unchecked,
+export Vec, empty, of, is_empty, len, capacity, reserve, push, pop, get, get_unchecked,
     remove_index, remove_first, remove_indices, remove_all, swap_last,
-    print_vec, print_helper, extract_vec, (.[)
+    print_vec, print_helper, extract_vec, stream_vec, eq_vec, (.[)
 
 type Vec t =
     data: Ptr t

@@ -40,7 +40,7 @@ iter (s: s) {Stream s a} (f: fn a => b): Unit =
 /// Consumes the given stream, applying `f` to each element, with
 /// an additional Loop handler installed to allow breaking/continuing
 /// within the overall loop.
-/// 
+///
 /// E.g. The following will print 012
 /// ```
 /// for_ (iota 5) fn i {l} ->
@@ -49,11 +49,16 @@ iter (s: s) {Stream s a} (f: fn a => b): Unit =
 /// ```
 for_ (s: s) {Stream s a} (f: fn a Loop => b): Unit =
     handler h for emit a ->
+        // Scope the Loop handler to `f a l` only, so `continue_` skips just
+        // the current iteration rather than the rest of the emit handler.
+        // `break_` returns from the entire emit handler, so `resume ()` is
+        // skipped and the stream halts.
         handler l for
         | break_ () -> return ()
         | continue_ () -> ()
-
-        f a l
+        in
+            f a l
+            ()
         resume ()
     Stream.stream s h
 
@@ -122,32 +127,41 @@ foldr (s: s) {Stream s a} (initial: b) (f: fn a b => b): b =
     Stream.stream s h
     initial
 
+/// Similar to `foldl` but uses the first element as the initial value.
+///
+/// Given `a1, a2, a3, .., aN`, return `f (.. (f (f a1 a2) a3) ..) aN`
+///
+/// This function is tail-resumptive. Fails if the stream is empty.
+reduce (s: s) {Stream s a} (f: fn a a => a) {Fail}: a =
+    var result = Maybe.None
+
+    // TODO: Can this be simplified? This would be easier with shallow handlers
+    handler h for emit value ->
+        // FIXME: This fails to parse when each branch is on one line
+        match result
+        | Some acc ->
+            result := Some (f acc value)
+        | None ->
+            result := Some value
+        resume ()
+    in Stream.stream s h
+
+    match result
+    | Some value -> value
+    | None -> fail ()
+
 /// Given `a1, a2, .., aN` and `b1, b2, .., bN`, emit `f a1 b1, f a2 b2, .., f aN bN`.
 /// If the two input streams are not the same length, the length of the resulting stream
 /// will be the shorter of the two.
-map2 (s1: s1) (s2: s2) {Stream s1 a} {Stream s2 b} (f: fn a b => c) = fn (e: Emit c) ->
-    var left = Maybe.None
-    var right = Maybe.None
-
-    try_emit () =
-        match left, right
-        | Some (a, resume_a), Some (b, resume_b) ->
-            left := None
-            right := None
-            e.emit (f a b)
-            resume_a ()
-            resume_b ()
-        | _ -> ()
-
-    handler h1 for emit a ->
-        left := Some (a, resume)
-        try_emit ()
-    in Stream.stream s1 h1
-
-    handler h2 for emit b ->
-        right := Some (b, resume)
-        try_emit ()
-    in Stream.stream s2 h2
+map2 (s1: s1) (s2: s2) {Stream s1 a} {Stream s2 b} {Copy a} {Copy b} (f: fn a b => c) = fn (e: Emit c) ->
+    // TODO: Old impl was broken, rewrite again to remove collecting to Vec
+    v1 = Vec.of s1
+    v2 = Vec.of s2
+    n = if v1.len < v2.len then v1.len else v2.len
+    for i in 0 .. n do
+        a = (v1.get_unchecked i).*
+        b = (v2.get_unchecked i).*
+        e.emit (f a b)
 
 /// Emit numbers from 0 to `n`, end-exclusive
 iota n = fn (e: Emit Usz) ->
@@ -157,7 +171,7 @@ iota n = fn (e: Emit Usz) ->
 /// `x` returned by the first stream and each `y` returned by the second.
 /// The length of the resulting stream will be the length of the shorter
 /// of the two streams given.
-zip a b {sa: Stream sa a} {sb: Stream sb b} =
+zip a b {sa: Stream sa a} {sb: Stream sb b} {Copy a} {Copy b} =
     map2 a b {sa} {sb} (,)
 
 /// Apply the function `f` to all elements of the given stream,
@@ -233,8 +247,21 @@ find (s: s) {Stream s a} (predicate: fn (ref a) => Bool) {Fail}: a =
     Stream.stream s h
     fail ()
 
+/// Find an element in the stream for which `predicate` returns `Some b`, and return that `b`.
+/// Fails if there is no such element
+find_map (s: s) {Stream s a} (predicate: fn a => Maybe b) {Fail}: b =
+    // TODO: Should `predicate` be `fn a {Fail} => b` instead?
+    handler h for emit a ->
+        match predicate a
+        | Some b -> b
+        | None -> resume ()
+
+    Stream.stream s h
+    fail ()
+
 /// Re-emit only the first `n` items from the stream
-take (s: s) {Stream s a} (var n: U32) = fn {Emit a} ->
+take (s: s) {Stream s a} (initial_n: U32) = fn {Emit a} ->
+    var n = initial_n
     handler h for emit a ->
         if n != 0 then
             emit a
@@ -243,8 +270,19 @@ take (s: s) {Stream s a} (var n: U32) = fn {Emit a} ->
 
     Stream.stream s h
 
+/// Re-emit items from the stream only while `predicate` keeps returning true.
+/// When the predicate first returns false, the stream will stop.
+take_while (s: s) {Stream s a} (predicate: fn (ref a) => Bool) = fn {Emit a} ->
+    handler h for emit a ->
+        if predicate (ref a) then
+            emit a
+            resume ()
+
+    Stream.stream s h
+
 /// Skips the first `n` items from the stream, emitting the rest as normal.
-skip (s: s) {Stream s a} (var n: U32) = fn {Emit a} ->
+skip (s: s) {Stream s a} (initial_n: U32) = fn {Emit a} ->
+    var n = initial_n
     handler h for emit a ->
         if n == 0 then
             emit a
@@ -253,3 +291,36 @@ skip (s: s) {Stream s a} (var n: U32) = fn {Emit a} ->
         resume ()
 
     Stream.stream s h
+
+/// Skips elements while `predicate elem` is true. After the first `false`,
+/// no more elements will be skipped (including the element itself).
+skip_while (s: s) {Stream s a} (predicate: fn (ref a) => Bool) = fn {Emit a} ->
+    var found_false = false
+    handler h for emit a ->
+        if found_false then
+            emit a
+        else if not predicate (ref a) then
+            found_false := true
+            emit a
+
+        resume ()
+
+    Stream.stream s h
+
+/// Return the sum of all elements in the stream from the given initial value.
+sum (s: s) {Stream s a} (initial: a) {Add a}: a =
+    var sum = initial
+    handler h for emit a ->
+        sum += a
+        resume ()
+    in Stream.stream s h
+    sum
+
+/// Return the product of all elements in the stream from the given initial value.
+product (s: s) {Stream s a} (initial: a) {Mul a}: a =
+    var product = initial
+    handler h for emit a ->
+        product *= a
+        resume ()
+    in Stream.stream s h
+    product

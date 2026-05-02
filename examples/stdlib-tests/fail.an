@@ -1,13 +1,60 @@
-import Std.Fail.Fail, fail
+import Std.Fail.Fail, fail, try, try_or, try_or_else, assert, ignore_fail, retry_until_success
+import Std.C.malloc, free
 
-effect Read a with
-    read: fn Unit -> a
+fail_int {Fail}: I32 = fail ()
 
-read_or_none (f: fn {Read Unit} {Fail} -> a): Maybe a =
-    handler hf for fail () -> None
-    handler hr for read () -> resume ()
-    Some (f {hr} {hf})
+ok_int {Fail}: I32 = 7
 
-main () = ()
+main () =
+    // try:
+    println (try ok_int : Maybe I32)   // Some 7
+    println (try fail_int : Maybe I32) // None
+
+    // try_or:
+    println (try_or ok_int 99)   // 7
+    println (try_or fail_int 99) // 99
+
+    // try_or_else:
+    println (try_or_else fail_int (fn () -> 42))  // 42
+
+    // assert:
+    // TODO: type error when declaring `{f}` instead of `f`
+    ignore_fail fn f ->
+        assert true {f}
+        println "asserted true"
+        assert false {f}
+        println "never shown"
+
+    // ignore_fail:
+    ignore_fail fail_int
+    println "ignored fail"
+    ignore_fail ok_int
+    println "ignored ok"
+
+    // retry_until_success: counter in heap-allocated U32. Fails twice, then
+    // succeeds on the third attempt.
+    counter: Ptr U32 = malloc 4
+    ptr_store counter 0u32
+    val = retry_until_success fn f ->
+        n = deref_ptr counter
+        ptr_store counter (n + 1)
+        if n < 2 then fail () {f}
+        n
+
+    println val  // 2
+    free counter
+    println "done"
 
 // args: --delete-binary --no-color
+// expected stdout:
+// Some 7
+// None
+// 7
+// 99
+// 42
+// asserted true
+// ignored fail
+// ignored ok
+// 2
+// done
+

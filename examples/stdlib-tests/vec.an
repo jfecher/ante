@@ -1,23 +1,124 @@
-import Std.Vec.Vec, push, print_vec, remove_index
+import Std.Vec.Vec, empty, of, is_empty, len, capacity, reserve, push, pop, get, get_unchecked,
+    remove_index, remove_first, remove_indices, remove_all, swap_last,
+    print_vec, extract_vec, stream_vec, eq_vec
 import Std.Fail.try_or
+import Std.Stream.iter
 
 main () =
     var v = Vec.empty ()
+    println (is_empty (ref v))                       // true
+
     push (mut v) 3i32
     v.push 4
     v.push 5
     v.remove_index 1
-    println (ref v)
+    println (ref v)                                  // [3, 5]
 
     v.pop ()
-    println (ref v)
+    println (ref v)                                  // [3]
 
-    // println (v.get 0 ~> try_or 0)
-    println (try_or (fn fail -> (v.get 0 {fail}).*) 0)
+    println (try_or (fn fail -> (v.get 0 {fail}).*) 0)        // 3
+    println (is_empty (ref v))                       // false
+    println (len (ref v))                            // 1
+    println (capacity (ref v) >= len (ref v))        // true
+
+    v.reserve 32usz
+    println (capacity (ref v) >= 32usz)              // true
+
+    println (get_unchecked (imm v) 0usz).*           // 3
+
+    // remove_first: hit + miss
+    var v2 = Vec.empty ()
+    v2.push 3i32
+    v2.push 5
+    v2.push 5
+    println (remove_first (mut v2) 5i32)             // Some 1
+    println (ref v2)                                 // [3, 5]
+    println (remove_first (mut v2) 99i32)            // None
+
+    // remove_indices: build [10, 20, 30, 40, 50], remove indices 1 and 3
+    var v3 = Vec.empty ()
+    v3.push 10i32
+    v3.push 20
+    v3.push 30
+    v3.push 40
+    v3.push 50
+    var idxs = Vec.empty ()
+    idxs.push 1usz
+    idxs.push 3usz
+    remove_indices (mut v3) idxs
+    println (ref v3)                                 // [10, 30, 50]
+
+    // remove_all: build [1, 2, 1, 1, 3], remove all 1s
+    var v4 = Vec.empty ()
+    v4.push 1i32
+    v4.push 2
+    v4.push 1
+    v4.push 1
+    v4.push 3
+    println (remove_all (mut v4) 1i32)               // 3
+    println (ref v4)                                 // [2, 3]
+
+    // swap_last: index 1 of [10, 20, 30, 40] returns true, vec becomes [10, 40, 30]
+    var v5 = Vec.empty ()
+    v5.push 10i32
+    v5.push 20
+    v5.push 30
+    v5.push 40
+    println (swap_last (mut v5) 1usz)                // true
+    println (ref v5)                                 // [10, 40, 30]
+    println (swap_last (mut v5) 2usz)                // false (idx is last)
+
+    // Indexing operator (.[) via extract_vec
+    elt: I32 = v5.[0usz]
+    println elt                                      // 10
+
+    // stream_vec: iterate via the Stream impl on a freshly-built Vec
+    var v6 = Vec.empty ()
+    v6.push 7i32
+    v6.push 8
+    v6.push 9
+    iter (imm v6) (fn x -> println (x.* : I32))       // 7, 8, 9
+
+    // eq_vec — build two equal vecs and compare; build a third inequal one
+    var ea = Vec.empty ()
+    ea.push 1i32
+    ea.push 2
+    var eb = Vec.empty ()
+    eb.push 1i32
+    eb.push 2
+    println (ea == eb)                               // true
+    var ec = Vec.empty ()
+    ec.push 1i32
+    ec.push 2
+    var ed = Vec.empty ()
+    ed.push 1i32
+    ed.push 3
+    println (ec == ed)                               // false
 
 // args: --delete-binary --no-color
 // expected stdout:
+// true
 // [3, 5]
 // [3]
 // 3
-
+// false
+// 1
+// true
+// true
+// 3
+// Some 1
+// [3, 5]
+// None
+// [10, 30, 50]
+// 3
+// [2, 3]
+// true
+// [10, 40, 30]
+// false
+// 10
+// 7
+// 8
+// 9
+// true
+// false

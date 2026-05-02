@@ -1,0 +1,34 @@
+import Std.Rc.Rc, of, as_ref, as_mut, ref_count, inc_ref_count, dec_ref_count, clone_rc, drop_rc
+
+main () =
+    // Basic construction + as_ref + ref_count
+    rc = Rc.of 42
+    println (ref_count (ref rc))      // 1
+    println (as_ref (imm rc)).*        // 42
+
+    // Clone increments ref count, both clones share storage
+    rc2 = clone rc
+    println (ref_count (ref rc))      // 2
+
+    // Manual inc/dec ref count
+    inc_ref_count (mut rc)
+    println (ref_count (ref rc))      // 3
+    dec_ref_count (mut rc)
+    println (ref_count (ref rc))      // 2
+
+    // Mutate through as_mut on a uniquely-owned Rc
+    var rc3 = Rc.of 7
+    (as_mut (uniq rc3)).* := 99
+    println (as_ref (imm rc3)).*       // 99
+
+    println "done"
+
+// args: --delete-binary --no-color
+// expected stdout:
+// 1
+// 42
+// 2
+// 3
+// 2
+// 99
+// done

@@ -11,19 +11,24 @@ impl eq_string: Eq String with
             memcmp l.data r.data (Usz l.length) == 0
 
 reverse (var s: String): String =
-    if deref_ptr s.refcount == 1 then
+    // String literals have a null refcount and read-only data, so we must
+    // copy them. Only attempt the in-place reverse when the buffer is heap
+    // owned and uniquely referenced.
+    rc_addr: Usz = transmute s.refcount
+    if rc_addr != 0usz and deref_ptr s.refcount == 1 then
         // in-place reverse
-        len = s.length
-        for i in 0 .. Usz len / 2 do
-            opposite_i = Usz len - i - 1
+        len = Usz s.length
+        for i in 0 .. len / 2 do
+            opposite_i = len - i - 1
             c: Char = s.data.[i]
-            s.data.[i] := s.data.[opposite_i]
-            s.data.[opposite_i] := c
+            array_insert s.data i (s.data.[opposite_i])
+            array_insert s.data opposite_i c
         s
     else
         var buf = malloc (Usz s.length + 1)
-        for i in 0 .. Usz s.length do
-            buf.[i] := s.data.[Usz s.length - i - 1]
+        len = Usz s.length
+        for i in 0 .. len do
+            array_insert buf i (s.data.[len - i - 1])
         String.from_parts buf s.length
 
 /// Split a string at the given character. Emits substrings

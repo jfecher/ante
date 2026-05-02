@@ -1,0 +1,39 @@
+import Std.EarlyReturn.with_early_return, early_return
+import Std.Stream.iota, iter, stream_fn
+
+main () =
+    // Early return out of a stream consumer
+    first_above_3 = with_early_return fn r ->
+        iter (iota 10) fn x ->
+            if x > 3usz then early_return x {r}
+        0usz
+    println first_above_3
+
+    // Search for the first index where x == 7; return Some i, or None if not found
+    found = with_early_return fn r ->
+        iter (iota 10) fn x ->
+            if x == 7usz then early_return (Maybe.Some x) {r}
+        Maybe.None
+    println found
+
+    // Same search but item is missing -> falls through to None
+    missing = with_early_return fn r ->
+        iter (iota 5) fn x ->
+            if x == 99usz then early_return (Maybe.Some x) {r}
+        Maybe.None
+    println missing
+
+    // Nested with_early_return: inner returns early but outer should continue
+    outer = with_early_return fn ro ->
+        inner = with_early_return fn ri ->
+            early_return 5 {ri}
+            999  // unreachable
+        inner + 10  // inner did not abort outer
+    println outer
+
+// args: --delete-binary --no-color
+// expected stdout:
+// 4
+// Some 7
+// None
+// 15

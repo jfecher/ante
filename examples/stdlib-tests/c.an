@@ -1,0 +1,84 @@
+import Std.C
+import Std.C.puts, putchar, strlen, system, memcmp, memcpy, malloc, free,
+    fopen, fclose, fputs, fputc, fwrite, fseek, ftell, ferror, calloc, realloc,
+    copy_file
+
+main () =
+    // puts writes a line and appends a newline
+    _ = puts (C.String "hello\0".data)
+
+    // putchar
+    putchar c"A"
+    putchar c"\n"
+
+    // strlen
+    println (strlen (C.String "abcdef\0".data))    // 6
+
+    // system: invoke /bin/true; exit code is the process status
+    println (system (C.String "true\0".data))      // 0
+
+    // memcmp: equal vs unequal byte buffers
+    a = malloc 4 : Ptr U8
+    b = malloc 4 : Ptr U8
+    c = malloc 4 : Ptr U8
+    array_insert a 0usz 1u8
+    array_insert a 1usz 2u8
+    array_insert a 2usz 3u8
+    array_insert a 3usz 4u8
+    _ = memcpy b a 4usz
+    array_insert c 0usz 1u8
+    array_insert c 1usz 2u8
+    array_insert c 2usz 9u8
+    array_insert c 3usz 9u8
+    println (memcmp a b 4usz == 0)            // true (equal)
+    println (memcmp a c 4usz == 0)            // false (unequal)
+    free a
+    free b
+    free c
+
+    // calloc returns zeroed memory
+    z = calloc 4usz 1usz : Ptr U8
+    println (deref_ptr z)                      // 0
+    free z
+
+    // realloc grows a buffer
+    p = malloc 1 : Ptr U8
+    array_insert p 0usz 7u8
+    p2 = realloc p 8usz
+    println (deref_ptr p2)                     // 7 (preserved)
+    free p2
+
+    // File round-trip exercising fopen/fputs/fputc/fwrite/fseek/ftell/ferror/fclose
+    path_w = C.String "/tmp/ante_c_test.txt\0".data
+    path_r = C.String "/tmp/ante_c_test.txt\0".data
+    fw = fopen path_w (C.String "w\0".data)
+    _ = fputs (C.String "Y\0".data) fw.*       // 1 byte 'Y'
+    _ = fputc 90i32 fw.*                       // ASCII 'Z'
+    one_byte = malloc 1 : Ptr U8
+    array_insert one_byte 0usz 33u8            // '!'
+    _ = fwrite one_byte 1usz 1usz fw.*
+    free one_byte
+    fclose fw
+
+    fr = fopen path_r (C.String "r\0".data)
+    _ = fseek fr.* 0i32 2i32                   // SEEK_END
+    println (ftell fr.*)                       // 3
+    _ = fseek fr.* 0i32 0i32                   // SEEK_SET
+    println (ferror fr.*)                      // 0
+    fclose fr
+
+    println "done"
+
+// args: --delete-binary --no-color
+// expected stdout:
+// hello
+// A
+// 6
+// 0
+// true
+// false
+// 0
+// 7
+// 3
+// 0
+// done

@@ -1,4 +1,15 @@
-import Std.Stream.iota, enumerate, map, filter, iter, stream_fn, all, foldl, foldr
+import Std.Stream.iota, enumerate, map, filter, iter, stream_fn, all, any, foldl, foldr,
+    filter_map, reduce, map2, zip, intersperse, intersperse_with, chain, count,
+    find, find_map, take, take_while, skip, skip_while, sum, product, for_, Loop,
+    break_, continue_, Emit, emit
+import Std.Fail.Fail, try
+
+two_then_three (e: Emit U32): Unit =
+    e.emit 2u32
+    e.emit 3u32
+
+single_str (s: String) = fn (e: Emit String) ->
+    e.emit (clone (ref s))
 
 main () =
     iota 10
@@ -12,6 +23,7 @@ main () =
     println <| all evens (_ %% 2)
 
     fold_tests ()
+    extra_tests ()
 
 fold_tests () =
     foldl_result = iota 5 |> foldl 0 (-) // (((0 - 1) - 2) - 3) - 4 = -10
@@ -20,6 +32,76 @@ fold_tests () =
     // pain point: No `Cast Usz I64` nor a `TryCast Usz I64`
     println (transmute foldl_result : I64)
     println foldr_result
+
+extra_tests () =
+    // any:
+    println (any (iota 5) (_ > 3))   // true
+    println (any (iota 3) (_ > 99))  // false
+
+    // filter_map
+    iota 5
+        |> filter_map (fn x -> if x %% 2 then Some (x * 10) else None)
+        |> iter println  // 0, 20, 40
+
+    // reduce: success + empty (wrap in try because reduce {Fail})
+    println (try (fn f -> reduce (iota 5) (+) {f}) : Maybe Usz)   // Some 10
+    println (try (fn f -> reduce (iota 0) (+) {f}) : Maybe Usz)   // None
+
+    // map2: truncates to shorter input
+    map2 (iota 3) (iota 5) (+)
+        |> iter println                   // 0, 2, 4
+
+    // zip
+    zip (iota 3) (iota 3)
+        |> iter println                   // (0, 0), (1, 1), (2, 2)
+
+    // intersperse:
+    chain (chain (single_str "a") (single_str "b")) (single_str "c")
+        |> intersperse ", "
+        |> iter println
+
+    // intersperse_with:
+    iota 3
+        |> intersperse_with (fn () -> 88)
+        |> iter println    // 0, 88, 1, 88, 2
+
+    // chain
+    chain (iota 2) (iota 2)
+        |> iter println // 0, 1, 0, 1
+
+    // count:
+    println (count (iota 7))  // 7
+
+    // find:
+    println (try (fn f -> find (iota 5) (fn x -> x.* > 2) {f}) : Maybe Usz)    // Some 3
+    println (try (fn f -> find (iota 5) (fn x -> x.* > 99) {f}) : Maybe Usz)   // None
+
+    // find_map:
+    println (try (fn f -> find_map (iota 5) (fn x -> if x == 3usz then Maybe.Some (x * 10usz) else Maybe.None) {f}) : Maybe Usz)  // Some 30
+
+    // take, take_while
+    iota 100 |> take 3u32 |> iter println       // 0, 1, 2
+    iota 100 |> take_while {stream_fn} (fn x -> x.* < 3usz) |> iter println  // 0, 1, 2
+
+    // skip, skip_while
+    iota 5 |> skip 3u32 |> iter println          // 3, 4
+    iota 5 |> skip_while {stream_fn} (fn x -> x.* < 2usz) |> iter println  // 2, 3, 4
+
+    // sum + product
+    println (sum (iota 5) 0usz)                  // 10
+    println (product (iota 5 |> map (_ + 1)) 1)  // 120
+
+    println "for_break:"
+    for_ (iota 10) fn x l ->
+        if x > 2usz then break_ () {l}
+        println x
+
+    println "for_continue:"
+    for_ (iota 5) fn x l ->
+        if x %% 2usz then continue_ () {l}
+        println x
+
+    iter two_then_three println  // 2, 3
 
 // args: --delete-binary --no-color
 // expected stdout:
@@ -31,4 +113,57 @@ fold_tests () =
 // true
 // -10
 // 2
+// true
+// false
+// 0
+// 20
+// 40
+// Some 10
+// None
+// 0
+// 2
+// 4
+// 0, 0
+// 1, 1
+// 2, 2
+// a
+// , 
+// b
+// , 
+// c
+// 0
+// 88
+// 1
+// 88
+// 2
+// 0
+// 1
+// 0
+// 1
+// 7
+// Some 3
+// None
+// Some 30
+// 0
+// 1
+// 2
+// 0
+// 1
+// 2
+// 3
+// 4
+// 2
+// 3
+// 4
+// 10
+// 120
+// for_break:
+// 0
+// 1
+// 2
+// for_continue:
+// 1
+// 3
+// 2
+// 3
 

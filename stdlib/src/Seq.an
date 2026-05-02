@@ -1,7 +1,7 @@
 import Std.C.malloc, realloc, memcpy, free
 import Std.Stream.Stream, foldl
 
-export empty, of, push, pop, remove_last, get, get_copied, iter, clone_seq, print_seq, stream_seq
+export Seq, empty, of, push, pop, remove_last, get, get_copied, iter, clone_seq, print_seq, stream_seq
 
 /// A persistent, contiguous, and growable sequence of elements.
 /// Performance is meant to be comparable to a mutable Vec.
@@ -143,7 +143,7 @@ push_inner (seq: Seq t) (elem: t): Seq t =
 /// Returns the popped element if this seq was non-empty.
 Seq.pop (var seq: Seq t) {Copy t}: (Seq t, Maybe t) =
     if seq.len != 0 then
-        elem = seq.get_copied seq.len
+        elem = seq.get_copied (seq.len - 1)
         seq.len -= 1
         seq, elem
     else
