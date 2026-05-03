@@ -510,7 +510,6 @@ where
         // instruction. Then we wouldn't have to handle this case in each Call at all.
         if let cst::Expr::Variable(path_id) = &self.context()[call.function] {
             if let Some(effect_op) = self.try_resolve_effect_op(*path_id) {
-                let arguments = mapvec(&call.arguments, |expr| self.expression(expr.expr));
                 let value = self.push_instruction(Instruction::Perform { effect_op, arguments }, result_type);
                 if diverges {
                     self.terminate_block(TerminatorInstruction::Unreachable);
