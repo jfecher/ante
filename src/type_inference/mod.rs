@@ -479,6 +479,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     if args.len() == 1
                         && matches!(self.follow_type(constructor), Type::Primitive(PrimitiveType::Reference(_)))
                         && !matches!(&expected, Type::Variable(_))
+                        && expected.reference_element(&self.bindings).is_none()
                     {
                         let arg = args[0].clone();
                         let expected = expected.clone();

@@ -13,8 +13,7 @@ single_str (s: String) = fn (e: Emit String) ->
 
 main () =
     iota 10
-        // TODO: why does filter require an explicit {stream_fn}?
-        |> filter {stream_fn} (fn x -> x.* %% 2usz)
+        |> filter (fn x -> x.* %% 2usz)
         |> map (_ * 2)
         |> enumerate
         |> iter println
@@ -81,11 +80,11 @@ extra_tests () =
 
     // take, take_while
     iota 100 |> take 3u32 |> iter println       // 0, 1, 2
-    iota 100 |> take_while {stream_fn} (fn x -> x.* < 3usz) |> iter println  // 0, 1, 2
+    iota 100 |> take_while (fn x -> x.* < 3usz) |> iter println  // 0, 1, 2
 
     // skip, skip_while
     iota 5 |> skip 3u32 |> iter println          // 3, 4
-    iota 5 |> skip_while {stream_fn} (fn x -> x.* < 2usz) |> iter println  // 2, 3, 4
+    iota 5 |> skip_while (fn x -> x.* < 2usz) |> iter println  // 2, 3, 4
 
     // sum + product
     println (sum (iota 5) 0usz)                  // 10
