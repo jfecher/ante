@@ -1,7 +1,7 @@
 import Std.C.malloc, realloc, memcpy, free
 import Std.Stream.Stream, foldl
 
-export Seq, empty, of, push, pop, remove_last, get, get_copied, iter, clone_seq, print_seq, stream_seq
+export Seq, empty, of, push, pop, remove_last, get, get_copied, iter, clone_seq, drop_seq, print_seq, stream_seq
 
 /// A persistent, contiguous, and growable sequence of elements.
 /// Performance is meant to be comparable to a mutable Vec.
@@ -190,7 +190,8 @@ impl print_seq {p: Print t} {Copy t}: Print (Seq t) with
 impl clone_seq: Clone (Seq t) with
     // bug: multiple matching implicits if we just return `seq`
     clone (seq: ref (Seq t)) =
-        ptr_store seq.data.rc (deref_ptr seq.data.rc + 1)
+        if seq.data != null () then
+            ptr_store seq.data.rc (deref_ptr seq.data.rc + 1)
         deref seq
 
 impl drop_seq {Drop t}: Drop (Seq t) with

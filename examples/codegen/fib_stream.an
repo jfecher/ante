@@ -1,0 +1,28 @@
+import Std.Stream.Emit, emit, iter, stream_fn, take
+
+fibonacci {Emit U64}: Unit =
+    var current, next = 0, 1
+    while true do
+        emit current
+
+        tmp = current + next
+        current := next
+        next := tmp
+
+main () =
+    // 0, 1, 1, 2, 3, 5, 8, ...
+    take fibonacci 10 |> iter println
+
+// args: --delete-binary --no-color
+// expected stdout:
+// 0
+// 1
+// 1
+// 2
+// 3
+// 5
+// 8
+// 13
+// 21
+// 34
+

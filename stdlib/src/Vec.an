@@ -1,10 +1,10 @@
-import Std.C.realloc
+import Std.C.realloc, free
 import Std.Stream.Stream, iter
 import Std.Fail.Fail, fail
 
 export Vec, empty, of, is_empty, len, capacity, reserve, push, pop, get, get_unchecked,
     remove_index, remove_first, remove_indices, remove_all, swap_last,
-    print_vec, print_helper, extract_vec, stream_vec, eq_vec, (.[)
+    print_vec, print_helper, extract_vec, stream_vec, eq_vec, drop_vec, (.[)
 
 type Vec t =
     data: Ptr t
@@ -159,6 +159,14 @@ impl stream_vec: Stream (imm Vec a) (imm a) with
     stream vec e =
         for i in 0 .. vec.len do
             e.emit (vec.get_unchecked i)
+
+impl drop_vec {Drop t}: Drop (Vec t) with
+    drop (v: mut Vec t) =
+        if v.cap != 0usz then
+            for i in 0 .. v.len do
+                elem = offset v.data i
+                Drop.drop (ptr_to_mut elem)
+            free v.data
 
 impl eq_vec {Eq t}: Eq (Vec t) with
     (==) l r =

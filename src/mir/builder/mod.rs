@@ -436,7 +436,7 @@ where
             self.start_global(name, name_id, generic_count, typ)
         });
 
-        let mut value = match &self.context()[definition.rhs] {
+        let value = match &self.context()[definition.rhs] {
             cst::Expr::Lambda(lambda) => {
                 let name = self.try_find_name(definition.pattern).map(|(name, _)| name);
                 self.lambda(lambda, name_id, name, definition.rhs, is_global)
@@ -444,14 +444,19 @@ where
             _ => self.expression(definition.rhs),
         };
 
+        self.bind_pattern(definition.pattern, value);
+
         // TODO: Globals should probably never be stack allocated
         if definition.mutable {
-            value = self.push_instruction(Instruction::StackAlloc(value), Type::POINTER);
-            if let Some(id) = name_id {
-                self.mutable_locals.insert(id);
+            let mut names = Vec::new();
+            self.collect_pattern_names(definition.pattern, &mut names);
+            for name in names {
+                let raw = *self.local_variables.get(&name).expect("var binding missing local after bind_pattern");
+                let alloc = self.push_instruction(Instruction::StackAlloc(raw), Type::POINTER);
+                self.local_variables.insert(name, alloc);
+                self.mutable_locals.insert(name);
             }
         }
-        self.bind_pattern(definition.pattern, value);
 
         if let Some(state) = previous_state {
             self.terminate_block(TerminatorInstruction::Result(value));
@@ -584,6 +589,21 @@ where
             cst::Pattern::TypeAnnotation(pattern, _) => self.try_find_name(*pattern),
             cst::Pattern::Variable(name) | cst::Pattern::MethodName { item_name: name, .. } => {
                 Some((self.context()[*name].clone(), *name))
+            },
+        }
+    }
+
+    fn collect_pattern_names(&self, pattern: PatternId, out: &mut Vec<NameId>) {
+        match &self.context()[pattern] {
+            cst::Pattern::Error | cst::Pattern::Literal(_) => (),
+            cst::Pattern::Variable(name) | cst::Pattern::MethodName { item_name: name, .. } => {
+                out.push(*name);
+            },
+            cst::Pattern::TypeAnnotation(pattern, _) => self.collect_pattern_names(*pattern, out),
+            cst::Pattern::Constructor(_, arguments) => {
+                for argument in arguments.clone() {
+                    self.collect_pattern_names(argument, out);
+                }
             },
         }
     }
