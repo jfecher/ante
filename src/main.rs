@@ -13,9 +13,20 @@
 //! List of compiler passes and the source file to find more about them in:
 //! - Lexing `src/lexer/mod.rs`
 //! - Parsing `src/parser/mod.rs`
+//! - Definition Collection `src/definition_collection/mod.rs`
 //! - Name Resolution `src/name_resolution/mod.rs`
 //! - Type Inference `src/type_inference/cst_traversal.rs`
 //! - MIR Translation `src/mir/builder.rs`
+//!   There are a number of passes on MIR, some necessary, some merely optimizations:
+//!   - Tail-resume Optimization `src/mir/effects/tail_resume_optimization.rs`
+//!   - Abort-handler Optimization `src/mir/effects/abort_handler_optimization.rs`
+//!   - Effect Lowering `src/mir/effects/effect_lowering.rs`
+//!   - Closure Lowering `src/mir/lower_closures.an`
+//!   - Remove Unreachable `src/mir/remove_unreachable.an`
+//!   - Monomorphization `src/mir/monomorphization/mod.rs`
+//!   - Select Largest Variant `src/mir/select_largest_variant.rs`
+//! - Backend Codegen - choose your backend:
+//!   - LLVM `src/codegen/llvm/mod.rs`
 //!
 //! Non-passes:
 //! - `src/errors.rs`: Defines each error used in the program as well as the `Location` struct
@@ -298,7 +309,7 @@ fn display_mir(compiler: &mut Db, emit_all: bool, optimize_tail_calls: bool) -> 
                     let mir = mir::builder::build_initial_mir_with_shared_map(compiler, item.id);
                     if let Some(mut mir) = mir {
                         if optimize_tail_calls {
-                            mir = mir.optimize_tail_resume().lower_effects();
+                            mir = mir.optimize_tail_resume().optimize_abort_handlers().lower_effects();
                         }
 
                         print!("{mir}");

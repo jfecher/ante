@@ -151,26 +151,26 @@ fn is_zero_sized(typ: &Type) -> bool {
     }
 }
 
-enum EmitTarget<'local> {
+pub(super) enum EmitTarget<'local> {
     Block(BlockId),
     Pending(&'local mut Vec<InstructionId>),
 }
 
-struct Emitter<'local> {
-    definition: &'local mut Definition,
+pub(super) struct Emitter<'local> {
+    pub(super) definition: &'local mut Definition,
     target: EmitTarget<'local>,
 }
 
 impl<'local> Emitter<'local> {
-    fn in_block(definition: &'local mut Definition, block: BlockId) -> Self {
+    pub(super) fn in_block(definition: &'local mut Definition, block: BlockId) -> Self {
         Self { definition, target: EmitTarget::Block(block) }
     }
 
-    fn pending(definition: &'local mut Definition, pending: &'local mut Vec<InstructionId>) -> Self {
+    pub(super) fn pending(definition: &'local mut Definition, pending: &'local mut Vec<InstructionId>) -> Self {
         Self { definition, target: EmitTarget::Pending(pending) }
     }
 
-    fn push_instruction(&mut self, instruction: Instruction, result_type: Type) -> Value {
+    pub(super) fn push_instruction(&mut self, instruction: Instruction, result_type: Type) -> Value {
         let id = self.definition.instructions.push(instruction);
         self.definition.instruction_result_types.push_existing(id, result_type);
         self.append_instruction(id);
@@ -205,7 +205,7 @@ impl<'local> Emitter<'local> {
 
     /// Returns `Value::Definition(target_id)` when `bindings` is None; otherwise emits
     /// an `Instruction::Instantiate(target_id, bindings)` and returns its result Value.
-    fn emit_definition_value(
+    pub(super) fn emit_definition_value(
         &mut self, target_id: DefinitionId, target_typ: Type, bindings: Option<Arc<GenericBindings>>,
     ) -> Value {
         if let Some(bindings) = bindings {

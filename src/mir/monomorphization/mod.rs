@@ -46,6 +46,7 @@ where
         .remove_internal_externs()
         .remove_unreachable_functions()
         .optimize_tail_resume()
+        .optimize_abort_handlers()
         .lower_effects();
 
     let shared = SharedDefinitions::default();

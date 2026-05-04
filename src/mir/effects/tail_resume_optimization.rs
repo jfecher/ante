@@ -102,7 +102,7 @@ fn analyze_handle(mir: &Mir, definition_id: DefinitionId, site: &HandleSite) -> 
 /// Resolve the handler value to its underlying [DefinitionId], optional closure env,
 /// and optional generic bindings recovered from any `Instantiate` along the chain. Mirrors
 /// [resolve_body_function] but tolerates handler shapes specifically.
-fn resolve_handler(
+pub(super) fn resolve_handler(
     handler: Value, definition: &Definition,
 ) -> Option<(DefinitionId, Option<Value>, Option<Arc<GenericBindings>>)> {
     fn resolve_id(value: Value, definition: &Definition) -> Option<(DefinitionId, Option<Arc<GenericBindings>>)> {
@@ -281,12 +281,12 @@ fn try_optimize_handle(mir: &mut Mir, definition_id: DefinitionId, site: HandleS
 /// Records what the body's env looked like *before* we appended cap. Used both to compute the
 /// HandlerCap's IndexTuple index (= original count) and to splice the original env values into
 /// the new env at the Handle site.
-struct OriginalEnvLayout {
+pub(super) struct OriginalEnvLayout {
     /// True iff body_fn was originally a closure (had an env parameter). When false, the body
     /// had no captures and we are upgrading it into a closure that carries only `cap`.
-    was_closure: bool,
+    pub(super) was_closure: bool,
     /// Element types of the original env tuple (empty when `was_closure` is false).
-    original_field_types: Vec<Type>,
+    pub(super) original_field_types: Vec<Type>,
 }
 
 /// Clone body_fn into a fresh [DefinitionId] whose closure environment is
@@ -298,7 +298,7 @@ struct OriginalEnvLayout {
 /// We clone instead of mutating so the outer definition's now-dead instructions that still
 /// reference the original body_fn (e.g. the original PackClosure produced by the MIR builder
 /// before the Handle was rewritten) keep type-checking against the original signature.
-fn clone_body_with_extended_env(
+pub(super) fn clone_body_with_extended_env(
     mir: &mut Mir, orig_body_fn_id: DefinitionId, cap_type: &Type,
 ) -> (DefinitionId, OriginalEnvLayout) {
     let original = mir.definitions[&orig_body_fn_id].clone();
@@ -346,7 +346,7 @@ fn clone_body_with_extended_env(
 }
 
 /// Replace each [Instruction::HandlerCap] in body_fn with `IndexTuple(env_param, cap_index)`.
-fn rewrite_handler_caps_in_body(
+pub(super) fn rewrite_handler_caps_in_body(
     mir: &mut Mir, body_fn_id: DefinitionId, layout: &OriginalEnvLayout, cap_tuple_type: &Type,
 ) {
     let body_fn = mir.definitions.get_mut(&body_fn_id).expect("body_fn missing");
@@ -463,7 +463,7 @@ fn materialize_direct_wrapper(mir: &mut Mir, handler_def_id: DefinitionId, shape
 /// the tail-resume path: the orig is unreachable at runtime but still gets validated and codegened
 /// because the outer definition's now-dead PackClosure still references it. Transmute neutralizes
 /// the HandlerCap without affecting types or other consumers.
-fn neutralize_handler_caps_in_dead_body(mir: &mut Mir, body_fn_id: DefinitionId) {
+pub(super) fn neutralize_handler_caps_in_dead_body(mir: &mut Mir, body_fn_id: DefinitionId) {
     let Some(body_fn) = mir.definitions.get_mut(&body_fn_id) else { return };
     let cap_ids: Vec<InstructionId> = body_fn
         .instructions
@@ -479,7 +479,7 @@ fn neutralize_handler_caps_in_dead_body(mir: &mut Mir, body_fn_id: DefinitionId)
 /// Replace every occurrence of `find` with `replace` across a Definition's instructions and
 /// block terminators. This is a structural Value-level substitution; it does not modify
 /// instruction result types or block parameter types.
-fn substitute_value(definition: &mut Definition, find: Value, replace: Value) {
+pub(super) fn substitute_value(definition: &mut Definition, find: Value, replace: Value) {
     let sub = |v: &mut Value| {
         if *v == find {
             *v = replace;
