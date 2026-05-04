@@ -159,7 +159,8 @@ fn prepare_body_fn(mir: &mut Mir, definition_id: DefinitionId, body: Value, cap_
 /// `Store(slot, v); longjmp(buf, 1); unreachable`.
 fn materialize_abort_wrapper(mir: &mut Mir, decision: &CaseDecision, case_index: u32) -> DefinitionId {
     let new_id = next_definition_id();
-    let mut def = clone_handler_for_wrapper(&mir.definitions[&decision.handler_def_id], new_id, &decision.shape, case_index);
+    let mut def =
+        clone_handler_for_wrapper(&mir.definitions[&decision.handler_def_id], new_id, &decision.shape, case_index);
     let n = decision.shape.op_arg_types.len();
     let env_pointer = Value::Parameter(BlockId::ENTRY_BLOCK, n as u32);
     let old_env_param = Value::Parameter(BlockId::ENTRY_BLOCK, (n + 1) as u32);
@@ -173,7 +174,9 @@ fn materialize_abort_wrapper(mir: &mut Mir, decision: &CaseDecision, case_index:
     new_id
 }
 
-fn clone_handler_for_wrapper(handler_def: &Definition, new_id: DefinitionId, shape: &CaseShape, case_index: u32) -> Definition {
+fn clone_handler_for_wrapper(
+    handler_def: &Definition, new_id: DefinitionId, shape: &CaseShape, case_index: u32,
+) -> Definition {
     let mut def = handler_def.clone_with_id(new_id);
     def.typ = Type::Function(Arc::new(FunctionType {
         parameters: shape.op_arg_types.clone(),
@@ -221,8 +224,8 @@ fn rewrite_returns_as_longjmp(def: &mut Definition, buf_ptr: Value, result_slot:
         environment: Type::NO_CLOSURE_ENV,
         return_type: Type::UNIT,
     }));
-    let longjmp =
-        Emitter::in_block(def, BlockId::ENTRY_BLOCK).push_instruction(Instruction::Extern("mco_abort_longjmp".to_string()), longjmp_type);
+    let longjmp = Emitter::in_block(def, BlockId::ENTRY_BLOCK)
+        .push_instruction(Instruction::Extern("mco_abort_longjmp".to_string()), longjmp_type);
     for (block, ret_val) in return_blocks {
         let mut e = Emitter::in_block(def, block);
         e.push_instruction(Instruction::Store { pointer: result_slot, value: ret_val }, Type::UNIT);
@@ -346,10 +349,7 @@ fn emit_body_closure(e: &mut Emitter, body: PreparedBody, body_fn_type: Type, ca
         e.push_instruction(Instruction::MakeTuple(vec![cap_value]), new_env_type)
     };
     let body_fn_value = e.emit_definition_value(fn_id, body_fn_type.clone(), bindings);
-    e.push_instruction(
-        Instruction::PackClosure { function: body_fn_value, environment: new_env_value },
-        body_fn_type,
-    )
+    e.push_instruction(Instruction::PackClosure { function: body_fn_value, environment: new_env_value }, body_fn_type)
 }
 
 /// `idx = _setjmp(buf); is_zero = idx == 0`. LLVM's TargetLibraryInfo recognizes `_setjmp`
@@ -362,8 +362,7 @@ fn emit_setjmp_test(e: &mut Emitter, buf_ptr: Value) -> Value {
         return_type: i32_t.clone(),
     }));
     let setjmp_extern = e.push_instruction(Instruction::Extern("_setjmp".to_string()), setjmp_type);
-    let setjmp_idx =
-        e.push_instruction(Instruction::Call { function: setjmp_extern, arguments: vec![buf_ptr] }, i32_t);
+    let setjmp_idx = e.push_instruction(Instruction::Call { function: setjmp_extern, arguments: vec![buf_ptr] }, i32_t);
     e.push_instruction(Instruction::EqInt(setjmp_idx, Value::Integer(IntConstant::I32(0))), Type::BOOL)
 }
 

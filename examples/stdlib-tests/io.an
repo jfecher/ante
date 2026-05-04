@@ -8,10 +8,10 @@ write_test_file (path: String): Unit =
 
 main () =
     path = "/tmp/ante_io_test.txt\0"
-    write_test_file (clone (ref path))
+    write_test_file (clone path)
 
     // Test next_char reads the first character
-    f1 = File.open (clone (ref path)) "r\0"
+    f1 = File.open (clone path) "r\0"
     c1 = f1.next_char ()
     c2 = f1.next_char ()
     print c1
@@ -19,7 +19,7 @@ main () =
     f1.close ()
 
     // Test next_line reads complete lines
-    f2 = File.open (clone (ref path)) "r\0"
+    f2 = File.open (clone path) "r\0"
     println (f2.next_line ())
     println (f2.next_line ())
     println (f2.eof ())
@@ -32,6 +32,7 @@ main () =
 
     // Test iterating over file lines using the File Iterator impl
     f3 = File.open path "r\0"
+    // FIXME: Error when taking `mut` of immutable variable
     iter (mut f3) println
     f3.close ()
 

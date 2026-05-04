@@ -1,7 +1,7 @@
 import Std.Throw.Throw, throw, catch, catch_or, catch_or_else, map_err, unwrap_err, Result, Ok, Err
 import Std.Fail.Fail, fail, try
 
-print_result_ii (r: Result I32 I32): Unit =
+print_result (r: Result I32 I32): Unit =
     match r
     | Ok x ->
         print "Ok "
@@ -10,36 +10,26 @@ print_result_ii (r: Result I32 I32): Unit =
         print "Err "
         println e
 
-throw_int_1 (t: Throw I32): I32 = throw 1 {t}
-throw_int_5 (t: Throw I32): I32 = throw 5 {t}
-throw_int_7 (t: Throw I32): I32 = throw 7 {t}
-throw_int_13 (t: Throw I32): I32 = throw 13 {t}
-throw_str_x (t: Throw String): I32 = throw "x" {t}
-
 main () =
-    // catch: success path
-    r1: Result I32 I32 = catch fn t -> 5 + 2
-    print_result_ii r1                       // Ok 7
+    // catch:
+    print_result <| (5 + 2) ~> catch   // Ok 7
+    print_result (throw 13 ~> catch)   // Err 13
 
-    // catch: throw path
-    r2: Result I32 I32 = catch throw_int_13
-    print_result_ii r2                       // Err 13
+    // catch_or:
+    // Type annotation is needed here to not return Never, `0i32` does not fix it
+    println (throw 1 : I32 ~> catch_or 0)  // 0
+    println (99 ~> catch_or 0)             // 99
 
-    // catch_or: throw -> default; success -> value
-    println (catch_or throw_int_1 0i32)            // 0
-    println (catch_or (fn t -> 99i32) 0)           // 99
+    // catch_or_else:
+    println (throw "x" : I32 ~> catch_or_else (fn () -> 42))  // 42
 
-    // catch_or_else: lazy default
-    println (catch_or_else throw_str_x (fn () -> 42i32))  // 42
-
-    // map_err: transform thrown error before re-throwing into outer catch
-    r3: Result I32 I32 = catch fn outer ->
-        map_err throw_int_5 (fn n -> n * 10) {outer}
-    print_result_ii r3                       // Err 50
+    // map_err:
+    // Can't use `~>` twice since we get 'multiple matching implicits' errors
+    print_result (throw 5 _ |> map_err (_ * 10) ~> catch)  // Err 50
 
     // unwrap_err combined with try
-    println (try (fn f -> unwrap_err throw_int_7 {f}) : Maybe I32)
-    println (try (fn f -> unwrap_err (fn t -> 0i32) {f}) : Maybe I32)
+    println (throw 7 ~> unwrap_err ~> try)
+    println (try (fn f -> unwrap_err (fn _ -> 0i32) {f}) : Maybe U64)
 
 // args: --delete-binary --no-color
 // expected stdout:

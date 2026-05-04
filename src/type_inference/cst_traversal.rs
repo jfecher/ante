@@ -217,9 +217,12 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let actual = match self.path_origin(path) {
             Some(Origin::TopLevelDefinition(id)) => self.type_of_top_level_name(&id, path),
             Some(Origin::Local(name)) => {
-                let typ = self.name_types.get(&name).cloned();
-                let typ =
-                    typ.unwrap_or_else(|| panic!("No type for name `{}`", self.current_extended_context_mut()[name]));
+                let Some(typ) = self.name_types.get(&name).cloned() else {
+                    // Name wasn't defined, name resolution should already have emitted an error
+                    self.name_types.insert(name, expected.clone());
+                    self.path_types.insert(path, expected.clone());
+                    return;
+                };
 
                 let move_path = super::affine::MovePath::Variable(name);
                 if !self.suppress_move_check {

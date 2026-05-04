@@ -600,7 +600,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 }
             },
             // The bottom type should unify with any expected type
+            // FIXME: This is unsound since we don't do a true subtyping test. E.g. we don't
+            // track variance on any types, even function parameters/returns.
             (Type::Primitive(PrimitiveType::Never), _) => Ok(()),
+
             // And the error type should unify with everything to prevent future errors
             (Type::Primitive(PrimitiveType::Error), _) | (_, Type::Primitive(PrimitiveType::Error)) => Ok(()),
             (Type::Function(actual), Type::Function(expected)) => {

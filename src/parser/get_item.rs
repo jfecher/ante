@@ -492,7 +492,7 @@ enum ExprDesugar {
         is_or: bool,
     },
 
-    /// `a with b` desugars to `b (fn () -> a)`
+    /// `a with b` desugars to `b (fn {h} -> a)`
     TildeArrow {
         call: ExprId,
     },
@@ -751,10 +751,10 @@ fn desugar_bind(expr: ExprId, context: &mut DesugarContext) {
     context.set_expr(expr, Expr::Call(new_call));
 }
 
-/// Desugars `a ~> b` into `b (fn () -> a)`
+/// Desugars `a ~> b` into `b (fn {h} -> a)`
 ///
 /// If `b` is itself a call, `a` is prepended to its arguments directly:
-/// `a ~> b c d` desugars to `b (fn () -> a) c d`
+/// `a ~> b c d` desugars to `b (fn {h} -> a) c d`
 fn desugar_tilde_arrow(expr: ExprId, context: &mut DesugarContext) {
     let Expr::Call(call) = &context[expr] else { unreachable!() };
 
@@ -762,9 +762,11 @@ fn desugar_tilde_arrow(expr: ExprId, context: &mut DesugarContext) {
     let b = call.arguments[1].expr;
     let location = context.expr_location(expr).clone();
 
-    let pattern = context.push_pattern(cst::Pattern::Literal(Literal::Unit), location.clone());
+    let variable_name = Arc::new("~>_handler".to_string());
+    let variable_name = context.push_name(variable_name, location.clone());
+    let pattern = context.push_pattern(cst::Pattern::Variable(variable_name), location.clone());
     let lambda = Expr::Lambda(cst::Lambda {
-        parameters: vec![cst::Parameter::new(pattern)],
+        parameters: vec![cst::Parameter::implicit(pattern)],
         return_type: None,
         body: a,
         is_move: false,

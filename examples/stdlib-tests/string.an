@@ -1,38 +1,34 @@
 import Std.String.bytes, chars, substr, string_of, join, split, reverse
 import Std.Stream.iter, intersperse, stream_fn, Emit, emit
 
-// Helper: emit three single-char strings into the Emit String capability.
-abc_stream (e: Emit String): Unit =
-    e.emit "a"
-    e.emit "b"
-    e.emit "c"
-
 main () =
-    // bytes: emit each byte
+    // bytes & chars:
     iter (bytes "AB") println
-
-    // chars: emit each character
     iter (chars "AB") println
 
-    // substr: in-bounds + out-of-bounds
-    println (substr "abcdef" 1usz 4usz)
-    println (substr "abc" 0usz 99usz)
-    println "<post-substr>"
+    // substr:
+    println (substr "abcdef" 1 4)
+    println (substr "abc" 0 99) // prints an empty string, should update to fail
 
-    // string_of: round-trip a stream of chars back into a String
+    // string_of:
     println (string_of (chars "hi"))
 
-    // reverse a string literal (read-only data path) and a heap-built string
+    // reverse:
     println (reverse "hello")
     fresh = string_of (chars "world")
     println (reverse fresh)
 
-    // split: Emit-effecting function, wrap in a closure to make it a stream.
-    iter (fn e -> split "foo bar  baz " c" " {e}) println
-    println "<post-split>"
+    // split:
+    split "foo bar  baz " c" " ~> iter println
+    println "end of split"
 
     // join over an interspersed stream → single String "a, b, c"
-    println (join (intersperse abc_stream ", "))
+    println (intersperse abc_stream ", " |> join)
+
+abc_stream {Emit String}: Unit =
+    emit "a"
+    emit "b"
+    emit "c"
 
 // args: --delete-binary --no-color
 // expected stdout:
@@ -42,7 +38,6 @@ main () =
 // B
 // bcd
 // 
-// <post-substr>
 // hi
 // olleh
 // dlrow
@@ -51,5 +46,6 @@ main () =
 // 
 // baz
 // 
-// <post-split>
+// end of split
 // a, b, c
+
