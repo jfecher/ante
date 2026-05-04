@@ -314,7 +314,7 @@ impl<'local> FunctionContext<'local> {
             | Instruction::Deref(v) => self.remap_value(v),
             Instruction::SizeOf(typ) => self.specialize_type(typ),
             Instruction::MakeBytes(_) | Instruction::Instantiate(..) | Instruction::Extern(_) => {},
-            Instruction::HandlerCap => {},
+            Instruction::Capability => {},
             Instruction::GetFieldPtr { struct_ptr, struct_type, .. } => {
                 self.remap_value(struct_ptr);
                 if !self.generic_mapping.is_empty() {

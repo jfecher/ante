@@ -520,8 +520,8 @@ impl<'ctx> ModuleContext<'ctx> {
             mir::Instruction::Handle { .. } => {
                 unreachable!("Instruction::Handle remaining LLVM codegen")
             },
-            mir::Instruction::HandlerCap => {
-                unreachable!("Instruction::HandlerCap remaining in LLVM codegen")
+            mir::Instruction::Capability => {
+                unreachable!("Instruction::Capability remaining in LLVM codegen")
             },
             mir::Instruction::CallClosure { .. } => {
                 unreachable!("Instruction::CallClosure remaining in LLVM codegen")

@@ -722,14 +722,14 @@ where
             }
 
             // For a `handle` expression's body lambda, bind `h` to a placeholder
-            // [Instruction::HandlerCap]. The lowering passes are responsible for replacing it:
+            // [Instruction::Capability]. The lowering passes are responsible for replacing it:
             // [crate::mir::effects::effect_lowering] expands it into a coroutine `user_data`
             // fetch, while [crate::mir::effects::tail_resume_optimization] rewrites it to refer
             // to a directly-built capability tuple.
             if let Some(handler_name) = handle_body_handler_name {
                 let h_tc_type = this.types.result.maps.name_types[&handler_name].clone();
                 let h_type = this.convert_type(&h_tc_type, None);
-                let cap = this.push_instruction(Instruction::HandlerCap, h_type);
+                let cap = this.push_instruction(Instruction::Capability, h_type);
                 this.local_variables.insert(handler_name, cap);
             }
 

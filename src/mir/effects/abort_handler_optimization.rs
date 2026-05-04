@@ -92,13 +92,20 @@ fn analyze_handle(mir: &Mir, definition_id: DefinitionId, site: &HandleSite) -> 
         if !case_is_abort_only(handler_def, &shape) {
             return None;
         }
-        let Type::Function(handler_ft) = &handler_def.typ else { return None };
+        if !matches!(&handler_def.typ, Type::Function(_)) {
+            return None;
+        }
+        let handler_env_type = match &handler_env {
+            Some(env_value) => definition.type_of_value(env_value, &mir.externals, &mir.definitions),
+            None => Type::UNIT,
+        };
+        let handler_is_closure = handler_env.is_some();
         Some(CaseDecision {
             handler_def_id,
             handler_env,
             handler_bindings,
-            handler_env_type: if handler_ft.is_closure() { handler_ft.environment.clone() } else { Type::UNIT },
-            handler_is_closure: handler_ft.is_closure(),
+            handler_env_type,
+            handler_is_closure,
             shape,
         })
     })

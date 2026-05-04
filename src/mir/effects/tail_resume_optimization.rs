@@ -250,14 +250,14 @@ fn try_optimize_handle(mir: &mut Mir, definition_id: DefinitionId, site: HandleS
 
     // The original body_fn is now dead code: the outer definition's now-dead PackClosure still
     // references it, but its result is unused. It still gets visited by validation and codegen,
-    // so we have to make any `HandlerCap` it contains lowering-safe. The simplest neutralization
+    // so we have to make any `Capability` it contains lowering-safe. The simplest neutralization
     // is `Transmute(Value::Unit)`: it type-checks (the Transmute validation arm has no
     // constraints) and codegens to an undef of the expected cap tuple type. We do this *after*
-    // cloning so the clone retains its HandlerCap instructions (which `rewrite_handler_caps_in_body`
+    // cloning so the clone retains its Capability instructions (which `rewrite_handler_caps_in_body`
     // is about to expand into the env-IndexTuple form).
     neutralize_handler_caps_in_dead_body(mir, orig_body_fn_id);
 
-    // Replace each HandlerCap in the cloned body with an IndexTuple that fetches cap from the
+    // Replace each Capability in the cloned body with an IndexTuple that fetches cap from the
     // (extended) env parameter.
     rewrite_handler_caps_in_body(mir, body_fn_id, &original_env_layout, &cap_tuple_type);
 
@@ -279,7 +279,7 @@ fn try_optimize_handle(mir: &mut Mir, definition_id: DefinitionId, site: HandleS
 }
 
 /// Records what the body's env looked like *before* we appended cap. Used both to compute the
-/// HandlerCap's IndexTuple index (= original count) and to splice the original env values into
+/// Capability's IndexTuple index (= original count) and to splice the original env values into
 /// the new env at the Handle site.
 pub(super) struct OriginalEnvLayout {
     /// True iff body_fn was originally a closure (had an env parameter). When false, the body
@@ -345,7 +345,7 @@ pub(super) fn clone_body_with_extended_env(
     (new_id, OriginalEnvLayout { was_closure, original_field_types })
 }
 
-/// Replace each [Instruction::HandlerCap] in body_fn with `IndexTuple(env_param, cap_index)`.
+/// Replace each [Instruction::Capability] in body_fn with `IndexTuple(env_param, cap_index)`.
 pub(super) fn rewrite_handler_caps_in_body(
     mir: &mut Mir, body_fn_id: DefinitionId, layout: &OriginalEnvLayout, cap_tuple_type: &Type,
 ) {
@@ -357,10 +357,19 @@ pub(super) fn rewrite_handler_caps_in_body(
     let env_param = Value::Parameter(entry, env_param_index);
     let cap_index = layout.original_field_types.len() as u32;
 
+    // The abort-resume optimization can insert transmute instructions from a closure's environment
+    // which may be Unit but actually contains the capability.
     let cap_instr_ids: Vec<InstructionId> = body_fn
         .instructions
         .iter()
-        .filter_map(|(id, instr)| if matches!(instr, Instruction::HandlerCap) { Some(id) } else { None })
+        .filter_map(|(id, instr)| {
+            let is_cap = match instr {
+                Instruction::Capability => true,
+                Instruction::Transmute(Value::Unit) => &body_fn.instruction_result_types[id] == cap_tuple_type,
+                _ => false,
+            };
+            is_cap.then_some(id)
+        })
         .collect();
 
     for id in cap_instr_ids {
@@ -458,17 +467,17 @@ fn materialize_direct_wrapper(mir: &mut Mir, handler_def_id: DefinitionId, shape
     new_id
 }
 
-/// Replace every `Instruction::HandlerCap` in `body_fn_id` with `Transmute(Value::Unit)`, keeping
+/// Replace every `Instruction::Capability` in `body_fn_id` with `Transmute(Value::Unit)`, keeping
 /// the recorded result type unchanged. Used on the orig body_fn after we've cloned a new one for
 /// the tail-resume path: the orig is unreachable at runtime but still gets validated and codegened
 /// because the outer definition's now-dead PackClosure still references it. Transmute neutralizes
-/// the HandlerCap without affecting types or other consumers.
+/// the Capability without affecting types or other consumers.
 pub(super) fn neutralize_handler_caps_in_dead_body(mir: &mut Mir, body_fn_id: DefinitionId) {
     let Some(body_fn) = mir.definitions.get_mut(&body_fn_id) else { return };
     let cap_ids: Vec<InstructionId> = body_fn
         .instructions
         .iter()
-        .filter_map(|(id, instr)| if matches!(instr, Instruction::HandlerCap) { Some(id) } else { None })
+        .filter_map(|(id, instr)| if matches!(instr, Instruction::Capability) { Some(id) } else { None })
         .collect();
     for id in cap_ids {
         body_fn.instructions[id] = Instruction::Transmute(Value::Unit);
@@ -565,7 +574,7 @@ pub(super) fn substitute_value(definition: &mut Definition, find: Value, replace
             | Instruction::Extern(_)
             | Instruction::SizeOf(_)
             | Instruction::StackAllocUninit(_)
-            | Instruction::HandlerCap => (),
+            | Instruction::Capability => (),
         }
     }
     for block in definition.blocks.values_mut() {

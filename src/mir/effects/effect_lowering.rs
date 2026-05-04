@@ -458,7 +458,7 @@ fn rewrite_single_handle(mir: &mut Mir, definition_id: DefinitionId, site: Handl
         case_shape_from_handler_type(t).expect("handler type must be `fn op_args.., resume -> r`")
     });
 
-    // Replace `HandlerCap` placeholders in the body with the user_data fetch chain.
+    // Replace `Capability` placeholders in the body with the user_data fetch chain.
     // After this pass the body contains only normal MIR; the placeholder is gone.
     expand_handler_caps_in_body(mir, body_fn_id, &env_type, context);
 
@@ -539,17 +539,17 @@ fn rewrite_single_handle(mir: &mut Mir, definition_id: DefinitionId, site: Handl
     definition.blocks[block].instructions.splice(index..=index, pending);
 }
 
-/// Replace each [Instruction::HandlerCap] within `body_fn_id`'s blocks with the chain that
+/// Replace each [Instruction::Capability] within `body_fn_id`'s blocks with the chain that
 /// recovers the capability from the running coroutine's user_data:
 ///
 /// ```text
 /// coro        = mco_coro_running()
 /// user_data   = mco_coro_get_user_data(coro)
 /// cap_and_env = Deref(user_data)              // (cap, env)
-/// cap         = IndexTuple(cap_and_env, 0)    // reuses the HandlerCap's instruction id
+/// cap         = IndexTuple(cap_and_env, 0)    // reuses the Capability's instruction id
 /// ```
 ///
-/// The HandlerCap's existing instruction id is reused for the final `IndexTuple` so any
+/// The Capability's existing instruction id is reused for the final `IndexTuple` so any
 /// downstream consumer of its result Value continues to work without rewriting.
 fn expand_handler_caps_in_body(mir: &mut Mir, body_fn_id: DefinitionId, env_type: &Type, context: Context) {
     let Some(body) = mir.definitions.get_mut(&body_fn_id) else { return };
@@ -561,7 +561,7 @@ fn expand_handler_caps_in_body(mir: &mut Mir, body_fn_id: DefinitionId, env_type
         cap_type: Type,
     }
     let sites = collect_sites(body, |block, index, id| {
-        matches!(body.instructions[id], Instruction::HandlerCap).then(|| {
+        matches!(body.instructions[id], Instruction::Capability).then(|| {
             let cap_type = body.instruction_result_types[id].clone();
             CapSite { block, index, id, cap_type }
         })

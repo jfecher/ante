@@ -382,11 +382,11 @@ impl Definition {
                     instr_assert_subtype!(*result_type, Type::POINTER, self, id, mir, "GetFieldPtr result must be a pointer");
                 },
                 Instruction::Extern(_) => (),
-                Instruction::HandlerCap => {
+                Instruction::Capability => {
                     instr_assert!(
                         matches!(result_type, Type::Tuple(_)) || *result_type == Type::ERROR,
                         self, id, mir,
-                        "HandlerCap result type should be a Tuple (capability), got `{result_type}`"
+                        "Capability result type should be a Tuple (capability), got `{result_type}`"
                     );
                 },
             }

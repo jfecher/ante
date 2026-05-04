@@ -404,11 +404,11 @@ pub enum Instruction {
     },
     /// Placeholder bound to the handler binding `h` inside a `handle` body lambda. Emitted by
     /// the MIR builder so the body can reference `h` without committing to a particular lowering
-    /// strategy. The body's lowering pass is responsible for replacing each `HandlerCap` with the
+    /// strategy. The body's lowering pass is responsible for replacing each `Capability` with the
     /// appropriate value: [crate::mir::effect_lowering] expands it into a coroutine `user_data`
     /// fetch, and [crate::mir::tail_resume_optimization] rewrites it to `Id(cap)` where `cap` is
     /// a directly-built capability tuple. Must be removed before LLVM codegen.
-    HandlerCap,
+    Capability,
     /// Returns a closure value after packing the function with the given environment.
     /// This is equivalent to a `MakeTuple` instruction but is distinguished because the
     /// compiler will optimize closure values & calls into free functions, removing the
@@ -532,7 +532,7 @@ impl Instruction {
                     f(&case.handler);
                 }
             },
-            Instruction::HandlerCap => (),
+            Instruction::Capability => (),
             Instruction::PackClosure { function, environment } => two(function, environment),
             Instruction::IndexTuple { tuple, index: _ } => f(tuple),
             Instruction::MakeBytes(_) => (),
