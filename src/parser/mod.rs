@@ -1183,22 +1183,31 @@ impl<'tokens> Parser<'tokens> {
         }
     }
 
-    /// implicit_function_parameter: '{' type '}'
+    /// implicit_function_parameter: '{' identifier '}'
+    ///                            | '{' type_no_type_variable '}'
     ///                            | '{' pattern '}'
     fn parse_implicit_function_parameter(&mut self) -> Result<PatternId> {
         self.expect(Token::BraceLeft, "parse_implicit_function_parameter")?;
 
         self.or(
-            |this| {
-                let location = this.current_token_location();
-                let typ = this.parse_type()?;
-                this.expect(Token::BraceRight, "a `}` to close the opening `{` from the implicit parameter")?;
-                // Need to expand the type into a parameter with a fake name.
-                // We'll expand to: `_: typ`
-                let name_id = this.push_name(Arc::new("_".to_string()), location.clone());
-                let no_name = this.push_pattern(Pattern::Variable(name_id), location.clone());
-                Ok(this.push_pattern(Pattern::TypeAnnotation(no_name, typ), location))
-            },
+            |this| this.or(
+                |this| {
+                    let name = this.parse_ident_id()?;
+                    let location = this.previous_token_location();
+                    this.expect(Token::BraceRight, "a `}` to close the opening `{` from the implicit parameter")?;
+                    Ok(this.push_pattern(Pattern::Variable(name), location))
+                },
+                |this| {
+                    let typ = this.parse_type()?;
+                    let location = typ.location.clone();
+                    this.expect(Token::BraceRight, "a `}` to close the opening `{` from the implicit parameter")?;
+                    // Need to expand the type into a parameter with a fake name.
+                    // We'll expand to: `_: typ`
+                    let name_id = this.push_name(Arc::new("_".to_string()), location.clone());
+                    let no_name = this.push_pattern(Pattern::Variable(name_id), location.clone());
+                    Ok(this.push_pattern(Pattern::TypeAnnotation(no_name, typ), location))
+                },
+            ),
             |this| {
                 let pattern = this.parse_pattern()?;
                 this.expect(Token::BraceRight, "a `}` to close the opening `{` from the implicit parameter")?;

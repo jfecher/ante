@@ -1,7 +1,7 @@
 emit_one k =
     k 1
 
-with_value v k =
+with_value k v =
     k v
 
 main () =

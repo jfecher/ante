@@ -188,7 +188,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// - Runs any deferred closure free variable checks after adding implicit arguments
     /// Returns `true` if the scope was delayed (extended into the parent) rather than resolved now.
     pub(super) fn pop_implicits_scope(&mut self) -> bool {
-        let scope = self.implicits.pop().expect("More pops than pushes to `TypeChecker::implicits`");
+        let mut scope = self.implicits.pop().expect("More pops than pushes to `TypeChecker::implicits`");
+        let mut any_bubbled = false;
 
         // If there are no implicits defined in the current scope, delay checking them until later
         // so we get as much type information as possible. This particularly helps for polymorphic
@@ -199,6 +200,95 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             let has_delayed_implicits = !scope.delayed_implicits.is_empty();
             top.extend(scope);
             return has_delayed_implicits;
+        }
+
+        // The scope has local implicits. Partition delayed implicits so ones that can't possibly
+        // bind to a local name are deferred to the parent. Then transitively pull along any
+        // bubbled candidate that shares a type variable with a staying implicit's target type:
+        // resolving it at this scope is required to commit the bindings the staying implicit
+        // depends on (e.g. `print v.data.[i]` keeps `Print u` here, and `Extract (Ptr t) Usz u`
+        // shares `u` so it must also resolve here to bind `u` before the `Print` phase-2 retry).
+        if !self.implicits.is_empty() {
+            let local_implicits = scope.implicits_in_scope.clone();
+            let mut stays_here = Vec::new();
+            let mut candidates_to_bubble = Vec::new();
+            for di in std::mem::take(&mut scope.delayed_implicits) {
+                if !local_implicits.is_empty() && self.delayed_implicit_could_match_local(&di, &local_implicits) {
+                    stays_here.push(di);
+                } else {
+                    candidates_to_bubble.push(di);
+                }
+            }
+
+            let mut stays_target_tvars = std::collections::HashSet::new();
+            for di in &stays_here {
+                let target = self.expr_types[&di.destination].clone().follow_all(&self.bindings);
+                Self::collect_tvars(&target, &mut stays_target_tvars);
+            }
+            loop {
+                let before = candidates_to_bubble.len();
+                let mut i = 0;
+                while i < candidates_to_bubble.len() {
+                    let di = candidates_to_bubble[i];
+                    let target = self.expr_types[&di.destination].clone().follow_all(&self.bindings);
+                    let mut tvars = std::collections::HashSet::new();
+                    Self::collect_tvars(&target, &mut tvars);
+                    if tvars.iter().any(|tv| stays_target_tvars.contains(tv)) {
+                        stays_target_tvars.extend(tvars);
+                        stays_here.push(di);
+                        candidates_to_bubble.swap_remove(i);
+                    } else {
+                        i += 1;
+                    }
+                }
+                if candidates_to_bubble.len() == before {
+                    break;
+                }
+            }
+            let bubbles_up = candidates_to_bubble;
+
+            if stays_here.is_empty() {
+                let parent = self.implicits.last_mut().unwrap();
+                parent.delayed_implicits.extend(bubbles_up);
+                parent.deferred_closure_checks.append(&mut scope.deferred_closure_checks);
+                parent.integer_type_variables.append(&mut scope.integer_type_variables);
+                parent.float_type_variables.append(&mut scope.float_type_variables);
+                return true;
+            }
+
+            // Partition int/float vars: keep here only those whose tvar appears in a staying
+            // implicit's target. The rest bubble up so defaulting waits for more type info.
+            let integers = std::mem::take(&mut scope.integer_type_variables);
+            let floats = std::mem::take(&mut scope.float_type_variables);
+            let (keep_ints, bubble_ints): (Vec<_>, Vec<_>) = integers.into_iter().partition(|(_, tvar, _)| {
+                let resolved = match Type::Variable(*tvar).follow(&self.bindings) {
+                    Type::Variable(id) => *id,
+                    _ => return true,
+                };
+                stays_target_tvars.contains(&resolved)
+            });
+            let (keep_floats, bubble_floats): (Vec<_>, Vec<_>) = floats.into_iter().partition(|(tvar, _)| {
+                let resolved = match Type::Variable(*tvar).follow(&self.bindings) {
+                    Type::Variable(id) => *id,
+                    _ => return true,
+                };
+                stays_target_tvars.contains(&resolved)
+            });
+
+            any_bubbled = !bubbles_up.is_empty() || !bubble_ints.is_empty() || !bubble_floats.is_empty();
+
+            let parent = self.implicits.last_mut().unwrap();
+            parent.delayed_implicits.extend(bubbles_up);
+            parent.integer_type_variables.extend(bubble_ints);
+            parent.float_type_variables.extend(bubble_floats);
+
+            if any_bubbled {
+                parent.deferred_closure_checks.append(&mut scope.deferred_closure_checks);
+            }
+
+            scope.delayed_implicits = stays_here;
+            scope.integer_type_variables = keep_ints;
+            scope.float_type_variables = keep_floats;
         }
 
         // The rest of this function will query all of `self.implicits` so add the last scope back
@@ -253,7 +343,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
 
         self.implicits.pop().expect("More pops than pushes to `TypeChecker::implicits`");
-        false
+        any_bubbled
     }
 
     pub(super) fn push_inferred_int(&mut self, value: u64, type_variable: TypeVariableId, location: Location) {
@@ -673,6 +763,54 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
 
         suggestions
+    }
+
+    /// Probe whether a delayed implicit's target type *could* match at least one of the given
+    /// local implicit names. Used by `pop_implicits_scope` to decide whether the implicit must
+    /// be resolved at this scope (because a local name is a candidate) or can be bubbled up to
+    /// the parent (because no local name could possibly satisfy it).
+    fn delayed_implicit_could_match_local(&mut self, implicit: &DelayedImplicit, local_implicits: &[NameId]) -> bool {
+        let target_type = self.expr_types[&implicit.destination].clone();
+        let target_type = target_type.follow_all(&self.bindings);
+        let no_bindings = TypeBindings::default();
+
+        for name in local_implicits.iter().copied() {
+            let name_type = self.name_types[&name].follow_two(&no_bindings, &self.bindings);
+            if !matches!(self.implicit_type_matches(&name_type, &target_type, &no_bindings), ImplicitMatch::NoMatch) {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Walk a type and collect all type variable IDs into the given set. The caller should pass
+    /// a type that has already been zonked via `follow_all`.
+    fn collect_tvars(typ: &Type, out: &mut std::collections::HashSet<TypeVariableId>) {
+        match typ {
+            Type::Variable(id) => {
+                out.insert(*id);
+            },
+            Type::Function(f) => {
+                for p in &f.parameters {
+                    Self::collect_tvars(&p.typ, out);
+                }
+                Self::collect_tvars(&f.environment, out);
+                Self::collect_tvars(&f.return_type, out);
+            },
+            Type::Application(ctor, args) => {
+                Self::collect_tvars(ctor, out);
+                for a in args.iter() {
+                    Self::collect_tvars(a, out);
+                }
+            },
+            Type::Forall(_, inner) => Self::collect_tvars(inner, out),
+            Type::Tuple(elems) => {
+                for t in elems.iter() {
+                    Self::collect_tvars(t, out);
+                }
+            },
+            Type::Primitive(_) | Type::Generic(_) | Type::UserDefined(_) => (),
+        }
     }
 
     /// Try to add the given implicit into scope

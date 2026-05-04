@@ -727,8 +727,8 @@ fn desugar_logical_operators(expr: ExprId, context: &mut DesugarContext, is_or: 
 
 /// Desugars `<pattern> <- <rhs> <newline> <body...>` into `<rhs> (fn <pattern> -> <body>)`.
 ///
-/// If `<rhs>` is itself a call, the lambda is appended as its final argument.
-/// e.g. `x <- f a b` (with body c) desugars to `f a b (fn x -> c)`.
+/// If `<rhs>` is itself a call, the lambda is appended as its first argument.
+/// e.g. `x <- f a b` (with body c) desugars to `f (fn x -> c) a b`.
 fn desugar_bind(expr: ExprId, context: &mut DesugarContext) {
     let Expr::Bind(bind) = context[expr].clone() else { unreachable!() };
     let location = context.expr_location(expr).clone();
@@ -742,8 +742,9 @@ fn desugar_bind(expr: ExprId, context: &mut DesugarContext) {
     let lambda = context.push_expr(lambda, location);
 
     let new_call = if let Expr::Call(inner_call) = &context[bind.rhs] {
-        let mut new_args = inner_call.arguments.clone();
-        new_args.push(Argument::explicit(lambda));
+        let new_args = std::iter::once(Argument::explicit(lambda))
+            .chain(inner_call.arguments.iter().copied())
+            .collect();
         cst::Call { function: inner_call.function, arguments: new_args }
     } else {
         cst::Call { function: bind.rhs, arguments: vec![Argument::explicit(lambda)] }
