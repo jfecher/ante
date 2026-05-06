@@ -21,7 +21,7 @@ main () =
     println (99 ~> catch_or 0)             // 99
 
     // catch_or_else:
-    println (throw "x" : I32 ~> catch_or_else (fn () -> 42))  // 42
+    println (throw "x" : I32 ~> catch_or_else (fn _s -> 42))  // 42
 
     // map_err:
     // Can't use `~>` twice since we get 'multiple matching implicits' errors

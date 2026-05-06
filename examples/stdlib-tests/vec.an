@@ -1,6 +1,6 @@
 import Std.Vec.Vec, empty, of, is_empty, len, capacity, reserve, push, pop, get, get_unchecked,
     remove_index, remove_first, remove_indices, remove_all, swap_last,
-    print_vec, extract_vec, stream_vec, eq_vec
+    print_vec, extract_vec, stream_imm_vec, eq_vec
 
 import Std.Fail.try_or
 import Std.Stream.iter

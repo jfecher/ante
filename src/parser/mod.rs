@@ -882,14 +882,9 @@ impl<'tokens> Parser<'tokens> {
             None
         };
 
-        // Allow `=>` as a shortcut for an unnamed type variable in the closure environment.
-        // We synthesize a fresh `_`-named type variable per occurrence so name resolution
-        // auto-declares it (when in a context that allows it) and treats it like any other
-        // generic env parameter rather than as an anonymous hole.
         if environment.is_none() && self.accept(Token::FatArrow) {
             let location = self.previous_token_location();
-            let name_id = self.push_name(Arc::new("_".to_string()), location.clone());
-            environment = Some(Box::new(Type::new(TypeKind::Variable(name_id), location)));
+            environment = Some(Box::new(Type::new(TypeKind::Hole, location)));
         } else {
             self.expect(Token::RightArrow, "`->` to separate this function type's parameters from its return type")?;
         }

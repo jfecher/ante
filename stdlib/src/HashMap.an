@@ -21,7 +21,7 @@ trait Hash t with
 
 HashMap.empty () = HashMap 0 0 (null ())
 
-HashMap.of (s: s) {Stream s (k, v)} {Hash k} {Copy k} {Copy v}: HashMap k v =
+HashMap.of (s: s) {Stream s (k, v)} {Hash k}: HashMap k v =
     var map = HashMap.empty ()
     iter s (fn (k, v) -> map.insert k v)
     map
@@ -34,7 +34,7 @@ HashMap.clear (map: mut HashMap k v) : Unit =
             entry.tombstone := false
         map.len := 0usz
 
-HashMap.resize (map: mut HashMap k v) (new_capacity: Usz) {Hash k} {Copy k} {Copy v} : Unit =
+HashMap.resize (map: mut HashMap k v) (new_capacity: Usz) {Hash k} : Unit =
     if new_capacity > map.capacity then
         new_memory = calloc new_capacity (size_of (MkType : Type (Entry k v)))
 
@@ -56,11 +56,11 @@ HashMap.should_resize (map: ref HashMap k v) : Bool =
     scale_factor = 2
     (map.len + 1) * scale_factor > map.capacity
 
-HashMap.insert (map: mut HashMap k v) (key: k) (value: v) {Hash k} {Copy k} {Copy v} : Unit =
+HashMap.insert (map: mut HashMap k v) (key: k) (value: v) {Hash k} : Unit =
     if map.should_resize () then
         map.resize ((map.capacity + 1) * 2)
 
-    iter_until (map: mut HashMap k v) (key: k) (value: v) (start: Usz) (end: Usz) : Bool =
+    iter_until (map: mut HashMap k v) (key: ref k) (value: ref v) (start: Usz) (end: Usz) : Bool =
         if start >= end then
             false
         else
@@ -69,10 +69,10 @@ HashMap.insert (map: mut HashMap k v) (key: k) (value: v) {Hash k} {Copy k} {Cop
             if entry.occupied then
                 iter_until map key value (start + 1) end
             else
-                entry := Entry key value true false
+                entry := Entry (deref key) (deref value) true false
                 true
 
-    h = Usz (Hash.hash key) % map.capacity
+    h = Usz (Hash.hash (deref (ref key))) % map.capacity
 
     if not iter_until map key value h map.capacity then
         if not iter_until map key value 0 h then

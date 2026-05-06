@@ -21,7 +21,7 @@ trait Stream t a with
 /// with an `Emit` capability. This impl is most common in the middle of
 /// stream chains since functions like `map` and `filter` return functions taking
 /// an `Emit` argument.
-impl stream_fn: Stream (fn (Emit a) => Unit) a with
+impl stream_fn: Stream (fn (Emit a) [env] -> Unit) a with
     stream f e = f e
 
 /// Consumes the given stream, applying `f` to each element
@@ -29,10 +29,6 @@ impl stream_fn: Stream (fn (Emit a) => Unit) a with
 /// E.g. `iter (iota 5) print` will print `01234`
 iter (s: s) {Stream s a} (f: fn a => b): Unit =
     handler h for emit a ->
-        handler l for
-        | break_ () -> return ()
-        | continue_ () -> ()
-
         f a
         resume ()
     Stream.stream s h

@@ -1,0 +1,133 @@
+import Std.IO.read_line
+import Std.Throw.Throw, throw, catch, on_err
+import Std.Fail.Fail, fail, try, try_or_else
+import Std.HashMap.HashMap, Hash
+import Std.Vec.Vec, stream_vec
+import Std.Stream.Stream, Emit, iter, iter_rec, stream_fn, foldl
+import Std.String.split, eq_string, bytes
+
+type Context = names: HashMap String (Vec String)
+
+type Value = | Int I32 | Name String | Builtin Builtin
+
+type Builtin = | Print | Add | Sub | Mul | Div | Eq | Lt | Dup | Swap | Drop
+
+main () =
+    implicit ctx = Context (HashMap.empty ())
+    while true do
+        print "> "
+        line = read_line ()
+        parse_and_execute line ~> on_err println
+
+parse_and_execute line {Context} {Throw String} =
+    words = Vec.of (split line c" ")
+    if (words.get 0 ~> try) is Some first then
+        if (deref first) == "def"
+        then define words
+        else execute words
+
+define (var words: Vec String) {ctx: Context} {Throw String}: Unit =
+    // words = [def, name, words...]
+    // drop def, and define `name` = `words...`
+    if words.len () < 2 then
+        throw "parse error: `def` line should be at least 2 parts: `def name program...`"
+
+    _ = words.remove_index 0
+    name = words.remove_index 0
+    ctx.names.insert name words
+
+execute (words: Vec String) {ctx: Context} {Throw String}: Unit =
+    var stack: Vec Value = Vec.empty ()
+    iter_rec words fn word {Emit String} ->
+        if (i32_from_string word ~> try) is Some x then  
+            stack.push (Value.Int x)
+        else if ctx.names.get (clone word) is Some program then
+            Stream.stream program
+        else if not handle_builtin (clone word) (mut stack) then
+            throw "Unhandled word '${word}'"
+
+expected_value () {Throw String}: Never =
+    throw "Expected a value on the stack, but there was none"
+
+pop_int (stack: mut Vec Value) {Throw String}: I32 =
+    top = if stack.pop () is Some x then x else expected_value ()
+    if clone top is Int x then x
+    else throw "Expected an integer on the stack, but found `${top}`"
+
+// Apply a two-arg int function to the top two items on the stack
+binary_fn (stack: mut Vec Value) (f: fn I32 I32 => I32) {Throw String}: Unit =
+    b = pop_int stack
+    a = pop_int stack
+    stack.push (Int (f a b))
+
+// Handle a built-in command, returns true if the command was handled
+handle_builtin (cmd: String) (stack: mut Vec Value) {Throw String}: Bool =
+    if clone cmd == "print" then
+        value = stack.pop () ~> try_or_else expected_value
+        println value
+    else if clone cmd == "+" then binary_fn stack (+)
+    else if clone cmd == "-" then binary_fn stack (-)
+    else if clone cmd == "*" then binary_fn stack (*)
+    else if clone cmd == "/" then binary_fn stack (/)
+    else if clone cmd == "=" then binary_fn stack fn a b -> I32 (a == b)
+    else if clone cmd == "<" then binary_fn stack fn a b -> I32 (a < b)
+    else if clone cmd == "dup" then
+        value = stack.pop () ~> try_or_else expected_value
+        stack.push (clone value)
+        stack.push value
+    else if clone cmd == "swap" then
+        b = stack.pop () ~> try_or_else expected_value
+        a = stack.pop () ~> try_or_else expected_value
+        stack.push b
+        stack.push a
+    else if cmd == "drop" then
+        _ = stack.pop () ~> try_or_else expected_value
+    else 
+        return false
+    true
+
+impl clone_value: Clone Value with
+    clone value = match deref value
+        | Name n -> Name (clone n)
+        | Int n -> Int n
+        | Value.Builtin b -> Value.Builtin b
+
+impl print_value: Print Value with
+    print value = print (cast value : String)
+
+impl cast_value_string: Cast Value String with
+    cast value =
+        match value
+        | Name n -> n
+        | Int n -> cast n
+        | Value.Builtin b -> cast b
+
+impl cast_builtin_string: Cast Builtin String with
+    cast b =
+        match b
+        | Builtin.Print -> "print"
+        | Builtin.Add -> "+"
+        | Builtin.Sub -> "-"
+        | Builtin.Mul -> "*"
+        | Builtin.Div -> "/"
+        | Builtin.Eq -> "="
+        | Builtin.Lt -> "<"
+        | Builtin.Dup -> "dup"
+        | Builtin.Swap -> "swap"
+        | Builtin.Drop -> "drop"
+
+impl cast_bool_i32: Cast Bool I32 with
+    cast b = if b then 1 else 0
+
+impl hash_string: Hash String with
+    hash s = U64 (foldl (bytes s) 0 fn acc c -> acc * 10 + c)
+
+i32_from_string (var s: String) {Fail}: I32 =
+    if clone s == "0" then return 0
+
+    var n = 0i32
+    iter (bytes s) fn byte ->
+       if byte < 48 or byte > 57 then fail ()
+       n *= 10
+       n += I32 byte - 48
+    n

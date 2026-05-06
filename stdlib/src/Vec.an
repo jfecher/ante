@@ -2,9 +2,9 @@ import Std.C.realloc, free
 import Std.Stream.Stream, iter
 import Std.Fail.Fail, fail
 
-export Vec, empty, of, is_empty, len, capacity, reserve, push, pop, get, get_unchecked,
+export Vec, empty, of, is_empty, len, extend, capacity, reserve, push, pop, get, get_unchecked,
     remove_index, remove_first, remove_indices, remove_all, swap_last,
-    print_vec, print_helper, extract_vec, stream_vec, eq_vec, drop_vec, (.[)
+    print_vec, print_helper, extract_vec, stream_vec, stream_imm_vec, eq_vec, drop_vec, (.[)
 
 type Vec t =
     data: Ptr t
@@ -22,8 +22,11 @@ Vec.capacity (v: ref Vec a) = v.cap
 // Create a new Vec with the elements from the given stream
 Vec.of (s: s) {Stream s t}: Vec t =
     var vec = Vec.empty ()
-    iter s (vec.push _)
+    vec.extend s
     vec
+
+Vec.extend (vec: mut Vec t) (s: s) {Stream s t}: Unit =
+    iter s (vec.push _)
 
 //reserve numElements in Vec v, elements will be uninitialized
 Vec.reserve (v: mut Vec t) (numElems: Usz) : Unit =
@@ -155,7 +158,12 @@ impl print_vec {p: Print t}: Print (ref Vec t) with
 impl extract_vec: Extract (Vec t) Usz t with
     (.[) v i = v.data.[i]
 
-impl stream_vec: Stream (imm Vec a) (imm a) with
+impl stream_vec: Stream (Vec a) a with
+    stream vec e =
+        for i in 0 .. vec.len do
+            e.emit (deref (vec.get_unchecked i))
+
+impl stream_imm_vec: Stream (imm Vec a) (imm a) with
     stream vec e =
         for i in 0 .. vec.len do
             e.emit (vec.get_unchecked i)

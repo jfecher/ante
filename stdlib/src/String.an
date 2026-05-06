@@ -36,7 +36,7 @@ reverse (var s: String): String =
 ///
 /// For example `split "foo bar  baz "` will emit all of:
 /// ["foo", "bar", "", "baz", ""]
-split (s: String) (c: Char) {Emit String}: Unit =
+split (s: String) (c: Char) = fn {Emit String} ->
     var subend = 0usz
     var substart = 0usz
     while U32 subend < s.length do

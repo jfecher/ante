@@ -15,9 +15,14 @@ catch_or (f: fn (Throw e) => a) (default: a): a =
     handler h for throw _ -> default
     f h
 
-catch_or_else (f: fn (Throw e) => a) (default: fn Unit => a): a =
-    handler h for throw _ -> default ()
+catch_or_else (f: fn (Throw e) => a) (default: fn e => a): a =
+    handler h for throw e -> default e
     f h
+
+on_err (f: fn (Throw e) => a) (on_err: fn e => Unit): Unit =
+    handler h for throw e -> on_err e
+    f h
+    ()
 
 /// Apply the given function to the thrown value and re-throw it
 map_err (f: fn (Throw e1) => t) (f2: fn e1 => e2) {Throw e2}: t =

@@ -139,7 +139,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     new_expected.push(ParameterType::implicit(self.expr_types[&value].clone()));
                 },
                 _ => {
-                    let expected = current_expected.unwrap_or(ParameterType::explicit(Type::ERROR));
+                    let Some(expected) = current_expected else {
+                        // User underprovided explicit args - avoid OOB indexing into the call's args.
+                        return None;
+                    };
                     new_expected.push(expected);
                     implicits_added.push(None);
                     current_expected = expected_params.next();
