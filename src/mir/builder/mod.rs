@@ -239,6 +239,14 @@ where
         self.convert_type(typ, None)
     }
 
+    /// If `typ` is a `shared` user-defined type, dereference `value`, otherwise return it unchanged.
+    fn deref_if_shared(&mut self, value: Value, typ: &TCType) -> Value {
+        match self.shared_inner_layout_of(typ) {
+            Some(inner_layout) => self.push_instruction(Instruction::Deref(value), inner_layout),
+            None => value,
+        }
+    }
+
     fn define_variable(&mut self, origin: Origin, value: Value) {
         match origin {
             Origin::Local(name) => self.local_variables.insert(name, value),
@@ -966,7 +974,9 @@ where
     }
 
     fn switch(&mut self, tag: PathId, cases: Vec<Case>, else_: Option<Box<DecisionTree>>, match_expr: ExprId) -> Value {
+        let path_type = self.types.result.maps.path_types[&tag].clone();
         let value_being_matched = self.variable(tag);
+        let value_being_matched = self.deref_if_shared(value_being_matched, &path_type);
         let int_value = self.extract_tag_value(value_being_matched);
         let start = self.current_block;
 
@@ -1297,16 +1307,20 @@ where
                 }
             },
             cst::Pattern::Literal(_) => (),
-            cst::Pattern::Constructor(_type, arguments) => match self.type_of_value(&value) {
-                Type::Union(_variants) => todo!("Deconstruct union"),
-                Type::Tuple(fields) => {
-                    for (i, (field_type, argument)) in fields.iter().zip(arguments).enumerate() {
-                        let instruction = Instruction::IndexTuple { tuple: value, index: i as u32 };
-                        let field = self.push_instruction(instruction, field_type.clone());
-                        self.bind_pattern(*argument, field);
-                    }
-                },
-                other => unreachable!("Expected tuple or union when deconstructing pattern, found {other}"),
+            cst::Pattern::Constructor(_type, arguments) => {
+                let pattern_tc_type = self.types.result.maps.pattern_types[&pattern].clone();
+                let value = self.deref_if_shared(value, &pattern_tc_type);
+                match self.type_of_value(&value) {
+                    Type::Union(_variants) => todo!("Deconstruct union"),
+                    Type::Tuple(fields) => {
+                        for (i, (field_type, argument)) in fields.iter().zip(arguments).enumerate() {
+                            let instruction = Instruction::IndexTuple { tuple: value, index: i as u32 };
+                            let field = self.push_instruction(instruction, field_type.clone());
+                            self.bind_pattern(*argument, field);
+                        }
+                    },
+                    other => unreachable!("Expected tuple or union when deconstructing pattern, found {other}"),
+                }
             },
             cst::Pattern::TypeAnnotation(pattern, _) => self.bind_pattern(*pattern, value),
             cst::Pattern::MethodName { type_name: _, item_name } => {
@@ -1354,11 +1368,13 @@ where
             let constructor_type = self.types.get_generalized(constructor_name);
             self.set_generics_in_scope(constructor_type);
 
-            if let crate::type_inference::types::Type::Function(function) = constructor_type.ignore_forall() {
-                self.define_type_constructor(constructor_name, constructor_type, &function.parameters, tag)
-            } else {
-                self.define_type_constructor(constructor_name, constructor_type, &[], tag)
-            }
+            let parameters = match constructor_type.ignore_forall() {
+                TCType::Function(function) => function.parameters.as_slice(),
+                _ => &[],
+            };
+
+            let shared = type_definition.shared;
+            self.define_type_constructor(constructor_name, constructor_type, parameters, tag, shared);
         }
 
         // Traits are sugar for a struct of function-typed fields, however each "field" is treated
@@ -1382,55 +1398,70 @@ where
 
     fn define_type_constructor(
         &mut self, name_id: NameId, constructor_type: &TCType,
-        field_types: &[crate::type_inference::types::ParameterType], tag: Option<u8>,
+        field_types: &[crate::type_inference::types::ParameterType], tag: Option<u8>, shared: bool,
     ) {
         let top_level_name = TopLevelName::new(self.top_level_id, name_id);
         let name = self.context()[name_id].clone();
         let typ = self.convert_type(constructor_type, None);
-        let result_type = match typ.function_return_type() {
-            Some(return_type) => return_type.clone(),
-            None => typ.clone(),
+
+        // The unboxed layout constructor body builds. For non-shared types this is the same as
+        // the final type. For shared types, we wrap this in a pointer at the end.
+        let payload_type = if shared {
+            let return_typ =
+                constructor_type.ignore_forall().return_type().unwrap_or_else(|| constructor_type.ignore_forall());
+            self.shared_inner_layout_of(return_typ).unwrap_or_else(|| {
+                let name = self.context()[name_id].clone();
+                panic!("shared constructor {name} has no inner layout")
+            })
+        } else {
+            typ.function_return_type().cloned().unwrap_or_else(|| typ.clone())
         };
 
-        let raw_union_type = result_type.without_union_tag();
-
+        let raw_union_type = payload_type.without_union_tag();
         let generic_count = self.generics_in_scope.len() as u32;
         let is_zero_arg = field_types.is_empty();
 
         let id = self.new_definition(name, Some(name_id), generic_count, typ, |this| {
-            let (fields, field_types): (Vec<Value>, Vec<Type>) = field_types
-                .iter()
-                .enumerate()
-                .map(|(i, field_type)| {
-                    let field_type = this.convert_type(&field_type.typ, None);
-                    this.push_parameter(field_type.clone());
-                    (Value::Parameter(BlockId::ENTRY_BLOCK, i as u32), field_type)
-                })
-                .unzip();
-
-            let tuple_type = Type::tuple(field_types);
-            let mut result = this.push_instruction(Instruction::MakeTuple(fields), tuple_type);
-
-            // If this is a union type we must also add the tag and cast to the union type
-            if let Some(tag) = tag {
-                let raw_union_type = raw_union_type.unwrap_or_else(|| {
-                    let name = this.context()[name_id].clone();
-                    panic!("Failed to unwrap raw union type. Full result type is: {result_type} for constructor {name}")
-                });
-                let casted = this.push_instruction(Instruction::Transmute(result), raw_union_type);
-                let fields_with_tag = vec![Value::tag_value(tag), casted];
-                result = this.push_instruction(Instruction::MakeTuple(fields_with_tag), result_type);
+            let mut result = this.build_constructor_payload(field_types, tag, &payload_type, raw_union_type, name_id);
+            if shared {
+                result = this.push_instruction(Instruction::AllocShared(result), Type::POINTER);
             }
 
-            // 0-arg constructors are global constant values; use Result terminator so
-            // is_global() returns true and validation treats them as globals (not functions).
-            if is_zero_arg {
-                this.terminate_block(TerminatorInstruction::Result(result));
-            } else {
-                this.terminate_block(TerminatorInstruction::Return(result));
-            }
+            // 0-arg constructors are globals (`Result` terminator → `is_global()` is true).
+            // For shared 0-arg constructors the AllocShared lowers to a backing static in
+            // the constant codegen path.
+            let terminator = if is_zero_arg { TerminatorInstruction::Result } else { TerminatorInstruction::Return };
+            this.terminate_block(terminator(result));
         });
         self.name_to_id.insert(top_level_name, id);
+    }
+
+    /// Build the value a constructor returns *before* any shared-pointer wrap.
+    /// Materializes block parameters, packs them into a tuple, and (for sum-type
+    /// variants) transmutes & wraps `(tag, union)`.
+    fn build_constructor_payload(
+        &mut self, field_types: &[crate::type_inference::types::ParameterType], tag: Option<u8>, payload_type: &Type,
+        raw_union_type: Option<Type>, name_id: NameId,
+    ) -> Value {
+        let field_types = mapvec(field_types, |param| self.convert_type(&param.typ, None));
+        let fields = mapvec(field_types.iter().enumerate(), |(i, field_type)| {
+            self.push_parameter(field_type.clone());
+            Value::Parameter(BlockId::ENTRY_BLOCK, i as u32)
+        });
+
+        let mut payload = self.push_instruction(Instruction::MakeTuple(fields), Type::tuple(field_types));
+
+        if let Some(tag) = tag {
+            let raw_union_type = raw_union_type.unwrap_or_else(|| {
+                let name = self.context()[name_id].clone();
+                panic!("Failed to unwrap raw union type. Full result type is: {payload_type} for constructor {name}")
+            });
+            let casted = self.push_instruction(Instruction::Transmute(payload), raw_union_type);
+            payload = self
+                .push_instruction(Instruction::MakeTuple(vec![Value::tag_value(tag), casted]), payload_type.clone());
+        }
+
+        payload
     }
 
     fn define_trait_methods(&mut self, type_definition: &cst::TypeDefinition) {

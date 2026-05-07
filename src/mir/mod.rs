@@ -430,6 +430,9 @@ pub enum Instruction {
     StackAlloc(Value),
     StackAllocUninit(Type),
 
+    /// Heap-allocate and store a shared value, returning its pointer.
+    AllocShared(Value),
+
     /// Store a value into a pointer location. Returns unit.
     Store {
         pointer: Value,
@@ -539,6 +542,7 @@ impl Instruction {
             Instruction::MakeTuple(elements) => elements.iter().for_each(f),
             Instruction::StackAlloc(value) => f(value),
             Instruction::StackAllocUninit(_) => (),
+            Instruction::AllocShared(value) => f(value),
             Instruction::Store { pointer, value } => two(pointer, value),
             Instruction::Transmute(value) => f(value),
             Instruction::Instantiate(_, _) => (),

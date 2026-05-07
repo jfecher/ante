@@ -44,8 +44,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         let type_name = TopLevelName::new(id, definition.name);
 
-        // Detect self-referential types. TODO: this won't catch any indirect uses or polymorphic recursion
-        if self.type_definition_is_recursive_and_unboxed(definition, type_name) {
+        // Detect self-referential types. TODO: this won't catch any indirect uses or polymorphic recursion.
+        if !definition.shared && self.type_definition_is_recursive_and_unboxed(definition, type_name) {
             let typ = self.current_context()[definition.name].as_ref().clone();
             let location = definition.name.locate(self);
             self.compiler.accumulate(Diagnostic::RecursiveType { typ, location });

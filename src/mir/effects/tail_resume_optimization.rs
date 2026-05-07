@@ -529,7 +529,10 @@ pub(super) fn substitute_value(definition: &mut Definition, find: Value, replace
                     sub(v);
                 }
             },
-            Instruction::StackAlloc(v) | Instruction::Transmute(v) | Instruction::Id(v) => sub(v),
+            Instruction::StackAlloc(v)
+            | Instruction::AllocShared(v)
+            | Instruction::Transmute(v)
+            | Instruction::Id(v) => sub(v),
             Instruction::Store { pointer, value } => {
                 sub(pointer);
                 sub(value);

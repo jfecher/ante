@@ -2,7 +2,7 @@ import Std.Vec.Vec, empty, of, is_empty, len, capacity, reserve, push, pop, get,
     remove_index, remove_first, remove_indices, remove_all, swap_last,
     print_vec, extract_vec, stream_imm_vec, eq_vec
 
-import Std.Fail.try_or
+import Std.Fail.try_or, no_fail
 import Std.Stream.iter
 
 main () =
@@ -22,7 +22,7 @@ test_basics () =
     v.push 3i32
     v.push 4
     v.push 5
-    v.remove_index 1
+    v.remove_index 1 ~> no_fail
     println (ref v)
 
     v.pop ()
@@ -56,7 +56,7 @@ test_remove_indices () =
     var idxs = Vec.empty ()
     idxs.push 1
     idxs.push 3
-    v.remove_indices idxs
+    v.remove_indices idxs ~> no_fail
     println (ref v)
 
 test_remove_all () =

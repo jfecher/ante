@@ -278,6 +278,14 @@ impl<'ctx> ModuleContext<'ctx> {
                     },
                 }
             },
+            mir::Instruction::AllocShared(value) => {
+                // In a global initializer we can't call malloc, use a global instead
+                let init_value = self.constant_value(*value);
+                let name = format!("__shared_static_{}_{:?}", global.id, id);
+                let backing = self.module.add_global(init_value.get_type(), None, &name);
+                backing.set_initializer(&init_value);
+                backing.as_pointer_value().into()
+            },
             other => panic!("Unsupported instruction in global initializer: {other:?}"),
         }
     }
@@ -551,6 +559,12 @@ impl<'ctx> ModuleContext<'ctx> {
             mir::Instruction::StackAllocUninit(typ) => {
                 let typ = self.convert_type(typ);
                 self.builder.build_alloca(typ, "").unwrap().into()
+            },
+            mir::Instruction::AllocShared(value) => {
+                let value = self.lookup_value(value);
+                let ptr = self.builder.build_malloc(value.get_type(), "").unwrap();
+                self.builder.build_store(ptr, value).unwrap();
+                ptr.into()
             },
             mir::Instruction::Transmute(value) => self.transmute(value, function, id),
             mir::Instruction::Id(value) => self.lookup_value(value),

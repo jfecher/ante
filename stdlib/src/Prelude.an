@@ -23,7 +23,7 @@ export String, from_parts, Maybe, None, Some, unwrap, Result, Ok, Error, (,),
     Mod, (%), (%%), mod_i8, mod_i16, mod_i32, mod_i64, mod_isz, mod_u8, mod_u16, mod_u32, mod_u64, mod_usz,
     Eq, (==), (!=), eq_i8, eq_i16, eq_i32, eq_i64, eq_isz, eq_u8, eq_u16, eq_u32, eq_u64, eq_usz, eq_f32, eq_f64, eq_char, eq_bool, eq_ref, eq_ptr, eq_maybe, eq_string,
     Not, (not), not_bool, not_i32,
-    Cmp, (<), (>), (<=), (>=), cmp_i8, cmp_i16, cmp_i32, cmp_i64, cmp_isz, cmp_u8, cmp_u16, cmp_u32, cmp_u64, cmp_usz, cmp_f32, cmp_f64,
+    Cmp, (<), (>), (<=), (>=), max, min, cmp_i8, cmp_i16, cmp_i32, cmp_i64, cmp_isz, cmp_u8, cmp_u16, cmp_u32, cmp_u64, cmp_usz, cmp_f32, cmp_f64,
     Num, num_i8, num_i16, num_i32, num_i64, num_isz, num_u8, num_u16, num_u32, num_u64, num_usz,
     Append, (++), append_string,
     (|>), (<|),
@@ -416,6 +416,8 @@ impl cmp_usz: Cmp Usz with (<) x y = intrinsic "LessUnsigned" x y
 impl cmp_f32: Cmp F32 with (<) x y = intrinsic "LessFloat" x y
 impl cmp_f64: Cmp F64 with (<) x y = intrinsic "LessFloat" x y
 
+max (l: t) (r: t) {Cmp t} {Copy t}: t = if l > r then l else r
+min (l: t) (r: t) {Cmp t} {Copy t}: t = if l < r then l else r
 
 
 trait Num a with

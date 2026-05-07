@@ -363,6 +363,7 @@ fn fmt_instruction(
         mir::Instruction::Deref(x) => write!(f, "deref {}", v(x))?,
         mir::Instruction::SizeOf(x) => write!(f, "size_of {x}")?,
         mir::Instruction::StackAllocUninit(x) => write!(f, "stack_alloc_uninit {x}")?,
+        mir::Instruction::AllocShared(value) => write!(f, "alloc_shared {}", v(value))?,
         mir::Instruction::Extern(name) => write!(f, "extern \"{name}\"")?,
     }
 

@@ -1,0 +1,91 @@
+import Std.Stream.foldl, iota, stream_fn
+
+shared type Color = | R | B
+
+shared type RbTree t =
+    | Empty
+    | Tree Color (RbTree t) t (RbTree t)
+
+balance (tree: RbTree t): RbTree t =
+    match tree
+    | Tree B (Tree R (Tree R a x b) y c) z d -> Tree R (Tree B a x b) y (Tree B c z d)
+    | Tree B (Tree R a x (Tree R b y c)) z d -> Tree R (Tree B a x b) y (Tree B c z d)
+    | Tree B a x (Tree R (Tree R b y c) z d) -> Tree R (Tree B a x b) y (Tree B c z d)
+    | Tree B a x (Tree R b y (Tree R c z d)) -> Tree R (Tree B a x b) y (Tree B c z d)
+    | other -> other
+
+depth (tree: RbTree t): U32 =
+    match tree
+    | Empty -> 0
+    | Tree _ l _ r -> 1 + max (depth l) (depth r)
+
+count (tree: RbTree t): U32 =
+    match tree
+    | Empty -> 0
+    | Tree _ l _ r -> 1 + count l + count r
+
+make_black (tree: RbTree t): RbTree t =
+    match tree
+    | Empty -> Empty
+    | Tree _ l x r -> Tree B l x r
+
+ins (tree: RbTree t) (x: t) {Cmp t} {Copy t}: RbTree t =
+    match tree
+    | Empty -> Tree R Empty x Empty
+    | Tree color l y r ->
+        if x < y then balance (Tree color (ins l x) y r)
+        else if y < x then balance (Tree color l y (ins r x))
+        else tree
+
+insert (tree: RbTree t) (x: t) {Cmp t} {Copy t}: RbTree t =
+    make_black (ins tree x)
+
+contains (tree: RbTree t) (x: t) {Cmp t} {Copy t}: Bool =
+    match tree
+    | Empty -> false
+    | Tree _ l y r ->
+        if x < y then contains l x
+        else if y < x then contains r x
+        else true
+
+tree_of_size size =
+    foldl (iota size) RbTree.Empty insert
+
+main () =
+    // Build a tree containing 0..100
+    t = tree_of_size 100
+    println (count t)         // 100
+    println (depth t)         // 9
+    println (contains t 0)    // true
+    println (contains t 50)   // true
+    println (contains t 99)   // true
+    println (contains t 100)  // false
+    println (contains t 200)  // false
+
+    // Duplicates should not grow the tree
+    t2 = insert t 50 |> insert 50 |> insert 50
+    println (count t2)           // 100
+
+    // Larger tree: 0..1000
+    big = tree_of_size 1000
+    println (count big)          // 1000
+    println (depth big)          // 15
+    println (contains big 500)   // true
+    println (contains big 999)   // true
+    println (contains big 1000)  // false
+
+// args: --delete-binary --no-color
+// expected stdout:
+// 100
+// 9
+// true
+// true
+// true
+// false
+// false
+// 100
+// 1000
+// 15
+// true
+// true
+// false

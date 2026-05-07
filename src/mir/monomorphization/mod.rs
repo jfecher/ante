@@ -268,7 +268,10 @@ impl<'local> FunctionContext<'local> {
                     self.remap_value(e);
                 }
             },
-            Instruction::StackAlloc(v) | Instruction::Transmute(v) | Instruction::Id(v) => self.remap_value(v),
+            Instruction::StackAlloc(v)
+            | Instruction::AllocShared(v)
+            | Instruction::Transmute(v)
+            | Instruction::Id(v) => self.remap_value(v),
             Instruction::StackAllocUninit(typ) => {
                 if !self.generic_mapping.is_empty() {
                     self.specialize_type(typ);

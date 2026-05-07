@@ -8,7 +8,10 @@ use crate::{
     iterator_extensions::mapvec,
     mir::{FunctionType, Type, builder::Context},
     name_resolution::{Origin, builtin::Builtin},
-    parser::ids::{ExprId, PathId, PatternId},
+    parser::{
+        cst::TopLevelItemKind,
+        ids::{ExprId, PathId, PatternId, TopLevelId},
+    },
     type_inference::{
         TypeBody,
         types::{Type as TCType, TypeBindings, TypeVariableId},
@@ -42,6 +45,17 @@ where
             in_progress: RefCell::new(FxHashSet::default()),
         };
         ctx.convert_type(typ, args)
+    }
+
+    /// If `typ` resolves to a `shared` user-defined type, returns its inner layout behind the pointer.
+    pub(super) fn shared_inner_layout_of(&self, typ: &TCType) -> Option<Type> {
+        let ctx = ConvertTypeContext {
+            compiler: self.compiler,
+            type_bindings: &self.types.bindings,
+            generics_in_scope: &self.generics_in_scope,
+            in_progress: RefCell::new(FxHashSet::default()),
+        };
+        ctx.shared_inner_layout_of(typ, None)
     }
 
     /// Returns the nth field of the tuple type, or [Type::ERROR] if there is none
@@ -118,13 +132,16 @@ where
     fn convert_type_origin(&self, origin: Origin, args: Option<&[TCType]>, variant_index: Option<usize>) -> Type {
         match origin {
             Origin::TopLevelDefinition(id) => {
+                // `shared` types are always represented as a pointer in MIR.
+                if Self::is_shared_type_definition(self.compiler, id.top_level_item) {
+                    return Type::POINTER;
+                }
                 let key = (origin, Arc::new(args.unwrap_or(&[]).to_vec()));
                 if !self.in_progress.borrow_mut().insert(key.clone()) {
                     // The type recursively references itself in a non-pointer position.
                     return Type::ERROR;
                 }
-                let body = id.top_level_item.type_body(args, self.compiler);
-                let result = self.convert_type_body(body, variant_index);
+                let result = self.expand_user_defined_body(id.top_level_item, args, variant_index);
                 self.in_progress.borrow_mut().remove(&key);
                 result
             },
@@ -132,6 +149,33 @@ where
             Origin::TypeResolution => unreachable!("Types should never be Origin::TypeResolution"),
             Origin::Builtin(builtin) => self.convert_builtin_type(builtin),
         }
+    }
+
+    /// Look through `Type::Application` and `Type::UserDefined` to find a top-level type
+    /// definition; if it is `shared`, return the inner layout the pointer wraps.
+    fn shared_inner_layout_of(&self, typ: &TCType, args: Option<&[TCType]>) -> Option<Type> {
+        match typ.follow(self.type_bindings) {
+            TCType::Application(constructor, new_args) => {
+                assert!(args.is_none());
+                self.shared_inner_layout_of(constructor, Some(new_args))
+            },
+            TCType::Forall(_, inner) => self.shared_inner_layout_of(inner, args),
+            TCType::UserDefined(Origin::TopLevelDefinition(id)) => {
+                Self::is_shared_type_definition(self.compiler, id.top_level_item)
+                    .then(|| self.expand_user_defined_body(id.top_level_item, args, None))
+            },
+            _ => None,
+        }
+    }
+
+    fn expand_user_defined_body(&self, id: TopLevelId, args: Option<&[TCType]>, variant_index: Option<usize>) -> Type {
+        let body = id.type_body(args, self.compiler);
+        self.convert_type_body(body, variant_index)
+    }
+
+    fn is_shared_type_definition(compiler: &Db, id: TopLevelId) -> bool {
+        let (item, _) = GetItem(id).get(compiler);
+        matches!(&item.kind, TopLevelItemKind::TypeDefinition(td) if td.shared)
     }
 
     /// Converts a type body to the general representation of that type.

@@ -155,6 +155,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             return true;
         }
 
+        // `shared` types are pointer-wrapped in MIR and are always Copy.
+        if self.is_shared_user_defined(&typ) {
+            return true;
+        }
+
         let copy_name = self.get_copy_type_name();
         let copy_constructor = Type::UserDefined(Origin::TopLevelDefinition(copy_name));
         // Traits have an extra [env] generic parameter from desugaring, so Copy t is actually
@@ -206,6 +211,20 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 Origin::TopLevelDefinition(name) => {
                     let (item, _) = GetItemRaw(name.top_level_item).get(self.compiler);
                     matches!(&item.kind, TopLevelItemKind::TraitDefinition(_) | TopLevelItemKind::EffectDefinition(_))
+                },
+                _ => false,
+            },
+            _ => false,
+        }
+    }
+
+    fn is_shared_user_defined(&self, typ: &Type) -> bool {
+        match typ.follow(&self.bindings) {
+            Type::Application(constructor, _) => self.is_shared_user_defined(&constructor),
+            Type::UserDefined(origin) => match origin {
+                Origin::TopLevelDefinition(name) => {
+                    let (item, _) = GetItemRaw(name.top_level_item).get(self.compiler);
+                    matches!(&item.kind, TopLevelItemKind::TypeDefinition(td) if td.shared)
                 },
                 _ => false,
             },

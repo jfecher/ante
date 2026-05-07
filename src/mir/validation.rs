@@ -376,6 +376,9 @@ impl Definition {
                 Instruction::StackAllocUninit(_) => {
                     instr_assert_subtype!(*result_type, Type::POINTER, self, id, mir, "StackAllocUninit result must be a pointer");
                 },
+                Instruction::AllocShared(_) => {
+                    instr_assert_subtype!(*result_type, Type::POINTER, self, id, mir, "AllocShared result must be a pointer");
+                },
                 Instruction::GetFieldPtr { struct_ptr, .. } => {
                     let ptr_type = mir.type_of_value(struct_ptr, self);
                     instr_assert!(matches!(ptr_type, Type::POINTER), self, id, mir, "GetFieldPtr struct_ptr must be a pointer");
