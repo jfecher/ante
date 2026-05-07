@@ -352,7 +352,7 @@ impl Diagnostic {
                 format!("Expected type `{expected}` but found `{actual}`")
             },
             Diagnostic::RecursiveType { typ, location: _ } => {
-                format!("Binding here would create an infinitely recursive type with `{typ}`")
+                format!("`{typ}` is infinitely recursive. Put recursive uses behind a pointer indirection to limit the size of the type")
             },
             Diagnostic::NamespaceNotFound { name, location: _ } => {
                 format!("Namespace `{name}` not found in path")

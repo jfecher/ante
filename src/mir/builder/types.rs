@@ -1,7 +1,7 @@
-use std::sync::Arc;
+use std::{cell::RefCell, sync::Arc};
 
 use inc_complete::DbGet;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
     incremental::{GetItem, TypeCheck},
@@ -39,6 +39,7 @@ where
             compiler: self.compiler,
             type_bindings: &self.types.bindings,
             generics_in_scope: &self.generics_in_scope,
+            in_progress: RefCell::new(FxHashSet::default()),
         };
         ctx.convert_type(typ, args)
     }
@@ -59,6 +60,11 @@ struct ConvertTypeContext<'a, Db> {
     compiler: &'a Db,
     type_bindings: &'a TypeBindings,
     generics_in_scope: &'a GenericsInScope,
+
+    /// Tracks the (Origin, args) pairs whose user-defined type bodies are currently
+    /// being expanded. Without this, recursive ADTs like `Nat = | Zero | Succ Nat`
+    /// cause unbounded recursion. This does not guard against polymorphic recursion.
+    in_progress: RefCell<FxHashSet<(Origin, Arc<Vec<TCType>>)>>,
 }
 
 impl<Db> ConvertTypeContext<'_, Db>
@@ -112,8 +118,15 @@ where
     fn convert_type_origin(&self, origin: Origin, args: Option<&[TCType]>, variant_index: Option<usize>) -> Type {
         match origin {
             Origin::TopLevelDefinition(id) => {
+                let key = (origin, Arc::new(args.unwrap_or(&[]).to_vec()));
+                if !self.in_progress.borrow_mut().insert(key.clone()) {
+                    // The type recursively references itself in a non-pointer position.
+                    return Type::ERROR;
+                }
                 let body = id.top_level_item.type_body(args, self.compiler);
-                self.convert_type_body(body, variant_index)
+                let result = self.convert_type_body(body, variant_index);
+                self.in_progress.borrow_mut().remove(&key);
+                result
             },
             Origin::Local(_) => unreachable!("Types cannot be declared locally"),
             Origin::TypeResolution => unreachable!("Types should never be Origin::TypeResolution"),

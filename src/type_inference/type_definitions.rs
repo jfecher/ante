@@ -5,7 +5,7 @@ use rustc_hash::FxHashMap;
 use crate::{
     diagnostics::{Diagnostic, UnimplementedItem},
     iterator_extensions::mapvec,
-    name_resolution::Origin,
+    name_resolution::{Origin, ResolutionResult},
     parser::{
         cst,
         ids::{NameId, TopLevelId, TopLevelName},
@@ -43,11 +43,60 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         };
 
         let type_name = TopLevelName::new(id, definition.name);
+
+        // Detect self-referential types. TODO: this won't catch any indirect uses or polymorphic recursion
+        if self.type_definition_is_recursive_and_unboxed(definition, type_name) {
+            let typ = self.current_context()[definition.name].as_ref().clone();
+            let location = definition.name.locate(self);
+            self.compiler.accumulate(Diagnostic::RecursiveType { typ, location });
+        }
+
         let generics = mapvec(&definition.generics, |id| Generic::Named(Origin::Local(*id)));
 
         for (constructor_name, args) in constructors.iter() {
             let actual = self.build_constructor_type(type_name, definition, &generics, args);
             self.check_name(*constructor_name, &actual);
+        }
+    }
+
+    /// Checks for an unboxed recursive reference to `type_name` within the variant fields of `definition`.
+    fn type_definition_is_recursive_and_unboxed(
+        &self, definition: &cst::TypeDefinition, type_name: TopLevelName,
+    ) -> bool {
+        let resolve = self.current_resolve();
+        let target = Origin::TopLevelDefinition(type_name);
+        match &definition.body {
+            cst::TypeDefinitionBody::Enum(variants) => {
+                variants.iter().any(|(_, args)| args.iter().any(|t| Self::type_references(t, target, resolve)))
+            },
+            cst::TypeDefinitionBody::Struct(fields) => {
+                fields.iter().any(|(_, t)| Self::type_references(t, target, resolve))
+            },
+            _ => false,
+        }
+    }
+
+    fn type_references(typ: &cst::Type, target: Origin, resolve: &ResolutionResult) -> bool {
+        match &typ.kind {
+            cst::TypeKind::Named(path) => resolve.path_origins.get(path).copied() == Some(target),
+            cst::TypeKind::Application(f, args) => {
+                Self::type_references(f, target, resolve)
+                    || args.iter().any(|a| Self::type_references(a, target, resolve))
+            },
+            cst::TypeKind::Tuple(elements) => elements.iter().any(|e| Self::type_references(e, target, resolve)),
+            // Function types are pointer-sized, so recursion through them does not require
+            // unbounded representation.
+            cst::TypeKind::Function(_)
+            | cst::TypeKind::Variable(_)
+            | cst::TypeKind::Reference(_)
+            | cst::TypeKind::Pointer
+            | cst::TypeKind::NoClosureEnv
+            | cst::TypeKind::Hole
+            | cst::TypeKind::Error
+            | cst::TypeKind::Unit
+            | cst::TypeKind::Char
+            | cst::TypeKind::Integer(_)
+            | cst::TypeKind::Float(_) => false,
         }
     }
 

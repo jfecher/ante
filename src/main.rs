@@ -306,6 +306,15 @@ fn display_mir(compiler: &mut Db, emit_all: bool, optimize_tail_calls: bool) -> 
                 let parse = Parse(*file).get(compiler);
 
                 for item in &parse.cst.top_level_items {
+                    let item_diagnostics = compiler.get_accumulated_uncached(TypeCheck(item.id));
+                    let item_has_errors =
+                        item_diagnostics.iter().any(|d| matches!(d.kind(), DiagnosticKind::Error));
+                    diagnostics.extend(item_diagnostics);
+
+                    if item_has_errors {
+                        continue;
+                    }
+
                     let mir = mir::builder::build_initial_mir_with_shared_map(compiler, item.id);
                     if let Some(mut mir) = mir {
                         if optimize_tail_calls {
@@ -314,8 +323,6 @@ fn display_mir(compiler: &mut Db, emit_all: bool, optimize_tail_calls: bool) -> 
 
                         print!("{mir}");
                     }
-                    let more_diagnostics = compiler.get_accumulated_uncached(TypeCheck(item.id));
-                    diagnostics.extend(more_diagnostics);
                 }
             }
         }
@@ -324,20 +331,11 @@ fn display_mir(compiler: &mut Db, emit_all: bool, optimize_tail_calls: bool) -> 
 }
 
 fn display_mir_mono(compiler: &mut Db) -> BTreeSet<Diagnostic> {
-    let mir = mir::monomorphization::monomorphize(compiler);
-    println!("{mir}");
-
-    let crates = GetCrateGraph.get(compiler);
-    let mut diagnostics = BTreeSet::new();
-    for crate_ in crates.values() {
-        for file in crate_.source_files.values() {
-            let parse = Parse(*file).get(compiler);
-
-            for item in parse.cst.top_level_items.iter() {
-                let more_diagnostics = compiler.get_accumulated_uncached(TypeCheck(item.id));
-                diagnostics.extend(more_diagnostics);
-            }
-        }
+    let diagnostics = collect_all_diagnostics(compiler);
+    let (errors, _) = classify_diagnostics(&diagnostics);
+    if errors == 0 {
+        let mir = mir::monomorphization::monomorphize(compiler);
+        println!("{mir}");
     }
     diagnostics
 }
