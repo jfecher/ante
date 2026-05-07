@@ -17,6 +17,11 @@ try_or_else (f: fn Fail => a) (default: fn Unit => a): a =
 assert (cond: Bool) {Fail} : Unit =
     if not cond then fail ()
 
+/// Asserts the operation cannot fail.
+/// Panics at runtime if it does.
+no_fail (f: fn Fail => a): a =
+    try_or_else f fn () -> panic "no_fail: failed"
+
 /// Ignores a `Fail` effect, discarding it and returning Unit
 ignore_fail (f: fn Fail => a): Unit =
     h <- try_or _ ()

@@ -1,6 +1,6 @@
 import Std.C.realloc, free
 import Std.Stream.Stream, iter
-import Std.Fail.Fail, fail
+import Std.Fail.Fail, fail, no_fail
 
 export Vec, empty, of, is_empty, len, extend, capacity, reserve, push, pop, get, get_unchecked,
     remove_index, remove_first, remove_indices, remove_all, swap_last,
@@ -71,41 +71,38 @@ Vec.get_unchecked (v: imm Vec t) (i: Usz): imm t =
     ptr = offset v.data i
     transmute ptr
 
-//remove the element at the given index and return it.
-//will error if the index is out of bounds.
-Vec.remove_index (v: mut Vec t) (idx:Usz) : t =
-    if idx == v.len - 1 then
-        v.len := v.len - 1
-    else if idx >= 0 and idx < v.len - 1 then
-        for i in 0 .. (v.len - 1 - idx) do
-            i = i + idx
+/// Remove the element at the given index and return it.
+/// will Fail if the index is out of bounds.
+Vec.remove_index (v: mut Vec t) (idx: Usz) {Fail}: t =
+    if idx >= 0 and idx < v.len then
+        item = v.data.[idx]
+        for i in idx .. v.len - 1 do
             array_insert v.data i (v.data.[i+1])
 
-        v.len := v.len - 1
+        v.len -= 1
+        item
     else
-        panic "Vec.remove_index: index out of bounds" // TODO: string interpolation
-
-    v.data.[v.len]
+        fail ()
 
 /// Removes the first instance of the given element from the vector,
 /// returning the index it was found at. Returns `None` if the element was not found.
 Vec.remove_first (v: mut Vec t) (elem: t) {Eq t} {Copy t}: Maybe Usz =
     for i in 0 .. v.len do
         if elem == v.data.[i] then
-            v.remove_index i
+            v.remove_index i ~> no_fail
             return Some i
     None
 
-//Remove the given indices from the vector
-//Expects the indices to be in sorted order.
-//Will error if any index is out of bounds.
-Vec.remove_indices (v: mut Vec t) (idxs: Vec Usz) : Unit =
+/// Remove the given indices from the vector
+/// Expects the indices to be in sorted order.
+/// Will Fail if any index is out of bounds.
+Vec.remove_indices (v: mut Vec t) (idxs: Vec Usz) {Fail}: Unit =
     var moved = 0usz
     for i in 0 .. idxs.len do
         cur = idxs.data.[i]
 
         if cur < 0 or cur >= v.len then
-            panic "Vec.remove: index out of bounds" // TODO: string interpolation
+            fail ()
 
         moved += 1
         if i != idxs.len - 1 then
@@ -120,17 +117,17 @@ Vec.remove_indices (v: mut Vec t) (idxs: Vec Usz) : Unit =
 
     v.len -= moved
 
-//remove all matching elements from the vector and
-//return the number of elements removed.
-//Uses = to determine element equality.
-Vec.remove_all (v: mut Vec t) (elem: t) {Eq t} {Copy t} : Usz =
+/// Remove all matching elements from the vector and
+/// return the number of elements removed.
+/// Uses = to determine element equality.
+Vec.remove_all (v: mut Vec t) (elem: t) {Eq t} {Copy t}: Usz =
     var idxs = Vec.empty ()
     for i in 0 .. v.len do
         if elem == v.data.[i] then
             idxs.push i
 
     count = idxs.len
-    v.remove_indices idxs
+    v.remove_indices idxs ~> no_fail
     count
 
 
