@@ -640,11 +640,13 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
             if struct_is_ref && !expected_is_ref {
                 if let Some((_, inner_field_type)) = field.reference_element(&self.bindings) {
-                    self.unify(&inner_field_type, expected, TypeErrorKind::General, expr);
-                    let new_expr = self.auto_deref_coercion(expr, inner_field_type);
-                    self.current_extended_context_mut().insert_expr(expr, new_expr);
-                    self.check_expr(expr, expected);
-                    return;
+                    if self.type_is_copy(&inner_field_type) {
+                        self.unify(&inner_field_type, expected, TypeErrorKind::General, expr);
+                        let new_expr = self.auto_deref_coercion(expr, inner_field_type);
+                        self.current_extended_context_mut().insert_expr(expr, new_expr);
+                        self.check_expr(expr, expected);
+                        return;
+                    }
                 }
             }
 

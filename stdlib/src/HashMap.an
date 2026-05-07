@@ -1,5 +1,6 @@
 import Std.C.putchar, calloc
 import Std.Stream.Stream, iter, stream_fn
+import Std.Hash.Hash
 
 export HashMap, Entry, Hash, hash, empty, of, clear, resize, should_resize,
     insert, get_entry, get, remove, print_hashmap, print_helper, stream_map
@@ -15,9 +16,6 @@ type Entry k v =
     value: v
     occupied: Bool
     tombstone: Bool
-
-trait Hash t with
-    hash: fn t -> U64
 
 HashMap.empty () = HashMap 0 0 (null ())
 
@@ -88,6 +86,8 @@ type EntryResult k v =
     | NotFinished
 
 HashMap.get_entry (map: ref HashMap k v) (key: k) {Hash k} {Eq k} : Maybe (Ptr (Entry k v)) =
+    if map.capacity == 0 then return None
+
     // Return whether to continue by wrapping around the end, and the value if found
     iter_until (start: Usz) (end: Usz) : EntryResult k v =
         if start >= end then

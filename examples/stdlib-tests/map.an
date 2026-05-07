@@ -1,9 +1,7 @@
-import Std.HashMap.HashMap, empty, of, clear, insert, Hash, print_hashmap, remove, get,
+import Std.HashMap.HashMap, empty, of, clear, insert, print_hashmap, remove, get,
     get_entry, stream_map
 import Std.Stream.iter, iota, map, stream_fn
-
-impl hash_u8: Hash U8 with
-    hash x = cast x
+import Std.Hash.Hash, hash_u8
 
 main () =
     var map = empty ()

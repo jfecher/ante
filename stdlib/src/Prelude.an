@@ -13,7 +13,7 @@ export String, from_parts, Maybe, None, Some, unwrap, Result, Ok, Error, (,),
     cast_i64_i8, cast_i64_i16, cast_i64_i32, cast_i64_isz, cast_isz_i8, cast_isz_i16, cast_isz_i32, cast_isz_i64, cast_i8_f32, cast_i16_f32, cast_i32_f32, cast_i64_f32, cast_isz_f32, cast_i8_f64, cast_i16_f64, cast_i32_f64,
     cast_u8_f32, cast_u16_f64, cast_u32_f64, cast_u64_f64, cast_usz_f64, cast_u8_f64, cast_u16_f32, cast_u32_f32, cast_u64_f32, cast_usz_f32, cast_f32_i8, cast_f32_i16, cast_f32_i32, cast_f32_i64, cast_f32_isz, cast_f64_i8,
     cast_f32_u8, cast_f32_u16, cast_f32_u32, cast_f32_u64, cast_f32_usz, cast_f64_u8, cast_f64_u16, cast_f64_u32, cast_f64_u64, cast_f64_usz, cast_i8_char, cast_i16_char, cast_i32_char, cast_i64_char, cast_isz_char, cast_u8_i32,
-    cast_i64_f64, cast_isz_f64, cast_f64_i16, cast_f64_i32, cast_f64_i64, cast_f64_isz, cast_u8_char, cast_u16_char, cast_u32_char, cast_u64_char, cast_usz_char, cast_f64_f32, cast_f32_f64, cast_i32_usz, cast_char_i32, cast_char_u64, cast_i32_string,
+    cast_i64_f64, cast_isz_f64, cast_f64_i16, cast_f64_i32, cast_f64_i64, cast_f64_isz, cast_u8_char, cast_u16_char, cast_u32_char, cast_u64_char, cast_usz_char, cast_f64_f32, cast_f32_f64, cast_i32_usz, cast_char_i32, cast_char_u64, cast_i32_string, cast_bool_i32,
     u64_count_digits, u64_write_digits,
     TryCast, try_cast, try_cast_from_cast, try_cast_i64_u64, try_cast_u64,
     Add, (+), add_i8, add_i16, add_i32, add_i64, add_isz, add_u8, add_u16, add_u32, add_u64, add_usz, add_f32, add_f64,
@@ -217,6 +217,9 @@ impl cast_i32_usz: Cast I32 Usz with cast x =
 
 impl cast_char_i32: Cast Char I32 with cast x = intrinsic "ZeroExtend" x
 impl cast_char_u64: Cast Char U64 with cast x = intrinsic "ZeroExtend" x
+
+impl cast_bool_i32: Cast Bool I32 with
+    cast b = if b then 1 else 0
 
 // TODO: This `Cast I32 String` machinery is temporary. We should unify
 // `Cast x String` and `Print x` into a single `Display` trait

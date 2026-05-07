@@ -2,10 +2,8 @@
 // `Std.HashMap` and is not auto-imported by the prelude. Trying to print a
 // HashMap without importing it should fail with a suggestion to import it.
 
-import Std.HashMap.empty, Hash
-
-impl hash_u8: Hash U8 with
-    hash x = cast x
+import Std.HashMap.empty
+import Std.Hash.Hash, hash_u8
 
 main () =
     map = empty ()
@@ -17,10 +15,10 @@ main () =
 // args: --no-color
 // expected exit status: 1
 // expected stderr:
-// examples/typechecking/missing_implicit_import.an:13:5
-// 12 |     elem = map.get 4 |> Maybe.unwrap
+// examples/typechecking/missing_implicit_import.an:11:5
+// 10 |     elem = map.get 4 |> Maybe.unwrap
 //    |     // error: No implicit found for type Print (ref _) required by parameter 2 of println
-// 13 |     println (ref elem)
+// 11 |     println (ref elem)
 //    |     ^^^^^^^
 //    = note: did you mean to import Std.HashMap.print_hashmap or Std.Vec.print_vec?
 // 

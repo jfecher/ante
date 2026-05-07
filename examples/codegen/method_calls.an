@@ -1,10 +1,8 @@
 import Std.Vec
 import Std.Vec.print_vec
 import Std.HashMap
-import Std.HashMap.Hash, print_hashmap
-
-impl hash_u8: Hash U8 with
-    hash x = cast x
+import Std.HashMap.print_hashmap
+import Std.Hash.Hash, hash_u8
 
 main () =
     var v = Vec.empty ()

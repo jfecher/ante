@@ -1,0 +1,15 @@
+import Std.Stream.foldl, stream_fn
+import Std.String.bytes
+
+trait Hash t with
+    hash: fn t -> U64
+
+// TODO: Proper hash impls
+impl hash_string: Hash String with
+    hash s = U64 (foldl (bytes s) 0 fn acc c -> acc * 10 + c)
+
+impl hash_u64: Hash U64 with
+    hash x = x
+
+impl hash_u8: Hash U8 with
+    hash x = cast x

@@ -1,8 +1,6 @@
 import Std.HashMap
-import Std.HashMap.Hash, print_hashmap
-
-impl hash_u8: Hash U8 with
-    hash x = U64 x
+import Std.HashMap.print_hashmap
+import Std.Hash.Hash, hash_u8
 
 main () =
     var map = HashMap.empty ()
