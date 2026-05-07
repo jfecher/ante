@@ -1,7 +1,7 @@
 import Std.C.malloc, realloc, memcpy, free
 import Std.Stream.Stream, foldl
 
-export Seq, empty, of, push, pop, remove_last, get, get_copied, iter, clone_seq, drop_seq, print_seq, stream_seq
+export Seq, empty, of, push, push_clone, pop, remove_last, get, get_copied, iter, clone_seq, drop_seq, print_seq, stream_seq
 
 /// A persistent, contiguous, and growable sequence of elements.
 /// Performance is meant to be comparable to a mutable Vec.
@@ -70,30 +70,35 @@ Seq.empty (): Seq t =
 Seq.of (s: s) {Stream s t}: Seq t =
     seq = Seq.empty ()
     // Seq is guaranteed to be owned here so we can use push_inner
-    foldl s seq push_inner
+    foldl s seq fn seq elem ->
+        seq, _ = push_inner seq elem
+        seq
 
 /// Push an element to this sequence, returning a new sequence.
 ///
 /// This requires `Copy t` for the elements in case this push would
 /// overwrite shared data in another sequence.
 Seq.push (seq: Seq t) (elem: t) {Copy t}: Seq t =
-    push_inner seq elem
+    seq, _ = push_inner seq elem
+    seq
 
 /// Push an element to this sequence, returning a new sequence.
 ///
 /// This requires `Clone t` for the elements in case this push would
 /// overwrite shared data in another sequence.
 ///
-/// Compared to `Seq.push`, this version is more expensive since it
-/// requires we loop over each element to clone them in the overwrite case.
-/// If the elements implement Copy, prefer `Seq.push` to perform a simple memcpy.
+/// Compared to `Seq.push`, this version is more expensive in the fork
+/// case since we must clone each element to transfer ownership.
+/// If the elements implement Copy, prefer `Seq.push` which does not
+/// require a separate loop to clone each element in the fork case.
 Seq.push_clone (seq: Seq t) (elem: t) {Clone t}: Seq t =
-    var seq = push_inner seq elem
+    var seq, forked = push_inner seq elem
 
-    for i in 0 .. seq.len do
-        elem = offset seq.data.elements (Usz i)
-        elem_ref = ptr_to_mut elem
-        ptr_store elem (clone elem_ref)
+    if forked then
+        for i in 0 .. seq.len - 1 do
+            elem_ptr = offset seq.data.elements (Usz i)
+            elem_ref = ptr_to_mut elem_ptr
+            ptr_store elem_ptr (clone elem_ref)
 
     seq
 
@@ -101,11 +106,16 @@ Seq.push_clone (seq: Seq t) (elem: t) {Clone t}: Seq t =
 /// if we try to push over an element that a shared seq already pushed to.
 /// To be safe we need a `Copy` constraint or a `Clone` constraint and to
 /// call `clone` for each element when this happens.
-push_inner (seq: Seq t) (elem: t): Seq t =
+///
+/// Returns the new sequence and a flag that is `true` iff this push
+/// forked from a shared buffer (i.e. memcpy'd because rc > 1). Callers
+/// that require deep ownership for non-Copy elements should clone the
+/// prefix in that case only.
+push_inner (seq: Seq t) (elem: t): (Seq t, Bool) =
     if seq.data == null () then
         data_ptr = malloc (size_of (MkType: Type (Data t)))
         ptr_store data_ptr (Data 1 1 1 elem)
-        return Seq 1 data_ptr
+        return (Seq 1 data_ptr, false)
 
     data_ref = ptr_to_mut seq.data
 
@@ -114,22 +124,25 @@ push_inner (seq: Seq t) (elem: t): Seq t =
         new_len = seq.len + 1
         data_ref.len := new_len
         array_insert seq.data.elements (Usz seq.len) elem
-        return Seq new_len seq.data
-    
+        return (Seq new_len seq.data, false)
+
     // seq.len >= data.cap (no room) or
     // seq.len != data_ref.len (another seq has pushed to the same shared data)
     // either way we need to allocate a new buffer
     new_cap = seq.len * 2
 
     size = size_of (MkType: Type (Data t)) + (Usz new_cap - 1) * size_of (MkType: Type t)
-    buffer = if data_ref.rc == 1 then
-        // owned, we can realloc
-        realloc seq.data size
-    else
-        // shared case, need to malloc. This is why we require Copy/Clone
+    fork = data_ref.rc != 1
+    buffer = if fork then
+        // shared case, need to malloc. The new buffer's prefix is a
+        // bitwise alias of the original; callers with non-Copy elements
+        // must clone.
         buf = memcpy (malloc size) seq.data size
         data_ref.rc -= 1
         buf
+    else
+        // owned, we can realloc
+        realloc seq.data size
 
     buffer_ref = ptr_to_mut buffer
     buffer_ref.len := seq.len + 1
@@ -137,7 +150,7 @@ push_inner (seq: Seq t) (elem: t): Seq t =
     buffer_ref.rc := 1
 
     array_insert buffer.elements (Usz seq.len) elem
-    Seq (seq.len + 1) buffer
+    (Seq (seq.len + 1) buffer, fork)
 
 /// Return a new `Seq t` without the last element.
 /// Returns the popped element if this seq was non-empty.
