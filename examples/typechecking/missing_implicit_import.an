@@ -1,26 +1,23 @@
-// `print_hashmap` is the `Print (ref HashMap k v)` impl that lives in
-// `Std.HashMap` and is not auto-imported by the prelude. Trying to print a
-// HashMap without importing it should fail with a suggestion to import it.
-
-import Std.HashMap.empty
-import Std.Hash.Hash, hash_u8
+import Std.HashMap.HashMap
 
 main () =
-    map = empty ()
-    elem = map.get 4 |> Maybe.unwrap
-    println (ref elem)
+    map: HashMap U8 I32 = HashMap.empty ()
+    // Error here should suggest importing `hash_u8`
+    elem = map.get (ref 4) |> Maybe.unwrap
+    println elem
 
 // Found 1 error and 0 warnings
 
 // args: --no-color
 // expected exit status: 1
 // expected stderr:
-// examples/typechecking/missing_implicit_import.an:11:5
-// 10 |     elem = map.get 4 |> Maybe.unwrap
-//    |     // error: No implicit found for type Print (ref _) required by parameter 2 of println
-// 11 |     println (ref elem)
-//    |     ^^^^^^^
-//    = note: did you mean to import Std.HashMap.print_hashmap or Std.Vec.print_vec?
+// examples/typechecking/missing_implicit_import.an:6:15
+// 5 |     // Error here should suggest importing `hash_u8`
+//   |     // error: No implicit found for type Hash U8 required by parameter 3 of get
+// 6 |     elem = map.get (ref 4) |> Maybe.unwrap
+//   |               ^^^^
+// 7 |     println elem
+//   = note: did you mean to import Std.Hash.hash_u8?
 // 
 // Found 1 error and 0 warnings
 

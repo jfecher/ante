@@ -19,16 +19,17 @@ main () =
     map.remove 5
     map.insert 7 21
 
+    // TODO: Fix ref coercion so the explicit `ref` here is unnecessary
     println (ref map)
-    println (map.get 3)
-    println (get (ref map) 5)
+    println (map.get (ref 3))
+    println (get (ref map) (ref 5))
 
     // get_entry: hit + miss
-    match get_entry map 3u8
+    match get_entry map (ref 3u8)
     | Some _ -> println "hit"
     | None -> println "missing"
 
-    match get_entry map 99u8
+    match get_entry map (ref 99u8)
     | Some _ -> println "hit"
     | None -> println "missing"
 
