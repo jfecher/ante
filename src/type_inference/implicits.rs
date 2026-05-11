@@ -775,11 +775,20 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     fn delayed_implicit_could_match_local(&mut self, implicit: &DelayedImplicit, local_implicits: &[NameId]) -> bool {
         let target_type = self.expr_types[&implicit.destination].clone();
         let target_type = target_type.follow_all(&self.bindings);
+        let target_ctor = target_type.as_application().map(|(c, _)| c.clone());
         let no_bindings = TypeBindings::default();
 
         for name in local_implicits.iter().copied() {
             let name_type = self.name_types[&name].follow_two(&no_bindings, &self.bindings);
             if !matches!(self.implicit_type_matches(&name_type, &target_type, &no_bindings), ImplicitMatch::NoMatch) {
+                return true;
+            }
+            // Same trait constructor as the target: the local may chain through a global function
+            // impl like `eq_ref: {Eq t} -> Eq (ref t)` to reach the target. Bubbling past this
+            // scope would drop the local and break the chain.
+            if let (Some(tc), Some((lc, _))) = (&target_ctor, name_type.as_application())
+                && tc.as_ref() == lc.as_ref()
+            {
                 return true;
             }
         }

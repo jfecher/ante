@@ -85,7 +85,7 @@ type EntryResult k v =
     | NotFound
     | NotFinished
 
-HashMap.get_entry (map: ref HashMap k v) (key: k) {Hash k} {Eq k} : Maybe (Ptr (Entry k v)) =
+HashMap.get_entry (map: ref HashMap k v) (key: ref k) {Hash k} {eq: Eq k} : Maybe (Ptr (Entry k v)) =
     if map.capacity == 0 then return None
 
     // Return whether to continue by wrapping around the end, and the value if found
@@ -95,14 +95,14 @@ HashMap.get_entry (map: ref HashMap k v) (key: k) {Hash k} {Eq k} : Maybe (Ptr (
         else
             entry_ptr = offset map.entries start
             entry = deref_ptr entry_ptr
-            if entry.occupied and entry.key == key then
+            if entry.occupied and ref entry.key == key then
                 Found entry_ptr
             else if entry.tombstone then
                 iter_until (start + 1) end
             else
                 NotFound
 
-    h = Usz (Hash.hash key) % map.capacity
+    h = Usz (Hash.hash (deref key)) % map.capacity
     match iter_until h map.capacity
     | Found value -> Some value
     | NotFound -> None
@@ -111,7 +111,7 @@ HashMap.get_entry (map: ref HashMap k v) (key: k) {Hash k} {Eq k} : Maybe (Ptr (
         | Found value -> Some value
         | _ -> None
 
-HashMap.get (map: ref HashMap k v) (key: k) {Hash k} {Eq k} : Maybe v =
+HashMap.get (map: ref HashMap k v) (key: ref k) {Hash k} {Eq k} : Maybe v =
     match map.get_entry key
     | Some entry -> Some (deref_ptr entry.value)
     | None -> None
