@@ -44,18 +44,16 @@ iter (s: s) {Stream s a} (f: fn a => b): Unit =
 ///     print i
 /// ```
 for_ (s: s) {Stream s a} (f: fn a Loop => b): Unit =
+    var broke = false
     handler h for emit a ->
-        // Scope the Loop handler to `f a l` only, so `continue_` skips just
-        // the current iteration rather than the rest of the emit handler.
-        // `break_` returns from the entire emit handler, so `resume ()` is
-        // skipped and the stream halts.
         handler l for
-        | break_ () -> return ()
+        | break_ () ->
+            broke := true
         | continue_ () -> ()
         in
             f a l
             ()
-        resume ()
+        if not broke then resume ()
     Stream.stream s h
 
 /// Applies `f` to each element from the stream, re-emitting each result.
