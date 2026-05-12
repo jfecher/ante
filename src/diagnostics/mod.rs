@@ -190,6 +190,9 @@ pub enum Diagnostic {
         parameter_index: usize,
         location: Location,
     },
+    TopLevelImplicitTypeAnnotationRequired {
+        location: Location,
+    },
     ReturnNotInFunction {
         location: Location,
     },
@@ -504,6 +507,9 @@ impl Diagnostic {
                     color_type(type_string),
                 )
             },
+            Diagnostic::TopLevelImplicitTypeAnnotationRequired { location: _ } => {
+                "Type annotations are required on top-level implicits".to_string()
+            },
             Diagnostic::ExpectedTypeKind { actual, location: _ } => {
                 let n = actual.required_argument_count();
                 let s = if n == 1 { "" } else { "s" };
@@ -610,6 +616,7 @@ impl Diagnostic {
             | Diagnostic::NoImplicitFound { location, .. }
             | Diagnostic::MultipleImplicitsFound { location, .. }
             | Diagnostic::AmbiguousImplicit { location, .. }
+            | Diagnostic::TopLevelImplicitTypeAnnotationRequired { location }
             | Diagnostic::ExpectedTypeKind { location, .. }
             | Diagnostic::ExpectedKind { location, .. }
             | Diagnostic::ReturnNotInFunction { location }

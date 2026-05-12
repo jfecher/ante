@@ -14,7 +14,7 @@ use crate::{
     type_inference::{
         Locateable, TypeChecker,
         errors::TypeErrorKind,
-        get_type::get_partial_type,
+        get_type::{get_partial_type, try_get_generalized_type},
         types::{self, FunctionType, ParameterType, Type},
     },
 };
@@ -31,7 +31,7 @@ struct LambdaOptions {
 }
 
 impl<'local, 'inner> TypeChecker<'local, 'inner> {
-    pub(super) fn check_definition(&mut self, definition: &Definition) {
+    pub(super) fn check_definition(&mut self, definition: &Definition, is_top_level: bool) {
         let next_id = &mut self.next_type_variable_id.get();
         let expected_type =
             get_partial_type(definition, self.current_context(), &self.current_resolve(), self.compiler, next_id);
@@ -70,6 +70,12 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
 
         if definition.implicit {
+            let get_type = |ctx| try_get_generalized_type(definition, ctx, self.current_resolve(), self.compiler);
+
+            if is_top_level && get_type(self.current_context()).is_none() {
+                let location = definition.pattern.locate(self);
+                self.compiler.accumulate(Diagnostic::TopLevelImplicitTypeAnnotationRequired { location });
+            }
             self.add_implicit(definition.pattern);
         }
 
@@ -103,7 +109,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 self.pop_implicits_scope();
             },
             Expr::Definition(definition) => {
-                self.check_definition(definition);
+                self.check_definition(definition, false);
                 self.unify(&Type::UNIT, expected, TypeErrorKind::General, id);
             },
             Expr::MemberAccess(member_access) => self.check_member_access(member_access, expected, id),
