@@ -84,9 +84,9 @@ extra_tests () =
     println (product (iota 5 |> map (_ + 1)) 1)  // 120
 
     println "for_:"
-    for_ (iota 10) fn x {l} ->
+    for_ (iota 20) fn x {l} ->
         if x %% 3 then continue_ ()
-        if x > 7 then break_ ()
+        if x == 8 then break_ ()
         println x
 
 // args: --delete-binary --no-color
