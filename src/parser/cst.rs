@@ -37,9 +37,7 @@ pub struct TopLevelItem {
 pub enum TopLevelItemKind {
     Definition(Definition),
     TypeDefinition(TypeDefinition),
-    TraitDefinition(TraitDefinition),
-    TraitImpl(TraitImpl),
-    EffectDefinition(EffectDefinition),
+    AbilityDefinition(AbilityDefinition),
     Comptime(Comptime),
 }
 
@@ -48,9 +46,7 @@ impl TopLevelItemKind {
         match self {
             TopLevelItemKind::Definition(definition) => ItemName::Pattern(definition.pattern),
             TopLevelItemKind::TypeDefinition(type_definition) => ItemName::Single(type_definition.name),
-            TopLevelItemKind::TraitDefinition(trait_definition) => ItemName::Single(trait_definition.name),
-            TopLevelItemKind::TraitImpl(trait_impl) => ItemName::Single(trait_impl.name),
-            TopLevelItemKind::EffectDefinition(effect_definition) => ItemName::Single(effect_definition.name),
+            TopLevelItemKind::AbilityDefinition(trait_definition) => ItemName::Single(trait_definition.name),
             TopLevelItemKind::Comptime(_) => ItemName::None,
         }
     }
@@ -192,9 +188,7 @@ impl ParameterType {
 pub struct TypeDefinition {
     pub shared: bool,
     /// TraitDefinitions are desugared into type definitions
-    pub is_trait: bool,
-    /// EffectDefinitions are also desugared into type definitions
-    pub is_effect: bool,
+    pub is_ability: bool,
     pub name: NameId,
     pub generics: Generics,
     pub body: TypeDefinitionBody,
@@ -556,30 +550,13 @@ pub struct Declaration {
 pub type Generics = Vec<NameId>;
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct TraitDefinition {
+pub struct AbilityDefinition {
     pub name: NameId,
     pub generics: Generics,
-    pub functional_dependencies: Generics,
     pub body: Vec<Declaration>,
 }
 
 pub type Name = Arc<String>;
-
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct TraitImpl {
-    pub name: NameId,
-    pub parameters: Vec<Parameter>,
-    pub trait_path: PathId,
-    pub trait_arguments: Vec<Type>,
-    pub body: Vec<(NameId, ExprId)>,
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct EffectDefinition {
-    pub name: NameId,
-    pub generics: Generics,
-    pub body: Vec<Declaration>,
-}
 
 /// An extern has a name and a type determined by the expected type
 /// when it is used in an expression. Most often this is bounded

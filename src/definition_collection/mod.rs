@@ -213,12 +213,12 @@ pub fn visible_types_impl(context: &VisibleTypes, db: &DbHandle) -> TypeDefiniti
 pub(crate) fn kind_of_type_definition(definition: &TypeDefinition) -> Kind {
     use std::num::NonZeroUsize;
     let n = definition.generics.len();
-    if definition.is_trait {
+    if definition.is_ability {
         // The last generic is the implicit `[env]` parameter added during desugaring (get_item.rs).
-        // TraitConstructor's accepts_arguments already handles env as an optional extra arg,
+        // AbilityConstructor's accepts_arguments already handles env as an optional extra arg,
         // so we exclude it from the explicit generic count.
         let explicit_n = n.saturating_sub(1);
-        Kind::TraitConstructor(vec![Kind::Type; explicit_n])
+        Kind::AbilityConstructor(vec![Kind::Type; explicit_n])
     } else if n == 0 {
         Kind::Type
     } else {
@@ -309,25 +309,19 @@ pub fn all_definitions_impl(context: &AllDefinitions, db: &DbHandle) -> Arc<Visi
                     }
                 }
             },
-            TopLevelItemKind::TraitDefinition(trait_) => {
-                for declaration in &trait_.body {
-                    declare_method(trait_.name, declaration.name);
-                }
-            },
-            TopLevelItemKind::EffectDefinition(effect) => {
-                for declaration in &effect.body {
-                    declare_method(effect.name, declaration.name);
+            TopLevelItemKind::AbilityDefinition(ability) => {
+                for declaration in &ability.body {
+                    declare_method(ability.name, declaration.name);
                 }
             },
             _ => (),
         }
 
-        // Effect methods are callable as free identifiers (e.g. `log "foo"`
-        // without qualifying by the effect name), so also expose them in the
-        // regular definitions namespace.
-        if let TopLevelItemKind::EffectDefinition(effect) = &item.kind {
+        // Ability methods are callable as free identifiers without qualifying by the ability name,
+        // so also expose them in the regular definitions namespace.
+        if let TopLevelItemKind::AbilityDefinition(ability) = &item.kind {
             let ctx = &result.top_level_data[&item.id];
-            for declaration in &effect.body {
+            for declaration in &ability.body {
                 declarer.declare_single(declaration.name, item.id, ctx);
             }
         }

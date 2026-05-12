@@ -489,8 +489,8 @@ impl Type {
                 });
 
                 // Automatically insert a fresh type variable for the implicit env parameter
-                // when a TraitConstructor is applied without the optional env argument.
-                if let Kind::TraitConstructor(kinds) = &f_kind {
+                // when an AbilityConstructor is applied without the optional env argument.
+                if let Kind::AbilityConstructor(kinds) = &f_kind {
                     if converted_args.len() == kinds.len() {
                         if insert_implicit_type_vars {
                             let fresh_env = Type::Variable(TypeVariableId(*next_id));
@@ -779,7 +779,7 @@ where
                     write!(f, ", ")?;
                     self.fmt_type(&args[1], true, f)
                 } else {
-                    let display_args = if self.is_trait_constructor(constructor) {
+                    let display_args = if self.is_ability_constructor(constructor) {
                         &args[..args.len().saturating_sub(1)]
                     } else {
                         args.as_slice()
@@ -813,11 +813,11 @@ where
         }
     }
 
-    fn is_trait_constructor(&self, constructor: &Type) -> bool {
+    fn is_ability_constructor(&self, constructor: &Type) -> bool {
         if let Type::UserDefined(Origin::TopLevelDefinition(id)) = constructor.follow(self.bindings) {
             let (item, _ctx) = GetItem(id.top_level_item).get(self.db);
             if let cst::TopLevelItemKind::TypeDefinition(definition) = &item.kind {
-                return definition.is_trait;
+                return definition.is_ability;
             }
         }
         false

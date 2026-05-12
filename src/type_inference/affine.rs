@@ -151,7 +151,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             return elems.iter().all(|e| self.type_is_copy(e));
         }
 
-        if self.is_trait_or_effect(&typ) {
+        // TODO: Actually require abilities only capture `Copy` types
+        if self.is_ability(&typ) {
             return true;
         }
 
@@ -162,7 +163,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         let copy_name = self.get_copy_type_name();
         let copy_constructor = Type::UserDefined(Origin::TopLevelDefinition(copy_name));
-        // Traits have an extra [env] generic parameter from desugaring, so Copy t is actually
+
+        // Abilities have an extra [env] generic parameter from desugaring, so Copy t is actually
         // Copy t env. Use a fresh type variable for env so unification can match any environment.
         let env_var = self.next_type_variable();
         let copy_of_t = Type::Application(Arc::new(copy_constructor), Arc::new(vec![typ.clone(), env_var]));
@@ -203,14 +205,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         false
     }
 
-    fn is_trait_or_effect(&self, typ: &Type) -> bool {
+    fn is_ability(&self, typ: &Type) -> bool {
         match typ.follow(&self.bindings) {
             // TODO: This is broken when type aliases are implemented.
-            Type::Application(constructor, _) => self.is_trait_or_effect(&constructor),
+            Type::Application(constructor, _) => self.is_ability(&constructor),
             Type::UserDefined(origin) => match origin {
                 Origin::TopLevelDefinition(name) => {
                     let (item, _) = GetItemRaw(name.top_level_item).get(self.compiler);
-                    matches!(&item.kind, TopLevelItemKind::TraitDefinition(_) | TopLevelItemKind::EffectDefinition(_))
+                    matches!(&item.kind, TopLevelItemKind::AbilityDefinition(_))
                 },
                 _ => false,
             },

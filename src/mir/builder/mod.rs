@@ -82,9 +82,7 @@ where
             context.type_definition(type_definition);
             Some(context.finish())
         },
-        cst::TopLevelItemKind::TraitDefinition(_) => unreachable!("Traits should be desguared to types"),
-        cst::TopLevelItemKind::TraitImpl(_) => unreachable!("Trait impls should be desguared to definitions"),
-        cst::TopLevelItemKind::EffectDefinition(_) => unreachable!("Effects should be desugared to types"),
+        cst::TopLevelItemKind::AbilityDefinition(_) => unreachable!("Abilities should be desguared to types"),
         cst::TopLevelItemKind::Comptime(_) => None,
     }
 }
@@ -569,7 +567,7 @@ where
 
         let is_effect = self.effect_defs.get(&name.top_level_item).copied().unwrap_or_else(|| {
             let (item, _) = GetItemRaw(name.top_level_item).get(self.compiler);
-            let is_effect = matches!(&item.kind, cst::TopLevelItemKind::EffectDefinition(_));
+            let is_effect = matches!(&item.kind, cst::TopLevelItemKind::AbilityDefinition(_));
             self.effect_defs.insert(name.top_level_item, is_effect);
             is_effect
         });
@@ -581,7 +579,7 @@ where
         // referenced NameId is one of its ops (every name pointing
         // into an effect def should be an op, but we confirm to be safe).
         let (item, _) = GetItemRaw(name.top_level_item).get(self.compiler);
-        if let cst::TopLevelItemKind::EffectDefinition(effect) = &item.kind {
+        if let cst::TopLevelItemKind::AbilityDefinition(effect) = &item.kind {
             if effect.body.iter().any(|d| d.name == name.local_name_id) {
                 return Some(self.get_definition_id(&name));
             }
@@ -1377,23 +1375,24 @@ where
             self.define_type_constructor(constructor_name, constructor_type, parameters, tag, shared);
         }
 
-        // Traits are sugar for a struct of function-typed fields, however each "field" is treated
+        // Abilities are sugar for a struct of function-typed fields, however each "field" is treated
         // as a function by the frontend so we must generate actual functions for each field such
         // that `Cast.cast` is an actual function accepting a `Cast` instance and forwarding the
         // appropriate arguments to the `cast` field.
-        if type_definition.is_trait {
-            self.define_trait_methods(type_definition);
+        if type_definition.is_ability {
+            self.define_ability_methods(type_definition);
         }
 
         // Effects are also desugared to a struct, but each field is an effect operation that
         // must be callable as a free identifier (e.g. `get ()` rather than `Use.get ()`). Emit a
         // `perform`-stub function for each so the operation has a stable, first-class identity.
-        if type_definition.is_effect {
-            if let cst::TypeDefinitionBody::Struct(fields) = &type_definition.body {
-                let op_names = fields.iter().map(|(name, _)| *name).collect::<Vec<_>>();
-                self.define_effect_operations(op_names);
-            }
-        }
+        // TODO: Broken. Merge this into the `is_ability` check above if needed or remove.
+        // if type_definition.is_effect {
+        //     if let cst::TypeDefinitionBody::Struct(fields) = &type_definition.body {
+        //         let op_names = fields.iter().map(|(name, _)| *name).collect::<Vec<_>>();
+        //         self.define_effect_operations(op_names);
+        //     }
+        // }
     }
 
     fn define_type_constructor(
@@ -1464,7 +1463,7 @@ where
         payload
     }
 
-    fn define_trait_methods(&mut self, type_definition: &cst::TypeDefinition) {
+    fn define_ability_methods(&mut self, type_definition: &cst::TypeDefinition) {
         if let cst::TypeDefinitionBody::Struct(fields) = &type_definition.body {
             let constructor_type = self.types.get_generalized(type_definition.name);
             self.set_generics_in_scope(constructor_type);
@@ -1480,7 +1479,7 @@ where
             for (i, (field_name_id, _)) in fields.iter().enumerate() {
                 let Some(field_type) = field_mir_types.get(i) else { continue };
 
-                // Only generate wrappers for fields whose type is a function or closure (all trait methods)
+                // Only generate wrappers for fields whose type is a function or closure (all ability methods)
                 // TODO: We should still generate wrappers for other types
                 let (value_param_types, return_type) = match field_type {
                     Type::Function(fn_type) => (fn_type.parameters.clone(), fn_type.return_type.clone()),

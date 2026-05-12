@@ -63,9 +63,7 @@ pub fn type_check_impl(context: &TypeCheckSCC, compiler: &DbHandle) -> TypeCheck
         match &item.kind {
             TopLevelItemKind::Definition(definition) => checker.check_definition(definition, true),
             TopLevelItemKind::TypeDefinition(type_definition) => checker.check_type_definition(type_definition),
-            TopLevelItemKind::TraitDefinition(_) => unreachable!("Traits should be desugared into types by this point"),
-            TopLevelItemKind::TraitImpl(_) => unreachable!("Impls should be simplified into definitions by this point"),
-            TopLevelItemKind::EffectDefinition(effect) => checker.check_effect_definition(effect),
+            TopLevelItemKind::AbilityDefinition(_) => unreachable!("Abilities should be desugared into types by this point"),
             TopLevelItemKind::Comptime(comptime) => checker.check_comptime(comptime),
         };
 

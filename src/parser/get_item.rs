@@ -7,8 +7,8 @@ use crate::{
     lexer::token::{FloatKind, IntegerKind},
     parser::{
         cst::{
-            self, Argument, Constructor, Definition, EffectDefinition, Expr, If, Lambda, Literal, Parameter, Path,
-            Pattern, SequenceItem, TopLevelItem, TopLevelItemKind, TraitDefinition, TraitImpl, Type,
+            self, Argument, Expr, If, Lambda, Literal, Parameter, Path,
+            Pattern, SequenceItem, TopLevelItem, TopLevelItemKind, AbilityDefinition, Type,
             TypeDefinitionBody, TypeKind,
         },
         desugar_context::DesugarContext,
@@ -20,24 +20,10 @@ pub fn get_item_impl(context: &GetItem, db: &DbHandle) -> (Arc<TopLevelItem>, Ar
     let (item, context) = GetItemRaw(context.0).get(db);
 
     match &item.kind {
-        TopLevelItemKind::TraitDefinition(trait_definition) => {
+        TopLevelItemKind::AbilityDefinition(trait_definition) => {
             let mut new_context = DesugarContext::new(context);
-            let new_kind = desugar_trait(trait_definition, &mut new_context);
+            let new_kind = desugar_ability(trait_definition, &mut new_context);
             let new_item = Arc::new(TopLevelItem { comments: item.comments.clone(), kind: new_kind, id: item.id });
-            (new_item, Arc::new(new_context))
-        },
-        TopLevelItemKind::EffectDefinition(effect_definition) => {
-            let mut new_context = DesugarContext::new(context);
-            let new_kind = desugar_effect(effect_definition, &mut new_context);
-            let new_item = Arc::new(TopLevelItem { comments: item.comments.clone(), kind: new_kind, id: item.id });
-            (new_item, Arc::new(new_context))
-        },
-        TopLevelItemKind::TraitImpl(trait_impl) => {
-            let mut new_context = DesugarContext::new(context);
-            let new_definition = desugar_impl(trait_impl, &mut new_context);
-            desugar_expression(new_definition.rhs, &mut new_context);
-            let kind = TopLevelItemKind::Definition(new_definition);
-            let new_item = Arc::new(TopLevelItem { comments: item.comments.clone(), kind, id: item.id });
             (new_item, Arc::new(new_context))
         },
         TopLevelItemKind::Definition(definition) => {
@@ -55,7 +41,7 @@ pub fn get_item_impl(context: &GetItem, db: &DbHandle) -> (Arc<TopLevelItem>, Ar
 /// Expands a trait-typed parameter from e.g. `Print a` → `Print a [env_i]`.
 /// This ensures `from_cst_type_no_type_variables` sees a named generic for the env
 /// rather than auto-inserting a fresh type variable (which would cause it to return None).
-fn add_env_to_trait_type(typ: &Type, env_var: crate::parser::ids::NameId, location: &Location) -> Type {
+fn add_env_to_ability_type(typ: &Type, env_var: crate::parser::ids::NameId, location: &Location) -> Type {
     let env_type = Type::new(TypeKind::Variable(env_var), location.clone());
     match &typ.kind {
         TypeKind::Named(_) => {
@@ -72,97 +58,11 @@ fn add_env_to_trait_type(typ: &Type, env_var: crate::parser::ids::NameId, locati
 
 /// Desugars
 /// ```ante
-/// impl name {Parameter}: Trait TraitArgs with
-///     method1 = ...
-///     method2 = ...
-/// ```
-/// Into
-/// ```ante
-/// implicit name {Parameter}: Trait TraitArgs Parameter = Trait With
-///     method1 = ...
-///     method2 = ...
-/// ```
-/// Note that this assumes the returned trait will capture each parameter used.
-fn desugar_impl(impl_: &TraitImpl, context: &mut DesugarContext) -> Definition {
-    let location = context.name_location(impl_.name).clone();
-    let variable = context.push_pattern(Pattern::Variable(impl_.name), location.clone());
-
-    let mut trait_type = Type::new(TypeKind::Named(impl_.trait_path), location.clone());
-
-    // Collect existing parameter info before mutating context.
-    let param_infos: Vec<(bool, crate::parser::ids::PatternId, Type)> = impl_
-        .parameters
-        .iter()
-        .map(|param| match &context[param.pattern] {
-            Pattern::TypeAnnotation(inner, typ) => (param.is_implicit, *inner, typ.clone()),
-            _ => unreachable!("impl parameters are expected to have type annotations"),
-        })
-        .collect();
-
-    // Build new parameters with expanded env types (e.g. `Print a` -> `Print a [env_0]`).
-    // This prevents `from_cst_type_no_type_variables` from auto-inserting fresh type variables.
-    let expanded_parameters = mapvec(param_infos.iter().enumerate(), |(i, (is_implicit, inner, typ))| {
-        let env_name = context.push_name(Arc::new(format!("[env_{}]", i)), location.clone());
-        let expanded_type = add_env_to_trait_type(typ, env_name, &location);
-        let new_pattern = context.push_pattern(Pattern::TypeAnnotation(*inner, expanded_type), location.clone());
-        cst::Parameter::with_implicit(new_pattern, *is_implicit)
-    });
-
-    if !impl_.trait_arguments.is_empty() || !impl_.parameters.is_empty() {
-        let app_location = location.clone();
-        let mut arguments = impl_.trait_arguments.clone();
-
-        // Assume the returned trait captures each parameter.
-        let parameter_types = expanded_parameters.iter().map(|param| match &context[param.pattern] {
-            Pattern::TypeAnnotation(_, typ) => typ.clone(),
-            _ => unreachable!("impl parameters are expected to have type annotations"),
-        });
-        arguments.push(make_tuple_type(&location, parameter_types));
-
-        trait_type = Type::new(TypeKind::Application(Box::new(trait_type), arguments), app_location);
-    }
-
-    // If this is not a function we need to put the type annotation on the name itself rather than
-    // the return type of the lambda.
-    let pattern = if impl_.parameters.is_empty() {
-        context.push_pattern(Pattern::TypeAnnotation(variable, trait_type.clone()), location.clone())
-    } else {
-        variable
-    };
-
-    let fields = impl_.body.clone();
-    let constructor = Expr::Constructor(Constructor { fields, typ: trait_type.clone() });
-    let constructor = context.push_expr(constructor, location.clone());
-
-    let rhs = if impl_.parameters.is_empty() {
-        constructor
-    } else {
-        let lambda = Expr::Lambda(Lambda {
-            parameters: expanded_parameters,
-            return_type: Some(trait_type),
-            body: constructor,
-            is_move: false,
-        });
-        context.push_expr(lambda, location)
-    };
-
-    Definition { implicit: true, mutable: false, pattern, rhs }
-}
-
-fn make_tuple_type(location: &Location, types: impl ExactSizeIterator<Item = Type>) -> Type {
-    if types.len() == 0 {
-        return Type::new(TypeKind::NoClosureEnv, location.clone());
-    }
-    Type::new(TypeKind::Tuple(types.collect()), location.clone())
-}
-
-/// Desugars
-/// ```ante
-/// trait Foo args with
+/// ability Foo args =
 ///     declaration1: fn Arg1_1 ... ArgN_1 -> Ret_1
 ///     ...
 ///     declarationN: fn Arg1_N ... ArgN_N -> Ret_N
-///     field1: SomeTrait args
+///     field1: SomeAbility args
 /// ```
 /// Into
 /// ```ante
@@ -170,80 +70,37 @@ fn make_tuple_type(location: &Location, types: impl ExactSizeIterator<Item = Typ
 ///     declaration1: fn Arg1_1 ... ArgN_1 [env] -> Ret_1
 ///     ...
 ///     declarationN: fn Arg1_N ... ArgN_N [env] -> Ret_N
-///     field1: SomeTrait args [env]
+///     field1: SomeAbility args [env]
 /// ```
-fn desugar_trait(trait_: &TraitDefinition, context: &mut DesugarContext) -> TopLevelItemKind {
-    let name_location = context.name_location(trait_.name).clone();
+fn desugar_ability(ability: &AbilityDefinition, context: &mut DesugarContext) -> TopLevelItemKind {
+    let name_location = context.name_location(ability.name).clone();
 
     // TODO: Can this be done more cleanly without resorting to strings users cannot type?
     let env = context.push_name(Arc::new("[env]".into()), name_location.clone());
 
-    // Add the `env` generic to the trait type itself
-    let mut generics = trait_.generics.clone();
+    // Add the `env` generic to the ability type itself
+    let mut generics = ability.generics.clone();
     generics.push(env);
 
     // Add `[env]` to each field type: for function types this is set as the closure environment,
-    // for non-function types (e.g. sub-trait fields like `Add a`) it is appended as a type argument
-    // so that the env is properly substituted when the trait is instantiated.
-    let fields = mapvec(&trait_.body, |decl| {
+    // for non-function types (e.g. sub-ability fields like `Add a`) it is appended as a type argument
+    // so that the env is properly substituted when the ability is instantiated.
+    let fields = mapvec(&ability.body, |decl| {
         let typ = match &decl.typ.kind {
             cst::TypeKind::Function(f) => {
                 let mut f = f.clone();
                 f.environment = Some(Box::new(Type::new(TypeKind::Variable(env), name_location.clone())));
                 Type::new(cst::TypeKind::Function(f), decl.typ.location.clone())
             },
-            _ => add_env_to_trait_type(&decl.typ, env, &name_location),
+            _ => add_env_to_ability_type(&decl.typ, env, &name_location),
         };
         (decl.name, typ)
     });
 
     TopLevelItemKind::TypeDefinition(super::cst::TypeDefinition {
         shared: false,
-        is_trait: true,
-        is_effect: false,
-        name: trait_.name,
-        generics,
-        body: TypeDefinitionBody::Struct(fields),
-    })
-}
-
-/// Desugars
-/// ```ante
-/// effect Add with
-///     add: fn U32 -> Unit
-/// ```
-/// Into
-/// ```ante
-/// type Add =
-///     add: fn U32 [Ptr Unit] -> Unit
-/// ```
-/// Each effect operation becomes a struct field whose type is a closure capturing the
-/// local scope of the handler. These capability objects are second class to prevent them
-/// from escaping, so capturing the entire environment by reference should be fine.
-fn desugar_effect(effect: &EffectDefinition, context: &mut DesugarContext) -> TopLevelItemKind {
-    let name_location = context.name_location(effect.name).clone();
-    let generics = effect.generics.clone();
-
-    let fields = mapvec(&effect.body, |decl| {
-        let typ = match &decl.typ.kind {
-            cst::TypeKind::Function(f) => {
-                let mut f = f.clone();
-                let ptr = Type::new(cst::TypeKind::Pointer, name_location.clone());
-                let unit = Type::new(TypeKind::Unit, name_location.clone());
-                let ptr_unit = Type::new(TypeKind::Application(Box::new(ptr), vec![unit]), name_location.clone());
-                f.environment = Some(Box::new(ptr_unit));
-                Type::new(cst::TypeKind::Function(f), decl.typ.location.clone())
-            },
-            _ => decl.typ.clone(),
-        };
-        (decl.name, typ)
-    });
-
-    TopLevelItemKind::TypeDefinition(super::cst::TypeDefinition {
-        shared: false,
-        is_trait: false,
-        is_effect: true,
-        name: effect.name,
+        is_ability: true,
+        name: ability.name,
         generics,
         body: TypeDefinitionBody::Struct(fields),
     })

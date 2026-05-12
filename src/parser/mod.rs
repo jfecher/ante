@@ -256,14 +256,6 @@ impl<'tokens> Parser<'tokens> {
         self.new_top_level_id_helper(hash)
     }
 
-    /// Create a new TopLevelId from the path of a given top level item.
-    /// This is a specialized version to avoid cloning the string given by the given PathId.
-    fn new_top_level_id_from_path_id(&mut self, path: PathId) -> TopLevelId {
-        let data = &self.current_context.paths[path];
-        let hash = Self::hash_top_level_data(&mut self.top_level_item_hashes, data);
-        self.new_top_level_id_helper(hash)
-    }
-
     fn new_top_level_id_helper(&mut self, hash: u64) -> TopLevelId {
         let id = TopLevelId::new(self.file_id, hash);
         let empty_context = TopLevelContext::new(self.file_id);
@@ -601,20 +593,10 @@ impl<'tokens> Parser<'tokens> {
                 id = self.new_top_level_id_from_name_id(definition.name);
                 TopLevelItemKind::TypeDefinition(definition)
             },
-            Token::Trait => {
-                let trait_ = self.parse_trait_definition()?;
-                id = self.new_top_level_id_from_name_id(trait_.name);
-                TopLevelItemKind::TraitDefinition(trait_)
-            },
-            Token::Impl => {
-                let impl_ = self.parse_trait_impl()?;
-                id = self.new_top_level_id_from_path_id(impl_.trait_path);
-                TopLevelItemKind::TraitImpl(impl_)
-            },
-            Token::Effect => {
-                let effect = self.parse_effect_definition()?;
-                id = self.new_top_level_id_from_name_id(effect.name);
-                TopLevelItemKind::EffectDefinition(effect)
+            Token::Ability => {
+                let ability = self.parse_ability_definition()?;
+                id = self.new_top_level_id_from_name_id(ability.name);
+                TopLevelItemKind::AbilityDefinition(ability)
             },
             Token::Octothorpe => {
                 let comptime = self.parse_comptime()?;
@@ -717,7 +699,7 @@ impl<'tokens> Parser<'tokens> {
         let generics = self.parse_generics();
         self.expect(Token::Equal, "`=` to begin the type definition")?;
         let body = self.parse_type_body()?;
-        Ok(TypeDefinition { shared, name, generics, body, is_trait: false, is_effect: false })
+        Ok(TypeDefinition { shared, name, generics, body, is_ability: false })
     }
 
     /// generics: ident*
@@ -1144,12 +1126,6 @@ impl<'tokens> Parser<'tokens> {
     /// function_parameters: function_parameter+
     fn parse_function_parameters(&mut self) -> Result<Vec<Parameter>> {
         self.many1(Self::parse_function_parameter)
-    }
-
-    /// An impl may be a value (0 parameters) or a function (1+ parameters)
-    /// function_parameters: function_parameter+
-    fn parse_impl_parameters(&mut self) -> Vec<Parameter> {
-        self.many0(Self::parse_function_parameter)
     }
 
     /// function_parameter: implicit_function_parameter
@@ -2273,62 +2249,14 @@ impl<'tokens> Parser<'tokens> {
         }
     }
 
-    fn parse_trait_definition(&mut self) -> Result<cst::TraitDefinition> {
-        self.expect(Token::Trait, "`trait` to start this trait definition")?;
+    fn parse_ability_definition(&mut self) -> Result<cst::AbilityDefinition> {
+        self.expect(Token::Ability, "`ability` to start this ability definition")?;
         let name = self.parse_type_name_id()?;
         let generics = self.parse_generics();
 
-        let functional_dependencies = if self.accept(Token::RightArrow) { self.parse_generics() } else { Vec::new() };
-
-        self.expect(Token::With, "`with` to separate this trait's signature from its body")?;
+        self.expect(Token::Equal, "`=` to separate this ability's signature from its body")?;
         let body = self.parse_declaration_block()?;
 
-        Ok(cst::TraitDefinition { name, generics, functional_dependencies, body })
-    }
-
-    fn parse_trait_impl(&mut self) -> Result<cst::TraitImpl> {
-        self.expect(Token::Impl, "`impl` to start this trait implementation")?;
-
-        let name = self.parse_ident_id()?;
-        let parameters = self.parse_impl_parameters();
-
-        self.accept(Token::Newline);
-        self.expect(Token::Colon, "a `:` to separate this impl's name from its type")?;
-
-        let trait_path = self.parse_type_path_id()?;
-        let trait_arguments = self.many0(Self::parse_type_arg);
-        self.expect(Token::With, "`with` to separate this trait impl's signature from its body")?;
-
-        let body =
-            mapvec(self.parse_impl_body()?, |definition| match &self.current_context.patterns[definition.pattern] {
-                Pattern::Variable(name) => (*name, definition.rhs),
-                _ => {
-                    let location = self.current_context.pattern_locations[definition.pattern].clone();
-                    let name = self.push_name(Arc::new("(placeholder)".to_string()), location.clone());
-                    self.diagnostics.push(Diagnostic::ParserComplexImplItemName { location });
-                    (name, definition.rhs)
-                },
-            });
-        Ok(cst::TraitImpl { name, parameters, trait_path, trait_arguments, body })
-    }
-
-    fn parse_impl_body(&mut self) -> Result<Vec<Definition>> {
-        match self.current_token() {
-            Token::Indent => {
-                self.parse_indented(|this| Ok(this.delimited(Self::parse_definition, Token::Newline, true)))
-            },
-            _ => self.parse_definition().map(|definition| vec![definition]),
-        }
-    }
-
-    fn parse_effect_definition(&mut self) -> Result<cst::EffectDefinition> {
-        self.expect(Token::Effect, "`effect` to start this effect definition")?;
-        let name = self.parse_type_name_id()?;
-        let generics = self.parse_generics();
-
-        self.expect(Token::With, "`with` to separate this effect's signature from its body")?;
-        let body = self.parse_declaration_block()?;
-
-        Ok(cst::EffectDefinition { name, generics, body })
+        Ok(cst::AbilityDefinition { name, generics, body })
     }
 }
