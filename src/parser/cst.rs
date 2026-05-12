@@ -227,7 +227,7 @@ pub enum Expr {
     If(If),
     Match(Match),
     Is(Is),
-    Bind(Bind),
+    Do(Do),
     Handle(Handle),
     Reference(Reference),
     TypeAnnotation(TypeAnnotation),
@@ -430,12 +430,10 @@ pub struct Is {
     pub pattern: PatternId,
 }
 
-/// `<pattern> <- <rhs>` followed by newline-separated statements.
+/// `do <block>` or `do <non-indented-block>
 /// Always desugared during `GetItem`
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
-pub struct Bind {
-    pub pattern: PatternId,
-    pub rhs: ExprId,
+pub struct Do {
     pub body: ExprId,
 }
 

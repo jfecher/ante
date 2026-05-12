@@ -37,7 +37,7 @@ export String, from_parts, Maybe, None, Some, unwrap, unwrap_or_else, Result, Ok
     In, (in),
     Print, print, println, print_unsigned, print_signed, print_float, print_u8, print_u16, print_u32, print_u64, print_usz, print_i8, print_i16, print_i32, print_i64, print_isz, print_char, print_f64, print_f32, print_pair, print_string, print_maybe, print_ref, print_bool,
     Iterator, next, iter, Range, iterator_range, iter_range, repeat,
-    panic
+    panic, ignore
 
 type String =
     data: Ptr Char
@@ -825,6 +825,8 @@ panic (msg: t) {Print t} =
     exit 1
     // Unreachable, return any type
     deref_ptr (null ())
+
+ignore _x = ()
 
 // impl extract_string: Extract String Usz Char with
 //     (.[) s index = s.c_string.[index]

@@ -29,8 +29,8 @@ pong (f: fn Pong [env] -> a) =
 
 main () =
     a, b = ping fn pinger ->
-        ponger <- pong
-        foo {pinger} {ponger}
+        pong fn ponger ->
+            foo {pinger} {ponger}
 
     println a //=> (1*2 + 3*2) = 8
     println b //=> (2*3 + 4*3) = 18

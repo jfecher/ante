@@ -24,9 +24,7 @@ no_fail (f: fn Fail => a): a =
 
 /// Ignores a `Fail` effect, discarding it and returning Unit
 ignore_fail (f: fn Fail => a): Unit =
-    h <- try_or _ ()
-    f h
-    ()
+    try_or (fn h -> ignore (f h)) ()
 
 /// Retry a function until it succeeds (doesn't call fail).
 /// This should be used with functions using a Fail effect

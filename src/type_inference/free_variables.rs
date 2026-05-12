@@ -102,7 +102,7 @@ impl FreeVars {
                 }
             },
             cst::Expr::Is(_) => unreachable!("Expr::Is should be desugared during GetItem"),
-            cst::Expr::Bind(_) => unreachable!("Expr::Bind should be desugared during GetItem"),
+            cst::Expr::Do(_) => unreachable!("Expr::Do should be desugared during GetItem"),
             cst::Expr::Handle(handle) => {
                 // The handler name is declared by the `handle` itself, not by any
                 // surrounding scope. Treat it as defined-in-fn so references to it

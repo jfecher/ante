@@ -22,7 +22,7 @@ use crate::{
 use super::{
     TopLevelContext,
     cst::{
-        Bind, Call, CompoundAssignOp, Comptime, Cst, Declaration, Definition, EffectDefinition, Expr, Extern,
+        Do, Call, CompoundAssignOp, Comptime, Cst, Declaration, Definition, EffectDefinition, Expr, Extern,
         FunctionType, Handle, HandlePattern, If, Import, InterpolatedString, Is, Lambda, Literal, Match, MemberAccess,
         Parameter, Path, Pattern, Quoted, Reference, SequenceItem, TopLevelItem, TraitDefinition, TraitImpl, Type,
         TypeAnnotation, TypeDefinition, TypeDefinitionBody, TypeKind,
@@ -618,7 +618,7 @@ impl<'a> CstDisplay<'a> {
             Expr::If(if_) => self.fmt_if(if_, context, f),
             Expr::Match(match_) => self.fmt_match(match_, context, id, f),
             Expr::Is(is_) => self.fmt_is(is_, context, f),
-            Expr::Bind(bind) => self.fmt_bind(bind, context, f),
+            Expr::Do(do_) => self.fmt_do(do_, context, f),
             Expr::Handle(handle_) => self.fmt_handle(handle_, context, f),
             Expr::Reference(reference) => self.fmt_reference(reference, context, f),
             Expr::TypeAnnotation(type_annotation) => self.fmt_type_annotation(type_annotation, context, f),
@@ -931,10 +931,8 @@ impl<'a> CstDisplay<'a> {
         self.fmt_pattern(is_.pattern, context, f)
     }
 
-    fn fmt_bind(&mut self, bind: &Bind, context: &impl IdStore, f: &mut Formatter) -> std::fmt::Result {
-        self.fmt_pattern(bind.pattern, context, f)?;
-        write!(f, " <- ")?;
-        self.fmt_expr(bind.rhs, context, f)?;
+    fn fmt_do(&mut self, bind: &Do, context: &impl IdStore, f: &mut Formatter) -> std::fmt::Result {
+        write!(f, "do ")?;
 
         // Print the rest of the body at the same indent level
         if let Expr::Sequence(items) = context.get_expr(bind.body) {

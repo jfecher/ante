@@ -319,10 +319,9 @@ fn collect_expressions_to_desugar(expr: ExprId, context: &DesugarContext, to_des
             collect_expressions_to_desugar(is_.lhs, context, to_desugar);
             to_desugar.push(ExprDesugar::BareIs(expr));
         },
-        Expr::Bind(bind) => {
-            collect_expressions_to_desugar(bind.rhs, context, to_desugar);
-            collect_expressions_to_desugar(bind.body, context, to_desugar);
-            to_desugar.push(ExprDesugar::Bind(expr));
+        Expr::Do(do_) => {
+            collect_expressions_to_desugar(do_.body, context, to_desugar);
+            to_desugar.push(ExprDesugar::Do(expr));
         },
         Expr::Match(match_) => {
             collect_expressions_to_desugar(match_.expression, context, to_desugar);
@@ -497,9 +496,8 @@ enum ExprDesugar {
         call: ExprId,
     },
 
-    /// `<pattern> <- <rhs>` followed by statements desugars to `<rhs> (fn <pattern> -> <body>)`,
-    /// prepending the lambda to `<rhs>`'s arguments if `<rhs>` is itself a call.
-    Bind(ExprId),
+    /// `do body` desugars to `fn {arg} -> <body>`
+    Do(ExprId),
 
     /// `U8 x` desugars to `cast x : U8`
     TypeCast {
@@ -587,7 +585,7 @@ impl ExprDesugar {
             ExprDesugar::Pipe { call, pipe_right } => desugar_pipeline(call, context, pipe_right),
             ExprDesugar::LogicalOperator { call, is_or } => desugar_logical_operators(call, context, is_or),
             ExprDesugar::TildeArrow { call } => desugar_tilde_arrow(call, context),
-            ExprDesugar::Bind(expr) => desugar_bind(expr, context),
+            ExprDesugar::Do(expr) => desugar_do(expr, context),
             ExprDesugar::TypeCast { call, target_type } => desugar_type_cast(call, target_type, context),
             ExprDesugar::Loop(expr) => desugar_loop(expr, context),
             ExprDesugar::StringInterpolation(expr) => desugar_string_interpolation(expr, context),
@@ -725,31 +723,21 @@ fn desugar_logical_operators(expr: ExprId, context: &mut DesugarContext, is_or: 
     );
 }
 
-/// Desugars `<pattern> <- <rhs> <newline> <body...>` into `<rhs> (fn <pattern> -> <body>)`.
-///
-/// If `<rhs>` is itself a call, the lambda is appended as its first argument.
-/// e.g. `x <- f a b` (with body c) desugars to `f (fn x -> c) a b`.
-fn desugar_bind(expr: ExprId, context: &mut DesugarContext) {
-    let Expr::Bind(bind) = context[expr].clone() else { unreachable!() };
+/// Desugars `do <body>` into `move fn {param} -> <body>)`.
+fn desugar_do(expr: ExprId, context: &mut DesugarContext) {
+    let Expr::Do(do_) = context[expr].clone() else { unreachable!() };
     let location = context.expr_location(expr).clone();
 
-    let lambda = Expr::Lambda(cst::Lambda {
-        parameters: vec![Parameter::new(bind.pattern)],
-        return_type: None,
-        body: bind.body,
-        is_move: false,
-    });
-    let lambda = context.push_expr(lambda, location);
+    let name = context.push_name(Arc::new("do_param".to_string()), location.clone());
+    let param = context.push_pattern(Pattern::Variable(name), location);
 
-    let new_call = if let Expr::Call(inner_call) = &context[bind.rhs] {
-        let new_args = std::iter::once(Argument::explicit(lambda))
-            .chain(inner_call.arguments.iter().copied())
-            .collect();
-        cst::Call { function: inner_call.function, arguments: new_args }
-    } else {
-        cst::Call { function: bind.rhs, arguments: vec![Argument::explicit(lambda)] }
-    };
-    context.set_expr(expr, Expr::Call(new_call));
+    let lambda = Expr::Lambda(cst::Lambda {
+        parameters: vec![Parameter::new(param)],
+        return_type: None,
+        body: do_.body,
+        is_move: true,
+    });
+    context.set_expr(expr, lambda);
 }
 
 /// Desugars `a ~> b` into `b (fn {h} -> a)`
