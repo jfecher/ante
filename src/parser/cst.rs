@@ -162,6 +162,10 @@ pub struct FunctionType {
     pub parameters: Vec<ParameterType>,
     pub environment: Option<Box<Type>>,
     pub return_type: Box<Type>,
+
+    /// True if this is a `resume fn`.
+    /// Only valid as an ability field.
+    pub has_resume: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]

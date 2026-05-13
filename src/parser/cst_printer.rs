@@ -571,6 +571,10 @@ impl<'a> CstDisplay<'a> {
     fn fmt_function_type(
         &self, function_type: &FunctionType, context: &impl IdStore, f: &mut Formatter,
     ) -> std::fmt::Result {
+        if function_type.has_resume {
+            write!(f, "resume ")?;
+        }
+
         write!(f, "fn")?;
 
         let requires_parens = |typ: &Type| matches!(typ.kind, TypeKind::Function(_) | TypeKind::Application(..));

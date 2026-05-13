@@ -849,6 +849,13 @@ impl<'tokens> Parser<'tokens> {
 
     fn parse_function_type(&mut self) -> Result<Type> {
         let start = self.current_token_location();
+
+        let mut has_resume = false;
+        if let Token::Identifier(name) = self.current_token() && name == "resume" {
+            self.advance();
+            has_resume = true;
+        }
+
         self.expect(Token::Fn, "`fn` to start this function type")?;
 
         let mut parameters = self.many0(Self::parse_parameter_type);
@@ -874,7 +881,7 @@ impl<'tokens> Parser<'tokens> {
         let return_type = Box::new(self.parse_type()?);
         let location = start.to(&self.previous_token_location());
 
-        Ok(Type::new(TypeKind::Function(cst::FunctionType { parameters, environment, return_type }), location))
+        Ok(Type::new(TypeKind::Function(cst::FunctionType { parameters, environment, return_type, has_resume }), location))
     }
 
     /// pair_type: type_no_pair ',' pair_type
@@ -913,6 +920,7 @@ impl<'tokens> Parser<'tokens> {
         match self.current_token() {
             Token::Fn => self.parse_function_type(),
             Token::Ref | Token::Mut | Token::Imm | Token::Uniq => self.parse_reference_type(),
+            Token::Identifier(name) if name == "resume" => self.parse_function_type(),
             _ => self.parse_type_application(),
         }
     }
