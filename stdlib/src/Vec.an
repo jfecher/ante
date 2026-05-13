@@ -142,8 +142,8 @@ Vec.swap_last (v: mut Vec t) (idx: Usz) : Bool =
         true
 
 
-impl print_vec {p: Print t}: Print (ref Vec t) with
-    print v =
+implicit print_vec {p: Print t}: Print (ref Vec t) =
+    Print fn v ->
         print "["
 
         for i in 0 .. v.len do
@@ -152,29 +152,29 @@ impl print_vec {p: Print t}: Print (ref Vec t) with
 
         print "]"
 
-impl extract_vec: Extract (Vec t) Usz t with
-    (.[) v i = v.data.[i]
+implicit extract_vec: Extract (Vec t) Usz t =
+    Extract fn v i -> v.data.[i]
 
-impl stream_vec: Stream (Vec a) a with
-    stream vec e =
+implicit stream_vec: Stream (Vec a) a =
+    Stream fn vec e ->
         for i in 0 .. vec.len do
             e.emit (deref (vec.get_unchecked i))
 
-impl stream_imm_vec: Stream (imm Vec a) (imm a) with
-    stream vec e =
+implicit stream_imm_vec: Stream (imm Vec a) (imm a) =
+    Stream fn vec e ->
         for i in 0 .. vec.len do
             e.emit (vec.get_unchecked i)
 
-impl drop_vec {Drop t}: Drop (Vec t) with
-    drop (v: mut Vec t) =
+implicit drop_vec {Drop t}: Drop (Vec t) =
+    Drop fn (v: mut Vec t) ->
         if v.cap != 0usz then
             for i in 0 .. v.len do
                 elem = offset v.data i
                 Drop.drop (ptr_to_mut elem)
             free v.data
 
-impl eq_vec {Eq t}: Eq (Vec t) with
-    (==) l r =
+implicit eq_vec {Eq t}: Eq (Vec t) =
+    Eq fn l r ->
         if l.len != r.len then
             return false
 

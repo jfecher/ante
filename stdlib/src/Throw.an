@@ -1,7 +1,7 @@
 import Std.Fail.Fail, fail
 
-effect Throw t with
-    throw: fn t -> Never
+ability Throw t =
+    throw: resume fn t -> Never
 
 type Result t e =
    | Ok t

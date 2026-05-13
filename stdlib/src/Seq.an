@@ -191,8 +191,8 @@ Seq.iter_mut (seq: mut Seq t) (f: fn (mut t) => Unit): Unit =
         f (ptr_to_mut elem)
 
 // Paper cut #2: Copy t
-impl print_seq {p: Print t} {Copy t}: Print (Seq t) with
-    print (seq: Seq t): Unit =
+implicit print_seq {p: Print t} {Copy t}: Print (Seq t) =
+    Print fn (seq: Seq t): Unit ->
         print "["
         for i in 0 .. seq.len do
             if i != 0 then print ", "
@@ -200,15 +200,15 @@ impl print_seq {p: Print t} {Copy t}: Print (Seq t) with
             print (ptr_to_mut elem).*
         print "]"
 
-impl clone_seq: Clone (Seq t) with
+implicit clone_seq: Clone (Seq t) =
     // bug: multiple matching implicits if we just return `seq`
-    clone (seq: ref (Seq t)) =
+    Clone fn (seq: ref (Seq t)) ->
         if seq.data != null () then
             ptr_store seq.data.rc (deref_ptr seq.data.rc + 1)
         deref seq
 
-impl drop_seq {Drop t}: Drop (Seq t) with
-    drop (seq: mut Seq t) =
+implicit drop_seq {Drop t}: Drop (Seq t) =
+    Drop fn (seq: mut Seq t) ->
         rc = deref_ptr seq.data.rc
         if rc != 1 then
             ptr_store seq.data.rc (rc - 1)
@@ -216,8 +216,8 @@ impl drop_seq {Drop t}: Drop (Seq t) with
             seq.iter_mut Drop.drop
             free seq.data
 
-impl stream_seq: Stream (Seq a) (ref a) with
-    stream seq e =
+implicit stream_seq: Stream (Seq a) (ref a) =
+    Stream fn seq e ->
         for i in 0 .. seq.len do
             elem = offset seq.data.elements (Usz i)
             e.emit (ptr_to_mut elem)

@@ -126,8 +126,8 @@ HashMap.remove (map: mut HashMap k v) (key: k) {Hash k} {Eq k} : Maybe v =
         map.len := map.len - 1
         Some (deref entry.value)
 
-impl print_hashmap {Print k} {Print v}: Print (ref HashMap k v) with
-    print map =
+implicit print_hashmap {Print k} {Print v}: Print (ref HashMap k v) =
+    Print fn map ->
         putchar c"["
         var printed_first = false
         for i in 0 .. map.capacity do
@@ -143,8 +143,8 @@ impl print_hashmap {Print k} {Print v}: Print (ref HashMap k v) with
 
         putchar c"]"
 
-impl stream_map: Stream (HashMap k v) (k, v) with
-    stream map e =
+implicit stream_map: Stream (HashMap k v) (k, v) =
+    Stream fn map e ->
         for i in 0 .. map.capacity do
             entry: Entry k v = map.entries.[i]
             if entry.occupied then

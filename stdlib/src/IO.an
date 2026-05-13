@@ -55,8 +55,8 @@ File.next_line (f: mut File): String =
     String.from_parts cstr (U32 len)
 
 // Iterating through a File iterates through each line
-impl iterator_file: Iterator (mut File) String with
-    next file =
+implicit iterator_file: Iterator (mut File) String =
+    Iterator fn file ->
         if file.eof () then None
         else Some (file, file.next_line ())
 
