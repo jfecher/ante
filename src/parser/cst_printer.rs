@@ -22,7 +22,7 @@ use crate::{
 use super::{
     TopLevelContext,
     cst::{
-        Do, Call, CompoundAssignOp, Comptime, Cst, Declaration, Definition, EffectDefinition, Expr, Extern,
+        Call, CompoundAssignOp, Comptime, Cst, Declaration, Definition, Do, EffectDefinition, Expr, Extern,
         FunctionType, Handle, HandlePattern, If, Import, InterpolatedString, Is, Lambda, Literal, Match, MemberAccess,
         Parameter, Path, Pattern, Quoted, Reference, SequenceItem, TopLevelItem, TraitDefinition, TraitImpl, Type,
         TypeAnnotation, TypeDefinition, TypeDefinitionBody, TypeKind,

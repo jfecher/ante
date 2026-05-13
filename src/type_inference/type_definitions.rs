@@ -5,7 +5,7 @@ use rustc_hash::FxHashMap;
 use crate::{
     diagnostics::{Diagnostic, UnimplementedItem},
     iterator_extensions::mapvec,
-    name_resolution::{Origin, ResolutionResult},
+    name_resolution::{Origin, ResolutionResult, builtin::Builtin},
     parser::{
         cst,
         ids::{NameId, TopLevelId, TopLevelName},
@@ -67,23 +67,30 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let target = Origin::TopLevelDefinition(type_name);
         match &definition.body {
             cst::TypeDefinitionBody::Enum(variants) => {
-                variants.iter().any(|(_, args)| args.iter().any(|t| Self::type_references(t, target, resolve)))
+                variants.iter().any(|(_, args)| args.iter().any(|t| Self::type_uses_target_unboxed(t, target, resolve)))
             },
             cst::TypeDefinitionBody::Struct(fields) => {
-                fields.iter().any(|(_, t)| Self::type_references(t, target, resolve))
+                fields.iter().any(|(_, t)| Self::type_uses_target_unboxed(t, target, resolve))
             },
             _ => false,
         }
     }
 
-    fn type_references(typ: &cst::Type, target: Origin, resolve: &ResolutionResult) -> bool {
+    /// True only if `typ` uses `target` unboxed.
+    /// Used to check for recursively infinitely sized types.
+    fn type_uses_target_unboxed(typ: &cst::Type, target: Origin, resolve: &ResolutionResult) -> bool {
         match &typ.kind {
             cst::TypeKind::Named(path) => resolve.path_origins.get(path).copied() == Some(target),
             cst::TypeKind::Application(f, args) => {
-                Self::type_references(f, target, resolve)
-                    || args.iter().any(|a| Self::type_references(a, target, resolve))
+                if Self::is_pointer_constructor(f, resolve) {
+                    return false;
+                }
+                Self::type_uses_target_unboxed(f, target, resolve)
+                    || args.iter().any(|a| Self::type_uses_target_unboxed(a, target, resolve))
             },
-            cst::TypeKind::Tuple(elements) => elements.iter().any(|e| Self::type_references(e, target, resolve)),
+            cst::TypeKind::Tuple(elements) => {
+                elements.iter().any(|e| Self::type_uses_target_unboxed(e, target, resolve))
+            },
             // Function types are pointer-sized, so recursion through them does not require
             // unbounded representation.
             cst::TypeKind::Function(_)
@@ -97,6 +104,16 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             | cst::TypeKind::Char
             | cst::TypeKind::Integer(_)
             | cst::TypeKind::Float(_) => false,
+        }
+    }
+
+    fn is_pointer_constructor(typ: &cst::Type, resolve: &ResolutionResult) -> bool {
+        match &typ.kind {
+            cst::TypeKind::Pointer => true,
+            cst::TypeKind::Named(path) => {
+                matches!(resolve.path_origins.get(path).copied(), Some(Origin::Builtin(Builtin::Ptr)))
+            },
+            _ => false,
         }
     }
 

@@ -307,8 +307,7 @@ fn display_mir(compiler: &mut Db, emit_all: bool, optimize_tail_calls: bool) -> 
 
                 for item in &parse.cst.top_level_items {
                     let item_diagnostics = compiler.get_accumulated_uncached(TypeCheck(item.id));
-                    let item_has_errors =
-                        item_diagnostics.iter().any(|d| matches!(d.kind(), DiagnosticKind::Error));
+                    let item_has_errors = item_diagnostics.iter().any(|d| matches!(d.kind(), DiagnosticKind::Error));
                     diagnostics.extend(item_diagnostics);
 
                     if item_has_errors {
