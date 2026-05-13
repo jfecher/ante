@@ -1,5 +1,6 @@
 use std::{cmp::Ordering, collections::BTreeSet, fmt::Formatter, path::PathBuf, sync::Arc};
 
+use beef::lean::Cow;
 use colored::{Color, ColoredString, Colorize};
 use serde::{Deserialize, Serialize};
 
@@ -21,7 +22,40 @@ mod unimplemented_item;
 pub use location::*;
 pub use unimplemented_item::*;
 
-/// Any diagnostic that the compiler can issue
+mod serde_beef {
+    use super::Cow;
+    use serde::{Deserializer, Serializer, de::Visitor};
+
+    pub fn serialize<S: Serializer>(string: &Cow<'static, str>, ser: S) -> Result<S::Ok, S::Error> {
+        ser.serialize_str(&string)
+    }
+    
+    pub fn deserialize<'de, D: Deserializer<'de>>(de: D) -> Result<Cow<'static, str>, D::Error> {
+        struct V;
+
+        impl<'v> Visitor<'v> for V {
+            type Value = Cow<'static, str>;
+        
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                write!(formatter, "a string")
+            }
+            
+            fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<Self::Value, E> {
+                Ok(Cow::owned(v.to_owned()))
+            }
+
+            fn visit_string<E: serde::de::Error>(self, v: String) -> Result<Self::Value, E> {
+                Ok(Cow::owned(v))
+            }
+        }
+
+        de.deserialize_string(V)
+    }
+}
+
+/// Any diagnostic that the compiler can issue.
+/// 
+/// If the `hint` is the empty string, it shouldn't be printed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub enum Diagnostic {
     // TODO: `message` could be an enum to save allocation costs
@@ -29,6 +63,8 @@ pub enum Diagnostic {
         message: String,
         actual: Token,
         location: Location,
+        #[serde(skip_serializing_if = "str::is_empty", default, with = "serde_beef")]
+        hint: Cow<'static, str>,
     },
     ExpectedPathForImport {
         location: Arc<LocationData>,
@@ -313,13 +349,32 @@ impl Diagnostic {
         }
     }
 
+    /// Sets the hint on this error to the given string, if this kind of error can have a hint.
+    /// 
+    /// If the error already has a hint, it is replaced.
+    pub fn with_hint(self, hint: impl Into<Cow<'static, str>>) -> Self {
+        match self {
+            Diagnostic::ParserExpected { message, actual, location, hint: _ } =>
+                Diagnostic::ParserExpected { message, actual, location, hint: hint.into() },
+            other => other,
+        }
+    }
+
     pub fn message(&self) -> String {
         match self {
-            Diagnostic::ParserExpected { message, actual, location: _ } => {
+            Diagnostic::ParserExpected { message, actual, location: _, hint } => {
                 if actual.to_string().contains(" ") {
-                    format!("Expected {message} but found {actual}")
+                    if hint.is_empty() {
+                        format!("Expected {message} but found {actual}")
+                    } else {
+                        format!("Expected {message} but found {actual} ({hint})")
+                    }
                 } else {
-                    format!("Expected {message} but found `{actual}`")
+                    if hint.is_empty() {
+                        format!("Expected {message} but found `{actual}`")
+                    } else {
+                        format!("Expected {message} but found `{actual}` ({hint})")
+                    }
                 }
             },
             Diagnostic::ParserComplexImplItemName { location: _ } => {

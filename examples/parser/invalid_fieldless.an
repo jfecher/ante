@@ -1,0 +1,14 @@
+type Good = | MkGood
+
+type Bad
+
+main () = ()
+
+// expected exit status: 1
+// expected stderr:
+// examples/parser/invalid_fieldless.an:3:6
+//   | // error: Expected `=` to begin the type definition but found a newline (for a fieldless type, define a constructor with no arguments)
+// 3 | type Bad
+// 
+// Found 1 error and 0 warnings
+

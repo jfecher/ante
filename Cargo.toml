@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+beef = "0.5.2"
 clap = { version = "4", features = ["derive"] }
 clap_complete = "4"
 colored = "2.0.0"

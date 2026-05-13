@@ -162,7 +162,7 @@ impl<'tokens> Parser<'tokens> {
             Token::Newline => self.previous_token_location(),
             _ => self.current_token_location(),
         };
-        Err(Diagnostic::ParserExpected { message, actual, location })
+        Err(Diagnostic::ParserExpected { message, actual, location, hint: "".into() })
     }
 
     /// Reserve a space for an expression.
@@ -719,7 +719,11 @@ impl<'tokens> Parser<'tokens> {
         self.expect(Token::Type, "`type`")?;
         let name = self.parse_type_name_id()?;
         let generics = self.parse_generics();
-        self.expect(Token::Equal, "`=` to begin the type definition")?;
+        self.expect(Token::Equal, "`=` to begin the type definition")
+            .map_err(|e| match self.current_token() {
+                 Token::Newline | Token::EndOfInput => e.with_hint("for a fieldless type, define a constructor with no arguments"),
+                 _ => e,
+            })?;
         let body = self.parse_type_body()?;
         Ok(TypeDefinition { shared, name, generics, body, is_trait: false, is_effect: false })
     }
@@ -769,6 +773,7 @@ impl<'tokens> Parser<'tokens> {
             },
             _ => match self.parse_type() {
                 Ok(typ) => Ok(TypeDefinitionBody::Alias(typ)),
+                // TODO: hint about fieldless types here if appropriate
                 Err(_) => self.expected("a field name or `|` to start this type body"),
             },
         }
@@ -1651,6 +1656,7 @@ impl<'tokens> Parser<'tokens> {
                     message: "an expression".to_string(),
                     actual,
                     location: location.clone(),
+                    hint: "".into(),
                 };
                 self.diagnostics.push(error);
                 self.advance();
