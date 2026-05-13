@@ -82,8 +82,6 @@ fifth (_, _, _, _, e) = e
 ability Cast a b =
     cast: fn a -> b
 
-cast = Cast.cast
-
 implicit cast_same: Cast a a =
     Cast fn a -> a
 
@@ -276,12 +274,6 @@ implicit add_usz: Add Usz = Add fn x y -> intrinsic "AddInt" x y
 implicit add_f32: Add F32 = Add fn x y -> intrinsic "AddFloat" x y
 implicit add_f64: Add F64 = Add fn x y -> intrinsic "AddFloat" x y
 
-(+) = Add.(+)
-(-) = Sub.(-)
-(*) = Mul.(*)
-(/) = Div.(/)
-(%) = Mod.(%)
-
 ability Sub n = (-): fn n n -> n
 implicit sub_i8: Sub I8 = Sub fn x y -> intrinsic "SubInt" x y
 implicit sub_i16: Sub I16 = Sub fn x y -> intrinsic "SubInt" x y
@@ -375,13 +367,10 @@ implicit eq_maybe {Eq e}: Eq (Maybe e) =
         | None, None -> true
         | _ -> false
 
-(==) = Eq.(==)
 (!=) (l: t) (r: t) {Eq t} = not (l == r)
 
 ability Not t =
     (not): fn t -> t
-
-(not) = Not.(not)
 
 implicit not_bool: Not Bool =
     Not fn b -> if b then false else true
@@ -393,7 +382,6 @@ ability Cmp a =
     (<): fn a a -> Bool
 
 // TODO: Partial ordering screws everything up
-(<) = Cmp.(<)
 (>) (a: t) (b: t) {Cmp t} = b < a
 (<=) (a: t) (b: t) {Cmp t} = not (b < a)
 (>=) (a: t) (b: t) {Cmp t} = not (a < b)
@@ -451,8 +439,6 @@ implicit try_cast_u64: TryCast U64 I64 =
 ability Append a =
     (++): fn a a -> a
 
-(++) = Append.(++)
-
 // TODO: This needs to be in the prelude to keep string interpolation working
 implicit append_string: Append String =
     Append fn s1 s2 ->
@@ -474,8 +460,6 @@ implicit append_string: Append String =
 
 ability Extract collection index elem =
     (.[): fn collection index -> elem
-
-(.[) = Extract.(.[)
 
 // TODO: Remove. This breaks ownership
 implicit extract_ptr_usz: Extract (Ptr t) Usz t =
