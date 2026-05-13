@@ -1,37 +1,19 @@
 
-trait Foo a -> b with
+ability Foo a b =
     foo: fn a -> b
 
-impl foo_impl: Foo I32 String with
-    foo _ = "hi"
+implicit foo_impl: Foo I32 String =
+    Foo fn _ -> "hi"
 
 str = foo 0i32
 
 // args: -e ast-t --no-color
-// expected exit status: 1
 // expected stdout:
-// type Foo a [env] =
+// type Foo a b [env] =
 //     foo: fn a [[env]] -> b
 // 
-// implicit (foo_impl: (error)) = Foo I32 String NoClosureEnv with
-//     (foo: (error)) = fn (_: _) -> "hi"
+// implicit (foo_impl: Foo I32 String) =
+//     (Foo: fn (fn I32 -> String) -> Foo I32 String) (fn (_: I32) -> "hi")
 // 
-// (str: _) = (foo: (error)) 0_I32
-
-// expected stderr:
-// examples/typechecking/trait_fundep_result.an:3:18
-// 2 | trait Foo a -> b with
-// 3 |     foo: fn a -> b	// error: `b` not found in scope
-//   |                  ^
-// 
-// examples/typechecking/trait_fundep_result.an:5:6
-// 5 | impl foo_impl: Foo I32 String with	// error: Expected 1 argument but found 3
-//   |      ^^^^^^^^
-// 6 |     foo _ = "hi"
-// 
-// examples/typechecking/trait_fundep_result.an:8:7
-//  8 | str = foo 0i32	// error: `foo` not found in scope
-//    |       ^^^
-// 
-// Found 3 errors and 0 warnings
+// (str: String) = (foo: fn I32 {Foo I32 String} [_] -> String) 0_I32 {(foo_impl: Foo I32 String)}
 

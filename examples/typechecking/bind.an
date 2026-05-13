@@ -33,4 +33,5 @@ add_one x =
 // (x: Maybe I32) = (Maybe.Some: fn I32 -> Maybe I32) 10_I32
 // 
 // (add_one: fn (Maybe I32) -> Maybe I32) (x: Maybe I32) =
-//     (bind: fn (Maybe I32) (fn I32 -> Maybe I32) -> Maybe I32) (x: Maybe I32) (fn (x: I32) -> (ret: fn I32 -> Maybe I32) ((+: fn I32 I32 {Add I32} -> I32) (x: I32) 1_I32 {(add_i32: Add I32)}))
+//     (bind: fn (Maybe I32) (fn I32 -> Maybe I32) -> Maybe I32) (x: Maybe I32) (fn (x: I32) -> (ret: fn I32 -> Maybe I32) ((+: fn I32 I32 {Add I32} [_] -> I32) (x: I32) 1_I32 {(add_i32: Add I32)}))
+

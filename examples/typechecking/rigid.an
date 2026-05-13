@@ -10,7 +10,7 @@ main () = ()
 // args: -e ast-t --no-color
 // expected exit status: 1
 // expected stdout:
-// (ex1: fn a -> b) ((x: a)) : b = (+: fn b b {Add b} -> b) (x: a) 1_U32 {(error)}
+// (ex1: fn a -> b) ((x: a)) : b = (+: fn b b {Add b} [_] -> b) (x: a) 1_U32 {(error)}
 // 
 // (ex2: fn a -> b) =
 //     fn (x: a) -> (x: a)
@@ -37,3 +37,4 @@ main () = ()
 //   |             ^
 // 
 // Found 4 errors and 0 warnings
+

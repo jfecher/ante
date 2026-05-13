@@ -48,7 +48,7 @@ memcmp (lhs: Ptr a) (rhs: Ptr b) (size: Usz): I32 =
 type File = f: Ptr Unit
 type FilePos = f: Ptr Unit
 
-impl copy_file: Copy File with (.*) f = deref_ptr (transmute f)
+implicit copy_file: Copy File = Copy fn f -> deref_ptr (transmute f)
 
 fopen = extern "fopen": fn String String -> File
 fclose = extern "fclose": fn File -> Unit

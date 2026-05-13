@@ -13,9 +13,8 @@ File.open (path: String) (mode: String): File =
 File.close (file: File): Unit =
     fclose file.c_file
 
-impl drop_file: Drop File with
-    drop f =
-        fclose f.c_file
+implicit drop_file: Drop File = Drop fn f ->
+    fclose f.c_file
 
 //Convenience function for using feof with better types
 File.eof (f: ref File): Bool =

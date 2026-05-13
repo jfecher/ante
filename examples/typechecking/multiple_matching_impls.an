@@ -1,13 +1,13 @@
 
 type Thing = nothing: Unit
 
-trait Foo a with
+ability Foo a =
     foo: fn a -> Unit
 
-trait Bar a with
+ability Bar a =
     bar: fn a -> Unit
 
-trait Baz a with
+ability Baz a =
     baz: fn a -> Unit
 
 main () =
@@ -15,24 +15,24 @@ main () =
     Foo.foo (Thing ())
 
 // Candidate 1
-impl candidate1 {_: Bar a}: Foo a with
-    foo a = Bar.bar a
+implicit candidate1 {Bar a}: Foo a =
+    Foo fn a -> Bar.bar a
 
-impl bar {_: Baz a}: Bar a with
-    bar a = Baz.baz a
+implicit bar_impl {Baz a}: Bar a =
+    Bar fn a -> Baz.baz a
 
-impl baz: Baz Thing with
-    baz _ = ()
+implicit baz_impl: Baz Thing =
+    Baz fn _ -> ()
 
 
 // Does not match
-impl does_not_match {_: Print a}: Foo a with
-    foo _ = ()
+implicit does_not_match {Print a}: Foo a =
+    Foo fn _ -> ()
 
 
 // Candidate 2
-impl candidate2: Foo Thing with
-    foo _ = ()
+implicit candidate2: Foo Thing =
+    Foo fn _ -> ()
 
 // args: -e ast-t --no-color
 // expected exit status: 1
@@ -50,22 +50,22 @@ impl candidate2: Foo Thing with
 //     baz: fn a [[env]] -> Unit
 // 
 // (main: fn Unit -> Unit) () =
-//     (Foo.foo: fn Thing {Foo Thing} -> Unit) ((Thing: fn Unit -> Thing) ()) {(error)}
+//     (Foo.foo: fn Thing {Foo Thing} [_] -> Unit) ((Thing: fn Unit -> Thing) ()) {(error)}
 // 
-// implicit (candidate1: fn {Bar a} -> Foo a) {(_: Bar a)} : Foo a (Bar a [env_0]) = Foo a (Bar a [env_0]) with
-//     (foo: fn a [(Bar a)] -> Unit) = fn (a: a) [(_: Bar a)] -> (Bar.bar: fn a {Bar a} -> Unit) (a: a) {(_: Bar a)}
+// implicit (candidate1: fn {Bar a} -> Foo a) {(_: Bar a)} : Foo a =
+//     (Foo: fn (fn a [(Bar a)] -> Unit) -> Foo a) (fn (a: a) [(_: Bar a)] -> (Bar.bar: fn a {Bar a} [_] -> Unit) (a: a) {(_: Bar a)})
 // 
-// implicit (bar: fn {Baz a} -> Bar a) {(_: Baz a)} : Bar a (Baz a [env_0]) = Bar a (Baz a [env_0]) with
-//     (bar: fn a [(Baz a)] -> Unit) = fn (a: a) [(_: Baz a)] -> (Baz.baz: fn a {Baz a} -> Unit) (a: a) {(_: Baz a)}
+// implicit (bar_impl: fn {Baz a} -> Bar a) {(_: Baz a)} : Bar a =
+//     (Bar: fn (fn a [(Baz a)] -> Unit) -> Bar a) (fn (a: a) [(_: Baz a)] -> (Baz.baz: fn a {Baz a} [_] -> Unit) (a: a) {(_: Baz a)})
 // 
-// implicit (baz: Baz Thing) = Baz Thing NoClosureEnv with
-//     (baz: fn Thing -> Unit) = fn (_: Thing) -> ()
+// implicit (baz_impl: Baz Thing) =
+//     (Baz: fn (fn Thing -> Unit) -> Baz Thing) (fn (_: Thing) -> ())
 // 
-// implicit (does_not_match: fn {Print a} -> Foo a) {(_: Print a)} : Foo a (Print a [env_0]) = Foo a (Print a [env_0]) with
-//     (foo: fn a [(Print a)] -> Unit) = fn (_: a) -> ()
+// implicit (does_not_match: fn {Print a} -> Foo a) {(_: Print a)} : Foo a =
+//     (Foo: fn (fn a -> Unit) -> Foo a) (fn (_: a) -> ())
 // 
-// implicit (candidate2: Foo Thing) = Foo Thing NoClosureEnv with
-//     (foo: fn Thing -> Unit) = fn (_: Thing) -> ()
+// implicit (candidate2: Foo Thing) =
+//     (Foo: fn (fn Thing -> Unit) -> Foo Thing) (fn (_: Thing) -> ())
 
 // expected stderr:
 // examples/typechecking/multiple_matching_impls.an:15:5
@@ -74,10 +74,5 @@ impl candidate2: Foo Thing with
 // 15 |     Foo.foo (Thing ())
 //    |     ^^^^^^^
 // 
-// examples/typechecking/multiple_matching_impls.an:30:5
-// 29 | impl does_not_match {_: Print a}: Foo a with
-//    |     // error: Expected the closure environment (Print a), but the actual environment was empty
-// 30 |     foo _ = ()
-//    |     ^^^
-// 
-// Found 2 errors and 0 warnings
+// Found 1 error and 0 warnings
+

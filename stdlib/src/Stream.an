@@ -2,11 +2,11 @@ import Std.Vec.Vec, get_unchecked
 import Std.Fail.Fail, fail
 
 /// Emit a single item of type `a`. Another name for this is `Yield`.
-ability Emit a with
+ability Emit a =
     emit: resume fn a -> Unit
 
 /// Common control-flow effects for looping
-ability Loop with
+ability Loop =
     /// End the loop early
     break_: resume fn Unit -> Never
 
@@ -14,15 +14,15 @@ ability Loop with
     continue_: resume fn Unit -> Never
 
 /// Stream the contents of `t` into the `Emit a` capability
-ability Stream t a with
+ability Stream t a =
     stream: fn t (Emit a) -> Unit
 
 /// This is the most common stream impl. Most streams will just be functions
 /// with an `Emit` capability. This impl is most common in the middle of
 /// stream chains since functions like `map` and `filter` return functions taking
 /// an `Emit` argument.
-implicit stream_fn: Stream (fn (Emit a) [env] -> Unit) a = Stream with
-    stream f e = f e
+implicit stream_fn: Stream (fn (Emit a) [env] -> Unit) a =
+    Stream fn f e -> f e
 
 /// Consumes the given stream, applying `f` to each element
 /// 

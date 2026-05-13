@@ -1,9 +1,9 @@
-effect Three with
+ability Three =
     one: fn Unit -> Unit
     two: fn I32 -> I32
     three: fn I32 I32 -> I32
 
-effect State a with
+ability State a =
     get: fn Unit -> a
     put: fn a -> Unit
 
@@ -31,15 +31,15 @@ main () =
 // expected exit status: 1
 // expected stdout:
 // // id = c1m485_8962
-// type Three_c1m485_8962_0 =
-//     one_c1m485_8962_1: fn Unit_bUnit [Ptr Unit] -> Unit_bUnit
-//     two_c1m485_8962_2: fn I32 [Ptr Unit] -> I32
-//     three_c1m485_8962_3: fn I32 I32 [Ptr Unit] -> I32
+// type Three_c1m485_8962_0 [env]_4 =
+//     one_c1m485_8962_1: fn Unit_bUnit [[env]_4] -> Unit_bUnit
+//     two_c1m485_8962_2: fn I32 [[env]_4] -> I32
+//     three_c1m485_8962_3: fn I32 I32 [[env]_4] -> I32
 // 
 // // id = c1m485_5987
-// type State_c1m485_5987_0 a_1 =
-//     get_c1m485_5987_2: fn Unit_bUnit [Ptr Unit] -> a_1
-//     put_c1m485_5987_4: fn a_1 [Ptr Unit] -> Unit_bUnit
+// type State_c1m485_5987_0 a_1 [env]_6 =
+//     get_c1m485_5987_2: fn Unit_bUnit [[env]_6] -> a_1
+//     put_c1m485_5987_4: fn a_1 [[env]_6] -> Unit_bUnit
 // 
 // // id = c1m485_1944
 // main_c1m485_1944_0 () =

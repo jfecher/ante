@@ -15,11 +15,11 @@ main () =
 // expected exit status: 1
 // expected stdout:
 // (main: fn Unit -> Unit) () =
-//     (a: U32) = (Std.Prelude.Cast.cast: fn U8 {Cast U8 U32} -> U32) 42_U8 {(cast_u8_u32: Cast U8 U32)}: U32
-//     (b: I64) = (Std.Prelude.Cast.cast: fn I64 {Cast I64 I64} -> I64) ((Std.Prelude.Cast.cast: fn I32 {Cast I32 I64} -> I64) 42 {(cast_i32_i64: Cast I32 I64)}: I64) {(cast_same: Cast I64 I64)}: I64
-//     (c: I32) = (Std.Prelude.Cast.cast: fn U8 {Cast U8 I32} -> I32) 42_U8 {(cast_u8_i32: Cast U8 I32)}: I32
-//     (d: U8) = (Std.Prelude.Cast.cast: fn String {Cast String U8} -> U8) "hello" {(error)}: U8
-//     (e: U8) = (Std.Prelude.Cast.cast: fn Bool {Cast Bool U8} -> U8) true {(error)}: U8
+//     (a: U32) = (Std.Prelude.Cast.cast: fn U8 {Cast U8 U32} [_] -> U32) 42_U8 {(cast_u8_u32: Cast U8 U32)}: U32
+//     (b: I64) = (Std.Prelude.Cast.cast: fn I64 {Cast I64 I64} [_] -> I64) ((Std.Prelude.Cast.cast: fn I32 {Cast I32 I64} [_] -> I64) 42 {(cast_i32_i64: Cast I32 I64)}: I64) {(cast_same: Cast I64 I64)}: I64
+//     (c: I32) = (Std.Prelude.Cast.cast: fn U8 {Cast U8 I32} [_] -> I32) 42_U8 {(cast_u8_i32: Cast U8 I32)}: I32
+//     (d: U8) = (Std.Prelude.Cast.cast: fn String {Cast String U8} [_] -> U8) "hello" {(error)}: U8
+//     (e: U8) = (Std.Prelude.Cast.cast: fn Bool {Cast Bool U8} [_] -> U8) true {(error)}: U8
 
 // expected stderr:
 // examples/typechecking/type_cast.an:9:9

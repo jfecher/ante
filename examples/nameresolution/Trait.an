@@ -1,56 +1,28 @@
-trait Foo a b with
+ability Foo a b =
     foo: fn a -> b
     bar: a
 
 // error: missing definition of bar
-impl foo_i32_string: Foo I32 String with
-    foo _x = "test"
-    baz = 2
+implicit foo_i32_string: Foo I32 String =
+    Foo (fn _x -> "test") 2
 
 main () =
     foo 3
     bar : Unit
 
 // args: -e ast-r --no-color
-// expected exit status: 1
 // expected stdout:
 // // id = c1m488_1237
 // type Foo_c1m488_1237_0 a_1 b_2 [env]_8 =
 //     foo_c1m488_1237_3: fn a_1 [[env]_8] -> b_2
 //     bar_c1m488_1237_6: a_1
 // 
-// // id = c1m488_9205
-// implicit foo_i32_string_c1m488_9205_0: Foo_c1m488_1237_0 I32 String_c0m703_9662_0 NoClosureEnv = Foo_c1m488_1237_0 I32 String_c0m703_9662_0 NoClosureEnv with
-//     foo_? = fn _x_2 -> "test"
-//     baz_? = 2
+// // id = c1m488_400
+// implicit foo_i32_string_c1m488_400_1: Foo_c1m488_1237_0 I32 String_c0m703_9662_0 =
+//     Foo_c1m488_1237_0 (fn _x_3 -> "test") 2
 // 
 // // id = c1m488_1944
 // main_c1m488_1944_0 () =
-//     foo_? 3
-//     bar_?: Unit_bUnit
-
-// expected stderr:
-// examples/nameresolution/Trait.an:6:6
-// 5 | // error: missing definition of bar
-// 6 | impl foo_i32_string: Foo I32 String with	// error: Missing field: bar
-//   |      ^^^^^^^^^^^^^^
-// 7 |     foo _x = "test"
-// 
-// examples/nameresolution/Trait.an:8:5
-//  7 |     foo _x = "test"
-//  8 |     baz = 2	// error: Foo I32 String NoClosureEnv has no field named `baz`
-//    |     ^^^
-// 
-// examples/nameresolution/Trait.an:11:5
-// 10 | main () =
-// 11 |     foo 3	// error: `foo` not found in scope
-//    |     ^^^
-// 12 |     bar : Unit
-// 
-// examples/nameresolution/Trait.an:12:5
-// 11 |     foo 3
-// 12 |     bar : Unit	// error: `bar` not found in scope
-//    |     ^^^
-// 
-// Found 4 errors and 0 warnings
+//     foo_c1m488_1237_3 3
+//     bar_c1m488_1237_6: Unit_bUnit
 

@@ -1,12 +1,12 @@
 
-trait Foo a with
+ability Foo a =
     foo: fn a a -> a
 
-impl Foo I32 with
-    foo _a b = b
+implicit foo_i32: Foo I32 =
+    Foo fn _a b -> b
 
-impl Foo F64 with
-    foo _a b = b
+implicit foo_f64: Foo F64 =
+    Foo fn _a b -> b
 
 
 a = foo 1 2i32
@@ -19,38 +19,24 @@ c = foo "one" "two"
 // type Foo a [env] =
 //     foo: fn a a [[env]] -> a
 // 
-// (a: _) = (foo: (error)) 1 2_I32
+// implicit (foo_i32: Foo I32) =
+//     (Foo: fn (fn I32 I32 -> I32) -> Foo I32) (fn (_a: I32) (b: I32) -> (b: I32))
 // 
-// (b: _) = (foo: (error)) 1.0 2.0
+// implicit (foo_f64: Foo F64) =
+//     (Foo: fn (fn F64 F64 -> F64) -> Foo F64) (fn (_a: F64) (b: F64) -> (b: F64))
 // 
-// (c: _) = (foo: (error)) "one" "two"
+// (a: I32) = (foo: fn I32 I32 {Foo I32} [_] -> I32) 1 2_I32 {(foo_i32: Foo I32)}
+// 
+// (b: F64) = (foo: fn F64 F64 {Foo F64} [_] -> F64) 1.0 2.0 {(foo_f64: Foo F64)}
+// 
+// (c: String) = (foo: fn String String {Foo String} [_] -> String) "one" "two" {(error)}
 
 // expected stderr:
-// examples/typechecking/impl.an:5:6
-// 5 | impl Foo I32 with	// error: Expected an identifier but found `Foo`
-//   |      ^^^
-// 6 |     foo _a b = b
-// 
-// examples/typechecking/impl.an:8:6
-//  8 | impl Foo F64 with	// error: Expected an identifier but found `Foo`
-//    |      ^^^
-//  9 |     foo _a b = b
-// 
-// examples/typechecking/impl.an:12:5
-// 12 | a = foo 1 2i32	// error: `foo` not found in scope
-//    |     ^^^
-// 13 | b = foo 1.0 2.0
-// 
-// examples/typechecking/impl.an:13:5
-// 12 | a = foo 1 2i32
-// 13 | b = foo 1.0 2.0	// error: `foo` not found in scope
-//    |     ^^^
-// 14 | c = foo "one" "two"
-// 
 // examples/typechecking/impl.an:14:5
 // 13 | b = foo 1.0 2.0
-// 14 | c = foo "one" "two"	// error: `foo` not found in scope
+//    | // error: No implicit found for type Foo String required by parameter 3 of foo
+// 14 | c = foo "one" "two"
 //    |     ^^^
 // 
-// Found 5 errors and 0 warnings
+// Found 1 error and 0 warnings
 

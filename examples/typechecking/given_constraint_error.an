@@ -1,24 +1,18 @@
 
-impl print_impl {_: DoesNotExist a}: Print a with
-    print _ = ()
+implicit print_impl {DoesNotExist a}: Print a =
+    Print fn _ -> ()
 
 // args: -e ast-t --no-color
 // expected exit status: 1
 // expected stdout:
-// implicit (print_impl: fn {(error) a [env_0]} -> Print a) {(_: (error) a [env_0])} : Print a (DoesNotExist a [env_0]) = Print a (DoesNotExist a [env_0]) with
-//     (print: fn a [((error) a [env_0])] -> Unit) = fn (_: a) -> ()
+// implicit (print_impl: fn {(error) a} -> Print a) {(_: (error) a)} : Print a =
+//     (Print: fn (fn a -> Unit) -> Print a) (fn (_: a) -> ())
 
 // expected stderr:
-// examples/typechecking/given_constraint_error.an:2:21
-//   | // error: `DoesNotExist` not found in scope
-// 2 | impl print_impl {_: DoesNotExist a}: Print a with
-//   |                     ^^^^^^^^^^^^
-// 3 |     print _ = ()
+// examples/typechecking/given_constraint_error.an:2:22
+// 2 | implicit print_impl {DoesNotExist a}: Print a =	// error: `DoesNotExist` not found in scope
+//   |                      ^^^^^^^^^^^^
+// 3 |     Print fn _ -> ()
 // 
-// examples/typechecking/given_constraint_error.an:3:5
-// 2 | impl print_impl {_: DoesNotExist a}: Print a with
-//   |     // error: Expected the closure environment ((error) a [env_0]), but the actual environment was empty
-// 3 |     print _ = ()
-//   |     ^^^^^
-// 
-// Found 2 errors and 0 warnings
+// Found 1 error and 0 warnings
+

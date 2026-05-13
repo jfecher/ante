@@ -336,21 +336,21 @@ implicit mod_usz: Mod Usz = Mod fn x y -> intrinsic "ModUnsigned" x y
 
 
 ability Eq t = (==): fn t t -> Bool
-implicit eq_i8: Eq I8 with (==) x y = intrinsic "EqInt" x y
-implicit eq_i16: Eq I16 with (==) x y = intrinsic "EqInt" x y
-implicit eq_i32: Eq I32 with (==) x y = intrinsic "EqInt" x y
-implicit eq_i64: Eq I64 with (==) x y = intrinsic "EqInt" x y
-implicit eq_isz: Eq Isz with (==) x y = intrinsic "EqInt" x y
-implicit eq_u8: Eq U8 with (==) x y = intrinsic "EqInt" x y
-implicit eq_u16: Eq U16 with (==) x y = intrinsic "EqInt" x y
-implicit eq_u32: Eq U32 with (==) x y = intrinsic "EqInt" x y
-implicit eq_u64: Eq U64 with (==) x y = intrinsic "EqInt" x y
-implicit eq_usz: Eq Usz with (==) x y = intrinsic "EqInt" x y
-implicit eq_f32: Eq F32 with (==) x y = intrinsic "EqFloat" x y
-implicit eq_f64: Eq F64 with (==) x y = intrinsic "EqFloat" x y
+implicit eq_i8: Eq I8 = Eq fn x y -> intrinsic "EqInt" x y
+implicit eq_i16: Eq I16 = Eq fn x y -> intrinsic "EqInt" x y
+implicit eq_i32: Eq I32 = Eq fn x y -> intrinsic "EqInt" x y
+implicit eq_i64: Eq I64 = Eq fn x y -> intrinsic "EqInt" x y
+implicit eq_isz: Eq Isz = Eq fn x y -> intrinsic "EqInt" x y
+implicit eq_u8: Eq U8 = Eq fn x y -> intrinsic "EqInt" x y
+implicit eq_u16: Eq U16 = Eq fn x y -> intrinsic "EqInt" x y
+implicit eq_u32: Eq U32 = Eq fn x y -> intrinsic "EqInt" x y
+implicit eq_u64: Eq U64 = Eq fn x y -> intrinsic "EqInt" x y
+implicit eq_usz: Eq Usz = Eq fn x y -> intrinsic "EqInt" x y
+implicit eq_f32: Eq F32 = Eq fn x y -> intrinsic "EqFloat" x y
+implicit eq_f64: Eq F64 = Eq fn x y -> intrinsic "EqFloat" x y
 
-implicit eq_char: Eq Char with (==) (x: Char) (y: Char): Bool = intrinsic "EqInt" x y
-implicit eq_bool: Eq Bool with (==) (x: Bool) (y: Bool): Bool = intrinsic "EqInt" x y
+implicit eq_char: Eq Char = Eq fn (x: Char) (y: Char) -> intrinsic "EqInt" x y
+implicit eq_bool: Eq Bool = Eq fn (x: Bool) (y: Bool) -> intrinsic "EqInt" x y
 
 // References are equal if their elements are equal
 implicit eq_ref {Eq t}: Eq (ref t) =
@@ -477,8 +477,8 @@ ability Bitwise t =
 
 implicit bitwise_i32: Bitwise I32 = Bitwise
     (fn x y -> intrinsic "BitwiseAnd" x y)
-    (fn x y = intrinsic "BitwiseXor" x y)
-    (fn x y = intrinsic "BitwiseOr" x y)
+    (fn x y -> intrinsic "BitwiseXor" x y)
+    (fn x y -> intrinsic "BitwiseOr" x y)
 
 
 type Type t = | MkType

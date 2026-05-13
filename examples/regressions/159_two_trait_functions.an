@@ -1,42 +1,802 @@
 
-trait MultiTrait a with 
-    one: Unit -> Unit
-    two: Unit -> Unit
+ability MultiTrait a =
+    one: fn Unit -> Unit
+    two: fn Unit -> Unit
 
-impl MultiTrait Unit with 
-    one _ = ()
-    two _ = ()
+implicit multitrait_unit: MultiTrait Unit =
+    MultiTrait
+        (fn _ -> ())
+        (fn _ -> ())
 
-one ()
+main () = one ()
 
 // args: --delete-binary --no-color
-// expected exit status: 1
+// expected exit status: 101
 // expected stderr:
-// examples/regressions/159_two_trait_functions.an:1:1
-// 1 | 	// error: This program has no `main` function
-//   | 
-// 2 | trait MultiTrait a with 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 // 
-// examples/regressions/159_two_trait_functions.an:3:10
-// 2 | trait MultiTrait a with 
-// 3 |     one: Unit -> Unit	// error: Expected 0 arguments but found 1
-//   |          ^^^^
-// 4 |     two: Unit -> Unit
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
 // 
-// examples/regressions/159_two_trait_functions.an:3:15
-// 2 | trait MultiTrait a with 
-// 3 |     one: Unit -> Unit	// error: Expected the end of this block but found `->`
-//   |               ^^
-// 4 |     two: Unit -> Unit
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
 // 
-// examples/regressions/159_two_trait_functions.an:6:6
-// 6 | impl MultiTrait Unit with 	// error: Expected an identifier but found `MultiTrait`
-//   |      ^^^^^^^^^^
-// 7 |     one _ = ()
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
 // 
-// examples/regressions/159_two_trait_functions.an:10:5
-// 10 | one ()	// error: Expected `=` to begin the function body but found `()`
-//    |     ^^
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
 // 
-// Found 5 errors and 0 warnings
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:587:9:
+// internal error: entered unreachable code
 

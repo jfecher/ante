@@ -1,7 +1,7 @@
-effect Log with
+ability Log =
     log: fn String -> Unit
 
-effect Use a with
+ability Use a =
     get: fn Unit -> a
     set: fn a -> Unit
 
@@ -31,15 +31,15 @@ main () =
 // args: -e ast-t --no-color
 // expected exit status: 1
 // expected stdout:
-// type Log =
-//     log: fn String [Ptr Unit] -> Unit
+// type Log [env] =
+//     log: fn String [[env]] -> Unit
 // 
-// type Use a =
-//     get: fn Unit [Ptr Unit] -> a
-//     set: fn a [Ptr Unit] -> Unit
+// type Use a [env] =
+//     get: fn Unit [[env]] -> a
+//     set: fn a [[env]] -> Unit
 // 
 // (handle_basic: fn Unit {Log} {Use String} -> Unit) () {(_: Log)} {(_: Use String)} =
-//     (log: fn String {Log} [Ptr Unit] -> Unit) "test1" {(h: (error))}
+//     (log: fn String {Log} [_] -> Unit) "test1" {(h: (error))}
 // 
 // (use_resume: fn Unit -> Unit) () =
 //     handler (h: Use I32) for
@@ -48,14 +48,14 @@ main () =
 //     in fn () -> ()
 // 
 // (does_use: fn _ {Use _} -> Unit) (x: _) {(_: Use _)} =
-//     (y: _) = (get: fn Unit {Use _} [Ptr Unit] -> _) () {(_: Use _)}
-//     (set: fn _ {Use _} [Ptr Unit] -> Unit) ((+: fn _ _ {Add _} -> _) (y: _) (x: _) {(error)}) {(_: Use _)}
+//     (y: _) = (get: fn Unit {Use _} [_] -> _) () {(_: Use _)}
+//     (set: fn _ {Use _} [_] -> Unit) ((+: fn _ _ {Add _} [_] -> _) (y: _) (x: _) {(error)}) {(_: Use _)}
 // 
 // (pure_fn: fn Unit -> Unit) () =
-//     (log: fn String {Log} [Ptr Unit] -> Unit) "foo" {(error)}
+//     (log: fn String {Log} [_] -> Unit) "foo" {(error)}
 // 
 // (main: fn Unit -> Unit) () =
-//     (log: fn String {Log} [Ptr Unit] -> Unit) "foo" {(error)}
+//     (log: fn String {Log} [_] -> Unit) "foo" {(error)}
 
 // expected stderr:
 // examples/typechecking/effects.an:11:1

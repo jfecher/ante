@@ -1,4 +1,4 @@
-effect Count with
+ability Count =
     count: fn Unit -> Unit
 
 foo {Count} =
@@ -17,17 +17,17 @@ main () =
 // args: -e ast-t --no-color
 // expected exit status: 1
 // expected stdout:
-// type Count =
-//     count: fn Unit [Ptr Unit] -> Unit
+// type Count [env] =
+//     count: fn Unit [[env]] -> Unit
 // 
 // (foo: fn {Count} -> Unit) {(_: Count)} =
-//     (count: fn Unit {Count} [Ptr Unit] -> Unit) () {(_: Count)}
-//     (repeat: fn Usz (fn Usz [Count] -> Unit) -> Unit) 10 (fn (_: Usz) [(_: Count)] -> (count: fn Unit {Count} [Ptr Unit] -> Unit) () {(_: Count)})
+//     (count: fn Unit {Count} [_] -> Unit) () {(_: Count)}
+//     (repeat: fn Usz (fn Usz [(Count)] -> Unit) -> Unit) 10 (fn (_: Usz) [(_: Count)] -> (count: fn Unit {Count} [_] -> Unit) () {(_: Count)})
 // 
-// (handle_count: fn (fn Count -> Unit) -> _) ((f: fn Count -> Unit)) =
+// (handle_count: fn (fn (Count) -> Unit) -> _) ((f: fn (Count) -> Unit)) =
 // 
 // (main: fn Unit -> Unit) () =
-//     (handle_count: fn (fn Count -> Unit) -> _) (foo: fn {Count} -> Unit)
+//     (handle_count: fn (fn (Count) -> Unit) -> _) (foo: fn {Count} -> Unit)
 //     ()
 
 // expected stderr:
