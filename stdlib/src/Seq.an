@@ -17,7 +17,7 @@ export Seq, empty, of, push, push_clone, pop, remove_last, get, get_copied, iter
 /// its capacity, its reference count, and the inline array of elements. 
 ///
 /// Many Seqs can share the same data even after the data is pushed to. When pushing an element,
-/// we can push without copying to a new array if:
+/// we can push without forking if:
 /// - The underlying array has capacity for more elements and
 /// - The inner reference count is 1 or
 /// - The index we're pushing to is greater than the largest index previously written to the shared data
@@ -26,8 +26,14 @@ export Seq, empty, of, push, push_clone, pop, remove_last, get, get_copied, iter
 /// individually and does not read past that point, we can safely push past it without reallocating.
 ///
 /// If there is not enough capacity in the Seq or the index written to has been written to before
-/// and our reference count is not one, we will need to reallocate (if rc is 1) or copy to a new
+/// and our reference count is not one, we will need to reallocate (if rc is 1) or fork to a new
 /// array (if rc > 1). When this happens, the reference count becomes one again.
+///
+/// When forking the array, we memcpy each element and store a reference to the previous Seq before the fork,
+/// keeping track of the length at the fork point. The parent's alias RC is also incremented, letting it
+/// know there is one more fork referencing the same data. This removes the need to Clone each element.
+/// Note that when a fork happens, elements are still stored inline, just as a bitwise copy. Links to parent
+/// Seqs are only ever followed on Drop.
 ///
 /// We can exploit the above to force push to re-allocate on each push, making it O(N) due to copying.
 /// Since the rc becomes one after each copy, its not enough to reuse a Seq and one clone, we must clone
@@ -55,10 +61,13 @@ type Seq t =
 // enough to give it an offset pointer since when the Vec later tries to reallocate or free
 // that pointer, it won't point to the start of this allocation.
 type Data t =
-    len: U32
+    direct_rc: U32       // # of Seq handles pointing at this Data
+    fork_rc: U32         // # of descendant forks aliasing our prefix
+    len: U32             // furthest length written
     cap: U32
-    rc: U32
-    elements: t  // Multiple elements, stored inline
+    fork_point: U32      // private elements start at this index
+    parent: Ptr (Data t) // null iff fork_point == 0
+    elements: t          // inline tail (multiple elements)
     // element2...
     // element3...
 
@@ -70,87 +79,53 @@ Seq.empty (): Seq t =
 Seq.of (s: s) {Stream s t}: Seq t =
     seq = Seq.empty ()
     // Seq is guaranteed to be owned here so we can use push_inner
-    foldl s seq fn seq elem ->
-        seq, _ = push_inner seq elem
-        seq
+    foldl s seq Seq.push
 
 /// Push an element to this sequence, returning a new sequence.
-///
-/// This requires `Copy t` for the elements in case this push would
-/// overwrite shared data in another sequence.
-Seq.push (seq: Seq t) (elem: t) {Copy t}: Seq t =
-    seq, _ = push_inner seq elem
-    seq
-
-/// Push an element to this sequence, returning a new sequence.
-///
-/// This requires `Clone t` for the elements in case this push would
-/// overwrite shared data in another sequence.
-///
-/// Compared to `Seq.push`, this version is more expensive in the fork
-/// case since we must clone each element to transfer ownership.
-/// If the elements implement Copy, prefer `Seq.push` which does not
-/// require a separate loop to clone each element in the fork case.
-Seq.push_clone (seq: Seq t) (elem: t) {Clone t}: Seq t =
-    var seq, forked = push_inner seq elem
-
-    if forked then
-        for i in 0 .. seq.len - 1 do
-            elem_ptr = offset seq.data.elements (Usz i)
-            elem_ref = ptr_to_mut elem_ptr
-            ptr_store elem_ptr (clone elem_ref)
-
-    seq
-
-/// Helper for pushing to a Seq - unsafe since elements may be copied
-/// if we try to push over an element that a shared seq already pushed to.
-/// To be safe we need a `Copy` constraint or a `Clone` constraint and to
-/// call `clone` for each element when this happens.
-///
-/// Returns the new sequence and a flag that is `true` iff this push
-/// forked from a shared buffer (i.e. memcpy'd because rc > 1). Callers
-/// that require deep ownership for non-Copy elements should clone the
-/// prefix in that case only.
-push_inner (seq: Seq t) (elem: t): (Seq t, Bool) =
+Seq.push (seq: Seq t) (elem: t): Seq t =
     if seq.data == null () then
         data_ptr = malloc (size_of (MkType: Type (Data t)))
-        ptr_store data_ptr (Data 1 1 1 elem)
-        return (Seq 1 data_ptr, false)
+        ptr_store data_ptr (Data 1 0 1 1 0 (null ()) elem)
+        return Seq 1 data_ptr
 
     data_ref = ptr_to_mut seq.data
 
     // fast case: just insert the new element
-    if seq.len < data_ref.cap and (seq.len == data_ref.len or data_ref.rc == 1) then
+    if seq.len < data_ref.cap and (seq.len == data_ref.len or data_ref.direct_rc == 1) then
         new_len = seq.len + 1
         data_ref.len := new_len
         array_insert seq.data.elements (Usz seq.len) elem
-        return (Seq new_len seq.data, false)
+        return Seq new_len seq.data
 
     // seq.len >= data.cap (no room) or
     // seq.len != data_ref.len (another seq has pushed to the same shared data)
     // either way we need to allocate a new buffer
-    new_cap = seq.len * 2
-
+    new_cap = data_ref.cap * 2
     size = size_of (MkType: Type (Data t)) + (Usz new_cap - 1) * size_of (MkType: Type t)
-    fork = data_ref.rc != 1
+
+    // We need to fork if there are any Seqs sharing this data directly
+    // or if there are any descendants that have already forked which are
+    // sharing this data as a prefix.
+    fork = data_ref.direct_rc != 1 or data_ref.fork_rc != 0
+
     buffer = if fork then
-        // shared case, need to malloc. The new buffer's prefix is a
-        // bitwise alias of the original; callers with non-Copy elements
-        // must clone.
-        buf = memcpy (malloc size) seq.data size
-        data_ref.rc -= 1
-        buf
+        data_ref.fork_rc += 1
+        data_ref.direct_rc -= 1
+        memcpy (malloc size) seq.data size
     else
-        // owned, we can realloc
         realloc seq.data size
 
     buffer_ref = ptr_to_mut buffer
     buffer_ref.len := seq.len + 1
     buffer_ref.cap := new_cap
-    buffer_ref.rc := 1
+    buffer_ref.direct_rc := 1
+    if fork then
+        buffer_ref.fork_rc := 0
+        buffer_ref.fork_point := seq.len
+        buffer_ref.parent := seq.data
 
     array_insert buffer.elements (Usz seq.len) elem
-    (Seq (seq.len + 1) buffer, fork)
+    Seq (seq.len + 1) buffer
 
 /// Return a new `Seq t` without the last element.
 /// Returns the popped element if this seq was non-empty.
@@ -204,17 +179,39 @@ impl clone_seq: Clone (Seq t) with
     // bug: multiple matching implicits if we just return `seq`
     clone (seq: ref (Seq t)) =
         if seq.data != null () then
-            ptr_store seq.data.rc (deref_ptr seq.data.rc + 1)
+            rc = ptr_to_mut seq.data.direct_rc
+            rc += 1
         deref seq
 
 impl drop_seq {Drop t}: Drop (Seq t) with
     drop (seq: mut Seq t) =
-        rc = deref_ptr seq.data.rc
-        if rc != 1 then
-            ptr_store seq.data.rc (rc - 1)
-        else
-            seq.iter_mut Drop.drop
-            free seq.data
+        if seq.data != null () then
+            data = ptr_to_mut seq.data
+            if data.direct_rc > 1 then
+                data.direct_rc -= 1
+            else
+                data.direct_rc := 0
+                if data.fork_rc == 0 then
+                    drop_data seq.data
+
+// Walk up the parent chain, dropping each ancestor's private data and
+// freeing its allocation when both its rcs reach zero.
+drop_data (var data: Ptr (Data t)) {Drop t}: Unit =
+    while data != null () do
+        cur = ptr_to_mut data
+        for i in cur.fork_point .. cur.len do
+            elem = offset data.elements (Usz i)
+            Drop.drop (ptr_to_mut elem)
+
+        parent = cur.parent
+        free data
+        data := parent
+
+        if data != null () then
+            parent_ref = ptr_to_mut data
+            parent_ref.fork_rc -= 1
+            if parent_ref.direct_rc != 0 or parent_ref.fork_rc != 0 then
+                data := null ()
 
 impl stream_seq: Stream (Seq a) (ref a) with
     stream seq e =
