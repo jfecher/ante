@@ -34,7 +34,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 // If this is from an ability, each field needs to be given its own type
                 // since they are publically visible, e.g. as `Eq.eq` or `Emit.emit`
                 if definition.is_ability {
-                    self.build_method_types(id, definition, fields, definition.is_ability);
+                    self.build_method_types(id, definition, fields);
                 }
                 let fields = mapvec(fields, |(_, field_type)| field_type.clone());
                 Cow::Owned(vec![(definition.name, fields)])
@@ -147,8 +147,12 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let (mut result, substitutions) = self.type_definition_type(type_name, item, false);
         assert!(substitutions.is_empty());
 
+        // For ability constructors, nested ability references (e.g. `Emit a` inside
+        // `Stream.stream: fn t (Emit a) -> Unit`) need their own fresh env type variable
+        // rather than erroring with "trait types can't be used here".
+        let allow_implicit_type_vars = item.is_ability;
         let parameters = mapvec(variant_args, |arg| {
-            let param = self.from_cst_type(arg, false);
+            let param = self.from_cst_type(arg, allow_implicit_type_vars);
             types::ParameterType::explicit(param)
         });
 
@@ -158,6 +162,27 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 environment: Type::NO_CLOSURE_ENV,
                 return_type: result,
             }));
+        }
+
+        // For ability constructors, nested ability uses (e.g. `Emit a` inside a method
+        // signature) auto-insert a fresh env type variable. Promote any such variables to
+        // generics in the forall so the constructor is properly polymorphic over them.
+        if allow_implicit_type_vars {
+            let extra: Vec<Generic> = result
+                .free_vars(&self.bindings)
+                .into_iter()
+                .filter(|g| !generics.contains(g))
+                .collect();
+            if !extra.is_empty() {
+                let substitutions = extra.iter().map(|var| (*var, Type::Generic(*var))).collect();
+                result = result.substitute(&substitutions, &self.bindings);
+                let mut all_generics = generics.to_vec();
+                all_generics.extend(extra);
+                if !all_generics.is_empty() {
+                    result = Type::Forall(Arc::new(all_generics), Arc::new(result));
+                }
+                return result;
+            }
         }
 
         if !generics.is_empty() {
@@ -186,26 +211,22 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     ///
     /// It should be generalized to `forall t. fn t t {Eq t} -> Bool` later.
     ///
-    /// `is_trait` should be true for traits and false for effects
+    /// The function's closure environment is whatever the ability desugarer
+    /// planted in `function.environment` (a fresh `[env]` type variable). At
+    /// call sites it unifies with `NO_CLOSURE_ENV` for ordinary trait-style
+    /// calls and with the handler's `Ptr Unit` for effect-style resumptions.
     fn build_method_types(
-        &mut self, id: TopLevelId, definition: &cst::TypeDefinition, fields: &[(NameId, cst::Type)], is_trait: bool,
+        &mut self, id: TopLevelId, definition: &cst::TypeDefinition, fields: &[(NameId, cst::Type)],
     ) {
         let type_name = TopLevelName::new(id, definition.name);
 
         for (method_name, method_type) in fields.iter() {
             let (implicit_arg, substitutions) = self.type_definition_type(type_name, definition, false);
             assert!(substitutions.is_empty());
-            let mut method_type = self.from_cst_type(&method_type, false);
-
-            if let Type::Function(fn_arc) = method_type {
-                let mut fn_type = Arc::unwrap_or_clone(fn_arc);
-                fn_type.environment = if is_trait {
-                    Type::NO_CLOSURE_ENV
-                } else {
-                    Type::Application(Arc::new(Type::POINTER), Arc::new(vec![Type::UNIT]))
-                };
-                method_type = Type::Function(Arc::new(fn_type));
-            }
+            // Pass `true` so nested ability references inside method signatures (e.g. the
+            // `Emit a` parameter of `Stream.stream`) automatically receive their own fresh
+            // env type variable rather than being flagged as "trait types can't be used here".
+            let mut method_type = self.from_cst_type(&method_type, true);
 
             if matches!(method_type, Type::Function(_)) {
                 method_type = self.add_implicit_arg_to_function_type(method_type, implicit_arg);

@@ -410,7 +410,7 @@ impl Type {
         next_id: &mut u32, insert_implicit_type_vars: bool,
     ) -> Type {
         let location = typ.location.clone();
-        let (typ, kind) = Type::from_cst_type_helper(typ, resolve, db, next_id, insert_implicit_type_vars);
+        let (typ, kind) = Type::from_cst_type_helper(typ, resolve, db, next_id, insert_implicit_type_vars, true);
         if !expected.unifies(&kind) {
             db.accumulate(Diagnostic::ExpectedKind { actual: kind, expected, location });
         }
@@ -422,9 +422,15 @@ impl Type {
     /// - The kind of the converted type
     ///
     /// Does not error if the returned type is not of kind [Kind::Type]
+    ///
+    /// `wrap_bare_ability`: when true (the default for any "use" position), a bare
+    /// ability with no explicit args (e.g. `Fail`) is automatically applied to a fresh
+    /// env type variable so it can stand alone as a `Kind::Type`. The Application
+    /// branch passes `false` when recursing into its `f` position, since `Fail env`
+    /// needs to see the raw `AbilityConstructor` kind to accept the explicit env arg.
     fn from_cst_type_helper(
         typ: &cst::Type, resolve: &crate::name_resolution::ResolutionResult, db: &DbHandle, next_id: &mut u32,
-        insert_implicit_type_vars: bool,
+        insert_implicit_type_vars: bool, wrap_bare_ability: bool,
     ) -> (Type, Kind) {
         match &typ.kind {
             crate::parser::cst::TypeKind::Integer(kind) => {
@@ -449,7 +455,30 @@ impl Type {
             crate::parser::cst::TypeKind::Char => (Type::CHAR, Kind::Type),
             crate::parser::cst::TypeKind::Named(path) => {
                 let origin = resolve.path_origins.get(path).copied();
-                Self::convert_origin_to_type(origin, db, &typ.location, Type::UserDefined)
+                let (named_type, kind) =
+                    Self::convert_origin_to_type(origin, db, &typ.location, Type::UserDefined);
+
+                // A bare ability with no explicit args (e.g. `Fail`) still needs its implicit
+                // `[env]` arg before it can be used as a regular type. The Application branch
+                // handles this for `Fail a` / `Eq t` when the env is missing; we apply the same
+                // insertion at the leaf so nested uses like `fn Fail -> Unit` also work.
+                if wrap_bare_ability
+                    && let Kind::AbilityConstructor(explicit_kinds) = &kind
+                    && explicit_kinds.is_empty()
+                {
+                    let env = if insert_implicit_type_vars {
+                        let fresh_env = Type::Variable(TypeVariableId(*next_id));
+                        *next_id += 1;
+                        fresh_env
+                    } else {
+                        db.accumulate(Diagnostic::TraitTypeCantBeUsed { location: typ.location.clone() });
+                        Type::ERROR
+                    };
+                    let applied = Type::Application(Arc::new(named_type), Arc::new(vec![env]));
+                    (applied, Kind::Type)
+                } else {
+                    (named_type, kind)
+                }
             },
             crate::parser::cst::TypeKind::Variable(name) => {
                 let origin = resolve.name_origins.get(name).copied();
@@ -474,7 +503,11 @@ impl Type {
             crate::parser::cst::TypeKind::Error => (Type::ERROR, Kind::Error),
             crate::parser::cst::TypeKind::Unit => (Type::UNIT, Kind::Type),
             crate::parser::cst::TypeKind::Application(f, args) => {
-                let (f, f_kind) = Self::from_cst_type_helper(f, resolve, db, next_id, insert_implicit_type_vars);
+                // The `f` of `f args` may be a bare ability like `Fail` whose env is being
+                // supplied explicitly by the args list. Don't auto-wrap it here — the Application
+                // case below handles the AbilityConstructor kind itself.
+                let (f, f_kind) =
+                    Self::from_cst_type_helper(f, resolve, db, next_id, insert_implicit_type_vars, false);
 
                 if !f_kind.accepts_n_arguments(args.len()) {
                     let expected = f_kind.required_argument_count();
