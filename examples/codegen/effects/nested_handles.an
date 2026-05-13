@@ -1,8 +1,8 @@
-effect Ping with
-    do_ping: fn U32 -> U32
+ability Ping =
+    do_ping: resume fn U32 -> U32
 
-effect Pong with
-    do_pong: fn U64 -> U64
+ability Pong =
+    do_pong: resume fn U64 -> U64
 
 foo {Ping} {Pong} =
     a = do_ping 1

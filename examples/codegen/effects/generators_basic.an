@@ -1,5 +1,4 @@
-effect Emit a with
-    emit: fn a -> Unit
+import Std.Stream.Emit, emit
 
 iota (n: U32) {Emit U32} = loop (i = 0) ->
     if i < n then

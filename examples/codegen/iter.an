@@ -1,10 +1,10 @@
 
-trait MyIterable it elem with
+ability MyIterable it elem =
     mynext: fn it -> Maybe (elem, it)
 
 // Define iterating on I32s as counting down until 0
-impl countdown: MyIterable I32 I32 with
-    mynext x =
+implicit countdown: MyIterable I32 I32 =
+    MyIterable fn x ->
         if x <= 0 then None
         else Some (x, x - 1)
 

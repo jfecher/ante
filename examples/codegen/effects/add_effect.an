@@ -1,12 +1,12 @@
-effect Add with
-    add: fn U32 -> Unit
+ability AddEff =
+    add: resume fn U32 -> Unit
 
-foo () {Add} =
+foo () {AddEff} =
     println "foo"
     add 1
     add 2
 
-bar () {Add} =
+bar () {AddEff} =
     println "bar"
     add 3
     add 4
@@ -39,4 +39,3 @@ main () =
 // add resume finished
 // add resume finished
 // 10
-

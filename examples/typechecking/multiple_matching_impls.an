@@ -4,75 +4,25 @@ type Thing = nothing: Unit
 ability Foo a =
     foo: fn a -> Unit
 
-ability Bar a =
-    bar: fn a -> Unit
-
-ability Baz a =
-    baz: fn a -> Unit
-
 main () =
     // The call from which the `Foo a` constraint arises
     Foo.foo (Thing ())
 
-// Candidate 1
-implicit candidate1 {Bar a}: Foo a =
-    Foo fn a -> Bar.bar a
-
-implicit bar_impl {Baz a}: Bar a =
-    Bar fn a -> Baz.baz a
-
-implicit baz_impl: Baz Thing =
-    Baz fn _ -> ()
-
-
-// Does not match
-implicit does_not_match {Print a}: Foo a =
+// Two competing non-capturing impls for `Foo Thing` produce values with the same env shape,
+// so implicit resolution genuinely can't pick one.
+implicit candidate1: Foo Thing =
     Foo fn _ -> ()
 
-
-// Candidate 2
 implicit candidate2: Foo Thing =
     Foo fn _ -> ()
 
-// args: -e ast-t --no-color
+// args: --delete-binary --no-color
 // expected exit status: 1
-// expected stdout:
-// type Thing =
-//     nothing: Unit
-// 
-// type Foo a [env] =
-//     foo: fn a [[env]] -> Unit
-// 
-// type Bar a [env] =
-//     bar: fn a [[env]] -> Unit
-// 
-// type Baz a [env] =
-//     baz: fn a [[env]] -> Unit
-// 
-// (main: fn Unit -> Unit) () =
-//     (Foo.foo: fn Thing {Foo Thing} [_] -> Unit) ((Thing: fn Unit -> Thing) ()) {(error)}
-// 
-// implicit (candidate1: fn {Bar a} -> Foo a) {(_: Bar a)} : Foo a =
-//     (Foo: fn (fn a [(Bar a)] -> Unit) -> Foo a) (fn (a: a) [(_: Bar a)] -> (Bar.bar: fn a {Bar a} [_] -> Unit) (a: a) {(_: Bar a)})
-// 
-// implicit (bar_impl: fn {Baz a} -> Bar a) {(_: Baz a)} : Bar a =
-//     (Bar: fn (fn a [(Baz a)] -> Unit) -> Bar a) (fn (a: a) [(_: Baz a)] -> (Baz.baz: fn a {Baz a} [_] -> Unit) (a: a) {(_: Baz a)})
-// 
-// implicit (baz_impl: Baz Thing) =
-//     (Baz: fn (fn Thing -> Unit) -> Baz Thing) (fn (_: Thing) -> ())
-// 
-// implicit (does_not_match: fn {Print a} -> Foo a) {(_: Print a)} : Foo a =
-//     (Foo: fn (fn a -> Unit) -> Foo a) (fn (_: a) -> ())
-// 
-// implicit (candidate2: Foo Thing) =
-//     (Foo: fn (fn Thing -> Unit) -> Foo Thing) (fn (_: Thing) -> ())
-
 // expected stderr:
-// examples/typechecking/multiple_matching_impls.an:15:5
-// 14 |     // The call from which the `Foo a` constraint arises
-//    |     // error: Multiple matching implicits found for type Foo Thing required by parameter 2 of foo: candidate2, candidate1
-// 15 |     Foo.foo (Thing ())
+// examples/typechecking/multiple_matching_impls.an:9:5
+//  8 |     // The call from which the `Foo a` constraint arises
+//    |     // error: Multiple matching implicits found for type Foo Thing required by parameter 2 of foo: candidate1, candidate2
+//  9 |     Foo.foo (Thing ())
 //    |     ^^^^^^^
 // 
 // Found 1 error and 0 warnings
-

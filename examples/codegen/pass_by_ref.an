@@ -1,10 +1,10 @@
 type S = message: String
 
-impl print_s: Print S with
-    print s = print s.message
+implicit print_s: Print S =
+    Print fn s -> print s.message
 
-impl copy_s: Copy S with
-    (.*) s = S (clone s.message)
+implicit copy_s: Copy S =
+    Copy fn s -> S (clone s.message)
 
 // If the compiler decides to pass by reference, the code becomes:
 // void foo(const S *x, S *y) {
@@ -27,4 +27,3 @@ main () =
 // expected stdout:
 // x before: original x string
 // x after:  original x string
-

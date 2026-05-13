@@ -33,9 +33,9 @@ type T = x: I32
 
 // Using `+=` with `Add T` requires T be copied/cloned currently.
 // Even if we used `Add (ref T)` we couldn't return a `ref T` from `+`
-impl copy_t: Copy T with (.*) = deref
+implicit copy_t: Copy T = Copy deref
 
-impl add_t: Add T with (+) a b = T (a.x + b.x)
+implicit add_t: Add T = Add fn a b -> T (a.x + b.x)
 
 // args: --delete-binary --no-color
 // expected stdout:
