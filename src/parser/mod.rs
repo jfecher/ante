@@ -157,7 +157,11 @@ impl<'tokens> Parser<'tokens> {
     fn expected<T>(&self, message: impl Into<String>) -> Result<T> {
         let message = message.into();
         let actual = self.current_token().clone();
-        let location = self.current_token_location();
+        let location = match self.current_token() {
+            // If we were expecting something and got a newline, the error is on the previous line, not the current one.
+            Token::Newline => self.previous_token_location(),
+            _ => self.current_token_location(),
+        };
         Err(Diagnostic::ParserExpected { message, actual, location })
     }
 
