@@ -12,15 +12,16 @@ foo a =
 // expected stderr:
 // examples/typechecking/repeated_traits.an:2:5
 // 1 | foo a =
-//   |     // error: Ambiguous implicit of type Print _ required by parameter 2 of print, type annotation required
+//   |     // error: Ambiguous implicit of type Print _ required by print, type annotation required
 // 2 |     print a
 //   |     ^^^^^
 // 3 |     print a
 // 
 // examples/typechecking/repeated_traits.an:3:5
 // 2 |     print a
-//   |     // error: Ambiguous implicit of type Print _ required by parameter 2 of print, type annotation required
+//   |     // error: Ambiguous implicit of type Print _ required by print, type annotation required
 // 3 |     print a
 //   |     ^^^^^
 // 
 // Found 2 errors and 0 warnings
+

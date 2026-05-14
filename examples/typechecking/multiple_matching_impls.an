@@ -70,7 +70,7 @@ impl candidate2: Foo Thing with
 // expected stderr:
 // examples/typechecking/multiple_matching_impls.an:15:5
 // 14 |     // The call from which the `Foo a` constraint arises
-//    |     // error: Multiple matching implicits found for type Foo Thing required by parameter 2 of foo: candidate2, candidate1
+//    |     // error: Multiple matching implicits found for type Foo Thing required by foo: candidate2, candidate1
 // 15 |     Foo.foo (Thing ())
 //    |     ^^^^^^^
 // 
@@ -81,3 +81,4 @@ impl candidate2: Foo Thing with
 //    |     ^^^
 // 
 // Found 2 errors and 0 warnings
+

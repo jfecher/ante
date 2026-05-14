@@ -504,17 +504,13 @@ impl Diagnostic {
             Diagnostic::NoImplicitFound {
                 type_string,
                 function_name,
-                parameter_index,
+                parameter_index: _,
                 location: _,
                 suggestions: _,
             } => {
-                let function = function_name.as_ref().map(|s| format!(" of {}", color_name(s)));
-                let of_function = function.as_ref().map(String::as_str).unwrap_or("");
-                let parameter = parameter_index + 1;
-                format!(
-                    "No implicit found for type {} required by parameter {parameter}{of_function}",
-                    color_type(type_string),
-                )
+                let function = function_name.as_ref().map(|s| format!("{}", color_name(s)));
+                let of_function = function.as_ref().map(String::as_str).unwrap_or("call");
+                format!("No implicit found for type {} required by {of_function}", color_type(type_string),)
             },
             Diagnostic::ImplicitNotAVariable { location: _ } => {
                 format!("Implicits must be a simple variable, more complex patterns are not supported")
@@ -523,24 +519,22 @@ impl Diagnostic {
                 matches,
                 type_string,
                 function_name,
-                parameter_index,
+                parameter_index: _,
                 location: _,
             } => {
-                let function = function_name.as_ref().map(|s| format!(" of {}", color_name(s)));
-                let of_function = function.as_ref().map(String::as_str).unwrap_or("");
-                let parameter = parameter_index + 1;
+                let function = function_name.as_ref().map(|s| format!("{}", color_name(s)));
+                let of_function = function.as_ref().map(String::as_str).unwrap_or("call");
                 let matches = crate::iterator_extensions::join_arc_str(matches, ", ");
                 format!(
-                    "Multiple matching implicits found for type {} required by parameter {parameter}{of_function}: {matches}",
+                    "Multiple matching implicits found for type {} required by {of_function}: {matches}",
                     color_type(type_string),
                 )
             },
-            Diagnostic::AmbiguousImplicit { type_string, function_name, parameter_index, location: _ } => {
-                let function = function_name.as_ref().map(|s| format!(" of {}", color_name(s)));
-                let of_function = function.as_ref().map(String::as_str).unwrap_or("");
-                let parameter = parameter_index + 1;
+            Diagnostic::AmbiguousImplicit { type_string, function_name, parameter_index: _, location: _ } => {
+                let function = function_name.as_ref().map(|s| format!("{}", color_name(s)));
+                let of_function = function.as_ref().map(String::as_str).unwrap_or("call");
                 format!(
-                    "Ambiguous implicit of type {} required by parameter {parameter}{of_function}, type annotation required",
+                    "Ambiguous implicit of type {} required by {of_function}, type annotation required",
                     color_type(type_string),
                 )
             },

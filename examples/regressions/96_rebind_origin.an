@@ -18,7 +18,7 @@ twice 1u8 2u16
 // 
 // examples/regressions/96_rebind_origin.an:3:5
 // 2 | origin foo =
-//   |     // error: Multiple matching implicits found for type Cast _ U64 required by parameter 2 of cast: cast_char_u64, cast_u8_u64, cast_u16_u64, cast_u32_u64, cast_usz_u64, ..
+//   |     // error: Multiple matching implicits found for type Cast _ U64 required by cast: cast_char_u64, cast_u8_u64, cast_u16_u64, cast_u32_u64, cast_usz_u64, ..
 // 3 |     cast foo : U64
 //   |     ^^^^
 // 

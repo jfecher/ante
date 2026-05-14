@@ -59,12 +59,13 @@ ex2c (a: v) b {Copy v} =
 // expected stderr:
 // examples/typechecking/mutual_recursion_rigid.an:22:5
 // 21 |     ex2b a b
-// 22 |     T1.trait1 a	// error: No implicit found for type T1 t required by parameter 2 of trait1
+// 22 |     T1.trait1 a	// error: No implicit found for type T1 t required by trait1
 //    |     ^^^^^^^^^
 // 
 // examples/typechecking/mutual_recursion_rigid.an:26:5
 // 25 |     ex2c a b
-// 26 |     T2.trait2 a	// error: No implicit found for type T2 u required by parameter 2 of trait2
+// 26 |     T2.trait2 a	// error: No implicit found for type T2 u required by trait2
 //    |     ^^^^^^^^^
 // 
 // Found 2 errors and 0 warnings
+

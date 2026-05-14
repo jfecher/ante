@@ -94,25 +94,25 @@ implicit_call () =
 // expected stderr:
 // examples/typechecking/implicit.an:9:5
 //  8 | zero_matching () =
-//    |     // error: No implicit found for type String required by parameter 1 of requires_string
+//    |     // error: No implicit found for type String required by requires_string
 //  9 |     requires_string ()
 //    |     ^^^^^^^^^^^^^^^
 // 
 // examples/typechecking/implicit.an:19:5
 // 18 |     implicit greeting = "hi!"
-//    |     // error: Multiple matching implicits found for type String required by parameter 1 of requires_string: empty, spaces, greeting
+//    |     // error: Multiple matching implicits found for type String required by requires_string: empty, spaces, greeting
 // 19 |     requires_string ()
 //    |     ^^^^^^^^^^^^^^^
 // 
 // examples/typechecking/implicit.an:26:5
 // 25 |     implicit zero = 0u32
-//    |     // error: Multiple matching implicits found for type U32 required by parameter 1 of requires_u32: zero, one
+//    |     // error: Multiple matching implicits found for type U32 required by requires_u32: zero, one
 // 26 |     requires_u32 ()
 //    |     ^^^^^^^^^^^^
 // 
 // examples/typechecking/implicit.an:31:5
 // 30 |     implicit box_u32: Box U32 = Box 2
-//    |     // error: Ambiguous implicit of type Box _ required by parameter 1 of requires_box, type annotation required
+//    |     // error: Ambiguous implicit of type Box _ required by requires_box, type annotation required
 // 31 |     requires_box ()
 //    |     ^^^^^^^^^^^^
 // 

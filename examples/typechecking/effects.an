@@ -71,17 +71,17 @@ main () =
 // 
 // examples/typechecking/effects.an:21:12
 // 20 |     y = get ()
-// 21 |     set (y + x)	// error: No implicit found for type Add _ required by parameter 3 of +
+// 21 |     set (y + x)	// error: No implicit found for type Add _ required by +
 //    |            ^
 // 
 // examples/typechecking/effects.an:25:5
 // 24 | pure_fn () =
-// 25 |     log "foo"	// error: No implicit found for type Log required by parameter 2 of log
+// 25 |     log "foo"	// error: No implicit found for type Log required by log
 //    |     ^^^
 // 
 // examples/typechecking/effects.an:29:5
 // 28 | main () =
-// 29 |     log "foo"	// error: No implicit found for type Log required by parameter 2 of log
+// 29 |     log "foo"	// error: No implicit found for type Log required by log
 //    |     ^^^
 // 
 // Found 5 errors and 0 warnings

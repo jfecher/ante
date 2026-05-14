@@ -13,7 +13,7 @@ main () =
 // expected stderr:
 // examples/typechecking/missing_implicit_import.an:6:15
 // 5 |     // Error here should suggest importing `hash_u8`
-//   |     // error: No implicit found for type Hash U8 required by parameter 3 of get
+//   |     // error: No implicit found for type Hash U8 required by get
 // 6 |     elem = map.get (ref 4) |> Maybe.unwrap
 //   |               ^^^^
 // 7 |     println elem

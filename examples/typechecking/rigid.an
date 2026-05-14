@@ -23,8 +23,7 @@ main () = ()
 //   |                 ^
 // 
 // examples/typechecking/rigid.an:2:19
-//   | // error: No implicit found for type Add b required by parameter 3 of +
-// 2 | ex1 (x: a): b = x + 1u32
+// 2 | ex1 (x: a): b = x + 1u32	// error: No implicit found for type Add b required by +
 //   |                   ^
 // 
 // examples/typechecking/rigid.an:2:21
@@ -37,3 +36,4 @@ main () = ()
 //   |             ^
 // 
 // Found 4 errors and 0 warnings
+

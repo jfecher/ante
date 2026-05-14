@@ -11,7 +11,7 @@ main () =
 // expected stderr:
 // examples/codegen/tuples.an:7:5
 // 6 |     foo ("test", 2, 'c')
-//   |     // error: Ambiguous implicit of type Print _ required by parameter 2 of foo, type annotation required
+//   |     // error: Ambiguous implicit of type Print _ required by foo, type annotation required
 // 7 |     foo ("hi", 7, 2.0, 3, 4, 5)
 //   |     ^^^
 // 

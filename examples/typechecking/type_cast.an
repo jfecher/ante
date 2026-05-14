@@ -24,14 +24,12 @@ main () =
 // expected stderr:
 // examples/typechecking/type_cast.an:9:9
 //  8 |     // No Cast impl from String to U8
-//    |     // error: No implicit found for type Cast String U8 required by parameter 2 of cast
-//  9 |     d = U8 "hello"
+//  9 |     d = U8 "hello"	// error: No implicit found for type Cast String U8 required by cast
 //    |         ^^^^^^^^^^
 // 
 // examples/typechecking/type_cast.an:12:9
 // 11 |     // No Cast impl from Bool to U8
-//    |     // error: No implicit found for type Cast Bool U8 required by parameter 2 of cast
-// 12 |     e = U8 true
+// 12 |     e = U8 true	// error: No implicit found for type Cast Bool U8 required by cast
 //    |         ^^^^^^^
 // 
 // Found 2 errors and 0 warnings
