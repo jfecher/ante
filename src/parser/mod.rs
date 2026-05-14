@@ -773,7 +773,6 @@ impl<'tokens> Parser<'tokens> {
             },
             _ => match self.parse_type() {
                 Ok(typ) => Ok(TypeDefinitionBody::Alias(typ)),
-                // TODO: hint about fieldless types here if appropriate
                 Err(_) => self.expected("a field name or `|` to start this type body"),
             },
         }
