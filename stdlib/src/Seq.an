@@ -76,13 +76,12 @@ Seq.empty (): Seq t =
     Seq 0 (null ())
 
 /// Create a Seq holding each item from the given stream
-Seq.of (s: s) {Stream s t}: Seq t =
+Seq.of (s: s) {Stream s t} {Drop t}: Seq t =
     seq = Seq.empty ()
-    // Seq is guaranteed to be owned here so we can use push_inner
     foldl s seq Seq.push
 
 /// Push an element to this sequence, returning a new sequence.
-Seq.push (seq: Seq t) (elem: t): Seq t =
+Seq.push (seq: Seq t) (elem: t) {Drop t}: Seq t =
     if seq.data == null () then
         data_ptr = malloc (size_of (MkType: Type (Data t)))
         ptr_store data_ptr (Data 1 0 1 1 0 (null ()) elem)
@@ -90,18 +89,29 @@ Seq.push (seq: Seq t) (elem: t): Seq t =
 
     data_ref = ptr_to_mut seq.data
 
-    // fast case: just insert the new element
-    if seq.len < data_ref.cap and (seq.len == data_ref.len or data_ref.direct_rc == 1) then
+    // fast case: just insert the new element.
+    if seq.len < data_ref.cap and (seq.len == data_ref.len or (data_ref.direct_rc == 1 and data_ref.fork_rc == 0)) then
         new_len = seq.len + 1
-        data_ref.len := new_len
+
+        // If this is cloned then popped, the popped elements will not be dropped.
+        // If the alias is then dropped, we will own elements past the length of this seq,
+        // and thus need to drop them here before writing over any.
+        if seq.len < data_ref.len then
+            old = offset seq.data.elements (Usz seq.len)
+            Drop.drop (ptr_to_mut old)
+        else
+            // Writing to len above would shrink the max-written-to len
+            data_ref.len := new_len
+
         array_insert seq.data.elements (Usz seq.len) elem
         return Seq new_len seq.data
 
     // seq.len >= data.cap (no room) or
     // seq.len != data_ref.len (another seq has pushed to the same shared data)
-    // either way we need to allocate a new buffer
-    new_cap = data_ref.cap * 2
+    // either way we need to allocate a new buffer.
+    new_cap = max (seq.len * 2) 1
     size = size_of (MkType: Type (Data t)) + (Usz new_cap - 1) * size_of (MkType: Type t)
+    old_size = size_of (MkType: Type (Data t)) + (Usz data_ref.cap - 1) * size_of (MkType: Type t)
 
     // We need to fork if there are any Seqs sharing this data directly
     // or if there are any descendants that have already forked which are
@@ -111,7 +121,7 @@ Seq.push (seq: Seq t) (elem: t): Seq t =
     buffer = if fork then
         data_ref.fork_rc += 1
         data_ref.direct_rc -= 1
-        memcpy (malloc size) seq.data size
+        memcpy (malloc size) seq.data old_size
     else
         realloc seq.data size
 

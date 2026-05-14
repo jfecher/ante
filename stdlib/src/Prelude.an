@@ -32,6 +32,7 @@ export String, from_parts, Maybe, None, Some, unwrap, unwrap_or_else, Result, Ok
     Type, MkType, size_of,
     offset, offset_bytes, deref, deref_ptr, ptr_store, array_insert, ptr_to_mut,
     Clone, clone, Drop, drop, drop_string,
+    drop_i8, drop_i16, drop_i32, drop_i64, drop_isz, drop_u8, drop_u16, drop_u32, drop_u64, drop_usz, drop_f32, drop_f64, drop_unit, drop_bool, drop_char, drop_ptr,
     Copy, (.*), copy_i8, copy_i16, copy_i32, copy_i64, copy_isz, copy_u8, copy_u16, copy_u32, copy_u64, copy_usz, copy_f32, copy_f64, copy_unit, copy_bool, copy_char, copy_ptr, copy_ref, copy_mut, copy_imm, clone_string, copy_pair, copy_maybe,
     null, transmute,
     In, (in),
@@ -666,6 +667,23 @@ impl clone_string: Clone String with
         if s.refcount != null () then
             ptr_store s.refcount (deref_ptr s.refcount + 1)
         deref s
+
+impl drop_i8:  Drop I8  with drop _ = ()
+impl drop_i16: Drop I16 with drop _ = ()
+impl drop_i32: Drop I32 with drop _ = ()
+impl drop_i64: Drop I64 with drop _ = ()
+impl drop_isz: Drop Isz with drop _ = ()
+impl drop_u8:  Drop U8  with drop _ = ()
+impl drop_u16: Drop U16 with drop _ = ()
+impl drop_u32: Drop U32 with drop _ = ()
+impl drop_u64: Drop U64 with drop _ = ()
+impl drop_usz: Drop Usz with drop _ = ()
+impl drop_f32: Drop F32 with drop _ = ()
+impl drop_f64: Drop F64 with drop _ = ()
+impl drop_unit: Drop Unit with drop _ = ()
+impl drop_bool: Drop Bool with drop _ = ()
+impl drop_char: Drop Char with drop _ = ()
+impl drop_ptr: Drop (Ptr t) with drop _ = ()
 
 impl drop_string: Drop String with
     drop (s: mut String) =
