@@ -89,8 +89,8 @@ Seq.push (seq: Seq t) (elem: t) {Drop t}: Seq t =
 
     data_ref = ptr_to_mut seq.data
 
-    // fast case: just insert the new element
-    if seq.len < data_ref.cap and (seq.len == data_ref.len or data_ref.direct_rc == 1) then
+    // fast case: just insert the new element.
+    if seq.len < data_ref.cap and (seq.len == data_ref.len or (data_ref.direct_rc == 1 and data_ref.fork_rc == 0)) then
         new_len = seq.len + 1
 
         // If this is cloned then popped, the popped elements will not be dropped.
