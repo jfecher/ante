@@ -6,7 +6,7 @@ use rustc_hash::FxHashSet;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    diagnostics::{Diagnostic, ErrorDefault, Location, Span},
+    diagnostics::{Diagnostic, ErrorDefault, Hint, Location, Span},
     incremental,
     iterator_extensions::mapvec,
     lexer::{Lexer, token::Token},
@@ -157,8 +157,12 @@ impl<'tokens> Parser<'tokens> {
     fn expected<T>(&self, message: impl Into<String>) -> Result<T> {
         let message = message.into();
         let actual = self.current_token().clone();
-        let location = self.current_token_location();
-        Err(Diagnostic::ParserExpected { message, actual, location })
+        let location = match self.current_token() {
+            // If we were expecting something and got a newline, the error is on the previous line, not the current one.
+            Token::Newline => self.previous_token_location(),
+            _ => self.current_token_location(),
+        };
+        Err(Diagnostic::ParserExpected { message, actual, location, hint: None })
     }
 
     /// Reserve a space for an expression.
@@ -715,7 +719,11 @@ impl<'tokens> Parser<'tokens> {
         self.expect(Token::Type, "`type`")?;
         let name = self.parse_type_name_id()?;
         let generics = self.parse_generics();
-        self.expect(Token::Equal, "`=` to begin the type definition")?;
+        self.expect(Token::Equal, "`=` to begin the type definition")
+            .map_err(|e| match self.current_token() {
+                 Token::Newline | Token::EndOfInput => e.with_hint(Hint::FieldlessTypesNeedConstructors),
+                 _ => e,
+            })?;
         let body = self.parse_type_body()?;
         Ok(TypeDefinition { shared, name, generics, body, is_trait: false, is_effect: false })
     }
@@ -1647,6 +1655,7 @@ impl<'tokens> Parser<'tokens> {
                     message: "an expression".to_string(),
                     actual,
                     location: location.clone(),
+                    hint: None,
                 };
                 self.diagnostics.push(error);
                 self.advance();

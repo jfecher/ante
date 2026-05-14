@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, collections::BTreeSet, fmt::Formatter, path::PathBuf, sync::Arc};
+use std::{cmp::Ordering, collections::BTreeSet, fmt::{Display, Formatter}, path::PathBuf, sync::Arc};
 
 use colored::{Color, ColoredString, Colorize};
 use serde::{Deserialize, Serialize};
@@ -21,7 +21,7 @@ mod unimplemented_item;
 pub use location::*;
 pub use unimplemented_item::*;
 
-/// Any diagnostic that the compiler can issue
+/// Any diagnostic that the compiler can issue.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub enum Diagnostic {
     // TODO: `message` could be an enum to save allocation costs
@@ -29,6 +29,7 @@ pub enum Diagnostic {
         message: String,
         actual: Token,
         location: Location,
+        hint: Option<Hint>,
     },
     ExpectedPathForImport {
         location: Arc<LocationData>,
@@ -257,6 +258,20 @@ pub enum Diagnostic {
     },
 }
 
+/// A hint the compiler can add to a diagnostic.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
+pub enum Hint {
+    FieldlessTypesNeedConstructors,
+}
+
+impl Display for Hint {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Hint::FieldlessTypesNeedConstructors => write!(f, "for a fieldless type, define a constructor with no arguments"),
+        }
+    }
+}
+
 /// A suggestion to import an out-of-scope item, attached to a diagnostic.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub struct ImportSuggestion {
@@ -313,9 +328,21 @@ impl Diagnostic {
         }
     }
 
+    /// Sets the hint on this error, if this kind of error can have a hint.
+    ///
+    /// If the error already has a hint, it is replaced.
+    pub fn with_hint(self, hint: Hint) -> Self {
+        match self {
+            Diagnostic::ParserExpected { message, actual, location, hint: _ } => {
+                Diagnostic::ParserExpected { message, actual, location, hint: Some(hint) }
+            },
+            other => other,
+        }
+    }
+
     pub fn message(&self) -> String {
         match self {
-            Diagnostic::ParserExpected { message, actual, location: _ } => {
+            Diagnostic::ParserExpected { message, actual, .. } => {
                 if actual.to_string().contains(" ") {
                     format!("Expected {message} but found {actual}")
                 } else {
@@ -644,6 +671,9 @@ impl Diagnostic {
     /// An optional secondary message for additional information
     fn note(&self) -> Option<(&Location, String)> {
         match self {
+            Diagnostic::ParserExpected { location, hint: Some(hint), .. } => {
+                Some((location, hint.to_string()))
+            },
             Diagnostic::UseOfMovedValue { name, location: _, moved_in } => {
                 let message = format!("{} was previously moved here", color_name(name));
                 Some((moved_in, message))
