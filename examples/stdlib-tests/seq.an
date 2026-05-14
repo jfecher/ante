@@ -1,6 +1,13 @@
 import Std.Seq
-import Std.Seq.Seq, of, pop, remove_last, get, get_copied, iter, push, clone_seq, print_seq, stream_seq
+import Std.Seq.Seq, of, pop, remove_last, get, get_copied, iter, push, clone_seq, drop_seq, print_seq, stream_seq
 import Std.Stream.iota, stream_fn
+
+type Tag = id: U32
+
+impl drop_tag: Drop Tag with
+    drop (t: mut Tag) =
+        print "drop "
+        println t.id
 
 main () =
     var seq = Seq.empty ()
@@ -44,6 +51,24 @@ main () =
     // Seq.iter:
     iter (ref built) (fn x -> println x.*)   // 0, 1, 2, 3, 4
 
+    // Regression: push fast-path used to silently overwrite the slot at seq.len
+    // (Tag 4) and shrink data.len so the orphaned slot (Tag 5) was never visited
+    // by drop_data. The fix drops [seq.len..data.len) before reusing the slot,
+    // so all six Tags must drop exactly once.
+    println "push-overwrite regression:"
+    var s = Seq.empty ()
+    s := s.push (Tag 1)
+    s := s.push (Tag 2)
+    s := s.push (Tag 3)
+    s := s.push (Tag 4)
+    s := s.push (Tag 5)
+    var snap = clone s
+    s := remove_last s
+    s := remove_last s
+    Drop.drop (mut snap)                      // direct_rc 2 → 1, seq.len < data.len
+    s := s.push (Tag 6)                       // shadow drop fires here: drop 4, drop 5
+    Drop.drop (mut s)                         // drops Tag 1, Tag 2, Tag 3, Tag 6
+
 // args: --delete-binary --no-color
 // expected stdout:
 // [33, 44, 55]
@@ -62,3 +87,10 @@ main () =
 // 2
 // 3
 // 4
+// push-overwrite regression:
+// drop 4
+// drop 1
+// drop 2
+// drop 3
+// drop 6
+// drop 5
