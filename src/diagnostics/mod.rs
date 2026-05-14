@@ -29,17 +29,17 @@ mod serde_beef {
     pub fn serialize<S: Serializer>(string: &Cow<'static, str>, ser: S) -> Result<S::Ok, S::Error> {
         ser.serialize_str(&string)
     }
-    
+
     pub fn deserialize<'de, D: Deserializer<'de>>(de: D) -> Result<Cow<'static, str>, D::Error> {
         struct V;
 
         impl<'v> Visitor<'v> for V {
             type Value = Cow<'static, str>;
-        
+
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
                 write!(formatter, "a string")
             }
-            
+
             fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<Self::Value, E> {
                 Ok(Cow::owned(v.to_owned()))
             }
@@ -54,7 +54,7 @@ mod serde_beef {
 }
 
 /// Any diagnostic that the compiler can issue.
-/// 
+///
 /// If the `hint` is the empty string, it shouldn't be printed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub enum Diagnostic {
@@ -350,31 +350,24 @@ impl Diagnostic {
     }
 
     /// Sets the hint on this error to the given string, if this kind of error can have a hint.
-    /// 
+    ///
     /// If the error already has a hint, it is replaced.
     pub fn with_hint(self, hint: impl Into<Cow<'static, str>>) -> Self {
         match self {
-            Diagnostic::ParserExpected { message, actual, location, hint: _ } =>
-                Diagnostic::ParserExpected { message, actual, location, hint: hint.into() },
+            Diagnostic::ParserExpected { message, actual, location, hint: _ } => {
+                Diagnostic::ParserExpected { message, actual, location, hint: hint.into() }
+            },
             other => other,
         }
     }
 
     pub fn message(&self) -> String {
         match self {
-            Diagnostic::ParserExpected { message, actual, location: _, hint } => {
+            Diagnostic::ParserExpected { message, actual, .. } => {
                 if actual.to_string().contains(" ") {
-                    if hint.is_empty() {
-                        format!("Expected {message} but found {actual}")
-                    } else {
-                        format!("Expected {message} but found {actual} ({hint})")
-                    }
+                    format!("Expected {message} but found {actual}")
                 } else {
-                    if hint.is_empty() {
-                        format!("Expected {message} but found `{actual}`")
-                    } else {
-                        format!("Expected {message} but found `{actual}` ({hint})")
-                    }
+                    format!("Expected {message} but found `{actual}`")
                 }
             },
             Diagnostic::ParserComplexImplItemName { location: _ } => {
@@ -410,7 +403,9 @@ impl Diagnostic {
                 format!("Expected type `{expected}` but found `{actual}`")
             },
             Diagnostic::RecursiveType { typ, location: _ } => {
-                format!("`{typ}` is infinitely recursive. Put recursive uses behind a pointer indirection to limit the size of the type")
+                format!(
+                    "`{typ}` is infinitely recursive. Put recursive uses behind a pointer indirection to limit the size of the type"
+                )
             },
             Diagnostic::NamespaceNotFound { name, location: _ } => {
                 format!("Namespace `{name}` not found in path")
@@ -697,6 +692,9 @@ impl Diagnostic {
     /// An optional secondary message for additional information
     fn note(&self) -> Option<(&Location, String)> {
         match self {
+            Diagnostic::ParserExpected { location, hint, .. } if !hint.is_empty() => {
+                Some((location, (**hint).to_owned()))
+            },
             Diagnostic::UseOfMovedValue { name, location: _, moved_in } => {
                 let message = format!("{} was previously moved here", color_name(name));
                 Some((moved_in, message))
