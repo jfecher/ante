@@ -1,7 +1,7 @@
 import Std.C.malloc, realloc, memcpy, free
 import Std.Stream.Stream, foldl
 
-export Seq, empty, of, push, push_clone, pop, remove_last, get, get_copied, iter, clone_seq, drop_seq, print_seq, stream_seq
+export Seq, empty, of, push, pop, remove_last, get, get_copied, iter, clone_seq, drop_seq, print_seq, stream_seq
 
 /// A persistent, contiguous, and growable sequence of elements.
 /// Performance is meant to be comparable to a mutable Vec.
@@ -44,7 +44,15 @@ export Seq, empty, of, push, push_clone, pop, remove_last, get, get_copied, iter
 /// while true do
 ///     other = clone seq // clone seq forcing both this and seq to be shared
 ///     seq = seq.push 0  // push
-///     other.push 1      // then immediately overwrite the element, forcing an allocation
+///     other.push 1      // then immediately overwrite the element, forcing a fork
+///
+/// // Or similarly:
+/// seq = Seq.empty ()
+/// seq_view := clone seq
+/// seq_user := seq.push 0
+/// while true do
+///     seq_clone = clone seq_view  // clone seq forcing both this and seq to be shared
+///     seq_clone.push 1            // then immediately overwrite the element, forcing a fork
 /// ```
 /// This scenario should be rare but if optimal sharing is required here, a linked-list
 /// can be used instead. A more common usage would be for each clone to be a snapshot of the sequence
@@ -119,9 +127,15 @@ Seq.push (seq: Seq t) (elem: t) {Drop t}: Seq t =
     fork = data_ref.direct_rc != 1 or data_ref.fork_rc != 0
 
     buffer = if fork then
+        collapse_parents seq.data
         data_ref.fork_rc += 1
         data_ref.direct_rc -= 1
-        memcpy (malloc size) seq.data old_size
+        buffer: Ptr (Data t) = memcpy (malloc size) seq.data old_size
+        buffer_ref = ptr_to_mut buffer
+        buffer_ref.fork_rc := 0
+        buffer_ref.fork_point := seq.len
+        buffer_ref.parent := seq.data
+        buffer
     else
         realloc seq.data size
 
@@ -129,10 +143,6 @@ Seq.push (seq: Seq t) (elem: t) {Drop t}: Seq t =
     buffer_ref.len := seq.len + 1
     buffer_ref.cap := new_cap
     buffer_ref.direct_rc := 1
-    if fork then
-        buffer_ref.fork_rc := 0
-        buffer_ref.fork_point := seq.len
-        buffer_ref.parent := seq.data
 
     array_insert buffer.elements (Usz seq.len) elem
     Seq (seq.len + 1) buffer
@@ -203,6 +213,27 @@ impl drop_seq {Drop t}: Drop (Seq t) with
                 data.direct_rc := 0
                 if data.fork_rc == 0 then
                     drop_data seq.data
+
+// Free ancestors that only this child keeps alive. When an ancestor has
+// direct_rc == 0 and fork_rc == 1, this child is its sole referent so
+// we remove the parent from the chain and place the child in its place.
+collapse_parents (child: Ptr (Data t)) {Drop t}: Unit =
+    child = ptr_to_mut child
+    var parent_ptr = child.parent
+    while parent_ptr != null () do
+        parent = ptr_to_mut parent_ptr
+        if parent.direct_rc != 0 or parent.fork_rc != 1 then
+            parent_ptr := null ()
+        else
+            // Drop parent's private tail, otherwise it'd be leaked
+            for i in child.fork_point .. parent.len do
+                elem = offset parent_ptr.elements (Usz i)
+                Drop.drop (ptr_to_mut elem)
+
+            child.fork_point := parent.fork_point
+            child.parent := parent.parent
+            free parent_ptr
+            parent_ptr := child.parent
 
 // Walk up the parent chain, dropping each ancestor's private data and
 // freeing its allocation when both its rcs reach zero.
