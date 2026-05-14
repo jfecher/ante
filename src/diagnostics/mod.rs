@@ -1,6 +1,5 @@
-use std::{cmp::Ordering, collections::BTreeSet, fmt::Formatter, path::PathBuf, sync::Arc};
+use std::{cmp::Ordering, collections::BTreeSet, fmt::{Display, Formatter}, path::PathBuf, sync::Arc};
 
-use beef::lean::Cow;
 use colored::{Color, ColoredString, Colorize};
 use serde::{Deserialize, Serialize};
 
@@ -22,40 +21,9 @@ mod unimplemented_item;
 pub use location::*;
 pub use unimplemented_item::*;
 
-mod serde_beef {
-    use super::Cow;
-    use serde::{Deserializer, Serializer, de::Visitor};
-
-    pub fn serialize<S: Serializer>(string: &Cow<'static, str>, ser: S) -> Result<S::Ok, S::Error> {
-        ser.serialize_str(&string)
-    }
-
-    pub fn deserialize<'de, D: Deserializer<'de>>(de: D) -> Result<Cow<'static, str>, D::Error> {
-        struct V;
-
-        impl<'v> Visitor<'v> for V {
-            type Value = Cow<'static, str>;
-
-            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                write!(formatter, "a string")
-            }
-
-            fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<Self::Value, E> {
-                Ok(Cow::owned(v.to_owned()))
-            }
-
-            fn visit_string<E: serde::de::Error>(self, v: String) -> Result<Self::Value, E> {
-                Ok(Cow::owned(v))
-            }
-        }
-
-        de.deserialize_string(V)
-    }
-}
-
 /// Any diagnostic that the compiler can issue.
 ///
-/// If the `hint` is the empty string, it shouldn't be printed.
+/// If the `hint` is `None`, it shouldn't be printed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub enum Diagnostic {
     // TODO: `message` could be an enum to save allocation costs
@@ -63,8 +31,7 @@ pub enum Diagnostic {
         message: String,
         actual: Token,
         location: Location,
-        #[serde(skip_serializing_if = "str::is_empty", default, with = "serde_beef")]
-        hint: Cow<'static, str>,
+        hint: Option<Hint>,
     },
     ExpectedPathForImport {
         location: Arc<LocationData>,
@@ -293,6 +260,20 @@ pub enum Diagnostic {
     },
 }
 
+/// A hint the compiler can add to a diagnostic.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
+pub enum Hint {
+    FieldlessTypesNeedConstructors,
+}
+
+impl Display for Hint {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Hint::FieldlessTypesNeedConstructors => write!(f, "for a fieldless type, define a constructor with no arguments"),
+        }
+    }
+}
+
 /// A suggestion to import an out-of-scope item, attached to a diagnostic.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub struct ImportSuggestion {
@@ -349,13 +330,13 @@ impl Diagnostic {
         }
     }
 
-    /// Sets the hint on this error to the given string, if this kind of error can have a hint.
+    /// Sets the hint on this error, if this kind of error can have a hint.
     ///
     /// If the error already has a hint, it is replaced.
-    pub fn with_hint(self, hint: impl Into<Cow<'static, str>>) -> Self {
+    pub fn with_hint(self, hint: Hint) -> Self {
         match self {
             Diagnostic::ParserExpected { message, actual, location, hint: _ } => {
-                Diagnostic::ParserExpected { message, actual, location, hint: hint.into() }
+                Diagnostic::ParserExpected { message, actual, location, hint: Some(hint) }
             },
             other => other,
         }
@@ -692,8 +673,8 @@ impl Diagnostic {
     /// An optional secondary message for additional information
     fn note(&self) -> Option<(&Location, String)> {
         match self {
-            Diagnostic::ParserExpected { location, hint, .. } if !hint.is_empty() => {
-                Some((location, (**hint).to_owned()))
+            Diagnostic::ParserExpected { location, hint: Some(hint), .. } => {
+                Some((location, hint.to_string()))
             },
             Diagnostic::UseOfMovedValue { name, location: _, moved_in } => {
                 let message = format!("{} was previously moved here", color_name(name));

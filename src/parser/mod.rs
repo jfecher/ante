@@ -6,7 +6,7 @@ use rustc_hash::FxHashSet;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    diagnostics::{Diagnostic, ErrorDefault, Location, Span},
+    diagnostics::{Diagnostic, ErrorDefault, Hint, Location, Span},
     incremental,
     iterator_extensions::mapvec,
     lexer::{Lexer, token::Token},
@@ -162,7 +162,7 @@ impl<'tokens> Parser<'tokens> {
             Token::Newline => self.previous_token_location(),
             _ => self.current_token_location(),
         };
-        Err(Diagnostic::ParserExpected { message, actual, location, hint: "".into() })
+        Err(Diagnostic::ParserExpected { message, actual, location, hint: None })
     }
 
     /// Reserve a space for an expression.
@@ -721,7 +721,7 @@ impl<'tokens> Parser<'tokens> {
         let generics = self.parse_generics();
         self.expect(Token::Equal, "`=` to begin the type definition")
             .map_err(|e| match self.current_token() {
-                 Token::Newline | Token::EndOfInput => e.with_hint("for a fieldless type, define a constructor with no arguments"),
+                 Token::Newline | Token::EndOfInput => e.with_hint(Hint::FieldlessTypesNeedConstructors),
                  _ => e,
             })?;
         let body = self.parse_type_body()?;
@@ -1655,7 +1655,7 @@ impl<'tokens> Parser<'tokens> {
                     message: "an expression".to_string(),
                     actual,
                     location: location.clone(),
-                    hint: "".into(),
+                    hint: None,
                 };
                 self.diagnostics.push(error);
                 self.advance();
