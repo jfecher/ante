@@ -42,12 +42,21 @@ impl Definition {
             }
         }
 
-        // Resolve SizeOf(concrete_type) to a Usz constant now that all types are concrete.
+        // Resolve SizeOf / ArrayLen of concrete types to Usz constants now that all types are concrete.
         for instruction in self.instructions.values_mut() {
             if let Instruction::SizeOf(typ) = instruction {
                 typ.select_largest_variants(ptr_size);
                 let size = typ.size_in_bytes(ptr_size) as usize;
                 *instruction = Instruction::Id(Value::Integer(IntConstant::Usz(size)));
+            } else if let Instruction::ArrayLen(typ) = instruction {
+                typ.select_largest_variants(ptr_size);
+                let Type::Array { length, .. } = typ else {
+                    unreachable!("ArrayLen on non-Array type after monomorphization: {typ}")
+                };
+                let Type::U32(n) = length.as_ref() else {
+                    unreachable!("ArrayLen with non-constant length after monomorphization: {length}")
+                };
+                *instruction = Instruction::Id(Value::Integer(IntConstant::Usz(*n as usize)));
             } else if let Instruction::StackAllocUninit(typ) = instruction {
                 typ.select_largest_variants(ptr_size);
             }
@@ -58,9 +67,10 @@ impl Definition {
 impl Type {
     fn contains_union(&self) -> bool {
         match self {
-            Type::Primitive(_) | Type::Generic(_) => false,
+            Type::Primitive(_) | Type::Generic(_) | Type::U32(_) => false,
             Type::Union(_) => true,
             Type::Tuple(fields) => fields.iter().any(Type::contains_union),
+            Type::Array { length: _, element } => element.contains_union(),
             Type::Function(function) => {
                 function.parameters.iter().any(Type::contains_union)
                     || function.environment.contains_union()
@@ -72,10 +82,16 @@ impl Type {
     fn select_largest_variants(&mut self, ptr_size: u32) {
         if self.contains_union() {
             match self {
-                Type::Primitive(_) | Type::Generic(_) => unreachable!(),
+                Type::Primitive(_) | Type::Generic(_) | Type::U32(_) => unreachable!(),
                 Type::Tuple(items) => {
                     let items = Arc::make_mut(items);
                     items.iter_mut().for_each(|typ| typ.select_largest_variants(ptr_size));
+                },
+                Type::Array { length: _, element } => {
+                    // Length is a TypeLevelU32 by this point (monomorphization is done) so no
+                    // recursion needed for it.
+                    let element = Arc::make_mut(element);
+                    element.select_largest_variants(ptr_size);
                 },
                 Type::Function(function) => {
                     let function = Arc::make_mut(function);

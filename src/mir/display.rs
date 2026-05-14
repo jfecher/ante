@@ -133,6 +133,14 @@ impl Display for Type {
                 }
                 write!(f, "}}")
             },
+            Type::Array { length, element } => {
+                if is_atom(element) {
+                    write!(f, "Array {length} {element}")
+                } else {
+                    write!(f, "Array {length} ({element})")
+                }
+            },
+            Type::U32(n) => write!(f, "{n}"),
         }
     }
 }
@@ -315,6 +323,7 @@ fn fmt_instruction(
         },
         mir::Instruction::IndexTuple { tuple, index } => write!(f, "{}.{index}", v(tuple))?,
         mir::Instruction::MakeTuple(fields) => write!(f, "({})", comma_separated(fields, mir))?,
+        mir::Instruction::MakeArray(elements) => write!(f, "[{}]", comma_separated(elements, mir))?,
         mir::Instruction::MakeBytes(bytes) => {
             let preview = String::from_utf8_lossy(bytes);
             write!(f, "bytes {preview:?}")?;
@@ -362,6 +371,7 @@ fn fmt_instruction(
         mir::Instruction::Truncate(x) => write!(f, "truncate {}", v(x))?,
         mir::Instruction::Deref(x) => write!(f, "deref {}", v(x))?,
         mir::Instruction::SizeOf(x) => write!(f, "size_of {x}")?,
+        mir::Instruction::ArrayLen(x) => write!(f, "array_len {x}")?,
         mir::Instruction::StackAllocUninit(x) => write!(f, "stack_alloc_uninit {x}")?,
         mir::Instruction::AllocShared(value) => write!(f, "alloc_shared {}", v(value))?,
         mir::Instruction::Extern(name) => write!(f, "extern \"{name}\"")?,

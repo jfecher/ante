@@ -151,6 +151,11 @@ impl FreeVars {
             cst::Expr::InterpolatedString(_) => {
                 unreachable!("InterpolatedString should be desugared before finding free variables")
             },
+            cst::Expr::ArrayLiteral(elements) => {
+                for element in elements.clone() {
+                    self.find_free_variables(element, checker);
+                }
+            },
         }
     }
 

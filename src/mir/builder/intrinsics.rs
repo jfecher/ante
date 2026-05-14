@@ -96,6 +96,12 @@ where
                 let t = self.get_t_from_type_t(args).unwrap_or(super::Type::ERROR);
                 self.push_instruction(Instruction::SizeOf(t), result_type.clone())
             },
+            "ArrayLen" => {
+                // The argument has type `Type (Array n t)`. We need the inner type so
+                // monomorphization can specialize the array's length to a constant.
+                let t = self.get_t_from_type_t(args).unwrap_or(super::Type::ERROR);
+                self.push_instruction(Instruction::ArrayLen(t), result_type.clone())
+            },
             other => panic!("Unknown intrinsic `{other}`"),
         })
     }

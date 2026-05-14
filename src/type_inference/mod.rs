@@ -681,7 +681,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Used to prevent the creation of infinitely recursive types when binding type variables.
     fn occurs(&self, typ: &Type, variable: TypeVariableId, new_bindings: &TypeBindings) -> bool {
         match typ {
-            Type::Primitive(_) | Type::Generic(_) | Type::UserDefined(_) => false,
+            Type::Primitive(_) | Type::Generic(_) | Type::UserDefined(_) | Type::U32(_) => false,
             Type::Variable(candidate_id) => {
                 if let Some(binding) = self.bindings.get(candidate_id) {
                     self.occurs(binding, variable, new_bindings)

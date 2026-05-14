@@ -113,6 +113,11 @@ where
             },
             TCType::Application(constructor, new_args) => {
                 assert!(args.is_none());
+                if let TCType::Primitive(crate::type_inference::types::PrimitiveType::Array) =
+                    constructor.follow(self.type_bindings)
+                {
+                    return self.convert_array_application(new_args);
+                }
                 self.convert_type(constructor, Some(new_args))
             },
             TCType::UserDefined(origin) => self.convert_type_origin(*origin, args, None),
@@ -121,12 +126,27 @@ where
                 let elements = mapvec(elements.iter(), |t| self.convert_type(t, None));
                 Type::Tuple(Arc::new(elements))
             },
+            // Carry through to MIR so monomorphization can substitute into Array lengths.
+            TCType::U32(n) => Type::U32(*n),
         }
     }
 
     fn convert_type_variable(&self, id: TypeVariableId, default: Type) -> Type {
         let generic = crate::type_inference::generics::Generic::Inferred(id);
         self.generics_in_scope.get(&generic).map_or(default, |g| Type::Generic(*g))
+    }
+
+    /// Build the MIR `Type::Array { length, element }` for an applied `Array n t`.
+    fn convert_array_application(&self, new_args: &[TCType]) -> Type {
+        assert_eq!(new_args.len(), 2, "Array applied to wrong arity; kind-checking should reject this");
+        let length_type = new_args[0].follow(self.type_bindings);
+        let elem = self.convert_type(&new_args[1], None);
+        let length = match length_type {
+            TCType::U32(n) => Type::U32(*n),
+            TCType::Generic(generic) => self.generics_in_scope.get(generic).map_or(Type::ERROR, |g| Type::Generic(*g)),
+            other => unreachable!("Array length is not a TypeLevelU32 or Generic: {other:?}"),
+        };
+        Type::array_with_length(length, elem)
     }
 
     fn convert_type_origin(&self, origin: Origin, args: Option<&[TCType]>, variant_index: Option<usize>) -> Type {
@@ -210,6 +230,7 @@ where
             Builtin::Char => Type::CHAR,
             Builtin::Bool => Type::BOOL,
             Builtin::Ptr => Type::POINTER,
+            Builtin::Array => unreachable!("bare Array reached MIR; kind-checking should reject partial application"),
             // LLVM has no bottom type. The builder pairs every divergent call with an
             // `Unreachable` terminator, so the erased Unit is dead at runtime.
             Builtin::Never => Type::UNIT,
@@ -229,6 +250,9 @@ where
             crate::type_inference::types::PrimitiveType::Int(kind) => Type::int(kind),
             crate::type_inference::types::PrimitiveType::Float(kind) => Type::float(kind),
             crate::type_inference::types::PrimitiveType::Reference(..) => Type::POINTER,
+            crate::type_inference::types::PrimitiveType::Array => {
+                unreachable!("bare Array reached MIR; applied form is handled in convert_type")
+            },
             crate::type_inference::types::PrimitiveType::NoClosureEnv => Type::NO_CLOSURE_ENV,
         }
     }

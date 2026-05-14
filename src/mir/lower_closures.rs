@@ -159,9 +159,12 @@ fn remove_no_closure_env_parameter_references(definition: &mut Definition) {
 /// Rewrite closure types into: `Tuple(fn, env)`
 fn rewrite_value_type(typ: &Type) -> Type {
     match typ {
-        Type::Primitive(_) | Type::Generic(_) => typ.clone(),
+        Type::Primitive(_) | Type::Generic(_) | Type::U32(_) => typ.clone(),
         Type::Tuple(fields) => Type::Tuple(Arc::new(fields.iter().map(rewrite_value_type).collect())),
         Type::Union(fields) => Type::Union(Arc::new(fields.iter().map(rewrite_value_type).collect())),
+        Type::Array { length, element } => {
+            Type::Array { length: length.clone(), element: Arc::new(rewrite_value_type(element)) }
+        },
         Type::Function(f) => {
             let return_type = rewrite_value_type(&f.return_type);
             let env_type = rewrite_value_type(&f.environment);
@@ -211,7 +214,7 @@ fn rewrite_types_in_definition(definition: &mut Definition) {
 
     for (_, instr) in definition.instructions.iter_mut() {
         match instr {
-            Instruction::SizeOf(typ) => {
+            Instruction::SizeOf(typ) | Instruction::ArrayLen(typ) => {
                 *typ = rewrite_value_type(typ);
             },
             Instruction::StackAllocUninit(typ) => {
@@ -330,12 +333,13 @@ fn lower_one_call_closure(
 
 fn assert_no_closure_in_type(typ: &Type, where_: &str) {
     match typ {
-        Type::Primitive(_) | Type::Generic(_) => {},
+        Type::Primitive(_) | Type::Generic(_) | Type::U32(_) => {},
         Type::Tuple(fields) | Type::Union(fields) => {
             for f in fields.iter() {
                 assert_no_closure_in_type(f, where_);
             }
         },
+        Type::Array { length: _, element } => assert_no_closure_in_type(element, where_),
         Type::Function(f) => {
             assert!(is_no_closure_env(&f.environment), "Closure remaining at {where_}: `{typ}`");
             assert_no_closure_in_type(&f.return_type, where_);

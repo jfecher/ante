@@ -821,7 +821,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     Self::collect_tvars(t, out);
                 }
             },
-            Type::Primitive(_) | Type::Generic(_) | Type::UserDefined(_) => (),
+            Type::Primitive(_) | Type::Generic(_) | Type::UserDefined(_) | Type::U32(_) => (),
         }
     }
 
@@ -993,6 +993,6 @@ fn collect_user_defined_crates(typ: &Type, out: &mut BTreeSet<CrateId>) {
                 collect_user_defined_crates(t, out);
             }
         },
-        Type::UserDefined(_) | Type::Variable(_) | Type::Generic(_) | Type::Primitive(_) => {},
+        Type::UserDefined(_) | Type::Variable(_) | Type::Generic(_) | Type::Primitive(_) | Type::U32(_) => {},
     }
 }

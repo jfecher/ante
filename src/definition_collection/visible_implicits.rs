@@ -86,6 +86,7 @@ impl TypeKey {
             // TODO: Is this correct?
             Type::Forall(_, typ) => return TypeKey::from_type(typ),
             Type::Tuple(_) => TypeKey::Tuple,
+            Type::U32(_) => return None,
         })
     }
 }

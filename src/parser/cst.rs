@@ -115,6 +115,10 @@ pub enum TypeKind {
     Application(Box<Type>, Vec<Type>),
     Reference(ReferenceKind),
 
+    /// A type-level integer literal, used in type positions to supply arguments to
+    /// kind-`U32` parameters. Example: the `4` in `Array 4 I32`.
+    IntegerConstant(u32),
+
     /// This is an internal type only created when desugaring closure environments in trait impls.
     /// Most tuple types in source code refer to the `,` type defined in the prelude. While they
     /// could use this type instead, using a UserDefinedType for them lets us reuse the existing
@@ -242,6 +246,10 @@ pub enum Expr {
     Assignment(Assignment),
     Extern(Extern),
     InterpolatedString(InterpolatedString),
+
+    /// `[e0, e1, ..., eN-1]`. Constructs a value of type `Array N t` where `t` is the
+    /// unified element type and `N` is the literal's length.
+    ArrayLiteral(Vec<ExprId>),
 }
 
 impl ErrorDefault for Expr {

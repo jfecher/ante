@@ -524,7 +524,7 @@ pub(super) fn substitute_value(definition: &mut Definition, find: Value, replace
                 sub(environment);
             },
             Instruction::IndexTuple { tuple, .. } => sub(tuple),
-            Instruction::MakeTuple(values) => {
+            Instruction::MakeTuple(values) | Instruction::MakeArray(values) => {
                 for v in values.iter_mut() {
                     sub(v);
                 }
@@ -576,6 +576,7 @@ pub(super) fn substitute_value(definition: &mut Definition, find: Value, replace
             | Instruction::Instantiate(_, _)
             | Instruction::Extern(_)
             | Instruction::SizeOf(_)
+            | Instruction::ArrayLen(_)
             | Instruction::StackAllocUninit(_)
             | Instruction::Capability => (),
         }

@@ -425,6 +425,7 @@ pub enum Instruction {
     /// Used for string literals.
     MakeBytes(Vec<u8>),
     MakeTuple(Vec<Value>),
+    MakeArray(Vec<Value>),
 
     // TODO: Should we remove this in favor of StackAllocUninit + Store?
     StackAlloc(Value),
@@ -500,9 +501,10 @@ pub enum Instruction {
 
     Truncate(Value),
     Deref(Value),
-    /// Computes the size in bytes of the given type. The type may contain generics;
-    /// monomorphization specializes it to a concrete type and resolves the instruction to a constant.
+    /// Static byte size of a type. Resolved to a `Usz` constant during monomorphization.
     SizeOf(Type),
+    /// Static length of an array. Resolved to a `Usz` constant during monomorphization.
+    ArrayLen(Type),
 }
 
 /// A handler case attached to an [Instruction::Handle]. Maps an effect operation
@@ -540,6 +542,7 @@ impl Instruction {
             Instruction::IndexTuple { tuple, index: _ } => f(tuple),
             Instruction::MakeBytes(_) => (),
             Instruction::MakeTuple(elements) => elements.iter().for_each(f),
+            Instruction::MakeArray(elements) => elements.iter().for_each(f),
             Instruction::StackAlloc(value) => f(value),
             Instruction::StackAllocUninit(_) => (),
             Instruction::AllocShared(value) => f(value),
@@ -579,6 +582,7 @@ impl Instruction {
             Instruction::Truncate(value) => f(value),
             Instruction::Deref(value) => f(value),
             Instruction::SizeOf(_typ) => (),
+            Instruction::ArrayLen(_typ) => (),
             Instruction::GetFieldPtr { struct_ptr, .. } => f(struct_ptr),
             Instruction::Extern(_) => (),
         }
@@ -730,6 +734,14 @@ pub enum Type {
     /// A C-style union of the given types. Sum types are encoded as this + a tag.
     Union(Arc<Vec<Type>>),
 
+    Array {
+        length: Arc<Type>,
+        element: Arc<Type>,
+    },
+
+    /// A type-level U32
+    U32(u32),
+
     Generic(Generic),
 }
 
@@ -777,6 +789,10 @@ impl Type {
         Type::Union(Arc::new(variants))
     }
 
+    pub fn array_with_length(length: Type, element: Type) -> Type {
+        Type::Array { length: Arc::new(length), element: Arc::new(element) }
+    }
+
     fn function_return_type(&self) -> Option<&Type> {
         match self {
             Type::Function(function) => Some(&function.return_type),
@@ -801,6 +817,7 @@ impl Type {
                 generic_args[generic.0 as usize].clone()
             },
             Type::Generic(generic) => Type::Generic(*generic),
+            Type::U32(n) => Type::U32(*n),
             Type::Tuple(elements) => Type::Tuple(Arc::new(mapvec(elements.iter(), |typ| typ.substitute(generic_args)))),
             Type::Function(function_type) => {
                 let parameters = mapvec(&function_type.parameters, |typ| typ.substitute(generic_args));
@@ -809,6 +826,10 @@ impl Type {
                 Type::Function(Arc::new(FunctionType { parameters, environment, return_type }))
             },
             Type::Union(variants) => Type::Union(Arc::new(mapvec(variants.iter(), |typ| typ.substitute(generic_args)))),
+            Type::Array { length, element } => Type::Array {
+                length: Arc::new(length.substitute(generic_args)),
+                element: Arc::new(element.substitute(generic_args)),
+            },
         }
     }
 
@@ -838,6 +859,17 @@ impl Type {
             Type::Function(_) => ptr_size,
             // This is a raw union so the tag isn't counted here
             Type::Union(variants) => variants.iter().map(|typ| typ.size_in_bytes(ptr_size)).max().unwrap_or(0),
+            Type::Array { length, element } => {
+                let elem_size = element.size_in_bytes(ptr_size);
+                let elem_align = element.align_in_bytes(ptr_size).max(1);
+                let stride = (elem_size + elem_align - 1) & !(elem_align - 1);
+                let length = match length.as_ref() {
+                    Type::U32(n) => *n,
+                    other => panic!("size_in_bytes called on Array with non-constant length: {other}"),
+                };
+                stride * length
+            },
+            Type::U32(_) => 0,
             Type::Generic(_) => panic!("size_in_bytes called on Type::Generic"),
         }
     }
@@ -850,6 +882,8 @@ impl Type {
             Type::Tuple(fields) => fields.iter().map(|f| f.align_in_bytes(ptr_size)).max().unwrap_or(1),
             Type::Function(_) => ptr_size,
             Type::Union(variants) => variants.iter().map(|v| v.align_in_bytes(ptr_size)).max().unwrap_or(1),
+            Type::Array { length: _, element } => element.align_in_bytes(ptr_size),
+            Type::U32(_) => 1,
             Type::Generic(_) => panic!("align_in_bytes called on Type::Generic"),
         }
     }
@@ -892,6 +926,7 @@ impl Type {
     fn contains_generic(&self) -> bool {
         match self {
             Type::Primitive(_) => false,
+            Type::U32(_) => false,
             Type::Tuple(fields) => fields.iter().any(Type::contains_generic),
             Type::Union(variants) => variants.iter().any(Type::contains_generic),
             Type::Function(function) => {
@@ -899,6 +934,7 @@ impl Type {
                     || function.environment.contains_generic()
                     || function.return_type.contains_generic()
             },
+            Type::Array { length, element } => length.contains_generic() || element.contains_generic(),
             Type::Generic(_) => true,
         }
     }

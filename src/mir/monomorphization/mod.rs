@@ -263,7 +263,7 @@ impl<'local> FunctionContext<'local> {
                 self.remap_value(environment);
             },
             Instruction::IndexTuple { tuple, .. } => self.remap_value(tuple),
-            Instruction::MakeTuple(elements) => {
+            Instruction::MakeTuple(elements) | Instruction::MakeArray(elements) => {
                 for e in elements.iter_mut() {
                     self.remap_value(e);
                 }
@@ -315,7 +315,7 @@ impl<'local> FunctionContext<'local> {
             | Instruction::FloatDemote(v)
             | Instruction::Truncate(v)
             | Instruction::Deref(v) => self.remap_value(v),
-            Instruction::SizeOf(typ) => self.specialize_type(typ),
+            Instruction::SizeOf(typ) | Instruction::ArrayLen(typ) => self.specialize_type(typ),
             Instruction::MakeBytes(_) | Instruction::Instantiate(..) | Instruction::Extern(_) => {},
             Instruction::Capability => {},
             Instruction::GetFieldPtr { struct_ptr, struct_type, .. } => {
@@ -362,6 +362,15 @@ impl<'local> FunctionContext<'local> {
                 new_variants.iter_mut().for_each(recur);
                 *variants = Arc::new(new_variants);
             },
+            Type::Array { length, element } => {
+                let mut new_length = length.as_ref().clone();
+                let mut new_element = element.as_ref().clone();
+                recur(&mut new_length);
+                recur(&mut new_element);
+                *length = Arc::new(new_length);
+                *element = Arc::new(new_element);
+            },
+            Type::U32(_) => (),
             Type::Generic(generic) => {
                 let Some(mapping) = self.generic_mapping.get(generic.0 as usize) else {
                     unreachable!("Unmapped generic found in monomorphization: {generic:?}")

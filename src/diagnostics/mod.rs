@@ -1,4 +1,10 @@
-use std::{cmp::Ordering, collections::BTreeSet, fmt::{Display, Formatter}, path::PathBuf, sync::Arc};
+use std::{
+    cmp::Ordering,
+    collections::BTreeSet,
+    fmt::{Display, Formatter},
+    path::PathBuf,
+    sync::Arc,
+};
 
 use colored::{Color, ColoredString, Colorize};
 use serde::{Deserialize, Serialize};
@@ -267,7 +273,9 @@ pub enum Hint {
 impl Display for Hint {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Hint::FieldlessTypesNeedConstructors => write!(f, "for a fieldless type, define a constructor with no arguments"),
+            Hint::FieldlessTypesNeedConstructors => {
+                write!(f, "for a fieldless type, define a constructor with no arguments")
+            },
         }
     }
 }
@@ -671,9 +679,7 @@ impl Diagnostic {
     /// An optional secondary message for additional information
     fn note(&self) -> Option<(&Location, String)> {
         match self {
-            Diagnostic::ParserExpected { location, hint: Some(hint), .. } => {
-                Some((location, hint.to_string()))
-            },
+            Diagnostic::ParserExpected { location, hint: Some(hint), .. } => Some((location, hint.to_string())),
             Diagnostic::UseOfMovedValue { name, location: _, moved_in } => {
                 let message = format!("{} was previously moved here", color_name(name));
                 Some((moved_in, message))

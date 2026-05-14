@@ -142,6 +142,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Expr::InterpolatedString(_) => {
                 unreachable!("InterpolatedString should be desugared before type inference")
             },
+            Expr::ArrayLiteral(elements) => self.check_array_literal(elements, expected, id),
         }
     }
 
@@ -369,7 +370,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Will error if passed a builtin type
     fn check_builtin(&mut self, builtin: Builtin, locator: impl Locateable) -> Type {
         match builtin {
-            Builtin::Unit | Builtin::Char | Builtin::Bool | Builtin::Ptr | Builtin::Never => {
+            Builtin::Unit | Builtin::Char | Builtin::Bool | Builtin::Ptr | Builtin::Array | Builtin::Never => {
                 let typ = Arc::new(builtin.to_string());
                 let location = locator.locate(self);
                 self.compiler.accumulate(Diagnostic::ValueExpected { location, typ });
@@ -1236,5 +1237,15 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     pub(super) fn check_comptime(&self, _comptime: &cst::Comptime) {
         let location = self.current_context().location().clone();
         UnimplementedItem::Comptime.issue(self.compiler, location);
+    }
+
+    fn check_array_literal(&mut self, elements: &[ExprId], expected: &Type, id: ExprId) {
+        let element_type = expected.array_element(&self.bindings).unwrap_or_else(|| self.next_type_variable());
+        for element in elements {
+            self.check_expr(*element, &element_type);
+        }
+        let array_args = Arc::new(vec![Type::U32(elements.len() as u32), element_type]);
+        let array_type = Type::Application(Arc::new(Type::ARRAY), array_args);
+        self.unify(&array_type, expected, TypeErrorKind::General, id);
     }
 }

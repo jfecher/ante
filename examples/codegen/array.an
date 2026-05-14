@@ -1,0 +1,10 @@
+my_arr: Array 4 I32 = [10, 20, 30, 40]
+
+main () =
+    println my_arr.[0]
+    println my_arr.[3]
+
+// args: --delete-binary --no-color
+// expected stdout:
+// 10
+// 40

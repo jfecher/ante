@@ -369,6 +369,11 @@ fn collect_expressions_to_desugar(expr: ExprId, context: &DesugarContext, to_des
             }
             to_desugar.push(ExprDesugar::StringInterpolation(expr));
         },
+        Expr::ArrayLiteral(elements) => {
+            for element in elements {
+                collect_expressions_to_desugar(*element, context, to_desugar);
+            }
+        },
     }
 }
 

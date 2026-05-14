@@ -58,9 +58,9 @@ a7 = choose id auto
 // (a7: fn (error) -> (error)) = (choose: fn (fn (error) -> (error)) (fn (error) -> (error)) -> fn (error) -> (error)) (id: fn (error) -> (error)) (auto: fn (error) -> (error))
 
 // expected stderr:
-// examples/typechecking/impredicativity.an:4:7
-// 4 | ids = [freeze id]	// error: Expected an expression but found `[`
-//   |       ^
+// examples/typechecking/impredicativity.an:4:8
+// 4 | ids = [freeze id]	// error: Expected an expression but found `freeze`
+//   |        ^^^^^^
 // 
 // examples/typechecking/impredicativity.an:6:10
 // 6 | auto (x: forall a. fn a -> a) = x (freeze x)	// error: Expected a type but found `forall`

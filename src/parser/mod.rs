@@ -434,21 +434,17 @@ impl<'tokens> Parser<'tokens> {
                     items.push(item);
                 }
 
-                // Parse any extra items e.g. `, b, c, d`
-                while self.accept(Token::Comma) {
-                    match self.current_token() {
-                        Token::Identifier(name) | Token::TypeName(name) => {
-                            let name = name.clone();
-                            let location = self.current_token_location();
-                            self.advance();
-                            items.push((name, location));
+                // Parse any extra items e.g. `, b, c, d`. The leading separator is consumed here
+                // because the first item came from the path; the helper expects to start at an item.
+                if self.accept(Token::Comma) {
+                    items.extend(self.delimited_until_recover(
+                        Token::Comma,
+                        &[Token::Newline, Token::EndOfInput, Token::Unindent],
+                        |this| {
+                            this.parse_ident_or_type_name()
+                                .map_err(|_| this.expected::<()>("an identifier or type name").unwrap_err())
                         },
-                        _ => {
-                            let error = self.expected::<()>("an identifier or type name").unwrap_err();
-                            self.diagnostics.push(error);
-                            self.advance();
-                        },
-                    }
+                    ));
                 }
 
                 let end = self.previous_token_span();
@@ -464,7 +460,7 @@ impl<'tokens> Parser<'tokens> {
     }
 
     fn parse_exports(&mut self) -> Option<Vec<(String, Location)>> {
-        use Token::{Comma, EndOfInput, Export, Identifier, Newline, TypeName};
+        use Token::{Comma, EndOfInput, Export, Newline};
         self.accept(Newline);
 
         let position_before_comments = self.token_index;
@@ -475,27 +471,10 @@ impl<'tokens> Parser<'tokens> {
             return None;
         }
 
-        let mut items = self.delimited(Self::parse_ident_or_type_name, Comma, true);
-
-        // Try to recover on error and parse remaining exports
-        loop {
-            if matches!(*self.current_token(), Newline | EndOfInput) {
-                break;
-            // The current token is invalid (it stopped the previous delimited parse), but are
-            // there more valid names after it?
-            } else if matches!(self.try_peek_next_token(), Some(Identifier(_) | TypeName(_) | Comma)) {
-                let error = self.expected::<()>("an identifier, type name, or operator to export").unwrap_err();
-                self.diagnostics.push(error);
-                self.advance();
-                // Continue parsing exports
-                if *self.current_token() == Comma {
-                    self.advance();
-                }
-                items.extend(self.delimited(Self::parse_ident_or_type_name, Comma, true));
-            } else {
-                break;
-            }
-        }
+        let items = self.delimited_until_recover(Comma, &[Newline, EndOfInput], |this| {
+            this.parse_ident_or_type_name()
+                .map_err(|_| this.expected::<()>("an identifier, type name, or operator to export").unwrap_err())
+        });
 
         if *self.current_token() != Newline {
             let error = self.expected::<()>("an identifier, type name, or operator to export").unwrap_err();
@@ -719,11 +698,10 @@ impl<'tokens> Parser<'tokens> {
         self.expect(Token::Type, "`type`")?;
         let name = self.parse_type_name_id()?;
         let generics = self.parse_generics();
-        self.expect(Token::Equal, "`=` to begin the type definition")
-            .map_err(|e| match self.current_token() {
-                 Token::Newline | Token::EndOfInput => e.with_hint(Hint::FieldlessTypesNeedConstructors),
-                 _ => e,
-            })?;
+        self.expect(Token::Equal, "`=` to begin the type definition").map_err(|e| match self.current_token() {
+            Token::Newline | Token::EndOfInput => e.with_hint(Hint::FieldlessTypesNeedConstructors),
+            _ => e,
+        })?;
         let body = self.parse_type_body()?;
         Ok(TypeDefinition { shared, name, generics, body, is_trait: false, is_effect: false })
     }
@@ -983,6 +961,22 @@ impl<'tokens> Parser<'tokens> {
                 self.advance();
                 Ok(Type::new(TypeKind::Integer(kind), location))
             },
+            Token::IntegerLiteral(value, _suffix) => {
+                let location = self.current_token_location();
+                let value = *value;
+                self.advance();
+                let kind = if value > u32::MAX as u64 {
+                    self.diagnostics.push(Diagnostic::IntegerTooLarge {
+                        value,
+                        kind: crate::lexer::token::IntegerKind::U32,
+                        location: location.clone(),
+                    });
+                    TypeKind::Error
+                } else {
+                    TypeKind::IntegerConstant(value as u32)
+                };
+                Ok(Type::new(kind, location))
+            },
             Token::FloatType(kind) => {
                 let location = self.current_token_location();
                 let kind = *kind;
@@ -1146,6 +1140,70 @@ impl<'tokens> Parser<'tokens> {
         }
 
         self.token_index = last_success_position;
+        items
+    }
+
+    /// Parse a (possibly empty) list of items separated by `separator` and terminated by `end`,
+    /// allowing a trailing `separator`. The `end` token is left unconsumed so the caller can
+    /// `expect` it with a context-specific error message. Parser errors from `parser` propagate
+    /// via `?` (unlike [Self::delimited], which silently drops the first parse error).
+    fn delimited_until<T>(
+        &mut self, separator: Token, end: Token, mut parser: impl FnMut(&mut Self) -> Result<T>,
+    ) -> Result<Vec<T>> {
+        let mut items = Vec::new();
+        if *self.current_token() == end {
+            return Ok(items);
+        }
+        items.push(parser(self)?);
+        while self.accept(separator.clone()) {
+            if *self.current_token() == end {
+                break;
+            }
+            items.push(parser(self)?);
+        }
+        Ok(items)
+    }
+
+    /// Fault-tolerant variant of [Self::delimited_until] for grammars where a single bad item
+    /// should not lose the rest of the list (e.g. `import` / `export` lists). Parses a
+    /// `item (separator item)*` sequence, stopping when the current token matches any of
+    /// `terminators` (the terminator is NOT consumed). Trailing separators are allowed.
+    ///
+    /// Recovery:
+    /// - A failed `parser` call has its error pushed to `self.diagnostics`, then one offending
+    ///   token is advanced past and an optional trailing separator is consumed before retrying.
+    /// - A successful parse not followed by either a separator or a terminator emits an
+    ///   "expected `<sep>`" diagnostic and parsing continues as if the separator were present.
+    fn delimited_until_recover<T>(
+        &mut self, separator: Token, terminators: &[Token], mut parser: impl FnMut(&mut Self) -> Result<T>,
+    ) -> Vec<T> {
+        let mut items = Vec::new();
+        loop {
+            if terminators.iter().any(|t| t == self.current_token()) {
+                break;
+            }
+            match parser(self) {
+                Ok(item) => items.push(item),
+                Err(error) => {
+                    self.diagnostics.push(error);
+                    if terminators.iter().any(|t| t == self.current_token()) {
+                        break;
+                    }
+                    self.advance();
+                    self.accept(separator.clone());
+                    continue;
+                },
+            }
+            if self.accept(separator.clone()) {
+                continue;
+            }
+            if terminators.iter().any(|t| t == self.current_token()) {
+                break;
+            }
+            let message = format!("`{separator}` to separate items");
+            let error = self.expected::<()>(message).unwrap_err();
+            self.diagnostics.push(error);
+        }
         items
     }
 
@@ -1329,12 +1387,12 @@ impl<'tokens> Parser<'tokens> {
     /// Returns the precedence of an operator along with
     /// whether or not it is right-associative.
     /// Returns None if the given Token is not an operator
-    fn precedence(token: &Token) -> Option<(i8, bool)> {
+    fn precedence(token: &Token, ban_comma: bool) -> Option<(i8, bool)> {
         match token {
             Token::Semicolon => Some((0, false)),
             Token::ApplyLeft => Some((1, true)),
             Token::ApplyRight | Token::TildeArrow => Some((2, false)),
-            Token::Comma => Some((3, true)),
+            Token::Comma if !ban_comma => Some((3, true)),
             Token::Or => Some((4, false)),
             Token::And => Some((5, false)),
             Token::Is => Some((6, false)),
@@ -1358,8 +1416,8 @@ impl<'tokens> Parser<'tokens> {
 
     /// Should we push this operator onto our operator stack and keep parsing our expression?
     /// This handles the operator precedence and associativity parts of the shunting-yard algorithm.
-    fn should_continue(operator_on_stack: &Token, r_prec: i8, r_is_right_assoc: bool) -> bool {
-        let (l_prec, _) = Self::precedence(operator_on_stack).unwrap();
+    fn should_continue(operator_on_stack: &Token, r_prec: i8, r_is_right_assoc: bool, ban_comma: bool) -> bool {
+        let (l_prec, _) = Self::precedence(operator_on_stack, ban_comma).unwrap();
 
         l_prec > r_prec || (l_prec == r_prec && !r_is_right_assoc)
     }
@@ -1410,15 +1468,24 @@ impl<'tokens> Parser<'tokens> {
     ///
     /// If `ban_do` is true, `do` will not be parsed as an expression
     fn parse_shunting_yard(&mut self, ban_do: bool) -> Result<ExprId> {
+        self.parse_shunting_yard_inner(ban_do, false)
+    }
+
+    fn parse_shunting_yard_inner(&mut self, ban_do: bool, ban_comma: bool) -> Result<ExprId> {
         let value = self.parse_term(ban_do)?;
 
         let mut operator_stack: Vec<&(Token, Span)> = vec![];
         let mut results = vec![value];
 
         // loop while the next token is an operator
-        while let Some((prec, right_associative)) = Self::precedence(self.current_token()) {
+        while let Some((prec, right_associative)) = Self::precedence(self.current_token(), ban_comma) {
             while !operator_stack.is_empty()
-                && Self::should_continue(&operator_stack[operator_stack.len() - 1].0, prec, right_associative)
+                && Self::should_continue(
+                    &operator_stack[operator_stack.len() - 1].0,
+                    prec,
+                    right_associative,
+                    ban_comma,
+                )
             {
                 self.pop_operator(&mut operator_stack, &mut results);
             }
@@ -1645,6 +1712,7 @@ impl<'tokens> Parser<'tokens> {
                 self.advance();
                 Ok(self.push_expr(Expr::Literal(Literal::Unit), location))
             },
+            Token::BracketLeft => self.parse_array_literal(),
             Token::Move | Token::Fn => self.parse_lambda(),
             Token::Do if !ban_do => self.parse_do(),
             Token::Error(_) => {
@@ -2160,6 +2228,17 @@ impl<'tokens> Parser<'tokens> {
         let location = self.current_token_location();
         self.advance();
         Ok(self.push_expr(Expr::Literal(Literal::Char(char)), location))
+    }
+
+    /// Parse an array literal `[e0, e1, ..., eN-1]`
+    fn parse_array_literal(&mut self) -> Result<ExprId> {
+        let start = self.current_token_location();
+        self.expect(Token::BracketLeft, "'[' to start this array literal")?;
+        let elements = self
+            .delimited_until(Token::Comma, Token::BracketRight, |this| this.parse_shunting_yard_inner(false, true))?;
+        self.expect(Token::BracketRight, "a `]` to close the opening `[` from the array literal")?;
+        let location = start.to(&self.previous_token_location());
+        Ok(self.push_expr(Expr::ArrayLiteral(elements), location))
     }
 
     fn parse_string(&mut self, contents: String) -> Result<ExprId> {

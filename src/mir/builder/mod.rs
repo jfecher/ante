@@ -307,7 +307,14 @@ where
             cst::Expr::InterpolatedString(_) => {
                 unreachable!("InterpolatedString should be desugared before MIR generation")
             },
+            cst::Expr::ArrayLiteral(elements) => self.array_literal(elements, expr),
         }
+    }
+
+    fn array_literal(&mut self, elements: &[ExprId], expr: ExprId) -> Value {
+        let result_type = self.expr_type(expr);
+        let values = elements.iter().map(|e| self.expression(*e)).collect();
+        self.push_instruction(Instruction::MakeArray(values), result_type)
     }
 
     fn literal(&mut self, literal: &Literal, expr: ExprId) -> Value {
@@ -1056,6 +1063,8 @@ where
             Type::Union(_) => unreachable!("Cannot match on a raw union type"),
             Type::Function(_) => unreachable!("Cannot match on a function type"),
             Type::Generic(_) => unreachable!("Cannot match on a generic type"),
+            Type::Array { .. } => unreachable!("Cannot match on an array type"),
+            Type::U32(_) => unreachable!("Cannot match on a type-level integer"),
         }
     }
 

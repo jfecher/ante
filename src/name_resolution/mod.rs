@@ -596,6 +596,12 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             Expr::InterpolatedString(_) => {
                 unreachable!("InterpolatedString should be desugared before name resolution")
             },
+            Expr::ArrayLiteral(elements) => {
+                let elements = elements.clone();
+                for element in elements {
+                    self.resolve_expr(element);
+                }
+            },
         }
     }
 
@@ -740,7 +746,8 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             | TypeKind::NoClosureEnv
             | TypeKind::Pointer
             | TypeKind::Hole
-            | TypeKind::Reference(..) => (),
+            | TypeKind::Reference(..)
+            | TypeKind::IntegerConstant(_) => (),
             TypeKind::Named(path) => self.link(*path, false, true),
             TypeKind::Variable(name) => self.resolve_variable(*name, declare_type_vars),
             TypeKind::Function(function) => {

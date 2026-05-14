@@ -27,7 +27,8 @@ export String, from_parts, Maybe, None, Some, unwrap, unwrap_or_else, Result, Ok
     Num, num_i8, num_i16, num_i32, num_i64, num_isz, num_u8, num_u16, num_u32, num_u64, num_usz,
     Append, (++), append_string,
     (|>), (<|),
-    Extract, (.[), extract_ptr_usz,
+    Extract, (.[), extract_ptr_usz, extract_array, extract_array_move,
+    array_len, array_get, array_set, array_get_unchecked, array_set_unchecked,
     Bitwise, band, bor, bxor, bitwise_i32,
     Type, MkType, size_of,
     offset, offset_bytes, deref, deref_ptr, ptr_store, array_insert, ptr_to_mut,
@@ -568,6 +569,37 @@ trait Extract collection index elem with
 // TODO: Remove. This breaks ownership
 impl extract_ptr_usz: Extract (Ptr t) Usz t with
     (.[) ptr index = deref_ptr <| offset ptr index
+
+array_len (array: ref Array n t): Usz =
+    size_t = size_of (MkType : Type t)
+    if size_t == 0 then 0 else
+        size_of (MkType : Type (Array n t)) / size_t
+
+// Unsafe get without bounds-checking
+array_get_unchecked (array: ref Array n t) (i: Usz): ref t =
+    ptr: Ptr t = transmute array
+    ptr_to_mut (offset ptr i)
+
+// Unsafe set without bounds-checking
+array_set_unchecked (array: mut Array n t) (i: Usz) (v: t): Unit =
+    ptr: Ptr t = transmute array
+    ptr_store (offset ptr i) v
+
+array_get array index =
+    if index >= array_len array then
+        panic "array_get index out of bounds"
+    array_get_unchecked array index
+
+array_set (array: mut Array n t) index elem =
+    if index >= array_len array then
+        panic "array_set index out of bounds"
+    array_set_unchecked array index elem
+
+impl extract_array: Extract (ref Array n t) Usz (ref t) with
+    (.[) arr index = array_get arr index
+
+impl extract_array_move: Extract (Array n t) Usz t with
+    (.[) arr index = deref (array_get arr index)
 
 // Bitwise functions
 // TODO: Move these to separate module

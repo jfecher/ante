@@ -286,6 +286,11 @@ impl<'ctx> ModuleContext<'ctx> {
                 backing.set_initializer(&init_value);
                 backing.as_pointer_value().into()
             },
+            mir::Instruction::MakeArray(elements) => {
+                let element_values = mapvec(elements, |e| self.constant_value(*e));
+                let result_type = self.convert_type(global.instruction_result_type(id)).into_array_type();
+                Self::const_array_of(result_type, &element_values).into()
+            },
             other => panic!("Unsupported instruction in global initializer: {other:?}"),
         }
     }
@@ -409,6 +414,14 @@ impl<'ctx> ModuleContext<'ctx> {
             // are explicit Tuples handled by the `Tuple` arm above.
             mir::Type::Function(_) => self.llvm.ptr_type(AddressSpace::default()).into(),
             mir::Type::Union(_) => self.llvm.ptr_type(AddressSpace::default()).into(),
+            mir::Type::Array { length, element } => {
+                let length = match length.as_ref() {
+                    mir::Type::U32(n) => *n,
+                    other => panic!("LLVM codegen: Array with non-constant length {other}"),
+                };
+                self.convert_type(element).array_type(length).into()
+            },
+            mir::Type::U32(_) => self.llvm.struct_type(&[], false).into(),
             mir::Type::Generic(_) => self.llvm.ptr_type(AddressSpace::default()).into(),
         }
     }
@@ -550,6 +563,10 @@ impl<'ctx> ModuleContext<'ctx> {
                 global.as_pointer_value().into()
             },
             mir::Instruction::MakeTuple(fields) => self.make_tuple(fields),
+            mir::Instruction::MakeArray(elements) => {
+                let result_type = self.convert_type(function.instruction_result_type(id)).into_array_type();
+                self.make_array(result_type, elements)
+            },
             mir::Instruction::StackAlloc(value) => {
                 let value = self.lookup_value(value);
                 let alloca = self.builder.build_alloca(value.get_type(), "").unwrap();
@@ -737,6 +754,7 @@ impl<'ctx> ModuleContext<'ctx> {
                 self.builder.build_struct_gep(struct_llvm_type, struct_ptr, *index, "").unwrap().into()
             },
             mir::Instruction::SizeOf(_) => todo!("SizeOf should be removed by monomorphization"),
+            mir::Instruction::ArrayLen(_) => todo!("ArrayLen should be removed by monomorphization"),
             mir::Instruction::Extern(name) => {
                 let typ = function.instruction_result_type(id);
                 match self.convert_function_type(typ) {
@@ -780,6 +798,60 @@ impl<'ctx> ModuleContext<'ctx> {
             }
         }
         tuple.as_basic_value_enum()
+    }
+
+    fn make_array(
+        &mut self, array_type: inkwell::types::ArrayType<'ctx>, elements: &[mir::Value],
+    ) -> BasicValueEnum<'ctx> {
+        let element_type = array_type.get_element_type();
+        let values = mapvec(elements, |e| self.lookup_value(e));
+        let seed = mapvec(&values, |v| if v.is_const() { *v } else { Self::undef_value(element_type) });
+        let mut array = Self::const_array_of(array_type, &seed).as_aggregate_value_enum();
+
+        for (i, value) in values.into_iter().enumerate() {
+            if !value.is_const() {
+                array = self.builder.build_insert_value(array, value, i as u32, "").unwrap();
+            }
+        }
+        array.as_basic_value_enum()
+    }
+
+    /// Build an LLVM constant array of `array_type` with the given element values. Inkwell's
+    /// `const_array` is type-specific, so we dispatch on the element type.
+    fn const_array_of(
+        array_type: inkwell::types::ArrayType<'ctx>, elements: &[BasicValueEnum<'ctx>],
+    ) -> inkwell::values::ArrayValue<'ctx> {
+        let element_type = array_type.get_element_type();
+        match element_type {
+            BasicTypeEnum::IntType(t) => {
+                let vals: Vec<_> = elements.iter().map(|e| e.into_int_value()).collect();
+                t.const_array(&vals)
+            },
+            BasicTypeEnum::FloatType(t) => {
+                let vals: Vec<_> = elements.iter().map(|e| e.into_float_value()).collect();
+                t.const_array(&vals)
+            },
+            BasicTypeEnum::PointerType(t) => {
+                let vals: Vec<_> = elements.iter().map(|e| e.into_pointer_value()).collect();
+                t.const_array(&vals)
+            },
+            BasicTypeEnum::StructType(t) => {
+                let vals: Vec<_> = elements.iter().map(|e| e.into_struct_value()).collect();
+                t.const_array(&vals)
+            },
+            BasicTypeEnum::ArrayType(t) => {
+                let vals: Vec<_> = elements.iter().map(|e| e.into_array_value()).collect();
+                t.const_array(&vals)
+            },
+            BasicTypeEnum::VectorType(t) => {
+                let vals: Vec<_> = elements.iter().map(|e| e.into_vector_value()).collect();
+                t.const_array(&vals)
+            },
+            BasicTypeEnum::ScalableVectorType(t) => {
+                let vals: Vec<_> = elements.iter().map(|e| e.into_scalable_vector_value()).collect();
+                t.const_array(&vals)
+            },
+        }
     }
 
     fn undef_value(typ: BasicTypeEnum<'ctx>) -> BasicValueEnum<'ctx> {

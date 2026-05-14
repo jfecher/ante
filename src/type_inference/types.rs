@@ -47,6 +47,10 @@ pub enum Type {
     /// could use this type instead, using a UserDefinedType for them lets us reuse the existing
     /// mechanisms to automatically define their constructor and retrieve their fields.
     Tuple(Arc<Vec<Type>>),
+
+    /// A type-level U32 constant, used as the length parameter of [PrimitiveType::Array].
+    /// Has [Kind::U32].
+    U32(u32),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -93,6 +97,10 @@ pub enum PrimitiveType {
     Float(FloatKind),
     Reference(ReferenceKind),
 
+    /// Built-in fixed-size unboxed array constructor of kind `U32 -> * -> *`.
+    /// Applied form: `Type::Application(Type::ARRAY, [TypeLevelU32(n), t])`.
+    Array,
+
     /// The bottom type
     Never,
 
@@ -122,7 +130,6 @@ impl Type {
 
     pub const U8: Type = Type::Primitive(PrimitiveType::Int(IntegerKind::U8));
     pub const U16: Type = Type::Primitive(PrimitiveType::Int(IntegerKind::U16));
-    pub const U32: Type = Type::Primitive(PrimitiveType::Int(IntegerKind::U32));
     pub const U64: Type = Type::Primitive(PrimitiveType::Int(IntegerKind::U64));
     pub const USZ: Type = Type::Primitive(PrimitiveType::Int(IntegerKind::Usz));
 
@@ -133,6 +140,8 @@ impl Type {
     pub const MUT: Type = Type::Primitive(PrimitiveType::Reference(ReferenceKind::Mut));
     pub const IMM: Type = Type::Primitive(PrimitiveType::Reference(ReferenceKind::Imm));
     pub const UNIQ: Type = Type::Primitive(PrimitiveType::Reference(ReferenceKind::Uniq));
+
+    pub const ARRAY: Type = Type::Primitive(PrimitiveType::Array);
 
     pub const NO_CLOSURE_ENV: Type = Type::Primitive(PrimitiveType::NoClosureEnv);
 
@@ -145,7 +154,7 @@ impl Type {
             crate::lexer::token::IntegerKind::Isz => Type::ISZ,
             crate::lexer::token::IntegerKind::U8 => Type::U8,
             crate::lexer::token::IntegerKind::U16 => Type::U16,
-            crate::lexer::token::IntegerKind::U32 => Type::U32,
+            crate::lexer::token::IntegerKind::U32 => Type::Primitive(PrimitiveType::Int(IntegerKind::U32)),
             crate::lexer::token::IntegerKind::U64 => Type::U64,
             crate::lexer::token::IntegerKind::Usz => Type::USZ,
         }
@@ -280,13 +289,14 @@ impl Type {
             Type::Tuple(elements) => {
                 Type::Tuple(Arc::new(mapvec(elements.iter(), |t| t.follow_all_two(bindings, more_bindings))))
             },
+            Type::U32(_) => self.clone(),
         }
     }
 
     /// Similar to substitute, but substitutes `Type::Generic` instead of `Type::TypeVariable`
     pub fn substitute(&self, bindings_to_substitute: &GenericSubstitutions, bindings_in_scope: &TypeBindings) -> Type {
         match self.follow(bindings_in_scope) {
-            Type::Primitive(_) | Type::UserDefined(_) => self.clone(),
+            Type::Primitive(_) | Type::UserDefined(_) | Type::U32(_) => self.clone(),
             Type::Generic(generic) => match bindings_to_substitute.get(generic) {
                 Some(binding) => binding.clone(),
                 None => self.clone(),
@@ -409,6 +419,16 @@ impl Type {
         typ: &cst::Type, expected: Kind, resolve: &crate::name_resolution::ResolutionResult, db: &DbHandle,
         next_id: &mut u32, insert_implicit_type_vars: bool,
     ) -> Type {
+        // FIXME: Temporary: we don't have kind inference yet so type variables like `n` in `Array n t`
+        // are assumed to be types. Temporarily disable kind checking for them to allow arrays to be
+        // used until this is completed.
+        if let crate::parser::cst::TypeKind::Variable(name) = &typ.kind {
+            let origin = resolve.name_origins.get(name).copied();
+            let (t, _) =
+                Self::convert_origin_to_type(origin, db, &typ.location, |origin| Type::Generic(Generic::Named(origin)));
+            return t;
+        }
+
         let location = typ.location.clone();
         let (typ, kind) = Type::from_cst_type_helper(typ, resolve, db, next_id, insert_implicit_type_vars);
         if !expected.unifies(&kind) {
@@ -436,7 +456,7 @@ impl Type {
                     IntegerKind::Isz => Type::ISZ,
                     IntegerKind::U8 => Type::U8,
                     IntegerKind::U16 => Type::U16,
-                    IntegerKind::U32 => Type::U32,
+                    IntegerKind::U32 => Type::Primitive(PrimitiveType::Int(IntegerKind::U32)),
                     IntegerKind::U64 => Type::U64,
                     IntegerKind::Usz => Type::USZ,
                 };
@@ -529,6 +549,7 @@ impl Type {
                 db.accumulate(Diagnostic::HoleCantBeUsed { location: typ.location.clone() });
                 (Type::ERROR, Kind::Error)
             },
+            crate::parser::cst::TypeKind::IntegerConstant(v) => (Type::U32(*v), Kind::U32),
         }
     }
 
@@ -541,6 +562,7 @@ impl Type {
                 Builtin::Char => (Type::CHAR, Kind::Type),
                 Builtin::Bool => (Type::BOOL, Kind::Type),
                 Builtin::Ptr => (Type::POINTER, Kind::TypeConstructorSimple(NonZeroUsize::new(1).unwrap())),
+                Builtin::Array => (Type::ARRAY, Kind::TypeConstructorComplex(vec![Kind::U32, Kind::Type])),
                 Builtin::Never => (Type::NEVER, Kind::Type),
                 Builtin::Intrinsic => (Type::ERROR, Kind::Error),
             },
@@ -623,6 +645,7 @@ impl Type {
                         free_vars_helper(element, bindings, free_vars);
                     }
                 },
+                Type::U32(_) => (),
             }
         }
 
@@ -697,6 +720,17 @@ impl Type {
                     || constructor.reference_constructor(bindings).is_some() =>
             {
                 args.get(0)
+            },
+            _ => None,
+        }
+    }
+
+    /// If this is a `Array n t`, return its element type `t`.
+    pub fn array_element(&self, bindings: &TypeBindings) -> Option<Type> {
+        match self.follow(bindings) {
+            Type::Application(constructor, args) if args.len() == 2 => match constructor.follow(bindings) {
+                Type::Primitive(PrimitiveType::Array) => Some(args[1].clone()),
+                _ => None,
             },
             _ => None,
         }
@@ -810,6 +844,7 @@ where
                 }
                 Ok(())
             }),
+            Type::U32(n) => write!(f, "{n}"),
         }
     }
 
@@ -871,6 +906,7 @@ impl std::fmt::Display for PrimitiveType {
             PrimitiveType::Char => write!(f, "Char"),
             PrimitiveType::Never => write!(f, "Never"),
             PrimitiveType::Reference(kind) => write!(f, "{kind}"),
+            PrimitiveType::Array => write!(f, "Array"),
             PrimitiveType::NoClosureEnv => write!(f, "{NO_CLOSURE_ENV_STRING}"),
         }
     }

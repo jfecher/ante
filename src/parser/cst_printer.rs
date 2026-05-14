@@ -504,6 +504,7 @@ impl<'a> CstDisplay<'a> {
             TypeKind::Pointer => write!(f, "Ptr"),
             TypeKind::Tuple(elements) => self.fmt_tuple_type(elements, context, f),
             TypeKind::Hole => write!(f, "_"),
+            TypeKind::IntegerConstant(n) => write!(f, "{n}"),
         }
     }
 
@@ -647,6 +648,16 @@ impl<'a> CstDisplay<'a> {
             },
             Expr::Extern(extern_) => self.fmt_extern(extern_, f),
             Expr::InterpolatedString(interpolated) => self.fmt_interpolated_string(interpolated, context, f),
+            Expr::ArrayLiteral(elements) => {
+                write!(f, "[")?;
+                for (i, element) in elements.iter().enumerate() {
+                    if i != 0 {
+                        write!(f, ", ")?;
+                    }
+                    self.fmt_expr(*element, context, f)?;
+                }
+                write!(f, "]")
+            },
         }
     }
 

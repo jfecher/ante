@@ -230,6 +230,20 @@ impl Definition {
                         instr_assert_subtype!(*result, element_type, self, id, mir, "Tuple elem `{result}` != `{element_type}`");
                     }
                 },
+                Instruction::MakeArray(elements) => {
+                    let Type::Array { length, element: array_element_type } = result_type else {
+                        instr_panic!(self, id, mir, "MakeArray result is not an array, it is a(n) `{result_type}`")
+                    };
+                    let length_value = match length.as_ref() {
+                        Type::U32(n) => *n as usize,
+                        other => instr_panic!(self, id, mir, "MakeArray length is not a constant: `{other}`"),
+                    };
+                    instr_assert_eq!(length_value, elements.len(), self, id, mir, "Array type length mismatch vs the actual elements length");
+                    for element in elements {
+                        let element_type = mir.type_of_value(element, self);
+                        instr_assert_subtype!(**array_element_type, element_type, self, id, mir, "Array elem `{array_element_type}` != `{element_type}`");
+                    }
+                },
                 Instruction::StackAlloc(_) => {
                     instr_assert_subtype!(*result_type, Type::POINTER, self, id, mir, "Result type is not a pointer, it is `{result_type}`");
                 },
@@ -372,6 +386,9 @@ impl Definition {
                 },
                 Instruction::SizeOf(_) => {
                     instr_assert_subtype!(*result_type, Type::int(IntegerKind::Usz), self, id, mir, "SizeOf result must be Usz");
+                },
+                Instruction::ArrayLen(_) => {
+                    instr_assert_subtype!(*result_type, Type::int(IntegerKind::Usz), self, id, mir, "ArrayLen result must be Usz");
                 },
                 Instruction::StackAllocUninit(_) => {
                     instr_assert_subtype!(*result_type, Type::POINTER, self, id, mir, "StackAllocUninit result must be a pointer");
@@ -535,9 +552,12 @@ impl Definition {
 impl Type {
     fn contains_union_or_generic(&self) -> bool {
         match self {
-            Type::Primitive(_) => false,
+            Type::Primitive(_) | Type::U32(_) => false,
             Type::Union(_) | Type::Generic(_) => true,
             Type::Tuple(fields) => fields.iter().any(Type::contains_union_or_generic),
+            Type::Array { length, element } => {
+                length.contains_union_or_generic() || element.contains_union_or_generic()
+            },
             Type::Function(function) => {
                 function.parameters.iter().any(Type::contains_union_or_generic)
                     || function.return_type.contains_union_or_generic()

@@ -1,0 +1,14 @@
+// A type-level integer must fit in U32. Larger literals are rejected at parse time.
+big: Array 5000000000 I32 = []
+
+main () = ()
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/parser/array_length_overflow.an:2:12
+// 1 | // A type-level integer must fit in U32. Larger literals are rejected at parse time.
+// 2 | big: Array 5000000000 I32 = []	// error: 5000000000 is too large for type U32
+//   |            ^^^^^^^^^^
+// 
+// Found 1 error and 0 warnings
