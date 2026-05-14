@@ -22,8 +22,6 @@ pub use location::*;
 pub use unimplemented_item::*;
 
 /// Any diagnostic that the compiler can issue.
-///
-/// If the `hint` is `None`, it shouldn't be printed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub enum Diagnostic {
     // TODO: `message` could be an enum to save allocation costs
