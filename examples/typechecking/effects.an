@@ -58,10 +58,11 @@ main () =
 //     (log: fn String {Log} [Ptr Unit] -> Unit) "foo" {(error)}
 
 // expected stderr:
-// examples/typechecking/effects.an:11:1
-// 10 |     handler h for log v -> set v in
-// 11 |     log "test1" {h}	// error: Expected an expression but found a newline
-//    | ^^^^
+// examples/typechecking/effects.an:10:34
+//  9 | handle_basic () {Log} {Use String} =
+// 10 |     handler h for log v -> set v in	// error: Expected an expression but found a newline
+//    |                                  ^^
+// 11 |     log "test1" {h}
 // 
 // examples/typechecking/effects.an:11:18
 // 10 |     handler h for log v -> set v in
