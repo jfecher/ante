@@ -57,6 +57,18 @@ than development updates. You can also feel free to file issues or ask questions
 
 ### Building
 
+When cloning, make sure to clone submodules as well:
+
+```bash
+$ git clone --recurse-submodules https://github.com/jfecher/ante
+# or
+$ git clone https://github.com/jfecher/ante
+$ cd ante
+$ git submodule update --init
+```
+
+If you do not do this, you will get an error when compiling an Ante program from clang complaining it cannot find `aminicoro.c`.
+
 > Attention!
 >
 > The following section is a bit of date in this rewrite of the compiler!
