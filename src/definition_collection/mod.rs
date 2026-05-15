@@ -218,11 +218,24 @@ pub(crate) fn kind_of_type_definition(definition: &TypeDefinition) -> Kind {
         // TraitConstructor's accepts_arguments already handles env as an optional extra arg,
         // so we exclude it from the explicit generic count.
         let explicit_n = n.saturating_sub(1);
-        Kind::TraitConstructor(vec![Kind::Type; explicit_n])
+        let kinds = definition.generics.iter().take(explicit_n).map(kind_of_generic_param).collect();
+        Kind::TraitConstructor(kinds)
     } else if n == 0 {
         Kind::Type
-    } else {
+    } else if definition.generics.iter().all(|p| p.kind.is_none()) {
+        // Common case: all generics default to Kind::Type, no allocation needed.
         Kind::TypeConstructorSimple(NonZeroUsize::new(n).unwrap())
+    } else {
+        let kinds = definition.generics.iter().map(kind_of_generic_param).collect();
+        Kind::TypeConstructorComplex(kinds)
+    }
+}
+
+fn kind_of_generic_param(param: &crate::parser::cst::GenericParam) -> Kind {
+    use crate::parser::cst::KindAnnotation;
+    match param.kind {
+        None | Some(KindAnnotation::Type) => Kind::Type,
+        Some(KindAnnotation::U32) => Kind::U32,
     }
 }
 

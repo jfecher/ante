@@ -104,7 +104,8 @@ pub fn get_partial_type(
     next_id: &mut u32,
 ) -> Type {
     if let Pattern::TypeAnnotation(_, typ) = &context[definition.pattern] {
-        return Type::from_cst_type(typ, resolve, compiler, next_id, true);
+        let mut local_kinds = crate::type_inference::types::LocalKinds::default();
+        return Type::from_cst_type(typ, resolve, compiler, next_id, &mut local_kinds, true);
     }
 
     if let Expr::Lambda(lambda) = &context[definition.rhs] {
@@ -126,12 +127,15 @@ pub fn get_partial_type(
         let cst_function_type = cst::FunctionType { parameters, environment, return_type };
 
         let cst_fn_type = cst::Type::new(TypeKind::Function(cst_function_type), lambda_location);
-        Type::from_cst_type(&cst_fn_type, resolve, compiler, next_id, true)
+        let mut local_kinds = crate::type_inference::types::LocalKinds::default();
+        Type::from_cst_type(&cst_fn_type, resolve, compiler, next_id, &mut local_kinds, true)
     } else if let Expr::TypeAnnotation(annotation) = &context[definition.rhs] {
-        Type::from_cst_type(&annotation.rhs, resolve, compiler, next_id, true)
+        let mut local_kinds = crate::type_inference::types::LocalKinds::default();
+        Type::from_cst_type(&annotation.rhs, resolve, compiler, next_id, &mut local_kinds, true)
     } else {
         let lambda_location = context.expr_location(definition.rhs).clone();
         let hole = cst::Type::new(cst::TypeKind::Hole, lambda_location);
-        Type::from_cst_type(&hole, resolve, compiler, next_id, true)
+        let mut local_kinds = crate::type_inference::types::LocalKinds::default();
+        Type::from_cst_type(&hole, resolve, compiler, next_id, &mut local_kinds, true)
     }
 }

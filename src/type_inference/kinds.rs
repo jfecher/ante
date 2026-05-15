@@ -215,12 +215,12 @@ impl std::fmt::Display for Kind {
         };
 
         match self {
-            Kind::Type => write!(f, "*"),
+            Kind::Type => write!(f, "type"),
             Kind::TypeConstructorSimple(n) => {
                 for _ in 0..usize::from(*n) {
-                    write!(f, "* -> ")?;
+                    write!(f, "type -> ")?;
                 }
-                write!(f, "*")
+                write!(f, "type")
             },
             Kind::TypeConstructorComplex(kinds) | Kind::TraitConstructor(kinds) => {
                 for kind in kinds {
@@ -230,7 +230,7 @@ impl std::fmt::Display for Kind {
                         write!(f, "{kind} -> ")?;
                     }
                 }
-                write!(f, "*")
+                write!(f, "type")
             },
             Kind::U32 => write!(f, "U32"),
             Kind::Error => write!(f, "<Error>"),

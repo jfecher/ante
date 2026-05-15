@@ -18,8 +18,8 @@ use crate::{
 };
 
 use self::cst::{
-    Call, Cst, Definition, Expr, Import, Literal, Path, SequenceItem, TopLevelItem, TopLevelItemKind, Type,
-    TypeDefinition, TypeDefinitionBody, TypeKind,
+    Call, Cst, Definition, Expr, GenericParam, Import, KindAnnotation, Literal, Path, SequenceItem, TopLevelItem,
+    TopLevelItemKind, Type, TypeDefinition, TypeDefinitionBody, TypeKind,
 };
 
 pub mod context;
@@ -706,9 +706,51 @@ impl<'tokens> Parser<'tokens> {
         Ok(TypeDefinition { shared, name, generics, body, is_trait: false, is_effect: false })
     }
 
-    /// generics: ident*
-    fn parse_generics(&mut self) -> Vec<NameId> {
-        self.many0(Self::parse_ident_id)
+    /// generics: ( ident | '(' ident ':' kind ')' )*
+    fn parse_generics(&mut self) -> Vec<GenericParam> {
+        self.many0(Self::parse_generic_param)
+    }
+
+    /// A single generic parameter: either a bare identifier (kind defaults to `Type`)
+    /// or `( ident : kind )` to explicitly annotate the kind.
+    ///
+    /// We must be careful only to consume the opening `(` when this really is an annotated
+    /// generic parameter, since `many0` keeps calling us in contexts (like type definitions)
+    /// where a `(` might also begin something else.
+    fn parse_generic_param(&mut self) -> Result<GenericParam> {
+        match self.current_token() {
+            Token::Identifier(_) => {
+                let name = self.parse_ident_id()?;
+                Ok(GenericParam { name, kind: None })
+            },
+            Token::ParenthesisLeft
+                if matches!(self.try_peek_next_token(), Some(Token::Identifier(_)))
+                    && self.tokens.get(self.token_index + 2).map(|(t, _)| t) == Some(&Token::Colon) =>
+            {
+                self.advance();
+                let name = self.parse_ident_id()?;
+                self.expect(Token::Colon, "a `:` between the generic name and its kind")?;
+                let kind = self.parse_kind_annotation()?;
+                self.expect(Token::ParenthesisRight, "a closing `)` after the kind annotation")?;
+                Ok(GenericParam { name, kind: Some(kind) })
+            },
+            _ => self.expected("a generic parameter"),
+        }
+    }
+
+    /// kind: 'type' | 'U32'
+    fn parse_kind_annotation(&mut self) -> Result<KindAnnotation> {
+        match self.current_token() {
+            Token::Type => {
+                self.advance();
+                Ok(KindAnnotation::Type)
+            },
+            Token::IntegerType(crate::lexer::token::IntegerKind::U32) => {
+                self.advance();
+                Ok(KindAnnotation::U32)
+            },
+            _ => self.expected("a kind annotation (`type` or `U32`)"),
+        }
     }
 
     fn parse_type_body(&mut self) -> Result<TypeDefinitionBody> {
@@ -917,8 +959,25 @@ impl<'tokens> Parser<'tokens> {
         match self.current_token() {
             Token::Fn => self.parse_function_type(),
             Token::Ref | Token::Mut | Token::Imm | Token::Uniq => self.parse_reference_type(),
+            Token::Forall => self.parse_forall_type(),
             _ => self.parse_type_application(),
         }
+    }
+
+    /// forall_type: 'forall' generic_param+ '.' type
+    fn parse_forall_type(&mut self) -> Result<Type> {
+        let start = self.current_token_location();
+        self.expect(Token::Forall, "`forall` to start this polytype")?;
+
+        let generics = self.parse_generics();
+        if generics.is_empty() {
+            return self.expected("a generic parameter after `forall`");
+        }
+        self.expect(Token::MemberAccess, "a `.` to separate the generics from the body of the `forall`")?;
+
+        let body = Box::new(self.parse_type()?);
+        let location = start.to(&self.previous_token_location());
+        Ok(Type::new(TypeKind::Forall(generics, body), location))
     }
 
     /// Parses a type application or a single type argument

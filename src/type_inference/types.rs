@@ -4,6 +4,8 @@ use inc_complete::DbGet;
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 
+use std::collections::BTreeMap;
+
 use crate::{
     diagnostics::{Diagnostic, Location},
     incremental::{DbHandle, GetItem},
@@ -11,11 +13,22 @@ use crate::{
     lexer::token::{FloatKind, IntegerKind},
     name_resolution::{Origin, builtin::Builtin},
     parser::{
-        cst::{self, ReferenceKind},
-        ids::NameStore,
+        cst::{self, KindAnnotation, ReferenceKind},
+        ids::{NameId, NameStore},
     },
     type_inference::{generics::Generic, kinds::Kind},
 };
+
+/// Tracks the kind of each local type variable encountered while lowering a
+/// `cst::Type` into a `Type`
+pub(crate) type LocalKinds = BTreeMap<NameId, Kind>;
+
+pub(crate) fn kind_from_annotation(kind: KindAnnotation) -> Kind {
+    match kind {
+        KindAnnotation::Type => Kind::Type,
+        KindAnnotation::U32 => Kind::U32,
+    }
+}
 
 pub(crate) const NO_CLOSURE_ENV_STRING: &str = "NoClosureEnv";
 
@@ -390,9 +403,9 @@ impl Type {
     /// - A name [Origin] was used which does not point to a type
     pub(crate) fn from_cst_type(
         typ: &cst::Type, resolve: &crate::name_resolution::ResolutionResult, db: &DbHandle, next_id: &mut u32,
-        insert_implicit_type_vars: bool,
+        local_kinds: &mut LocalKinds, insert_implicit_type_vars: bool,
     ) -> Type {
-        Self::from_cst_type_with_kind(typ, Kind::Type, resolve, db, next_id, insert_implicit_type_vars)
+        Self::from_cst_type_with_kind(typ, Kind::Type, resolve, db, next_id, local_kinds, insert_implicit_type_vars)
     }
 
     /// Converts an ast type to a generalized Type, with any free type variables
@@ -403,7 +416,16 @@ impl Type {
         insert_implicit_type_vars: bool,
     ) -> Type {
         let mut next_id = 0;
-        let typ = Self::from_cst_type_with_kind(typ, Kind::Type, resolve, db, &mut next_id, insert_implicit_type_vars);
+        let mut local_kinds = LocalKinds::default();
+        let typ = Self::from_cst_type_with_kind(
+            typ,
+            Kind::Type,
+            resolve,
+            db,
+            &mut next_id,
+            &mut local_kinds,
+            insert_implicit_type_vars,
+        );
 
         if next_id == 0 {
             // fast track - if no type variables were created, we have nothing to replace
@@ -417,20 +439,18 @@ impl Type {
     /// Error if the converted [Kind] does not match the expected [Kind].
     fn from_cst_type_with_kind(
         typ: &cst::Type, expected: Kind, resolve: &crate::name_resolution::ResolutionResult, db: &DbHandle,
-        next_id: &mut u32, insert_implicit_type_vars: bool,
+        next_id: &mut u32, local_kinds: &mut LocalKinds, insert_implicit_type_vars: bool,
     ) -> Type {
-        // FIXME: Temporary: we don't have kind inference yet so type variables like `n` in `Array n t`
-        // are assumed to be types. Temporarily disable kind checking for them to allow arrays to be
-        // used until this is completed.
-        if let crate::parser::cst::TypeKind::Variable(name) = &typ.kind {
-            let origin = resolve.name_origins.get(name).copied();
-            let (t, _) =
-                Self::convert_origin_to_type(origin, db, &typ.location, |origin| Type::Generic(Generic::Named(origin)));
-            return t;
-        }
-
         let location = typ.location.clone();
-        let (typ, kind) = Type::from_cst_type_helper(typ, resolve, db, next_id, insert_implicit_type_vars);
+        let (typ, kind) = Type::from_cst_type_helper(
+            typ,
+            Some(&expected),
+            resolve,
+            db,
+            next_id,
+            local_kinds,
+            insert_implicit_type_vars,
+        );
         if !expected.unifies(&kind) {
             db.accumulate(Diagnostic::ExpectedKind { actual: kind, expected, location });
         }
@@ -441,10 +461,10 @@ impl Type {
     /// - The converted type
     /// - The kind of the converted type
     ///
-    /// Does not error if the returned type is not of kind [Kind::Type]
+    /// Does not error if the returned type is not of kind [Kind::Type].
     fn from_cst_type_helper(
-        typ: &cst::Type, resolve: &crate::name_resolution::ResolutionResult, db: &DbHandle, next_id: &mut u32,
-        insert_implicit_type_vars: bool,
+        typ: &cst::Type, expected: Option<&Kind>, resolve: &crate::name_resolution::ResolutionResult, db: &DbHandle,
+        next_id: &mut u32, local_kinds: &mut LocalKinds, insert_implicit_type_vars: bool,
     ) -> (Type, Kind) {
         match &typ.kind {
             crate::parser::cst::TypeKind::Integer(kind) => {
@@ -469,24 +489,36 @@ impl Type {
             crate::parser::cst::TypeKind::Char => (Type::CHAR, Kind::Type),
             crate::parser::cst::TypeKind::Named(path) => {
                 let origin = resolve.path_origins.get(path).copied();
-                Self::convert_origin_to_type(origin, db, &typ.location, Type::UserDefined)
+                Self::convert_origin_to_type(origin, db, &typ.location, local_kinds, Type::UserDefined)
             },
             crate::parser::cst::TypeKind::Variable(name) => {
                 let origin = resolve.name_origins.get(name).copied();
-                Self::convert_origin_to_type(origin, db, &typ.location, |origin| Type::Generic(Generic::Named(origin)))
+                if let (Some(expected), Some(Origin::Local(name_id))) = (expected, origin) {
+                    local_kinds.entry(name_id).or_insert_with(|| expected.clone());
+                }
+                Self::convert_origin_to_type(origin, db, &typ.location, local_kinds, |origin| {
+                    Type::Generic(Generic::Named(origin))
+                })
             },
             crate::parser::cst::TypeKind::Function(function) => {
                 let parameters = mapvec(&function.parameters, |param| {
-                    let typ = Self::from_cst_type(&param.typ, resolve, db, next_id, insert_implicit_type_vars);
+                    let typ =
+                        Self::from_cst_type(&param.typ, resolve, db, next_id, local_kinds, insert_implicit_type_vars);
                     ParameterType::new(typ, param.is_implicit)
                 });
                 let environment = if let Some(environment) = function.environment.as_ref() {
-                    Self::from_cst_type(environment, resolve, db, next_id, insert_implicit_type_vars)
+                    Self::from_cst_type(environment, resolve, db, next_id, local_kinds, insert_implicit_type_vars)
                 } else {
                     Type::NO_CLOSURE_ENV
                 };
-                let return_type =
-                    Self::from_cst_type(&function.return_type, resolve, db, next_id, insert_implicit_type_vars);
+                let return_type = Self::from_cst_type(
+                    &function.return_type,
+                    resolve,
+                    db,
+                    next_id,
+                    local_kinds,
+                    insert_implicit_type_vars,
+                );
 
                 let f = Type::Function(Arc::new(FunctionType { parameters, environment, return_type }));
                 (f, Kind::Type)
@@ -494,7 +526,8 @@ impl Type {
             crate::parser::cst::TypeKind::Error => (Type::ERROR, Kind::Error),
             crate::parser::cst::TypeKind::Unit => (Type::UNIT, Kind::Type),
             crate::parser::cst::TypeKind::Application(f, args) => {
-                let (f, f_kind) = Self::from_cst_type_helper(f, resolve, db, next_id, insert_implicit_type_vars);
+                let (f, f_kind) =
+                    Self::from_cst_type_helper(f, None, resolve, db, next_id, local_kinds, insert_implicit_type_vars);
 
                 if !f_kind.accepts_n_arguments(args.len()) {
                     let expected = f_kind.required_argument_count();
@@ -505,7 +538,15 @@ impl Type {
 
                 let mut converted_args = mapvec(args.iter().enumerate(), |(i, arg)| {
                     let expected_kind = f_kind.get_nth_parameter_kind(i);
-                    Self::from_cst_type_with_kind(arg, expected_kind, resolve, db, next_id, insert_implicit_type_vars)
+                    Self::from_cst_type_with_kind(
+                        arg,
+                        expected_kind,
+                        resolve,
+                        db,
+                        next_id,
+                        local_kinds,
+                        insert_implicit_type_vars,
+                    )
                 });
 
                 // Automatically insert a fresh type variable for the implicit env parameter
@@ -536,8 +577,9 @@ impl Type {
                 (Type::POINTER, Kind::TypeConstructorSimple(NonZeroUsize::new(1).unwrap()))
             },
             crate::parser::cst::TypeKind::Tuple(elements) => {
-                let elements =
-                    mapvec(elements, |t| Self::from_cst_type(t, resolve, db, next_id, insert_implicit_type_vars));
+                let elements = mapvec(elements, |t| {
+                    Self::from_cst_type(t, resolve, db, next_id, local_kinds, insert_implicit_type_vars)
+                });
                 (Type::Tuple(Arc::new(elements)), Kind::Type)
             },
             crate::parser::cst::TypeKind::Hole if insert_implicit_type_vars => {
@@ -550,11 +592,24 @@ impl Type {
                 (Type::ERROR, Kind::Error)
             },
             crate::parser::cst::TypeKind::IntegerConstant(v) => (Type::U32(*v), Kind::U32),
+            crate::parser::cst::TypeKind::Forall(generics, body) => {
+                // Pre-seed the listed generics with their explicit (or default `Type`) kinds.
+                // The listed names take precedence over any inferred kind: if a body use later
+                // implies a different kind, the variable case will report a kind mismatch.
+                for param in generics {
+                    let kind = param.kind.map(kind_from_annotation).unwrap_or(Kind::Type);
+                    local_kinds.insert(param.name, kind);
+                }
+                let (body, body_kind) =
+                    Self::from_cst_type_helper(body, expected, resolve, db, next_id, local_kinds, insert_implicit_type_vars);
+                (body, body_kind)
+            },
         }
     }
 
     fn convert_origin_to_type(
-        origin: Option<Origin>, db: &DbHandle, location: &Location, make_type: impl FnOnce(Origin) -> Type,
+        origin: Option<Origin>, db: &DbHandle, location: &Location, local_kinds: &LocalKinds,
+        make_type: impl FnOnce(Origin) -> Type,
     ) -> (Type, Kind) {
         match origin {
             Some(Origin::Builtin(builtin)) => match builtin {
@@ -579,6 +634,10 @@ impl Type {
                         (Type::ERROR, Kind::Type)
                     },
                 }
+            },
+            Some(origin @ Origin::Local(name)) => {
+                let kind = local_kinds.get(&name).cloned().unwrap_or(Kind::Type);
+                (make_type(origin), kind)
             },
             Some(origin) => (make_type(origin), Kind::Type),
             // Assume name resolution has already issued an error for this case

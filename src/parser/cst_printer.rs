@@ -22,7 +22,7 @@ use crate::{
 use super::{
     TopLevelContext,
     cst::{
-        Call, CompoundAssignOp, Comptime, Cst, Declaration, Definition, Do, EffectDefinition, Expr, Extern,
+        self, Call, CompoundAssignOp, Comptime, Cst, Declaration, Definition, Do, EffectDefinition, Expr, Extern,
         FunctionType, Handle, HandlePattern, If, Import, InterpolatedString, Is, Lambda, Literal, Match, MemberAccess,
         Parameter, Path, Pattern, Quoted, Reference, SequenceItem, TopLevelItem, TraitDefinition, TraitImpl, Type,
         TypeAnnotation, TypeDefinition, TypeDefinitionBody, TypeKind,
@@ -303,6 +303,23 @@ impl<'a> CstDisplay<'a> {
         self.fmt_name_helper(name, context, f, false)
     }
 
+    fn fmt_generic_param(
+        &self, param: &cst::GenericParam, context: &impl IdStore, f: &mut Formatter,
+    ) -> std::fmt::Result {
+        match param.kind {
+            Some(kind) => {
+                let kind_str = match kind {
+                    cst::KindAnnotation::Type => "type",
+                    cst::KindAnnotation::U32 => "U32",
+                };
+                write!(f, "(")?;
+                self.fmt_type_name(param.name, context, f)?;
+                write!(f, ": {kind_str})")
+            },
+            None => self.fmt_type_name(param.name, context, f),
+        }
+    }
+
     fn fmt_name_helper(
         &self, name: NameId, context: &impl IdStore, f: &mut Formatter, show_type: bool,
     ) -> std::fmt::Result {
@@ -451,7 +468,7 @@ impl<'a> CstDisplay<'a> {
 
         for generic in &type_definition.generics {
             write!(f, " ")?;
-            self.fmt_type_name(*generic, context, f)?;
+            self.fmt_generic_param(generic, context, f)?;
         }
 
         write!(f, " =")?;
@@ -505,6 +522,15 @@ impl<'a> CstDisplay<'a> {
             TypeKind::Tuple(elements) => self.fmt_tuple_type(elements, context, f),
             TypeKind::Hole => write!(f, "_"),
             TypeKind::IntegerConstant(n) => write!(f, "{n}"),
+            TypeKind::Forall(generics, body) => {
+                write!(f, "forall")?;
+                for generic in generics {
+                    write!(f, " ")?;
+                    self.fmt_generic_param(generic, context, f)?;
+                }
+                write!(f, ". ")?;
+                self.fmt_type(body, context, f)
+            },
         }
     }
 
@@ -833,14 +859,14 @@ impl<'a> CstDisplay<'a> {
 
         for generic in &trait_definition.generics {
             write!(f, " ")?;
-            self.fmt_type_name(*generic, context, f)?;
+            self.fmt_generic_param(generic, context, f)?;
         }
 
         if !trait_definition.functional_dependencies.is_empty() {
             write!(f, " ->")?;
             for generic in &trait_definition.functional_dependencies {
                 write!(f, " ")?;
-                self.fmt_type_name(*generic, context, f)?;
+                self.fmt_generic_param(generic, context, f)?;
             }
         }
 
@@ -893,7 +919,7 @@ impl<'a> CstDisplay<'a> {
 
         for generic in &effect_definition.generics {
             write!(f, " ")?;
-            self.fmt_type_name(*generic, context, f)?;
+            self.fmt_generic_param(generic, context, f)?;
         }
 
         write!(f, " with")?;

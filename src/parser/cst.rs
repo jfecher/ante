@@ -135,6 +135,9 @@ pub enum TypeKind {
 
     /// A filler type which corresponds to an unbound type variable to be inferred later
     Hole,
+
+    /// An explicit `forall (n: U32) t. T` polytype
+    Forall(Generics, Box<Type>),
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Copy, Clone, PartialOrd, Ord)]
@@ -561,7 +564,28 @@ pub struct Declaration {
     pub typ: Type,
 }
 
-pub type Generics = Vec<NameId>;
+pub type Generics = Vec<GenericParam>;
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
+pub struct GenericParam {
+    pub name: NameId,
+    /// When `None`, this parameter's kind defaults to `Type`.
+    pub kind: Option<KindAnnotation>,
+}
+
+impl GenericParam {
+    pub fn new(name: NameId) -> Self {
+        Self { name, kind: None }
+    }
+}
+
+/// Surface syntax for kind annotations on generic parameters.
+/// Limited to `Type` and `U32` for now; the latter is needed for type-level array lengths.
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone, Copy)]
+pub enum KindAnnotation {
+    Type,
+    U32,
+}
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct TraitDefinition {

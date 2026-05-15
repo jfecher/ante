@@ -770,6 +770,14 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                     self.resolve_type(element, declare_type_vars);
                 }
             },
+            TypeKind::Forall(generics, body) => {
+                // Declare the listed generics so the body resolves them as local.
+                // Like function parameters, they only need to be visible to the body.
+                self.push_local_scope();
+                self.declare_generics(generics);
+                self.resolve_type(body, declare_type_vars);
+                self.pop_local_scope();
+            },
         }
     }
 
@@ -819,7 +827,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
 
     fn declare_generics(&mut self, generics: &Generics) {
         for generic in generics {
-            self.declare_name(*generic);
+            self.declare_name(generic.name);
         }
     }
 

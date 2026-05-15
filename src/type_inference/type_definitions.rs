@@ -51,10 +51,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             self.compiler.accumulate(Diagnostic::RecursiveType { typ, location });
         }
 
-        let generics = mapvec(&definition.generics, |id| Generic::Named(Origin::Local(*id)));
+        let generics = mapvec(&definition.generics, |p| Generic::Named(Origin::Local(p.name)));
+
+        // Share kind info across all variant fields of this definition so that, e.g., two
+        // fields that mention `n` agree on `n`'s kind.
+        let mut local_kinds = Self::local_kinds_from_generics(&definition.generics);
 
         for (constructor_name, args) in constructors.iter() {
-            let actual = self.build_constructor_type(type_name, definition, &generics, args);
+            let actual = self.build_constructor_type(type_name, definition, &generics, args, &mut local_kinds);
             self.check_name(*constructor_name, &actual);
         }
     }
@@ -91,6 +95,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             cst::TypeKind::Tuple(elements) => {
                 elements.iter().any(|e| Self::type_uses_target_unboxed(e, target, resolve))
             },
+            cst::TypeKind::Forall(_, body) => Self::type_uses_target_unboxed(body, target, resolve),
             // Function types are pointer-sized, so recursion through them does not require
             // unbounded representation.
             cst::TypeKind::Function(_)
@@ -140,7 +145,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 substitutions = Self::datatype_generic_substitutions(item, &fresh_vars);
                 data_type = Type::Application(Arc::new(data_type), Arc::new(fresh_vars));
             } else {
-                let generics = mapvec(&item.generics, |id| Type::Generic(Generic::Named(Origin::Local(*id))));
+                let generics = mapvec(&item.generics, |p| Type::Generic(Generic::Named(Origin::Local(p.name))));
                 data_type = Type::Application(Arc::new(data_type), Arc::new(generics));
             }
         }
@@ -160,13 +165,13 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// generics of the type since this is what [TopLevelId::type_body] later expects.
     fn build_constructor_type<'a>(
         &mut self, type_name: TopLevelName, item: &cst::TypeDefinition, generics: &[Generic],
-        variant_args: &[cst::Type],
+        variant_args: &[cst::Type], local_kinds: &mut crate::type_inference::types::LocalKinds,
     ) -> Type {
         let (mut result, substitutions) = self.type_definition_type(type_name, item, false);
         assert!(substitutions.is_empty());
 
         let parameters = mapvec(variant_args, |arg| {
-            let param = self.from_cst_type(arg, false);
+            let param = self.from_cst_type_with_local_kinds(arg, false, local_kinds);
             types::ParameterType::explicit(param)
         });
 
@@ -218,13 +223,17 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             if effect.generics.is_empty() {
                 base
             } else {
-                let generic_args = mapvec(&effect.generics, |g| Type::Generic(Generic::Named(Origin::Local(*g))));
+                let generic_args =
+                    mapvec(&effect.generics, |g| Type::Generic(Generic::Named(Origin::Local(g.name))));
                 Type::Application(Arc::new(base), Arc::new(generic_args))
             }
         };
 
+        // Effect operations share kind information across the effect's generic params.
+        let mut local_kinds = Self::local_kinds_from_generics(&effect.generics);
+
         for declaration in &effect.body {
-            let method_type = self.from_cst_type(&declaration.typ, false);
+            let method_type = self.from_cst_type_with_local_kinds(&declaration.typ, false, &mut local_kinds);
 
             let method_type = if let Type::Function(fn_arc) = method_type {
                 let mut fn_type = Arc::unwrap_or_clone(fn_arc);
@@ -259,7 +268,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         for (method_name, method_type) in fields.iter() {
             let (implicit_arg, substitutions) = self.type_definition_type(type_name, definition, false);
             assert!(substitutions.is_empty());
-            let mut method_type = self.from_cst_type(&method_type, false);
+            // Each method is generalized independently, so it gets a fresh kind map seeded
+            // from the trait/effect's own generic annotations.
+            let mut local_kinds = Self::local_kinds_from_generics(&definition.generics);
+            let mut method_type = self.from_cst_type_with_local_kinds(&method_type, false, &mut local_kinds);
 
             if let Type::Function(fn_arc) = method_type {
                 let mut fn_type = Arc::unwrap_or_clone(fn_arc);

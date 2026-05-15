@@ -180,7 +180,7 @@ fn desugar_trait(trait_: &TraitDefinition, context: &mut DesugarContext) -> TopL
 
     // Add the `env` generic to the trait type itself
     let mut generics = trait_.generics.clone();
-    generics.push(env);
+    generics.push(cst::GenericParam::new(env));
 
     // Add `[env]` to each field type: for function types this is set as the closure environment,
     // for non-function types (e.g. sub-trait fields like `Add a`) it is appended as a type argument

@@ -34,55 +34,56 @@ a7 = choose id auto
 // 
 // (ids: _) = (error)
 // 
-// (auto: fn (error) -> _) ((x: (error))) = (x: (error)) (error)
+// (auto: fn (fn a -> a) -> a) ((x: fn a -> a)) = (x: fn a -> a) (error)
 // 
-// (auto_prime: fn (error) -> _) ((x: (error))) = (x: (error)) (x: (error))
+// (auto_prime: fn (fn a -> a) -> a) ((x: fn a -> a)) = (x: fn a -> a) (x: fn a -> a)
 // 
-// (f5: _) = (auto: fn (error) -> _) (error)
+// (f5: _) = (auto: fn (fn _ -> _) -> _) (error)
 // 
-// (poly: fn (error) -> _, _) ((f: (error))) =
-//     (f: (error)) 42 (,: fn _ _ -> _, _) (f: (error)) true
+// (poly: fn (fn a -> a) -> a, a) ((f: fn a -> a)) =
+//     (f: fn a -> a) 42 (,: fn a a -> a, a) (f: fn a -> a) true
 // 
 // (f9: _) =
-//     (f: fn (fn (error) -> _, _) [_] -> _) = (revapp: (error)) (error)
-//     (f: fn (fn (error) -> _, _) [_] -> _) (poly: fn (error) -> _, _)
+//     (f: fn (fn (fn _ -> _) -> _, _) [_] -> _) = (revapp: (error)) (error)
+//     (f: fn (fn (fn _ -> _) -> _, _) [_] -> _) (poly: fn (fn _ -> _) -> _, _)
 // 
 // (choose: fn a a -> a) ((x: a)) ((y: a)) = (x: a)
 // 
-// (a5: fn (error) -> _) = (id: fn (fn (error) -> _) -> fn (error) -> _) (auto: fn (error) -> _)
+// (a5: fn (fn _ -> _) -> _) = (id: fn (fn (fn _ -> _) -> _) -> fn (fn _ -> _) -> _) (auto: fn (fn _ -> _) -> _)
 // 
-// (a6: fn (error) -> _) = (id: fn (fn (error) -> _) -> fn (error) -> _) (auto_prime: fn (error) -> _)
+// (a6: fn (fn _ -> _) -> _) = (id: fn (fn (fn _ -> _) -> _) -> fn (fn _ -> _) -> _) (auto_prime: fn (fn _ -> _) -> _)
 // 
 // (a6_: _) = (id: fn _ -> _) (error)
 // 
-// (a7: fn (error) -> (error)) = (choose: fn (fn (error) -> (error)) (fn (error) -> (error)) -> fn (error) -> (error)) (id: fn (error) -> (error)) (auto: fn (error) -> (error))
+// (a7: fn _ -> _) = (choose: fn (fn _ -> _) (fn _ -> _) -> fn _ -> _) (id: fn _ -> _) (auto: fn (fn _ -> _) -> _)
 
 // expected stderr:
 // examples/typechecking/impredicativity.an:4:8
 // 4 | ids = [freeze id]	// error: Expected an expression but found `freeze`
 //   |        ^^^^^^
 // 
-// examples/typechecking/impredicativity.an:6:10
-// 6 | auto (x: forall a. fn a -> a) = x (freeze x)	// error: Expected a type but found `forall`
-//   |          ^^^^^^
-// 
 // examples/typechecking/impredicativity.an:6:36
 //   | // error: Expected an expression but found `freeze`
 // 6 | auto (x: forall a. fn a -> a) = x (freeze x)
 //   |                                    ^^^^^^
 // 
-// examples/typechecking/impredicativity.an:8:16
-//  8 | auto_prime (x: forall a. fn a -> a) = x x	// error: Expected a type but found `forall`
-//    |                ^^^^^^
+// examples/typechecking/impredicativity.an:8:41
+//  8 | auto_prime (x: forall a. fn a -> a) = x x	// error: Expected a but found fn a -> a
+//    |                                         ^
 // 
 // examples/typechecking/impredicativity.an:10:12
 // 10 | f5 = auto (freeze id)	// error: Expected an expression but found `freeze`
 //    |            ^^^^^^
 // 
-// examples/typechecking/impredicativity.an:15:10
-// 15 | poly (f: forall a. fn a -> a) =	// error: Expected a type but found `forall`
-//    |          ^^^^^^
-// 16 |     f 42, f true
+// examples/typechecking/impredicativity.an:16:7
+// 15 | poly (f: forall a. fn a -> a) =
+// 16 |     f 42, f true	// error: Expected an integer type but found a
+//    |       ^^
+// 
+// examples/typechecking/impredicativity.an:16:13
+// 15 | poly (f: forall a. fn a -> a) =
+// 16 |     f 42, f true	// error: Expected a but found Bool
+//    |             ^^^^
 // 
 // examples/typechecking/impredicativity.an:19:9
 // 18 | f9 =
@@ -101,4 +102,9 @@ a7 = choose id auto
 // 26 | a6_ = id (freeze auto_prime)	// error: Expected an expression but found `freeze`
 //    |           ^^^^^^
 // 
-// Found 9 errors and 0 warnings
+// examples/typechecking/impredicativity.an:28:16
+// 28 | a7 = choose id auto	// error: Expected fn _ -> _ but found fn (fn _ -> _) -> _
+//    |                ^^^^
+// 
+// Found 10 errors and 0 warnings
+

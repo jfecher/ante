@@ -1,0 +1,75 @@
+// A `U32`-kinded generic for type-level array lengths
+type Buffer (n: U32) (t: type) =
+    storage: Array n t
+
+// `type` is the default; `(t: type)` is equivalent to bare `t`
+type Pair (a: type) (b: type) =
+    fst: a
+    snd: b
+
+// Use-site inference: `n` and `t` get their kinds from `Array n t`
+get_first (arr: ref Array n t): ref t =
+    array_get_unchecked arr 0
+
+// Explicit `forall` overrides inference for an annotated signature
+take_len: forall (n: U32) t. fn (ref Array n t) -> Usz =
+    fn arr -> array_len arr
+
+// Use-site error: `n` is used both as a `U32` argument (slot 0 of Array)
+// and as a regular type (the field's own type, kind `type`).
+type Bad n t =
+    arr: Array n t
+    extra: n
+
+bad_fn (x: n) (array: Array n t) = x
+
+// Conflict between explicit annotation and inferred usage
+type Mismatch (n: type) =
+    arr: Array n I32
+
+// args: -e ast-t --no-color
+// expected exit status: 1
+// expected stdout:
+// type Buffer (n: U32) (t: type) =
+//     storage: Array n t
+// 
+// type Pair (a: type) (b: type) =
+//     fst: a
+//     snd: b
+// 
+// (get_first: fn (ref (Array n t)) -> ref t) ((arr: ref (Array n t))) : ref t =
+//     (array_get_unchecked: fn (ref (Array n t)) Usz -> ref t) (arr: ref (Array n t)) 0
+// 
+// (take_len: fn (ref (Array n t)) -> Usz) =
+//     fn (arr: ref (Array n t)) -> (array_len: fn (ref (Array n t)) -> Usz) (arr: ref (Array n t))
+// 
+// type Bad n t =
+//     arr: Array n t
+//     extra: n
+// 
+// (bad_fn: fn n (Array n t) -> n) ((x: n)) ((array: Array n t)) = (x: n)
+// 
+// type Mismatch (n: type) =
+//     arr: Array n I32
+
+// expected stderr:
+// examples/typechecking/kind_annotations.an:21:16
+// 20 | type Bad n t =
+//    |     // error: Expected a type constructor of kind U32, but found one of kind type
+// 21 |     arr: Array n t
+//    |                ^
+// 22 |     extra: n
+// 
+// examples/typechecking/kind_annotations.an:24:29
+//    | // error: Expected a type constructor of kind U32, but found one of kind type
+// 24 | bad_fn (x: n) (array: Array n t) = x
+//    |                             ^
+// 
+// examples/typechecking/kind_annotations.an:28:16
+// 27 | type Mismatch (n: type) =
+//    |     // error: Expected a type constructor of kind U32, but found one of kind type
+// 28 |     arr: Array n I32
+//    |                ^
+// 
+// Found 3 errors and 0 warnings
+

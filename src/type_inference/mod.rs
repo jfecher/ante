@@ -8,7 +8,7 @@ use crate::{
     incremental::{
         self, DbHandle, ExportedDefinitions, ExportedTypes, GetItem, Resolve, TargetPointerSize, TypeCheckSCC,
     },
-    iterator_extensions::mapvec,
+    iterator_extensions::{map_btree, mapvec},
     lexer::token::IntegerKind,
     name_resolution::{
         Origin, ResolutionResult,
@@ -24,7 +24,7 @@ use crate::{
         fresh_expr::ExtendedTopLevelContext,
         generics::Generic,
         implicits::ImplicitsContext,
-        types::{FunctionType, ParameterType, PrimitiveType, Type, TypeBindings, TypeVariableId},
+        types::{FunctionType, LocalKinds, ParameterType, PrimitiveType, Type, TypeBindings, TypeVariableId},
     },
 };
 
@@ -719,9 +719,32 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Generally, `allow_implicit_type_vars` should be false in type definitions and true
     /// in function signatures or expressions.
     fn from_cst_type(&mut self, typ: &cst::Type, allow_implicit_type_vars: bool) -> Type {
+        let mut local_kinds = crate::type_inference::types::LocalKinds::default();
+        self.from_cst_type_with_local_kinds(typ, allow_implicit_type_vars, &mut local_kinds)
+    }
+
+    /// Build an initial [LocalKinds] map seeded from the explicit kind annotations on
+    /// `generics`. Unannotated parameters default to [Kind::Type].
+    pub(crate) fn local_kinds_from_generics(generics: &cst::Generics) -> LocalKinds {
+        use crate::type_inference::{kinds::Kind, types::kind_from_annotation};
+        map_btree(generics, |g| (g.name, g.kind.map(kind_from_annotation).unwrap_or(Kind::Type)))
+    }
+
+    /// Like [from_cst_type], but threads the caller's `local_kinds` map so that kinds inferred
+    /// for type variables in this type are shared with sibling types in the same scope
+    /// (e.g., multiple fields of one constructor).
+    fn from_cst_type_with_local_kinds(
+        &mut self, typ: &cst::Type, allow_implicit_type_vars: bool, local_kinds: &mut LocalKinds,
+    ) -> Type {
         let mut next_id = self.next_type_variable_id.get();
-        let typ =
-            Type::from_cst_type(typ, self.current_resolve(), self.compiler, &mut next_id, allow_implicit_type_vars);
+        let typ = Type::from_cst_type(
+            typ,
+            self.current_resolve(),
+            self.compiler,
+            &mut next_id,
+            local_kinds,
+            allow_implicit_type_vars,
+        );
         self.next_type_variable_id.set(next_id);
         typ
     }
@@ -784,7 +807,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let mut substitutions = FxHashMap::default();
         if definition.generics.len() == replacements.len() {
             for (generic, replacement) in definition.generics.iter().zip(replacements) {
-                substitutions.insert(Generic::Named(Origin::Local(*generic)), replacement.clone());
+                substitutions.insert(Generic::Named(Origin::Local(generic.name)), replacement.clone());
             }
         }
         substitutions
