@@ -4,8 +4,8 @@
 
 ---
 
-Ante is a low-level functional language for exploring safe, shared mutability, effects, and
-other fun features. Here's a quick taste:
+Ante is a low-level functional language for exploring safe, shared mutability, algebraic
+effects, and other fun features. Here's a quick taste:
 
 ```scala
 foo (x: mut Bar) (y: ref a) {Clone a} {Fail}: a =
@@ -21,7 +21,7 @@ foo (x: mut Bar) (y: ref a) {Clone a} {Fail}: a =
 
 Ante is built upon a core of ownership and borrowing rules similar to rust but aims to
 be as readable as possible by encouraging high-level approaches that can be optimized with
-low-level details later on.
+low-level details later on. Traits and effects are merged cleanly into one feature: abilities.
 
 See the [website](https://antelang.org), [language tour](https://antelang.org/docs/language/),
 and [roadmap](https://antelang.org/docs/roadmap) for more information.
@@ -40,7 +40,7 @@ the file and any algorithms used. `src/main.rs` is a good place to start reading
 Make sure any PRs pass the tests in the `examples` directory. These tests have commands
 in them which the [goldentests](https://github.com/jfecher/golden-tests) library uses
 to run the ante compiler and check its output for each file against the expected output
-contained within comments of that file.
+contained within comments of that file. Run them with `cargo test --test goldentests`.
 
 [**Good first issues**](https://github.com/jfecher/ante/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
 to contribute to
@@ -69,41 +69,23 @@ $ git submodule update --init
 
 If you do not do this, you will get an error when compiling an Ante program from clang complaining it cannot find `aminicoro.c`.
 
-> Attention!
->
-> The following section is a bit of date in this rewrite of the compiler!
-> The rewrite currently _only_ has a single, non-optional backend for llvm 21-1!
+Ante requires LLVM 21.1 to build. If you already have it installed with sources,
+`cargo install --path .` should work directly. Otherwise, install LLVM 21.1 through your
+package manager (Linux/Mac) or build it from source via [CMake](#CMake).
 
-Ante currently ~~optionally~~ requires llvm 21.1 while building. If you already have this installed with
-sources, you may be fine building with `cargo install --path .` alone. If cargo complains
-about not finding any suitable llvm version, you can either choose to build ante without
-the llvm backend via `cargo install --path . --no-default-features` or you can build llvm from
-source via [CMake](#CMake) as covered in the next sections.
+Older LLVM versions are not supported.
 
 #### Linux and Mac
 
-The easiest method to install llvm 21.1 would be through your package manager, making sure to install any `-dev` packages
-if they are available for your distro. Once installed, if `cargo b` still cannot find the right version of llvm, you may
-need to make sure to set the `LLVM_SYS_211_PREFIX` to the path llvm was installed to:
+The easiest method to install LLVM 21.1 is through your package manager, making sure to install any `-dev` packages
+if they are available for your distro. Once installed, if `cargo b` still cannot find the right version of LLVM, you may
+need to set `LLVM_SYS_211_PREFIX` to the path LLVM was installed to:
 
 ```bash
 $ LLVM_SYS_211_PREFIX=$(llvm-config --obj-root)
 ```
 
-If your distro ships a version other than llvm 21.1 you can try changing the inkwell dependency Ante's Cargo.toml.
-This dependency controls the llvm version expected and by default it is:
-
-```toml
-inkwell = { version = "0.7.0", features = ["llvm21-1"] }
-```
-
-Change the quoted llvm portion to `"llvm-18-0"` for example to build with llvm 18.0. Also don't forget that after changing
-this version the environment variable's name will be different, using llvm 18.0 for example it would be `LLVM_SYS_180_PREFIX`.
-It is likely that versions older than this will not work since there have been API changes in LLVM itself and inkwell. 18.0 itself
-is also unverified.
-
-If this method does not work you will have to try building llvm from source via cmake. See the [CMake](#CMake) section below.
-Alternatively, you can build with only cranelift as a backend via `cargo install --path . --no-default-features`.
+If your distro does not ship LLVM 21.1, build it from source via [CMake](#CMake).
 
 ##### Nix
 
@@ -121,10 +103,9 @@ the provided overlay or play around with the compiler via `nix shell github:jfec
 
 #### Windows
 
-Note: LLVM is notoriously difficult to build on windows. If you're a windows user who has tried
-the following and still cannot build llvm, I highly recommend trying out ante without the llvm
-backend via `cargo install --path . --no-default-features`. Since the llvm binaries do not ship
-with the appropriate library files on windows, you will have to build from source via [CMake](#CMake)
+Note: LLVM is notoriously difficult to build on Windows. Since the LLVM binaries do not ship
+with the appropriate library files on Windows, you will have to build LLVM 21.1 from source via
+[CMake](#CMake).
 
 ##### CMake
 
