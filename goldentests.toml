@@ -1,3 +1,4 @@
 binary_path = "target/debug/ante"
 test_path = "examples"
 test_line_prefix = "// "
+glob = "*.an"
