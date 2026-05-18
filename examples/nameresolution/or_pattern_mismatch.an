@@ -1,0 +1,19 @@
+bad (m: Maybe I32): I32 =
+    match m
+    // `a` is bound in one alternative but not the other.
+    | Some a | None -> a
+
+main () =
+    println (bad (Maybe.Some 7))
+
+// args: --delete-binary --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/nameresolution/or_pattern_mismatch.an:4:16
+// 3 |     // `a` is bound in one alternative but not the other.
+//   |     // error: Variable a is not bound by every alternative of this OR-pattern
+// 4 |     | Some a | None -> a
+//   |                ^^^^
+// 
+// Found 1 error and 0 warnings
+

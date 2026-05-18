@@ -1095,6 +1095,17 @@ impl<'a> CstDisplay<'a> {
                 write!(f, ".")?;
                 self.fmt_name(*item_name, context, f)
             },
+            Pattern::Or(alts) => {
+                let mut first = true;
+                for alt in alts {
+                    if !first {
+                        write!(f, " | ")?;
+                    }
+                    first = false;
+                    self.fmt_pattern_atom(*alt, context, f)?;
+                }
+                Ok(())
+            },
         }
     }
 
@@ -1171,6 +1182,7 @@ impl<'a> CstDisplay<'a> {
             Error | Variable(_) | Literal(_) | MethodName { .. } => true,
             Constructor(_, args) => args.is_empty(),
             TypeAnnotation(_, _) => false,
+            Or(_) => false,
         }
     }
 

@@ -217,6 +217,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 self.unify(expected, &annotated, TypeErrorKind::TypeAnnotationMismatch, id);
                 self.check_pattern(*inner_pattern, expected);
             },
+            Pattern::Or(alts) => {
+                for alt in alts {
+                    self.check_pattern(*alt, expected);
+                }
+            },
         };
     }
 
@@ -1091,6 +1096,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             // This may be reachable on a parse error but these should only be for
             // top-level methods which should never be mutable
             Pattern::MethodName { .. } => (),
+            Pattern::Or(_) => unreachable!("`|` pattern in record_mutable_pattern"),
         }
     }
 

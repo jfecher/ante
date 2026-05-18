@@ -447,6 +447,11 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                 self.resolve_type(typ, true);
             },
             Pattern::MethodName { type_name, item_name } => self.link_existing_union_variant(*type_name, *item_name),
+            Pattern::Or(alts) => {
+                for alt in alts {
+                    self.link_existing_pattern(*alt);
+                }
+            },
         }
     }
 
@@ -729,6 +734,84 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                 self.resolve_variable(*type_name, false);
                 self.declare_name(*item_name);
             },
+            Pattern::Or(alts) => {
+                self.declare_names_in_or_pattern(alts, declare_type_vars, allow_type_based_resolution);
+            },
+        }
+    }
+
+    /// Resolve the alternatives of an OR-pattern. Each alternative is processed in its own
+    /// scratch local scope so the names it declares don't leak to siblings. After processing
+    /// every alternative we:
+    ///   1. Validate that every alternative binds the exact same set of variable names and emit
+    ///      a diagnostic for each variable that is bound by some but not all alternatives.
+    ///   2. Publish alternative 0's bindings into the surrounding scope so the case body
+    ///      resolves names through alt 0's NameIds (the canonical ones).
+    ///   3. Re-link the NameIds declared by alternatives 1+ so their origin points back to
+    ///      alt 0's canonical NameId. This is what makes pattern-derived let-bindings (which
+    ///      MIR resolves via `name_origin`) land in the same storage location regardless of
+    ///      which alternative matched at runtime.
+    fn declare_names_in_or_pattern(
+        &mut self, alts: &[PatternId], declare_type_vars: bool, allow_type_based_resolution: bool,
+    ) {
+        if alts.is_empty() {
+            return;
+        }
+
+        let mut per_alt: Vec<BTreeMap<Name, NameId>> = Vec::with_capacity(alts.len());
+        for alt in alts {
+            self.push_local_scope();
+            self.declare_names_in_pattern(*alt, declare_type_vars, allow_type_based_resolution);
+            let alt_names = self.names_in_local_scope.last().unwrap().clone();
+            self.pop_local_scope();
+            per_alt.push(alt_names);
+        }
+
+        let (canonical, others) = per_alt.split_first().unwrap();
+        let is_wildcard = |name: &Name| name.as_str() == "_";
+
+        // Check for names that appear in some alternatives but not all.
+        for (i, alt_names) in others.iter().enumerate() {
+            for name in canonical.keys() {
+                // Skip wildcards so `One a | Two a _` does not report a mismatch.
+                if is_wildcard(name) {
+                    continue;
+                }
+                if !alt_names.contains_key(name) {
+                    let alt_location = self.context.pattern_location(alts[i + 1]).clone();
+                    self.emit_diagnostic(Diagnostic::OrPatternBindingMismatch {
+                        name: name.clone(),
+                        location: alt_location.clone(),
+                    });
+                }
+            }
+            for name in alt_names.keys() {
+                if is_wildcard(name) {
+                    continue;
+                }
+                if !canonical.contains_key(name) {
+                    let canonical_location = self.context.pattern_location(alts[0]).clone();
+                    self.emit_diagnostic(Diagnostic::OrPatternBindingMismatch {
+                        name: name.clone(),
+                        location: canonical_location.clone(),
+                    });
+                }
+            }
+        }
+
+        // Publish canonical bindings into the surrounding scope.
+        let scope = self.names_in_local_scope.last_mut().unwrap();
+        for (name, name_id) in canonical {
+            scope.insert(name.clone(), *name_id);
+        }
+
+        // Re-link non-canonical NameIds so MIR sees a single canonical storage location.
+        for alt_names in others {
+            for (name, alt_id) in alt_names {
+                if let Some(canon_id) = canonical.get(name) {
+                    self.name_links.insert(*alt_id, Origin::Local(*canon_id));
+                }
+            }
         }
     }
 

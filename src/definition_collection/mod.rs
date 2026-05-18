@@ -422,6 +422,11 @@ impl<'local, 'db> Declarer<'local, 'db> {
             Pattern::MethodName { type_name, item_name } => {
                 self.declare_method(*type_name, *item_name, id, context);
             },
+            // `declare_names_in_pattern` is only for top-level patterns, which must be irrefutable
+            Pattern::Or(_) => {
+                let location = context.pattern_locations[pattern].clone();
+                self.db.accumulate(Diagnostic::InvalidPattern { location });
+            },
         }
     }
 

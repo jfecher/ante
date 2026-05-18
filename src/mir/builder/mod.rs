@@ -605,6 +605,7 @@ where
             cst::Pattern::Variable(name) | cst::Pattern::MethodName { item_name: name, .. } => {
                 Some((self.context()[*name].clone(), *name))
             },
+            cst::Pattern::Or(alts) => alts.first().and_then(|alt| self.try_find_name(*alt)),
         }
     }
 
@@ -618,6 +619,13 @@ where
             cst::Pattern::Constructor(_, arguments) => {
                 for argument in arguments.clone() {
                     self.collect_pattern_names(argument, out);
+                }
+            },
+            // Each alternative of a valid OR-pattern binds the same names, so we only
+            // need to inspect the first alternative.
+            cst::Pattern::Or(alts) => {
+                if let Some(alt) = alts.first() {
+                    self.collect_pattern_names(*alt, out);
                 }
             },
         }
@@ -987,7 +995,20 @@ where
         let int_value = self.extract_tag_value(value_being_matched);
         let start = self.current_block;
 
-        let case_blocks = mapvec(0..cases.len(), |i| (i as u32, (self.push_block_no_params(), None)));
+        // The case key must be the actual value to compare against `int_value`. For variants
+        // the tag value is the variant index; for int constants it's the constant itself.
+        let case_blocks = mapvec(cases.iter(), |case| {
+            let key = match &case.constructor {
+                Constructor::False | Constructor::Unit => 0,
+                Constructor::True => 1,
+                Constructor::Int(value) => *value as u32,
+                Constructor::Variant(_, variant_index) => *variant_index as u32,
+                // Range constructors aren't lowered through a Switch directly; if we ever
+                // encounter one here it's a compiler bug.
+                Constructor::Range(_, _) => unreachable!("Range constructor in MIR switch lowering"),
+            };
+            (key, (self.push_block_no_params(), None))
+        });
 
         let result_type = self.expr_type(match_expr);
         let end = self.push_block(vec![result_type]);
@@ -1337,6 +1358,9 @@ where
                     self.define_variable(origin, value);
                 }
             },
+            cst::Pattern::Or(_) => unreachable!(
+                "OR-patterns must be expanded by the decision tree compiler before MIR lowering"
+            ),
         }
     }
 

@@ -8,9 +8,9 @@ shared type RbTree t =
 
 balance (tree: RbTree t): RbTree t =
     match tree
-    | Tree B (Tree R (Tree R a x b) y c) z d -> Tree R (Tree B a x b) y (Tree B c z d)
-    | Tree B (Tree R a x (Tree R b y c)) z d -> Tree R (Tree B a x b) y (Tree B c z d)
-    | Tree B a x (Tree R (Tree R b y c) z d) -> Tree R (Tree B a x b) y (Tree B c z d)
+    | Tree B (Tree R (Tree R a x b) y c) z d
+    | Tree B (Tree R a x (Tree R b y c)) z d
+    | Tree B a x (Tree R (Tree R b y c) z d)
     | Tree B a x (Tree R b y (Tree R c z d)) -> Tree R (Tree B a x b) y (Tree B c z d)
     | other -> other
 

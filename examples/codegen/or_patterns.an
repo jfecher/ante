@@ -1,0 +1,87 @@
+type Shape =
+   | Point
+   | Circle I32
+   | Rect I32 I32
+   | Tri I32 I32
+
+// Top-level OR with no bindings
+classify (s: Shape): String =
+    match s
+    | Point -> "point"
+    | Circle _ -> "circle"
+    | Rect _ _ | Tri _ _ -> "polygon"
+
+// Top-level OR with a shared binding
+area (s: Shape): I32 =
+    match s
+    | Point -> 0
+    | Circle r -> 3 * r * r  // yes, PI = 3
+    | Rect a b | Tri a b -> a * b  // triangles are just squares by another name
+
+// OR with literal patterns
+small (n: I32): Bool =
+    match n
+    | 1 | 2 | 3 -> true
+    | _ -> false
+
+// Newlines can separate OR-clauses
+classify_n (n: I32): String =
+    match n % 4
+    | 0
+    | 2 -> "even"
+    | 1
+    | 3 -> "odd"
+    | _ -> "unreachable"
+
+// Ensure we can ignore variables with `_` as long as all other variables
+// are mentioned in each OR-clause
+type Wrapper =
+   | One I32
+   | Two I32 I32
+   | Three I32
+
+all_in_one_case (w: Wrapper): I32 =
+    match w
+    | One a | Two a _ | Three a -> a
+
+main () =
+    println (classify Point)
+    println (classify (Circle 7))
+    println (classify (Rect 3 4))
+    println (classify (Tri 5 6))
+    println (area Point)
+    println (area (Circle 9))
+    println (area (Rect 3 4))
+    println (area (Tri 5 6))
+    println (small 1)
+    println (small 2)
+    println (small 4)
+    println (classify_n 0)
+    println (classify_n 1)
+    println (classify_n 2)
+    println (classify_n 3)
+    println (all_in_one_case (One 11))
+    println (all_in_one_case (Two 22 99))
+    println (all_in_one_case (Three 33))
+
+// args: --delete-binary --no-color
+// expected stdout:
+// point
+// circle
+// polygon
+// polygon
+// 0
+// 243
+// 12
+// 30
+// true
+// true
+// false
+// even
+// odd
+// even
+// odd
+// 11
+// 22
+// 33
+

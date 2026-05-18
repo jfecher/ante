@@ -85,6 +85,10 @@ impl PatternId {
             Pattern::MethodName { type_name, item_name } => {
                 format!("{}.{}", context.get_name(*type_name), context.get_name(*item_name))
             },
+            Pattern::Or(alts) => match alts.first() {
+                Some(alt) => alt.name(context),
+                None => "#or".to_string(),
+            },
         }
     }
 }
@@ -530,6 +534,7 @@ pub enum Pattern {
     Constructor(PathId, Vec<PatternId>),
     TypeAnnotation(PatternId, Type),
     MethodName { type_name: NameId, item_name: NameId },
+    Or(Vec<PatternId>),
 }
 
 impl ErrorDefault for Pattern {

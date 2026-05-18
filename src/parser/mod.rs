@@ -1342,9 +1342,40 @@ impl<'tokens> Parser<'tokens> {
         self.with_pattern_id_and_location(Self::parse_pattern_inner)
     }
 
-    /// An alias for `parse_tuple_pattern` to avoid remembering which pattern has least precedence
+    /// An alias for `parse_or_pattern` to avoid remembering which pattern has least precedence
     fn parse_pattern_inner(&mut self) -> Result<Pattern> {
-        self.parse_tuple_pattern()
+        self.parse_or_pattern()
+    }
+
+    /// or_pattern: tuple_pattern ('|' tuple_pattern)*
+    fn parse_or_pattern(&mut self) -> Result<Pattern> {
+        let start_span = self.current_token_span();
+        let first = self.parse_tuple_pattern()?;
+
+        let has_pipe_next = *self.current_token() == Token::Pipe
+            || (*self.current_token() == Token::Newline && *self.peek_next_token() == Token::Pipe);
+        if !has_pipe_next {
+            return Ok(first);
+        }
+
+        let first_end = self.previous_token_span();
+        let first_location = start_span.to(&first_end).in_file(self.file_id);
+        let first_id = self.push_pattern(first, first_location);
+        let mut alts = vec![first_id];
+
+        loop {
+            if *self.current_token() == Token::Newline && *self.peek_next_token() == Token::Pipe {
+                self.accept(Token::Newline);
+            }
+            if *self.current_token() != Token::Pipe {
+                break;
+            }
+            self.advance(); // consume `|`
+            let alt = self.with_pattern_id_and_location(Self::parse_tuple_pattern)?;
+            alts.push(alt);
+        }
+
+        Ok(Pattern::Or(alts))
     }
 
     fn parse_function_parameter_pattern(&mut self) -> Result<PatternId> {

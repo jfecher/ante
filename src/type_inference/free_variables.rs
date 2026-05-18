@@ -176,6 +176,12 @@ impl FreeVars {
             cst::Pattern::MethodName { type_name: _, item_name } => {
                 self.defined_in_fn.insert(*item_name);
             },
+            cst::Pattern::Or(alts) => {
+                // Each alt of an OR-pattern binds the same names so we the first alt only.
+                if let Some(alt) = alts.first() {
+                    self.declare_pattern(*alt, checker);
+                }
+            },
         }
     }
 

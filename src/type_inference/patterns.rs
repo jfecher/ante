@@ -80,7 +80,6 @@ enum Pattern {
 
     /// Multiple patterns combined with `|` where we should match this pattern if any
     /// constituent pattern matches. e.g. `Some(3) | None` or `Some(1) | Some(2) | None`
-    #[allow(unused)]
     Or(Vec<Pattern>),
 
     /// An integer range pattern such as `1..20` which will match any integer n such that
@@ -203,6 +202,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 self.compiler.accumulate(Diagnostic::InvalidPattern { location });
                 return None;
             },
+            cst::Pattern::Or(alts) => Pattern::Or(opt_mapvec(alts, |alt| self.convert_pattern(*alt))?),
         })
     }
 
@@ -338,6 +338,46 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     }
 }
 
+/// Expand any rows that contain an OR-pattern in one of their columns into multiple rows,
+/// one per alternative. Repeats until no OR-patterns remain in any column.
+///
+/// Adapted verbatim from yorickpeterse/pattern-matching-in-rust/jacobs2021/src/lib.rs:56-108.
+fn expand_or_patterns(rows: &mut Vec<Row>) {
+    if !rows.iter().any(|r| r.columns.iter().any(|c| matches!(c.pattern, Pattern::Or(_)))) {
+        return;
+    }
+
+    let mut new_rows = Vec::with_capacity(rows.len());
+    let mut found = true;
+
+    while found {
+        found = false;
+
+        for row in rows.drain(0..) {
+            let or_pattern = row.columns.iter().enumerate().find_map(|(idx, col)| {
+                if let Pattern::Or(alts) = &col.pattern {
+                    Some((idx, col.variable_to_match, alts.clone()))
+                } else {
+                    None
+                }
+            });
+
+            if let Some((column_index, match_var, alts)) = or_pattern {
+                found = true;
+                for pattern in alts {
+                    let mut new_row = row.clone();
+                    new_row.columns[column_index] = Column::new(match_var, pattern);
+                    new_rows.push(new_row);
+                }
+            } else {
+                new_rows.push(row);
+            }
+        }
+
+        std::mem::swap(rows, &mut new_rows);
+    }
+}
+
 impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
     fn run(
         checker: &'tc mut TypeChecker<'local, 'db>, rows: Vec<Row>, pattern_type: Type, location: Location,
@@ -370,6 +410,7 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
             return Ok(DecisionTree::Failure { missing_case: true });
         }
 
+        expand_or_patterns(&mut rows);
         self.push_tests_against_bare_variables(&mut rows);
 
         // If the first row is a match-all we match it and the remaining rows are ignored.

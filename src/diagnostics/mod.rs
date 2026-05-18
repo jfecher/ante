@@ -164,6 +164,11 @@ pub enum Diagnostic {
     InvalidPattern {
         location: Location,
     },
+    /// A variable is bound by some but not all alternatives of an OR-pattern.
+    OrPatternBindingMismatch {
+        name: Name,
+        location: Location,
+    },
     Unimplemented {
         item: UnimplementedItem,
         location: Location,
@@ -474,6 +479,12 @@ impl Diagnostic {
             Diagnostic::InvalidPattern { location: _ } => {
                 format!("Invalid pattern syntax, expected a variable, constructor, or integer")
             },
+            Diagnostic::OrPatternBindingMismatch { name, location: _ } => {
+                format!(
+                    "Variable {} is not bound by every alternative of this OR-pattern",
+                    color_constant(name)
+                )
+            },
             Diagnostic::Unimplemented { item, location: _ } => {
                 format!("{item} are currently unimplemented")
             },
@@ -641,6 +652,7 @@ impl Diagnostic {
             | Diagnostic::MissingManyCases { location, .. }
             | Diagnostic::InvalidRangeInPattern { location, .. }
             | Diagnostic::InvalidPattern { location }
+            | Diagnostic::OrPatternBindingMismatch { location, .. }
             | Diagnostic::TypeMustBeKnownMemberAccess { location }
             | Diagnostic::ConstructorExpectedFoundType { location, .. }
             | Diagnostic::ImplicitNotAVariable { location }
