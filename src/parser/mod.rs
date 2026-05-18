@@ -103,6 +103,13 @@ impl<'tokens> Parser<'tokens> {
         self.current_token_span().in_file(self.file_id)
     }
 
+    /// True if the current token is `|`, or a newline immediately followed by `|`.
+    /// Used to detect the start of an or-pattern alternative or a handler/match branch.
+    fn at_pipe(&self) -> bool {
+        *self.current_token() == Token::Pipe
+            || (*self.current_token() == Token::Newline && *self.peek_next_token() == Token::Pipe)
+    }
+
     /// True if we are at (or past) the end of input
     fn at_end_of_input(&self) -> bool {
         // The +1 accounts for the last token being `Token::EndOfInput`
@@ -1352,9 +1359,7 @@ impl<'tokens> Parser<'tokens> {
         let start_span = self.current_token_span();
         let first = self.parse_tuple_pattern()?;
 
-        let has_pipe_next = *self.current_token() == Token::Pipe
-            || (*self.current_token() == Token::Newline && *self.peek_next_token() == Token::Pipe);
-        if !has_pipe_next {
+        if !self.at_pipe() {
             return Ok(first);
         }
 
@@ -1363,13 +1368,8 @@ impl<'tokens> Parser<'tokens> {
         let first_id = self.push_pattern(first, first_location);
         let mut alts = vec![first_id];
 
-        loop {
-            if *self.current_token() == Token::Newline && *self.peek_next_token() == Token::Pipe {
-                self.accept(Token::Newline);
-            }
-            if *self.current_token() != Token::Pipe {
-                break;
-            }
+        while self.at_pipe() {
+            self.accept(Token::Newline);
             self.advance(); // consume `|`
             let alt = self.with_pattern_id_and_location(Self::parse_tuple_pattern)?;
             alts.push(alt);
@@ -2134,23 +2134,11 @@ impl<'tokens> Parser<'tokens> {
             };
 
             // Allow an optional leading newline before the first `|` in the pipe-prefixed form.
-            let starts_with_pipe = *this.current_token() == Token::Pipe
-                || (*this.current_token() == Token::Newline && *this.peek_next_token() == Token::Pipe);
-
             let mut cases = Vec::new();
-            if starts_with_pipe {
-                let mut first = true;
-                loop {
-                    if *this.peek_next_token() == Token::Pipe {
-                        this.accept(Token::Newline);
-                    }
-                    if !this.accept(Token::Pipe) {
-                        if first {
-                            return this.expected("a `|` to start a handler branch");
-                        }
-                        break;
-                    }
-                    first = false;
+            if this.at_pipe() {
+                while this.at_pipe() {
+                    this.accept(Token::Newline);
+                    this.advance(); // consume `|`
                     cases.push(parse_branch(this)?);
                 }
             } else {

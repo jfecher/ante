@@ -223,8 +223,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             if effect.generics.is_empty() {
                 base
             } else {
-                let generic_args =
-                    mapvec(&effect.generics, |g| Type::Generic(Generic::Named(Origin::Local(g.name))));
+                let generic_args = mapvec(&effect.generics, |g| Type::Generic(Generic::Named(Origin::Local(g.name))));
                 Type::Application(Arc::new(base), Arc::new(generic_args))
             }
         };

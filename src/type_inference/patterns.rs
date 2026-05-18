@@ -340,10 +340,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
 /// Expand any rows that contain an OR-pattern in one of their columns into multiple rows,
 /// one per alternative. Repeats until no OR-patterns remain in any column.
-///
-/// Adapted verbatim from yorickpeterse/pattern-matching-in-rust/jacobs2021/src/lib.rs:56-108.
 fn expand_or_patterns(rows: &mut Vec<Row>) {
-    if !rows.iter().any(|r| r.columns.iter().any(|c| matches!(c.pattern, Pattern::Or(_)))) {
+    if !rows.iter().any(|row| row.columns.iter().any(|col| matches!(col.pattern, Pattern::Or(_)))) {
         return;
     }
 

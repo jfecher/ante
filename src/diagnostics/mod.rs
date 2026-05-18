@@ -480,10 +480,7 @@ impl Diagnostic {
                 format!("Invalid pattern syntax, expected a variable, constructor, or integer")
             },
             Diagnostic::OrPatternBindingMismatch { name, location: _ } => {
-                format!(
-                    "Variable {} is not bound by every alternative of this OR-pattern",
-                    color_constant(name)
-                )
+                format!("Variable {} is not bound by every alternative of this OR-pattern", color_constant(name))
             },
             Diagnostic::Unimplemented { item, location: _ } => {
                 format!("{item} are currently unimplemented")

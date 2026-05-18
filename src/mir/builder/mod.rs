@@ -1358,9 +1358,9 @@ where
                     self.define_variable(origin, value);
                 }
             },
-            cst::Pattern::Or(_) => unreachable!(
-                "OR-patterns must be expanded by the decision tree compiler before MIR lowering"
-            ),
+            cst::Pattern::Or(_) => {
+                unreachable!("OR-patterns must be expanded by the decision tree compiler before MIR lowering")
+            },
         }
     }
 

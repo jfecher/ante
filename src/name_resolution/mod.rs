@@ -177,8 +177,8 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
     }
 
     /// TODO: Check for unused names
-    fn pop_local_scope(&mut self) {
-        self.names_in_local_scope.pop();
+    fn pop_local_scope(&mut self) -> BTreeMap<Name, NameId> {
+        self.names_in_local_scope.pop().unwrap()
     }
 
     /// Declares a name in local scope.
@@ -758,46 +758,32 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             return;
         }
 
-        let mut per_alt: Vec<BTreeMap<Name, NameId>> = Vec::with_capacity(alts.len());
-        for alt in alts {
+        let names_in_each_alt = mapvec(alts, |alt| {
             self.push_local_scope();
             self.declare_names_in_pattern(*alt, declare_type_vars, allow_type_based_resolution);
-            let alt_names = self.names_in_local_scope.last().unwrap().clone();
-            self.pop_local_scope();
-            per_alt.push(alt_names);
-        }
+            self.pop_local_scope()
+        });
 
-        let (canonical, others) = per_alt.split_first().unwrap();
-        let is_wildcard = |name: &Name| name.as_str() == "_";
-
-        // Check for names that appear in some alternatives but not all.
-        for (i, alt_names) in others.iter().enumerate() {
-            for name in canonical.keys() {
-                // Skip wildcards so `One a | Two a _` does not report a mismatch.
-                if is_wildcard(name) {
-                    continue;
-                }
-                if !alt_names.contains_key(name) {
-                    let alt_location = self.context.pattern_location(alts[i + 1]).clone();
-                    self.emit_diagnostic(Diagnostic::OrPatternBindingMismatch {
-                        name: name.clone(),
-                        location: alt_location.clone(),
-                    });
-                }
+        // For each name bound by any alternative, emit one diagnostic per alt that
+        // doesn't bind it. Wildcards are skipped so `One a | Two a _` is allowed.
+        let all_names: BTreeSet<&Name> = names_in_each_alt.iter().flat_map(BTreeMap::keys).collect();
+        for name in &all_names {
+            if name.as_str() == "_" {
+                continue;
             }
-            for name in alt_names.keys() {
-                if is_wildcard(name) {
-                    continue;
-                }
-                if !canonical.contains_key(name) {
-                    let canonical_location = self.context.pattern_location(alts[0]).clone();
+            for (i, alt_names) in names_in_each_alt.iter().enumerate() {
+                if !alt_names.contains_key(*name) {
                     self.emit_diagnostic(Diagnostic::OrPatternBindingMismatch {
-                        name: name.clone(),
-                        location: canonical_location.clone(),
+                        name: (*name).clone(),
+                        location: self.context.pattern_location(alts[i]).clone(),
                     });
+                    // Emit at most one error per name to reduce error spam
+                    break;
                 }
             }
         }
+
+        let (canonical, others) = names_in_each_alt.split_first().unwrap();
 
         // Publish canonical bindings into the surrounding scope.
         let scope = self.names_in_local_scope.last_mut().unwrap();

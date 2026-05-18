@@ -600,8 +600,15 @@ impl Type {
                     let kind = param.kind.map(kind_from_annotation).unwrap_or(Kind::Type);
                     local_kinds.insert(param.name, kind);
                 }
-                let (body, body_kind) =
-                    Self::from_cst_type_helper(body, expected, resolve, db, next_id, local_kinds, insert_implicit_type_vars);
+                let (body, body_kind) = Self::from_cst_type_helper(
+                    body,
+                    expected,
+                    resolve,
+                    db,
+                    next_id,
+                    local_kinds,
+                    insert_implicit_type_vars,
+                );
                 (body, body_kind)
             },
         }

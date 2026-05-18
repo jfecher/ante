@@ -177,7 +177,7 @@ impl FreeVars {
                 self.defined_in_fn.insert(*item_name);
             },
             cst::Pattern::Or(alts) => {
-                // Each alt of an OR-pattern binds the same names so we the first alt only.
+                // Each alt binds the same names, so we only need to walk the first.
                 if let Some(alt) = alts.first() {
                     self.declare_pattern(*alt, checker);
                 }
