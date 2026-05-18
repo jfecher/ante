@@ -5,8 +5,8 @@ import Std.Vec.Vec
 
 // TODO: All functions in this file should be a method on String, but String isn't defined in this file
 
-implicit eq_string: Eq String =
-    Eq fn l r ->
+impl eq_string: Eq String with
+    (==) l r =
         l.length == r.length and
             memcmp l.data r.data (Usz l.length) == 0
 

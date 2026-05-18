@@ -82,141 +82,237 @@ fifth (_, _, _, _, e) = e
 ability Cast a b =
     cast: fn a -> b
 
-implicit cast_same: Cast a a =
-    Cast fn a -> a
+impl cast_same: Cast a a with
+    cast a = a
 
-implicit cast_ptr_usz: Cast (Ptr a) Usz =
-    Cast fn ptr -> transmute ptr
+impl cast_ptr_usz: Cast (Ptr a) Usz with
+    cast ptr = transmute ptr
 
-implicit cast_usz_ptr: Cast Usz (Ptr a) =
-    Cast fn address -> transmute address
+impl cast_usz_ptr: Cast Usz (Ptr a) with
+    cast address = transmute address
 
 // Begin wall of casts
 // TODO: Perhaps we should only expose infallible casts, forcing users to explicitly truncate otherwise
-implicit cast_u8_u16: Cast U8 U16 = Cast fn x -> intrinsic "ZeroExtend" x
-implicit cast_u8_u32: Cast U8 U32 = Cast fn x -> intrinsic "ZeroExtend" x
-implicit cast_u8_u64: Cast U8 U64 = Cast fn x -> intrinsic "ZeroExtend" x
-implicit cast_u8_usz: Cast U8 Usz = Cast fn x -> intrinsic "ZeroExtend" x
+impl cast_u8_u16: Cast U8 U16 with
+    cast x = intrinsic "ZeroExtend" x
+impl cast_u8_u32: Cast U8 U32 with
+    cast x = intrinsic "ZeroExtend" x
+impl cast_u8_u64: Cast U8 U64 with
+    cast x = intrinsic "ZeroExtend" x
+impl cast_u8_usz: Cast U8 Usz with
+    cast x = intrinsic "ZeroExtend" x
 
-implicit cast_u16_u8:  Cast U16 U8  = Cast fn x -> intrinsic "Truncate" x
-implicit cast_u16_u32: Cast U16 U32 = Cast fn x -> intrinsic "ZeroExtend" x
-implicit cast_u16_u64: Cast U16 U64 = Cast fn x -> intrinsic "ZeroExtend" x
-implicit cast_u16_usz: Cast U16 Usz = Cast fn x -> intrinsic "ZeroExtend" x
+impl cast_u16_u8: Cast U16 U8 with
+    cast x = intrinsic "Truncate" x
+impl cast_u16_u32: Cast U16 U32 with
+    cast x = intrinsic "ZeroExtend" x
+impl cast_u16_u64: Cast U16 U64 with
+    cast x = intrinsic "ZeroExtend" x
+impl cast_u16_usz: Cast U16 Usz with
+    cast x = intrinsic "ZeroExtend" x
 
-implicit cast_u32_u8:  Cast U32 U8  = Cast fn x -> intrinsic "Truncate" x
-implicit cast_u32_u16: Cast U32 U16 = Cast fn x -> intrinsic "Truncate" x
-implicit cast_u32_u64: Cast U32 U64 = Cast fn x -> intrinsic "ZeroExtend" x
-implicit cast_u32_usz: Cast U32 Usz = Cast fn x -> intrinsic "ZeroExtend" x
+impl cast_u32_u8: Cast U32 U8 with
+    cast x = intrinsic "Truncate" x
+impl cast_u32_u16: Cast U32 U16 with
+    cast x = intrinsic "Truncate" x
+impl cast_u32_u64: Cast U32 U64 with
+    cast x = intrinsic "ZeroExtend" x
+impl cast_u32_usz: Cast U32 Usz with
+    cast x = intrinsic "ZeroExtend" x
 
-implicit cast_u64_u8:  Cast U64 U8  = Cast fn x -> intrinsic "Truncate" x
-implicit cast_u64_u16: Cast U64 U16 = Cast fn x -> intrinsic "Truncate" x
-implicit cast_u64_u32: Cast U64 U32 = Cast fn x -> intrinsic "Truncate" x
-implicit cast_u64_usz: Cast U64 Usz = Cast fn x -> intrinsic "Truncate" x
+impl cast_u64_u8: Cast U64 U8 with
+    cast x = intrinsic "Truncate" x
+impl cast_u64_u16: Cast U64 U16 with
+    cast x = intrinsic "Truncate" x
+impl cast_u64_u32: Cast U64 U32 with
+    cast x = intrinsic "Truncate" x
+impl cast_u64_usz: Cast U64 Usz with
+    cast x = intrinsic "Truncate" x
 
-implicit cast_usz_u8:  Cast Usz U8  = Cast fn x -> intrinsic "Truncate" x
-implicit cast_usz_u16: Cast Usz U16 = Cast fn x -> intrinsic "Truncate" x
-implicit cast_usz_u32: Cast Usz U32 = Cast fn x -> intrinsic "Truncate" x
-implicit cast_usz_u64: Cast Usz U64 = Cast fn x -> intrinsic "ZeroExtend" x
+impl cast_usz_u8: Cast Usz U8 with
+    cast x = intrinsic "Truncate" x
+impl cast_usz_u16: Cast Usz U16 with
+    cast x = intrinsic "Truncate" x
+impl cast_usz_u32: Cast Usz U32 with
+    cast x = intrinsic "Truncate" x
+impl cast_usz_u64: Cast Usz U64 with
+    cast x = intrinsic "ZeroExtend" x
 
-implicit cast_u8_i32: Cast U8 I32 = Cast fn x -> intrinsic "ZeroExtend" x
+impl cast_u8_i32: Cast U8 I32 with
+    cast x = intrinsic "ZeroExtend" x
 
 // Signed types
-implicit cast_i8_i16: Cast I8 I16 = Cast fn x -> intrinsic "SignExtend" x
-implicit cast_i8_i32: Cast I8 I32 = Cast fn x -> intrinsic "SignExtend" x
-implicit cast_i8_i64: Cast I8 I64 = Cast fn x -> intrinsic "SignExtend" x
-implicit cast_i8_isz: Cast I8 Isz = Cast fn x -> intrinsic "SignExtend" x
+impl cast_i8_i16: Cast I8 I16 with
+    cast x = intrinsic "SignExtend" x
+impl cast_i8_i32: Cast I8 I32 with
+    cast x = intrinsic "SignExtend" x
+impl cast_i8_i64: Cast I8 I64 with
+    cast x = intrinsic "SignExtend" x
+impl cast_i8_isz: Cast I8 Isz with
+    cast x = intrinsic "SignExtend" x
 
-implicit cast_i16_i8:  Cast I16 I8  = Cast fn x -> intrinsic "Truncate" x
-implicit cast_i16_i32: Cast I16 I32 = Cast fn x -> intrinsic "SignExtend" x
-implicit cast_i16_i64: Cast I16 I64 = Cast fn x -> intrinsic "SignExtend" x
-implicit cast_i16_isz: Cast I16 Isz = Cast fn x -> intrinsic "SignExtend" x
+impl cast_i16_i8: Cast I16 I8 with
+    cast x = intrinsic "Truncate" x
+impl cast_i16_i32: Cast I16 I32 with
+    cast x = intrinsic "SignExtend" x
+impl cast_i16_i64: Cast I16 I64 with
+    cast x = intrinsic "SignExtend" x
+impl cast_i16_isz: Cast I16 Isz with
+    cast x = intrinsic "SignExtend" x
 
-implicit cast_i32_i8:  Cast I32 I8  = Cast fn x -> intrinsic "Truncate" x
-implicit cast_i32_i16: Cast I32 I16 = Cast fn x -> intrinsic "Truncate" x
-implicit cast_i32_i64: Cast I32 I64 = Cast fn x -> intrinsic "SignExtend" x
-implicit cast_i32_isz: Cast I32 Isz = Cast fn x -> intrinsic "SignExtend" x
+impl cast_i32_i8: Cast I32 I8 with
+    cast x = intrinsic "Truncate" x
+impl cast_i32_i16: Cast I32 I16 with
+    cast x = intrinsic "Truncate" x
+impl cast_i32_i64: Cast I32 I64 with
+    cast x = intrinsic "SignExtend" x
+impl cast_i32_isz: Cast I32 Isz with
+    cast x = intrinsic "SignExtend" x
 
-implicit cast_i64_i8:  Cast I64 I8  = Cast fn x -> intrinsic "Truncate" x
-implicit cast_i64_i16: Cast I64 I16 = Cast fn x -> intrinsic "Truncate" x
-implicit cast_i64_i32: Cast I64 I32 = Cast fn x -> intrinsic "Truncate" x
-implicit cast_i64_isz: Cast I64 Isz = Cast fn x -> intrinsic "Truncate" x
+impl cast_i64_i8: Cast I64 I8 with
+    cast x = intrinsic "Truncate" x
+impl cast_i64_i16: Cast I64 I16 with
+    cast x = intrinsic "Truncate" x
+impl cast_i64_i32: Cast I64 I32 with
+    cast x = intrinsic "Truncate" x
+impl cast_i64_isz: Cast I64 Isz with
+    cast x = intrinsic "Truncate" x
 
-implicit cast_isz_i8:  Cast Isz I8  = Cast fn x -> intrinsic "Truncate" x
-implicit cast_isz_i16: Cast Isz I16 = Cast fn x -> intrinsic "Truncate" x
-implicit cast_isz_i32: Cast Isz I32 = Cast fn x -> intrinsic "Truncate" x
-implicit cast_isz_i64: Cast Isz I64 = Cast fn x -> intrinsic "SignExtend" x
+impl cast_isz_i8: Cast Isz I8 with
+    cast x = intrinsic "Truncate" x
+impl cast_isz_i16: Cast Isz I16 with
+    cast x = intrinsic "Truncate" x
+impl cast_isz_i32: Cast Isz I32 with
+    cast x = intrinsic "Truncate" x
+impl cast_isz_i64: Cast Isz I64 with
+    cast x = intrinsic "SignExtend" x
 
 // Float casts
-implicit cast_i8_f32:  Cast I8  F32 = Cast fn x -> intrinsic "SignedToFloat" x
-implicit cast_i16_f32: Cast I16 F32 = Cast fn x -> intrinsic "SignedToFloat" x
-implicit cast_i32_f32: Cast I32 F32 = Cast fn x -> intrinsic "SignedToFloat" x
-implicit cast_i64_f32: Cast I64 F32 = Cast fn x -> intrinsic "SignedToFloat" x
-implicit cast_isz_f32: Cast Isz F32 = Cast fn x -> intrinsic "SignedToFloat" x
-implicit cast_i8_f64:  Cast I8  F64 = Cast fn x -> intrinsic "SignedToFloat" x
-implicit cast_i16_f64: Cast I16 F64 = Cast fn x -> intrinsic "SignedToFloat" x
-implicit cast_i32_f64: Cast I32 F64 = Cast fn x -> intrinsic "SignedToFloat" x
-implicit cast_i64_f64: Cast I64 F64 = Cast fn x -> intrinsic "SignedToFloat" x
-implicit cast_isz_f64: Cast Isz F64 = Cast fn x -> intrinsic "SignedToFloat" x
+impl cast_i8_f32: Cast I8  F32 with
+    cast x = intrinsic "SignedToFloat" x
+impl cast_i16_f32: Cast I16 F32 with
+    cast x = intrinsic "SignedToFloat" x
+impl cast_i32_f32: Cast I32 F32 with
+    cast x = intrinsic "SignedToFloat" x
+impl cast_i64_f32: Cast I64 F32 with
+    cast x = intrinsic "SignedToFloat" x
+impl cast_isz_f32: Cast Isz F32 with
+    cast x = intrinsic "SignedToFloat" x
+impl cast_i8_f64: Cast I8  F64 with
+    cast x = intrinsic "SignedToFloat" x
+impl cast_i16_f64: Cast I16 F64 with
+    cast x = intrinsic "SignedToFloat" x
+impl cast_i32_f64: Cast I32 F64 with
+    cast x = intrinsic "SignedToFloat" x
+impl cast_i64_f64: Cast I64 F64 with
+    cast x = intrinsic "SignedToFloat" x
+impl cast_isz_f64: Cast Isz F64 with
+    cast x = intrinsic "SignedToFloat" x
 
-implicit cast_u8_f32:  Cast U8  F32 = Cast fn x -> intrinsic "UnsignedToFloat" x
-implicit cast_u16_f64: Cast U16 F32 = Cast fn x -> intrinsic "UnsignedToFloat" x
-implicit cast_u32_f64: Cast U32 F32 = Cast fn x -> intrinsic "UnsignedToFloat" x
-implicit cast_u64_f64: Cast U64 F32 = Cast fn x -> intrinsic "UnsignedToFloat" x
-implicit cast_usz_f64: Cast Usz F32 = Cast fn x -> intrinsic "UnsignedToFloat" x
-implicit cast_u8_f64:  Cast U8  F64 = Cast fn x -> intrinsic "UnsignedToFloat" x
-implicit cast_u16_f32: Cast U16 F64 = Cast fn x -> intrinsic "UnsignedToFloat" x
-implicit cast_u32_f32: Cast U32 F64 = Cast fn x -> intrinsic "UnsignedToFloat" x
-implicit cast_u64_f32: Cast U64 F64 = Cast fn x -> intrinsic "UnsignedToFloat" x
-implicit cast_usz_f32: Cast Usz F64 = Cast fn x -> intrinsic "UnsignedToFloat" x
+impl cast_u8_f32: Cast U8  F32 with
+    cast x = intrinsic "UnsignedToFloat" x
+impl cast_u16_f64: Cast U16 F32 with
+    cast x = intrinsic "UnsignedToFloat" x
+impl cast_u32_f64: Cast U32 F32 with
+    cast x = intrinsic "UnsignedToFloat" x
+impl cast_u64_f64: Cast U64 F32 with
+    cast x = intrinsic "UnsignedToFloat" x
+impl cast_usz_f64: Cast Usz F32 with
+    cast x = intrinsic "UnsignedToFloat" x
+impl cast_u8_f64: Cast U8  F64 with
+    cast x = intrinsic "UnsignedToFloat" x
+impl cast_u16_f32: Cast U16 F64 with
+    cast x = intrinsic "UnsignedToFloat" x
+impl cast_u32_f32: Cast U32 F64 with
+    cast x = intrinsic "UnsignedToFloat" x
+impl cast_u64_f32: Cast U64 F64 with
+    cast x = intrinsic "UnsignedToFloat" x
+impl cast_usz_f32: Cast Usz F64 with
+    cast x = intrinsic "UnsignedToFloat" x
 
-implicit cast_f32_i8:  Cast F32 I8  = Cast fn x -> intrinsic "FloatToSigned" x
-implicit cast_f32_i16: Cast F32 I16 = Cast fn x -> intrinsic "FloatToSigned" x
-implicit cast_f32_i32: Cast F32 I32 = Cast fn x -> intrinsic "FloatToSigned" x
-implicit cast_f32_i64: Cast F32 I64 = Cast fn x -> intrinsic "FloatToSigned" x
-implicit cast_f32_isz: Cast F32 Isz = Cast fn x -> intrinsic "FloatToSigned" x
-implicit cast_f64_i8:  Cast F64 I8  = Cast fn x -> intrinsic "FloatToSigned" x
-implicit cast_f64_i16: Cast F64 I16 = Cast fn x -> intrinsic "FloatToSigned" x
-implicit cast_f64_i32: Cast F64 I32 = Cast fn x -> intrinsic "FloatToSigned" x
-implicit cast_f64_i64: Cast F64 I64 = Cast fn x -> intrinsic "FloatToSigned" x
-implicit cast_f64_isz: Cast F64 Isz = Cast fn x -> intrinsic "FloatToSigned" x
+impl cast_f32_i8: Cast F32 I8 with
+    cast x = intrinsic "FloatToSigned" x
+impl cast_f32_i16: Cast F32 I16 with
+    cast x = intrinsic "FloatToSigned" x
+impl cast_f32_i32: Cast F32 I32 with
+    cast x = intrinsic "FloatToSigned" x
+impl cast_f32_i64: Cast F32 I64 with
+    cast x = intrinsic "FloatToSigned" x
+impl cast_f32_isz: Cast F32 Isz with
+    cast x = intrinsic "FloatToSigned" x
+impl cast_f64_i8: Cast F64 I8 with
+    cast x = intrinsic "FloatToSigned" x
+impl cast_f64_i16: Cast F64 I16 with
+    cast x = intrinsic "FloatToSigned" x
+impl cast_f64_i32: Cast F64 I32 with
+    cast x = intrinsic "FloatToSigned" x
+impl cast_f64_i64: Cast F64 I64 with
+    cast x = intrinsic "FloatToSigned" x
+impl cast_f64_isz: Cast F64 Isz with
+    cast x = intrinsic "FloatToSigned" x
 
-implicit cast_f32_u8:  Cast F32 U8  = Cast fn x -> intrinsic "FloatToUnsigned" x
-implicit cast_f32_u16: Cast F32 U16 = Cast fn x -> intrinsic "FloatToUnsigned" x
-implicit cast_f32_u32: Cast F32 U32 = Cast fn x -> intrinsic "FloatToUnsigned" x
-implicit cast_f32_u64: Cast F32 U64 = Cast fn x -> intrinsic "FloatToUnsigned" x
-implicit cast_f32_usz: Cast F32 Usz = Cast fn x -> intrinsic "FloatToUnsigned" x
-implicit cast_f64_u8:  Cast F64 U8  = Cast fn x -> intrinsic "FloatToUnsigned" x
-implicit cast_f64_u16: Cast F64 U16 = Cast fn x -> intrinsic "FloatToUnsigned" x
-implicit cast_f64_u32: Cast F64 U32 = Cast fn x -> intrinsic "FloatToUnsigned" x
-implicit cast_f64_u64: Cast F64 U64 = Cast fn x -> intrinsic "FloatToUnsigned" x
-implicit cast_f64_usz: Cast F64 Usz = Cast fn x -> intrinsic "FloatToUnsigned" x
+impl cast_f32_u8: Cast F32 U8 with
+    cast x = intrinsic "FloatToUnsigned" x
+impl cast_f32_u16: Cast F32 U16 with
+    cast x = intrinsic "FloatToUnsigned" x
+impl cast_f32_u32: Cast F32 U32 with
+    cast x = intrinsic "FloatToUnsigned" x
+impl cast_f32_u64: Cast F32 U64 with
+    cast x = intrinsic "FloatToUnsigned" x
+impl cast_f32_usz: Cast F32 Usz with
+    cast x = intrinsic "FloatToUnsigned" x
+impl cast_f64_u8: Cast F64 U8 with
+    cast x = intrinsic "FloatToUnsigned" x
+impl cast_f64_u16: Cast F64 U16 with
+    cast x = intrinsic "FloatToUnsigned" x
+impl cast_f64_u32: Cast F64 U32 with
+    cast x = intrinsic "FloatToUnsigned" x
+impl cast_f64_u64: Cast F64 U64 with
+    cast x = intrinsic "FloatToUnsigned" x
+impl cast_f64_usz: Cast F64 Usz with
+    cast x = intrinsic "FloatToUnsigned" x
 
-implicit cast_f64_f32: Cast F64 F32 = Cast fn x -> intrinsic "FloatDemote" x
-implicit cast_f32_f64: Cast F32 F64 = Cast fn x -> intrinsic "FloatPromote" x
+impl cast_f64_f32: Cast F64 F32 with
+    cast x = intrinsic "FloatDemote" x
+impl cast_f32_f64: Cast F32 F64 with
+    cast x = intrinsic "FloatPromote" x
 
 // x -> Char casts
-implicit cast_i8_char: Cast I8 Char   = Cast transmute
-implicit cast_i16_char: Cast I16 Char = Cast fn x -> intrinsic "Truncate" x
-implicit cast_i32_char: Cast I32 Char = Cast fn x -> intrinsic "Truncate" x
-implicit cast_i64_char: Cast I64 Char = Cast fn x -> intrinsic "Truncate" x
-implicit cast_isz_char: Cast Isz Char = Cast fn x -> intrinsic "Truncate" x
+impl cast_i8_char: Cast I8 Char with
+    cast = transmute
+impl cast_i16_char: Cast I16 Char with
+    cast x = intrinsic "Truncate" x
+impl cast_i32_char: Cast I32 Char with
+    cast x = intrinsic "Truncate" x
+impl cast_i64_char: Cast I64 Char with
+    cast x = intrinsic "Truncate" x
+impl cast_isz_char: Cast Isz Char with
+    cast x = intrinsic "Truncate" x
 
-implicit cast_u8_char: Cast U8 Char   = Cast transmute
-implicit cast_u16_char: Cast U16 Char = Cast fn x -> intrinsic "Truncate" x
-implicit cast_u32_char: Cast U32 Char = Cast fn x -> intrinsic "Truncate" x
-implicit cast_u64_char: Cast U64 Char = Cast fn x -> intrinsic "Truncate" x
-implicit cast_usz_char: Cast Usz Char = Cast fn x -> intrinsic "Truncate" x
+impl cast_u8_char: Cast U8 Char with
+    cast = transmute
+impl cast_u16_char: Cast U16 Char with
+    cast x = intrinsic "Truncate" x
+impl cast_u32_char: Cast U32 Char with
+    cast x = intrinsic "Truncate" x
+impl cast_u64_char: Cast U64 Char with
+    cast x = intrinsic "Truncate" x
+impl cast_usz_char: Cast Usz Char with
+    cast x = intrinsic "Truncate" x
 
 // Other casts: TODO fill in
-implicit cast_i32_usz: Cast I32 Usz = Cast fn x ->
-    // TODO: Review. Does this match C?
-    transmute (cast x : Isz)
+impl cast_i32_usz: Cast I32 Usz with
+    cast x =
+        // TODO: Review. Does this match C?
+        transmute (cast x : Isz)
 
-implicit cast_char_i32: Cast Char I32 = Cast fn x -> intrinsic "ZeroExtend" x
-implicit cast_char_u64: Cast Char U64 = Cast fn x -> intrinsic "ZeroExtend" x
+impl cast_char_i32: Cast Char I32 with
+    cast x = intrinsic "ZeroExtend" x
+impl cast_char_u64: Cast Char U64 with
+    cast x = intrinsic "ZeroExtend" x
 
-implicit cast_bool_i32: Cast Bool I32 =
-    Cast fn b -> if b then 1 else 0
+impl cast_bool_i32: Cast Bool I32 with
+    cast b = if b then 1 else 0
 
 // TODO: This `Cast I32 String` machinery is temporary. We should unify
 // `Cast x String` and `Print x` into a single `Display` ability
@@ -225,8 +321,8 @@ count_digits (x: U64): U32 =
         if x < 10 then sum
         else recur (x / 10) (sum + 1)
 
-implicit cast_i32_string: Cast I32 String =
-    Cast fn x ->
+impl cast_i32_string: Cast I32 String with
+    cast x =
         x = I64 x
         is_neg = x < 0
         abs = if is_neg then 0 - x else x
@@ -255,78 +351,136 @@ implicit cast_i32_string: Cast I32 String =
 ability TryCast a b =
     try_cast: fn a -> Maybe b
 
-implicit try_cast_from_cast {Cast a b}: TryCast a b =
-    TryCast fn a -> Some (cast a)
+impl try_cast_from_cast {Cast a b}: TryCast a b with
+    try_cast a = Some (cast a)
 
 
 // // Huge block of intrinsic numeric operators incoming
 ability Add n = (+): fn n n -> n
-implicit add_i8: Add I8 = Add fn x y -> intrinsic "AddInt" x y
-implicit add_i16: Add I16 = Add fn x y -> intrinsic "AddInt" x y
-implicit add_i32: Add I32 = Add fn x y -> intrinsic "AddInt" x y
-implicit add_i64: Add I64 = Add fn x y -> intrinsic "AddInt" x y
-implicit add_isz: Add Isz = Add fn x y -> intrinsic "AddInt" x y
-implicit add_u8: Add U8 = Add fn x y -> intrinsic "AddInt" x y
-implicit add_u16: Add U16 = Add fn x y -> intrinsic "AddInt" x y
-implicit add_u32: Add U32 = Add fn x y -> intrinsic "AddInt" x y
-implicit add_u64: Add U64 = Add fn x y -> intrinsic "AddInt" x y
-implicit add_usz: Add Usz = Add fn x y -> intrinsic "AddInt" x y
-implicit add_f32: Add F32 = Add fn x y -> intrinsic "AddFloat" x y
-implicit add_f64: Add F64 = Add fn x y -> intrinsic "AddFloat" x y
+impl add_i8: Add I8 with
+    (+) x y = intrinsic "AddInt" x y
+impl add_i16: Add I16 with
+    (+) x y = intrinsic "AddInt" x y
+impl add_i32: Add I32 with
+    (+) x y = intrinsic "AddInt" x y
+impl add_i64: Add I64 with
+    (+) x y = intrinsic "AddInt" x y
+impl add_isz: Add Isz with
+    (+) x y = intrinsic "AddInt" x y
+impl add_u8: Add U8 with
+    (+) x y = intrinsic "AddInt" x y
+impl add_u16: Add U16 with
+    (+) x y = intrinsic "AddInt" x y
+impl add_u32: Add U32 with
+    (+) x y = intrinsic "AddInt" x y
+impl add_u64: Add U64 with
+    (+) x y = intrinsic "AddInt" x y
+impl add_usz: Add Usz with
+    (+) x y = intrinsic "AddInt" x y
+impl add_f32: Add F32 with
+    (+) x y = intrinsic "AddFloat" x y
+impl add_f64: Add F64 with
+    (+) x y = intrinsic "AddFloat" x y
 
 ability Sub n = (-): fn n n -> n
-implicit sub_i8: Sub I8 = Sub fn x y -> intrinsic "SubInt" x y
-implicit sub_i16: Sub I16 = Sub fn x y -> intrinsic "SubInt" x y
-implicit sub_i32: Sub I32 = Sub fn x y -> intrinsic "SubInt" x y
-implicit sub_i64: Sub I64 = Sub fn x y -> intrinsic "SubInt" x y
-implicit sub_isz: Sub Isz = Sub fn x y -> intrinsic "SubInt" x y
-implicit sub_u8: Sub U8 = Sub fn x y -> intrinsic "SubInt" x y
-implicit sub_u16: Sub U16 = Sub fn x y -> intrinsic "SubInt" x y
-implicit sub_u32: Sub U32 = Sub fn x y -> intrinsic "SubInt" x y
-implicit sub_u64: Sub U64 = Sub fn x y -> intrinsic "SubInt" x y
-implicit sub_usz: Sub Usz = Sub fn x y -> intrinsic "SubInt" x y
-implicit sub_f32: Sub F32 = Sub fn x y -> intrinsic "SubFloat" x y
-implicit sub_f64: Sub F64 = Sub fn x y -> intrinsic "SubFloat" x y
+impl sub_i8: Sub I8 with
+    (-) x y = intrinsic "SubInt" x y
+impl sub_i16: Sub I16 with
+    (-) x y = intrinsic "SubInt" x y
+impl sub_i32: Sub I32 with
+    (-) x y = intrinsic "SubInt" x y
+impl sub_i64: Sub I64 with
+    (-) x y = intrinsic "SubInt" x y
+impl sub_isz: Sub Isz with
+    (-) x y = intrinsic "SubInt" x y
+impl sub_u8: Sub U8 with
+    (-) x y = intrinsic "SubInt" x y
+impl sub_u16: Sub U16 with
+    (-) x y = intrinsic "SubInt" x y
+impl sub_u32: Sub U32 with
+    (-) x y = intrinsic "SubInt" x y
+impl sub_u64: Sub U64 with
+    (-) x y = intrinsic "SubInt" x y
+impl sub_usz: Sub Usz with
+    (-) x y = intrinsic "SubInt" x y
+impl sub_f32: Sub F32 with
+    (-) x y = intrinsic "SubFloat" x y
+impl sub_f64: Sub F64 with
+    (-) x y = intrinsic "SubFloat" x y
 
 ability Mul n = (*): fn n n -> n
-implicit mul_i8: Mul I8 = Mul fn x y -> intrinsic "MulInt" x y
-implicit mul_i16: Mul I16 = Mul fn x y -> intrinsic "MulInt" x y
-implicit mul_i32: Mul I32 = Mul fn x y -> intrinsic "MulInt" x y
-implicit mul_i64: Mul I64 = Mul fn x y -> intrinsic "MulInt" x y
-implicit mul_isz: Mul Isz = Mul fn x y -> intrinsic "MulInt" x y
-implicit mul_u8: Mul U8 = Mul fn x y -> intrinsic "MulInt" x y
-implicit mul_u16: Mul U16 = Mul fn x y -> intrinsic "MulInt" x y
-implicit mul_u32: Mul U32 = Mul fn x y -> intrinsic "MulInt" x y
-implicit mul_u64: Mul U64 = Mul fn x y -> intrinsic "MulInt" x y
-implicit mul_usz: Mul Usz = Mul fn x y -> intrinsic "MulInt" x y
-implicit mul_f32: Mul F32 = Mul fn x y -> intrinsic "MulFloat" x y
-implicit mul_f64: Mul F64 = Mul fn x y -> intrinsic "MulFloat" x y
+impl mul_i8: Mul I8 with
+    (*) x y = intrinsic "MulInt" x y
+impl mul_i16: Mul I16 with
+    (*) x y = intrinsic "MulInt" x y
+impl mul_i32: Mul I32 with
+    (*) x y = intrinsic "MulInt" x y
+impl mul_i64: Mul I64 with
+    (*) x y = intrinsic "MulInt" x y
+impl mul_isz: Mul Isz with
+    (*) x y = intrinsic "MulInt" x y
+impl mul_u8: Mul U8 with
+    (*) x y = intrinsic "MulInt" x y
+impl mul_u16: Mul U16 with
+    (*) x y = intrinsic "MulInt" x y
+impl mul_u32: Mul U32 with
+    (*) x y = intrinsic "MulInt" x y
+impl mul_u64: Mul U64 with
+    (*) x y = intrinsic "MulInt" x y
+impl mul_usz: Mul Usz with
+    (*) x y = intrinsic "MulInt" x y
+impl mul_f32: Mul F32 with
+    (*) x y = intrinsic "MulFloat" x y
+impl mul_f64: Mul F64 with
+    (*) x y = intrinsic "MulFloat" x y
 
 ability Div n = (/): fn n n -> n
-implicit div_i8: Div I8  = Div fn x y -> intrinsic "DivSigned" x y
-implicit div_i16: Div I16 = Div fn x y -> intrinsic "DivSigned" x y
-implicit div_i32: Div I32 = Div fn x y -> intrinsic "DivSigned" x y
-implicit div_i64: Div I64 = Div fn x y -> intrinsic "DivSigned" x y
-implicit div_isz: Div Isz = Div fn x y -> intrinsic "DivSigned" x y
-implicit div_u8: Div U8  = Div fn x y -> intrinsic "DivUnsigned" x y
-implicit div_u16: Div U16 = Div fn x y -> intrinsic "DivUnsigned" x y
-implicit div_u32: Div U32 = Div fn x y -> intrinsic "DivUnsigned" x y
-implicit div_u64: Div U64 = Div fn x y -> intrinsic "DivUnsigned" x y
-implicit div_usz: Div Usz = Div fn x y -> intrinsic "DivUnsigned" x y
-implicit div_f32: Div F32 = Div fn x y -> intrinsic "DivFloat" x y
-implicit div_f64: Div F64 = Div fn x y -> intrinsic "DivFloat" x y
+impl div_i8: Div I8 with
+    (/) x y = intrinsic "DivSigned" x y
+impl div_i16: Div I16 with
+    (/) x y = intrinsic "DivSigned" x y
+impl div_i32: Div I32 with
+    (/) x y = intrinsic "DivSigned" x y
+impl div_i64: Div I64 with
+    (/) x y = intrinsic "DivSigned" x y
+impl div_isz: Div Isz with
+    (/) x y = intrinsic "DivSigned" x y
+impl div_u8: Div U8 with
+    (/) x y = intrinsic "DivUnsigned" x y
+impl div_u16: Div U16 with
+    (/) x y = intrinsic "DivUnsigned" x y
+impl div_u32: Div U32 with
+    (/) x y = intrinsic "DivUnsigned" x y
+impl div_u64: Div U64 with
+    (/) x y = intrinsic "DivUnsigned" x y
+impl div_usz: Div Usz with
+    (/) x y = intrinsic "DivUnsigned" x y
+impl div_f32: Div F32 with
+    (/) x y = intrinsic "DivFloat" x y
+impl div_f64: Div F64 with
+    (/) x y = intrinsic "DivFloat" x y
 
 ability Mod n = (%): fn n n -> n
-implicit mod_i8: Mod I8  = Mod fn x y -> intrinsic "ModSigned" x y
-implicit mod_i16: Mod I16 = Mod fn x y -> intrinsic "ModSigned" x y
-implicit mod_i32: Mod I32 = Mod fn x y -> intrinsic "ModSigned" x y
-implicit mod_i64: Mod I64 = Mod fn x y -> intrinsic "ModSigned" x y
-implicit mod_isz: Mod Isz = Mod fn x y -> intrinsic "ModSigned" x y
-implicit mod_u8: Mod U8  = Mod fn x y -> intrinsic "ModUnsigned" x y
-implicit mod_u16: Mod U16 = Mod fn x y -> intrinsic "ModUnsigned" x y
-implicit mod_u32: Mod U32 = Mod fn x y -> intrinsic "ModUnsigned" x y
-implicit mod_u64: Mod U64 = Mod fn x y -> intrinsic "ModUnsigned" x y
-implicit mod_usz: Mod Usz = Mod fn x y -> intrinsic "ModUnsigned" x y
+impl mod_i8: Mod I8 with
+    (%) x y = intrinsic "ModSigned" x y
+impl mod_i16: Mod I16 with
+    (%) x y = intrinsic "ModSigned" x y
+impl mod_i32: Mod I32 with
+    (%) x y = intrinsic "ModSigned" x y
+impl mod_i64: Mod I64 with
+    (%) x y = intrinsic "ModSigned" x y
+impl mod_isz: Mod Isz with
+    (%) x y = intrinsic "ModSigned" x y
+impl mod_u8: Mod U8 with
+    (%) x y = intrinsic "ModUnsigned" x y
+impl mod_u16: Mod U16 with
+    (%) x y = intrinsic "ModUnsigned" x y
+impl mod_u32: Mod U32 with
+    (%) x y = intrinsic "ModUnsigned" x y
+impl mod_u64: Mod U64 with
+    (%) x y = intrinsic "ModUnsigned" x y
+impl mod_usz: Mod Usz with
+    (%) x y = intrinsic "ModUnsigned" x y
 // Cranelift backend does not support floating-point remainder or modulus
 
 
@@ -336,32 +490,46 @@ implicit mod_usz: Mod Usz = Mod fn x y -> intrinsic "ModUnsigned" x y
 
 
 ability Eq t = (==): fn t t -> Bool
-implicit eq_i8: Eq I8 = Eq fn x y -> intrinsic "EqInt" x y
-implicit eq_i16: Eq I16 = Eq fn x y -> intrinsic "EqInt" x y
-implicit eq_i32: Eq I32 = Eq fn x y -> intrinsic "EqInt" x y
-implicit eq_i64: Eq I64 = Eq fn x y -> intrinsic "EqInt" x y
-implicit eq_isz: Eq Isz = Eq fn x y -> intrinsic "EqInt" x y
-implicit eq_u8: Eq U8 = Eq fn x y -> intrinsic "EqInt" x y
-implicit eq_u16: Eq U16 = Eq fn x y -> intrinsic "EqInt" x y
-implicit eq_u32: Eq U32 = Eq fn x y -> intrinsic "EqInt" x y
-implicit eq_u64: Eq U64 = Eq fn x y -> intrinsic "EqInt" x y
-implicit eq_usz: Eq Usz = Eq fn x y -> intrinsic "EqInt" x y
-implicit eq_f32: Eq F32 = Eq fn x y -> intrinsic "EqFloat" x y
-implicit eq_f64: Eq F64 = Eq fn x y -> intrinsic "EqFloat" x y
+impl eq_i8: Eq I8 with
+    (==) x y = intrinsic "EqInt" x y
+impl eq_i16: Eq I16 with
+    (==) x y = intrinsic "EqInt" x y
+impl eq_i32: Eq I32 with
+    (==) x y = intrinsic "EqInt" x y
+impl eq_i64: Eq I64 with
+    (==) x y = intrinsic "EqInt" x y
+impl eq_isz: Eq Isz with
+    (==) x y = intrinsic "EqInt" x y
+impl eq_u8: Eq U8 with
+    (==) x y = intrinsic "EqInt" x y
+impl eq_u16: Eq U16 with
+    (==) x y = intrinsic "EqInt" x y
+impl eq_u32: Eq U32 with
+    (==) x y = intrinsic "EqInt" x y
+impl eq_u64: Eq U64 with
+    (==) x y = intrinsic "EqInt" x y
+impl eq_usz: Eq Usz with
+    (==) x y = intrinsic "EqInt" x y
+impl eq_f32: Eq F32 with
+    (==) x y = intrinsic "EqFloat" x y
+impl eq_f64: Eq F64 with
+    (==) x y = intrinsic "EqFloat" x y
 
-implicit eq_char: Eq Char = Eq fn (x: Char) (y: Char) -> intrinsic "EqInt" x y
-implicit eq_bool: Eq Bool = Eq fn (x: Bool) (y: Bool) -> intrinsic "EqInt" x y
+impl eq_char: Eq Char with
+    (==) (x: Char) (y: Char) = intrinsic "EqInt" x y
+impl eq_bool: Eq Bool with
+    (==) (x: Bool) (y: Bool) = intrinsic "EqInt" x y
 
 // References are equal if their elements are equal
-implicit eq_ref {Eq t}: Eq (ref t) =
-    Eq fn l r -> deref l == deref r
+impl eq_ref {Eq t}: Eq (ref t) with
+    (==) l r = deref l == deref r
 
 // Pointers are equal if their addresses are equal
-implicit eq_ptr: Eq (Ptr t) =
-    Eq fn l r -> (transmute l : Usz) == transmute r
+impl eq_ptr: Eq (Ptr t) with
+    (==) l r = (transmute l : Usz) == transmute r
 
-implicit eq_maybe {Eq e}: Eq (Maybe e) =
-    Eq fn l r ->
+impl eq_maybe {Eq e}: Eq (Maybe e) with
+    (==) l r =
         match l, r
         | Some lv, Some rv -> lv == rv
         | None, None -> true
@@ -372,11 +540,11 @@ implicit eq_maybe {Eq e}: Eq (Maybe e) =
 ability Not t =
     (not): fn t -> t
 
-implicit not_bool: Not Bool =
-    Not fn b -> if b then false else true
+impl not_bool: Not Bool with
+    (not) b = if b then false else true
 
-implicit not_i32: Not I32 =
-    Not fn x -> intrinsic "BitwiseNot" x
+impl not_i32: Not I32 with
+    (not) x = intrinsic "BitwiseNot" x
 
 ability Cmp a =
     (<): fn a a -> Bool
@@ -386,20 +554,32 @@ ability Cmp a =
 (<=) (a: t) (b: t) {Cmp t} = not (b < a)
 (>=) (a: t) (b: t) {Cmp t} = not (a < b)
 
-implicit cmp_i8: Cmp I8  = Cmp fn x y -> intrinsic "LessSigned" x y
-implicit cmp_i16: Cmp I16 = Cmp fn x y -> intrinsic "LessSigned" x y
-implicit cmp_i32: Cmp I32 = Cmp fn x y -> intrinsic "LessSigned" x y
-implicit cmp_i64: Cmp I64 = Cmp fn x y -> intrinsic "LessSigned" x y
-implicit cmp_isz: Cmp Isz = Cmp fn x y -> intrinsic "LessSigned" x y
+impl cmp_i8: Cmp I8 with
+    (<) x y = intrinsic "LessSigned" x y
+impl cmp_i16: Cmp I16 with
+    (<) x y = intrinsic "LessSigned" x y
+impl cmp_i32: Cmp I32 with
+    (<) x y = intrinsic "LessSigned" x y
+impl cmp_i64: Cmp I64 with
+    (<) x y = intrinsic "LessSigned" x y
+impl cmp_isz: Cmp Isz with
+    (<) x y = intrinsic "LessSigned" x y
 
-implicit cmp_u8: Cmp U8  = Cmp fn x y -> intrinsic "LessUnsigned" x y
-implicit cmp_u16: Cmp U16 = Cmp fn x y -> intrinsic "LessUnsigned" x y
-implicit cmp_u32: Cmp U32 = Cmp fn x y -> intrinsic "LessUnsigned" x y
-implicit cmp_u64: Cmp U64 = Cmp fn x y -> intrinsic "LessUnsigned" x y
-implicit cmp_usz: Cmp Usz = Cmp fn x y -> intrinsic "LessUnsigned" x y
+impl cmp_u8: Cmp U8 with
+    (<) x y = intrinsic "LessUnsigned" x y
+impl cmp_u16: Cmp U16 with
+    (<) x y = intrinsic "LessUnsigned" x y
+impl cmp_u32: Cmp U32 with
+    (<) x y = intrinsic "LessUnsigned" x y
+impl cmp_u64: Cmp U64 with
+    (<) x y = intrinsic "LessUnsigned" x y
+impl cmp_usz: Cmp Usz with
+    (<) x y = intrinsic "LessUnsigned" x y
 
-implicit cmp_f32: Cmp F32 = Cmp fn x y -> intrinsic "LessFloat" x y
-implicit cmp_f64: Cmp F64 = Cmp fn x y -> intrinsic "LessFloat" x y
+impl cmp_f32: Cmp F32 with
+    (<) x y = intrinsic "LessFloat" x y
+impl cmp_f64: Cmp F64 with
+    (<) x y = intrinsic "LessFloat" x y
 
 max (l: t) (r: t) {Cmp t} {Copy t}: t = if l > r then l else r
 min (l: t) (r: t) {Cmp t} {Copy t}: t = if l < r then l else r
@@ -414,25 +594,95 @@ ability Num a =
     eq: Eq a
     cmp: Cmp a
 
-implicit num_i8: Num I8 = Num add_i8 sub_i8 mul_i8 div_i8 mod_i8 eq_i8 cmp_i8
-implicit num_i16: Num I16 = Num add_i16 sub_i16 mul_i16 div_i16 mod_i16 eq_i16 cmp_i16
-implicit num_i32: Num I32 = Num add_i32 sub_i32 mul_i32 div_i32 mod_i32 eq_i32 cmp_i32
-implicit num_i64: Num I64 = Num add_i64 sub_i64 mul_i64 div_i64 mod_i64 eq_i64 cmp_i64
-implicit num_isz: Num Isz = Num add_isz sub_isz mul_isz div_isz mod_isz eq_isz cmp_isz
-implicit num_u8: Num U8 = Num add_u8 sub_u8 mul_u8 div_u8 mod_u8 eq_u8 cmp_u8
-implicit num_u16: Num U16 = Num add_u16 sub_u16 mul_u16 div_u16 mod_u16 eq_u16 cmp_u16
-implicit num_u32: Num U32 = Num add_u32 sub_u32 mul_u32 div_u32 mod_u32 eq_u32 cmp_u32
-implicit num_u64: Num U64 = Num add_u64 sub_u64 mul_u64 div_u64 mod_u64 eq_u64 cmp_u64
-implicit num_usz: Num Usz = Num add_usz sub_usz mul_usz div_usz mod_usz eq_usz cmp_usz
+impl num_i8: Num I8 with
+    add = add_i8
+    sub = sub_i8
+    mul = mul_i8
+    div = div_i8
+    mod = mod_i8
+    eq = eq_i8
+    cmp = cmp_i8
+impl num_i16: Num I16 with
+    add = add_i16
+    sub = sub_i16
+    mul = mul_i16
+    div = div_i16
+    mod = mod_i16
+    eq = eq_i16
+    cmp = cmp_i16
+impl num_i32: Num I32 with
+    add = add_i32
+    sub = sub_i32
+    mul = mul_i32
+    div = div_i32
+    mod = mod_i32
+    eq = eq_i32
+    cmp = cmp_i32
+impl num_i64: Num I64 with
+    add = add_i64
+    sub = sub_i64
+    mul = mul_i64
+    div = div_i64
+    mod = mod_i64
+    eq = eq_i64
+    cmp = cmp_i64
+impl num_isz: Num Isz with
+    add = add_isz
+    sub = sub_isz
+    mul = mul_isz
+    div = div_isz
+    mod = mod_isz
+    eq = eq_isz
+    cmp = cmp_isz
+impl num_u8: Num U8 with
+    add = add_u8
+    sub = sub_u8
+    mul = mul_u8
+    div = div_u8
+    mod = mod_u8
+    eq = eq_u8
+    cmp = cmp_u8
+impl num_u16: Num U16 with
+    add = add_u16
+    sub = sub_u16
+    mul = mul_u16
+    div = div_u16
+    mod = mod_u16
+    eq = eq_u16
+    cmp = cmp_u16
+impl num_u32: Num U32 with
+    add = add_u32
+    sub = sub_u32
+    mul = mul_u32
+    div = div_u32
+    mod = mod_u32
+    eq = eq_u32
+    cmp = cmp_u32
+impl num_u64: Num U64 with
+    add = add_u64
+    sub = sub_u64
+    mul = mul_u64
+    div = div_u64
+    mod = mod_u64
+    eq = eq_u64
+    cmp = cmp_u64
+impl num_usz: Num Usz with
+    add = add_usz
+    sub = sub_usz
+    mul = mul_usz
+    div = div_usz
+    mod = mod_usz
+    eq = eq_usz
+    cmp = cmp_usz
 
 
-implicit try_cast_i64_u64: TryCast I64 U64 =
-    TryCast fn (x: I64) ->
+impl try_cast_i64_u64: TryCast I64 U64 with
+    try_cast (x: I64) =
         if x < 0i64 then None
         else Some (transmute x)
 
-implicit try_cast_u64: TryCast U64 I64 =
-    TryCast fn (x: U64) ->
+impl try_cast_u64: TryCast U64 I64 with
+    try_cast (x: U64) =
         if x > 9_223_372_036_854_775_807u64 then None
         else Some (transmute x)
 
@@ -440,8 +690,8 @@ ability Append a =
     (++): fn a a -> a
 
 // TODO: This needs to be in the prelude to keep string interpolation working
-implicit append_string: Append String =
-    Append fn s1 s2 ->
+impl append_string: Append String with
+    (++) s1 s2 =
         if s1.length == 0 then return s2
         if s2.length == 0 then return s1
 
@@ -462,8 +712,8 @@ ability Extract collection index elem =
     (.[): fn collection index -> elem
 
 // TODO: Remove. This breaks ownership
-implicit extract_ptr_usz: Extract (Ptr t) Usz t =
-    Extract fn ptr index -> deref_ptr <| offset ptr index
+impl extract_ptr_usz: Extract (Ptr t) Usz t with
+    (.[) ptr index = deref_ptr <| offset ptr index
 
 // Bitwise functions
 // TODO: Move these to separate module
@@ -523,45 +773,64 @@ ability Clone t =
 ability Drop t =
     drop: fn (mut t) -> Unit
 
-implicit copy_i8: Copy I8 = Copy deref
-implicit copy_i16: Copy I16 = Copy deref
-implicit copy_i32: Copy I32 = Copy deref
-implicit copy_i64: Copy I64 = Copy deref
-implicit copy_isz: Copy Isz = Copy deref
-implicit copy_u8: Copy U8 = Copy deref
-implicit copy_u16: Copy U16 = Copy deref
-implicit copy_u32: Copy U32 = Copy deref
-implicit copy_u64: Copy U64 = Copy deref
-implicit copy_usz: Copy Usz = Copy deref
+impl copy_i8: Copy I8 with
+    (.*) = deref
+impl copy_i16: Copy I16 with
+    (.*) = deref
+impl copy_i32: Copy I32 with
+    (.*) = deref
+impl copy_i64: Copy I64 with
+    (.*) = deref
+impl copy_isz: Copy Isz with
+    (.*) = deref
+impl copy_u8: Copy U8 with
+    (.*) = deref
+impl copy_u16: Copy U16 with
+    (.*) = deref
+impl copy_u32: Copy U32 with
+    (.*) = deref
+impl copy_u64: Copy U64 with
+    (.*) = deref
+impl copy_usz: Copy Usz with
+    (.*) = deref
 
-implicit copy_f32: Copy F32 = Copy deref
-implicit copy_f64: Copy F64 = Copy deref
+impl copy_f32: Copy F32 with
+    (.*) = deref
+impl copy_f64: Copy F64 with
+    (.*) = deref
 
-implicit copy_unit: Copy Unit = Copy deref
-implicit copy_bool: Copy Bool = Copy deref
-implicit copy_char: Copy Char = Copy deref
+impl copy_unit: Copy Unit with
+    (.*) = deref
+impl copy_bool: Copy Bool with
+    (.*) = deref
+impl copy_char: Copy Char with
+    (.*) = deref
 
-implicit copy_ptr: Copy (Ptr t) = Copy deref
-implicit copy_ref: Copy (ref t) = Copy deref
-implicit copy_mut: Copy (mut t) = Copy deref
-implicit copy_imm: Copy (imm t) = Copy deref
+impl copy_ptr: Copy (Ptr t) with
+    (.*) = deref
+impl copy_ref: Copy (ref t) with
+    (.*) = deref
+impl copy_mut: Copy (mut t) with
+    (.*) = deref
+impl copy_imm: Copy (imm t) with
+    (.*) = deref
 
-implicit copy_pair {Copy a} {Copy b}: Copy (a, b) =
-    Copy fn pair -> (pair.first, pair.second)
+impl copy_pair {Copy a} {Copy b}: Copy (a, b) with
+    (.*) pair = (pair.first, pair.second)
 
-implicit copy_maybe {Copy a}: Copy (Maybe a) =
-    Copy fn m -> match deref m
+impl copy_maybe {Copy a}: Copy (Maybe a) with
+    (.*) m = match deref m
         | Some x -> Some (x.*)
         | None -> None
 
-implicit clone_string: Clone String =
-    Clone fn (s: ref String) ->
+impl clone_string: Clone String with
+    clone (s: ref String) =
         if s.refcount != null () then
             ptr_store s.refcount (deref_ptr s.refcount + 1)
         deref s
 
-implicit drop_string: Drop String =
-    Drop fn (s: mut String) ->
+impl drop_string: Drop String with
+    drop (s: mut String) =
         if s.refcount != null () then
             count = deref_ptr s.refcount
             if count == 1u32 then
@@ -586,37 +855,45 @@ println (x: t) {Print t} =
     Print.print x
     putchar c"\n"
 
-implicit print_u8:  Print U8  = Print fn x -> print_unsigned (U64 x)
-implicit print_u16: Print U16 = Print fn x -> print_unsigned (U64 x)
-implicit print_u32: Print U32 = Print fn x -> print_unsigned (U64 x)
-implicit print_u64: Print U64 = Print fn x -> print_unsigned x
-implicit print_usz: Print Usz = Print fn x -> print_unsigned (U64 x)
+impl print_u8: Print U8 with
+    print x = print_unsigned (U64 x)
+impl print_u16: Print U16 with
+    print x = print_unsigned (U64 x)
+impl print_u32: Print U32 with
+    print x = print_unsigned (U64 x)
+impl print_u64: Print U64 with
+    print x = print_unsigned x
+impl print_usz: Print Usz with
+    print x = print_unsigned (U64 x)
 
-implicit print_i8: Print I8 =
-    Print fn x -> print_signed (I64 x) -128i64 "-128"
+impl print_i8: Print I8 with
+    print x = print_signed (I64 x) -128i64 "-128"
 
-implicit print_i16: Print I16 =
-    Print fn x -> print_signed (I64 x) -32_768i64 "-32_768"
+impl print_i16: Print I16 with
+    print x = print_signed (I64 x) -32_768i64 "-32_768"
 
-implicit print_i32: Print I32 =
-    Print fn x -> print_signed (I64 x) -2_147_483_648i64 "-2_147_483_648"
+impl print_i32: Print I32 with
+    print x = print_signed (I64 x) -2_147_483_648i64 "-2_147_483_648"
 
-implicit print_i64: Print I64 =
-    Print fn x -> print_signed x -9_223_372_036_854_775_808i64 "-9_223_372_036_854_775_808"
+impl print_i64: Print I64 with
+    print x = print_signed x -9_223_372_036_854_775_808i64 "-9_223_372_036_854_775_808"
 
 // TODO: This is broken for non-64-bit platforms.
-implicit print_isz: Print Isz =
-    Print fn x ->
+impl print_isz: Print Isz with
+    print x =
         print_signed (I64 x) -9_223_372_036_854_775_808i64 "-9_223_372_036_854_775_808"
 
 
-implicit print_char: Print Char = Print fn x -> putchar x
+impl print_char: Print Char with
+    print x = putchar x
 
-implicit print_f64: Print F64 = Print print_float
-implicit print_f32: Print F32 = Print fn x -> print_float (F64 x)
+impl print_f64: Print F64 with
+    print = print_float
+impl print_f32: Print F32 with
+    print x = print_float (F64 x)
 
-implicit print_pair {Print a} {Print b}: Print (a, b) =
-    Print fn pair ->
+impl print_pair {Print a} {Print b}: Print (a, b) with
+    print pair =
         // TODO: Parenthesization for nested pairs while keeping `a, (b, (c, d))` unparenthesized
         print pair.first
         print ", "
@@ -635,16 +912,16 @@ print_float (f: F64): Unit =
         // Show up to 5 decimal places
         print_unsigned (U64 (f2 * 10_000.0))
 
-implicit print_string: Print String =
-    Print fn s -> loop (i = 0) ->
+impl print_string: Print String with
+    print s = loop (i = 0) ->
         if i < s.length then
             off = offset_bytes (s.data) (Usz i)
             c = deref_ptr off
             putchar c
             recur (i + 1)
 
-implicit print_maybe {Print a}: Print (Maybe a) =
-    Print fn m ->
+impl print_maybe {Print a}: Print (Maybe a) with
+    print m =
         match m
         | Some a ->
             print "Some "
@@ -652,8 +929,8 @@ implicit print_maybe {Print a}: Print (Maybe a) =
             print a
         | None -> print "None"
 
-implicit print_ref {Print a} {Copy a}: Print (ref a) =
-    Print fn r -> print r.*
+impl print_ref {Print a} {Copy a}: Print (ref a) with
+    print r = print r.*
 
 // Naive replacement for printf which isn't supported by the cranelift backend
 print_unsigned (x: U64): Unit =
@@ -671,8 +948,8 @@ print_signed (x: I64) (min: I64) (min_string: String): Unit =
     else
         print_unsigned (Maybe.unwrap (try_cast x))
 
-implicit print_bool: Print Bool =
-    Print fn b ->
+impl print_bool: Print Bool with
+    print b =
         if b then print "true"
         else print "false"
 
@@ -688,8 +965,8 @@ iter (iterable: it) f {i: Iterator it elem} =
 
 type Range t = start: t, end: t
 
-implicit iterator_range: Iterator (Range Usz) Usz =
-    Iterator fn range ->
+impl iterator_range: Iterator (Range Usz) Usz with
+    next range =
         if range.start >= range.end
         then None
         else

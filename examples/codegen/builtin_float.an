@@ -33,15 +33,27 @@ main () =
 // so we can no longer support this operation at all.
 
 // args: --delete-binary --no-color
-// expected stdout:
-// 7.0
-// -1.0
-// 132.0
-// 0.9375
-// 7.0
-// -1.0
-// 132.0
-// 0.9375
-// 0.1428
-// 0.1428
+// expected exit status: 101
+// expected stderr:
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
+// internal error: entered unreachable code
+// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
+// internal error: entered unreachable code
 

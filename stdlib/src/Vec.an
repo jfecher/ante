@@ -142,8 +142,8 @@ Vec.swap_last (v: mut Vec t) (idx: Usz) : Bool =
         true
 
 
-implicit print_vec {p: Print t}: Print (ref Vec t) =
-    Print fn v ->
+impl print_vec {p: Print t}: Print (ref Vec t) with
+    print v =
         print "["
 
         for i in 0 .. v.len do
@@ -152,8 +152,8 @@ implicit print_vec {p: Print t}: Print (ref Vec t) =
 
         print "]"
 
-implicit extract_vec: Extract (Vec t) Usz t =
-    Extract fn v i -> v.data.[i]
+impl extract_vec: Extract (Vec t) Usz t with
+    (.[) v i = v.data.[i]
 
 implicit stream_vec: Stream (Vec a) a =
     Stream fn vec e ->
@@ -165,16 +165,16 @@ implicit stream_imm_vec: Stream (imm Vec a) (imm a) =
         for i in 0 .. vec.len do
             e.emit (vec.get_unchecked i)
 
-implicit drop_vec {Drop t}: Drop (Vec t) =
-    Drop fn (v: mut Vec t) ->
+impl drop_vec {Drop t}: Drop (Vec t) with
+    drop (v: mut Vec t) =
         if v.cap != 0usz then
             for i in 0 .. v.len do
                 elem = offset v.data i
                 Drop.drop (ptr_to_mut elem)
             free v.data
 
-implicit eq_vec {Eq t}: Eq (Vec t) =
-    Eq fn l r ->
+impl eq_vec {Eq t}: Eq (Vec t) with
+    (==) l r =
         if l.len != r.len then
             return false
 

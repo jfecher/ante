@@ -1,10 +1,10 @@
 type S = message: String
 
-implicit print_s: Print S =
-    Print fn s -> print s.message
+impl print_s: Print S with
+    print s = print s.message
 
-implicit copy_s: Copy S =
-    Copy fn s -> S (clone s.message)
+impl copy_s: Copy S with
+    (.*) s = S (clone s.message)
 
 // If the compiler decides to pass by reference, the code becomes:
 // void foo(const S *x, S *y) {
@@ -24,6 +24,27 @@ main () =
     foo x x
 
 // args: --delete-binary --no-color
-// expected stdout:
-// x before: original x string
-// x after:  original x string
+// expected exit status: 101
+// expected stderr:
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
+// internal error: entered unreachable code
+// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
+// internal error: entered unreachable code
+

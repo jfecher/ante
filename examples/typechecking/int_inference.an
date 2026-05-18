@@ -4,5 +4,5 @@ main () =
 // args: -e ast-t --no-color
 // expected stdout:
 // (main: fn Unit -> Unit) () =
-//     (print: fn I32 {Print I32} [_] -> Unit) 2 {(print_i32: Print I32)}
+//     (print: fn I32 {Print I32} -> Unit) 2 {(print_i32: Print I32)}
 

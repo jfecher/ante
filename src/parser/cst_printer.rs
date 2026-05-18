@@ -22,7 +22,7 @@ use crate::{
 use super::{
     TopLevelContext,
     cst::{
-        AbilityDefinition, Call, CompoundAssignOp, Comptime, Cst, Declaration, Definition, Do, Expr, Extern,
+        AbilityDefinition, AbilityImpl, Call, CompoundAssignOp, Comptime, Cst, Declaration, Definition, Do, Expr, Extern,
         FunctionType, Handle, HandlePattern, If, Import, InterpolatedString, Is, Lambda, Literal, Match, MemberAccess,
         Parameter, Path, Pattern, Quoted, Reference, SequenceItem, TopLevelItem, Type, TypeAnnotation, TypeDefinition,
         TypeDefinitionBody, TypeKind,
@@ -237,6 +237,7 @@ impl<'a> CstDisplay<'a> {
             TopLevelItemKind::TypeDefinition(type_definition) => self.fmt_type_definition(type_definition, context, f),
             TopLevelItemKind::Definition(definition) => self.fmt_definition(definition, context, f),
             TopLevelItemKind::AbilityDefinition(ability) => self.fmt_ability(ability, context, f),
+            TopLevelItemKind::AbilityImpl(ability_impl) => self.fmt_ability_impl(ability_impl, context, f),
             TopLevelItemKind::Comptime(comptime) => self.fmt_comptime(comptime, context, f),
         }?;
         writeln!(f)
@@ -828,6 +829,37 @@ impl<'a> CstDisplay<'a> {
         for declaration in &ability.body {
             self.newline(f)?;
             self.fmt_declaration(declaration, context, f)?;
+        }
+        self.indent_level -= 1;
+        Ok(())
+    }
+
+    fn fmt_ability_impl(
+        &mut self, ability_impl: &AbilityImpl, context: &impl IdStore, f: &mut Formatter,
+    ) -> std::fmt::Result {
+        write!(f, "impl ")?;
+        self.fmt_name(ability_impl.name, context, f)?;
+        self.fmt_parameters(&ability_impl.parameters, context, f)?;
+
+        write!(f, ": ")?;
+        self.fmt_path(ability_impl.ability_path, context, f)?;
+        self.fmt_type_args(&ability_impl.ability_arguments, context, f)?;
+
+        write!(f, " with")?;
+        self.indent_level += 1;
+        for (name, expr) in &ability_impl.body {
+            self.newline(f)?;
+            self.fmt_name(*name, context, f)?;
+
+            if let Expr::Lambda(lambda) = &context.get_expr(*expr) {
+                self.fmt_lambda_inner(lambda, *expr, context, f, false)?;
+            } else {
+                write!(f, " =")?;
+                if !self.is_block(*expr, context) {
+                    write!(f, " ")?;
+                }
+                self.fmt_expr(*expr, context, f)?;
+            }
         }
         self.indent_level -= 1;
         Ok(())

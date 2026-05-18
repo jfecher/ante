@@ -43,14 +43,14 @@ dec_ref_count (rc: mut Rc t): Unit =
     rc = ptr_to_mut rc.ptr
     rc.first -= 1
 
-implicit clone_rc: Clone (Rc t) =
-    Clone fn (rc: ref Rc t) ->
+impl clone_rc: Clone (Rc t) with
+    clone (rc: ref Rc t) =
         // transmute ref -> mut
         inc_ref_count (transmute rc)
         deref rc
 
-implicit drop_rc: Drop (Rc t) =
-    Drop fn (rc: mut Rc t) ->
+impl drop_rc: Drop (Rc t) with
+    drop (rc: mut Rc t) =
         if ref_count rc == 1 then
             free rc.ptr
         else 

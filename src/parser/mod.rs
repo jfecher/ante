@@ -598,6 +598,11 @@ impl<'tokens> Parser<'tokens> {
                 id = self.new_top_level_id_from_name_id(ability.name);
                 TopLevelItemKind::AbilityDefinition(ability)
             },
+            Token::Impl => {
+                let ability_impl = self.parse_ability_impl()?;
+                id = self.new_top_level_id_from_name_id(ability_impl.name);
+                TopLevelItemKind::AbilityImpl(ability_impl)
+            },
             Token::Octothorpe => {
                 let comptime = self.parse_comptime()?;
                 // Hashing the whole comptime object here contains ExprIds which means this
@@ -2266,5 +2271,45 @@ impl<'tokens> Parser<'tokens> {
         let body = self.parse_declaration_block()?;
 
         Ok(cst::AbilityDefinition { name, generics, body })
+    }
+
+    fn parse_ability_impl(&mut self) -> Result<cst::AbilityImpl> {
+        self.expect(Token::Impl, "`impl` to start this ability implementation")?;
+
+        let name = self.parse_ident_id()?;
+        let parameters = self.parse_impl_parameters();
+
+        self.accept(Token::Newline);
+        self.expect(Token::Colon, "a `:` to separate this impl's name from its type")?;
+
+        let ability_path = self.parse_type_path_id()?;
+        let ability_arguments = self.many0(Self::parse_type_arg);
+        self.expect(Token::With, "`with` to separate this impl's signature from its body")?;
+
+        let body =
+            mapvec(self.parse_impl_body()?, |definition| match &self.current_context.patterns[definition.pattern] {
+                Pattern::Variable(name) => (*name, definition.rhs),
+                _ => {
+                    let location = self.current_context.pattern_locations[definition.pattern].clone();
+                    let name = self.push_name(Arc::new("(placeholder)".to_string()), location.clone());
+                    self.diagnostics.push(Diagnostic::ParserComplexImplItemName { location });
+                    (name, definition.rhs)
+                },
+            });
+        Ok(cst::AbilityImpl { name, parameters, ability_path, ability_arguments, body })
+    }
+
+    /// An impl may be a value (0 parameters) or a function (1+ parameters)
+    fn parse_impl_parameters(&mut self) -> Vec<Parameter> {
+        self.many0(Self::parse_function_parameter)
+    }
+
+    fn parse_impl_body(&mut self) -> Result<Vec<Definition>> {
+        match self.current_token() {
+            Token::Indent => {
+                self.parse_indented(|this| Ok(this.delimited(Self::parse_definition, Token::Newline, true)))
+            },
+            _ => self.parse_definition().map(|definition| vec![definition]),
+        }
     }
 }

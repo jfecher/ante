@@ -83,6 +83,7 @@ where
             Some(context.finish())
         },
         cst::TopLevelItemKind::AbilityDefinition(_) => unreachable!("Abilities should be desguared to types"),
+        cst::TopLevelItemKind::AbilityImpl(_) => unreachable!("AbilityImpls should be desugared to definitions"),
         cst::TopLevelItemKind::Comptime(_) => None,
     }
 }

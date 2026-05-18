@@ -191,8 +191,8 @@ Seq.iter_mut (seq: mut Seq t) (f: fn (mut t) => Unit): Unit =
         f (ptr_to_mut elem)
 
 // Paper cut #2: Copy t
-implicit print_seq {p: Print t} {Copy t}: Print (Seq t) =
-    Print fn (seq: Seq t): Unit ->
+impl print_seq {p: Print t} {Copy t}: Print (Seq t) with
+    print (seq: Seq t): Unit =
         print "["
         for i in 0 .. seq.len do
             if i != 0 then print ", "
@@ -207,8 +207,8 @@ implicit clone_seq: Clone (Seq t) =
             ptr_store seq.data.rc (deref_ptr seq.data.rc + 1)
         deref seq
 
-implicit drop_seq {Drop t}: Drop (Seq t) =
-    Drop fn (seq: mut Seq t) ->
+impl drop_seq {Drop t}: Drop (Seq t) with
+    drop (seq: mut Seq t) =
         rc = deref_ptr seq.data.rc
         if rc != 1 then
             ptr_store seq.data.rc (rc - 1)

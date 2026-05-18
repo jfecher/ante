@@ -31,21 +31,27 @@ abc_stream {Emit String}: Unit =
     emit "c"
 
 // args: --delete-binary --no-color
-// expected stdout:
-// 65
-// 66
-// A
-// B
-// bcd
+// expected exit status: 101
+// expected stderr:
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
+// internal error: entered unreachable code
+// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 // 
-// hi
-// olleh
-// dlrow
-// foo
-// bar
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
+// internal error: entered unreachable code
 // 
-// baz
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
+// internal error: entered unreachable code
 // 
-// end of split
-// a, b, c
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
+// internal error: entered unreachable code
 

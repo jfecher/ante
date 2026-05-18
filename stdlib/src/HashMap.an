@@ -126,8 +126,8 @@ HashMap.remove (map: mut HashMap k v) (key: k) {Hash k} {Eq k} : Maybe v =
         map.len := map.len - 1
         Some (deref entry.value)
 
-implicit print_hashmap {Print k} {Print v}: Print (ref HashMap k v) =
-    Print fn map ->
+impl print_hashmap {Print k} {Print v}: Print (ref HashMap k v) with
+    print map =
         putchar c"["
         var printed_first = false
         for i in 0 .. map.capacity do

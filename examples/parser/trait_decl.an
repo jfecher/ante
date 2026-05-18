@@ -16,8 +16,8 @@ ability Collection c e =
 implicit show_string: Show String =
     Show fn s -> s
 
-implicit cast_bad {Show String}: Cast String String String =
-    Cast fn s -> show s
+impl cast_bad {Show String}: Cast String String String with
+    cast s = show s
 
 implicit collection_id: Collection (fn a -> a) Unit =
     Collection
@@ -41,8 +41,8 @@ implicit collection_id: Collection (fn a -> a) Unit =
 // implicit show_string: Show String =
 //     Show (fn s -> s)
 // 
-// implicit cast_bad {_: Show String} : Cast String String String =
-//     Cast (fn s -> show s)
+// impl cast_bad {_: Show String}: Cast String String String with
+//     cast s = show s
 // 
 // implicit collection_id: Collection (fn a -> a) Unit =
 //     Collection (fn c _ -> c) (fn _ -> None) (fn a -> a)

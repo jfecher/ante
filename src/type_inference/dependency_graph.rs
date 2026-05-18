@@ -149,6 +149,7 @@ fn item_lacks_known_type(dependency_id: TopLevelId, db: &DbHandle) -> bool {
         },
         TopLevelItemKind::TypeDefinition(_) => false,
         TopLevelItemKind::AbilityDefinition(_) => false,
+        TopLevelItemKind::AbilityImpl(_) => false,
         // Comptime items shouldn't be possible to be referred to in this way
         TopLevelItemKind::Comptime(_) => false,
     }

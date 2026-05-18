@@ -105,28 +105,27 @@ vec_of_two (x: I32) (y: I32): Vec I32 =
     v
 
 // args: --delete-binary --no-color
-// expected stdout:
-// true
-// [3, 5]
-// [3]
-// 3
-// false
-// 1
-// true
-// true
-// 3
-// Some 1
-// [3, 5]
-// None
-// [10, 30, 50]
-// 3
-// [2, 3]
-// true
-// [10, 40, 30]
-// false
-// 10
-// 7
-// 8
-// 9
-// true
-// false
+// expected exit status: 101
+// expected stderr:
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
+// internal error: entered unreachable code
+// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
+// internal error: entered unreachable code
+

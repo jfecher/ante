@@ -38,6 +38,7 @@ pub enum TopLevelItemKind {
     Definition(Definition),
     TypeDefinition(TypeDefinition),
     AbilityDefinition(AbilityDefinition),
+    AbilityImpl(AbilityImpl),
     Comptime(Comptime),
 }
 
@@ -47,6 +48,7 @@ impl TopLevelItemKind {
             TopLevelItemKind::Definition(definition) => ItemName::Pattern(definition.pattern),
             TopLevelItemKind::TypeDefinition(type_definition) => ItemName::Single(type_definition.name),
             TopLevelItemKind::AbilityDefinition(trait_definition) => ItemName::Single(trait_definition.name),
+            TopLevelItemKind::AbilityImpl(ability_impl) => ItemName::Single(ability_impl.name),
             TopLevelItemKind::Comptime(_) => ItemName::None,
         }
     }
@@ -558,6 +560,15 @@ pub struct AbilityDefinition {
     pub name: NameId,
     pub generics: Generics,
     pub body: Vec<Declaration>,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub struct AbilityImpl {
+    pub name: NameId,
+    pub parameters: Vec<Parameter>,
+    pub ability_path: PathId,
+    pub ability_arguments: Vec<Type>,
+    pub body: Vec<(NameId, ExprId)>,
 }
 
 pub type Name = Arc<String>;

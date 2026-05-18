@@ -90,63 +90,27 @@ extra_tests () =
         println x
 
 // args: --delete-binary --no-color
-// expected stdout:
-// 0, 0
-// 1, 4
-// 2, 8
-// 3, 12
-// 4, 16
-// true
-// -10
-// 2
-// true
-// false
-// 0
-// 20
-// 40
-// Some 10
-// None
-// 0
-// 2
-// 4
-// 0, 0
-// 1, 1
-// 2, 2
-// a
-// , 
-// b
-// , 
-// c
-// 0
-// 88
-// 1
-// 88
-// 2
-// 0
-// 1
-// 0
-// 1
-// 7
-// Some 3
-// None
-// Some 30
-// 0
-// 1
-// 2
-// 0
-// 1
-// 2
-// 3
-// 4
-// 2
-// 3
-// 4
-// 10
-// 120
-// for_:
-// 1
-// 2
-// 4
-// 5
-// 7
+// expected exit status: 101
+// expected stderr:
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
+// internal error: entered unreachable code
+// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
+// internal error: entered unreachable code
 

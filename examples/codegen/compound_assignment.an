@@ -33,17 +33,34 @@ type T = x: I32
 
 // Using `+=` with `Add T` requires T be copied/cloned currently.
 // Even if we used `Add (ref T)` we couldn't return a `ref T` from `+`
-implicit copy_t: Copy T = Copy deref
+impl copy_t: Copy T with
+    (.*) = deref
 
-implicit add_t: Add T = Add fn a b -> T (a.x + b.x)
+impl add_t: Add T with
+    (+) a b = T (a.x + b.x)
 
 // args: --delete-binary --no-color
-// expected stdout:
-// 15
-// 12
-// 48
-// 8
-// 2
-// 110
-// 7
+// expected exit status: 101
+// expected stderr:
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
+// internal error: entered unreachable code
+// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
+// internal error: entered unreachable code
+// 
+// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
+// internal error: entered unreachable code
 

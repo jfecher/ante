@@ -503,9 +503,6 @@ impl Type {
             crate::parser::cst::TypeKind::Error => (Type::ERROR, Kind::Error),
             crate::parser::cst::TypeKind::Unit => (Type::UNIT, Kind::Type),
             crate::parser::cst::TypeKind::Application(f, args) => {
-                // The `f` of `f args` may be a bare ability like `Fail` whose env is being
-                // supplied explicitly by the args list. Don't auto-wrap it here — the Application
-                // case below handles the AbilityConstructor kind itself.
                 let (f, f_kind) =
                     Self::from_cst_type_helper(f, resolve, db, next_id, insert_implicit_type_vars, false);
 

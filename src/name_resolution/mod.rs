@@ -131,6 +131,7 @@ pub fn resolve_impl(context: &Resolve, compiler: &DbHandle) -> ResolutionResult 
         TopLevelItemKind::TypeDefinition(type_definition) => resolver.resolve_type_definition(type_definition),
         TopLevelItemKind::Comptime(comptime_) => resolver.resolve_comptime(comptime_),
         TopLevelItemKind::AbilityDefinition(_) => unreachable!("Desugared by GetItem"),
+        TopLevelItemKind::AbilityImpl(_) => unreachable!("Desugared by GetItem"),
     }
 
     incremental::exit_query();
@@ -472,6 +473,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                     // Enum variants are only values, as are ability methods
                     TopLevelItemKind::TypeDefinition(_) => !is_type,
                     TopLevelItemKind::AbilityDefinition(_) => unreachable!("Desugared by GetItem"),
+                    TopLevelItemKind::AbilityImpl(_) => unreachable!("Desugared by GetItem"),
                     TopLevelItemKind::Definition(_) | TopLevelItemKind::Comptime(_) => !is_type,
                 }
             },

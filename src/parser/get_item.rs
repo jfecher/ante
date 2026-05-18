@@ -7,9 +7,8 @@ use crate::{
     lexer::token::{FloatKind, IntegerKind},
     parser::{
         cst::{
-            self, Argument, Expr, If, Lambda, Literal, Parameter, Path,
-            Pattern, SequenceItem, TopLevelItem, TopLevelItemKind, AbilityDefinition, Type,
-            TypeDefinitionBody, TypeKind,
+            self, AbilityDefinition, AbilityImpl, Argument, Constructor, Definition, Expr, If, Lambda, Literal,
+            Parameter, Path, Pattern, SequenceItem, TopLevelItem, TopLevelItemKind, Type, TypeDefinitionBody, TypeKind,
         },
         desugar_context::DesugarContext,
         ids::{ExprId, PathId, PatternId},
@@ -24,6 +23,14 @@ pub fn get_item_impl(context: &GetItem, db: &DbHandle) -> (Arc<TopLevelItem>, Ar
             let mut new_context = DesugarContext::new(context);
             let new_kind = desugar_ability(trait_definition, &mut new_context);
             let new_item = Arc::new(TopLevelItem { comments: item.comments.clone(), kind: new_kind, id: item.id });
+            (new_item, Arc::new(new_context))
+        },
+        TopLevelItemKind::AbilityImpl(ability_impl) => {
+            let mut new_context = DesugarContext::new(context);
+            let new_definition = desugar_ability_impl(ability_impl, &mut new_context);
+            desugar_expression(new_definition.rhs, &mut new_context);
+            let kind = TopLevelItemKind::Definition(new_definition);
+            let new_item = Arc::new(TopLevelItem { comments: item.comments.clone(), kind, id: item.id });
             (new_item, Arc::new(new_context))
         },
         TopLevelItemKind::Definition(definition) => {
@@ -54,6 +61,92 @@ fn add_env_to_ability_type(typ: &Type, env_var: crate::parser::ids::NameId, loca
         },
         _ => typ.clone(),
     }
+}
+
+/// Desugars
+/// ```ante
+/// impl name {Parameter}: Ability AbilityArgs with
+///     method1 = ...
+///     method2 = ...
+/// ```
+/// Into
+/// ```ante
+/// implicit name {Parameter}: Ability AbilityArgs Parameter = Ability With
+///     method1 = ...
+///     method2 = ...
+/// ```
+/// Note that this assumes the returned ability will capture each parameter used.
+fn desugar_ability_impl(impl_: &AbilityImpl, context: &mut DesugarContext) -> Definition {
+    let location = context.name_location(impl_.name).clone();
+    let variable = context.push_pattern(Pattern::Variable(impl_.name), location.clone());
+
+    let mut ability_type = Type::new(TypeKind::Named(impl_.ability_path), location.clone());
+
+    // Collect existing parameter info before mutating context.
+    let param_infos: Vec<(bool, crate::parser::ids::PatternId, Type)> = impl_
+        .parameters
+        .iter()
+        .map(|param| match &context[param.pattern] {
+            Pattern::TypeAnnotation(inner, typ) => (param.is_implicit, *inner, typ.clone()),
+            _ => unreachable!("impl parameters are expected to have type annotations"),
+        })
+        .collect();
+
+    // Build new parameters with expanded env types (e.g. `Print a` -> `Print a [env_0]`).
+    // This prevents `from_cst_type_no_type_variables` from auto-inserting fresh type variables.
+    let expanded_parameters = mapvec(param_infos.iter().enumerate(), |(i, (is_implicit, inner, typ))| {
+        let env_name = context.push_name(Arc::new(format!("[env_{}]", i)), location.clone());
+        let expanded_type = add_env_to_ability_type(typ, env_name, &location);
+        let new_pattern = context.push_pattern(Pattern::TypeAnnotation(*inner, expanded_type), location.clone());
+        cst::Parameter::with_implicit(new_pattern, *is_implicit)
+    });
+
+    if !impl_.ability_arguments.is_empty() || !impl_.parameters.is_empty() {
+        let app_location = location.clone();
+        let mut arguments = impl_.ability_arguments.clone();
+
+        // Assume the returned ability captures each parameter.
+        let parameter_types = expanded_parameters.iter().map(|param| match &context[param.pattern] {
+            Pattern::TypeAnnotation(_, typ) => typ.clone(),
+            _ => unreachable!("impl parameters are expected to have type annotations"),
+        });
+        arguments.push(make_tuple_type(&location, parameter_types));
+
+        ability_type = Type::new(TypeKind::Application(Box::new(ability_type), arguments), app_location);
+    }
+
+    // If this is not a function we need to put the type annotation on the name itself rather than
+    // the return type of the lambda.
+    let pattern = if impl_.parameters.is_empty() {
+        context.push_pattern(Pattern::TypeAnnotation(variable, ability_type.clone()), location.clone())
+    } else {
+        variable
+    };
+
+    let fields = impl_.body.clone();
+    let constructor = Expr::Constructor(Constructor { fields, typ: ability_type.clone() });
+    let constructor = context.push_expr(constructor, location.clone());
+
+    let rhs = if impl_.parameters.is_empty() {
+        constructor
+    } else {
+        let lambda = Expr::Lambda(Lambda {
+            parameters: expanded_parameters,
+            return_type: Some(ability_type),
+            body: constructor,
+            is_move: false,
+        });
+        context.push_expr(lambda, location)
+    };
+
+    Definition { implicit: true, mutable: false, pattern, rhs }
+}
+
+fn make_tuple_type(location: &Location, types: impl ExactSizeIterator<Item = Type>) -> Type {
+    if types.len() == 0 {
+        return Type::new(TypeKind::NoClosureEnv, location.clone());
+    }
+    Type::new(TypeKind::Tuple(types.collect()), location.clone())
 }
 
 /// Desugars

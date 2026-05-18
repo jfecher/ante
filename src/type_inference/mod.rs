@@ -64,6 +64,7 @@ pub fn type_check_impl(context: &TypeCheckSCC, compiler: &DbHandle) -> TypeCheck
             TopLevelItemKind::Definition(definition) => checker.check_definition(definition, true),
             TopLevelItemKind::TypeDefinition(type_definition) => checker.check_type_definition(type_definition),
             TopLevelItemKind::AbilityDefinition(_) => unreachable!("Abilities should be desugared into types by this point"),
+            TopLevelItemKind::AbilityImpl(_) => unreachable!("AbilityImpls should be desugared into definitions by this point"),
             TopLevelItemKind::Comptime(comptime) => checker.check_comptime(comptime),
         };
 
