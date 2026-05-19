@@ -227,7 +227,7 @@ pub enum Diagnostic {
         context: RepeatedContext,
         location: Location,
     },
-    TraitTypeCantBeUsed {
+    AbilityTypeCantBeUsed {
         location: Location,
     },
     HoleCantBeUsed {
@@ -547,8 +547,8 @@ impl Diagnostic {
                     context.description()
                 )
             },
-            Diagnostic::TraitTypeCantBeUsed { location: _ } => {
-                format!("Trait types can't be used in this position")
+            Diagnostic::AbilityTypeCantBeUsed { location: _ } => {
+                "Ability types can't be used in this position".to_string()
             },
             Diagnostic::HoleCantBeUsed { location: _ } => {
                 format!("A type hole can't be used in this position")
@@ -630,7 +630,7 @@ impl Diagnostic {
             | Diagnostic::NotAType { location, .. }
             | Diagnostic::UseOfMovedValue { location, .. }
             | Diagnostic::MoveInRepeatedContext { location, .. }
-            | Diagnostic::TraitTypeCantBeUsed { location, .. }
+            | Diagnostic::AbilityTypeCantBeUsed { location, .. }
             | Diagnostic::HoleCantBeUsed { location, .. }
             | Diagnostic::FreeVarsInTypeConstructor { location, .. }
             | Diagnostic::HandlerMissingMethods { location, .. }

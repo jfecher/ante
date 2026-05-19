@@ -143,12 +143,12 @@ struct Context<'local, Db> {
     /// Any external items will have their name & type stored here
     external: FxHashMap<DefinitionId, super::Extern>,
 
-    /// Cache of whether a given top-level item is an effect definition.
+    /// Cache of whether a given top-level item is an ability definition.
     ///
-    /// For each Call we have to decide if it is effectful or not to potentially
-    /// issue a Perform instead. This cache is used to avoid issuing a GetItemRaw
-    /// query in some more cases but could be improved more.
-    effect_defs: FxHashMap<TopLevelId, bool>,
+    /// For each Call we have to decide if it dispatches through an ability so we
+    /// can potentially issue a Perform instead. This cache avoids re-issuing a
+    /// GetItemRaw query for every call site.
+    ability_defs: FxHashMap<TopLevelId, bool>,
 
     /// Position of each effect op within its ability's body. Populated as we encounter
     /// effect operations during MIR building and propagated to [Mir::preserved_op_indices]
@@ -176,7 +176,7 @@ impl<'local, Db> Context<'local, Db> {
             finished_functions: Default::default(),
             name_to_id: name_mappings,
             external: Default::default(),
-            effect_defs: Default::default(),
+            ability_defs: Default::default(),
             effect_op_indices: Default::default(),
         }
     }
@@ -519,7 +519,7 @@ where
         let diverges = self.callee_diverges(call.function);
         let result_type = if diverges { Type::UNIT } else { self.expr_type(id) };
 
-        // Ability method calls (both trait-style and effect-style) are routed through the
+        // Ability method calls (both impl-style and effect-style) are routed through the
         // implicit capability tuple: the implicit cap is the last argument, and the operation
         // we want is at `op_index` within that tuple. Emit `IndexTuple cap op_index +
         // CallClosure` directly so we don't depend on the ability-method's own [DefinitionId]
@@ -596,13 +596,13 @@ where
         let origin = self.context().path_origin(path)?;
         let Origin::TopLevelDefinition(name) = origin else { return None };
 
-        let is_effect = self.effect_defs.get(&name.top_level_item).copied().unwrap_or_else(|| {
+        let is_ability = self.ability_defs.get(&name.top_level_item).copied().unwrap_or_else(|| {
             let (item, _) = GetItemRaw(name.top_level_item).get(self.compiler);
-            let is_effect = matches!(&item.kind, cst::TopLevelItemKind::AbilityDefinition(_));
-            self.effect_defs.insert(name.top_level_item, is_effect);
-            is_effect
+            let is_ability = matches!(&item.kind, cst::TopLevelItemKind::AbilityDefinition(_));
+            self.ability_defs.insert(name.top_level_item, is_ability);
+            is_ability
         });
-        if !is_effect {
+        if !is_ability {
             return None;
         }
 
@@ -639,13 +639,13 @@ where
         let origin = self.context().path_origin(path)?;
         let Origin::TopLevelDefinition(name) = origin else { return None };
 
-        let is_effect = self.effect_defs.get(&name.top_level_item).copied().unwrap_or_else(|| {
+        let is_ability = self.ability_defs.get(&name.top_level_item).copied().unwrap_or_else(|| {
             let (item, _) = GetItemRaw(name.top_level_item).get(self.compiler);
-            let is_effect = matches!(&item.kind, cst::TopLevelItemKind::AbilityDefinition(_));
-            self.effect_defs.insert(name.top_level_item, is_effect);
-            is_effect
+            let is_ability = matches!(&item.kind, cst::TopLevelItemKind::AbilityDefinition(_));
+            self.ability_defs.insert(name.top_level_item, is_ability);
+            is_ability
         });
-        if !is_effect {
+        if !is_ability {
             return None;
         }
 
@@ -858,7 +858,7 @@ where
             let environment = if let Some(free_vars) = &free_vars {
                 self.pack_closure_environment(free_vars, is_move, &env_type)
             } else {
-                // Pointer-env slot with no captures (e.g. a trait impl assigning a plain function):
+                // Pointer-env slot with no captures (e.g. an ability impl assigning a plain function):
                 // use a null pointer for the env. Transmute from Unit so constant-folding works
                 // even when this PackClosure ends up in a global initializer.
                 self.push_instruction(Instruction::Transmute(Value::Unit), Type::POINTER)
@@ -1220,62 +1220,6 @@ where
         self.push_instruction(Instruction::Handle { body, cases }, result_type)
     }
 
-    /// Emit a MIR [Definition] for each operation of an effect definition. The
-    /// body of each stub is `fn op args.. = perform op args..`, ensuring the
-    /// operation can be used as a first-class value (passed to higher-order code)
-    /// while also unambiguously naming the effect via its [DefinitionId].
-    ///
-    /// Currently unused: ability-method calls are inlined at the `Call` site via
-    /// [Self::emit_ability_method_call] instead of going through a per-op stub. Kept here
-    /// for reference until first-class effect-op usage is properly supported.
-    #[allow(dead_code)]
-    fn define_effect_operations(&mut self, op_names: impl IntoIterator<Item = NameId>) {
-        for name_id in op_names {
-            let top_level_name = TopLevelName::new(self.top_level_id, name_id);
-
-            // TODO: Error on non-function effect operations
-            let generalized = self.types.get_generalized(name_id);
-            self.set_generics_in_scope(generalized);
-            // Check before `convert_type` since it erases `Never` to `Unit`.
-            let diverges = function_returns_never(generalized, &self.types.bindings);
-            let typ = self.convert_type(generalized, None);
-            let Type::Function(fn_type) = &typ else { continue };
-            let fn_type = fn_type.clone();
-
-            let name = self.context()[name_id].clone();
-            let generic_count = self.generics_in_scope.len() as u32;
-            let typ_for_closure = typ.clone();
-
-            let id = self.new_definition(name, Some(name_id), generic_count, typ_for_closure, |this| {
-                let param_values: Vec<Value> = fn_type
-                    .parameters
-                    .iter()
-                    .enumerate()
-                    .map(|(i, pt)| {
-                        this.push_parameter(pt.clone());
-                        Value::Parameter(BlockId::ENTRY_BLOCK, i as u32)
-                    })
-                    .collect();
-
-                // Effect operations are typed as closures with an environment type of `Ptr Unit`,
-                if let Some(env) = fn_type.environment() {
-                    this.push_parameter(env.clone());
-                }
-
-                // Self-reference: the operation's own DefinitionId is the effect-op tag.
-                let self_id = this.current_function.as_ref().unwrap().id;
-                let perform = Instruction::Perform { effect_op: self_id, arguments: param_values };
-                let result = this.push_instruction(perform, fn_type.return_type.clone());
-                if diverges {
-                    this.terminate_block(TerminatorInstruction::Unreachable);
-                } else {
-                    this.terminate_block(TerminatorInstruction::Return(result));
-                }
-            });
-            self.name_to_id.insert(top_level_name, id);
-        }
-    }
-
     fn reference(&mut self, reference: &cst::Reference) -> Value {
         let rhs = reference.rhs;
         let context = self.context();
@@ -1587,17 +1531,6 @@ where
         if type_definition.is_ability {
             self.define_ability_methods(type_definition);
         }
-
-        // Effects are also desugared to a struct, but each field is an effect operation that
-        // must be callable as a free identifier (e.g. `get ()` rather than `Use.get ()`). Emit a
-        // `perform`-stub function for each so the operation has a stable, first-class identity.
-        // TODO: Broken. Merge this into the `is_ability` check above if needed or remove.
-        // if type_definition.is_effect {
-        //     if let cst::TypeDefinitionBody::Struct(fields) = &type_definition.body {
-        //         let op_names = fields.iter().map(|(name, _)| *name).collect::<Vec<_>>();
-        //         self.define_effect_operations(op_names);
-        //     }
-        // }
     }
 
     fn define_type_constructor(

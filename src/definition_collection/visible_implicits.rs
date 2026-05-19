@@ -15,30 +15,30 @@ use crate::{
     },
 };
 
-/// Maps each trait to its impls. The maps inside are split up for performance so that
+/// Maps each ability to its impls. The maps inside are split up for performance so that
 /// impl search can search through fewer items.
 ///
 /// E.g. an impl `foo` for `Print (Vec t)` will be stored in:
-///   `known_trait_to_impls: [Print -> { type_to_impls: [Vec -> foo] }]`
+///   `known_ability_to_impls: [Print -> { type_to_impls: [Vec -> foo] }]`
 ///
 /// Generic types makes this a bit more complex. An impl for a generic type like
 /// `bar: Print t` will be stored as:
-///   `known_trait_to_impls: [Print -> { generic_type_impls: [bar] }]`
+///   `known_ability_to_impls: [Print -> { generic_type_impls: [bar] }]`
 ///
-/// Similarly, a fully-generic impl `baz: a` will not be in a known trait:
-///   `unknown_trait_to_impls: [baz]`
+/// Similarly, a fully-generic impl `baz: a` will not be in a known ability:
+///   `unknown_ability_to_impls: [baz]`
 ///
-/// When searching for a given impl for `Trait Arg`, we must search the `type_to_impls`
-/// for that trait & arg pair, the `generic_type_impls` for the trait, and the
-/// `unknown_trait_to_impls` which may be impls for any trait.
+/// When searching for a given impl for `Ability Arg`, we must search the `type_to_impls`
+/// for that ability & arg pair, the `generic_type_impls` for the ability, and the
+/// `unknown_ability_to_impls` which may be impls for any ability.
 #[derive(Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Implicits {
     /// Maps each implicit, e.g. `Add` to its impls.
-    known_trait_to_impls: BTreeMap<TopLevelId, ImplicitImpls>,
+    known_ability_to_impls: BTreeMap<TopLevelId, ImplicitImpls>,
 
     /// Maps any implicit that does not have a known type to its impls.
     /// We have to check these for every impl which makes these much more expensive.
-    unknown_trait_to_impls: Vec<Implicit>,
+    unknown_ability_to_impls: Vec<Implicit>,
 }
 
 type Implicit = (Name, TopLevelName);
@@ -107,9 +107,9 @@ pub fn visible_implicits_impl(context: &VisibleImplicits, db: &DbHandle) -> Arc<
         let typ = get_partial_type(definition, &item_context, &resolution, db, &mut 0);
         let mut inserted = false;
 
-        if let Some((trait_id, arg_key)) = get_trait_id_and_first_argument(&typ, true) {
-            // Fast path: trait and argument types are known
-            let impls = implicits.known_trait_to_impls.entry(trait_id).or_default();
+        if let Some((ability_id, arg_key)) = get_ability_id_and_first_argument(&typ, true) {
+            // Fast path: ability and argument types are known
+            let impls = implicits.known_ability_to_impls.entry(ability_id).or_default();
 
             match arg_key {
                 // If this implicit is a function, register it as a candidate for both functions
@@ -130,7 +130,7 @@ pub fn visible_implicits_impl(context: &VisibleImplicits, db: &DbHandle) -> Arc<
         }
 
         if !inserted {
-            implicits.unknown_trait_to_impls.push((name.clone(), *top_level_name));
+            implicits.unknown_ability_to_impls.push((name.clone(), *top_level_name));
         }
     }
 
@@ -147,13 +147,13 @@ enum KeyKind {
 }
 
 /// If `do_function_check` is true, we allow calling the function for its return type
-/// to see if that return type is a trait with arguments. This should be true when
+/// to see if that return type is an ability with arguments. This should be true when
 /// registering an implicit to register that it can be called, but not for looking for
 /// an implicit in scope.
-fn get_trait_id_and_first_argument(typ: &Type, do_function_check: bool) -> Option<(TopLevelId, KeyKind)> {
+fn get_ability_id_and_first_argument(typ: &Type, do_function_check: bool) -> Option<(TopLevelId, KeyKind)> {
     match typ {
         Type::Application(constructor, args) => {
-            let Some(Origin::TopLevelDefinition(trait_name)) = constructor.as_user_defined() else {
+            let Some(Origin::TopLevelDefinition(ability_name)) = constructor.as_user_defined() else {
                 return None;
             };
 
@@ -161,10 +161,10 @@ fn get_trait_id_and_first_argument(typ: &Type, do_function_check: bool) -> Optio
                 Some(key) => KeyKind::Key(key),
                 None => KeyKind::GenericOrUnknown,
             };
-            Some((trait_name.top_level_item, key))
+            Some((ability_name.top_level_item, key))
         },
         Type::Function(function) if do_function_check => {
-            let (id, key) = get_trait_id_and_first_argument(&function.return_type, do_function_check)?;
+            let (id, key) = get_ability_id_and_first_argument(&function.return_type, do_function_check)?;
             let key = match key {
                 KeyKind::Key(key) => KeyKind::Function(key),
                 other => other,
@@ -198,21 +198,21 @@ impl Implicits {
             }};
         }
 
-        match get_trait_id_and_first_argument(target_type, false) {
-            Some((trait_id, KeyKind::Key(argument))) => {
+        match get_ability_id_and_first_argument(target_type, false) {
+            Some((ability_id, KeyKind::Key(argument))) => {
                 // Fast case: need to iterate over:
-                // 1. (trait match, argument match)
-                // 2. (trait match, generic argument)
-                if let Some(implicits) = self.known_trait_to_impls.get(&trait_id) {
+                // 1. (ability match, argument match)
+                // 2. (ability match, generic argument)
+                if let Some(implicits) = self.known_ability_to_impls.get(&ability_id) {
                     if let Some(candidates) = implicits.type_to_impls.get(&argument) {
                         apply_f_to_candidates!(f, candidates);
                     }
                     apply_f_to_candidates!(f, &implicits.generic_type_impls);
                 }
             },
-            Some((trait_id, KeyKind::GenericOrUnknown)) => {
-                // Unknown argument, need to iterate over every impl of the matching trait
-                if let Some(implicits) = self.known_trait_to_impls.get(&trait_id) {
+            Some((ability_id, KeyKind::GenericOrUnknown)) => {
+                // Unknown argument, need to iterate over every impl of the matching ability
+                if let Some(implicits) = self.known_ability_to_impls.get(&ability_id) {
                     for candidates in implicits.type_to_impls.values() {
                         apply_f_to_candidates!(f, candidates);
                     }
@@ -221,8 +221,8 @@ impl Implicits {
             },
             Some((_, KeyKind::Function(_))) => unreachable!("This variant is only used when registering implicits"),
             None => {
-                // Unknown trait, need to iterate over everything
-                for implicits in self.known_trait_to_impls.values() {
+                // Unknown ability, need to iterate over everything
+                for implicits in self.known_ability_to_impls.values() {
                     for candidates in implicits.type_to_impls.values() {
                         apply_f_to_candidates!(f, candidates);
                     }
@@ -230,29 +230,29 @@ impl Implicits {
                 }
             },
         }
-        // Finally, for any target type we need to consider all of the impls for unknown traits
-        apply_f_to_candidates!(f, &self.unknown_trait_to_impls);
+        // Finally, for any target type we need to consider all of the impls for unknown abilities
+        apply_f_to_candidates!(f, &self.unknown_ability_to_impls);
     }
 
     /// Return true if there are <= 1 implicits for this type
     pub fn at_most_1_candidate(&self, target_type: &Type) -> bool {
-        let mut count = self.unknown_trait_to_impls.len();
+        let mut count = self.unknown_ability_to_impls.len();
 
-        match get_trait_id_and_first_argument(target_type, false) {
-            Some((trait_id, KeyKind::Key(argument))) => {
+        match get_ability_id_and_first_argument(target_type, false) {
+            Some((ability_id, KeyKind::Key(argument))) => {
                 // Fast case: need to iterate over:
-                // 1. (trait match, argument match)
-                // 2. (trait match, generic argument)
-                if let Some(implicits) = self.known_trait_to_impls.get(&trait_id) {
+                // 1. (ability match, argument match)
+                // 2. (ability match, generic argument)
+                if let Some(implicits) = self.known_ability_to_impls.get(&ability_id) {
                     if let Some(candidates) = implicits.type_to_impls.get(&argument) {
                         count += candidates.len();
                     }
                     count += implicits.generic_type_impls.len();
                 }
             },
-            Some((trait_id, KeyKind::GenericOrUnknown)) => {
-                // Unknown argument, need to iterate over every impl of the matching trait
-                if let Some(implicits) = self.known_trait_to_impls.get(&trait_id) {
+            Some((ability_id, KeyKind::GenericOrUnknown)) => {
+                // Unknown argument, need to iterate over every impl of the matching ability
+                if let Some(implicits) = self.known_ability_to_impls.get(&ability_id) {
                     for candidates in implicits.type_to_impls.values() {
                         count += candidates.len();
                         if count > 1 {
@@ -264,8 +264,8 @@ impl Implicits {
             },
             Some((_, KeyKind::Function(_))) => unreachable!("This variant is only used when registering implicits"),
             None => {
-                // Unknown trait, need to iterate over everything
-                for implicits in self.known_trait_to_impls.values() {
+                // Unknown ability, need to iterate over everything
+                for implicits in self.known_ability_to_impls.values() {
                     for candidates in implicits.type_to_impls.values() {
                         count += candidates.len();
                         if count > 1 {

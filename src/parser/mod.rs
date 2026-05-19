@@ -1810,7 +1810,7 @@ impl<'tokens> Parser<'tokens> {
             let location = self.expr_location(expression).to(&self.expr_location(rhs));
 
             // Create a synthetic Variable expression for the operator function (e.g., "+")
-            // so it goes through normal name resolution and trait dispatch.
+            // so it goes through normal name resolution and ability dispatch.
             let op_location = location.clone();
             let components = vec![(op_str.to_string(), op_location.clone())];
             let path_id = self.push_path(cst::Path { components }, op_location.clone());

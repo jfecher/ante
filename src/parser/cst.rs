@@ -113,18 +113,18 @@ pub enum TypeKind {
     Application(Box<Type>, Vec<Type>),
     Reference(ReferenceKind),
 
-    /// This is an internal type only created when desugaring closure environments in trait impls.
+    /// This is an internal type only created when desugaring closure environments in ability impls.
     /// Most tuple types in source code refer to the `,` type defined in the prelude. While they
     /// could use this type instead, using a UserDefinedType for them lets us reuse the existing
     /// mechanisms to automatically define their constructor and retrieve their fields.
     Tuple(Vec<Type>),
 
     /// This type can't be parsed, it is only used by `GetItem` to desugar
-    /// trait types into in some cases.
+    /// ability types into in some cases.
     NoClosureEnv,
 
     /// This type can't be parsed, it is only used by `GetItem` to desugar
-    /// effect operation environments to a pointer type.
+    /// ability method environments to a pointer type.
     Pointer,
 
     /// A filler type which corresponds to an unbound type variable to be inferred later
@@ -193,7 +193,7 @@ impl ParameterType {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct TypeDefinition {
     pub shared: bool,
-    /// TraitDefinitions are desugared into type definitions
+    /// AbilityDefinitions are desugared into type definitions
     pub is_ability: bool,
     pub name: NameId,
     pub generics: Generics,
@@ -473,7 +473,7 @@ pub struct Assignment {
     pub lhs: ExprId,
     pub rhs: ExprId,
     /// For compound assignments (+=, -=, etc.): the operator kind and a synthetic
-    /// Variable expression for the operator function, resolved via normal trait dispatch.
+    /// Variable expression for the operator function, resolved via normal ability dispatch.
     pub op: Option<(CompoundAssignOp, ExprId)>,
 }
 

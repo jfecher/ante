@@ -392,7 +392,7 @@ pub enum Instruction {
     ///
     /// Currently unconstructed: ability-method calls are lowered directly to
     /// `IndexTuple cap op_index + CallClosure` at MIR build time, since the cap value
-    /// (whether a trait impl or a handler-installed wrapper tuple) carries the operation
+    /// (whether an ability impl or a handler-installed wrapper tuple) carries the operation
     /// closures. Kept here so the optimization passes' lowering for legacy Perform-shaped
     /// MIR continues to compile; can be removed when those passes are revisited.
     #[allow(dead_code)]

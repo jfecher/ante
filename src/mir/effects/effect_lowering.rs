@@ -330,7 +330,7 @@ fn rewrite_single_perform(mir: &mut Mir, definition_id: DefinitionId, site: Perf
 
     // Resolve types up front using the full Mir context (externals + definitions). Doing this
     // before we take the mutable borrow on `definition` below means a cap_value that is
-    // `Value::Definition` of an external (e.g. a trait impl in the prelude) can still be looked up.
+    // `Value::Definition` of an external (e.g. an ability impl in the prelude) can still be looked up.
     let definition_ref = &mir.definitions[&definition_id];
     let cap_type = definition_ref.type_of_value(&cap_value, &mir.externals, &mir.definitions);
     let op_arg_types: Vec<Type> =

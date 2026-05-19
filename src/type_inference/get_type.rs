@@ -96,7 +96,7 @@ pub(super) fn try_get_generalized_type(
 }
 
 /// Like `try_get_generalized_type` but allows the resulting type to contain fresh type variables
-/// for trait closure environments or effects. The caller passes a `next_id` counter so that
+/// for ability closure environments. The caller passes a `next_id` counter so that
 /// fresh IDs don't collide with other type variables.
 /// This function always succeeds. In the case there are no annotations, a fresh type variable is returned.
 pub fn get_partial_type(
