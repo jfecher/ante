@@ -63,8 +63,12 @@ pub fn type_check_impl(context: &TypeCheckSCC, compiler: &DbHandle) -> TypeCheck
         match &item.kind {
             TopLevelItemKind::Definition(definition) => checker.check_definition(definition, true),
             TopLevelItemKind::TypeDefinition(type_definition) => checker.check_type_definition(type_definition),
-            TopLevelItemKind::AbilityDefinition(_) => unreachable!("Abilities should be desugared into types by this point"),
-            TopLevelItemKind::AbilityImpl(_) => unreachable!("AbilityImpls should be desugared into definitions by this point"),
+            TopLevelItemKind::AbilityDefinition(_) => {
+                unreachable!("Abilities should be desugared into types by this point")
+            },
+            TopLevelItemKind::AbilityImpl(_) => {
+                unreachable!("AbilityImpls should be desugared into definitions by this point")
+            },
             TopLevelItemKind::Comptime(comptime) => checker.check_comptime(comptime),
         };
 
@@ -622,10 +626,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 let no_env = |t: &Type| matches!(t, Type::Primitive(PrimitiveType::NoClosureEnv));
                 let is_ptr_env = |t: &Type| match t {
                     Type::Primitive(PrimitiveType::Pointer) => true,
-                    Type::Application(c, _) => matches!(
-                        c.follow_two(&self.bindings, new_bindings),
-                        Type::Primitive(PrimitiveType::Pointer)
-                    ),
+                    Type::Application(c, _) => {
+                        matches!(c.follow_two(&self.bindings, new_bindings), Type::Primitive(PrimitiveType::Pointer))
+                    },
                     _ => false,
                 };
                 let env_skip = (no_env(&actual_env) && is_ptr_env(&expected_env))

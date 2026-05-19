@@ -1,24 +1,12 @@
 foo (a, (b: t), _) {Print t} =
     _: String = a
-    print b
+    println b
 
 main () =
-    foo ("test", 2, 'c')
+    foo ("test", 2, c"c")
     foo ("hi", 7, 2.0, 3, 4, 5)
 
 // args: --delete-binary --no-color
-// expected exit status: 1
-// expected stderr:
-// examples/codegen/tuples.an:7:5
-// 6 |     foo ("test", 2, 'c')
-//   |     // error: Ambiguous implicit of type Print _ required by parameter 2 of foo, type annotation required
-// 7 |     foo ("hi", 7, 2.0, 3, 4, 5)
-//   |     ^^^
-// 
-// examples/codegen/tuples.an:7:10
-// 6 |     foo ("test", 2, 'c')
-// 7 |     foo ("hi", 7, 2.0, 3, 4, 5)	// error: Expected String, _ but found String
-//   |          ^^^^
-// 
-// Found 2 errors and 0 warnings
-
+// expected stdout:
+// 2
+// 7

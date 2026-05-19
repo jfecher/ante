@@ -213,11 +213,7 @@ pub fn visible_types_impl(context: &VisibleTypes, db: &DbHandle) -> TypeDefiniti
 pub(crate) fn kind_of_type_definition(definition: &TypeDefinition) -> Kind {
     use std::num::NonZeroUsize;
     let n = definition.generics.len();
-    if n == 0 {
-        Kind::Type
-    } else {
-        Kind::TypeConstructorSimple(NonZeroUsize::new(n).unwrap())
-    }
+    if n == 0 { Kind::Type } else { Kind::TypeConstructorSimple(NonZeroUsize::new(n).unwrap()) }
 }
 
 /// Collect all type definitions within a file (unfiltered by export list).

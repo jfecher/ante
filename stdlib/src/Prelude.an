@@ -727,8 +727,8 @@ ability Bitwise t =
 
 implicit bitwise_i32: Bitwise I32 = Bitwise
     (fn x y -> intrinsic "BitwiseAnd" x y)
-    (fn x y -> intrinsic "BitwiseXor" x y)
     (fn x y -> intrinsic "BitwiseOr" x y)
+    (fn x y -> intrinsic "BitwiseXor" x y)
 
 
 type Type t = | MkType

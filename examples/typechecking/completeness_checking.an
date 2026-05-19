@@ -77,12 +77,24 @@ main () =
 //         | true -> switch (match_var40: Bool)
 //             | false -> 0
 //             | true -> #missing_case
-//     (match_var42: (error)) = 1 (,: fn ((_, _), _) (I32, (I32, I32)) -> ((_, _), _), (I32, (I32, I32))) (2 (,: fn I32 (I32, I32) -> I32, (I32, I32)) (3 (,: fn I32 I32 -> I32, I32) 4))
-//     switch (match_var42: ((_, _), _), (I32, (I32, I32)))
-//     | 0, (match_var43: (_, _), _), (match_var44: I32, (I32, I32)) -> switch (match_var43: (_, _), _)
-//         | 0, (match_var45: _, _), (match_var46: _) -> switch (match_var44: I32, (I32, I32))
-//             | 0, (match_var47: I32), (match_var48: I32, I32) -> 1
+//     (match_var42: (error)) = 1 (,: fn I32 (I32, (I32, I32)) -> I32, (I32, (I32, I32))) (2 (,: fn I32 (I32, I32) -> I32, (I32, I32)) (3 (,: fn I32 I32 -> I32, I32) 4))
+//     switch (match_var42: I32, (I32, (I32, I32)))
+//     | 0, (match_var43: I32), (match_var44: I32, (I32, I32)) -> switch (match_var44: I32, (I32, I32))
+//         | 0, (match_var45: I32), (match_var46: I32, I32) -> switch (match_var43: I32)
+//             | 1 -> 1
+//             | _ -> switch (match_var46: I32, I32)
+//                 | 0, (match_var47: I32), (match_var48: I32) -> 
+//                         (_: I32) = (match_var48: I32)
+//                         
+//                             (_: I32) = (match_var47: I32)
+//                             
+//                                 (_: I32) = (match_var45: I32)
+//                                 
+//                                     (_: I32) = (match_var43: I32)
+//                                     3
 //     ()
+// 
+// 
 
 // expected stderr:
 // examples/typechecking/completeness_checking.an:2:11
@@ -114,26 +126,10 @@ main () =
 //    |            ^^^^^^^^^^
 // 22 |     | (false, true) -> 0
 // 
-// examples/typechecking/completeness_checking.an:25:12
-// 25 |     match (1, 2, 3, 4)	// error: Expected an integer type but found (_, _), _
-//    |            ^
-// 26 |     | (1, 2) -> 1
-// 
-// examples/typechecking/completeness_checking.an:26:8
-// 25 |     match (1, 2, 3, 4)
-// 26 |     | (1, 2) -> 1	// error: Expected an integer type but found (_, _), _
-//    |        ^
-// 27 |     | (_, _, _, _) -> 3
-// 
 // examples/typechecking/completeness_checking.an:26:11
 // 25 |     match (1, 2, 3, 4)
 // 26 |     | (1, 2) -> 1	// error: Expected an integer type but found I32, (I32, I32)
 //    |           ^
 // 27 |     | (_, _, _, _) -> 3
 // 
-// examples/typechecking/completeness_checking.an:27:7
-// 26 |     | (1, 2) -> 1
-// 27 |     | (_, _, _, _) -> 3	// warning: This case is already matched by prior patterns
-//    |       ^^^^^^^^^^^^
-// 
-// Found 7 errors and 2 warnings
+// Found 5 errors and 1 warning

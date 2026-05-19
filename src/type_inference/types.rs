@@ -474,8 +474,7 @@ impl Type {
             crate::parser::cst::TypeKind::Error => (Type::ERROR, Kind::Error),
             crate::parser::cst::TypeKind::Unit => (Type::UNIT, Kind::Type),
             crate::parser::cst::TypeKind::Application(f, args) => {
-                let (f, f_kind) =
-                    Self::from_cst_type_helper(f, resolve, db, next_id, insert_implicit_type_vars);
+                let (f, f_kind) = Self::from_cst_type_helper(f, resolve, db, next_id, insert_implicit_type_vars);
 
                 if !f_kind.accepts_n_arguments(args.len()) {
                     let expected = f_kind.required_argument_count();

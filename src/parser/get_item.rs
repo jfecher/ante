@@ -64,10 +64,8 @@ fn desugar_ability_impl(impl_: &AbilityImpl, context: &mut DesugarContext) -> De
     let mut ability_type = Type::new(TypeKind::Named(impl_.ability_path), location.clone());
 
     if !impl_.ability_arguments.is_empty() {
-        ability_type = Type::new(
-            TypeKind::Application(Box::new(ability_type), impl_.ability_arguments.clone()),
-            location.clone(),
-        );
+        ability_type =
+            Type::new(TypeKind::Application(Box::new(ability_type), impl_.ability_arguments.clone()), location.clone());
     }
 
     // If this is not a function we need to put the type annotation on the name itself rather than

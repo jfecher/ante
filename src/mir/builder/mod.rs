@@ -784,10 +784,8 @@ where
                 }
             }
 
-            let env_is_pointer = matches!(
-                function_type.environment,
-                Type::Primitive(crate::mir::PrimitiveType::Pointer)
-            );
+            let env_is_pointer =
+                matches!(function_type.environment, Type::Primitive(crate::mir::PrimitiveType::Pointer));
             let free_vars = this.context().get_closure_environment(expr);
             let needs_env_param = free_vars.is_some() || env_is_pointer;
             if needs_env_param {
@@ -873,9 +871,7 @@ where
     /// Packs each given variable into a closure environment.
     /// When `env_type` is a pointer, the capture tuple is heap-allocated (via [Instruction::AllocShared])
     /// and the returned value is the resulting pointer. Otherwise returns the tuple directly.
-    fn pack_closure_environment(
-        &mut self, free_vars: &BTreeSet<NameId>, is_move: bool, env_type: &Type,
-    ) -> Value {
+    fn pack_closure_environment(&mut self, free_vars: &BTreeSet<NameId>, is_move: bool, env_type: &Type) -> Value {
         assert!(!free_vars.is_empty());
 
         let values = mapvec(free_vars, |var| {
@@ -907,19 +903,20 @@ where
     fn unpack_closure_environment(
         &mut self, free_vars: impl ExactSizeIterator<Item = NameId> + Clone, environment: Value,
     ) {
-        let env_value = if matches!(self.type_of_value(&environment), Type::Primitive(crate::mir::PrimitiveType::Pointer)) {
-            let field_types: Vec<Type> = free_vars
-                .clone()
-                .map(|var| {
-                    let tc_type = &self.types.result.maps.name_types[&var];
-                    self.convert_type(tc_type, None)
-                })
-                .collect();
-            let tuple_type = Type::tuple(field_types);
-            self.push_instruction(Instruction::Deref(environment), tuple_type)
-        } else {
-            environment
-        };
+        let env_value =
+            if matches!(self.type_of_value(&environment), Type::Primitive(crate::mir::PrimitiveType::Pointer)) {
+                let field_types: Vec<Type> = free_vars
+                    .clone()
+                    .map(|var| {
+                        let tc_type = &self.types.result.maps.name_types[&var];
+                        self.convert_type(tc_type, None)
+                    })
+                    .collect();
+                let tuple_type = Type::tuple(field_types);
+                self.push_instruction(Instruction::Deref(environment), tuple_type)
+            } else {
+                environment
+            };
 
         let Type::Tuple(env_fields) = self.type_of_value(&env_value) else { unreachable!() };
         assert_eq!(env_fields.len(), free_vars.len());
@@ -1392,11 +1389,8 @@ where
         // If a field receives a bare function (env = NoClosureEnv) where a `Ptr Unit`-env closure
         // is required, pack it with a null pointer so the produced value matches.
         let struct_type = self.convert_expr_type(expr);
-        let expected_field_types: Vec<Type> = if let Type::Tuple(fields) = &struct_type {
-            fields.iter().cloned().collect()
-        } else {
-            Vec::new()
-        };
+        let expected_field_types: Vec<Type> =
+            if let Type::Tuple(fields) = &struct_type { fields.iter().cloned().collect() } else { Vec::new() };
 
         let field_values = mapvec(fields.iter().enumerate(), |(i, (_n, v))| {
             self.coerce_field_to_pointer_env(*v, expected_field_types.get(i))
@@ -1435,8 +1429,7 @@ where
                 match bindings {
                     Some(p) => p,
                     None => {
-                        let null_ptr =
-                            self.push_instruction(Instruction::Transmute(Value::Unit), Type::POINTER);
+                        let null_ptr = self.push_instruction(Instruction::Transmute(Value::Unit), Type::POINTER);
                         return self.push_instruction(
                             Instruction::PackClosure { function: value, environment: null_ptr },
                             expected.clone(),
@@ -1464,9 +1457,8 @@ where
                     this.push_parameter(pt.clone());
                 }
                 this.push_parameter(expected_env.clone());
-                let forward_args = mapvec(0..expected_params.len(), |j| {
-                    Value::Parameter(BlockId::ENTRY_BLOCK, j as u32)
-                });
+                let forward_args =
+                    mapvec(0..expected_params.len(), |j| Value::Parameter(BlockId::ENTRY_BLOCK, j as u32));
                 let inner_value = if let Some(bindings) = inner_bindings {
                     this.push_instruction(Instruction::Instantiate(inner_def_id, bindings), inner_typ.clone())
                 } else {
@@ -1480,19 +1472,10 @@ where
             },
         );
 
-        let wrapper_value = self.make_definition_value(
-            wrapper_id,
-            Arc::new("ability_field_wrapper".to_string()),
-            wrapper_type.clone(),
-        );
-        let null_ptr = self.push_instruction(
-            Instruction::Transmute(Value::Unit),
-            Type::POINTER,
-        );
-        self.push_instruction(
-            Instruction::PackClosure { function: wrapper_value, environment: null_ptr },
-            wrapper_type,
-        )
+        let wrapper_value =
+            self.make_definition_value(wrapper_id, Arc::new("ability_field_wrapper".to_string()), wrapper_type.clone());
+        let null_ptr = self.push_instruction(Instruction::Transmute(Value::Unit), Type::POINTER);
+        self.push_instruction(Instruction::PackClosure { function: wrapper_value, environment: null_ptr }, wrapper_type)
     }
 
     fn quoted(&self, _quoted: &cst::Quoted) -> Value {
@@ -1704,8 +1687,7 @@ where
                 // Only generate wrappers for function-typed fields (all ability methods).
                 // TODO: We should still generate wrappers for other types
                 let Type::Function(fn_type) = field_type else { continue };
-                let (value_param_types, return_type) =
-                    (fn_type.parameters.clone(), fn_type.return_type.clone());
+                let (value_param_types, return_type) = (fn_type.parameters.clone(), fn_type.return_type.clone());
 
                 let mut wrapper_params = value_param_types;
                 wrapper_params.push(struct_type.clone());

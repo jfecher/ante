@@ -22,10 +22,10 @@ use crate::{
 use super::{
     TopLevelContext,
     cst::{
-        AbilityDefinition, AbilityImpl, Call, CompoundAssignOp, Comptime, Cst, Declaration, Definition, Do, Expr, Extern,
-        FunctionType, Handle, HandlePattern, If, Import, InterpolatedString, Is, Lambda, Literal, Match, MemberAccess,
-        Parameter, Path, Pattern, Quoted, Reference, SequenceItem, TopLevelItem, Type, TypeAnnotation, TypeDefinition,
-        TypeDefinitionBody, TypeKind,
+        AbilityDefinition, AbilityImpl, Call, CompoundAssignOp, Comptime, Cst, Declaration, Definition, Do, Expr,
+        Extern, FunctionType, Handle, HandlePattern, If, Import, InterpolatedString, Is, Lambda, Literal, Match,
+        MemberAccess, Parameter, Path, Pattern, Quoted, Reference, SequenceItem, TopLevelItem, Type, TypeAnnotation,
+        TypeDefinition, TypeDefinitionBody, TypeKind,
     },
     ids::{ExprId, PatternId, TopLevelId},
 };

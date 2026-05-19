@@ -319,10 +319,8 @@ fn rewrite_single_perform(mir: &mut Mir, definition_id: DefinitionId, site: Perf
 
     let return_type = mir.definitions[&definition_id].instruction_result_types[original_id].clone();
 
-    let op_index = *context
-        .op_index
-        .get(&op)
-        .unwrap_or_else(|| panic!("effect_lowering: effect op {op:?} has no op-index entry"));
+    let op_index =
+        *context.op_index.get(&op).unwrap_or_else(|| panic!("effect_lowering: effect op {op:?} has no op-index entry"));
 
     // Capability is the implicit trailing argument, appended by implicit-arg resolution.
     let (cap_value, op_args) =

@@ -188,9 +188,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     ///
     /// The function's closure environment is hard-coded to `Pointer` by the ability
     /// desugarer so every ability value has uniform size.
-    fn build_method_types(
-        &mut self, id: TopLevelId, definition: &cst::TypeDefinition, fields: &[(NameId, cst::Type)],
-    ) {
+    fn build_method_types(&mut self, id: TopLevelId, definition: &cst::TypeDefinition, fields: &[(NameId, cst::Type)]) {
         let type_name = TopLevelName::new(id, definition.name);
 
         for (method_name, method_type) in fields.iter() {

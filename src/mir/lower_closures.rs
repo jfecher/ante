@@ -146,8 +146,7 @@ fn remove_no_closure_env_parameter_references(definition: &mut Definition) {
 
     for instruction in definition.instructions.values_mut() {
         match instruction {
-            Instruction::Call { arguments, .. }
-            | Instruction::CallClosure { arguments, .. } => {
+            Instruction::Call { arguments, .. } | Instruction::CallClosure { arguments, .. } => {
                 arguments.retain(|value| !to_remove.contains(value));
             },
             _ => (),

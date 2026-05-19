@@ -90,9 +90,63 @@ extra_tests () =
         println x
 
 // args: --delete-binary --no-color
-// expected exit status: 101
-// expected stderr:
-// thread 'main' panicked at src/codegen/llvm/mod.rs:289:22:
-// Unsupported instruction in global initializer: Call { function: InstructionResult(InstructionId(0)), arguments: [InstructionResult(InstructionId(3))] }
-// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+// expected stdout:
+// 0, 0
+// 1, 4
+// 2, 8
+// 3, 12
+// 4, 16
+// true
+// -10
+// 2
+// true
+// false
+// 0
+// 20
+// 40
+// Some 10
+// None
+// 0
+// 2
+// 4
+// 0, 0
+// 1, 1
+// 2, 2
+// a
+// , 
+// b
+// , 
+// c
+// 0
+// 88
+// 1
+// 88
+// 2
+// 0
+// 1
+// 0
+// 1
+// 7
+// Some 3
+// None
+// Some 30
+// 0
+// 1
+// 2
+// 0
+// 1
+// 2
+// 3
+// 4
+// 2
+// 3
+// 4
+// 10
+// 120
+// for_:
+// 1
+// 2
+// 4
+// 5
+// 7
 

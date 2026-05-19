@@ -45,9 +45,21 @@ main () =
     iter (ref built) (fn x -> println x.*)   // 0, 1, 2, 3, 4
 
 // args: --delete-binary --no-color
-// expected exit status: 101
-// expected stderr:
-// thread 'main' panicked at src/codegen/llvm/mod.rs:289:22:
-// Unsupported instruction in global initializer: Call { function: InstructionResult(InstructionId(0)), arguments: [InstructionResult(InstructionId(3))] }
-// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+// expected stdout:
+// [33, 44, 55]
+// [33, 44]
+// [33, 44, 100]
+// [33, 44, 55]
+// [0, 1, 2, 3, 4]
+// Some 4
+// [0, 1, 2, 3]
+// [0, 1, 2, 3]
+// 0
+// missing
+// Some 1
+// 0
+// 1
+// 2
+// 3
+// 4
 

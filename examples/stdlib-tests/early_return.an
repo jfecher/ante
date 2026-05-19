@@ -29,9 +29,9 @@ main () =
         inner + 10  // inner did not abort outer
 
 // args: --delete-binary --no-color
-// expected exit status: 101
-// expected stderr:
-// thread 'main' panicked at src/codegen/llvm/mod.rs:289:22:
-// Unsupported instruction in global initializer: Call { function: InstructionResult(InstructionId(0)), arguments: [InstructionResult(InstructionId(3))] }
-// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+// expected stdout:
+// 4
+// Some 7
+// None
+// 15
 

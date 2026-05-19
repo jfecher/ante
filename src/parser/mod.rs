@@ -95,6 +95,15 @@ impl<'tokens> Parser<'tokens> {
         self.tokens.get(self.token_index + 1).map(|(token, _span)| token)
     }
 
+    /// True if positioned at an `(OP)` operator-reference form, i.e. the current token is `(`,
+    /// the next is an overloadable operator, and the one after that is `)`. The trailing `)`
+    /// check avoids treating `(not x)` (a parenthesized unary expression) as `(not) x`.
+    fn at_operator_reference(&self) -> bool {
+        *self.current_token() == Token::ParenthesisLeft
+            && self.peek_next_token().is_overloadable_operator()
+            && self.tokens.get(self.token_index + 2).map(|(t, _)| t) == Some(&Token::ParenthesisRight)
+    }
+
     fn current_token_span(&self) -> Span {
         self.tokens[self.token_index].1
     }
@@ -856,7 +865,9 @@ impl<'tokens> Parser<'tokens> {
         let start = self.current_token_location();
 
         let mut has_resume = false;
-        if let Token::Identifier(name) = self.current_token() && name == "resume" {
+        if let Token::Identifier(name) = self.current_token()
+            && name == "resume"
+        {
             self.advance();
             has_resume = true;
         }
@@ -886,7 +897,10 @@ impl<'tokens> Parser<'tokens> {
         let return_type = Box::new(self.parse_type()?);
         let location = start.to(&self.previous_token_location());
 
-        Ok(Type::new(TypeKind::Function(cst::FunctionType { parameters, environment, return_type, has_resume }), location))
+        Ok(Type::new(
+            TypeKind::Function(cst::FunctionType { parameters, environment, return_type, has_resume }),
+            location,
+        ))
     }
 
     /// pair_type: type_no_pair ',' pair_type
@@ -1020,7 +1034,7 @@ impl<'tokens> Parser<'tokens> {
             },
             // We allow all overloadable operators here like with identifiers but
             // in reality this is mostly to allow `(,)` to be the pair type.
-            Token::ParenthesisLeft if self.peek_next_token().is_overloadable_operator() => {
+            Token::ParenthesisLeft if self.at_operator_reference() => {
                 self.advance();
                 let operator = self.current_token().to_string();
                 self.advance();
@@ -1037,7 +1051,7 @@ impl<'tokens> Parser<'tokens> {
                 self.advance();
                 Ok(name.clone())
             },
-            Token::ParenthesisLeft if self.peek_next_token().is_overloadable_operator() => {
+            Token::ParenthesisLeft if self.at_operator_reference() => {
                 self.advance();
                 let operator = self.current_token().to_string();
                 self.advance();
@@ -1060,7 +1074,7 @@ impl<'tokens> Parser<'tokens> {
                 self.advance();
                 Ok((name.clone(), location))
             },
-            Token::ParenthesisLeft if self.peek_next_token().is_overloadable_operator() => {
+            Token::ParenthesisLeft if self.at_operator_reference() => {
                 let start = self.current_token_location();
                 self.advance();
                 let operator = self.current_token().to_string();
@@ -1233,9 +1247,7 @@ impl<'tokens> Parser<'tokens> {
                 self.advance();
                 Ok(Pattern::Literal(Literal::Bool(*value)))
             },
-            Token::ParenthesisLeft if self.peek_next_token().is_overloadable_operator() => {
-                self.parse_ident_id().map(Pattern::Variable)
-            },
+            Token::ParenthesisLeft if self.at_operator_reference() => self.parse_ident_id().map(Pattern::Variable),
             Token::ParenthesisLeft => {
                 self.advance();
                 let pattern = self.parse_with_recovery(
@@ -1256,25 +1268,50 @@ impl<'tokens> Parser<'tokens> {
     }
 
     /// tuple_pattern: type_annotation_pattern (',' type_annotation_pattern)*
+    ///
+    /// `,` is right-associative here, matching the comma operator in expressions
+    /// and the pair type in `parse_pair_type`. With three or more elements,
+    /// `(a, b, c)` becomes `Pair a (Pair b c)`.
     fn parse_tuple_pattern(&mut self) -> Result<Pattern> {
-        let start = self.current_token_span();
-        let mut pattern = self.parse_type_annotation_pattern()?;
-        let pattern_end = self.previous_token_span();
+        let first_start = self.current_token_span();
+        let first_pattern = self.parse_type_annotation_pattern()?;
+        let first_end = self.previous_token_span();
+
+        if *self.current_token() != Token::Comma {
+            return Ok(first_pattern);
+        }
+
+        let first_location = first_start.to(&first_end).in_file(self.file_id);
+        let first_id = self.push_pattern(first_pattern, first_location.clone());
+
+        let mut elements: Vec<PatternId> = vec![first_id];
+        let mut commas: Vec<(Location, PathId)> = Vec::new();
 
         while self.accept(Token::Comma) {
             let comma_location = self.previous_token_location();
-            let location = start.to(&pattern_end).in_file(self.file_id);
-
-            let lhs = self.push_pattern(pattern, location);
-
-            let rhs = self.with_pattern_id_and_location(Self::parse_type_annotation_pattern)?;
-
             let components = vec![(Token::Comma.to_string(), comma_location.clone())];
-            let comma_path = self.push_path(Path { components }, comma_location);
-            pattern = Pattern::Constructor(comma_path, vec![lhs, rhs]);
+            let comma_path = self.push_path(Path { components }, comma_location.clone());
+            commas.push((comma_location, comma_path));
+
+            let element = self.with_pattern_id_and_location(Self::parse_type_annotation_pattern)?;
+            elements.push(element);
         }
 
-        Ok(pattern)
+        // Fold right-associatively: last element is the seed.
+        let mut acc_id = elements.pop().expect("at least one element");
+        while let (Some(lhs_id), Some((comma_location, comma_path))) = (elements.pop(), commas.pop()) {
+            let lhs_location = self.current_context.pattern_locations[lhs_id].clone();
+            let acc_location = self.current_context.pattern_locations[acc_id].clone();
+            let pair_location = lhs_location.to(&acc_location);
+            let _ = comma_location;
+            let pair = Pattern::Constructor(comma_path, vec![lhs_id, acc_id]);
+            acc_id = self.push_pattern(pair, pair_location);
+        }
+
+        // Return the pattern by extracting it back. The caller will re-push, but
+        // we already pushed the intermediate nodes, so unwrap the outermost.
+        let final_pattern = self.current_context.patterns[acc_id].clone();
+        Ok(final_pattern)
     }
 
     /// type_annotation_pattern: constructor_pattern (':' type)?
@@ -1609,7 +1646,7 @@ impl<'tokens> Parser<'tokens> {
                 let path = self.push_path(path, location.clone());
                 Ok(self.push_expr(Expr::Variable(path), location))
             },
-            Token::ParenthesisLeft if self.peek_next_token().is_overloadable_operator() => self.parse_variable(),
+            Token::ParenthesisLeft if self.at_operator_reference() => self.parse_variable(),
             Token::ParenthesisLeft => {
                 self.advance();
                 // These `too_far` tokens aren't accurate, they may appear in an expression.
@@ -2215,7 +2252,7 @@ impl<'tokens> Parser<'tokens> {
                 self.advance();
                 Ok(self.push_name(name, location))
             },
-            Token::ParenthesisLeft if self.peek_next_token().is_overloadable_operator() => {
+            Token::ParenthesisLeft if self.at_operator_reference() => {
                 self.advance();
                 let location = self.current_token_location();
                 let name = Arc::new(self.current_token().to_string());
