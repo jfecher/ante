@@ -9,11 +9,11 @@ str = foo 0i32
 
 // args: -e ast-t --no-color
 // expected stdout:
-// type Foo a b [env] =
-//     foo: fn a [[env]] -> b
+// type Foo a b =
+//     foo: fn a [Ptr Unit] -> b
 // 
 // implicit (foo_impl: Foo I32 String) =
-//     (Foo: fn (fn I32 -> String) -> Foo I32 String) (fn (_: I32) -> "hi")
+//     (Foo: fn (fn I32 [Ptr Unit] -> String) -> Foo I32 String) (fn (_: I32) -> "hi")
 // 
-// (str: String) = (foo: fn I32 {Foo I32 String} [_] -> String) 0_I32 {(foo_impl: Foo I32 String)}
+// (str: String) = (foo: fn I32 {Foo I32 String} [Ptr Unit] -> String) 0_I32 {(foo_impl: Foo I32 String)}
 

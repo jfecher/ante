@@ -45,24 +45,6 @@ pub fn get_item_impl(context: &GetItem, db: &DbHandle) -> (Arc<TopLevelItem>, Ar
     }
 }
 
-/// Expands a trait-typed parameter from e.g. `Print a` → `Print a [env_i]`.
-/// This ensures `from_cst_type_no_type_variables` sees a named generic for the env
-/// rather than auto-inserting a fresh type variable (which would cause it to return None).
-fn add_env_to_ability_type(typ: &Type, env_var: crate::parser::ids::NameId, location: &Location) -> Type {
-    let env_type = Type::new(TypeKind::Variable(env_var), location.clone());
-    match &typ.kind {
-        TypeKind::Named(_) => {
-            Type::new(TypeKind::Application(Box::new(typ.clone()), vec![env_type]), typ.location.clone())
-        },
-        TypeKind::Application(f, args) => {
-            let mut new_args = args.clone();
-            new_args.push(env_type);
-            Type::new(TypeKind::Application(f.clone(), new_args), typ.location.clone())
-        },
-        _ => typ.clone(),
-    }
-}
-
 /// Desugars
 /// ```ante
 /// impl name {Parameter}: Ability AbilityArgs with
@@ -71,48 +53,21 @@ fn add_env_to_ability_type(typ: &Type, env_var: crate::parser::ids::NameId, loca
 /// ```
 /// Into
 /// ```ante
-/// implicit name {Parameter}: Ability AbilityArgs Parameter = Ability With
+/// implicit name {Parameter}: Ability AbilityArgs = Ability With
 ///     method1 = ...
 ///     method2 = ...
 /// ```
-/// Note that this assumes the returned ability will capture each parameter used.
 fn desugar_ability_impl(impl_: &AbilityImpl, context: &mut DesugarContext) -> Definition {
     let location = context.name_location(impl_.name).clone();
     let variable = context.push_pattern(Pattern::Variable(impl_.name), location.clone());
 
     let mut ability_type = Type::new(TypeKind::Named(impl_.ability_path), location.clone());
 
-    // Collect existing parameter info before mutating context.
-    let param_infos: Vec<(bool, crate::parser::ids::PatternId, Type)> = impl_
-        .parameters
-        .iter()
-        .map(|param| match &context[param.pattern] {
-            Pattern::TypeAnnotation(inner, typ) => (param.is_implicit, *inner, typ.clone()),
-            _ => unreachable!("impl parameters are expected to have type annotations"),
-        })
-        .collect();
-
-    // Build new parameters with expanded env types (e.g. `Print a` -> `Print a [env_0]`).
-    // This prevents `from_cst_type_no_type_variables` from auto-inserting fresh type variables.
-    let expanded_parameters = mapvec(param_infos.iter().enumerate(), |(i, (is_implicit, inner, typ))| {
-        let env_name = context.push_name(Arc::new(format!("[env_{}]", i)), location.clone());
-        let expanded_type = add_env_to_ability_type(typ, env_name, &location);
-        let new_pattern = context.push_pattern(Pattern::TypeAnnotation(*inner, expanded_type), location.clone());
-        cst::Parameter::with_implicit(new_pattern, *is_implicit)
-    });
-
-    if !impl_.ability_arguments.is_empty() || !impl_.parameters.is_empty() {
-        let app_location = location.clone();
-        let mut arguments = impl_.ability_arguments.clone();
-
-        // Assume the returned ability captures each parameter.
-        let parameter_types = expanded_parameters.iter().map(|param| match &context[param.pattern] {
-            Pattern::TypeAnnotation(_, typ) => typ.clone(),
-            _ => unreachable!("impl parameters are expected to have type annotations"),
-        });
-        arguments.push(make_tuple_type(&location, parameter_types));
-
-        ability_type = Type::new(TypeKind::Application(Box::new(ability_type), arguments), app_location);
+    if !impl_.ability_arguments.is_empty() {
+        ability_type = Type::new(
+            TypeKind::Application(Box::new(ability_type), impl_.ability_arguments.clone()),
+            location.clone(),
+        );
     }
 
     // If this is not a function we need to put the type annotation on the name itself rather than
@@ -131,7 +86,7 @@ fn desugar_ability_impl(impl_: &AbilityImpl, context: &mut DesugarContext) -> De
         constructor
     } else {
         let lambda = Expr::Lambda(Lambda {
-            parameters: expanded_parameters,
+            parameters: impl_.parameters.clone(),
             return_type: Some(ability_type),
             body: constructor,
             is_move: false,
@@ -142,50 +97,39 @@ fn desugar_ability_impl(impl_: &AbilityImpl, context: &mut DesugarContext) -> De
     Definition { implicit: true, mutable: false, pattern, rhs }
 }
 
-fn make_tuple_type(location: &Location, types: impl ExactSizeIterator<Item = Type>) -> Type {
-    if types.len() == 0 {
-        return Type::new(TypeKind::NoClosureEnv, location.clone());
-    }
-    Type::new(TypeKind::Tuple(types.collect()), location.clone())
-}
-
 /// Desugars
 /// ```ante
 /// ability Foo args =
 ///     declaration1: fn Arg1_1 ... ArgN_1 -> Ret_1
 ///     ...
 ///     declarationN: fn Arg1_N ... ArgN_N -> Ret_N
-///     field1: SomeAbility args
 /// ```
 /// Into
 /// ```ante
-/// type Foo args env =
-///     declaration1: fn Arg1_1 ... ArgN_1 [env] -> Ret_1
+/// type Foo args =
+///     declaration1: fn Arg1_1 ... ArgN_1 [Pointer] -> Ret_1
 ///     ...
-///     declarationN: fn Arg1_N ... ArgN_N [env] -> Ret_N
-///     field1: SomeAbility args [env]
+///     declarationN: fn Arg1_N ... ArgN_N [Pointer] -> Ret_N
 /// ```
 fn desugar_ability(ability: &AbilityDefinition, context: &mut DesugarContext) -> TopLevelItemKind {
     let name_location = context.name_location(ability.name).clone();
 
-    // TODO: Can this be done more cleanly without resorting to strings users cannot type?
-    let env = context.push_name(Arc::new("[env]".into()), name_location.clone());
-
-    // Add the `env` generic to the ability type itself
-    let mut generics = ability.generics.clone();
-    generics.push(env);
-
-    // Add `[env]` to each field type: for function types this is set as the closure environment,
-    // for non-function types (e.g. sub-ability fields like `Add a`) it is appended as a type argument
-    // so that the env is properly substituted when the ability is instantiated.
+    // Set every function-typed field's closure environment to `Ptr Unit` so each ability value
+    // has a uniform `(fn_ptr, env_ptr)` size regardless of captures. The actual captures (if any)
+    // are heap-allocated by the MIR builder and reached via this pointer.
+    let ptr_unit = || {
+        let ptr = Type::new(TypeKind::Pointer, name_location.clone());
+        let unit = Type::new(TypeKind::Unit, name_location.clone());
+        Type::new(TypeKind::Application(Box::new(ptr), vec![unit]), name_location.clone())
+    };
     let fields = mapvec(&ability.body, |decl| {
         let typ = match &decl.typ.kind {
-            cst::TypeKind::Function(f) => {
+            cst::TypeKind::Function(f) if f.environment.is_none() => {
                 let mut f = f.clone();
-                f.environment = Some(Box::new(Type::new(TypeKind::Variable(env), name_location.clone())));
+                f.environment = Some(Box::new(ptr_unit()));
                 Type::new(cst::TypeKind::Function(f), decl.typ.location.clone())
             },
-            _ => add_env_to_ability_type(&decl.typ, env, &name_location),
+            _ => decl.typ.clone(),
         };
         (decl.name, typ)
     });
@@ -194,7 +138,7 @@ fn desugar_ability(ability: &AbilityDefinition, context: &mut DesugarContext) ->
         shared: false,
         is_ability: true,
         name: ability.name,
-        generics,
+        generics: ability.generics.clone(),
         body: TypeDefinitionBody::Struct(fields),
     })
 }

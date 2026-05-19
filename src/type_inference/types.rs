@@ -410,7 +410,7 @@ impl Type {
         next_id: &mut u32, insert_implicit_type_vars: bool,
     ) -> Type {
         let location = typ.location.clone();
-        let (typ, kind) = Type::from_cst_type_helper(typ, resolve, db, next_id, insert_implicit_type_vars, true);
+        let (typ, kind) = Type::from_cst_type_helper(typ, resolve, db, next_id, insert_implicit_type_vars);
         if !expected.unifies(&kind) {
             db.accumulate(Diagnostic::ExpectedKind { actual: kind, expected, location });
         }
@@ -422,15 +422,9 @@ impl Type {
     /// - The kind of the converted type
     ///
     /// Does not error if the returned type is not of kind [Kind::Type]
-    ///
-    /// `wrap_bare_ability`: when true (the default for any "use" position), a bare
-    /// ability with no explicit args (e.g. `Fail`) is automatically applied to a fresh
-    /// env type variable so it can stand alone as a `Kind::Type`. The Application
-    /// branch passes `false` when recursing into its `f` position, since `Fail env`
-    /// needs to see the raw `AbilityConstructor` kind to accept the explicit env arg.
     fn from_cst_type_helper(
         typ: &cst::Type, resolve: &crate::name_resolution::ResolutionResult, db: &DbHandle, next_id: &mut u32,
-        insert_implicit_type_vars: bool, wrap_bare_ability: bool,
+        insert_implicit_type_vars: bool,
     ) -> (Type, Kind) {
         match &typ.kind {
             crate::parser::cst::TypeKind::Integer(kind) => {
@@ -455,30 +449,7 @@ impl Type {
             crate::parser::cst::TypeKind::Char => (Type::CHAR, Kind::Type),
             crate::parser::cst::TypeKind::Named(path) => {
                 let origin = resolve.path_origins.get(path).copied();
-                let (named_type, kind) =
-                    Self::convert_origin_to_type(origin, db, &typ.location, Type::UserDefined);
-
-                // A bare ability with no explicit args (e.g. `Fail`) still needs its implicit
-                // `[env]` arg before it can be used as a regular type. The Application branch
-                // handles this for `Fail a` / `Eq t` when the env is missing; we apply the same
-                // insertion at the leaf so nested uses like `fn Fail -> Unit` also work.
-                if wrap_bare_ability
-                    && let Kind::AbilityConstructor(explicit_kinds) = &kind
-                    && explicit_kinds.is_empty()
-                {
-                    let env = if insert_implicit_type_vars {
-                        let fresh_env = Type::Variable(TypeVariableId(*next_id));
-                        *next_id += 1;
-                        fresh_env
-                    } else {
-                        db.accumulate(Diagnostic::TraitTypeCantBeUsed { location: typ.location.clone() });
-                        Type::ERROR
-                    };
-                    let applied = Type::Application(Arc::new(named_type), Arc::new(vec![env]));
-                    (applied, Kind::Type)
-                } else {
-                    (named_type, kind)
-                }
+                Self::convert_origin_to_type(origin, db, &typ.location, Type::UserDefined)
             },
             crate::parser::cst::TypeKind::Variable(name) => {
                 let origin = resolve.name_origins.get(name).copied();
@@ -504,7 +475,7 @@ impl Type {
             crate::parser::cst::TypeKind::Unit => (Type::UNIT, Kind::Type),
             crate::parser::cst::TypeKind::Application(f, args) => {
                 let (f, f_kind) =
-                    Self::from_cst_type_helper(f, resolve, db, next_id, insert_implicit_type_vars, false);
+                    Self::from_cst_type_helper(f, resolve, db, next_id, insert_implicit_type_vars);
 
                 if !f_kind.accepts_n_arguments(args.len()) {
                     let expected = f_kind.required_argument_count();
@@ -513,25 +484,10 @@ impl Type {
                     return (Type::ERROR, Kind::Type);
                 }
 
-                let mut converted_args = mapvec(args.iter().enumerate(), |(i, arg)| {
+                let converted_args = mapvec(args.iter().enumerate(), |(i, arg)| {
                     let expected_kind = f_kind.get_nth_parameter_kind(i);
                     Self::from_cst_type_with_kind(arg, expected_kind, resolve, db, next_id, insert_implicit_type_vars)
                 });
-
-                // Automatically insert a fresh type variable for the implicit env parameter
-                // when an AbilityConstructor is applied without the optional env argument.
-                if let Kind::AbilityConstructor(kinds) = &f_kind {
-                    if converted_args.len() == kinds.len() {
-                        if insert_implicit_type_vars {
-                            let fresh_env = Type::Variable(TypeVariableId(*next_id));
-                            *next_id += 1;
-                            converted_args.push(fresh_env);
-                        } else {
-                            db.accumulate(Diagnostic::TraitTypeCantBeUsed { location: typ.location.clone() });
-                            converted_args.push(Type::ERROR);
-                        }
-                    }
-                }
 
                 assert!(!converted_args.is_empty());
                 let typ = Type::Application(Arc::new(f), Arc::new(converted_args));
@@ -809,13 +765,8 @@ where
                     write!(f, ", ")?;
                     self.fmt_type(&args[1], true, f)
                 } else {
-                    let display_args = if self.is_ability_constructor(constructor) {
-                        &args[..args.len().saturating_sub(1)]
-                    } else {
-                        args.as_slice()
-                    };
                     self.fmt_type(constructor, true, f)?;
-                    for arg in display_args.iter() {
+                    for arg in args.iter() {
                         write!(f, " ")?;
                         self.fmt_type(arg, true, f)?;
                     }
@@ -841,16 +792,6 @@ where
                 Ok(())
             }),
         }
-    }
-
-    fn is_ability_constructor(&self, constructor: &Type) -> bool {
-        if let Type::UserDefined(Origin::TopLevelDefinition(id)) = constructor.follow(self.bindings) {
-            let (item, _ctx) = GetItem(id.top_level_item).get(self.db);
-            if let cst::TopLevelItemKind::TypeDefinition(definition) = &item.kind {
-                return definition.is_ability;
-            }
-        }
-        false
     }
 
     fn fmt_type_origin(&self, origin: Origin, f: &mut std::fmt::Formatter) -> std::fmt::Result {

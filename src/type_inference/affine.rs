@@ -164,10 +164,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let copy_name = self.get_copy_type_name();
         let copy_constructor = Type::UserDefined(Origin::TopLevelDefinition(copy_name));
 
-        // Abilities have an extra [env] generic parameter from desugaring, so Copy t is actually
-        // Copy t env. Use a fresh type variable for env so unification can match any environment.
-        let env_var = self.next_type_variable();
-        let copy_of_t = Type::Application(Arc::new(copy_constructor), Arc::new(vec![typ.clone(), env_var]));
+        let copy_of_t = Type::Application(Arc::new(copy_constructor), Arc::new(vec![typ.clone()]));
 
         // Check local implicits in scope
         let local_implicits = self.collect_implicits_in_scope();

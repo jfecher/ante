@@ -23,20 +23,20 @@ implicit monad_maybe: Monad Maybe =
 // args: -e ast-t --no-color
 // expected exit status: 1
 // expected stdout:
-// type Functor f [env] =
-//     map: fn (f a) (fn a -> b) [[env]] -> f b
+// type Functor f =
+//     map: fn (f a) (fn a -> b) [Ptr Unit] -> f b
 // 
-// type Monad m [env] =
-//     wrap: fn a [[env]] -> m a
-//     bind: fn (m a) (fn a -> m b) [[env]] -> m b
+// type Monad m =
+//     wrap: fn a [Ptr Unit] -> m a
+//     bind: fn (m a) (fn a -> m b) [Ptr Unit] -> m b
 // 
-// implicit (functor_maybe: Functor Maybe) = (Functor: fn (fn (error) (fn (error) -> (error)) -> (error)) -> Functor Maybe) (fn (m: (error)) (f: fn (error) -> (error)) ->
+// implicit (functor_maybe: Functor Maybe) = (Functor: fn (fn (error) (fn (error) -> (error)) [Ptr Unit] -> (error)) -> Functor Maybe) (fn (m: (error)) (f: fn (error) -> (error)) ->
 //     match (m: (error))
 //     | (Some: (error)) (x: (error)) -> (Some: (error)) ((f: fn (error) -> (error)) (x: (error)))
 //     | (None: (error)) -> (None: (error)))
 // 
 // implicit (monad_maybe: Monad Maybe) =
-//     (Monad: fn (fn (error) [_] -> (error)) (fn (error) (fn (error) -> (error)) [_] -> (error)) -> Monad _) (fn (a: _) -> (Some: (error)) (a: _))
+//     (Monad: fn (fn (error) [Ptr Unit] -> (error)) (fn (error) (fn (error) -> (error)) [Ptr Unit] -> (error)) -> Monad _) (fn (a: _) -> (Some: (error)) (a: _))
 
 // expected stderr:
 // examples/typechecking/functor_and_monad.an:3:13
@@ -158,7 +158,7 @@ implicit monad_maybe: Monad Maybe =
 // 
 // examples/typechecking/functor_and_monad.an:16:5
 // 15 | implicit monad_maybe: Monad Maybe =
-//    |     // error: Expected fn _ [_] -> Monad Maybe but found fn (fn (error) [_] -> (error)) (fn (error) (fn (error) -> (error)) [_] -> (error)) -> Monad _
+//    |     // error: Expected fn _ [_] -> Monad Maybe but found fn (fn (error) [Ptr Unit] -> (error)) (fn (error) (fn (error) -> (error)) [Ptr Unit] -> (error)) -> Monad _
 // 16 |     Monad
 //    |     ^^^^^
 // 17 |         (fn a -> Some a)

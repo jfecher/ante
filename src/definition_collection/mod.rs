@@ -213,13 +213,7 @@ pub fn visible_types_impl(context: &VisibleTypes, db: &DbHandle) -> TypeDefiniti
 pub(crate) fn kind_of_type_definition(definition: &TypeDefinition) -> Kind {
     use std::num::NonZeroUsize;
     let n = definition.generics.len();
-    if definition.is_ability {
-        // The last generic is the implicit `[env]` parameter added during desugaring (get_item.rs).
-        // AbilityConstructor's accepts_arguments already handles env as an optional extra arg,
-        // so we exclude it from the explicit generic count.
-        let explicit_n = n.saturating_sub(1);
-        Kind::AbilityConstructor(vec![Kind::Type; explicit_n])
-    } else if n == 0 {
+    if n == 0 {
         Kind::Type
     } else {
         Kind::TypeConstructorSimple(NonZeroUsize::new(n).unwrap())

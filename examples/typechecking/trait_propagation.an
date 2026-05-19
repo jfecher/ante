@@ -10,10 +10,10 @@ foo () = baz bar
 // expected stdout:
 // (bar: a) = extern "bar"
 // 
-// type Baz a [env] =
-//     baz: fn a [[env]] -> Unit
+// type Baz a =
+//     baz: fn a [Ptr Unit] -> Unit
 // 
-// (foo: fn Unit -> Unit) () = (baz: fn _ {Baz _} [_] -> Unit) (bar: _) {(error)}
+// (foo: fn Unit -> Unit) () = (baz: fn _ {Baz _} [Ptr Unit] -> Unit) (bar: _) {(error)}
 
 // expected stderr:
 // examples/typechecking/trait_propagation.an:6:10

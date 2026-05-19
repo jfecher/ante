@@ -16,7 +16,7 @@ use crate::{
     definition_collection::collect_all_items,
     incremental::{GetCrateGraph, GetItem, GetItemRaw, Parse, TargetPointerSize, TypeCheck},
     mir::{
-        self, Definition, DefinitionId, GenericBindings, Instruction, Mir, PrimitiveType, Type, Value,
+        self, Definition, DefinitionId, GenericBindings, Instruction, Mir, Type, Value,
         builder::build_initial_mir_with_shared_map, next_definition_id,
     },
 };
