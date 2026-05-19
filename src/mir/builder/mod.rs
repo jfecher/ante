@@ -149,6 +149,12 @@ struct Context<'local, Db> {
     /// issue a Perform instead. This cache is used to avoid issuing a GetItemRaw
     /// query in some more cases but could be improved more.
     effect_defs: FxHashMap<TopLevelId, bool>,
+
+    /// Position of each effect op within its ability's body. Populated as we encounter
+    /// effect operations during MIR building and propagated to [Mir::preserved_op_indices]
+    /// at the end so [crate::mir::effects::effect_lowering] can look up the slot of an op
+    /// in the cap tuple without re-walking the ability declaration.
+    effect_op_indices: FxHashMap<DefinitionId, u32>,
 }
 
 impl<'local, Db> Context<'local, Db> {
@@ -171,6 +177,7 @@ impl<'local, Db> Context<'local, Db> {
             name_to_id: name_mappings,
             external: Default::default(),
             effect_defs: Default::default(),
+            effect_op_indices: Default::default(),
         }
     }
 
@@ -509,26 +516,29 @@ where
             return result;
         }
 
-        let function = self.expression(call.function);
-        let arguments = mapvec(&call.arguments, |expr| self.expression(expr.expr));
-
-        // `Never` gets translated into `Unit` + an `unreachable` instruction so we have
-        // to match the unit type here.
         let diverges = self.callee_diverges(call.function);
         let result_type = if diverges { Type::UNIT } else { self.expr_type(id) };
 
-        // TODO: This doesn't handle effect functions used as first-class values
-        // TODO: Effect functions in MIR could be wrapper functions over a single Perform
-        // instruction. Then we wouldn't have to handle this case in each Call at all.
+        // Ability method calls (both trait-style and effect-style) are routed through the
+        // implicit capability tuple: the implicit cap is the last argument, and the operation
+        // we want is at `op_index` within that tuple. Emit `IndexTuple cap op_index +
+        // CallClosure` directly so we don't depend on the ability-method's own [DefinitionId]
+        // having a globally-consistent function type (a single [DefinitionId] can be used at
+        // multiple sites that unify its env differently).
+        //
+        // For effects, the `handle` expression replaces the cap value with a tuple of
+        // operation wrappers, so the IndexTuple at the call site naturally picks up the
+        // wrapper. For traits, the cap is a struct-typed impl value with the operation
+        // closures as fields; the IndexTuple picks up the impl's method.
         if let cst::Expr::Variable(path_id) = &self.context()[call.function] {
-            if let Some(effect_op) = self.try_resolve_effect_op(*path_id) {
-                let value = self.push_instruction(Instruction::Perform { effect_op, arguments }, result_type);
-                if diverges {
-                    self.terminate_block(TerminatorInstruction::Unreachable);
-                }
-                return value;
+            if let Some((effect_op, op_index)) = self.try_resolve_ability_method(*path_id) {
+                let arguments = mapvec(&call.arguments, |expr| self.expression(expr.expr));
+                return self.emit_ability_method_call(effect_op, op_index, arguments, result_type, diverges);
             }
         }
+
+        let function = self.expression(call.function);
+        let arguments = mapvec(&call.arguments, |expr| self.expression(expr.expr));
 
         let instruction = if self.type_of_value(&function).is_closure() {
             Instruction::CallClosure { closure: function, arguments }
@@ -541,6 +551,69 @@ where
             self.terminate_block(TerminatorInstruction::Unreachable);
         }
         value
+    }
+
+    /// Emit the `IndexTuple cap op_index + CallClosure` sequence for an ability-method call.
+    /// `arguments` must contain the operation args followed by the implicit capability value
+    /// (the cap is the last argument, appended by implicit-arg resolution).
+    fn emit_ability_method_call(
+        &mut self, effect_op: DefinitionId, op_index: u32, mut arguments: Vec<Value>, result_type: Type, diverges: bool,
+    ) -> Value {
+        // Record this op→index pair so any `Handle` wrapper machinery downstream can look up
+        // the slot of the op in the cap tuple.
+        self.effect_op_indices.insert(effect_op, op_index);
+
+        let cap_value = arguments.pop().expect("ability method call: no implicit cap argument");
+        let cap_type = self.type_of_value(&cap_value);
+        let method_type = match &cap_type {
+            Type::Tuple(fields) => fields.get(op_index as usize).cloned().unwrap_or_else(|| {
+                panic!("ability method call: cap tuple has no slot {op_index} (cap_type = {cap_type})")
+            }),
+            // Single-method abilities can collapse to a bare function when type inference
+            // strips the surrounding tuple. Fall back to the call's expected result-type wiring.
+            _ => cap_type.clone(),
+        };
+
+        let method =
+            self.push_instruction(Instruction::IndexTuple { tuple: cap_value, index: op_index }, method_type.clone());
+
+        let instruction = if method_type.is_closure() {
+            Instruction::CallClosure { closure: method, arguments }
+        } else {
+            Instruction::Call { function: method, arguments }
+        };
+
+        let value = self.push_instruction(instruction, result_type);
+        if diverges {
+            self.terminate_block(TerminatorInstruction::Unreachable);
+        }
+        value
+    }
+
+    /// Like [Self::try_resolve_effect_op] but also returns the op's position within its
+    /// ability's body, suitable for `IndexTuple` against the cap value.
+    fn try_resolve_ability_method(&mut self, path: PathId) -> Option<(DefinitionId, u32)> {
+        let origin = self.context().path_origin(path)?;
+        let Origin::TopLevelDefinition(name) = origin else { return None };
+
+        let is_effect = self.effect_defs.get(&name.top_level_item).copied().unwrap_or_else(|| {
+            let (item, _) = GetItemRaw(name.top_level_item).get(self.compiler);
+            let is_effect = matches!(&item.kind, cst::TopLevelItemKind::AbilityDefinition(_));
+            self.effect_defs.insert(name.top_level_item, is_effect);
+            is_effect
+        });
+        if !is_effect {
+            return None;
+        }
+
+        let (item, _) = GetItemRaw(name.top_level_item).get(self.compiler);
+        if let cst::TopLevelItemKind::AbilityDefinition(effect) = &item.kind {
+            if let Some(op_index) = effect.body.iter().position(|d| d.name == name.local_name_id) {
+                let id = self.get_definition_id(&name);
+                return Some((id, op_index as u32));
+            }
+        }
+        None
     }
 
     /// Looks up the callee via `path_types` rather than `expr_types`: the latter is overwritten
@@ -577,15 +650,18 @@ where
         }
 
         // Cold path: this TopLevelId is an effect definition. Verify that the
-        // referenced NameId is one of its ops (every name pointing
-        // into an effect def should be an op, but we confirm to be safe).
+        // referenced NameId is one of its ops. Paths can also resolve to the
+        // ability's type-constructor name or to a non-function field on the
+        // ability (sub-ability reference)
         let (item, _) = GetItemRaw(name.top_level_item).get(self.compiler);
         if let cst::TopLevelItemKind::AbilityDefinition(effect) = &item.kind {
-            if effect.body.iter().any(|d| d.name == name.local_name_id) {
-                return Some(self.get_definition_id(&name));
+            if let Some(op_index) = effect.body.iter().position(|d| d.name == name.local_name_id) {
+                let id = self.get_definition_id(&name);
+                self.effect_op_indices.insert(id, op_index as u32);
+                return Some(id);
             }
         }
-        unreachable!()
+        None
     }
 
     fn try_find_name(&self, pattern: PatternId) -> Option<(Name, NameId)> {
@@ -1116,6 +1192,11 @@ where
     /// body of each stub is `fn op args.. = perform op args..`, ensuring the
     /// operation can be used as a first-class value (passed to higher-order code)
     /// while also unambiguously naming the effect via its [DefinitionId].
+    ///
+    /// Currently unused: ability-method calls are inlined at the `Call` site via
+    /// [Self::emit_ability_method_call] instead of going through a per-op stub. Kept here
+    /// for reference until first-class effect-op usage is properly supported.
+    #[allow(dead_code)]
     fn define_effect_operations(&mut self, op_names: impl IntoIterator<Item = NameId>) {
         for name_id in op_names {
             let top_level_name = TopLevelName::new(self.top_level_id, name_id);
@@ -1331,8 +1412,12 @@ where
     }
 
     fn finish(self) -> Mir {
-        Mir { definitions: self.finished_functions, externals: self.external, preserved_op_indices: Default::default() }
-            .remove_internal_externs()
+        Mir {
+            definitions: self.finished_functions,
+            externals: self.external,
+            preserved_op_indices: self.effect_op_indices,
+        }
+        .remove_internal_externs()
     }
 
     /// Sets [self.generics_in_scope] to a map mapping each generic from the given type to a

@@ -19,27 +19,10 @@ main () =
     closure 2
 
 // args: --delete-binary --no-color
-// expected exit status: 101
-// expected stderr:
-// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
-// internal error: entered unreachable code
-// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
-// 
-// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
-// internal error: entered unreachable code
-// 
-// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
-// internal error: entered unreachable code
-// 
-// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
-// internal error: entered unreachable code
-// 
-// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
-// internal error: entered unreachable code
-// 
-// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
-// internal error: entered unreachable code
-// 
-// thread '<unnamed>' panicked at src/mir/builder/mod.rs:588:9:
-// internal error: entered unreachable code
+// expected stdout:
+// 4
+// 3
+// 2
+// 1
+// 1
 

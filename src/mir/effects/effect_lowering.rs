@@ -322,7 +322,7 @@ fn rewrite_single_perform(mir: &mut Mir, definition_id: DefinitionId, site: Perf
     let op_index = *context
         .op_index
         .get(&op)
-        .unwrap_or_else(|| panic!("effect_lowering: effect op {op:?} has no Handle in the program"));
+        .unwrap_or_else(|| panic!("effect_lowering: effect op {op:?} has no op-index entry"));
 
     // Capability is the implicit trailing argument, appended by implicit-arg resolution.
     let (cap_value, op_args) =
@@ -330,11 +330,14 @@ fn rewrite_single_perform(mir: &mut Mir, definition_id: DefinitionId, site: Perf
     let cap_value = *cap_value;
     let op_args: Vec<Value> = op_args.to_vec();
 
-    let definition = mir.definitions.get_mut(&definition_id).expect("definition disappeared mid-rewrite");
+    // Resolve types up front using the full Mir context (externals + definitions). Doing this
+    // before we take the mutable borrow on `definition` below means a cap_value that is
+    // `Value::Definition` of an external (e.g. a trait impl in the prelude) can still be looked up.
+    let definition_ref = &mir.definitions[&definition_id];
+    let cap_type = definition_ref.type_of_value(&cap_value, &mir.externals, &mir.definitions);
+    let op_arg_types: Vec<Type> =
+        mapvec(&op_args, |arg| definition_ref.type_of_value(arg, &mir.externals, &mir.definitions));
 
-    // The wrapper closure's type is fn (op_args..) [Pointer] -> ret. It lives
-    // at slot `op_index` of the capability tuple.
-    let cap_type = definition.type_of_value(&cap_value, &FxHashMap::default(), &FxHashMap::default());
     let wrapper_type = match &cap_type {
         Type::Tuple(fields) => fields
             .get(op_index as usize)
@@ -343,13 +346,13 @@ fn rewrite_single_perform(mir: &mut Mir, definition_id: DefinitionId, site: Perf
         // If the capability isn't a known tuple type yet (upstream not finished wiring it),
         // fall back to inferring the wrapper type from the Perform itself.
         _ => Type::Function(Arc::new(FunctionType {
-            parameters: mapvec(&op_args, |arg| {
-                definition.type_of_value(arg, &FxHashMap::default(), &FxHashMap::default())
-            }),
+            parameters: op_arg_types,
             environment: Type::POINTER,
             return_type: return_type.clone(),
         })),
     };
+
+    let definition = mir.definitions.get_mut(&definition_id).expect("definition disappeared mid-rewrite");
 
     let mut pending = Vec::new();
     {

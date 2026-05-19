@@ -389,6 +389,13 @@ pub enum Instruction {
     ///
     /// This instruction will later be removed by either the tail resume optimization pass
     /// (if its handler uses resume in a tail position) or the effect lowering pass otherwise.
+    ///
+    /// Currently unconstructed: ability-method calls are lowered directly to
+    /// `IndexTuple cap op_index + CallClosure` at MIR build time, since the cap value
+    /// (whether a trait impl or a handler-installed wrapper tuple) carries the operation
+    /// closures. Kept here so the optimization passes' lowering for legacy Perform-shaped
+    /// MIR continues to compile; can be removed when those passes are revisited.
+    #[allow(dead_code)]
     Perform {
         effect_op: DefinitionId,
         arguments: Vec<Value>,
