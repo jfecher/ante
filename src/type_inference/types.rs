@@ -536,7 +536,7 @@ impl Type {
                     return (Type::ERROR, Kind::Type);
                 }
 
-                let mut converted_args = mapvec(args.iter().enumerate(), |(i, arg)| {
+                let converted_args = mapvec(args.iter().enumerate(), |(i, arg)| {
                     let expected_kind = f_kind.get_nth_parameter_kind(i);
                     Self::from_cst_type_with_kind(
                         arg,
@@ -548,21 +548,6 @@ impl Type {
                         insert_implicit_type_vars,
                     )
                 });
-
-                // Automatically insert a fresh type variable for the implicit env parameter
-                // when a TraitConstructor is applied without the optional env argument.
-                if let Kind::TraitConstructor(kinds) = &f_kind {
-                    if converted_args.len() == kinds.len() {
-                        if insert_implicit_type_vars {
-                            let fresh_env = Type::Variable(TypeVariableId(*next_id));
-                            *next_id += 1;
-                            converted_args.push(fresh_env);
-                        } else {
-                            db.accumulate(Diagnostic::TraitTypeCantBeUsed { location: typ.location.clone() });
-                            converted_args.push(Type::ERROR);
-                        }
-                    }
-                }
 
                 assert!(!converted_args.is_empty());
                 let typ = Type::Application(Arc::new(f), Arc::new(converted_args));
@@ -879,13 +864,8 @@ where
                     write!(f, ", ")?;
                     self.fmt_type(&args[1], true, f)
                 } else {
-                    let display_args = if self.is_trait_constructor(constructor) {
-                        &args[..args.len().saturating_sub(1)]
-                    } else {
-                        args.as_slice()
-                    };
                     self.fmt_type(constructor, true, f)?;
-                    for arg in display_args.iter() {
+                    for arg in args.iter() {
                         write!(f, " ")?;
                         self.fmt_type(arg, true, f)?;
                     }
@@ -912,16 +892,6 @@ where
             }),
             Type::U32(n) => write!(f, "{n}"),
         }
-    }
-
-    fn is_trait_constructor(&self, constructor: &Type) -> bool {
-        if let Type::UserDefined(Origin::TopLevelDefinition(id)) = constructor.follow(self.bindings) {
-            let (item, _ctx) = GetItem(id.top_level_item).get(self.db);
-            if let cst::TopLevelItemKind::TypeDefinition(definition) = &item.kind {
-                return definition.is_trait;
-            }
-        }
-        false
     }
 
     fn fmt_type_origin(&self, origin: Origin, f: &mut std::fmt::Formatter) -> std::fmt::Result {

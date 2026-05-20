@@ -143,8 +143,8 @@ impl print_hashmap {Print k} {Print v}: Print (ref HashMap k v) with
 
         putchar c"]"
 
-impl stream_map: Stream (HashMap k v) (k, v) with
-    stream map e =
+implicit stream_map: Stream (HashMap k v) (k, v) =
+    Stream fn map e ->
         for i in 0 .. map.capacity do
             entry: Entry k v = map.entries.[i]
             if entry.occupied then

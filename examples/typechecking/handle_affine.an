@@ -2,7 +2,7 @@ type Resource = id: I32
 
 consume _ = ()
 
-effect Emit a with
+ability Emit a =
     emit: fn a -> Unit
 
 // Moving a non-copy outer variable in a handler branch should error

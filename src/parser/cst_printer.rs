@@ -22,10 +22,10 @@ use crate::{
 use super::{
     TopLevelContext,
     cst::{
-        self, Call, CompoundAssignOp, Comptime, Cst, Declaration, Definition, Do, EffectDefinition, Expr, Extern,
-        FunctionType, Handle, HandlePattern, If, Import, InterpolatedString, Is, Lambda, Literal, Match, MemberAccess,
-        Parameter, Path, Pattern, Quoted, Reference, SequenceItem, TopLevelItem, TraitDefinition, TraitImpl, Type,
-        TypeAnnotation, TypeDefinition, TypeDefinitionBody, TypeKind,
+        self, AbilityDefinition, AbilityImpl, Call, CompoundAssignOp, Comptime, Cst, Declaration, Definition, Do, Expr,
+        Extern, FunctionType, Handle, HandlePattern, If, Import, InterpolatedString, Is, Lambda, Literal, Match,
+        MemberAccess, Parameter, Path, Pattern, Quoted, Reference, SequenceItem, TopLevelItem, Type, TypeAnnotation,
+        TypeDefinition, TypeDefinitionBody, TypeKind,
     },
     ids::{ExprId, PatternId, TopLevelId},
 };
@@ -236,13 +236,8 @@ impl<'a> CstDisplay<'a> {
         match &item.kind {
             TopLevelItemKind::TypeDefinition(type_definition) => self.fmt_type_definition(type_definition, context, f),
             TopLevelItemKind::Definition(definition) => self.fmt_definition(definition, context, f),
-            TopLevelItemKind::TraitDefinition(trait_definition) => {
-                self.fmt_trait_definition(trait_definition, context, f)
-            },
-            TopLevelItemKind::TraitImpl(trait_impl) => self.fmt_trait_impl(trait_impl, context, f),
-            TopLevelItemKind::EffectDefinition(effect_definition) => {
-                self.fmt_effect_definition(effect_definition, context, f)
-            },
+            TopLevelItemKind::AbilityDefinition(ability) => self.fmt_ability(ability, context, f),
+            TopLevelItemKind::AbilityImpl(ability_impl) => self.fmt_ability_impl(ability_impl, context, f),
             TopLevelItemKind::Comptime(comptime) => self.fmt_comptime(comptime, context, f),
         }?;
         writeln!(f)
@@ -604,6 +599,10 @@ impl<'a> CstDisplay<'a> {
     fn fmt_function_type(
         &self, function_type: &FunctionType, context: &impl IdStore, f: &mut Formatter,
     ) -> std::fmt::Result {
+        if function_type.has_resume {
+            write!(f, "resume ")?;
+        }
+
         write!(f, "fn")?;
 
         let requires_parens = |typ: &Type| matches!(typ.kind, TypeKind::Function(_) | TypeKind::Application(..));
@@ -851,28 +850,20 @@ impl<'a> CstDisplay<'a> {
         self.fmt_type(&declaration.typ, context, f)
     }
 
-    fn fmt_trait_definition(
-        &mut self, trait_definition: &TraitDefinition, context: &impl IdStore, f: &mut Formatter,
+    fn fmt_ability(
+        &mut self, ability: &AbilityDefinition, context: &impl IdStore, f: &mut Formatter,
     ) -> std::fmt::Result {
-        write!(f, "trait ")?;
-        self.fmt_type_name(trait_definition.name, context, f)?;
+        write!(f, "ability ")?;
+        self.fmt_type_name(ability.name, context, f)?;
 
-        for generic in &trait_definition.generics {
+        for generic in &ability.generics {
             write!(f, " ")?;
             self.fmt_generic_param(generic, context, f)?;
         }
 
-        if !trait_definition.functional_dependencies.is_empty() {
-            write!(f, " ->")?;
-            for generic in &trait_definition.functional_dependencies {
-                write!(f, " ")?;
-                self.fmt_generic_param(generic, context, f)?;
-            }
-        }
-
-        write!(f, " with")?;
+        write!(f, " =")?;
         self.indent_level += 1;
-        for declaration in &trait_definition.body {
+        for declaration in &ability.body {
             self.newline(f)?;
             self.fmt_declaration(declaration, context, f)?;
         }
@@ -880,20 +871,20 @@ impl<'a> CstDisplay<'a> {
         Ok(())
     }
 
-    fn fmt_trait_impl(
-        &mut self, trait_impl: &TraitImpl, context: &impl IdStore, f: &mut Formatter,
+    fn fmt_ability_impl(
+        &mut self, ability_impl: &AbilityImpl, context: &impl IdStore, f: &mut Formatter,
     ) -> std::fmt::Result {
         write!(f, "impl ")?;
-        self.fmt_type_name(trait_impl.name, context, f)?;
-        self.fmt_parameters(&trait_impl.parameters, context, f)?;
+        self.fmt_name(ability_impl.name, context, f)?;
+        self.fmt_parameters(&ability_impl.parameters, context, f)?;
 
         write!(f, ": ")?;
-        self.fmt_path(trait_impl.trait_path, context, f)?;
-        self.fmt_type_args(&trait_impl.trait_arguments, context, f)?;
+        self.fmt_path(ability_impl.ability_path, context, f)?;
+        self.fmt_type_args(&ability_impl.ability_arguments, context, f)?;
 
         write!(f, " with")?;
         self.indent_level += 1;
-        for (name, expr) in &trait_impl.body {
+        for (name, expr) in &ability_impl.body {
             self.newline(f)?;
             self.fmt_name(*name, context, f)?;
 
@@ -906,27 +897,6 @@ impl<'a> CstDisplay<'a> {
                 }
                 self.fmt_expr(*expr, context, f)?;
             }
-        }
-        self.indent_level -= 1;
-        Ok(())
-    }
-
-    fn fmt_effect_definition(
-        &mut self, effect_definition: &EffectDefinition, context: &impl IdStore, f: &mut Formatter,
-    ) -> std::fmt::Result {
-        write!(f, "effect ")?;
-        self.fmt_type_name(effect_definition.name, context, f)?;
-
-        for generic in &effect_definition.generics {
-            write!(f, " ")?;
-            self.fmt_generic_param(generic, context, f)?;
-        }
-
-        write!(f, " with")?;
-        self.indent_level += 1;
-        for declaration in &effect_definition.body {
-            self.newline(f)?;
-            self.fmt_declaration(declaration, context, f)?;
         }
         self.indent_level -= 1;
         Ok(())

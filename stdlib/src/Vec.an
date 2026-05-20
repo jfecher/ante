@@ -155,13 +155,13 @@ impl print_vec {p: Print t}: Print (ref Vec t) with
 impl extract_vec: Extract (Vec t) Usz t with
     (.[) v i = v.data.[i]
 
-impl stream_vec: Stream (Vec a) a with
-    stream vec e =
+implicit stream_vec: Stream (Vec a) a =
+    Stream fn vec e ->
         for i in 0 .. vec.len do
             e.emit (deref (vec.get_unchecked i))
 
-impl stream_imm_vec: Stream (imm Vec a) (imm a) with
-    stream vec e =
+implicit stream_imm_vec: Stream (imm Vec a) (imm a) =
+    Stream fn vec e ->
         for i in 0 .. vec.len do
             e.emit (vec.get_unchecked i)
 

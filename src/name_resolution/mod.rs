@@ -130,9 +130,8 @@ pub fn resolve_impl(context: &Resolve, compiler: &DbHandle) -> ResolutionResult 
         TopLevelItemKind::Definition(definition) => resolver.resolve_expr(definition.rhs),
         TopLevelItemKind::TypeDefinition(type_definition) => resolver.resolve_type_definition(type_definition),
         TopLevelItemKind::Comptime(comptime_) => resolver.resolve_comptime(comptime_),
-        TopLevelItemKind::TraitDefinition(_) => unreachable!("Desugared by GetItem"),
-        TopLevelItemKind::EffectDefinition(_) => unreachable!("Desugared by GetItem"),
-        TopLevelItemKind::TraitImpl(_) => unreachable!("Desugared by GetItem"),
+        TopLevelItemKind::AbilityDefinition(_) => unreachable!("Desugared by GetItem"),
+        TopLevelItemKind::AbilityImpl(_) => unreachable!("Desugared by GetItem"),
     }
 
     incremental::exit_query();
@@ -476,15 +475,11 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                             TypeDefinitionBody::Enum(_) | TypeDefinitionBody::Alias(_) => is_type,
                         }
                     },
-                    // Enum variants are value constructors but accepted in either position
-                    // (kind/type checking validates appropriate use later)
-                    TopLevelItemKind::TypeDefinition(_) => true,
-                    // Effect type name: only valid in type position
-                    TopLevelItemKind::EffectDefinition(def) if name.local_name_id == def.name => is_type,
-                    // Effect operations/methods: only valid in value position
-                    TopLevelItemKind::EffectDefinition(_) => !is_type,
-                    // All other items (Definition, Extern, TraitImpl, Comptime) are values
-                    _ => !is_type,
+                    // Enum variants are only values, as are ability methods
+                    TopLevelItemKind::TypeDefinition(_) => !is_type,
+                    TopLevelItemKind::AbilityDefinition(_) => unreachable!("Desugared by GetItem"),
+                    TopLevelItemKind::AbilityImpl(_) => unreachable!("Desugared by GetItem"),
+                    TopLevelItemKind::Definition(_) | TopLevelItemKind::Comptime(_) => !is_type,
                 }
             },
             Origin::Builtin(b) => is_type == b.as_type().is_some(),
@@ -874,7 +869,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             TypeDefinitionBody::Error => (),
             TypeDefinitionBody::Struct(fields) => {
                 for (name, field_type) in fields {
-                    if type_definition.is_trait || type_definition.is_effect {
+                    if type_definition.is_ability {
                         self.link_existing_union_variant(type_definition.name, *name);
                     }
                     self.resolve_type(field_type, false);
@@ -930,7 +925,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             };
             let (item, item_context) = GetItem(name.top_level_item).get(self.compiler);
             let TopLevelItemKind::TypeDefinition(type_definition) = &item.kind else { continue };
-            if !type_definition.is_effect {
+            if !type_definition.is_ability {
                 continue;
             }
             let TypeDefinitionBody::Struct(fields) = &type_definition.body else { continue };

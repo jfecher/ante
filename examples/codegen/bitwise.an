@@ -8,12 +8,9 @@ main () =
     println (not x)
 
 // args: --delete-binary --no-color
-// expected exit status: 1
-// expected stderr:
-// examples/codegen/bitwise.an:8:19
-//  7 |     println (Bitwise.bxor x y)
-//  8 |     println (not x)	// error: Expected the end of this block but found `)`
-//    |                   ^
-// 
-// Found 1 error and 0 warnings
+// expected stdout:
+// 1
+// 7
+// 6
+// -4
 

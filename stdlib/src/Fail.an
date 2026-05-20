@@ -1,6 +1,6 @@
 // TODO: Should this be merged with the Throw effect?
-effect Fail with
-    fail: fn Unit -> Never
+ability Fail =
+    fail: resume fn Unit -> Never
 
 try (f: fn Fail => a): Maybe a =
     handler h for fail () -> None

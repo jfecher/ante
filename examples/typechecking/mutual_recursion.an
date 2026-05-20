@@ -15,13 +15,14 @@ main () =
 // args: -e ast-t --no-color
 // expected stdout:
 // (is_even: fn I32 -> Bool) (n: I32) =
-//     if (==: fn I32 I32 {Eq I32} -> Bool) (n: I32) 0 {(eq_i32: Eq I32)} then true else 
-//         (print: fn I32 {Print I32} -> Unit) (n: I32) {(print_i32: Print I32)}
-//         (not: fn Bool {Not Bool} -> Bool) ((is_odd: fn I32 -> Bool) ((-: fn I32 I32 {Sub I32} -> I32) (n: I32) 1 {(sub_i32: Sub I32)})) {(not_bool: Not Bool)}
+//     if (==: fn I32 I32 {Eq I32} [Ptr Unit] -> Bool) (n: I32) 0 {(eq_i32: Eq I32)} then true else 
+//         (print: fn I32 {Print I32} [Ptr Unit] -> Unit) (n: I32) {(print_i32: Print I32)}
+//         (not: fn Bool {Not Bool} [Ptr Unit] -> Bool) ((is_odd: fn I32 -> Bool) ((-: fn I32 I32 {Sub I32} [Ptr Unit] -> I32) (n: I32) 1 {(sub_i32: Sub I32)})) {(not_bool: Not Bool)}
 // 
 // (is_odd: fn I32 -> Bool) (n: I32) =
-//     if (==: fn I32 I32 {Eq I32} -> Bool) (n: I32) 1 {(eq_i32: Eq I32)} then true else (not: fn Bool {Not Bool} -> Bool) ((is_even: fn I32 -> Bool) ((-: fn I32 I32 {Sub I32} -> I32) (n: I32) 1 {(sub_i32: Sub I32)})) {(not_bool: Not Bool)}
+//     if (==: fn I32 I32 {Eq I32} [Ptr Unit] -> Bool) (n: I32) 1 {(eq_i32: Eq I32)} then true else (not: fn Bool {Not Bool} [Ptr Unit] -> Bool) ((is_even: fn I32 -> Bool) ((-: fn I32 I32 {Sub I32} [Ptr Unit] -> I32) (n: I32) 1 {(sub_i32: Sub I32)})) {(not_bool: Not Bool)}
 // 
 // (main: fn Unit -> Unit) () =
 //     (is_even: fn I32 -> Bool) 4
 //     ()
+

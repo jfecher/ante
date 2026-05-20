@@ -1,42 +1,12 @@
+ability MultiTrait a =
+    one: fn Unit -> Unit
+    two: fn Unit -> Unit
 
-trait MultiTrait a with 
-    one: Unit -> Unit
-    two: Unit -> Unit
+implicit multitrait_unit: MultiTrait Unit =
+    MultiTrait
+        (fn _ -> ())
+        (fn _ -> ())
 
-impl MultiTrait Unit with 
-    one _ = ()
-    two _ = ()
-
-one ()
+main () = one ()
 
 // args: --delete-binary --no-color
-// expected exit status: 1
-// expected stderr:
-// examples/regressions/159_two_trait_functions.an:1:1
-// 1 | 	// error: This program has no `main` function
-//   | 
-// 2 | trait MultiTrait a with 
-// 
-// examples/regressions/159_two_trait_functions.an:3:10
-// 2 | trait MultiTrait a with 
-// 3 |     one: Unit -> Unit	// error: Expected 0 arguments but found 1
-//   |          ^^^^
-// 4 |     two: Unit -> Unit
-// 
-// examples/regressions/159_two_trait_functions.an:3:15
-// 2 | trait MultiTrait a with 
-// 3 |     one: Unit -> Unit	// error: Expected the end of this block but found `->`
-//   |               ^^
-// 4 |     two: Unit -> Unit
-// 
-// examples/regressions/159_two_trait_functions.an:6:6
-// 6 | impl MultiTrait Unit with 	// error: Expected an identifier but found `MultiTrait`
-//   |      ^^^^^^^^^^
-// 7 |     one _ = ()
-// 
-// examples/regressions/159_two_trait_functions.an:10:5
-// 10 | one ()	// error: Expected `=` to begin the function body but found `()`
-//    |     ^^
-// 
-// Found 5 errors and 0 warnings
-

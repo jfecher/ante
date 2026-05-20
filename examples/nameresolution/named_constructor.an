@@ -28,7 +28,7 @@ z = y * 2.0
 // t2_c1m818_4335_1 = T_c1m818_9305_0
 // 
 // // id = c1m818_1897
-// z_c1m818_1897_1 = y_? *_c0m703_7785_1 2.0
+// z_c1m818_1897_1 = y_? *_c0m703_5387_2 2.0
 
 // expected stderr:
 // examples/nameresolution/named_constructor.an:7:8

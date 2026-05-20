@@ -37,9 +37,8 @@ pub struct TopLevelItem {
 pub enum TopLevelItemKind {
     Definition(Definition),
     TypeDefinition(TypeDefinition),
-    TraitDefinition(TraitDefinition),
-    TraitImpl(TraitImpl),
-    EffectDefinition(EffectDefinition),
+    AbilityDefinition(AbilityDefinition),
+    AbilityImpl(AbilityImpl),
     Comptime(Comptime),
 }
 
@@ -48,9 +47,8 @@ impl TopLevelItemKind {
         match self {
             TopLevelItemKind::Definition(definition) => ItemName::Pattern(definition.pattern),
             TopLevelItemKind::TypeDefinition(type_definition) => ItemName::Single(type_definition.name),
-            TopLevelItemKind::TraitDefinition(trait_definition) => ItemName::Single(trait_definition.name),
-            TopLevelItemKind::TraitImpl(trait_impl) => ItemName::Single(trait_impl.name),
-            TopLevelItemKind::EffectDefinition(effect_definition) => ItemName::Single(effect_definition.name),
+            TopLevelItemKind::AbilityDefinition(trait_definition) => ItemName::Single(trait_definition.name),
+            TopLevelItemKind::AbilityImpl(ability_impl) => ItemName::Single(ability_impl.name),
             TopLevelItemKind::Comptime(_) => ItemName::None,
         }
     }
@@ -123,18 +121,18 @@ pub enum TypeKind {
     /// kind-`U32` parameters. Example: the `4` in `Array 4 I32`.
     IntegerConstant(u32),
 
-    /// This is an internal type only created when desugaring closure environments in trait impls.
+    /// This is an internal type only created when desugaring closure environments in ability impls.
     /// Most tuple types in source code refer to the `,` type defined in the prelude. While they
     /// could use this type instead, using a UserDefinedType for them lets us reuse the existing
     /// mechanisms to automatically define their constructor and retrieve their fields.
     Tuple(Vec<Type>),
 
     /// This type can't be parsed, it is only used by `GetItem` to desugar
-    /// trait types into in some cases.
+    /// ability types into in some cases.
     NoClosureEnv,
 
     /// This type can't be parsed, it is only used by `GetItem` to desugar
-    /// effect operation environments to a pointer type.
+    /// ability method environments to a pointer type.
     Pointer,
 
     /// A filler type which corresponds to an unbound type variable to be inferred later
@@ -177,6 +175,10 @@ pub struct FunctionType {
     pub parameters: Vec<ParameterType>,
     pub environment: Option<Box<Type>>,
     pub return_type: Box<Type>,
+
+    /// True if this is a `resume fn`.
+    /// Only valid as an ability field.
+    pub has_resume: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
@@ -202,10 +204,8 @@ impl ParameterType {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct TypeDefinition {
     pub shared: bool,
-    /// TraitDefinitions are desugared into type definitions
-    pub is_trait: bool,
-    /// EffectDefinitions are also desugared into type definitions
-    pub is_effect: bool,
+    /// AbilityDefinitions are desugared into type definitions
+    pub is_ability: bool,
     pub name: NameId,
     pub generics: Generics,
     pub body: TypeDefinitionBody,
@@ -488,7 +488,7 @@ pub struct Assignment {
     pub lhs: ExprId,
     pub rhs: ExprId,
     /// For compound assignments (+=, -=, etc.): the operator kind and a synthetic
-    /// Variable expression for the operator function, resolved via normal trait dispatch.
+    /// Variable expression for the operator function, resolved via normal ability dispatch.
     pub op: Option<(CompoundAssignOp, ExprId)>,
 }
 
@@ -593,30 +593,22 @@ pub enum KindAnnotation {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct TraitDefinition {
+pub struct AbilityDefinition {
     pub name: NameId,
     pub generics: Generics,
-    pub functional_dependencies: Generics,
     pub body: Vec<Declaration>,
 }
 
-pub type Name = Arc<String>;
-
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct TraitImpl {
+pub struct AbilityImpl {
     pub name: NameId,
     pub parameters: Vec<Parameter>,
-    pub trait_path: PathId,
-    pub trait_arguments: Vec<Type>,
+    pub ability_path: PathId,
+    pub ability_arguments: Vec<Type>,
     pub body: Vec<(NameId, ExprId)>,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct EffectDefinition {
-    pub name: NameId,
-    pub generics: Generics,
-    pub body: Vec<Declaration>,
-}
+pub type Name = Arc<String>;
 
 /// An extern has a name and a type determined by the expected type
 /// when it is used in an expression. Most often this is bounded

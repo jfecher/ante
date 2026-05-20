@@ -1,7 +1,7 @@
 
-effect Log with log: fn String -> Unit
+ability Log = log: fn String -> Unit
 
-effect Use a with
+ability Use a =
     get: fn Unit -> a
     set: fn a I32 -> Unit
 
@@ -31,10 +31,10 @@ map3 (l: List a) (f: fn a -> b) {Log} : List b = ()
 
 // args: -e ast --no-color
 // expected stdout:
-// effect Log with
+// ability Log =
 //     log: fn String -> Unit
 // 
-// effect Use a with
+// ability Use a =
 //     get: fn Unit -> a
 //     set: fn a I32 -> Unit
 // 
@@ -60,3 +60,4 @@ map3 (l: List a) (f: fn a -> b) {Log} : List b = ()
 // map2 (l: List a) (f: fn a -> b) : List b = ()
 // 
 // map3 (l: List a) (f: fn a -> b) {_: Log} : List b = ()
+

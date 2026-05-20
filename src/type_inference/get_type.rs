@@ -78,7 +78,7 @@ pub(super) fn try_get_generalized_type(
         // Any lambda at global scope shouldn't be able to capture any local variables
         let environment = None;
 
-        let cst_function_type = cst::FunctionType { parameters, environment, return_type };
+        let cst_function_type = cst::FunctionType { parameters, environment, return_type, has_resume: false };
 
         // We construct a function type to convert wholesale instead of converting as we go
         // to avoid repeating logic in [Type::from_cst_type], namely handling of effect types.
@@ -96,7 +96,7 @@ pub(super) fn try_get_generalized_type(
 }
 
 /// Like `try_get_generalized_type` but allows the resulting type to contain fresh type variables
-/// for trait closure environments or effects. The caller passes a `next_id` counter so that
+/// for ability closure environments. The caller passes a `next_id` counter so that
 /// fresh IDs don't collide with other type variables.
 /// This function always succeeds. In the case there are no annotations, a fresh type variable is returned.
 pub fn get_partial_type(
@@ -124,7 +124,7 @@ pub fn get_partial_type(
         });
 
         let environment = Some(Box::new(cst::Type::new(cst::TypeKind::Hole, lambda_location.clone())));
-        let cst_function_type = cst::FunctionType { parameters, environment, return_type };
+        let cst_function_type = cst::FunctionType { parameters, environment, return_type, has_resume: false };
 
         let cst_fn_type = cst::Type::new(TypeKind::Function(cst_function_type), lambda_location);
         let mut local_kinds = crate::type_inference::types::LocalKinds::default();

@@ -1,7 +1,7 @@
 
 bar: a = extern bar
 
-trait Baz a with baz: fn a -> Unit
+ability Baz a = baz: fn a -> Unit
 
 foo () = baz bar
 
@@ -10,14 +10,15 @@ foo () = baz bar
 // expected stdout:
 // (bar: a) = extern "bar"
 // 
-// type Baz a [env] =
-//     baz: fn a [[env]] -> Unit
+// type Baz a =
+//     baz: fn a [Ptr Unit] -> Unit
 // 
-// (foo: fn Unit -> _) () = (baz: (error)) (bar: _)
+// (foo: fn Unit -> Unit) () = (baz: fn _ {Baz _} [Ptr Unit] -> Unit) (bar: _) {(error)}
 
 // expected stderr:
 // examples/typechecking/trait_propagation.an:6:10
-// 6 | foo () = baz bar	// error: `baz` not found in scope
+// 6 | foo () = baz bar	// error: No implicit found for type Baz _ required by baz
 //   |          ^^^
 // 
 // Found 1 error and 0 warnings
+

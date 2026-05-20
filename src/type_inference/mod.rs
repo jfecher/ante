@@ -63,9 +63,12 @@ pub fn type_check_impl(context: &TypeCheckSCC, compiler: &DbHandle) -> TypeCheck
         match &item.kind {
             TopLevelItemKind::Definition(definition) => checker.check_definition(definition, true),
             TopLevelItemKind::TypeDefinition(type_definition) => checker.check_type_definition(type_definition),
-            TopLevelItemKind::TraitDefinition(_) => unreachable!("Traits should be desugared into types by this point"),
-            TopLevelItemKind::TraitImpl(_) => unreachable!("Impls should be simplified into definitions by this point"),
-            TopLevelItemKind::EffectDefinition(effect) => checker.check_effect_definition(effect),
+            TopLevelItemKind::AbilityDefinition(_) => {
+                unreachable!("Abilities should be desugared into types by this point")
+            },
+            TopLevelItemKind::AbilityImpl(_) => {
+                unreachable!("AbilityImpls should be desugared into definitions by this point")
+            },
             TopLevelItemKind::Comptime(comptime) => checker.check_comptime(comptime),
         };
 
@@ -615,7 +618,24 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     self.try_unify_with_bindings(&actual.typ, &expected.typ, new_bindings)?;
                 }
 
-                self.try_unify_with_bindings(&actual.environment, &expected.environment, new_bindings)?;
+                // Ability methods carry a `Ptr Unit` env so every ability value has a uniform
+                // `(fn_ptr, env_ptr)` size. A bare function (env = NoClosureEnv) is treated as
+                // compatible with such a slot: the MIR builder wraps it with a null pointer env.
+                let actual_env = actual.environment.follow_two(&self.bindings, new_bindings);
+                let expected_env = expected.environment.follow_two(&self.bindings, new_bindings);
+                let no_env = |t: &Type| matches!(t, Type::Primitive(PrimitiveType::NoClosureEnv));
+                let is_ptr_env = |t: &Type| match t {
+                    Type::Primitive(PrimitiveType::Pointer) => true,
+                    Type::Application(c, _) => {
+                        matches!(c.follow_two(&self.bindings, new_bindings), Type::Primitive(PrimitiveType::Pointer))
+                    },
+                    _ => false,
+                };
+                let env_skip = (no_env(&actual_env) && is_ptr_env(&expected_env))
+                    || (no_env(&expected_env) && is_ptr_env(&actual_env));
+                if !env_skip {
+                    self.try_unify_with_bindings(&actual.environment, &expected.environment, new_bindings)?;
+                }
                 self.try_unify_with_bindings(&actual.return_type, &expected.return_type, new_bindings)
             },
             (

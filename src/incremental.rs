@@ -227,7 +227,7 @@ define_intermediate!(700, VisibleImplicits -> Arc<Implicits>, DbStorage, visible
 /// Each definition maps a string name to the top-level item that name originates from,
 /// as well as the local id of that name within the top-level item. This NameId is important
 /// to distinguish multiple names defined by the same top-level item. For example, `a, b = 1, 2`
-/// defines both `a` and `b`. Similarly, a trait may define multiple methods, etc.
+/// defines both `a` and `b`. Similarly, an ability may define multiple methods, etc.
 pub type Definitions = BTreeMap<Name, TopLevelName>;
 
 /// Maps type names to their TopLevelName and Kind.

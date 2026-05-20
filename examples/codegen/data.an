@@ -15,7 +15,6 @@ main () =
     | None -> println "s = None"
 
 // args: --delete-binary --no-color
-// expected exit status: 0
 // expected stdout:
 // t = 1, one
 // s = 2

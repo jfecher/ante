@@ -127,5 +127,4 @@ fn apply_type_constructor(typ: &Type, args: Option<&[Type]>, types: &TypeCheckRe
             typ.apply_type(&args, &no_type_var_bindings)
         },
     }
-    .follow_all(&types.bindings)
 }

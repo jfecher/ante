@@ -95,6 +95,15 @@ impl<'tokens> Parser<'tokens> {
         self.tokens.get(self.token_index + 1).map(|(token, _span)| token)
     }
 
+    /// True if positioned at an `(OP)` operator-reference form, i.e. the current token is `(`,
+    /// the next is an overloadable operator, and the one after that is `)`. The trailing `)`
+    /// check avoids treating `(not x)` (a parenthesized unary expression) as `(not) x`.
+    fn at_operator_reference(&self) -> bool {
+        *self.current_token() == Token::ParenthesisLeft
+            && self.peek_next_token().is_overloadable_operator()
+            && self.tokens.get(self.token_index + 2).map(|(t, _)| t) == Some(&Token::ParenthesisRight)
+    }
+
     fn current_token_span(&self) -> Span {
         self.tokens[self.token_index].1
     }
@@ -264,14 +273,6 @@ impl<'tokens> Parser<'tokens> {
             _ => Self::hash_top_level_data(&mut self.top_level_item_hashes, &()),
         };
 
-        self.new_top_level_id_helper(hash)
-    }
-
-    /// Create a new TopLevelId from the path of a given top level item.
-    /// This is a specialized version to avoid cloning the string given by the given PathId.
-    fn new_top_level_id_from_path_id(&mut self, path: PathId) -> TopLevelId {
-        let data = &self.current_context.paths[path];
-        let hash = Self::hash_top_level_data(&mut self.top_level_item_hashes, data);
         self.new_top_level_id_helper(hash)
     }
 
@@ -591,20 +592,15 @@ impl<'tokens> Parser<'tokens> {
                 id = self.new_top_level_id_from_name_id(definition.name);
                 TopLevelItemKind::TypeDefinition(definition)
             },
-            Token::Trait => {
-                let trait_ = self.parse_trait_definition()?;
-                id = self.new_top_level_id_from_name_id(trait_.name);
-                TopLevelItemKind::TraitDefinition(trait_)
+            Token::Ability => {
+                let ability = self.parse_ability_definition()?;
+                id = self.new_top_level_id_from_name_id(ability.name);
+                TopLevelItemKind::AbilityDefinition(ability)
             },
             Token::Impl => {
-                let impl_ = self.parse_trait_impl()?;
-                id = self.new_top_level_id_from_path_id(impl_.trait_path);
-                TopLevelItemKind::TraitImpl(impl_)
-            },
-            Token::Effect => {
-                let effect = self.parse_effect_definition()?;
-                id = self.new_top_level_id_from_name_id(effect.name);
-                TopLevelItemKind::EffectDefinition(effect)
+                let ability_impl = self.parse_ability_impl()?;
+                id = self.new_top_level_id_from_name_id(ability_impl.name);
+                TopLevelItemKind::AbilityImpl(ability_impl)
             },
             Token::Octothorpe => {
                 let comptime = self.parse_comptime()?;
@@ -710,7 +706,7 @@ impl<'tokens> Parser<'tokens> {
             _ => e,
         })?;
         let body = self.parse_type_body()?;
-        Ok(TypeDefinition { shared, name, generics, body, is_trait: false, is_effect: false })
+        Ok(TypeDefinition { shared, name, generics, body, is_ability: false })
     }
 
     /// generics: ( ident | '(' ident ':' kind ')' )*
@@ -902,6 +898,15 @@ impl<'tokens> Parser<'tokens> {
 
     fn parse_function_type(&mut self) -> Result<Type> {
         let start = self.current_token_location();
+
+        let mut has_resume = false;
+        if let Token::Identifier(name) = self.current_token()
+            && name == "resume"
+        {
+            self.advance();
+            has_resume = true;
+        }
+
         self.expect(Token::Fn, "`fn` to start this function type")?;
 
         let mut parameters = self.many0(Self::parse_parameter_type);
@@ -927,7 +932,10 @@ impl<'tokens> Parser<'tokens> {
         let return_type = Box::new(self.parse_type()?);
         let location = start.to(&self.previous_token_location());
 
-        Ok(Type::new(TypeKind::Function(cst::FunctionType { parameters, environment, return_type }), location))
+        Ok(Type::new(
+            TypeKind::Function(cst::FunctionType { parameters, environment, return_type, has_resume }),
+            location,
+        ))
     }
 
     /// pair_type: type_no_pair ',' pair_type
@@ -967,6 +975,7 @@ impl<'tokens> Parser<'tokens> {
             Token::Fn => self.parse_function_type(),
             Token::Ref | Token::Mut | Token::Imm | Token::Uniq => self.parse_reference_type(),
             Token::Forall => self.parse_forall_type(),
+            Token::Identifier(name) if name == "resume" => self.parse_function_type(),
             _ => self.parse_type_application(),
         }
     }
@@ -1093,7 +1102,7 @@ impl<'tokens> Parser<'tokens> {
             },
             // We allow all overloadable operators here like with identifiers but
             // in reality this is mostly to allow `(,)` to be the pair type.
-            Token::ParenthesisLeft if self.peek_next_token().is_overloadable_operator() => {
+            Token::ParenthesisLeft if self.at_operator_reference() => {
                 self.advance();
                 let operator = self.current_token().to_string();
                 self.advance();
@@ -1110,7 +1119,7 @@ impl<'tokens> Parser<'tokens> {
                 self.advance();
                 Ok(name.clone())
             },
-            Token::ParenthesisLeft if self.peek_next_token().is_overloadable_operator() => {
+            Token::ParenthesisLeft if self.at_operator_reference() => {
                 self.advance();
                 let operator = self.current_token().to_string();
                 self.advance();
@@ -1133,7 +1142,7 @@ impl<'tokens> Parser<'tokens> {
                 self.advance();
                 Ok((name.clone(), location))
             },
-            Token::ParenthesisLeft if self.peek_next_token().is_overloadable_operator() => {
+            Token::ParenthesisLeft if self.at_operator_reference() => {
                 let start = self.current_token_location();
                 self.advance();
                 let operator = self.current_token().to_string();
@@ -1278,12 +1287,6 @@ impl<'tokens> Parser<'tokens> {
         self.many1(Self::parse_function_parameter)
     }
 
-    /// An impl may be a value (0 parameters) or a function (1+ parameters)
-    /// function_parameters: function_parameter+
-    fn parse_impl_parameters(&mut self) -> Vec<Parameter> {
-        self.many0(Self::parse_function_parameter)
-    }
-
     /// function_parameter: implicit_function_parameter
     ///                   | '(' 'var' pattern ')'
     ///                   | function_parameter_pattern
@@ -1400,9 +1403,7 @@ impl<'tokens> Parser<'tokens> {
                 self.advance();
                 Ok(Pattern::Literal(Literal::Bool(*value)))
             },
-            Token::ParenthesisLeft if self.peek_next_token().is_overloadable_operator() => {
-                self.parse_ident_id().map(Pattern::Variable)
-            },
+            Token::ParenthesisLeft if self.at_operator_reference() => self.parse_ident_id().map(Pattern::Variable),
             Token::ParenthesisLeft => {
                 self.advance();
                 let pattern = self.parse_with_recovery(
@@ -1423,25 +1424,50 @@ impl<'tokens> Parser<'tokens> {
     }
 
     /// tuple_pattern: type_annotation_pattern (',' type_annotation_pattern)*
+    ///
+    /// `,` is right-associative here, matching the comma operator in expressions
+    /// and the pair type in `parse_pair_type`. With three or more elements,
+    /// `(a, b, c)` becomes `Pair a (Pair b c)`.
     fn parse_tuple_pattern(&mut self) -> Result<Pattern> {
-        let start = self.current_token_span();
-        let mut pattern = self.parse_type_annotation_pattern()?;
-        let pattern_end = self.previous_token_span();
+        let first_start = self.current_token_span();
+        let first_pattern = self.parse_type_annotation_pattern()?;
+        let first_end = self.previous_token_span();
+
+        if *self.current_token() != Token::Comma {
+            return Ok(first_pattern);
+        }
+
+        let first_location = first_start.to(&first_end).in_file(self.file_id);
+        let first_id = self.push_pattern(first_pattern, first_location.clone());
+
+        let mut elements: Vec<PatternId> = vec![first_id];
+        let mut commas: Vec<(Location, PathId)> = Vec::new();
 
         while self.accept(Token::Comma) {
             let comma_location = self.previous_token_location();
-            let location = start.to(&pattern_end).in_file(self.file_id);
-
-            let lhs = self.push_pattern(pattern, location);
-
-            let rhs = self.with_pattern_id_and_location(Self::parse_type_annotation_pattern)?;
-
             let components = vec![(Token::Comma.to_string(), comma_location.clone())];
-            let comma_path = self.push_path(Path { components }, comma_location);
-            pattern = Pattern::Constructor(comma_path, vec![lhs, rhs]);
+            let comma_path = self.push_path(Path { components }, comma_location.clone());
+            commas.push((comma_location, comma_path));
+
+            let element = self.with_pattern_id_and_location(Self::parse_type_annotation_pattern)?;
+            elements.push(element);
         }
 
-        Ok(pattern)
+        // Fold right-associatively: last element is the seed.
+        let mut acc_id = elements.pop().expect("at least one element");
+        while let (Some(lhs_id), Some((comma_location, comma_path))) = (elements.pop(), commas.pop()) {
+            let lhs_location = self.current_context.pattern_locations[lhs_id].clone();
+            let acc_location = self.current_context.pattern_locations[acc_id].clone();
+            let pair_location = lhs_location.to(&acc_location);
+            let _ = comma_location;
+            let pair = Pattern::Constructor(comma_path, vec![lhs_id, acc_id]);
+            acc_id = self.push_pattern(pair, pair_location);
+        }
+
+        // Return the pattern by extracting it back. The caller will re-push, but
+        // we already pushed the intermediate nodes, so unwrap the outermost.
+        let final_pattern = self.current_context.patterns[acc_id].clone();
+        Ok(final_pattern)
     }
 
     /// type_annotation_pattern: constructor_pattern (':' type)?
@@ -1785,7 +1811,7 @@ impl<'tokens> Parser<'tokens> {
                 let path = self.push_path(path, location.clone());
                 Ok(self.push_expr(Expr::Variable(path), location))
             },
-            Token::ParenthesisLeft if self.peek_next_token().is_overloadable_operator() => self.parse_variable(),
+            Token::ParenthesisLeft if self.at_operator_reference() => self.parse_variable(),
             Token::ParenthesisLeft => {
                 self.advance();
                 // These `too_far` tokens aren't accurate, they may appear in an expression.
@@ -1951,7 +1977,7 @@ impl<'tokens> Parser<'tokens> {
             let location = self.expr_location(expression).to(&self.expr_location(rhs));
 
             // Create a synthetic Variable expression for the operator function (e.g., "+")
-            // so it goes through normal name resolution and trait dispatch.
+            // so it goes through normal name resolution and ability dispatch.
             let op_location = location.clone();
             let components = vec![(op_str.to_string(), op_location.clone())];
             let path_id = self.push_path(cst::Path { components }, op_location.clone());
@@ -2392,7 +2418,7 @@ impl<'tokens> Parser<'tokens> {
                 self.advance();
                 Ok(self.push_name(name, location))
             },
-            Token::ParenthesisLeft if self.peek_next_token().is_overloadable_operator() => {
+            Token::ParenthesisLeft if self.at_operator_reference() => {
                 self.advance();
                 let location = self.current_token_location();
                 let name = Arc::new(self.current_token().to_string());
@@ -2439,21 +2465,19 @@ impl<'tokens> Parser<'tokens> {
         }
     }
 
-    fn parse_trait_definition(&mut self) -> Result<cst::TraitDefinition> {
-        self.expect(Token::Trait, "`trait` to start this trait definition")?;
+    fn parse_ability_definition(&mut self) -> Result<cst::AbilityDefinition> {
+        self.expect(Token::Ability, "`ability` to start this ability definition")?;
         let name = self.parse_type_name_id()?;
         let generics = self.parse_generics();
 
-        let functional_dependencies = if self.accept(Token::RightArrow) { self.parse_generics() } else { Vec::new() };
-
-        self.expect(Token::With, "`with` to separate this trait's signature from its body")?;
+        self.expect(Token::Equal, "`=` to separate this ability's signature from its body")?;
         let body = self.parse_declaration_block()?;
 
-        Ok(cst::TraitDefinition { name, generics, functional_dependencies, body })
+        Ok(cst::AbilityDefinition { name, generics, body })
     }
 
-    fn parse_trait_impl(&mut self) -> Result<cst::TraitImpl> {
-        self.expect(Token::Impl, "`impl` to start this trait implementation")?;
+    fn parse_ability_impl(&mut self) -> Result<cst::AbilityImpl> {
+        self.expect(Token::Impl, "`impl` to start this ability implementation")?;
 
         let name = self.parse_ident_id()?;
         let parameters = self.parse_impl_parameters();
@@ -2461,9 +2485,9 @@ impl<'tokens> Parser<'tokens> {
         self.accept(Token::Newline);
         self.expect(Token::Colon, "a `:` to separate this impl's name from its type")?;
 
-        let trait_path = self.parse_type_path_id()?;
-        let trait_arguments = self.many0(Self::parse_type_arg);
-        self.expect(Token::With, "`with` to separate this trait impl's signature from its body")?;
+        let ability_path = self.parse_type_path_id()?;
+        let ability_arguments = self.many0(Self::parse_type_arg);
+        self.expect(Token::With, "`with` to separate this impl's signature from its body")?;
 
         let body =
             mapvec(self.parse_impl_body()?, |definition| match &self.current_context.patterns[definition.pattern] {
@@ -2475,7 +2499,12 @@ impl<'tokens> Parser<'tokens> {
                     (name, definition.rhs)
                 },
             });
-        Ok(cst::TraitImpl { name, parameters, trait_path, trait_arguments, body })
+        Ok(cst::AbilityImpl { name, parameters, ability_path, ability_arguments, body })
+    }
+
+    /// An impl may be a value (0 parameters) or a function (1+ parameters)
+    fn parse_impl_parameters(&mut self) -> Vec<Parameter> {
+        self.many0(Self::parse_function_parameter)
     }
 
     fn parse_impl_body(&mut self) -> Result<Vec<Definition>> {
@@ -2485,16 +2514,5 @@ impl<'tokens> Parser<'tokens> {
             },
             _ => self.parse_definition().map(|definition| vec![definition]),
         }
-    }
-
-    fn parse_effect_definition(&mut self) -> Result<cst::EffectDefinition> {
-        self.expect(Token::Effect, "`effect` to start this effect definition")?;
-        let name = self.parse_type_name_id()?;
-        let generics = self.parse_generics();
-
-        self.expect(Token::With, "`with` to separate this effect's signature from its body")?;
-        let body = self.parse_declaration_block()?;
-
-        Ok(cst::EffectDefinition { name, generics, body })
     }
 }

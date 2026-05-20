@@ -31,10 +31,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 return;
             },
             cst::TypeDefinitionBody::Struct(fields) => {
-                // If this is from a trait/effect, each field needs to be given its own type
+                // If this is from an ability, each field needs to be given its own type
                 // since they are publically visible, e.g. as `Eq.eq` or `Emit.emit`
-                if definition.is_trait || definition.is_effect {
-                    self.build_method_types(id, definition, fields, definition.is_trait);
+                if definition.is_ability {
+                    self.build_method_types(id, definition, fields);
                 }
                 let fields = mapvec(fields, |(_, field_type)| field_type.clone());
                 Cow::Owned(vec![(definition.name, fields)])
@@ -204,64 +204,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         result
     }
 
-    /// Given a desugared trait definition like:
-    /// ```ante
-    /// type Eq t =
-    ///     eq: fn t t -> Bool
-    /// ```
-    /// Check an `effect E g1 g2 with op1: ... op2: ...` definition by
-    /// assigning each operation a type of `fn P1 .. Pn {E g1 g2} [Ptr Unit] -> R`.
-    pub(super) fn check_effect_definition(&mut self, effect: &cst::EffectDefinition) {
-        let id = self.current_item.unwrap();
-        let effect_name = TopLevelName::new(id, effect.name);
-
-        // The effect type itself, applied to its generics: e.g. `Use a` is
-        // `Application(UserDefined(Use), [Generic(a)])` and a bare `Fail`
-        // is just `UserDefined(Fail)`.
-        let effect_as_type = {
-            let base = Type::UserDefined(Origin::TopLevelDefinition(effect_name));
-            if effect.generics.is_empty() {
-                base
-            } else {
-                let generic_args = mapvec(&effect.generics, |g| Type::Generic(Generic::Named(Origin::Local(g.name))));
-                Type::Application(Arc::new(base), Arc::new(generic_args))
-            }
-        };
-
-        // Effect operations share kind information across the effect's generic params.
-        let mut local_kinds = Self::local_kinds_from_generics(&effect.generics);
-
-        for declaration in &effect.body {
-            let method_type = self.from_cst_type_with_local_kinds(&declaration.typ, false, &mut local_kinds);
-
-            let method_type = if let Type::Function(fn_arc) = method_type {
-                let mut fn_type = Arc::unwrap_or_clone(fn_arc);
-                // Effect operations are invoked through capability closures whose
-                // environment is the coroutine state pointer. MIR closure conversion
-                // ensures captures are placed behind a pointer to match.
-                fn_type.environment = Type::POINTER;
-
-                // Require the capability when calling this function
-                fn_type.parameters.push(ParameterType::implicit(effect_as_type.clone()));
-                Type::Function(Arc::new(fn_type))
-            } else {
-                // Non-function effect operations are unusual; leave them as-is.
-                method_type
-            };
-
-            self.check_name(declaration.name, &method_type);
-        }
-    }
-
     /// The name `Eq.eq` is publically visible. We want to give it the type:
     /// `Eq.eq: fn t t {Eq t} -> Bool`
     ///
     /// It should be generalized to `forall t. fn t t {Eq t} -> Bool` later.
     ///
-    /// `is_trait` should be true for traits and false for effects
-    fn build_method_types(
-        &mut self, id: TopLevelId, definition: &cst::TypeDefinition, fields: &[(NameId, cst::Type)], is_trait: bool,
-    ) {
+    /// The function's closure environment is hard-coded to `Pointer` by the ability
+    /// desugarer so every ability value has uniform size.
+    fn build_method_types(&mut self, id: TopLevelId, definition: &cst::TypeDefinition, fields: &[(NameId, cst::Type)]) {
         let type_name = TopLevelName::new(id, definition.name);
 
         for (method_name, method_type) in fields.iter() {
@@ -271,16 +221,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             // from the trait/effect's own generic annotations.
             let mut local_kinds = Self::local_kinds_from_generics(&definition.generics);
             let mut method_type = self.from_cst_type_with_local_kinds(&method_type, false, &mut local_kinds);
-
-            if let Type::Function(fn_arc) = method_type {
-                let mut fn_type = Arc::unwrap_or_clone(fn_arc);
-                fn_type.environment = if is_trait {
-                    Type::NO_CLOSURE_ENV
-                } else {
-                    Type::Application(Arc::new(Type::POINTER), Arc::new(vec![Type::UNIT]))
-                };
-                method_type = Type::Function(Arc::new(fn_type));
-            }
 
             if matches!(method_type, Type::Function(_)) {
                 method_type = self.add_implicit_arg_to_function_type(method_type, implicit_arg);

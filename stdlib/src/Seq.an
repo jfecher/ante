@@ -195,9 +195,9 @@ impl print_seq {p: Print t} {Copy t}: Print (Seq t) with
             print (ptr_to_mut elem).*
         print "]"
 
-impl clone_seq: Clone (Seq t) with
+implicit clone_seq: Clone (Seq t) =
     // bug: multiple matching implicits if we just return `seq`
-    clone (seq: ref (Seq t)) =
+    Clone fn (seq: ref (Seq t)) ->
         if seq.data != null () then
             rc = ptr_to_mut seq.data.direct_rc
             rc += 1
@@ -254,8 +254,8 @@ drop_data (var data: Ptr (Data t)) {Drop t}: Unit =
             if parent_ref.direct_rc != 0 or parent_ref.fork_rc != 0 then
                 data := null ()
 
-impl stream_seq: Stream (Seq a) (ref a) with
-    stream seq e =
+implicit stream_seq: Stream (Seq a) (ref a) =
+    Stream fn seq e ->
         for i in 0 .. seq.len do
             elem = offset seq.data.elements (Usz i)
             e.emit (ptr_to_mut elem)

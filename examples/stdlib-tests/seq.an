@@ -53,8 +53,7 @@ main () =
 
     // Regression: push fast-path used to silently overwrite the slot at seq.len
     // (Tag 4) and shrink data.len so the orphaned slot (Tag 5) was never visited
-    // by drop_data. The fix drops [seq.len..data.len) before reusing the slot,
-    // so all six Tags must drop exactly once.
+    // by drop_data. The fix drops the element at seq.len before reusing the slot
     println "push-overwrite regression:"
     var s = Seq.empty ()
     s := s.push (Tag 1)

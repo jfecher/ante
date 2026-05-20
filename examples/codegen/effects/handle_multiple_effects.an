@@ -1,17 +1,16 @@
 
-effect Fail with
-    // TODO: forall-quantification not allowed here yet, and now bottom type
-    fail: fn Unit -> Unit
+ability MyFail =
+    fail: resume fn Unit -> Unit
 
-effect Read a with
-    read: fn Unit -> a
+ability Read a =
+    read: resume fn Unit -> a
 
-read_or_none (f: fn Unit {Fail} {Read U32} -> U32): Maybe U32 =
+read_or_none (f: fn Unit {MyFail} {Read U32} -> U32): Maybe U32 =
     handler hf for fail () -> None
     handler hr for read () -> resume 5u32
     Some (f ())
 
-foo () {Fail} {Read U32} =
+foo () {MyFail} {Read U32} =
     if false then fail ()
     read ()
 
@@ -20,3 +19,4 @@ main () =
 
 // args: --delete-binary --no-color
 // expected stdout: Some 5
+

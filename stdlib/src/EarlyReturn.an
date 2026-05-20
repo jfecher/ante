@@ -1,5 +1,5 @@
-effect EarlyReturn t with
-    early_return: fn t -> Never
+ability EarlyReturn t =
+    early_return: resume fn t -> Never
 
 with_early_return (f: fn (EarlyReturn t) => t): t =
     handler h for early_return x -> x

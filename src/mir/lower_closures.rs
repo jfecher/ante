@@ -146,9 +146,7 @@ fn remove_no_closure_env_parameter_references(definition: &mut Definition) {
 
     for instruction in definition.instructions.values_mut() {
         match instruction {
-            Instruction::Call { arguments, .. }
-            | Instruction::CallClosure { arguments, .. }
-            | Instruction::MakeTuple(arguments) => {
+            Instruction::Call { arguments, .. } | Instruction::CallClosure { arguments, .. } => {
                 arguments.retain(|value| !to_remove.contains(value));
             },
             _ => (),
@@ -252,7 +250,7 @@ fn fix_fn_ptr_id_chains(definition: &mut Definition) {
         let typ = &definition.instruction_result_types[id];
         if let Type::Tuple(fields) = typ {
             if fields.len() == 2 {
-                if let Type::Function(_) = &fields[0] {
+                if matches!(&fields[0], Type::Function(_)) && !matches!(&fields[1], Type::Function(_)) {
                     definition.instruction_result_types[id] = fields[0].clone();
                 }
             }

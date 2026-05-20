@@ -11,9 +11,22 @@ use crate::{
     type_inference::{
         TypeChecker,
         errors::TypeErrorKind,
-        types::{PrimitiveType, Type},
+        types::{PrimitiveType, Type, TypeBindings},
     },
 };
+
+/// True if `typ` resolves to a pointer-shaped closure env: either the raw `Pointer` primitive or
+/// `Ptr T`. Lambdas filling such a slot capture their env onto the heap and store the pointer
+/// instead of trying to unify the captures' tuple type against the slot's `Ptr T`.
+pub(super) fn is_pointer_env(typ: &Type, bindings: &TypeBindings) -> bool {
+    match typ.follow(bindings) {
+        Type::Primitive(PrimitiveType::Pointer) => true,
+        Type::Application(constructor, _) => {
+            matches!(constructor.follow(bindings), Type::Primitive(PrimitiveType::Pointer))
+        },
+        _ => false,
+    }
+}
 
 impl TypeChecker<'_, '_> {
     /// Finds the environment type for the given lambda. This involves finding the free variables
@@ -29,8 +42,10 @@ impl TypeChecker<'_, '_> {
         }
         context.find_free_variables(id, self);
 
-        let env_type = make_env_type_with_names(&context.free_vars, self, is_move);
-        self.unify(&env_type, expected_environment_type, TypeErrorKind::ClosureEnv, id);
+        if !is_pointer_env(expected_environment_type, &self.bindings) {
+            let env_type = make_env_type_with_names(&context.free_vars, self, is_move);
+            self.unify(&env_type, expected_environment_type, TypeErrorKind::ClosureEnv, id);
+        }
 
         if !context.free_vars.is_empty() {
             self.current_extended_context_mut().insert_closure_environment(id, context.free_vars);

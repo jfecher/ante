@@ -1,84 +1,29 @@
 
 type Thing = nothing: Unit
 
-trait Foo a with
+ability Foo a =
     foo: fn a -> Unit
-
-trait Bar a with
-    bar: fn a -> Unit
-
-trait Baz a with
-    baz: fn a -> Unit
 
 main () =
     // The call from which the `Foo a` constraint arises
     Foo.foo (Thing ())
 
-// Candidate 1
-impl candidate1 {_: Bar a}: Foo a with
-    foo a = Bar.bar a
+// Two competing non-capturing impls for `Foo Thing` produce values with the same env shape,
+// so implicit resolution genuinely can't pick one.
+implicit candidate1: Foo Thing =
+    Foo fn _ -> ()
 
-impl bar {_: Baz a}: Bar a with
-    bar a = Baz.baz a
+implicit candidate2: Foo Thing =
+    Foo fn _ -> ()
 
-impl baz: Baz Thing with
-    baz _ = ()
-
-
-// Does not match
-impl does_not_match {_: Print a}: Foo a with
-    foo _ = ()
-
-
-// Candidate 2
-impl candidate2: Foo Thing with
-    foo _ = ()
-
-// args: -e ast-t --no-color
+// args: --delete-binary --no-color
 // expected exit status: 1
-// expected stdout:
-// type Thing =
-//     nothing: Unit
-// 
-// type Foo a [env] =
-//     foo: fn a [[env]] -> Unit
-// 
-// type Bar a [env] =
-//     bar: fn a [[env]] -> Unit
-// 
-// type Baz a [env] =
-//     baz: fn a [[env]] -> Unit
-// 
-// (main: fn Unit -> Unit) () =
-//     (Foo.foo: fn Thing {Foo Thing} -> Unit) ((Thing: fn Unit -> Thing) ()) {(error)}
-// 
-// implicit (candidate1: fn {Bar a} -> Foo a) {(_: Bar a)} : Foo a (Bar a [env_0]) = Foo a (Bar a [env_0]) with
-//     (foo: fn a [(Bar a)] -> Unit) = fn (a: a) [(_: Bar a)] -> (Bar.bar: fn a {Bar a} -> Unit) (a: a) {(_: Bar a)}
-// 
-// implicit (bar: fn {Baz a} -> Bar a) {(_: Baz a)} : Bar a (Baz a [env_0]) = Bar a (Baz a [env_0]) with
-//     (bar: fn a [(Baz a)] -> Unit) = fn (a: a) [(_: Baz a)] -> (Baz.baz: fn a {Baz a} -> Unit) (a: a) {(_: Baz a)}
-// 
-// implicit (baz: Baz Thing) = Baz Thing NoClosureEnv with
-//     (baz: fn Thing -> Unit) = fn (_: Thing) -> ()
-// 
-// implicit (does_not_match: fn {Print a} -> Foo a) {(_: Print a)} : Foo a (Print a [env_0]) = Foo a (Print a [env_0]) with
-//     (foo: fn a [(Print a)] -> Unit) = fn (_: a) -> ()
-// 
-// implicit (candidate2: Foo Thing) = Foo Thing NoClosureEnv with
-//     (foo: fn Thing -> Unit) = fn (_: Thing) -> ()
-
 // expected stderr:
-// examples/typechecking/multiple_matching_impls.an:15:5
-// 14 |     // The call from which the `Foo a` constraint arises
-//    |     // error: Multiple matching implicits found for type Foo Thing required by foo: candidate2, candidate1
-// 15 |     Foo.foo (Thing ())
+// examples/typechecking/multiple_matching_impls.an:9:5
+//  8 |     // The call from which the `Foo a` constraint arises
+//    |     // error: Multiple matching implicits found for type Foo Thing required by foo: candidate1, candidate2
+//  9 |     Foo.foo (Thing ())
 //    |     ^^^^^^^
 // 
-// examples/typechecking/multiple_matching_impls.an:30:5
-// 29 | impl does_not_match {_: Print a}: Foo a with
-//    |     // error: Expected the closure environment (Print a), but the actual environment was empty
-// 30 |     foo _ = ()
-//    |     ^^^
-// 
-// Found 2 errors and 0 warnings
+// Found 1 error and 0 warnings
 

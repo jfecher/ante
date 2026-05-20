@@ -290,8 +290,68 @@ impl<'ctx> ModuleContext<'ctx> {
                 let element_values = mapvec(elements, |e| self.constant_value(*e));
                 let result_type = self.convert_type(global.instruction_result_type(id)).into_array_type();
                 Self::const_array_of(result_type, &element_values).into()
+            }
+            mir::Instruction::Call { function, arguments } => {
+                // Constructor-style calls (e.g. `Double f = (f,)`) appear in `implicit`
+                // globals after monomorphization. The callee is a single-block function
+                // whose body is itself constant-foldable, so inline it: bind the callee's
+                // entry-block parameters to the caller's argument values and recursively
+                // run the const evaluator on the callee's body.
+                let function = *function;
+                let arguments = arguments.clone();
+                let callee_id = self.resolve_constant_call_target(global, function).unwrap_or_else(|| {
+                    panic!("Call in global initializer to non-resolvable function value: {function:?}")
+                });
+                let callee = self
+                    .mir
+                    .definitions
+                    .get(&callee_id)
+                    .unwrap_or_else(|| panic!("Call in global initializer: target definition {callee_id} not found"))
+                    .clone();
+                if callee.blocks.len() != 1 {
+                    panic!(
+                        "Call in global initializer to non-constant-evaluable function `{}`: callee has multiple blocks",
+                        callee.name
+                    );
+                }
+                let callee_result = match callee.entry_block().terminator.as_ref().expect("missing callee terminator") {
+                    TerminatorInstruction::Return(v) | TerminatorInstruction::Result(v) => *v,
+                    _ => panic!(
+                        "Call in global initializer to non-constant-evaluable function `{}`: terminator is not `Result`/`Return`",
+                        callee.name
+                    ),
+                };
+
+                let arg_values: Vec<BasicValueEnum<'ctx>> = arguments.iter().map(|a| self.constant_value(*a)).collect();
+
+                let saved_values = std::mem::take(&mut self.values);
+                for (i, value) in arg_values.into_iter().enumerate() {
+                    self.values.insert(mir::Value::Parameter(BlockId::ENTRY_BLOCK, i as u32), value);
+                }
+                for instr_id in callee.entry_block().instructions.iter().copied() {
+                    let value = self.codegen_constant_instruction(&callee, instr_id);
+                    self.values.insert(mir::Value::InstructionResult(instr_id), value);
+                }
+                let result = self.constant_value(callee_result);
+                self.values = saved_values;
+                result
             },
             other => panic!("Unsupported instruction in global initializer: {other:?}"),
+        }
+    }
+
+    /// Trace a Call's function-position value back to a [DefinitionId] when possible.
+    /// Follows `Id`-chains in the current global's instructions, since `lower_closures`
+    /// leaves a free function reference as `Id(Value::Definition(_))`.
+    fn resolve_constant_call_target(&self, global: &mir::Definition, value: mir::Value) -> Option<mir::DefinitionId> {
+        match value {
+            mir::Value::Definition(id) => Some(id),
+            mir::Value::InstructionResult(iid) => match &global.instructions[iid] {
+                mir::Instruction::Id(inner) => self.resolve_constant_call_target(global, *inner),
+                mir::Instruction::Instantiate(id, _) => Some(*id),
+                _ => None,
+            },
+            _ => None,
         }
     }
 

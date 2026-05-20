@@ -148,9 +148,8 @@ fn item_lacks_known_type(dependency_id: TopLevelId, db: &DbHandle) -> bool {
             try_get_generalized_type(definition, &context, &resolve, db).is_none()
         },
         TopLevelItemKind::TypeDefinition(_) => false,
-        TopLevelItemKind::TraitDefinition(_) => false,
-        TopLevelItemKind::TraitImpl(_) => false,
-        TopLevelItemKind::EffectDefinition(_) => false,
+        TopLevelItemKind::AbilityDefinition(_) => false,
+        TopLevelItemKind::AbilityImpl(_) => false,
         // Comptime items shouldn't be possible to be referred to in this way
         TopLevelItemKind::Comptime(_) => false,
     }

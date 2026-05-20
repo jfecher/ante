@@ -8,7 +8,6 @@ use std::sync::Arc;
 
 use dashmap::DashMap;
 use inc_complete::DbGet;
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rustc_hash::FxHashMap;
 
 mod select_largest_variant;
@@ -39,10 +38,11 @@ where
         + Sync,
 {
     let initial_mir = collect_all_items(compiler)
-        .into_par_iter()
+        //.into_par_iter()
+        .into_iter()
         .flat_map(|item| build_initial_mir_with_shared_map(compiler, item))
-        .fold(Mir::default, Mir::extend)
-        .reduce(Mir::default, Mir::extend)
+        .fold(Mir::default(), Mir::extend)
+        //.reduce(Mir::default, Mir::extend)
         .remove_internal_externs()
         .remove_unreachable_functions()
         .optimize_tail_resume()
@@ -66,13 +66,14 @@ where
 
     // TODO: More concrete perf testing, but this is fine for smaller programs.
     monomorphic_definitions
-        .into_par_iter()
-        .fold(Mir::default, |acc, definition| {
+        //.into_par_iter()
+        .into_iter()
+        .fold(Mir::default(), |acc, definition| {
             let monomorphized = monomorphize_non_generic_definition(definition, &shared, &initial_mir)
                 .select_largest_variants(compiler);
             acc.extend(monomorphized)
         })
-        .reduce(Mir::default, Mir::extend)
+        //.reduce(Mir::default, Mir::extend)
         .lower_closures()
         .assert_fully_linked()
         .assert_type_checks()

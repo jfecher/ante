@@ -62,7 +62,7 @@ pub(super) struct ImplicitsContext {
 #[derive(Clone, Copy)]
 struct DelayedImplicit {
     /// The [ExprId] which originally requested an implicit value.
-    /// This is often a trait function like `cast` or `+`
+    /// This is often an ability method like `cast` or `+`
     source: ExprId,
 
     /// The destination to emplace the implicit value into
@@ -783,7 +783,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             if !matches!(self.implicit_type_matches(&name_type, &target_type, &no_bindings), ImplicitMatch::NoMatch) {
                 return true;
             }
-            // Same trait constructor as the target: the local may chain through a global function
+            // Same ability constructor as the target: the local may chain through a global function
             // impl like `eq_ref: {Eq t} -> Eq (ref t)` to reach the target. Bubbling past this
             // scope would drop the local and break the chain.
             if let (Some(tc), Some((lc, _))) = (&target_ctor, name_type.as_application())

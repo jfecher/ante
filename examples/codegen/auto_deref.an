@@ -1,8 +1,8 @@
-trait Double a with
+ability Double a =
     do_double: fn a -> a
 
-impl double_i32: Double I32 with
-    do_double x = x + x
+implicit double_i32: Double I32 =
+    Double fn x -> x + x
 
 // Direct auto-deref: ref I32 -> I32
 deref_ref (x: ref I32): I32 = x
@@ -26,3 +26,4 @@ main () =
 // 42
 // 42
 // 84
+

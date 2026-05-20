@@ -14,8 +14,8 @@ ex1b (a: u) b =
 
 
 // Second example
-trait T1 a with trait1: fn a -> Unit
-trait T2 a with trait2: fn a -> Unit
+ability T1 a = trait1: fn a -> Unit
+ability T2 a = trait2: fn a -> Unit
 
 ex2a (a: t) b {Copy t} =
     ex2b a b
@@ -39,19 +39,19 @@ ex2c (a: v) b {Copy v} =
 //     (ex1a: fn u _ -> U32) (a: u) (b: _)
 //     1_U32
 // 
-// type T1 a [env] =
-//     trait1: fn a [[env]] -> Unit
+// type T1 a =
+//     trait1: fn a [Ptr Unit] -> Unit
 // 
-// type T2 a [env] =
-//     trait2: fn a [[env]] -> Unit
+// type T2 a =
+//     trait2: fn a [Ptr Unit] -> Unit
 // 
 // (ex2a: fn t _ {Copy t} -> Unit) ((a: t)) (b: _) {(_: Copy t)} =
 //     (ex2b: fn t _ {Copy t} -> Unit) (a: t) (b: _) {(_: Copy t)}
-//     (T1.trait1: fn t {T1 t} -> Unit) (a: t) {(error)}
+//     (T1.trait1: fn t {T1 t} [Ptr Unit] -> Unit) (a: t) {(error)}
 // 
 // (ex2b: fn u _ {Copy u} -> Unit) ((a: u)) (b: _) {(_: Copy u)} =
 //     (ex2c: fn u _ {Copy u} -> Unit) (a: u) (b: _) {(_: Copy u)}
-//     (T2.trait2: fn u {T2 u} -> Unit) (a: u) {(error)}
+//     (T2.trait2: fn u {T2 u} [Ptr Unit] -> Unit) (a: u) {(error)}
 // 
 // (ex2c: fn v _ {Copy v} -> Unit) ((a: v)) (b: _) {(_: Copy v)} =
 //     (ex2a: fn v _ {Copy v} -> Unit) (a: v) (b: _) {(_: Copy v)}

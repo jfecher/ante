@@ -5,3 +5,4 @@ main () =
 
 // args: --delete-binary --no-color
 // expected stdout: hello, world! n=42
+

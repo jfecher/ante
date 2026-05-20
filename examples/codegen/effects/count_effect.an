@@ -1,5 +1,5 @@
-effect Count with
-    count: fn Unit -> Unit
+ability Count =
+    count: resume fn Unit -> Unit
 
 foo {Count} =
     count ()
@@ -17,3 +17,4 @@ main () =
 
 // args: --delete-binary --no-color
 // expected stdout: 11
+

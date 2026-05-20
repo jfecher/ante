@@ -9,3 +9,4 @@ main () =
 
 // args: --delete-binary --no-color
 // expected stdout: hi there
+

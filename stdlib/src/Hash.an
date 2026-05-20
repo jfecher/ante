@@ -1,7 +1,7 @@
 import Std.Stream.foldl, stream_fn
 import Std.String.bytes
 
-trait Hash t with
+ability Hash t =
     hash: fn t -> U64
 
 // TODO: Proper hash impls
