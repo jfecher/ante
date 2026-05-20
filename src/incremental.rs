@@ -134,7 +134,7 @@ define_input!(100, SourceFileId -> Arc<SourceFile>, DbStorage);
 pub struct TargetPointerSize;
 define_input!(101, TargetPointerSize -> u32, DbStorage);
 
-#[derive(PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Crate {
     pub name: String,
 

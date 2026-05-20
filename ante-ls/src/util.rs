@@ -44,3 +44,33 @@ pub fn byte_range_to_lsp_range(
     let end_char = rope.byte_to_char(end_byte.min(len));
     rope_range_to_lsp_range(start_char..end_char, rope)
 }
+
+/// Tracks the tightest span seen so far that contains `byte_offset`. Both `hover_at` and
+/// `definition_at` walk every node location in every top-level item and pick the
+/// smallest-spanning hit, but they care about different kinds of IDs — this helper
+/// centralises the "contains + tighter than best" predicate so neither file has to
+/// re-implement it.
+pub struct SpanSearcher {
+    byte_offset: usize,
+    best_span_len: usize,
+}
+
+impl SpanSearcher {
+    pub fn new(byte_offset: usize) -> Self {
+        Self { byte_offset, best_span_len: usize::MAX }
+    }
+
+    /// Returns `true` if `[start, end)` contains `byte_offset` and is strictly
+    /// tighter than every previous accepted span. The caller is expected to record
+    /// the matched candidate when this returns `true`.
+    pub fn try_offer(&mut self, start: usize, end: usize) -> bool {
+        if start <= self.byte_offset && self.byte_offset < end {
+            let span_len = end - start;
+            if span_len < self.best_span_len {
+                self.best_span_len = span_len;
+                return true;
+            }
+        }
+        false
+    }
+}

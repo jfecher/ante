@@ -290,7 +290,7 @@ impl<'ctx> ModuleContext<'ctx> {
                 let element_values = mapvec(elements, |e| self.constant_value(*e));
                 let result_type = self.convert_type(global.instruction_result_type(id)).into_array_type();
                 Self::const_array_of(result_type, &element_values).into()
-            }
+            },
             mir::Instruction::Call { function, arguments } => {
                 // Constructor-style calls (e.g. `Double f = (f,)`) appear in `implicit`
                 // globals after monomorphization. The callee is a single-block function

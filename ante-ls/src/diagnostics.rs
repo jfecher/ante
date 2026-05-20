@@ -1,13 +1,10 @@
-use std::{
-    collections::HashMap,
-    sync::{atomic::Ordering, Arc},
-};
+use std::{collections::HashMap, path::Path, sync::Arc};
 
 use ante::{
     diagnostics::{Diagnostic as AnteDiagnostic, DiagnosticKind},
-    find_files,
+    find_files::{self, CrateGraph},
     incremental::{CheckAll, Db, GetCrateGraph, SourceFile, TargetPointerSize},
-    name_resolution::namespace::CrateId,
+    name_resolution::namespace::{CrateId, SourceFileId},
 };
 
 use dashmap::DashMap;
@@ -18,51 +15,55 @@ use tower_lsp::lsp_types::*;
 use crate::{util::byte_range_to_lsp_range, Backend};
 
 /// One-time setup: pointer size + full crate graph scan (local files + stdlib).
-pub fn init_db(db: &mut Db, starting_file: &std::path::Path) {
+/// `local_crate_root` is the workspace directory whose `src/` subtree holds the local crate
+pub fn init_db(db: &mut Db, local_crate_root: &Path) {
     TargetPointerSize.set(db, 8);
-    find_files::populate_crates_and_files(db, &[starting_file.to_path_buf()]);
+    find_files::populate_crates_and_files(db, local_crate_root, &[]);
 }
 
-/// Derive a SourceFileId for a local-crate file from its absolute on-disk path.
-/// Strips the CWD prefix and then the `src` directory component to match the
-/// convention used by `populate_crates_and_files`.
-pub fn file_id_for_path(path: &std::path::Path) -> ante::name_resolution::namespace::SourceFileId {
-    let cwd = std::env::current_dir().unwrap_or_default();
-    let normalized = path.strip_prefix(&cwd).unwrap_or(path);
-    let normalized = normalized.strip_prefix("src").unwrap_or(normalized);
-    ante::name_resolution::namespace::SourceFileId::new_in_local_crate(normalized)
-}
-
-/// Incrementally update a single file's content. inc-complete invalidates only
-/// the cached queries that depend on this input.
-pub fn set_file_content(db: &mut Db, path: &std::path::Path, rope: &Rope) {
-    // The SourceFileId hash must use the same (relative) path that populate_crates_and_files
-    // used when it registered the file. URIs from the LSP client carry absolute paths, so we
-    // strip the cwd prefix and the `src` dir here to match. The absolute path is still kept
-    // inside SourceFile so that Url::from_file_path works correctly when converting diagnostics.
-    let file_id = file_id_for_path(path);
+/// Incrementally update a single file's content. If this is the first time we've
+/// seen this path, also register it with the local crate's `source_files` so
+/// `CheckAll` will visit it so that diagnostics work for loose files
+/// opened outside the workspace's `src/` tree.
+pub fn set_file_content(db: &mut Db, local_crate_root: &Path, path: &Path, rope: &Rope) {
+    let relative_path = SourceFileId::normalize_path(local_crate_root, path).to_path_buf();
+    let file_id = SourceFileId::new(CrateId::LOCAL, &relative_path);
     file_id.set(db, Arc::new(SourceFile::new(Arc::new(path.to_path_buf()), rope.to_string())));
+
+    let key = Arc::new(relative_path);
+    if GetCrateGraph.get(db).get(&CrateId::LOCAL).is_some_and(|c| c.source_files.contains_key(&key)) {
+        return;
+    }
+
+    // Mutate the graph without deep-cloning it: swap the Db's graph out for an empty
+    // placeholder, leaving our local Arc as the sole strong reference. `make_mut` then
+    // hands us `&mut CrateGraph` in place (no clone), and we put the modified Arc back.
+    let mut graph_arc = GetCrateGraph.get(db);
+    GetCrateGraph.set(db, Arc::new(CrateGraph::new()));
+    let graph = Arc::make_mut(&mut graph_arc);
+    if let Some(local_crate) = graph.get_mut(&CrateId::LOCAL) {
+        local_crate.source_files.insert(key, file_id);
+    }
+    GetCrateGraph.set(db, graph_arc);
 }
 
 impl Backend {
     /// Update the compiler database with the latest in-memory file content, then
     /// collect and publish diagnostics for the local crate.
     pub(super) async fn update_diagnostics(&self, uri: Url, rope: &Rope) {
-        let path = match uri.to_file_path() {
-            Ok(p) => p,
-            Err(_) => {
-                self.client.log_message(MessageType::ERROR, format!("Failed to convert URI to path: {uri}")).await;
-                return;
-            },
+        let Ok(path) = uri.to_file_path() else {
+            self.client.log_message(MessageType::ERROR, format!("Failed to convert URI to path: {uri}")).await;
+            return;
         };
 
-        // Write phase: initialize once, then update the changed file's content.
+        let Some(root) = self.root() else {
+            self.client.log_message(MessageType::ERROR, "update_diagnostics called before initialize()").await;
+            return;
+        };
+
         {
             let mut compiler = self.compiler.write().await;
-            if !self.db_initialized.swap(true, Ordering::SeqCst) {
-                init_db(&mut compiler, &path);
-            }
-            set_file_content(&mut compiler, &path, rope);
+            set_file_content(&mut compiler, root, &path, rope);
         }
 
         // Read phase: collect diagnostics without blocking writers unnecessarily.
@@ -75,10 +76,9 @@ impl Backend {
     }
 }
 
-/// Walk all items in the local crate, run TypeCheck on each, and convert the
-/// accumulated compiler diagnostics to LSP diagnostics grouped by file URI.
-/// All local crate files start with an empty list so stale diagnostics are
-/// cleared for any file that no longer has errors.
+/// Pre-populate every local-crate file with an empty diagnostic list (so any file whose
+/// errors were all fixed receives a publishDiagnostics call that clears stale squiggles),
+/// then attach each accumulated compiler diagnostic to its source URI.
 pub fn collect_lsp_diagnostics(
     compiler: &Db, current_uri: &Url, current_rope: &Rope, document_map: &DashMap<Url, Rope>,
 ) -> HashMap<Url, Vec<Diagnostic>> {

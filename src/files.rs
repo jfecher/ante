@@ -25,7 +25,8 @@ pub fn make_compiler(source_files: &[PathBuf], incremental: bool) -> (Db, Option
 
     // TODO: If the compiler is created from incremental metadata, any previous input
     // files that are no longer used are never cleared.
-    crate::find_files::populate_crates_and_files(&mut compiler, source_files);
+    let local_crate_root = std::env::current_dir().unwrap_or_default();
+    crate::find_files::populate_crates_and_files(&mut compiler, &local_crate_root, source_files);
     (compiler, metadata_file)
 }
 

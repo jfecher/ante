@@ -15,15 +15,18 @@ pub type CrateGraph = BTreeMap<CrateId, Crate>;
 // TODO:
 // - Error for cyclic dependencies
 // - Handle crate versions
-/// Scans the file system for all crates used and populates the Db with their source files
-pub fn populate_crates_and_files(compiler: &mut Db, starting_files: &[PathBuf]) {
+/// Scans the file system for all crates used and populates the Db with their source files.
+///
+/// `local_crate_root` is the directory whose `src/` subdirectory holds the local crate's
+/// sources. It is used to discover files and to normalize `starting_files` paths for [SourceFileId]s.
+pub fn populate_crates_and_files(compiler: &mut Db, local_crate_root: &std::path::Path, starting_files: &[PathBuf]) {
     // We must collect all crates and their source files first in this crate graph first
     // before setting them in the Db at the end. If we set them before finding their source
     // files we'd need to needlessly clone them and update the Db twice instead of once.
     let mut crates = CrateGraph::default();
 
     add_stdlib_crate(&mut crates);
-    populate_local_crate_with_starting_files(compiler, &mut crates, starting_files);
+    populate_local_crate_with_starting_files(compiler, &mut crates, local_crate_root, starting_files);
 
     let mut stack = vec![CrateId::LOCAL, CrateId::STDLIB];
     let mut finished = FxHashSet::default();
@@ -52,25 +55,26 @@ fn add_stdlib_crate(crates: &mut CrateGraph) {
 }
 
 /// Create the local crate's Crate entry in the graph and populate it with the given starting files.
-fn populate_local_crate_with_starting_files(compiler: &mut Db, crates: &mut CrateGraph, starting_files: &[PathBuf]) {
+fn populate_local_crate_with_starting_files(
+    compiler: &mut Db, crates: &mut CrateGraph, local_crate_root: &std::path::Path, starting_files: &[PathBuf],
+) {
     let mut source_files = BTreeMap::new();
-    let cwd = std::env::current_dir().unwrap_or_default();
 
     for path in starting_files {
-        let path = path.to_path_buf();
-        // All source file paths are relative with the `src` prefix stripped
-        let relative_path = path.strip_prefix(&cwd).unwrap_or(&path);
-        let relative_path = relative_path.strip_prefix("src").unwrap_or(relative_path);
-        let id = SourceFileId::new(CrateId::LOCAL, relative_path);
-        let data = read_file_data(path.clone());
+        let relative_path = SourceFileId::normalize_path(local_crate_root, path).to_path_buf();
+        let id = SourceFileId::new(CrateId::LOCAL, &relative_path);
+        let data = read_file_data(path.to_path_buf());
         id.set(compiler, Arc::new(data));
-        source_files.insert(Arc::new(relative_path.to_path_buf()), id);
+        source_files.insert(Arc::new(relative_path), id);
     }
 
-    // TODO: track name for local crate. Currently we only compile single source files
-    // but have the infrastructure here to collect source files of crates and their dependencies.
-    // We're only missing CLI options.
-    let crate_ = Crate { name: "Local".to_string(), path: PathBuf::from("."), dependencies: Vec::new(), source_files };
+    // TODO: track name for local crate.
+    let crate_ = Crate {
+        name: "Local".to_string(),
+        path: local_crate_root.to_path_buf(),
+        dependencies: Vec::new(),
+        source_files,
+    };
     crates.insert(CrateId::LOCAL, crate_);
 }
 

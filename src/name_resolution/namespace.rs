@@ -45,6 +45,20 @@ impl SourceFileId {
         SourceFileId::new(CrateId::LOCAL, path)
     }
 
+    /// Normalize the given path and create a SourceFileId from it
+    pub fn for_local_path(root: &std::path::Path, path: &std::path::Path) -> SourceFileId {
+        let path = Self::normalize_path(root, path);
+        SourceFileId::new(CrateId::LOCAL, path)
+    }
+
+    /// Normalizes the path so any SourceFileIds created from it are consistent:
+    /// - Remove the `root` prefix if present
+    /// - Remove a `src` directory prefix
+    pub fn normalize_path<'a>(root: &'a std::path::Path, path: &'a std::path::Path) -> &'a std::path::Path {
+        let relative = path.strip_prefix(root).unwrap_or(path);
+        relative.strip_prefix("src").unwrap_or(relative)
+    }
+
     pub fn prelude() -> SourceFileId {
         Self::new(CrateId::STDLIB, prelude_path_relative_to_stdlib_source_folder())
     }

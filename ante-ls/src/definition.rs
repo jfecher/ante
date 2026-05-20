@@ -2,6 +2,8 @@ use ante::diagnostics::Location as AnteLocation;
 use ante::incremental::{Db, GetItem, Parse, Resolve};
 use ante::name_resolution::{namespace::SourceFileId, Origin};
 
+use crate::util::SpanSearcher;
+
 /// Find the definition location of the symbol (path) under `byte_offset`.
 ///
 /// Paths (variable uses, function calls) are looked up via the `Resolve` query
@@ -12,22 +14,19 @@ use ante::name_resolution::{namespace::SourceFileId, Origin};
 /// Returns `None` for builtins, unresolved names, or when no path covers the
 /// given byte offset.
 pub fn definition_at(compiler: &Db, file_id: SourceFileId, byte_offset: usize) -> Option<AnteLocation> {
-    use ante::parser::ids::PathId;
+    use ante::parser::ids::{PathId, TopLevelId};
 
     let parse = Parse(file_id).get(compiler);
 
-    let mut best_span_len = usize::MAX;
-    let mut best: Option<(PathId, ante::parser::ids::TopLevelId)> = None;
+    let mut searcher = SpanSearcher::new(byte_offset);
+    let mut best: Option<(PathId, TopLevelId)> = None;
 
     for item in &parse.cst.top_level_items {
         // Use desugared context: Resolve also operates on the desugared form,
         // so PathIds must come from the same source.
         let (_, ctx) = GetItem(item.id).get(compiler);
         for (path_id, loc) in ctx.path_locations() {
-            let start = loc.span.start.byte_index;
-            let end = loc.span.end.byte_index;
-            if start <= byte_offset && byte_offset < end && (end - start) < best_span_len {
-                best_span_len = end - start;
+            if searcher.try_offer(loc.span.start.byte_index, loc.span.end.byte_index) {
                 best = Some((path_id, item.id));
             }
         }
