@@ -70,13 +70,18 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
 
         if definition.implicit {
-            let get_type = |ctx| try_get_generalized_type(definition, ctx, self.current_resolve(), self.compiler);
+            // Local definitions without types are fine, they won't cause globally cascading
+            // errors on every implicit search site if their type is too general.
+            let has_type = !is_top_level
+                || try_get_generalized_type(definition, self.current_context(), self.current_resolve(), self.compiler)
+                    .is_some();
 
-            if is_top_level && get_type(self.current_context()).is_none() {
+            if has_type {
+                self.add_implicit(definition.pattern);
+            } else {
                 let location = definition.pattern.locate(self);
                 self.compiler.accumulate(Diagnostic::TopLevelImplicitTypeAnnotationRequired { location });
             }
-            self.add_implicit(definition.pattern);
         }
 
         self.check_for_main(definition.pattern, &expected_type);

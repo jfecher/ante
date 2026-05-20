@@ -10,7 +10,7 @@ use crate::{
         ids::{TopLevelId, TopLevelName},
     },
     type_inference::{
-        get_type::get_partial_type,
+        get_type::{get_partial_type, try_get_generalized_type},
         types::{PrimitiveType, Type},
     },
 };
@@ -105,6 +105,14 @@ pub fn visible_implicits_impl(context: &VisibleImplicits, db: &DbHandle) -> Arc<
         }
 
         let resolution = Resolve(top_level_name.top_level_item).get(db);
+
+        // A top-level implicit whose type cannot be derived from its annotation or RHS shape is
+        // reported as a missing annotation error and must not contribute to global implicit resolution.
+        // Otherwise, we get cascading errors for every implicit search
+        if try_get_generalized_type(definition, &item_context, &resolution, db).is_none() {
+            continue;
+        }
+
         let typ = get_partial_type(definition, &item_context, &resolution, db, &mut 0);
         let mut inserted = false;
 

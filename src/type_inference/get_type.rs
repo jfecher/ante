@@ -6,7 +6,7 @@ use crate::{
         cst::{self, Definition, Expr, Pattern, TopLevelItemKind, TypeKind},
         desugar_context::DesugarContext,
     },
-    type_inference::types::{Type, TypeBindings},
+    type_inference::types::{LocalKinds, Type, TypeBindings},
 };
 
 /// Get the type of the name defined by this TopLevelId.
@@ -52,7 +52,7 @@ pub fn get_type_impl(context: &GetType, compiler: &DbHandle) -> Type {
 /// GetType because this fails if it cannot retrieve an entire type. For definitions we
 /// want instead to succeed with partial types, filling in holes as needed for better type
 /// errors.
-pub(super) fn try_get_generalized_type(
+pub fn try_get_generalized_type(
     definition: &Definition, context: &DesugarContext, resolve: &ResolutionResult, compiler: &DbHandle,
 ) -> Option<Type> {
     if let Pattern::TypeAnnotation(_, typ) = &context[definition.pattern] {
@@ -60,7 +60,15 @@ pub(super) fn try_get_generalized_type(
     }
 
     if let Expr::Lambda(lambda) = &context[definition.rhs] {
-        let return_type = Box::new(lambda.return_type.as_ref()?.clone());
+        let return_type = match lambda.return_type.as_ref() {
+            Some(rt) => Box::new(rt.clone()),
+            None => match &context[lambda.body] {
+                // Treat returning a constructor as an explicit return type to allow
+                // implicits to avoid annotating repetitive return types.
+                Expr::Constructor(c) => Box::new(c.typ.clone()),
+                _ => return None,
+            },
+        };
 
         let parameters = lambda
             .parameters
@@ -90,6 +98,8 @@ pub(super) fn try_get_generalized_type(
     // The body being a type annotation is common for `extern` declarations: `puts = extern "puts": fn ...`
     } else if let Expr::TypeAnnotation(annotation) = &context[definition.rhs] {
         Some(Type::from_cst_type_generalized(&annotation.rhs, resolve, compiler, true))
+    } else if let Expr::Constructor(constructor) = &context[definition.rhs] {
+        Some(Type::from_cst_type_generalized(&constructor.typ, resolve, compiler, true))
     } else {
         None
     }
@@ -104,7 +114,7 @@ pub fn get_partial_type(
     next_id: &mut u32,
 ) -> Type {
     if let Pattern::TypeAnnotation(_, typ) = &context[definition.pattern] {
-        let mut local_kinds = crate::type_inference::types::LocalKinds::default();
+        let mut local_kinds = LocalKinds::default();
         return Type::from_cst_type(typ, resolve, compiler, next_id, &mut local_kinds, true);
     }
 
@@ -112,7 +122,10 @@ pub fn get_partial_type(
         let lambda_location = context.expr_location(definition.rhs).clone();
         let hole = || cst::Type::new(cst::TypeKind::Hole, lambda_location.clone());
 
-        let return_type = Box::new(lambda.return_type.clone().unwrap_or_else(hole));
+        let return_type = Box::new(lambda.return_type.clone().unwrap_or_else(|| match &context[lambda.body] {
+            Expr::Constructor(c) => c.typ.clone(),
+            _ => hole(),
+        }));
 
         let parameters = mapvec(&lambda.parameters, |parameter| match &context[parameter.pattern] {
             Pattern::TypeAnnotation(_, typ) => cst::ParameterType::new(typ.clone(), parameter.is_implicit),
@@ -127,15 +140,18 @@ pub fn get_partial_type(
         let cst_function_type = cst::FunctionType { parameters, environment, return_type, has_resume: false };
 
         let cst_fn_type = cst::Type::new(TypeKind::Function(cst_function_type), lambda_location);
-        let mut local_kinds = crate::type_inference::types::LocalKinds::default();
+        let mut local_kinds = LocalKinds::default();
         Type::from_cst_type(&cst_fn_type, resolve, compiler, next_id, &mut local_kinds, true)
     } else if let Expr::TypeAnnotation(annotation) = &context[definition.rhs] {
-        let mut local_kinds = crate::type_inference::types::LocalKinds::default();
+        let mut local_kinds = LocalKinds::default();
         Type::from_cst_type(&annotation.rhs, resolve, compiler, next_id, &mut local_kinds, true)
+    } else if let Expr::Constructor(constructor) = &context[definition.rhs] {
+        let mut local_kinds = LocalKinds::default();
+        Type::from_cst_type(&constructor.typ, resolve, compiler, next_id, &mut local_kinds, true)
     } else {
         let lambda_location = context.expr_location(definition.rhs).clone();
         let hole = cst::Type::new(cst::TypeKind::Hole, lambda_location);
-        let mut local_kinds = crate::type_inference::types::LocalKinds::default();
+        let mut local_kinds = LocalKinds::default();
         Type::from_cst_type(&hole, resolve, compiler, next_id, &mut local_kinds, true)
     }
 }
