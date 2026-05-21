@@ -3,6 +3,9 @@ name = "ante"
 version = "0.1.0"
 edition = "2024"
 
+[workspace]
+members = [ "ante-ls" ]
+
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 clap_complete = "4"
