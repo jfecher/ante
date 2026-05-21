@@ -5,7 +5,7 @@ use ante::name_resolution::namespace::SourceFileId;
 use ante::parser::desugar_context::DesugarContext;
 use ante::parser::ids::{IdStore, NameStore};
 
-use crate::util::SpanSearcher;
+use crate::util::{is_internal_only_type, SpanSearcher};
 
 /// Find the innermost node (path, name, or pattern) at `byte_offset` in
 /// `file_id` and return a hover string of the form `name : Type`.
@@ -74,14 +74,9 @@ pub fn hover_at(compiler: &Db, file_id: SourceFileId, byte_offset: usize) -> Opt
         },
     };
 
-    if is_sentinel(typ) {
+    if is_internal_only_type(typ) {
         return None;
     }
     let type_str = typ.to_string(&tc.bindings, &tc.result.context, compiler);
     Some(format!("{name} : {type_str}"))
-}
-
-fn is_sentinel(typ: &ante::type_inference::types::Type) -> bool {
-    use ante::type_inference::types::PrimitiveType;
-    matches!(typ, ante::type_inference::types::Type::Primitive(PrimitiveType::Error | PrimitiveType::NoClosureEnv))
 }

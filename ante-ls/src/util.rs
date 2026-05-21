@@ -1,3 +1,4 @@
+use ante::type_inference::types::{PrimitiveType, Type};
 use ropey::Rope;
 use tower_lsp::lsp_types::*;
 
@@ -45,11 +46,7 @@ pub fn byte_range_to_lsp_range(
     rope_range_to_lsp_range(start_char..end_char, rope)
 }
 
-/// Tracks the tightest span seen so far that contains `byte_offset`. Both `hover_at` and
-/// `definition_at` walk every node location in every top-level item and pick the
-/// smallest-spanning hit, but they care about different kinds of IDs — this helper
-/// centralises the "contains + tighter than best" predicate so neither file has to
-/// re-implement it.
+/// Tracks the tightest span seen so far that contains `byte_offset`
 pub struct SpanSearcher {
     byte_offset: usize,
     best_span_len: usize,
@@ -73,4 +70,20 @@ impl SpanSearcher {
         }
         false
     }
+}
+
+/// Types to avoid showing to users
+pub fn is_internal_only_type(typ: &Type) -> bool {
+    matches!(typ, Type::Primitive(PrimitiveType::Error | PrimitiveType::NoClosureEnv))
+}
+
+/// Join doc-comment lines into a single [Documentation] separated by newlines.
+pub fn format_doc_comments(comments: &[String]) -> Option<Documentation> {
+    if comments.is_empty() {
+        return None;
+    }
+    Some(Documentation::MarkupContent(MarkupContent {
+        kind: MarkupKind::Markdown,
+        value: comments.join("\n"),
+    }))
 }

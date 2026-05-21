@@ -171,7 +171,7 @@ pub enum Token {
     Indent,
     Unindent,
 
-    LineComment(String),
+    DocComment(String),
 
     Identifier(String),
     StringLiteral(String),
@@ -388,7 +388,7 @@ impl Display for Token {
             Token::Indent => write!(f, "an indent"),
             Token::Unindent => write!(f, "an unindent"),
 
-            Token::LineComment(s) => write!(f, "//{s}"),
+            Token::DocComment(s) => write!(f, "///{s}"),
 
             Token::Identifier(s) => write!(f, "{s}"),
             Token::StringLiteral(s) => write!(f, "\"{s}\""),

@@ -6,11 +6,10 @@ ability Emit a =
     emit: resume fn a -> Unit
 
 /// Common control-flow effects for looping
+/// - break_: ends the loop early
+/// - continue_: ends the current iteration of the loop early
 ability Loop =
-    /// End the loop early
     break_: resume fn Unit -> Never
-
-    /// End the current iteration of the loop early, continuing to the next iteration if there is one
     continue_: resume fn Unit -> Never
 
 /// Stream the contents of `t` into the `Emit a` capability

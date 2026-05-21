@@ -10,11 +10,13 @@ use ropey::Rope;
 use tokio::sync::RwLock;
 use tower_lsp::{jsonrpc::Result, lsp_types::*, Client, LanguageServer, LspService, Server};
 
+mod completion;
 mod definition;
 mod diagnostics;
 mod hover;
 mod util;
 
+use completion::completions_at;
 use definition::definition_at;
 use diagnostics::{init_db, rope_for_file};
 use hover::hover_at;
@@ -56,6 +58,13 @@ impl LanguageServer for Backend {
                 text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::INCREMENTAL)),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 definition_provider: Some(OneOf::Left(true)),
+                completion_provider: Some(CompletionOptions {
+                    resolve_provider: Some(false),
+                    trigger_characters: None,
+                    all_commit_characters: None,
+                    work_done_progress_options: Default::default(),
+                    completion_item: None,
+                }),
                 position_encoding: Some(PositionEncodingKind::UTF8),
                 ..Default::default()
             },
@@ -124,6 +133,16 @@ impl LanguageServer for Backend {
             contents: HoverContents::Markup(MarkupContent { kind: MarkupKind::PlainText, value }),
             range: None,
         }))
+    }
+
+    async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
+        let Some(ctx) = self.resolve_position(params.text_document_position).await else {
+            return Ok(None);
+        };
+
+        let compiler = self.compiler.read().await;
+        let items = completions_at(&compiler, ctx.file_id, ctx.byte_offset);
+        Ok(Some(CompletionResponse::Array(items)))
     }
 
     async fn goto_definition(&self, params: GotoDefinitionParams) -> Result<Option<GotoDefinitionResponse>> {

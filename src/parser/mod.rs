@@ -618,10 +618,10 @@ impl<'tokens> Parser<'tokens> {
     fn parse_comments(&mut self) -> Vec<String> {
         let mut comments = Vec::new();
 
-        while let Token::LineComment(comment) = self.current_token() {
+        while let Token::DocComment(comment) = self.current_token() {
             comments.push(comment.clone());
             self.advance();
-            self.expect_newline_with_recovery("a newline after the comment");
+            self.accept(Token::Newline);
         }
 
         comments
@@ -843,6 +843,8 @@ impl<'tokens> Parser<'tokens> {
         T: ErrorDefault,
     {
         self.expect(Token::Indent, "an indent")?;
+        // A newline is rarely possible here if a doc-comment is the first item after an indent
+        self.accept(Token::Newline);
 
         let result = parser(self);
 

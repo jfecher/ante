@@ -418,7 +418,8 @@ impl<'contents> Lexer<'contents> {
                 self.advance_with(Token::Error(error))
             },
 
-            ('/', '/') => self.lex_singleline_comment(),
+            // Ignore emitting indentation level changes for single-line comments only.
+            ('/', '/') if !self.peek_next_next('/') => self.lex_singleline_comment(),
             ('/', '*') => self.lex_multiline_comment(),
 
             _ if new_indent > self.current_indent_level => self.lex_indent(new_indent),
@@ -427,6 +428,12 @@ impl<'contents> Lexer<'contents> {
             _ if self.newlines_ignored() => self.next(),
             _ => Some((Token::Newline, self.locate())),
         }
+    }
+
+    /// True if the character after next is `expected`
+    fn peek_next_next(&self, expected: char) -> bool {
+        let mut chars = self.chars.clone();
+        chars.next() == Some(expected)
     }
 
     fn newlines_ignored(&self) -> bool {
@@ -481,18 +488,39 @@ impl<'contents> Lexer<'contents> {
         }
     }
 
+    // Expects the leading `//` to already be consumed
     fn lex_singleline_comment(&mut self) -> IterElem {
-        // Outer loop avoids tail recursion when scanning a run of consecutive `//` lines.
+        // `///` is a doc-comment, `////` is not
+        if self.current == '/' && self.next != '/' {
+            self.advance();
+            return self.lex_doc_comment();
+        }
+
         loop {
-            self.advance();
-            self.advance();
             self.advance_while(|current, _| current != '\n');
 
             if !self.advance_to_consecutive_line_comment() {
                 break;
             }
+            self.advance();
+            self.advance();
         }
         self.next()
+    }
+
+    /// Expects `///` to already be consumed
+    fn lex_doc_comment(&mut self) -> IterElem {
+        // Tolerate (and strip) one leading space so `/// text` and `///text`
+        // produce identical payloads.
+        if self.current == ' ' {
+            self.advance();
+        }
+        let content_start = self.current_position.byte_index;
+        while self.current != '\n' && !self.at_end_of_input() {
+            self.advance();
+        }
+        let content = self.file_contents[content_start..self.current_position.byte_index].to_string();
+        Some((Token::DocComment(content), self.locate()))
     }
 
     /// If the input from the current position consists only of `\n` / `\r` / ` ` characters
@@ -606,7 +634,11 @@ impl<'contents> Iterator for Lexer<'contents> {
                 self.previous_token_expects_indent = true;
                 self.advance2_with(Token::DivAssign)
             },
-            ('/', '/') => self.lex_singleline_comment(),
+            ('/', '/') => {
+                self.advance();
+                self.advance();
+                self.lex_singleline_comment()
+            }
             ('/', '*') => self.lex_multiline_comment(),
             ('=', '=') => self.advance2_with(Token::EqualEqual),
             ('=', '>') => self.advance2_with(Token::FatArrow),

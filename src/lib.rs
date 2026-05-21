@@ -3,7 +3,7 @@
 pub mod codegen;
 mod definition_collection;
 pub mod find_files;
-mod lexer;
+pub mod lexer;
 mod mir;
 pub mod name_resolution;
 pub mod parser;
