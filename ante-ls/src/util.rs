@@ -77,6 +77,23 @@ pub fn is_internal_only_type(typ: &Type) -> bool {
     matches!(typ, Type::Primitive(PrimitiveType::Error | PrimitiveType::NoClosureEnv))
 }
 
+/// Walk backward from `byte_offset` through any identifier characters and return that prefix.
+/// Empty if the cursor isn't adjacent to an identifier.
+pub fn identifier_prefix_before(rope: &Rope, byte_offset: usize) -> String {
+    let byte_offset = byte_offset.min(rope.len_bytes());
+    let char_idx = rope.byte_to_char(byte_offset);
+    let mut chars = rope.chars_at(char_idx);
+    let mut collected: Vec<char> = Vec::new();
+    while let Some(c) = chars.prev() {
+        if c.is_alphanumeric() || c == '_' {
+            collected.push(c);
+        } else {
+            break;
+        }
+    }
+    collected.iter().rev().collect()
+}
+
 /// Join doc-comment lines into a single [Documentation] separated by newlines.
 pub fn format_doc_comments(comments: &[String]) -> Option<Documentation> {
     if comments.is_empty() {

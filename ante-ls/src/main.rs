@@ -10,17 +10,20 @@ use ropey::Rope;
 use tokio::sync::RwLock;
 use tower_lsp::{jsonrpc::Result, lsp_types::*, Client, LanguageServer, LspService, Server};
 
+mod auto_import;
+mod code_action;
 mod completion;
 mod definition;
 mod diagnostics;
 mod hover;
 mod util;
 
+use code_action::code_actions_at;
 use completion::completions_at;
 use definition::definition_at;
 use diagnostics::{init_db, rope_for_file};
 use hover::hover_at;
-use util::{byte_range_to_lsp_range, lsp_range_to_rope_range, position_to_byte_offset};
+use util::{byte_range_to_lsp_range, identifier_prefix_before, lsp_range_to_rope_range, position_to_byte_offset};
 
 struct Backend {
     client: Client,
@@ -65,6 +68,7 @@ impl LanguageServer for Backend {
                     work_done_progress_options: Default::default(),
                     completion_item: None,
                 }),
+                code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
                 position_encoding: Some(PositionEncodingKind::UTF8),
                 ..Default::default()
             },
@@ -140,9 +144,46 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
+        let prefix = identifier_prefix_before(&ctx.rope, ctx.byte_offset);
         let compiler = self.compiler.read().await;
-        let items = completions_at(&compiler, ctx.file_id, ctx.byte_offset);
-        Ok(Some(CompletionResponse::Array(items)))
+        let items = completions_at(&compiler, ctx.file_id, ctx.byte_offset, &ctx.rope, &prefix);
+        // incomplete so we can add out-of-scope items when the input is closer to their name
+        // instead of adding every item in every library all the time.
+        Ok(Some(CompletionResponse::List(CompletionList { is_incomplete: true, items })))
+    }
+
+    async fn code_action(&self, params: CodeActionParams) -> Result<Option<CodeActionResponse>> {
+        let tdpp = TextDocumentPositionParams {
+            text_document: params.text_document.clone(),
+            position: params.range.start,
+        };
+        let Some(ctx) = self.resolve_position(tdpp).await else {
+            return Ok(None);
+        };
+
+        // Convert the full LSP range (not just the start) to a byte range so we can
+        // match any NameNotInScope diagnostic that overlaps the cursor or selection.
+        let Ok(rope_range) = lsp_range_to_rope_range(params.range, &ctx.rope) else {
+            return Ok(None);
+        };
+        let start_byte = ctx.rope.char_to_byte(rope_range.start);
+        let end_byte = ctx.rope.char_to_byte(rope_range.end);
+
+        let compiler = self.compiler.read().await;
+        let actions = code_actions_at(
+            &compiler,
+            ctx.file_id,
+            start_byte,
+            end_byte,
+            &ctx.uri,
+            &ctx.rope,
+            &params.context.diagnostics,
+        );
+
+        if actions.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(actions.into_iter().map(CodeActionOrCommand::CodeAction).collect()))
     }
 
     async fn goto_definition(&self, params: GotoDefinitionParams) -> Result<Option<GotoDefinitionResponse>> {
