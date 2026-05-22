@@ -1939,10 +1939,25 @@ impl<'tokens> Parser<'tokens> {
     fn try_<T>(&mut self, f: impl FnOnce(&mut Self) -> Result<T>) -> Result<T> {
         let start_position = self.token_index;
         let diagnostic_count = self.diagnostics.len();
+        let exprs_len = self.current_context.exprs.len();
+        let patterns_len = self.current_context.patterns.len();
+        let paths_len = self.current_context.paths.len();
+        let names_len = self.current_context.names.len();
         let result = f(self);
         if result.is_err() {
             self.token_index = start_position;
             self.diagnostics.truncate(diagnostic_count);
+            // Roll back any ids the failed branch pushed into the per-item context.
+            // In addition to saving space, ante-ls iterates over all of these and
+            // relies on them all being in the program.
+            self.current_context.exprs.truncate(exprs_len);
+            self.current_context.expr_locations.truncate(exprs_len);
+            self.current_context.patterns.truncate(patterns_len);
+            self.current_context.pattern_locations.truncate(patterns_len);
+            self.current_context.paths.truncate(paths_len);
+            self.current_context.path_locations.truncate(paths_len);
+            self.current_context.names.truncate(names_len);
+            self.current_context.name_locations.truncate(names_len);
         }
         result
     }

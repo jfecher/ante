@@ -75,6 +75,11 @@ impl<K, V> VecMap<K, V> {
     pub(crate) fn clear(&mut self) {
         self.items.clear();
     }
+
+    /// Truncate the map to the given length, invalidating any ids past `new_len`.
+    pub fn truncate(&mut self, new_len: usize) {
+        self.items.truncate(new_len);
+    }
 }
 
 impl<K, V> Index<K> for VecMap<K, V>

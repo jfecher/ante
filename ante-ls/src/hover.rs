@@ -80,3 +80,34 @@ pub fn hover_at(compiler: &Db, file_id: SourceFileId, byte_offset: usize) -> Opt
     let type_str = typ.to_string(&tc.bindings, &tc.result.context, compiler);
     Some(format!("{name} : {type_str}"))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ante::incremental::Db;
+    use ropey::Rope;
+    use std::path::PathBuf;
+
+    /// Regression for a hover failure where `try` in ante's parser kept around
+    /// Paths which were not chosen for the parse, which overlapped with the actual path of `iota`
+    /// in the test below. This broke ante-ls's iteration over all paths/names/exprs/patterns.
+    #[test]
+    fn hover_on_imported_iota() {
+        let source = "import Std.Stream.iota\n\nmain () =\n    iota 3\n    ()\n";
+
+        let ante_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("ante-ls must live inside the ante workspace")
+            .to_path_buf();
+
+        let foo = ante_root.join("foo.an");
+        let mut db = Db::default();
+        crate::diagnostics::init_db(&mut db, &ante_root);
+        crate::diagnostics::set_file_content(&mut db, &ante_root, &foo, &Rope::from_str(source));
+
+        let file_id = ante::name_resolution::namespace::SourceFileId::for_local_path(&ante_root, &foo);
+        // Byte 38 is the 'i' in `iota` on line 4.
+        let result = hover_at(&db, file_id, 38);
+        assert_eq!(result.as_deref(), Some("iota : fn Usz -> fn (Emit Usz) [Usz] -> Unit"));
+    }
+}
