@@ -13,3 +13,6 @@ impl hash_u64: Hash U64 with
 
 impl hash_u8: Hash U8 with
     hash x = cast x
+
+impl hash_char: Hash Char with
+    hash (c: Char) = U64 c

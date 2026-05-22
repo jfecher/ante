@@ -8,7 +8,7 @@ library_fn _ = 3
 // expected exit status: 1
 // expected stdout:
 // // id = c1m753_7873
-// library_int_c1m753_7873_1 = 5
+// library_int_c1m753_7873_0 = 5
 // 
 // // id = c1m753_5383
 // library_fn_c1m753_5383_0 __1 = 2
@@ -17,7 +17,7 @@ library_fn _ = 3
 // import Library.library_int, library_fn
 // 
 // // id = c1m79_7873
-// library_int_c1m79_7873_1 = 1
+// library_int_c1m79_7873_0 = 1
 // 
 // // id = c1m79_5383
 // library_fn_c1m79_5383_0 __1 = 3

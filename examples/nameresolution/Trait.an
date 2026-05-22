@@ -18,8 +18,8 @@ main () =
 //     bar_c1m488_1237_6: a_1
 // 
 // // id = c1m488_400
-// implicit foo_i32_string_c1m488_400_1: Foo_c1m488_1237_0 I32 String_c0m703_9662_0 =
-//     Foo_c1m488_1237_0 (fn _x_3 -> "test") 2
+// implicit foo_i32_string_c1m488_400_0: Foo_c1m488_1237_0 I32 String_c0m703_9662_0 =
+//     Foo_c1m488_1237_0 (fn _x_1 -> "test") 2
 // 
 // // id = c1m488_1944
 // main_c1m488_1944_0 () =

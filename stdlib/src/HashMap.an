@@ -19,7 +19,7 @@ type Entry k v =
 
 HashMap.empty () = HashMap 0 0 (null ())
 
-HashMap.of (s: s) {Stream s (k, v)} {Hash k}: HashMap k v =
+HashMap.of (s: s) {Stream s (k, v)} {Hash k} {Eq k}: HashMap k v =
     var map = HashMap.empty ()
     iter s (fn (k, v) -> map.insert k v)
     map
@@ -32,7 +32,7 @@ HashMap.clear (map: mut HashMap k v) : Unit =
             entry.tombstone := false
         map.len := 0usz
 
-HashMap.resize (map: mut HashMap k v) (new_capacity: Usz) {Hash k} : Unit =
+HashMap.resize (map: mut HashMap k v) (new_capacity: Usz) {Hash k} {Eq k}: Unit =
     if new_capacity > map.capacity then
         new_memory = calloc new_capacity (size_of (MkType : Type (Entry k v)))
 
@@ -54,10 +54,13 @@ HashMap.should_resize (map: ref HashMap k v) : Bool =
     scale_factor = 2
     (map.len + 1) * scale_factor > map.capacity
 
-HashMap.insert (map: mut HashMap k v) (key: k) (value: v) {Hash k} : Unit =
+/// Inserts a key-value pair into the map, removing any item that may previously
+/// have been associated with the same key and returning the removed value if there was one.
+HashMap.insert (map: mut HashMap k v) (key: k) (value: v) {Hash k} {Eq k}: Maybe v =
     if map.should_resize () then
         map.resize ((map.capacity + 1) * 2)
 
+    var previous = Maybe.None
     iter_until (map: mut HashMap k v) (key: ref k) (value: ref v) (start: Usz) (end: Usz) : Bool =
         if start >= end then
             false
@@ -67,6 +70,9 @@ HashMap.insert (map: mut HashMap k v) (key: k) (value: v) {Hash k} : Unit =
             if entry.occupied then
                 iter_until map key value (start + 1) end
             else
+                if (transmute entry.key : ref k) == key then
+                    previous := Some (deref entry.value)
+
                 entry := Entry (deref key) (deref value) true false
                 true
 
@@ -77,6 +83,7 @@ HashMap.insert (map: mut HashMap k v) (key: k) (value: v) {Hash k} : Unit =
             panic "Failed to insert entry into map"
 
     map.len := map.len + 1usz
+    previous
 
 // TODO: Name resolution issue preventing this from being visible to iter_until
 // if it is defined within get_entry

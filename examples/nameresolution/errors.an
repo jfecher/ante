@@ -19,12 +19,12 @@ a = 3 // already declared
 // expected exit status: 1
 // expected stdout:
 // // id = c1m416_9923
-// not_an_error_c1m416_9923_1 = 1
+// not_an_error_c1m416_9923_0 = 1
 // 
 // // id = c1m416_1944
 // main_c1m416_1944_0 () =
-//     not_an_error_c1m416_9923_1 is_an_error_?
-//     fn a_4 b_5 -> (a_4 +_c0m703_2840_2 c_?) +_c0m703_2840_2 b_5
+//     not_an_error_c1m416_9923_0 is_an_error_?
+//     fn a_1 b_2 -> (a_1 +_c0m703_2840_2 c_?) +_c0m703_2840_2 b_2
 // 
 // // id = c1m416_3132
 // foo_c1m416_3132_0 a_1 b_2 =
@@ -33,10 +33,10 @@ a = 3 // already declared
 //     ()
 // 
 // // id = c1m416_7365
-// a_c1m416_7365_1 = 2
+// a_c1m416_7365_0 = 2
 // 
 // // id = c1m416_4138
-// a_c1m416_7365_1 = 3
+// a_c1m416_7365_0 = 3
 
 // expected stderr:
 // examples/nameresolution/errors.an:5:18
