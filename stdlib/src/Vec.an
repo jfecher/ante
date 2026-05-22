@@ -4,6 +4,7 @@ import Std.Fail.Fail, fail, no_fail
 
 export Vec, empty, of, is_empty, len, extend, capacity, reserve, push, pop, get, get_unchecked,
     remove_index, remove_first, remove_indices, remove_all, swap_last,
+    reverse, swap, insert, dedup, truncate, clear, fill, sort_by, sort,
     print_vec, print_helper, extract_vec, stream_vec, stream_imm_vec, eq_vec, drop_vec, (.[)
 
 type Vec t =
@@ -140,6 +141,78 @@ Vec.swap_last (v: mut Vec t) (idx: Usz) : Bool =
         v.len := v.len - 1
         array_insert v.data idx (v.data.[v.len])
         true
+
+/// Reverse the elements of this vector in place.
+Vec.reverse (v: mut Vec t): Unit =
+    if v.len < 2 then return ()
+    half = v.len / 2
+    for i in 0 .. half do
+        opposite = v.len - i - 1
+        tmp = v.data.[i]
+        array_insert v.data i (v.data.[opposite])
+        array_insert v.data opposite tmp
+
+/// Swap the elements at indices `i` and `j`. Fails if either index is out of bounds.
+Vec.swap (v: mut Vec t) (i: Usz) (j: Usz) {Fail}: Unit =
+    if i >= v.len or j >= v.len then fail ()
+    if i == j then return ()
+    tmp = v.data.[i]
+    array_insert v.data i (v.data.[j])
+    array_insert v.data j tmp
+
+/// Insert `elem` at `idx`, shifting elements at `[idx, len)` one position right.
+/// Fails if `idx > len`.
+Vec.insert (v: mut Vec t) (idx: Usz) (elem: t) {Fail}: Unit =
+    if idx > v.len then fail ()
+    if v.len >= v.cap then
+        v.reserve (if v.cap == 0 then 1 else v.cap)
+    var i = v.len
+    while i > idx do
+        array_insert v.data i (v.data.[i - 1])
+        i -= 1
+    array_insert v.data idx elem
+    v.len += 1
+
+/// Remove consecutive runs of equal elements, keeping only the first of each run.
+Vec.dedup (v: mut Vec t) {Eq t} {Copy t}: Unit =
+    if v.len < 2 then return ()
+    var write = 1
+    for read in 1 .. v.len do
+        if v.data.[read] != v.data.[write - 1] then
+            if write != read then
+                array_insert v.data write (v.data.[read])
+            write += 1
+    v.len := write
+
+/// Shrink the vector to at most `new_len` elements, dropping any tail.
+/// Does nothing if `new_len >= v.len`.
+Vec.truncate (v: mut Vec t) (new_len: Usz) {Drop t}: Unit =
+    if new_len >= v.len then return ()
+    for i in new_len .. v.len do
+        elem = offset v.data i
+        Drop.drop (ptr_to_mut elem)
+    v.len := new_len
+
+/// Remove and drop every element.
+/// After being cleared, a Vec's length will be zero, but its capacity will be unchanged.
+Vec.clear (v: mut Vec t) {Drop t}: Unit =
+    v.truncate 0
+
+/// Sort the vector in place using `cmp` to compare elements.
+/// Insertion sort: stable, O(n^2) worst case. Good enough for small vectors.
+Vec.sort_by (v: mut Vec t) (cmp: fn t t => Bool): Unit =
+    if v.len < 2 then return ()
+    for i in 1 .. v.len do
+        var j = i
+        while j > 0 and cmp v.data.[j] v.data.[j - 1] do
+            tmp = v.data.[j - 1]
+            array_insert v.data (j - 1) (v.data.[j])
+            array_insert v.data j tmp
+            j -= 1
+
+/// Sort the vector in place using the `Cmp` ordering.
+Vec.sort (v: mut Vec t) {Cmp t}: Unit =
+    v.sort_by (<)
 
 
 impl print_vec {p: Print t}: Print (ref Vec t) with

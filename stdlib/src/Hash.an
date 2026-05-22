@@ -4,9 +4,12 @@ import Std.String.bytes
 ability Hash t =
     hash: fn t -> U64
 
-// TODO: Proper hash impls
+// FNV-1a 64-bit. Offset basis: 14695981039346656037 (0xcbf29ce484222325).
+// Prime: 1099511628211 (0x100000001b3).
 impl hash_string: Hash String with
-    hash s = U64 (foldl (bytes s) 0 fn acc c -> acc * 10 + c)
+    hash s =
+        foldl (bytes s) 14695981039346656037 fn acc c ->
+            bxor acc (U64 c) * 1099511628211
 
 impl hash_u64: Hash U64 with
     hash x = x
@@ -14,5 +17,60 @@ impl hash_u64: Hash U64 with
 impl hash_u8: Hash U8 with
     hash x = cast x
 
+impl hash_u16: Hash U16 with
+    hash x = cast x
+
+impl hash_u32: Hash U32 with
+    hash x = cast x
+
+impl hash_usz: Hash Usz with
+    hash x = cast x
+
+// Reinterpret as same-width unsigned then zero-extend.
+impl hash_i8: Hash I8 with
+    hash (x: I8) = cast (transmute x : U8)
+
+impl hash_i16: Hash I16 with
+    hash (x: I16) = cast (transmute x : U16)
+
+impl hash_i32: Hash I32 with
+    hash (x: I32) = cast (transmute x : U32)
+
+impl hash_i64: Hash I64 with
+    hash (x: I64) = transmute x
+
+impl hash_isz: Hash Isz with
+    hash (x: Isz) = cast (transmute x : Usz)
+
+impl hash_f32: Hash F32 with
+    hash (x: F32) = cast (transmute x : U32)
+
+impl hash_f64: Hash F64 with
+    hash (x: F64) = transmute x
+
+impl hash_bool: Hash Bool with
+    hash b = if b then 1 else 0
+
 impl hash_char: Hash Char with
     hash (c: Char) = U64 c
+
+// Combine two hashes to form a new one. Order-sensitive so (a, b) and
+// (b, a) hash differently. Mixing constant is 2^64 / phi.
+hash_combine (h1: U64) (h2: U64): U64 =
+    // TODO: `Bitwise` has no bit shifting operators. Should be `shl h1 6 + shr h1 2`
+    bxor h1 (h2 + 11400714819323198485 + h1*64 + h1/4)
+
+impl hash_pair {Hash a} {Hash b}: Hash (a, b) with
+    hash p = hash_combine (Hash.hash p.first) (Hash.hash p.second)
+
+impl hash_maybe {Hash a}: Hash (Maybe a) with
+    hash m =
+        match m
+        | None -> 0
+        | Some x -> hash_combine 1 (Hash.hash x)
+
+impl hash_result {Hash a} {Hash e}: Hash (Result a e) with
+    hash r =
+        match r
+        | Ok x -> hash_combine 2 (Hash.hash x)
+        | Error e -> hash_combine 3 (Hash.hash e)

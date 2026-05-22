@@ -2,6 +2,7 @@ import Std.Vec
 import Std.C.malloc, memcpy, memcmp
 import Std.Stream.Emit, emit, Stream, foldl, map, stream_fn
 import Std.Vec.Vec
+import Std.Char.is_whitespace
 
 // TODO: All functions in this file should be a method on String, but String isn't defined in this file
 
@@ -89,3 +90,51 @@ bytes (s: String) = fn (e: Emit U8) ->
 /// TODO: No utf-8 checking is done and this currently just emits each byte
 chars (s: String) =
     bytes s |> map (fn b -> Char b)
+
+/// True if `s` begins with `prefix`.
+starts_with (s: ref String) (prefix: ref String): Bool =
+    if prefix.length > s.length then false
+    else memcmp s.data prefix.data (Usz prefix.length) == 0
+
+/// True if `s` ends with `suffix`.
+ends_with (s: ref String) (suffix: ref String): Bool =
+    if suffix.length > s.length then false
+    else
+        skip = Usz (s.length - suffix.length)
+        memcmp (offset_bytes s.data skip) suffix.data (Usz suffix.length) == 0
+
+/// True if `needle` appears anywhere in `s`. O(n*m) naive scan.
+contains (s: ref String) (needle: ref String): Bool =
+    if needle.length == 0 then return true
+    if needle.length > s.length then return false
+    nlen = Usz needle.length
+    end = Usz (s.length - needle.length) + 1
+    for i in 0 .. end do
+        if memcmp (offset_bytes s.data i) needle.data nlen == 0 then
+            return true
+    false
+
+/// Return a substring with leading ASCII whitespace removed.
+/// Reuses the source refcount; no allocation.
+trim_start (s: String): String =
+    len = Usz s.length
+    for i in 0 .. len do
+        c: Char = s.data.[i]
+        if not is_whitespace c then
+            return substr s i len
+    ""
+
+/// Return a substring with trailing ASCII whitespace removed.
+trim_end (s: String): String =
+    len = Usz s.length
+    var i = len
+    while i > 0 do
+        c: Char = s.data.[i - 1]
+        if not is_whitespace c then
+            return substr s 0 i
+        i -= 1
+    ""
+
+/// Return a substring with both leading and trailing ASCII whitespace removed.
+trim (s: String): String =
+    trim_start s |> trim_end

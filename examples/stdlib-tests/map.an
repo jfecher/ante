@@ -1,14 +1,10 @@
 import Std.HashMap.HashMap, empty, of, clear, insert, print_hashmap, remove, get,
     get_entry, stream_map
-import Std.Stream.iter, iota, map, stream_fn
+import Std.Stream.iter, iota, map, stream_fn, stream_array
 import Std.Hash.Hash, hash_u8
 
 main () =
     var map = empty ()
-
-    // Test several inserts. HashMap is linear-scan so it
-    // should keep resizing so that it is at least half-empty
-    // (ie. its capacity should be >= 2 * its length).
     map.insert 1u8 3u16
     map.insert 2 6
     map.insert 3 9
@@ -24,7 +20,6 @@ main () =
     println (map.get (ref 3))
     println (get (ref map) (ref 5))
 
-    // get_entry: hit + miss
     match get_entry map (ref 3u8)
     | Some _ -> println "hit"
     | None -> println "missing"
@@ -33,19 +28,38 @@ main () =
     | Some _ -> println "hit"
     | None -> println "missing"
 
+    test_iter_and_clear ()
+    test_get_or_insert_contains_and_merge ()
+
+test_iter_and_clear () =
     // stream_map impl: build a single-entry map (otherwise ordering isn't deterministic)
     // and stream it
-    var single = HashMap.empty ()
-    single.insert 42u8 100u16
-
-    var single2 = HashMap.empty ()
-    single2.insert 42u8 100u16
-
+    var single = HashMap.of [(42u8, 100u16)]
     iter single println
 
     // clear:
-    clear (mut single2)
-    println (ref single2)
+    var map = HashMap.of [(1u8, 2), (3, 4), (5, 6)]
+    clear (mut map)
+    println (ref map)
+
+test_get_or_insert_contains_and_merge () =
+    var m = HashMap.of [(1u8, 10), (2, 20), (3, 30)]
+
+    println (m.len ())
+    println (m.is_empty ())
+
+    println (m.get_or_insert 1 99)
+    println (m.get_or_insert 4 40)
+    println (m.contains (ref 4))
+
+    println (m.get_or_insert_with 5 (fn () -> 50))
+
+    m.retain (fn k _ -> k %% 2)
+    println (HashMap.len (ref m))
+
+    var m2 = HashMap.of [(100u8, 1000), (200, 2000)]
+    m.merge m2
+    println (HashMap.len (ref m))
 
 // args: --delete-binary --no-color
 // expected stdout:
@@ -56,4 +70,12 @@ main () =
 // missing
 // 42, 100
 // []
+// 3
+// false
+// 10
+// 40
+// true
+// 50
+// 2
+// 4
 

@@ -1,9 +1,11 @@
 import Std.C.putchar, calloc
-import Std.Stream.Stream, iter, stream_fn
+import Std.Stream.Stream, iter, stream_fn, Emit, emit
 import Std.Hash.Hash
 
 export HashMap, Entry, Hash, hash, empty, of, clear, resize, should_resize,
-    insert, get_entry, get, remove, print_hashmap, print_helper, stream_map
+    insert, get_entry, get, contains, remove, len, is_empty, keys, values,
+    get_or_insert, get_or_insert_with, retain, merge,
+    print_hashmap, print_helper, stream_map
 
 // A linear-scan mutable HashMap using a resize factor of 2.0
 type HashMap k v =
@@ -17,8 +19,17 @@ type Entry k v =
     occupied: Bool
     tombstone: Bool
 
+/// Returns the length of this HashMap
+HashMap.len (m: ref HashMap k v): Usz = m.len
+
+/// Returns true if this HashMap is empty. Equivalent to `map.len () == 0`
+HashMap.is_empty (m: ref HashMap k v): Bool = m.len == 0
+
+/// Create a new, empty HashMap
+/// This will not allocate until the first entry is inserted.
 HashMap.empty () = HashMap 0 0 (null ())
 
+/// Create a HashMap containing each `k, v` pair from the given stream.
 HashMap.of (s: s) {Stream s (k, v)} {Hash k} {Eq k}: HashMap k v =
     var map = HashMap.empty ()
     iter s (fn (k, v) -> map.insert k v)
@@ -92,7 +103,11 @@ type EntryResult k v =
     | NotFound
     | NotFinished
 
-HashMap.get_entry (map: ref HashMap k v) (key: ref k) {Hash k} {eq: Eq k} : Maybe (Ptr (Entry k v)) =
+HashMap.get_entry (map: ref HashMap k v) (key: ref k) {Hash k} {eq: Eq k}: Maybe (ref (Entry k v)) =
+    map = transmute map : mut HashMap k v
+    map.get_entry_mut key
+
+HashMap.get_entry_mut (map: mut HashMap k v) (key: ref k) {Hash k} {eq: Eq k}: Maybe (mut (Entry k v)) =
     if map.capacity == 0 then return None
 
     // Return whether to continue by wrapping around the end, and the value if found
@@ -111,26 +126,25 @@ HashMap.get_entry (map: ref HashMap k v) (key: ref k) {Hash k} {eq: Eq k} : Mayb
 
     h = Usz (Hash.hash (deref key)) % map.capacity
     match iter_until h map.capacity
-    | Found value -> Some value
+    | Found value -> Some (ptr_to_mut value)
     | NotFound -> None
     | NotFinished ->
         match iter_until 0 h
-        | Found value -> Some value
+        | Found value -> Some (ptr_to_mut value)
         | _ -> None
 
 HashMap.get (map: ref HashMap k v) (key: ref k) {Hash k} {Eq k} : Maybe v =
     match map.get_entry key
-    | Some entry -> Some (deref_ptr entry.value)
+    | Some entry -> Some (deref entry.value)
     | None -> None
 
 HashMap.contains (map: ref HashMap k v) (key: ref k) {Hash k} {Eq k}: Bool =
     map.get key is Some _
 
 HashMap.remove (map: mut HashMap k v) (key: k) {Hash k} {Eq k} : Maybe v =
-    match map.get_entry key
+    match map.get_entry_mut key
     | None -> None
-    | Some e2 ->
-        entry = ptr_to_mut e2
+    | Some entry ->
         entry.occupied := false
         entry.tombstone := true
         map.len := map.len - 1
@@ -159,3 +173,51 @@ implicit stream_map: Stream (HashMap k v) (k, v) =
             entry: Entry k v = map.entries.[i]
             if entry.occupied then
                 e.emit (entry.key, entry.value)
+
+/// Emit each key. Bit-copies the key; safe for `Copy` keys.
+HashMap.keys (m: ref HashMap k v) = fn (e: Emit k) ->
+    for i in 0 .. m.capacity do
+        entry: Entry k v = m.entries.[i]
+        if entry.occupied then e.emit entry.key
+
+/// Emit each value. Bit-copies the value; safe for `Copy` values.
+HashMap.values (m: ref HashMap k v) = fn (e: Emit v) ->
+    for i in 0 .. m.capacity do
+        entry: Entry k v = m.entries.[i]
+        if entry.occupied then e.emit entry.value
+
+/// Return the existing value at `key`, or insert `default` and return it.
+/// Requires `Copy k` so we can probe the map twice with the same key.
+HashMap.get_or_insert (m: mut HashMap k v) (key: k) (default: v) {Hash k} {Eq k} {Copy k}: v =
+    match m.get (ref key)
+    | Some existing -> existing
+    | None ->
+        ignore (m.insert key default)
+        match m.get (ref key)
+        | Some v -> v
+        | None -> panic "HashMap.get_or_insert: lookup after insert failed"
+
+/// Same as `get_or_insert` but builds the default lazily.
+HashMap.get_or_insert_with (m: mut HashMap k v) (key: k) (mk: fn Unit => v) {Hash k} {Eq k} {Copy k}: v =
+    match m.get (ref key)
+    | Some existing -> existing
+    | None ->
+        ignore (m.insert key (mk ()))
+        match m.get (ref key)
+        | Some v -> v
+        | None -> panic "HashMap.get_or_insert_with: lookup after insert failed"
+
+/// Remove every entry for which `pred key value` returns false.
+HashMap.retain (m: mut HashMap k v) (pred: fn k v => Bool) {Copy k} {Copy v}: Unit =
+    for i in 0 .. m.capacity do
+        entry_ptr = offset m.entries i
+        entry = ptr_to_mut entry_ptr
+        if entry.occupied then
+            if not (pred entry.key entry.value) then
+                entry.occupied := false
+                entry.tombstone := true
+                m.len -= 1
+
+/// Insert every entry from `src` into `dst`, overwriting on conflict.
+HashMap.merge (dst: mut HashMap k v) (src: HashMap k v) {Hash k} {Eq k}: Unit =
+    iter src (fn (k, v) -> ignore (HashMap.insert dst k v))

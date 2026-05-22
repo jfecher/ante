@@ -3,7 +3,7 @@ import Std.Vec.Vec, empty, of, is_empty, len, capacity, reserve, push, pop, get,
     print_vec, extract_vec, stream_imm_vec, eq_vec
 
 import Std.Fail.try_or, no_fail
-import Std.Stream.iter
+import Std.Stream.iter, stream_array
 
 main () =
     test_basics ()
@@ -14,6 +14,13 @@ main () =
     test_indexing ()
     test_stream ()
     test_eq ()
+    test_reverse ()
+    test_swap ()
+    test_insert ()
+    test_dedup ()
+    test_truncate_clear ()
+    test_sort ()
+    test_sort_by ()
 
 test_basics () =
     var v = Vec.empty ()
@@ -47,62 +54,74 @@ test_remove_first () =
     println (v.remove_first 99)
 
 test_remove_indices () =
-    var v = Vec.empty ()
-    v.push 10
-    v.push 20
-    v.push 30
-    v.push 40
-    v.push 50
-    var idxs = Vec.empty ()
-    idxs.push 1
-    idxs.push 3
+    var v = Vec.of [10, 20, 30, 40, 50]
+    idxs = Vec.of [1, 3]
     v.remove_indices idxs ~> no_fail
     println (ref v)
 
 test_remove_all () =
-    var v = Vec.empty ()
-    v.push 1
-    v.push 2
-    v.push 1
-    v.push 1
-    v.push 3
+    var v = Vec.of [1, 2, 1, 1, 3]
     println (v.remove_all 1)
     println (ref v)
 
 test_swap_last () =
-    var v = Vec.empty ()
-    v.push 10
-    v.push 20
-    v.push 30
-    v.push 40
+    var v = Vec.of [10, 20, 30, 40]
     println (v.swap_last 1)
     println (ref v)
     println (v.swap_last 2)
 
 test_indexing () =
-    var v = Vec.empty ()
-    v.push 10
-    v.push 40
-    v.push 30
-    ten = v.[0]
-    println ten
+    v = Vec.of [10, 40, 30]
+    fourty = v.[1]
+    println fourty
 
 test_stream () =
-    var v = Vec.empty ()
-    v.push 7
-    v.push 8
-    v.push 9
+    v = Vec.of [7, 8, 9]
     iter (imm v) (fn x -> println x.*)
 
 test_eq () =
-    println (vec_of_two 1 2 == vec_of_two 1 2)
-    println (vec_of_two 1 2 == vec_of_two 1 3)
+    println (Vec.of [1, 2] == Vec.of [1, 2])
+    println (Vec.of [1, 2] == Vec.of [1, 3])
 
-vec_of_two (x: I32) (y: I32): Vec I32 =
-    var v = Vec.empty ()
-    v.push x
-    v.push y
-    v
+test_reverse () =
+    var v = Vec.of [1, 2, 3, 4]
+    v.reverse ()
+    println (ref v)
+
+test_swap () =
+    var v = Vec.of [10, 20, 30]
+    v.swap 0 2 ~> no_fail
+    println (ref v)
+
+test_insert () =
+    var v = Vec.of [1, 3, 5]
+    v.insert 1 2 ~> no_fail
+    v.insert 3 4 ~> no_fail
+    println (ref v)
+
+test_dedup () =
+    var v = Vec.of [1, 1, 2, 2, 2, 3, 1]
+    v.dedup ()
+    println (ref v)
+
+test_truncate_clear () =
+    var v = Vec.of [1, 2, 3, 4]
+    v.truncate 2
+    println (ref v)
+    Vec.clear (mut v)
+    println (ref v)
+
+test_sort () =
+    var v = Vec.of [4, 1, 3, 2, 5]
+    // `Expected Cmp _ but found Unit` when doing `v.sort ()`
+    // TODO: Investigate why this happens for `v.sort ()` but not `v.dedup ()`
+    Vec.sort (mut v)
+    println (ref v)
+
+test_sort_by () =
+    var v = Vec.of [4, 1, 3, 2]
+    v.sort_by (>)
+    println (ref v)
 
 // args: --delete-binary --no-color
 // expected stdout:
@@ -124,10 +143,18 @@ vec_of_two (x: I32) (y: I32): Vec I32 =
 // true
 // [10, 40, 30]
 // false
-// 10
+// 40
 // 7
 // 8
 // 9
 // true
 // false
+// [4, 3, 2, 1]
+// [30, 20, 10]
+// [1, 2, 3, 4, 5]
+// [1, 2, 3, 1]
+// [1, 2]
+// []
+// [1, 2, 3, 4, 5]
+// [4, 3, 2, 1]
 

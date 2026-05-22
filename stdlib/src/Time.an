@@ -1,0 +1,35 @@
+import Std.C.Clock, clock_gettime, nanosleep
+
+/// A duration in nanoseconds
+type Duration = nanos: I64
+
+Duration.from_secs (s: I64): Duration = Duration (s * 1_000_000_000)
+Duration.from_millis (ms: I64): Duration = Duration (ms * 1_000_000)
+Duration.from_micros (us: I64): Duration = Duration (us * 1000)
+Duration.from_nanos (ns: I64): Duration = Duration ns
+
+Duration.as_secs (d: Duration): I64 = d.nanos / 1_000_000_000
+Duration.as_millis (d: Duration): I64 = d.nanos / 1_000_000
+Duration.as_micros (d: Duration): I64 = d.nanos / 1000
+Duration.as_nanos (d: Duration): I64 = d.nanos
+
+/// A monotonic time point in nanoseconds since an arbitrary epoch.
+/// Only meaningful relative to another `Instant`.
+type Instant = nanos: I64
+
+// TODO: None of this is platform agnostic
+Instant.now (): Instant =
+    var ts = Clock 0 0
+    clock_gettime 1 (transmute (mut ts) : Ptr Clock)
+    Instant (ts.sec * 1_000_000_000 + ts.nsec)
+
+Instant.elapsed (start: Instant): Duration =
+    Duration ((Instant.now ()).nanos - start.nanos)
+
+/// Block the current thread for the specified duration.
+sleep (d: Duration): Unit =
+    secs = d.nanos / 1_000_000_000
+    nsecs = d.nanos % 1_000_000_000
+    var req = Clock secs nsecs
+    nanosleep (transmute (mut req) : Ptr Clock) (null ())
+    ()

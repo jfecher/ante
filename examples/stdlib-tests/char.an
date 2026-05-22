@@ -1,0 +1,39 @@
+import Std.Char.is_ascii, is_digit, is_alpha, is_alphanumeric, is_whitespace,
+    to_ascii_lower, to_ascii_upper, digit_value
+
+main () =
+    println <| is_digit '7'
+    println <| is_digit 'z'
+    println <| is_alpha 'A'
+    println <| is_alpha '7'
+    println <| is_alphanumeric 'q'
+    println <| is_alphanumeric '!'
+    println <| is_whitespace ' '
+    println <| is_whitespace '\t'
+    println <| is_whitespace 'x'
+    println <| is_ascii 'a'
+    println <| to_ascii_lower 'X'
+    println <| to_ascii_lower 'x'
+    println <| to_ascii_upper 'x'
+    println <| to_ascii_upper 'X'
+    println <| digit_value '5'
+    println <| digit_value 'a'
+
+// args: --delete-binary --no-color
+// expected stdout:
+// true
+// false
+// true
+// false
+// true
+// false
+// true
+// true
+// false
+// true
+// x
+// x
+// X
+// X
+// Some 5
+// None

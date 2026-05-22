@@ -1,5 +1,6 @@
 import Std.String.bytes, chars, substr, string_of, join, split, reverse
 import Std.Stream.iter, intersperse, stream_fn, Emit, emit
+import Std.String.starts_with, ends_with, contains, trim, trim_start, trim_end
 
 main () =
     // bytes & chars:
@@ -24,11 +25,28 @@ main () =
 
     // join over an interspersed stream → single String "a, b, c"
     println (intersperse abc_stream ", " |> join)
+    test_predicates ()
 
 abc_stream {Emit String}: Unit =
     emit "a"
     emit "b"
     emit "c"
+
+test_predicates () =
+    println (starts_with (ref "hello world") (ref "hello"))
+    println (starts_with (ref "hello world") (ref "world"))
+    println (starts_with (ref "hi") (ref "hello"))
+    println (ends_with (ref "hello world") (ref "world"))
+    println (ends_with (ref "hello world") (ref "hello"))
+    println (contains (ref "hello world") (ref "lo wo"))
+    println (contains (ref "hello world") (ref "xyz"))
+    println (contains (ref "abc") (ref ""))
+    // Brackets so trailing whitespace is visible (and matches goldentest).
+    println ("[" ++ trim "  hi  " ++ "]")
+    println ("[" ++ trim_start "  hi  " ++ "]")
+    println ("[" ++ trim_end "  hi  " ++ "]")
+    println ("[" ++ trim "   " ++ "]")
+    println ("[" ++ trim "no-trim" ++ "]")
 
 // args: --delete-binary --no-color
 // expected stdout:
@@ -48,4 +66,16 @@ abc_stream {Emit String}: Unit =
 // 
 // end of split
 // a, b, c
-
+// true
+// false
+// false
+// true
+// false
+// true
+// false
+// true
+// [hi]
+// [hi  ]
+// [  hi]
+// []
+// [no-trim]

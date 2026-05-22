@@ -1,0 +1,21 @@
+import Std.Math.sqrt, pow, floor, ceil, abs
+
+main () =
+    println <| sqrt 16.0
+    println <| pow 2.0 10.0
+    println <| floor 3.7
+    println <| ceil 3.2
+    println <| abs (0.0 - 7.5)
+    println <| abs 5
+    println <| abs (0 - 12345)
+
+// args: --delete-binary --no-color
+// expected stdout:
+// 4.0
+// 1024.0
+// 3.0
+// 4.0
+// 7.5000
+// 5
+// 12345
+

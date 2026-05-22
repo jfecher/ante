@@ -13,7 +13,7 @@ export String, from_parts, Maybe, None, Some, unwrap, unwrap_or_else, Result, Ok
     cast_i64_i8, cast_i64_i16, cast_i64_i32, cast_i64_isz, cast_isz_i8, cast_isz_i16, cast_isz_i32, cast_isz_i64, cast_i8_f32, cast_i16_f32, cast_i32_f32, cast_i64_f32, cast_isz_f32, cast_i8_f64, cast_i16_f64, cast_i32_f64,
     cast_u8_f32, cast_u16_f64, cast_u32_f64, cast_u64_f64, cast_usz_f64, cast_u8_f64, cast_u16_f32, cast_u32_f32, cast_u64_f32, cast_usz_f32, cast_f32_i8, cast_f32_i16, cast_f32_i32, cast_f32_i64, cast_f32_isz, cast_f64_i8,
     cast_f32_u8, cast_f32_u16, cast_f32_u32, cast_f32_u64, cast_f32_usz, cast_f64_u8, cast_f64_u16, cast_f64_u32, cast_f64_u64, cast_f64_usz, cast_i8_char, cast_i16_char, cast_i32_char, cast_i64_char, cast_isz_char, cast_u8_i32,
-    cast_i64_f64, cast_isz_f64, cast_f64_i16, cast_f64_i32, cast_f64_i64, cast_f64_isz, cast_u8_char, cast_u16_char, cast_u32_char, cast_u64_char, cast_usz_char, cast_f64_f32, cast_f32_f64, cast_i32_usz, cast_char_i32, cast_char_u64, cast_i32_string, cast_bool_i32,
+    cast_i64_f64, cast_isz_f64, cast_f64_i16, cast_f64_i32, cast_f64_i64, cast_f64_isz, cast_u8_char, cast_u16_char, cast_u32_char, cast_u64_char, cast_usz_char, cast_f64_f32, cast_f32_f64, cast_i32_usz, cast_usz_i64, cast_i64_usz, cast_char_i32, cast_char_u64, cast_i32_string, cast_bool_i32,
     u64_count_digits, u64_write_digits,
     TryCast, try_cast, try_cast_from_cast, try_cast_i64_u64, try_cast_u64,
     Add, (+), add_i8, add_i16, add_i32, add_i64, add_isz, add_u8, add_u16, add_u32, add_u64, add_usz, add_f32, add_f64,
@@ -21,15 +21,15 @@ export String, from_parts, Maybe, None, Some, unwrap, unwrap_or_else, Result, Ok
     Mul, (*), mul_i8, mul_i16, mul_i32, mul_i64, mul_isz, mul_u8, mul_u16, mul_u32, mul_u64, mul_usz, mul_f32, mul_f64,
     Div, (/), div_i8, div_i16, div_i32, div_i64, div_isz, div_u8, div_u16, div_u32, div_u64, div_usz, div_f32, div_f64,
     Mod, (%), (%%), mod_i8, mod_i16, mod_i32, mod_i64, mod_isz, mod_u8, mod_u16, mod_u32, mod_u64, mod_usz,
-    Eq, (==), (!=), eq_i8, eq_i16, eq_i32, eq_i64, eq_isz, eq_u8, eq_u16, eq_u32, eq_u64, eq_usz, eq_f32, eq_f64, eq_char, eq_bool, eq_ref, eq_ptr, eq_maybe, eq_string,
+    Eq, (==), (!=), eq_i8, eq_i16, eq_i32, eq_i64, eq_isz, eq_u8, eq_u16, eq_u32, eq_u64, eq_usz, eq_f32, eq_f64, eq_char, eq_bool, eq_ref, eq_ptr, eq_maybe, eq_pair, eq_string,
     Not, (not), not_bool, not_i32,
-    Cmp, (<), (>), (<=), (>=), max, min, cmp_i8, cmp_i16, cmp_i32, cmp_i64, cmp_isz, cmp_u8, cmp_u16, cmp_u32, cmp_u64, cmp_usz, cmp_f32, cmp_f64,
-    Num, num_i8, num_i16, num_i32, num_i64, num_isz, num_u8, num_u16, num_u32, num_u64, num_usz,
+    Cmp, (<), (>), (<=), (>=), max, min, cmp_i8, cmp_i16, cmp_i32, cmp_i64, cmp_isz, cmp_u8, cmp_u16, cmp_u32, cmp_u64, cmp_usz, cmp_f32, cmp_f64, cmp_char,
+    Num, num_i8, num_i16, num_i32, num_i64, num_isz, num_u8, num_u16, num_u32, num_u64, num_usz, num_f32, num_f64,
     Append, (++), append_string,
     (|>), (<|),
     Extract, (.[), extract_ptr_usz, extract_array, extract_array_move,
     array_len, array_get, array_set, array_get_unchecked, array_set_unchecked,
-    Bitwise, band, bor, bxor, bitwise_i32,
+    Bitwise, band, bor, bxor, bitwise_i32, bitwise_u64,
     Type, MkType, size_of,
     offset, offset_bytes, deref, deref_ptr, ptr_store, array_insert, ptr_to_mut,
     Clone, clone, Drop, drop, drop_string,
@@ -308,6 +308,15 @@ impl cast_i32_usz: Cast I32 Usz with
         // TODO: Review. Does this match C?
         transmute (cast x : Isz)
 
+impl cast_usz_i64: Cast Usz I64 with
+    cast x = intrinsic "ZeroExtend" x
+
+impl cast_i64_usz: Cast I64 Usz with
+    cast x = intrinsic "Truncate" x
+
+// This impl needs to be removed if chars become 32-bit
+impl cast_char_u8: Cast Char U8 with
+    cast x = intrinsic "ZeroExtend" x
 impl cast_char_i32: Cast Char I32 with
     cast x = intrinsic "ZeroExtend" x
 impl cast_char_u64: Cast Char U64 with
@@ -537,6 +546,9 @@ impl eq_maybe {Eq e}: Eq (Maybe e) with
         | None, None -> true
         | _ -> false
 
+impl eq_pair {Eq a} {Eq b}: Eq (a, b) with
+    (==) l r = l.first == r.first and l.second == r.second
+
 (!=) (l: t) (r: t) {Eq t} = not (l == r)
 
 ability Not t =
@@ -583,6 +595,9 @@ impl cmp_f32: Cmp F32 with
 impl cmp_f64: Cmp F64 with
     (<) x y = intrinsic "LessFloat" x y
 
+impl cmp_char: Cmp Char with
+    (<) x y = intrinsic "LessUnsigned" x y
+
 max (l: t) (r: t) {Cmp t} {Copy t}: t = if l > r then l else r
 min (l: t) (r: t) {Cmp t} {Copy t}: t = if l < r then l else r
 
@@ -592,90 +607,130 @@ ability Num a =
     sub: Sub a
     mul: Mul a
     div: Div a
-    mod: Mod a
     eq: Eq a
     cmp: Cmp a
+    zero: a
+    one: a
 
 impl num_i8: Num I8 with
     add = add_i8
     sub = sub_i8
     mul = mul_i8
     div = div_i8
-    mod = mod_i8
     eq = eq_i8
     cmp = cmp_i8
+    zero = 0
+    one = 1
+
 impl num_i16: Num I16 with
     add = add_i16
     sub = sub_i16
     mul = mul_i16
     div = div_i16
-    mod = mod_i16
     eq = eq_i16
     cmp = cmp_i16
+    zero = 0
+    one = 1
+
 impl num_i32: Num I32 with
     add = add_i32
     sub = sub_i32
     mul = mul_i32
     div = div_i32
-    mod = mod_i32
     eq = eq_i32
     cmp = cmp_i32
+    zero = 0
+    one = 1
+
 impl num_i64: Num I64 with
     add = add_i64
     sub = sub_i64
     mul = mul_i64
     div = div_i64
-    mod = mod_i64
     eq = eq_i64
     cmp = cmp_i64
+    zero = 0
+    one = 1
+
 impl num_isz: Num Isz with
     add = add_isz
     sub = sub_isz
     mul = mul_isz
     div = div_isz
-    mod = mod_isz
     eq = eq_isz
     cmp = cmp_isz
+    zero = 0
+    one = 1
+
 impl num_u8: Num U8 with
     add = add_u8
     sub = sub_u8
     mul = mul_u8
     div = div_u8
-    mod = mod_u8
     eq = eq_u8
     cmp = cmp_u8
+    zero = 0
+    one = 1
+
 impl num_u16: Num U16 with
     add = add_u16
     sub = sub_u16
     mul = mul_u16
     div = div_u16
-    mod = mod_u16
     eq = eq_u16
     cmp = cmp_u16
+    zero = 0
+    one = 1
+
 impl num_u32: Num U32 with
     add = add_u32
     sub = sub_u32
     mul = mul_u32
     div = div_u32
-    mod = mod_u32
     eq = eq_u32
     cmp = cmp_u32
+    zero = 0
+    one = 1
+
 impl num_u64: Num U64 with
     add = add_u64
     sub = sub_u64
     mul = mul_u64
     div = div_u64
-    mod = mod_u64
     eq = eq_u64
     cmp = cmp_u64
+    zero = 0
+    one = 1
+
 impl num_usz: Num Usz with
     add = add_usz
     sub = sub_usz
     mul = mul_usz
     div = div_usz
-    mod = mod_usz
     eq = eq_usz
     cmp = cmp_usz
+    zero = 0
+    one = 1
+
+impl num_f32: Num F32 with
+    add = add_f32
+    sub = sub_f32
+    mul = mul_f32
+    div = div_f32
+    eq = eq_f32
+    cmp = cmp_f32
+    zero = 0.0
+    one = 1.0
+
+impl num_f64: Num F64 with
+    add = add_f64
+    sub = sub_f64
+    mul = mul_f64
+    div = div_f64
+    eq = eq_f64
+    cmp = cmp_f64
+    zero = 0.0
+    one = 1.0
 
 
 impl try_cast_i64_u64: TryCast I64 U64 with
@@ -759,6 +814,11 @@ ability Bitwise t =
     bxor: fn t t -> t
 
 implicit bitwise_i32: Bitwise I32 = Bitwise
+    (fn x y -> intrinsic "BitwiseAnd" x y)
+    (fn x y -> intrinsic "BitwiseOr" x y)
+    (fn x y -> intrinsic "BitwiseXor" x y)
+
+implicit bitwise_u64: Bitwise U64 = Bitwise
     (fn x y -> intrinsic "BitwiseAnd" x y)
     (fn x y -> intrinsic "BitwiseOr" x y)
     (fn x y -> intrinsic "BitwiseXor" x y)

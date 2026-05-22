@@ -2,7 +2,7 @@ export String, puts, putchar, getchar, exit, system, strlen,
     malloc, calloc, realloc, free, memcpy, memcmp,
     File, copy_file, fopen, fclose, fputs, fputc, fwrite,
     fgetc, fgets, ungetc, fgetpos, ftell, fsetpos, fseek, feof, ferror,
-    FilePos
+    FilePos, Clock, clock_gettime, nanosleep
 
 /// A C string is a pointer to a null-terminated character array
 type String = ptr: Ptr Char
@@ -69,3 +69,11 @@ fseek = extern "fseek": fn File I32 I32 -> I32
 
 feof = extern "feof": fn File -> I32
 ferror = extern "ferror": fn File -> I32
+
+// TODO: Using I64 here assumes 64-bit systems
+type Clock =
+    sec: I64
+    nsec: I64
+
+clock_gettime = extern "clock_gettime": fn I32 (Ptr Clock) -> I32
+nanosleep = extern "nanosleep": fn (Ptr Clock) (Ptr Clock) -> I32

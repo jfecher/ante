@@ -23,6 +23,12 @@ ability Stream t a =
 implicit stream_fn: Stream (fn (Emit a) [env] -> Unit) a =
     Stream fn f e -> f e
 
+/// Emits each element in the array
+impl stream_array: Stream (Array n t) t with
+    stream (array: Array n t) {Emit t} =
+        for i in 0 .. array_len array do
+            array_get_unchecked array i |> deref |> emit
+
 /// Consumes the given stream, applying `f` to each element
 /// 
 /// E.g. `iter (iota 5) print` will print `01234`

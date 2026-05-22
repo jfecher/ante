@@ -1,7 +1,7 @@
 import Std.C.malloc, free
 
 export Rc, of, as_ref, as_mut, ref_count, inc_ref_count, dec_ref_count,
-    clone_rc, drop_rc
+    try_unwrap, unwrap_or_clone, clone_rc, drop_rc
 
 /// A non-threadsafe reference-counted pointer.
 type Rc t =
@@ -43,6 +43,31 @@ dec_ref_count (rc: mut Rc t): Unit =
     rc = ptr_to_mut rc.ptr
     rc.first -= 1
 
+/// If the reference count is 1, unwraps the Rc returning the value directly.
+/// Otherwise, returns `Error rc` with the original Rc value.
+///
+/// If you always need to extract the inner value from the Rc, consider
+/// using `Rc.unwrap_or_clone` which will clone the inner value in the shared case
+/// instead of returning an error.
+Rc.try_unwrap (var rc: Rc t): Result t (Rc t) =
+    if ref_count (ref rc) == 1u32 then
+        // Bit-copy the cell out before freeing. drop_rc does not run drop
+        // on the inner t, so this transfers ownership cleanly.
+        pair = deref_ptr rc.ptr
+        free rc.ptr
+        // Mark this Rc as consumed so drop_rc skips it on scope exit.
+        rc.ptr := null ()
+        Ok pair.second
+    else
+        Error rc
+
+/// If the reference count is 1, unwraps the Rc returning the value directly.
+/// Otherwise, clones the inner value.
+Rc.unwrap_or_clone (rc: Rc t) {Clone t}: t =
+    match Rc.try_unwrap rc
+    | Ok v -> v
+    | Error rc2 -> clone (Rc.as_ref rc2)
+
 impl clone_rc: Clone (Rc t) with
     clone (rc: ref Rc t) =
         // transmute ref -> mut
@@ -51,7 +76,9 @@ impl clone_rc: Clone (Rc t) with
 
 impl drop_rc: Drop (Rc t) with
     drop (rc: mut Rc t) =
+        // Skip cells consumed by try_unwrap.
+        if rc.ptr == null () then return ()
         if ref_count rc == 1 then
             free rc.ptr
-        else 
+        else
             dec_ref_count rc

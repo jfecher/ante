@@ -1,0 +1,33 @@
+export is_ascii, is_digit, is_alpha, is_alphanumeric, is_whitespace,
+    to_ascii_lower, to_ascii_upper, digit_value, char_byte
+
+is_ascii (c: Char): Bool = c < Char 128
+
+is_digit (c: Char): Bool =
+    c >= '0' and c <= '9'
+
+is_alpha (c: Char): Bool =
+    c >= 'a' and c <= 'z' or c >= 'A' and c <= 'Z'
+
+is_alphanumeric (c: Char): Bool =
+    is_digit c or is_alpha c
+
+is_whitespace (c: Char): Bool =
+    c == ' ' or c == '\t' or c == '\n' or c == '\r'
+
+to_ascii_lower (c: Char): Char =
+    if c >= 'A' and c <= 'Z'
+    then Char (U8 c + 32)
+    else c
+
+to_ascii_upper (c: Char): Char =
+    if c >= 'a' and c <= 'z'
+    then Char (U8 c - 32)
+    else c
+
+/// If this char is a digit in base 10, return the digit as an integer.
+to_digit (c: Char): Maybe U8 =
+    // TODO: More bases
+    if is_digit c
+    then Some (U8 c - U8 '0')
+    else None

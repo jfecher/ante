@@ -1,0 +1,89 @@
+export sqrt, sqrtf, cbrt, pow, powf, exp, log, log2, log10,
+    sin, cos, tan, asin, acos, atan, atan2,
+    floor, ceil, round, trunc, fmod, hypot,
+    pi, tau, e, abs
+
+// Libm wrappers
+sqrt = extern "sqrt": fn F64 -> F64
+sqrtf = extern "sqrtf": fn F32 -> F32
+cbrt = extern "cbrt": fn F64 -> F64
+
+pow = extern "pow": fn F64 F64 -> F64
+powf = extern "powf": fn F32 F32 -> F32
+
+exp = extern "exp": fn F64 -> F64
+log = extern "log": fn F64 -> F64
+log2 = extern "log2": fn F64 -> F64
+log10 = extern "log10": fn F64 -> F64
+
+sin = extern "sin": fn F64 -> F64
+cos = extern "cos": fn F64 -> F64
+tan = extern "tan": fn F64 -> F64
+asin = extern "asin": fn F64 -> F64
+acos = extern "acos": fn F64 -> F64
+atan = extern "atan": fn F64 -> F64
+atan2 = extern "atan2": fn F64 F64 -> F64
+
+floor = extern "floor": fn F64 -> F64
+ceil = extern "ceil": fn F64 -> F64
+round = extern "round": fn F64 -> F64
+trunc = extern "trunc": fn F64 -> F64
+fmod = extern "fmod": fn F64 F64 -> F64
+hypot = extern "hypot": fn F64 F64 -> F64
+
+pi: F64 = 3.141592653589793
+tau: F64 = 6.283185307179586
+e: F64 = 2.718281828459045
+
+/// Returns the absolute value of this integer
+/// Note that `abs MIN` will return `MIN` since there is no corresponding positive integer that fits in the same bit size.
+abs (x: t) {n: Num t} {Copy t}: t =
+    (<) = n.cmp.(<)
+    (-) = n.sub.(-)
+    if x < n.zero then n.zero - x else x
+
+ability Bounded t =
+    min: t
+    max: t
+
+impl bounded_i8: Bounded I8 with
+    min = -128i8
+    max = 127
+
+impl bounded_i16: Bounded I16 with
+    min = -32_768i16
+    max = 32_767
+
+impl bounded_i32: Bounded I32 with
+    min = -2_147_483_648i32
+    max = 2_147_483_647
+
+impl bounded_i64: Bounded I64 with
+    min = -9_223_372_036_854_775_808i64
+    max = 9_223_372_036_854_775_807
+
+// TODO: This is broken for non-64-bit platforms.
+impl bounded_isz: Bounded Isz with
+    min = -9_223_372_036_854_775_808isz
+    max = 9_223_372_036_854_775_807
+
+impl bounded_u8: Bounded U8 with
+    min = 0
+    max = 255
+
+impl bounded_u16: Bounded U16 with
+    min = 0
+    max = 65_535
+
+impl bounded_u32: Bounded U32 with
+    min = 0
+    max = 4_294_967_295
+
+impl bounded_u64: Bounded U64 with
+    min = 0
+    max = 18_446_744_073_709_551_615
+
+// TODO: This is broken for non-64-bit platforms.
+impl bounded_usz: Bounded Usz with
+    min = 0
+    max = 18_446_744_073_709_551_615
