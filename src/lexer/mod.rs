@@ -638,7 +638,7 @@ impl<'contents> Iterator for Lexer<'contents> {
                 self.advance();
                 self.advance();
                 self.lex_singleline_comment()
-            }
+            },
             ('/', '*') => self.lex_multiline_comment(),
             ('=', '=') => self.advance2_with(Token::EqualEqual),
             ('=', '>') => self.advance2_with(Token::FatArrow),

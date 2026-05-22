@@ -35,11 +35,7 @@ pub fn position_to_byte_offset(position: Position, rope: &Rope) -> Option<usize>
 
 /// Convert a byte-indexed span (as produced by the Ante compiler's `Position::byte_index`)
 /// to an LSP `Range`. Clamps indices to the rope length to avoid panics.
-pub fn byte_range_to_lsp_range(
-    start_byte: usize,
-    end_byte: usize,
-    rope: &Rope,
-) -> Result<Range, ropey::Error> {
+pub fn byte_range_to_lsp_range(start_byte: usize, end_byte: usize, rope: &Rope) -> Result<Range, ropey::Error> {
     let len = rope.len_bytes();
     let start_char = rope.byte_to_char(start_byte.min(len));
     let end_char = rope.byte_to_char(end_byte.min(len));
@@ -99,8 +95,5 @@ pub fn format_doc_comments(comments: &[String]) -> Option<Documentation> {
     if comments.is_empty() {
         return None;
     }
-    Some(Documentation::MarkupContent(MarkupContent {
-        kind: MarkupKind::Markdown,
-        value: comments.join("\n"),
-    }))
+    Some(Documentation::MarkupContent(MarkupContent { kind: MarkupKind::Markdown, value: comments.join("\n") }))
 }

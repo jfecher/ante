@@ -153,10 +153,8 @@ impl LanguageServer for Backend {
     }
 
     async fn code_action(&self, params: CodeActionParams) -> Result<Option<CodeActionResponse>> {
-        let tdpp = TextDocumentPositionParams {
-            text_document: params.text_document.clone(),
-            position: params.range.start,
-        };
+        let tdpp =
+            TextDocumentPositionParams { text_document: params.text_document.clone(), position: params.range.start };
         let Some(ctx) = self.resolve_position(tdpp).await else {
             return Ok(None);
         };

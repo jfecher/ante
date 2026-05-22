@@ -74,6 +74,21 @@ where
     }
 }
 
+/// Reverse-lookup the crate and module path for a `SourceFileId`. Used to turn
+/// a compiler-emitted `ImportSuggestion` (which only carries a `Location`) into
+/// the `Candidate` shape that `build_import_edit` consumes. Returns `None` if
+/// the file is not owned by any crate.
+pub fn candidate_for_file(compiler: &Db, file_id: SourceFileId) -> Option<Candidate> {
+    let crates = GetCrateGraph.get(compiler);
+    let crate_ = crates.get(&file_id.crate_id)?;
+    for (module_path_with_ext, source_file_id) in crate_.source_files.iter() {
+        if *source_file_id == file_id {
+            return Some(Candidate::new(&crate_.name, module_path_with_ext.as_path()));
+        }
+    }
+    None
+}
+
 /// Iterate every (name, top-level-name, kind) exported by `source_file_id`.
 /// Defs (functions) come first, then types.
 pub fn for_each_export<F>(compiler: &Db, source_file_id: SourceFileId, mut f: F)
