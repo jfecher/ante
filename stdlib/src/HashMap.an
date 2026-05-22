@@ -123,6 +123,9 @@ HashMap.get (map: ref HashMap k v) (key: ref k) {Hash k} {Eq k} : Maybe v =
     | Some entry -> Some (deref_ptr entry.value)
     | None -> None
 
+HashMap.contains (map: ref HashMap k v) (key: ref k) {Hash k} {Eq k}: Bool =
+    map.get key is Some _
+
 HashMap.remove (map: mut HashMap k v) (key: k) {Hash k} {Eq k} : Maybe v =
     match map.get_entry key
     | None -> None
@@ -135,7 +138,7 @@ HashMap.remove (map: mut HashMap k v) (key: k) {Hash k} {Eq k} : Maybe v =
 
 impl print_hashmap {Print k} {Print v}: Print (ref HashMap k v) with
     print map =
-        putchar c"["
+        putchar '['
         var printed_first = false
         for i in 0 .. map.capacity do
             entry: Entry k v = map.entries.[i]
@@ -148,7 +151,7 @@ impl print_hashmap {Print k} {Print v}: Print (ref HashMap k v) with
                 print entry.value
                 printed_first := true
 
-        putchar c"]"
+        putchar ']'
 
 implicit stream_map: Stream (HashMap k v) (k, v) =
     Stream fn map e ->

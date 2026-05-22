@@ -336,11 +336,11 @@ impl cast_i32_string: Cast I32 String with
 
         buf: Ptr Char = malloc (Usz len)
         if is_neg then
-            ptr_store buf c"-"
+            ptr_store buf '-'
 
         var pos = Usz (len - 1)
         while
-            digit = digits % 10 + U64 c"0"
+            digit = digits % 10 + U64 '0'
             array_insert buf pos (Char digit)
             digits /= 10
             pos -= 1
@@ -903,7 +903,7 @@ ability Print t =
 
 println (x: t) {Print t} =
     Print.print x
-    putchar c"\n"
+    putchar '\n'
 
 impl print_u8: Print U8 with
     print x = print_unsigned (U64 x)
@@ -952,12 +952,12 @@ impl print_pair {Print a} {Print b}: Print (a, b) with
 // TODO: temporary, very inaccurate
 print_float (f: F64): Unit =
     if f < 0.0 then
-        putchar c"-"
+        putchar '-'
         print_float (0.0-f)
     else
         uint = U64 f
         print_unsigned uint
-        putchar c"."
+        putchar '.'
         f2 = f - F64 uint
         // Show up to 5 decimal places
         print_unsigned (U64 (f2 * 10_000.0))
@@ -985,7 +985,7 @@ impl print_ref {Print a} {Copy a}: Print (ref a) with
 // Naive replacement for printf which isn't supported by the cranelift backend
 print_unsigned (x: U64): Unit =
     if x >= 10u64 then print_unsigned (x / 10u64)
-    digit = x % 10u64 + U64 c"0"
+    digit = x % 10u64 + U64 '0'
     putchar (Char digit)
 
 print_signed (x: I64) (min: I64) (min_string: String): Unit =
@@ -993,7 +993,7 @@ print_signed (x: I64) (min: I64) (min_string: String): Unit =
         if x == min then
             print min_string
         else
-            putchar c"-"
+            putchar '-'
             print_unsigned (Maybe.unwrap (try_cast (0i64 - x)))
     else
         print_unsigned (Maybe.unwrap (try_cast x))
@@ -1032,7 +1032,7 @@ repeat (count: Usz) (f: fn Usz => Unit): Unit =
             f i
             recur (i + 1)
 
-panic (msg: t) {Print t} =
+panic (msg: t) {Print t}: Never =
     print msg
     exit 1
     // Unreachable, return any type

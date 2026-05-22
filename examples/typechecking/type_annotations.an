@@ -1,7 +1,7 @@
 import Std.C.puts, exit
 import Std.C
 
-foo (_: I32) (_: String) : Char = c"a"
+foo (_: I32) (_: String) : Char = 'a'
 
 bar: fn a a -> I32 =
     fn _ b -> b
@@ -23,7 +23,7 @@ main () =
 // import Std.C.puts, exit
 // import Std.C
 // 
-// (foo: fn I32 String -> Char) ((_: I32)) ((_: String)) : Char = c"a"
+// (foo: fn I32 String -> Char) ((_: I32)) ((_: String)) : Char = 'a'
 // 
 // (bar: fn a a -> I32) =
 //     fn (_: a) (b: a) -> (b: a)

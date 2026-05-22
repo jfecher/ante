@@ -375,15 +375,13 @@ impl<'contents> Lexer<'contents> {
         Some((Token::Quoted(Arc::new(tokens)), span))
     }
 
-    /// The char literal syntax is: c"_" where _ is an arbitrary character
     fn lex_char_literal(&mut self) -> IterElem {
-        self.advance();
-        self.advance();
+        self.advance(); // '
 
         let contents = if self.current == '\\' {
             self.advance();
             match self.current {
-                '\\' | '"' => self.current,
+                '\\' | '\'' => self.current,
                 'n' => '\n',
                 'r' => '\r',
                 't' => '\t',
@@ -398,7 +396,7 @@ impl<'contents> Lexer<'contents> {
         };
 
         self.advance();
-        self.expect('"', Token::CharLiteral(contents))
+        self.expect('\'', Token::CharLiteral(contents))
     }
 
     fn lex_newline(&mut self) -> IterElem {
@@ -629,7 +627,8 @@ impl<'contents> Iterator for Lexer<'contents> {
                 self.pending_interpolations.push(self.open_braces.curly);
                 self.advance2_with(Token::Interpolate)
             },
-            ('\'', _) => self.lex_quoted(),
+            ('\'', _) => self.lex_char_literal(),
+            ('`', _) => self.lex_quoted(),
             ('/', '=') => {
                 self.previous_token_expects_indent = true;
                 self.advance2_with(Token::DivAssign)

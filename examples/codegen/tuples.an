@@ -3,7 +3,7 @@ foo (a, (b: t), _) {Print t} =
     println b
 
 main () =
-    foo ("test", 2, c"c")
+    foo ("test", 2, 'c')
     foo ("hi", 7, 2.0, 3, 4, 5)
 
 // args: --delete-binary --no-color

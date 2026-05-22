@@ -8,7 +8,9 @@
 //! program says "well, I need a type-checked Ast for that." Then our type inference pass
 //! says "I need a name-resolved ast," and so on. So this compiler still has the same
 //! passes you know and love (and listed further down), they're just composed together a
-//! bit differently.
+//! bit differently. The main advantage of this architecture is that each step and its
+//! dependencies can be cached, preventing repeated work. This is important when the
+//! compiler is invoked from Ante's language server, ante-ls.
 //!
 //! List of compiler passes and the source file to find more about them in:
 //! - Lexing `src/lexer/mod.rs`

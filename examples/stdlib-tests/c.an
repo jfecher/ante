@@ -8,8 +8,8 @@ main () =
     _ = puts (C.String "hello\0".data)
 
     // putchar
-    putchar c"A"
-    putchar c"\n"
+    putchar 'A'
+    putchar '\n'
 
     // strlen
     println (strlen (C.String "abcdef\0".data))    // 6

@@ -38,7 +38,7 @@ File.next_line (f: mut File): String =
         c = Char next
 
         //Flag feof if eof occurs after terminating newline
-        if c == c"\n" then
+        if c == '\n' then
             peek = fgetc f.c_file
             if peek >= 0 then ungetc peek f.c_file
             return (len, cstr)
@@ -51,7 +51,7 @@ File.next_line (f: mut File): String =
         array_insert new_cstr len c
         recur (len + 1) new_capacity new_cstr
 
-    array_insert cstr len c"\0"
+    array_insert cstr len '\0'
     String.from_parts cstr (U32 len)
 
 // Iterating through a File iterates through each line
@@ -60,7 +60,7 @@ impl iterator_file: Iterator (mut File) String with
         if file.eof () then None
         else Some (file, file.next_line ())
 
-// Read a line from stdin, ending with (and not including) a terminating c"\n"
+// Read a line from stdin, ending with (and not including) a terminating '\n'
 read_line (): String =
     buffer, len = loop (buffer = null ()) (len = 0) ->
         c = getchar ()
@@ -72,9 +72,9 @@ read_line (): String =
 
         array_insert buffer2 len c_char
 
-        if c_char != c"\n" and c >= 0
+        if c_char != '\n' and c >= 0
         then recur buffer2 (len + 1)
         else buffer2, len
 
-    array_insert buffer len c"\0"
+    array_insert buffer len '\0'
     String.from_parts buffer (U32 len)

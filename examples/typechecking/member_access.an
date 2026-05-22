@@ -10,7 +10,7 @@ foo_and_bar a b =
 
 foobar = FooBar 1 "one"
 foo = Foo 2.0
-bar = Bar c"3"
+bar = Bar '3'
 
 main () =
     foo_and_bar foobar foobar
@@ -40,7 +40,7 @@ main () =
 // 
 // (foo: Foo) = (Foo: fn F64 -> Foo) 2.0
 // 
-// (bar: Bar) = (Bar: fn Char -> Bar) c"3"
+// (bar: Bar) = (Bar: fn Char -> Bar) '3'
 // 
 // (main: fn Unit -> Unit) () =
 //     (foo_and_bar: fn FooBar FooBar -> String) (foobar: FooBar) (foobar: FooBar)

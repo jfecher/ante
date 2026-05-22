@@ -19,7 +19,7 @@ main () =
     println (reverse fresh)
 
     // split:
-    split "foo bar  baz " c" " |> iter println
+    split "foo bar  baz " ' ' |> iter println
     println "end of split"
 
     // join over an interspersed stream → single String "a, b, c"
