@@ -14,7 +14,7 @@ use crate::{
     iterator_extensions::mapvec,
     lexer::{
         Lexer,
-        token::{IntegerKind, Token, lookup_keyword},
+        token::{IntegerKind, Integer, Token, lookup_keyword},
     },
     name_resolution::namespace::CrateId,
     parser::cst::Name,
@@ -215,7 +215,7 @@ pub enum Diagnostic {
         location: Location,
     },
     IntegerTooLarge {
-        value: u64,
+        value: Integer,
         kind: IntegerKind,
         location: Location,
     },

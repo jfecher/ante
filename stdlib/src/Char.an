@@ -1,5 +1,5 @@
 export is_ascii, is_digit, is_alpha, is_alphanumeric, is_whitespace,
-    to_ascii_lower, to_ascii_upper, digit_value, char_byte
+    to_ascii_lower, to_ascii_upper, digit_value, to_digit
 
 is_ascii (c: Char): Bool = c < Char 128
 

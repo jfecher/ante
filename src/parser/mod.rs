@@ -1042,7 +1042,7 @@ impl<'tokens> Parser<'tokens> {
                 let location = self.current_token_location();
                 let value = *value;
                 self.advance();
-                let kind = if value > u32::MAX as u64 {
+                let kind = if value.negative || value.magnitude > u32::MAX as u64 {
                     self.diagnostics.push(Diagnostic::IntegerTooLarge {
                         value,
                         kind: crate::lexer::token::IntegerKind::U32,
@@ -1050,7 +1050,7 @@ impl<'tokens> Parser<'tokens> {
                     });
                     TypeKind::Error
                 } else {
-                    TypeKind::IntegerConstant(value as u32)
+                    TypeKind::IntegerConstant(value.magnitude as u32)
                 };
                 Ok(Type::new(kind, location))
             },

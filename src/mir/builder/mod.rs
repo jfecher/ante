@@ -21,7 +21,7 @@ use rustc_hash::FxHashMap;
 use crate::{
     incremental::{GetItem, GetItemRaw, TypeCheck},
     iterator_extensions::mapvec,
-    lexer::token::{FloatKind, IntegerKind},
+    lexer::token::{FloatKind, Integer, IntegerKind},
     mir::{
         Block, BlockId, Definition, DefinitionId, FloatConstant, Generic, Instruction, IntConstant, Mir,
         TerminatorInstruction, Type, Value, next_definition_id,
@@ -369,18 +369,29 @@ where
         self.push_instruction(Instruction::MakeTuple(vec![data_ptr, null_rc, length, offset]), Type::string())
     }
 
-    fn integer(value: u64, kind: IntegerKind) -> Value {
+    fn integer(value: Integer, kind: IntegerKind) -> Value {
+        let m = value.magnitude;
         match kind {
-            IntegerKind::I8 => Value::Integer(IntConstant::I8((value as i64).try_into().unwrap())),
-            IntegerKind::I16 => Value::Integer(IntConstant::I16((value as i64).try_into().unwrap())),
-            IntegerKind::I32 => Value::Integer(IntConstant::I32(value as i32)),
-            IntegerKind::I64 => Value::Integer(IntConstant::I64(value as i64)),
-            IntegerKind::Isz => Value::Integer(IntConstant::Isz(value.try_into().unwrap())),
-            IntegerKind::U8 => Value::Integer(IntConstant::U8(value.try_into().unwrap())),
-            IntegerKind::U16 => Value::Integer(IntConstant::U16(value.try_into().unwrap())),
-            IntegerKind::U32 => Value::Integer(IntConstant::U32(value.try_into().unwrap())),
-            IntegerKind::U64 => Value::Integer(IntConstant::U64(value.try_into().unwrap())),
-            IntegerKind::Usz => Value::Integer(IntConstant::Usz(value.try_into().unwrap())),
+            IntegerKind::I8 => {
+                Value::Integer(IntConstant::I8(if value.negative { (m as i8).wrapping_neg() } else { m as i8 }))
+            },
+            IntegerKind::I16 => {
+                Value::Integer(IntConstant::I16(if value.negative { (m as i16).wrapping_neg() } else { m as i16 }))
+            },
+            IntegerKind::I32 => {
+                Value::Integer(IntConstant::I32(if value.negative { (m as i32).wrapping_neg() } else { m as i32 }))
+            },
+            IntegerKind::I64 => {
+                Value::Integer(IntConstant::I64(if value.negative { (m as i64).wrapping_neg() } else { m as i64 }))
+            },
+            IntegerKind::Isz => {
+                Value::Integer(IntConstant::Isz(if value.negative { (m as isize).wrapping_neg() } else { m as isize }))
+            },
+            IntegerKind::U8 => Value::Integer(IntConstant::U8(m as u8)),
+            IntegerKind::U16 => Value::Integer(IntConstant::U16(m as u16)),
+            IntegerKind::U32 => Value::Integer(IntConstant::U32(m as u32)),
+            IntegerKind::U64 => Value::Integer(IntConstant::U64(m)),
+            IntegerKind::Usz => Value::Integer(IntConstant::Usz(m as usize)),
         }
     }
 
@@ -1001,7 +1012,7 @@ where
         self.terminate_block(TerminatorInstruction::jmp_no_args(step));
 
         self.switch_to_block(step);
-        let one = Self::integer(1, kind);
+        let one = Self::integer(Integer::positive(1), kind);
         let variable_plus_one = self.push_instruction(Instruction::AddInt(variable, one), variable_type);
         self.terminate_block(TerminatorInstruction::jmp(header, variable_plus_one));
 

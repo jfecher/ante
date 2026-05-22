@@ -6,6 +6,7 @@ use crate::{
     diagnostics::{Diagnostic, Location, RepeatedContext, UnimplementedItem},
     incremental::{AllDefinitions, ExportedDefinitions, GetItemRaw, GetType, Resolve},
     iterator_extensions::mapvec,
+    lexer::token::Integer,
     name_resolution::{Origin, builtin::Builtin, namespace::SourceFileId},
     parser::{
         cst::{self, Definition, Expr, Literal, Name, Pattern, ReferenceKind},
@@ -481,7 +482,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // If the call is in the form `obj.method ()` and the method only takes 1 parameter,
         // strip the `()`.
         let single_unit_arg = call.arguments.len() == 1
-            && func_type.parameters.len() == 1
+            && func_type.parameters.iter().filter(|p| !p.is_implicit).count() == 1
             && matches!(self.current_context()[call.arguments[0].expr], Expr::Literal(Literal::Unit));
 
         let mut new_arguments = vec![cst::Argument::explicit(object_arg)];
@@ -1204,7 +1205,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // Hack: use 0 for the integer value here since it fits into all integer types.
         // We just need this to ensure the user actually uses integer ranges. Any actual integer
         // they choose will already have its range checked by the Literal code path.
-        self.push_inferred_int(0, int_ty, id.locate(self));
+        self.push_inferred_int(Integer::positive(0), int_ty, id.locate(self));
         let int_ty = Type::Variable(int_ty);
 
         // Range expressions run exactly once, so normal move semantics apply here.

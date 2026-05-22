@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     diagnostics::{ErrorDefault, Location},
-    lexer::token::{F64, FloatKind, IntegerKind, Token},
+    lexer::token::{F64, FloatKind, IntegerKind, Integer, Token},
 };
 
 use super::ids::{ExprId, IdStore, NameId, NameStore, PathId, PatternId, TopLevelId};
@@ -337,7 +337,7 @@ pub struct InterpolatedString {
 pub enum Literal {
     Unit,
     Bool(bool),
-    Integer(u64, Option<IntegerKind>),
+    Integer(Integer, Option<IntegerKind>),
     Float(F64, Option<FloatKind>),
     String(String),
     Char(char),

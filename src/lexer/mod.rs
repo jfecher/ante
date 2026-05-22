@@ -40,7 +40,7 @@ pub mod token;
 
 use crate::diagnostics::{Position, Span};
 use std::{str::Chars, sync::Arc};
-use token::{ClosingBracket, F64, FloatKind, IntegerKind, LexerError, Token, lookup_keyword};
+use token::{ClosingBracket, F64, FloatKind, IntegerKind, Integer, LexerError, Token, lookup_keyword};
 
 #[derive(Clone)]
 struct OpenBraces {
@@ -249,14 +249,12 @@ impl<'contents> Lexer<'contents> {
             }
         } else {
             let location = self.locate();
-            let integer = match integer_string.parse() {
-                Ok(int) => int,
-                Err(_) => {
-                    let error = Token::Error(LexerError::FailedToParseNumber { integer_string });
-                    return Some((error, location));
-                },
+            let Ok(magnitude) = integer_string.parse() else {
+                let error = Token::Error(LexerError::FailedToParseNumber { integer_string });
+                return Some((error, location));
             };
 
+            let integer = Integer::positive(magnitude);
             match self.lex_integer_suffix() {
                 Ok(suffix) => Some((Token::IntegerLiteral(integer, suffix), location)),
                 Err(lexer_error) => Some((lexer_error, location)),
@@ -270,13 +268,7 @@ impl<'contents> Lexer<'contents> {
         if self.current.is_numeric() {
             self.lex_number().map(|(token, location)| {
                 let token = match token {
-                    Token::IntegerLiteral(x, kind) => {
-                        // We cannot parse the raw source here if the user used `_` separators.
-                        // In the future we could check for that case to avoid an allocation in the
-                        // common case where no underscores were used.
-                        let x = format!("-{}", x).parse::<i64>().unwrap();
-                        Token::IntegerLiteral(x as u64, kind)
-                    },
+                    Token::IntegerLiteral(x, kind) => Token::IntegerLiteral(x.negated(), kind),
                     Token::FloatLiteral(x, kind) => Token::FloatLiteral(F64(-x.0), kind),
                     _ => unreachable!(),
                 };

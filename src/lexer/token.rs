@@ -77,6 +77,63 @@ impl IntegerKind {
             Isz | Usz => ptr_size,
         }
     }
+
+    /// Maximum magnitude representable in this kind with the given sign.
+    /// For signed kinds the negative side allows one more than the positive side
+    /// (e.g. I8's max positive is 127, while its max negative is 128). For unsigned kinds
+    /// a negative input is never representable, so `None` is returned.
+    pub fn max_magnitude(self, negative: bool, ptr_size: u32) -> Option<u64> {
+        use IntegerKind::*;
+        let bits: u32 = match self {
+            I8 | U8 => 8,
+            I16 | U16 => 16,
+            I32 | U32 => 32,
+            I64 | U64 => 64,
+            Isz | Usz => 8 * ptr_size,
+        };
+        match (self.is_signed(), negative) {
+            (true, false) => Some((1u64 << (bits - 1)) - 1),
+            (true, true) => Some(1u64 << (bits - 1)),
+            (false, false) => Some(if bits == 64 { u64::MAX } else { (1u64 << bits) - 1 }),
+            (false, true) => None,
+        }
+    }
+}
+
+/// A parsed integer literal value. Keeps magnitude and sign separate so the lexer
+/// never has to sign-extend a u64. Range checking and the "is too large" diagnostic
+/// both operate on this struct directly so negative literals display as the user wrote them.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct Integer {
+    pub magnitude: u64,
+    /// Invariant: when `negative` is true, `magnitude > 0`. Zero is always non-negative.
+    pub negative: bool,
+}
+
+impl Integer {
+    pub fn positive(magnitude: u64) -> Self {
+        Self { magnitude, negative: false }
+    }
+
+    pub fn negated(self) -> Self {
+        if self.magnitude == 0 {
+            self
+        } else {
+            Self { magnitude: self.magnitude, negative: !self.negative }
+        }
+    }
+
+    /// Sign-extended bit representation used by pattern matching and any other consumer
+    /// that wants the in-memory bits rather than the abstract value.
+    pub fn to_bits(self) -> u64 {
+        if self.negative { (self.magnitude as i64).wrapping_neg() as u64 } else { self.magnitude }
+    }
+}
+
+impl Display for Integer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.negative { write!(f, "-{}", self.magnitude) } else { write!(f, "{}", self.magnitude) }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone, Serialize, Deserialize, Hash)]
@@ -175,7 +232,7 @@ pub enum Token {
 
     Identifier(String),
     StringLiteral(String),
-    IntegerLiteral(u64, Option<IntegerKind>),
+    IntegerLiteral(Integer, Option<IntegerKind>),
     FloatLiteral(F64, Option<FloatKind>),
     CharLiteral(char),
     BooleanLiteral(bool),

@@ -6,7 +6,7 @@ use crate::{
     diagnostics::{Diagnostic, ImportSuggestion, Location},
     incremental::{ExportedDefinitions, GetCrateGraph, GetItem, VisibleImplicits},
     iterator_extensions::mapvec,
-    lexer::token::{FloatKind, IntegerKind},
+    lexer::token::{FloatKind, IntegerKind, Integer},
     name_resolution::{Origin, namespace::CrateId},
     parser::{
         cst::{self, Name, Pattern, TopLevelItemKind},
@@ -52,7 +52,7 @@ pub(super) struct ImplicitsContext {
     /// Any type variables created for integer literals for polymorphic integer types.
     /// If not bound by the end of a scope they will be defaulted to I32.
     /// This is a tuple of (the integer's value, the integer type variable, location to use for errors)
-    integer_type_variables: Vec<(u64, TypeVariableId, Location)>,
+    integer_type_variables: Vec<(Integer, TypeVariableId, Location)>,
 
     /// Similar to polymorphic integers, we track polymorphic floats as well. Their value is not stored
     /// since we do not check if the float value fits in the resulting type.
@@ -349,7 +349,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         any_bubbled
     }
 
-    pub(super) fn push_inferred_int(&mut self, value: u64, type_variable: TypeVariableId, location: Location) {
+    pub(super) fn push_inferred_int(&mut self, value: Integer, type_variable: TypeVariableId, location: Location) {
         self.implicits.last_mut().unwrap().integer_type_variables.push((value, type_variable, location));
     }
 
@@ -402,7 +402,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     /// Try to default the given integer to an I32, issuing an error if it is bound
     /// to a non-integer type or the literal cannot fit into an I32.
-    fn try_default_integer_to_i32(&mut self, value: u64, type_variable: TypeVariableId, location: Location) {
+    fn try_default_integer_to_i32(&mut self, value: Integer, type_variable: TypeVariableId, location: Location) {
         let kind = match Type::Variable(type_variable).follow(&self.bindings) {
             Type::Variable(id) => {
                 self.bindings.insert(*id, Type::Primitive(PrimitiveType::Int(IntegerKind::I32)));

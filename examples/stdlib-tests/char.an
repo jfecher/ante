@@ -1,5 +1,5 @@
 import Std.Char.is_ascii, is_digit, is_alpha, is_alphanumeric, is_whitespace,
-    to_ascii_lower, to_ascii_upper, digit_value
+    to_ascii_lower, to_ascii_upper, to_digit
 
 main () =
     println <| is_digit '7'
@@ -16,8 +16,8 @@ main () =
     println <| to_ascii_lower 'x'
     println <| to_ascii_upper 'x'
     println <| to_ascii_upper 'X'
-    println <| digit_value '5'
-    println <| digit_value 'a'
+    println <| to_digit '5'
+    println <| to_digit 'a'
 
 // args: --delete-binary --no-color
 // expected stdout:

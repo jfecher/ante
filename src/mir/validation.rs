@@ -308,7 +308,7 @@ impl Definition {
                 Instruction::LessUnsigned(a, b) => {
                     let a_type = mir.type_of_value(a, self);
                     let b_type = mir.type_of_value(b, self);
-                    instr_assert!(a_type.is_unsigned_int(), self, id, mir, "Argument type is not an unsigned int");
+                    instr_assert!(a_type.is_unsigned_int() || a_type == Type::CHAR, self, id, mir, "Argument type is not an unsigned int or Char");
                     instr_assert_subtype!(a_type, b_type, self, id, mir, "Argument types do not match: {a_type} != {b_type}");
                     instr_assert_subtype!(*result_type, Type::BOOL, self, id, mir, "Result type `{result_type}` is not a Bool");
                 },

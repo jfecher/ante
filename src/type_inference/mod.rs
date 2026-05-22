@@ -9,7 +9,7 @@ use crate::{
         self, DbHandle, ExportedDefinitions, ExportedTypes, GetItem, Resolve, TargetPointerSize, TypeCheckSCC,
     },
     iterator_extensions::{map_btree, mapvec},
-    lexer::token::IntegerKind,
+    lexer::token::{IntegerKind, Integer},
     name_resolution::{
         Origin, ResolutionResult,
         namespace::{CrateId, SourceFileId},
@@ -348,16 +348,13 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     }
 
     /// Check if the integer fits in the given kind, error if not
-    fn check_int_fits(&self, value: u64, kind: IntegerKind, locator: impl Locateable) {
+    fn check_int_fits(&self, value: Integer, kind: IntegerKind, locator: impl Locateable) {
         let ptr_size = TargetPointerSize.get(self.compiler);
-        let bit_size = 8 * kind.size_in_bytes(ptr_size);
-        if bit_size == 64 {
-            return;
-        }
-
-        // TODO: Change `value` repr from u64 to a type that fits negatives
-        // so we can give more accurate ranges. As-is, u64::MAX fits into i64.
-        if value > 2u64.pow(bit_size) - 1 {
+        let fits = match kind.max_magnitude(value.negative, ptr_size) {
+            Some(max) => value.magnitude <= max,
+            None => false,
+        };
+        if !fits {
             let location = locator.locate(self);
             self.compiler.accumulate(Diagnostic::IntegerTooLarge { value, kind, location });
         }

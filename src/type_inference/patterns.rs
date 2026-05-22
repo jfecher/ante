@@ -184,7 +184,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 Pattern::Constructor(constructor, Vec::new())
             },
             cst::Pattern::Literal(Literal::Integer(value, _kind)) => {
-                Pattern::Constructor(Constructor::Int(*value), Vec::new())
+                Pattern::Constructor(Constructor::Int(value.to_bits()), Vec::new())
             },
             cst::Pattern::Literal(_) => {
                 let location = self.current_context().pattern_location(pattern).clone();
