@@ -438,8 +438,8 @@ impl<'tokens> Parser<'tokens> {
                 let crate_name = path.components.remove(0).0;
 
                 let mut items = Vec::with_capacity(1);
-                if let Some(item) = path.components.pop() {
-                    items.push(item);
+                if let Some((name, location)) = path.components.pop() {
+                    items.push((Arc::new(name), location));
                 }
 
                 // Parse any extra items e.g. `, b, c, d`. The leading separator is consumed here
@@ -467,7 +467,7 @@ impl<'tokens> Parser<'tokens> {
         imports
     }
 
-    fn parse_exports(&mut self) -> Option<Vec<(String, Location)>> {
+    fn parse_exports(&mut self) -> Option<Vec<(Name, Location)>> {
         use Token::{Comma, EndOfInput, Export, Newline};
         self.accept(Newline);
 
@@ -1132,22 +1132,24 @@ impl<'tokens> Parser<'tokens> {
         }
     }
 
-    fn parse_ident_or_type_name(&mut self) -> Result<(String, Location)> {
+    fn parse_ident_or_type_name(&mut self) -> Result<(Name, Location)> {
         match self.current_token() {
             Token::Identifier(name) => {
                 let location = self.current_token_location();
+                let name = Arc::new(name.clone());
                 self.advance();
-                Ok((name.clone(), location))
+                Ok((name, location))
             },
             Token::TypeName(name) => {
                 let location = self.current_token_location();
+                let name = Arc::new(name.clone());
                 self.advance();
-                Ok((name.clone(), location))
+                Ok((name, location))
             },
             Token::ParenthesisLeft if self.at_operator_reference() => {
                 let start = self.current_token_location();
                 self.advance();
-                let operator = self.current_token().to_string();
+                let operator = Arc::new(self.current_token().to_string());
                 self.advance();
                 let end = self.current_token_location();
                 self.expect(Token::ParenthesisRight, "a `)` to close the opening parenthesis from this operator")?;

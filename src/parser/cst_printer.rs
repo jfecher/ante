@@ -24,8 +24,8 @@ use super::{
     cst::{
         self, AbilityDefinition, AbilityImpl, Call, CompoundAssignOp, Comptime, Cst, Declaration, Definition, Do, Expr,
         Extern, FunctionType, Handle, HandlePattern, If, Import, InterpolatedString, Is, Lambda, Literal, Match,
-        MemberAccess, Parameter, Path, Pattern, Quoted, Reference, SequenceItem, TopLevelItem, Type, TypeAnnotation,
-        TypeDefinition, TypeDefinitionBody, TypeKind,
+        MemberAccess, Name, Parameter, Path, Pattern, Quoted, Reference, SequenceItem, TopLevelItem, Type,
+        TypeAnnotation, TypeDefinition, TypeDefinitionBody, TypeKind,
     },
     ids::{ExprId, PatternId, TopLevelId},
 };
@@ -207,7 +207,7 @@ impl<'a> CstDisplay<'a> {
         Ok(())
     }
 
-    fn fmt_export(&mut self, exports: Option<&[(String, Location)]>, f: &mut Formatter) -> std::fmt::Result {
+    fn fmt_export(&mut self, exports: Option<&[(Name, Location)]>, f: &mut Formatter) -> std::fmt::Result {
         if let Some(exports) = exports {
             write!(f, "export ")?;
             for (i, (item, _location)) in exports.iter().enumerate() {

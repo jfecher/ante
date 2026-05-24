@@ -19,7 +19,7 @@ pub struct Cst {
     pub imports: Vec<Import>,
     /// `None` when the file has no `export` statement (all items are exported by default).
     /// `Some(list)` when an explicit `export` statement restricts visibility to those items.
-    pub exports: Option<Vec<(String, Location)>>,
+    pub exports: Option<Vec<(Name, Location)>>,
     pub top_level_items: Vec<Arc<TopLevelItem>>,
 
     /// Comments after the last top level item
@@ -313,7 +313,7 @@ pub struct Import {
     pub module_path: Arc<PathBuf>,
 
     /// For a given import `import Foo.Bar.Baz.a, b, c`, `items` will contain `a, b, c`
-    pub items: Vec<(String, Location)>,
+    pub items: Vec<(Name, Location)>,
     pub location: Location,
 }
 

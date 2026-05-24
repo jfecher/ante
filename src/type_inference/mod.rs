@@ -313,7 +313,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             return typ.clone();
         }
         let exported_types = ExportedTypes(SourceFileId::prelude()).get(self.compiler);
-        let (top_level_name, _kind) =
+        let top_level_name =
             exported_types.get(&Arc::new("String".to_string())).expect("String type not found in Prelude");
         let typ = Type::UserDefined(Origin::TopLevelDefinition(*top_level_name));
         self.string_type = Some(typ.clone());

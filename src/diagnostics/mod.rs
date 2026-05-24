@@ -10,7 +10,9 @@ use colored::{Color, ColoredString, Colorize};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    incremental::{AllDefinitions, CheckAll, Db, DbHandle, GetCrateGraph, Parse, SourceFile, TypeCheck},
+    incremental::{
+        AllDefinitions, CheckAll, Db, DbHandle, GetCrateGraph, Parse, SourceFile, TypeCheck, ValidateExports,
+    },
     iterator_extensions::mapvec,
     lexer::{
         Lexer,
@@ -63,6 +65,10 @@ pub enum Diagnostic {
     ItemNotExported {
         name: Name,
         module: Arc<PathBuf>,
+        location: Location,
+    },
+    ExportedItemNotFound {
+        name: Name,
         location: Location,
     },
     NameNotInScope {
@@ -388,6 +394,9 @@ impl Diagnostic {
             Diagnostic::ItemNotExported { name, module, location: _ } => {
                 format!("`{name}` is not exported from module `{}`", module.display())
             },
+            Diagnostic::ExportedItemNotFound { name, location: _ } => {
+                format!("`{name}` is not defined")
+            },
             Diagnostic::NameNotInScope { name, location: _ } => {
                 format!("`{name}` not found in scope")
             },
@@ -629,6 +638,7 @@ impl Diagnostic {
             | Diagnostic::UnknownImportFile { location, .. }
             | Diagnostic::UnknownImportItem { location, .. }
             | Diagnostic::ItemNotExported { location, .. }
+            | Diagnostic::ExportedItemNotFound { location, .. }
             | Diagnostic::NameNotInScope { location, .. }
             | Diagnostic::ExpectedType { location, .. }
             | Diagnostic::RecursiveType { location, .. }
@@ -1115,6 +1125,8 @@ pub(crate) fn check_all(_: &CheckAll, compiler: &DbHandle) {
             for item in &parse.cst.top_level_items {
                 TypeCheck(item.id).get(compiler);
             }
+
+            ValidateExports(*file).get(compiler);
         }
     }
 

@@ -100,7 +100,7 @@ where
         f(name.as_str(), top_level_name, ItemKind::Function);
     }
     let exported_types = ExportedTypes(source_file_id).get(compiler);
-    for (name, (top_level_name, _kind)) in exported_types.iter() {
+    for (name, top_level_name) in exported_types.iter() {
         f(name.as_str(), top_level_name, ItemKind::Type);
     }
 }
@@ -169,7 +169,7 @@ pub fn build_import_edit(
         if import.module_path.as_os_str().is_empty() {
             continue;
         }
-        if import.items.iter().any(|(item, _)| item == name) {
+        if import.items.iter().any(|(item, _)| item.as_str() == name) {
             return None;
         }
         let (insert_byte, insert_text) = if let Some((_, last_loc)) = import.items.last() {

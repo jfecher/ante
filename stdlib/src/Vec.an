@@ -4,8 +4,8 @@ import Std.Fail.Fail, fail, no_fail
 
 export Vec, empty, of, is_empty, len, extend, capacity, reserve, push, pop, get, get_unchecked,
     remove_index, remove_first, remove_indices, remove_all, swap_last,
-    reverse, swap, insert, dedup, truncate, clear, fill, sort_by, sort,
-    print_vec, print_helper, extract_vec, stream_vec, stream_imm_vec, eq_vec, drop_vec, (.[)
+    reverse, swap, insert, dedup, truncate, clear, sort_by, sort,
+    print_vec, extract_vec, stream_vec, stream_imm_vec, eq_vec, drop_vec
 
 type Vec t =
     data: Ptr t

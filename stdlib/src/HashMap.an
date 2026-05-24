@@ -2,10 +2,10 @@ import Std.C.putchar, calloc
 import Std.Stream.Stream, iter, stream_fn, Emit, emit
 import Std.Hash.Hash
 
-export HashMap, Entry, Hash, hash, empty, of, clear, resize, should_resize,
+export HashMap, Entry, Hash, empty, of, clear, resize, should_resize,
     insert, get_entry, get, contains, remove, len, is_empty, keys, values,
     get_or_insert, get_or_insert_with, retain, merge,
-    print_hashmap, print_helper, stream_map
+    print_hashmap, stream_map
 
 // A linear-scan mutable HashMap using a resize factor of 2.0
 type HashMap k v =

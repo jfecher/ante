@@ -216,7 +216,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                 }
 
                 let exported = ExportedTypes(id).get(self.compiler);
-                let (id, _kind) = exported.get(name)?;
+                let id = exported.get(name)?;
                 Some(Namespace::Type(id.top_level_item))
             },
         }

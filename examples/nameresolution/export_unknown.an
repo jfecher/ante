@@ -1,0 +1,35 @@
+import Std.Vec.push
+
+// Re-exports like `push` are allowed
+export foo, missing, also_missing, push
+
+foo () = ()
+
+main () = ()
+
+// args: -e ast-r --no-color
+// expected exit status: 1
+// expected stdout:
+// import Std.Vec.push
+// 
+// export foo, missing, also_missing, push
+// 
+// // id = c1m664_3132
+// foo_c1m664_3132_0 () = ()
+// 
+// // id = c1m664_1944
+// main_c1m664_1944_0 () = ()
+
+// expected stderr:
+// examples/nameresolution/export_unknown.an:4:13
+// 3 | // Re-exports like `push` are allowed
+// 4 | export foo, missing, also_missing, push	// error: `missing` is not defined
+//   |             ^^^^^^^
+// 
+// examples/nameresolution/export_unknown.an:4:22
+// 3 | // Re-exports like `push` are allowed
+// 4 | export foo, missing, also_missing, push	// error: `also_missing` is not defined
+//   |                      ^^^^^^^^^^^^
+// 
+// Found 2 errors and 0 warnings
+

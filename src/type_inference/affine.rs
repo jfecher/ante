@@ -122,7 +122,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             return name;
         }
         let exported_types = ExportedTypes(SourceFileId::prelude()).get(self.compiler);
-        let (top_level_name, _kind) =
+        let top_level_name =
             exported_types.get(&Arc::new("Copy".to_string())).expect("Copy type not found in Prelude");
         self.copy_type_name = Some(*top_level_name);
         *top_level_name

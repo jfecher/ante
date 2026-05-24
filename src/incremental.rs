@@ -30,7 +30,6 @@ use crate::{
     type_inference::{
         self, TypeCheckSCCResult,
         dependency_graph::{SCC, TypeCheckDependencyGraphResult, TypeCheckResult},
-        kinds::Kind,
     },
 };
 
@@ -68,6 +67,7 @@ pub struct DbStorage {
     all_types: HashMapStorage<AllTypes>,
     exported_definitions: HashMapStorage<ExportedDefinitions>,
     exported_types: HashMapStorage<ExportedTypes>,
+    validate_exports: HashMapStorage<ValidateExports>,
     get_imports: HashMapStorage<GetImports>,
     resolves: HashMapStorage<Resolve>,
     top_level_items_desugared: HashMapStorage<GetItem>,
@@ -210,7 +210,7 @@ pub struct VisibleDefinitionsResult {
 /// Returns any global types visible to the given item in the context.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VisibleTypes(pub SourceFileId);
-define_intermediate!(600, VisibleTypes -> TypeDefinitions, DbStorage, definition_collection::visible_types_impl);
+define_intermediate!(600, VisibleTypes -> Arc<TypeDefinitions>, DbStorage, definition_collection::visible_types_impl);
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 /// Returns any global implicits visible to the given item in the context.
@@ -230,8 +230,8 @@ define_intermediate!(700, VisibleImplicits -> Arc<Implicits>, DbStorage, visible
 /// defines both `a` and `b`. Similarly, an ability may define multiple methods, etc.
 pub type Definitions = BTreeMap<Name, TopLevelName>;
 
-/// Maps type names to their TopLevelName and Kind.
-pub type TypeDefinitions = BTreeMap<Name, (TopLevelName, Kind)>;
+/// Maps type names to their TopLevelName.
+pub type TypeDefinitions = BTreeMap<Name, TopLevelName>;
 
 /// A map from each top-level type in a file to the methods defined on it.
 /// If a type in a file does not have any methods defined on it, it may not be in the map.
@@ -247,7 +247,7 @@ define_intermediate!(790, AllDefinitions -> Arc<VisibleDefinitionsResult>, DbSto
 /// Collect all type definitions in a file (unfiltered by export list).
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AllTypes(pub SourceFileId);
-define_intermediate!(890, AllTypes -> TypeDefinitions, DbStorage, definition_collection::all_types_impl);
+define_intermediate!(890, AllTypes -> Arc<TypeDefinitions>, DbStorage, definition_collection::all_types_impl);
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 /// Collect the exported definitions in a file, filtered by its export list. If the file has no
@@ -259,7 +259,13 @@ define_intermediate!(800, ExportedDefinitions -> Arc<VisibleDefinitionsResult>, 
 /// Collect the exported type definitions in a file, filtered by its export list.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExportedTypes(pub SourceFileId);
-define_intermediate!(900, ExportedTypes -> TypeDefinitions, DbStorage, definition_collection::exported_types_impl);
+define_intermediate!(900, ExportedTypes -> Arc<TypeDefinitions>, DbStorage, definition_collection::exported_types_impl);
+
+/// Validate that every item listed in this file's `export` statement is actually defined
+/// (or imported) in this file. Emits `ExportedItemNotFound` diagnostics; returns nothing.
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ValidateExports(pub SourceFileId);
+define_intermediate!(950, ValidateExports -> (), DbStorage, definition_collection::validate_exports_impl);
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 /// Retrieves the imports used by a file. This step is the first done by the compiler to collect

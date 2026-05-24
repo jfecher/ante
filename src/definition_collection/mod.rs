@@ -10,11 +10,12 @@ use crate::{
     diagnostics::{Diagnostic, Location},
     incremental::{
         self, AllDefinitions, AllTypes, DbHandle, Definitions, ExportedDefinitions, ExportedTypes, GetCrateGraph,
-        GetImports, GetItem, Methods, Parse, TypeDefinitions, VisibleDefinitions, VisibleDefinitionsResult,
+        GetImports, Methods, Parse, TypeDefinitions, ValidateExports, VisibleDefinitions, VisibleDefinitionsResult,
         VisibleTypes,
     },
     name_resolution::namespace::SourceFileId,
     parser::{
+        ParseResult,
         context::TopLevelContext,
         cst::{Import, ItemName, Literal, Name, Pattern, TopLevelItemKind, TypeDefinition, TypeDefinitionBody},
         ids::{NameId, PatternId, TopLevelId, TopLevelName},
@@ -52,7 +53,7 @@ pub fn visible_definitions_impl(context: &VisibleDefinitions, db: &DbHandle) -> 
 
         for (exported_name, exported_id) in &exported.definitions {
             // Check if this matches the name of any imported item
-            if !import.items.iter().any(|(item, _)| item.as_str() == exported_name.as_str()) {
+            if !import.items.iter().any(|(item, _)| item == exported_name) {
                 continue;
             }
             if let Some(existing) = visible.definitions.get(exported_name) {
@@ -70,7 +71,7 @@ pub fn visible_definitions_impl(context: &VisibleDefinitions, db: &DbHandle) -> 
         // Import methods as if they were defined in their parent module as free functions
         for methods in exported.methods.values() {
             for (exported_name, exported_id) in methods {
-                if !import.items.iter().any(|(item, _)| item.as_str() == exported_name.as_str()) {
+                if !import.items.iter().any(|(item, _)| item == exported_name) {
                     continue;
                 }
                 if !visible.definitions.contains_key(exported_name) {
@@ -81,22 +82,19 @@ pub fn visible_definitions_impl(context: &VisibleDefinitions, db: &DbHandle) -> 
 
         // Report errors for any explicitly requested items not found in the module
         let exported_types = ExportedTypes(import_file_id).get(db);
-        for (item_name, item_location) in &import.items {
-            // TODO: VisibleDefinitionsResult storing Names means we have to clone this String
-            // to put it in an Arc. Names in `export` should probably then just be Arc'd to begin with.
-            let name = Arc::new(item_name.clone());
-
-            let in_definitions = exported.definitions.contains_key(&name);
-            let in_types = exported_types.contains_key(&name);
-            let in_methods = exported.methods.values().any(|m| m.contains_key(&name));
+        for (name, item_location) in &import.items {
+            let in_definitions = exported.definitions.contains_key(name);
+            let in_types = exported_types.contains_key(name);
+            let in_methods = exported.methods.values().any(|m| m.contains_key(name));
 
             if !in_definitions && !in_types && !in_methods {
                 // Check if the name exists but isn't exported
                 let all_defs = AllDefinitions(import_file_id).get(db);
-                let exists_in_all = all_defs.definitions.contains_key(&name)
-                    || AllTypes(import_file_id).get(db).contains_key(&name)
-                    || all_defs.methods.values().any(|m| m.contains_key(&name));
+                let exists_in_all = all_defs.definitions.contains_key(name)
+                    || AllTypes(import_file_id).get(db).contains_key(name)
+                    || all_defs.methods.values().any(|m| m.contains_key(name));
 
+                let name = name.clone();
                 let module = import.module_path.clone();
                 let location = item_location.clone();
 
@@ -155,9 +153,9 @@ fn resolve_submodule_imports(import: &Import, visible: &mut VisibleDefinitionsRe
     };
 
     for (item_name, item_location) in &import.items {
-        let module_file = PathBuf::from(item_name).with_extension("an");
+        let module_file = PathBuf::from(item_name.as_str()).with_extension("an");
         if let Some(&file_id) = crate_.source_files.get(&module_file) {
-            visible.imported_modules.insert(Arc::new(item_name.clone()), file_id);
+            visible.imported_modules.insert(item_name.clone(), file_id);
         } else {
             let location = item_location.clone();
             let module_name = import.module_path.clone();
@@ -167,17 +165,22 @@ fn resolve_submodule_imports(import: &Import, visible: &mut VisibleDefinitionsRe
     }
 }
 
-// TODO: Shouldn't VisibleTypes & AllTypes return a `Arc<TypeDefinitions>` instead?
-pub fn visible_types_impl(context: &VisibleTypes, db: &DbHandle) -> TypeDefinitions {
+pub fn visible_types_impl(context: &VisibleTypes, db: &DbHandle) -> Arc<TypeDefinitions> {
     incremental::enter_query();
     incremental::println(format!("Collecting visible types in {:?}", context.0));
 
-    let mut definitions = AllTypes(context.0).get(db);
+    let all = AllTypes(context.0).get(db);
 
     // This should always be cached. Ignoring errors here since they should already be
     // included in ExportedTypes' errors
     let ast = Parse(context.0).get(db);
 
+    if ast.cst.imports.is_empty() {
+        incremental::exit_query();
+        return all;
+    }
+
+    let mut definitions = (*all).clone();
     for import in &ast.cst.imports {
         // Ignore errors from imported files. We want to only collect errors
         // from this file. Otherwise we'll duplicate errors.
@@ -186,28 +189,25 @@ pub fn visible_types_impl(context: &VisibleTypes, db: &DbHandle) -> TypeDefiniti
         };
         let exports = ExportedTypes(import_file_id).get(db);
 
-        for (exported_name, (exported_id, kind)) in exports {
-            if !import.items.iter().any(|(item, _)| item.as_str() == exported_name.as_str()) {
+        for (exported_name, exported_id) in exports.iter() {
+            if !import.items.iter().any(|(item, _)| item == exported_name) {
                 continue;
             }
-            if let Some((existing, _)) = definitions.get(&exported_name) {
+            if let Some(existing) = definitions.get(exported_name) {
                 // This reports the location the item was defined in, not the location it was imported at.
                 // I could improve this but instead I'll leave it as an exercise for the reader!
                 let first_location = existing.location(db);
                 let second_location = import.location.clone();
-                let name = exported_name;
+                let name = exported_name.clone();
                 db.accumulate(Diagnostic::ImportedNameAlreadyInScope { name, first_location, second_location });
             } else {
-                definitions.insert(exported_name, (exported_id, kind));
+                definitions.insert(exported_name.clone(), *exported_id);
             }
-
-            // NOTE: VisibleDefinitions should error if there was an import with a type name that
-            // was not imported / does not exist.
         }
     }
 
     incremental::exit_query();
-    definitions
+    Arc::new(definitions)
 }
 
 pub(crate) fn kind_of_type_definition(definition: &TypeDefinition) -> Kind {
@@ -232,8 +232,24 @@ fn kind_of_generic_param(param: &crate::parser::cst::GenericParam) -> Kind {
     }
 }
 
+/// Insert `(name, TopLevelName)` into `map`, accumulating a `NameAlreadyInScope`
+/// diagnostic if the name was already present.
+fn insert_unique_name(
+    db: &DbHandle, map: &mut Definitions, item_id: TopLevelId, name_id: NameId, context: &TopLevelContext,
+) {
+    let name = &context.names[name_id];
+    if let Some(existing) = map.get(name) {
+        let first_location = existing.location(db);
+        let second_location = context.name_locations[name_id].clone();
+        let name = name.clone();
+        db.accumulate(Diagnostic::NameAlreadyInScope { name, first_location, second_location });
+    } else {
+        map.insert(name.clone(), TopLevelName::new(item_id, name_id));
+    }
+}
+
 /// Collect all type definitions within a file (unfiltered by export list).
-pub fn all_types_impl(context: &AllTypes, db: &DbHandle) -> TypeDefinitions {
+pub fn all_types_impl(context: &AllTypes, db: &DbHandle) -> Arc<TypeDefinitions> {
     incremental::enter_query();
     incremental::println(format!("Collecting all types in {:?}", context.0));
 
@@ -242,43 +258,49 @@ pub fn all_types_impl(context: &AllTypes, db: &DbHandle) -> TypeDefinitions {
 
     // Collect each definition, issuing an error if there is a duplicate name (imports are not counted)
     for item in result.cst.top_level_items.iter() {
-        let (item, context) = GetItem(item.id).get(db);
+        let item_context = &result.top_level_data[&item.id];
 
-        if let TopLevelItemKind::TypeDefinition(definition) = &item.kind {
-            let name = &context[definition.name];
+        // AbilityDefinitions are desugared into TypeDefinitions by `GetItem`, so treat them
+        // as types here without needing the desugar step.
+        let type_name = match &item.kind {
+            TopLevelItemKind::TypeDefinition(definition) => definition.name,
+            TopLevelItemKind::AbilityDefinition(ability) => ability.name,
+            _ => continue,
+        };
 
-            if let Some((existing, _)) = definitions.get(name) {
-                let first_location = existing.location(db);
-                let second_location = context.name_location(definition.name).clone();
-                let name = name.clone();
-                db.accumulate(Diagnostic::NameAlreadyInScope { name, first_location, second_location });
-            } else {
-                let kind = kind_of_type_definition(definition);
-                definitions.insert(name.clone(), (TopLevelName::new(item.id, definition.name), kind));
-            }
-        }
+        insert_unique_name(db, &mut definitions, item.id, type_name, item_context);
     }
 
     incremental::exit_query();
-    definitions
+    Arc::new(definitions)
+}
+
+/// Build the set of names listed in this file's `export` clause, or `None` if there's no
+/// clause (in which case the file exports everything).
+fn build_export_set(parse: &ParseResult) -> Option<HashSet<&Name>> {
+    parse.cst.exports.as_ref().map(|exports| exports.iter().map(|(n, _)| n).collect())
 }
 
 /// Collect exported type definitions, filtered by the file's export list.
-pub fn exported_types_impl(context: &ExportedTypes, db: &DbHandle) -> TypeDefinitions {
+pub fn exported_types_impl(context: &ExportedTypes, db: &DbHandle) -> Arc<TypeDefinitions> {
     incremental::enter_query();
-    let mut types = AllTypes(context.0).get(db);
-    let result = Parse(context.0).get(db);
+    let types = AllTypes(context.0).get(db);
+    let parse = Parse(context.0).get(db);
 
     // If we knew on the export itself whether each item was a type or not we could skip
     // the AllTypes query and only require the export itself. Union variants & type constructors
     // make this impossible with Ante' current syntax however.
-    if let Some(exports) = &result.cst.exports {
-        let export_set: HashSet<&str> = exports.iter().map(|(n, _)| n.as_str()).collect();
-        types.retain(|name, _| export_set.contains(name.as_str()));
-    }
+    let result = match build_export_set(&parse) {
+        None => types,
+        Some(export_set) => {
+            let mut filtered = (*types).clone();
+            filtered.retain(|name, _| export_set.contains(name));
+            Arc::new(filtered)
+        },
+    };
 
     incremental::exit_query();
-    types
+    result
 }
 
 /// Collect all definitions within a file (unfiltered by export list).
@@ -346,35 +368,54 @@ pub fn all_definitions_impl(context: &AllDefinitions, db: &DbHandle) -> Arc<Visi
 pub fn exported_definitions_impl(context: &ExportedDefinitions, db: &DbHandle) -> Arc<VisibleDefinitionsResult> {
     incremental::enter_query();
     let all = AllDefinitions(context.0).get(db);
-    let result = Parse(context.0).get(db);
+    let parse = Parse(context.0).get(db);
 
-    let filtered = match &result.cst.exports {
-        None => VisibleDefinitionsResult {
-            definitions: all.definitions.clone(),
-            methods: all.methods.clone(),
-            imported_modules: BTreeMap::new(),
-        },
-        Some(exports) => {
-            let export_set: HashSet<&str> = exports.iter().map(|(n, _)| n.as_str()).collect();
-            let in_exports = |(name, _): &(&Name, &TopLevelName)| export_set.contains(name.as_str());
-
-            let definitions = all.definitions.iter().filter(in_exports).map(|(k, v)| (k.clone(), *v)).collect();
-
-            let methods = all.methods.iter();
-            let methods = methods
-                .map(|(type_id, methods)| {
-                    let filtered_methods = methods.iter().filter(in_exports).map(|(k, v)| (k.clone(), *v)).collect();
-                    (*type_id, filtered_methods)
-                })
-                .filter(|(_, methods): &(_, Definitions)| !methods.is_empty())
-                .collect();
-
-            VisibleDefinitionsResult { definitions, methods, imported_modules: BTreeMap::new() }
-        },
+    let Some(export_set) = build_export_set(&parse) else {
+        incremental::exit_query();
+        return all;
     };
 
+    let in_exports = |(name, _): &(&Name, &TopLevelName)| export_set.contains(name);
+    let collect_functions = |items: &BTreeMap<Name, TopLevelName>| {
+        items.iter().filter(in_exports).map(|(k, v)| (k.clone(), *v)).collect::<BTreeMap<_, _>>()
+    };
+
+    let definitions = collect_functions(&all.definitions);
+
+    let methods = all.methods.iter().map(|(type_id, methods)| (*type_id, collect_functions(methods)));
+    let methods = methods.filter(|(_, methods)| !methods.is_empty()).collect();
+
     incremental::exit_query();
-    Arc::new(filtered)
+    Arc::new(VisibleDefinitionsResult { definitions, methods, imported_modules: BTreeMap::new() })
+}
+
+/// Verify every name listed in this file's `export` statement is actually defined or imported
+/// here, issuing `ExportedItemNotFound` diagnostics if not.
+pub fn validate_exports_impl(context: &ValidateExports, db: &DbHandle) {
+    incremental::enter_query();
+    let parse = Parse(context.0).get(db);
+
+    if let Some(exports) = &parse.cst.exports {
+        let defs = AllDefinitions(context.0).get(db);
+        let types = AllTypes(context.0).get(db);
+        let import_names: HashSet<&Name> =
+            parse.cst.imports.iter().flat_map(|i| i.items.iter().map(|(n, _)| n)).collect();
+
+        for (name, location) in exports {
+            let exists = defs.definitions.contains_key(name)
+                || types.contains_key(name)
+                || defs.methods.values().any(|m| m.contains_key(name))
+                || import_names.contains(name);
+
+            if !exists {
+                let name = name.clone();
+                let location = location.clone();
+                db.accumulate(Diagnostic::ExportedItemNotFound { name, location });
+            }
+        }
+    }
+
+    incremental::exit_query();
 }
 
 struct Declarer<'local, 'db> {
@@ -425,15 +466,7 @@ impl<'local, 'db> Declarer<'local, 'db> {
         &mut self, name_id: NameId, id: TopLevelId, context: &TopLevelContext,
         definitions: impl Fn(&mut Self) -> &mut Definitions,
     ) {
-        let name = context.names[name_id].clone();
-
-        if let Some(existing) = definitions(self).get(&name).copied() {
-            let first_location = existing.location(self.db);
-            let second_location = context.name_locations[name_id].clone();
-            self.db.accumulate(Diagnostic::NameAlreadyInScope { name, first_location, second_location });
-        } else {
-            definitions(self).insert(name, TopLevelName::new(id, name_id));
-        }
+        insert_unique_name(self.db, definitions(self), id, name_id, context);
     }
 
     fn declare_method(

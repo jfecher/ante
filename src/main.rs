@@ -54,7 +54,7 @@ use crate::{
     codegen::llvm::{CodegenLlvmResult, codegen_llvm},
     diagnostics::{DiagnosticKind, collect_all_diagnostics},
     files::{make_compiler, write_metadata},
-    incremental::{TargetPointerSize, TypeCheck},
+    incremental::{TargetPointerSize, TypeCheck, ValidateExports},
     paths::binary_name,
 };
 
@@ -267,6 +267,9 @@ fn display_name_resolution(compiler: &mut Db, emit_all: bool) -> BTreeSet<Diagno
                     let resolve_diagnostics = compiler.get_accumulated_uncached(Resolve(item.id));
                     diagnostics.extend(resolve_diagnostics);
                 }
+
+                let export_diagnostics = compiler.get_accumulated_uncached(ValidateExports(*file));
+                diagnostics.extend(export_diagnostics);
 
                 println!("{}", parse.cst.display_resolved(&parse.top_level_data, compiler))
             }

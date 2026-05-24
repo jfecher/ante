@@ -37,7 +37,7 @@ pub fn completions_at(
     }
 
     let types = VisibleTypes(file_id).get(compiler);
-    for (name, (top_level_name, _kind)) in types.iter() {
+    for (name, top_level_name) in types.iter() {
         items.push(enriched(compiler, name.as_str(), ItemKind::Type, top_level_name));
     }
 
