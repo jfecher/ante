@@ -77,13 +77,15 @@ HashMap.insert (map: mut HashMap k v) (key: k) (value: v) {Hash k} {Eq k}: Maybe
             false
         else
             entry_ptr = offset map.entries start
-            entry = transmute entry_ptr : mut Entry k v
+            entry = ptr_to_mut entry_ptr
             if entry.occupied then
-                iter_until map key value (start + 1) end
-            else
-                if (transmute entry.key : ref k) == key then
+                if key == entry.key then
                     previous := Some (deref entry.value)
-
+                    entry := Entry (deref key) (deref value) true false
+                    true
+                else
+                    iter_until map key value (start + 1) end
+            else
                 entry := Entry (deref key) (deref value) true false
                 true
 
@@ -93,7 +95,8 @@ HashMap.insert (map: mut HashMap k v) (key: k) (value: v) {Hash k} {Eq k}: Maybe
         if not iter_until map key value 0 h then
             panic "Failed to insert entry into map"
 
-    map.len := map.len + 1usz
+    if previous is None then
+        map.len := map.len + 1usz
     previous
 
 // TODO: Name resolution issue preventing this from being visible to iter_until
