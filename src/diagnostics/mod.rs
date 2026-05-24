@@ -16,7 +16,7 @@ use crate::{
     iterator_extensions::mapvec,
     lexer::{
         Lexer,
-        token::{IntegerKind, Integer, Token, lookup_keyword},
+        token::{Integer, IntegerKind, Token, lookup_keyword},
     },
     name_resolution::namespace::CrateId,
     parser::cst::Name,
@@ -273,6 +273,28 @@ pub enum Diagnostic {
         name: Option<Name>,
         location: Location,
     },
+    ConfusingOperatorAfterBody {
+        body_kind: ConfusingBodyKind,
+        operator_location: Location,
+        body_location: Location,
+    },
+}
+
+/// Which construct's body was just parsed when a confusing trailing operator
+/// was detected. Used to phrase the diagnostic.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
+pub enum ConfusingBodyKind {
+    Lambda,
+    Return,
+}
+
+impl ConfusingBodyKind {
+    fn description(&self) -> &'static str {
+        match self {
+            ConfusingBodyKind::Lambda => "lambda body",
+            ConfusingBodyKind::Return => "return expression",
+        }
+    }
 }
 
 /// A hint the compiler can add to a diagnostic.
@@ -342,7 +364,8 @@ impl Diagnostic {
             NameAlreadyInScope { .. }
             | ImportedNameAlreadyInScope { .. }
             | UnreachableCase { .. }
-            | InvalidRangeInPattern { .. } => DiagnosticKind::Warning,
+            | InvalidRangeInPattern { .. }
+            | ConfusingOperatorAfterBody { .. } => DiagnosticKind::Warning,
             _ => DiagnosticKind::Error,
         }
     }
@@ -624,6 +647,12 @@ impl Diagnostic {
                     format!("Cannot assign to lvalue, declare it as a mutable variable first with {var}")
                 }
             },
+            Diagnostic::ConfusingOperatorAfterBody { body_kind, .. } => {
+                let kind = body_kind.description();
+                format!(
+                    "This operator looks like it is in the {kind}, but it is actually part of the outer expression. Use parentheses to avoid confusion"
+                )
+            },
         }
     }
 
@@ -685,6 +714,7 @@ impl Diagnostic {
             | Diagnostic::HandlerDuplicateMethod { second_location: location, .. }
             | Diagnostic::HandlerCrossEffect { location, .. }
             | Diagnostic::AssignToImmutable { location, .. }
+            | Diagnostic::ConfusingOperatorAfterBody { operator_location: location, .. }
             | Diagnostic::NoMainFunction { location } => location,
         }
     }
@@ -715,6 +745,10 @@ impl Diagnostic {
             Diagnostic::HandlerDuplicateMethod { name, first_location, .. } => {
                 let message = format!("{} was previously handled here", color_name(name));
                 Some((first_location, message))
+            },
+            Diagnostic::ConfusingOperatorAfterBody { body_kind, body_location, .. } => {
+                let kind = body_kind.description();
+                Some((body_location, format!("this is where the {kind} body ends")))
             },
             _ => None,
         }

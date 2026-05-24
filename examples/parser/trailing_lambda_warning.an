@@ -1,0 +1,66 @@
+foo () =
+    // warning on `+ 3`
+    bar a b
+        * baz fn x -> x + 3
+        * 4
+
+    // no warning
+    x |> f fn y -> y + 1 |> g
+
+    // warning on `+ 1`
+    x * f fn y -> y + 1 * g
+
+    // warning on `== g`
+    x == f fn y -> y + 1 == g
+
+    // no warning
+    x
+        == f fn y -> y + 1
+        == g
+
+    // no warning (but likely undesirable)
+    x == f fn y -> y + 1
+        == g
+
+// args: -e ast --no-color
+// expected stdout:
+// foo () =
+//     (bar a b * baz (fn x -> x)) + (3 * 4)
+//     (x |> f (fn y -> y + 1)) |> g
+//     (x * f (fn y -> y)) + (1 * g)
+//     (x == f (fn y -> y + 1)) == g
+//     (x == f (fn y -> y + 1)) == g
+//     (x == f (fn y -> y + 1)) == g
+
+// expected stderr:
+// examples/parser/trailing_lambda_warning.an:4:25
+// 3 |     bar a b
+//   |         // warning: This operator looks like it is in the lambda body, but it is actually part of the outer expression. Use parentheses to avoid confusion
+//   |         // note: this is where the lambda body body ends
+// 4 |         * baz fn x -> x + 3
+//   |                       - ^
+// 5 |         * 4
+// 
+// examples/parser/trailing_lambda_warning.an:8:26
+//  7 |     // no warning
+//    |     // warning: This operator looks like it is in the lambda body, but it is actually part of the outer expression. Use parentheses to avoid confusion
+//    |     // note: this is where the lambda body body ends
+//  8 |     x |> f fn y -> y + 1 |> g
+//    |                    ----- ^^
+// 
+// examples/parser/trailing_lambda_warning.an:11:21
+// 10 |     // warning on `+ 1`
+//    |     // warning: This operator looks like it is in the lambda body, but it is actually part of the outer expression. Use parentheses to avoid confusion
+//    |     // note: this is where the lambda body body ends
+// 11 |     x * f fn y -> y + 1 * g
+//    |                   - ^
+// 
+// examples/parser/trailing_lambda_warning.an:14:26
+// 13 |     // warning on `== g`
+//    |     // warning: This operator looks like it is in the lambda body, but it is actually part of the outer expression. Use parentheses to avoid confusion
+//    |     // note: this is where the lambda body body ends
+// 14 |     x == f fn y -> y + 1 == g
+//    |                    ----- ^^
+// 
+// Compiled with 4 warnings
+

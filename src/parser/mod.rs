@@ -6,7 +6,7 @@ use rustc_hash::FxHashSet;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    diagnostics::{Diagnostic, ErrorDefault, Hint, Location, Span},
+    diagnostics::{ConfusingBodyKind, Diagnostic, ErrorDefault, Hint, Location, Span},
     incremental,
     iterator_extensions::mapvec,
     lexer::{Lexer, token::Token},
@@ -1907,10 +1907,41 @@ impl<'tokens> Parser<'tokens> {
             };
 
             this.expect(Token::RightArrow, "a `->` to separate this lambda's parameters from its body")?;
+            let body_was_block = matches!(this.current_token(), Token::Indent);
             let body = this.parse_block_or_expression_trailing(min_prec, ban_do)?;
+            if !body_was_block {
+                this.warn_if_operator_outside_body(body, min_prec, ConfusingBodyKind::Lambda);
+            }
 
             Ok(Expr::Lambda(Lambda { parameters, return_type, body, is_move }))
         })
+    }
+
+    /// Warn that a trailing lambda's body may have parsed differently to what the user intended if:
+    /// - min_prec != 0: otherwise the body will parse any operator & there is no surrounding expr
+    /// - prec(current token) <= min_prec: an operator right after the body was not included in the body
+    /// - The line number of this operator is on the same line as the end of the function's body
+    fn warn_if_operator_outside_body(&mut self, body: ExprId, min_prec: i8, body_kind: ConfusingBodyKind) {
+        if min_prec == 0 {
+            return;
+        }
+        let Some((prec, _)) = Self::precedence(self.current_token(), false) else {
+            return;
+        };
+        if prec > min_prec {
+            return;
+        }
+        let body_location = self.expr_location(body);
+        let op_span = self.current_token_span();
+        if body_location.span.end.line_number != op_span.start.line_number {
+            return;
+        }
+        let operator_location = op_span.in_file(self.file_id);
+        self.diagnostics.push(Diagnostic::ConfusingOperatorAfterBody {
+            body_kind,
+            operator_location,
+            body_location,
+        });
     }
 
     fn parse_sequence_item(&mut self) -> Result<SequenceItem> {
@@ -2052,7 +2083,11 @@ impl<'tokens> Parser<'tokens> {
     fn parse_return(&mut self, min_prec: i8, ban_do: bool) -> Result<ExprId> {
         self.with_expr_id_and_location(|this| {
             this.expect(Token::Return, "`return` to begin a return statement")?;
+            let body_was_block = matches!(this.current_token(), Token::Indent);
             let expression = this.parse_block_or_expression_trailing(min_prec, ban_do)?;
+            if !body_was_block {
+                this.warn_if_operator_outside_body(expression, min_prec, ConfusingBodyKind::Return);
+            }
             Ok(Expr::Return(cst::Return { expression }))
         })
     }

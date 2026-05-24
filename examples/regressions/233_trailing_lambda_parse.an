@@ -23,3 +23,21 @@ single_line () =
 //     (foo |> baz (fn c -> (insert c) is None)) |> count
 //     (foo |> map (fn x -> x + 1)) |> filter
 
+// expected stderr:
+// examples/regressions/233_trailing_lambda_parse.an:12:41
+// 11 | single_line () =
+//    |     // warning: This operator looks like it is in the lambda body, but it is actually part of the outer expression. Use parentheses to avoid confusion
+//    |     // note: this is where the lambda body body ends
+// 12 |     foo |> baz fn c -> insert c is None |> count
+//    |                        ---------------- ^^
+// 13 |     foo |> map fn x -> x + 1 |> filter
+// 
+// examples/regressions/233_trailing_lambda_parse.an:13:30
+// 12 |     foo |> baz fn c -> insert c is None |> count
+//    |     // warning: This operator looks like it is in the lambda body, but it is actually part of the outer expression. Use parentheses to avoid confusion
+//    |     // note: this is where the lambda body body ends
+// 13 |     foo |> map fn x -> x + 1 |> filter
+//    |                        ----- ^^
+// 
+// Compiled with 2 warnings
+
