@@ -39,7 +39,9 @@ main () =
 //     set: fn a [Ptr Unit] -> Unit
 // 
 // (handle_basic: fn Unit {Log} {Use String} -> Unit) () {(_: Log)} {(_: Use String)} =
-//     (log: fn String {Log} [Ptr Unit] -> Unit) "test1" {(h: (error))}
+//     handler (h: Log) for
+//     | (log: fn String {Log} [Ptr Unit] -> Unit) (v: String) -> fn (v: String) (resume: fn Unit [Ptr] -> Unit) [(_: Use String)] -> (set: fn String {Use String} [Ptr Unit] -> Unit) (v: String) {(_: Use String)}
+//     in fn () -> (log: fn String {Log} [Ptr Unit] -> Unit) "test1" {(h: Log)}
 // 
 // (use_resume: fn Unit -> Unit) () =
 //     handler (h: Use I32) for
@@ -58,17 +60,6 @@ main () =
 //     (log: fn String {Log} [Ptr Unit] -> Unit) "foo" {(error)}
 
 // expected stderr:
-// examples/typechecking/effects.an:10:34
-//  9 | handle_basic () {Log} {Use String} =
-// 10 |     handler h for log v -> set v in	// error: Expected an expression but found a newline
-//    |                                  ^^
-// 11 |     log "test1" {h}
-// 
-// examples/typechecking/effects.an:11:18
-// 10 |     handler h for log v -> set v in
-// 11 |     log "test1" {h}	// error: `h` not found in scope
-//    |                  ^
-// 
 // examples/typechecking/effects.an:21:12
 // 20 |     y = get ()
 // 21 |     set (y + x)	// error: No implicit found for type Add _ required by +
@@ -84,5 +75,5 @@ main () =
 // 29 |     log "foo"	// error: No implicit found for type Log required by log
 //    |     ^^^
 // 
-// Found 5 errors and 0 warnings
+// Found 3 errors and 0 warnings
 

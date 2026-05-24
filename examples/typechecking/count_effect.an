@@ -15,7 +15,6 @@ main () =
     ()
 
 // args: -e ast-t --no-color
-// expected exit status: 1
 // expected stdout:
 // type Count =
 //     count: fn Unit [Ptr Unit] -> Unit
@@ -24,18 +23,14 @@ main () =
 //     (count: fn Unit {Count} [Ptr Unit] -> Unit) () {(_: Count)}
 //     (repeat: fn Usz (fn Usz [Count] -> Unit) -> Unit) 10 (fn (_: Usz) [(_: Count)] -> (count: fn Unit {Count} [Ptr Unit] -> Unit) () {(_: Count)})
 // 
-// (handle_count: fn (fn Count -> Unit) -> _) ((f: fn Count -> Unit)) =
+// (handle_count: fn (fn Count -> Unit) -> I32) ((f: fn Count -> Unit)) =
+//     handler (h: Count) for
+//     | (count: fn Unit {Count} [Ptr Unit] -> Unit) () -> fn () (resume: fn Unit [Ptr] -> I32) -> (+: fn I32 I32 {Add I32} [Ptr Unit] -> I32) 1 ((resume: fn Unit [Ptr] -> I32) ()) {(add_i32: Add I32)}
+//     in fn () [(f: fn Count -> Unit)] ->
+//         (f: fn Count -> Unit) (h: Count)
+//         0
 // 
 // (main: fn Unit -> Unit) () =
-//     (handle_count: fn (fn Count -> Unit) -> _) (foo: fn {Count} -> Unit)
+//     (handle_count: fn (fn Count -> Unit) -> I32) (foo: fn {Count} -> Unit)
 //     ()
-
-// expected stderr:
-// examples/typechecking/count_effect.an:10:1
-//  9 |     handler h for count () -> 1 + resume () in
-// 10 |         f h	// error: Expected an expression but found an indent
-//    | ^^^^^^^^
-// 11 |         0
-// 
-// Found 1 error and 0 warnings
 

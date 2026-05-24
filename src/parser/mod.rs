@@ -1509,27 +1509,26 @@ impl<'tokens> Parser<'tokens> {
     /// Returns None if the given Token is not an operator
     fn precedence(token: &Token, ban_comma: bool) -> Option<(i8, bool)> {
         match token {
-            Token::Semicolon => Some((0, false)),
-            Token::ApplyLeft => Some((1, true)),
-            Token::ApplyRight | Token::TildeArrow => Some((2, false)),
-            Token::Comma if !ban_comma => Some((3, true)),
-            Token::Or => Some((4, false)),
-            Token::And => Some((5, false)),
-            Token::Is => Some((6, false)),
+            Token::Semicolon => Some((1, false)),
+            Token::ApplyLeft => Some((2, true)),
+            Token::ApplyRight | Token::TildeArrow => Some((3, false)),
+            Token::Comma if !ban_comma => Some((4, true)),
+            Token::Or => Some((5, false)),
+            Token::And => Some((6, false)),
+            Token::Is => Some((7, false)),
             Token::EqualEqual
             | Token::NotEqual
             | Token::GreaterThan
             | Token::LessThan
             | Token::GreaterThanOrEqual
             | Token::Divides
-            | Token::LessThanOrEqual => Some((7, false)),
-            Token::In => Some((8, false)),
+            | Token::LessThanOrEqual => Some((8, false)),
             Token::Append => Some((9, false)),
             Token::Range => Some((10, false)),
             Token::Add | Token::Subtract => Some((11, false)),
             Token::Multiply | Token::Divide | Token::Modulus => Some((12, false)),
-            Token::Index => Some((14, false)),
-            Token::As => Some((15, false)),
+            Token::Index => Some((13, false)),
+            Token::As => Some((14, false)),
             _ => None,
         }
     }
@@ -1566,6 +1565,10 @@ impl<'tokens> Parser<'tokens> {
     }
 
     fn parse_expression(&mut self) -> Result<ExprId> {
+        self.parse_expression_trailing(0, false)
+    }
+
+    fn parse_expression_trailing(&mut self, min_prec: i8, ban_do: bool) -> Result<ExprId> {
         match self.current_token() {
             Token::If => self.parse_if_expr(),
             Token::Match => self.parse_match(),
@@ -1575,30 +1578,26 @@ impl<'tokens> Parser<'tokens> {
             Token::For => self.parse_for(),
             Token::Break => self.parse_break(),
             Token::Continue => self.parse_continue(),
-            _ => self.parse_shunting_yard(false),
+            Token::Return => self.parse_return(min_prec, ban_do),
+            _ => self.parse_shunting_yard(min_prec, ban_do, false),
         }
-    }
-
-    /// This is temporary until native loops are removed
-    fn parse_expression_no_do(&mut self) -> Result<ExprId> {
-        self.parse_shunting_yard(true)
     }
 
     /// Parse an arbitrary infix expression using the shunting-yard algorithm
     ///
+    /// This will not parse any operators under a precedence of `min_prec`. Set to 0 to parse everything.
     /// If `ban_do` is true, `do` will not be parsed as an expression
-    fn parse_shunting_yard(&mut self, ban_do: bool) -> Result<ExprId> {
-        self.parse_shunting_yard_inner(ban_do, false)
-    }
-
-    fn parse_shunting_yard_inner(&mut self, ban_do: bool, ban_comma: bool) -> Result<ExprId> {
-        let value = self.parse_term(ban_do)?;
+    fn parse_shunting_yard(&mut self, min_prec: i8, ban_do: bool, ban_comma: bool) -> Result<ExprId> {
+        let value = self.parse_term(min_prec, ban_do)?;
 
         let mut operator_stack: Vec<&(Token, Span)> = vec![];
         let mut results = vec![value];
 
-        // loop while the next token is an operator
+        // loop while the next token is an operator that binds tighter than our floor
         while let Some((prec, right_associative)) = Self::precedence(self.current_token(), ban_comma) {
+            if prec <= min_prec {
+                break;
+            }
             while !operator_stack.is_empty()
                 && Self::should_continue(
                     &operator_stack[operator_stack.len() - 1].0,
@@ -1618,7 +1617,10 @@ impl<'tokens> Parser<'tokens> {
             operator_stack.push(self.current_token_and_span());
             self.advance();
 
-            let value = self.parse_term(ban_do)?;
+            // Terms can contain trailing expressions (notably unparenthesized lambdas).
+            // Ensure those are limited to the current precedence level too, see issue #233.
+            let new_min_prec = if right_associative { prec - 1 } else { prec };
+            let value = self.parse_term(new_min_prec, ban_do)?;
             results.push(value);
         }
 
@@ -1651,9 +1653,9 @@ impl<'tokens> Parser<'tokens> {
     ///     | term_inner
     ///
     /// temporary: `ban_do` - if true, don't use the `do` keyword
-    fn parse_term(&mut self, ban_do: bool) -> Result<ExprId> {
+    fn parse_term(&mut self, min_prec: i8, ban_do: bool) -> Result<ExprId> {
         let start = self.current_token_span();
-        let mut lhs = self.parse_term_inner(ban_do)?;
+        let mut lhs = self.parse_term_inner(min_prec, ban_do)?;
 
         while self.accept(Token::Colon) {
             let typ = self.parse_type()?;
@@ -1666,16 +1668,16 @@ impl<'tokens> Parser<'tokens> {
         Ok(lhs)
     }
 
-    fn parse_term_inner(&mut self, ban_do: bool) -> Result<ExprId> {
+    fn parse_term_inner(&mut self, min_prec: i8, ban_do: bool) -> Result<ExprId> {
         match self.current_token() {
             Token::Subtract | Token::Ref | Token::Mut | Token::Imm | Token::Uniq | Token::Not => {
-                self.parse_left_unary(ban_do)
+                self.parse_left_unary(min_prec, ban_do)
             },
-            _ => self.parse_function_call_or_atom(ban_do),
+            _ => self.parse_function_call_or_atom(min_prec, ban_do),
         }
     }
 
-    fn parse_left_unary(&mut self, ban_do: bool) -> Result<ExprId> {
+    fn parse_left_unary(&mut self, min_prec: i8, ban_do: bool) -> Result<ExprId> {
         match self.current_token() {
             operator @ (Token::Ref | Token::Mut | Token::Imm | Token::Uniq) => {
                 let kind = ReferenceKind::from_token(operator);
@@ -1683,7 +1685,7 @@ impl<'tokens> Parser<'tokens> {
 
                 let operator_location = self.current_token_location();
                 self.advance();
-                let rhs = self.parse_left_unary(ban_do)?;
+                let rhs = self.parse_left_unary(min_prec, ban_do)?;
                 let location = operator_location.to(&self.expr_location(rhs));
 
                 let reference = Expr::Reference(cst::Reference { kind, rhs });
@@ -1696,7 +1698,7 @@ impl<'tokens> Parser<'tokens> {
 
                 let operator_location = self.current_token_location();
                 self.advance();
-                let rhs = self.parse_left_unary(ban_do)?;
+                let rhs = self.parse_left_unary(min_prec, ban_do)?;
                 let location = operator_location.to(&self.expr_location(rhs));
                 let rhs = Argument::explicit(rhs);
 
@@ -1708,13 +1710,13 @@ impl<'tokens> Parser<'tokens> {
                 self.insert_expr(call_id, call, location);
                 Ok(call_id)
             },
-            _ => self.parse_function_call_or_atom(ban_do),
+            _ => self.parse_function_call_or_atom(min_prec, ban_do),
         }
     }
 
     /// Very similar to `parse_unary` but excludes unary minus since otherwise
     /// we may parse `{function_name} -{arg}` instead of `{lhs} - {rhs}`.
-    fn parse_function_arg(&mut self, ban_do: bool) -> Result<Argument> {
+    fn parse_function_arg(&mut self, min_prec: i8, ban_do: bool) -> Result<Argument> {
         let expr = match self.current_token() {
             Token::BraceLeft => {
                 self.advance();
@@ -1722,15 +1724,15 @@ impl<'tokens> Parser<'tokens> {
                 self.expect(Token::BraceRight, "a `}` to close the opening `{` of this implicit argument")?;
                 return Ok(Argument::implicit(expr));
             },
-            _ => self.parse_atom(ban_do),
+            _ => self.parse_atom(min_prec, ban_do),
         }?;
         Ok(Argument::explicit(expr))
     }
 
     /// An atom is a very small unit of parsing, but one that can still be divided further.
     /// In this case it is made up of quarks connected by `.` or unary expressions
-    fn parse_atom(&mut self, ban_do: bool) -> Result<ExprId> {
-        let mut result = self.parse_quark(ban_do)?;
+    fn parse_atom(&mut self, min_prec: i8, ban_do: bool) -> Result<ExprId> {
+        let mut result = self.parse_quark(min_prec, ban_do)?;
 
         loop {
             let token = self.current_token();
@@ -1774,7 +1776,7 @@ impl<'tokens> Parser<'tokens> {
     }
 
     /// Parse an indivisible expression which is valid anywhere a value is expected
-    fn parse_quark(&mut self, ban_do: bool) -> Result<ExprId> {
+    fn parse_quark(&mut self, min_prec: i8, ban_do: bool) -> Result<ExprId> {
         match self.current_token() {
             Token::IntegerLiteral(value, kind) => {
                 let (value, kind) = (*value, *kind);
@@ -1833,7 +1835,7 @@ impl<'tokens> Parser<'tokens> {
                 Ok(self.push_expr(Expr::Literal(Literal::Unit), location))
             },
             Token::BracketLeft => self.parse_array_literal(),
-            Token::Move | Token::Fn => self.parse_lambda(),
+            Token::Move | Token::Fn => self.parse_lambda(min_prec, ban_do),
             Token::Do if !ban_do => self.parse_do(),
             Token::Error(_) => {
                 // Report the lexer error and return Error to treat this as an expression value
@@ -1891,7 +1893,7 @@ impl<'tokens> Parser<'tokens> {
         }
     }
 
-    fn parse_lambda(&mut self) -> Result<ExprId> {
+    fn parse_lambda(&mut self, min_prec: i8, ban_do: bool) -> Result<ExprId> {
         self.with_expr_id_and_location(|this| {
             let is_move = this.accept(Token::Move);
 
@@ -1905,7 +1907,7 @@ impl<'tokens> Parser<'tokens> {
             };
 
             this.expect(Token::RightArrow, "a `->` to separate this lambda's parameters from its body")?;
-            let body = this.parse_block_or_expression()?;
+            let body = this.parse_block_or_expression_trailing(min_prec, ban_do)?;
 
             Ok(Expr::Lambda(Lambda { parameters, return_type, body, is_move }))
         })
@@ -1984,10 +1986,6 @@ impl<'tokens> Parser<'tokens> {
             return Ok(self.push_expr(expr, location));
         }
 
-        if *self.current_token() == Token::Return {
-            return self.parse_return();
-        }
-
         let expression = self.parse_expression()?;
 
         // Try to parse a compound assignment (+=, -=, *=, /=, %=)
@@ -2051,10 +2049,10 @@ impl<'tokens> Parser<'tokens> {
         Ok(id)
     }
 
-    fn parse_return(&mut self) -> Result<ExprId> {
+    fn parse_return(&mut self, min_prec: i8, ban_do: bool) -> Result<ExprId> {
         self.with_expr_id_and_location(|this| {
             this.expect(Token::Return, "`return` to begin a return statement")?;
-            let expression = this.parse_block_or_expression()?;
+            let expression = this.parse_block_or_expression_trailing(min_prec, ban_do)?;
             Ok(Expr::Return(cst::Return { expression }))
         })
     }
@@ -2076,8 +2074,11 @@ impl<'tokens> Parser<'tokens> {
     fn parse_while(&mut self) -> Result<ExprId> {
         self.with_expr_id_and_location(|this| {
             this.expect(Token::While, "`while` to begin a while loop")?;
-            let condition =
-                this.parse_expr_with_recovery(Self::parse_block_or_expression_no_do, Token::Do, &[Token::Newline])?;
+            let condition = this.parse_expr_with_recovery(
+                |this| this.parse_block_or_expression_trailing(0, true),
+                Token::Do,
+                &[Token::Newline],
+            )?;
             this.accept(Token::Newline);
             this.expect(Token::Do, "`do` to separate the condition from the body of a while loop")?;
             let body = this.parse_block_or_expression()?;
@@ -2090,11 +2091,14 @@ impl<'tokens> Parser<'tokens> {
             this.expect(Token::For, "`for` to begin a for loop")?;
             let variable = this.parse_ident_id()?;
             this.expect(Token::In, "`in` after the for-loop variable")?;
-            // Parse the start of the range at a precedence below Range (..) so that
-            // the `..` does not get consumed by shunting-yard here.
-            let start = this.parse_term(false)?;
+            // Parse a term rather than an expression so we don't consume a range `..` token here
+            let start = this.parse_term(0, false)?;
             this.expect(Token::Range, "`..` to separate the start and end of a for-loop range")?;
-            let end = this.parse_expr_with_recovery(Self::parse_expression_no_do, Token::Do, &[Token::Newline])?;
+            let end = this.parse_expr_with_recovery(
+                |this| this.parse_expression_trailing(0, true),
+                Token::Do,
+                &[Token::Newline],
+            )?;
             this.accept(Token::Newline);
             this.expect(Token::Do, "`do` to separate the range from the body of a for loop")?;
             let body = this.parse_block_or_expression()?;
@@ -2255,20 +2259,18 @@ impl<'tokens> Parser<'tokens> {
         })
     }
 
+    /// Parse a block or expression bounded by tokens (such as `then` and `else`).
+    /// Expressions not bounded by other tokens should inherit the outer expression's
+    /// `min_prec` and `ban_do` context to ensure trailing lambdas inherit the correct precedence.
     fn parse_block_or_expression(&mut self) -> Result<ExprId> {
-        match self.current_token() {
-            Token::Indent => self.parse_block(),
-            Token::Return => self.parse_return(),
-            _ => self.parse_expression(),
-        }
+        self.parse_block_or_expression_trailing(0, false)
     }
 
-    // temporary
-    fn parse_block_or_expression_no_do(&mut self) -> Result<ExprId> {
+    fn parse_block_or_expression_trailing(&mut self, min_prec: i8, ban_do: bool) -> Result<ExprId> {
         match self.current_token() {
             Token::Indent => self.parse_block(),
-            Token::Return => self.parse_return(),
-            _ => self.parse_expression_no_do(),
+            Token::Return => self.parse_return(min_prec, ban_do),
+            _ => self.parse_expression_trailing(min_prec, ban_do),
         }
     }
 
@@ -2326,7 +2328,7 @@ impl<'tokens> Parser<'tokens> {
         Ok(self.push_expr(Expr::Variable(path), location))
     }
 
-    fn parse_function_call_or_atom(&mut self, ban_do: bool) -> Result<ExprId> {
+    fn parse_function_call_or_atom(&mut self, min_prec: i8, ban_do: bool) -> Result<ExprId> {
         // Extern expressions are parsed here:
         // - Type annotations take a `function_call_or_atom` as their lhs, and we want to allow
         //   externs to be the lhs of a type annotation.
@@ -2335,9 +2337,9 @@ impl<'tokens> Parser<'tokens> {
             return self.parse_extern();
         }
 
-        let function = self.parse_atom(ban_do)?;
+        let function = self.parse_atom(min_prec, ban_do)?;
 
-        if let Ok(arguments) = self.many1(|this| Self::parse_function_arg(this, ban_do)) {
+        if let Ok(arguments) = self.many1(|this| Self::parse_function_arg(this, min_prec, ban_do)) {
             let last_arg_location = self.expr_location(arguments.last().unwrap().expr);
             let location = self.expr_location(function).to(&last_arg_location);
             let call = Expr::Call(Call { function, arguments });
@@ -2357,8 +2359,8 @@ impl<'tokens> Parser<'tokens> {
     fn parse_array_literal(&mut self) -> Result<ExprId> {
         let start = self.current_token_location();
         self.expect(Token::BracketLeft, "'[' to start this array literal")?;
-        let elements = self
-            .delimited_until(Token::Comma, Token::BracketRight, |this| this.parse_shunting_yard_inner(false, true))?;
+        let elements =
+            self.delimited_until(Token::Comma, Token::BracketRight, |this| this.parse_shunting_yard(0, false, true))?;
         self.expect(Token::BracketRight, "a `]` to close the opening `[` from the array literal")?;
         let location = start.to(&self.previous_token_location());
         Ok(self.push_expr(Expr::ArrayLiteral(elements), location))
@@ -2407,7 +2409,7 @@ impl<'tokens> Parser<'tokens> {
             },
             Token::Identifier(_) | Token::TypeName(_) => {
                 let call = self.parse_expr_with_recovery(
-                    |this| Self::parse_function_call_or_atom(this, false),
+                    |this| Self::parse_function_call_or_atom(this, 0, false),
                     Token::Newline,
                     &[],
                 )?;

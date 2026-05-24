@@ -1,0 +1,25 @@
+// Issue: the `take_while` lines parsed as `take_while fn c -> (seen.insert c.* () is None |> None)`
+// Fix: Have trailing lambdas inherit the precedence level of the outer expression
+count_uniq_chars_from_index (s: String) (i: Usz): U32 =
+    var seen = HashMap.empty ()
+    len = Usz s.length
+    substr s i len
+        |> chars
+        |> take_while fn c -> seen.insert c.* () is None
+        |> count
+
+single_line () =
+    foo |> baz fn c -> insert c is None |> count
+    foo |> map fn x -> x + 1 |> filter
+
+// args: -e ast --no-color
+// expected stdout:
+// count_uniq_chars_from_index (s: String) (i: Usz) : U32 =
+//     mut seen = HashMap.empty ()
+//     len = Usz s.length
+//     ((substr s i len |> chars) |> take_while (fn c -> (seen.insert (.* c) ()) is None)) |> count
+// 
+// single_line () =
+//     (foo |> baz (fn c -> (insert c) is None)) |> count
+//     (foo |> map (fn x -> x + 1)) |> filter
+
