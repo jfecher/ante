@@ -1,4 +1,4 @@
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use crate::paths::aminicoro_path;
 
@@ -9,10 +9,11 @@ pub fn link_with_cc(object_filename: &str, binary_filename: &str) -> bool {
     let mut child = Command::new("cc")
         .arg(object_filename)
         .arg(aminicoro_path())
-        .arg("-Wno-everything")
         .arg("-O0")
         .arg("-lm")
         .arg(output)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .spawn()
         .unwrap();
 
