@@ -85,6 +85,19 @@
                 ];
               };
 
+              testSrc = pkgs.lib.fileset.toSource {
+                root = ./.;
+                fileset = pkgs.lib.fileset.unions [
+                  ./src
+                  ./ante-ls
+                  ./tests
+                  ./examples
+                  ./Cargo.toml
+                  ./Cargo.lock
+                  ./build.rs
+                ];
+              };
+
               commonEnv = {
                 ANTE_STDLIB_DIR = "${ante-stdlib}/stdlib";
                 ANTE_MINICORO_PATH = "${ante-minicoro}/minicoro.c";
@@ -114,6 +127,10 @@
                     buildInputs = anteDeps;
 
                     postInstall = ''
+                      mkdir -p $out/share/ante/aminicoro
+                      cp ${ante-minicoro}/minicoro.c $out/share/ante/aminicoro/minicoro.c
+                      cp ${ante-minicoro}/minicoro.h $out/share/ante/aminicoro/minicoro.h
+
                       installShellCompletion --cmd ante \
                         --bash <($out/bin/ante --shell-completion bash) \
                         --fish <($out/bin/ante --shell-completion fish) \
@@ -122,7 +139,9 @@
                       wrapProgram $out/bin/ante \
                         --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.stdenv.cc ]}
                     '';
-                  } // commonEnv);
+                  } // commonEnv // {
+                    ANTE_MINICORO_PATH = "${placeholder "out"}/share/ante/aminicoro/minicoro.c";
+                  });
 
                   ante-ls = craneLib.buildPackage ({
                     pname = "ante-ls";
@@ -138,6 +157,22 @@
                   inherit ante ante-ls ante-stdlib ante-minicoro;
                   default = ante;
                 };
+
+              checks.${system} = {
+                inherit (self.packages.${system}) ante ante-ls;
+
+                ante-tests = craneLib.cargoTest ({
+                  pname = "ante-tests";
+                  version = anteVersion;
+
+                  src = testSrc;
+                  inherit cargoArtifacts;
+                  cargoExtraArgs = "-p ante";
+
+                  buildInputs = anteDeps;
+                  nativeBuildInputs = [ pkgs.stdenv.cc ];
+                } // commonEnv);
+              };
 
               devShells.${system}.default = craneLib.devShell {
                 buildInputs = anteDeps;
