@@ -56,8 +56,6 @@
                         ./Cargo.toml
                         ./Cargo.lock
                         ./build.rs
-                        ./tests
-                        ./goldentests.toml
                       ];
                     };
 
@@ -76,10 +74,7 @@
                         --zsh <($out/bin/ante --shell-completion zsh)
                     '';
 
-                    postPatch = ''
-                      substituteInPlace tests/goldentests.rs --replace \
-                        'target/debug' "target/$(rustc -vV | sed -n 's|host: ||p')/release"
-                    '';
+                    ANTE_STDLIB_DIR = "${ante-stdlib}/lib";
                   };
                   
                   ante-ls = craneLib.buildPackage {
