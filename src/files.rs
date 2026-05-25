@@ -1,5 +1,5 @@
 use std::{
-    fs::{File, OpenOptions},
+    fs::File,
     io::{Read, Write},
     path::{Path, PathBuf},
 };
@@ -41,18 +41,8 @@ pub fn write_metadata(compiler: &Db, metadata_file: &Path) -> Result<(), String>
 }
 
 pub(crate) fn read_file(file_name: &std::path::Path) -> Result<String, String> {
-    let mut file = OpenOptions::new()
-        .create(false)
-        .read(true)
-        .write(true)
-        .open(file_name)
-        .map_err(|error| format!("Failed to open `{}`:\n{error}", file_name.display()))?;
-
-    let mut text = String::new();
-    file.read_to_string(&mut text)
-        .map_err(|error| format!("Failed to read from file `{}`:\n{error}", file_name.display()))?;
-
-    Ok(text)
+    std::fs::read_to_string(file_name)
+        .map_err(|error| format!("Failed to read `{}`:\n{error}", file_name.display()))
 }
 
 fn read_binary_file(file_name: &std::path::Path) -> Result<Vec<u8>, String> {

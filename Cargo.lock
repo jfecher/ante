@@ -78,7 +78,6 @@ dependencies = [
  "rayon",
  "rmp-serde",
  "rustc-hash",
- "scc",
  "serde",
 ]
 
