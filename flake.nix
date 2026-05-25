@@ -16,6 +16,9 @@
     let
       systems = [
         "x86_64-linux"
+        "aarch64-linux"
+        "x86_64-darwin"
+        "aarch64-darwin"
       ];
       forAllSystems = function: nixpkgs.lib.genAttrs systems (system:
         function (import nixpkgs {
@@ -42,68 +45,100 @@
               ];
 
               anteVersion = "0.1.0";
+
+              ante-stdlib = pkgs.stdenv.mkDerivation {
+                pname = "ante-stdlib";
+                version = anteVersion;
+
+                src = ./stdlib;
+
+                dontBuild = true;
+
+                installPhase = ''
+                  mkdir -p $out/stdlib
+                  cp -r src $out/stdlib/src
+                '';
+              };
+
+              ante-minicoro = pkgs.stdenv.mkDerivation {
+                pname = "ante-minicoro";
+                version = anteVersion;
+
+                src = ./aminicoro;
+
+                dontBuild = true;
+
+                installPhase = ''
+                  install -Dm644 minicoro.c $out/minicoro.c
+                  install -Dm644 minicoro.h $out/minicoro.h
+                '';
+              };
+
+              workspaceSrc = pkgs.lib.fileset.toSource {
+                root = ./.;
+                fileset = pkgs.lib.fileset.unions [
+                  ./src
+                  ./ante-ls
+                  ./Cargo.toml
+                  ./Cargo.lock
+                  ./build.rs
+                ];
+              };
+
+              commonEnv = {
+                ANTE_STDLIB_DIR = "${ante-stdlib}/stdlib";
+                ANTE_MINICORO_PATH = "${ante-minicoro}/minicoro.c";
+                LLVM_SYS_211_PREFIX = "${pkgs.llvmPackages_21.llvm.dev}";
+              };
+
+              cargoArtifacts = craneLib.buildDepsOnly ({
+                src = workspaceSrc;
+                buildInputs = anteDeps;
+              } // commonEnv);
             in {
               packages.${system} =
                 let
-                  ante = craneLib.buildPackage {
+                  ante = craneLib.buildPackage ({
                     pname = "ante";
                     version = anteVersion;
 
-                    src = pkgs.lib.fileset.toSource {
-                      root = ./.;
-                      fileset = pkgs.lib.fileset.unions [
-                        ./src
-                        ./Cargo.toml
-                        ./Cargo.lock
-                        ./build.rs
-                      ];
-                    };
+                    src = workspaceSrc;
+                    inherit cargoArtifacts;
+                    cargoExtraArgs = "-p ante";
 
                     nativeBuildInputs = with pkgs; [
                       installShellFiles
+                      makeWrapper
                     ];
 
-                    buildInputs = anteDeps ++ [
-                      ante-stdlib
-                    ];
+                    buildInputs = anteDeps;
 
                     postInstall = ''
                       installShellCompletion --cmd ante \
                         --bash <($out/bin/ante --shell-completion bash) \
                         --fish <($out/bin/ante --shell-completion fish) \
                         --zsh <($out/bin/ante --shell-completion zsh)
-                    '';
 
-                    ANTE_STDLIB_DIR = "${ante-stdlib}/lib";
-                  };
-                  
-                  ante-ls = craneLib.buildPackage {
+                      wrapProgram $out/bin/ante \
+                        --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.stdenv.cc ]}
+                    '';
+                  } // commonEnv);
+
+                  ante-ls = craneLib.buildPackage ({
                     pname = "ante-ls";
                     version = "0.1.1";
-                    
-                    src = ./ante-ls;
 
-                    ANTE_STDLIB_DIR = "${ante-stdlib}/lib";
-                  };
+                    src = workspaceSrc;
+                    inherit cargoArtifacts;
+                    cargoExtraArgs = "-p ante-ls";
 
-                  ante-stdlib = pkgs.stdenv.mkDerivation {
-                    pname = "ante-stdlib";
-                    version = anteVersion;
-
-                    src = ./stdlib;
-
-                    dontBuild = true;
-
-                    installPhase = ''
-                      mkdir -p $out/lib
-                      find . -type f -exec install -Dm644 "{}" -t $out/lib \;
-                    '';
-                  };
+                    buildInputs = anteDeps;
+                  } // commonEnv);
                 in {
-                  inherit ante ante-ls;
+                  inherit ante ante-ls ante-stdlib ante-minicoro;
                   default = ante;
                 };
-              
+
               devShells.${system}.default = craneLib.devShell {
                 buildInputs = anteDeps;
 

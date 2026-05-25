@@ -104,7 +104,7 @@ pub fn link(modules: Vec<Arc<Vec<u8>>>, binary_name: &str, show_time: bool, opt_
     });
 
     crate::timings::time_phase("Linking", show_time, || {
-        super::link_with_gcc(path.to_string_lossy().as_ref(), binary_name)
+        super::link_with_cc(path.to_string_lossy().as_ref(), binary_name)
     })
 }
 

@@ -4,10 +4,9 @@ use crate::paths::aminicoro_path;
 
 pub mod llvm;
 
-pub fn link_with_gcc(object_filename: &str, binary_filename: &str) -> bool {
-    // call gcc to compile the bitcode to a binary
+pub fn link_with_cc(object_filename: &str, binary_filename: &str) -> bool {
     let output = format!("-o{}", binary_filename);
-    let mut child = Command::new("gcc")
+    let mut child = Command::new("cc")
         .arg(object_filename)
         .arg(aminicoro_path())
         .arg("-Wno-everything")
