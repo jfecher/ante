@@ -1,6 +1,6 @@
 import Std.C.realloc, free
 import Std.Stream.Stream, iter
-import Std.Fail.Fail, fail, no_fail
+import Std.Fail.Fail, fail, panic_on_fail
 
 export Vec, empty, of, is_empty, len, extend, capacity, reserve, push, pop, get, get_unchecked,
     remove_index, remove_first, remove_indices, remove_all, swap_last,
@@ -90,7 +90,7 @@ Vec.remove_index (v: mut Vec t) (idx: Usz) {Fail}: t =
 Vec.remove_first (v: mut Vec t) (elem: t) {Eq t} {Copy t}: Maybe Usz =
     for i in 0 .. v.len do
         if elem == v.data.[i] then
-            v.remove_index i ~> no_fail
+            v.remove_index i ~> panic_on_fail
             return Some i
     None
 
@@ -128,7 +128,7 @@ Vec.remove_all (v: mut Vec t) (elem: t) {Eq t} {Copy t}: Usz =
             idxs.push i
 
     count = idxs.len
-    v.remove_indices idxs ~> no_fail
+    v.remove_indices idxs ~> panic_on_fail
     count
 
 

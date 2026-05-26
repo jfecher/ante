@@ -2,7 +2,7 @@ import Std.Vec.Vec, empty, of, is_empty, len, capacity, reserve, push, pop, get,
     remove_index, remove_first, remove_indices, remove_all, swap_last,
     print_vec, extract_vec, stream_imm_vec, eq_vec
 
-import Std.Fail.try_or, no_fail
+import Std.Fail.on_fail, panic_on_fail
 import Std.Stream.iter, stream_array
 
 main () =
@@ -29,13 +29,13 @@ test_basics () =
     v.push 3i32
     v.push 4
     v.push 5
-    v.remove_index 1 ~> no_fail
+    v.remove_index 1 ~> panic_on_fail
     println (ref v)
 
     v.pop ()
     println (ref v)
 
-    println ((v.get 0).* ~> try_or 0)
+    println ((v.get 0).* ~> on_fail (do 0))
     println (v.is_empty ())
     println (v.len ())
     println (v.capacity () >= v.len ())
@@ -56,7 +56,7 @@ test_remove_first () =
 test_remove_indices () =
     var v = Vec.of [10, 20, 30, 40, 50]
     idxs = Vec.of [1, 3]
-    v.remove_indices idxs ~> no_fail
+    v.remove_indices idxs ~> panic_on_fail
     println (ref v)
 
 test_remove_all () =
@@ -90,13 +90,14 @@ test_reverse () =
 
 test_swap () =
     var v = Vec.of [10, 20, 30]
-    v.swap 0 2 ~> no_fail
+    v.swap 0 2 ~> panic_on_fail
     println (ref v)
 
 test_insert () =
+    panic_on_fail do
     var v = Vec.of [1, 3, 5]
-    v.insert 1 2 ~> no_fail
-    v.insert 3 4 ~> no_fail
+    v.insert 1 2
+    v.insert 3 4
     println (ref v)
 
 test_dedup () =

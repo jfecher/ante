@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     diagnostics::{ErrorDefault, Location},
-    lexer::token::{F64, FloatKind, IntegerKind, Integer, Token},
+    lexer::token::{F64, FloatKind, Integer, IntegerKind, Token},
 };
 
 use super::ids::{ExprId, IdStore, NameId, NameStore, PathId, PatternId, TopLevelId};

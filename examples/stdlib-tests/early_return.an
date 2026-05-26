@@ -3,30 +3,29 @@ import Std.Stream.iota, iter, stream_fn
 
 main () =
     // Early return out of a stream consumer
-    // FIXME: `r`'s type can't be inferred
-    println <| with_early_return fn {r: EarlyReturn Usz} ->
+    println <| with_early_return do
         iter (iota 10) fn x ->
             if x > 3 then early_return x
         0
 
     // Search for the first index where x == 7; return Some i, or None if not found
-    println <| with_early_return fn r ->
+    println <| with_early_return do
         iter (iota 10) fn x ->
-            if x == 7 then early_return (Maybe.Some x) {r}
-        None
+            if x == 7 then early_return (Maybe.Some x)
+        Maybe.None
 
     // Same search but item is missing -> falls through to None
-    println <| with_early_return fn r ->
+    println <| with_early_return do
         iter (iota 5) fn x ->
-            if x == 99 then early_return (Maybe.Some x) {r}
-        None
+            if x == 99 then early_return (Maybe.Some x)
+        Maybe.None
 
     // Nested with_early_return: inner returns early but outer should continue
-    println <| with_early_return fn ro ->
-        inner = with_early_return fn ri ->
-            early_return 5 {ri}
+    println <| with_early_return fn ret_outer ->
+        inner = with_early_return fn ret_inner ->
+            early_return 5 {ret_inner}
             999  // unreachable
-        inner + 10  // inner did not abort outer
+        inner + 10
 
 // args: --delete-binary --no-color
 // expected stdout:

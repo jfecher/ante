@@ -513,7 +513,7 @@ impl<'a> CstDisplay<'a> {
             TypeKind::Lifetime(name) => {
                 write!(f, "'")?;
                 self.fmt_type_name(*name, context, f)
-            }
+            },
             TypeKind::Unit => write!(f, "Unit"),
             TypeKind::Integer(kind) => write!(f, "{kind}"),
             TypeKind::Float(kind) => write!(f, "{kind}"),

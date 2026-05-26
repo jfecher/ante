@@ -1,11 +1,13 @@
-export String, puts, putchar, getchar, exit, system, strlen,
+export String, cstring_copy, puts, putchar, getchar, exit, system, strlen,
     malloc, calloc, realloc, free, memcpy, memcmp,
     File, copy_file, fopen, fclose, fputs, fputc, fwrite,
     fgetc, fgets, ungetc, fgetpos, ftell, fsetpos, fseek, feof, ferror,
     FilePos, Clock, clock_gettime, nanosleep
 
-/// A C string is a pointer to a null-terminated character array
+/// A C string is a pointer to a null-terminated character array.
+/// This is meant to be used qualified as `C.String`
 type String = ptr: Ptr Char
+impl cstring_copy: Copy String with (.*) = deref
 
 // TODO: These functions use absolute sized types like I32
 //       which are not exact standins for C's integer types.

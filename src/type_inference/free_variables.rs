@@ -10,7 +10,7 @@ use crate::{
     },
     type_inference::{
         TypeChecker,
-        errors::TypeErrorKind,
+        errors::{Locateable, TypeErrorKind},
         types::{PrimitiveType, Type, TypeBindings},
     },
 };
@@ -48,9 +48,25 @@ impl TypeChecker<'_, '_> {
         }
 
         if !context.free_vars.is_empty() {
-            self.current_extended_context_mut().insert_closure_environment(id, context.free_vars);
             if is_move {
                 self.current_extended_context_mut().mark_move_closure(id);
+            }
+            self.current_extended_context_mut().insert_closure_environment(id, context.free_vars);
+        }
+    }
+
+    pub(super) fn record_move_captures(&mut self, id: ExprId, self_name: Option<NameId>) {
+        let mut context = FreeVars::default();
+        if let Some(name) = self_name {
+            context.defined_in_fn.insert(name);
+        }
+        context.find_free_variables(id, self);
+
+        let location = id.locate(self);
+        for name in &context.free_vars {
+            let typ = self.name_types[name].clone();
+            if !self.type_is_copy(&typ) {
+                self.move_tracker.record_move(super::affine::MovePath::Variable(*name), location.clone());
             }
         }
     }

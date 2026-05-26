@@ -6,7 +6,7 @@ use crate::{
     diagnostics::{Diagnostic, ImportSuggestion, Location},
     incremental::{ExportedDefinitions, GetCrateGraph, GetItem, VisibleImplicits},
     iterator_extensions::mapvec,
-    lexer::token::{FloatKind, IntegerKind, Integer},
+    lexer::token::{FloatKind, Integer, IntegerKind},
     name_resolution::{Origin, namespace::CrateId},
     parser::{
         cst::{self, Name, Pattern, TopLevelItemKind},

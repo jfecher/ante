@@ -1,8 +1,7 @@
-import Std.Fail.Fail, fail, try, try_or, try_or_else, assert, ignore_fail, retry_until_success
+import Std.Fail.Fail, fail, try, on_fail, assert, ignore_fail, retry_until_success
 import Std.C.malloc, free
 
 fail_int {Fail}: I32 = fail ()
-
 ok_int {Fail}: I32 = 7
 
 main () =
@@ -10,12 +9,9 @@ main () =
     println (try ok_int : Maybe I32)   // Some 7
     println (try fail_int : Maybe I32) // None
 
-    // try_or:
-    println (try_or ok_int 99)   // 7
-    println (try_or fail_int 99) // 99
-
-    // try_or_else:
-    println (try_or_else fail_int (fn () -> 42))  // 42
+    // on_fail:
+    println (on_fail ok_int do 42)    // 7
+    println (on_fail fail_int do 42)  // 42
 
     // assert:
     // TODO: type error when declaring `{f}` instead of `f`
@@ -50,7 +46,6 @@ main () =
 // Some 7
 // None
 // 7
-// 99
 // 42
 // asserted true
 // ignored fail

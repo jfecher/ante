@@ -571,6 +571,12 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         self.function_return_type = old_return_type;
         self.move_tracker = old_move_tracker;
+
+        // Must run before `check_for_closure` may be deferred, so later uses see the move.
+        if lambda.is_move {
+            self.record_move_captures(expr, self_name);
+        }
+
         let delayed = self.pop_implicits_scope();
 
         // pop_implicits_scope modifies the function by inserting implicit arguments, we need
@@ -584,21 +590,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             }
         } else {
             self.check_for_closure(expr, &function_type.environment, self_name, lambda.is_move);
-        }
-
-        // For `move` closures, record that each captured non-Copy variable has been moved
-        // in the outer scope. Copy types are simply copied into the environment.
-        if lambda.is_move {
-            if let Some(free_vars) = self.current_extended_context().get_closure_environment(expr) {
-                let free_vars: Vec<_> = free_vars.iter().copied().collect();
-                for name in free_vars {
-                    let typ = self.name_types[&name].clone();
-                    if !self.type_is_copy(&typ) {
-                        let location = expr.locate(self);
-                        self.move_tracker.record_move(super::affine::MovePath::Variable(name), location);
-                    }
-                }
-            }
         }
     }
 

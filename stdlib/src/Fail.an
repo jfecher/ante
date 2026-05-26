@@ -6,11 +6,7 @@ try (f: fn Fail => a): Maybe a =
     handler h for fail () -> None
     Some (f h)
 
-try_or (f: fn Fail => a) (default: a): a =
-    handler h for fail () -> default
-    f h
-
-try_or_else (f: fn Fail => a) (default: fn Unit => a): a =
+on_fail (f: fn Fail => a) (default: fn Unit => a): a =
     handler h for fail () -> default ()
     f h
 
@@ -19,12 +15,12 @@ assert (cond: Bool) {Fail} : Unit =
 
 /// Asserts the operation cannot fail.
 /// Panics at runtime if it does.
-no_fail (f: fn Fail => a): a =
-    try_or_else f fn () -> panic "no_fail: failed"
+panic_on_fail (f: fn Fail => a): a =
+    on_fail f do panic "panic_on_fail: failed"
 
 /// Ignores a `Fail` effect, discarding it and returning Unit
 ignore_fail (f: fn Fail => a): Unit =
-    try_or (fn h -> ignore (f h)) ()
+    on_fail (fn h -> ignore (f h)) do ()
 
 /// Retry a function until it succeeds (doesn't call fail).
 /// This should be used with functions using a Fail effect

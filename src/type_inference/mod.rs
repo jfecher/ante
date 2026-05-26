@@ -9,7 +9,7 @@ use crate::{
         self, DbHandle, ExportedDefinitions, ExportedTypes, GetItem, Resolve, TargetPointerSize, TypeCheckSCC,
     },
     iterator_extensions::{map_btree, mapvec},
-    lexer::token::{IntegerKind, Integer},
+    lexer::token::{Integer, IntegerKind},
     name_resolution::{
         Origin, ResolutionResult,
         namespace::{CrateId, SourceFileId},

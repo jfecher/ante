@@ -5,7 +5,7 @@ use inkwell::{
     basic_block::BasicBlock,
     builder::Builder,
     memory_buffer::MemoryBuffer,
-    module::Module,
+    module::{Linkage, Module},
     passes::PassBuilderOptions,
     targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine},
     types::{BasicType, BasicTypeEnum, IntType},
@@ -416,16 +416,58 @@ impl<'ctx> ModuleContext<'ctx> {
         self.incoming.clear();
     }
 
-    /// Emit a `main (): I32` wrapper around the source `main` that returns 0.
+    /// Emit a `main (argc, argv): I32` wrapper around the source `main` that
+    /// stashes the OS-supplied argc/argv into module-level globals (so
+    /// `Std.Env.args` can read them later via the accessor functions defined
+    /// below) and then calls the user's main, returning 0.
     fn codegen_main_wrapper(&mut self) {
         let Some(ante_main) = self.ante_main else { return };
 
         let i32_type = self.llvm.i32_type();
-        let wrapper_type = i32_type.fn_type(&[], false);
+        let ptr_type = self.llvm.ptr_type(AddressSpace::default());
+        let unit_type = self.llvm.struct_type(&[], false);
+
+        // Module-local globals holding argc/argv for the lifetime of the process.
+        let argc_global = self.module.add_global(i32_type, None, "ante_argc");
+        argc_global.set_initializer(&i32_type.const_zero());
+        argc_global.set_linkage(Linkage::Private);
+
+        let argv_global = self.module.add_global(ptr_type, None, "ante_argv");
+        argv_global.set_initializer(&ptr_type.const_null());
+        argv_global.set_linkage(Linkage::Private);
+
+        // Accessors used by `Std.Env`. If the program imported `Env.args`,
+        // codegen has already declared `ante_get_argc` / `ante_get_argv` as
+        // externs (signature `fn (Unit) -> X` ~ `i32 ({})` / `ptr ({})`).
+        // Reuse those declarations so the names line up; otherwise add fresh
+        // declarations with the matching signature.
+        let getc = self.module.get_function("ante_get_argc").unwrap_or_else(|| {
+            self.module.add_function("ante_get_argc", i32_type.fn_type(&[unit_type.into()], false), None)
+        });
+        let bb = self.llvm.append_basic_block(getc, "");
+        self.builder.position_at_end(bb);
+        let v = self.builder.build_load(i32_type, argc_global.as_pointer_value(), "").unwrap();
+        self.builder.build_return(Some(&v)).unwrap();
+
+        let getv = self.module.get_function("ante_get_argv").unwrap_or_else(|| {
+            self.module.add_function("ante_get_argv", ptr_type.fn_type(&[unit_type.into()], false), None)
+        });
+        let bb = self.llvm.append_basic_block(getv, "");
+        self.builder.position_at_end(bb);
+        let v = self.builder.build_load(ptr_type, argv_global.as_pointer_value(), "").unwrap();
+        self.builder.build_return(Some(&v)).unwrap();
+
+        // The C-callable main: (i32, i8**) -> i32.
+        let wrapper_type = i32_type.fn_type(&[i32_type.into(), ptr_type.into()], false);
         let wrapper = self.module.add_function("main", wrapper_type, None);
 
         let entry = self.llvm.append_basic_block(wrapper, "");
         self.builder.position_at_end(entry);
+
+        let argc = wrapper.get_nth_param(0).unwrap();
+        let argv = wrapper.get_nth_param(1).unwrap();
+        self.builder.build_store(argc_global.as_pointer_value(), argc).unwrap();
+        self.builder.build_store(argv_global.as_pointer_value(), argv).unwrap();
 
         let unit = self.unit_value().into();
         self.builder.build_direct_call(ante_main, &[unit], "").unwrap();

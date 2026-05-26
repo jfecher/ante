@@ -40,7 +40,7 @@ pub mod token;
 
 use crate::diagnostics::{Position, Span};
 use std::{str::Chars, sync::Arc};
-use token::{ClosingBracket, F64, FloatKind, IntegerKind, Integer, LexerError, Token, lookup_keyword};
+use token::{ClosingBracket, F64, FloatKind, Integer, IntegerKind, LexerError, Token, lookup_keyword};
 
 #[derive(Clone)]
 struct OpenBraces {
@@ -625,7 +625,7 @@ impl<'contents> Iterator for Lexer<'contents> {
                 } else {
                     Some((Token::Apostrophe, self.locate()))
                 }
-            }
+            },
             ('`', _) => self.lex_quoted(),
             ('/', '=') => {
                 self.previous_token_expects_indent = true;

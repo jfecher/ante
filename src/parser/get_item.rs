@@ -629,7 +629,7 @@ fn desugar_do(expr: ExprId, context: &mut DesugarContext) {
     let param = context.push_pattern(Pattern::Variable(name), location);
 
     let lambda = Expr::Lambda(cst::Lambda {
-        parameters: vec![Parameter::new(param)],
+        parameters: vec![Parameter::implicit(param)],
         return_type: None,
         body: do_.body,
         is_move: true,

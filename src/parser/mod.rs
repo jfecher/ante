@@ -1090,7 +1090,7 @@ impl<'tokens> Parser<'tokens> {
                 let name = self.parse_ident_id()?;
                 let location = start.to(&self.previous_token_location());
                 Ok(Type::new(TypeKind::Lifetime(name), location))
-            }
+            },
             Token::Identifier(_) => {
                 let location = self.current_token_location();
                 let name = self.parse_ident_id()?;
@@ -1962,11 +1962,7 @@ impl<'tokens> Parser<'tokens> {
             return;
         }
         let operator_location = op_span.in_file(self.file_id);
-        self.diagnostics.push(Diagnostic::ConfusingOperatorAfterBody {
-            body_kind,
-            operator_location,
-            body_location,
-        });
+        self.diagnostics.push(Diagnostic::ConfusingOperatorAfterBody { body_kind, operator_location, body_location });
     }
 
     fn parse_sequence_item(&mut self) -> Result<SequenceItem> {
@@ -1980,6 +1976,7 @@ impl<'tokens> Parser<'tokens> {
     fn parse_do(&mut self) -> Result<ExprId> {
         self.expect(Token::Do, "`do` to start this do expression")?;
         let start = self.previous_token_span();
+        self.accept(Token::Newline);
 
         let body = match self.current_token() {
             Token::Indent => self.parse_block()?,

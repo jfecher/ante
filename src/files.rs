@@ -41,8 +41,7 @@ pub fn write_metadata(compiler: &Db, metadata_file: &Path) -> Result<(), String>
 }
 
 pub(crate) fn read_file(file_name: &std::path::Path) -> Result<String, String> {
-    std::fs::read_to_string(file_name)
-        .map_err(|error| format!("Failed to read `{}`:\n{error}", file_name.display()))
+    std::fs::read_to_string(file_name).map_err(|error| format!("Failed to read `{}`:\n{error}", file_name.display()))
 }
 
 fn read_binary_file(file_name: &std::path::Path) -> Result<Vec<u8>, String> {

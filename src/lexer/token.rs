@@ -116,11 +116,7 @@ impl Integer {
     }
 
     pub fn negated(self) -> Self {
-        if self.magnitude == 0 {
-            self
-        } else {
-            Self { magnitude: self.magnitude, negative: !self.negative }
-        }
+        if self.magnitude == 0 { self } else { Self { magnitude: self.magnitude, negative: !self.negative } }
     }
 
     /// Sign-extended bit representation used by pattern matching and any other consumer
