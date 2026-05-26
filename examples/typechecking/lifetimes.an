@@ -1,0 +1,40 @@
+import Std.Slice.Slice, slice
+
+first_of (array: ref Array n t): ref t =
+    array_get_unchecked array 0
+
+first_of_explicit (array: ref 'a Array n t): ref 'a t =
+    array_get_unchecked array 0
+
+mix (a: ref 'a Array n t) (b: ref Array m t): ref 'a t =
+    array_get_unchecked a 0
+
+main () =
+    arr = [1, 2, 3]
+    s = slice (ref arr)
+    _ = s.len
+    _ = first_of (ref arr)
+    _ = first_of_explicit (ref arr)
+    ()
+
+// args: -e ast-t --no-color
+// expected stdout:
+// import Std.Slice.Slice, slice
+// 
+// (first_of: fn (ref (Array n t)) -> ref t) ((array: ref (Array n t))) : ref t =
+//     (array_get_unchecked: fn (ref (Array n t)) Usz -> ref t) (array: ref (Array n t)) 0
+// 
+// (first_of_explicit: fn (ref a (Array n t)) -> ref a t) ((array: ref a (Array n t))) : ref 'a t =
+//     (array_get_unchecked: fn (ref a (Array n t)) Usz -> ref a t) (array: ref a (Array n t)) 0
+// 
+// (mix: fn (ref a (Array n t)) (ref (Array m t)) -> ref a t) ((a: ref a (Array n t))) ((b: ref (Array m t))) : ref 'a t =
+//     (array_get_unchecked: fn (ref a (Array n t)) Usz -> ref a t) (a: ref a (Array n t)) 0
+// 
+// (main: fn Unit -> Unit) () =
+//     (arr: Array 3 I32) = [1, 2, 3]
+//     (s: Slice _ I32) = (slice: fn (ref (Array 3 I32)) -> Slice _ I32) (ref (arr: Array 3 I32))
+//     (_: Usz) = (s: Slice _ I32).len
+//     (_: ref I32) = (first_of: fn (ref (Array 3 I32)) -> ref I32) (ref (arr: Array 3 I32))
+//     (_: ref I32) = (first_of_explicit: fn (ref (Array 3 I32)) -> ref I32) (ref (arr: Array 3 I32))
+//     ()
+

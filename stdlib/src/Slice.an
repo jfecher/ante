@@ -1,0 +1,8 @@
+export Slice, slice
+
+type Slice 'a t =
+    data: ref 'a t
+    len: Usz
+
+slice (array: ref 'a Array n t): Slice 'a t =
+    Slice (transmute array) (array_len array)

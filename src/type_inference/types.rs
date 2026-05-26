@@ -27,6 +27,7 @@ pub(crate) fn kind_from_annotation(kind: KindAnnotation) -> Kind {
     match kind {
         KindAnnotation::Type => Kind::Type,
         KindAnnotation::U32 => Kind::U32,
+        KindAnnotation::Lifetime => Kind::Lifetime,
     }
 }
 
@@ -555,7 +556,7 @@ impl Type {
             },
             crate::parser::cst::TypeKind::Reference(kind) => (
                 Type::Primitive(PrimitiveType::Reference(*kind)),
-                Kind::TypeConstructorSimple(NonZeroUsize::new(1).unwrap()),
+                Kind::TypeConstructorComplex(vec![Kind::Lifetime, Kind::Type]),
             ),
             crate::parser::cst::TypeKind::NoClosureEnv => (Type::NO_CLOSURE_ENV, Kind::Type),
             crate::parser::cst::TypeKind::Pointer => {
@@ -575,6 +576,13 @@ impl Type {
             crate::parser::cst::TypeKind::Hole => {
                 db.accumulate(Diagnostic::HoleCantBeUsed { location: typ.location.clone() });
                 (Type::ERROR, Kind::Error)
+            },
+            // TODO: There is a separate check in type definition bodies to reject these.
+            // Rework it to be more similar to the HoleCantBeUsed above.
+            crate::parser::cst::TypeKind::ImplicitLifetime => {
+                let typ = Type::Variable(TypeVariableId(*next_id));
+                *next_id += 1;
+                (typ, Kind::Lifetime)
             },
             crate::parser::cst::TypeKind::IntegerConstant(v) => (Type::U32(*v), Kind::U32),
             crate::parser::cst::TypeKind::Forall(generics, body) => {
@@ -742,8 +750,8 @@ impl Type {
     /// If this is a reference type, return the reference kind and its element type
     pub fn reference_element(&self, bindings: &TypeBindings) -> Option<(ReferenceKind, Type)> {
         match self.follow(bindings) {
-            Type::Application(constructor, args) if !args.is_empty() => {
-                constructor.reference_constructor(bindings).map(|kind| (kind, args[0].clone()))
+            Type::Application(constructor, args) if args.len() >= 2 => {
+                constructor.reference_constructor(bindings).map(|kind| (kind, args[1].clone()))
             },
             _ => None,
         }
@@ -766,11 +774,14 @@ impl Type {
 
     pub fn reference_or_pointer_element<'a>(&'a self, bindings: &'a TypeBindings) -> Option<&'a Type> {
         match self.follow(bindings) {
-            Type::Application(constructor, args)
-                if constructor.pointer_constructor(bindings)
-                    || constructor.reference_constructor(bindings).is_some() =>
-            {
-                args.get(0)
+            Type::Application(constructor, args) => {
+                if constructor.reference_constructor(bindings).is_some() {
+                    args.get(1)
+                } else if constructor.pointer_constructor(bindings) {
+                    args.get(0)
+                } else {
+                    None
+                }
             },
             _ => None,
         }
@@ -864,8 +875,13 @@ where
                     write!(f, ", ")?;
                     self.fmt_type(&args[1], true, f)
                 } else {
+                    let skip_implicit_lifetime = args.len() == 2
+                        && matches!(constructor.follow(self.bindings), Type::Primitive(PrimitiveType::Reference(_)))
+                        && matches!(args[0].follow(self.bindings), Type::Variable(_));
+
                     self.fmt_type(constructor, true, f)?;
-                    for arg in args.iter() {
+                    let start = if skip_implicit_lifetime { 1 } else { 0 };
+                    for arg in args[start..].iter() {
                         write!(f, " ")?;
                         self.fmt_type(arg, true, f)?;
                     }

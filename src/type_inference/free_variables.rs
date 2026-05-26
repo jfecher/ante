@@ -222,7 +222,8 @@ fn make_env_type_with_names(free_vars: &BTreeSet<NameId>, checker: &TypeChecker,
         // - Capture immutable variables by value (FIXME)
         // - Capture everything by move if it is a `move` closure
         if !is_move && checker.mutable_definitions.contains(name) {
-            Type::Application(Arc::new(Type::MUT), Arc::new(vec![typ]))
+            let lifetime = checker.next_type_variable();
+            Type::Application(Arc::new(Type::MUT), Arc::new(vec![lifetime, typ]))
         } else {
             typ
         }

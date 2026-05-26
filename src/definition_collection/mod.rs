@@ -229,6 +229,7 @@ fn kind_of_generic_param(param: &crate::parser::cst::GenericParam) -> Kind {
     match param.kind {
         None | Some(KindAnnotation::Type) => Kind::Type,
         Some(KindAnnotation::U32) => Kind::U32,
+        Some(KindAnnotation::Lifetime) => Kind::Lifetime,
     }
 }
 

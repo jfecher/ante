@@ -251,6 +251,11 @@ pub enum Diagnostic {
     HoleCantBeUsed {
         location: Location,
     },
+    /// A reference type appeared in a type-constructor position (e.g. inside a
+    /// `type ... = ...` body) without an explicit `'name` lifetime.
+    MissingExplicitLifetime {
+        location: Location,
+    },
     FreeVarsInTypeConstructor {
         location: Location,
     },
@@ -622,6 +627,9 @@ impl Diagnostic {
             Diagnostic::HoleCantBeUsed { location: _ } => {
                 format!("A type hole can't be used in this position")
             },
+            Diagnostic::MissingExplicitLifetime { location: _ } => {
+                format!("A reference in this position requires an explicit `'a` lifetime")
+            },
             Diagnostic::FreeVarsInTypeConstructor { location: _ } => {
                 format!("Internal compiler error: there are free variables in this type constructor")
             },
@@ -709,6 +717,7 @@ impl Diagnostic {
             | Diagnostic::MoveInRepeatedContext { location, .. }
             | Diagnostic::AbilityTypeCantBeUsed { location, .. }
             | Diagnostic::HoleCantBeUsed { location, .. }
+            | Diagnostic::MissingExplicitLifetime { location, .. }
             | Diagnostic::FreeVarsInTypeConstructor { location, .. }
             | Diagnostic::HandlerMissingMethods { location, .. }
             | Diagnostic::HandlerDuplicateMethod { second_location: location, .. }

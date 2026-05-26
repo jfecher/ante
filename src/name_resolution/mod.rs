@@ -811,6 +811,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             | TypeKind::Pointer
             | TypeKind::Hole
             | TypeKind::Reference(..)
+            | TypeKind::ImplicitLifetime
             | TypeKind::IntegerConstant(_) => (),
             TypeKind::Named(path) => self.link(*path, false, true),
             TypeKind::Variable(name) | TypeKind::Lifetime(name) => self.resolve_variable(*name, declare_type_vars),

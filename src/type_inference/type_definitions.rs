@@ -4,6 +4,7 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     diagnostics::{Diagnostic, UnimplementedItem},
+    incremental::DbHandle,
     iterator_extensions::mapvec,
     name_resolution::{Origin, ResolutionResult, builtin::Builtin},
     parser::{
@@ -80,6 +81,51 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
+    /// Walk a field type and emit a `MissingExplicitLifetime` diagnostic for
+    /// every `ImplicitLifetime` placeholder. Lifetimes on references must be written out
+    /// in type-definition bodies.
+    fn reject_implicit_lifetimes(typ: &cst::Type, db: &DbHandle) {
+        match &typ.kind {
+            cst::TypeKind::ImplicitLifetime => {
+                db.accumulate(Diagnostic::MissingExplicitLifetime { location: typ.location.clone() });
+            },
+            cst::TypeKind::Application(f, args) => {
+                Self::reject_implicit_lifetimes(f, db);
+                for arg in args {
+                    Self::reject_implicit_lifetimes(arg, db);
+                }
+            },
+            cst::TypeKind::Function(function) => {
+                for parameter in &function.parameters {
+                    Self::reject_implicit_lifetimes(&parameter.typ, db);
+                }
+                if let Some(env) = function.environment.as_ref() {
+                    Self::reject_implicit_lifetimes(env, db);
+                }
+                Self::reject_implicit_lifetimes(&function.return_type, db);
+            },
+            cst::TypeKind::Tuple(elements) => {
+                for element in elements {
+                    Self::reject_implicit_lifetimes(element, db);
+                }
+            },
+            cst::TypeKind::Forall(_, body) => Self::reject_implicit_lifetimes(body, db),
+            cst::TypeKind::Error
+            | cst::TypeKind::Named(_)
+            | cst::TypeKind::Variable(_)
+            | cst::TypeKind::Integer(_)
+            | cst::TypeKind::Float(_)
+            | cst::TypeKind::Char
+            | cst::TypeKind::Reference(_)
+            | cst::TypeKind::Pointer
+            | cst::TypeKind::NoClosureEnv
+            | cst::TypeKind::Hole
+            | cst::TypeKind::Unit
+            | cst::TypeKind::Lifetime(_)
+            | cst::TypeKind::IntegerConstant(_) => (),
+        }
+    }
+
     /// True only if `typ` uses `target` unboxed.
     /// Used to check for recursively infinitely sized types.
     fn type_uses_target_unboxed(typ: &cst::Type, target: Origin, resolve: &ResolutionResult) -> bool {
@@ -110,6 +156,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             | cst::TypeKind::Integer(_)
             | cst::TypeKind::Float(_)
             | cst::TypeKind::Lifetime(_)
+            | cst::TypeKind::ImplicitLifetime
             | cst::TypeKind::IntegerConstant(_) => false,
         }
     }
@@ -171,6 +218,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let (mut result, substitutions) = self.type_definition_type(type_name, item, false);
         assert!(substitutions.is_empty());
 
+        // TODO: Change lifetime desugaring to work on function types better.
+        // `fn (ref t) (ref t) -> Bool` should likely be `forall 'a. fn (ref 'a t) (ref 'a t) -> Bool`
+        if !item.is_ability {
+            for arg in variant_args {
+                Self::reject_implicit_lifetimes(arg, self.compiler);
+            }
+        }
+
         let parameters = mapvec(variant_args, |arg| {
             let param = self.from_cst_type_with_local_kinds(arg, false, local_kinds);
             types::ParameterType::explicit(param)
@@ -188,17 +243,36 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             result = Type::Forall(Arc::new(generics.to_vec()), Arc::new(result));
         }
 
-        // This should be prevented by the `false` flag in `from_cst_type` above but is included
-        // as a sanity check to prevent things from going very wrong.
+        // The `false` flag above is normally enough to keep types closed, but ability
+        // method signatures may carry `ImplicitLifetime` placeholders that become fresh
+        // type variables. Promote any such inferred free vars into the surrounding
+        // `Forall` so the constructor stays a closed polytype.
         let free_vars = result.free_vars(&self.bindings);
         if !free_vars.is_empty() {
-            let location = self.current_context().name_location(type_name.local_name_id).clone();
-            self.compiler.accumulate(Diagnostic::FreeVarsInTypeConstructor { location });
-
-            for var in free_vars {
-                if let Generic::Inferred(id) = var {
-                    self.bindings.insert(id, Type::ERROR);
+            let mut inferred = Vec::new();
+            let mut bad_named = false;
+            for var in &free_vars {
+                match var {
+                    Generic::Inferred(_) => inferred.push(*var),
+                    _ => bad_named = true,
                 }
+            }
+
+            if bad_named {
+                let location = self.current_context().name_location(type_name.local_name_id).clone();
+                self.compiler.accumulate(Diagnostic::FreeVarsInTypeConstructor { location });
+            }
+
+            if !inferred.is_empty() {
+                result = match result {
+                    Type::Forall(existing, body) => {
+                        let mut combined = Vec::with_capacity(existing.len() + inferred.len());
+                        combined.extend(existing.iter().copied());
+                        combined.extend(inferred);
+                        Type::Forall(Arc::new(combined), body)
+                    },
+                    other => Type::Forall(Arc::new(inferred), Arc::new(other)),
+                };
             }
         }
 

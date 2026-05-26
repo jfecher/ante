@@ -138,6 +138,12 @@ pub enum TypeKind {
     /// A filler type which corresponds to an unbound type variable to be inferred later
     Hole,
 
+    /// Synthesized by the parser for the lifetime arg of `ref t` / `mut t` / `imm t` /
+    /// `uniq t` when no `'name` was written. Becomes a fresh lifetime variable in normal
+    /// positions, and is rejected with `MissingExplicitLifetime` inside type-definition
+    /// bodies where lifetimes must be explicit.
+    ImplicitLifetime,
+
     /// A generic prepended with '
     Lifetime(NameId),
 
@@ -588,11 +594,13 @@ impl GenericParam {
 }
 
 /// Surface syntax for kind annotations on generic parameters.
-/// Limited to `Type` and `U32` for now; the latter is needed for type-level array lengths.
+/// `U32` is needed for type-level array lengths; `Lifetime` for reference lifetime
+/// parameters introduced via `'a`.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum KindAnnotation {
     Type,
     U32,
+    Lifetime,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]

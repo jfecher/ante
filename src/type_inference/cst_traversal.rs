@@ -867,18 +867,18 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Type::Application(constructor, args) => {
                 let constructor = constructor.clone();
                 let args = args.clone();
-                let first_arg = args.first();
+                let element_arg = args.get(1);
 
                 match self.follow_type(&constructor) {
                     Type::Primitive(types::PrimitiveType::Reference(..)) => {
                         self.unify(&actual, &constructor, TypeErrorKind::ReferenceKind, expr);
 
                         // Expect incorrect arg counts to be resolved beforehand
-                        first_arg.unwrap().clone()
+                        element_arg.unwrap().clone()
                     },
                     _ => {
                         if self.unify(&actual, expected, TypeErrorKind::ExpectedNonReference, expr) {
-                            first_arg.unwrap().clone()
+                            element_arg.unwrap().clone()
                         } else {
                             Type::ERROR
                         }
@@ -887,8 +887,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
             Type::Variable(id) => {
                 let id = *id;
+                let lifetime = self.next_type_variable();
                 let element = self.next_type_variable();
-                let expected = Type::Application(Arc::new(actual), Arc::new(vec![element.clone()]));
+                let expected = Type::Application(Arc::new(actual), Arc::new(vec![lifetime, element.clone()]));
                 self.bindings.insert(id, expected);
                 element
             },
@@ -1052,7 +1053,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         let value_type = if lhs_is_ref {
             match self.follow_type(&lhs_type) {
-                Type::Application(_, args) => args[0].clone(),
+                // Reference applications carry a lifetime in slot 0 and the element in slot 1.
+                Type::Application(_, args) => args[1].clone(),
                 _ => unreachable!(),
             }
         } else {

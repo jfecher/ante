@@ -726,6 +726,11 @@ impl<'tokens> Parser<'tokens> {
                 let name = self.parse_ident_id()?;
                 Ok(GenericParam { name, kind: None })
             },
+            Token::Apostrophe if matches!(self.try_peek_next_token(), Some(Token::Identifier(_))) => {
+                self.advance();
+                let name = self.parse_ident_id()?;
+                Ok(GenericParam { name, kind: Some(KindAnnotation::Lifetime) })
+            },
             Token::ParenthesisLeft
                 if matches!(self.try_peek_next_token(), Some(Token::Identifier(_)))
                     && self.tokens.get(self.token_index + 2).map(|(t, _)| t) == Some(&Token::Colon) =>
@@ -872,7 +877,6 @@ impl<'tokens> Parser<'tokens> {
         self.parse_pair_type()
     }
 
-    // TODO: Parse lifetime & element type
     fn parse_reference_type(&mut self) -> Result<Type> {
         let start = self.current_token_location();
         let kind = match self.current_token() {
@@ -888,11 +892,25 @@ impl<'tokens> Parser<'tokens> {
     }
 
     fn parse_reference_element_type(&mut self, kind: cst::ReferenceKind, ref_location: Location) -> Result<Type> {
+        // An optional `'name` lifetime can appear directly after the reference keyword,
+        // e.g. `ref 'a t`. If omitted, the lifetime slot is filled with an `ImplicitLifetime`
+        // placeholder so the type lowering can insert a fresh lifetime variable (or, in
+        // type-definition bodies, reject it).
+        let lifetime = if matches!(self.current_token(), Token::Apostrophe) {
+            let start = self.current_token_location();
+            self.advance();
+            let name = self.parse_ident_id()?;
+            let location = start.to(&self.previous_token_location());
+            Type::new(TypeKind::Lifetime(name), location)
+        } else {
+            Type::new(TypeKind::ImplicitLifetime, ref_location.clone())
+        };
+
         match self.parse_type_application() {
             Ok(application) => {
                 let location = ref_location.to(&application.location);
                 let ref_type = Type::new(TypeKind::Reference(kind), ref_location);
-                Ok(Type::new(TypeKind::Application(Box::new(ref_type), vec![application]), location))
+                Ok(Type::new(TypeKind::Application(Box::new(ref_type), vec![lifetime, application]), location))
             },
             Err(_) => Ok(Type::new(TypeKind::Reference(kind), ref_location)),
         }

@@ -302,10 +302,15 @@ impl<'a> CstDisplay<'a> {
         &self, param: &cst::GenericParam, context: &impl IdStore, f: &mut Formatter,
     ) -> std::fmt::Result {
         match param.kind {
+            Some(cst::KindAnnotation::Lifetime) => {
+                write!(f, "'")?;
+                self.fmt_type_name(param.name, context, f)
+            },
             Some(kind) => {
                 let kind_str = match kind {
                     cst::KindAnnotation::Type => "type",
                     cst::KindAnnotation::U32 => "U32",
+                    cst::KindAnnotation::Lifetime => unreachable!(),
                 };
                 write!(f, "(")?;
                 self.fmt_type_name(param.name, context, f)?;
@@ -520,6 +525,7 @@ impl<'a> CstDisplay<'a> {
             TypeKind::Pointer => write!(f, "Ptr"),
             TypeKind::Tuple(elements) => self.fmt_tuple_type(elements, context, f),
             TypeKind::Hole => write!(f, "_"),
+            TypeKind::ImplicitLifetime => write!(f, "'_"),
             TypeKind::IntegerConstant(n) => write!(f, "{n}"),
             TypeKind::Forall(generics, body) => {
                 write!(f, "forall")?;
@@ -558,6 +564,17 @@ impl<'a> CstDisplay<'a> {
     ) -> std::fmt::Result {
         if self.is_pair_type(constructor, context) {
             return self.fmt_pair_type(args, context, f);
+        }
+
+        if let TypeKind::Reference(kind) = &constructor.kind {
+            if args.len() == 2 {
+                self.fmt_reference_type(*kind, f)?;
+                if !matches!(args[0].kind, TypeKind::ImplicitLifetime) {
+                    write!(f, " ")?;
+                    self.fmt_type(&args[0], context, f)?;
+                }
+                return self.fmt_type_args(&args[1..], context, f);
+            }
         }
 
         let requires_parens = |typ: &Type| matches!(typ.kind, TypeKind::Function(_) | TypeKind::Application(..));

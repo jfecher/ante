@@ -476,12 +476,12 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 // Auto-deref: coerce `ref-kind t` to `t` by inserting a `(.*) expr` call if `Copy t`
                 // can be found.
                 if let Type::Application(constructor, args) = &actual {
-                    if args.len() == 1
+                    if args.len() == 2
                         && matches!(self.follow_type(constructor), Type::Primitive(PrimitiveType::Reference(_)))
                         && !matches!(&expected, Type::Variable(_))
                         && expected.reference_element(&self.bindings).is_none()
                     {
-                        let arg = args[0].clone();
+                        let arg = args[1].clone();
                         let expected = expected.clone();
                         if let Ok(bindings) = self.try_unify(&arg, &expected) {
                             self.bindings.extend(bindings);
@@ -496,7 +496,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 // explicitly because of their aliasing/affine semantics. Skip when `actual`
                 // is itself a reference (subtyping through `try_unify` handles those cases).
                 if let Type::Application(expected_ctor, expected_args) = &expected {
-                    if expected_args.len() == 1
+                    if expected_args.len() == 2
                         && !matches!(&actual, Type::Variable(_))
                         && actual.reference_element(&self.bindings).is_none()
                     {
@@ -506,7 +506,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                         };
                         if let Some(kind) = kind {
                             if matches!(kind, ReferenceKind::Ref | ReferenceKind::Imm) {
-                                let inner = expected_args[0].clone();
+                                let inner = expected_args[1].clone();
                                 let actual = actual.clone();
                                 if let Ok(bindings) = self.try_unify(&actual, &inner) {
                                     self.bindings.extend(bindings);
@@ -779,16 +779,24 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 // If the constructor is a reference kind (mut, ref, imm, uniq) or `Ptr`,
                 // look up the fields of the inner type and wrap each field type in the
                 // same constructor (so the field is accessible as an offset).
-                if matches!(
-                    self.follow_type(&constructor),
-                    Type::Primitive(PrimitiveType::Reference(_)) | Type::Primitive(PrimitiveType::Pointer),
-                ) {
-                    let inner = arguments[0].clone();
+                let is_reference =
+                    matches!(self.follow_type(&constructor), Type::Primitive(PrimitiveType::Reference(_)));
+                let is_pointer = matches!(self.follow_type(&constructor), Type::Primitive(PrimitiveType::Pointer));
+                if is_reference || is_pointer {
+                    let (lifetime, inner) = if is_reference {
+                        (Some(arguments[0].clone()), arguments[1].clone())
+                    } else {
+                        (None, arguments[0].clone())
+                    };
                     let inner_fields = self.get_field_types(&inner, None);
                     return inner_fields
                         .into_iter()
                         .map(|(name, (field_type, index))| {
-                            let wrapped = Type::Application(constructor.clone(), Arc::new(vec![field_type]));
+                            let wrapped_args = match &lifetime {
+                                Some(lifetime) => vec![lifetime.clone(), field_type],
+                                None => vec![field_type],
+                            };
+                            let wrapped = Type::Application(constructor.clone(), Arc::new(wrapped_args));
                             (name, (wrapped, index))
                         })
                         .collect();
