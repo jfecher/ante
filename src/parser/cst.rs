@@ -138,6 +138,9 @@ pub enum TypeKind {
     /// A filler type which corresponds to an unbound type variable to be inferred later
     Hole,
 
+    /// A generic prepended with '
+    Lifetime(NameId),
+
     /// An explicit `forall (n: U32) t. T` polytype
     Forall(Generics, Box<Type>),
 }

@@ -28,6 +28,9 @@ pub enum Kind {
     /// A type-level `U32` used (for example) as an array length.
     U32,
 
+    /// The lifetime of a temporary reference
+    Lifetime,
+
     /// An error occurred while resolving the type this kind belongs to
     Error,
 }
@@ -72,7 +75,7 @@ impl Kind {
                 }
                 Ok(())
             },
-            Kind::U32 => {
+            Kind::U32 | Kind::Lifetime => {
                 if args.is_empty() {
                     Ok(())
                 } else {
@@ -94,6 +97,7 @@ impl Kind {
                 l_kinds.len() == r_kinds.len() && l_kinds.iter().zip(r_kinds).all(|(l, r)| l.unifies(r))
             },
             (Kind::U32, Kind::U32) => true,
+            (Kind::Lifetime, Kind::Lifetime) => true,
             _ => false,
         }
     }
@@ -110,22 +114,21 @@ impl Kind {
     }
 
     pub fn required_argument_count(&self) -> usize {
+        use Kind::*;
         match self {
-            Kind::Type => 0,
+            Type | U32 | Lifetime | Error => 0,
             Kind::TypeConstructorSimple(n) => (*n).into(),
             Kind::TypeConstructorComplex(kinds) => kinds.len(),
-            Kind::U32 => 0,
-            Kind::Error => 0,
         }
     }
 
     /// True if this Kind accepts `n` arguments (partial application is disallowed).
     pub fn accepts_n_arguments(&self, n: usize) -> bool {
+        use Kind::*;
         match self {
-            Kind::Type => n == 0,
+            Type | U32 | Lifetime => n == 0,
             Kind::TypeConstructorSimple(count) => n == usize::from(*count),
             Kind::TypeConstructorComplex(kinds) => n == kinds.len(),
-            Kind::U32 => n == 0,
             Kind::Error => true,
         }
     }
@@ -141,6 +144,7 @@ impl Kind {
             },
             Kind::TypeConstructorComplex(kinds) => kinds[n].clone(),
             Kind::U32 => panic!("Kind::U32 has no parameters"),
+            Kind::Lifetime => panic!("Kind::Lifetime has no parameters"),
             Kind::Error => Kind::Error, // Try to avoid further errors
         }
     }
@@ -149,11 +153,9 @@ impl Kind {
 impl std::fmt::Display for Kind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let should_parenthesize = |kind: &Kind| match kind {
-            Kind::Type => false,
+            Kind::Type | Kind::U32 | Kind::Lifetime | Kind::Error => false,
             Kind::TypeConstructorSimple(_) => true,
             Kind::TypeConstructorComplex(_) => true,
-            Kind::U32 => false,
-            Kind::Error => false,
         };
 
         match self {
@@ -175,6 +177,7 @@ impl std::fmt::Display for Kind {
                 write!(f, "type")
             },
             Kind::U32 => write!(f, "U32"),
+            Kind::Lifetime => write!(f, "lifetime"),
             Kind::Error => write!(f, "<Error>"),
         }
     }

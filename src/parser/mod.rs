@@ -1066,6 +1066,13 @@ impl<'tokens> Parser<'tokens> {
                 let location = start.to(&self.previous_token_location());
                 Ok(Type::new(TypeKind::Named(path), location))
             },
+            Token::Apostrophe => {
+                let start = self.current_token_location();
+                self.advance();
+                let name = self.parse_ident_id()?;
+                let location = start.to(&self.previous_token_location());
+                Ok(Type::new(TypeKind::Lifetime(name), location))
+            }
             Token::Identifier(_) => {
                 let location = self.current_token_location();
                 let name = self.parse_ident_id()?;

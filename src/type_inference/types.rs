@@ -491,7 +491,7 @@ impl Type {
                 let origin = resolve.path_origins.get(path).copied();
                 Self::convert_origin_to_type(origin, db, &typ.location, local_kinds, Type::UserDefined)
             },
-            crate::parser::cst::TypeKind::Variable(name) => {
+            crate::parser::cst::TypeKind::Variable(name) | crate::parser::cst::TypeKind::Lifetime(name) => {
                 let origin = resolve.name_origins.get(name).copied();
                 if let (Some(expected), Some(Origin::Local(name_id))) = (expected, origin) {
                     local_kinds.entry(name_id).or_insert_with(|| expected.clone());

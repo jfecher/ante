@@ -339,6 +339,7 @@ pub enum Token {
     Index,              // .[
     Copy,               // .*
     Octothorpe,         // #
+    Apostrophe,         // '
 }
 
 impl Token {
@@ -555,6 +556,7 @@ impl Display for Token {
             Token::Index => write!(f, "{INDEX_OPERATOR_FUNCTION_NAME}"),
             Token::Copy => write!(f, ".*"),
             Token::Octothorpe => write!(f, "#"),
+            Token::Apostrophe => write!(f, "'"),
             Token::Quoted(tokens) => {
                 write!(f, "'")?;
                 for token in tokens.iter() {

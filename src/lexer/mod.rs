@@ -367,9 +367,9 @@ impl<'contents> Lexer<'contents> {
         Some((Token::Quoted(Arc::new(tokens)), span))
     }
 
+    /// Lex a character literal like 'a' or '\\'
+    /// Expects the initial ' to already be advanced past
     fn lex_char_literal(&mut self) -> IterElem {
-        self.advance(); // '
-
         let contents = if self.current == '\\' {
             self.advance();
             match self.current {
@@ -603,7 +603,6 @@ impl<'contents> Iterator for Lexer<'contents> {
 
         match (self.current, self.next) {
             (c, _) if c.is_ascii_digit() => self.lex_number(),
-            ('c', '"') => self.lex_char_literal(),
             (c, _) if c.is_alphanumeric() || c == '_' => self.lex_alphanumeric(),
             ('\0', _) => {
                 self.advance();
@@ -619,7 +618,14 @@ impl<'contents> Iterator for Lexer<'contents> {
                 self.pending_interpolations.push(self.open_braces.curly);
                 self.advance2_with(Token::Interpolate)
             },
-            ('\'', _) => self.lex_char_literal(),
+            ('\'', _) => {
+                self.advance();
+                if self.next == '\'' || self.current == '\\' {
+                    self.lex_char_literal()
+                } else {
+                    Some((Token::Apostrophe, self.locate()))
+                }
+            }
             ('`', _) => self.lex_quoted(),
             ('/', '=') => {
                 self.previous_token_expects_indent = true;

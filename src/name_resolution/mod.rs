@@ -813,7 +813,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             | TypeKind::Reference(..)
             | TypeKind::IntegerConstant(_) => (),
             TypeKind::Named(path) => self.link(*path, false, true),
-            TypeKind::Variable(name) => self.resolve_variable(*name, declare_type_vars),
+            TypeKind::Variable(name) | TypeKind::Lifetime(name) => self.resolve_variable(*name, declare_type_vars),
             TypeKind::Function(function) => {
                 for parameter in &function.parameters {
                     self.resolve_type(&parameter.typ, declare_type_vars);

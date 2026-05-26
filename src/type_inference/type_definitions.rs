@@ -109,6 +109,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             | cst::TypeKind::Char
             | cst::TypeKind::Integer(_)
             | cst::TypeKind::Float(_)
+            | cst::TypeKind::Lifetime(_)
             | cst::TypeKind::IntegerConstant(_) => false,
         }
     }
