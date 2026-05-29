@@ -747,7 +747,17 @@ impl Builder {
         match instruction {
             mir::Instruction::Call { function, arguments } => {
                 self.write_result_binding(id, definition);
-                self.write_value(function, mir);
+                // Emit a direct call when the function position resolves to a known definition: a
+                // free function, or an operator/method stored in a constant ability-dictionary
+                // global. cc can inline a direct call but not an opaque call through a function
+                // pointer loaded from a mutable global, so this is where most of the C backend's
+                // per-operation overhead is removed.
+                match resolve_function_id(*function, definition, mir, RESOLVE_FUEL)
+                    .filter(|target| mir.get_name(*target).is_some())
+                {
+                    Some(target) => self.write_value(&mir::Value::Definition(target), mir),
+                    None => self.write_value(function, mir),
+                }
                 self.write("(");
                 for (i, argument) in arguments.iter().enumerate() {
                     if i != 0 {
@@ -1034,6 +1044,81 @@ impl Builder {
             this.write(";");
         });
         self.file.add_function_declaration(&declaration);
+    }
+}
+
+/// Maximum depth when tracing a call's function-position value (or a tuple field) back to a
+/// definition. A safety bound against cyclic global references; real chains are only a few deep.
+const RESOLVE_FUEL: u32 = 64;
+
+/// The value a global definition holds: the operand of its `Result`/`Return` terminator.
+fn global_result_value(definition: &mir::Definition) -> Option<mir::Value> {
+    match definition.entry_block().terminator.as_ref()? {
+        mir::TerminatorInstruction::Result(value) | mir::TerminatorInstruction::Return(value) => Some(*value),
+        _ => None,
+    }
+}
+
+/// Trace `value`, used in function position, back to the [DefinitionId] of the concrete function it
+/// always refers to, if that is statically known. Looks through `Id`/`Instantiate`, through
+/// `IndexTuple` projections of constant tuples (`MakeTuple`s and tuple-typed globals such as ability
+/// dictionaries), and through global *value* definitions. Returns `None` when the target is
+/// genuinely dynamic, e.g. a closure passed in as a parameter.
+fn resolve_function_id<'mir>(
+    value: mir::Value, definition: &'mir mir::Definition, mir: &'mir mir::Mir, fuel: u32,
+) -> Option<DefinitionId> {
+    if fuel == 0 {
+        return None;
+    }
+    match value {
+        mir::Value::Definition(id) => match mir.definitions.get(&id) {
+            // A global *value* (e.g. an ability dictionary): resolve what it holds.
+            Some(global) if global.is_global() => {
+                resolve_function_id(global_result_value(global)?, global, mir, fuel - 1)
+            },
+            // A function definition (or an extern, absent from `definitions`): the target itself.
+            _ => Some(id),
+        },
+        mir::Value::InstructionResult(instruction) => match &definition.instructions[instruction] {
+            mir::Instruction::Id(inner) => resolve_function_id(*inner, definition, mir, fuel - 1),
+            mir::Instruction::Instantiate(id, _) => Some(*id),
+            mir::Instruction::IndexTuple { tuple, index } => {
+                let (field_def, field_value) = resolve_tuple_field(*tuple, *index, definition, mir, fuel - 1)?;
+                resolve_function_id(field_value, field_def, mir, fuel - 1)
+            },
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// Resolve field `index` of `tuple` to the [mir::Value] stored there, paired with the definition
+/// that value lives in (which differs from `definition` when `tuple` is a global). Handles
+/// `MakeTuple`, `Id`-chains, nested `IndexTuple`s, and tuple-typed globals.
+fn resolve_tuple_field<'mir>(
+    tuple: mir::Value, index: u32, definition: &'mir mir::Definition, mir: &'mir mir::Mir, fuel: u32,
+) -> Option<(&'mir mir::Definition, mir::Value)> {
+    if fuel == 0 {
+        return None;
+    }
+    match tuple {
+        mir::Value::Definition(id) => {
+            let global = mir.definitions.get(&id)?;
+            if !global.is_global() {
+                return None;
+            }
+            resolve_tuple_field(global_result_value(global)?, index, global, mir, fuel - 1)
+        },
+        mir::Value::InstructionResult(instruction) => match &definition.instructions[instruction] {
+            mir::Instruction::MakeTuple(values) => values.get(index as usize).map(|value| (definition, *value)),
+            mir::Instruction::Id(inner) => resolve_tuple_field(*inner, index, definition, mir, fuel - 1),
+            mir::Instruction::IndexTuple { tuple: inner, index: inner_index } => {
+                let (inner_def, inner_value) = resolve_tuple_field(*inner, *inner_index, definition, mir, fuel - 1)?;
+                resolve_tuple_field(inner_value, index, inner_def, mir, fuel - 1)
+            },
+            _ => None,
+        },
+        _ => None,
     }
 }
 
