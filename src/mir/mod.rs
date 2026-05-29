@@ -158,6 +158,13 @@ impl Definition {
         &self.blocks[BlockId::ENTRY_BLOCK]
     }
 
+    pub fn parameters(&self) -> impl Iterator<Item = (Value, &Type)> {
+        let entry = self.entry_block();
+        entry.parameter_types.iter().enumerate().map(|(i, typ)| {
+            (Value::Parameter(BlockId::ENTRY_BLOCK, i as u32), typ)
+        })
+    }
+
     pub fn instruction_result_type(&self, id: InstructionId) -> &Type {
         &self.instruction_result_types[id]
     }

@@ -1,8 +1,9 @@
-use std::process::{Command, Stdio};
+use std::process::Command;
 
 use crate::paths::aminicoro_path;
 
 pub mod llvm;
+pub mod c;
 
 pub fn link_with_cc(object_filename: &str, binary_filename: &str) -> bool {
     let output = format!("-o{}", binary_filename);
@@ -11,9 +12,8 @@ pub fn link_with_cc(object_filename: &str, binary_filename: &str) -> bool {
         .arg(aminicoro_path())
         .arg("-O0")
         .arg("-lm")
+        .arg("-w")
         .arg(output)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
         .spawn()
         .unwrap();
 

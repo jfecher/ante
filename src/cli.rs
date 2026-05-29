@@ -132,6 +132,17 @@ impl OptLevel {
             OptLevel::O3 => OptimizationLevel::Aggressive,
         }
     }
+
+    pub fn as_cc_opt_string(&self) -> &'static str {
+        match self {
+            OptLevel::O0 => "-O0",
+            OptLevel::O1 => "-O1",
+            OptLevel::O2 => "-O2",
+            OptLevel::O3 => "-O3",
+            OptLevel::Os => "-Os",
+            OptLevel::Oz => "-Oz",
+        }
+    }
 }
 
 fn validate_opt_argument(arg: &str) -> Result<char, &'static str> {

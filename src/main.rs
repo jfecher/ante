@@ -388,25 +388,30 @@ fn llvm_codegen_all(
     // Each module is currently the whole program (monomorphization isn't yet incremental).
     modules.truncate(1);
 
-    let module_name = files.first().map_or_else(|| "a.out".into(), |file| file.with_extension(""));
-    let module_name = module_name.to_string_lossy();
+    let program_name = files_to_program_name(files);
 
-    let link_succeeded = codegen::llvm::link(modules, &module_name, show_time, opt_level);
+    let link_succeeded = codegen::llvm::link(modules, &program_name, show_time, opt_level);
     if !link_succeeded {
         return diagnostics;
     }
 
     if run {
         // Use an absolute path so the binary can be found regardless of PATH.
-        let binary_path = binary_name(&module_name);
+        let binary_path = binary_name(&program_name);
 
         Command::new(&binary_path).spawn().unwrap().wait().unwrap();
         if delete_binary {
-            std::fs::remove_file(module_name.as_ref()).unwrap();
+            std::fs::remove_file(binary_path).unwrap();
         }
     }
 
     diagnostics
+}
+
+/// Return the default name of the program given the source files.
+fn files_to_program_name(files: &[PathBuf]) -> String {
+    let name = files.first().map_or_else(|| "a.out".into(), |file| file.with_extension(""));
+    name.to_string_lossy().into_owned()
 }
 
 pub fn path_to_id(crate_id: CrateId, path: &Path) -> SourceFileId {
