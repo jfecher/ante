@@ -68,4 +68,13 @@ impl CFile {
         self.function_definitions += &other.function_definitions;
         self
     }
+
+    /// Add some necessary items to this CFile that are needed by all Ante programs:
+    /// - The `Unit` struct
+    /// - `stdbool.h` header
+    pub(crate) fn add_starter_items(mut self) -> Self {
+        self.includes += "#include <stdbool.h>\n";
+        self.type_declarations += "typedef struct {} Unit;\n";
+        self
+    }
 }
