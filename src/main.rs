@@ -114,11 +114,11 @@ fn compile(args: Cli) {
         Some(EmitTarget::MirTail) => display_mir(&mut compiler, args.emit_all, true),
         Some(EmitTarget::MirMono) => display_mir_mono(&mut compiler),
         Some(EmitTarget::Ir) => llvm_codegen_separate(&mut compiler, true, args.show_time, opt_level).2,
-        None if args.backend == Some(cli::Backend::C) => {
-            c_codegen_all(&mut compiler, &args.files, !args.build, args.delete_binary, opt_level)
+        None if args.backend == Some(cli::Backend::Llvm) => {
+            llvm_codegen_all(&mut compiler, &args.files, !args.build, args.delete_binary, args.show_time, opt_level)
         },
         None => {
-            llvm_codegen_all(&mut compiler, &args.files, !args.build, args.delete_binary, args.show_time, opt_level)
+            c_codegen_all(&mut compiler, &args.files, !args.build, args.delete_binary, opt_level)
         },
     };
 

@@ -121,7 +121,33 @@ impl CFile {
         self.includes += "#include <stddef.h>\n";
         self.includes += "#include <stdbool.h>\n";
 
-        self.type_declarations += "typedef struct {} Unit;\n";
+        self.includes += "\
+#if defined(__FLT32_MANT_DIG__) && defined(__FLT64_MANT_DIG__)
+typedef _Float32 ante_f32;
+typedef _Float64 ante_f64;
+#else
+typedef float ante_f32;
+typedef double ante_f64;
+#endif
+
+#if defined(__GNUC__) || defined(__clang__)
+#define ANTE_UNREACHABLE() __builtin_unreachable()
+#define ANTE_INF() __builtin_inf()
+#define ANTE_NAN() __builtin_nan(\"\")
+#elif defined(_MSC_VER)
+#include <math.h>
+#define ANTE_UNREACHABLE() __assume(0)
+#define ANTE_INF() INFINITY
+#define ANTE_NAN() NAN
+#else
+#include <math.h>
+#define ANTE_UNREACHABLE() ((void)0)
+#define ANTE_INF() INFINITY
+#define ANTE_NAN() NAN
+#endif
+";
+
+        self.type_declarations += "typedef struct { char _unused; } Unit;\n";
         self.function_declarations += "void* malloc(size_t);\n";
         self.function_declarations += "void* memcpy(void*, void*, size_t);\n";
         self.function_declarations += "double fmod(double, double);\n";

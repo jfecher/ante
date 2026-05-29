@@ -132,7 +132,7 @@ fn build_c_file(mir: &mir::Mir) -> String {
             int32_t ante_get_argc(Unit _0) { return ante_argc; }\n\
             void* ante_get_argv(Unit _0) { return ante_argv; }\n";
         let wrapper = format!(
-            "int main(int argc, char** argv) {{ ante_argc = argc; ante_argv = (void*)argv; {init_call} main_{}((Unit){{}}); return 0; }}",
+            "int main(int argc, char** argv) {{ ante_argc = argc; ante_argv = (void*)argv; {init_call} main_{}((Unit){{0}}); return 0; }}",
             id.0
         );
         file.add_function_definition(accessors);
@@ -316,7 +316,7 @@ impl Builder {
     /// names distinct within this global; the global's id keeps them distinct across globals).
     fn write_constant(&mut self, value: &ConstantValue, global_id: DefinitionId, aux_index: &mut u32, mir: &mir::Mir) {
         match value {
-            ConstantValue::Unit => self.write("{}"),
+            ConstantValue::Unit => self.write("{0}"),
             ConstantValue::Bool(b) => self.write_value(&mir::Value::Bool(*b), mir),
             ConstantValue::Char(c) => self.write_value(&mir::Value::Char(*c), mir),
             ConstantValue::Int(int) => self.write_integer_constant(*int),
@@ -369,6 +369,10 @@ impl Builder {
     fn write_brace_list(
         &mut self, values: &[ConstantValue], global_id: DefinitionId, aux_index: &mut u32, mir: &mir::Mir,
     ) {
+        if values.is_empty() {
+            self.write("{0}");
+            return;
+        }
         self.write("{");
         for (i, value) in values.iter().enumerate() {
             if i != 0 {
@@ -400,7 +404,7 @@ impl Builder {
     fn write_value(&mut self, value: &mir::Value, mir: &mir::Mir) {
         let s = match value {
             mir::Value::Error => unreachable!("Error value found in C codegen"),
-            mir::Value::Unit => Cow::Borrowed("(Unit){}"),
+            mir::Value::Unit => Cow::Borrowed("(Unit){0}"),
             mir::Value::Bool(true) => Cow::Borrowed("true"),
             mir::Value::Bool(false) => Cow::Borrowed("false"),
             mir::Value::Char(c) if c.is_ascii_alphanumeric() || *c == '_' => Cow::Owned(format!("'{c}'")),
@@ -440,25 +444,22 @@ impl Builder {
         };
     }
 
-    /// Write a float literal as a cast C constant, e.g. `(_Float64)1.5`.
+    /// Write a float literal as a cast C constant, e.g. `(ante_f64)1.5`.
     fn write_float_constant(&mut self, float: FloatConstant) {
         let (c_type, value) = match float {
-            FloatConstant::F32(v) => ("_Float32", v.0),
-            FloatConstant::F64(v) => ("_Float64", v.0),
+            FloatConstant::F32(v) => (float_kind_c_name(FloatKind::F32), v.0),
+            FloatConstant::F64(v) => (float_kind_c_name(FloatKind::F64), v.0),
         };
-        // `inf`/`-inf`/`NaN` (how Rust formats non-finite floats) are not C tokens, and the libc
-        // `INFINITY`/`NAN` macros are unavailable since the preamble omits <math.h> to avoid
-        // clashing with Ante's own extern declarations. The gcc/clang builtins need no header and
-        // are valid constant expressions (so they work in the static global initializers below);
-        // they are not ISO C, but the emitted `_Float32`/`_Float64` types already require gcc/clang.
+        // `inf`/`-inf`/`NaN` (how Rust formats non-finite floats) are not C tokens, we need to use
+        // `ANTE_INF`/`ANTE_NAN` from [CFile::add_starter_items]
         let _ = if value.is_finite() {
             write!(self.current_item, "({c_type}){value}")
         } else if value.is_nan() {
-            write!(self.current_item, "({c_type})__builtin_nan(\"\")")
+            write!(self.current_item, "({c_type})ANTE_NAN()")
         } else if value < 0.0 {
-            write!(self.current_item, "({c_type})(-__builtin_inf())")
+            write!(self.current_item, "({c_type})(-ANTE_INF())")
         } else {
-            write!(self.current_item, "({c_type})__builtin_inf()")
+            write!(self.current_item, "({c_type})ANTE_INF()")
         };
     }
 
@@ -584,6 +585,9 @@ impl Builder {
         // DashMap guard is held across the recursion, so re-entry can't deadlock.
         let body = self.capture(|this| {
             this.write("struct { ");
+            if elements.is_empty() {
+                this.write("char _unused; ");
+            }
             for (i, element) in elements.iter().enumerate() {
                 this.write_type(element, &format!("_{i}"));
                 this.write("; ");
@@ -670,7 +674,7 @@ impl Builder {
                 self.write(" } }");
             },
             mir::TerminatorInstruction::Unreachable => {
-                self.write("__builtin_unreachable();");
+                self.write("ANTE_UNREACHABLE();");
             },
         }
     }
@@ -879,7 +883,7 @@ impl Builder {
                 self.write_value(pointer, mir);
                 self.write(" = ");
                 self.write_value(value, mir);
-                let _ = write!(self.current_item, "; Unit {id} = (Unit){{}};");
+                let _ = write!(self.current_item, "; Unit {id} = (Unit){{0}};");
             },
             mir::Instruction::GetFieldPtr { struct_ptr, struct_type, index } => {
                 let _ = write!(self.current_item, "void* {id} = (void*)&((");
@@ -1159,10 +1163,11 @@ fn int_kind_with_sign(kind: IntegerKind, signed: bool) -> &'static str {
     int_kind_c_name(if signed { signed_kind } else { unsigned_kind })
 }
 
+/// These type aliases are defined in [CFile::add_starter_items]
 fn float_kind_c_name(kind: FloatKind) -> &'static str {
     match kind {
-        FloatKind::F32 => "_Float32",
-        FloatKind::F64 => "_Float64",
+        FloatKind::F32 => "ante_f32",
+        FloatKind::F64 => "ante_f64",
     }
 }
 
