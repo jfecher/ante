@@ -1,3 +1,14 @@
+use crate::mir::DefinitionId;
+
+/// A global that cannot be initialized by a constant C initializer (it reads another global's
+/// value). Its definition is emitted zero-initialized; `statement` assigns the real value at
+/// startup. `deps` names the other deferred globals that must be assigned first.
+pub(super) struct GlobalInitializer {
+    pub id: DefinitionId,
+    pub deps: Vec<DefinitionId>,
+    pub statement: String,
+}
+
 /// The output .c file.
 /// This file is divided into several sections to ensure everything is declared before it is used.
 #[derive(Default)]
@@ -9,6 +20,9 @@ pub(super) struct CFile {
     global_declarations: String,
     global_definitions: String,
     function_definitions: String,
+
+    /// Runtime assignments for globals with non-constant initializers, run before `main`.
+    global_initializers: Vec<GlobalInitializer>,
 }
 
 impl CFile {
@@ -74,6 +88,16 @@ impl CFile {
         self.function_definitions += "\n";
     }
 
+    pub(super) fn add_global_initializer(&mut self, init: GlobalInitializer) {
+        self.global_initializers.push(init);
+    }
+
+    /// Take the collected non-constant global initializers, leaving the list empty. Consumed by
+    /// [super::build_c_file] to emit a startup function rather than written into `into_contents`.
+    pub(super) fn take_global_initializers(&mut self) -> Vec<GlobalInitializer> {
+        std::mem::take(&mut self.global_initializers)
+    }
+
     /// Extend `self` with the contents of `other`
     pub(super) fn extend(mut self, other: CFile) -> CFile {
         self.includes += &other.includes;
@@ -83,6 +107,7 @@ impl CFile {
         self.global_declarations += &other.global_declarations;
         self.global_definitions += &other.global_definitions;
         self.function_definitions += &other.function_definitions;
+        self.global_initializers.extend(other.global_initializers);
         self
     }
 

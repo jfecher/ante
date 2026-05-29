@@ -148,6 +148,52 @@ fn evaluate_instruction(
     }
 }
 
+/// Whether `value` can be emitted as a C file-scope (static) initializer, which must be a
+/// constant expression. Reading another global *variable's* stored value is not constant, so a
+/// [ConstantValue::Definition] referring to a global is rejected; a reference to a function decays
+/// to its (constant) address and is fine. A [ConstantValue::Shared] backs itself with a `static`
+/// whose own initializer must likewise be constant, so it inherits its inner value's constness.
+pub(crate) fn is_c_constant(value: &ConstantValue, mir: &mir::Mir) -> bool {
+    match value {
+        ConstantValue::Unit
+        | ConstantValue::Bool(_)
+        | ConstantValue::Char(_)
+        | ConstantValue::Int(_)
+        | ConstantValue::Float(_)
+        | ConstantValue::Bytes(_)
+        | ConstantValue::Extern { .. }
+        | ConstantValue::Transmute { .. } => true,
+        ConstantValue::Definition(id) => !mir.definitions.get(id).is_some_and(|d| d.is_global()),
+        ConstantValue::Tuple(values) => values.iter().all(|v| is_c_constant(v, mir)),
+        ConstantValue::Array { elements, .. } => elements.iter().all(|v| is_c_constant(v, mir)),
+        ConstantValue::Shared { value, .. } => is_c_constant(value, mir),
+    }
+}
+
+/// Collect into `out` every other global *variable* this value reads by value (a
+/// [ConstantValue::Definition] naming a global). These are the globals whose runtime
+/// initialization must precede this one's. Functions are skipped (their address is constant).
+pub(crate) fn referenced_globals(value: &ConstantValue, mir: &mir::Mir, out: &mut Vec<DefinitionId>) {
+    match value {
+        ConstantValue::Definition(id) => {
+            if mir.definitions.get(id).is_some_and(|d| d.is_global()) {
+                out.push(*id);
+            }
+        },
+        ConstantValue::Tuple(values) => values.iter().for_each(|v| referenced_globals(v, mir, out)),
+        ConstantValue::Array { elements, .. } => elements.iter().for_each(|v| referenced_globals(v, mir, out)),
+        ConstantValue::Shared { value, .. } => referenced_globals(value, mir, out),
+        ConstantValue::Unit
+        | ConstantValue::Bool(_)
+        | ConstantValue::Char(_)
+        | ConstantValue::Int(_)
+        | ConstantValue::Float(_)
+        | ConstantValue::Bytes(_)
+        | ConstantValue::Extern { .. }
+        | ConstantValue::Transmute { .. } => {},
+    }
+}
+
 /// Trace a Call's function-position value back to a [DefinitionId]. Follows `Id`-chains since
 /// `lower_closures` leaves a free function reference as `Id(Value::Definition(_))`.
 fn resolve_constant_call_target(definition: &mir::Definition, value: Value) -> Option<DefinitionId> {

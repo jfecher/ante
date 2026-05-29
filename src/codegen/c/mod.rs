@@ -109,14 +109,81 @@ fn build_c_file(mir: &mir::Mir) -> String {
         file.add_type_definition(&definition);
     }
 
-    // Emit a C-callable `main` that calls the Ante `main` (mangled `main_<id>`, so no clash) and
-    // returns 0. Ante's `main` takes a unit argument and returns unit. Skipped for libraries.
+    // Globals with non-constant initializers are assigned at startup. Order them so each is
+    // assigned after every other deferred global it reads, then wrap them in a startup function.
+    let initializers = order_global_initializers(file.take_global_initializers());
+    let has_initializers = !initializers.is_empty();
+    if has_initializers {
+        let mut init = "static void __ante_init_globals(void) {".to_string();
+        for global in &initializers {
+            init += &global.statement;
+        }
+        init += "}";
+        file.add_function_definition(&init);
+    }
+
+    // Emit a C-callable `main` that captures argc/argv (so `Std.Env` can read them via the
+    // accessors below), runs the startup initializer, then calls the Ante `main` (mangled
+    // `main_<id>`, so no clash) and returns 0. Ante's `main` takes a unit argument and returns
+    // unit. Skipped for libraries (which then also lack the argc/argv accessors, as in LLVM).
     if let Some((id, _)) = mir.definitions.iter().find(|(_, d)| d.name.as_str() == "main") {
-        let wrapper = format!("int main(void) {{ main_{}((Unit){{}}); return 0; }}", id.0);
+        let init_call = if has_initializers { "__ante_init_globals();" } else { "" };
+        let accessors = "static int32_t ante_argc = 0;\nstatic void* ante_argv = 0;\n\
+            int32_t ante_get_argc(Unit _0) { return ante_argc; }\n\
+            void* ante_get_argv(Unit _0) { return ante_argv; }\n";
+        let wrapper = format!(
+            "int main(int argc, char** argv) {{ ante_argc = argc; ante_argv = (void*)argv; {init_call} main_{}((Unit){{}}); return 0; }}",
+            id.0
+        );
+        file.add_function_definition(accessors);
         file.add_function_definition(&wrapper);
     }
 
     file.add_starter_items().into_contents()
+}
+
+/// Topologically order deferred global initializers so each global is assigned after every other
+/// deferred global it reads by value. By-value references between globals cannot form a cycle (the
+/// value would be infinite), so the dependency graph (restricted to the deferred set) is a DAG.
+/// Ties are broken by definition id for deterministic output.
+fn order_global_initializers(mut initializers: Vec<cfile::GlobalInitializer>) -> Vec<cfile::GlobalInitializer> {
+    use std::collections::BTreeMap;
+
+    initializers.sort_by_key(|init| init.id.0);
+    let deferred: rustc_hash::FxHashSet<_> = initializers.iter().map(|init| init.id).collect();
+
+    // Map each deferred id to its initializer, visiting in id order for determinism.
+    let mut by_id: BTreeMap<u32, cfile::GlobalInitializer> =
+        initializers.into_iter().map(|init| (init.id.0, init)).collect();
+
+    let mut ordered = Vec::with_capacity(by_id.len());
+    let mut visited = rustc_hash::FxHashSet::default();
+    let ids: Vec<u32> = by_id.keys().copied().collect();
+    for id in ids {
+        visit_initializer(id, &deferred, &mut by_id, &mut visited, &mut ordered);
+    }
+    ordered
+}
+
+/// Depth-first post-order visit emitting each global's deferred dependencies before itself.
+fn visit_initializer(
+    id: u32, deferred: &rustc_hash::FxHashSet<DefinitionId>,
+    by_id: &mut std::collections::BTreeMap<u32, cfile::GlobalInitializer>,
+    visited: &mut rustc_hash::FxHashSet<u32>, ordered: &mut Vec<cfile::GlobalInitializer>,
+) {
+    if !visited.insert(id) {
+        return;
+    }
+    // Take the initializer out so its `deps` can be borrowed while recursing on others.
+    let Some(init) = by_id.remove(&id) else {
+        return;
+    };
+    for dep in &init.deps {
+        if deferred.contains(dep) {
+            visit_initializer(dep.0, deferred, by_id, visited, ordered);
+        }
+    }
+    ordered.push(init);
 }
 
 /// Create a C file with only definitions of the mir with ids such that `id % n = i`.
@@ -196,14 +263,52 @@ impl Builder {
         self.file.add_global_declaration(&self.current_item);
         self.current_item.clear();
 
-        self.write_declarator(&definition.typ, &|this| this.write_mangled_name(&definition.name, definition.id));
-        self.write(" = ");
         let mut aux_index = 0;
-        self.write_constant(&value, definition.id, &mut aux_index, mir);
-        self.write(";");
 
+        // C requires a file-scope initializer to be a constant expression. A global that reads
+        // another global's value is not constant, so emit it zero-initialized and assign its real
+        // value at startup (see `build_c_file`) instead.
+        if constant::is_c_constant(&value, mir) {
+            self.write_declarator(&definition.typ, &|this| this.write_mangled_name(&definition.name, definition.id));
+            self.write(" = ");
+            self.write_constant(&value, definition.id, &mut aux_index, mir);
+            self.write(";");
+            self.file.add_global_definition(&self.current_item);
+            self.current_item.clear();
+            return;
+        }
+
+        // `T name_id;` (file-scope, so zero-initialized until the startup assignment runs).
+        self.write_declarator(&definition.typ, &|this| this.write_mangled_name(&definition.name, definition.id));
+        self.write(";");
         self.file.add_global_definition(&self.current_item);
         self.current_item.clear();
+
+        // `name_id = <value>;`, deferred to the startup initializer.
+        self.write_mangled_name(&definition.name, definition.id);
+        self.write(" = ");
+        self.write_constant_rvalue(&value, &definition.typ, definition.id, &mut aux_index, mir);
+        self.write(";");
+        let statement = std::mem::take(&mut self.current_item);
+
+        let mut deps = Vec::new();
+        constant::referenced_globals(&value, mir, &mut deps);
+        self.file.add_global_initializer(cfile::GlobalInitializer { id: definition.id, deps, statement });
+    }
+
+    /// Render a [ConstantValue] as a C *rvalue* for an assignment statement (as opposed to a
+    /// file-scope initializer). Aggregates need a compound-literal cast since `name = {...}` is not
+    /// valid statement syntax; scalars and name references are written as-is.
+    fn write_constant_rvalue(
+        &mut self, value: &ConstantValue, typ: &mir::Type, global_id: DefinitionId, aux_index: &mut u32,
+        mir: &mir::Mir,
+    ) {
+        if matches!(value, ConstantValue::Tuple(_) | ConstantValue::Array { .. }) {
+            self.write("(");
+            self.write_type(typ, "");
+            self.write(")");
+        }
+        self.write_constant(value, global_id, aux_index, mir);
     }
 
     /// Render a folded [ConstantValue] as a C initializer expression into `current_item`.
