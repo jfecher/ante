@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     cli::OptLevel,
+    codegen::constant::{self, ConstantValue},
     incremental::Db,
     iterator_extensions::mapvec,
     lexer::token::{FloatKind, IntegerKind},
@@ -188,170 +189,64 @@ impl<'ctx> ModuleContext<'ctx> {
     }
 
     fn codegen_global(&mut self, global: &mir::Definition, id: mir::DefinitionId) {
-        // Stash `values` since this may be called mid function-codegen.
-        let saved_values = std::mem::take(&mut self.values);
-
-        for instruction in global.entry_block().instructions.iter().copied() {
-            let value = self.codegen_constant_instruction(global, instruction);
-            self.values.insert(mir::Value::InstructionResult(instruction), value);
-        }
-
-        let TerminatorInstruction::Result(result_value) = global.entry_block().terminator.as_ref().unwrap() else {
-            panic!("Global definition missing Result terminator");
-        };
-        let initializer = self.constant_value(*result_value);
-
-        self.values = saved_values;
-
-        // Inlined at every use site rather than emitted as an LLVM global with backing storage.
-        // Globals' bodies are already restricted to constant-foldable instructions
-        // (see `codegen_constant_instruction`), so a backing slot is pure indirection.
+        let value = constant::evaluate_global(self.mir, global);
+        let initializer = self.lower_constant(&value);
         self.definitions.insert(id, CodegenValue::Literal(initializer));
     }
 
-    fn constant_value(&mut self, value: mir::Value) -> BasicValueEnum<'ctx> {
+    /// Render a folded [ConstantValue] into an inkwell constant
+    fn lower_constant(&mut self, value: &ConstantValue) -> BasicValueEnum<'ctx> {
         match value {
-            mir::Value::Unit => self.unit_value(),
-            mir::Value::Bool(b) => self.llvm.bool_type().const_int(b as u64, false).into(),
-            mir::Value::Char(c) => self.llvm.i8_type().const_int(c as u64, false).into(),
-            mir::Value::Integer(constant) => {
+            ConstantValue::Unit => self.unit_value(),
+            ConstantValue::Bool(b) => self.llvm.bool_type().const_int(*b as u64, false).into(),
+            ConstantValue::Char(c) => self.llvm.i8_type().const_int(*c as u64, false).into(),
+            ConstantValue::Int(constant) => {
                 let kind = constant.kind();
-                let typ = self.convert_integer_kind(kind);
-                typ.const_int(constant.as_u64(), kind.is_signed()).into()
+                self.convert_integer_kind(kind).const_int(constant.as_u64(), kind.is_signed()).into()
             },
-            mir::Value::Float(FloatConstant::F32(v)) => self.llvm.f32_type().const_float(v.0).into(),
-            mir::Value::Float(FloatConstant::F64(v)) => self.llvm.f64_type().const_float(v.0).into(),
-            mir::Value::InstructionResult(_) | mir::Value::Parameter(..) => {
-                *self.values.get(&value).expect("constant value not cached")
+            ConstantValue::Float(FloatConstant::F32(v)) => self.llvm.f32_type().const_float(v.0).into(),
+            ConstantValue::Float(FloatConstant::F64(v)) => self.llvm.f64_type().const_float(v.0).into(),
+            ConstantValue::Tuple(values) => {
+                let fields = mapvec(values, |v| self.lower_constant(v));
+                self.llvm.const_struct(&fields, false).into()
             },
-            mir::Value::Definition(id) => self.codegen_value_for(id).into_basic_value(),
-            mir::Value::Error => unreachable!("Error value in global initializer"),
-        }
-    }
-
-    fn codegen_constant_instruction(
-        &mut self, global: &mir::Definition, id: mir::InstructionId,
-    ) -> BasicValueEnum<'ctx> {
-        match &global.instructions[id] {
-            mir::Instruction::MakeTuple(fields) => {
-                let fields: Vec<mir::Value> = fields.clone();
-                let field_values: Vec<BasicValueEnum<'ctx>> = fields.iter().map(|f| self.constant_value(*f)).collect();
-                self.llvm.const_struct(&field_values, false).into()
+            ConstantValue::Array { elements, element_type } => {
+                let values = mapvec(elements, |v| self.lower_constant(v));
+                let array_type = self.convert_type(element_type).array_type(elements.len() as u32);
+                Self::const_array_of(array_type, &values).into()
             },
-            mir::Instruction::Id(value) => {
-                let value = *value;
-                self.constant_value(value)
+            ConstantValue::Bytes(bytes) => {
+                let byte_values = mapvec(bytes, |b| self.llvm.i8_type().const_int(*b as u64, false));
+                let array = self.llvm.i8_type().const_array(&byte_values);
+                let global = self.module.add_global(array.get_type(), None, "__bytes");
+                global.set_linkage(Linkage::Private);
+                global.set_constant(true);
+                global.set_initializer(&array);
+                global.as_pointer_value().into()
             },
-            mir::Instruction::Transmute(value) => {
-                // Const context can't alloca/store/load, so only zero-sized sources
-                // (e.g. unit `{}` reinterpreted as a None variant's inner field) work
-                // here, producing undef of the destination type.
-                let source = self.constant_value(*value);
-                let is_empty_struct = matches!(
-                    source.get_type(),
-                    BasicTypeEnum::StructType(s) if s.count_fields() == 0
-                );
-                assert!(
-                    is_empty_struct,
-                    "Transmute in global initializer requires a zero-sized source type, got {:?}",
-                    source.get_type()
-                );
-                let result_type = self.convert_type(global.instruction_result_type(id));
-                Self::undef_value(result_type)
+            ConstantValue::Definition(id) => self.codegen_value_for(*id).into_basic_value(),
+            ConstantValue::Extern { name, typ } => match self.convert_function_type(typ) {
+                Some(fn_type) => {
+                    let fn_val =
+                        self.module.get_function(name).unwrap_or_else(|| self.module.add_function(name, fn_type, None));
+                    fn_val.as_global_value().as_pointer_value().into()
+                },
+                None => {
+                    let global = self
+                        .module
+                        .get_global(name)
+                        .unwrap_or_else(|| self.module.add_global(self.convert_type(typ), None, name));
+                    global.as_pointer_value().into()
+                },
             },
-            mir::Instruction::Extern(name) => {
-                let typ = global.instruction_result_type(id);
-                match self.convert_function_type(typ) {
-                    Some(fn_type) => {
-                        let fn_val = self
-                            .module
-                            .get_function(name)
-                            .unwrap_or_else(|| self.module.add_function(name, fn_type, None));
-                        fn_val.as_global_value().as_pointer_value().into()
-                    },
-                    None => {
-                        let global = self
-                            .module
-                            .get_global(name)
-                            .unwrap_or_else(|| self.module.add_global(self.convert_type(typ), None, name));
-                        global.as_pointer_value().into()
-                    },
-                }
-            },
-            mir::Instruction::AllocShared(value) => {
-                // In a global initializer we can't call malloc, use a global instead
-                let init_value = self.constant_value(*value);
-                let name = format!("__shared_static_{}_{:?}", global.id, id);
-                let backing = self.module.add_global(init_value.get_type(), None, &name);
+            ConstantValue::Shared { value, typ } => {
+                // No malloc in a constant initializer, so back the value with a global instead.
+                let init_value = self.lower_constant(value);
+                let backing = self.module.add_global(self.convert_type(typ), None, "__shared_static");
                 backing.set_initializer(&init_value);
                 backing.as_pointer_value().into()
             },
-            mir::Instruction::MakeArray(elements) => {
-                let element_values = mapvec(elements, |e| self.constant_value(*e));
-                let result_type = self.convert_type(global.instruction_result_type(id)).into_array_type();
-                Self::const_array_of(result_type, &element_values).into()
-            },
-            mir::Instruction::Call { function, arguments } => {
-                // Constructor-style calls (e.g. `Double f = (f,)`) appear in `implicit`
-                // globals after monomorphization. The callee is a single-block function
-                // whose body is itself constant-foldable, so inline it: bind the callee's
-                // entry-block parameters to the caller's argument values and recursively
-                // run the const evaluator on the callee's body.
-                let function = *function;
-                let arguments = arguments.clone();
-                let callee_id = self.resolve_constant_call_target(global, function).unwrap_or_else(|| {
-                    panic!("Call in global initializer to non-resolvable function value: {function:?}")
-                });
-                let callee = self
-                    .mir
-                    .definitions
-                    .get(&callee_id)
-                    .unwrap_or_else(|| panic!("Call in global initializer: target definition {callee_id} not found"))
-                    .clone();
-                if callee.blocks.len() != 1 {
-                    panic!(
-                        "Call in global initializer to non-constant-evaluable function `{}`: callee has multiple blocks",
-                        callee.name
-                    );
-                }
-                let callee_result = match callee.entry_block().terminator.as_ref().expect("missing callee terminator") {
-                    TerminatorInstruction::Return(v) | TerminatorInstruction::Result(v) => *v,
-                    _ => panic!(
-                        "Call in global initializer to non-constant-evaluable function `{}`: terminator is not `Result`/`Return`",
-                        callee.name
-                    ),
-                };
-
-                let arg_values: Vec<BasicValueEnum<'ctx>> = arguments.iter().map(|a| self.constant_value(*a)).collect();
-
-                let saved_values = std::mem::take(&mut self.values);
-                for (i, value) in arg_values.into_iter().enumerate() {
-                    self.values.insert(mir::Value::Parameter(BlockId::ENTRY_BLOCK, i as u32), value);
-                }
-                for instr_id in callee.entry_block().instructions.iter().copied() {
-                    let value = self.codegen_constant_instruction(&callee, instr_id);
-                    self.values.insert(mir::Value::InstructionResult(instr_id), value);
-                }
-                let result = self.constant_value(callee_result);
-                self.values = saved_values;
-                result
-            },
-            other => panic!("Unsupported instruction in global initializer: {other:?}"),
-        }
-    }
-
-    /// Trace a Call's function-position value back to a [DefinitionId] when possible.
-    /// Follows `Id`-chains in the current global's instructions, since `lower_closures`
-    /// leaves a free function reference as `Id(Value::Definition(_))`.
-    fn resolve_constant_call_target(&self, global: &mir::Definition, value: mir::Value) -> Option<mir::DefinitionId> {
-        match value {
-            mir::Value::Definition(id) => Some(id),
-            mir::Value::InstructionResult(iid) => match &global.instructions[iid] {
-                mir::Instruction::Id(inner) => self.resolve_constant_call_target(global, *inner),
-                mir::Instruction::Instantiate(id, _) => Some(*id),
-                _ => None,
-            },
-            _ => None,
+            ConstantValue::Transmute { typ } => Self::undef_value(self.convert_type(typ)),
         }
     }
 

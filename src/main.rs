@@ -114,6 +114,9 @@ fn compile(args: Cli) {
         Some(EmitTarget::MirTail) => display_mir(&mut compiler, args.emit_all, true),
         Some(EmitTarget::MirMono) => display_mir_mono(&mut compiler),
         Some(EmitTarget::Ir) => llvm_codegen_separate(&mut compiler, true, args.show_time, opt_level).2,
+        None if args.backend == Some(cli::Backend::C) => {
+            c_codegen_all(&mut compiler, &args.files, !args.build, args.delete_binary, opt_level)
+        },
         None => {
             llvm_codegen_all(&mut compiler, &args.files, !args.build, args.delete_binary, args.show_time, opt_level)
         },
@@ -399,6 +402,31 @@ fn llvm_codegen_all(
         // Use an absolute path so the binary can be found regardless of PATH.
         let binary_path = binary_name(&program_name);
 
+        Command::new(&binary_path).spawn().unwrap().wait().unwrap();
+        if delete_binary {
+            std::fs::remove_file(binary_path).unwrap();
+        }
+    }
+
+    diagnostics
+}
+
+/// Monomorphize and codegen the whole program through the C backend, then optionally run it.
+fn c_codegen_all(
+    compiler: &mut Db, files: &[PathBuf], run: bool, delete_binary: bool, opt_level: OptLevel,
+) -> BTreeSet<Diagnostic> {
+    let diagnostics = collect_all_diagnostics(compiler);
+    let (errors, _) = classify_diagnostics(&diagnostics);
+    if errors != 0 {
+        return diagnostics;
+    }
+
+    let program_name = files_to_program_name(files);
+    let mir = mir::monomorphization::monomorphize(compiler);
+    codegen::c::codegen_c_for_mir(&mir, &program_name, opt_level);
+
+    if run {
+        let binary_path = binary_name(&program_name);
         Command::new(&binary_path).spawn().unwrap().wait().unwrap();
         if delete_binary {
             std::fs::remove_file(binary_path).unwrap();

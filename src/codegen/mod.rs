@@ -2,8 +2,9 @@ use std::process::Command;
 
 use crate::paths::aminicoro_path;
 
-pub mod llvm;
 pub mod c;
+pub mod constant;
+pub mod llvm;
 
 pub fn link_with_cc(object_filename: &str, binary_filename: &str) -> bool {
     let output = format!("-o{}", binary_filename);

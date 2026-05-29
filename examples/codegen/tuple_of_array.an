@@ -1,0 +1,16 @@
+// The C backend needs to handle arrays with special checks and memcpy when necessary
+// since arrays in C otherwise degrade into pointers. This test is to ensure consistency
+// with the llvm backend and array value semantics.
+main () =
+    t = ([10, 20, 30], 99)
+    var got = t.first
+    array_set (mut got) 0 999
+    println (array_get got 0)
+    println (array_get got 2)
+    println t.second
+
+// args: --backend c --delete-binary --no-color
+// expected stdout:
+// 999
+// 30
+// 99

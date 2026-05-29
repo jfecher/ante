@@ -99,6 +99,7 @@ pub enum EmitTarget {
 pub enum Backend {
     Cranelift,
     Llvm,
+    C,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]

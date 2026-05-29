@@ -17,28 +17,24 @@ use std::{
     fmt::Write as _,
     process::Command,
     sync::{
-        atomic::{AtomicU32, Ordering},
         Arc,
+        atomic::{AtomicU32, Ordering},
     },
 };
 
-use dashmap::{mapref::entry::Entry, DashMap};
+use dashmap::{DashMap, mapref::entry::Entry};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
-use crate::{cli::OptLevel, mir::{self, DefinitionId, InstructionId}};
+use crate::{
+    cli::OptLevel,
+    lexer::token::{FloatKind, IntegerKind},
+    mir::{self, DefinitionId, FloatConstant, InstructionId, IntConstant},
+};
 
 mod cfile;
 use cfile::CFile;
 
-/// A concurrent cache mapping each distinct tuple type to a stable id and its generated C
-/// `struct` definition. Cloning shares the same underlying maps, so every [Builder] working in
-/// parallel resolves a given tuple structure to the same `TupleN` name and emits its definition
-/// exactly once.
-#[derive(Default, Clone)]
-struct TupleCache {
-    types: Arc<DashMap<Arc<Vec<mir::Type>>, (u32, String)>>,
-    next_id: Arc<AtomicU32>,
-}
+use super::constant::{self, ConstantValue};
 
 /// Codegen the given Mir into a single C file, then invoke cc to create
 /// a object file and a binary. On success, the object file is removed, but
@@ -80,6 +76,16 @@ struct Builder {
     tuples: TupleCache,
 }
 
+/// A concurrent cache mapping each distinct tuple type to a stable id and its generated C
+/// `struct` definition. Cloning shares the same underlying maps, so every [Builder] working in
+/// parallel resolves a given tuple structure to the same `TupleN` name and emits its definition
+/// exactly once.
+#[derive(Default, Clone)]
+struct TupleCache {
+    types: Arc<DashMap<Arc<Vec<mir::Type>>, (u32, String)>>,
+    next_id: Arc<AtomicU32>,
+}
+
 /// Builds a C File for the given [mir::Mir] in-memory. Returns the file contents
 fn build_c_file(mir: &mir::Mir) -> String {
     // Split Mir definitions into N groups and compile in parallel.
@@ -100,6 +106,13 @@ fn build_c_file(mir: &mir::Mir) -> String {
     definitions.sort_by_key(|(id, _)| *id);
     for (_, definition) in definitions {
         file.add_type_definition(&definition);
+    }
+
+    // Emit a C-callable `main` that calls the Ante `main` (mangled `main_<id>`, so no clash) and
+    // returns 0. Ante's `main` takes a unit argument and returns unit. Skipped for libraries.
+    if let Some((id, _)) = mir.definitions.iter().find(|(_, d)| d.name.as_str() == "main") {
+        let wrapper = format!("int main(void) {{ main_{}((Unit){{}}); return 0; }}", id.0);
+        file.add_function_definition(&wrapper);
     }
 
     file.add_starter_items().into_contents()
@@ -129,8 +142,34 @@ impl Builder {
         self.current_item += s;
     }
 
-    /// Build the given definition, adding it as a translating C function when finished
+    /// Run `f` with an empty `current_item`, returning what it emitted and restoring the prior
+    /// `current_item`. Used to build a self-contained fragment (a global, a typedef, an extern
+    /// declaration) destined for a different output section without disturbing the function body
+    /// currently being assembled in `current_item`.
+    fn capture(&mut self, f: impl FnOnce(&mut Self)) -> String {
+        let saved = std::mem::take(&mut self.current_item);
+        f(self);
+        std::mem::replace(&mut self.current_item, saved)
+    }
+
+    fn write_byte_array(&mut self, name: &str, bytes: &[u8]) {
+        let _ = write!(self.current_item, "static uint8_t {name}[] = {{");
+        for (i, byte) in bytes.iter().enumerate() {
+            if i != 0 {
+                self.write(",");
+            }
+            let _ = write!(self.current_item, "{byte}");
+        }
+        self.write("};");
+    }
+
+    /// Build the given definition, adding it as a translated C function when finished. Globals
+    /// (single block, `Result` terminator) become file-scope variables instead.
     fn build_definition(&mut self, definition: &mir::Definition, mir: &mir::Mir) {
+        if definition.is_global() {
+            return self.build_global(definition, mir);
+        }
+
         self.build_fn_signature(definition, mir);
 
         self.write("{");
@@ -141,6 +180,99 @@ impl Builder {
         self.current_item.clear();
     }
 
+    /// Build a global definition as a file-scope C variable `T name_id = <initializer>;`. The
+    /// initializer is folded by the shared [constant] evaluator and rendered by [Self::write_constant].
+    fn build_global(&mut self, definition: &mir::Definition, mir: &mir::Mir) {
+        let value = constant::evaluate_global(mir, definition);
+
+        // Globals are emitted in arbitrary order (by worker, then id, with no dependency sort), so
+        // forward-declare every global. This lets one global's initializer reference another (e.g.
+        // take its address via a `Shared` value) regardless of which is defined first textually.
+        // `current_item` is empty here, so write the declaration directly then route it.
+        self.write("extern ");
+        self.write_declarator(&definition.typ, &|this| this.write_mangled_name(&definition.name, definition.id));
+        self.write(";");
+        self.file.add_global_declaration(&self.current_item);
+        self.current_item.clear();
+
+        self.write_declarator(&definition.typ, &|this| this.write_mangled_name(&definition.name, definition.id));
+        self.write(" = ");
+        let mut aux_index = 0;
+        self.write_constant(&value, definition.id, &mut aux_index, mir);
+        self.write(";");
+
+        self.file.add_global_definition(&self.current_item);
+        self.current_item.clear();
+    }
+
+    /// Render a folded [ConstantValue] as a C initializer expression into `current_item`.
+    /// `Shared` values are backed by uniquely-named file-scope statics (`aux_index` keeps the
+    /// names distinct within this global; the global's id keeps them distinct across globals).
+    fn write_constant(&mut self, value: &ConstantValue, global_id: DefinitionId, aux_index: &mut u32, mir: &mir::Mir) {
+        match value {
+            ConstantValue::Unit => self.write("{}"),
+            ConstantValue::Bool(b) => self.write_value(&mir::Value::Bool(*b), mir),
+            ConstantValue::Char(c) => self.write_value(&mir::Value::Char(*c), mir),
+            ConstantValue::Int(int) => self.write_integer_constant(*int),
+            ConstantValue::Float(float) => self.write_float_constant(*float),
+            ConstantValue::Definition(id) => self.write_value(&mir::Value::Definition(*id), mir),
+            ConstantValue::Tuple(values) => self.write_brace_list(values, global_id, aux_index, mir),
+            ConstantValue::Array { elements, .. } => self.write_brace_list(elements, global_id, aux_index, mir),
+            ConstantValue::Bytes(bytes) => {
+                // Back the blob with a uniquely-named static array and decay it to a pointer.
+                let name = format!("__bytes_{}_{}", global_id.0, *aux_index);
+                *aux_index += 1;
+
+                let backing = self.capture(|this| this.write_byte_array(&name, bytes));
+                self.file.add_global_definition(&backing);
+
+                self.write(&name);
+            },
+            ConstantValue::Extern { name, typ } => {
+                self.emit_extern_declaration(name, typ);
+                self.write(name);
+            },
+            ConstantValue::Shared { value, typ } => {
+                let name = format!("__shared_{}_{}", global_id.0, *aux_index);
+                *aux_index += 1;
+
+                // Emit `static T name = <inner>;` into the globals section, then take its address.
+                // `write_constant` runs inside `capture`, so any nested statics it emits are routed
+                // to their own sections rather than into this fragment.
+                let backing = self.capture(|this| {
+                    this.write("static ");
+                    this.write_declarator(typ, &|this| this.write(&name));
+                    this.write(" = ");
+                    this.write_constant(value, global_id, aux_index, mir);
+                    this.write(";");
+                });
+                self.file.add_global_definition(&backing);
+
+                self.write("&");
+                self.write(&name);
+            },
+            ConstantValue::Transmute { typ } => {
+                // Zero-sized source: emit a zero-initializer of the destination type.
+                self.write("(");
+                self.write_type(typ, "");
+                self.write("){0}");
+            },
+        }
+    }
+
+    fn write_brace_list(
+        &mut self, values: &[ConstantValue], global_id: DefinitionId, aux_index: &mut u32, mir: &mir::Mir,
+    ) {
+        self.write("{");
+        for (i, value) in values.iter().enumerate() {
+            if i != 0 {
+                self.write(", ");
+            }
+            self.write_constant(value, global_id, aux_index, mir);
+        }
+        self.write("}");
+    }
+
     /// Declare the given item
     fn build_external(&mut self, external: &mir::Extern, id: DefinitionId) {
         self.write_declarator(&external.typ, &|this| this.write_mangled_name(&external.name, id));
@@ -149,9 +281,14 @@ impl Builder {
         self.current_item.clear();
     }
 
-    /// Write a mangled name `name_id` directly to `current_item`
+    /// Write a mangled name `name_id` directly to `current_item`. Non-identifier characters in
+    /// `name` (Ante allows operator names like `>=`) are replaced with `_`; the unique `id`
+    /// suffix keeps the result distinct regardless.
     fn write_mangled_name(&mut self, name: &str, id: DefinitionId) {
-        let _ = write!(self.current_item, "{name}_{}", id.0);
+        for c in name.chars() {
+            self.current_item.push(if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' });
+        }
+        let _ = write!(self.current_item, "_{}", id.0);
     }
 
     fn write_value(&mut self, value: &mir::Value, mir: &mir::Mir) {
@@ -162,26 +299,68 @@ impl Builder {
             mir::Value::Bool(false) => Cow::Borrowed("false"),
             mir::Value::Char(c) if c.is_ascii_alphanumeric() || *c == '_' => Cow::Owned(format!("'{c}'")),
             mir::Value::Char(c) => Cow::Owned(format!("(char){}", *c as u32)),
-            mir::Value::Integer(int) => Cow::Owned(int.to_string()), // TODO: Incorrect suffixes. Should be e.g. `(int16_t) x`
-            mir::Value::Float(float) => Cow::Owned(float.to_string()),
+            mir::Value::Integer(int) => return self.write_integer_constant(*int),
+            mir::Value::Float(float) => return self.write_float_constant(*float),
             mir::Value::InstructionResult(id) => Cow::Owned(id.to_string()),
             mir::Value::Parameter(block, i) => Cow::Owned(format!("{block}_{i}")),
             mir::Value::Definition(id) => {
-                let name = mir.get_name(*id).unwrap();
-                // This must match the mangling in [Self::write_mangled_name]
-                Cow::Owned(format!("{name}_{}", id.0))
+                let name = mir.get_name(*id).unwrap().clone();
+                return self.write_mangled_name(&name, *id);
             },
         };
         self.write(&s);
+    }
+
+    /// Write an integer literal as a width-correct C constant, e.g. `(int32_t)5`. 64-bit
+    /// kinds get an `ll`/`ull` suffix so the literal token isn't truncated to `int`.
+    fn write_integer_constant(&mut self, int: IntConstant) {
+        let c_type = int_kind_c_name(int.kind());
+        let _ = match int {
+            IntConstant::U8(x) => write!(self.current_item, "({c_type}){x}"),
+            IntConstant::U16(x) => write!(self.current_item, "({c_type}){x}"),
+            IntConstant::U32(x) => write!(self.current_item, "({c_type}){x}"),
+            IntConstant::U64(x) => write!(self.current_item, "({c_type}){x}ull"),
+            IntConstant::Usz(x) => write!(self.current_item, "({c_type}){x}ull"),
+            IntConstant::I8(x) => write!(self.current_item, "({c_type}){x}"),
+            IntConstant::I16(x) => write!(self.current_item, "({c_type}){x}"),
+            IntConstant::I32(x) => write!(self.current_item, "({c_type}){x}"),
+            // `(int64_t)-9223372036854775808ll` would negate a literal whose magnitude overflows
+            // `ll`, so the minimum is written with the same idiom `stdint.h` uses for `INT64_MIN`.
+            IntConstant::I64(i64::MIN) | IntConstant::Isz(isize::MIN) => {
+                write!(self.current_item, "({c_type})(-9223372036854775807ll - 1)")
+            },
+            IntConstant::I64(x) => write!(self.current_item, "({c_type}){x}ll"),
+            IntConstant::Isz(x) => write!(self.current_item, "({c_type}){x}ll"),
+        };
+    }
+
+    /// Write a float literal as a cast C constant, e.g. `(_Float64)1.5`.
+    fn write_float_constant(&mut self, float: FloatConstant) {
+        let (c_type, value) = match float {
+            FloatConstant::F32(v) => ("_Float32", v.0),
+            FloatConstant::F64(v) => ("_Float64", v.0),
+        };
+        // `inf`/`-inf`/`NaN` (how Rust formats non-finite floats) are not C tokens, and the libc
+        // `INFINITY`/`NAN` macros are unavailable since the preamble omits <math.h> to avoid
+        // clashing with Ante's own extern declarations. The gcc/clang builtins need no header and
+        // are valid constant expressions (so they work in the static global initializers below);
+        // they are not ISO C, but the emitted `_Float32`/`_Float64` types already require gcc/clang.
+        let _ = if value.is_finite() {
+            write!(self.current_item, "({c_type}){value}")
+        } else if value.is_nan() {
+            write!(self.current_item, "({c_type})__builtin_nan(\"\")")
+        } else if value < 0.0 {
+            write!(self.current_item, "({c_type})(-__builtin_inf())")
+        } else {
+            write!(self.current_item, "({c_type})__builtin_inf()")
+        };
     }
 
     /// Build the function's signature in `self.current_item` and also push it as a
     /// function declaration.
     fn build_fn_signature(&mut self, definition: &mir::Definition, mir: &mir::Mir) {
         // write `ret_t foo(t0 arg0, ..., tN argN);`
-        let mir::Type::Function(function_type) = &definition.typ else {
-            panic!("Definition is not a function")
-        };
+        let mir::Type::Function(function_type) = &definition.typ else { panic!("Definition is not a function") };
 
         // The declared name is `foo(t0 arg0, ..., tN argN)`; weaving the return type
         // around it keeps even array or function-pointer return types correct.
@@ -267,22 +446,8 @@ impl Builder {
                 mir::PrimitiveType::Bool => "bool",
                 mir::PrimitiveType::Pointer => "void*",
                 mir::PrimitiveType::Char => "char",
-                mir::PrimitiveType::Int(kind) => match kind {
-                    crate::lexer::token::IntegerKind::I8 => "int8_t",
-                    crate::lexer::token::IntegerKind::I16 => "int16_t",
-                    crate::lexer::token::IntegerKind::I32 => "int32_t",
-                    crate::lexer::token::IntegerKind::I64 => "int64_t",
-                    crate::lexer::token::IntegerKind::Isz => "ptrdiff_t",
-                    crate::lexer::token::IntegerKind::U8 => "uint8_t",
-                    crate::lexer::token::IntegerKind::U16 => "uint16_t",
-                    crate::lexer::token::IntegerKind::U32 => "uint32_t",
-                    crate::lexer::token::IntegerKind::U64 => "uint64_t",
-                    crate::lexer::token::IntegerKind::Usz => "size_t",
-                },
-                mir::PrimitiveType::Float(kind) => match kind {
-                    crate::lexer::token::FloatKind::F32 => "_Float32",
-                    crate::lexer::token::FloatKind::F64 => "_Float64",
-                },
+                mir::PrimitiveType::Int(kind) => int_kind_c_name(*kind),
+                mir::PrimitiveType::Float(kind) => float_kind_c_name(*kind),
                 mir::PrimitiveType::NoClosureEnv => unreachable!("NoClosureEnv found in C codegen"),
             },
             mir::Type::Tuple(elements) => return self.write_cached_tuple_type(elements),
@@ -311,14 +476,14 @@ impl Builder {
         // Render the struct body first. This recurses through `write_type` into any nested
         // tuples, registering them now so they get smaller ids and are emitted before us. No
         // DashMap guard is held across the recursion, so re-entry can't deadlock.
-        let saved = std::mem::take(&mut self.current_item);
-        self.write("struct { ");
-        for (i, element) in elements.iter().enumerate() {
-            self.write_type(element, &format!("_{i}"));
-            self.write("; ");
-        }
-        self.write("}");
-        let body = std::mem::replace(&mut self.current_item, saved);
+        let body = self.capture(|this| {
+            this.write("struct { ");
+            for (i, element) in elements.iter().enumerate() {
+                this.write_type(element, &format!("_{i}"));
+                this.write("; ");
+            }
+            this.write("}");
+        });
 
         // Re-check on insert in case another worker raced us to the same tuple.
         let id = match self.tuples.types.entry(elements.clone()) {
@@ -332,73 +497,481 @@ impl Builder {
         let _ = write!(self.current_item, "Tuple{id}");
     }
 
-    /// Iterate over each block and each instruction, inserting them into the function.
+    /// Write the function body: hoisted block-parameter declarations followed by each
+    /// block as a `goto` label. The body is flat (no nested scopes) so every SSA temporary
+    /// lives at function scope and remains visible across the `goto`s that wire blocks together.
     fn write_fn_body(&mut self, definition: &mir::Definition, mir: &mir::Mir) {
+        // C has no phi nodes, so non-entry block parameters become ordinary variables a
+        // predecessor assigns before jumping. The entry block's parameters are the C function
+        // parameters and are already declared by the signature, so they are skipped here.
+        for (block_id, block) in definition.blocks.iter() {
+            if block_id == mir::BlockId::ENTRY_BLOCK {
+                continue;
+            }
+            for (parameter, typ) in block.parameters(block_id) {
+                self.write_declarator(&typ, &|this| this.write_value(&parameter, mir));
+                self.write("; ");
+            }
+        }
+
         for block_id in definition.topological_sort() {
             let block = &definition.blocks[block_id];
+
+            // The empty statement lets a declaration follow the label (illegal pre-C23 otherwise).
+            let _ = write!(self.current_item, "{block_id}:;");
 
             for instruction_id in &block.instructions {
                 let instruction = &definition.instructions[*instruction_id];
                 self.write_instruction(*instruction_id, instruction, definition, mir);
             }
+            self.write_terminator(block, mir);
         }
     }
 
-    fn write_instruction(&mut self, instruction_id: InstructionId, instruction: &mir::Instruction, definition: &mir::Definition, mir: &mir::Mir) {
-        match instruction {
-            mir::Instruction::Call { function, arguments } => todo!(),
-            mir::Instruction::CallClosure { closure, arguments } => todo!(),
-            mir::Instruction::Perform { effect_op, arguments } => todo!(),
-            mir::Instruction::Handle { body, cases } => todo!(),
-            mir::Instruction::Capability => todo!(),
-            mir::Instruction::PackClosure { function, environment } => todo!(),
-            mir::Instruction::IndexTuple { tuple, index } => todo!(),
-            mir::Instruction::MakeBytes(items) => todo!(),
-            mir::Instruction::MakeTuple(values) => todo!(),
-            mir::Instruction::MakeArray(values) => todo!(),
-            mir::Instruction::StackAlloc(value) => todo!(),
-            mir::Instruction::StackAllocUninit(_) => todo!(),
-            mir::Instruction::AllocShared(value) => todo!(),
-            mir::Instruction::Store { pointer, value } => todo!(),
-            mir::Instruction::GetFieldPtr { struct_ptr, struct_type, index } => todo!(),
-            mir::Instruction::Transmute(value) => todo!(),
-            mir::Instruction::Instantiate(definition_id, items) => todo!(),
-            mir::Instruction::Id(value) => todo!(),
-            mir::Instruction::Extern(_) => todo!(),
-            mir::Instruction::AddInt(value, value1) => todo!(),
-            mir::Instruction::AddFloat(value, value1) => todo!(),
-            mir::Instruction::SubInt(value, value1) => todo!(),
-            mir::Instruction::SubFloat(value, value1) => todo!(),
-            mir::Instruction::MulInt(value, value1) => todo!(),
-            mir::Instruction::MulFloat(value, value1) => todo!(),
-            mir::Instruction::DivSigned(value, value1) => todo!(),
-            mir::Instruction::DivUnsigned(value, value1) => todo!(),
-            mir::Instruction::DivFloat(value, value1) => todo!(),
-            mir::Instruction::ModSigned(value, value1) => todo!(),
-            mir::Instruction::ModUnsigned(value, value1) => todo!(),
-            mir::Instruction::ModFloat(value, value1) => todo!(),
-            mir::Instruction::LessSigned(value, value1) => todo!(),
-            mir::Instruction::LessUnsigned(value, value1) => todo!(),
-            mir::Instruction::LessFloat(value, value1) => todo!(),
-            mir::Instruction::EqInt(value, value1) => todo!(),
-            mir::Instruction::EqFloat(value, value1) => todo!(),
-            mir::Instruction::BitwiseAnd(value, value1) => todo!(),
-            mir::Instruction::BitwiseOr(value, value1) => todo!(),
-            mir::Instruction::BitwiseXor(value, value1) => todo!(),
-            mir::Instruction::BitwiseNot(value) => todo!(),
-            mir::Instruction::SignExtend(value) => todo!(),
-            mir::Instruction::ZeroExtend(value) => todo!(),
-            mir::Instruction::SignedToFloat(value) => todo!(),
-            mir::Instruction::UnsignedToFloat(value) => todo!(),
-            mir::Instruction::FloatToSigned(value) => todo!(),
-            mir::Instruction::FloatToUnsigned(value) => todo!(),
-            mir::Instruction::FloatPromote(value) => todo!(),
-            mir::Instruction::FloatDemote(value) => todo!(),
-            mir::Instruction::Truncate(value) => todo!(),
-            mir::Instruction::Deref(value) => todo!(),
-            mir::Instruction::SizeOf(_) => todo!(),
-            mir::Instruction::ArrayLen(_) => todo!(),
+    /// Write a block's terminator. Every block ends in a `goto`/`return`/trap so control never
+    /// falls through into the textually-following block's label.
+    fn write_terminator(&mut self, block: &mir::Block, mir: &mir::Mir) {
+        match block.terminator.as_ref().expect("block has no terminator") {
+            // `Result` only occurs in globals, handled separately, but treat it as a return defensively.
+            mir::TerminatorInstruction::Return(value) | mir::TerminatorInstruction::Result(value) => {
+                self.write("return ");
+                self.write_value(value, mir);
+                self.write(";");
+            },
+            mir::TerminatorInstruction::Jmp((target, argument)) => {
+                self.write_jmp(*target, argument, mir);
+            },
+            mir::TerminatorInstruction::If { condition, then, else_, end: _ } => {
+                self.write("if (");
+                self.write_value(condition, mir);
+                self.write(") { ");
+                self.write_jmp(then.0, &then.1, mir);
+                self.write(" } else { ");
+                self.write_jmp(else_.0, &else_.1, mir);
+                self.write(" }");
+            },
+            mir::TerminatorInstruction::Switch { int_value, cases, else_, end: _ } => {
+                self.write("switch (");
+                self.write_value(int_value, mir);
+                self.write(") { ");
+                for (tag, target) in cases {
+                    let _ = write!(self.current_item, "case {tag}: {{ ");
+                    self.write_jmp(target.0, &target.1, mir);
+                    self.write(" } ");
+                }
+                self.write("default: { ");
+                self.write_jmp(else_.0, &else_.1, mir);
+                self.write(" } }");
+            },
+            mir::TerminatorInstruction::Unreachable => {
+                self.write("__builtin_unreachable();");
+            },
         }
+    }
+
+    /// Emit a jump to `target`, first assigning the optional branch argument into the target
+    /// block's parameter-0 variable (MIR's equivalent of populating a phi).
+    fn write_jmp(&mut self, target: mir::BlockId, argument: &Option<mir::Value>, mir: &mir::Mir) {
+        if let Some(argument) = argument {
+            self.write_value(&mir::Value::Parameter(target, 0), mir);
+            self.write(" = ");
+            self.write_value(argument, mir);
+            self.write("; ");
+        }
+        let _ = write!(self.current_item, "goto {target};");
+    }
+
+    /// Write `<result_type> vN = ` for the given instruction so the caller can append its
+    /// right-hand-side expression. Uses the declarator form so array/function-pointer result
+    /// types stay well-formed.
+    fn write_result_binding(&mut self, id: InstructionId, definition: &mir::Definition) {
+        let typ = definition.instruction_result_type(id);
+        self.write_declarator(typ, &|this| {
+            let _ = write!(this.current_item, "{id}");
+        });
+        self.write(" = ");
+    }
+
+    /// `<result> vN = <a> <op> <b>;`
+    fn write_binary(
+        &mut self, id: InstructionId, definition: &mir::Definition, mir: &mir::Mir, a: &mir::Value, op: &str,
+        b: &mir::Value,
+    ) {
+        self.write_result_binding(id, definition);
+        self.write_value(a, mir);
+        self.write(op);
+        self.write_value(b, mir);
+        self.write(";");
+    }
+
+    /// Like [Self::write_binary] but casts each operand to its width's signed or unsigned C
+    /// type first. C's integer promotions would otherwise force a signedness that's wrong for
+    /// `DivUnsigned`/`LessSigned`/etc on sub-`int` widths.
+    fn write_binary_signed(
+        &mut self, id: InstructionId, definition: &mir::Definition, mir: &mir::Mir, a: &mir::Value, op: &str,
+        b: &mir::Value, signed: bool,
+    ) {
+        self.write_result_binding(id, definition);
+        self.write_int_operand(a, signed, definition, mir);
+        self.write(op);
+        self.write_int_operand(b, signed, definition, mir);
+        self.write(";");
+    }
+
+    /// Write `(intN_t)value` / `(uintN_t)value`, choosing the same-width type of the requested
+    /// signedness so the following operation interprets the bits correctly. Char operands (a
+    /// signed/unsigned compare on a `char`) are cast to the matching 1-byte type; anything else
+    /// is written as-is.
+    fn write_int_operand(&mut self, value: &mir::Value, signed: bool, definition: &mir::Definition, mir: &mir::Mir) {
+        match mir.type_of_value(value, definition) {
+            mir::Type::Primitive(mir::PrimitiveType::Int(kind)) => {
+                let _ = write!(self.current_item, "({})", int_kind_with_sign(kind, signed));
+            },
+            mir::Type::Primitive(mir::PrimitiveType::Char) => {
+                self.write(if signed { "(int8_t)" } else { "(uint8_t)" });
+            },
+            _ => {},
+        }
+        self.write_value(value, mir);
+    }
+
+    fn write_instruction(
+        &mut self, id: InstructionId, instruction: &mir::Instruction, definition: &mir::Definition, mir: &mir::Mir,
+    ) {
+        match instruction {
+            mir::Instruction::Call { function, arguments } => {
+                self.write_result_binding(id, definition);
+                self.write_value(function, mir);
+                self.write("(");
+                for (i, argument) in arguments.iter().enumerate() {
+                    if i != 0 {
+                        self.write(", ");
+                    }
+                    self.write_value(argument, mir);
+                }
+                self.write(");");
+            },
+            mir::Instruction::IndexTuple { tuple, index } => {
+                let result = definition.instruction_result_type(id);
+                if matches!(result, mir::Type::Array { .. }) {
+                    // C can't assign an array, so copy the field out with memcpy instead.
+                    self.write_declarator(result, &|this| {
+                        let _ = write!(this.current_item, "{id}");
+                    });
+                    let _ = write!(self.current_item, "; memcpy({id}, ");
+                    self.write_value(tuple, mir);
+                    let _ = write!(self.current_item, "._{index}, sizeof({id}));");
+                } else {
+                    self.write_result_binding(id, definition);
+                    self.write_value(tuple, mir);
+                    let _ = write!(self.current_item, "._{index};");
+                }
+            },
+            mir::Instruction::MakeBytes(bytes) => {
+                // Embed the bytes as a static array and return a pointer to it.
+                let name = format!("{id}_bytes");
+                self.write_byte_array(&name, bytes);
+                let _ = write!(self.current_item, " void* {id} = {name};");
+            },
+            mir::Instruction::MakeTuple(values) => {
+                let result = definition.instruction_result_type(id);
+                let mir::Type::Tuple(element_types) = result else {
+                    panic!("MakeTuple result type is not a tuple: {result}")
+                };
+                // C can neither brace-initialize nor assign an array member from an array lvalue, so
+                // when any element is an array, declare the tuple and fill each field individually:
+                // array fields via memcpy, the rest by assignment.
+                if element_types.iter().any(|t| matches!(t, mir::Type::Array { .. })) {
+                    self.write_declarator(result, &|this| {
+                        let _ = write!(this.current_item, "{id}");
+                    });
+                    self.write(";");
+                    for (i, value) in values.iter().enumerate() {
+                        if matches!(element_types[i], mir::Type::Array { .. }) {
+                            let _ = write!(self.current_item, " memcpy({id}._{i}, ");
+                            self.write_value(value, mir);
+                            let _ = write!(self.current_item, ", sizeof({id}._{i}));");
+                        } else {
+                            let _ = write!(self.current_item, " {id}._{i} = ");
+                            self.write_value(value, mir);
+                            self.write(";");
+                        }
+                    }
+                } else {
+                    self.write_result_binding(id, definition);
+                    self.write("{");
+                    for (i, value) in values.iter().enumerate() {
+                        if i != 0 {
+                            self.write(", ");
+                        }
+                        self.write_value(value, mir);
+                    }
+                    self.write("};");
+                }
+            },
+            mir::Instruction::MakeArray(values) => {
+                // Array results must keep declaration and initializer together: C forbids
+                // assigning to an array, so the brace initializer can't be split out.
+                self.write_result_binding(id, definition);
+                self.write("{");
+                for (i, value) in values.iter().enumerate() {
+                    if i != 0 {
+                        self.write(", ");
+                    }
+                    self.write_value(value, mir);
+                }
+                self.write("};");
+            },
+            mir::Instruction::StackAlloc(value) => {
+                let typ = mir.type_of_value(value, definition);
+                self.write_declarator(&typ, &|this| {
+                    let _ = write!(this.current_item, "{id}_slot");
+                });
+                if matches!(typ, mir::Type::Array { .. }) {
+                    // Arrays must be memcpy'd in C to be moved
+                    let _ = write!(self.current_item, "; memcpy({id}_slot, ");
+                    self.write_value(value, mir);
+                    let _ = write!(self.current_item, ", sizeof({id}_slot));");
+                } else {
+                    self.write(" = ");
+                    self.write_value(value, mir);
+                    self.write(";");
+                }
+                let _ = write!(self.current_item, " void* {id} = &{id}_slot;");
+            },
+            mir::Instruction::StackAllocUninit(typ) => {
+                self.write_declarator(typ, &|this| {
+                    let _ = write!(this.current_item, "{id}_slot");
+                });
+                let _ = write!(self.current_item, "; void* {id} = &{id}_slot;");
+            },
+            mir::Instruction::AllocShared(value) => {
+                let typ = mir.type_of_value(value, definition);
+                let _ = write!(self.current_item, "void* {id} = malloc(sizeof(");
+                self.write_type(&typ, "");
+                self.write(")); *(");
+                self.write_type(&typ, "");
+                let _ = write!(self.current_item, "*){id} = ");
+                self.write_value(value, mir);
+                self.write(";");
+            },
+            mir::Instruction::Store { pointer, value } => {
+                let typ = mir.type_of_value(value, definition);
+                self.write("*(");
+                self.write_type(&typ, "");
+                self.write("*)");
+                self.write_value(pointer, mir);
+                self.write(" = ");
+                self.write_value(value, mir);
+                let _ = write!(self.current_item, "; Unit {id} = (Unit){{}};");
+            },
+            mir::Instruction::GetFieldPtr { struct_ptr, struct_type, index } => {
+                let _ = write!(self.current_item, "void* {id} = (void*)&((");
+                self.write_type(struct_type, "");
+                self.write("*)");
+                self.write_value(struct_ptr, mir);
+                let _ = write!(self.current_item, ")->_{index};");
+            },
+            mir::Instruction::Transmute(value) => {
+                // C can't reinterpret an rvalue's bits directly, so round-trip through memcpy.
+                let source = mir.type_of_value(value, definition);
+                self.write_declarator(&source, &|this| {
+                    let _ = write!(this.current_item, "{id}_src");
+                });
+                self.write(" = ");
+                self.write_value(value, mir);
+                self.write("; ");
+                let result = definition.instruction_result_type(id);
+                self.write_declarator(result, &|this| {
+                    let _ = write!(this.current_item, "{id}");
+                });
+                let _ = write!(self.current_item, "; memcpy(&{id}, &{id}_src, sizeof(");
+                self.write_type(result, "");
+                self.write("));");
+            },
+            mir::Instruction::Id(value) => {
+                self.write_result_binding(id, definition);
+                self.write_value(value, mir);
+                self.write(";");
+            },
+            mir::Instruction::Extern(name) => {
+                let typ = definition.instruction_result_type(id).clone();
+                self.emit_extern_declaration(name, &typ);
+                self.write_result_binding(id, definition);
+                self.write(name);
+                self.write(";");
+            },
+            mir::Instruction::Deref(value) => {
+                let result = definition.instruction_result_type(id);
+                if matches!(result, mir::Type::Array { .. }) {
+                    // Arrays degrade into pointers in C, so copy out of it with memcpy.
+                    self.write_declarator(result, &|this| {
+                        let _ = write!(this.current_item, "{id}");
+                    });
+                    let _ = write!(self.current_item, "; memcpy({id}, ");
+                    self.write_value(value, mir);
+                    let _ = write!(self.current_item, ", sizeof({id}));");
+                } else {
+                    self.write_result_binding(id, definition);
+                    self.write("*(");
+                    self.write_type(result, "");
+                    self.write("*)");
+                    self.write_value(value, mir);
+                    self.write(";");
+                }
+            },
+
+            mir::Instruction::AddInt(a, b) => self.write_binary(id, definition, mir, a, " + ", b),
+            mir::Instruction::AddFloat(a, b) => self.write_binary(id, definition, mir, a, " + ", b),
+            mir::Instruction::SubInt(a, b) => self.write_binary(id, definition, mir, a, " - ", b),
+            mir::Instruction::SubFloat(a, b) => self.write_binary(id, definition, mir, a, " - ", b),
+            mir::Instruction::MulInt(a, b) => self.write_binary(id, definition, mir, a, " * ", b),
+            mir::Instruction::MulFloat(a, b) => self.write_binary(id, definition, mir, a, " * ", b),
+            mir::Instruction::DivSigned(a, b) => self.write_binary_signed(id, definition, mir, a, " / ", b, true),
+            mir::Instruction::DivUnsigned(a, b) => self.write_binary_signed(id, definition, mir, a, " / ", b, false),
+            mir::Instruction::DivFloat(a, b) => self.write_binary(id, definition, mir, a, " / ", b),
+            mir::Instruction::ModSigned(a, b) => self.write_binary_signed(id, definition, mir, a, " % ", b, true),
+            mir::Instruction::ModUnsigned(a, b) => self.write_binary_signed(id, definition, mir, a, " % ", b, false),
+            mir::Instruction::ModFloat(a, b) => {
+                self.write_result_binding(id, definition);
+                self.write("fmod(");
+                self.write_value(a, mir);
+                self.write(", ");
+                self.write_value(b, mir);
+                self.write(");");
+            },
+            mir::Instruction::LessSigned(a, b) => self.write_binary_signed(id, definition, mir, a, " < ", b, true),
+            mir::Instruction::LessUnsigned(a, b) => self.write_binary_signed(id, definition, mir, a, " < ", b, false),
+            mir::Instruction::LessFloat(a, b) => self.write_binary(id, definition, mir, a, " < ", b),
+            mir::Instruction::EqInt(a, b) => self.write_binary(id, definition, mir, a, " == ", b),
+            mir::Instruction::EqFloat(a, b) => self.write_binary(id, definition, mir, a, " == ", b),
+            mir::Instruction::BitwiseAnd(a, b) => self.write_binary(id, definition, mir, a, " & ", b),
+            mir::Instruction::BitwiseOr(a, b) => self.write_binary(id, definition, mir, a, " | ", b),
+            mir::Instruction::BitwiseXor(a, b) => self.write_binary(id, definition, mir, a, " ^ ", b),
+            mir::Instruction::BitwiseNot(value) => {
+                self.write_result_binding(id, definition);
+                self.write("~");
+                self.write_value(value, mir);
+                self.write(";");
+            },
+
+            // Sign/zero extension force the source's signedness; the assignment to the (wider)
+            // result type then sign- or zero-extends as C's conversion rules dictate.
+            mir::Instruction::SignExtend(value) => {
+                self.write_result_binding(id, definition);
+                self.write_int_operand(value, true, definition, mir);
+                self.write(";");
+            },
+            mir::Instruction::ZeroExtend(value) => {
+                self.write_result_binding(id, definition);
+                self.write_int_operand(value, false, definition, mir);
+                self.write(";");
+            },
+
+            // The remaining conversions are plain casts: assigning to the result-typed variable
+            // performs the int<->float / narrowing / float-width conversion directly.
+            mir::Instruction::SignedToFloat(value)
+            | mir::Instruction::UnsignedToFloat(value)
+            | mir::Instruction::FloatToSigned(value)
+            | mir::Instruction::FloatToUnsigned(value)
+            | mir::Instruction::FloatPromote(value)
+            | mir::Instruction::FloatDemote(value)
+            | mir::Instruction::Truncate(value) => {
+                let result = definition.instruction_result_type(id);
+                self.write_result_binding(id, definition);
+                self.write("(");
+                self.write_type(result, "");
+                self.write(")");
+                self.write_value(value, mir);
+                self.write(";");
+            },
+
+            // The following are removed by earlier passes before codegen, mirroring the LLVM backend.
+            mir::Instruction::CallClosure { .. } => unreachable!("Instruction::CallClosure remaining in C codegen"),
+            mir::Instruction::Perform { .. } => unreachable!("Instruction::Perform remaining in C codegen"),
+            mir::Instruction::Handle { .. } => unreachable!("Instruction::Handle remaining in C codegen"),
+            mir::Instruction::Capability => unreachable!("Instruction::Capability remaining in C codegen"),
+            mir::Instruction::PackClosure { .. } => unreachable!("Instruction::PackClosure remaining in C codegen"),
+            mir::Instruction::Instantiate(..) => unreachable!("Instruction::Instantiate remaining in C codegen"),
+            mir::Instruction::SizeOf(_) => todo!("SizeOf should be removed by monomorphization"),
+            mir::Instruction::ArrayLen(_) => todo!("ArrayLen should be removed by monomorphization"),
+        }
+    }
+
+    /// Forward-declare an external symbol referenced by an [mir::Instruction::Extern]. Function
+    /// types become prototypes; other types become `extern` variable declarations.
+    fn emit_extern_declaration(&mut self, name: &str, typ: &mir::Type) {
+        // These are already declared in [CFile::add_starter_items], redeclaring would conflict.
+        if matches!(name, "malloc" | "memcpy" | "fmod") {
+            return;
+        }
+        let declaration = self.capture(|this| {
+            match typ {
+                mir::Type::Function(function) => {
+                    this.write_declarator(&function.return_type, &|this| {
+                        this.write(name);
+                        this.write("(");
+                        for (i, parameter) in function.parameters.iter().enumerate() {
+                            if i != 0 {
+                                this.write(", ");
+                            }
+                            this.write_type(parameter, "");
+                        }
+                        this.write(")");
+                    });
+                },
+                _ => {
+                    this.write("extern ");
+                    this.write_type(typ, name);
+                },
+            }
+            this.write(";");
+        });
+        self.file.add_function_declaration(&declaration);
+    }
+}
+
+/// The C spelling of an integer kind, used both for type declarations and casts.
+fn int_kind_c_name(kind: IntegerKind) -> &'static str {
+    match kind {
+        IntegerKind::I8 => "int8_t",
+        IntegerKind::I16 => "int16_t",
+        IntegerKind::I32 => "int32_t",
+        IntegerKind::I64 => "int64_t",
+        IntegerKind::Isz => "ptrdiff_t",
+        IntegerKind::U8 => "uint8_t",
+        IntegerKind::U16 => "uint16_t",
+        IntegerKind::U32 => "uint32_t",
+        IntegerKind::U64 => "uint64_t",
+        IntegerKind::Usz => "size_t",
+    }
+}
+
+/// The same-width counterpart of `kind` with the given signedness, used to force the
+/// correct interpretation of an operand before a sign-sensitive operation (division,
+/// remainder, comparison, or a zero/sign extend).
+fn int_kind_with_sign(kind: IntegerKind, signed: bool) -> &'static str {
+    let signed_kind = match kind {
+        IntegerKind::I8 | IntegerKind::U8 => IntegerKind::I8,
+        IntegerKind::I16 | IntegerKind::U16 => IntegerKind::I16,
+        IntegerKind::I32 | IntegerKind::U32 => IntegerKind::I32,
+        IntegerKind::I64 | IntegerKind::U64 => IntegerKind::I64,
+        IntegerKind::Isz | IntegerKind::Usz => IntegerKind::Isz,
+    };
+    let unsigned_kind = match kind {
+        IntegerKind::I8 | IntegerKind::U8 => IntegerKind::U8,
+        IntegerKind::I16 | IntegerKind::U16 => IntegerKind::U16,
+        IntegerKind::I32 | IntegerKind::U32 => IntegerKind::U32,
+        IntegerKind::I64 | IntegerKind::U64 => IntegerKind::U64,
+        IntegerKind::Isz | IntegerKind::Usz => IntegerKind::Usz,
+    };
+    int_kind_c_name(if signed { signed_kind } else { unsigned_kind })
+}
+
+fn float_kind_c_name(kind: FloatKind) -> &'static str {
+    match kind {
+        FloatKind::F32 => "_Float32",
+        FloatKind::F64 => "_Float64",
     }
 }
 
@@ -514,5 +1087,40 @@ mod tests {
         assert_eq!(builder.current_item, "Tuple1 t");
         let Type::Tuple(inner_key) = &inner else { unreachable!() };
         assert_eq!(builder.tuples.types.get(inner_key).unwrap().value().0, 0);
+    }
+
+    #[test]
+    fn integer_literals_are_valid_c() {
+        use crate::mir::IntConstant;
+        let cases = [
+            (IntConstant::I32(5), "(int32_t)5"),
+            (IntConstant::I8(-3), "(int8_t)-3"),
+            (IntConstant::U8(200), "(uint8_t)200"),
+            (IntConstant::I64(-3), "(int64_t)-3ll"),
+            (IntConstant::U64(9), "(uint64_t)9ull"),
+            (IntConstant::Usz(9), "(size_t)9ull"),
+            (IntConstant::Isz(-1), "(ptrdiff_t)-1ll"),
+            // The minimum can't be written as a negated literal without overflowing `ll`.
+            (IntConstant::I64(i64::MIN), "(int64_t)(-9223372036854775807ll - 1)"),
+            (IntConstant::Isz(isize::MIN), "(ptrdiff_t)(-9223372036854775807ll - 1)"),
+        ];
+        for (constant, expected) in cases {
+            let mut builder = Builder::default();
+            builder.write_integer_constant(constant);
+            assert_eq!(builder.current_item, expected);
+        }
+    }
+
+    #[test]
+    fn mangled_names_are_valid_identifiers() {
+        use crate::mir::DefinitionId;
+        // Operator names sanitize their non-identifier characters to `_`; the id keeps them unique.
+        let mut builder = Builder::default();
+        builder.write_mangled_name(">=", DefinitionId(9));
+        assert_eq!(builder.current_item, "___9");
+
+        let mut builder = Builder::default();
+        builder.write_mangled_name("main", DefinitionId(5));
+        assert_eq!(builder.current_item, "main_5");
     }
 }

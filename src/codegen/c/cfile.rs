@@ -6,6 +6,8 @@ pub(super) struct CFile {
     type_declarations: String,
     type_definitions: String,
     function_declarations: String,
+    global_declarations: String,
+    global_definitions: String,
     function_definitions: String,
 }
 
@@ -17,8 +19,10 @@ impl CFile {
             self.type_declarations.len()
                 + self.type_definitions.len()
                 + self.function_declarations.len()
+                + self.global_declarations.len()
+                + self.global_definitions.len()
                 + self.function_definitions.len()
-                + 4, // 4 for the newlines separating each.
+                + 6, // 6 for the newlines separating each.
         );
         let capacity = result.capacity();
         result += "\n";
@@ -27,6 +31,10 @@ impl CFile {
         result += &self.type_definitions;
         result += "\n";
         result += &self.function_declarations;
+        result += "\n";
+        result += &self.global_declarations;
+        result += "\n";
+        result += &self.global_definitions;
         result += "\n";
         result += &self.function_definitions;
         // Ensure the capacity estimate was correct
@@ -40,7 +48,7 @@ impl CFile {
     }
 
     pub(super) fn add_type_declaration(&mut self, decl: &str) {
-        self.type_declarations+= decl;
+        self.type_declarations += decl;
         self.type_declarations += "\n";
     }
 
@@ -54,6 +62,16 @@ impl CFile {
         self.function_declarations += "\n";
     }
 
+    pub(super) fn add_global_declaration(&mut self, decl: &str) {
+        self.global_declarations += decl;
+        self.global_declarations += "\n";
+    }
+
+    pub(super) fn add_global_definition(&mut self, def: &str) {
+        self.global_definitions += def;
+        self.global_definitions += "\n";
+    }
+
     pub(super) fn add_function_definition(&mut self, def: &str) {
         self.function_definitions += def;
         self.function_definitions += "\n";
@@ -65,16 +83,26 @@ impl CFile {
         self.type_declarations += &other.type_declarations;
         self.type_definitions += &other.type_definitions;
         self.function_declarations += &other.function_declarations;
+        self.global_declarations += &other.global_declarations;
+        self.global_definitions += &other.global_definitions;
         self.function_definitions += &other.function_definitions;
         self
     }
 
     /// Add some necessary items to this CFile that are needed by all Ante programs:
-    /// - The `Unit` struct
-    /// - `stdbool.h` header
+    /// the standard headers and runtime prototypes the generated code references, plus the
+    /// `Unit` struct.
     pub(crate) fn add_starter_items(mut self) -> Self {
+        // stdlib.h, string.h, math.h would conflict with `extern` statements in source code
+        // which declare some of the same functions.
+        self.includes += "#include <stdint.h>\n";
+        self.includes += "#include <stddef.h>\n";
         self.includes += "#include <stdbool.h>\n";
+
         self.type_declarations += "typedef struct {} Unit;\n";
+        self.function_declarations += "void* malloc(size_t);\n";
+        self.function_declarations += "void* memcpy(void*, void*, size_t);\n";
+        self.function_declarations += "double fmod(double, double);\n";
         self
     }
 }
