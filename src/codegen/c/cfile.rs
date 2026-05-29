@@ -42,11 +42,8 @@ impl CFile {
         result
     }
 
-    pub(super) fn add_include(&mut self, include: &str) {
-        self.includes += include;
-        self.includes += "\n";
-    }
-
+    // TODO: Should [super::write_cached_tuple_type] be changed to use this method?
+    #[allow(unused)]
     pub(super) fn add_type_declaration(&mut self, decl: &str) {
         self.type_declarations += decl;
         self.type_declarations += "\n";

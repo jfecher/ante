@@ -35,7 +35,7 @@ mod remove_unreachable;
 mod validation;
 
 #[derive(Default)]
-pub(crate) struct Mir {
+pub struct Mir {
     pub(crate) definitions: Definitions,
 
     /// Any extern symbols used but not defined in this [Mir]
@@ -48,7 +48,7 @@ pub(crate) struct Mir {
 }
 
 #[derive(Debug)]
-pub(crate) struct Extern {
+pub struct Extern {
     pub(crate) name: Name,
     pub(crate) typ: Type,
 }
@@ -98,7 +98,7 @@ impl std::ops::Index<DefinitionId> for Mir {
 /// construct tuples which are instructions in this IR. Additionally, the
 /// terminator of a global's block is always `Result`.
 #[derive(Clone)]
-pub(crate) struct Definition {
+pub struct Definition {
     pub(crate) name: Name,
 
     /// The unique DefinitionId identifying this function
@@ -345,7 +345,7 @@ impl Value {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct DefinitionId(pub u32);
+pub struct DefinitionId(pub u32);
 
 /// DefinitionIds are assigned in monotonically increasing order. These IDs are nondeterministic in
 /// practice due to this counter being used concurrently. As a result, anything using these ids

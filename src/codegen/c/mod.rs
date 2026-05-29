@@ -39,7 +39,7 @@ use super::constant::{self, ConstantValue};
 /// Codegen the given Mir into a single C file, then invoke cc to create
 /// a object file and a binary. On success, the object file is removed, but
 /// the .c file is kept.
-pub(crate) fn codegen_c_for_mir(mir: &mir::Mir, binary_name: &str, opt_level: OptLevel) {
+pub fn codegen_c_for_mir(mir: &mir::Mir, binary_name: &str, opt_level: OptLevel) {
     // Create the C file
     let c_file = build_c_file(mir);
     let c_file_name = format!("{binary_name}.c");

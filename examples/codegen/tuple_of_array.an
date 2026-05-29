@@ -9,7 +9,7 @@ main () =
     println (array_get got 2)
     println t.second
 
-// args: --backend c --delete-binary --no-color
+// args: --delete-binary --no-color
 // expected stdout:
 // 999
 // 30
