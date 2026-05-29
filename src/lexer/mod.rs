@@ -270,7 +270,7 @@ impl<'contents> Lexer<'contents> {
                 let token = match token {
                     Token::IntegerLiteral(x, kind) => Token::IntegerLiteral(x.negated(), kind),
                     Token::FloatLiteral(x, kind) => Token::FloatLiteral(F64(-x.0), kind),
-                    _ => unreachable!(),
+                    other => other,
                 };
                 (token, location)
             })

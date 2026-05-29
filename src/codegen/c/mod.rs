@@ -60,6 +60,7 @@ pub(crate) fn codegen_c_for_mir(mir: &mir::Mir, binary_name: &str, opt_level: Op
     let status = child.wait().unwrap();
     if status.success() {
         super::link_with_cc(&o_file_name, binary_name);
+        std::fs::remove_file(&c_file_name).unwrap();
     }
 }
 
