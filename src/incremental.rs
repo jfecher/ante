@@ -165,19 +165,6 @@ pub struct GetCrateGraph;
 // A CrateId maps to a Crate which is used for organizing dependencies.
 define_input!(200, GetCrateGraph -> Arc<CrateGraph>, DbStorage);
 
-/// Any full path from a crate to module in name resolution must query the
-/// crate names of all dependencies. To avoid all of name resolution changing
-/// if anything changes in these crate inputs we refine the query more here
-/// making it depend only on the name of the crate.
-#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CrateName(pub CrateId);
-define_intermediate!(300, CrateName -> Name, DbStorage, |ctx, db| {
-    match GetCrateGraph.get(db).get(&ctx.0) {
-        Some(crate_) => Arc::new(crate_.name.clone()),
-        None => Arc::new("(none)".to_string()),
-    }
-});
-
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 /// For each file name, we cache the parse result of that file. This includes not only
 /// the `Ast`, but also parse errors and some metadata tracked by the parser. Note that the

@@ -40,9 +40,10 @@ pub struct Cli {
     #[arg(long)]
     pub emit_all: bool,
 
-    /// Specify the backend to use ('llvm' or 'cranelift'). Note that cranelift is only for debug builds.
-    /// Ante will use cranelift by default for debug builds and llvm by default for optimized builds,
-    /// unless overridden by this flag
+    /// Specify the backend to use ('llvm', 'c', or 'cranelift'). Note that cranelift is only for debug builds and is currently unimplemented.
+    /// The default priority for each backend is:
+    /// - debug: cranelift > llvm > c
+    /// - release: llvm > c
     #[arg(long)]
     pub backend: Option<Backend>,
 
@@ -113,6 +114,7 @@ pub enum OptLevel {
 }
 
 impl OptLevel {
+    #[cfg(feature = "llvm")]
     pub fn as_passes_string(self) -> &'static str {
         match self {
             OptLevel::O0 => "default<O0>",
@@ -124,6 +126,7 @@ impl OptLevel {
         }
     }
 
+    #[cfg(feature = "llvm")]
     pub fn inkwell(self) -> inkwell::OptimizationLevel {
         use inkwell::OptimizationLevel;
         match self {

@@ -22,9 +22,11 @@ pub(crate) enum ConstantValue {
     Float(mir::FloatConstant),
     Tuple(Vec<ConstantValue>),
     /// `element_type` lets a backend spell the array type even when `elements` is empty (the C
-    /// backend reads it via the variable's declarator instead, so it ignores this field).
+    /// backend reads it via the variable's declarator instead, so it ignores this field, which is
+    /// why it is only present in llvm builds).
     Array {
         elements: Vec<ConstantValue>,
+        #[cfg(feature = "llvm")]
         element_type: Type,
     },
     /// An immutable byte blob (a string literal). Backed by static storage; rendered as a pointer.
@@ -86,15 +88,13 @@ fn evaluate_instruction(
         mir::Instruction::MakeTuple(fields) => {
             ConstantValue::Tuple(fields.iter().map(|f| constant_value(*f, values)).collect())
         },
-        mir::Instruction::MakeArray(elements) => {
-            let element_type = match definition.instruction_result_type(id) {
+        mir::Instruction::MakeArray(elements) => ConstantValue::Array {
+            elements: elements.iter().map(|e| constant_value(*e, values)).collect(),
+            #[cfg(feature = "llvm")]
+            element_type: match definition.instruction_result_type(id) {
                 Type::Array { element, .. } => (**element).clone(),
                 other => panic!("MakeArray result type is not an array: {other}"),
-            };
-            ConstantValue::Array {
-                elements: elements.iter().map(|e| constant_value(*e, values)).collect(),
-                element_type,
-            }
+            },
         },
         mir::Instruction::MakeBytes(bytes) => ConstantValue::Bytes(bytes.clone()),
         mir::Instruction::Id(value) => constant_value(*value, values),

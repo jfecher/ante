@@ -168,8 +168,8 @@ fn order_global_initializers(mut initializers: Vec<cfile::GlobalInitializer>) ->
 /// Depth-first post-order visit emitting each global's deferred dependencies before itself.
 fn visit_initializer(
     id: u32, deferred: &rustc_hash::FxHashSet<DefinitionId>,
-    by_id: &mut std::collections::BTreeMap<u32, cfile::GlobalInitializer>,
-    visited: &mut rustc_hash::FxHashSet<u32>, ordered: &mut Vec<cfile::GlobalInitializer>,
+    by_id: &mut std::collections::BTreeMap<u32, cfile::GlobalInitializer>, visited: &mut rustc_hash::FxHashSet<u32>,
+    ordered: &mut Vec<cfile::GlobalInitializer>,
 ) {
     if !visited.insert(id) {
         return;
@@ -300,8 +300,7 @@ impl Builder {
     /// file-scope initializer). Aggregates need a compound-literal cast since `name = {...}` is not
     /// valid statement syntax; scalars and name references are written as-is.
     fn write_constant_rvalue(
-        &mut self, value: &ConstantValue, typ: &mir::Type, global_id: DefinitionId, aux_index: &mut u32,
-        mir: &mir::Mir,
+        &mut self, value: &ConstantValue, typ: &mir::Type, global_id: DefinitionId, aux_index: &mut u32, mir: &mir::Mir,
     ) {
         if matches!(value, ConstantValue::Tuple(_) | ConstantValue::Array { .. }) {
             self.write("(");

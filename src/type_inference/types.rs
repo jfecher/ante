@@ -380,7 +380,7 @@ impl Type {
 
     /// If this type is `Type::Forall(_, typ)`, return `typ`.
     /// Otherwise, return the type as-is.
-    pub(crate) fn ignore_forall(&self) -> &Self {
+    pub fn ignore_forall(&self) -> &Self {
         match self {
             Type::Forall(_, typ) => typ,
             other => other,

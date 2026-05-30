@@ -42,16 +42,18 @@ use colored::Colorize;
 use diagnostics::Diagnostic;
 use incremental::{Db, GetCrateGraph, Parse, Resolve};
 use name_resolution::namespace::{CrateId, LocalModuleId, SourceFileId};
+#[cfg(feature = "llvm")]
+use std::sync::Arc;
 use std::{
     collections::BTreeSet,
     path::{Path, PathBuf},
     process::Command,
-    sync::Arc,
 };
 
+#[cfg(feature = "llvm")]
+use crate::codegen::llvm::{CodegenLlvmResult, codegen_llvm};
 use crate::{
     cli::{EmitTarget, OptLevel},
-    codegen::llvm::{CodegenLlvmResult, codegen_llvm},
     diagnostics::{DiagnosticKind, collect_all_diagnostics},
     files::{make_compiler, write_metadata},
     incremental::{TargetPointerSize, TypeCheck, ValidateExports},
@@ -113,12 +115,14 @@ fn compile(args: Cli) {
         Some(EmitTarget::Mir) => display_mir(&mut compiler, args.emit_all, false),
         Some(EmitTarget::MirTail) => display_mir(&mut compiler, args.emit_all, true),
         Some(EmitTarget::MirMono) => display_mir_mono(&mut compiler),
-        Some(EmitTarget::Ir) => llvm_codegen_separate(&mut compiler, true, args.show_time, opt_level).2,
-        None if args.backend == Some(cli::Backend::Llvm) => {
-            llvm_codegen_all(&mut compiler, &args.files, !args.build, args.delete_binary, args.show_time, opt_level)
-        },
-        None => {
-            c_codegen_all(&mut compiler, &args.files, !args.build, args.delete_binary, opt_level)
+        Some(EmitTarget::Ir) => display_ir(&mut compiler, args.show_time, opt_level),
+        None => match resolve_backend(args.backend) {
+            #[cfg(feature = "llvm")]
+            cli::Backend::Llvm => {
+                llvm_codegen_all(&mut compiler, &args.files, !args.build, args.delete_binary, args.show_time, opt_level)
+            },
+            cli::Backend::C => c_codegen_all(&mut compiler, &args.files, !args.build, args.delete_binary, opt_level),
+            _ => unreachable!("resolve_backend only returns backends this compiler can run"),
         },
     };
 
@@ -138,6 +142,30 @@ fn compile(args: Cli) {
 
     if error_count != 0 {
         std::process::exit(1);
+    }
+}
+
+/// Resolve the effective backend from the user's `--backend` choice, exiting with an error
+/// for any backend this compiler cannot run. When `--backend` is omitted the priority is:
+/// - debug: cranelift > llvm > c
+/// - release: llvm > c
+fn resolve_backend(requested: Option<cli::Backend>) -> cli::Backend {
+    use cli::Backend;
+    match requested {
+        Some(Backend::Cranelift) => {
+            eprintln!("The cranelift backend is not yet implemented");
+            std::process::exit(1);
+        },
+        Some(Backend::Llvm) if !cfg!(feature = "llvm") => {
+            eprintln!(
+                "This compiler was built without the 'llvm' feature, so the llvm backend is \
+                 unavailable. Rebuild with `cargo build --features llvm` to enable it."
+            );
+            std::process::exit(1);
+        },
+        Some(backend) => backend,
+        None if cfg!(feature = "llvm") => Backend::Llvm,
+        None => Backend::C,
     }
 }
 
@@ -347,8 +375,25 @@ fn display_mir_mono(compiler: &mut Db) -> BTreeSet<Diagnostic> {
     diagnostics
 }
 
+fn display_ir(compiler: &mut Db, show_time: bool, opt_level: OptLevel) -> BTreeSet<Diagnostic> {
+    #[cfg(feature = "llvm")]
+    {
+        llvm_codegen_separate(compiler, true, show_time, opt_level).2
+    }
+    #[cfg(not(feature = "llvm"))]
+    {
+        let _ = (compiler, show_time, opt_level);
+        eprintln!(
+            "Emitting IR requires the llvm backend, but this compiler was built without \
+            the 'llvm' feature. Rebuild with `cargo build --features llvm` to enable it."
+        );
+        std::process::exit(1);
+    }
+}
+
 /// Codegen each item as a separate llvm module
 /// Returns (module strings, true if there are any errors, diagnostics)
+#[cfg(feature = "llvm")]
 fn llvm_codegen_separate(
     compiler: &mut Db, display_ir: bool, show_time: bool, opt_level: OptLevel,
 ) -> (Vec<Arc<Vec<u8>>>, bool, BTreeSet<Diagnostic>) {
@@ -369,6 +414,7 @@ fn llvm_codegen_separate(
     (modules, false, diagnostics)
 }
 
+#[cfg(feature = "llvm")]
 fn display_llvm_bitcode(result: &CodegenLlvmResult, module_name: &str) {
     let buffer = inkwell::memory_buffer::MemoryBuffer::create_from_memory_range(&result.module_bitcode, module_name);
     let context = inkwell::context::Context::create();
@@ -380,6 +426,7 @@ fn display_llvm_bitcode(result: &CodegenLlvmResult, module_name: &str) {
 }
 
 /// Codegen everything, linking together each separate llvm module
+#[cfg(feature = "llvm")]
 fn llvm_codegen_all(
     compiler: &mut Db, files: &[PathBuf], run: bool, delete_binary: bool, show_time: bool, opt_level: OptLevel,
 ) -> BTreeSet<Diagnostic> {

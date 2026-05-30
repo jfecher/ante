@@ -4,6 +4,7 @@ use crate::paths::aminicoro_path;
 
 pub mod c;
 pub mod constant;
+#[cfg(feature = "llvm")]
 pub mod llvm;
 
 pub fn link_with_cc(object_filename: &str, binary_filename: &str) -> bool {

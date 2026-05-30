@@ -705,6 +705,7 @@ impl IntConstant {
     }
 
     /// Bitcast this value to a u64
+    #[cfg(feature = "llvm")]
     pub(crate) fn as_u64(&self) -> u64 {
         match self {
             IntConstant::U8(x) => *x as u64,
