@@ -9,7 +9,10 @@ use crate::{
     diagnostics::{ConfusingBodyKind, Diagnostic, ErrorDefault, Hint, Location, Span},
     incremental,
     iterator_extensions::mapvec,
-    lexer::{Lexer, token::Token},
+    lexer::{
+        Lexer,
+        token::{INDEX_ASSIGN_OPERATOR_FUNCTION_NAME, INDEX_OPERATOR_FUNCTION_NAME, Token},
+    },
     name_resolution::namespace::SourceFileId,
     parser::{
         context::TopLevelContext,
@@ -1786,13 +1789,13 @@ impl<'tokens> Parser<'tokens> {
                 },
                 Token::Index => {
                     result = self.with_expr_id_and_location(|this| {
-                        // `result.[i]` gets transformed into a function call `(.[) result i`
+                        // `result.[i]` gets transformed into a function call `(.[]) result i`
                         let result = Argument::explicit(result);
                         let location = this.current_token_location();
                         this.advance();
                         let index = Argument::explicit(this.parse_expression()?);
                         this.expect(Token::BracketRight, "a `]` to terminate the index expression")?;
-                        let path = Path::ident(".[".to_string(), location.clone());
+                        let path = Path::ident(INDEX_OPERATOR_FUNCTION_NAME.to_string(), location.clone());
                         let path = this.push_path(path, location.clone());
                         let function = this.push_expr(Expr::Variable(path), location);
                         Ok(Expr::Call(Call { function, arguments: vec![result, index] }))
@@ -2064,10 +2067,63 @@ impl<'tokens> Parser<'tokens> {
         if self.accept(Token::Assignment) {
             let rhs = self.parse_expression()?;
             let location = self.expr_location(expression).to(&self.expr_location(rhs));
+
+            // `collection.[index] := rhs` resolves to the `Insert` ability rather than a plain
+            // store: rewrite it into a call `(.[]:=) collection index rhs` so it goes through
+            // normal ability dispatch. Reads (`a.[i]`) still resolve to `Extract`.
+            if let Some((collection, index)) = self.index_call_args(expression) {
+                // Borrow the collection mutably so the insertion mutates it in place. For nested
+                // indices (`a.[i].[j] := v`) this pushes `mut` to the innermost receiver so each
+                // intermediate `.[` read resolves to a `mut`-returning Extract.
+                let collection = self.mutify_receiver(collection);
+
+                let path = Path::ident(INDEX_ASSIGN_OPERATOR_FUNCTION_NAME.to_string(), location.clone());
+                let path = self.push_path(path, location.clone());
+                let function = self.push_expr(Expr::Variable(path), location.clone());
+                let arguments = vec![
+                    Argument::explicit(collection),
+                    Argument::explicit(index),
+                    Argument::explicit(rhs),
+                ];
+                return Ok(self.push_expr(Expr::Call(Call { function, arguments }), location));
+            }
+
             Ok(self.push_expr(Expr::Assignment(cst::Assignment { lhs: expression, rhs, op: None }), location))
         } else {
             Ok(expression)
         }
+    }
+
+    /// Borrow the base of a (possibly nested) index expression mutably so that
+    /// `a.[i].[j] := v` threads `mut` references through each `.[` read:
+    ///   `arr`        -> `mut arr`
+    ///   `board.[r]`  -> `(.[) (mut board) r`
+    ///   `a.[i].[j]`  -> `(.[) ((.[) (mut a) i) j`
+    fn mutify_receiver(&mut self, expr: ExprId) -> ExprId {
+        let location = self.expr_location(expr);
+        if let Some((receiver, index)) = self.index_call_args(expr) {
+            let receiver = self.mutify_receiver(receiver);
+            let path = Path::ident(INDEX_OPERATOR_FUNCTION_NAME.to_string(), location.clone());
+            let path = self.push_path(path, location.clone());
+            let function = self.push_expr(Expr::Variable(path), location.clone());
+            let arguments = vec![Argument::explicit(receiver), Argument::explicit(index)];
+            self.push_expr(Expr::Call(Call { function, arguments }), location)
+        } else {
+            self.push_expr(Expr::Reference(cst::Reference { kind: ReferenceKind::Mut, rhs: expr }), location)
+        }
+    }
+
+    /// If `expr` is exactly an index call `collection.[index]` (a call to the `(.[)` operator),
+    /// return its `(collection, index)` argument expressions. Other calls (e.g. `a.*`) do not match.
+    fn index_call_args(&self, expr: ExprId) -> Option<(ExprId, ExprId)> {
+        let Expr::Call(call) = &self.current_context.exprs[expr] else { return None };
+        if call.arguments.len() != 2 {
+            return None;
+        }
+        let Expr::Variable(path_id) = &self.current_context.exprs[call.function] else { return None };
+        let path = &self.current_context.paths[*path_id];
+        (path.components.len() == 1 && path.components[0].0 == INDEX_OPERATOR_FUNCTION_NAME)
+            .then(|| (call.arguments[0].expr, call.arguments[1].expr))
     }
 
     fn try_accept_compound_assign_op(&mut self) -> Option<(cst::CompoundAssignOp, &'static str)> {

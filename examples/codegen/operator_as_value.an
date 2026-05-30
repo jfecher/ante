@@ -1,0 +1,23 @@
+// Regression test from when non-closure ability functions created panics when used
+// in a non-closure position
+apply (f: fn t t -> r) a b = f a b
+
+main () =
+    g = (+)
+    println (g 2 3)
+
+    h = (*)
+    println (h 4 5)
+
+    println (apply (+) 10 20)
+
+    var arr: Array 3 I32 = [7, 8, 9]
+    idx = (.[])
+    println (idx (ref arr) 2)
+
+// args: --delete-binary --no-color
+// expected stdout:
+// 5
+// 20
+// 30
+// 9

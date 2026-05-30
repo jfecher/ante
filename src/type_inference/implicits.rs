@@ -305,16 +305,32 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let integers = std::mem::take(&mut scope.integer_type_variables);
         let floats = std::mem::take(&mut scope.float_type_variables);
 
-        // Phase 1: Try to resolve all implicits. When the target type contains an unbound
-        // integer type variable, unification may still succeed (e.g. searching for `Foo _`
-        // where only `Foo U8` exists binds `_ := U8`). Failures are collected for retry.
-        let mut failed_implicits = Vec::new();
+        // Phase 1: Try to resolve all implicits, iterating to a fixpoint. Resolving one implicit
+        // binds type variables that may unblock others, so we keep retrying the failures as long
+        // as progress is made. This is required for chains of dependent implicits where each
+        // result feeds the next (e.g. `a.[i].[j] := v` desugars to nested `.[` reads whose result
+        // types feed the next read and finally the `.[]:=` insert). When the target type contains
+        // an unbound integer type variable, unification may still succeed (e.g. searching for
+        // `Foo _` where only `Foo U8` exists binds `_ := U8`). Remaining failures are kept for the
+        // post-defaulting retry phase.
+        let failed_implicits;
         let implicits_in_scope = self.collect_implicits_in_scope();
 
-        for implicit in implicits {
-            if let Err(error) = self.find_implicit_value(implicit, &implicits_in_scope) {
-                failed_implicits.push((implicit, error));
+        let mut pending = implicits;
+        loop {
+            let mut still_pending = Vec::new();
+            let mut progressed = false;
+            for implicit in pending {
+                match self.find_implicit_value(implicit, &implicits_in_scope) {
+                    Ok(()) => progressed = true,
+                    Err(error) => still_pending.push((implicit, error)),
+                }
             }
+            if !progressed || still_pending.is_empty() {
+                failed_implicits = still_pending;
+                break;
+            }
+            pending = still_pending.into_iter().map(|(implicit, _)| implicit).collect();
         }
 
         // Default any still-unbound integers to I32 and ensure their value fits

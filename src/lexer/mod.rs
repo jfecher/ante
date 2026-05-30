@@ -426,6 +426,21 @@ impl<'contents> Lexer<'contents> {
         chars.next() == Some(expected)
     }
 
+    /// True when positioned at `.[` (`current`/`next`) and the following three
+    /// characters are `]`, `:`, `=` - i.e. the `.[]:=` index-assignment operator.
+    /// Empty index brackets `.[]` only ever occur in this operator name.
+    fn peek_index_assign(&self) -> bool {
+        let mut chars = self.chars.clone();
+        chars.next() == Some(']') && chars.next() == Some(':') && chars.next() == Some('=')
+    }
+
+    /// True when positioned at `.[` (`current`/`next`) and the following character is `]`,
+    /// i.e. the `.[]` index operator name `(.[])`. Empty index brackets `.[]` only ever occur
+    /// in this operator name (and `.[]:=`, which is matched first by [Self::peek_index_assign]).
+    fn peek_index_brackets(&self) -> bool {
+        self.chars.clone().next() == Some(']')
+    }
+
     fn newlines_ignored(&self) -> bool {
         self.indent_levels.last().unwrap().ignored
     }
@@ -656,6 +671,20 @@ impl<'contents> Iterator for Lexer<'contents> {
             ('-', '>') => {
                 self.previous_token_expects_indent = true;
                 self.advance2_with(Token::RightArrow)
+            },
+            ('.', '[') if self.peek_index_assign() => {
+                // consume `.[]:=` (5 chars)
+                self.advance(); // .
+                self.advance(); // [
+                self.advance(); // ]
+                self.advance(); // :
+                self.advance_with(Token::IndexAssign) // =
+            },
+            ('.', '[') if self.peek_index_brackets() => {
+                // consume `.[]` (3 chars) - the `Extract` operator name `(.[])`
+                self.advance(); // .
+                self.advance(); // [
+                self.advance_with(Token::IndexBrackets) // ]
             },
             ('.', '[') => self.advance2_with(Token::Index),
             ('.', '*') => self.advance2_with(Token::Copy),

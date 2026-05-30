@@ -2,6 +2,7 @@ import Std.HashMap.HashMap, empty, of, clear, insert, print_hashmap, remove, get
     get_entry, stream_map
 import Std.Stream.iter, iota, map, stream_fn, stream_array
 import Std.Hash.Hash, hash_u8
+import Std.Fail.try
 
 main () =
     var map = empty ()
@@ -17,8 +18,8 @@ main () =
 
     // TODO: Fix ref coercion so the explicit `ref` here is unnecessary
     println (ref map)
-    println (map.get (ref 3))
-    println (get (ref map) (ref 5))
+    println (map.get (ref 3) ~> try)
+    println (get (ref map) (ref 5) ~> try)
 
     match get_entry map (ref 3u8)
     | Some _ -> println "hit"

@@ -18,6 +18,10 @@ assert (cond: Bool) {Fail} : Unit =
 panic_on_fail (f: fn Fail => a): a =
     on_fail f do panic "panic_on_fail: failed"
 
+/// Panics on failure with the given error message
+or_panic (f: fn Fail => a) (message: String): a =
+    on_fail f do panic message
+
 /// Ignores a `Fail` effect, discarding it and returning Unit
 ignore_fail (f: fn Fail => a): Unit =
     on_fail (fn h -> ignore (f h)) do ()

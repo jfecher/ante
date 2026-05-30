@@ -854,6 +854,35 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     fn check_reference(&mut self, reference: &cst::Reference, expected: &Type, expr: ExprId) {
         let actual = Type::reference(reference.kind);
 
+        // Reborrow: `mut x` / `uniq x` where `x` is already a `mut`/`uniq` reference does not
+        // nest into `mut (mut t)`; it reborrows the same place, producing a reference of the
+        // requested kind to the inner element. This lets index-assignment desugaring wrap the
+        // receiver in `mut` uniformly without double-referencing already-mutable receivers
+        // (e.g. a `mut Array` parameter). Only mut/uniq reborrow; `ref`/`imm` keep nesting.
+        if matches!(reference.kind, ReferenceKind::Mut | ReferenceKind::Uniq) {
+            let rhs_type = self.next_type_variable();
+            let old_suppress_record = self.suppress_move_record;
+            self.suppress_move_record = true;
+            self.check_expr(reference.rhs, &rhs_type);
+            self.suppress_move_record = old_suppress_record;
+
+            if let Some((inner_kind, inner_element)) = self.follow_type(&rhs_type).reference_element(&self.bindings) {
+                if matches!(inner_kind, ReferenceKind::Mut | ReferenceKind::Uniq) {
+                    let lifetime = self.next_type_variable();
+                    let result =
+                        Type::Application(Arc::new(actual), Arc::new(vec![lifetime, inner_element]));
+                    self.unify(&result, expected, TypeErrorKind::General, expr);
+                    return;
+                }
+            }
+
+            // Not a reborrow: wrap `rhs_type` in the requested reference kind.
+            let lifetime = self.next_type_variable();
+            let result = Type::Application(Arc::new(actual), Arc::new(vec![lifetime, rhs_type]));
+            self.unify(&result, expected, TypeErrorKind::ReferenceKind, expr);
+            return;
+        }
+
         let expected_element_type = match self.follow_type(expected) {
             Type::Application(constructor, args) => {
                 let constructor = constructor.clone();

@@ -666,6 +666,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 match (actual, expected) {
                     (_, ReferenceKind::Ref) => Ok(()),
                     (ReferenceKind::Uniq, ReferenceKind::Mut) => Ok(()),
+                    (ReferenceKind::Uniq, ReferenceKind::Imm) => Ok(()),
                     (actual, expected) if actual == expected => Ok(()),
                     _ => Err(()),
                 }
