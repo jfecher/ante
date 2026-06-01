@@ -5,7 +5,7 @@
 */
 import Std.C.putchar, exit, memcmp, malloc, memcpy, free
 
-export String, from_parts, Maybe, None, Some, unwrap, unwrap_or_else, Result, Ok, Error, (,),
+export String, from_parts, Maybe, None, Some, iff, unwrap, unwrap_or_else, Result, Ok, Error, (,),
     first, second, third, fourth, fifth,
     Cast, cast, cast_same, cast_ptr_usz, cast_usz_ptr,
     cast_u8_u16, cast_u8_u32, cast_u8_u64, cast_u8_usz, cast_u16_u8, cast_u16_u32, cast_u16_u64, cast_u16_usz, cast_u32_u8, cast_u32_u16, cast_u32_u64, cast_u32_usz, cast_u64_u8, cast_u64_u16, cast_u64_u32, cast_u64_usz,
@@ -56,6 +56,11 @@ String.from_parts (pointer: Ptr Char) (length: U32): String =
 type Maybe t =
    | None
    | Some t
+
+/// If `condition` is true, returns `Some (then_ ())`,
+/// otherwise returns `None`.
+iff (condition: Bool) (then_: fn Unit => a): Maybe a =
+    if condition then Some (then_ ()) else None
 
 Maybe.unwrap (m: Maybe t): t =
     match m

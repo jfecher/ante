@@ -1982,11 +1982,12 @@ impl<'tokens> Parser<'tokens> {
     fn parse_do(&mut self) -> Result<ExprId> {
         self.expect(Token::Do, "`do` to start this do expression")?;
         let start = self.previous_token_span();
-        self.accept(Token::Newline);
 
         let body = match self.current_token() {
+            Token::Newline if *self.peek_next_token() == Token::Indent => self.parse_block()?,
+            Token::Newline => self.parse_sequence_items_expr(),
             Token::Indent => self.parse_block()?,
-            _ => self.parse_sequence_items_expr(),
+            _ => self.parse_expression()?,
         };
 
         let end = self.previous_token_span();
