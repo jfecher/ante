@@ -1092,8 +1092,7 @@ impl print_array {Print t}: Print (Array n t) with
         for i in 0 .. array_len array do
             if i != 0 then
                 print ", "
-            elem = array.[i]
-            print elem
+            print (deref (ref array).[i])
         print "]"
 
 ability Iterator it elem =

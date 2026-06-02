@@ -32,11 +32,9 @@ main () =
 
 // args: --delete-binary --no-color
 // expected stdout:
-// 10
-// 99
-// 30
-// 77
+// [10, 99, 30, 77]
 // 5
 // 9
 // 88
 // 66
+

@@ -1985,7 +1985,10 @@ impl<'tokens> Parser<'tokens> {
 
         let body = match self.current_token() {
             Token::Newline if *self.peek_next_token() == Token::Indent => self.parse_block()?,
-            Token::Newline => self.parse_sequence_items_expr(),
+            Token::Newline => {
+                self.advance();
+                self.parse_sequence_items_expr()
+            }
             Token::Indent => self.parse_block()?,
             _ => self.parse_expression()?,
         };
