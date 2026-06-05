@@ -429,6 +429,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             false
         }
     }
+
+    /// True if the given type is the `Never` type
+    fn diverges(&self, typ: &Type) -> bool {
+        matches!(typ.follow(&self.bindings), &Type::NEVER)
+    }
 }
 
 /// Describes what a [`TypeChecker::try_coercion`] call rewrote, if anything.

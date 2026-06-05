@@ -834,7 +834,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         self.pop_implicits_scope();
         let then_moves = self.move_tracker.clone();
 
-        let then_diverges = self.expr_always_diverges(if_.then);
+        let then_diverges = self.diverges(&then_type);
 
         if let Some(else_) = if_.else_ {
             // Reset to pre-branch state for else branch
@@ -843,16 +843,12 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             let else_type = self.infer_expr(else_, &branch_expected);
             self.pop_implicits_scope();
 
-            // A diverging then branch (e.g. ending in `return`) puts no constraint
-            // on the else branch; the if takes the else branch's type
-            let result_type = if matches!(self.follow_type(&then_type), Type::Primitive(types::PrimitiveType::Never)) {
-                else_type
-            } else {
+            // If `then_type = Never` we can't unify an actual type with an expected Never
+            if !then_diverges {
                 self.unify(&else_type, &then_type, TypeErrorKind::Else, else_);
-                then_type
-            };
+            }
             let else_moves = self.move_tracker.clone();
-            let else_diverges = self.expr_always_diverges(else_);
+            let else_diverges = self.diverges(&else_type);
 
             // After if/else, exclude moves from branches that always diverge (return)
             // since execution never reaches the merge point from those branches.
@@ -864,7 +860,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 branches.push(else_moves);
             }
             self.move_tracker = super::affine::MoveTracker::merge_branches(&pre_branch_moves, &branches);
-            result_type
+            else_type
         } else {
             // If-without-else: if the then-branch always returns, moves don't carry forward
             if then_diverges {
@@ -893,19 +889,19 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let mut branch_trackers = Vec::new();
 
         // All branches must match the type of the first branch
-        let mut first_branch_type: Option<Type> = None;
+        let mut first_branch_type = Type::NEVER;
 
         for (pattern, branch) in match_.cases.iter() {
             self.move_tracker = pre_branch_moves.clone();
             self.check_pattern(*pattern, &expr_type);
             self.push_implicits_scope();
-            match &first_branch_type {
-                // A diverging branch (e.g. `-> return x`) puts no constraint on the others
-                Some(first) if !matches!(self.follow_type(first), Type::Primitive(types::PrimitiveType::Never)) => {
-                    self.check_expr(*branch, first, TypeErrorKind::MatchBranch);
-                },
-                _ => first_branch_type = Some(self.infer_expr(*branch, expected)),
+
+            if self.diverges(&first_branch_type) {
+                first_branch_type = self.infer_expr(*branch, expected);
+            } else {
+                self.check_expr(*branch, &first_branch_type, TypeErrorKind::MatchBranch);
             }
+
             self.pop_implicits_scope();
             branch_trackers.push(self.move_tracker.clone());
         }
@@ -925,7 +921,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             context.insert_decision_tree(expr, preamble, tree);
         }
 
-        first_branch_type.unwrap_or_else(|| self.next_type_variable())
+        first_branch_type
     }
 
     fn infer_reference(&mut self, reference: &cst::Reference, expected: &Type) -> Type {
@@ -1310,27 +1306,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         self.move_tracker = old_tracker;
 
         Type::UNIT
-    }
-
-    /// Check if an expression always diverges (e.g. ends with a `return`).
-    /// Used to exclude moves in diverging branches from post-branch merge.
-    ///
-    /// TODO: Replace this with a check for the bottom type
-    fn expr_always_diverges(&self, id: ExprId) -> bool {
-        let expr = match self.current_extended_context().extended_expr(id) {
-            Some(expr) => Cow::Owned(expr.clone()),
-            None => Cow::Borrowed(&self.current_context()[id]),
-        };
-        match expr.as_ref() {
-            Expr::Return(_) => true,
-            Expr::Sequence(items) => items.last().map_or(false, |item| self.expr_always_diverges(item.expr)),
-            Expr::If(if_) => {
-                let then_diverges = self.expr_always_diverges(if_.then);
-                let else_diverges = if_.else_.map_or(false, |e| self.expr_always_diverges(e));
-                then_diverges && else_diverges
-            },
-            _ => false,
-        }
     }
 
     pub(super) fn check_comptime(&self, _comptime: &cst::Comptime) {

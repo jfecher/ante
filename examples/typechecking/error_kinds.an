@@ -29,44 +29,45 @@ main () = ()
 // args: --check --no-color
 // expected exit status: 1
 // expected stderr:
-// examples/typechecking/error_kinds.an:5:10
-// 4 |     var x = 1i32
-// 5 |     x := "s"	// error: Cannot assign a value of type String to a target of type I32
+// examples/typechecking/error_kinds.an:4:10
+// 3 |     var x = 1i32
+// 4 |     x := "s"	// error: Cannot assign a value of type String to a target of type I32
 //   |          ^^^
 // 
-// examples/typechecking/error_kinds.an:8:8
-//  7 | condition (b: I32) : Unit =
-//  8 |     if b then ()	// error: Conditions must have type Bool but this condition has type I32
-//    |        ^
+// examples/typechecking/error_kinds.an:7:8
+// 6 | condition (b: I32) : Unit =
+// 7 |     if b then ()	// error: Conditions must have type Bool but this condition has type I32
+//   |        ^
 // 
-// examples/typechecking/error_kinds.an:11:16
-// 10 | loop_body (b: Bool) (x: I32) : Unit =
-// 11 |     while b do x	// error: Loop bodies must have type Unit but this body has type I32
+// examples/typechecking/error_kinds.an:10:16
+//  9 | loop_body (b: Bool) (x: I32) : Unit =
+// 10 |     while b do x	// error: Loop bodies must have type Unit but this body has type I32
 //    |                ^
 // 
-// examples/typechecking/error_kinds.an:14:18
-// 13 | array_element (s: String) : Unit =
-// 14 |     arr = [1i32, s]	// error: This array element has type String but I32 was expected
+// examples/typechecking/error_kinds.an:13:18
+// 12 | array_element (s: String) : Unit =
+// 13 |     arr = [1i32, s]	// error: This array element has type String but I32 was expected
 //    |                  ^
-// 15 |     ()
+// 14 |     ()
 // 
-// examples/typechecking/error_kinds.an:18:9
-// 17 | callee (x: I32) : Unit =
-// 18 |     y = x ()	// error: This is called as if it were a fn _ [_] -> _ but it has type I32
+// examples/typechecking/error_kinds.an:17:9
+// 16 | callee (x: I32) : Unit =
+// 17 |     y = x ()	// error: This is called as if it were a fn _ [_] -> _ but it has type I32
 //    |         ^
-// 19 |     ()
+// 18 |     ()
 // 
-// examples/typechecking/error_kinds.an:22:27
-// 21 | returned (x: I32) : I32 =
+// examples/typechecking/error_kinds.an:21:27
+// 20 | returned (x: I32) : I32 =
 //    |     // error: This returns a value of type String but the enclosing function returns I32
-// 22 |     if x == 0 then return "s"
+// 21 |     if x == 0 then return "s"
 //    |                           ^^^
-// 23 |     x
+// 22 |     x
 // 
-// examples/typechecking/error_kinds.an:26:33
-// 25 | s = "str"
+// examples/typechecking/error_kinds.an:25:33
+// 24 | s = "str"
 //    | // error: The body of this function has type String but it is expected to return I32
-// 26 | function_body (_: Unit) : I32 = s
+// 25 | function_body (_: Unit) : I32 = s
 //    |                                 ^
 // 
 // Found 7 errors and 0 warnings
+
