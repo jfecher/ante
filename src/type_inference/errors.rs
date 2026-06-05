@@ -25,22 +25,43 @@ pub enum TypeErrorKind {
     IfStatement,
     /// `actual` Type of a lambda is not a function like expected
     Lambda { expected_parameter_count: usize },
-    /// Constructor expr `Foo with ...` where the actual type (`Foo` in this case) does not match
-    /// the expected type
-    Constructor,
-    /// A reference expression was used, but a different kind of reference was expected instead.
-    /// Both `actual` and `expected` should be reference constructors.
-    ReferenceKind,
-    /// A non-reference was expected in a reference expression, but reference expressions will only
-    /// produce references.
-    /// NOTE: `actual` will be arbitrary in this case and should not be displayed
-    ExpectedNonReference,
     /// A closure's actual captured variables does not match its expected type
     ClosureEnv,
     /// A function call argument with the given 0-based index
     CallArgument { index: usize },
+    /// The return type of a function call (actual) does not match the
+    /// type expected by the surrounding context (expected)
+    FunctionReturn,
     /// `main` function defined with a type other than `fn Unit -> Unit pure`
     MainFn,
+    /// A name is bound (actual) with a type conflicting with a previous binding (expected)
+    NameAlreadyBound,
+    /// A pattern's type (actual) does not match the type of the value being matched (expected)
+    Pattern,
+    /// A called expression's type (actual) does not match the function type it is called as (expected)
+    Callee,
+    /// A function body's type (actual) does not match the function's return type (expected)
+    FunctionBody,
+    /// A method's expected object type (actual) does not match the object it is called on (expected)
+    MethodObject,
+    /// An if/while condition (actual) is not a Bool (expected)
+    Condition,
+    /// A constructor field value (actual) does not match the field's declared type (expected)
+    ConstructorField,
+    /// An effect operation's type (actual) does not match its handler pattern (expected)
+    EffectPattern,
+    /// A compound assignment operator's type (actual) does not match its operand types (expected)
+    CompoundOperator,
+    /// An assigned value (actual) does not match the assignment target's type (expected)
+    Assignment,
+    /// A returned value (actual) does not match the enclosing function's return type (expected)
+    Return,
+    /// A loop body (actual) is not Unit-typed (expected)
+    LoopBody,
+    /// A for-range bound (actual) does not match the range's integer type (expected)
+    LoopRange,
+    /// An array literal element (actual) does not match the array's element type (expected)
+    ArrayElement,
 }
 
 impl TypeErrorKind {
@@ -65,15 +86,6 @@ impl TypeErrorKind {
                 let s = if expected_parameter_count == 1 { "" } else { "s" };
                 format!("Expected a function with {expected_parameter_count} parameter{s}, but found {actual}")
             },
-            TypeErrorKind::Constructor => {
-                format!("This constructs a {actual} type but {expected} was expected")
-            },
-            TypeErrorKind::ReferenceKind => {
-                format!("A reference of kind {expected} was expected, but this constructs a {actual} reference")
-            },
-            TypeErrorKind::ExpectedNonReference => {
-                format!("Expected non-reference type {expected}, but this expression always produces a reference")
-            },
             TypeErrorKind::ClosureEnv => {
                 if expected_type == NO_CLOSURE_ENV_STRING {
                     format!(
@@ -90,8 +102,53 @@ impl TypeErrorKind {
             TypeErrorKind::CallArgument { index } => {
                 format!("Argument {} has type {actual} but {expected} was expected", index + 1)
             },
+            TypeErrorKind::FunctionReturn => {
+                format!("This function call returns {actual} but {expected} was expected")
+            },
             TypeErrorKind::MainFn => {
                 format!("{} here has type {actual} but it should always have type {expected}", "main".purple())
+            },
+            TypeErrorKind::NameAlreadyBound => {
+                format!("This is bound to type {actual} here but was previously bound to type {expected}")
+            },
+            TypeErrorKind::Pattern => {
+                format!("This pattern has type {actual} but the matched value has type {expected}")
+            },
+            TypeErrorKind::Callee => {
+                format!("This is called as if it were a {expected} but it has type {actual}")
+            },
+            TypeErrorKind::FunctionBody => {
+                format!("The body of this function has type {actual} but it is expected to return {expected}")
+            },
+            TypeErrorKind::MethodObject => {
+                format!("This method expects an object of type {actual} but was called on a value of type {expected}")
+            },
+            TypeErrorKind::Condition => {
+                format!("Conditions must have type {expected} but this condition has type {actual}")
+            },
+            TypeErrorKind::ConstructorField => {
+                format!("This field value has type {actual} but the field is declared with type {expected}")
+            },
+            TypeErrorKind::EffectPattern => {
+                format!("This handler pattern has type {expected} but the effect operation has type {actual}")
+            },
+            TypeErrorKind::CompoundOperator => {
+                format!("This operator has type {actual} but its operands require it to have type {expected}")
+            },
+            TypeErrorKind::Assignment => {
+                format!("Cannot assign a value of type {actual} to a target of type {expected}")
+            },
+            TypeErrorKind::Return => {
+                format!("This returns a value of type {actual} but the enclosing function returns {expected}")
+            },
+            TypeErrorKind::LoopBody => {
+                format!("Loop bodies must have type {expected} but this body has type {actual}")
+            },
+            TypeErrorKind::LoopRange => {
+                format!("This range bound has type {actual} but {expected} was expected")
+            },
+            TypeErrorKind::ArrayElement => {
+                format!("This array element has type {actual} but {expected} was expected")
             },
         }
     }

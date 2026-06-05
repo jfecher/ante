@@ -5,7 +5,7 @@ import Std.C.malloc
 get2 (b: ref Array 2 (Array 2 I32)) (i: Usz) (j: Usz): I32 =
     row: ref Array 2 I32 = b.[i]
     elem: ref I32 = row.[j]
-    elem
+    elem.*
 
 set2 (b: mut Array 2 (Array 2 I32)) (i: Usz) (j: Usz) (v: I32): Unit =
     b.[i].[j] := v

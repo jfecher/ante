@@ -1988,7 +1988,7 @@ impl<'tokens> Parser<'tokens> {
             Token::Newline => {
                 self.advance();
                 self.parse_sequence_items_expr()
-            }
+            },
             Token::Indent => self.parse_block()?,
             _ => self.parse_expression()?,
         };
@@ -2084,11 +2084,8 @@ impl<'tokens> Parser<'tokens> {
                 let path = Path::ident(INDEX_ASSIGN_OPERATOR_FUNCTION_NAME.to_string(), location.clone());
                 let path = self.push_path(path, location.clone());
                 let function = self.push_expr(Expr::Variable(path), location.clone());
-                let arguments = vec![
-                    Argument::explicit(collection),
-                    Argument::explicit(index),
-                    Argument::explicit(rhs),
-                ];
+                let arguments =
+                    vec![Argument::explicit(collection), Argument::explicit(index), Argument::explicit(rhs)];
                 return Ok(self.push_expr(Expr::Call(Call { function, arguments }), location));
             }
 

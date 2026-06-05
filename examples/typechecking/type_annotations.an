@@ -41,11 +41,12 @@ main () =
 // expected stderr:
 // examples/typechecking/type_annotations.an:7:15
 // 6 | bar: fn a a -> I32 =
-// 7 |     fn _ b -> b	// error: Expected I32 but found a
+//   |     // error: The body of this function has type a but it is expected to return I32
+// 7 |     fn _ b -> b
 //   |               ^
 // 
 // examples/typechecking/type_annotations.an:16:11
-// 16 |     exit2 "test"	// error: Expected I32 but found String
+// 16 |     exit2 "test"	// error: Argument 1 has type String but I32 was expected
 //    |           ^^^^^^
 // 17 |     puts2
 // 
