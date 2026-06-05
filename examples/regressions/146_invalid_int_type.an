@@ -8,7 +8,7 @@ a: Num String = 3
 //   | 
 // 
 // examples/regressions/146_invalid_int_type.an:1:17
-// 1 | a: Num String = 3	// error: Expected an integer type but found Num String
+// 1 | a: Num String = 3	// error: Type annotation Num String does not match the inferred type I32
 //   |                 ^
 // 
 // Found 2 errors and 0 warnings

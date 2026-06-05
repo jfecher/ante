@@ -1,0 +1,35 @@
+// Polymorphic literal type variables may only unify with types matching their
+// literal kind, so mismatches error at the unification site instead of
+// surfacing confusingly when the literal is later defaulted.
+takes_ref (s: ref String) = ()
+
+takes_f64 (f: F64) = ()
+
+main () =
+    takes_ref 3
+    takes_f64 1
+    _ = if true then 2 else 2.5
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/literal_unification.an:9:15
+//  8 | main () =
+//  9 |     takes_ref 3	// error: Argument 1 has type I32 but ref String was expected
+//    |               ^
+// 10 |     takes_f64 1
+// 
+// examples/typechecking/literal_unification.an:10:15
+//  9 |     takes_ref 3
+// 10 |     takes_f64 1	// error: Argument 1 has type I32 but F64 was expected
+//    |               ^
+// 11 |     _ = if true then 2 else 2.5
+// 
+// examples/typechecking/literal_unification.an:11:29
+// 10 |     takes_f64 1
+//    |     // error: Then branch's type of I32 does not match the else branch's type F64
+// 11 |     _ = if true then 2 else 2.5
+//    |                             ^^^
+// 
+// Found 3 errors and 0 warnings
+

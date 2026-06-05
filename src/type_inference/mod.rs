@@ -197,6 +197,14 @@ struct TypeChecker<'local, 'inner> {
     /// Names defined with `var` or as mutable parameters. Used by closure capture analysis
     /// to wrap mutable captures in a reference type so the closure shares the outer scope's storage.
     mutable_definitions: FxHashSet<NameId>,
+
+    /// Type variables created for polymorphic integer literals. Entries are never removed.
+    /// Used during unification to restrict these variables to integer types so mismatches error
+    /// at the unification site instead of a confusing error when defaulting to I32 later.
+    integer_literal_vars: FxHashSet<TypeVariableId>,
+
+    /// Same as `integer_literal_vars` but for polymorphic float literals.
+    float_literal_vars: FxHashSet<TypeVariableId>,
 }
 
 /// Map from each TopLevelId to a tuple of (the item, parse context, resolution context)
@@ -231,6 +239,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             suppress_move_record: false,
             copy_type_name: None,
             mutable_definitions: Default::default(),
+            integer_literal_vars: Default::default(),
+            float_literal_vars: Default::default(),
         };
 
         let mut item_types = FxHashMap::default();
@@ -422,12 +432,24 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             self.bindings.extend(new_bindings);
             true
         } else {
-            let actual = self.type_to_string(actual);
-            let expected = self.type_to_string(expected);
+            let actual = self.type_to_error_string(actual);
+            let expected = self.type_to_error_string(expected);
             let location = locator.locate(self);
             self.compiler.accumulate(Diagnostic::TypeError { actual, expected, kind, location });
             false
         }
+    }
+
+    /// Like [Self::type_to_string] but renders unbound literal variables as I32 or F64.
+    fn type_to_error_string(&self, typ: &Type) -> String {
+        typ.display_with_literal_vars(
+            &self.bindings,
+            &self.integer_literal_vars,
+            &self.float_literal_vars,
+            self.current_context(),
+            self.compiler,
+        )
+        .to_string()
     }
 
     /// True if the given type is the `Never` type
@@ -694,10 +716,44 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         } else if self.occurs(&binding, id, new_bindings) {
             // Recursive type error
             Err(())
+        } else if self.is_integer_type_variable(id) {
+            self.try_bind_integer_or_float_type_variable(true, id, binding, new_bindings)
+        } else if self.is_float_type_variable(id) {
+            self.try_bind_integer_or_float_type_variable(false, id, binding, new_bindings)
         } else {
             new_bindings.insert(id, binding);
             Ok(())
         }
+    }
+
+    /// Restrict polymorphic literal variables to types matching their literal kind.
+    fn try_bind_integer_or_float_type_variable(
+        &self, is_int: bool, id: TypeVariableId, binding: Type, new_bindings: &mut TypeBindings,
+    ) -> Result<(), ()> {
+        let is_float = !is_int;
+
+        match &binding {
+            Type::Variable(other) => {
+                let other_is_int = self.is_integer_type_variable(*other);
+                let other_is_float = self.is_float_type_variable(*other);
+                if (is_int && other_is_float) || (is_float && other_is_int) {
+                    return Err(());
+                }
+                if !other_is_int && !other_is_float {
+                    // Bind the unconstrained variable to the literal variable instead so
+                    // we don't lose the int/float constraint on id by binding over it.
+                    new_bindings.insert(*other, Type::Variable(id));
+                    return Ok(());
+                }
+            },
+            Type::Primitive(PrimitiveType::Int(_)) if is_int => (),
+            Type::Primitive(PrimitiveType::Float(_)) if is_float => (),
+            // Avoid binding to Error or Never to avoid leaking these types
+            Type::Primitive(PrimitiveType::Error | PrimitiveType::Never) => return Ok(()),
+            _ => return Err(()),
+        }
+        new_bindings.insert(id, binding);
+        Ok(())
     }
 
     /// True if `variable` occurs within `typ`.

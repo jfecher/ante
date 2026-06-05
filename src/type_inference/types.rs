@@ -1,7 +1,11 @@
-use std::{borrow::Cow, num::NonZeroUsize, sync::Arc};
+use std::{
+    borrow::Cow,
+    num::NonZeroUsize,
+    sync::{Arc, LazyLock},
+};
 
 use inc_complete::DbGet;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 use serde::{Deserialize, Serialize};
 
 use std::collections::BTreeMap;
@@ -199,7 +203,20 @@ impl Type {
     where
         Db: DbGet<GetItem>,
     {
-        TypePrinter { typ: self, bindings, names, db }
+        static EMPTY_SET: LazyLock<FxHashSet<TypeVariableId>> = LazyLock::new(Default::default);
+        self.display_with_literal_vars(bindings, &EMPTY_SET, &EMPTY_SET, names, db)
+    }
+
+    /// Like [Self::display], but unbound variables in the given sets render as their
+    /// literal default (I32 or F64) instead of `_`.
+    pub fn display_with_literal_vars<'local, Db, Names>(
+        &'local self, bindings: &'local TypeBindings, integer_literal_vars: &'local FxHashSet<TypeVariableId>,
+        float_literal_vars: &'local FxHashSet<TypeVariableId>, names: &'local Names, db: &'local Db,
+    ) -> TypePrinter<'local, Db, Names>
+    where
+        Db: DbGet<GetItem>,
+    {
+        TypePrinter { typ: self, bindings, integer_literal_vars, float_literal_vars, names, db }
     }
 
     /// Returns true if this is any of the primitive integer types I8, I16, .., Usz, etc.
@@ -802,6 +819,9 @@ impl Type {
 pub struct TypePrinter<'a, Db, Names> {
     typ: &'a Type,
     bindings: &'a TypeBindings,
+    /// Unbound variables in these sets render as their literal default (I32/F64) instead of `_`.
+    integer_literal_vars: &'a FxHashSet<TypeVariableId>,
+    float_literal_vars: &'a FxHashSet<TypeVariableId>,
     names: &'a Names,
     db: &'a Db,
 }
@@ -830,6 +850,10 @@ where
             Type::Variable(id) => {
                 if let Some(binding) = self.bindings.get(id) {
                     self.fmt_type(binding, parenthesize, f)
+                } else if self.integer_literal_vars.contains(id) {
+                    self.fmt_type(&Type::I32, parenthesize, f)
+                } else if self.float_literal_vars.contains(id) {
+                    self.fmt_type(&Type::F64, parenthesize, f)
                 } else {
                     write!(f, "_")
                 }

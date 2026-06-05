@@ -19,11 +19,19 @@ main () = ()
 // 3 | continue_at_top () = continue	// error: `continue` can only be used inside a loop
 //   |                      ^^^^^^^^
 // 
-// examples/typechecking/break_continue_not_in_loop.an:6:5
+// examples/typechecking/break_continue_not_in_loop.an:6:14
 // 5 | for_with_non_integers () =
-// 6 |     for i in "zero" .. "ten" do	// error: Expected an integer type but found String
-//   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+//   |     // error: This range bound has type String but I32 was expected
+// 6 |     for i in "zero" .. "ten" do
+//   |              ^^^^^^
 // 7 |         _ = i
 // 
-// Found 3 errors and 0 warnings
+// examples/typechecking/break_continue_not_in_loop.an:6:24
+// 5 | for_with_non_integers () =
+//   |     // error: This range bound has type String but I32 was expected
+// 6 |     for i in "zero" .. "ten" do
+//   |                        ^^^^^
+// 7 |         _ = i
+// 
+// Found 4 errors and 0 warnings
 

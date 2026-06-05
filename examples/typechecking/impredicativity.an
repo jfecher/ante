@@ -78,7 +78,7 @@ a7 = choose id auto
 // 
 // examples/typechecking/impredicativity.an:16:7
 // 15 | poly (f: forall a. fn a -> a) =
-// 16 |     f 42, f true	// error: Expected an integer type but found a
+// 16 |     f 42, f true	// error: Argument 1 has type I32 but a was expected
 //    |       ^^
 // 
 // examples/typechecking/impredicativity.an:16:13
@@ -109,3 +109,4 @@ a7 = choose id auto
 //    |                ^^^^
 // 
 // Found 10 errors and 0 warnings
+

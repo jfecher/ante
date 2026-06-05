@@ -366,26 +366,23 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     }
 
     pub(super) fn push_inferred_int(&mut self, value: Integer, type_variable: TypeVariableId, location: Location) {
+        self.integer_literal_vars.insert(type_variable);
         self.implicits.last_mut().unwrap().integer_type_variables.push((value, type_variable, location));
     }
 
     pub(super) fn push_inferred_float(&mut self, type_variable: TypeVariableId, location: Location) {
+        self.float_literal_vars.insert(type_variable);
         self.implicits.last_mut().unwrap().float_type_variables.push((type_variable, location));
     }
 
-    /// Check if a type variable is a pending polymorphic integer literal across all scopes.
-    /// The given `id` should already be the result of `follow_type`.
+    /// Check if a type variable is a polymorphic integer literal.
     pub(super) fn is_integer_type_variable(&self, id: TypeVariableId) -> bool {
-        self.implicits.iter().any(|scope| {
-            scope.integer_type_variables.iter().any(|(_, tv, _)| {
-                // Follow the integer's type variable through bindings to compare with
-                // the already-followed query id, since unification may have bound one to the other.
-                match Type::Variable(*tv).follow(&self.bindings) {
-                    Type::Variable(resolved) => *resolved == id,
-                    _ => false,
-                }
-            })
-        })
+        self.integer_literal_vars.contains(&id)
+    }
+
+    /// Same as [Self::is_integer_type_variable] but for polymorphic float literals.
+    pub(super) fn is_float_type_variable(&self, id: TypeVariableId) -> bool {
+        self.float_literal_vars.contains(&id)
     }
 
     /// Delay finding an implicit value until later when more types are known.
@@ -427,9 +424,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Type::Primitive(PrimitiveType::Int(kind)) => *kind,
             Type::Primitive(PrimitiveType::Error) => return,
             _ => {
-                // The integer literal's type variable was bound to a non-integer type through
-                // earlier unification. Since unification succeeded silently (both sides were type
-                // variables at the time), we catch the mismatch here and emit a type error.
+                // Unification rejects non-integer bindings for literal type variables,
+                // so this arm is only reachable when the variable was bound to `Never`.
                 let actual = self.type_to_string(&Type::Variable(type_variable));
                 self.compiler.accumulate(Diagnostic::TypeError {
                     actual,
@@ -455,9 +451,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Type::Primitive(PrimitiveType::Float(_)) => (),
             Type::Primitive(PrimitiveType::Error) => return,
             _ => {
-                // The literal's type variable was bound to a non-float type through
-                // earlier unification. Since unification succeeded silently (both sides were type
-                // variables at the time), we catch the mismatch here and emit a type error.
+                // Unification rejects non-float bindings for literal type variables,
+                // so this arm is only reachable when the variable was bound to `Never`.
                 let actual = self.type_to_string(&Type::Variable(type_variable));
                 self.compiler.accumulate(Diagnostic::TypeError {
                     actual,
