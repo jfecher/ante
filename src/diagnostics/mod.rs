@@ -908,7 +908,9 @@ fn write_syntax_highlighted(text: &str, show_color: bool, f: &mut Formatter) -> 
             write_whitespace(text, f)?;
         }
         let snippet = &text[start..end];
-        let snippet = syntax_color(&token, snippet).map(|color| snippet.color(color)).unwrap_or_else(|| snippet.into());
+        // Dim unhighlighted source text so error messages stand out against it
+        let snippet =
+            syntax_color(&token, snippet).map(|color| snippet.color(color)).unwrap_or_else(|| snippet.bright_black());
         write!(f, "{snippet}")?;
         last_end = end;
     }
@@ -980,7 +982,7 @@ fn write_no_color_indicator(
 /// Format a message comment: ` // error: <message>`
 fn format_message_comment(kind: DiagnosticKind, message: &str, show_color: bool) -> String {
     let comment = if show_color { "//".bright_black() } else { "//".into() };
-    format!("\t{comment} {} {}", kind.marker(show_color), message.bright_black())
+    format!("\t{comment} {} {message}", kind.marker(show_color))
 }
 
 /// Write a message comment on its own line, aligned to the source indentation.
@@ -989,7 +991,7 @@ fn write_overflow_message(
     digit_len: usize, indent: usize, kind: DiagnosticKind, message: &str, show_color: bool, f: &mut Formatter,
 ) -> std::fmt::Result {
     let comment = if show_color { "//".bright_black() } else { "//".into() };
-    writeln!(f, "{:digit_len$} | {:indent$}{comment} {} {}", "", "", kind.marker(show_color), message.bright_black())
+    writeln!(f, "{:digit_len$} | {:indent$}{comment} {} {message}", "", "", kind.marker(show_color))
 }
 
 /// Outputs a formatted source line to the formatter (`line_no` is 1-indexed).
