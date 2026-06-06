@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, sync::Arc};
 
-use cst::{Comptime, Declaration, Lambda, MemberAccess, Name, Parameter, Pattern};
+use cst::{Comptime, Constructor, Declaration, Lambda, MemberAccess, Name, Parameter, Pattern};
 use ids::{ExprId, NameId, PathId, PatternId, TopLevelId};
 use rustc_hash::FxHashSet;
 use serde::{Deserialize, Serialize};
@@ -2454,6 +2454,15 @@ impl<'tokens> Parser<'tokens> {
             return self.parse_extern();
         }
 
+        // A named constructor `MyType with field1 = e1, field2 = e2` starts with a type,
+        // so speculatively try to parse one when at a type name. We only commit to this
+        // parse if the type is followed by `with`.
+        if matches!(self.current_token(), Token::TypeName(_)) {
+            if let Ok(constructor) = self.try_(|this| this.parse_named_constructor(ban_do)) {
+                return Ok(constructor);
+            }
+        }
+
         let function = self.parse_atom(min_prec, ban_do)?;
 
         if let Ok(arguments) = self.many1(|this| Self::parse_function_arg(this, min_prec, ban_do)) {
@@ -2464,6 +2473,78 @@ impl<'tokens> Parser<'tokens> {
         } else {
             Ok(function)
         }
+    }
+
+    /// named_constructor: type_application 'with' constructor_fields
+    fn parse_named_constructor(&mut self, ban_do: bool) -> Result<ExprId> {
+        let start = self.current_token_span();
+        let typ = self.parse_type_application()?;
+        self.expect(Token::With, "`with` to begin this constructor's fields")?;
+        let fields = self.parse_constructor_fields(ban_do)?;
+        let location = start.to(&self.previous_token_span()).in_file(self.file_id);
+        Ok(self.push_expr(Expr::Constructor(Constructor { typ, fields }), location))
+    }
+
+    /// constructor_fields: indent constructor_field (newline constructor_field)* unindent
+    ///                   | constructor_field (',' constructor_field)*
+    fn parse_constructor_fields(&mut self, ban_do: bool) -> Result<Vec<(NameId, ExprId)>> {
+        if *self.current_token() == Token::Indent {
+            self.parse_indented(|this| {
+                Ok(this.delimited(|this| this.parse_constructor_field(false, ban_do), Token::Newline, true))
+            })
+        } else {
+            Ok(self.delimited(|this| this.parse_constructor_field(true, ban_do), Token::Comma, true))
+        }
+    }
+
+    /// constructor_field: ident parameter+ (':' typ)? '=' expression  // function sugar
+    ///                  | ident '=' expression
+    ///                  | ident                                       // sugar for `ident = ident`
+    ///
+    /// `inline` is true if this field is part of a comma-separated field list rather than
+    /// a newline-separated one. Inline field values can't contain top-level commas since
+    /// those separate the fields themselves.
+    fn parse_constructor_field(&mut self, inline: bool, ban_do: bool) -> Result<(NameId, ExprId)> {
+        let start = self.current_token_span();
+        let name = self.parse_ident_id()?;
+
+        // Function definition sugar: `field arg1 arg2 = body` desugars to a lambda,
+        // mirroring `parse_function_definition`.
+        if let Ok(parameters) = self.try_(Self::parse_function_parameters) {
+            let return_type = if self.accept(Token::Colon) {
+                self.parse_with_recovery(Self::parse_type, Token::Equal, &[Token::Newline, Token::Indent]).ok()
+            } else {
+                None
+            };
+
+            self.expect(Token::Equal, "`=` to begin the function body")?;
+            let body = if inline {
+                self.parse_shunting_yard(0, ban_do, /*ban_comma:*/ true)?
+            } else {
+                self.parse_block_or_expression()?
+            };
+
+            let lambda = Expr::Lambda(Lambda { parameters, return_type, body, is_move: false });
+            let location = start.to(&self.previous_token_span()).in_file(self.file_id);
+            return Ok((name, self.push_expr(lambda, location)));
+        }
+
+        if self.accept(Token::Equal) {
+            let value = if inline {
+                self.parse_shunting_yard(0, ban_do, /*ban_comma:*/ true)?
+            } else {
+                self.parse_block_or_expression()?
+            };
+            return Ok((name, value));
+        }
+
+        // Otherwise this is just `field`, which is sugar for `field = field`
+        let name_string = self.current_context.names[name].as_ref().clone();
+        let location = self.current_context.name_locations[name].clone();
+        let path = Path::ident(name_string, location.clone());
+        let path = self.push_path(path, location.clone());
+        let value = self.push_expr(Expr::Variable(path), location);
+        Ok((name, value))
     }
 
     fn parse_char(&mut self, char: char) -> Result<ExprId> {

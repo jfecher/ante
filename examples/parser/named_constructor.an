@@ -38,60 +38,37 @@ main () =
         bar = "bar"
 
 // args: -e ast --no-color
-// expected exit status: 1
 // expected stdout:
 // main () =
-//     T
-
-// expected stderr:
-// examples/parser/named_constructor.an:3:7
-// 2 |     // Explicit names
-// 3 |     T with b = "one", a = 1	// error: Expected the end of this block but found `with`
-//   |       ^^^^
-// 
-// examples/parser/named_constructor.an:10:7
-//  9 |     // Implicit names
-// 10 |     T with b, a	// error: Expected `=` to begin the function body but found `with`
-//    |       ^^^^
-// 
-// examples/parser/named_constructor.an:12:7
-// 12 |     T with	// error: Expected `=` to begin the function body but found `with`
-//    |       ^^^^
-// 13 |         foo
-// 
-// examples/parser/named_constructor.an:17:11
-// 16 |     // Path names
-// 17 |     T.U.V with a, b	// error: Expected `=` to begin the function body but found `with`
-//    |           ^^^^
-// 
-// examples/parser/named_constructor.an:20:7
-// 19 |     // Tuples and exotic indentation
-// 20 |     T with a = (1, 2)	// error: Expected `=` to begin the function body but found `with`
-//    |       ^^^^
-// 
-// examples/parser/named_constructor.an:22:7
-// 22 |     T with a = 1,	// error: Expected `=` to begin the function body but found `with`
-//    |       ^^^^
-// 23 |         b = 3
-// 
-// examples/parser/named_constructor.an:25:7
-// 25 |     T with a = (1, 2),	// error: Expected `=` to begin the function body but found `with`
-//    |       ^^^^
-// 26 |         b = (3, 4), c = 5,
-// 
-// examples/parser/named_constructor.an:29:7
-// 29 |     T with foo,	// error: Expected `=` to begin the function body but found `with`
-//    |       ^^^^
-// 30 |         bar,
-// 
-// examples/parser/named_constructor.an:33:7
-// 33 |     T with	// error: Expected `=` to begin the function body but found `with`
-//    |       ^^^^
-// 34 |         foo = ( 1
-// 
-// examples/parser/named_constructor.an:98:1
-//  98 | 	// error: Expected a top-level item but found an unindent
-//     | 
-// 
-// Found 10 errors and 0 warnings
-
+//     T with
+//         b = "one"
+//         a = 1
+//     T with
+//         b = "one"
+//         a = 1
+//     T with
+//         b = b
+//         a = a
+//     T with
+//         foo = foo
+//         bar = bar
+//     T.U.V with
+//         a = a
+//         b = b
+//     T with
+//         a = 1 , 2
+//     T with
+//         a = 1
+//         b = 3
+//     T with
+//         a = 1 , 2
+//         b = 3 , 4
+//         c = 5
+//         d = 6
+//     T with
+//         foo = foo
+//         bar = bar
+//         baz = baz
+//     T with
+//         foo = 1 , (2 , 3)
+//         bar = "bar"

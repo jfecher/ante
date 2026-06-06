@@ -136,7 +136,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 annotation
             },
             Expr::Handle(handle) => self.infer_handle(handle, expected),
-            Expr::Constructor(constructor) => self.infer_constructor(constructor, id),
+            Expr::Constructor(constructor) => self.infer_constructor(constructor, expected, id),
             Expr::Quoted(_) => {
                 let location = id.locate(self);
                 UnimplementedItem::Comptime.issue(self.compiler, location);
@@ -968,8 +968,23 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         Type::Application(Arc::new(constructor), Arc::new(vec![lifetime, element]))
     }
 
-    fn infer_constructor(&mut self, constructor: &cst::Constructor, id: ExprId) -> Type {
-        let typ = self.from_cst_type(&constructor.typ, true);
+    fn infer_constructor(&mut self, constructor: &cst::Constructor, expected: &Type, id: ExprId) -> Type {
+        let (mut typ, kind) = self.from_cst_type_and_kind(&constructor.typ, true);
+
+        // Type arguments on constructors are optional (both `Clone t with ..` and `Clone with ..` are allowed)
+        // So fill in any empty slots with fresh type variables.
+        let required_argument_count = kind.required_argument_count();
+        if required_argument_count != 0 {
+            let args = mapvec(0..required_argument_count, |_| self.next_type_variable());
+            typ = Type::Application(Arc::new(typ), Arc::new(args));
+
+            // Eagerly unify with the expected type so the fields below are checked against
+            // concrete types where possible. Errors are ignored here: if unification fails,
+            // the caller will report the mismatch when unifying our return type.
+            if let Ok(bindings) = self.try_unify(&typ, expected) {
+                self.bindings.extend(bindings);
+            }
+        }
 
         // Map each field name to its index in the type's declaration order.
         // This is used when lowering to MIR when structs are converted into tuples.

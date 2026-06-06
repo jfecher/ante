@@ -828,6 +828,27 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         typ
     }
 
+    /// Like [Self::from_cst_type] but does not require the converted type to be of kind
+    /// [Kind::Type]. Instead, the type's kind is returned alongside it so the caller can
+    /// decide how to handle type constructors.
+    fn from_cst_type_and_kind(
+        &mut self, typ: &cst::Type, allow_implicit_type_vars: bool,
+    ) -> (Type, crate::type_inference::kinds::Kind) {
+        let mut local_kinds = crate::type_inference::types::LocalKinds::default();
+        let mut next_id = self.next_type_variable_id.get();
+        let result = Type::from_cst_type_helper(
+            typ,
+            None,
+            self.current_resolve(),
+            self.compiler,
+            &mut next_id,
+            &mut local_kinds,
+            allow_implicit_type_vars,
+        );
+        self.next_type_variable_id.set(next_id);
+        result
+    }
+
     /// Try to retrieve the types of each field of the given type.
     /// Returns an empty map if unsuccessful.
     ///

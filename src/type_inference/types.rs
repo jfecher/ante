@@ -480,7 +480,7 @@ impl Type {
     /// - The kind of the converted type
     ///
     /// Does not error if the returned type is not of kind [Kind::Type].
-    fn from_cst_type_helper(
+    pub(crate) fn from_cst_type_helper(
         typ: &cst::Type, expected: Option<&Kind>, resolve: &crate::name_resolution::ResolutionResult, db: &DbHandle,
         next_id: &mut u32, local_kinds: &mut LocalKinds, insert_implicit_type_vars: bool,
     ) -> (Type, Kind) {
