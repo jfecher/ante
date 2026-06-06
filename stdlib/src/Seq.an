@@ -1,7 +1,7 @@
 import Std.C.malloc, realloc, memcpy, free
 import Std.Stream.Stream, foldl
 
-export Seq, empty, of, push, pop, remove_last, get, get_copied, iter, clone_seq, drop_seq, print_seq, stream_seq
+export Seq, empty, of, with_capacity, push, pop, remove_last, get, get_copied, iter, clone_seq, drop_seq, print_seq, stream_seq
 
 /// A persistent, contiguous, and growable sequence of elements.
 /// Performance is meant to be comparable to a mutable Vec.
@@ -87,6 +87,23 @@ Seq.empty (): Seq t =
 Seq.of (s: s) {Stream s t} {Drop t}: Seq t =
     seq = Seq.empty ()
     foldl s seq Seq.push
+
+/// Create a Seq with the given initial capacity
+Seq.with_capacity (capacity: Usz): Seq t =
+    if capacity == 0 then
+        Seq.empty ()
+    else
+        size = size_of (MkType: Type (Data t)) + (capacity - 1) * size_of (MkType: Type t)
+        buffer: Ptr (Data t) = malloc size
+        buffer_ref = ptr_to_mut buffer
+
+        buffer_ref.direct_rc := 1
+        buffer_ref.fork_rc := 0
+        buffer_ref.len := 0
+        buffer_ref.cap := U32 capacity
+        buffer_ref.fork_point := 0
+        buffer_ref.parent := null ()
+        Seq 0 buffer
 
 /// Push an element to this sequence, returning a new sequence.
 Seq.push (seq: Seq t) (elem: t) {Drop t}: Seq t =
