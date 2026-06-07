@@ -3,12 +3,13 @@
 import Std.C.malloc
 
 get2 (b: ref Array 2 (Array 2 I32)) (i: Usz) (j: Usz): I32 =
-    row: ref Array 2 I32 = b.[i]
-    elem: ref I32 = row.[j]
-    elem.*
+    b.[i].[j].*
 
 set2 (b: mut Array 2 (Array 2 I32)) (i: Usz) (j: Usz) (v: I32): Unit =
     b.[i].[j] := v
+
+get3 (b: ref Array 2 (Array 2 (Array 2 I32))) (i: Usz) (j: Usz) (k: Usz): I32 =
+    b.[i].[j].[k].*
 
 main () =
     var arr: Array 4 I32 = [10, 20, 30, 40]
@@ -16,7 +17,7 @@ main () =
     arr.[3] := 77
     println arr
 
-    p: Ptr I32 = malloc 16
+    p: Ptr I32 = malloc 8
     p.[0] := 5
     p.[1] := 9
     println p.[0]
@@ -24,11 +25,16 @@ main () =
 
     // Nested array: `board.[r].[c] := v` resolves `board.[r]` to a `mut`-returning Extract.
     // This required some implicit resolution changes
-    var board: Array 2 (Array 2 I32) = [[1, 2], [3, 4]]
+    var board = [[1, 2], [3, 4]]
     board.[0].[1] := 88      // 2 => 88
     set2 (mut board) 1 0 66  // 3 => 66
     println (get2 board 0 1)
     println (get2 board 1 0)
+
+    var cube = [[[1, 2], [3, 4]], [[5, 6], [7, 8]]]
+    cube.[0].[1].[0] := 100  // 3 => 100
+    println (get3 cube 0 1 0)
+    println (get3 cube 1 0 1)
 
 // args: --delete-binary --no-color
 // expected stdout:
@@ -37,4 +43,6 @@ main () =
 // 9
 // 88
 // 66
+// 100
+// 6
 

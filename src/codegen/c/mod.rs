@@ -829,17 +829,33 @@ impl Builder {
                 }
             },
             mir::Instruction::MakeArray(values) => {
-                // Array results must keep declaration and initializer together: C forbids
-                // assigning to an array, so the brace initializer can't be split out.
-                self.write_result_binding(id, definition);
-                self.write("{");
-                for (i, value) in values.iter().enumerate() {
-                    if i != 0 {
-                        self.write(", ");
+                let result = definition.instruction_result_type(id);
+                let mir::Type::Array { element, .. } = result else {
+                    panic!("MakeArray result type is not an array: {result}")
+                };
+
+                // Nested arrays in C decay into pointers so declare the array and memcpy each element
+                if matches!(element.as_ref(), mir::Type::Array { .. }) {
+                    self.write_declarator(result, &|this| {
+                        let _ = write!(this.current_item, "{id}");
+                    });
+                    self.write(";");
+                    for (i, value) in values.iter().enumerate() {
+                        let _ = write!(self.current_item, " memcpy({id}[{i}], ");
+                        self.write_value(value, mir);
+                        let _ = write!(self.current_item, ", sizeof({id}[{i}]));");
                     }
-                    self.write_value(value, mir);
+                } else {
+                    self.write_result_binding(id, definition);
+                    self.write("{");
+                    for (i, value) in values.iter().enumerate() {
+                        if i != 0 {
+                            self.write(", ");
+                        }
+                        self.write_value(value, mir);
+                    }
+                    self.write("};");
                 }
-                self.write("};");
             },
             mir::Instruction::StackAlloc(value) => {
                 let typ = mir.type_of_value(value, definition);
