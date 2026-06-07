@@ -757,7 +757,7 @@ impl Type {
     /// `Some(kind)` if the passed type is a reference type constructor.
     /// Note that this returns `None` for `Application(Reference, _)`,
     /// it is only `Some` for references directly.
-    fn reference_constructor(&self, bindings: &TypeBindings) -> Option<ReferenceKind> {
+    pub(super) fn reference_constructor(&self, bindings: &TypeBindings) -> Option<ReferenceKind> {
         match self.follow(bindings) {
             Type::Primitive(PrimitiveType::Reference(kind)) => Some(*kind),
             _ => None,

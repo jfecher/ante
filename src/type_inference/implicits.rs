@@ -14,6 +14,7 @@ use crate::{
     },
     type_inference::{
         Locateable, TypeChecker,
+        Variance::Covariant,
         errors::TypeErrorKind,
         types::{FunctionType, ParameterType, PrimitiveType, Type, TypeBindings, TypeVariableId},
     },
@@ -656,12 +657,12 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // every candidate. Reducing the number of candidates beforehand (e.g. keying them) would also help.
         let mut fresh_bindings = type_bindings.clone();
 
-        if self.try_unify_with_bindings(implicit_type, target_type, &mut fresh_bindings).is_ok() {
+        if self.subtype(implicit_type, target_type, Covariant, &mut fresh_bindings).is_ok() {
             ImplicitMatch::MatchedAsIs(fresh_bindings)
         } else if let Type::Function(f) = implicit_type {
             let mut fresh_bindings = type_bindings.clone();
 
-            if self.try_unify_with_bindings(&f.return_type, target_type, &mut fresh_bindings).is_ok() {
+            if self.subtype(&f.return_type, target_type, Covariant, &mut fresh_bindings).is_ok() {
                 ImplicitMatch::Call(f.clone(), fresh_bindings)
             } else {
                 ImplicitMatch::NoMatch

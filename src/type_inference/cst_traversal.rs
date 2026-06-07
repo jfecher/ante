@@ -843,12 +843,18 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             let else_type = self.infer_expr(else_, &branch_expected);
             self.pop_implicits_scope();
 
-            // If `then_type = Never` we can't unify an actual type with an expected Never
-            if !then_diverges {
-                self.unify(&else_type, &then_type, TypeErrorKind::Else, else_);
-            }
             let else_moves = self.move_tracker.clone();
             let else_diverges = self.diverges(&else_type);
+
+            // Take whichever branch does not diverge
+            let result = if then_diverges {
+                else_type
+            } else if else_diverges {
+                then_type
+            } else {
+                self.unify(&else_type, &then_type, TypeErrorKind::Else, else_);
+                then_type
+            };
 
             // After if/else, exclude moves from branches that always diverge (return)
             // since execution never reaches the merge point from those branches.
@@ -860,7 +866,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 branches.push(else_moves);
             }
             self.move_tracker = super::affine::MoveTracker::merge_branches(&pre_branch_moves, &branches);
-            else_type
+            result
         } else {
             // If-without-else: if the then-branch always returns, moves don't carry forward
             if then_diverges {
@@ -887,21 +893,17 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // Save move state before branches
         let pre_branch_moves = self.move_tracker.clone();
         let mut branch_trackers = Vec::new();
-
-        // All branches must match the type of the first branch
-        let mut first_branch_type = Type::NEVER;
+        let mut result_type = Type::NEVER;
 
         for (pattern, branch) in match_.cases.iter() {
             self.move_tracker = pre_branch_moves.clone();
             self.check_pattern(*pattern, &expr_type);
             self.push_implicits_scope();
-
-            if self.diverges(&first_branch_type) {
-                first_branch_type = self.infer_expr(*branch, expected);
+            if self.diverges(&result_type) {
+                result_type = self.infer_expr(*branch, expected);
             } else {
-                self.check_expr(*branch, &first_branch_type, TypeErrorKind::MatchBranch);
+                self.check_expr(*branch, &result_type, TypeErrorKind::MatchBranch);
             }
-
             self.pop_implicits_scope();
             branch_trackers.push(self.move_tracker.clone());
         }
@@ -921,7 +923,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             context.insert_decision_tree(expr, preamble, tree);
         }
 
-        first_branch_type
+        result_type
     }
 
     fn infer_reference(&mut self, reference: &cst::Reference, expected: &Type) -> Type {

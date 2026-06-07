@@ -1,0 +1,31 @@
+needs_ref_fn (f: fn (ref I32) -> Unit): Unit = ()
+
+needs_mut_fn (f: fn (mut I32) -> Unit): Unit = ()
+
+use_ref (x: ref I32): Unit = ()
+
+use_mut (x: mut I32): Unit = ()
+
+main () =
+    use_ref (mut 3)
+    use_mut (ref 3)
+    needs_mut_fn use_ref
+    needs_ref_fn use_mut
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/function_contravariance.an:11:14
+// 10 |     use_ref (mut 3)
+// 11 |     use_mut (ref 3)	// error: Argument 1 has type ref I32 but mut I32 was expected
+//    |              ^^^^^
+// 12 |     needs_mut_fn use_ref
+// 
+// examples/typechecking/function_contravariance.an:13:18
+// 12 |     needs_mut_fn use_ref
+//    |     // error: Argument 1 has type fn (mut I32) -> Unit but fn (ref I32) -> Unit was expected
+// 13 |     needs_ref_fn use_mut
+//    |                  ^^^^^^^
+// 
+// Found 2 errors and 0 warnings
+
