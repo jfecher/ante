@@ -88,14 +88,26 @@ impl Origin {
 
     /// Return the fields of this type
     fn get_fields_of_type(self, db: &DbHandle) -> FieldsResult {
+        self.get_fields_of_type_rec(db, &mut Vec::new())
+    }
+
+    /// This helper threads a `visited` stack so that an alias chain like
+    /// `type A = B; type B = A` cannot loop forever.
+    fn get_fields_of_type_rec(self, db: &DbHandle, visited: &mut Vec<TopLevelName>) -> FieldsResult {
         match self {
             Origin::TopLevelDefinition(id) => {
+                if visited.contains(&id) {
+                    return FieldsResult::NotAStruct;
+                }
                 let (item, item_context) = GetItem(id.top_level_item).get(db);
                 match &item.kind {
                     TopLevelItemKind::TypeDefinition(type_definition) => match &type_definition.body {
                         TypeDefinitionBody::Error => FieldsResult::PriorError,
                         TypeDefinitionBody::Enum(_) => FieldsResult::NotAStruct,
-                        TypeDefinitionBody::Alias(_) => todo!("get_fields_of_type: handle type aliases"),
+                        TypeDefinitionBody::Alias(body) => {
+                            visited.push(id);
+                            alias_body_fields(id.top_level_item, body, db, visited)
+                        },
                         TypeDefinitionBody::Struct(fields) => {
                             let names = fields.iter().map(|(name, _)| item_context[*name].clone());
                             FieldsResult::Fields(names.collect())
@@ -106,6 +118,28 @@ impl Origin {
             },
             _ => FieldsResult::NotAStruct,
         }
+    }
+}
+
+/// Returns the fields of a struct type a type alias may refer to, if any
+fn alias_body_fields(
+    alias_item: TopLevelId, body: &Type, db: &DbHandle, visited: &mut Vec<TopLevelName>,
+) -> FieldsResult {
+    match alias_body_head_origin(alias_item, body, db) {
+        Some(Some(origin)) => origin.get_fields_of_type_rec(db, visited),
+        Some(None) => FieldsResult::PriorError,
+        None => FieldsResult::NotAStruct,
+    }
+}
+
+/// Resolves the name at the head of an alias body, skipping over any type arguments so that
+/// a body like `Vec a` resolves `Vec`. The outer `None` is returned when the body is not a
+/// name at all, such as a tuple or function type, while `Some(None)` is a name that failed to resolve.
+fn alias_body_head_origin(alias_item: TopLevelId, body: &Type, db: &DbHandle) -> Option<Option<Origin>> {
+    match &body.kind {
+        TypeKind::Named(path) => Some(Resolve(alias_item).get(db).path_origins.get(path).copied()),
+        TypeKind::Application(f, _) => alias_body_head_origin(alias_item, f, db),
+        _ => None,
     }
 }
 
@@ -378,7 +412,14 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
     /// Links a path to its definition or errors if it does not exist
     fn link(&mut self, path: PathId, allow_type_based_resolution: bool, is_type: bool) {
         match self.lookup(&self.context[path], allow_type_based_resolution) {
-            Ok(origin) => {
+            Ok(mut origin) => {
+                // Handle type aliases in an expression position
+                if !is_type
+                    && let Origin::TopLevelDefinition(name) = origin
+                    && let Some(followed) = self.follow_alias_to_constructor(name, &mut Vec::new())
+                {
+                    origin = followed;
+                }
                 if !self.is_valid_for_position(origin, is_type) {
                     let last = self.context[path].components.last().unwrap();
                     let location = self.context.path_location(path).clone();
@@ -456,6 +497,43 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
 
     fn emit_diagnostic(&self, diagnostic: Diagnostic) {
         self.compiler.accumulate(diagnostic);
+    }
+
+    /// If `alias` is a type alias whose underlying type is a struct, return the struct's constructor [Origin].
+    /// Returns `None` if `alias` is not an alias, or its body is not a struct that can be used as a constructor.
+    fn follow_alias_to_constructor(&self, alias: TopLevelName, visited: &mut Vec<TopLevelName>) -> Option<Origin> {
+        if visited.contains(&alias) {
+            return None;
+        }
+        let (item, _) = GetItem(alias.top_level_item).get(self.compiler);
+        let TopLevelItemKind::TypeDefinition(def) = &item.kind else {
+            return None;
+        };
+        let TypeDefinitionBody::Alias(body) = &def.body else {
+            return None;
+        };
+        visited.push(alias);
+        self.follow_alias_body_to_constructor(alias.top_level_item, body, visited)
+    }
+
+    /// Follow the head of an alias body to the constructor of the struct it ultimately names.
+    fn follow_alias_body_to_constructor(
+        &self, alias_item: TopLevelId, body: &Type, visited: &mut Vec<TopLevelName>,
+    ) -> Option<Origin> {
+        let Some(Some(Origin::TopLevelDefinition(target))) = alias_body_head_origin(alias_item, body, self.compiler)
+        else {
+            return None;
+        };
+        let (target_item, _) = GetItem(target.top_level_item).get(self.compiler);
+        let TopLevelItemKind::TypeDefinition(target_def) = &target_item.kind else {
+            return None;
+        };
+        match &target_def.body {
+            TypeDefinitionBody::Struct(_) => Some(Origin::TopLevelDefinition(target)),
+            TypeDefinitionBody::Alias(_) => self.follow_alias_to_constructor(target, visited),
+            // The name of an enum/union is only a type, not a constructor.
+            TypeDefinitionBody::Enum(_) | TypeDefinitionBody::Error => None,
+        }
     }
 
     fn is_valid_for_position(&self, origin: Origin, is_type: bool) -> bool {

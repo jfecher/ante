@@ -729,10 +729,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 }
                 self.subtype(a_body, b_body, Variance::Invariant, new_bindings)
             },
-            (
-                Type::Primitive(PrimitiveType::Reference(a_kind)),
-                Type::Primitive(PrimitiveType::Reference(b_kind)),
-            ) => {
+            (Type::Primitive(PrimitiveType::Reference(a_kind)), Type::Primitive(PrimitiveType::Reference(b_kind))) => {
                 match (a_kind, b_kind) {
                     (_, ReferenceKind::Ref) => Ok(()),
                     (ReferenceKind::Uniq, ReferenceKind::Mut) => Ok(()),

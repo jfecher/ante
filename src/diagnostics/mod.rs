@@ -93,6 +93,10 @@ pub enum Diagnostic {
         typ: String,
         location: Location,
     },
+    RecursiveTypeAlias {
+        typ: String,
+        location: Location,
+    },
     NamespaceNotFound {
         name: String,
         location: Location,
@@ -432,9 +436,10 @@ impl Diagnostic {
                 format!("Expected type `{expected}` but found `{actual}`")
             },
             Diagnostic::RecursiveType { typ, location: _ } => {
-                format!(
-                    "`{typ}` is infinitely recursive. Put recursive uses behind a pointer indirection to limit the size of the type"
-                )
+                format!("`{}` is infinitely recursive", color_type(typ))
+            },
+            Diagnostic::RecursiveTypeAlias { typ, location: _ } => {
+                format!("`{}` is infinitely recursive", color_type(typ))
             },
             Diagnostic::NamespaceNotFound { name, location: _ } => {
                 format!("Namespace `{name}` not found in path")
@@ -679,6 +684,7 @@ impl Diagnostic {
             | Diagnostic::NameNotInScope { location, .. }
             | Diagnostic::ExpectedType { location, .. }
             | Diagnostic::RecursiveType { location, .. }
+            | Diagnostic::RecursiveTypeAlias { location, .. }
             | Diagnostic::NamespaceNotFound { location, .. }
             | Diagnostic::MethodDeclaredOnUnknownType { location, .. }
             | Diagnostic::LiteralUsedAsName { location }
@@ -759,6 +765,10 @@ impl Diagnostic {
                 let kind = body_kind.description();
                 Some((body_location, format!("this is where the {kind} body ends")))
             },
+            Diagnostic::RecursiveType { typ: _, location } => Some((
+                location,
+                format!("Declare the type as `shared` or wrap each instance in a pointer type like `Rc`"),
+            )),
             _ => None,
         }
     }

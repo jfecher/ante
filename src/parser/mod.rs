@@ -1328,11 +1328,7 @@ impl<'tokens> Parser<'tokens> {
     fn parse_function_parameter(&mut self) -> Result<Parameter> {
         if *self.current_token() == Token::BraceLeft {
             let (pattern, is_mutable) = self.parse_implicit_function_parameter()?;
-            if is_mutable {
-                Ok(Parameter::implicit_mutable(pattern))
-            } else {
-                Ok(Parameter::implicit(pattern))
-            }
+            if is_mutable { Ok(Parameter::implicit_mutable(pattern)) } else { Ok(Parameter::implicit(pattern)) }
         } else if *self.current_token() == Token::ParenthesisLeft && self.peek_next_token() == &Token::Var {
             let pattern = self.with_pattern_id_and_location(|this| {
                 this.advance(); // consume `(`
