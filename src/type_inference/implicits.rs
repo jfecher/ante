@@ -432,6 +432,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     actual,
                     expected: "an integer type".to_string(),
                     kind: TypeErrorKind::General,
+                    function_environments_differ: false,
                     location,
                 });
                 return;
@@ -459,6 +460,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     actual,
                     expected: "a float type".to_string(),
                     kind: TypeErrorKind::General,
+                    function_environments_differ: false,
                     location,
                 });
                 return;

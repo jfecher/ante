@@ -216,7 +216,15 @@ impl Type {
     where
         Db: DbGet<GetItem>,
     {
-        TypePrinter { typ: self, bindings, integer_literal_vars, float_literal_vars, names, db }
+        TypePrinter {
+            typ: self,
+            bindings,
+            integer_literal_vars,
+            float_literal_vars,
+            hide_environments: false,
+            names,
+            db,
+        }
     }
 
     /// Returns true if this is any of the primitive integer types I8, I16, .., Usz, etc.
@@ -822,8 +830,18 @@ pub struct TypePrinter<'a, Db, Names> {
     /// Unbound variables in these sets render as their literal default (I32/F64) instead of `_`.
     integer_literal_vars: &'a FxHashSet<TypeVariableId>,
     float_literal_vars: &'a FxHashSet<TypeVariableId>,
+    /// In error messages we omit the `[env]` block and instead write `=>` for functions
+    /// with an environment. The typed AST dump keeps the env.
+    hide_environments: bool,
     names: &'a Names,
     db: &'a Db,
+}
+
+impl<'a, Db, Names> TypePrinter<'a, Db, Names> {
+    pub fn hiding_environments(mut self) -> Self {
+        self.hide_environments = true;
+        self
+    }
 }
 
 impl<Db, Names> std::fmt::Display for TypePrinter<'_, Db, Names>
@@ -871,13 +889,18 @@ where
                     }
                 }
 
-                if *function.environment.follow(&self.bindings) != Type::NO_CLOSURE_ENV {
-                    write!(f, " [")?;
-                    self.fmt_type(&function.environment, false, f)?;
-                    write!(f, "]")?;
-                }
+                let has_env = *function.environment.follow(&self.bindings) != Type::NO_CLOSURE_ENV;
 
-                write!(f, " -> ")?;
+                if self.hide_environments {
+                    write!(f, "{}", if has_env { " => " } else { " -> " })?;
+                } else {
+                    if has_env {
+                        write!(f, " [")?;
+                        self.fmt_type(&function.environment, false, f)?;
+                        write!(f, "]")?;
+                    }
+                    write!(f, " -> ")?;
+                }
                 self.fmt_type(&function.return_type, false, f)
             }),
             Type::Application(constructor, args) => try_parenthesize(parenthesize, f, |f| {

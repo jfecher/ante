@@ -434,12 +434,29 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             self.bindings.extend(new_bindings);
             true
         } else {
+            let function_environments_differ = self.only_function_environments_differ(actual, expected);
             let actual = self.type_to_error_string(actual);
             let expected = self.type_to_error_string(expected);
             let location = locator.locate(self);
-            self.compiler.accumulate(Diagnostic::TypeError { actual, expected, kind, location });
+            self.compiler.accumulate(Diagnostic::TypeError {
+                actual,
+                expected,
+                kind,
+                function_environments_differ,
+                location,
+            });
             false
         }
+    }
+
+    /// True if `a` and `b` are equal except for one or more function environments.
+    /// Assumes the two types are not equal to begin with (we only reach here after a failed
+    /// unification), so if they unify once every function environment is erased, the
+    /// environments must have been the sole cause of the failure.
+    fn only_function_environments_differ(&self, a: &Type, b: &Type) -> bool {
+        let a = strip_environments(&a.follow_all(&self.bindings));
+        let b = strip_environments(&b.follow_all(&self.bindings));
+        self.try_unify(&a, &b).is_ok()
     }
 
     /// Like [Self::type_to_string] but renders unbound literal variables as I32 or F64.
@@ -451,6 +468,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             self.current_context(),
             self.compiler,
         )
+        .hiding_environments()
         .to_string()
     }
 
@@ -477,6 +495,27 @@ impl Variance {
             Variance::Contravariant => Variance::Covariant,
             Variance::Invariant => Variance::Invariant,
         }
+    }
+}
+
+/// Rewrite `typ`, erasing every function environment to [`Type::NO_CLOSURE_ENV`].
+/// Used to compare two types while ignoring their closure environments.
+fn strip_environments(typ: &Type) -> Type {
+    match typ {
+        Type::Function(function) => Type::Function(Arc::new(FunctionType {
+            parameters: mapvec(&function.parameters, |param| {
+                ParameterType::new(strip_environments(&param.typ), param.is_implicit)
+            }),
+            environment: Type::NO_CLOSURE_ENV,
+            return_type: strip_environments(&function.return_type),
+        })),
+        Type::Application(constructor, args) => Type::Application(
+            Arc::new(strip_environments(constructor)),
+            Arc::new(mapvec(args.iter(), strip_environments)),
+        ),
+        Type::Tuple(elements) => Type::Tuple(Arc::new(mapvec(elements.iter(), strip_environments))),
+        Type::Forall(generics, body) => Type::Forall(generics.clone(), Arc::new(strip_environments(body))),
+        Type::Primitive(_) | Type::Generic(_) | Type::Variable(_) | Type::UserDefined(_) | Type::U32(_) => typ.clone(),
     }
 }
 
@@ -611,7 +650,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     }
 
     pub(crate) fn type_to_string(&self, typ: &Type) -> String {
-        typ.to_string(&self.bindings, self.current_context(), self.compiler)
+        typ.display(&self.bindings, self.current_context(), self.compiler).hiding_environments().to_string()
     }
 
     /// Check `actual <: expected`, returning `Err(())` on failure without pushing a Diagnostic.
@@ -724,10 +763,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 }
                 self.subtype(a_body, b_body, Variance::Invariant, new_bindings)
             },
-            (
-                Type::Primitive(PrimitiveType::Reference(a_kind)),
-                Type::Primitive(PrimitiveType::Reference(b_kind)),
-            ) => {
+            (Type::Primitive(PrimitiveType::Reference(a_kind)), Type::Primitive(PrimitiveType::Reference(b_kind))) => {
                 match (a_kind, b_kind) {
                     (_, ReferenceKind::Ref) => Ok(()),
                     (ReferenceKind::Uniq, ReferenceKind::Mut) => Ok(()),

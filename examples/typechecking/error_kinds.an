@@ -52,7 +52,7 @@ main () = ()
 // 
 // examples/typechecking/error_kinds.an:17:9
 // 16 | callee (x: I32) : Unit =
-// 17 |     y = x ()	// error: This is called as if it were a fn _ [_] -> _ but it has type I32
+// 17 |     y = x ()	// error: This is called as if it were a fn _ => _ but it has type I32
 //    |         ^
 // 18 |     ()
 // 

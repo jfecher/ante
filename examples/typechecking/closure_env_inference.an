@@ -1,0 +1,23 @@
+// Test to ensure we issue a 'Separate closures are not equal ...' note
+// even on some more complex type inequalities involving unification variables.
+needs (p: (I32, fn I32 -> Unit)): Unit = ()
+
+use y = ()
+
+main () =
+    x = 5
+    pair a = (a, fn n -> use (n, x))
+    needs (pair 0)
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/closure_env_inference.an:10:12
+//  9 |     pair a = (a, fn n -> use (n, x))
+//    |     // error: This function call returns _, (fn _ => Unit) but I32, (fn I32 -> Unit) was expected
+//    |     // note: Separate closures are not equal because they may capture different data
+// 10 |     needs (pair 0)
+//    |            ^^^^^^
+// 
+// Found 1 error and 0 warnings
+

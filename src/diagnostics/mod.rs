@@ -116,6 +116,8 @@ pub enum Diagnostic {
         actual: String,
         expected: String,
         kind: TypeErrorKind,
+        /// True when `actual` and `expected` are equal except for their function environments.
+        function_environments_differ: bool,
         location: Location,
     },
     FunctionArgCountMismatch {
@@ -451,7 +453,9 @@ impl Diagnostic {
             Diagnostic::TypeExpected { name, location: _ } => {
                 format!("Expected a type but `{name}` is a value")
             },
-            Diagnostic::TypeError { actual, expected, kind, location: _ } => kind.message(actual, expected),
+            Diagnostic::TypeError { actual, expected, kind, function_environments_differ: _, location: _ } => {
+                kind.message(actual, expected)
+            },
             Diagnostic::FunctionArgCountMismatch { actual, expected, location: _ } => {
                 let s = if *expected == 1 { "" } else { "s" };
                 format!("Expected {expected} argument{s} but found {actual}")
@@ -758,6 +762,9 @@ impl Diagnostic {
             Diagnostic::ConfusingOperatorAfterBody { body_kind, body_location, .. } => {
                 let kind = body_kind.description();
                 Some((body_location, format!("this is where the {kind} body ends")))
+            },
+            Diagnostic::TypeError { function_environments_differ: true, location, .. } => {
+                Some((location, "Separate closures are not equal because they may capture different data".to_string()))
             },
             _ => None,
         }
