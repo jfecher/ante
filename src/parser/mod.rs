@@ -1327,8 +1327,12 @@ impl<'tokens> Parser<'tokens> {
     ///                   | function_parameter_pattern
     fn parse_function_parameter(&mut self) -> Result<Parameter> {
         if *self.current_token() == Token::BraceLeft {
-            let pattern = self.parse_implicit_function_parameter()?;
-            Ok(Parameter::implicit(pattern))
+            let (pattern, is_mutable) = self.parse_implicit_function_parameter()?;
+            if is_mutable {
+                Ok(Parameter::implicit_mutable(pattern))
+            } else {
+                Ok(Parameter::implicit(pattern))
+            }
         } else if *self.current_token() == Token::ParenthesisLeft && self.peek_next_token() == &Token::Var {
             let pattern = self.with_pattern_id_and_location(|this| {
                 this.advance(); // consume `(`
@@ -1351,10 +1355,19 @@ impl<'tokens> Parser<'tokens> {
     /// implicit_function_parameter: '{' identifier '}'
     ///                            | '{' type_no_type_variable '}'
     ///                            | '{' pattern '}'
-    fn parse_implicit_function_parameter(&mut self) -> Result<PatternId> {
+    ///                            | '{' 'var' pattern '}'
+    ///
+    /// Returns the parsed pattern along with whether it was declared mutable via `var`.
+    fn parse_implicit_function_parameter(&mut self) -> Result<(PatternId, bool)> {
         self.expect(Token::BraceLeft, "parse_implicit_function_parameter")?;
 
-        self.or(
+        if self.accept(Token::Var) {
+            let pattern = self.parse_pattern()?;
+            self.expect(Token::BraceRight, "a `}` to close the opening `{` from the implicit parameter")?;
+            return Ok((pattern, true));
+        }
+
+        let pattern = self.or(
             |this| {
                 this.or(
                     |this| {
@@ -1380,7 +1393,8 @@ impl<'tokens> Parser<'tokens> {
                 this.expect(Token::BraceRight, "a `}` to close the opening `{` from the implicit parameter")?;
                 Ok(pattern)
             },
-        )
+        )?;
+        Ok((pattern, false))
     }
 
     fn parse_pattern(&mut self) -> Result<PatternId> {

@@ -1,0 +1,17 @@
+incr {var n: I32}: I32 =
+    n += 1
+    n
+
+main () =
+    println (incr {10})
+
+    var x = 1
+    y = incr {x}  // increments a copy of x
+    println x
+    println y
+
+// args: --delete-binary --no-color
+// expected stdout:
+// 11
+// 1
+// 2

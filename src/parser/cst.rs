@@ -423,6 +423,11 @@ impl Parameter {
     pub fn mutable(pattern: PatternId) -> Parameter {
         Parameter { pattern, is_implicit: false, is_mutable: true }
     }
+
+    /// Creates a new, implicit, mutable parameter
+    pub fn implicit_mutable(pattern: PatternId) -> Parameter {
+        Parameter { pattern, is_implicit: true, is_mutable: true }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
