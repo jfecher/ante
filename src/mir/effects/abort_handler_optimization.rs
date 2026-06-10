@@ -14,7 +14,7 @@
 //! Performs are left unchanged by this pass.
 use std::sync::Arc;
 
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::iterator_extensions::{mapvec, opt_mapvec};
 use crate::lexer::token::IntegerKind;
@@ -23,7 +23,9 @@ use crate::mir::{
     IntConstant, Mir, TerminatorInstruction, Type, Value, next_definition_id,
 };
 
-use super::effect_lowering::{CaseShape, Emitter, case_shape_from_handler_type, resolve_body_function};
+use super::effect_lowering::{
+    CaseShape, Emitter, case_shape_from_handler_type, resolve_body_function, run_handle_optimization_worklist,
+};
 use super::tail_resume_optimization::{
     OriginalEnvLayout, clone_body_with_extended_env, neutralize_handler_caps_in_dead_body, resolve_handler,
     rewrite_handler_caps_in_body, substitute_value,
@@ -31,14 +33,20 @@ use super::tail_resume_optimization::{
 
 impl Mir {
     pub(crate) fn optimize_abort_handlers(mut self) -> Self {
-        let ids: Vec<_> = self.definitions.keys().copied().collect();
-        for id in ids {
-            for site in collect_handle_sites(&self, id) {
-                try_optimize_handle(&mut self, id, site);
-            }
-        }
+        run_handle_optimization_worklist(&mut self, optimize_in_definition);
         self
     }
+}
+
+/// Optimize every abort-only Handle in `definition_id`, returning the ids of any new definitions
+/// created so the caller can enqueue them for processing.
+fn optimize_in_definition(
+    mir: &mut Mir, definition_id: DefinitionId, dead_bodies: &mut FxHashSet<DefinitionId>,
+) -> Vec<DefinitionId> {
+    collect_handle_sites(mir, definition_id)
+        .into_iter()
+        .flat_map(|site| try_optimize_handle(mir, definition_id, site, dead_bodies))
+        .collect()
 }
 
 #[derive(Clone)]
@@ -127,15 +135,18 @@ fn case_is_abort_only(handler_def: &Definition, shape: &CaseShape) -> bool {
     !uses_resume
 }
 
-fn try_optimize_handle(mir: &mut Mir, definition_id: DefinitionId, site: HandleSite) {
-    let Some(decisions) = analyze_handle(mir, definition_id, &site) else { return };
+fn try_optimize_handle(
+    mir: &mut Mir, definition_id: DefinitionId, site: HandleSite, dead_bodies: &mut FxHashSet<DefinitionId>,
+) -> Vec<DefinitionId> {
+    let Some(decisions) = analyze_handle(mir, definition_id, &site) else { return Vec::new() };
     preserve_op_indices(&mut mir.preserved_op_indices, &site.cases);
 
     let wrapper_ids = mapvec(decisions.iter().enumerate(), |(i, d)| materialize_abort_wrapper(mir, d, i as u32));
     let cap_tuple_type = Type::Tuple(Arc::new(mapvec(&wrapper_ids, |id| mir.definitions[id].typ.clone())));
 
-    let prepared = prepare_body_fn(mir, definition_id, site.body, &cap_tuple_type);
+    let (prepared, created_ids) = prepare_body_fn(mir, definition_id, site.body, &cap_tuple_type, dead_bodies);
     splice_in_handle_replacement(mir, definition_id, site, &wrapper_ids, decisions, prepared, &cap_tuple_type);
+    created_ids
 }
 
 fn preserve_op_indices(map: &mut FxHashMap<DefinitionId, u32>, cases: &[HandlerCase]) {
@@ -152,12 +163,21 @@ struct PreparedBody {
     layout: OriginalEnvLayout,
 }
 
-fn prepare_body_fn(mir: &mut Mir, definition_id: DefinitionId, body: Value, cap_tuple_type: &Type) -> PreparedBody {
+/// Returns the prepared body plus the ids of the body clones created here to be handled later
+fn prepare_body_fn(
+    mir: &mut Mir, definition_id: DefinitionId, body: Value, cap_tuple_type: &Type,
+    dead_bodies: &mut FxHashSet<DefinitionId>,
+) -> (PreparedBody, Vec<DefinitionId>) {
     let (orig_id, env_value, bindings) = resolve_body_function(body, &mir.definitions[&definition_id]);
-    let (fn_id, layout) = clone_body_with_extended_env(mir, orig_id, cap_tuple_type);
+    let (fn_id, layout, created_ids) = clone_body_with_extended_env(mir, orig_id, cap_tuple_type);
     neutralize_handler_caps_in_dead_body(mir, orig_id);
     rewrite_handler_caps_in_body(mir, fn_id, &layout, cap_tuple_type);
-    PreparedBody { fn_id, env_value, bindings, layout }
+
+    // The original body fn is now dead (only the outer definition's dead PackClosure references it).
+    // Don't re-process its Handles; the clone carries the live copies.
+    dead_bodies.insert(orig_id);
+
+    (PreparedBody { fn_id, env_value, bindings, layout }, created_ids)
 }
 
 /// Wrapper signature: `fn op_args.. [Pointer] -> op_return_type`. The Pointer points to a

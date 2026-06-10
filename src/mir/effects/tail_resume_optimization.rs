@@ -9,25 +9,20 @@
 
 use std::sync::Arc;
 
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::mir::{
     BlockId, Definition, DefinitionId, FunctionType, GenericBindings, HandlerCase, Instruction, InstructionId, Mir,
     TerminatorInstruction, Type, Value, next_definition_id,
 };
 
-use super::effect_lowering::{CaseShape, case_shape_from_handler_type, resolve_body_function};
+use super::effect_lowering::{
+    CaseShape, case_shape_from_handler_type, resolve_body_function, run_handle_optimization_worklist,
+};
 
 impl Mir {
     pub(crate) fn optimize_tail_resume(mut self) -> Self {
-        // Snapshot definition ids before iterating; the loop mutates `self.definitions`.
-        let definition_ids: Vec<DefinitionId> = self.definitions.keys().copied().collect();
-        for id in definition_ids {
-            if !self.definitions.contains_key(&id) {
-                continue;
-            }
-            optimize_in_definition(&mut self, id);
-        }
+        run_handle_optimization_worklist(&mut self, optimize_in_definition);
         self
     }
 }
@@ -42,13 +37,15 @@ struct HandleSite {
     result_type: Type,
 }
 
-fn optimize_in_definition(mir: &mut Mir, definition_id: DefinitionId) {
-    let sites = collect_handle_sites(mir, definition_id);
-    // `sites` is reversed within each block already so that splicing a later site doesn't
-    // invalidate earlier indices. We can iterate in order.
-    for site in sites {
-        try_optimize_handle(mir, definition_id, site);
-    }
+/// Optimize every tail-resumptive Handle in `definition_id`, returning the ids of any new
+/// definitions created (body clones) so the caller can enqueue them for processing.
+fn optimize_in_definition(
+    mir: &mut Mir, definition_id: DefinitionId, dead_bodies: &mut FxHashSet<DefinitionId>,
+) -> Vec<DefinitionId> {
+    collect_handle_sites(mir, definition_id)
+        .into_iter()
+        .flat_map(|site| try_optimize_handle(mir, definition_id, site, dead_bodies))
+        .collect()
 }
 
 fn collect_handle_sites(mir: &Mir, definition_id: DefinitionId) -> Vec<HandleSite> {
@@ -218,8 +215,10 @@ fn case_is_tail_resumptive(handler_def: &Definition, shape: &CaseShape) -> bool 
     true
 }
 
-fn try_optimize_handle(mir: &mut Mir, definition_id: DefinitionId, site: HandleSite) {
-    let Some(decisions) = analyze_handle(mir, definition_id, &site) else { return };
+fn try_optimize_handle(
+    mir: &mut Mir, definition_id: DefinitionId, site: HandleSite, dead_bodies: &mut FxHashSet<DefinitionId>,
+) -> Vec<DefinitionId> {
+    let Some(decisions) = analyze_handle(mir, definition_id, &site) else { return Vec::new() };
 
     // Preserve the op→index mapping so [crate::mir::effects::effect_lowering] can still lower
     // `Perform`s targeting these ops after we remove the Handle. The position is the case's
@@ -246,7 +245,12 @@ fn try_optimize_handle(mir: &mut Mir, definition_id: DefinitionId, site: HandleS
     // than mutate in-place because the outer definition still contains the original
     // PackClosure / Id instructions for body_fn (now dead but still type-checked by validation),
     // and changing body_fn's type would leave those instructions with stale `result_types`.
-    let (body_fn_id, original_env_layout) = clone_body_with_extended_env(mir, orig_body_fn_id, &cap_tuple_type);
+    let (body_fn_id, original_env_layout, created_ids) =
+        clone_body_with_extended_env(mir, orig_body_fn_id, &cap_tuple_type);
+
+    // The original body fn is now dead (only the outer definition's dead PackClosure references
+    // it). Don't process its Handles again; the clone carries the live copies.
+    dead_bodies.insert(orig_body_fn_id);
 
     // The original body_fn is now dead code: the outer definition's now-dead PackClosure still
     // references it, but its result is unused. It still gets visited by validation and codegen,
@@ -276,6 +280,8 @@ fn try_optimize_handle(mir: &mut Mir, definition_id: DefinitionId, site: HandleS
         &cap_tuple_type,
         &original_env_layout,
     );
+
+    created_ids
 }
 
 /// Records what the body's env looked like *before* we appended cap. Used both to compute the
@@ -300,21 +306,24 @@ pub(super) struct OriginalEnvLayout {
 /// before the Handle was rewritten) keep type-checking against the original signature.
 pub(super) fn clone_body_with_extended_env(
     mir: &mut Mir, orig_body_fn_id: DefinitionId, cap_type: &Type,
-) -> (DefinitionId, OriginalEnvLayout) {
-    let original = mir.definitions[&orig_body_fn_id].clone();
-    let new_id = next_definition_id();
-    let mut new_def = original.clone_with_id(new_id);
+) -> (DefinitionId, OriginalEnvLayout, Vec<DefinitionId>) {
+    // Deep-clone the body together with the nested sub-definitions it privately owns. This keeps
+    // the live clone's nested-handle subtree separate from the now-dead original, so neutralizing
+    // the original's capabilities can never corrupt the clone.
+    let (new_id, id_map) = deep_clone_body_subtree(mir, orig_body_fn_id);
+    let created_ids: Vec<DefinitionId> = id_map.values().copied().collect();
 
-    let Type::Function(body_ft) = &original.typ else {
+    let original_typ = mir.definitions[&orig_body_fn_id].typ.clone();
+    let original_name = mir.definitions[&orig_body_fn_id].name.clone();
+    let Type::Function(body_ft) = &original_typ else {
         panic!("body_fn type is not a function");
     };
     let was_closure = body_ft.is_closure();
     let (original_field_types, new_env_type) = if was_closure {
         let Type::Tuple(fields) = &body_ft.environment else {
             // Defensive: the MIR builder always emits a tuple env. If something else ended up
-            // here we can't safely extend; return without mutating the clone.
-            mir.definitions.insert(new_id, new_def);
-            return (new_id, OriginalEnvLayout { was_closure, original_field_types: Vec::new() });
+            // here we can't safely extend; return the deep clone unmutated.
+            return (new_id, OriginalEnvLayout { was_closure, original_field_types: Vec::new() }, created_ids);
         };
         let mut new_fields: Vec<Type> = (**fields).clone();
         let original_fields = new_fields.clone();
@@ -324,12 +333,13 @@ pub(super) fn clone_body_with_extended_env(
         (Vec::new(), Type::Tuple(Arc::new(vec![cap_type.clone()])))
     };
 
+    let new_def = mir.definitions.get_mut(&new_id).expect("deep clone root missing");
     new_def.typ = Type::Function(Arc::new(FunctionType {
         parameters: body_ft.parameters.clone(),
         environment: new_env_type.clone(),
         return_type: body_ft.return_type.clone(),
     }));
-    new_def.name = Arc::new(format!("{}_tail_resume_body", original.name));
+    new_def.name = Arc::new(format!("{original_name}_tail_resume_body"));
 
     let entry = BlockId::ENTRY_BLOCK;
     if was_closure {
@@ -341,8 +351,73 @@ pub(super) fn clone_body_with_extended_env(
         new_def.blocks[entry].parameter_types.push(new_env_type);
     }
 
-    mir.definitions.insert(new_id, new_def);
-    (new_id, OriginalEnvLayout { was_closure, original_field_types })
+    (new_id, OriginalEnvLayout { was_closure, original_field_types }, created_ids)
+}
+
+/// The set of definitions privately owned by `root`: `root` itself plus every definition reachable
+/// from it whose every referrer is also owned. Definitions referenced from outside this set (named
+/// top-level functions, shared helpers) and externals stay shared and are not cloned.
+fn owned_subtree(mir: &Mir, root: DefinitionId) -> FxHashSet<DefinitionId> {
+    let mut referrers: FxHashMap<DefinitionId, FxHashSet<DefinitionId>> = FxHashMap::default();
+    for (id, def) in mir.definitions.iter() {
+        def.for_each_referenced_definition(|child| {
+            referrers.entry(child).or_default().insert(*id);
+        });
+    }
+
+    let mut owned = FxHashSet::default();
+    owned.insert(root);
+    loop {
+        let mut candidates: Vec<DefinitionId> = Vec::new();
+        for def in owned.iter().filter_map(|id| mir.definitions.get(id)) {
+            def.for_each_referenced_definition(|c| {
+                if !owned.contains(&c) && mir.definitions.contains_key(&c) {
+                    candidates.push(c);
+                }
+            });
+        }
+        let mut changed = false;
+        for c in candidates {
+            let all_referrers_owned = referrers.get(&c).is_none_or(|rs| rs.iter().all(|r| owned.contains(r)));
+            if all_referrers_owned && owned.insert(c) {
+                changed = true;
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    owned
+}
+
+/// Deep-clone `root` and its [`owned_subtree`] into fresh definitions, remapping all internal
+/// definition-id references to the clones. Returns the cloned root id and the full old→new id map.
+fn deep_clone_body_subtree(mir: &mut Mir, root: DefinitionId) -> (DefinitionId, FxHashMap<DefinitionId, DefinitionId>) {
+    let owned = owned_subtree(mir, root);
+    let id_map: FxHashMap<DefinitionId, DefinitionId> = owned.iter().map(|&old| (old, next_definition_id())).collect();
+
+    for (&old, &new) in id_map.iter() {
+        let mut clone = mir.definitions[&old].clone_with_id(new);
+        remap_definition_ids(&mut clone, &id_map);
+        mir.definitions.insert(new, clone);
+    }
+    (id_map[&root], id_map)
+}
+
+/// Rewrite every `Value::Definition` and `Instruction::Instantiate` target in `def` through `id_map`.
+fn remap_definition_ids(def: &mut Definition, id_map: &FxHashMap<DefinitionId, DefinitionId>) {
+    for instr in def.instructions.values_mut() {
+        if let Instruction::Instantiate(id, _) = instr {
+            if let Some(&new) = id_map.get(id) {
+                *id = new;
+            }
+        }
+    }
+    for (&old, &new) in id_map.iter() {
+        if old != new {
+            substitute_value(def, Value::Definition(old), Value::Definition(new));
+        }
+    }
 }
 
 /// Replace each [Instruction::Capability] in body_fn with `IndexTuple(env_param, cap_index)`.
@@ -957,5 +1032,49 @@ mod tests {
         assert_eq!(count_handles(&mir, outer_id), 1, "mixed Handle should be left alone");
         let wrapper_count = mir.definitions.values().filter(|d| d.name.contains("tail_resume_wrapper")).count();
         assert_eq!(wrapper_count, 0);
+    }
+
+    /// Nested tail-resumptive handlers: optimizing the outer Handle clones its body (which itself
+    /// contains the inner Handle). The worklist must re-process that clone so the inner Handle is
+    /// also eliminated, and the deep clone must give it a private copy of the inner body so the
+    /// dead original cannot corrupt it.
+    #[test]
+    fn tail_resume_eliminates_nested_handle_in_clone() {
+        let u32_t = Type::int(IntegerKind::U32);
+
+        let (inner_handler, _) = make_simple_handler(true);
+        let inner_handler_id = inner_handler.id;
+        let inner_op = next_definition_id();
+        let inner_body = make_body_with_perform(inner_op, u32_t.clone(), u32_t.clone());
+        let inner_body_id = inner_body.id;
+
+        // The outer Handle's body is itself a definition containing the inner Handle.
+        let (outer_body, _) = make_outer_with_handle(inner_body_id, inner_handler_id, inner_op, Type::UNIT);
+        let outer_body_id = outer_body.id;
+
+        let (outer_handler, _) = make_simple_handler(true);
+        let outer_handler_id = outer_handler.id;
+        let outer_op = next_definition_id();
+        let (outermost, _) = make_outer_with_handle(outer_body_id, outer_handler_id, outer_op, Type::UNIT);
+        let outermost_id = outermost.id;
+
+        let mut mir = Mir::default();
+        for def in [inner_handler, inner_body, outer_body, outer_handler, outermost] {
+            mir.definitions.insert(def.id, def);
+        }
+
+        let mir = mir.optimize_tail_resume();
+
+        // The outer Handle is eliminated...
+        assert_eq!(count_handles(&mir, outermost_id), 0, "outer Handle should be eliminated");
+        // ...and the nested Handle inside every live body clone is eliminated too (the worklist
+        // re-processes clones rather than leaving their Handles for the coroutine fallback).
+        let clone_handles: usize = mir
+            .definitions
+            .values()
+            .filter(|d| d.name.contains("tail_resume_body"))
+            .map(|d| d.instructions.values().filter(|i| matches!(i, Instruction::Handle { .. })).count())
+            .sum();
+        assert_eq!(clone_handles, 0, "nested Handle in the body clone should be eliminated");
     }
 }

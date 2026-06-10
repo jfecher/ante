@@ -151,12 +151,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             }
         }
 
-        if let Some(_) = call {
-            // The Call's arguments were already rewritten eagerly by `delay_find_implicit_value`.
-            // Here we just need to make the types consistent so that the enclosing `check_call`'s
-            // argument loop sees the correct bound types in its expected parameter variables.
-            let implicit_added = implicits_added.iter().any(|param| param.is_some());
-            if !implicit_added || implicits_added.len() != new_expected.len() {
+        if let Some(call_expr) = call {
+            // Only rewrite the call if we actually inserted an implicit.
+            if !implicits_added.iter().any(|param| param.is_some()) {
+                return None;
+            }
+
+            // Allow `foo ()` to call an implicit-only function by dropping the trailing `()`.
+            if current_expected.is_some() && !self.drop_trailing_unit_arg(call_expr) {
                 return None;
             }
 
@@ -171,6 +173,36 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         } else {
             self.create_closure_wrapper_for_implicit(function, implicits_added, new_expected).map(CoercionKind::Wrapper)
         }
+    }
+
+    /// Remove the last argument of the call if it is a unit literal, returning true if one was removed.
+    fn drop_trailing_unit_arg(&mut self, call_expr: ExprId) -> bool {
+        if !self.call_ends_with_unit_arg(call_expr) {
+            return false;
+        }
+        if let Some(cst::Expr::Call(call)) = self.current_extended_context_mut().extended_expr_mut(call_expr) {
+            call.arguments.truncate(call.arguments.len() - 1);
+            true
+        } else {
+            false
+        }
+    }
+
+    pub(super) fn call_ends_with_unit_arg(&self, call_expr: ExprId) -> bool {
+        let expr = match self.current_extended_context().extended_expr(call_expr) {
+            Some(expr) => expr,
+            None => &self.current_context()[call_expr],
+        };
+        let cst::Expr::Call(call) = expr else { return false };
+        call.arguments.last().is_some_and(|arg| self.is_unit_literal(arg.expr))
+    }
+
+    fn is_unit_literal(&self, expr: ExprId) -> bool {
+        let expr = match self.current_extended_context().extended_expr(expr) {
+            Some(expr) => expr,
+            None => &self.current_context()[expr],
+        };
+        matches!(expr, cst::Expr::Literal(cst::Literal::Unit))
     }
 
     /// If the expression is a variable, return its name

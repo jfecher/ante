@@ -13,7 +13,7 @@
 //! and dispatch to the relevant handler branch.
 use std::sync::Arc;
 
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
     iterator_extensions::mapvec,
@@ -93,6 +93,27 @@ impl Mir {
         }
 
         self
+    }
+}
+
+/// Drive a Handle-rewriting optimization over every definition, including the body clones the
+/// optimization itself may create.
+pub(super) fn run_handle_optimization_worklist(
+    mir: &mut Mir,
+    mut optimize_definition: impl FnMut(&mut Mir, DefinitionId, &mut FxHashSet<DefinitionId>) -> Vec<DefinitionId>,
+) {
+    let mut worklist: Vec<DefinitionId> = mir.definitions.keys().copied().collect();
+    let mut seen: FxHashSet<DefinitionId> = worklist.iter().copied().collect();
+    let mut dead_bodies = FxHashSet::default();
+    while let Some(id) = worklist.pop() {
+        if !mir.definitions.contains_key(&id) || dead_bodies.contains(&id) {
+            continue;
+        }
+        for new_id in optimize_definition(mir, id, &mut dead_bodies) {
+            if seen.insert(new_id) {
+                worklist.push(new_id);
+            }
+        }
     }
 }
 

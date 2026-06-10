@@ -94,7 +94,6 @@ fn add_source_files_of_crate(compiler: &mut Db, crates: &mut CrateGraph, crate_i
     let mut remaining = vec![src_folder.clone()];
     let mut source_files = BTreeMap::new();
 
-    // Push every crate in the `deps` folder as a new crate
     while let Some(current_dir) = remaining.pop() {
         // We should error in the future when failing to read a directory but for now we want to
         // allow either the local crate or the stdlib to not be present and still compile when
