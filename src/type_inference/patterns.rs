@@ -11,7 +11,7 @@ use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    diagnostics::{Diagnostic, Location, UnimplementedItem},
+    diagnostics::{Diagnostic, Location},
     incremental::{GetItem, GetItemRaw},
     iterator_extensions::{join_arc_str, map_btree, mapvec, opt_mapvec, try_mapvec},
     name_resolution::Origin,
@@ -258,11 +258,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 }
                 result?
             },
-            cst::TypeDefinitionBody::Alias(_) => {
-                let location = self.item_contexts[&item.id].1.name_location(name).clone();
-                UnimplementedItem::TypeAlias.issue(self.compiler, location);
-                return None;
-            },
+            // Name resolution should already resolve aliases to their underlying constructor,
+            // so a path reaching here means that failed and it is not a constructor.
+            cst::TypeDefinitionBody::Alias(_) => return None,
         };
 
         let type_name = TopLevelName::new(item.id, type_definition.name);

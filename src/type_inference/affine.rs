@@ -203,7 +203,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     fn is_ability(&self, typ: &Type) -> bool {
         match typ.follow(&self.bindings) {
-            // TODO: This is broken when type aliases are implemented.
+            // Type aliases are expanded away during `from_cst_type`, so no `UserDefined`
+            // here can refer to an alias
             Type::Application(constructor, _) => self.is_ability(&constructor),
             Type::UserDefined(origin) => match origin {
                 Origin::TopLevelDefinition(name) => {

@@ -247,7 +247,11 @@ fn rewrite_definition_signature(typ: &Type) -> Type {
 }
 
 fn rewrite_types_in_definition(definition: &mut Definition) {
-    definition.typ = rewrite_definition_signature(&definition.typ);
+    definition.typ = if definition.is_global() {
+        rewrite_value_type(&definition.typ)
+    } else {
+        rewrite_definition_signature(&definition.typ)
+    };
 
     for (_, block) in definition.blocks.iter_mut() {
         for typ in &mut block.parameter_types {

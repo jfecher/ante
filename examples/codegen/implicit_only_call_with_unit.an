@@ -1,0 +1,20 @@
+import Std.Fail.Fail, ignore_fail
+
+foo {Fail} =
+    println "in foo"
+
+foo2 {Fail} {Fail} =
+    println "in foo2"
+
+// We should allow calling functions like `foo` with only implicit args with a ()
+bar {Fail} =
+    foo ()
+    foo2 ()
+
+main () = ignore_fail bar
+
+// args: --delete-binary --no-color
+// expected stdout:
+// in foo
+// in foo2
+

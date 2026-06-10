@@ -154,6 +154,36 @@ impl Definition {
         clone
     }
 
+    /// Invoke `f` once for each [DefinitionId] this definition references
+    pub fn for_each_referenced_definition(&self, mut f: impl FnMut(DefinitionId)) {
+        for instruction in self.instructions.values() {
+            instruction.for_each_value(|value| {
+                if let Value::Definition(id) = value {
+                    f(*id);
+                }
+            });
+            match instruction {
+                Instruction::Instantiate(id, _) => f(*id),
+                Instruction::Perform { effect_op, .. } => f(*effect_op),
+                Instruction::Handle { cases, .. } => {
+                    for case in cases {
+                        f(case.effect_op);
+                    }
+                },
+                _ => (),
+            }
+        }
+        for block in self.blocks.values() {
+            if let Some(terminator) = &block.terminator {
+                terminator.for_each_value(|value| {
+                    if let Value::Definition(id) = value {
+                        f(*id);
+                    }
+                });
+            }
+        }
+    }
+
     pub fn entry_block(&self) -> &Block {
         &self.blocks[BlockId::ENTRY_BLOCK]
     }

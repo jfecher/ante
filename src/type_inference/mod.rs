@@ -545,8 +545,13 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         &mut self, actual: &Type, expected: &Type, expr: ExprId, call_expr: Option<ExprId>,
     ) -> CoercionOutcome {
         match (self.follow_type(actual), self.follow_type(expected)) {
+            // Fire when the callee needs implicit arguments the call site didn't supply.
+            // We also allow a function with only implicit args to be called with `()` as its sole argument.
             (Type::Function(actual_fn), Type::Function(expected_fn))
-                if actual_fn.parameters.len() != expected_fn.parameters.len() =>
+                if actual_fn.parameters.len() != expected_fn.parameters.len()
+                    || (call_expr.is_some_and(|call| self.call_ends_with_unit_arg(call))
+                        && actual_fn.parameters.iter().filter(|p| p.is_implicit).count()
+                            != expected_fn.parameters.iter().filter(|p| p.is_implicit).count()) =>
             {
                 match self.implicit_parameter_coercion(actual_fn.clone(), expected_fn.clone(), expr, call_expr) {
                     Some(implicits::CoercionKind::Wrapper(new_expr)) => {

@@ -3,7 +3,7 @@ use std::{borrow::Cow, sync::Arc};
 use rustc_hash::FxHashMap;
 
 use crate::{
-    diagnostics::{Diagnostic, UnimplementedItem},
+    diagnostics::Diagnostic,
     incremental::DbHandle,
     iterator_extensions::mapvec,
     name_resolution::{Origin, ResolutionResult, builtin::Builtin},
@@ -26,9 +26,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         let constructors = match &definition.body {
             cst::TypeDefinitionBody::Error => Cow::Owned(Vec::new()),
-            cst::TypeDefinitionBody::Alias(_) => {
-                let location = id.locate(self);
-                UnimplementedItem::TypeAlias.issue(self.compiler, location);
+            cst::TypeDefinitionBody::Alias(body) => {
+                // Convert the body even though the result is unused to issue kind or recursion errors
+                Self::reject_implicit_lifetimes(body, self.compiler);
+                let mut local_kinds = Self::local_kinds_from_generics(&definition.generics);
+                let _ = self.from_cst_type_with_local_kinds(body, false, &mut local_kinds);
                 return;
             },
             cst::TypeDefinitionBody::Struct(fields) => {

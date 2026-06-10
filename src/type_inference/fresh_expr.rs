@@ -142,6 +142,11 @@ impl ExtendedTopLevelContext {
         self.more_exprs.get(&id)
     }
 
+    /// Mutable version of [`Self::extended_expr`]
+    pub fn extended_expr_mut(&mut self, id: ExprId) -> Option<&mut Expr> {
+        self.more_exprs.get_mut(&id)
+    }
+
     /// Return the given pattern only if it is extended, and thus not part
     /// of `Self::original`. This can be used to prevent cloning in some cases.
     pub fn extended_pattern(&self, id: PatternId) -> Option<&Pattern> {

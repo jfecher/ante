@@ -93,6 +93,10 @@ pub enum Diagnostic {
         typ: String,
         location: Location,
     },
+    RecursiveTypeAlias {
+        typ: String,
+        location: Location,
+    },
     NamespaceNotFound {
         name: String,
         location: Location,
@@ -434,9 +438,10 @@ impl Diagnostic {
                 format!("Expected type `{expected}` but found `{actual}`")
             },
             Diagnostic::RecursiveType { typ, location: _ } => {
-                format!(
-                    "`{typ}` is infinitely recursive. Put recursive uses behind a pointer indirection to limit the size of the type"
-                )
+                format!("`{}` is infinitely recursive", color_type(typ))
+            },
+            Diagnostic::RecursiveTypeAlias { typ, location: _ } => {
+                format!("`{}` is infinitely recursive", color_type(typ))
             },
             Diagnostic::NamespaceNotFound { name, location: _ } => {
                 format!("Namespace `{name}` not found in path")
@@ -683,6 +688,7 @@ impl Diagnostic {
             | Diagnostic::NameNotInScope { location, .. }
             | Diagnostic::ExpectedType { location, .. }
             | Diagnostic::RecursiveType { location, .. }
+            | Diagnostic::RecursiveTypeAlias { location, .. }
             | Diagnostic::NamespaceNotFound { location, .. }
             | Diagnostic::MethodDeclaredOnUnknownType { location, .. }
             | Diagnostic::LiteralUsedAsName { location }
@@ -766,6 +772,10 @@ impl Diagnostic {
             Diagnostic::TypeError { function_environments_differ: true, location, .. } => {
                 Some((location, "Separate closures are not equal because they may capture different data".to_string()))
             },
+            Diagnostic::RecursiveType { typ: _, location } => Some((
+                location,
+                format!("Declare the type as `shared` or wrap each instance in a pointer type like `Rc`"),
+            )),
             _ => None,
         }
     }
