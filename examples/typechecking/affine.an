@@ -19,7 +19,7 @@ copy_twice () =
 // Taking a reference does not count as a move
 ref_then_use () =
     r = Resource 2
-    r_ref = ref r
+    _r_ref = ref r
     consume r
 
 // Taking a reference to an already-moved value should error
@@ -46,7 +46,7 @@ use_before_branch (cond: Bool) =
 // Closures capture by reference currently so this is fine, but should be an error if we capture by move
 capture_then_use () =
     r = Resource 5
-    f () = consume r
+    _f () = consume r
     consume r
 
 // A copyable function parameter used multiple times is fine 
@@ -55,7 +55,7 @@ copy_param (x: I32) =
     b = x + 2
     a + b
 
-take_two (a: Resource) (b: Resource) : Unit = ()
+take_two (_a: Resource) (_b: Resource) : Unit = ()
 
 // Non-copy value passed as two arguments should error on first arg 
 double_arg () =

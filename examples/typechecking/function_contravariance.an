@@ -1,10 +1,10 @@
-needs_ref_fn (f: fn (ref I32) -> Unit): Unit = ()
+needs_ref_fn (_f: fn (ref I32) -> Unit): Unit = ()
 
-needs_mut_fn (f: fn (mut I32) -> Unit): Unit = ()
+needs_mut_fn (_f: fn (mut I32) -> Unit): Unit = ()
 
-use_ref (x: ref I32): Unit = ()
+use_ref (_x: ref I32): Unit = ()
 
-use_mut (x: mut I32): Unit = ()
+use_mut (_x: mut I32): Unit = ()
 
 main () =
     use_ref (mut 3)

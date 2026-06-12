@@ -6,8 +6,8 @@ main () =
 
     fn a b -> a + c + b
 
-foo a b =
-    bar c d =
+foo _a b =
+    bar _c d =
         b
 
     ()
@@ -27,8 +27,8 @@ a = 3 // already declared
 //     fn a_1 b_2 -> (a_1 +_c0m703_2840_2 c_?) +_c0m703_2840_2 b_2
 // 
 // // id = c1m416_3132
-// foo_c1m416_3132_0 a_1 b_2 =
-//     bar_3 c_4 d_5 =
+// foo_c1m416_3132_0 _a_1 b_2 =
+//     bar_3 _c_4 d_5 =
 //         b_2
 //     ()
 // 
@@ -48,10 +48,22 @@ a = 3 // already declared
 // 7 |     fn a b -> a + c + b	// error: `c` not found in scope
 //   |                   ^
 // 
+// examples/nameresolution/errors.an:10:5
+//  9 | foo _a b =
+// 10 |     bar _c d =	// warning: `bar` is never used
+//    |     ^^^
+// 11 |         b
+// 
+// examples/nameresolution/errors.an:10:12
+//  9 | foo _a b =
+// 10 |     bar _c d =	// warning: `d` is never used
+//    |            ^
+// 11 |         b
+// 
 // examples/nameresolution/errors.an:16:1
 // 15 | a = 2
 // 16 | a = 3 // already declared	// warning: `a` was already defined
 //    | ^
 // 
-// Found 2 errors and 1 warning
+// Found 2 errors and 3 warnings
 

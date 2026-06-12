@@ -1,9 +1,9 @@
 // Polymorphic literal type variables may only unify with types matching their
 // literal kind, so mismatches error at the unification site instead of
 // surfacing confusingly when the literal is later defaulted.
-takes_ref (s: ref String) = ()
+takes_ref (_s: ref String) = ()
 
-takes_f64 (f: F64) = ()
+takes_f64 (_f: F64) = ()
 
 main () =
     takes_ref 3

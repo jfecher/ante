@@ -32,7 +32,7 @@ get_x (c: Coord): I32 = c.x
 
 unwrap (c: Coord): I32 =
     match c
-    | Coord x y -> x
+    | Coord x _ -> x
 
 type StringPair = Pair String
 type StringPairNested = StringPair
@@ -46,7 +46,7 @@ type C = C
 
 use_a (x: A): A = x
 
-too_many_args (x: Pair I32 I32): I32 = 0
+too_many_args (_x: Pair I32 I32): I32 = 0
 
 // args: -e ast-t --no-color
 // expected exit status: 1
@@ -85,7 +85,7 @@ too_many_args (x: Pair I32 I32): I32 = 0
 //     (match_var4: (error)) = (c: Point)
 //     switch (match_var4: Point)
 //     | 0, (match_var5: I32), (match_var6: I32) -> 
-//             (y: I32) = (match_var6: I32)
+//             (_: I32) = (match_var6: I32)
 //             
 //                 (x: I32) = (match_var5: I32)
 //                 (x: I32)
@@ -104,7 +104,7 @@ too_many_args (x: Pair I32 I32): I32 = 0
 // 
 // (use_a: fn (error) -> (error)) ((x: (error))) : A = (x: (error))
 // 
-// (too_many_args: fn (error) -> I32) ((x: (error))) : I32 = 0
+// (too_many_args: fn (error) -> I32) ((_x: (error))) : I32 = 0
 
 // expected stderr:
 // examples/typechecking/aliases.an:43:6
@@ -124,9 +124,9 @@ too_many_args (x: Pair I32 I32): I32 = 0
 // 45 | type C = C	// error: `C` is infinitely recursive
 //    |      ^
 // 
-// examples/typechecking/aliases.an:49:19
-// 49 | too_many_args (x: Pair I32 I32): I32 = 0	// error: Expected 1 argument but found 2
-//    |                   ^^^^^^^^^^^^
+// examples/typechecking/aliases.an:49:20
+// 49 | too_many_args (_x: Pair I32 I32): I32 = 0	// error: Expected 1 argument but found 2
+//    |                    ^^^^^^^^^^^^
 // 
 // Found 4 errors and 0 warnings
 

@@ -128,6 +128,12 @@ impl DesugarContext {
         }
     }
 
+    /// True if this name was generated during desugaring (e.g. a `do` block parameter) rather than
+    /// written by the user. Synthetic names have ids past the original context's range.
+    pub fn is_synthetic_name(&self, id: NameId) -> bool {
+        usize::from(id) >= self.original.names.len()
+    }
+
     /// Returns the location of the entire top-level item this context represents.
     pub fn location(&self) -> &Location {
         &self.original.location

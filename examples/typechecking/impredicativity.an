@@ -1,4 +1,4 @@
-
+// Future test file if Ante adopts freezeML-like impredicativity
 id x = x
 
 ids = [freeze id]
@@ -19,7 +19,7 @@ f9 =
     f = revapp (freeze id)
     f poly
 
-choose (x: a) (y: a) = x
+choose (x: a) (_y: a) = x
 
 a5 = id auto
 a6 = id auto_prime
@@ -47,7 +47,7 @@ a7 = choose id auto
 //     (f: fn (fn (fn _ -> _) -> _, _) [_] -> _) = (revapp: fn _ [_] -> fn (fn (fn _ -> _) -> _, _) [_] -> _) (error)
 //     (f: fn (fn (fn _ -> _) -> _, _) [_] -> _) (poly: fn (fn _ -> _) -> _, _)
 // 
-// (choose: fn a a -> a) ((x: a)) ((y: a)) = (x: a)
+// (choose: fn a a -> a) ((x: a)) ((_y: a)) = (x: a)
 // 
 // (a5: fn (fn _ -> _) -> _) = (id: fn (fn (fn _ -> _) -> _) -> fn (fn _ -> _) -> _) (auto: fn (fn _ -> _) -> _)
 // 

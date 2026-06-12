@@ -52,6 +52,10 @@ pub enum Diagnostic {
         first_location: Location,
         second_location: Location,
     },
+    UnusedName {
+        name: Name,
+        location: Location,
+    },
     UnknownImportFile {
         crate_name: String,
         module_name: Arc<PathBuf>,
@@ -374,6 +378,7 @@ impl Diagnostic {
         match self {
             NameAlreadyInScope { .. }
             | ImportedNameAlreadyInScope { .. }
+            | UnusedName { .. }
             | UnreachableCase { .. }
             | InvalidRangeInPattern { .. }
             | ConfusingOperatorAfterBody { .. } => DiagnosticKind::Warning,
@@ -414,6 +419,9 @@ impl Diagnostic {
             },
             Diagnostic::ImportedNameAlreadyInScope { name, first_location: _, second_location: _ } => {
                 format!("This imports `{name}`, which has already been defined")
+            },
+            Diagnostic::UnusedName { name, location: _ } => {
+                format!("`{name}` is never used. Prefix the name with `_` to silence this warning")
             },
             Diagnostic::UnknownImportFile { crate_name, module_name, location: _ } => {
                 if module_name.display().to_string().is_empty() {
@@ -681,6 +689,7 @@ impl Diagnostic {
             | Diagnostic::ExpectedPathForImport { location }
             | Diagnostic::NameAlreadyInScope { second_location: location, .. }
             | Diagnostic::ImportedNameAlreadyInScope { second_location: location, .. }
+            | Diagnostic::UnusedName { location, .. }
             | Diagnostic::UnknownImportFile { location, .. }
             | Diagnostic::UnknownImportItem { location, .. }
             | Diagnostic::ItemNotExported { location, .. }

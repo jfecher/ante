@@ -17,9 +17,13 @@ id x = error
 // 4 | id x = error	// warning: `id` was already defined
 //   | ^^
 // 
+// examples/nameresolution/unused_warning.an:4:4
+// 4 | id x = error	// warning: `x` is never used
+//   |    ^
+// 
 // examples/nameresolution/unused_warning.an:4:8
 // 4 | id x = error	// error: `error` not found in scope
 //   |        ^^^^^
 // 
-// Found 1 error and 1 warning
+// Found 1 error and 2 warnings
 

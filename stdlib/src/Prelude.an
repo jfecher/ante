@@ -776,7 +776,7 @@ ability Extract collection index elem =
 impl extract_ptr_usz: Extract (Ptr t) Usz t with
     (.[]) ptr index = deref_ptr <| offset ptr index
 
-array_len (array: ref Array n t): Usz =
+array_len (_array: ref Array n t): Usz =
     size_t = size_of (MkType : Type t)
     if size_t == 0 then 0 else
         size_of (MkType : Type (Array n t)) / size_t

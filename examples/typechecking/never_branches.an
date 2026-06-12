@@ -1,7 +1,7 @@
 stop (): Never = stop ()
 
-use_i32 (x: I32): Unit = ()
-use_str (x: String): Unit = ()
+use_i32 (_x: I32): Unit = ()
+use_str (_x: String): Unit = ()
 
 if_then_diverges (b: Bool) (x: I32): Unit =
     use_i32 (if b then stop () else x)

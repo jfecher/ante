@@ -1,0 +1,57 @@
+// An unused parameter warns, but a `_`-prefixed one does not.
+unused_param x = 0
+ignored_param _x = 0
+
+// Type variables should never warn
+typed (a: t): t = a
+
+main () =
+    unused = 1
+
+    used = 2
+    print used
+
+    match Maybe.Some used
+    | Some bound -> ()
+    | None -> ()
+
+// args: -e ast-r --no-color
+// expected stdout:
+// // id = c1m723_5188
+// unused_param_c1m723_5188_0 x_1 = 0
+// 
+// // id = c1m723_4219
+// ignored_param_c1m723_4219_0 _x_1 = 0
+// 
+// // id = c1m723_2389
+// typed_c1m723_2389_0 (a_1: t_2) : t_2 = a_1
+// 
+// // id = c1m723_1944
+// main_c1m723_1944_0 () =
+//     unused_1 = 1
+//     used_2 = 2
+//     print_c0m703_7924_2 used_2
+//     match Maybe.Some_c0m703_5164_3 used_2
+//     | Some_td bound_3 -> ()
+//     | None_td -> ()
+
+// expected stderr:
+// examples/nameresolution/unused_local.an:2:14
+// 1 | // An unused parameter warns, but a `_`-prefixed one does not.
+// 2 | unused_param x = 0	// warning: `x` is never used
+//   |              ^
+// 3 | ignored_param _x = 0
+// 
+// examples/nameresolution/unused_local.an:9:5
+//  8 | main () =
+//  9 |     unused = 1	// warning: `unused` is never used
+//    |     ^^^^^^
+// 
+// examples/nameresolution/unused_local.an:15:12
+// 14 |     match Maybe.Some used
+// 15 |     | Some bound -> ()	// warning: `bound` is never used
+//    |            ^^^^^
+// 16 |     | None -> ()
+// 
+// Compiled with 3 warnings
+

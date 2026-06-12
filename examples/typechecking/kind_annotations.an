@@ -21,7 +21,7 @@ type Bad n t =
     arr: Array n t
     extra: n
 
-bad_fn (x: n) (array: Array n t) = x
+bad_fn (x: n) (_array: Array n t) = x
 
 // Conflict between explicit annotation and inferred usage
 type Mismatch (n: type) =
@@ -47,7 +47,7 @@ type Mismatch (n: type) =
 //     arr: Array n t
 //     extra: n
 // 
-// (bad_fn: fn n (Array n t) -> n) ((x: n)) ((array: Array n t)) = (x: n)
+// (bad_fn: fn n (Array n t) -> n) ((x: n)) ((_array: Array n t)) = (x: n)
 // 
 // type Mismatch (n: type) =
 //     arr: Array n I32
@@ -60,10 +60,10 @@ type Mismatch (n: type) =
 //    |                ^
 // 22 |     extra: n
 // 
-// examples/typechecking/kind_annotations.an:24:29
+// examples/typechecking/kind_annotations.an:24:30
 //    | // error: Expected a type constructor of kind U32, but found one of kind type
-// 24 | bad_fn (x: n) (array: Array n t) = x
-//    |                             ^
+// 24 | bad_fn (x: n) (_array: Array n t) = x
+//    |                              ^
 // 
 // examples/typechecking/kind_annotations.an:28:16
 // 27 | type Mismatch (n: type) =

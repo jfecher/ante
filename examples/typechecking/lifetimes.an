@@ -6,15 +6,15 @@ first_of (array: ref Array n t): ref t =
 first_of_explicit (array: ref 'a Array n t): ref 'a t =
     array_get_unchecked array 0
 
-mix (a: ref 'a Array n t) (b: ref Array m t): ref 'a t =
+mix (a: ref 'a Array n t) (_b: ref Array m t): ref 'a t =
     array_get_unchecked a 0
 
 main () =
     arr = [1, 2, 3]
-    s = slice (ref arr)
+    s = slice arr
     _ = s.len
-    _ = first_of (ref arr)
-    _ = first_of_explicit (ref arr)
+    _ = first_of arr
+    _ = first_of_explicit arr
     ()
 
 // args: -e ast-t --no-color
@@ -27,7 +27,7 @@ main () =
 // (first_of_explicit: fn (ref a (Array n t)) -> ref a t) ((array: ref a (Array n t))) : ref 'a t =
 //     (array_get_unchecked: fn (ref a (Array n t)) Usz -> ref a t) (array: ref a (Array n t)) 0
 // 
-// (mix: fn (ref a (Array n t)) (ref (Array m t)) -> ref a t) ((a: ref a (Array n t))) ((b: ref (Array m t))) : ref 'a t =
+// (mix: fn (ref a (Array n t)) (ref (Array m t)) -> ref a t) ((a: ref a (Array n t))) ((_b: ref (Array m t))) : ref 'a t =
 //     (array_get_unchecked: fn (ref a (Array n t)) Usz -> ref a t) (a: ref a (Array n t)) 0
 // 
 // (main: fn Unit -> Unit) () =

@@ -1,8 +1,8 @@
 // Test to ensure we issue a 'Separate closures are not equal ...' note
 // even on some more complex type inequalities involving unification variables.
-needs (p: (I32, fn I32 -> Unit)): Unit = ()
+needs (_p: (I32, fn I32 -> Unit)): Unit = ()
 
-use y = ()
+use _y = ()
 
 main () =
     x = 5

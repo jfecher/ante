@@ -31,7 +31,7 @@ main () =
     | Error _ -> println "should not reach"
 
     rc2 = Rc.of 7i32
-    rc2_clone = clone (ref rc2)
+    _rc2_clone = clone (ref rc2)
     match Rc.try_unwrap rc2
     | Ok _ -> println "should not reach"
     | Error original -> println (as_ref original).*
@@ -41,7 +41,7 @@ main () =
     println (Rc.unwrap_or_clone rc3)
 
     rc4 = Rc.of "world"
-    rc4_clone = clone (ref rc4)
+    _rc4_clone = clone (ref rc4)
     println (Rc.unwrap_or_clone rc4)
 
 // args: --delete-binary --no-color
@@ -57,3 +57,4 @@ main () =
 // 7
 // hello
 // world
+

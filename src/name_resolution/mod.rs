@@ -56,6 +56,12 @@ struct Resolver<'local, 'inner> {
     referenced_items: BTreeSet<TopLevelId>,
     top_level_names: Vec<NameId>,
 
+    /// Local names that were referenced. Used to warn about unused local bindings.
+    used_locals: BTreeSet<NameId>,
+
+    /// Local bindings whose use we check for the unused warning. Excludes type variables and implicits
+    checked_locals: BTreeSet<NameId>,
+
     /// Nesting depth of enclosing `while`/`for` loops. Used to reject `break`/`continue` outside of loops.
     loop_depth: u32,
 }
@@ -186,6 +192,8 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             names_in_local_scope: vec![Default::default()],
             referenced_items: Default::default(),
             top_level_names: Vec::new(),
+            used_locals: Default::default(),
+            checked_locals: Default::default(),
             loop_depth: 0,
             context,
         }
@@ -209,17 +217,37 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
         self.names_in_local_scope.push(Default::default());
     }
 
-    /// TODO: Check for unused names
+    /// Pop a local scope, warning about any value binding in it that was never used.
     fn pop_local_scope(&mut self) -> BTreeMap<Name, NameId> {
+        let scope = self.names_in_local_scope.pop().unwrap();
+        for (name, id) in &scope {
+            if self.checked_locals.contains(id)
+                && !self.used_locals.contains(id)
+                && !name.starts_with('_')
+                && !self.context.is_synthetic_name(*id)
+            {
+                let location = self.context.name_location(*id).clone();
+                self.emit_diagnostic(Diagnostic::UnusedName { name: name.clone(), location });
+            }
+        }
+        scope
+    }
+
+    /// Pop a local scope without checking for unused names.
+    fn pop_scratch_scope(&mut self) -> BTreeMap<Name, NameId> {
         self.names_in_local_scope.pop().unwrap()
     }
 
-    /// Declares a name in local scope.
-    fn declare_name(&mut self, id: NameId) {
+    /// Declares a name in local scope. `check_unused` marks the binding to be warned about if it
+    /// is never used. It is false for type variables and implicits.
+    fn declare_name(&mut self, id: NameId, check_unused: bool) {
         let scope = self.names_in_local_scope.last_mut().unwrap();
         let name = self.context[id].clone();
         scope.insert(name, id);
         self.name_links.insert(id, Origin::Local(id));
+        if check_unused {
+            self.checked_locals.insert(id);
+        }
     }
 
     /// Retrieve each visible namespace in the given namespace, restricting the namespace
@@ -373,6 +401,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
     fn lookup_local_name(&mut self, name: &String) -> Option<Origin> {
         for scope in self.names_in_local_scope.iter().rev() {
             if let Some(expr) = scope.get(name) {
+                self.used_locals.insert(*expr);
                 return Some(Origin::Local(*expr));
             }
         }
@@ -578,7 +607,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                 // Resolve body with the parameter name in scope
                 self.push_local_scope();
                 for parameter in &lambda.parameters {
-                    self.declare_names_in_pattern(parameter.pattern, true, false);
+                    self.declare_names_in_pattern(parameter.pattern, true, false, !parameter.is_implicit);
                 }
                 if let Some(return_type) = &lambda.return_type {
                     self.resolve_type(return_type, true);
@@ -614,7 +643,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                 self.resolve_expr(match_.expression);
                 for (pattern, branch) in &match_.cases {
                     self.push_local_scope();
-                    self.declare_names_in_pattern(*pattern, false, true);
+                    self.declare_names_in_pattern(*pattern, false, true, true);
                     self.resolve_expr(*branch);
                     self.pop_local_scope();
                 }
@@ -625,7 +654,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                 // Handle's expression & branches will be lambdas which will push their
                 // own scopes & introduce their patterns themselves.
                 self.push_local_scope();
-                self.declare_name(handle.handler_name);
+                self.declare_name(handle.handler_name, false);
                 self.resolve_expr(handle.expression);
                 self.pop_local_scope();
                 self.check_handler_methods(handle, expr);
@@ -651,7 +680,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                 self.resolve_expr(for_.start);
                 self.resolve_expr(for_.end);
                 self.push_local_scope();
-                self.declare_name(for_.variable);
+                self.declare_name(for_.variable, true);
                 self.loop_depth += 1;
                 self.resolve_expr(for_.body);
                 self.loop_depth -= 1;
@@ -696,16 +725,17 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
 
     fn resolve_definition(&mut self, definition: &Definition) {
         let is_lambda = matches!(&self.context[definition.rhs], Expr::Lambda(_));
+        let check_unused = !definition.implicit;
         if is_lambda {
             // Lambda definitions can call themselves recursively, so the name must be in scope
             // before resolving the body.
-            self.declare_names_in_pattern(definition.pattern, true, false);
+            self.declare_names_in_pattern(definition.pattern, true, false, check_unused);
         }
         // TODO: Type variables declared in pattern type annotations should be in scope for the rhs,
         // but the value variable itself should not see itself in its own rhs.
         self.resolve_expr(definition.rhs);
         if !is_lambda {
-            self.declare_names_in_pattern(definition.pattern, true, false);
+            self.declare_names_in_pattern(definition.pattern, true, false, check_unused);
         }
     }
 
@@ -783,11 +813,11 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
     /// If `declare_type_vars` is true, any type variables used that are not in scope will
     /// automatically be declared. Otherwise an error will be issued.
     fn declare_names_in_pattern(
-        &mut self, pattern: PatternId, declare_type_vars: bool, allow_type_based_resolution: bool,
+        &mut self, pattern: PatternId, declare_type_vars: bool, allow_type_based_resolution: bool, check_unused: bool,
     ) {
         match &self.context[pattern] {
             Pattern::Variable(name) => {
-                self.declare_name(*name);
+                self.declare_name(*name, check_unused);
             },
             Pattern::Literal(_) => (),
             // In a constructor pattern such as `Struct foo bar baz` or `(a, b)` the arguments
@@ -795,20 +825,20 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             Pattern::Constructor(function, args) => {
                 self.link(*function, allow_type_based_resolution, false);
                 for arg in args {
-                    self.declare_names_in_pattern(*arg, declare_type_vars, allow_type_based_resolution);
+                    self.declare_names_in_pattern(*arg, declare_type_vars, allow_type_based_resolution, check_unused);
                 }
             },
             Pattern::Error => (),
             Pattern::TypeAnnotation(pattern, typ) => {
-                self.declare_names_in_pattern(*pattern, declare_type_vars, allow_type_based_resolution);
+                self.declare_names_in_pattern(*pattern, declare_type_vars, allow_type_based_resolution, check_unused);
                 self.resolve_type(typ, declare_type_vars);
             },
             Pattern::MethodName { type_name, item_name } => {
                 self.resolve_variable(*type_name, false);
-                self.declare_name(*item_name);
+                self.declare_name(*item_name, check_unused);
             },
             Pattern::Or(alts) => {
-                self.declare_names_in_or_pattern(alts, declare_type_vars, allow_type_based_resolution);
+                self.declare_names_in_or_pattern(alts, declare_type_vars, allow_type_based_resolution, check_unused);
             },
         }
     }
@@ -825,7 +855,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
     ///      MIR resolves via `name_origin`) land in the same storage location regardless of
     ///      which alternative matched at runtime.
     fn declare_names_in_or_pattern(
-        &mut self, alts: &[PatternId], declare_type_vars: bool, allow_type_based_resolution: bool,
+        &mut self, alts: &[PatternId], declare_type_vars: bool, allow_type_based_resolution: bool, check_unused: bool,
     ) {
         if alts.is_empty() {
             return;
@@ -833,8 +863,8 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
 
         let names_in_each_alt = mapvec(alts, |alt| {
             self.push_local_scope();
-            self.declare_names_in_pattern(*alt, declare_type_vars, allow_type_based_resolution);
-            self.pop_local_scope()
+            self.declare_names_in_pattern(*alt, declare_type_vars, allow_type_based_resolution, check_unused);
+            self.pop_scratch_scope()
         });
 
         // For each name bound by any alternative, emit one diagnostic per alt that
@@ -932,7 +962,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
         if let Some(origin) = self.lookup_local_name(name) {
             self.name_links.insert(name_id, origin);
         } else if auto_declare {
-            self.declare_name(name_id);
+            self.declare_name(name_id, false);
         } else {
             let location = self.context.name_location(name_id).clone();
             let name = self.context[name_id].clone();
@@ -970,7 +1000,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
 
     fn declare_generics(&mut self, generics: &Generics) {
         for generic in generics {
-            self.declare_name(generic.name);
+            self.declare_name(generic.name, false);
         }
     }
 
@@ -997,6 +1027,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
         for (pattern, branch) in &handle.cases {
             let path = pattern.function;
             self.link(path, false, false);
+            self.used_locals.insert(pattern.resume_name);
             self.resolve_expr(*branch);
 
             let Some(Origin::TopLevelDefinition(name)) = self.path_links.get(&path).copied() else {

@@ -1,7 +1,7 @@
 main () =
     a = 1
     b = 2
-    c = 3
+    _c = 3
     free_function x = use x
     captures1 x = use (x, a)
     captures2 x = use (x, a, b)
@@ -18,7 +18,7 @@ main () =
     _ = captures_closure 0
     _ = captures_nested 0
 
-use y = ()
+use _y = ()
 
 // args: -emir --no-color
 // expected stdout:

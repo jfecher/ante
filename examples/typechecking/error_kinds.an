@@ -10,11 +10,11 @@ loop_body (b: Bool) (x: I32) : Unit =
     while b do x
 
 array_element (s: String) : Unit =
-    arr = [1i32, s]
+    _arr = [1i32, s]
     ()
 
 callee (x: I32) : Unit =
-    y = x ()
+    _y = x ()
     ()
 
 returned (x: I32) : I32 =
@@ -44,16 +44,16 @@ main () = ()
 // 10 |     while b do x	// error: Loop bodies must have type Unit but this body has type I32
 //    |                ^
 // 
-// examples/typechecking/error_kinds.an:13:18
+// examples/typechecking/error_kinds.an:13:19
 // 12 | array_element (s: String) : Unit =
-// 13 |     arr = [1i32, s]	// error: This array element has type String but I32 was expected
-//    |                  ^
+// 13 |     _arr = [1i32, s]	// error: This array element has type String but I32 was expected
+//    |                   ^
 // 14 |     ()
 // 
-// examples/typechecking/error_kinds.an:17:9
+// examples/typechecking/error_kinds.an:17:10
 // 16 | callee (x: I32) : Unit =
-// 17 |     y = x ()	// error: This is called as if it were a fn _ => _ but it has type I32
-//    |         ^
+// 17 |     _y = x ()	// error: This is called as if it were a fn _ => _ but it has type I32
+//    |          ^
 // 18 |     ()
 // 
 // examples/typechecking/error_kinds.an:21:27
