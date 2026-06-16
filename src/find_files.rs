@@ -11,7 +11,35 @@ use crate::{
 };
 
 pub type CrateGraph = BTreeMap<CrateId, Crate>;
+pub fn find_project_root() -> Option<PathBuf> {
+    let mut current_dir = std::env::current_dir().ok()?;
 
+    loop {
+        if current_dir.join("ante.toml").exists() {
+            return Some(current_dir);
+        }
+
+        if !current_dir.pop() {
+            return None;
+        }
+    }
+}
+pub fn find_project_main_file() -> Option<PathBuf> {
+    let root = find_project_root()?;
+    Some(root.join("src").join("main.an"))
+}
+pub fn find_project_name() -> Option<String> {
+    let root = find_project_root()?;
+    let contents = std::fs::read_to_string(root.join("ante.toml")).ok()?;
+
+    for line in contents.lines() {
+        if let Some(name) = line.strip_prefix("name = \"") {
+            return Some(name.trim_end_matches('"').to_string());
+        }
+    }
+
+    None
+}
 // TODO:
 // - Error for cyclic dependencies
 // - Handle crate versions

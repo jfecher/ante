@@ -8,12 +8,18 @@ pub struct Completions {
     #[arg(long)]
     pub shell_completion: Shell,
 }
-
+#[derive(clap::Subcommand, Debug)]
+pub enum Commands {
+    Build,
+    Run,
+}
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 pub struct Cli {
+    #[command(subcommand)]
+pub command: Option<Commands>,
     /// Path to the source files
-    #[arg(value_hint = ValueHint::FilePath, required = true)]
+    #[arg(value_hint = ValueHint::FilePath)]
     pub files: Vec<PathBuf>,
 
     /// Print out the input file annotated with inferred lifetimes of heap allocations

@@ -37,7 +37,7 @@
 #![allow(mismatched_lifetime_syntaxes)]
 
 use clap::{CommandFactory, Parser};
-use cli::{Cli, Completions};
+use cli::{Cli, Completions, Commands};
 use colored::Colorize;
 use diagnostics::Diagnostic;
 use incremental::{Db, GetCrateGraph, Parse, Resolve};
@@ -89,7 +89,21 @@ fn main() {
 }
 
 fn compile(args: Cli) {
-    let (mut compiler, metadata_file) = make_compiler(&args.files, args.incremental);
+
+        let run = match &args.command {
+    Some(Commands::Build) => false,
+    Some(Commands::Run) => true,
+    None => !args.build,
+};
+let files = match &args.command {
+    Some(Commands::Build) | Some(Commands::Run) => {
+        crate::find_files::find_project_main_file()
+            .map(|path| vec![path])
+            .unwrap_or_default()
+    }
+    None => args.files.clone(),
+};
+    let (mut compiler, metadata_file) = make_compiler(&files, args.incremental);
 
     // TODO: Pointer size should be configurable depending on the target machine
     TargetPointerSize.set(&mut compiler, 8);
@@ -115,7 +129,7 @@ fn compile(args: Cli) {
         Some(EmitTarget::MirMono) => display_mir_mono(&mut compiler),
         Some(EmitTarget::Ir) => llvm_codegen_separate(&mut compiler, true, args.show_time, opt_level).2,
         None => {
-            llvm_codegen_all(&mut compiler, &args.files, !args.build, args.delete_binary, args.show_time, opt_level)
+            llvm_codegen_all(&mut compiler, run, args.delete_binary, args.show_time, opt_level)
         },
     };
 
@@ -378,7 +392,7 @@ fn display_llvm_bitcode(result: &CodegenLlvmResult, module_name: &str) {
 
 /// Codegen everything, linking together each separate llvm module
 fn llvm_codegen_all(
-    compiler: &mut Db, files: &[PathBuf], run: bool, delete_binary: bool, show_time: bool, opt_level: OptLevel,
+    compiler: &mut Db, run: bool, delete_binary: bool, show_time: bool, opt_level: OptLevel,
 ) -> BTreeSet<Diagnostic> {
     let (mut modules, has_errors, diagnostics) = llvm_codegen_separate(compiler, false, show_time, opt_level);
     if has_errors {
@@ -388,7 +402,10 @@ fn llvm_codegen_all(
     // Each module is currently the whole program (monomorphization isn't yet incremental).
     modules.truncate(1);
 
-    let module_name = files.first().map_or_else(|| "a.out".into(), |file| file.with_extension(""));
+    let module_name: PathBuf =
+    crate::find_files::find_project_name()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| "a.out".into());
     let module_name = module_name.to_string_lossy();
 
     let link_succeeded = codegen::llvm::link(modules, &module_name, show_time, opt_level);
