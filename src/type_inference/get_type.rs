@@ -65,7 +65,9 @@ pub fn try_get_generalized_type(
             None => match &context[lambda.body] {
                 // Treat returning a constructor as an explicit return type to allow
                 // implicits to avoid annotating repetitive return types.
-                Expr::Constructor(c) => Box::new(c.typ.clone()),
+                Expr::Constructor(c) if constructor_type_is_fully_applied(&c.typ, resolve, compiler) => {
+                    Box::new(c.typ.clone())
+                },
                 _ => return None,
             },
         };
@@ -98,10 +100,28 @@ pub fn try_get_generalized_type(
     // The body being a type annotation is common for `extern` declarations: `puts = extern "puts": fn ...`
     } else if let Expr::TypeAnnotation(annotation) = &context[definition.rhs] {
         Some(Type::from_cst_type_generalized(&annotation.rhs, resolve, compiler, true))
-    } else if let Expr::Constructor(constructor) = &context[definition.rhs] {
+    } else if let Expr::Constructor(constructor) = &context[definition.rhs]
+        && constructor_type_is_fully_applied(&constructor.typ, resolve, compiler)
+    {
         Some(Type::from_cst_type_generalized(&constructor.typ, resolve, compiler, true))
     } else {
         None
+    }
+}
+
+fn constructor_type_is_fully_applied(typ: &cst::Type, resolve: &ResolutionResult, compiler: &DbHandle) -> bool {
+    match &typ.kind {
+        TypeKind::Named(path) => match resolve.path_origins.get(path) {
+            Some(crate::name_resolution::Origin::TopLevelDefinition(name)) => {
+                let (item, _) = compiler.get(GetItem(name.top_level_item));
+                match &item.kind {
+                    TopLevelItemKind::TypeDefinition(definition) => definition.generics.is_empty(),
+                    _ => true,
+                }
+            },
+            _ => true,
+        },
+        _ => true,
     }
 }
 
@@ -123,7 +143,7 @@ pub fn get_partial_type(
         let hole = || cst::Type::new(cst::TypeKind::Hole, lambda_location.clone());
 
         let return_type = Box::new(lambda.return_type.clone().unwrap_or_else(|| match &context[lambda.body] {
-            Expr::Constructor(c) => c.typ.clone(),
+            Expr::Constructor(c) if constructor_type_is_fully_applied(&c.typ, resolve, compiler) => c.typ.clone(),
             _ => hole(),
         }));
 
@@ -145,7 +165,9 @@ pub fn get_partial_type(
     } else if let Expr::TypeAnnotation(annotation) = &context[definition.rhs] {
         let mut local_kinds = LocalKinds::default();
         Type::from_cst_type(&annotation.rhs, resolve, compiler, next_id, &mut local_kinds, true)
-    } else if let Expr::Constructor(constructor) = &context[definition.rhs] {
+    } else if let Expr::Constructor(constructor) = &context[definition.rhs]
+        && constructor_type_is_fully_applied(&constructor.typ, resolve, compiler)
+    {
         let mut local_kinds = LocalKinds::default();
         Type::from_cst_type(&constructor.typ, resolve, compiler, next_id, &mut local_kinds, true)
     } else {

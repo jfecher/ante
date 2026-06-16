@@ -1,0 +1,132 @@
+type Name = String
+
+get_name (x: Name): String = x
+set_name (x: String): Name = x
+
+// Generic type alias
+type Pair a = a, a
+
+mk_pair (x: a) (y: a): Pair a = x, y
+
+type IntFn = fn I32 -> I32
+
+apply_fn (f: IntFn) (x: I32) : I32 = f x
+
+// Type alias in a struct field
+type Person =
+    name: Name
+    age: I32
+
+Person.get_name (p: Person): String = p.name
+
+// Ensure struct aliases can also be used in constructor positions
+type Point =
+    x: I32
+    y: I32
+
+type Coord = Point
+
+origin (): Coord = Coord 0 0
+
+get_x (c: Coord): I32 = c.x
+
+unwrap (c: Coord): I32 =
+    match c
+    | Coord x _ -> x
+
+type StringPair = Pair String
+type StringPairNested = StringPair
+
+string_pair (pair: String, String): StringPairNested = pair
+
+// Type aliases may not be recursive
+type A = B
+type B = A
+type C = C
+
+use_a (x: A): A = x
+
+too_many_args (_x: Pair I32 I32): I32 = 0
+
+// args: -e ast-t --no-color
+// expected exit status: 1
+// expected stdout:
+// type Name = String
+// 
+// (get_name: fn String -> String) ((x: String)) : String = (x: String)
+// 
+// (set_name: fn String -> String) ((x: String)) : Name = (x: String)
+// 
+// type Pair a = a, a
+// 
+// (mk_pair: fn a a -> a, a) ((x: a)) ((y: a)) : Pair a = (x: a) (,: fn a a -> a, a) (y: a)
+// 
+// type IntFn = fn I32 -> I32
+// 
+// (apply_fn: fn (fn I32 -> I32) I32 -> I32) ((f: fn I32 -> I32)) ((x: I32)) : I32 = (f: fn I32 -> I32) (x: I32)
+// 
+// type Person =
+//     name: Name
+//     age: I32
+// 
+// Person.(get_name: fn Person -> String) ((p: Person)) : String = (p: Person).name
+// 
+// type Point =
+//     x: I32
+//     y: I32
+// 
+// type Coord = Point
+// 
+// (origin: fn Unit -> Point) () : Coord = (Coord: fn I32 I32 -> Point) 0 0
+// 
+// (get_x: fn Point -> I32) ((c: Point)) : I32 = (c: Point).x
+// 
+// (unwrap: fn Point -> I32) ((c: Point)) : I32 =
+//     (match_var4: (error)) = (c: Point)
+//     switch (match_var4: Point)
+//     | 0, (match_var5: I32), (match_var6: I32) -> 
+//             (_: I32) = (match_var6: I32)
+//             
+//                 (x: I32) = (match_var5: I32)
+//                 (x: I32)
+// 
+// type StringPair = Pair String
+// 
+// type StringPairNested = StringPair
+// 
+// (string_pair: fn (String, String) -> String, String) ((pair: String, String)) : StringPairNested = (pair: String, String)
+// 
+// type A = B
+// 
+// type B = A
+// 
+// type C = C
+// 
+// (use_a: fn (error) -> (error)) ((x: (error))) : A = (x: (error))
+// 
+// (too_many_args: fn (error) -> I32) ((_x: (error))) : I32 = 0
+
+// expected stderr:
+// examples/typechecking/aliases.an:43:6
+// 42 | // Type aliases may not be recursive
+// 43 | type A = B	// error: `A` is infinitely recursive
+//    |      ^
+// 44 | type B = A
+// 
+// examples/typechecking/aliases.an:44:6
+// 43 | type A = B
+// 44 | type B = A	// error: `B` is infinitely recursive
+//    |      ^
+// 45 | type C = C
+// 
+// examples/typechecking/aliases.an:45:6
+// 44 | type B = A
+// 45 | type C = C	// error: `C` is infinitely recursive
+//    |      ^
+// 
+// examples/typechecking/aliases.an:49:20
+// 49 | too_many_args (_x: Pair I32 I32): I32 = 0	// error: Expected 1 argument but found 2
+//    |                    ^^^^^^^^^^^^
+// 
+// Found 4 errors and 0 warnings
+

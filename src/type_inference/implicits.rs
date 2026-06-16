@@ -14,6 +14,7 @@ use crate::{
     },
     type_inference::{
         Locateable, TypeChecker,
+        Variance::Covariant,
         errors::TypeErrorKind,
         types::{FunctionType, ParameterType, PrimitiveType, Type, TypeBindings, TypeVariableId},
     },
@@ -150,12 +151,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             }
         }
 
-        if let Some(_) = call {
-            // The Call's arguments were already rewritten eagerly by `delay_find_implicit_value`.
-            // Here we just need to make the types consistent so that the enclosing `check_call`'s
-            // argument loop sees the correct bound types in its expected parameter variables.
-            let implicit_added = implicits_added.iter().any(|param| param.is_some());
-            if !implicit_added || implicits_added.len() != new_expected.len() {
+        if let Some(call_expr) = call {
+            // Only rewrite the call if we actually inserted an implicit.
+            if !implicits_added.iter().any(|param| param.is_some()) {
+                return None;
+            }
+
+            // Allow `foo ()` to call an implicit-only function by dropping the trailing `()`.
+            if current_expected.is_some() && !self.drop_trailing_unit_arg(call_expr) {
                 return None;
             }
 
@@ -170,6 +173,36 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         } else {
             self.create_closure_wrapper_for_implicit(function, implicits_added, new_expected).map(CoercionKind::Wrapper)
         }
+    }
+
+    /// Remove the last argument of the call if it is a unit literal, returning true if one was removed.
+    fn drop_trailing_unit_arg(&mut self, call_expr: ExprId) -> bool {
+        if !self.call_ends_with_unit_arg(call_expr) {
+            return false;
+        }
+        if let Some(cst::Expr::Call(call)) = self.current_extended_context_mut().extended_expr_mut(call_expr) {
+            call.arguments.truncate(call.arguments.len() - 1);
+            true
+        } else {
+            false
+        }
+    }
+
+    pub(super) fn call_ends_with_unit_arg(&self, call_expr: ExprId) -> bool {
+        let expr = match self.current_extended_context().extended_expr(call_expr) {
+            Some(expr) => expr,
+            None => &self.current_context()[call_expr],
+        };
+        let cst::Expr::Call(call) = expr else { return false };
+        call.arguments.last().is_some_and(|arg| self.is_unit_literal(arg.expr))
+    }
+
+    fn is_unit_literal(&self, expr: ExprId) -> bool {
+        let expr = match self.current_extended_context().extended_expr(expr) {
+            Some(expr) => expr,
+            None => &self.current_context()[expr],
+        };
+        matches!(expr, cst::Expr::Literal(cst::Literal::Unit))
     }
 
     /// If the expression is a variable, return its name
@@ -305,16 +338,32 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let integers = std::mem::take(&mut scope.integer_type_variables);
         let floats = std::mem::take(&mut scope.float_type_variables);
 
-        // Phase 1: Try to resolve all implicits. When the target type contains an unbound
-        // integer type variable, unification may still succeed (e.g. searching for `Foo _`
-        // where only `Foo U8` exists binds `_ := U8`). Failures are collected for retry.
-        let mut failed_implicits = Vec::new();
+        // Phase 1: Try to resolve all implicits, iterating to a fixpoint. Resolving one implicit
+        // binds type variables that may unblock others, so we keep retrying the failures as long
+        // as progress is made. This is required for chains of dependent implicits where each
+        // result feeds the next (e.g. `a.[i].[j] := v` desugars to nested `.[` reads whose result
+        // types feed the next read and finally the `.[]:=` insert). When the target type contains
+        // an unbound integer type variable, unification may still succeed (e.g. searching for
+        // `Foo _` where only `Foo U8` exists binds `_ := U8`). Remaining failures are kept for the
+        // post-defaulting retry phase.
+        let failed_implicits;
         let implicits_in_scope = self.collect_implicits_in_scope();
 
-        for implicit in implicits {
-            if let Err(error) = self.find_implicit_value(implicit, &implicits_in_scope) {
-                failed_implicits.push((implicit, error));
+        let mut pending = implicits;
+        loop {
+            let mut still_pending = Vec::new();
+            let mut progressed = false;
+            for implicit in pending {
+                match self.find_implicit_value(implicit, &implicits_in_scope) {
+                    Ok(()) => progressed = true,
+                    Err(error) => still_pending.push((implicit, error)),
+                }
             }
+            if !progressed || still_pending.is_empty() {
+                failed_implicits = still_pending;
+                break;
+            }
+            pending = still_pending.into_iter().map(|(implicit, _)| implicit).collect();
         }
 
         // Default any still-unbound integers to I32 and ensure their value fits
@@ -350,26 +399,23 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     }
 
     pub(super) fn push_inferred_int(&mut self, value: Integer, type_variable: TypeVariableId, location: Location) {
+        self.integer_literal_vars.insert(type_variable);
         self.implicits.last_mut().unwrap().integer_type_variables.push((value, type_variable, location));
     }
 
     pub(super) fn push_inferred_float(&mut self, type_variable: TypeVariableId, location: Location) {
+        self.float_literal_vars.insert(type_variable);
         self.implicits.last_mut().unwrap().float_type_variables.push((type_variable, location));
     }
 
-    /// Check if a type variable is a pending polymorphic integer literal across all scopes.
-    /// The given `id` should already be the result of `follow_type`.
+    /// Check if a type variable is a polymorphic integer literal.
     pub(super) fn is_integer_type_variable(&self, id: TypeVariableId) -> bool {
-        self.implicits.iter().any(|scope| {
-            scope.integer_type_variables.iter().any(|(_, tv, _)| {
-                // Follow the integer's type variable through bindings to compare with
-                // the already-followed query id, since unification may have bound one to the other.
-                match Type::Variable(*tv).follow(&self.bindings) {
-                    Type::Variable(resolved) => *resolved == id,
-                    _ => false,
-                }
-            })
-        })
+        self.integer_literal_vars.contains(&id)
+    }
+
+    /// Same as [Self::is_integer_type_variable] but for polymorphic float literals.
+    pub(super) fn is_float_type_variable(&self, id: TypeVariableId) -> bool {
+        self.float_literal_vars.contains(&id)
     }
 
     /// Delay finding an implicit value until later when more types are known.
@@ -411,14 +457,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Type::Primitive(PrimitiveType::Int(kind)) => *kind,
             Type::Primitive(PrimitiveType::Error) => return,
             _ => {
-                // The integer literal's type variable was bound to a non-integer type through
-                // earlier unification. Since unification succeeded silently (both sides were type
-                // variables at the time), we catch the mismatch here and emit a type error.
+                // Unification rejects non-integer bindings for literal type variables,
+                // so this arm is only reachable when the variable was bound to `Never`.
                 let actual = self.type_to_string(&Type::Variable(type_variable));
                 self.compiler.accumulate(Diagnostic::TypeError {
                     actual,
                     expected: "an integer type".to_string(),
                     kind: TypeErrorKind::General,
+                    function_environments_differ: false,
                     location,
                 });
                 return;
@@ -439,14 +485,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Type::Primitive(PrimitiveType::Float(_)) => (),
             Type::Primitive(PrimitiveType::Error) => return,
             _ => {
-                // The literal's type variable was bound to a non-float type through
-                // earlier unification. Since unification succeeded silently (both sides were type
-                // variables at the time), we catch the mismatch here and emit a type error.
+                // Unification rejects non-float bindings for literal type variables,
+                // so this arm is only reachable when the variable was bound to `Never`.
                 let actual = self.type_to_string(&Type::Variable(type_variable));
                 self.compiler.accumulate(Diagnostic::TypeError {
                     actual,
                     expected: "a float type".to_string(),
                     kind: TypeErrorKind::General,
+                    function_environments_differ: false,
                     location,
                 });
                 return;
@@ -645,12 +691,12 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // every candidate. Reducing the number of candidates beforehand (e.g. keying them) would also help.
         let mut fresh_bindings = type_bindings.clone();
 
-        if self.try_unify_with_bindings(implicit_type, target_type, &mut fresh_bindings).is_ok() {
+        if self.subtype(implicit_type, target_type, Covariant, &mut fresh_bindings).is_ok() {
             ImplicitMatch::MatchedAsIs(fresh_bindings)
         } else if let Type::Function(f) = implicit_type {
             let mut fresh_bindings = type_bindings.clone();
 
-            if self.try_unify_with_bindings(&f.return_type, target_type, &mut fresh_bindings).is_ok() {
+            if self.subtype(&f.return_type, target_type, Covariant, &mut fresh_bindings).is_ok() {
                 ImplicitMatch::Call(f.clone(), fresh_bindings)
             } else {
                 ImplicitMatch::NoMatch

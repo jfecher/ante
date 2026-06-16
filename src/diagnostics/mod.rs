@@ -52,6 +52,10 @@ pub enum Diagnostic {
         first_location: Location,
         second_location: Location,
     },
+    UnusedName {
+        name: Name,
+        location: Location,
+    },
     UnknownImportFile {
         crate_name: String,
         module_name: Arc<PathBuf>,
@@ -93,6 +97,10 @@ pub enum Diagnostic {
         typ: String,
         location: Location,
     },
+    RecursiveTypeAlias {
+        typ: String,
+        location: Location,
+    },
     NamespaceNotFound {
         name: String,
         location: Location,
@@ -116,6 +124,8 @@ pub enum Diagnostic {
         actual: String,
         expected: String,
         kind: TypeErrorKind,
+        /// True when `actual` and `expected` are equal except for their function environments.
+        function_environments_differ: bool,
         location: Location,
     },
     FunctionArgCountMismatch {
@@ -368,6 +378,7 @@ impl Diagnostic {
         match self {
             NameAlreadyInScope { .. }
             | ImportedNameAlreadyInScope { .. }
+            | UnusedName { .. }
             | UnreachableCase { .. }
             | InvalidRangeInPattern { .. }
             | ConfusingOperatorAfterBody { .. } => DiagnosticKind::Warning,
@@ -409,6 +420,9 @@ impl Diagnostic {
             Diagnostic::ImportedNameAlreadyInScope { name, first_location: _, second_location: _ } => {
                 format!("This imports `{name}`, which has already been defined")
             },
+            Diagnostic::UnusedName { name, location: _ } => {
+                format!("`{name}` is never used. Prefix the name with `_` to silence this warning")
+            },
             Diagnostic::UnknownImportFile { crate_name, module_name, location: _ } => {
                 if module_name.display().to_string().is_empty() {
                     format!("Could not find crate `{crate_name}`")
@@ -432,9 +446,10 @@ impl Diagnostic {
                 format!("Expected type `{expected}` but found `{actual}`")
             },
             Diagnostic::RecursiveType { typ, location: _ } => {
-                format!(
-                    "`{typ}` is infinitely recursive. Put recursive uses behind a pointer indirection to limit the size of the type"
-                )
+                format!("`{}` is infinitely recursive", color_type(typ))
+            },
+            Diagnostic::RecursiveTypeAlias { typ, location: _ } => {
+                format!("`{}` is infinitely recursive", color_type(typ))
             },
             Diagnostic::NamespaceNotFound { name, location: _ } => {
                 format!("Namespace `{name}` not found in path")
@@ -451,7 +466,9 @@ impl Diagnostic {
             Diagnostic::TypeExpected { name, location: _ } => {
                 format!("Expected a type but `{name}` is a value")
             },
-            Diagnostic::TypeError { actual, expected, kind, location: _ } => kind.message(actual, expected),
+            Diagnostic::TypeError { actual, expected, kind, function_environments_differ: _, location: _ } => {
+                kind.message(actual, expected)
+            },
             Diagnostic::FunctionArgCountMismatch { actual, expected, location: _ } => {
                 let s = if *expected == 1 { "" } else { "s" };
                 format!("Expected {expected} argument{s} but found {actual}")
@@ -672,6 +689,7 @@ impl Diagnostic {
             | Diagnostic::ExpectedPathForImport { location }
             | Diagnostic::NameAlreadyInScope { second_location: location, .. }
             | Diagnostic::ImportedNameAlreadyInScope { second_location: location, .. }
+            | Diagnostic::UnusedName { location, .. }
             | Diagnostic::UnknownImportFile { location, .. }
             | Diagnostic::UnknownImportItem { location, .. }
             | Diagnostic::ItemNotExported { location, .. }
@@ -679,6 +697,7 @@ impl Diagnostic {
             | Diagnostic::NameNotInScope { location, .. }
             | Diagnostic::ExpectedType { location, .. }
             | Diagnostic::RecursiveType { location, .. }
+            | Diagnostic::RecursiveTypeAlias { location, .. }
             | Diagnostic::NamespaceNotFound { location, .. }
             | Diagnostic::MethodDeclaredOnUnknownType { location, .. }
             | Diagnostic::LiteralUsedAsName { location }
@@ -759,6 +778,13 @@ impl Diagnostic {
                 let kind = body_kind.description();
                 Some((body_location, format!("this is where the {kind} body ends")))
             },
+            Diagnostic::TypeError { function_environments_differ: true, location, .. } => {
+                Some((location, "Separate closures are not equal because they may capture different data".to_string()))
+            },
+            Diagnostic::RecursiveType { typ: _, location } => Some((
+                location,
+                format!("Declare the type as `shared` or wrap each instance in a pointer type like `Rc`"),
+            )),
             _ => None,
         }
     }
@@ -908,7 +934,9 @@ fn write_syntax_highlighted(text: &str, show_color: bool, f: &mut Formatter) -> 
             write_whitespace(text, f)?;
         }
         let snippet = &text[start..end];
-        let snippet = syntax_color(&token, snippet).map(|color| snippet.color(color)).unwrap_or_else(|| snippet.into());
+        // Dim unhighlighted source text so error messages stand out against it
+        let snippet =
+            syntax_color(&token, snippet).map(|color| snippet.color(color)).unwrap_or_else(|| snippet.bright_black());
         write!(f, "{snippet}")?;
         last_end = end;
     }
@@ -980,7 +1008,7 @@ fn write_no_color_indicator(
 /// Format a message comment: ` // error: <message>`
 fn format_message_comment(kind: DiagnosticKind, message: &str, show_color: bool) -> String {
     let comment = if show_color { "//".bright_black() } else { "//".into() };
-    format!("\t{comment} {} {}", kind.marker(show_color), message.bright_black())
+    format!("\t{comment} {} {message}", kind.marker(show_color))
 }
 
 /// Write a message comment on its own line, aligned to the source indentation.
@@ -989,7 +1017,7 @@ fn write_overflow_message(
     digit_len: usize, indent: usize, kind: DiagnosticKind, message: &str, show_color: bool, f: &mut Formatter,
 ) -> std::fmt::Result {
     let comment = if show_color { "//".bright_black() } else { "//".into() };
-    writeln!(f, "{:digit_len$} | {:indent$}{comment} {} {}", "", "", kind.marker(show_color), message.bright_black())
+    writeln!(f, "{:digit_len$} | {:indent$}{comment} {} {message}", "", "", kind.marker(show_color))
 }
 
 /// Outputs a formatted source line to the formatter (`line_no` is 1-indexed).

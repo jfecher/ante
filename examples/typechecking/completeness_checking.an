@@ -93,8 +93,6 @@ main () =
 //                                     (_: I32) = (match_var43: I32)
 //                                     3
 //     ()
-// 
-// 
 
 // expected stderr:
 // examples/typechecking/completeness_checking.an:2:11
@@ -128,8 +126,10 @@ main () =
 // 
 // examples/typechecking/completeness_checking.an:26:11
 // 25 |     match (1, 2, 3, 4)
-// 26 |     | (1, 2) -> 1	// error: Expected an integer type but found I32, (I32, I32)
+//    |     // error: This pattern has type I32 but the matched value has type I32, (I32, I32)
+// 26 |     | (1, 2) -> 1
 //    |           ^
 // 27 |     | (_, _, _, _) -> 3
 // 
 // Found 5 errors and 1 warning
+

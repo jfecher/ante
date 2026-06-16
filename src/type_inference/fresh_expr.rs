@@ -142,6 +142,11 @@ impl ExtendedTopLevelContext {
         self.more_exprs.get(&id)
     }
 
+    /// Mutable version of [`Self::extended_expr`]
+    pub fn extended_expr_mut(&mut self, id: ExprId) -> Option<&mut Expr> {
+        self.more_exprs.get_mut(&id)
+    }
+
     /// Return the given pattern only if it is extended, and thus not part
     /// of `Self::original`. This can be used to prevent cloning in some cases.
     pub fn extended_pattern(&self, id: PatternId) -> Option<&Pattern> {
@@ -239,7 +244,7 @@ impl ExtendedTopLevelContext {
         self.path_origins.get(&path_id).copied()
     }
 
-    pub(crate) fn name_origin(&self, name_id: NameId) -> Option<Origin> {
+    pub fn name_origin(&self, name_id: NameId) -> Option<Origin> {
         self.name_origins.get(&name_id).copied()
     }
 
@@ -270,7 +275,7 @@ impl ExtendedTopLevelContext {
     }
 
     /// Retrieve which field index the member access' field refers to in the object type
-    pub(crate) fn member_access_index(&self, expr: ExprId) -> Option<u32> {
+    pub fn member_access_index(&self, expr: ExprId) -> Option<u32> {
         self.member_access_indices.get(&expr).copied()
     }
 
@@ -278,7 +283,7 @@ impl ExtendedTopLevelContext {
         self.constructor_field_orders.insert(id, field_order);
     }
 
-    pub(crate) fn constructor_field_order(&self, id: ExprId) -> Option<&BTreeMap<NameId, u32>> {
+    pub fn constructor_field_order(&self, id: ExprId) -> Option<&BTreeMap<NameId, u32>> {
         self.constructor_field_orders.get(&id)
     }
 
@@ -286,7 +291,7 @@ impl ExtendedTopLevelContext {
         self.instantiations.insert(path, bindings);
     }
 
-    pub(crate) fn get_instantiation(&self, path: PathId) -> Option<&Vec<Type>> {
+    pub fn get_instantiation(&self, path: PathId) -> Option<&Vec<Type>> {
         self.instantiations.get(&path)
     }
 
@@ -303,7 +308,7 @@ impl ExtendedTopLevelContext {
         self.move_closures.insert(expr);
     }
 
-    pub(crate) fn is_move_closure(&self, expr: ExprId) -> bool {
+    pub fn is_move_closure(&self, expr: ExprId) -> bool {
         self.move_closures.contains(&expr)
     }
 }

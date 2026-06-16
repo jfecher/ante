@@ -78,10 +78,9 @@ impl TopLevelId {
                     TypeBody::Sum(variants)
                 }
             },
-            // TODO: Type aliases
+            // Type aliases are expanded away wherever they are referenced in name resolution, so `type_body`
+            // should never be queried for one. `Error` falls through to the same harmless filler.
             cst::TypeDefinitionBody::Alias(_) | cst::TypeDefinitionBody::Error => {
-                // Just make some filler value - ideally we should return an error flag here
-                // to prevent future errors
                 let type_name = item_context[type_definition.name].clone();
                 TypeBody::Product { type_name, fields: Vec::new() }
             },

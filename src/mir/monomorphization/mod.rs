@@ -13,13 +13,33 @@ use rustc_hash::FxHashMap;
 mod select_largest_variant;
 
 use crate::{
-    definition_collection::collect_all_items,
     incremental::{GetCrateGraph, GetItem, GetItemRaw, Parse, TargetPointerSize, TypeCheck},
     mir::{
         self, Definition, DefinitionId, GenericBindings, Instruction, Mir, Type, Value,
         builder::build_initial_mir_with_shared_map, next_definition_id,
     },
+    parser::ids::TopLevelId,
 };
+
+/// Collect all items in the program.
+/// This is discouraged since it limits parallelism but required for certain passes like
+/// monomorphization which need access to the entire program.
+fn collect_all_items<Db>(compiler: &Db) -> Vec<TopLevelId>
+where
+    Db: DbGet<GetCrateGraph> + DbGet<Parse>,
+{
+    let mut items = Vec::new();
+
+    for crate_ in GetCrateGraph.get(compiler).values() {
+        for file in crate_.source_files.values() {
+            let parse = Parse(*file).get(compiler);
+            for item in parse.cst.top_level_items.iter() {
+                items.push(item.id);
+            }
+        }
+    }
+    items
+}
 
 /// Monomorphize the whole program, returning a MIR function if the item refers to a function.
 /// If the item does not refer to a function (e.g. it is a type definition), `None` is returned.

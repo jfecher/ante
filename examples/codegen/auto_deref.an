@@ -4,11 +4,11 @@ ability Double a =
 implicit double_i32: Double I32 =
     Double fn x -> x + x
 
-// Direct auto-deref: ref I32 -> I32
-deref_ref (x: ref I32): I32 = x
+// Explicit deref: auto-deref only applies to call arguments, not return position
+deref_ref (x: ref I32): I32 = x.*
 
-// Auto-deref with mut reference
-deref_mut (x: mut I32): I32 = x
+// Explicit deref with mut reference
+deref_mut (x: mut I32): I32 = x.*
 
 trait_through_deref (x: ref I32): I32 =
     // Coerce ref I32 to I32. This only works since there is only

@@ -56,7 +56,7 @@ impl<K, V> VecMap<K, V> {
         self.items.iter().enumerate().map(|(i, v)| (K::from(i), v))
     }
 
-    pub(crate) fn iter_mut(&mut self) -> impl ExactSizeIterator<Item = (K, &mut V)>
+    pub fn iter_mut(&mut self) -> impl ExactSizeIterator<Item = (K, &mut V)>
     where
         K: From<usize>,
     {
@@ -72,7 +72,7 @@ impl<K, V> VecMap<K, V> {
     }
 
     /// Clears the map, invalidating any existing ids.
-    pub(crate) fn clear(&mut self) {
+    pub fn clear(&mut self) {
         self.items.clear();
     }
 

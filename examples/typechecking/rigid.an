@@ -19,7 +19,7 @@ main () = ()
 
 // expected stderr:
 // examples/typechecking/rigid.an:2:17
-// 2 | ex1 (x: a): b = x + 1u32	// error: Expected b but found a
+// 2 | ex1 (x: a): b = x + 1u32	// error: Argument 1 has type a but b was expected
 //   |                 ^
 // 
 // examples/typechecking/rigid.an:2:19
@@ -27,13 +27,12 @@ main () = ()
 //   |                   ^
 // 
 // examples/typechecking/rigid.an:2:21
-// 2 | ex1 (x: a): b = x + 1u32	// error: Expected b but found U32
+// 2 | ex1 (x: a): b = x + 1u32	// error: Argument 2 has type U32 but b was expected
 //   |                     ^
 // 
 // examples/typechecking/rigid.an:6:13
 // 5 | ex2: fn a -> b =
-// 6 |     fn x -> x	// error: Expected b but found a
+// 6 |     fn x -> x	// error: The body of this function has type a but it is expected to return b
 //   |             ^
 // 
 // Found 4 errors and 0 warnings
-

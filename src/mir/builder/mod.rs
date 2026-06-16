@@ -1279,8 +1279,17 @@ where
             }
         }
 
-        // For all other cases (non-mutable local, reference of reference, temporary):
-        // evaluate the expression and allocate a new stack slot for it.
+        // Reborrow: if the rhs already has a reference type its value is already a pointer
+        // (e.g. a `mut Array` parameter), so `mut x` reborrows that pointer directly instead of
+        // taking the address of the local holding it. Mirrors the type-level reborrow in
+        // `check_reference`.
+        let rhs_type = self.types.result.maps.expr_types[&rhs].follow(&self.types.bindings);
+        if rhs_type.reference_element(&self.types.bindings).is_some() {
+            return self.expression(rhs);
+        }
+
+        // For all other cases (non-mutable local, temporary): evaluate the expression and
+        // allocate a new stack slot for it.
         let value = self.expression(rhs);
         self.push_instruction(Instruction::StackAlloc(value), Type::POINTER)
     }

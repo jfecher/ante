@@ -22,26 +22,28 @@ z = y * 2.0
 // x_c1m818_8644_0 = 4
 // 
 // // id = c1m818_4106
-// t1_c1m818_4106_0 = T_c1m818_9305_0
+// t1_c1m818_4106_0 = T_c1m818_9305_0 with
+//     x_? = 3
+//     z_? = 5
 // 
 // // id = c1m818_4335
-// t2_c1m818_4335_0 = T_c1m818_9305_0
+// t2_c1m818_4335_0 = T_c1m818_9305_0 with
+//     y_? = 3.2
+//     x_? = x_c1m818_8644_0
 // 
 // // id = c1m818_1897
 // z_c1m818_1897_0 = y_? *_c0m703_5387_2 2.0
 
 // expected stderr:
-// examples/nameresolution/named_constructor.an:7:8
-//   | // error: Expected a newline after the top level item but found `with`
-// 7 | t1 = T with x = 3, z = 5
-//   |        ^^^^
+// examples/nameresolution/named_constructor.an:7:6
+// 7 | t1 = T with x = 3, z = 5	// error: Missing field: y
+//   |      ^^^^^^^^^^^^^^^^^^^
 // 8 | t2 = T with y = 3.2, x
 // 
-// examples/nameresolution/named_constructor.an:8:8
-//  7 | t1 = T with x = 3, z = 5
-//    | // error: Expected a newline after the top level item but found `with`
-//  8 | t2 = T with y = 3.2, x
-//    |        ^^^^
+// examples/nameresolution/named_constructor.an:7:20
+// 7 | t1 = T with x = 3, z = 5	// error: T has no field named `z`
+//   |                    ^
+// 8 | t2 = T with y = 3.2, x
 // 
 // examples/nameresolution/named_constructor.an:11:5
 // 10 | // Declarations should not leak from the named constructor
@@ -49,4 +51,3 @@ z = y * 2.0
 //    |     ^
 // 
 // Found 3 errors and 0 warnings
-

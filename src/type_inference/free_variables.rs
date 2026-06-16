@@ -32,7 +32,7 @@ impl TypeChecker<'_, '_> {
     /// Finds the environment type for the given lambda. This involves finding the free variables
     /// within the lambda. This will unify the given `expected_environment_type` with the actual
     /// environment type found but will not actually perform closure conversion. Closure conversion
-    /// is instead done while building the initial [crate::mir::Mir].
+    /// is instead done while building the initial `Mir`.
     pub(super) fn check_for_closure(
         &mut self, id: ExprId, expected_environment_type: &Type, self_name: Option<NameId>, is_move: bool,
     ) {

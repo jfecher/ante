@@ -17,8 +17,13 @@ use colored::Colorize;
 use serde::{Deserialize, Serialize};
 
 /// This constant is meant to match the "name" of the index operator when used as an identifier in
-/// source code.
-pub(crate) const INDEX_OPERATOR_FUNCTION_NAME: &str = ".[";
+/// source code (the `Extract` ability's method). The surface index syntax is `a.[i]`, but the
+/// operator referenced as a value / defined in an ability is written `(.[])`.
+pub(crate) const INDEX_OPERATOR_FUNCTION_NAME: &str = ".[]";
+
+/// This constant is meant to match the "name" of the index-assignment operator when used as an
+/// identifier in source code (the `Insert` ability's method).
+pub(crate) const INDEX_ASSIGN_OPERATOR_FUNCTION_NAME: &str = ".[]:=";
 
 /// Lexing can fail with these errors, though the Lexer just
 /// returns the LexerError inside of an Invalid token which
@@ -332,7 +337,9 @@ pub enum Token {
     At,                 // @
     ExclamationMark,    // !
     QuestionMark,       // ?
-    Index,              // .[
+    Index,              // .[   (postfix index syntax `a.[i]`)
+    IndexBrackets,      // .[]  (the `Extract` operator name `(.[])`)
+    IndexAssign,        // .[]:=
     Copy,               // .*
     Octothorpe,         // #
     Apostrophe,         // '
@@ -361,7 +368,8 @@ impl Token {
                 | Divide
                 | Divides
                 | Range
-                | Index
+                | IndexBrackets
+                | IndexAssign
                 | Copy
         )
     }
@@ -549,7 +557,9 @@ impl Display for Token {
             Token::At => write!(f, "@"),
             Token::ExclamationMark => write!(f, "!"),
             Token::QuestionMark => write!(f, "?"),
-            Token::Index => write!(f, "{INDEX_OPERATOR_FUNCTION_NAME}"),
+            Token::Index => write!(f, ".["),
+            Token::IndexBrackets => write!(f, "{INDEX_OPERATOR_FUNCTION_NAME}"),
+            Token::IndexAssign => write!(f, "{INDEX_ASSIGN_OPERATOR_FUNCTION_NAME}"),
             Token::Copy => write!(f, ".*"),
             Token::Octothorpe => write!(f, "#"),
             Token::Apostrophe => write!(f, "'"),

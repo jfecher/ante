@@ -1,7 +1,4 @@
-use std::{
-    path::{Path, PathBuf},
-    sync::OnceLock,
-};
+use std::sync::{Arc, OnceLock};
 
 use ante::{incremental::Db, name_resolution::namespace::SourceFileId};
 
@@ -21,21 +18,20 @@ mod util;
 use code_action::code_actions_at;
 use completion::completions_at;
 use definition::definition_at;
-use diagnostics::{init_db, rope_for_file};
+use diagnostics::{init_db, rope_for_file, CrateRoots, DiagnosticsWorker, DirtyDocs};
 use hover::hover_at;
 use util::{byte_range_to_lsp_range, identifier_prefix_before, lsp_range_to_rope_range, position_to_byte_offset};
 
 struct Backend {
     client: Client,
-    document_map: DashMap<Url, Rope>,
-    compiler: RwLock<Db>,
-    local_crate_root: OnceLock<PathBuf>,
-}
-
-impl Backend {
-    fn root(&self) -> Option<&Path> {
-        self.local_crate_root.get().map(PathBuf::as_path)
-    }
+    document_map: Arc<DashMap<Url, Rope>>,
+    /// Last seen `didChange` version per document, used to detect out-of-order edits.
+    document_versions: DashMap<Url, i32>,
+    compiler: Arc<RwLock<Db>>,
+    /// Documents edited since the last compile; drained by the [DiagnosticsWorker].
+    dirty: Arc<DirtyDocs>,
+    /// The crates' canonical `src/` roots, set once in `initialize`.
+    crate_roots: OnceLock<Arc<CrateRoots>>,
 }
 
 #[tower_lsp::async_trait]
@@ -50,15 +46,38 @@ impl LanguageServer for Backend {
             .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
 
         // Set once and eagerly walk the crate graph so requests never have to do it lazily.
-        let _ = self.local_crate_root.set(root.clone());
-        {
-            let mut compiler = self.compiler.write().await;
-            init_db(&mut compiler, &root);
+        // Only the call that sets the roots spawns the diagnostics worker.
+        if self.crate_roots.get().is_none() {
+            let roots = {
+                let mut compiler = self.compiler.write().await;
+                init_db(&mut compiler, &root);
+                Arc::new(CrateRoots::new(&compiler, root))
+            };
+
+            if self.crate_roots.set(roots.clone()).is_ok() {
+                tokio::spawn(
+                    DiagnosticsWorker {
+                        client: self.client.clone(),
+                        document_map: self.document_map.clone(),
+                        compiler: self.compiler.clone(),
+                        dirty: self.dirty.clone(),
+                        crate_roots: roots,
+                    }
+                    .run(),
+                );
+            }
         }
 
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
-                text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::INCREMENTAL)),
+                text_document_sync: Some(TextDocumentSyncCapability::Options(TextDocumentSyncOptions {
+                    open_close: Some(true),
+                    change: Some(TextDocumentSyncKind::INCREMENTAL),
+                    // Ask for the full text on save so `did_save` can repair any divergence
+                    // between our rope and the editor's buffer.
+                    save: Some(TextDocumentSyncSaveOptions::SaveOptions(SaveOptions { include_text: Some(true) })),
+                    ..Default::default()
+                })),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 definition_provider: Some(OneOf::Left(true)),
                 completion_provider: Some(CompletionOptions {
@@ -86,15 +105,32 @@ impl LanguageServer for Backend {
     }
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
-        self.client.log_message(MessageType::LOG, format!("ante-ls did_open: {:?}", params.text_document.uri)).await;
+        // Mutate the document state before the first await: tower-lsp polls up to 4
+        // handlers concurrently (`buffer_unordered`), so an await before the mutation
+        // would let a later notification's edit apply first and corrupt the rope.
+        let uri = params.text_document.uri;
         let rope = Rope::from_str(&params.text_document.text);
-        self.document_map.insert(params.text_document.uri.clone(), rope.clone());
-        self.update_diagnostics(params.text_document.uri, &rope).await;
+        self.document_map.insert(uri.clone(), rope);
+        self.document_versions.insert(uri.clone(), params.text_document.version);
+        self.dirty.mark(uri.clone());
+
+        self.client.log_message(MessageType::LOG, format!("ante-ls did_open: {uri:?}")).await;
     }
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
-        self.client.log_message(MessageType::LOG, format!("ante-ls did_change: {:?}", params.text_document.uri)).await;
-        self.document_map.alter(&params.text_document.uri, |_, mut rope| {
+        // Apply the edit before the first await - see `did_open` for why.
+        let uri = params.text_document.uri;
+        let version = params.text_document.version;
+
+        // `alter` silently no-ops on a missing key; incremental edits without a base
+        // document cannot be applied, so surface the dropped edits instead.
+        if !self.document_map.contains_key(&uri) {
+            let message = format!("ante-ls did_change: no open document for {uri:?}; dropping edits");
+            self.client.log_message(MessageType::ERROR, message).await;
+            return;
+        }
+
+        self.document_map.alter(&uri, |_, mut rope| {
             for change in params.content_changes {
                 // `range = None` means a full-document replace
                 match change.range.and_then(|r| lsp_range_to_rope_range(r, &rope).ok()) {
@@ -107,20 +143,44 @@ impl LanguageServer for Backend {
             }
             rope
         });
-        if let Some(rope) = self.document_map.get(&params.text_document.uri) {
-            self.update_diagnostics(params.text_document.uri, &rope).await;
+        let previous_version = self.document_versions.insert(uri.clone(), version);
+        self.dirty.mark(uri.clone());
+
+        match previous_version {
+            Some(previous) if version < previous => {
+                let message = format!(
+                    "ante-ls did_change: version {version} arrived after {previous} for {uri:?}; edits may have been applied out of order"
+                );
+                self.client.log_message(MessageType::ERROR, message).await;
+            },
+            _ => self.client.log_message(MessageType::LOG, format!("ante-ls did_change: {uri:?}")).await,
         }
     }
 
     async fn did_save(&self, params: DidSaveTextDocumentParams) {
-        self.client.log_message(MessageType::LOG, format!("ante-ls did_save: {:?}", params.text_document.uri)).await;
+        // Replace the rope with the saved text (the server requests `include_text`)
+        // before the first await - see `did_open` for why. This also repairs any
+        // divergence between our rope and the editor's buffer.
+        let uri = params.text_document.uri;
         if let Some(text) = params.text {
             let rope = Rope::from_str(&text);
-            self.document_map.insert(params.text_document.uri.clone(), rope);
+            self.document_map.insert(uri.clone(), rope);
         }
-        if let Some(rope) = self.document_map.get(&params.text_document.uri) {
-            self.update_diagnostics(params.text_document.uri, &rope).await;
-        }
+        self.dirty.mark(uri.clone());
+
+        self.client.log_message(MessageType::LOG, format!("ante-ls did_save: {uri:?}")).await;
+    }
+
+    async fn did_close(&self, params: DidCloseTextDocumentParams) {
+        // Remove the document state before the first await - see `did_open` for why.
+        // Per the LSP spec, after a close the file's truth reverts to its on-disk
+        // contents; marking it dirty makes the worker re-read the file from disk.
+        let uri = params.text_document.uri;
+        self.document_map.remove(&uri);
+        self.document_versions.remove(&uri);
+        self.dirty.mark(uri.clone());
+
+        self.client.log_message(MessageType::LOG, format!("ante-ls did_close: {uri:?}")).await;
     }
 
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
@@ -200,7 +260,7 @@ impl LanguageServer for Backend {
                 .await;
             return Ok(None);
         };
-        let def_rope = rope_for_file(&def_uri, &source_file.contents, &ctx.uri, &ctx.rope, &self.document_map);
+        let def_rope = rope_for_file(&def_uri, &source_file.contents, &self.document_map);
         let Ok(range) =
             byte_range_to_lsp_range(ante_loc.span.start.byte_index, ante_loc.span.end.byte_index, &def_rope)
         else {
@@ -239,8 +299,8 @@ impl Backend {
             },
         };
 
-        let root = match self.root() {
-            Some(r) => r,
+        let roots = match self.crate_roots.get() {
+            Some(roots) => roots,
             None => {
                 self.client
                     .log_message(MessageType::ERROR, "resolve_position called before initialize()".to_string())
@@ -248,7 +308,9 @@ impl Backend {
                 return None;
             },
         };
-        let file_id = SourceFileId::for_local_path(root, &path);
+        // Match the path against the crate graph so ids agree with `set_file_content`
+        // (e.g. a stdlib file resolves to the stdlib crate's id, not a local-crate one).
+        let file_id = diagnostics::file_id_for_path(roots, &path);
 
         Some(RequestContext { uri, rope, byte_offset, file_id })
     }
@@ -263,9 +325,11 @@ async fn main() {
 
     let (service, socket) = LspService::build(|client| Backend {
         client,
-        document_map: DashMap::new(),
-        compiler: RwLock::new(Db::default()),
-        local_crate_root: OnceLock::new(),
+        document_map: Arc::new(DashMap::new()),
+        document_versions: DashMap::new(),
+        compiler: Arc::new(RwLock::new(Db::default())),
+        dirty: Arc::new(DirtyDocs::default()),
+        crate_roots: OnceLock::new(),
     })
     .finish();
 

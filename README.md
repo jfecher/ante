@@ -69,11 +69,16 @@ $ git submodule update --init
 
 If you do not do this, you will get an error when compiling an Ante program from clang complaining it cannot find `aminicoro.c`.
 
-Ante requires LLVM 21.1 to build. If you already have it installed with sources,
-`cargo install --path .` should work directly. Otherwise, install LLVM 21.1 through your
+Ante currently has an optional requirement of LLVM 21.1 to enable the LLVM backend. If you already have it installed with sources,
+`cargo install --path .` should work directly. Otherwise, you can consider installing LLVM 21.1 through your
 package manager (Linux/Mac) or build it from source via [CMake](#CMake).
 
 Older LLVM versions are not supported.
+
+#### Building without LLVM
+
+If you do not have LLVM installed, you can still install the Ante compiler via `cargo install --path . --no-default-features` which
+will use the C backend by default.
 
 #### Linux and Mac
 
@@ -85,7 +90,7 @@ need to set `LLVM_SYS_211_PREFIX` to the path LLVM was installed to:
 $ LLVM_SYS_211_PREFIX=$(llvm-config --obj-root)
 ```
 
-If your distro does not ship LLVM 21.1, build it from source via [CMake](#CMake).
+If your distro does not ship LLVM 21.1, build it from source via [CMake](#CMake) or [build ante without llvm](#building-without-llvm)
 
 ##### Nix
 
@@ -105,7 +110,8 @@ the provided overlay or play around with the compiler via `nix shell github:jfec
 
 Note: LLVM is notoriously difficult to build on Windows. Since the LLVM binaries do not ship
 with the appropriate library files on Windows, you will have to build LLVM 21.1 from source via
-[CMake](#CMake).
+[CMake](#CMake) if you want the LLVM backend. If you are not testing with the LLVM backend specifically,
+it is recommended to [build ante without llvm](#building-without-llvm).
 
 ##### CMake
 

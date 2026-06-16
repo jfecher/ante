@@ -4,8 +4,6 @@ use std::{
     sync::Arc,
 };
 
-use inc_complete::DbGet;
-
 use crate::{
     diagnostics::{Diagnostic, Location},
     incremental::{
@@ -508,26 +506,4 @@ pub fn get_imports_impl(context: &GetImports, db: &DbHandle) -> Vec<(Arc<PathBuf
 
     incremental::exit_query();
     imports
-}
-
-/// Helper function to collect all items in the program.
-/// This function is discouraged since it limits parallelism but required for certain passes like
-/// monomorphization which need access to the entire program.
-///
-/// TODO: Test performance
-pub fn collect_all_items<Db>(compiler: &Db) -> Vec<TopLevelId>
-where
-    Db: DbGet<GetCrateGraph> + DbGet<Parse>,
-{
-    let mut items = Vec::new();
-
-    for crate_ in GetCrateGraph.get(compiler).values() {
-        for file in crate_.source_files.values() {
-            let parse = Parse(*file).get(compiler);
-            for item in parse.cst.top_level_items.iter() {
-                items.push(item.id);
-            }
-        }
-    }
-    items
 }

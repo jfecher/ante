@@ -197,6 +197,14 @@ struct TypeChecker<'local, 'inner> {
     /// Names defined with `var` or as mutable parameters. Used by closure capture analysis
     /// to wrap mutable captures in a reference type so the closure shares the outer scope's storage.
     mutable_definitions: FxHashSet<NameId>,
+
+    /// Type variables created for polymorphic integer literals. Entries are never removed.
+    /// Used during unification to restrict these variables to integer types so mismatches error
+    /// at the unification site instead of a confusing error when defaulting to I32 later.
+    integer_literal_vars: FxHashSet<TypeVariableId>,
+
+    /// Same as `integer_literal_vars` but for polymorphic float literals.
+    float_literal_vars: FxHashSet<TypeVariableId>,
 }
 
 /// Map from each TopLevelId to a tuple of (the item, parse context, resolution context)
@@ -231,6 +239,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             suppress_move_record: false,
             copy_type_name: None,
             mutable_definitions: Default::default(),
+            integer_literal_vars: Default::default(),
+            float_literal_vars: Default::default(),
         };
 
         let mut item_types = FxHashMap::default();
@@ -417,17 +427,95 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     }
 
     /// Unifies the two types. Returns false on failure
+    ///
+    /// TODO: Rename. This is actually a subtyping relation of `actual <: expected`
     fn unify(&mut self, actual: &Type, expected: &Type, kind: TypeErrorKind, locator: impl Locateable) -> bool {
         if let Ok(new_bindings) = self.try_unify(actual, expected) {
             self.bindings.extend(new_bindings);
             true
         } else {
-            let actual = self.type_to_string(actual);
-            let expected = self.type_to_string(expected);
+            let function_environments_differ = self.only_function_environments_differ(actual, expected);
+            let actual = self.type_to_error_string(actual);
+            let expected = self.type_to_error_string(expected);
             let location = locator.locate(self);
-            self.compiler.accumulate(Diagnostic::TypeError { actual, expected, kind, location });
+            self.compiler.accumulate(Diagnostic::TypeError {
+                actual,
+                expected,
+                kind,
+                function_environments_differ,
+                location,
+            });
             false
         }
+    }
+
+    /// True if `a` and `b` are equal except for one or more function environments.
+    /// Assumes the two types are not equal to begin with (we only reach here after a failed
+    /// unification), so if they unify once every function environment is erased, the
+    /// environments must have been the sole cause of the failure.
+    fn only_function_environments_differ(&self, a: &Type, b: &Type) -> bool {
+        let a = strip_environments(&a.follow_all(&self.bindings));
+        let b = strip_environments(&b.follow_all(&self.bindings));
+        self.try_unify(&a, &b).is_ok()
+    }
+
+    /// Like [Self::type_to_string] but renders unbound literal variables as I32 or F64.
+    fn type_to_error_string(&self, typ: &Type) -> String {
+        typ.display_with_literal_vars(
+            &self.bindings,
+            &self.integer_literal_vars,
+            &self.float_literal_vars,
+            self.current_context(),
+            self.compiler,
+        )
+        .hiding_environments()
+        .to_string()
+    }
+
+    /// True if the given type is the `Never` type
+    fn diverges(&self, typ: &Type) -> bool {
+        matches!(typ.follow(&self.bindings), &Type::NEVER)
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Variance {
+    /// `a <: b` Most type relations are covariant
+    Covariant,
+    /// `b <: a` function parameter types are contravariant
+    Contravariant,
+    /// `a ~ b` mutable reference elements are invariant
+    Invariant,
+}
+
+impl Variance {
+    fn flip(self) -> Variance {
+        match self {
+            Variance::Covariant => Variance::Contravariant,
+            Variance::Contravariant => Variance::Covariant,
+            Variance::Invariant => Variance::Invariant,
+        }
+    }
+}
+
+/// Rewrite `typ`, erasing every function environment to [`Type::NO_CLOSURE_ENV`].
+/// Used to compare two types while ignoring their closure environments.
+fn strip_environments(typ: &Type) -> Type {
+    match typ {
+        Type::Function(function) => Type::Function(Arc::new(FunctionType {
+            parameters: mapvec(&function.parameters, |param| {
+                ParameterType::new(strip_environments(&param.typ), param.is_implicit)
+            }),
+            environment: Type::NO_CLOSURE_ENV,
+            return_type: strip_environments(&function.return_type),
+        })),
+        Type::Application(constructor, args) => Type::Application(
+            Arc::new(strip_environments(constructor)),
+            Arc::new(mapvec(args.iter(), strip_environments)),
+        ),
+        Type::Tuple(elements) => Type::Tuple(Arc::new(mapvec(elements.iter(), strip_environments))),
+        Type::Forall(generics, body) => Type::Forall(generics.clone(), Arc::new(strip_environments(body))),
+        Type::Primitive(_) | Type::Generic(_) | Type::Variable(_) | Type::UserDefined(_) | Type::U32(_) => typ.clone(),
     }
 }
 
@@ -457,8 +545,13 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         &mut self, actual: &Type, expected: &Type, expr: ExprId, call_expr: Option<ExprId>,
     ) -> CoercionOutcome {
         match (self.follow_type(actual), self.follow_type(expected)) {
+            // Fire when the callee needs implicit arguments the call site didn't supply.
+            // We also allow a function with only implicit args to be called with `()` as its sole argument.
             (Type::Function(actual_fn), Type::Function(expected_fn))
-                if actual_fn.parameters.len() != expected_fn.parameters.len() =>
+                if actual_fn.parameters.len() != expected_fn.parameters.len()
+                    || (call_expr.is_some_and(|call| self.call_ends_with_unit_arg(call))
+                        && actual_fn.parameters.iter().filter(|p| p.is_implicit).count()
+                            != expected_fn.parameters.iter().filter(|p| p.is_implicit).count()) =>
             {
                 match self.implicit_parameter_coercion(actual_fn.clone(), expected_fn.clone(), expr, call_expr) {
                     Some(implicits::CoercionKind::Wrapper(new_expr)) => {
@@ -562,64 +655,65 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     }
 
     pub(crate) fn type_to_string(&self, typ: &Type) -> String {
-        typ.to_string(&self.bindings, self.current_context(), self.compiler)
+        typ.display(&self.bindings, self.current_context(), self.compiler).hiding_environments().to_string()
     }
 
-    /// Try to unify the given types, returning `Err(())` on error without pushing a Diagnostic.
+    /// Check `actual <: expected`, returning `Err(())` on failure without pushing a Diagnostic.
     ///
-    /// Returns any new bindings created on success
+    /// Returns any new bindings created on success.
     fn try_unify(&self, actual: &Type, expected: &Type) -> Result<TypeBindings, ()> {
         let mut bindings = TypeBindings::default();
-        self.try_unify_with_bindings(actual, expected, &mut bindings).map(|_| bindings)
+        self.subtype(actual, expected, Variance::Covariant, &mut bindings).map(|_| bindings)
     }
 
-    /// Same as [Self::try_unify] but carries the new type bindings as an argument instead of
-    /// a return value.
-    fn try_unify_with_bindings(
-        &self, actual: &Type, expected: &Type, new_bindings: &mut TypeBindings,
-    ) -> Result<(), ()> {
-        match (actual, expected) {
-            (Type::Variable(actual_id), expected) => {
-                if let Some(actual) = self.bindings.get(actual_id).cloned() {
-                    self.try_unify_with_bindings(&actual, &expected, new_bindings)
-                } else if let Some(actual) = new_bindings.get(actual_id).cloned() {
-                    self.try_unify_with_bindings(&actual, &expected, new_bindings)
-                } else {
-                    let expected = expected.follow_two(&self.bindings, new_bindings);
-                    self.try_bind_type_variable(*actual_id, expected, new_bindings)
-                }
-            },
-            (actual, Type::Variable(expected_id)) => {
-                if let Some(expected) = self.bindings.get(expected_id).cloned() {
-                    self.try_unify_with_bindings(actual, &expected, new_bindings)
-                } else if let Some(expected) = new_bindings.get(expected_id).cloned() {
-                    self.try_unify_with_bindings(actual, &expected, new_bindings)
-                } else {
-                    let actual = actual.follow_two(&self.bindings, new_bindings);
-                    self.try_bind_type_variable(*expected_id, actual, new_bindings)
-                }
-            },
-            // The bottom type should unify with any expected type
-            // FIXME: This is unsound since we don't do a true subtyping test. E.g. we don't
-            // track variance on any types, even function parameters/returns.
-            (Type::Primitive(PrimitiveType::Never), _) => Ok(()),
+    /// Is `a` a subtype of `b`? (iff `variance == Covariant`)
+    fn subtype(&self, a: &Type, b: &Type, variance: Variance, new_bindings: &mut TypeBindings) -> Result<(), ()> {
+        if variance == Variance::Contravariant {
+            return self.subtype(b, a, Variance::Covariant, new_bindings);
+        }
 
-            // And the error type should unify with everything to prevent future errors
+        match (a, b) {
+            (Type::Variable(a_id), b) => {
+                if let Some(a) = self.bindings.get(a_id).cloned() {
+                    self.subtype(&a, b, variance, new_bindings)
+                } else if let Some(a) = new_bindings.get(a_id).cloned() {
+                    self.subtype(&a, b, variance, new_bindings)
+                } else {
+                    let b = b.follow_two(&self.bindings, new_bindings);
+                    self.try_bind_type_variable(*a_id, b, new_bindings)
+                }
+            },
+            (a, Type::Variable(b_id)) => {
+                if let Some(b) = self.bindings.get(b_id).cloned() {
+                    self.subtype(a, &b, variance, new_bindings)
+                } else if let Some(b) = new_bindings.get(b_id).cloned() {
+                    self.subtype(a, &b, variance, new_bindings)
+                } else {
+                    let a = a.follow_two(&self.bindings, new_bindings);
+                    self.try_bind_type_variable(*b_id, a, new_bindings)
+                }
+            },
+            // The bottom type is a subtype of every type in covariant position.
+            // In invariant position only `Never == Never`.
+            (Type::Primitive(PrimitiveType::Never), _) if matches!(variance, Variance::Covariant) => Ok(()),
+
+            // The error type matches everything to prevent cascading errors.
             (Type::Primitive(PrimitiveType::Error), _) | (_, Type::Primitive(PrimitiveType::Error)) => Ok(()),
-            (Type::Function(actual), Type::Function(expected)) => {
-                if actual.parameters.len() != expected.parameters.len() {
+            (Type::Function(a_fn), Type::Function(b_fn)) => {
+                if a_fn.parameters.len() != b_fn.parameters.len() {
                     return Err(());
                 }
 
-                for (actual, expected) in actual.parameters.iter().zip(expected.parameters.iter()) {
-                    self.try_unify_with_bindings(&actual.typ, &expected.typ, new_bindings)?;
+                // Parameters are contravariant, the return type is covariant.
+                for (a_param, b_param) in a_fn.parameters.iter().zip(b_fn.parameters.iter()) {
+                    self.subtype(&a_param.typ, &b_param.typ, variance.flip(), new_bindings)?;
                 }
 
-                // Ability methods carry a `Ptr Unit` env so every ability value has a uniform
+                // Hack: Ability methods carry a `Ptr Unit` env so every ability value has a uniform
                 // `(fn_ptr, env_ptr)` size. A bare function (env = NoClosureEnv) is treated as
                 // compatible with such a slot: the MIR builder wraps it with a null pointer env.
-                let actual_env = actual.environment.follow_two(&self.bindings, new_bindings);
-                let expected_env = expected.environment.follow_two(&self.bindings, new_bindings);
+                let a_env = a_fn.environment.follow_two(&self.bindings, new_bindings);
+                let b_env = b_fn.environment.follow_two(&self.bindings, new_bindings);
                 let no_env = |t: &Type| matches!(t, Type::Primitive(PrimitiveType::NoClosureEnv));
                 let is_ptr_env = |t: &Type| match t {
                     Type::Primitive(PrimitiveType::Pointer) => true,
@@ -628,49 +722,62 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     },
                     _ => false,
                 };
-                let env_skip = (no_env(&actual_env) && is_ptr_env(&expected_env))
-                    || (no_env(&expected_env) && is_ptr_env(&actual_env));
+                let env_skip = (no_env(&a_env) && is_ptr_env(&b_env)) || (no_env(&b_env) && is_ptr_env(&a_env));
                 if !env_skip {
-                    self.try_unify_with_bindings(&actual.environment, &expected.environment, new_bindings)?;
+                    self.subtype(&a_fn.environment, &b_fn.environment, Variance::Invariant, new_bindings)?;
                 }
-                self.try_unify_with_bindings(&actual.return_type, &expected.return_type, new_bindings)
+                self.subtype(&a_fn.return_type, &b_fn.return_type, variance, new_bindings)
             },
-            (
-                Type::Application(actual_constructor, actual_args),
-                Type::Application(expected_constructor, expected_args),
-            ) => {
-                if actual_args.len() != expected_args.len() {
+            (Type::Application(a_constructor, a_args), Type::Application(b_constructor, b_args)) => {
+                if a_args.len() != b_args.len() {
                     return Err(());
                 }
-                self.try_unify_with_bindings(actual_constructor, expected_constructor, new_bindings)?;
-                for (actual, expected) in actual_args.iter().zip(expected_args.iter()) {
-                    self.try_unify_with_bindings(actual, expected, new_bindings)?;
+
+                // TODO: References are special-cased for now (mut args are invariant) but
+                // users should be able to specify variance on their types in the future.
+                // We can combine both branches by querying the constructor to get arg variances.
+                let a_kind = a_constructor.reference_constructor(&self.bindings);
+                let b_kind = b_constructor.reference_constructor(&self.bindings);
+                if let (Some(_), Some(b_kind)) = (a_kind, b_kind) {
+                    // Reference-kind subtyping (e.g. `uniq <: mut`) is handled by the arm below.
+                    self.subtype(a_constructor, b_constructor, variance, new_bindings)?;
+
+                    // `mut`/`uniq` elements are invariant
+                    let read_only = matches!(b_kind, ReferenceKind::Imm | ReferenceKind::Ref);
+                    let element_variance = if !read_only { Variance::Invariant } else { variance };
+
+                    for (index, (a_arg, b_arg)) in a_args.iter().zip(b_args.iter()).enumerate() {
+                        let arg_variance = if index == 1 { element_variance } else { Variance::Invariant };
+                        self.subtype(a_arg, b_arg, arg_variance, new_bindings)?;
+                    }
+                    Ok(())
+                } else {
+                    self.subtype(a_constructor, b_constructor, Variance::Invariant, new_bindings)?;
+                    for (a_arg, b_arg) in a_args.iter().zip(b_args.iter()) {
+                        self.subtype(a_arg, b_arg, Variance::Invariant, new_bindings)?;
+                    }
+                    Ok(())
                 }
-                Ok(())
             },
-            (Type::Forall(actual_generics, actual), Type::Forall(expected_generics, expected)) => {
-                if actual_generics.len() != expected_generics.len() {
+            (Type::Forall(a_generics, a_body), Type::Forall(b_generics, b_body)) => {
+                if a_generics.len() != b_generics.len() {
                     return Err(());
                 }
-                for (actual, expected) in actual_generics.iter().zip(expected_generics.iter()) {
-                    self.try_unify_with_bindings(&actual.as_type(), &expected.as_type(), new_bindings)?;
+                for (a_generic, b_generic) in a_generics.iter().zip(b_generics.iter()) {
+                    self.subtype(&a_generic.as_type(), &b_generic.as_type(), Variance::Invariant, new_bindings)?;
                 }
-                self.try_unify_with_bindings(actual, expected, new_bindings)
+                self.subtype(a_body, b_body, Variance::Invariant, new_bindings)
             },
-            (
-                Type::Primitive(PrimitiveType::Reference(actual)),
-                Type::Primitive(PrimitiveType::Reference(expected)),
-            ) => {
-                // Allow coercions between reference kinds: any ref type coerces to `ref`,
-                // and `uniq` also coerces to `mut`.
-                match (actual, expected) {
+            (Type::Primitive(PrimitiveType::Reference(a_kind)), Type::Primitive(PrimitiveType::Reference(b_kind))) => {
+                match (a_kind, b_kind) {
                     (_, ReferenceKind::Ref) => Ok(()),
                     (ReferenceKind::Uniq, ReferenceKind::Mut) => Ok(()),
-                    (actual, expected) if actual == expected => Ok(()),
+                    (ReferenceKind::Uniq, ReferenceKind::Imm) => Ok(()),
+                    (_, _) if a_kind == b_kind => Ok(()),
                     _ => Err(()),
                 }
             },
-            (actual, other) if actual == other => Ok(()),
+            (a, b) if a == b => Ok(()),
             _ => Err(()),
         }
     }
@@ -688,10 +795,44 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         } else if self.occurs(&binding, id, new_bindings) {
             // Recursive type error
             Err(())
+        } else if self.is_integer_type_variable(id) {
+            self.try_bind_integer_or_float_type_variable(true, id, binding, new_bindings)
+        } else if self.is_float_type_variable(id) {
+            self.try_bind_integer_or_float_type_variable(false, id, binding, new_bindings)
         } else {
             new_bindings.insert(id, binding);
             Ok(())
         }
+    }
+
+    /// Restrict polymorphic literal variables to types matching their literal kind.
+    fn try_bind_integer_or_float_type_variable(
+        &self, is_int: bool, id: TypeVariableId, binding: Type, new_bindings: &mut TypeBindings,
+    ) -> Result<(), ()> {
+        let is_float = !is_int;
+
+        match &binding {
+            Type::Variable(other) => {
+                let other_is_int = self.is_integer_type_variable(*other);
+                let other_is_float = self.is_float_type_variable(*other);
+                if (is_int && other_is_float) || (is_float && other_is_int) {
+                    return Err(());
+                }
+                if !other_is_int && !other_is_float {
+                    // Bind the unconstrained variable to the literal variable instead so
+                    // we don't lose the int/float constraint on id by binding over it.
+                    new_bindings.insert(*other, Type::Variable(id));
+                    return Ok(());
+                }
+            },
+            Type::Primitive(PrimitiveType::Int(_)) if is_int => (),
+            Type::Primitive(PrimitiveType::Float(_)) if is_float => (),
+            // Avoid binding to Error or Never to avoid leaking these types
+            Type::Primitive(PrimitiveType::Error | PrimitiveType::Never) => return Ok(()),
+            _ => return Err(()),
+        }
+        new_bindings.insert(id, binding);
+        Ok(())
     }
 
     /// True if `variable` occurs within `typ`.
@@ -764,6 +905,27 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         );
         self.next_type_variable_id.set(next_id);
         typ
+    }
+
+    /// Like [Self::from_cst_type] but does not require the converted type to be of kind
+    /// [Kind::Type]. Instead, the type's kind is returned alongside it so the caller can
+    /// decide how to handle type constructors.
+    fn from_cst_type_and_kind(
+        &mut self, typ: &cst::Type, allow_implicit_type_vars: bool,
+    ) -> (Type, crate::type_inference::kinds::Kind) {
+        let mut local_kinds = crate::type_inference::types::LocalKinds::default();
+        let mut next_id = self.next_type_variable_id.get();
+        let result = Type::from_cst_type_helper(
+            typ,
+            None,
+            self.current_resolve(),
+            self.compiler,
+            &mut next_id,
+            &mut local_kinds,
+            allow_implicit_type_vars,
+        );
+        self.next_type_variable_id.set(next_id);
+        result
     }
 
     /// Try to retrieve the types of each field of the given type.

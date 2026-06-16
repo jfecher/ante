@@ -1,0 +1,32 @@
+stop (): Never = stop ()
+
+use_i32 (_x: I32): Unit = ()
+use_str (_x: String): Unit = ()
+
+if_then_diverges (b: Bool) (x: I32): Unit =
+    use_i32 (if b then stop () else x)
+
+if_else_diverges (b: Bool) (x: I32): Unit =
+    use_i32 (if b then x else stop ())
+
+match_leading_diverges (n: I32): String =
+    match n
+    | 0 -> stop ()
+    | _ -> "nonzero"
+
+// When all branches diverge, the result type should be `Never`
+if_all_diverge (b: Bool): Unit =
+    x = if b then stop () else stop ()
+    use_i32 x
+    use_str x
+
+match_all_diverge (n: I32): Unit =
+    x = match n
+      | 0 -> stop ()
+      | _ -> stop ()
+    use_i32 x
+    use_str x
+
+main () = ()
+
+// args: --check --no-color

@@ -6,7 +6,7 @@ import Std.Fail.Fail, try
 
 main () =
     iota 10
-        |> filter (fn x -> x.* %% 2usz)
+        |> filter (fn x -> x.* %% 2)
         |> map (_ * 2)
         |> enumerate
         |> iter println

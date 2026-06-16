@@ -66,9 +66,22 @@ Vec.get (v: imm Vec t) (i: Usz) {Fail}: imm t =
     then v.get_unchecked i
     else fail ()
 
+/// Retrieves a mutable reference to the element at the given 0-based index.
+/// Fails if the index is out of bounds
+Vec.get_mut (v: uniq Vec t) (i: Usz) {Fail}: uniq t =
+    if i < v.len
+    then v.get_mut_unchecked i
+    else fail ()
+
 /// An unsafe function to retrieve an element at the given index
 /// without checking if the index is inbounds
 Vec.get_unchecked (v: imm Vec t) (i: Usz): imm t =
+    ptr = offset v.data i
+    transmute ptr
+
+/// An unsafe function to retrieve a mutable element at the given index
+/// without checking if the index is inbounds
+Vec.get_mut_unchecked (v: uniq Vec t) (i: Usz): uniq t =
     ptr = offset v.data i
     transmute ptr
 
@@ -226,7 +239,17 @@ impl print_vec {p: Print t}: Print (ref Vec t) with
         print "]"
 
 impl extract_vec: Extract (Vec t) Usz t with
-    (.[) v i = v.data.[i]
+    (.[]) v i = v.data.[i]
+
+// Note that this impl is different from `Vec.insert`.
+// Vec.insert will insert into a slot, moving the previous element and each
+// element after to the right. This `Insert` implementation will instead
+// directly mutate the element at the given index to the new element.
+impl insert_vec {Fail}: Insert (mut Vec t) Usz t with
+    (.[]:=) (v: mut Vec t) i e =
+        v: uniq Vec t = transmute v
+        slot = v.get_mut i
+        slot := e
 
 implicit stream_vec: Stream (Vec a) a =
     Stream fn vec e ->

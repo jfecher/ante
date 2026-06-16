@@ -46,9 +46,10 @@ pub command: Option<Commands>,
     #[arg(long)]
     pub emit_all: bool,
 
-    /// Specify the backend to use ('llvm' or 'cranelift'). Note that cranelift is only for debug builds.
-    /// Ante will use cranelift by default for debug builds and llvm by default for optimized builds,
-    /// unless overridden by this flag
+    /// Specify the backend to use ('llvm', 'c', or 'cranelift'). Note that cranelift is only for debug builds and is currently unimplemented.
+    /// The default priority for each backend is:
+    /// - debug: cranelift > llvm > c
+    /// - release: llvm > c
     #[arg(long)]
     pub backend: Option<Backend>,
 
@@ -105,6 +106,7 @@ pub enum EmitTarget {
 pub enum Backend {
     Cranelift,
     Llvm,
+    C,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -118,6 +120,7 @@ pub enum OptLevel {
 }
 
 impl OptLevel {
+    #[cfg(feature = "llvm")]
     pub fn as_passes_string(self) -> &'static str {
         match self {
             OptLevel::O0 => "default<O0>",
@@ -129,6 +132,7 @@ impl OptLevel {
         }
     }
 
+    #[cfg(feature = "llvm")]
     pub fn inkwell(self) -> inkwell::OptimizationLevel {
         use inkwell::OptimizationLevel;
         match self {
@@ -136,6 +140,17 @@ impl OptLevel {
             OptLevel::O1 => OptimizationLevel::Less,
             OptLevel::O2 | OptLevel::Os | OptLevel::Oz => OptimizationLevel::Default,
             OptLevel::O3 => OptimizationLevel::Aggressive,
+        }
+    }
+
+    pub fn as_cc_opt_string(&self) -> &'static str {
+        match self {
+            OptLevel::O0 => "-O0",
+            OptLevel::O1 => "-O1",
+            OptLevel::O2 => "-O2",
+            OptLevel::O3 => "-O3",
+            OptLevel::Os => "-Os",
+            OptLevel::Oz => "-Oz",
         }
     }
 }

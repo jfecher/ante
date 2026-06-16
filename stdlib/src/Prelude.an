@@ -5,7 +5,7 @@
 */
 import Std.C.putchar, exit, memcmp, malloc, memcpy, free
 
-export String, from_parts, Maybe, None, Some, unwrap, unwrap_or_else, Result, Ok, Error, (,),
+export String, from_parts, Maybe, None, Some, iff, unwrap, unwrap_or_else, Result, Ok, Error, (,),
     first, second, third, fourth, fifth,
     Cast, cast, cast_same, cast_ptr_usz, cast_usz_ptr,
     cast_u8_u16, cast_u8_u32, cast_u8_u64, cast_u8_usz, cast_u16_u8, cast_u16_u32, cast_u16_u64, cast_u16_usz, cast_u32_u8, cast_u32_u16, cast_u32_u64, cast_u32_usz, cast_u64_u8, cast_u64_u16, cast_u64_u32, cast_u64_usz,
@@ -26,16 +26,17 @@ export String, from_parts, Maybe, None, Some, unwrap, unwrap_or_else, Result, Ok
     Num, num_i8, num_i16, num_i32, num_i64, num_isz, num_u8, num_u16, num_u32, num_u64, num_usz, num_f32, num_f64,
     Append, (++), append_string,
     (|>), (<|),
-    Extract, (.[), extract_ptr_usz, extract_array, extract_array_move,
-    array_len, array_get, array_set, array_get_unchecked, array_set_unchecked,
+    Extract, (.[]), extract_ptr_usz, extract_array, extract_array_move, extract_array_mut,
+    Insert, (.[]:=), insert_ptr_usz, insert_array,
+    array_len, array_get, array_get_mut, array_set, array_get_unchecked, array_set_unchecked,
     Bitwise, band, bor, bxor, bitwise_i32, bitwise_u64,
     Type, MkType, size_of,
-    offset, offset_bytes, deref, deref_ptr, ptr_store, array_insert, ptr_to_mut,
+    offset, offset_bytes, deref, deref_ptr, ptr_store, array_insert, ptr_to_mut, ptr_to_uniq,
     Clone, clone, Drop, drop, drop_string,
     drop_i8, drop_i16, drop_i32, drop_i64, drop_isz, drop_u8, drop_u16, drop_u32, drop_u64, drop_usz, drop_f32, drop_f64, drop_unit, drop_bool, drop_char, drop_ptr,
-    Copy, (.*), copy_i8, copy_i16, copy_i32, copy_i64, copy_isz, copy_u8, copy_u16, copy_u32, copy_u64, copy_usz, copy_f32, copy_f64, copy_unit, copy_bool, copy_char, copy_ptr, copy_ref, copy_mut, copy_imm, clone_string, copy_pair, copy_maybe,
+    Copy, (.*), copy_i8, copy_i16, copy_i32, copy_i64, copy_isz, copy_u8, copy_u16, copy_u32, copy_u64, copy_usz, copy_f32, copy_f64, copy_unit, copy_bool, copy_char, copy_ptr, copy_ref, copy_mut, copy_imm, copy_uniq, clone_string, copy_pair, copy_maybe,
     null, transmute,
-    Print, print, println, print_unsigned, print_signed, print_float, print_u8, print_u16, print_u32, print_u64, print_usz, print_i8, print_i16, print_i32, print_i64, print_isz, print_char, print_f64, print_f32, print_pair, print_string, print_maybe, print_ref, print_bool,
+    Print, print, println, print_unsigned, print_signed, print_float, print_u8, print_u16, print_u32, print_u64, print_usz, print_i8, print_i16, print_i32, print_i64, print_isz, print_char, print_f64, print_f32, print_pair, print_string, print_maybe, print_ref, print_bool, print_array,
     Iterator, next, iter, Range, iterator_range, iter_range, repeat,
     panic, ignore
 
@@ -55,6 +56,11 @@ String.from_parts (pointer: Ptr Char) (length: U32): String =
 type Maybe t =
    | None
    | Some t
+
+/// If `condition` is true, returns `Some (then_ ())`,
+/// otherwise returns `None`.
+iff (condition: Bool) (then_: fn Unit => a): Maybe a =
+    if condition then Some (then_ ()) else None
 
 Maybe.unwrap (m: Maybe t): t =
     match m
@@ -764,13 +770,13 @@ impl append_string: Append String with
 (<|) f x = f x
 
 ability Extract collection index elem =
-    (.[): fn collection index -> elem
+    (.[]): fn collection index -> elem
 
 // TODO: Remove. This breaks ownership
 impl extract_ptr_usz: Extract (Ptr t) Usz t with
-    (.[) ptr index = deref_ptr <| offset ptr index
+    (.[]) ptr index = deref_ptr <| offset ptr index
 
-array_len (array: ref Array n t): Usz =
+array_len (_array: ref Array n t): Usz =
     size_t = size_of (MkType : Type t)
     if size_t == 0 then 0 else
         size_of (MkType : Type (Array n t)) / size_t
@@ -790,16 +796,22 @@ array_get array index =
         panic "array_get index out of bounds"
     array_get_unchecked array index
 
+array_get_mut (array: mut Array n t) index: mut t =
+    transmute (array_get array index)
+
 array_set (array: mut Array n t) index elem =
     if index >= array_len array then
         panic "array_set index out of bounds"
     array_set_unchecked array index elem
 
 impl extract_array: Extract (ref Array n t) Usz (ref t) with
-    (.[) arr index = array_get arr index
+    (.[]) = array_get
 
 impl extract_array_move: Extract (Array n t) Usz t with
-    (.[) arr index = deref (array_get arr index)
+    (.[]) arr index = deref (array_get arr index)
+
+impl extract_array_mut: Extract (mut Array n t) Usz (mut t) with
+    (.[]) = array_get_mut
 
 // Bitwise functions
 // TODO: Move these to separate module
@@ -827,16 +839,16 @@ type Type t = | MkType
 size_of (v: Type t): Usz = intrinsic "SizeOf" v
 
 offset (ptr: Ptr t) (index: Usz): Ptr t =
-    addr: Usz = transmute ptr
+    addr = Usz ptr
     new_addr = addr + index * size_of (MkType: Type t)
     transmute new_addr
 
 offset_bytes (ptr: Ptr t) (index: Usz): Ptr t =
-    addr: Usz = transmute ptr
+    addr = Usz ptr
     transmute (addr + index)
 
 offset_negative (ptr: Ptr t) (index: Usz): Ptr t =
-    addr: Usz = transmute ptr
+    addr = Usz ptr
     transmute (addr - index)
 
 // Dereference without a Copy constraint. This is unsafe to use directly
@@ -847,13 +859,15 @@ deref_ptr (p: Ptr t): t =
     deref (transmute p)
 
 ptr_store (p: Ptr a) (value: a): Unit =
-    addr: mut a = transmute p
+    addr = ptr_to_mut p
     addr := value
 
 array_insert (p: Ptr a) (index: Usz) (value: a): Unit =
     offset p index |> ptr_store value
 
 ptr_to_mut: fn (Ptr a) -> mut a = transmute
+ptr_to_uniq: fn (Ptr a) -> uniq a = transmute
+ref_to_ptr: fn (ref a) -> Ptr a = transmute
 
 ability Copy t =
     (.*): fn (ref t) -> t
@@ -905,6 +919,9 @@ impl copy_mut: Copy (mut t) with
     (.*) = deref
 impl copy_imm: Copy (imm t) with
     (.*) = deref
+// TODO: Temporary. Needed for HashMap.get_or_insert_with
+impl copy_uniq: Copy (uniq t) with
+    (.*) = deref
 
 impl copy_pair {Copy a} {Copy b}: Copy (a, b) with
     (.*) pair = (pair.first, pair.second)
@@ -952,10 +969,18 @@ null (): Ptr a = transmute 0usz
 transmute (x: a): b =
     intrinsic "Transmute" x
 
-// TODO: Special case insertion vs extraction
-// ability Insert collection index =
-//     (.[): mut collection - index - elem -> Unit
+/// Insert an element into a collection.
+/// `col.[i] := elem` resolves to `Insert` while `col.[i]` alone resolves to `Extract`
+ability Insert collection index elem =
+    (.[]:=): fn collection index elem -> Unit
 
+impl insert_ptr_usz: Insert (mut Ptr t) Usz t with
+    (.[]:=) ptr index value = ptr_store (offset ptr index) value
+
+impl insert_array: Insert (mut Array n t) Usz t with
+    (.[]:=) arr index value = array_set arr index value
+
+// TODO: Take argument by reference
 ability Print t =
     print: fn t -> Unit
 
@@ -1060,6 +1085,15 @@ impl print_bool: Print Bool with
     print b =
         if b then print "true"
         else print "false"
+
+impl print_array {Print t}: Print (Array n t) with
+    print array =
+        print "["
+        for i in 0 .. array_len array do
+            if i != 0 then
+                print ", "
+            print (deref (ref array).[i])
+        print "]"
 
 ability Iterator it elem =
     next: fn it -> Maybe (it, elem)

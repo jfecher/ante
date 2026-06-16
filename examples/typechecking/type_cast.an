@@ -1,36 +1,36 @@
 main () =
-    a = U32 42u8 // ok
-    b = I64 (I64 42) // ok
+    _a = U32 42u8 // ok
+    _b = I64 (I64 42) // ok
 
     // No Cast impl from U8 to I32
-    c = I32 42u8
+    _c = I32 42u8
 
     // No Cast impl from String to U8
-    d = U8 "hello"
+    _d = U8 "hello"
 
     // No Cast impl from Bool to U8
-    e = U8 true
+    _e = U8 true
 
 // args: -e ast-t --no-color
 // expected exit status: 1
 // expected stdout:
 // (main: fn Unit -> Unit) () =
-//     (a: U32) = (Std.Prelude.Cast.cast: fn U8 {Cast U8 U32} [Ptr Unit] -> U32) 42_U8 {(cast_u8_u32: Cast U8 U32)}: U32
-//     (b: I64) = (Std.Prelude.Cast.cast: fn I64 {Cast I64 I64} [Ptr Unit] -> I64) ((Std.Prelude.Cast.cast: fn I32 {Cast I32 I64} [Ptr Unit] -> I64) 42 {(cast_i32_i64: Cast I32 I64)}: I64) {(cast_same: Cast I64 I64)}: I64
-//     (c: I32) = (Std.Prelude.Cast.cast: fn U8 {Cast U8 I32} [Ptr Unit] -> I32) 42_U8 {(cast_u8_i32: Cast U8 I32)}: I32
-//     (d: U8) = (Std.Prelude.Cast.cast: fn String {Cast String U8} [Ptr Unit] -> U8) "hello" {(error)}: U8
-//     (e: U8) = (Std.Prelude.Cast.cast: fn Bool {Cast Bool U8} [Ptr Unit] -> U8) true {(error)}: U8
+//     (_a: U32) = (Std.Prelude.Cast.cast: fn U8 {Cast U8 U32} [Ptr Unit] -> U32) 42_U8 {(cast_u8_u32: Cast U8 U32)}: U32
+//     (_b: I64) = (Std.Prelude.Cast.cast: fn I64 {Cast I64 I64} [Ptr Unit] -> I64) ((Std.Prelude.Cast.cast: fn I32 {Cast I32 I64} [Ptr Unit] -> I64) 42 {(cast_i32_i64: Cast I32 I64)}: I64) {(cast_same: Cast I64 I64)}: I64
+//     (_c: I32) = (Std.Prelude.Cast.cast: fn U8 {Cast U8 I32} [Ptr Unit] -> I32) 42_U8 {(cast_u8_i32: Cast U8 I32)}: I32
+//     (_d: U8) = (Std.Prelude.Cast.cast: fn String {Cast String U8} [Ptr Unit] -> U8) "hello" {(error)}: U8
+//     (_e: U8) = (Std.Prelude.Cast.cast: fn Bool {Cast Bool U8} [Ptr Unit] -> U8) true {(error)}: U8
 
 // expected stderr:
-// examples/typechecking/type_cast.an:9:9
+// examples/typechecking/type_cast.an:9:10
 //  8 |     // No Cast impl from String to U8
-//  9 |     d = U8 "hello"	// error: No implicit found for type Cast String U8 required by cast
-//    |         ^^^^^^^^^^
+//  9 |     _d = U8 "hello"	// error: No implicit found for type Cast String U8 required by cast
+//    |          ^^^^^^^^^^
 // 
-// examples/typechecking/type_cast.an:12:9
+// examples/typechecking/type_cast.an:12:10
 // 11 |     // No Cast impl from Bool to U8
-// 12 |     e = U8 true	// error: No implicit found for type Cast Bool U8 required by cast
-//    |         ^^^^^^^
+// 12 |     _e = U8 true	// error: No implicit found for type Cast Bool U8 required by cast
+//    |          ^^^^^^^
 // 
 // Found 2 errors and 0 warnings
 

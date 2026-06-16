@@ -97,6 +97,12 @@ impl Display for BlockId {
     }
 }
 
+impl Display for InstructionId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "v{}", self.0)
+    }
+}
+
 fn is_atom(t: &Type) -> bool {
     matches!(t, Type::Primitive(_) | Type::Generic(_) | Type::Union(_))
 }

@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, sync::Arc};
 
-use cst::{Comptime, Declaration, Lambda, MemberAccess, Name, Parameter, Pattern};
+use cst::{Comptime, Constructor, Declaration, Lambda, MemberAccess, Name, Parameter, Pattern};
 use ids::{ExprId, NameId, PathId, PatternId, TopLevelId};
 use rustc_hash::FxHashSet;
 use serde::{Deserialize, Serialize};
@@ -9,7 +9,10 @@ use crate::{
     diagnostics::{ConfusingBodyKind, Diagnostic, ErrorDefault, Hint, Location, Span},
     incremental,
     iterator_extensions::mapvec,
-    lexer::{Lexer, token::Token},
+    lexer::{
+        Lexer,
+        token::{INDEX_ASSIGN_OPERATOR_FUNCTION_NAME, INDEX_OPERATOR_FUNCTION_NAME, Token},
+    },
     name_resolution::namespace::SourceFileId,
     parser::{
         context::TopLevelContext,
@@ -1324,8 +1327,8 @@ impl<'tokens> Parser<'tokens> {
     ///                   | function_parameter_pattern
     fn parse_function_parameter(&mut self) -> Result<Parameter> {
         if *self.current_token() == Token::BraceLeft {
-            let pattern = self.parse_implicit_function_parameter()?;
-            Ok(Parameter::implicit(pattern))
+            let (pattern, is_mutable) = self.parse_implicit_function_parameter()?;
+            if is_mutable { Ok(Parameter::implicit_mutable(pattern)) } else { Ok(Parameter::implicit(pattern)) }
         } else if *self.current_token() == Token::ParenthesisLeft && self.peek_next_token() == &Token::Var {
             let pattern = self.with_pattern_id_and_location(|this| {
                 this.advance(); // consume `(`
@@ -1348,10 +1351,19 @@ impl<'tokens> Parser<'tokens> {
     /// implicit_function_parameter: '{' identifier '}'
     ///                            | '{' type_no_type_variable '}'
     ///                            | '{' pattern '}'
-    fn parse_implicit_function_parameter(&mut self) -> Result<PatternId> {
+    ///                            | '{' 'var' pattern '}'
+    ///
+    /// Returns the parsed pattern along with whether it was declared mutable via `var`.
+    fn parse_implicit_function_parameter(&mut self) -> Result<(PatternId, bool)> {
         self.expect(Token::BraceLeft, "parse_implicit_function_parameter")?;
 
-        self.or(
+        if self.accept(Token::Var) {
+            let pattern = self.parse_pattern()?;
+            self.expect(Token::BraceRight, "a `}` to close the opening `{` from the implicit parameter")?;
+            return Ok((pattern, true));
+        }
+
+        let pattern = self.or(
             |this| {
                 this.or(
                     |this| {
@@ -1377,7 +1389,8 @@ impl<'tokens> Parser<'tokens> {
                 this.expect(Token::BraceRight, "a `}` to close the opening `{` from the implicit parameter")?;
                 Ok(pattern)
             },
-        )
+        )?;
+        Ok((pattern, false))
     }
 
     fn parse_pattern(&mut self) -> Result<PatternId> {
@@ -1786,13 +1799,13 @@ impl<'tokens> Parser<'tokens> {
                 },
                 Token::Index => {
                     result = self.with_expr_id_and_location(|this| {
-                        // `result.[i]` gets transformed into a function call `(.[) result i`
+                        // `result.[i]` gets transformed into a function call `(.[]) result i`
                         let result = Argument::explicit(result);
                         let location = this.current_token_location();
                         this.advance();
                         let index = Argument::explicit(this.parse_expression()?);
                         this.expect(Token::BracketRight, "a `]` to terminate the index expression")?;
-                        let path = Path::ident(".[".to_string(), location.clone());
+                        let path = Path::ident(INDEX_OPERATOR_FUNCTION_NAME.to_string(), location.clone());
                         let path = this.push_path(path, location.clone());
                         let function = this.push_expr(Expr::Variable(path), location);
                         Ok(Expr::Call(Call { function, arguments: vec![result, index] }))
@@ -1979,11 +1992,15 @@ impl<'tokens> Parser<'tokens> {
     fn parse_do(&mut self) -> Result<ExprId> {
         self.expect(Token::Do, "`do` to start this do expression")?;
         let start = self.previous_token_span();
-        self.accept(Token::Newline);
 
         let body = match self.current_token() {
+            Token::Newline if *self.peek_next_token() == Token::Indent => self.parse_block()?,
+            Token::Newline => {
+                self.advance();
+                self.parse_sequence_items_expr()
+            },
             Token::Indent => self.parse_block()?,
-            _ => self.parse_sequence_items_expr(),
+            _ => self.parse_expression()?,
         };
 
         let end = self.previous_token_span();
@@ -2064,10 +2081,60 @@ impl<'tokens> Parser<'tokens> {
         if self.accept(Token::Assignment) {
             let rhs = self.parse_expression()?;
             let location = self.expr_location(expression).to(&self.expr_location(rhs));
+
+            // `collection.[index] := rhs` resolves to the `Insert` ability rather than a plain
+            // store: rewrite it into a call `(.[]:=) collection index rhs` so it goes through
+            // normal ability dispatch. Reads (`a.[i]`) still resolve to `Extract`.
+            if let Some((collection, index)) = self.index_call_args(expression) {
+                // Borrow the collection mutably so the insertion mutates it in place. For nested
+                // indices (`a.[i].[j] := v`) this pushes `mut` to the innermost receiver so each
+                // intermediate `.[` read resolves to a `mut`-returning Extract.
+                let collection = self.mutify_receiver(collection);
+
+                let path = Path::ident(INDEX_ASSIGN_OPERATOR_FUNCTION_NAME.to_string(), location.clone());
+                let path = self.push_path(path, location.clone());
+                let function = self.push_expr(Expr::Variable(path), location.clone());
+                let arguments =
+                    vec![Argument::explicit(collection), Argument::explicit(index), Argument::explicit(rhs)];
+                return Ok(self.push_expr(Expr::Call(Call { function, arguments }), location));
+            }
+
             Ok(self.push_expr(Expr::Assignment(cst::Assignment { lhs: expression, rhs, op: None }), location))
         } else {
             Ok(expression)
         }
+    }
+
+    /// Borrow the base of a (possibly nested) index expression mutably so that
+    /// `a.[i].[j] := v` threads `mut` references through each `.[` read:
+    ///   `arr`        -> `mut arr`
+    ///   `board.[r]`  -> `(.[) (mut board) r`
+    ///   `a.[i].[j]`  -> `(.[) ((.[) (mut a) i) j`
+    fn mutify_receiver(&mut self, expr: ExprId) -> ExprId {
+        let location = self.expr_location(expr);
+        if let Some((receiver, index)) = self.index_call_args(expr) {
+            let receiver = self.mutify_receiver(receiver);
+            let path = Path::ident(INDEX_OPERATOR_FUNCTION_NAME.to_string(), location.clone());
+            let path = self.push_path(path, location.clone());
+            let function = self.push_expr(Expr::Variable(path), location.clone());
+            let arguments = vec![Argument::explicit(receiver), Argument::explicit(index)];
+            self.push_expr(Expr::Call(Call { function, arguments }), location)
+        } else {
+            self.push_expr(Expr::Reference(cst::Reference { kind: ReferenceKind::Mut, rhs: expr }), location)
+        }
+    }
+
+    /// If `expr` is exactly an index call `collection.[index]` (a call to the `(.[)` operator),
+    /// return its `(collection, index)` argument expressions. Other calls (e.g. `a.*`) do not match.
+    fn index_call_args(&self, expr: ExprId) -> Option<(ExprId, ExprId)> {
+        let Expr::Call(call) = &self.current_context.exprs[expr] else { return None };
+        if call.arguments.len() != 2 {
+            return None;
+        }
+        let Expr::Variable(path_id) = &self.current_context.exprs[call.function] else { return None };
+        let path = &self.current_context.paths[*path_id];
+        (path.components.len() == 1 && path.components[0].0 == INDEX_OPERATOR_FUNCTION_NAME)
+            .then(|| (call.arguments[0].expr, call.arguments[1].expr))
     }
 
     fn try_accept_compound_assign_op(&mut self) -> Option<(cst::CompoundAssignOp, &'static str)> {
@@ -2397,6 +2464,15 @@ impl<'tokens> Parser<'tokens> {
             return self.parse_extern();
         }
 
+        // A named constructor `MyType with field1 = e1, field2 = e2` starts with a type,
+        // so speculatively try to parse one when at a type name. We only commit to this
+        // parse if the type is followed by `with`.
+        if matches!(self.current_token(), Token::TypeName(_)) {
+            if let Ok(constructor) = self.try_(|this| this.parse_named_constructor(ban_do)) {
+                return Ok(constructor);
+            }
+        }
+
         let function = self.parse_atom(min_prec, ban_do)?;
 
         if let Ok(arguments) = self.many1(|this| Self::parse_function_arg(this, min_prec, ban_do)) {
@@ -2407,6 +2483,78 @@ impl<'tokens> Parser<'tokens> {
         } else {
             Ok(function)
         }
+    }
+
+    /// named_constructor: type_application 'with' constructor_fields
+    fn parse_named_constructor(&mut self, ban_do: bool) -> Result<ExprId> {
+        let start = self.current_token_span();
+        let typ = self.parse_type_application()?;
+        self.expect(Token::With, "`with` to begin this constructor's fields")?;
+        let fields = self.parse_constructor_fields(ban_do)?;
+        let location = start.to(&self.previous_token_span()).in_file(self.file_id);
+        Ok(self.push_expr(Expr::Constructor(Constructor { typ, fields }), location))
+    }
+
+    /// constructor_fields: indent constructor_field (newline constructor_field)* unindent
+    ///                   | constructor_field (',' constructor_field)*
+    fn parse_constructor_fields(&mut self, ban_do: bool) -> Result<Vec<(NameId, ExprId)>> {
+        if *self.current_token() == Token::Indent {
+            self.parse_indented(|this| {
+                Ok(this.delimited(|this| this.parse_constructor_field(false, ban_do), Token::Newline, true))
+            })
+        } else {
+            Ok(self.delimited(|this| this.parse_constructor_field(true, ban_do), Token::Comma, true))
+        }
+    }
+
+    /// constructor_field: ident parameter+ (':' typ)? '=' expression  // function sugar
+    ///                  | ident '=' expression
+    ///                  | ident                                       // sugar for `ident = ident`
+    ///
+    /// `inline` is true if this field is part of a comma-separated field list rather than
+    /// a newline-separated one. Inline field values can't contain top-level commas since
+    /// those separate the fields themselves.
+    fn parse_constructor_field(&mut self, inline: bool, ban_do: bool) -> Result<(NameId, ExprId)> {
+        let start = self.current_token_span();
+        let name = self.parse_ident_id()?;
+
+        // Function definition sugar: `field arg1 arg2 = body` desugars to a lambda,
+        // mirroring `parse_function_definition`.
+        if let Ok(parameters) = self.try_(Self::parse_function_parameters) {
+            let return_type = if self.accept(Token::Colon) {
+                self.parse_with_recovery(Self::parse_type, Token::Equal, &[Token::Newline, Token::Indent]).ok()
+            } else {
+                None
+            };
+
+            self.expect(Token::Equal, "`=` to begin the function body")?;
+            let body = if inline {
+                self.parse_shunting_yard(0, ban_do, /*ban_comma:*/ true)?
+            } else {
+                self.parse_block_or_expression()?
+            };
+
+            let lambda = Expr::Lambda(Lambda { parameters, return_type, body, is_move: false });
+            let location = start.to(&self.previous_token_span()).in_file(self.file_id);
+            return Ok((name, self.push_expr(lambda, location)));
+        }
+
+        if self.accept(Token::Equal) {
+            let value = if inline {
+                self.parse_shunting_yard(0, ban_do, /*ban_comma:*/ true)?
+            } else {
+                self.parse_block_or_expression()?
+            };
+            return Ok((name, value));
+        }
+
+        // Otherwise this is just `field`, which is sugar for `field = field`
+        let name_string = self.current_context.names[name].as_ref().clone();
+        let location = self.current_context.name_locations[name].clone();
+        let path = Path::ident(name_string, location.clone());
+        let path = self.push_path(path, location.clone());
+        let value = self.push_expr(Expr::Variable(path), location);
+        Ok((name, value))
     }
 
     fn parse_char(&mut self, char: char) -> Result<ExprId> {

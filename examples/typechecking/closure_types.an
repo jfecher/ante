@@ -1,7 +1,7 @@
 main () =
     a = 1
     b = 2
-    c = 3
+    _c = 3
     free_function x = use x
     captures1 x = use (x, a)
     captures2 x = use (x, a, b)
@@ -18,14 +18,14 @@ main () =
     _ = captures_closure 0
     _ = captures_nested 0
 
-use y = ()
+use _y = ()
 
 // args: -east-t --no-color
 // expected stdout:
 // (main: fn Unit -> Unit) () =
 //     (a: I32) = 1
 //     (b: I32) = 2
-//     (c: I32) = 3
+//     (_c: I32) = 3
 //     (free_function: fn I32 -> Unit) (x: I32) = (use: fn I32 -> Unit) (x: I32)
 //     (captures1: fn I32 [I32] -> Unit) (x: I32) [(a: I32)] = (use: fn (I32, I32) -> Unit) ((x: I32) (,: fn I32 I32 -> I32, I32) (a: I32))
 //     (captures2: fn I32 [I32, I32] -> Unit) (x: I32) [(a: I32), (b: I32)] = (use: fn (I32, (I32, I32)) -> Unit) ((x: I32) (,: fn I32 (I32, I32) -> I32, (I32, I32)) ((a: I32) (,: fn I32 I32 -> I32, I32) (b: I32)))
@@ -39,5 +39,5 @@ use y = ()
 //     (_: Unit) = (captures_closure: fn I32 [(fn I32 [I32, I32] -> Unit)] -> Unit) 0
 //     (_: Unit) = (captures_nested: fn I32 [I32] -> Unit) 0
 // 
-// (use: fn _ -> Unit) (y: _) = ()
+// (use: fn _ -> Unit) (_y: _) = ()
 

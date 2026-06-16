@@ -42,16 +42,18 @@ use colored::Colorize;
 use diagnostics::Diagnostic;
 use incremental::{Db, GetCrateGraph, Parse, Resolve};
 use name_resolution::namespace::{CrateId, LocalModuleId, SourceFileId};
+#[cfg(feature = "llvm")]
+use std::sync::Arc;
 use std::{
     collections::BTreeSet,
     path::{Path, PathBuf},
     process::Command,
-    sync::Arc,
 };
 
+#[cfg(feature = "llvm")]
+use crate::codegen::llvm::{CodegenLlvmResult, codegen_llvm};
 use crate::{
     cli::{EmitTarget, OptLevel},
-    codegen::llvm::{CodegenLlvmResult, codegen_llvm},
     diagnostics::{DiagnosticKind, collect_all_diagnostics},
     files::{make_compiler, write_metadata},
     incremental::{TargetPointerSize, TypeCheck, ValidateExports},
@@ -127,9 +129,14 @@ let files = match &args.command {
         Some(EmitTarget::Mir) => display_mir(&mut compiler, args.emit_all, false),
         Some(EmitTarget::MirTail) => display_mir(&mut compiler, args.emit_all, true),
         Some(EmitTarget::MirMono) => display_mir_mono(&mut compiler),
-        Some(EmitTarget::Ir) => llvm_codegen_separate(&mut compiler, true, args.show_time, opt_level).2,
-        None => {
-            llvm_codegen_all(&mut compiler, run, args.delete_binary, args.show_time, opt_level)
+        Some(EmitTarget::Ir) => display_ir(&mut compiler, args.show_time, opt_level),
+        None => match resolve_backend(args.backend) {
+            #[cfg(feature = "llvm")]
+            cli::Backend::Llvm => {
+                llvm_codegen_all(&mut compiler, run, args.delete_binary, args.show_time, opt_level)
+            },
+            cli::Backend::C => c_codegen_all(&mut compiler, &args.files, run, args.delete_binary, opt_level),
+            _ => unreachable!("resolve_backend only returns backends this compiler can run"),
         },
     };
 
@@ -149,6 +156,30 @@ let files = match &args.command {
 
     if error_count != 0 {
         std::process::exit(1);
+    }
+}
+
+/// Resolve the effective backend from the user's `--backend` choice, exiting with an error
+/// for any backend this compiler cannot run. When `--backend` is omitted the priority is:
+/// - debug: cranelift > llvm > c
+/// - release: llvm > c
+fn resolve_backend(requested: Option<cli::Backend>) -> cli::Backend {
+    use cli::Backend;
+    match requested {
+        Some(Backend::Cranelift) => {
+            eprintln!("The cranelift backend is not yet implemented");
+            std::process::exit(1);
+        },
+        Some(Backend::Llvm) if !cfg!(feature = "llvm") => {
+            eprintln!(
+                "This compiler was built without the 'llvm' feature, so the llvm backend is \
+                 unavailable. Rebuild with `cargo build --features llvm` to enable it."
+            );
+            std::process::exit(1);
+        },
+        Some(backend) => backend,
+        None if cfg!(feature = "llvm") => Backend::Llvm,
+        None => Backend::C,
     }
 }
 
@@ -358,8 +389,25 @@ fn display_mir_mono(compiler: &mut Db) -> BTreeSet<Diagnostic> {
     diagnostics
 }
 
+fn display_ir(compiler: &mut Db, show_time: bool, opt_level: OptLevel) -> BTreeSet<Diagnostic> {
+    #[cfg(feature = "llvm")]
+    {
+        llvm_codegen_separate(compiler, true, show_time, opt_level).2
+    }
+    #[cfg(not(feature = "llvm"))]
+    {
+        let _ = (compiler, show_time, opt_level);
+        eprintln!(
+            "Emitting IR requires the llvm backend, but this compiler was built without \
+            the 'llvm' feature. Rebuild with `cargo build --features llvm` to enable it."
+        );
+        std::process::exit(1);
+    }
+}
+
 /// Codegen each item as a separate llvm module
 /// Returns (module strings, true if there are any errors, diagnostics)
+#[cfg(feature = "llvm")]
 fn llvm_codegen_separate(
     compiler: &mut Db, display_ir: bool, show_time: bool, opt_level: OptLevel,
 ) -> (Vec<Arc<Vec<u8>>>, bool, BTreeSet<Diagnostic>) {
@@ -380,6 +428,7 @@ fn llvm_codegen_separate(
     (modules, false, diagnostics)
 }
 
+#[cfg(feature = "llvm")]
 fn display_llvm_bitcode(result: &CodegenLlvmResult, module_name: &str) {
     let buffer = inkwell::memory_buffer::MemoryBuffer::create_from_memory_range(&result.module_bitcode, module_name);
     let context = inkwell::context::Context::create();
@@ -391,6 +440,7 @@ fn display_llvm_bitcode(result: &CodegenLlvmResult, module_name: &str) {
 }
 
 /// Codegen everything, linking together each separate llvm module
+#[cfg(feature = "llvm")]
 fn llvm_codegen_all(
     compiler: &mut Db, run: bool, delete_binary: bool, show_time: bool, opt_level: OptLevel,
 ) -> BTreeSet<Diagnostic> {
@@ -408,22 +458,53 @@ fn llvm_codegen_all(
         .unwrap_or_else(|| "a.out".into());
     let module_name = module_name.to_string_lossy();
 
-    let link_succeeded = codegen::llvm::link(modules, &module_name, show_time, opt_level);
+    let link_succeeded = codegen::llvm::link(modules, &program_name, show_time, opt_level);
     if !link_succeeded {
         return diagnostics;
     }
 
     if run {
         // Use an absolute path so the binary can be found regardless of PATH.
-        let binary_path = binary_name(&module_name);
+        let binary_path = binary_name(&program_name);
 
         Command::new(&binary_path).spawn().unwrap().wait().unwrap();
         if delete_binary {
-            std::fs::remove_file(module_name.as_ref()).unwrap();
+            std::fs::remove_file(binary_path).unwrap();
         }
     }
 
     diagnostics
+}
+
+/// Monomorphize and codegen the whole program through the C backend, then optionally run it.
+fn c_codegen_all(
+    compiler: &mut Db, files: &[PathBuf], run: bool, delete_binary: bool, opt_level: OptLevel,
+) -> BTreeSet<Diagnostic> {
+    let diagnostics = collect_all_diagnostics(compiler);
+    let (errors, _) = classify_diagnostics(&diagnostics);
+    if errors != 0 {
+        return diagnostics;
+    }
+
+    let program_name = files_to_program_name(files);
+    let mir = mir::monomorphization::monomorphize(compiler);
+    codegen::c::codegen_c_for_mir(&mir, &program_name, opt_level);
+
+    if run {
+        let binary_path = binary_name(&program_name);
+        Command::new(&binary_path).spawn().unwrap().wait().unwrap();
+        if delete_binary {
+            std::fs::remove_file(binary_path).unwrap();
+        }
+    }
+
+    diagnostics
+}
+
+/// Return the default name of the program given the source files.
+fn files_to_program_name(files: &[PathBuf]) -> String {
+    let name = files.first().map_or_else(|| "a.out".into(), |file| file.with_extension(""));
+    name.to_string_lossy().into_owned()
 }
 
 pub fn path_to_id(crate_id: CrateId, path: &Path) -> SourceFileId {

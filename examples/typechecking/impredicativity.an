@@ -1,4 +1,4 @@
-
+// Future test file if Ante adopts freezeML-like impredicativity
 id x = x
 
 ids = [freeze id]
@@ -19,7 +19,7 @@ f9 =
     f = revapp (freeze id)
     f poly
 
-choose (x: a) (y: a) = x
+choose (x: a) (_y: a) = x
 
 a5 = id auto
 a6 = id auto_prime
@@ -44,10 +44,10 @@ a7 = choose id auto
 //     (f: fn a -> a) 42 (,: fn a a -> a, a) (f: fn a -> a) true
 // 
 // (f9: _) =
-//     (f: fn (fn (fn _ -> _) -> _, _) [_] -> _) = (revapp: (error)) (error)
+//     (f: fn (fn (fn _ -> _) -> _, _) [_] -> _) = (revapp: fn _ [_] -> fn (fn (fn _ -> _) -> _, _) [_] -> _) (error)
 //     (f: fn (fn (fn _ -> _) -> _, _) [_] -> _) (poly: fn (fn _ -> _) -> _, _)
 // 
-// (choose: fn a a -> a) ((x: a)) ((y: a)) = (x: a)
+// (choose: fn a a -> a) ((x: a)) ((_y: a)) = (x: a)
 // 
 // (a5: fn (fn _ -> _) -> _) = (id: fn (fn (fn _ -> _) -> _) -> fn (fn _ -> _) -> _) (auto: fn (fn _ -> _) -> _)
 // 
@@ -68,7 +68,8 @@ a7 = choose id auto
 //   |                                    ^^^^^^
 // 
 // examples/typechecking/impredicativity.an:8:41
-//  8 | auto_prime (x: forall a. fn a -> a) = x x	// error: Expected a but found fn a -> a
+//    | // error: Argument 1 has type fn a -> a but a was expected
+//  8 | auto_prime (x: forall a. fn a -> a) = x x
 //    |                                         ^
 // 
 // examples/typechecking/impredicativity.an:10:12
@@ -77,12 +78,12 @@ a7 = choose id auto
 // 
 // examples/typechecking/impredicativity.an:16:7
 // 15 | poly (f: forall a. fn a -> a) =
-// 16 |     f 42, f true	// error: Expected an integer type but found a
+// 16 |     f 42, f true	// error: Argument 1 has type I32 but a was expected
 //    |       ^^
 // 
 // examples/typechecking/impredicativity.an:16:13
 // 15 | poly (f: forall a. fn a -> a) =
-// 16 |     f 42, f true	// error: Expected a but found Bool
+// 16 |     f 42, f true	// error: Argument 1 has type Bool but a was expected
 //    |             ^^^^
 // 
 // examples/typechecking/impredicativity.an:19:9
@@ -103,7 +104,8 @@ a7 = choose id auto
 //    |           ^^^^^^
 // 
 // examples/typechecking/impredicativity.an:28:16
-// 28 | a7 = choose id auto	// error: Expected fn _ -> _ but found fn (fn _ -> _) -> _
+//    | // error: Argument 2 has type fn (fn _ -> _) -> _ but fn _ -> _ was expected
+// 28 | a7 = choose id auto
 //    |                ^^^^
 // 
 // Found 10 errors and 0 warnings

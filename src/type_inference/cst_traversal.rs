@@ -65,9 +65,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Expr::Lambda(lambda) => {
                 let lambda = lambda.clone();
                 self.expr_types.insert(rhs, expected_type.clone());
-                self.check_lambda(&lambda, &expected_type, rhs, self_name);
+                self.infer_lambda(&lambda, &expected_type, rhs, self_name);
             },
-            _ => self.check_expr(rhs, &expected_type),
+            _ => {
+                self.check_expr(rhs, &expected_type, TypeErrorKind::TypeAnnotationMismatch);
+            },
         }
 
         if definition.implicit {
@@ -88,12 +90,13 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         self.check_for_main(definition.pattern, &expected_type);
     }
 
-    /// Check an expression's type matches the expected type.
-    fn check_expr(&mut self, id: ExprId, expected: &Type) {
-        self.check_expr_inner(id, expected, None);
-    }
-
-    fn check_expr_inner(&mut self, id: ExprId, expected: &Type, call_expr: Option<ExprId>) {
+    /// Infer an expression's type and return it.
+    ///
+    /// `expected` is only used for resolving names with [Origin::TypeResolution],
+    /// it is not unified against.
+    fn infer_expr(&mut self, id: ExprId, expected: &Type) -> Type {
+        // Pre-insert the hint so coercions copying this expression mid-inference
+        // can read a type for it. This is overwritten with the inferred type below.
         self.expr_types.insert(id, expected.clone());
 
         let expr = match self.current_extended_context().extended_expr(id) {
@@ -101,59 +104,81 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             None => Cow::Borrowed(&self.current_context()[id]),
         };
 
-        match expr.as_ref() {
-            Expr::Literal(literal) => self.check_literal(literal, id, expected),
-            Expr::Variable(path) => self.check_path(*path, expected, Some(id), call_expr),
-            Expr::Call(call) => self.check_call(call, expected, id),
-            Expr::Lambda(lambda) => self.check_lambda(lambda, expected, id, None),
+        let typ = match expr.as_ref() {
+            Expr::Literal(literal) => self.infer_literal(literal, id),
+            Expr::Variable(path) => self.infer_path(*path, expected),
+            Expr::Call(call) => self.infer_call(call, expected, id),
+            Expr::Lambda(lambda) => self.infer_lambda(lambda, expected, id, None),
             Expr::Sequence(items) => {
                 self.push_implicits_scope();
+                let mut result = Type::UNIT;
                 for (i, item) in items.iter().enumerate() {
                     let expected_type = if i == items.len() - 1 { expected } else { &self.next_type_variable() };
-                    self.check_expr(item.expr, expected_type);
+                    result = self.infer_expr(item.expr, expected_type);
                 }
                 self.pop_implicits_scope();
+                result
             },
             Expr::Definition(definition) => {
                 self.check_definition(definition, false);
-                self.unify(&Type::UNIT, expected, TypeErrorKind::General, id);
+                Type::UNIT
             },
-            Expr::MemberAccess(member_access) => self.check_member_access(member_access, expected, id),
-            Expr::If(if_) => self.check_if(if_, expected, id),
-            Expr::Match(match_) => self.check_match(match_, expected, id),
-            Expr::Reference(reference) => self.check_reference(reference, expected, id),
+            Expr::MemberAccess(member_access) => self.infer_member_access(member_access, expected, id),
+            Expr::If(if_) => self.infer_if(if_, expected, id),
+            Expr::Match(match_) => self.infer_match(match_, expected, id),
+            Expr::Reference(reference) => self.infer_reference(reference, expected),
             Expr::Is(_) => unreachable!("Expr::Is should be desugared during GetItem"),
             Expr::Do(_) => unreachable!("Expr::Do should be desugared during GetItem"),
             Expr::TypeAnnotation(type_annotation) => {
                 let annotation = self.from_cst_type(&type_annotation.rhs, true);
-                self.unify(expected, &annotation, TypeErrorKind::TypeAnnotationMismatch, id);
-                self.check_expr(type_annotation.lhs, &annotation);
+                let actual = self.infer_expr(type_annotation.lhs, &annotation);
+                self.unify(&actual, &annotation, TypeErrorKind::TypeAnnotationMismatch, id);
+                annotation
             },
-            Expr::Handle(handle) => self.check_handle(handle, expected),
-            Expr::Constructor(constructor) => self.check_constructor(constructor, expected, id),
+            Expr::Handle(handle) => self.infer_handle(handle, expected),
+            Expr::Constructor(constructor) => self.infer_constructor(constructor, expected, id),
             Expr::Quoted(_) => {
                 let location = id.locate(self);
                 UnimplementedItem::Comptime.issue(self.compiler, location);
+                Type::ERROR
             },
             Expr::Loop(_) => unreachable!("Loops should be desugared before type inference"),
-            Expr::While(while_) => self.check_while(while_, expected, id),
-            Expr::For(for_) => self.check_for(for_, expected, id),
+            Expr::While(while_) => self.infer_while(while_),
+            Expr::For(for_) => self.infer_for(for_, id),
             // Allow break/continue to return any type
             // TODO: Add bottom type
-            Expr::Break | Expr::Continue => (),
-            Expr::Return(return_) => self.check_return(return_.expression, id),
-            Expr::Assignment(assignment) => self.check_assignment(assignment, expected, id),
-            Expr::Error => (),
-            Expr::Extern(_) => (),
+            Expr::Break | Expr::Continue => Type::NEVER,
+            Expr::Return(return_) => {
+                self.check_return(return_.expression, id);
+                Type::NEVER
+            },
+            Expr::Assignment(assignment) => self.infer_assignment(assignment),
+            // Error expressions assume the expected type to suppress cascading errors.
+            // This also preserves the recorded types of implicit-argument placeholder
+            // slots (which are Expr::Error) when their wrapper is re-inferred.
+            Expr::Error => expected.clone(),
+            Expr::Extern(_) => self.next_type_variable(),
             Expr::InterpolatedString(_) => {
                 unreachable!("InterpolatedString should be desugared before type inference")
             },
-            Expr::ArrayLiteral(elements) => self.check_array_literal(elements, expected, id),
-        }
+            Expr::ArrayLiteral(elements) => self.infer_array_literal(elements, expected),
+        };
+
+        self.expr_types.insert(id, typ.clone());
+        typ
     }
 
-    fn check_literal(&mut self, literal: &Literal, locator: impl Locateable + Copy, expected: &Type) {
-        let actual = match literal {
+    /// Infer the expression's type, then unify it against `expected`, reporting an
+    /// error with the given kind located at the expression on failure.
+    /// Returns the inferred type.
+    fn check_expr(&mut self, id: ExprId, expected: &Type, kind: TypeErrorKind) -> Type {
+        let actual = self.infer_expr(id, expected);
+        self.unify(&actual, expected, kind, id);
+        actual
+    }
+
+    fn infer_literal(&mut self, literal: &Literal, locator: impl Locateable + Copy) -> Type {
+        match literal {
             Literal::Unit => Type::UNIT,
             Literal::Integer(value, Some(kind)) => {
                 self.check_int_fits(*value, *kind, locator);
@@ -173,13 +198,12 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
             Literal::String(_) => self.get_string_type(),
             Literal::Char(_) => Type::CHAR,
-        };
-        self.unify(&actual, expected, TypeErrorKind::General, locator);
+        }
     }
 
     pub(super) fn check_name(&mut self, name: NameId, actual: &Type) {
         if let Some(existing) = self.name_types.get(&name) {
-            self.unify(actual, &existing.clone(), TypeErrorKind::General, name);
+            self.unify(actual, &existing.clone(), TypeErrorKind::NameAlreadyBound, name);
         } else {
             self.name_types.insert(name, actual.clone());
         }
@@ -198,7 +222,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Pattern::Variable(name) | Pattern::MethodName { item_name: name, .. } => {
                 self.check_name(*name, expected);
             },
-            Pattern::Literal(literal) => self.check_literal(literal, id, expected),
+            Pattern::Literal(literal) => {
+                let actual = self.infer_literal(literal, id);
+                self.unify(&actual, expected, TypeErrorKind::Pattern, id);
+            },
             Pattern::Constructor(path, args) => {
                 let parameters = mapvec(args, |_| types::ParameterType::explicit(self.next_type_variable()));
 
@@ -213,7 +240,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     }))
                 };
 
-                self.check_path(*path, &expected_function_type, None, None);
+                let actual = self.infer_path(*path, &expected_function_type);
+                self.unify(&actual, &expected_function_type, TypeErrorKind::Pattern, *path);
                 for (expected_arg_type, arg) in parameters.into_iter().zip(args) {
                     self.check_pattern(*arg, &expected_arg_type.typ);
                 }
@@ -231,7 +259,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         };
     }
 
-    fn check_path(&mut self, path: PathId, expected: &Type, expr: Option<ExprId>, call_expr: Option<ExprId>) {
+    fn infer_path(&mut self, path: PathId, expected: &Type) -> Type {
         let actual = match self.path_origin(path) {
             Some(Origin::TopLevelDefinition(id)) => self.type_of_top_level_name(&id, path),
             Some(Origin::Local(name)) => {
@@ -239,7 +267,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     // Name wasn't defined, name resolution should already have emitted an error
                     self.name_types.insert(name, expected.clone());
                     self.path_types.insert(path, expected.clone());
-                    return;
+                    return expected.clone();
                 };
 
                 let move_path = super::affine::MovePath::Variable(name);
@@ -254,35 +282,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
             Some(Origin::TypeResolution) => self.resolve_type_resolution(path, expected),
             Some(Origin::Builtin(builtin)) => self.check_builtin(builtin, path),
-            None => return,
+            None => expected.clone(),
         };
-        if let Some(expr) = expr {
-            match self.try_coercion(&actual, expected, expr, call_expr) {
-                super::CoercionOutcome::ReplacedExpr => {
-                    // If the coercion wrapped a local variable (e.g. auto-ref `seq` → `ref seq`),
-                    // the move recorded above no longer applies.
-                    if let Some(Origin::Local(name)) = self.path_origin(path) {
-                        self.move_tracker.clear_moves(&super::affine::MovePath::Variable(name));
-                    }
-                    self.check_expr(expr, expected);
-                    return;
-                    // no need to unify or modify self.path_types, that will be handled in the
-                    // recursive check_expr call since we've just changed the expression at this ExprId.
-                },
-                super::CoercionOutcome::InPlaceCall => {
-                    // The Call at `call_expr` was rewritten with the resolved implicit
-                    // arguments already spliced in. The function expression itself is
-                    // unchanged, so record its actual (full-implicit) type and return.
-                    // `implicit_parameter_coercion` already performed the unification
-                    // needed for `check_call`'s argument loop to see the right types.
-                    self.path_types.insert(path, actual);
-                    return;
-                },
-                super::CoercionOutcome::None => {},
-            }
-        }
-        self.unify(&actual, expected, TypeErrorKind::General, path);
-        self.path_types.insert(path, actual);
+        self.path_types.insert(path, actual.clone());
+        actual
     }
 
     /// Returns the instantiated type of the given TopLevelName.
@@ -394,40 +397,97 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
-    fn check_call(&mut self, call: &cst::Call, expected: &Type, call_expr: ExprId) {
+    fn infer_call(&mut self, call: &cst::Call, expected: &Type, call_expr: ExprId) -> Type {
         // If the function is a MemberAccess, try to resolve it as a method call.
         // E.g. `vec.push 3` is rewritten to `push (mut vec) 3`.
-        if self.try_rewrite_method_call(call, expected, call_expr) {
-            return;
+        if let Some(new_expr) = self.try_rewrite_method_call(call, call_expr) {
+            return self.infer_expr(new_expr, expected);
         }
 
         let expected_parameter_types =
             mapvec(&call.arguments, |arg| types::ParameterType::new(self.next_type_variable(), arg.is_implicit));
+        let environment = self.next_type_variable();
 
-        let expected_function_type = {
-            let parameters = expected_parameter_types.clone();
-            let environment = self.next_type_variable();
-            let return_type = expected.clone();
-            Type::Function(Arc::new(FunctionType { parameters, environment, return_type }))
-        };
+        // The hint type embeds `expected` as the return type so the callee's
+        // instantiation and type-directed resolution can see it.
+        let hint_function_type = Type::Function(Arc::new(FunctionType {
+            parameters: expected_parameter_types.clone(),
+            environment: environment.clone(),
+            return_type: expected.clone(),
+        }));
+        let actual_function_type = self.infer_expr(call.function, &hint_function_type);
 
-        self.check_expr_inner(call.function, &expected_function_type, Some(call_expr));
-        for (arg, expected_arg_type) in call.arguments.iter().zip(expected_parameter_types) {
-            self.check_expr(arg.expr, &expected_arg_type.typ);
+        // The real unification uses a fresh return variable so a return type mismatch
+        // surfaces as a focused FunctionReturn error instead of a whole-function-type error.
+        let return_type = self.next_type_variable();
+        let checked_function_type = Type::Function(Arc::new(FunctionType {
+            parameters: expected_parameter_types.clone(),
+            environment,
+            return_type: return_type.clone(),
+        }));
+
+        // Implicit parameter splicing targets the callee, so it must run here now that
+        // variables are no longer coerced at every use.
+        match self.try_coercion(&actual_function_type, &hint_function_type, call.function, Some(call_expr)) {
+            super::CoercionOutcome::ReplacedExpr => {
+                // The callee was wrapped (e.g. in a lambda supplying implicits); re-infer it
+                let actual = self.infer_expr(call.function, &hint_function_type);
+                self.unify(&actual, &checked_function_type, TypeErrorKind::Callee, call.function);
+            },
+            super::CoercionOutcome::InPlaceCall => {
+                // Implicit args were spliced into this Call; implicit_parameter_coercion
+                // already performed the needed unification
+            },
+            super::CoercionOutcome::None => {
+                self.unify(&actual_function_type, &checked_function_type, TypeErrorKind::Callee, call.function);
+            },
         }
+
+        // Unify before checking args so `expected` propagates into them
+        let return_type_matches = self.unify(&return_type, expected, TypeErrorKind::FunctionReturn, call_expr);
+
+        for (index, (arg, expected_arg_type)) in call.arguments.iter().zip(expected_parameter_types).enumerate() {
+            // Capture the argument's path before any coercion replaces the expression
+            let original_path = match self.current_extended_context().extended_expr(arg.expr) {
+                Some(Expr::Variable(path)) => Some(*path),
+                Some(_) => None,
+                None => match &self.current_context()[arg.expr] {
+                    Expr::Variable(path) => Some(*path),
+                    _ => None,
+                },
+            };
+
+            let actual = self.infer_expr(arg.expr, &expected_arg_type.typ);
+            match self.try_coercion(&actual, &expected_arg_type.typ, arg.expr, None) {
+                super::CoercionOutcome::ReplacedExpr => {
+                    // If auto-ref wrapped a local variable, the move recorded while
+                    // inferring it no longer applies
+                    if let Some(Origin::Local(name)) = original_path.and_then(|path| self.path_origin(path)) {
+                        self.move_tracker.clear_moves(&super::affine::MovePath::Variable(name));
+                    }
+                    self.check_expr(arg.expr, &expected_arg_type.typ, TypeErrorKind::CallArgument { index });
+                },
+                super::CoercionOutcome::InPlaceCall | super::CoercionOutcome::None => {
+                    self.unify(&actual, &expected_arg_type.typ, TypeErrorKind::CallArgument { index }, arg.expr);
+                },
+            }
+        }
+
+        // Return ERROR on mismatch so callers don't report a second error for the same type
+        if return_type_matches { return_type } else { Type::ERROR }
     }
 
     /// If `call` is `v.push 3` (MemberAccess + args), try to resolve `push` as a function
     /// in the module where `v`'s type is defined. If found, rewrite the Call expression to
     /// `push (mut v) 3` in the extended context and type-check that instead.
-    fn try_rewrite_method_call(&mut self, call: &cst::Call, expected: &Type, call_expr: ExprId) -> bool {
+    fn try_rewrite_method_call(&mut self, call: &cst::Call, call_expr: ExprId) -> Option<ExprId> {
         let func_expr = match self.current_extended_context().extended_expr(call.function) {
             Some(expr) => expr.clone(),
             None => self.current_context()[call.function].clone(),
         };
 
         let Expr::MemberAccess(member_access) = &func_expr else {
-            return false;
+            return None;
         };
 
         let object = member_access.object;
@@ -436,18 +496,18 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // Type-check the object to learn its type.
         // Suppress moves: if the rewrite fails, the normal call handling will
         // process the member access with proper partial-move tracking.
-        let struct_type = self.next_type_variable();
+        let hint = self.next_type_variable();
         let old_suppress_check = self.suppress_move_check;
         let old_suppress_record = self.suppress_move_record;
         self.suppress_move_check = true;
         self.suppress_move_record = true;
-        self.check_expr(object, &struct_type);
+        let struct_type = self.infer_expr(object, &hint);
         self.suppress_move_check = old_suppress_check;
         self.suppress_move_record = old_suppress_record;
 
         // Resolve the method name to a top-level function
         let Some((method_name, func_type, bindings)) = self.resolve_method_for_type(&struct_type, &member) else {
-            return false;
+            return None;
         };
         let method_type = Type::Function(func_type.clone());
 
@@ -460,7 +520,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             &location,
             call_expr,
         ) else {
-            return false;
+            return None;
         };
 
         // Create a Variable expression for the method, with a fresh path
@@ -494,18 +554,17 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         self.current_extended_context_mut().insert_expr(call_expr, new_call);
 
         // Type-check the rewritten expression (handles implicit parameter resolution too)
-        self.check_expr(call_expr, expected);
-        true
+        Some(call_expr)
     }
 
-    fn check_lambda(&mut self, lambda: &cst::Lambda, expected: &Type, expr: ExprId, self_name: Option<NameId>) {
-        self.check_lambda_impl(lambda, expected, expr, self_name, LambdaOptions::default());
+    fn infer_lambda(&mut self, lambda: &cst::Lambda, expected: &Type, expr: ExprId, self_name: Option<NameId>) -> Type {
+        self.infer_lambda_impl(lambda, expected, expr, self_name, LambdaOptions::default())
     }
 
-    fn check_lambda_impl(
+    fn infer_lambda_impl(
         &mut self, lambda: &cst::Lambda, expected: &Type, expr: ExprId, self_name: Option<NameId>,
         options: LambdaOptions,
-    ) {
+    ) -> Type {
         let function_type = match self.follow_type(expected) {
             Type::Function(function_type) => function_type.clone(),
             _ => {
@@ -559,7 +618,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Cow::Borrowed(&function_type.return_type)
         };
 
-        self.check_expr(lambda.body, &return_type);
+        self.check_expr(lambda.body, &return_type, TypeErrorKind::FunctionBody);
 
         // If this lambda's body may execute more than once (e.g. a handler
         // branch), report any non-Copy outer variables moved inside it before
@@ -591,6 +650,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         } else {
             self.check_for_closure(expr, &function_type.environment, self_name, lambda.is_move);
         }
+
+        Type::Function(function_type)
     }
 
     /// Check a function's parameter count using the given parameter types as the expected count.
@@ -607,15 +668,15 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
-    fn check_member_access(&mut self, member_access: &cst::MemberAccess, expected: &Type, expr: ExprId) {
-        let struct_type = self.next_type_variable();
+    fn infer_member_access(&mut self, member_access: &cst::MemberAccess, expected: &Type, expr: ExprId) -> Type {
+        let hint = self.next_type_variable();
 
         // Suppress moves on the object - we handle partial move tracking here at the field level
         let old_suppress_check = self.suppress_move_check;
         let old_suppress_record = self.suppress_move_record;
         self.suppress_move_check = true;
         self.suppress_move_record = true;
-        self.check_expr(member_access.object, &struct_type);
+        let struct_type = self.infer_expr(member_access.object, &hint);
         self.suppress_move_check = old_suppress_check;
         self.suppress_move_record = old_suppress_record;
 
@@ -650,29 +711,27 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             if struct_is_ref && !expected_is_ref {
                 if let Some((_, inner_field_type)) = field.reference_element(&self.bindings) {
                     if self.type_is_copy(&inner_field_type) {
-                        self.unify(&inner_field_type, expected, TypeErrorKind::General, expr);
                         let new_expr = self.auto_deref_coercion(expr, inner_field_type);
                         self.current_extended_context_mut().insert_expr(expr, new_expr);
-                        self.check_expr(expr, expected);
-                        return;
+                        return self.infer_expr(expr, expected);
                     }
                 }
             }
 
             match self.try_coercion(&field, expected, expr, None) {
-                super::CoercionOutcome::ReplacedExpr => self.check_expr(expr, expected),
-                super::CoercionOutcome::InPlaceCall | super::CoercionOutcome::None => {
-                    self.unify(&field, expected, TypeErrorKind::General, expr);
-                },
+                super::CoercionOutcome::ReplacedExpr => self.infer_expr(expr, expected),
+                super::CoercionOutcome::InPlaceCall | super::CoercionOutcome::None => field,
             }
         } else if matches!(self.follow_type(&struct_type), Type::Variable(_)) {
-            let location = self.current_context().expr_location(expr).clone();
+            let location = expr.locate(self);
             self.compiler.accumulate(Diagnostic::TypeMustBeKnownMemberAccess { location });
+            Type::ERROR
         } else {
             let typ = self.type_to_string(&struct_type);
-            let location = self.current_context().expr_location(expr).clone();
+            let location = expr.locate(self);
             let name = Arc::new(member_access.member.clone());
             self.compiler.accumulate(Diagnostic::NoSuchFieldForType { typ, location, name });
+            Type::ERROR
         }
     }
 
@@ -749,7 +808,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             (first_param.clone(), struct_type.clone(), None)
         };
 
-        self.unify(&param_type, &struct_base, TypeErrorKind::General, call_expr);
+        self.unify(&param_type, &struct_base, TypeErrorKind::MethodObject, call_expr);
 
         if let Some(ref_kind) = auto_ref {
             let ref_expr = Expr::Reference(cst::Reference { kind: ref_kind, rhs: object });
@@ -759,38 +818,43 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         Some(object)
     }
 
-    fn check_if(&mut self, if_: &cst::If, expected: &Type, expr: ExprId) {
-        self.check_expr(if_.condition, &Type::BOOL);
+    fn infer_if(&mut self, if_: &cst::If, expected: &Type, expr: ExprId) -> Type {
+        self.check_expr(if_.condition, &Type::BOOL, TypeErrorKind::Condition);
 
-        // If there's an else clause our expected return type should match the then/else clauses'
-        // types. Otherwise, the then body may be any type.
-        let expected = if if_.else_.is_some() {
-            Cow::Borrowed(expected)
-        } else {
-            self.unify(&Type::UNIT, expected, TypeErrorKind::IfStatement, expr);
-            Cow::Owned(self.next_type_variable())
-        };
+        // With an else clause both branches must match; without one the if always
+        // returns Unit and the then body may be any type.
+        let branch_expected =
+            if if_.else_.is_some() { Cow::Borrowed(expected) } else { Cow::Owned(self.next_type_variable()) };
 
         // Save move state before branches so each branch sees the same pre-branch state
         let pre_branch_moves = self.move_tracker.clone();
 
         self.push_implicits_scope();
-        self.check_expr(if_.then, &expected);
+        let then_type = self.infer_expr(if_.then, &branch_expected);
         self.pop_implicits_scope();
         let then_moves = self.move_tracker.clone();
 
-        // TODO: No way to identify if `then_type != else_type`. This would be useful to point out
-        // for error messages.
-        let then_diverges = self.expr_always_diverges(if_.then);
+        let then_diverges = self.diverges(&then_type);
 
         if let Some(else_) = if_.else_ {
             // Reset to pre-branch state for else branch
             self.move_tracker = pre_branch_moves.clone();
             self.push_implicits_scope();
-            self.check_expr(else_, &expected);
+            let else_type = self.infer_expr(else_, &branch_expected);
             self.pop_implicits_scope();
+
             let else_moves = self.move_tracker.clone();
-            let else_diverges = self.expr_always_diverges(else_);
+            let else_diverges = self.diverges(&else_type);
+
+            // Take whichever branch does not diverge
+            let result = if then_diverges {
+                else_type
+            } else if else_diverges {
+                then_type
+            } else {
+                self.unify(&else_type, &then_type, TypeErrorKind::Else, else_);
+                then_type
+            };
 
             // After if/else, exclude moves from branches that always diverge (return)
             // since execution never reaches the merge point from those branches.
@@ -802,6 +866,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 branches.push(else_moves);
             }
             self.move_tracker = super::affine::MoveTracker::merge_branches(&pre_branch_moves, &branches);
+            result
         } else {
             // If-without-else: if the then-branch always returns, moves don't carry forward
             if then_diverges {
@@ -809,28 +874,36 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             } else {
                 self.move_tracker = super::affine::MoveTracker::merge_branches(&pre_branch_moves, &[then_moves]);
             }
+
+            // Keep the specialized error when a non-Unit type is expected; return ERROR
+            // on failure so callers don't report a second error for the same mismatch
+            if self.unify(&Type::UNIT, expected, TypeErrorKind::IfStatement, expr) { Type::UNIT } else { Type::ERROR }
         }
     }
 
-    fn check_match(&mut self, match_: &cst::Match, expected: &Type, expr: ExprId) {
-        let expr_type = self.next_type_variable();
+    fn infer_match(&mut self, match_: &cst::Match, expected: &Type, expr: ExprId) -> Type {
+        let scrutinee_hint = self.next_type_variable();
 
         // Push an implicits scope here so we can default any integers used in the match
         // to an `I32` before the decision tree checks occur. This lets us compile `match 1 | ...`
         // without errors that the type of `1` is not yet known.
         self.push_implicits_scope();
-        self.check_expr(match_.expression, &expr_type);
+        let expr_type = self.infer_expr(match_.expression, &scrutinee_hint);
 
         // Save move state before branches
         let pre_branch_moves = self.move_tracker.clone();
         let mut branch_trackers = Vec::new();
+        let mut result_type = Type::NEVER;
 
         for (pattern, branch) in match_.cases.iter() {
             self.move_tracker = pre_branch_moves.clone();
             self.check_pattern(*pattern, &expr_type);
-            // TODO: Specify if branch_type != type of first branch for better error messages
             self.push_implicits_scope();
-            self.check_expr(*branch, expected);
+            if self.diverges(&result_type) {
+                result_type = self.infer_expr(*branch, expected);
+            } else {
+                self.check_expr(*branch, &result_type, TypeErrorKind::MatchBranch);
+            }
             self.pop_implicits_scope();
             branch_trackers.push(self.move_tracker.clone());
         }
@@ -849,58 +922,71 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             let context = self.current_extended_context_mut();
             context.insert_decision_tree(expr, preamble, tree);
         }
+
+        result_type
     }
 
-    fn check_reference(&mut self, reference: &cst::Reference, expected: &Type, expr: ExprId) {
-        let actual = Type::reference(reference.kind);
+    fn infer_reference(&mut self, reference: &cst::Reference, expected: &Type) -> Type {
+        let constructor = Type::reference(reference.kind);
 
-        let expected_element_type = match self.follow_type(expected) {
-            Type::Application(constructor, args) => {
-                let constructor = constructor.clone();
-                let args = args.clone();
-                let element_arg = args.get(1);
+        // Reborrow: `mut x` / `uniq x` where `x` is already a `mut`/`uniq` reference does not
+        // nest into `mut (mut t)`; it reborrows the same place, producing a reference of the
+        // requested kind to the inner element. This lets index-assignment desugaring wrap the
+        // receiver in `mut` uniformly without double-referencing already-mutable receivers
+        // (e.g. a `mut Array` parameter). Only mut/uniq reborrow; `ref`/`imm` keep nesting.
+        if matches!(reference.kind, ReferenceKind::Mut | ReferenceKind::Uniq) {
+            let hint = self.next_type_variable();
+            let old_suppress_record = self.suppress_move_record;
+            self.suppress_move_record = true;
+            let rhs_type = self.infer_expr(reference.rhs, &hint);
+            self.suppress_move_record = old_suppress_record;
 
-                match self.follow_type(&constructor) {
-                    Type::Primitive(types::PrimitiveType::Reference(..)) => {
-                        self.unify(&actual, &constructor, TypeErrorKind::ReferenceKind, expr);
+            let element = match self.follow_type(&rhs_type).reference_element(&self.bindings) {
+                Some((inner_kind, inner_element)) if matches!(inner_kind, ReferenceKind::Mut | ReferenceKind::Uniq) => {
+                    inner_element
+                },
+                // Not a reborrow: wrap `rhs_type` in the requested reference kind.
+                _ => rhs_type,
+            };
 
-                        // Expect incorrect arg counts to be resolved beforehand
-                        element_arg.unwrap().clone()
-                    },
-                    _ => {
-                        if self.unify(&actual, expected, TypeErrorKind::ExpectedNonReference, expr) {
-                            element_arg.unwrap().clone()
-                        } else {
-                            Type::ERROR
-                        }
-                    },
-                }
-            },
-            Type::Variable(id) => {
-                let id = *id;
-                let lifetime = self.next_type_variable();
-                let element = self.next_type_variable();
-                let expected = Type::Application(Arc::new(actual), Arc::new(vec![lifetime, element.clone()]));
-                self.bindings.insert(id, expected);
-                element
-            },
-            _ => {
-                self.unify(&actual, expected, TypeErrorKind::ExpectedNonReference, expr);
-                Type::ERROR
-            },
+            let lifetime = self.next_type_variable();
+            return Type::Application(Arc::new(constructor), Arc::new(vec![lifetime, element]));
+        }
+
+        // Use the expected element type as a hint when it is available
+        let element_hint = match self.follow_type(expected) {
+            Type::Application(_, args) if args.len() == 2 => args[1].clone(),
+            _ => self.next_type_variable(),
         };
 
         // A reference doesn't move its rhs, but it still reads it, so we must
         // check that the rhs isn't already moved.
         let old_suppress_record = self.suppress_move_record;
         self.suppress_move_record = true;
-        self.check_expr(reference.rhs, &expected_element_type);
+        let element = self.infer_expr(reference.rhs, &element_hint);
         self.suppress_move_record = old_suppress_record;
+
+        let lifetime = self.next_type_variable();
+        Type::Application(Arc::new(constructor), Arc::new(vec![lifetime, element]))
     }
 
-    fn check_constructor(&mut self, constructor: &cst::Constructor, expected: &Type, id: ExprId) {
-        let typ = self.from_cst_type(&constructor.typ, true);
-        self.unify(&typ, expected, TypeErrorKind::Constructor, id);
+    fn infer_constructor(&mut self, constructor: &cst::Constructor, expected: &Type, id: ExprId) -> Type {
+        let (mut typ, kind) = self.from_cst_type_and_kind(&constructor.typ, true);
+
+        // Type arguments on constructors are optional (both `Clone t with ..` and `Clone with ..` are allowed)
+        // So fill in any empty slots with fresh type variables.
+        let required_argument_count = kind.required_argument_count();
+        if required_argument_count != 0 {
+            let args = mapvec(0..required_argument_count, |_| self.next_type_variable());
+            typ = Type::Application(Arc::new(typ), Arc::new(args));
+
+            // Eagerly unify with the expected type so the fields below are checked against
+            // concrete types where possible. Errors are ignored here: if unification fails,
+            // the caller will report the mismatch when unifying our return type.
+            if let Ok(bindings) = self.try_unify(&typ, expected) {
+                self.bindings.extend(bindings);
+            }
+        }
 
         // Map each field name to its index in the type's declaration order.
         // This is used when lowering to MIR when structs are converted into tuples.
@@ -911,16 +997,23 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             let name_string = &self.current_context()[*name];
             let (expected_field_type, field_index) = field_types.get(name_string).cloned().unwrap_or((Type::ERROR, 0));
 
-            self.check_expr(*expr, &expected_field_type);
+            self.check_expr(*expr, &expected_field_type, TypeErrorKind::ConstructorField);
             self.check_name(*name, &expected_field_type);
 
             field_order.insert(*name, field_index);
         }
 
         self.current_extended_context_mut().push_constructor_field_order(id, field_order);
+        typ
     }
 
-    fn check_handle(&mut self, handle: &cst::Handle, expected: &Type) {
+    fn infer_handle(&mut self, handle: &cst::Handle, expected: &Type) -> Type {
+        // The type of the handled expression and of every handler branch.
+        // The expected type is threaded through (rather than a fresh variable) so
+        // type resolution in branches (e.g. `None` in `fail () -> None`) sees it,
+        // and so `Never`-typed branches unify against it as the actual type.
+        let result_type = expected.clone();
+
         // `can expected_effect, e`
         let expected_and_e = self.next_type_variable();
 
@@ -933,7 +1026,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let body_type = Type::Function(Arc::new(FunctionType {
             parameters: vec![ParameterType::explicit(Type::UNIT)],
             environment: body_env,
-            return_type: expected.clone(),
+            return_type: result_type.clone(),
         }));
         self.expr_types.insert(handle.expression, body_type.clone());
 
@@ -962,7 +1055,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 environment: Type::Application(Arc::new(Type::POINTER), Arc::new(vec![Type::UNIT])),
                 return_type: r.clone(),
             }));
-            self.check_path(pattern.function, &function_type, None, None);
+            let actual = self.infer_path(pattern.function, &function_type);
+            self.unify(&actual, &function_type, TypeErrorKind::EffectPattern, pattern.function);
             self.unify(&e, &expected_and_e, TypeErrorKind::General, pattern.function);
 
             // Branches accept the operation's explicit args plus `resume`.
@@ -973,7 +1067,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             let resume_type = Type::Function(Arc::new(FunctionType {
                 parameters: vec![ParameterType::explicit(r)],
                 environment: Type::Primitive(types::PrimitiveType::Pointer),
-                return_type: expected.clone(),
+                return_type: result_type.clone(),
             }));
 
             let mut handler_params = parameter_types;
@@ -981,7 +1075,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             let handler_type = Type::Function(Arc::new(FunctionType {
                 parameters: handler_params,
                 environment: self.next_type_variable(),
-                return_type: expected.clone(),
+                return_type: result_type.clone(),
             }));
 
             // Only allow moving variables into this branch if `resume` is never mentioned.
@@ -994,7 +1088,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
             let branch_lambda = self.unwrap_lambda(*branch);
             self.expr_types.insert(*branch, handler_type.clone());
-            self.check_lambda_impl(&branch_lambda, &handler_type, *branch, None, options);
+            self.infer_lambda_impl(&branch_lambda, &handler_type, *branch, None, options);
         }
 
         self.push_implicits_scope();
@@ -1005,8 +1099,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         // `Some(handler_name)` exempts the variable from being captured as a closure.
         // This is instead handled as a special case in mir generation
-        self.check_lambda_impl(&body_lambda, &body_type, handle.expression, Some(handle.handler_name), options);
+        self.infer_lambda_impl(&body_lambda, &body_type, handle.expression, Some(handle.handler_name), options);
         self.pop_implicits_scope();
+
+        result_type
     }
 
     /// Retrieve the [`cst::Lambda`] at `expr_id` or panic otherwise.
@@ -1017,20 +1113,21 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
-    fn check_assignment(&mut self, assignment: &cst::Assignment, expected: &Type, id: ExprId) {
-        let lhs_type = self.next_type_variable();
+    fn infer_assignment(&mut self, assignment: &cst::Assignment) -> Type {
+        let lhs_hint = self.next_type_variable();
 
         // Allow `x := v` to use `x` even if moved but `x += v` cannot since it reads `x`
         let is_plain = assignment.op.is_none();
-        if is_plain {
+        let lhs_type = if is_plain {
             let old_suppress_check = std::mem::replace(&mut self.suppress_move_check, true);
             let old_suppress_record = std::mem::replace(&mut self.suppress_move_record, true);
-            self.check_expr(assignment.lhs, &lhs_type);
+            let lhs_type = self.infer_expr(assignment.lhs, &lhs_hint);
             self.suppress_move_check = old_suppress_check;
             self.suppress_move_record = old_suppress_record;
+            lhs_type
         } else {
-            self.check_expr(assignment.lhs, &lhs_type);
-        }
+            self.infer_expr(assignment.lhs, &lhs_hint)
+        };
 
         if let Err((name, location)) = self.check_lhs_mutable(assignment.lhs) {
             self.compiler.accumulate(Diagnostic::AssignToImmutable { name, location });
@@ -1063,17 +1160,27 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 environment: self.next_type_variable(),
                 return_type: value_type.clone(),
             }));
-            self.check_expr(op_expr, &expected_fn_type);
+            // The operator's ability constraint is an implicit parameter, so coerce
+            // before unifying like other function positions
+            let actual = self.infer_expr(op_expr, &expected_fn_type);
+            match self.try_coercion(&actual, &expected_fn_type, op_expr, None) {
+                super::CoercionOutcome::ReplacedExpr => {
+                    self.check_expr(op_expr, &expected_fn_type, TypeErrorKind::CompoundOperator);
+                },
+                super::CoercionOutcome::InPlaceCall | super::CoercionOutcome::None => {
+                    self.unify(&actual, &expected_fn_type, TypeErrorKind::CompoundOperator, op_expr);
+                },
+            }
         }
 
-        self.check_expr(assignment.rhs, &value_type);
+        self.check_expr(assignment.rhs, &value_type, TypeErrorKind::Assignment);
 
         // The LHS always holds a value after an assignment
         if let Some(path) = self.try_build_move_path(assignment.lhs) {
             self.move_tracker.clear_moves(&path);
         }
 
-        self.unify(&Type::UNIT, expected, TypeErrorKind::General, id);
+        Type::UNIT
     }
 
     /// Walk a pattern declared with `var` and add every variable name it
@@ -1169,7 +1276,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     fn check_return(&mut self, returned_expr: ExprId, id: ExprId) {
         match self.function_return_type.as_ref().cloned() {
             Some(expected_return) => {
-                self.check_expr(returned_expr, &expected_return);
+                self.check_expr(returned_expr, &expected_return, TypeErrorKind::Return);
             },
             None => {
                 let location = id.locate(self);
@@ -1178,22 +1285,22 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
-    fn check_while(&mut self, while_: &cst::While, expected: &Type, id: ExprId) {
+    fn infer_while(&mut self, while_: &cst::While) -> Type {
         // Both the condition and body may execute more than once, so moves of
         // outer non-Copy values inside either are unsound.
         let outer_names = self.name_types.keys().copied().collect::<FxHashSet<_>>();
         let old_tracker = std::mem::take(&mut self.move_tracker);
 
-        self.check_expr(while_.condition, &Type::BOOL);
-        self.check_expr(while_.body, &Type::UNIT);
+        self.check_expr(while_.condition, &Type::BOOL, TypeErrorKind::Condition);
+        self.check_expr(while_.body, &Type::UNIT, TypeErrorKind::LoopBody);
 
         self.check_moves_in_repeated_context(&outer_names, RepeatedContext::WhileLoop);
         self.move_tracker = old_tracker;
 
-        self.unify(&Type::UNIT, expected, TypeErrorKind::General, id);
+        Type::UNIT
     }
 
-    fn check_for(&mut self, for_: &cst::For, expected: &Type, id: ExprId) {
+    fn infer_for(&mut self, for_: &cst::For, id: ExprId) -> Type {
         let int_ty = self.next_type_variable_id();
         // Hack: use 0 for the integer value here since it fits into all integer types.
         // We just need this to ensure the user actually uses integer ranges. Any actual integer
@@ -1202,8 +1309,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let int_ty = Type::Variable(int_ty);
 
         // Range expressions run exactly once, so normal move semantics apply here.
-        self.check_expr(for_.start, &int_ty);
-        self.check_expr(for_.end, &int_ty);
+        self.check_expr(for_.start, &int_ty, TypeErrorKind::LoopRange);
+        self.check_expr(for_.end, &int_ty, TypeErrorKind::LoopRange);
 
         // Snapshot outer names before introducing the loop variable so the
         // loop variable itself is not counted as an outer binding.
@@ -1211,32 +1318,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         self.name_types.insert(for_.variable, int_ty);
 
         let old_tracker = std::mem::take(&mut self.move_tracker);
-        self.check_expr(for_.body, &Type::UNIT);
+        self.check_expr(for_.body, &Type::UNIT, TypeErrorKind::LoopBody);
         self.check_moves_in_repeated_context(&outer_names, RepeatedContext::ForLoop);
         self.move_tracker = old_tracker;
 
-        self.unify(&Type::UNIT, expected, TypeErrorKind::General, id);
-    }
-
-    /// Check if an expression always diverges (e.g. ends with a `return`).
-    /// Used to exclude moves in diverging branches from post-branch merge.
-    ///
-    /// TODO: Replace this with a check for the bottom type
-    fn expr_always_diverges(&self, id: ExprId) -> bool {
-        let expr = match self.current_extended_context().extended_expr(id) {
-            Some(expr) => Cow::Owned(expr.clone()),
-            None => Cow::Borrowed(&self.current_context()[id]),
-        };
-        match expr.as_ref() {
-            Expr::Return(_) => true,
-            Expr::Sequence(items) => items.last().map_or(false, |item| self.expr_always_diverges(item.expr)),
-            Expr::If(if_) => {
-                let then_diverges = self.expr_always_diverges(if_.then);
-                let else_diverges = if_.else_.map_or(false, |e| self.expr_always_diverges(e));
-                then_diverges && else_diverges
-            },
-            _ => false,
-        }
+        Type::UNIT
     }
 
     pub(super) fn check_comptime(&self, _comptime: &cst::Comptime) {
@@ -1244,13 +1330,12 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         UnimplementedItem::Comptime.issue(self.compiler, location);
     }
 
-    fn check_array_literal(&mut self, elements: &[ExprId], expected: &Type, id: ExprId) {
+    fn infer_array_literal(&mut self, elements: &[ExprId], expected: &Type) -> Type {
         let element_type = expected.array_element(&self.bindings).unwrap_or_else(|| self.next_type_variable());
         for element in elements {
-            self.check_expr(*element, &element_type);
+            self.check_expr(*element, &element_type, TypeErrorKind::ArrayElement);
         }
         let array_args = Arc::new(vec![Type::U32(elements.len() as u32), element_type]);
-        let array_type = Type::Application(Arc::new(Type::ARRAY), array_args);
-        self.unify(&array_type, expected, TypeErrorKind::General, id);
+        Type::Application(Arc::new(Type::ARRAY), array_args)
     }
 }

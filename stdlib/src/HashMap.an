@@ -1,6 +1,7 @@
 import Std.C.putchar, calloc
 import Std.Stream.Stream, iter, stream_fn, Emit, emit
 import Std.Hash.Hash
+import Std.Fail.Fail, fail, panic_on_fail, or_panic, on_fail, try
 
 export HashMap, Entry, Hash, empty, of, clear, resize, should_resize,
     insert, get_entry, get, contains, remove, len, is_empty, keys, values,
@@ -136,13 +137,13 @@ HashMap.get_entry_mut (map: mut HashMap k v) (key: ref k) {Hash k} {eq: Eq k}: M
         | Found value -> Some (ptr_to_mut value)
         | _ -> None
 
-HashMap.get (map: ref HashMap k v) (key: ref k) {Hash k} {Eq k} : Maybe v =
+HashMap.get (map: ref HashMap k v) (key: ref k) {Hash k} {Eq k} {Fail}: ref v =
     match map.get_entry key
-    | Some entry -> Some (deref entry.value)
-    | None -> None
+    | Some entry -> entry.value
+    | None -> fail ()
 
 HashMap.contains (map: ref HashMap k v) (key: ref k) {Hash k} {Eq k}: Bool =
-    map.get key is Some _
+    try (do map.get key) is Some _
 
 HashMap.remove (map: mut HashMap k v) (key: k) {Hash k} {Eq k} : Maybe v =
     match map.get_entry_mut key
@@ -191,24 +192,16 @@ HashMap.values (m: ref HashMap k v) = fn (e: Emit v) ->
 
 /// Return the existing value at `key`, or insert `default` and return it.
 /// Requires `Copy k` so we can probe the map twice with the same key.
-HashMap.get_or_insert (m: mut HashMap k v) (key: k) (default: v) {Hash k} {Eq k} {Copy k}: v =
-    match m.get (ref key)
-    | Some existing -> existing
-    | None ->
+HashMap.get_or_insert (m: mut HashMap k v) (key: k) (default: v) {Hash k} {Eq k} {Copy k}: ref v =
+    m.get (ref key) ~> on_fail do
         ignore (m.insert key default)
-        match m.get (ref key)
-        | Some v -> v
-        | None -> panic "HashMap.get_or_insert: lookup after insert failed"
+        m.get (ref key) ~> or_panic "HashMap.get_or_insert: lookup after insert failed"
 
 /// Same as `get_or_insert` but builds the default lazily.
-HashMap.get_or_insert_with (m: mut HashMap k v) (key: k) (mk: fn Unit => v) {Hash k} {Eq k} {Copy k}: v =
-    match m.get (ref key)
-    | Some existing -> existing
-    | None ->
+HashMap.get_or_insert_with (m: mut HashMap k v) (key: k) (mk: fn Unit => v) {Hash k} {Eq k} {Copy k}: ref v =
+    m.get (ref key) ~> on_fail do
         ignore (m.insert key (mk ()))
-        match m.get (ref key)
-        | Some v -> v
-        | None -> panic "HashMap.get_or_insert_with: lookup after insert failed"
+        m.get (ref key) ~> or_panic "HashMap.get_or_insert_with: lookup after insert failed"
 
 /// Remove every entry for which `pred key value` returns false.
 HashMap.retain (m: mut HashMap k v) (pred: fn k v => Bool) {Copy k} {Copy v}: Unit =
@@ -224,3 +217,11 @@ HashMap.retain (m: mut HashMap k v) (pred: fn k v => Bool) {Copy k} {Copy v}: Un
 /// Insert every entry from `src` into `dst`, overwriting on conflict.
 HashMap.merge (dst: mut HashMap k v) (src: HashMap k v) {Hash k} {Eq k}: Unit =
     iter src (fn (k, v) -> ignore (HashMap.insert dst k v))
+
+impl extract_hashmap {Hash k} {Eq k} {Fail}: Extract (ref HashMap k v) (ref k) (ref v) with
+    (.[]) map key = map.get key
+
+impl insert_hashmap {Hash k} {Eq k}: Insert (mut HashMap k v) k v with
+    (.[]:=) map key value =
+        map.insert key value
+        ()

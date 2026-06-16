@@ -103,9 +103,11 @@ mod tests {
         let foo = ante_root.join("foo.an");
         let mut db = Db::default();
         crate::diagnostics::init_db(&mut db, &ante_root);
-        crate::diagnostics::set_file_content(&mut db, &ante_root, &foo, &Rope::from_str(source));
+        let roots = crate::diagnostics::CrateRoots::new(&db, ante_root);
+        crate::diagnostics::set_file_content(&mut db, &roots, &foo, &Rope::from_str(source));
 
-        let file_id = ante::name_resolution::namespace::SourceFileId::for_local_path(&ante_root, &foo);
+        // Resolve the id the same way production requests do.
+        let file_id = crate::diagnostics::file_id_for_path(&roots, &foo);
         // Byte 38 is the 'i' in `iota` on line 4.
         let result = hover_at(&db, file_id, 38);
         assert_eq!(result.as_deref(), Some("iota : fn Usz -> fn (Emit Usz) [Usz] -> Unit"));

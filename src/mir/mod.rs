@@ -35,7 +35,7 @@ mod remove_unreachable;
 mod validation;
 
 #[derive(Default)]
-pub(crate) struct Mir {
+pub struct Mir {
     pub(crate) definitions: Definitions,
 
     /// Any extern symbols used but not defined in this [Mir]
@@ -48,7 +48,7 @@ pub(crate) struct Mir {
 }
 
 #[derive(Debug)]
-pub(crate) struct Extern {
+pub struct Extern {
     pub(crate) name: Name,
     pub(crate) typ: Type,
 }
@@ -98,7 +98,7 @@ impl std::ops::Index<DefinitionId> for Mir {
 /// construct tuples which are instructions in this IR. Additionally, the
 /// terminator of a global's block is always `Result`.
 #[derive(Clone)]
-pub(crate) struct Definition {
+pub struct Definition {
     pub(crate) name: Name,
 
     /// The unique DefinitionId identifying this function
@@ -154,8 +154,43 @@ impl Definition {
         clone
     }
 
+    /// Invoke `f` once for each [DefinitionId] this definition references
+    pub fn for_each_referenced_definition(&self, mut f: impl FnMut(DefinitionId)) {
+        for instruction in self.instructions.values() {
+            instruction.for_each_value(|value| {
+                if let Value::Definition(id) = value {
+                    f(*id);
+                }
+            });
+            match instruction {
+                Instruction::Instantiate(id, _) => f(*id),
+                Instruction::Perform { effect_op, .. } => f(*effect_op),
+                Instruction::Handle { cases, .. } => {
+                    for case in cases {
+                        f(case.effect_op);
+                    }
+                },
+                _ => (),
+            }
+        }
+        for block in self.blocks.values() {
+            if let Some(terminator) = &block.terminator {
+                terminator.for_each_value(|value| {
+                    if let Value::Definition(id) = value {
+                        f(*id);
+                    }
+                });
+            }
+        }
+    }
+
     pub fn entry_block(&self) -> &Block {
         &self.blocks[BlockId::ENTRY_BLOCK]
+    }
+
+    pub fn parameters(&self) -> impl Iterator<Item = (Value, &Type)> {
+        let entry = self.entry_block();
+        entry.parameter_types.iter().enumerate().map(|(i, typ)| (Value::Parameter(BlockId::ENTRY_BLOCK, i as u32), typ))
     }
 
     pub fn instruction_result_type(&self, id: InstructionId) -> &Type {
@@ -340,7 +375,7 @@ impl Value {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct DefinitionId(pub u32);
+pub struct DefinitionId(pub u32);
 
 /// DefinitionIds are assigned in monotonically increasing order. These IDs are nondeterministic in
 /// practice due to this counter being used concurrently. As a result, anything using these ids
@@ -700,6 +735,7 @@ impl IntConstant {
     }
 
     /// Bitcast this value to a u64
+    #[cfg(feature = "llvm")]
     pub(crate) fn as_u64(&self) -> u64 {
         match self {
             IntConstant::U8(x) => *x as u64,

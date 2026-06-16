@@ -1188,6 +1188,9 @@ impl<'a> CstDisplay<'a> {
             write!(f, " ")?;
             if parameter.is_implicit {
                 write!(f, "{{")?;
+                if parameter.is_mutable {
+                    write!(f, "var ")?;
+                }
                 self.fmt_pattern(parameter.pattern, context, f)?;
                 write!(f, "}}")?;
             } else if parameter.is_mutable {
