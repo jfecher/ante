@@ -220,6 +220,14 @@ impl ExtendedTopLevelContext {
         }
     }
 
+    /// Retrieve the location of the corresponding [Name] of the given [NameId]
+    pub(crate) fn name_location(&self, name: NameId) -> Location {
+        match self.more_name_locations.get(&name) {
+            Some(location) => location.clone(),
+            None => self.original.name_location(name).clone(),
+        }
+    }
+
     /// Add each name & path origin from the given [ResolutionResult] to the current extended
     /// context.
     ///

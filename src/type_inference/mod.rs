@@ -520,11 +520,15 @@ fn strip_environments(typ: &Type) -> Type {
 }
 
 /// Describes what a [`TypeChecker::try_coercion`] call rewrote, if anything.
+#[derive(Debug, PartialEq, Eq)]
 pub(super) enum CoercionOutcome {
     /// No coercion was applied.
     None,
     /// The expression at the given `expr` was replaced; the caller should re-check it.
     ReplacedExpr,
+    /// The expression at `expr` was wrapped to `ref expr` or `imm expr`.
+    /// The caller should undo any moves caused by `expr` when this occurs.
+    AutoRef,
     /// The Call at `call_expr` had implicit arguments spliced in; the function expression
     /// itself is untouched and should not be re-checked against the reduced expected type.
     InPlaceCall,
@@ -567,11 +571,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
             (actual, expected) => {
                 // Auto-deref: coerce `ref-kind t` to `t` by inserting a `(.*) expr` call if `Copy t`
-                // can be found.
+                // can be found and `expected` is a concrete type.
                 if let Type::Application(constructor, args) = &actual {
                     if args.len() == 2
                         && matches!(self.follow_type(constructor), Type::Primitive(PrimitiveType::Reference(_)))
-                        && !matches!(&expected, Type::Variable(_))
+                        && self.is_concrete_type_or_numeric_typevar(expected)
                         && expected.reference_element(&self.bindings).is_none()
                     {
                         let arg = args[1].clone();
@@ -585,12 +589,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     }
                 }
                 // Auto-ref: coerce `t` to `ref t` or `imm t` by wrapping `expr` in a reference
-                // expression. Only fires for `Ref`/`Imm` kinds; `Mut`/`Uniq` must be written
-                // explicitly because of their aliasing/affine semantics. Skip when `actual`
-                // is itself a reference (subtyping through `try_unify` handles those cases).
+                // expression.
                 if let Type::Application(expected_ctor, expected_args) = &expected {
                     if expected_args.len() == 2
-                        && !matches!(&actual, Type::Variable(_))
+                        && self.is_concrete_type_or_numeric_typevar(actual)
                         && actual.reference_element(&self.bindings).is_none()
                     {
                         let kind = match self.follow_type(expected_ctor) {
@@ -605,7 +607,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                                     self.bindings.extend(bindings);
                                     let new_expr = self.auto_ref_coercion(expr, kind, actual);
                                     self.current_extended_context_mut().insert_expr(expr, new_expr);
-                                    return CoercionOutcome::ReplacedExpr;
+                                    return CoercionOutcome::AutoRef;
                                 }
                             }
                         }
@@ -614,6 +616,77 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 CoercionOutcome::None
             },
         }
+    }
+
+    /// Infer `expr` against `expected`, then coerce.
+    /// If `allow_deref` is set, this will try to auto-deref `expr` if it is a reference to a Copy type,
+    /// regardless of the `expected` type (ie. even if `expected` is a type variable).
+    fn infer_and_coerce(&mut self, expr: ExprId, expected: &Type, kind: TypeErrorKind, allow_deref: bool) -> Type {
+        let saved = self
+            .try_build_move_path(expr)
+            .map(|path| affine::SavedMove { location: self.move_tracker.save_move(&path), path });
+
+        let actual = self.infer_expr(expr, expected);
+        if allow_deref && let Some((_, inner)) = actual.reference_element(&self.bindings) {
+            if self.type_is_copy(&inner) {
+                let new_expr = self.auto_deref_coercion(expr, inner);
+                self.current_extended_context_mut().insert_expr(expr, new_expr);
+                let old_check = std::mem::replace(&mut self.suppress_move_check, true);
+                let old_record = std::mem::replace(&mut self.suppress_move_record, true);
+                self.check_expr(expr, expected, kind);
+                self.suppress_move_check = old_check;
+                self.suppress_move_record = old_record;
+                return actual;
+            }
+        }
+        self.coerce(&actual, expected, expr, None, kind, saved);
+        actual
+    }
+
+    /// Applies [Self::try_coercion] then [Self::unify]
+    fn coerce(
+        &mut self, actual: &Type, expected: &Type, expr: ExprId, call_expr: Option<ExprId>, kind: TypeErrorKind,
+        saved: Option<affine::SavedMove>,
+    ) -> CoercionOutcome {
+        let result = self.try_coercion(actual, expected, expr, call_expr);
+        match result {
+            // Re-check the wrapper but ignore moves since they were already recorded.
+            CoercionOutcome::ReplacedExpr | CoercionOutcome::AutoRef => {
+                let old_check = std::mem::replace(&mut self.suppress_move_check, true);
+                let old_record = std::mem::replace(&mut self.suppress_move_record, true);
+                self.check_expr(expr, expected, kind);
+                self.suppress_move_check = old_check;
+                self.suppress_move_record = old_record;
+            },
+            CoercionOutcome::None => {
+                self.unify(actual, expected, kind, expr);
+            },
+            // implicit_parameter_coercion already performed the needed unification against the type
+            CoercionOutcome::InPlaceCall => (),
+        }
+        // Undo any moves if an auto-ref occurred
+        if let (CoercionOutcome::AutoRef, Some(saved)) = (&result, saved) {
+            self.move_tracker.restore_move(&saved.path, saved.location);
+        }
+        result
+    }
+
+    /// False if the type is a non-numeric, unbound type variable. True otherwise.
+    /// Non-numeric type variable here refers to one originating from a polymorphic int/float literal.
+    fn is_concrete_type_or_numeric_typevar(&self, typ: &Type) -> bool {
+        match self.follow_type(typ) {
+            Type::Variable(id) => self.integer_literal_vars.contains(id) || self.float_literal_vars.contains(id),
+            _ => true,
+        }
+    }
+
+    /// True if `function` is one of `+ - * / %`,
+    fn is_arithmetic_operator(&self, function: ExprId) -> bool {
+        let name = match &self.current_extended_context()[function] {
+            cst::Expr::Variable(path) => self.current_extended_context()[*path].last_ident(),
+            _ => return false,
+        };
+        matches!(name, "+" | "-" | "*" | "/" | "%")
     }
 
     /// Synthesize a `(.*) expr` call expression for auto-deref coercion.

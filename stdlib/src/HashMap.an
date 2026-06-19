@@ -145,7 +145,7 @@ HashMap.get (map: ref HashMap k v) (key: ref k) {Hash k} {Eq k} {Fail}: ref v =
 HashMap.contains (map: ref HashMap k v) (key: ref k) {Hash k} {Eq k}: Bool =
     try (do map.get key) is Some _
 
-HashMap.remove (map: mut HashMap k v) (key: k) {Hash k} {Eq k} : Maybe v =
+HashMap.remove (map: mut HashMap k v) (key: ref k) {Hash k} {Eq k} : Maybe v =
     match map.get_entry_mut key
     | None -> None
     | Some entry ->
@@ -154,12 +154,12 @@ HashMap.remove (map: mut HashMap k v) (key: k) {Hash k} {Eq k} : Maybe v =
         map.len := map.len - 1
         Some (deref entry.value)
 
-impl print_hashmap {Print k} {Print v}: Print (ref HashMap k v) with
+impl print_hashmap {Print k} {Print v}: Print (HashMap k v) with
     print map =
         putchar '['
         var printed_first = false
         for i in 0 .. map.capacity do
-            entry: Entry k v = map.entries.[i]
+            entry = ptr_to_mut (offset map.entries i)
             if entry.occupied then
                 if printed_first then
                     print ", "
@@ -191,17 +191,16 @@ HashMap.values (m: ref HashMap k v) = fn (e: Emit v) ->
         if entry.occupied then e.emit entry.value
 
 /// Return the existing value at `key`, or insert `default` and return it.
-/// Requires `Copy k` so we can probe the map twice with the same key.
-HashMap.get_or_insert (m: mut HashMap k v) (key: k) (default: v) {Hash k} {Eq k} {Copy k}: ref v =
-    m.get (ref key) ~> on_fail do
+HashMap.get_or_insert (m: mut HashMap k v) (key: k) (default: v) {Hash k} {Eq k}: ref v =
+    m.get key ~> on_fail do
         ignore (m.insert key default)
-        m.get (ref key) ~> or_panic "HashMap.get_or_insert: lookup after insert failed"
+        m.get key ~> or_panic "HashMap.get_or_insert: lookup after insert failed"
 
 /// Same as `get_or_insert` but builds the default lazily.
 HashMap.get_or_insert_with (m: mut HashMap k v) (key: k) (mk: fn Unit => v) {Hash k} {Eq k} {Copy k}: ref v =
-    m.get (ref key) ~> on_fail do
+    m.get key ~> on_fail do
         ignore (m.insert key (mk ()))
-        m.get (ref key) ~> or_panic "HashMap.get_or_insert_with: lookup after insert failed"
+        m.get key ~> or_panic "HashMap.get_or_insert_with: lookup after insert failed"
 
 /// Remove every entry for which `pred key value` returns false.
 HashMap.retain (m: mut HashMap k v) (pred: fn k v => Bool) {Copy k} {Copy v}: Unit =

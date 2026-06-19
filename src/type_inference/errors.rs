@@ -31,7 +31,7 @@ pub enum TypeErrorKind {
     CallArgument { index: usize },
     /// The return type of a function call (actual) does not match the
     /// type expected by the surrounding context (expected)
-    FunctionReturn,
+    CallReturn,
     /// `main` function defined with a type other than `fn Unit -> Unit pure`
     MainFn,
     /// A name is bound (actual) with a type conflicting with a previous binding (expected)
@@ -102,7 +102,7 @@ impl TypeErrorKind {
             TypeErrorKind::CallArgument { index } => {
                 format!("Argument {} has type {actual} but {expected} was expected", index + 1)
             },
-            TypeErrorKind::FunctionReturn => {
+            TypeErrorKind::CallReturn => {
                 format!("This function call returns {actual} but {expected} was expected")
             },
             TypeErrorKind::MainFn => {
@@ -184,7 +184,7 @@ impl Locateable for PathId {
 
 impl Locateable for NameId {
     fn locate(&self, context: &TypeChecker) -> Location {
-        context.current_context().name_location(*self).clone()
+        context.current_extended_context().name_location(*self)
     }
 }
 

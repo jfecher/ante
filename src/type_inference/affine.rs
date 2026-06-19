@@ -64,6 +64,13 @@ pub(super) struct MoveTracker {
     errored: FxHashSet<MovePath>,
 }
 
+/// A snapshot of a [`MovePath`]'s move record, taken before an expression is inferred so
+/// the auto-ref coercion can roll the place back to its pre-inference state.
+pub(super) struct SavedMove {
+    pub(super) path: MovePath,
+    pub(super) location: Option<Location>,
+}
+
 impl MoveTracker {
     /// Record that a path has been moved at the given location.
     pub(super) fn record_move(&mut self, path: MovePath, location: Location) {
@@ -76,6 +83,19 @@ impl MoveTracker {
         self.moved.retain(|p, _| !p.is_descendant_of(path));
         self.errored.remove(path);
         self.errored.retain(|p| !p.is_descendant_of(path));
+    }
+
+    /// Snapshot the move record for `path` so it can be restored after an auto-ref coercion.
+    pub(super) fn save_move(&self, path: &MovePath) -> Option<Location> {
+        self.moved.get(path).cloned()
+    }
+
+    /// Restore a previously saved move record, dropping this expression's own contribution.
+    pub(super) fn restore_move(&mut self, path: &MovePath, saved: Option<Location>) {
+        match saved {
+            Some(location) => self.moved.insert(path.clone(), location),
+            None => self.moved.remove(path),
+        };
     }
 
     /// Check if this path or any ancestor is already moved.

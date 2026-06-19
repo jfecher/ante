@@ -134,7 +134,7 @@ Seq.push (seq: Seq t) (elem: t) {Drop t}: Seq t =
     // seq.len >= data.cap (no room) or
     // seq.len != data_ref.len (another seq has pushed to the same shared data)
     // either way we need to allocate a new buffer.
-    new_cap = max (seq.len * 2) 1
+    new_cap = (max (seq.len * 2) 1).*
     size = size_of (MkType: Type (Data t)) + (Usz new_cap - 1) * size_of (MkType: Type t)
     old_size = size_of (MkType: Type (Data t)) + (Usz data_ref.cap - 1) * size_of (MkType: Type t)
 
@@ -204,12 +204,13 @@ Seq.iter_mut (seq: mut Seq t) (f: fn (mut t) => Unit): Unit =
 
 // Paper cut #2: Copy t
 impl print_seq {p: Print t} {Copy t}: Print (Seq t) with
-    print (seq: Seq t): Unit =
+    print (seq: ref Seq t): Unit =
         print "["
         for i in 0 .. seq.len do
             if i != 0 then print ", "
             elem = offset seq.data.elements (Usz i)
-            print (ptr_to_mut elem).*
+            e: t = (ptr_to_mut elem).*
+            print e
         print "]"
 
 implicit clone_seq: Clone (Seq t) =

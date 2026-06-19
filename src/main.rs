@@ -29,6 +29,7 @@
 //!   - Select Largest Variant `src/mir/select_largest_variant.rs`
 //! - Backend Codegen - choose your backend:
 //!   - LLVM `src/codegen/llvm/mod.rs`
+//!   - C `src/codegen/c/mod.rs`
 //!
 //! Non-passes:
 //! - `src/errors.rs`: Defines each error used in the program as well as the `Location` struct

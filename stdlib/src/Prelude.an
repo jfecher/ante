@@ -36,7 +36,7 @@ export String, from_parts, Maybe, None, Some, iff, unwrap, unwrap_or_else, Resul
     drop_i8, drop_i16, drop_i32, drop_i64, drop_isz, drop_u8, drop_u16, drop_u32, drop_u64, drop_usz, drop_f32, drop_f64, drop_unit, drop_bool, drop_char, drop_ptr,
     Copy, (.*), copy_i8, copy_i16, copy_i32, copy_i64, copy_isz, copy_u8, copy_u16, copy_u32, copy_u64, copy_usz, copy_f32, copy_f64, copy_unit, copy_bool, copy_char, copy_ptr, copy_ref, copy_mut, copy_imm, copy_uniq, clone_string, copy_pair, copy_maybe,
     null, transmute,
-    Print, print, println, print_unsigned, print_signed, print_float, print_u8, print_u16, print_u32, print_u64, print_usz, print_i8, print_i16, print_i32, print_i64, print_isz, print_char, print_f64, print_f32, print_pair, print_string, print_maybe, print_ref, print_bool, print_array,
+    Print, print, println, print_unsigned, print_signed, print_float, print_u8, print_u16, print_u32, print_u64, print_usz, print_i8, print_i16, print_i32, print_i64, print_isz, print_char, print_f64, print_f32, print_pair, print_string, print_maybe, print_bool, print_array,
     Iterator, next, iter, Range, iterator_range, iter_range, repeat,
     panic, ignore
 
@@ -501,39 +501,39 @@ impl mod_usz: Mod Usz with
 
 // TODO: We do not have an integer-generic 0 value to use here
 (%%) (a: t) (b: t) {Mod t} {Eq t} {Cast U8 t} =
-    a % b == cast 0u8
+    a % b == cast 0u8 : t
 
 
-ability Eq t = (==): fn t t -> Bool
+ability Eq t = (==): fn (ref t) (ref t) -> Bool
 impl eq_i8: Eq I8 with
-    (==) x y = intrinsic "EqInt" x y
+    (==) x y = intrinsic "EqInt" x.* y.*
 impl eq_i16: Eq I16 with
-    (==) x y = intrinsic "EqInt" x y
+    (==) x y = intrinsic "EqInt" x.* y.*
 impl eq_i32: Eq I32 with
-    (==) x y = intrinsic "EqInt" x y
+    (==) x y = intrinsic "EqInt" x.* y.*
 impl eq_i64: Eq I64 with
-    (==) x y = intrinsic "EqInt" x y
+    (==) x y = intrinsic "EqInt" x.* y.*
 impl eq_isz: Eq Isz with
-    (==) x y = intrinsic "EqInt" x y
+    (==) x y = intrinsic "EqInt" x.* y.*
 impl eq_u8: Eq U8 with
-    (==) x y = intrinsic "EqInt" x y
+    (==) x y = intrinsic "EqInt" x.* y.*
 impl eq_u16: Eq U16 with
-    (==) x y = intrinsic "EqInt" x y
+    (==) x y = intrinsic "EqInt" x.* y.*
 impl eq_u32: Eq U32 with
-    (==) x y = intrinsic "EqInt" x y
+    (==) x y = intrinsic "EqInt" x.* y.*
 impl eq_u64: Eq U64 with
-    (==) x y = intrinsic "EqInt" x y
+    (==) x y = intrinsic "EqInt" x.* y.*
 impl eq_usz: Eq Usz with
-    (==) x y = intrinsic "EqInt" x y
+    (==) x y = intrinsic "EqInt" x.* y.*
 impl eq_f32: Eq F32 with
-    (==) x y = intrinsic "EqFloat" x y
+    (==) x y = intrinsic "EqFloat" x.* y.*
 impl eq_f64: Eq F64 with
-    (==) x y = intrinsic "EqFloat" x y
+    (==) x y = intrinsic "EqFloat" x.* y.*
 
 impl eq_char: Eq Char with
-    (==) (x: Char) (y: Char) = intrinsic "EqInt" x y
+    (==) x y = intrinsic "EqInt" x.* y.*
 impl eq_bool: Eq Bool with
-    (==) (x: Bool) (y: Bool) = intrinsic "EqInt" x y
+    (==) x y = intrinsic "EqInt" x.* y.*
 
 // References are equal if their elements are equal
 impl eq_ref {Eq t}: Eq (ref t) with
@@ -541,11 +541,11 @@ impl eq_ref {Eq t}: Eq (ref t) with
 
 // Pointers are equal if their addresses are equal
 impl eq_ptr: Eq (Ptr t) with
-    (==) l r = (transmute l : Usz) == transmute r
+    (==) l r = (transmute l.* : Usz) == (transmute r.* : Usz)
 
 impl eq_maybe {Eq e}: Eq (Maybe e) with
     (==) l r =
-        match l, r
+        match deref l, deref r
         | Some lv, Some rv -> lv == rv
         | None, None -> true
         | _ -> false
@@ -565,45 +565,45 @@ impl not_i32: Not I32 with
     (not) x = intrinsic "BitwiseNot" x
 
 ability Cmp a =
-    (<): fn a a -> Bool
+    (<): fn (ref a) (ref a) -> Bool
 
 // TODO: Partial ordering screws everything up
-(>) (a: t) (b: t) {Cmp t} = b < a
-(<=) (a: t) (b: t) {Cmp t} = not (b < a)
-(>=) (a: t) (b: t) {Cmp t} = not (a < b)
+(>) (a: ref t) (b: ref t) {Cmp t} = b < a
+(<=) (a: ref t) (b: ref t) {Cmp t} = not (b < a)
+(>=) (a: ref t) (b: ref t) {Cmp t} = not (a < b)
 
 impl cmp_i8: Cmp I8 with
-    (<) x y = intrinsic "LessSigned" x y
+    (<) x y = intrinsic "LessSigned" x.* y.*
 impl cmp_i16: Cmp I16 with
-    (<) x y = intrinsic "LessSigned" x y
+    (<) x y = intrinsic "LessSigned" x.* y.*
 impl cmp_i32: Cmp I32 with
-    (<) x y = intrinsic "LessSigned" x y
+    (<) x y = intrinsic "LessSigned" x.* y.*
 impl cmp_i64: Cmp I64 with
-    (<) x y = intrinsic "LessSigned" x y
+    (<) x y = intrinsic "LessSigned" x.* y.*
 impl cmp_isz: Cmp Isz with
-    (<) x y = intrinsic "LessSigned" x y
+    (<) x y = intrinsic "LessSigned" x.* y.*
 
 impl cmp_u8: Cmp U8 with
-    (<) x y = intrinsic "LessUnsigned" x y
+    (<) x y = intrinsic "LessUnsigned" x.* y.*
 impl cmp_u16: Cmp U16 with
-    (<) x y = intrinsic "LessUnsigned" x y
+    (<) x y = intrinsic "LessUnsigned" x.* y.*
 impl cmp_u32: Cmp U32 with
-    (<) x y = intrinsic "LessUnsigned" x y
+    (<) x y = intrinsic "LessUnsigned" x.* y.*
 impl cmp_u64: Cmp U64 with
-    (<) x y = intrinsic "LessUnsigned" x y
+    (<) x y = intrinsic "LessUnsigned" x.* y.*
 impl cmp_usz: Cmp Usz with
-    (<) x y = intrinsic "LessUnsigned" x y
+    (<) x y = intrinsic "LessUnsigned" x.* y.*
 
 impl cmp_f32: Cmp F32 with
-    (<) x y = intrinsic "LessFloat" x y
+    (<) x y = intrinsic "LessFloat" x.* y.*
 impl cmp_f64: Cmp F64 with
-    (<) x y = intrinsic "LessFloat" x y
+    (<) x y = intrinsic "LessFloat" x.* y.*
 
 impl cmp_char: Cmp Char with
-    (<) x y = intrinsic "LessUnsigned" x y
+    (<) x y = intrinsic "LessUnsigned" x.* y.*
 
-max (l: t) (r: t) {Cmp t} {Copy t}: t = if l > r then l else r
-min (l: t) (r: t) {Cmp t} {Copy t}: t = if l < r then l else r
+max (l: ref t) (r: ref t) {Cmp t}: ref t = if l > r then l else r
+min (l: ref t) (r: ref t) {Cmp t}: ref t = if l < r then l else r
 
 
 ability Num a =
@@ -791,7 +791,7 @@ array_set_unchecked (array: mut Array n t) (i: Usz) (v: t): Unit =
     ptr: Ptr t = transmute array
     ptr_store (offset ptr i) v
 
-array_get array index =
+array_get (array: ref Array n t) index: ref t =
     if index >= array_len array then
         panic "array_get index out of bounds"
     array_get_unchecked array index
@@ -982,31 +982,31 @@ impl insert_array: Insert (mut Array n t) Usz t with
 
 // TODO: Take argument by reference
 ability Print t =
-    print: fn t -> Unit
+    print: fn (ref t) -> Unit
 
-println (x: t) {Print t} =
+println (x: ref t) {Print t} =
     Print.print x
     putchar '\n'
 
 impl print_u8: Print U8 with
-    print x = print_unsigned (U64 x)
+    print x = print_unsigned (U64 x.*)
 impl print_u16: Print U16 with
-    print x = print_unsigned (U64 x)
+    print x = print_unsigned (U64 x.*)
 impl print_u32: Print U32 with
-    print x = print_unsigned (U64 x)
+    print x = print_unsigned (U64 x.*)
 impl print_u64: Print U64 with
     print x = print_unsigned x
 impl print_usz: Print Usz with
-    print x = print_unsigned (U64 x)
+    print x = print_unsigned (U64 x.*)
 
 impl print_i8: Print I8 with
-    print x = print_signed (I64 x) -128i64 "-128"
+    print x = print_signed (I64 x.*) -128i64 "-128"
 
 impl print_i16: Print I16 with
-    print x = print_signed (I64 x) -32_768i64 "-32_768"
+    print x = print_signed (I64 x.*) -32_768i64 "-32_768"
 
 impl print_i32: Print I32 with
-    print x = print_signed (I64 x) -2_147_483_648i64 "-2_147_483_648"
+    print x = print_signed (I64 x.*) -2_147_483_648i64 "-2_147_483_648"
 
 impl print_i64: Print I64 with
     print x = print_signed x -9_223_372_036_854_775_808i64 "-9_223_372_036_854_775_808"
@@ -1014,16 +1014,16 @@ impl print_i64: Print I64 with
 // TODO: This is broken for non-64-bit platforms.
 impl print_isz: Print Isz with
     print x =
-        print_signed (I64 x) -9_223_372_036_854_775_808i64 "-9_223_372_036_854_775_808"
+        print_signed (I64 x.*) -9_223_372_036_854_775_808i64 "-9_223_372_036_854_775_808"
 
 
 impl print_char: Print Char with
     print x = putchar x
 
 impl print_f64: Print F64 with
-    print = print_float
+    print x = print_float x.*
 impl print_f32: Print F32 with
-    print x = print_float (F64 x)
+    print x = print_float (F64 x.*)
 
 impl print_pair {Print a} {Print b}: Print (a, b) with
     print pair =
@@ -1048,22 +1048,19 @@ print_float (f: F64): Unit =
 impl print_string: Print String with
     print s = loop (i = 0) ->
         if i < s.length then
-            off = offset_bytes (s.data) (Usz i)
+            off = offset_bytes (s.data) (Usz i.*)
             c = deref_ptr off
             putchar c
             recur (i + 1)
 
 impl print_maybe {Print a}: Print (Maybe a) with
     print m =
-        match m
+        match deref m
         | Some a ->
             print "Some "
             // TODO: Parenthesize if necessary
             print a
         | None -> print "None"
-
-impl print_ref {Print a} {Copy a}: Print (ref a) with
-    print r = print r.*
 
 // Naive replacement for printf which isn't supported by the cranelift backend
 print_unsigned (x: U64): Unit =
@@ -1083,7 +1080,7 @@ print_signed (x: I64) (min: I64) (min_string: String): Unit =
 
 impl print_bool: Print Bool with
     print b =
-        if b then print "true"
+        if b.* then print "true"
         else print "false"
 
 impl print_array {Print t}: Print (Array n t) with
@@ -1092,7 +1089,8 @@ impl print_array {Print t}: Print (Array n t) with
         for i in 0 .. array_len array do
             if i != 0 then
                 print ", "
-            print (deref (ref array).[i])
+            elem: ref t = array.[i]
+            print elem
         print "]"
 
 ability Iterator it elem =

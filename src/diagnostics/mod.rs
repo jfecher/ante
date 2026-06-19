@@ -421,7 +421,7 @@ impl Diagnostic {
                 format!("This imports `{name}`, which has already been defined")
             },
             Diagnostic::UnusedName { name, location: _ } => {
-                format!("`{name}` is never used. Prefix the name with `_` to silence this warning")
+                format!("`{name}` is never used")
             },
             Diagnostic::UnknownImportFile { crate_name, module_name, location: _ } => {
                 if module_name.display().to_string().is_empty() {
@@ -785,6 +785,9 @@ impl Diagnostic {
                 location,
                 format!("Declare the type as `shared` or wrap each instance in a pointer type like `Rc`"),
             )),
+            Diagnostic::UnusedName { name: _, location } => {
+                 Some((location, format!("Prefix the name with `_` to silence this warning")))
+            }
             _ => None,
         }
     }
