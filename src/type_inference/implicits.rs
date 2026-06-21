@@ -436,13 +436,18 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let typ = target_type.clone();
         let fresh_id = self.push_expr(cst::Expr::Error, typ, location);
         let delayed = DelayedImplicit { source: function, destination: fresh_id, parameter_index };
-        self.implicits.last_mut().unwrap().delayed_implicits.push(delayed);
 
         if let Some(call_expr) = call {
             if let cst::Expr::Call(mut existing) = self.current_extended_context()[call_expr].clone() {
                 existing.arguments.insert(parameter_index, cst::Argument::implicit(fresh_id));
                 self.current_extended_context_mut().insert_expr(call_expr, cst::Expr::Call(existing));
             }
+        }
+
+        // Try to resolve immediately. Slows down type inference but can help it in some cases.
+        let in_scope = self.collect_implicits_in_scope();
+        if self.find_implicit_value(delayed, &in_scope).is_err() {
+            self.implicits.last_mut().unwrap().delayed_implicits.push(delayed);
         }
 
         fresh_id
