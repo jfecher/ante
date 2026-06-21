@@ -15,8 +15,7 @@ use crate::{
     },
     iterator_extensions::mapvec,
     lexer::{
-        Lexer,
-        token::{Integer, IntegerKind, Token, lookup_keyword},
+        token::{lookup_keyword, Integer, IntegerKind, LexerError, Token}, Lexer
     },
     name_resolution::namespace::CrateId,
     parser::cst::Name,
@@ -32,6 +31,7 @@ pub use unimplemented_item::*;
 /// Any diagnostic that the compiler can issue.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub enum Diagnostic {
+    LexerError { error: LexerError, location: Location },
     // TODO: `message` could be an enum to save allocation costs
     ParserExpected {
         message: String,
@@ -400,6 +400,7 @@ impl Diagnostic {
 
     pub fn message(&self) -> String {
         match self {
+            Diagnostic::LexerError { error, .. } => error.to_string(),
             Diagnostic::ParserExpected { message, actual, .. } => {
                 if actual.to_string().contains(" ") {
                     format!("Expected {message} but found {actual}")
@@ -680,7 +681,8 @@ impl Diagnostic {
     /// The primary source location of this diagnostic
     pub fn location(&self) -> &Location {
         match self {
-            Diagnostic::ParserExpected { location, .. }
+            Diagnostic::LexerError { location, .. }
+            | Diagnostic::ParserExpected { location, .. }
             | Diagnostic::ParserComplexImplItemName { location, .. }
             | Diagnostic::ExpectedPathForImport { location }
             | Diagnostic::NameAlreadyInScope { second_location: location, .. }

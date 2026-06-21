@@ -225,7 +225,7 @@ pub enum Token {
     // Lexer sends an end of input token before stopping so we get a proper error location when
     // reporting parsing errors that expect a token but found the end of a file instead.
     EndOfInput,
-    Error(LexerError),
+    Invalid(char),
     Newline,
     Indent,
     Unindent,
@@ -449,7 +449,7 @@ impl Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Token::EndOfInput => write!(f, "end of input"),
-            Token::Error(error) => write!(f, "{}", error),
+            Token::Invalid(char) => write!(f, "`{}`", char),
             Token::Newline => write!(f, "a newline"),
             Token::Indent => write!(f, "an indent"),
             Token::Unindent => write!(f, "an unindent"),

@@ -56,7 +56,10 @@ struct Parser<'tokens> {
 
 pub fn parse_impl(ctx: &incremental::Parse, db: &incremental::DbHandle) -> Arc<ParseResult> {
     let file = ctx.0.get(db);
-    let tokens = Lexer::new(&file.contents).collect::<Vec<_>>();
+    let (tokens, errors) = Lexer::lex(&file.contents, ctx.0);
+    for error in errors {
+        db.accumulate(error);
+    }
     Arc::new(Parser::new(ctx.0, &tokens).parse(db))
 }
 
@@ -1876,7 +1879,7 @@ impl<'tokens> Parser<'tokens> {
             Token::BracketLeft => self.parse_array_literal(),
             Token::Move | Token::Fn => self.parse_lambda(min_prec, ban_do),
             Token::Do if !ban_do => self.parse_do(),
-            Token::Error(_) => {
+            Token::Invalid(_) => {
                 // Report the lexer error and return Error to treat this as an expression value
                 let location = self.current_token_location();
                 let actual = self.current_token().clone();

@@ -3,12 +3,14 @@ foo a =
 
 // args: -e ast --no-color
 // expected exit status: 1
-// expected stdout: foo a = (error) a
+// expected stdout:
+// foo a =
+//     a
+
 // expected stderr:
 // examples/parser/spaces_in_tabs_only_file.an:2:1
 // 1 | foo a =
-//   |    // error: Expected an expression but found space found in a file using tabs in its significant indentation
-// 2 | 	  a
+// 2 | 	  a	// error: space found in a file using tabs in its significant indentation
 //   | ^^^
 // 
 // Found 1 error and 0 warnings
