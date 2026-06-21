@@ -1,0 +1,15 @@
+foo a =
+	  a
+
+// args: -e ast --no-color
+// expected exit status: 1
+// expected stdout: foo a = (error) a
+// expected stderr:
+// examples/parser/spaces_in_tabs_only_file.an:2:1
+// 1 | foo a =
+//   |    // error: Expected an expression but found space found in a file using tabs in its significant indentation
+// 2 | 	  a
+//   | ^^^
+// 
+// Found 1 error and 0 warnings
+

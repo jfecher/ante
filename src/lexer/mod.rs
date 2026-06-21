@@ -60,6 +60,8 @@ pub struct Lexer<'contents> {
     current_indent_level: usize,
     return_newline: bool, // Hack to always return a newline after an Unindent token
     previous_token_expects_indent: bool,
+    /// ' ' or '\t', starts as '\0' until the first significant indentation establishes it
+    indent_char: char,
     chars: Chars<'contents>,
     open_braces: OpenBraces,
     pending_interpolations: Vec<usize>,
@@ -103,6 +105,7 @@ impl<'contents> Lexer<'contents> {
             current_indent_level: 0,
             return_newline: false,
             previous_token_expects_indent: false,
+            indent_char: '\0',
             chars,
             open_braces: OpenBraces { parenthesis: 0, curly: 0, square: 0 },
             pending_interpolations: Vec::new(),
@@ -397,27 +400,51 @@ impl<'contents> Lexer<'contents> {
         // Must advance start_position otherwise the slice returned by advance_while
         // in recursive calls to lex_newline will be longer than it should be
         self.token_start_position = self.current_position;
-        let new_indent = self.advance_while(|current, _| current == ' ').len();
+        let indent = self.advance_while(|current, _| current == ' ' || current == '\t');
+        let new_indent = indent.len();
 
         match (self.current, self.next) {
             ('\r', _) => self.lex_newline(),
             ('\n', _) => self.lex_newline(),
 
             (c, _) if c.is_whitespace() => {
-                let error = LexerError::InvalidCharacterInSignificantWhitespace(self.current);
+                let error = LexerError::UnicodeWhitespaceCharacterInSignificantWhitespace(self.current);
                 self.advance_with(Token::Error(error))
             },
 
-            // Ignore emitting indentation level changes for single-line comments only.
+            // Ignore emitting indentation level changes for comments.
             ('/', '/') if !self.peek_next_next('/') => self.lex_singleline_comment(),
             ('/', '*') => self.lex_multiline_comment(),
 
-            _ if new_indent > self.current_indent_level => self.lex_indent(new_indent),
-            _ if new_indent < self.current_indent_level => self.lex_unindent(new_indent),
-
-            _ if self.newlines_ignored() => self.next(),
-            _ => Some((Token::Newline, self.locate())),
+            // Only validate indentation on significant lines
+            _ => {
+                if let Some(error) = self.check_indent_consistency(indent) {
+                    return Some((Token::Error(error), self.locate()));
+                }
+                if new_indent > self.current_indent_level {
+                    self.lex_indent(new_indent)
+                } else if new_indent < self.current_indent_level {
+                    self.lex_unindent(new_indent)
+                } else if self.newlines_ignored() {
+                    self.next()
+                } else {
+                    Some((Token::Newline, self.locate()))
+                }
+            },
         }
+    }
+
+    /// A file's significant indentation must use either all spaces or all tabs. The character is
+    /// lazily established by the first significant indentation seen. Any indentation using a
+    /// different character after is an error.
+    fn check_indent_consistency(&mut self, indent: &str) -> Option<LexerError> {
+        let first = indent.chars().next()?;
+        if self.indent_char == '\0' {
+            self.indent_char = first;
+        }
+
+        let found = indent.chars().find(|c| *c != self.indent_char)?;
+        Some(LexerError::InconsistentIndentation { found, expected: self.indent_char })
     }
 
     /// True if the character after next is `expected`
@@ -446,7 +473,8 @@ impl<'contents> Lexer<'contents> {
     }
 
     fn lex_indent(&mut self, new_indent: usize) -> IterElem {
-        if new_indent == self.current_indent_level + 1 {
+        // At least 2 spaces are required to indent
+        if new_indent == self.current_indent_level + 1 && self.indent_char == ' ' {
             self.indent_levels.push(IndentLevel::new(new_indent));
             self.current_indent_level = new_indent;
             Some((Token::Error(LexerError::IndentChangeTooSmall), self.locate()))

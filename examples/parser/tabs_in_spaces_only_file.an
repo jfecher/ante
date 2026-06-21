@@ -1,0 +1,25 @@
+foo a b =
+    fn c d ->
+        3
+
+bar x =
+	x
+
+// args: -e ast --no-color
+// expected exit status: 1
+// expected stdout:
+// foo a b =
+//     fn c d ->
+//         3
+// 
+// bar x = (error) x
+
+// expected stderr:
+// examples/parser/tabs_in_spaces_only_file.an:6:1
+// 5 | bar x =
+//   |  // error: Expected an expression but found tab found in a file using spaces in its significant indentation
+// 6 | 	x
+//   | ^
+// 
+// Found 1 error and 0 warnings
+

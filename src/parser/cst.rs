@@ -7,7 +7,7 @@ use crate::{
     lexer::token::{F64, FloatKind, Integer, IntegerKind, Token},
 };
 
-use super::ids::{ExprId, IdStore, NameId, NameStore, PathId, PatternId, TopLevelId};
+use super::ids::{ExprId, IdStore, NameId, PathId, PatternId, TopLevelId};
 
 /// The Concrete Syntax Tree (CST) is the output of parsing a source file.
 /// This is expected to mirror the source file without removing too much information.
