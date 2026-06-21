@@ -20,6 +20,14 @@ impl Generic {
             Generic::Inferred(id) => Type::Variable(*id),
         }
     }
+
+    /// If this is a [Generic::Inferred], return its id. Otherwise, return [None].
+    pub(crate) fn as_inferred(self) -> Option<TypeVariableId> {
+        match self {
+            Generic::Named(_) => None,
+            Generic::Inferred(id) => Some(id),
+        }
+    }
 }
 
 impl std::fmt::Display for Generic {

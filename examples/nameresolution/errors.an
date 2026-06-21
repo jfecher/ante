@@ -50,13 +50,17 @@ a = 3 // already declared
 // 
 // examples/nameresolution/errors.an:10:5
 //  9 | foo _a b =
-// 10 |     bar _c d =	// warning: `bar` is never used
+//    |     // warning: `bar` is never used
+//    |     // note: Prefix the name with `_` to silence this warning
+// 10 |     bar _c d =
 //    |     ^^^
 // 11 |         b
 // 
 // examples/nameresolution/errors.an:10:12
 //  9 | foo _a b =
-// 10 |     bar _c d =	// warning: `d` is never used
+//    |     // warning: `d` is never used
+//    |     // note: Prefix the name with `_` to silence this warning
+// 10 |     bar _c d =
 //    |            ^
 // 11 |         b
 // 

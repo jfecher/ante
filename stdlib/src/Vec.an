@@ -245,7 +245,7 @@ impl extract_vec_move: Extract (Vec t) Usz t with
     (.[]) v i = v.data.[i]
 
 impl extract_vec: Extract (ref Vec t) Usz (ref t) with
-    (.[]) v i = ref v.data.[i]
+    (.[]) v i = transmute (offset v.data i)
 
 // Note that this impl is different from `Vec.insert`.
 // Vec.insert will insert into a slot, moving the previous element and each

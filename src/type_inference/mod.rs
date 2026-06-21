@@ -205,6 +205,11 @@ struct TypeChecker<'local, 'inner> {
 
     /// Same as `integer_literal_vars` but for polymorphic float literals.
     float_literal_vars: FxHashSet<TypeVariableId>,
+
+    /// We need to remember any type variables that the auto-ref coercion applies to to prevent
+    /// them from later unifying with references, otherwise it could bind to `ref (ref t)` internally
+    /// which can lead to soundness errors causing segfaults at runtime.
+    value_type_vars: FxHashSet<TypeVariableId>,
 }
 
 /// Map from each TopLevelId to a tuple of (the item, parse context, resolution context)
@@ -241,6 +246,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             mutable_definitions: Default::default(),
             integer_literal_vars: Default::default(),
             float_literal_vars: Default::default(),
+            value_type_vars: Default::default(),
         };
 
         let mut item_types = FxHashMap::default();
@@ -588,11 +594,15 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                         }
                     }
                 }
-                // Auto-ref: coerce `t` to `ref t` or `imm t` by wrapping `expr` in a reference
-                // expression.
+                // Auto-ref: coerce `t` to `ref t` or `imm t` by wrapping `expr` in a reference expression.
+                // FIXME: simplify these rules. The `|| actual_is_place` allows us to bind to unbound
+                // type variables which requires us to do some messy tracking, preventing them from
+                // being bound to references themselves later. But without this type inference
+                // really suffers.
+                let actual_is_place = self.try_build_move_path(expr).is_some();
                 if let Type::Application(expected_ctor, expected_args) = &expected {
                     if expected_args.len() == 2
-                        && self.is_concrete_type_or_numeric_typevar(actual)
+                        && (self.is_concrete_type_or_numeric_typevar(actual) || actual_is_place)
                         && actual.reference_element(&self.bindings).is_none()
                     {
                         let kind = match self.follow_type(expected_ctor) {
@@ -603,6 +613,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                             if matches!(kind, ReferenceKind::Ref | ReferenceKind::Imm) {
                                 let inner = expected_args[1].clone();
                                 let actual = actual.clone();
+                                // Prevent the id from being bound to a reference later
+                                if let Type::Variable(id) = self.follow_type(&actual) {
+                                    self.value_type_vars.insert(*id);
+                                }
                                 if let Ok(bindings) = self.try_unify(&actual, &inner) {
                                     self.bindings.extend(bindings);
                                     let new_expr = self.auto_ref_coercion(expr, kind, actual);
@@ -643,32 +657,52 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         actual
     }
 
-    /// Applies [Self::try_coercion] then [Self::unify]
+    /// Applies [Self::try_coercion] then [Self::unify].
+    /// Returns the actual result type (rather than the expected type)
     fn coerce(
         &mut self, actual: &Type, expected: &Type, expr: ExprId, call_expr: Option<ExprId>, kind: TypeErrorKind,
         saved: Option<affine::SavedMove>,
-    ) -> CoercionOutcome {
+    ) -> Type {
         let result = self.try_coercion(actual, expected, expr, call_expr);
-        match result {
-            // Re-check the wrapper but ignore moves since they were already recorded.
-            CoercionOutcome::ReplacedExpr | CoercionOutcome::AutoRef => {
+        let actual = match result {
+            CoercionOutcome::AutoRef => self.type_autoref_wrapper(expr, expected, kind),
+            CoercionOutcome::ReplacedExpr => {
+                // Re-check the wrapper but ignore moves since they were already recorded.
                 let old_check = std::mem::replace(&mut self.suppress_move_check, true);
                 let old_record = std::mem::replace(&mut self.suppress_move_record, true);
-                self.check_expr(expr, expected, kind);
+                let actual = self.check_expr(expr, expected, kind);
                 self.suppress_move_check = old_check;
                 self.suppress_move_record = old_record;
+                actual
             },
             CoercionOutcome::None => {
                 self.unify(actual, expected, kind, expr);
+                actual.clone()
             },
             // implicit_parameter_coercion already performed the needed unification against the type
-            CoercionOutcome::InPlaceCall => (),
-        }
+            CoercionOutcome::InPlaceCall => actual.clone(),
+        };
         // Undo any moves if an auto-ref occurred
         if let (CoercionOutcome::AutoRef, Some(saved)) = (&result, saved) {
             self.move_tracker.restore_move(&saved.path, saved.location);
         }
-        result
+        actual
+    }
+
+    /// Wrap the expression's type in the given expected reference type. `expected` is a full reference
+    /// type, and `expr` will be wrapped with the same reference constructor of that type.
+    /// Returns the actual type of the expression (rather than the expected type)
+    fn type_autoref_wrapper(&mut self, expr: ExprId, expected: &Type, kind: TypeErrorKind) -> Type {
+        let cst::Expr::Reference(reference) = self.current_extended_context()[expr].clone() else {
+            unreachable!("type_autoref_wrapper called on a non-Reference expr")
+        };
+        let element = self.expr_types[&reference.rhs].clone();
+        let lifetime = self.next_type_variable();
+        let constructor = Type::reference(reference.kind);
+        let typ = Type::Application(Arc::new(constructor), Arc::new(vec![lifetime, element]));
+        self.expr_types.insert(expr, typ.clone());
+        self.unify(&typ, expected, kind, expr);
+        typ
     }
 
     /// False if the type is a non-numeric, unbound type variable. True otherwise.
@@ -724,6 +758,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let location = expr.locate(self);
         let original_expr = self.current_extended_context()[expr].clone();
         let rhs = self.push_expr(original_expr, element_type, location);
+        self.current_extended_context_mut().copy_expr_metadata(expr, rhs);
         cst::Expr::Reference(cst::Reference { kind, rhs })
     }
 
@@ -872,10 +907,31 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             self.try_bind_integer_or_float_type_variable(true, id, binding, new_bindings)
         } else if self.is_float_type_variable(id) {
             self.try_bind_integer_or_float_type_variable(false, id, binding, new_bindings)
+        } else if self.value_type_vars.contains(&id) {
+            self.try_bind_value_type_variable(id, binding, new_bindings)
         } else {
             new_bindings.insert(id, binding);
             Ok(())
         }
+    }
+
+    /// Bind a variable that was auto-ref'd as a value. Binding to a reference type is
+    /// rejected so the wrapper never becomes a nested reference. This is needed to preserve
+    /// type soundness currently.
+    fn try_bind_value_type_variable(
+        &self, id: TypeVariableId, binding: Type, new_bindings: &mut TypeBindings,
+    ) -> Result<(), ()> {
+        match &binding {
+            Type::Variable(other) if !self.is_integer_type_variable(*other) && !self.is_float_type_variable(*other) => {
+                new_bindings.insert(*other, Type::Variable(id));
+                return Ok(());
+            },
+            Type::Primitive(PrimitiveType::Error | PrimitiveType::Never) => return Ok(()),
+            _ if binding.reference_element(&self.bindings).is_some() => return Err(()),
+            _ => (),
+        }
+        new_bindings.insert(id, binding);
+        Ok(())
     }
 
     /// Restrict polymorphic literal variables to types matching their literal kind.

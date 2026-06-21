@@ -38,18 +38,24 @@ main () =
 // expected stderr:
 // examples/nameresolution/unused_local.an:2:14
 // 1 | // An unused parameter warns, but a `_`-prefixed one does not.
-// 2 | unused_param x = 0	// warning: `x` is never used
+//   | // warning: `x` is never used
+//   | // note: Prefix the name with `_` to silence this warning
+// 2 | unused_param x = 0
 //   |              ^
 // 3 | ignored_param _x = 0
 // 
 // examples/nameresolution/unused_local.an:9:5
 //  8 | main () =
-//  9 |     unused = 1	// warning: `unused` is never used
+//    |     // warning: `unused` is never used
+//    |     // note: Prefix the name with `_` to silence this warning
+//  9 |     unused = 1
 //    |     ^^^^^^
 // 
 // examples/nameresolution/unused_local.an:15:12
 // 14 |     match Maybe.Some used
-// 15 |     | Some bound -> ()	// warning: `bound` is never used
+//    |     // warning: `bound` is never used
+//    |     // note: Prefix the name with `_` to silence this warning
+// 15 |     | Some bound -> ()
 //    |            ^^^^^
 // 16 |     | None -> ()
 // 

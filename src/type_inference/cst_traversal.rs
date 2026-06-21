@@ -13,7 +13,7 @@ use crate::{
         ids::{ExprId, NameId, PathId, PatternId, TopLevelId, TopLevelName},
     },
     type_inference::{
-        CoercionOutcome, Locateable, TypeChecker,
+        Locateable, TypeChecker,
         affine::MovePath,
         errors::TypeErrorKind,
         get_type::{get_partial_type, try_get_generalized_type},
@@ -418,6 +418,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let actual_return_type = self.next_type_variable();
         Arc::make_mut(&mut expected_function_type).return_type = actual_return_type.clone();
 
+        let implicit_count_before_call = self.delayed_implicits_count();
+
         // This coerce covers inserting any necessary implicit arguments to this function call
         self.coerce(
             &actual_function_type,
@@ -428,25 +430,37 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             None,
         );
 
-        let outcome = self.coerce(&actual_return_type, expected, call_expr, None, TypeErrorKind::CallReturn, None);
-        if CoercionOutcome::None != outcome {
-            return expected.clone();
+        // FIXME: This is a hack. Type inference benefits if we can push down more expected types by
+        // binding the return, which can affect argument types, but it can also lead to coercion errors.
+        // As a compromise, we only unify non-type variable returns currently just because it
+        // happened to keep most examples working.
+        if !matches!(self.follow_type(&actual_return_type), Type::Variable(_))
+            && let Ok(bindings) = self.try_unify(&actual_return_type, expected)
+        {
+            self.bindings.extend(bindings);
         }
 
-        // self.coerce(&actual_return_type, expected, call_expr, None, TypeErrorKind::CallReturn, None);
-        // if matches!(self.follow_type(&actual_return_type), Type::Variable(_)) {
-        //     self.unify(&actual_return_type, expected, TypeErrorKind::CallReturn, call_expr);
-        // }
-
-        // Allow auto-derefs for arguments of `+ - * / %`
+        // Infer the arguments. For `+ - * / %`, allow auto-deref of operands.
         let deref_operands = self.is_arithmetic_operator(call.function);
         for (index, (arg, expected_arg_type)) in call.arguments.iter().zip(expected_parameter_types).enumerate() {
             let kind = TypeErrorKind::CallArgument { index };
             self.infer_and_coerce(arg.expr, &expected_arg_type.typ, kind, deref_operands);
         }
 
-        //if let CoercionOutcome::None = outcome { actual_return_type } else { expected.clone() }
-        expected.clone()
+        // FIXME: Another related hack. Try to bind the return type now, this time if it has no unbound
+        // type variables. Doing so results in some better results when resolving implicits early below.
+        if expected.free_vars(&self.bindings).is_empty()
+            && let Ok(bindings) = self.try_unify(&actual_return_type, expected)
+        {
+            self.bindings.extend(bindings);
+        }
+
+        // A lot of Extract implicits (.[]) break without this
+        self.resolve_new_delayed_implicits(implicit_count_before_call);
+
+        // Ideally we only coerce on call arguments, but this is currently needed.
+        // TODO: Take another stab at cleaning up these call rules, but this took much iteration.
+        self.coerce(&actual_return_type, expected, call_expr, None, TypeErrorKind::CallReturn, None)
     }
 
     /// If `call` is `v.push 3` (MemberAccess + args), try to resolve `push` as a function

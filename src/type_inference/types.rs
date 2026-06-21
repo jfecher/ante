@@ -1,7 +1,5 @@
 use std::{
-    borrow::Cow,
-    num::NonZeroUsize,
-    sync::{Arc, LazyLock},
+    borrow::Cow, collections::HashSet, num::NonZeroUsize, sync::{Arc, LazyLock}
 };
 
 use inc_complete::DbGet;
@@ -739,7 +737,7 @@ impl Type {
         }
     }
 
-    /// Return the list of unbound type variables within this type
+    /// Return the list of unbound type variables or generics within this type
     pub fn free_vars(&self, bindings: &TypeBindings) -> Vec<Generic> {
         fn free_vars_helper(typ: &Type, bindings: &TypeBindings, free_vars: &mut Vec<Generic>) {
             match typ.follow(bindings) {
@@ -792,6 +790,15 @@ impl Type {
         let mut free_vars = Vec::new();
         free_vars_helper(self, bindings, &mut free_vars);
         free_vars
+    }
+
+    /// Return the list of unbound type variables within this type.
+    /// Unlike [Self::free_vars], this excludes [Type::Generic]s within the type, and returns a [HashSet].
+    pub fn free_unification_vars(&self, bindings: &TypeBindings) -> HashSet<TypeVariableId> {
+        self.free_vars(bindings)
+            .into_iter()
+            .filter_map(Generic::as_inferred)
+            .collect::<HashSet<_>>()
     }
 
     /// If this is a function, return its return type. Otherwise return None.

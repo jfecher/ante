@@ -36,7 +36,7 @@ export String, from_parts, Maybe, None, Some, iff, unwrap, unwrap_or_else, Resul
     drop_i8, drop_i16, drop_i32, drop_i64, drop_isz, drop_u8, drop_u16, drop_u32, drop_u64, drop_usz, drop_f32, drop_f64, drop_unit, drop_bool, drop_char, drop_ptr,
     Copy, (.*), copy_i8, copy_i16, copy_i32, copy_i64, copy_isz, copy_u8, copy_u16, copy_u32, copy_u64, copy_usz, copy_f32, copy_f64, copy_unit, copy_bool, copy_char, copy_ptr, copy_ref, copy_mut, copy_imm, copy_uniq, clone_string, copy_pair, copy_maybe,
     null, transmute,
-    Print, print, println, print_unsigned, print_signed, print_float, print_u8, print_u16, print_u32, print_u64, print_usz, print_i8, print_i16, print_i32, print_i64, print_isz, print_char, print_f64, print_f32, print_pair, print_string, print_maybe, print_bool, print_array,
+    Print, print, println, print_unsigned, print_signed, print_float, print_u8, print_u16, print_u32, print_u64, print_usz, print_i8, print_i16, print_i32, print_i64, print_isz, print_char, print_f64, print_f32, print_pair, print_string, print_maybe, print_bool, print_array, print_ref,
     Iterator, next, iter, Range, iterator_range, iter_range, repeat,
     panic, ignore
 
@@ -791,15 +791,15 @@ array_set_unchecked (array: mut Array n t) (i: Usz) (v: t): Unit =
     ptr: Ptr t = transmute array
     ptr_store (offset ptr i) v
 
-array_get (array: ref Array n t) index: ref t =
+array_get (array: ref Array n t) (index: Usz): ref t =
     if index >= array_len array then
         panic "array_get index out of bounds"
     array_get_unchecked array index
 
-array_get_mut (array: mut Array n t) index: mut t =
+array_get_mut (array: mut Array n t) (index: Usz): mut t =
     transmute (array_get array index)
 
-array_set (array: mut Array n t) index elem =
+array_set (array: mut Array n t) (index: Usz) elem =
     if index >= array_len array then
         panic "array_set index out of bounds"
     array_set_unchecked array index elem
@@ -1092,6 +1092,9 @@ impl print_array {Print t}: Print (Array n t) with
             elem: ref t = array.[i]
             print elem
         print "]"
+
+impl print_ref {Print a}: Print (ref a) with
+    print x = print x.*
 
 ability Iterator it elem =
     next: fn it -> Maybe (it, elem)

@@ -316,6 +316,25 @@ impl ExtendedTopLevelContext {
         self.move_closures.insert(expr);
     }
 
+    /// Copy all per-`ExprId` codegen metadata recorded for `from` onto `to`.
+    pub(crate) fn copy_expr_metadata(&mut self, from: ExprId, to: ExprId) {
+        if let Some(&index) = self.member_access_indices.get(&from) {
+            self.member_access_indices.insert(to, index);
+        }
+        if let Some(order) = self.constructor_field_orders.get(&from).cloned() {
+            self.constructor_field_orders.insert(to, order);
+        }
+        if let Some(tree) = self.decision_trees.get(&from).cloned() {
+            self.decision_trees.insert(to, tree);
+        }
+        if let Some(env) = self.closure_environments.get(&from).cloned() {
+            self.closure_environments.insert(to, env);
+        }
+        if self.move_closures.contains(&from) {
+            self.move_closures.insert(to);
+        }
+    }
+
     pub fn is_move_closure(&self, expr: ExprId) -> bool {
         self.move_closures.contains(&expr)
     }
