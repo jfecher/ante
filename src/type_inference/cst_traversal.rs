@@ -36,7 +36,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     pub(super) fn check_definition(&mut self, definition: &Definition, is_top_level: bool) {
         let next_id = &mut self.next_type_variable_id.get();
         let expected_type =
-            get_partial_type(definition, self.current_context(), &self.current_resolve(), self.compiler, next_id);
+            get_partial_type(definition, self.current_context(), self.current_resolve(), self.compiler, next_id);
 
         self.next_type_variable_id.set(*next_id);
 
@@ -568,8 +568,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         };
 
         // Remember the return type so that it can be checked by `return` statements
-        let old_return_type =
-            std::mem::replace(&mut self.function_return_type, Some(function_type.return_type.clone()));
+        let old_return_type = self.function_return_type.replace(function_type.return_type.clone());
         // Closures capture by reference, so moves inside the lambda don't affect the outer scope
         let old_move_tracker = std::mem::take(&mut self.move_tracker);
 
@@ -679,16 +678,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             let struct_is_indirect = struct_is_ref || struct_type.pointer_element(&self.bindings).is_some();
 
             // Track partial moves only when the struct is not behind a reference or pointer.
-            if !struct_is_indirect {
-                if let Some(parent_path) = self.try_build_move_path(member_access.object) {
-                    let move_path = MovePath::Field(Box::new(parent_path), member_access.member.clone());
-                    if !old_suppress_check {
-                        self.check_use_of_move_path(&move_path, expr);
-                    }
-                    if !old_suppress_record && !self.type_is_copy(&field) {
-                        let location = expr.locate(self);
-                        self.move_tracker.record_move(move_path, location);
-                    }
+            if !struct_is_indirect && let Some(parent_path) = self.try_build_move_path(member_access.object) {
+                let move_path = MovePath::Field(Box::new(parent_path), member_access.member.clone());
+                if !old_suppress_check {
+                    self.check_use_of_move_path(&move_path, expr);
+                }
+                if !old_suppress_record && !self.type_is_copy(&field) {
+                    let location = expr.locate(self);
+                    self.move_tracker.record_move(move_path, location);
                 }
             }
 
@@ -1068,7 +1065,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
             let branch_lambda = self.unwrap_lambda(*branch);
             self.expr_types.insert(*branch, handler_type.clone());
-            self.infer_lambda_impl(&branch_lambda, &handler_type, *branch, None, options);
+            self.infer_lambda_impl(branch_lambda, &handler_type, *branch, None, options);
         }
 
         self.push_implicits_scope();
@@ -1079,7 +1076,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         // `Some(handler_name)` exempts the variable from being captured as a closure.
         // This is instead handled as a special case in mir generation
-        self.infer_lambda_impl(&body_lambda, &body_type, handle.expression, Some(handle.handler_name), options);
+        self.infer_lambda_impl(body_lambda, &body_type, handle.expression, Some(handle.handler_name), options);
         self.pop_implicits_scope();
 
         result_type
@@ -1202,10 +1199,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                         if self.mutable_definitions.contains(&name) {
                             return Ok(());
                         }
-                        if let Some(typ) = self.name_types.get(&name) {
-                            if self.is_mut_or_uniq_reference(typ) {
-                                return Ok(());
-                            }
+                        if let Some(typ) = self.name_types.get(&name)
+                            && self.is_mut_or_uniq_reference(typ)
+                        {
+                            return Ok(());
                         }
                         let name = self.current_extended_context()[name].clone();
                         Err((Some(name), path_id.locate(self)))
@@ -1223,10 +1220,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Expr::MemberAccess(access) => {
                 let object = access.object;
                 // TODO: This allows `x: ref (mut a, b)` to assign to the inner `mut a`
-                if let Some(typ) = self.expr_types.get(&object) {
-                    if self.is_mut_or_uniq_reference(typ) {
-                        return Ok(());
-                    }
+                if let Some(typ) = self.expr_types.get(&object)
+                    && self.is_mut_or_uniq_reference(typ)
+                {
+                    return Ok(());
                 }
                 self.check_lhs_mutable(object)
             },

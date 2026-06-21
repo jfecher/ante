@@ -408,7 +408,7 @@ impl Diagnostic {
                 }
             },
             Diagnostic::ParserComplexImplItemName { location: _ } => {
-                format!("Impl item names should only be a single identifier")
+                "Impl item names should only be a single identifier".to_string()
             },
             Diagnostic::ExpectedPathForImport { .. } => {
                 "Imports paths should have at least 2 components (e.g. `Foo.Bar`), otherwise nothing gets imported"
@@ -489,14 +489,12 @@ impl Diagnostic {
                 format!("{} is not a struct", color_type(typ))
             },
             Diagnostic::TypeMustBeKnownMemberAccess { location: _ } => {
-                format!("Object type must be known by this point to access its field")
+                "Object type must be known by this point to access its field".to_string()
             },
             Diagnostic::CannotMatchOnType { typ, location: _ } => {
                 format!("Cannot match on an object of type {}", color_type(typ))
             },
-            Diagnostic::UnreachableCase { location: _ } => {
-                format!("This case is already matched by prior patterns")
-            },
+            Diagnostic::UnreachableCase { location: _ } => "This case is already matched by prior patterns".to_string(),
             Diagnostic::MissingCases { cases, location: _ } => {
                 let cases_string = mapvec(cases.iter().take(5), |case| color_type(case).to_string()).join(", ");
 
@@ -531,7 +529,7 @@ impl Diagnostic {
                 }
             },
             Diagnostic::InvalidPattern { location: _ } => {
-                format!("Invalid pattern syntax, expected a variable, constructor, or integer")
+                "Invalid pattern syntax, expected a variable, constructor, or integer".to_string()
             },
             Diagnostic::OrPatternBindingMismatch { name, location: _ } => {
                 format!("Variable {} is not bound by every alternative of this OR-pattern", color_constant(name))
@@ -571,11 +569,11 @@ impl Diagnostic {
                 suggestions: _,
             } => {
                 let function = function_name.as_ref().map(|s| format!("{}", color_name(s)));
-                let of_function = function.as_ref().map(String::as_str).unwrap_or("call");
+                let of_function = function.as_deref().unwrap_or("call");
                 format!("No implicit found for type {} required by {of_function}", color_type(type_string),)
             },
             Diagnostic::ImplicitNotAVariable { location: _ } => {
-                format!("Implicits must be a simple variable, more complex patterns are not supported")
+                "Implicits must be a simple variable, more complex patterns are not supported".to_string()
             },
             Diagnostic::MultipleImplicitsFound {
                 matches,
@@ -585,7 +583,7 @@ impl Diagnostic {
                 location: _,
             } => {
                 let function = function_name.as_ref().map(|s| format!("{}", color_name(s)));
-                let of_function = function.as_ref().map(String::as_str).unwrap_or("call");
+                let of_function = function.as_deref().unwrap_or("call");
                 let matches = crate::iterator_extensions::join_arc_str(matches, ", ");
                 format!(
                     "Multiple matching implicits found for type {} required by {of_function}: {matches}",
@@ -594,7 +592,7 @@ impl Diagnostic {
             },
             Diagnostic::AmbiguousImplicit { type_string, function_name, parameter_index: _, location: _ } => {
                 let function = function_name.as_ref().map(|s| format!("{}", color_name(s)));
-                let of_function = function.as_ref().map(String::as_str).unwrap_or("call");
+                let of_function = function.as_deref().unwrap_or("call");
                 format!(
                     "Ambiguous implicit of type {} required by {of_function}, type annotation required",
                     color_type(type_string),
@@ -641,14 +639,12 @@ impl Diagnostic {
             Diagnostic::AbilityTypeCantBeUsed { location: _ } => {
                 "Ability types can't be used in this position".to_string()
             },
-            Diagnostic::HoleCantBeUsed { location: _ } => {
-                format!("A type hole can't be used in this position")
-            },
+            Diagnostic::HoleCantBeUsed { location: _ } => "A type hole can't be used in this position".to_string(),
             Diagnostic::MissingExplicitLifetime { location: _ } => {
-                format!("A reference in this position requires an explicit `'a` lifetime")
+                "A reference in this position requires an explicit `'a` lifetime".to_string()
             },
             Diagnostic::FreeVarsInTypeConstructor { location: _ } => {
-                format!("Internal compiler error: there are free variables in this type constructor")
+                "Internal compiler error: there are free variables in this type constructor".to_string()
             },
             Diagnostic::HandlerMissingMethods { effect_name, missing_methods, location: _ } => {
                 let s = if missing_methods.len() == 1 { "" } else { "s" };
@@ -783,11 +779,11 @@ impl Diagnostic {
             },
             Diagnostic::RecursiveType { typ: _, location } => Some((
                 location,
-                format!("Declare the type as `shared` or wrap each instance in a pointer type like `Rc`"),
+                "Declare the type as `shared` or wrap each instance in a pointer type like `Rc`".to_string(),
             )),
             Diagnostic::UnusedName { name: _, location } => {
-                 Some((location, format!("Prefix the name with `_` to silence this warning")))
-            }
+                Some((location, "Prefix the name with `_` to silence this warning".to_string()))
+            },
             _ => None,
         }
     }
@@ -1210,12 +1206,10 @@ pub(crate) fn check_all(_: &CheckAll, compiler: &DbHandle) {
         .values()
         .any(|file| AllDefinitions(*file).get(compiler).definitions.keys().any(|k| k.as_str() == "main"));
 
-    if !has_main {
-        if let Some(first_file) = local_crate.source_files.values().next() {
-            let position = Position::start();
-            let location = Span { start: position, end: position }.in_file(*first_file);
-            compiler.accumulate(Diagnostic::NoMainFunction { location });
-        }
+    if !has_main && let Some(first_file) = local_crate.source_files.values().next() {
+        let position = Position::start();
+        let location = Span { start: position, end: position }.in_file(*first_file);
+        compiler.accumulate(Diagnostic::NoMainFunction { location });
     }
 }
 

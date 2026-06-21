@@ -237,16 +237,16 @@ impl<'local> FunctionContext<'local> {
         if let Value::Definition(id) = v {
             if let Some(new_id) = self.definitions.get(&(*id, self.generic_mapping.clone())) {
                 *id = *new_id;
-            } else if let Some(def) = self.initial_mir.get(*id) {
-                if !def.is_monomorphic() {
-                    let bindings = self.generic_mapping.clone();
-                    let new_id = *self.definitions.entry((*id, bindings.clone())).or_insert_with(|| {
-                        let new_id = next_definition_id();
-                        self.queue.push(DefinitionToMonomorphize { old_id: *id, new_id, bindings });
-                        new_id
-                    });
-                    *id = new_id;
-                }
+            } else if let Some(def) = self.initial_mir.get(*id)
+                && !def.is_monomorphic()
+            {
+                let bindings = self.generic_mapping.clone();
+                let new_id = *self.definitions.entry((*id, bindings.clone())).or_insert_with(|| {
+                    let new_id = next_definition_id();
+                    self.queue.push(DefinitionToMonomorphize { old_id: *id, new_id, bindings });
+                    new_id
+                });
+                *id = new_id;
             }
         }
     }

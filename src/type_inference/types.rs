@@ -1,5 +1,8 @@
 use std::{
-    borrow::Cow, collections::HashSet, num::NonZeroUsize, sync::{Arc, LazyLock}
+    borrow::Cow,
+    collections::HashSet,
+    num::NonZeroUsize,
+    sync::{Arc, LazyLock},
 };
 
 use inc_complete::DbGet;
@@ -237,7 +240,7 @@ impl Type {
         // Arbitrary upper limit
         for _ in 0..1000 {
             match self {
-                typ @ Type::Variable(id) => match bindings.get(&id) {
+                typ @ Type::Variable(id) => match bindings.get(id) {
                     Some(binding) => self = binding,
                     None => return typ,
                 },
@@ -253,9 +256,9 @@ impl Type {
         for _ in 0..1000 {
             match self {
                 typ @ Type::Variable(id) => {
-                    if let Some(binding) = one.get(&id) {
+                    if let Some(binding) = one.get(id) {
                         self = binding;
-                    } else if let Some(binding) = two.get(&id) {
+                    } else if let Some(binding) = two.get(id) {
                         self = binding;
                     } else {
                         return typ.clone();
@@ -726,7 +729,7 @@ impl Type {
 
     /// Generalize a type, making it generic. Any holes in the type become generic types.
     pub fn generalize(&self, bindings: &TypeBindings) -> Type {
-        let free_vars = self.free_vars(&bindings);
+        let free_vars = self.free_vars(bindings);
 
         if free_vars.is_empty() {
             self.clone()
@@ -752,7 +755,7 @@ impl Type {
                     }
                 },
                 Type::Generic(generic) => {
-                    if !free_vars.contains(&generic) {
+                    if !free_vars.contains(generic) {
                         free_vars.push(*generic);
                     }
                 },
@@ -795,10 +798,7 @@ impl Type {
     /// Return the list of unbound type variables within this type.
     /// Unlike [Self::free_vars], this excludes [Type::Generic]s within the type, and returns a [HashSet].
     pub fn free_unification_vars(&self, bindings: &TypeBindings) -> HashSet<TypeVariableId> {
-        self.free_vars(bindings)
-            .into_iter()
-            .filter_map(Generic::as_inferred)
-            .collect::<HashSet<_>>()
+        self.free_vars(bindings).into_iter().filter_map(Generic::as_inferred).collect::<HashSet<_>>()
     }
 
     /// If this is a function, return its return type. Otherwise return None.
@@ -866,7 +866,7 @@ impl Type {
                 if constructor.reference_constructor(bindings).is_some() {
                     args.get(1)
                 } else if constructor.pointer_constructor(bindings) {
-                    args.get(0)
+                    args.first()
                 } else {
                     None
                 }
@@ -952,7 +952,7 @@ where
                     }
                 }
 
-                let has_env = *function.environment.follow(&self.bindings) != Type::NO_CLOSURE_ENV;
+                let has_env = *function.environment.follow(self.bindings) != Type::NO_CLOSURE_ENV;
 
                 if self.hide_environments {
                     write!(f, "{}", if has_env { " => " } else { " -> " })?;

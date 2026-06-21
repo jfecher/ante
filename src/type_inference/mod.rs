@@ -578,20 +578,19 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             (actual, expected) => {
                 // Auto-deref: coerce `ref-kind t` to `t` by inserting a `(.*) expr` call if `Copy t`
                 // can be found and `expected` is a concrete type.
-                if let Type::Application(constructor, args) = &actual {
-                    if args.len() == 2
-                        && matches!(self.follow_type(constructor), Type::Primitive(PrimitiveType::Reference(_)))
-                        && self.is_concrete_type_or_numeric_typevar(expected)
-                        && expected.reference_element(&self.bindings).is_none()
-                    {
-                        let arg = args[1].clone();
-                        let expected = expected.clone();
-                        if let Ok(bindings) = self.try_unify(&arg, &expected) {
-                            self.bindings.extend(bindings);
-                            let new_expr = self.auto_deref_coercion(expr, expected);
-                            self.current_extended_context_mut().insert_expr(expr, new_expr);
-                            return CoercionOutcome::ReplacedExpr;
-                        }
+                if let Type::Application(constructor, args) = &actual
+                    && args.len() == 2
+                    && matches!(self.follow_type(constructor), Type::Primitive(PrimitiveType::Reference(_)))
+                    && self.is_concrete_type_or_numeric_typevar(expected)
+                    && expected.reference_element(&self.bindings).is_none()
+                {
+                    let arg = args[1].clone();
+                    let expected = expected.clone();
+                    if let Ok(bindings) = self.try_unify(&arg, &expected) {
+                        self.bindings.extend(bindings);
+                        let new_expr = self.auto_deref_coercion(expr, expected);
+                        self.current_extended_context_mut().insert_expr(expr, new_expr);
+                        return CoercionOutcome::ReplacedExpr;
                     }
                 }
                 // Auto-ref: coerce `t` to `ref t` or `imm t` by wrapping `expr` in a reference expression.
@@ -600,30 +599,29 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 // being bound to references themselves later. But without this type inference
                 // really suffers.
                 let actual_is_place = self.try_build_move_path(expr).is_some();
-                if let Type::Application(expected_ctor, expected_args) = &expected {
-                    if expected_args.len() == 2
-                        && (self.is_concrete_type_or_numeric_typevar(actual) || actual_is_place)
-                        && actual.reference_element(&self.bindings).is_none()
+                if let Type::Application(expected_ctor, expected_args) = &expected
+                    && expected_args.len() == 2
+                    && (self.is_concrete_type_or_numeric_typevar(actual) || actual_is_place)
+                    && actual.reference_element(&self.bindings).is_none()
+                {
+                    let kind = match self.follow_type(expected_ctor) {
+                        Type::Primitive(PrimitiveType::Reference(kind)) => Some(*kind),
+                        _ => None,
+                    };
+                    if let Some(kind) = kind
+                        && matches!(kind, ReferenceKind::Ref | ReferenceKind::Imm)
                     {
-                        let kind = match self.follow_type(expected_ctor) {
-                            Type::Primitive(PrimitiveType::Reference(kind)) => Some(*kind),
-                            _ => None,
-                        };
-                        if let Some(kind) = kind {
-                            if matches!(kind, ReferenceKind::Ref | ReferenceKind::Imm) {
-                                let inner = expected_args[1].clone();
-                                let actual = actual.clone();
-                                // Prevent the id from being bound to a reference later
-                                if let Type::Variable(id) = self.follow_type(&actual) {
-                                    self.value_type_vars.insert(*id);
-                                }
-                                if let Ok(bindings) = self.try_unify(&actual, &inner) {
-                                    self.bindings.extend(bindings);
-                                    let new_expr = self.auto_ref_coercion(expr, kind, actual);
-                                    self.current_extended_context_mut().insert_expr(expr, new_expr);
-                                    return CoercionOutcome::AutoRef;
-                                }
-                            }
+                        let inner = expected_args[1].clone();
+                        let actual = actual.clone();
+                        // Prevent the id from being bound to a reference later
+                        if let Type::Variable(id) = self.follow_type(&actual) {
+                            self.value_type_vars.insert(*id);
+                        }
+                        if let Ok(bindings) = self.try_unify(&actual, &inner) {
+                            self.bindings.extend(bindings);
+                            let new_expr = self.auto_ref_coercion(expr, kind, actual);
+                            self.current_extended_context_mut().insert_expr(expr, new_expr);
+                            return CoercionOutcome::AutoRef;
                         }
                     }
                 }
@@ -641,17 +639,18 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             .map(|path| affine::SavedMove { location: self.move_tracker.save_move(&path), path });
 
         let actual = self.infer_expr(expr, expected);
-        if allow_deref && let Some((_, inner)) = actual.reference_element(&self.bindings) {
-            if self.type_is_copy(&inner) {
-                let new_expr = self.auto_deref_coercion(expr, inner);
-                self.current_extended_context_mut().insert_expr(expr, new_expr);
-                let old_check = std::mem::replace(&mut self.suppress_move_check, true);
-                let old_record = std::mem::replace(&mut self.suppress_move_record, true);
-                self.check_expr(expr, expected, kind);
-                self.suppress_move_check = old_check;
-                self.suppress_move_record = old_record;
-                return actual;
-            }
+        if allow_deref
+            && let Some((_, inner)) = actual.reference_element(&self.bindings)
+            && self.type_is_copy(&inner)
+        {
+            let new_expr = self.auto_deref_coercion(expr, inner);
+            self.current_extended_context_mut().insert_expr(expr, new_expr);
+            let old_check = std::mem::replace(&mut self.suppress_move_check, true);
+            let old_record = std::mem::replace(&mut self.suppress_move_record, true);
+            self.check_expr(expr, expected, kind);
+            self.suppress_move_check = old_check;
+            self.suppress_move_record = old_record;
+            return actual;
         }
         self.coerce(&actual, expected, expr, None, kind, saved);
         actual

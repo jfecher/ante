@@ -232,9 +232,9 @@ fn classify_diagnostics(diagnostics: &BTreeSet<Diagnostic>) -> (usize, usize) {
 }
 
 fn display_diagnostics(diagnostics: &BTreeSet<Diagnostic>, compiler: &Db, no_color: bool) {
-    let (error_count, warning_count) = classify_diagnostics(&diagnostics);
+    let (error_count, warning_count) = classify_diagnostics(diagnostics);
     for diganostic in diagnostics {
-        eprintln!("{}", diganostic.display(!no_color, &compiler));
+        eprintln!("{}", diganostic.display(!no_color, compiler));
     }
 
     if error_count != 0 {

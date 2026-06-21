@@ -186,7 +186,7 @@ fn collect_expressions_to_desugar(expr: ExprId, context: &DesugarContext, to_des
                 to_desugar.push(ExprDesugar::CallWildcards(expr));
             }
 
-            if let Some(desugar) = classify_call(&call, expr, context) {
+            if let Some(desugar) = classify_call(call, expr, context) {
                 to_desugar.push(desugar);
             }
         },

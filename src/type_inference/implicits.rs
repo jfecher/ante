@@ -123,7 +123,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // The reverse would be a type error.
         let mut new_expected = Vec::new();
 
-        let mut actual_params = actual.parameters.iter();
+        let actual_params = actual.parameters.iter();
         let mut expected_params = expected.parameters.iter().cloned();
         let mut current_expected = expected_params.next();
 
@@ -131,10 +131,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // at that position, or it is `Some(expr_id)` of the new expression.
         let mut implicits_added = Vec::new();
 
-        while let Some(actual) = actual_params.next() {
+        for actual in actual_params {
             match (actual.is_implicit, current_expected.as_ref()) {
                 // actual is implicit, but expected isn't, search for an implicit in scope
-                (true, expected) if expected.map_or(true, |param| !param.is_implicit) => {
+                (true, expected) if expected.is_none_or(|param| !param.is_implicit) => {
                     let value = self.delay_find_implicit_value(&actual.typ, new_expected.len(), function, call);
                     implicits_added.push(Some(value));
                     new_expected.push(ParameterType::implicit(self.expr_types[&value].clone()));
@@ -437,11 +437,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let fresh_id = self.push_expr(cst::Expr::Error, typ, location);
         let delayed = DelayedImplicit { source: function, destination: fresh_id, parameter_index };
 
-        if let Some(call_expr) = call {
-            if let cst::Expr::Call(mut existing) = self.current_extended_context()[call_expr].clone() {
-                existing.arguments.insert(parameter_index, cst::Argument::implicit(fresh_id));
-                self.current_extended_context_mut().insert_expr(call_expr, cst::Expr::Call(existing));
-            }
+        if let Some(call_expr) = call
+            && let cst::Expr::Call(mut existing) = self.current_extended_context()[call_expr].clone()
+        {
+            existing.arguments.insert(parameter_index, cst::Argument::implicit(fresh_id));
+            self.current_extended_context_mut().insert_expr(call_expr, cst::Expr::Call(existing));
         }
 
         // Try to resolve immediately. Slows down type inference but can help it in some cases.
@@ -490,7 +490,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 self.bindings.insert(*id, Type::Primitive(PrimitiveType::Float(FloatKind::F64)));
             },
             Type::Primitive(PrimitiveType::Float(_)) => (),
-            Type::Primitive(PrimitiveType::Error) => return,
+            Type::Primitive(PrimitiveType::Error) => (),
             _ => {
                 // Unification rejects non-float bindings for literal type variables,
                 // so this arm is only reachable when the variable was bound to `Never`.
@@ -502,7 +502,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     function_environments_differ: false,
                     location,
                 });
-                return;
             },
         }
     }
@@ -561,7 +560,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         fuel: u32,
     ) -> Result<(), Diagnostic> {
         let target_type = self.expr_types[&implicit.destination].clone();
-        let target_type = target_type.follow_all_two(&self.bindings, &type_bindings);
+        let target_type = target_type.follow_all_two(&self.bindings, type_bindings);
 
         let parameter_index = implicit.parameter_index;
         let function = implicit.source;
@@ -742,7 +741,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     // error: No implicit found for parameter N of type T
     fn no_implicit_found_error(&self, implicit_type: &Type, parameter_index: usize, function: ExprId) -> Diagnostic {
-        let type_string = self.type_to_string(&implicit_type);
+        let type_string = self.type_to_string(implicit_type);
         let function_name = self.try_get_name(function);
         let location = function.locate(self);
         Diagnostic::NoImplicitFound { type_string, function_name, parameter_index, location, suggestions: Vec::new() }
@@ -750,7 +749,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     // error: Implicit type T is ambiguous, type annotations needed
     fn ambiguous_implicits_error(&self, implicit_type: &Type, parameter_index: usize, function: ExprId) -> Diagnostic {
-        let type_string = self.type_to_string(&implicit_type);
+        let type_string = self.type_to_string(implicit_type);
         let function_name = self.try_get_name(function);
         let location = function.locate(self);
         Diagnostic::AmbiguousImplicit { type_string, function_name, parameter_index, location }
@@ -760,7 +759,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     fn multiple_matching_implicits_error(
         &self, matching: Vec<Candidate>, implicit_type: &Type, parameter_index: usize, function: ExprId,
     ) -> Diagnostic {
-        let type_string = self.type_to_string(&implicit_type);
+        let type_string = self.type_to_string(implicit_type);
         let function_name = self.try_get_name(function);
         let location = function.locate(self);
 
@@ -858,8 +857,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let target_ctor = target_type.as_application().map(|(c, _)| c.clone());
         let no_bindings = TypeBindings::default();
 
-        for name in local_implicits.iter().copied() {
-            let name_type = self.name_types[&name].follow_two(&no_bindings, &self.bindings);
+        for name in local_implicits {
+            let name_type = self.name_types[name].follow_two(&no_bindings, &self.bindings);
             if !matches!(self.implicit_type_matches(&name_type, &target_type, &no_bindings), ImplicitMatch::NoMatch) {
                 return true;
             }

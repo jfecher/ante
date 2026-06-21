@@ -363,10 +363,10 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
         let (name, location) = path.next().unwrap();
         assert_eq!(path.len(), 0);
 
-        if matches!(namespace, Namespace::Local) {
-            if let Some(origin) = self.lookup_local_name(name) {
-                return Ok(origin);
-            }
+        if matches!(namespace, Namespace::Local)
+            && let Some(origin) = self.lookup_local_name(name)
+        {
+            return Ok(origin);
         }
 
         if let Some(origin) = self.get_item_in_namespace(name, namespace) {

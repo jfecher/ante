@@ -257,7 +257,7 @@ impl Definition {
 
         while let Some(block) = stack.pop() {
             // Place `else` branches before branch ends and keep loop bodies before their ends.
-            if merge_points.last().map_or(false, |(merge, _)| *merge == block) {
+            if merge_points.last().is_some_and(|(merge, _)| *merge == block) {
                 let remaining_branch_blocks = &merge_points.last().unwrap().1;
                 if !remaining_branch_blocks.iter().all(|remaining| visited.contains(remaining)) {
                     continue;
@@ -741,7 +741,7 @@ impl IntConstant {
             IntConstant::U8(x) => *x as u64,
             IntConstant::U16(x) => *x as u64,
             IntConstant::U32(x) => *x as u64,
-            IntConstant::U64(x) => *x as u64,
+            IntConstant::U64(x) => *x,
             IntConstant::Usz(x) => *x as u64,
             IntConstant::I8(x) => *x as u64,
             IntConstant::I16(x) => *x as u64,

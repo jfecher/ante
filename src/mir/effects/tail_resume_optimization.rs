@@ -164,10 +164,10 @@ fn case_is_tail_resumptive(handler_def: &Definition, shape: &CaseShape) -> bool 
 
     // 2. Every Return must be one of our recognized tail-resume returns.
     for (block_id, block) in handler_def.blocks.iter() {
-        if let Some(TerminatorInstruction::Return(_)) = &block.terminator {
-            if !tail_call_blocks.contains(&block_id) {
-                return false;
-            }
+        if let Some(TerminatorInstruction::Return(_)) = &block.terminator
+            && !tail_call_blocks.contains(&block_id)
+        {
+            return false;
         }
     }
 
@@ -176,10 +176,10 @@ fn case_is_tail_resumptive(handler_def: &Definition, shape: &CaseShape) -> bool 
         if tail_call_ids.contains(&id) {
             // The tail CallClosure is allowed to use resume_param as its closure target,
             // but its argument must not also reference resume_param (e.g. `resume(resume)`).
-            if let Instruction::CallClosure { arguments, .. } = instruction {
-                if arguments.iter().any(|arg| *arg == resume_param) {
-                    return false;
-                }
+            if let Instruction::CallClosure { arguments, .. } = instruction
+                && arguments.contains(&resume_param)
+            {
+                return false;
             }
         } else {
             let mut found = false;
@@ -407,10 +407,10 @@ fn deep_clone_body_subtree(mir: &mut Mir, root: DefinitionId) -> (DefinitionId, 
 /// Rewrite every `Value::Definition` and `Instruction::Instantiate` target in `def` through `id_map`.
 fn remap_definition_ids(def: &mut Definition, id_map: &FxHashMap<DefinitionId, DefinitionId>) {
     for instr in def.instructions.values_mut() {
-        if let Instruction::Instantiate(id, _) = instr {
-            if let Some(&new) = id_map.get(id) {
-                *id = new;
-            }
+        if let Instruction::Instantiate(id, _) = instr
+            && let Some(&new) = id_map.get(id)
+        {
+            *id = new;
         }
     }
     for (&old, &new) in id_map.iter() {

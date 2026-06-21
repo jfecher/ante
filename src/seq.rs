@@ -29,7 +29,7 @@
 
 #![allow(dead_code)]
 
-use std::alloc::{alloc, dealloc, realloc, Layout};
+use std::alloc::{Layout, alloc, dealloc, realloc};
 use std::fmt::{self, Debug};
 use std::marker::PhantomData;
 use std::ptr;
@@ -94,15 +94,7 @@ unsafe fn alloc_data<T>(cap: u32, len: u32) -> *mut Data<T> {
     unsafe {
         ptr::write(
             buffer,
-            Data {
-                direct_rc: 1,
-                fork_rc: 0,
-                len,
-                cap,
-                fork_point: 0,
-                parent: ptr::null_mut(),
-                _marker: PhantomData,
-            },
+            Data { direct_rc: 1, fork_rc: 0, len, cap, fork_point: 0, parent: ptr::null_mut(), _marker: PhantomData },
         );
     }
     buffer
@@ -255,11 +247,7 @@ impl<T> Seq<T> {
 
     /// Return a reference to the element at `index`, if in bounds.
     pub fn get(&self, index: u32) -> Option<&T> {
-        if index < self.len {
-            unsafe { Some(&*elements_ptr(self.data).add(index as usize)) }
-        } else {
-            None
-        }
+        if index < self.len { unsafe { Some(&*elements_ptr(self.data).add(index as usize)) } } else { None }
     }
 
     /// Return a copy of the element at `index`, if in bounds.

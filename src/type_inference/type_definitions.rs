@@ -297,7 +297,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             // Each method is generalized independently, so it gets a fresh kind map seeded
             // from the trait/effect's own generic annotations.
             let mut local_kinds = Self::local_kinds_from_generics(&definition.generics);
-            let mut method_type = self.from_cst_type_with_local_kinds(&method_type, false, &mut local_kinds);
+            let mut method_type = self.from_cst_type_with_local_kinds(method_type, false, &mut local_kinds);
 
             if matches!(method_type, Type::Function(_)) {
                 method_type = self.add_implicit_arg_to_function_type(method_type, implicit_arg);

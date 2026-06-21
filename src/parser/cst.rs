@@ -63,7 +63,7 @@ pub enum ItemName {
 
 impl ItemName {
     /// Give an approximate name for this item for debugging.
-    pub fn to_string(&self, context: &(impl IdStore + NameStore)) -> String {
+    pub fn to_string(&self, context: &impl IdStore) -> String {
         match self {
             ItemName::Single(name) => context.get_name(*name).to_string(),
             ItemName::Pattern(pattern) => pattern.name(context),
@@ -73,7 +73,7 @@ impl ItemName {
 }
 
 impl PatternId {
-    pub fn name(self, context: &(impl IdStore + NameStore)) -> String {
+    pub fn name(self, context: &impl IdStore) -> String {
         match context.get_pattern(self) {
             Pattern::Error => "#error".to_string(),
             Pattern::Variable(name) => context.get_name(*name).to_string(),

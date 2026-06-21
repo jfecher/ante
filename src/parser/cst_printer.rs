@@ -337,12 +337,12 @@ impl<'a> CstDisplay<'a> {
             write!(f, "_{id}")?;
         }
 
-        if let Some(db) = self.db_type_check() {
-            if show_type {
-                let check = TypeCheck(self.current_item_id.unwrap()).get(db);
-                let typ = check.result.maps.name_types.get(&name).cloned().unwrap_or(types::Type::ERROR);
-                write!(f, ": {})", typ.to_string(&check.bindings, context, db))?
-            }
+        if let Some(db) = self.db_type_check()
+            && show_type
+        {
+            let check = TypeCheck(self.current_item_id.unwrap()).get(db);
+            let typ = check.result.maps.name_types.get(&name).cloned().unwrap_or(types::Type::ERROR);
+            write!(f, ": {})", typ.to_string(&check.bindings, context, db))?
         }
 
         Ok(())
@@ -373,12 +373,10 @@ impl<'a> CstDisplay<'a> {
             write!(f, "_{id}")?;
         }
 
-        if show_type {
-            if let Some(db) = self.db_type_check() {
-                let check = TypeCheck(self.current_item_id.unwrap()).get(db);
-                let typ = check.result.maps.path_types.get(&path).cloned().unwrap_or(types::Type::ERROR);
-                write!(f, ": {})", typ.to_string(&check.bindings, context, db))?
-            }
+        if show_type && let Some(db) = self.db_type_check() {
+            let check = TypeCheck(self.current_item_id.unwrap()).get(db);
+            let typ = check.result.maps.path_types.get(&path).cloned().unwrap_or(types::Type::ERROR);
+            write!(f, ": {})", typ.to_string(&check.bindings, context, db))?
         }
 
         Ok(())
@@ -566,15 +564,15 @@ impl<'a> CstDisplay<'a> {
             return self.fmt_pair_type(args, context, f);
         }
 
-        if let TypeKind::Reference(kind) = &constructor.kind {
-            if args.len() == 2 {
-                self.fmt_reference_type(*kind, f)?;
-                if !matches!(args[0].kind, TypeKind::ImplicitLifetime) {
-                    write!(f, " ")?;
-                    self.fmt_type(&args[0], context, f)?;
-                }
-                return self.fmt_type_args(&args[1..], context, f);
+        if let TypeKind::Reference(kind) = &constructor.kind
+            && args.len() == 2
+        {
+            self.fmt_reference_type(*kind, f)?;
+            if !matches!(args[0].kind, TypeKind::ImplicitLifetime) {
+                write!(f, " ")?;
+                self.fmt_type(&args[0], context, f)?;
             }
+            return self.fmt_type_args(&args[1..], context, f);
         }
 
         let requires_parens = |typ: &Type| matches!(typ.kind, TypeKind::Function(_) | TypeKind::Application(..));
@@ -765,9 +763,9 @@ impl<'a> CstDisplay<'a> {
         let parenthesize = !context.get_expr(call.function).is_atom();
         self.parenthesize(call.function, parenthesize, context, f)?;
 
-        for arg in call.arguments.iter().copied() {
+        for arg in call.arguments.iter() {
             write!(f, " ")?;
-            self.fmt_argument(&arg, context, f)?;
+            self.fmt_argument(arg, context, f)?;
         }
 
         Ok(())

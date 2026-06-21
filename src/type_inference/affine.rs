@@ -205,11 +205,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     return true;
                 }
                 // Also check if it's a function whose return type matches
-                if let Type::Function(f) = &name_type {
-                    if self.try_unify(&f.return_type, &copy_of_t).is_ok() {
-                        found = true;
-                        return true;
-                    }
+                if let Type::Function(f) = &name_type
+                    && self.try_unify(&f.return_type, &copy_of_t).is_ok()
+                {
+                    found = true;
+                    return true;
                 }
                 false
             });
@@ -225,7 +225,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         match typ.follow(&self.bindings) {
             // Type aliases are expanded away during `from_cst_type`, so no `UserDefined`
             // here can refer to an alias
-            Type::Application(constructor, _) => self.is_ability(&constructor),
+            Type::Application(constructor, _) => self.is_ability(constructor),
             Type::UserDefined(origin) => match origin {
                 Origin::TopLevelDefinition(name) => {
                     let (item, _) = GetItemRaw(name.top_level_item).get(self.compiler);
@@ -239,7 +239,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     fn is_shared_user_defined(&self, typ: &Type) -> bool {
         match typ.follow(&self.bindings) {
-            Type::Application(constructor, _) => self.is_shared_user_defined(&constructor),
+            Type::Application(constructor, _) => self.is_shared_user_defined(constructor),
             Type::UserDefined(origin) => match origin {
                 Origin::TopLevelDefinition(name) => {
                     let (item, _) = GetItemRaw(name.top_level_item).get(self.compiler);
