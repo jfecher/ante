@@ -11,7 +11,7 @@ use ropey::Rope;
 use tower_lsp::lsp_types::{CompletionItem, CompletionItemLabelDetails};
 
 use crate::auto_import::{build_import_edit, for_each_export, for_each_other_module, Candidate, ItemKind};
-use crate::util::{format_doc_comments, is_internal_only_type, SpanSearcher};
+use crate::util::{format_doc_comments, is_internal_only_type};
 
 /// Minimum number of characters the user must have typed before we start
 /// suggesting out-of-scope items for auto-import candidates. A value of 0/1 would mean
@@ -97,16 +97,18 @@ fn push_local_names(compiler: &Db, file_id: SourceFileId, byte_offset: usize, it
     // TopLevelContext.location is a placeholder; derive the item's bounding
     // span from the union of its name / path / pattern locations and pick the
     // tightest containing item.
-    let mut searcher = SpanSearcher::new(byte_offset);
-    let mut best: Option<TopLevelId> = None;
+    let mut best: Option<(TopLevelId, usize)> = None;
     for item in &parse.cst.top_level_items {
         let Some(ctx) = parse.top_level_data.get(&item.id) else { continue };
         let Some((start, end)) = item_bounding_span(ctx) else { continue };
-        if searcher.try_offer(start, end) {
-            best = Some(item.id);
+        if start <= byte_offset && byte_offset <= end {
+            let len = end - start;
+            if best.map_or(true, |(_, best_len)| len < best_len) {
+                best = Some((item.id, len));
+            }
         }
     }
-    let Some(item_id) = best else { return };
+    let Some((item_id, _)) = best else { return };
     let Some(ctx) = parse.top_level_data.get(&item_id) else { return };
     let resolve = Resolve(item_id).get(compiler);
     let tc = TypeCheck(item_id).get(compiler);
@@ -217,4 +219,39 @@ fn build_item_completion(
         additional_text_edits: Some(vec![edit]),
         ..Default::default()
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ropey::Rope;
+    use std::path::PathBuf;
+
+    fn db_with_source(source: &str, file_name: &str) -> (Db, SourceFileId) {
+        let ante_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("ante-ls must live inside the ante workspace")
+            .to_path_buf();
+        let file = ante_root.join(file_name);
+        let mut db = Db::default();
+        crate::diagnostics::init_db(&mut db, &ante_root);
+        let roots = crate::diagnostics::CrateRoots::new(&db, ante_root);
+        crate::diagnostics::set_file_content(&mut db, &roots, &file, &Rope::from_str(source));
+        let file_id = crate::diagnostics::file_id_for_path(&roots, &file);
+        (db, file_id)
+    }
+
+    #[test]
+    fn local_param_completes_at_end_of_item() {
+        let source = "f x =\n    x\n";
+        let (db, file_id) = db_with_source(source, "completion_local.an");
+        let rope = Rope::from_str(source);
+        let offset = source.rfind('x').unwrap() + 1;
+
+        let items = completions_at(&db, file_id, offset, &rope, "x");
+        assert!(
+            items.iter().any(|item| item.label == "x"),
+            "the local parameter `x` must be suggested when completing the item's last token"
+        );
+    }
 }
