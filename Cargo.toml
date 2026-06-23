@@ -13,11 +13,11 @@ llvm = ["dep:inkwell"]
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 clap_complete = "4"
-colored = "2.0.0"
-dashmap = "6.1.0"
+colored = "3.0"
+dashmap = "6.2"
 deterministic-hash = "1.0.1"
 inc-complete = "0.10.3"
-inkwell = { version = "0.7.0", features = ["llvm21-1"], optional = true }
+inkwell = { version = "0.9.0", features = ["llvm21-1"], optional = true }
 petgraph = { version = "0.8.2", features = ["serde"] }
 rangemap = "1.6.0"
 rayon = "1.10.0"
