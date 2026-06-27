@@ -17,7 +17,7 @@ pub enum Commands {
 #[command(author, version, about, long_about = None)]
 pub struct Cli {
     #[command(subcommand)]
-pub command: Option<Commands>,
+    pub command: Option<Commands>,
     /// Path to the source files
     #[arg(value_hint = ValueHint::FilePath)]
     pub files: Vec<PathBuf>,

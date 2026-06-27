@@ -37,7 +37,7 @@
 #![allow(mismatched_lifetime_syntaxes)]
 
 use clap::{CommandFactory, Parser};
-use cli::{Cli, Completions, Commands};
+use cli::{Cli, Commands, Completions};
 use colored::Colorize;
 use diagnostics::Diagnostic;
 use incremental::{Db, GetCrateGraph, Parse, Resolve};
@@ -91,20 +91,17 @@ fn main() {
 }
 
 fn compile(args: Cli) {
-
-        let run = match &args.command {
-    Some(Commands::Build) => false,
-    Some(Commands::Run) => true,
-    None => !args.build,
-};
-let files = match &args.command {
-    Some(Commands::Build) | Some(Commands::Run) => {
-        crate::find_files::find_project_main_file()
-            .map(|path| vec![path])
-            .unwrap_or_default()
-    }
-    None => args.files.clone(),
-};
+    let run = match &args.command {
+        Some(Commands::Build) => false,
+        Some(Commands::Run) => true,
+        None => !args.build,
+    };
+    let files = match &args.command {
+        Some(Commands::Build) | Some(Commands::Run) => {
+            crate::find_files::find_project_main_file().map(|path| vec![path]).unwrap_or_default()
+        },
+        None => args.files.clone(),
+    };
     let (mut compiler, metadata_file) = make_compiler(&files, args.incremental);
 
     // TODO: Pointer size should be configurable depending on the target machine
@@ -132,10 +129,8 @@ let files = match &args.command {
         Some(EmitTarget::Ir) => display_ir(&mut compiler, args.show_time, opt_level),
         None => match resolve_backend(args.backend) {
             #[cfg(feature = "llvm")]
-            cli::Backend::Llvm => {
-                llvm_codegen_all(&mut compiler, run, args.delete_binary, args.show_time, opt_level)
-            },
-            cli::Backend::C => c_codegen_all(&mut compiler, &args.files, run, args.delete_binary, opt_level),
+            cli::Backend::Llvm => llvm_codegen_all(&mut compiler, run, args.delete_binary, args.show_time, opt_level),
+            cli::Backend::C => c_codegen_all(&mut compiler, run, args.delete_binary, opt_level),
             _ => unreachable!("resolve_backend only returns backends this compiler can run"),
         },
     };
@@ -452,11 +447,9 @@ fn llvm_codegen_all(
     // Each module is currently the whole program (monomorphization isn't yet incremental).
     modules.truncate(1);
 
-    let module_name: PathBuf =
-    crate::find_files::find_project_name()
-        .map(PathBuf::from)
-        .unwrap_or_else(|| "a.out".into());
-    let module_name = module_name.to_string_lossy();
+    let program_name: PathBuf =
+        crate::find_files::find_project_name().map(PathBuf::from).unwrap_or_else(|| "a.out".into());
+    let program_name = program_name.to_string_lossy();
 
     let link_succeeded = codegen::llvm::link(modules, &program_name, show_time, opt_level);
     if !link_succeeded {
@@ -477,16 +470,14 @@ fn llvm_codegen_all(
 }
 
 /// Monomorphize and codegen the whole program through the C backend, then optionally run it.
-fn c_codegen_all(
-    compiler: &mut Db, files: &[PathBuf], run: bool, delete_binary: bool, opt_level: OptLevel,
-) -> BTreeSet<Diagnostic> {
+fn c_codegen_all(compiler: &mut Db, run: bool, delete_binary: bool, opt_level: OptLevel) -> BTreeSet<Diagnostic> {
     let diagnostics = collect_all_diagnostics(compiler);
     let (errors, _) = classify_diagnostics(&diagnostics);
     if errors != 0 {
         return diagnostics;
     }
 
-    let program_name = files_to_program_name(files);
+    let program_name = files_to_program_name();
     let mir = mir::monomorphization::monomorphize(compiler);
     codegen::c::codegen_c_for_mir(&mir, &program_name, opt_level);
 
@@ -502,8 +493,8 @@ fn c_codegen_all(
 }
 
 /// Return the default name of the program given the source files.
-fn files_to_program_name(files: &[PathBuf]) -> String {
-    let name = files.first().map_or_else(|| "a.out".into(), |file| file.with_extension(""));
+fn files_to_program_name() -> String {
+    let name: PathBuf = crate::find_files::find_project_name().map(PathBuf::from).unwrap_or_else(|| "a.out".into());
     name.to_string_lossy().into_owned()
 }
 
