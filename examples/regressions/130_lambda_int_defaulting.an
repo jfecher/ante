@@ -8,7 +8,7 @@ type TakeWhile i a =
     iter: i
     pred: fn a -> Bool
 
-impl iter_take_while {Iterator i a}: Iterator (TakeWhile i a) a with
+impl iter_take_while {Iterator i a} {Copy a}: Iterator (TakeWhile i a) a with
     next tw =
         match Iterator.next tw.iter
         | Some (iter, new) ->

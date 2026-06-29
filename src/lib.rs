@@ -13,5 +13,6 @@ pub mod files;
 pub mod incremental;
 mod iterator_extensions;
 pub mod paths;
+pub mod seq;
 pub mod timings;
 pub mod vecmap;

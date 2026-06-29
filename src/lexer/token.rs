@@ -33,12 +33,13 @@ pub(crate) const INDEX_ASSIGN_OPERATOR_FUNCTION_NAME: &str = ".[]:=";
 /// as possible.
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, Hash)]
 pub enum LexerError {
-    InvalidCharacterInSignificantWhitespace(char), // Only spaces are allowed in significant whitespace
+    UnicodeWhitespaceCharacterInSignificantWhitespace(char),
     InvalidEscapeSequence(char),
     InvalidIntegerSuffx,
     InvalidFloatSuffx,
-    IndentChangeTooSmall, // All indentation changes must be >= 2 spaces in size difference relative to the previous level
+    IndentChangeTooSmall, // We require >= 2 spaces to indent or any number of tabs.
     UnindentToNewLevel,   // Unindented to a new indent level rather than returning to a previous one
+    InconsistentIndentation { found: char, expected: char },
     Expected(char),
     UnknownChar(char),
     MismatchedBracketInQuote { expected: ClosingBracket },
@@ -224,7 +225,7 @@ pub enum Token {
     // Lexer sends an end of input token before stopping so we get a proper error location when
     // reporting parsing errors that expect a token but found the end of a file instead.
     EndOfInput,
-    Error(LexerError),
+    Invalid(char),
     Newline,
     Indent,
     Unindent,
@@ -379,9 +380,8 @@ impl Display for LexerError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use LexerError::*;
         match self {
-            InvalidCharacterInSignificantWhitespace(c) => {
-                let char_str = if *c == '\t' { "a tab".to_string() } else { format!("U+{:x}", *c as u32) };
-                write!(f, "Only spaces are allowed in significant whitespace, {} is not allowed here", char_str)
+            UnicodeWhitespaceCharacterInSignificantWhitespace(c) => {
+                write!(f, "Only spaces or tabs are allowed in significant whitespace, U+{:x} is not allowed here", *c as u32)
             },
             InvalidEscapeSequence(c) => write!(f, "Invalid character in escape sequence: '{}' (U+{:x})", c, *c as u32),
             InvalidIntegerSuffx => write!(
@@ -397,6 +397,10 @@ impl Display for LexerError {
                 "This indent/unindent is too small, it should be at least 2 spaces apart from the previous indentation level"
             ),
             UnindentToNewLevel => write!(f, "This unindent doesn't return to any previous indentation level"),
+            InconsistentIndentation { found, expected } => {
+                let name = |c: char| if c == '\t' { "tab" } else { "space" };
+                write!(f, "{} found in a file using {}s in its significant indentation", name(*found), name(*expected))
+            },
             Expected(c) => write!(f, "Expected {} (U+{:x}) while lexing", *c, *c as u32),
             UnknownChar(c) => write!(f, "Unknown character '{}' (U+{:x}) in file", *c, *c as u32),
             MismatchedBracketInQuote { expected } => {
@@ -445,7 +449,7 @@ impl Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Token::EndOfInput => write!(f, "end of input"),
-            Token::Error(error) => write!(f, "{}", error),
+            Token::Invalid(char) => write!(f, "`{}`", char),
             Token::Newline => write!(f, "a newline"),
             Token::Indent => write!(f, "an indent"),
             Token::Unindent => write!(f, "an unindent"),

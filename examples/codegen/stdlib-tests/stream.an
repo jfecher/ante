@@ -65,19 +65,19 @@ extra_tests () =
     println (count (iota 7))  // 7
 
     // find:
-    println (try (fn {f} -> find (iota 5) (fn x -> x.* > 2)) : Maybe Usz)    // Some 3
-    println (try (fn {f} -> find (iota 5) (fn x -> x.* > 99)) : Maybe Usz)   // None
+    println (try (do find (iota 5) (_ > 2)))    // Some 3
+    println (try (do find (iota 5) (_ > 99)))   // None
 
     // find_map:
-    println (try (fn {f} -> find_map (iota 5) (fn x -> if x == 3usz then Maybe.Some (x * 10usz) else Maybe.None)) : Maybe Usz)  // Some 30
+    println (try (fn {f} -> find_map (iota 5) (fn x -> iff (x == 3) (do x * 10))))  // Some 30
 
     // take, take_while
-    iota 100 |> take 3u32 |> iter println       // 0, 1, 2
-    iota 100 |> take_while (fn x -> x.* < 3) |> iter println  // 0, 1, 2
+    iota 100 |> take 3 |> iter println       // 0, 1, 2
+    iota 100 |> take_while (_ < 3) |> iter println  // 0, 1, 2
 
     // skip, skip_while
-    iota 5 |> skip 3u32 |> iter println          // 3, 4
-    iota 5 |> skip_while (fn x -> x.* < 2) |> iter println  // 2, 3, 4
+    iota 5 |> skip 3 |> iter println          // 3, 4
+    iota 5 |> skip_while (_ < 2) |> iter println  // 2, 3, 4
 
     // sum + product
     println (sum (iota 5) 0)                     // 10

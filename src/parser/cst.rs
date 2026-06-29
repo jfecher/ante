@@ -7,7 +7,7 @@ use crate::{
     lexer::token::{F64, FloatKind, Integer, IntegerKind, Token},
 };
 
-use super::ids::{ExprId, IdStore, NameId, NameStore, PathId, PatternId, TopLevelId};
+use super::ids::{ExprId, IdStore, NameId, PathId, PatternId, TopLevelId};
 
 /// The Concrete Syntax Tree (CST) is the output of parsing a source file.
 /// This is expected to mirror the source file without removing too much information.
@@ -63,7 +63,7 @@ pub enum ItemName {
 
 impl ItemName {
     /// Give an approximate name for this item for debugging.
-    pub fn to_string(&self, context: &(impl IdStore + NameStore)) -> String {
+    pub fn to_string(&self, context: &impl IdStore) -> String {
         match self {
             ItemName::Single(name) => context.get_name(*name).to_string(),
             ItemName::Pattern(pattern) => pattern.name(context),
@@ -73,7 +73,7 @@ impl ItemName {
 }
 
 impl PatternId {
-    pub fn name(self, context: &(impl IdStore + NameStore)) -> String {
+    pub fn name(self, context: &impl IdStore) -> String {
         match context.get_pattern(self) {
             Pattern::Error => "#error".to_string(),
             Pattern::Variable(name) => context.get_name(*name).to_string(),

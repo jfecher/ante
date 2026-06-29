@@ -1,0 +1,17 @@
+foo a b =
+	fn c d ->
+		3
+
+when condition expr =
+	if condition then
+		expr
+
+// args: -e ast --no-color
+// expected stdout:
+// foo a b =
+//     fn c d ->
+//         3
+// 
+// when condition expr =
+//     if condition then 
+//         expr

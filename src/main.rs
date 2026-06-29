@@ -29,6 +29,7 @@
 //!   - Select Largest Variant `src/mir/select_largest_variant.rs`
 //! - Backend Codegen - choose your backend:
 //!   - LLVM `src/codegen/llvm/mod.rs`
+//!   - C `src/codegen/c/mod.rs`
 //!
 //! Non-passes:
 //! - `src/errors.rs`: Defines each error used in the program as well as the `Location` struct
@@ -248,9 +249,9 @@ fn classify_diagnostics(diagnostics: &BTreeSet<Diagnostic>) -> (usize, usize) {
 }
 
 fn display_diagnostics(diagnostics: &BTreeSet<Diagnostic>, compiler: &Db, no_color: bool) {
-    let (error_count, warning_count) = classify_diagnostics(&diagnostics);
+    let (error_count, warning_count) = classify_diagnostics(diagnostics);
     for diganostic in diagnostics {
-        eprintln!("{}", diganostic.display(!no_color, &compiler));
+        eprintln!("{}", diganostic.display(!no_color, compiler));
     }
 
     if error_count != 0 {

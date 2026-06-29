@@ -38,7 +38,11 @@
 //!       is how expressions can be continued in ante despite most ending on a Newline.
 pub mod token;
 
-use crate::diagnostics::{Position, Span};
+use crate::{
+    diagnostics::{Diagnostic, Position, Span},
+    iterator_extensions::mapvec,
+    name_resolution::namespace::SourceFileId,
+};
 use std::{str::Chars, sync::Arc};
 use token::{ClosingBracket, F64, FloatKind, Integer, IntegerKind, LexerError, Token, lookup_keyword};
 
@@ -60,9 +64,12 @@ pub struct Lexer<'contents> {
     current_indent_level: usize,
     return_newline: bool, // Hack to always return a newline after an Unindent token
     previous_token_expects_indent: bool,
+    /// ' ' or '\t', starts as '\0' until the first significant indentation establishes it
+    indent_char: char,
     chars: Chars<'contents>,
     open_braces: OpenBraces,
     pending_interpolations: Vec<usize>,
+    errors: Vec<(LexerError, Span)>,
 }
 
 /// The lexer maintains a stack of IndentLevels to remember
@@ -103,9 +110,11 @@ impl<'contents> Lexer<'contents> {
             current_indent_level: 0,
             return_newline: false,
             previous_token_expects_indent: false,
+            indent_char: '\0',
             chars,
             open_braces: OpenBraces { parenthesis: 0, curly: 0, square: 0 },
             pending_interpolations: Vec::new(),
+            errors: Vec::new(),
         }
     }
 
@@ -126,6 +135,20 @@ impl<'contents> Lexer<'contents> {
                 | Token::Equal
                 | Token::RightArrow
         )
+    }
+
+    /// Push an error and return [Token::Invalid]. The [Span] of the error is from [Self::locate]
+    fn error(&mut self, invalid_char: char, error: LexerError) -> IterElem {
+        let span = self.locate();
+        self.errors.push((error, span));
+        Some((Token::Invalid(invalid_char), span))
+    }
+
+    pub fn errors(&self, file: SourceFileId) -> Vec<Diagnostic> {
+        mapvec(&self.errors, |(error, span)| Diagnostic::LexerError {
+            error: error.clone(),
+            location: span.in_file(file),
+        })
     }
 
     fn at_end_of_input(&self) -> bool {
@@ -170,7 +193,9 @@ impl<'contents> Lexer<'contents> {
         if self.current == expected {
             self.advance_with(token)
         } else {
-            self.advance_with(Token::Error(LexerError::Expected(expected)))
+            let current = self.current;
+            self.advance();
+            self.error(current, LexerError::Expected(expected))
         }
     }
 
@@ -195,7 +220,7 @@ impl<'contents> Lexer<'contents> {
         self.file_contents[start..end].replace('_', "")
     }
 
-    fn lex_integer_suffix(&mut self) -> Result<Option<IntegerKind>, Token> {
+    fn lex_integer_suffix(&mut self) -> Result<Option<IntegerKind>, LexerError> {
         let start = self.current_position.byte_index;
         while self.current.is_alphanumeric() || self.current == '_' {
             self.advance();
@@ -214,11 +239,11 @@ impl<'contents> Lexer<'contents> {
             "isz" => IntegerKind::Isz,
             "usz" => IntegerKind::Usz,
             "" => return Ok(None),
-            _ => return Err(Token::Error(LexerError::InvalidIntegerSuffx)),
+            _ => return Err(LexerError::InvalidIntegerSuffx),
         }))
     }
 
-    fn lex_float_suffix(&mut self) -> Result<Option<FloatKind>, Token> {
+    fn lex_float_suffix(&mut self) -> Result<Option<FloatKind>, LexerError> {
         let start = self.current_position.byte_index;
         while self.current.is_alphanumeric() || self.current == '_' {
             self.advance();
@@ -230,7 +255,7 @@ impl<'contents> Lexer<'contents> {
             "f32" => Ok(Some(FloatKind::F32)),
             "f64" => Ok(Some(FloatKind::F64)),
             "" => Ok(None),
-            _ => Err(Token::Error(LexerError::InvalidFloatSuffx)),
+            _ => Err(LexerError::InvalidFloatSuffx),
         }
     }
 
@@ -245,19 +270,25 @@ impl<'contents> Lexer<'contents> {
 
             match self.lex_float_suffix() {
                 Ok(suffix) => Some((Token::FloatLiteral(float, suffix), location)),
-                Err(lexer_error) => Some((lexer_error, location)),
+                Err(lexer_error) => {
+                    self.errors.push((lexer_error, location));
+                    Some((Token::FloatLiteral(float, None), location))
+                },
             }
         } else {
             let location = self.locate();
             let Ok(magnitude) = integer_string.parse() else {
-                let error = Token::Error(LexerError::FailedToParseNumber { integer_string });
-                return Some((error, location));
+                self.errors.push((LexerError::FailedToParseNumber { integer_string }, location));
+                return Some((Token::IntegerLiteral(Integer::positive(0), None), location));
             };
 
             let integer = Integer::positive(magnitude);
             match self.lex_integer_suffix() {
                 Ok(suffix) => Some((Token::IntegerLiteral(integer, suffix), location)),
-                Err(lexer_error) => Some((lexer_error, location)),
+                Err(lexer_error) => {
+                    self.errors.push((lexer_error, location));
+                    Some((Token::IntegerLiteral(integer, None), location))
+                },
             }
         }
     }
@@ -303,6 +334,7 @@ impl<'contents> Lexer<'contents> {
                     return Some((Token::StringLiteral(contents), self.locate()));
                 },
                 ('\\', c) => {
+                    let escape_sequence_start = self.current_position;
                     self.advance();
                     match c {
                         '\\' | '"' | '$' => c,
@@ -310,9 +342,11 @@ impl<'contents> Lexer<'contents> {
                         'r' => '\r',
                         't' => '\t',
                         '0' => '\0',
-                        _ => {
-                            let error = LexerError::InvalidEscapeSequence(self.current);
-                            return self.advance2_with(Token::Error(error));
+                        c => {
+                            self.advance();
+                            let span = Span { start: escape_sequence_start, end: self.current_position };
+                            self.errors.push((LexerError::InvalidEscapeSequence(c), span));
+                            continue;
                         },
                     }
                 },
@@ -346,13 +380,11 @@ impl<'contents> Lexer<'contents> {
                     match bracket_stack.pop() {
                         Some(matching) if matching.token() == token => tokens.push(token),
                         Some(expected) => {
-                            let error = LexerError::MismatchedBracketInQuote { expected };
-                            return Some((Token::Error(error), span));
+                            self.errors.push((LexerError::MismatchedBracketInQuote { expected }, span));
                         },
                         None => {
                             let unexpected = ClosingBracket::from_token(&token).unwrap();
-                            let error = LexerError::QuoteWithEndBracketAndNoStart { unexpected };
-                            return Some((Token::Error(error), span));
+                            self.errors.push((LexerError::QuoteWithEndBracketAndNoStart { unexpected }, span));
                         },
                     }
                 },
@@ -378,9 +410,10 @@ impl<'contents> Lexer<'contents> {
                 'r' => '\r',
                 't' => '\t',
                 '0' => '\0',
-                _ => {
-                    let error = LexerError::InvalidEscapeSequence(self.current);
-                    return self.advance2_with(Token::Error(error));
+                c => {
+                    let span = self.locate();
+                    self.errors.push((LexerError::InvalidEscapeSequence(c), span));
+                    '\0'
                 },
             }
         } else {
@@ -397,27 +430,55 @@ impl<'contents> Lexer<'contents> {
         // Must advance start_position otherwise the slice returned by advance_while
         // in recursive calls to lex_newline will be longer than it should be
         self.token_start_position = self.current_position;
-        let new_indent = self.advance_while(|current, _| current == ' ').len();
+        let indent = self.advance_while(|current, _| current == ' ' || current == '\t');
+        let mut new_indent = indent.len();
 
         match (self.current, self.next) {
             ('\r', _) => self.lex_newline(),
             ('\n', _) => self.lex_newline(),
 
             (c, _) if c.is_whitespace() => {
-                let error = LexerError::InvalidCharacterInSignificantWhitespace(self.current);
-                self.advance_with(Token::Error(error))
+                self.advance();
+                self.error(c, LexerError::UnicodeWhitespaceCharacterInSignificantWhitespace(self.current))
             },
 
-            // Ignore emitting indentation level changes for single-line comments only.
+            // Ignore emitting indentation level changes for comments.
             ('/', '/') if !self.peek_next_next('/') => self.lex_singleline_comment(),
             ('/', '*') => self.lex_multiline_comment(),
 
-            _ if new_indent > self.current_indent_level => self.lex_indent(new_indent),
-            _ if new_indent < self.current_indent_level => self.lex_unindent(new_indent),
-
-            _ if self.newlines_ignored() => self.next(),
-            _ => Some((Token::Newline, self.locate())),
+            // Only validate indentation on significant lines
+            _ => {
+                if let Some(error) = self.check_indent_consistency(indent) {
+                    self.errors.push((error, self.locate()));
+                    // Try to adjust the new-indent level. We can't know the tab size, so just guess
+                    // 1 tab = 4 spaces. This will result in extra indentation errors if guessed
+                    // incorrectly but so will any heuristic since the file is already inconsistent.
+                    new_indent = indent.len() + indent.chars().filter(|c| *c == '\t').count() * 3;
+                }
+                if new_indent > self.current_indent_level {
+                    self.lex_indent(new_indent)
+                } else if new_indent < self.current_indent_level {
+                    self.lex_unindent(new_indent)
+                } else if self.newlines_ignored() {
+                    self.next()
+                } else {
+                    Some((Token::Newline, self.locate()))
+                }
+            },
         }
+    }
+
+    /// A file's significant indentation must use either all spaces or all tabs. The character is
+    /// lazily established by the first significant indentation seen. Any indentation using a
+    /// different character after is an error.
+    fn check_indent_consistency(&mut self, indent: &str) -> Option<LexerError> {
+        let first = indent.chars().next()?;
+        if self.indent_char == '\0' {
+            self.indent_char = first;
+        }
+
+        let found = indent.chars().find(|c| *c != self.indent_char)?;
+        Some(LexerError::InconsistentIndentation { found, expected: self.indent_char })
     }
 
     /// True if the character after next is `expected`
@@ -446,10 +507,11 @@ impl<'contents> Lexer<'contents> {
     }
 
     fn lex_indent(&mut self, new_indent: usize) -> IterElem {
-        if new_indent == self.current_indent_level + 1 {
+        // At least 2 spaces are required to indent
+        if new_indent == self.current_indent_level + 1 && self.indent_char == ' ' {
             self.indent_levels.push(IndentLevel::new(new_indent));
             self.current_indent_level = new_indent;
-            Some((Token::Error(LexerError::IndentChangeTooSmall), self.locate()))
+            self.error(' ', LexerError::IndentChangeTooSmall)
         } else if self.previous_token_expects_indent {
             self.indent_levels.push(IndentLevel::new(new_indent));
             self.current_indent_level = new_indent;
@@ -472,7 +534,7 @@ impl<'contents> Lexer<'contents> {
         self.return_newline = !self.newlines_ignored();
 
         let token = if new_indent > last_indent.column {
-            Some((Token::Error(LexerError::UnindentToNewLevel), self.locate()))
+            self.error(self.indent_char, LexerError::UnindentToNewLevel)
         } else if last_indent.ignored {
             None
         } else {
@@ -568,6 +630,11 @@ impl<'contents> Lexer<'contents> {
         self.advance();
         self.advance();
         self.next()
+    }
+
+    pub fn lex(file_contents: &'contents str, id: SourceFileId) -> (Vec<(Token, Span)>, Vec<Diagnostic>) {
+        let mut lexer = Lexer::new(file_contents);
+        ((&mut lexer).collect(), lexer.errors(id))
     }
 }
 
@@ -754,7 +821,10 @@ impl<'contents> Iterator for Lexer<'contents> {
             ('!', _) => self.advance_with(Token::ExclamationMark),
             ('?', _) => self.advance_with(Token::QuestionMark),
             ('#', _) => self.advance_with(Token::Octothorpe),
-            (c, _) => self.advance_with(Token::Error(LexerError::UnknownChar(c))),
+            (c, _) => {
+                self.advance();
+                self.error(c, LexerError::UnknownChar(c))
+            },
         }
     }
 }

@@ -454,7 +454,7 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
                     self.compile_userdefined_cases(rows, branch_var, &definition_type, origin, &arguments, location)
                 },
                 _ => {
-                    let typ = self.checker.type_to_string(&definition_type);
+                    let typ = self.checker.type_to_string(definition_type);
                     Err(Diagnostic::CannotMatchOnType { typ, location })
                 },
             },
@@ -473,7 +473,7 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
             | Type::Forall(..)
             | Type::Tuple(_)
             | Type::U32(_) => {
-                let typ = self.checker.type_to_string(&definition_type);
+                let typ = self.checker.type_to_string(definition_type);
                 Err(Diagnostic::CannotMatchOnType { typ, location })
             },
         }
@@ -744,7 +744,7 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
             },
             _ => (),
         }
-        let typ = self.checker.type_to_string(&type_matched_on);
+        let typ = self.checker.type_to_string(type_matched_on);
         self.checker.compiler.accumulate(Diagnostic::MissingManyCases { typ, location });
     }
 
@@ -788,7 +788,7 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
         let Some(first) = cases.first() else { return Vec::new() };
 
         if matches!(&first.constructor, Constructor::Int(_) | Constructor::Range(..)) {
-            return self.missing_integer_cases(cases, &typ);
+            return self.missing_integer_cases(cases, typ);
         }
 
         let all_constructors = self.all_constructors(&first.constructor, location);
@@ -809,7 +809,7 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
         // used in Noir may change we recommend a match-all pattern instead.
         // If the type is a type variable, we don't know exactly which integer type this may
         // resolve to so also just suggest a catch-all in that case.
-        if typ.is_integer() || self.type_is_bindable(&typ) {
+        if typ.is_integer() || self.type_is_bindable(typ) {
             return vec![(Arc::new(WILDCARD_PATTERN.to_string()), Vec::new())];
         }
 
@@ -857,19 +857,19 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
         if args.is_empty() {
             constructor.clone()
         } else if constructor.as_ref() == "," {
-            Arc::new(format!("{}", join_arc_str(&args, ", ")))
+            Arc::new(join_arc_str(&args, ", ").to_string())
         } else {
             Arc::new(format!("{constructor} {}", join_arc_str(&args, " ")))
         }
     }
 
-    fn constructor_string<'this>(&'this mut self, constructor: &Constructor) -> Name {
+    fn constructor_string(&mut self, constructor: &Constructor) -> Name {
         match constructor {
             Constructor::True => Arc::new("true".to_string()),
             Constructor::False => Arc::new("false".to_string()),
             Constructor::Unit => Arc::new("()".to_string()),
             Constructor::Int(x) => Arc::new(format!("{x}")),
-            Constructor::Variant(typ, variant_index) => return self.user_defined_type_name(typ, *variant_index),
+            Constructor::Variant(typ, variant_index) => self.user_defined_type_name(typ, *variant_index),
             Constructor::Range(start, end) => Arc::new(format!("{start} .. {end}")),
         }
     }

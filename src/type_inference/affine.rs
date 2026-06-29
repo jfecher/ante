@@ -64,6 +64,13 @@ pub(super) struct MoveTracker {
     errored: FxHashSet<MovePath>,
 }
 
+/// A snapshot of a [`MovePath`]'s move record, taken before an expression is inferred so
+/// the auto-ref coercion can roll the place back to its pre-inference state.
+pub(super) struct SavedMove {
+    pub(super) path: MovePath,
+    pub(super) location: Option<Location>,
+}
+
 impl MoveTracker {
     /// Record that a path has been moved at the given location.
     pub(super) fn record_move(&mut self, path: MovePath, location: Location) {
@@ -76,6 +83,19 @@ impl MoveTracker {
         self.moved.retain(|p, _| !p.is_descendant_of(path));
         self.errored.remove(path);
         self.errored.retain(|p| !p.is_descendant_of(path));
+    }
+
+    /// Snapshot the move record for `path` so it can be restored after an auto-ref coercion.
+    pub(super) fn save_move(&self, path: &MovePath) -> Option<Location> {
+        self.moved.get(path).cloned()
+    }
+
+    /// Restore a previously saved move record, dropping this expression's own contribution.
+    pub(super) fn restore_move(&mut self, path: &MovePath, saved: Option<Location>) {
+        match saved {
+            Some(location) => self.moved.insert(path.clone(), location),
+            None => self.moved.remove(path),
+        };
     }
 
     /// Check if this path or any ancestor is already moved.
@@ -185,11 +205,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     return true;
                 }
                 // Also check if it's a function whose return type matches
-                if let Type::Function(f) = &name_type {
-                    if self.try_unify(&f.return_type, &copy_of_t).is_ok() {
-                        found = true;
-                        return true;
-                    }
+                if let Type::Function(f) = &name_type
+                    && self.try_unify(&f.return_type, &copy_of_t).is_ok()
+                {
+                    found = true;
+                    return true;
                 }
                 false
             });
@@ -205,7 +225,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         match typ.follow(&self.bindings) {
             // Type aliases are expanded away during `from_cst_type`, so no `UserDefined`
             // here can refer to an alias
-            Type::Application(constructor, _) => self.is_ability(&constructor),
+            Type::Application(constructor, _) => self.is_ability(constructor),
             Type::UserDefined(origin) => match origin {
                 Origin::TopLevelDefinition(name) => {
                     let (item, _) = GetItemRaw(name.top_level_item).get(self.compiler);
@@ -219,7 +239,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     fn is_shared_user_defined(&self, typ: &Type) -> bool {
         match typ.follow(&self.bindings) {
-            Type::Application(constructor, _) => self.is_shared_user_defined(&constructor),
+            Type::Application(constructor, _) => self.is_shared_user_defined(constructor),
             Type::UserDefined(origin) => match origin {
                 Origin::TopLevelDefinition(name) => {
                     let (item, _) = GetItemRaw(name.top_level_item).get(self.compiler);

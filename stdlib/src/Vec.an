@@ -213,14 +213,16 @@ Vec.clear (v: mut Vec t) {Drop t}: Unit =
 
 /// Sort the vector in place using `cmp` to compare elements.
 /// Insertion sort: stable, O(n^2) worst case. Good enough for small vectors.
-Vec.sort_by (v: mut Vec t) (cmp: fn t t => Bool): Unit =
+Vec.sort_by (v: mut Vec t) (cmp: fn (ref t) (ref t) => Bool): Unit =
     if v.len < 2 then return ()
     for i in 1 .. v.len do
         var j = i
-        while j > 0 and cmp v.data.[j] v.data.[j - 1] do
-            tmp = v.data.[j - 1]
-            array_insert v.data (j - 1) (v.data.[j])
-            array_insert v.data j tmp
+        while j > 0 do
+            a = v.data.[j]
+            b = v.data.[j - 1]
+            if not (cmp a b) then break
+            array_insert v.data (j - 1) a
+            array_insert v.data j b
             j -= 1
 
 /// Sort the vector in place using the `Cmp` ordering.
@@ -228,18 +230,22 @@ Vec.sort (v: mut Vec t) {Cmp t}: Unit =
     v.sort_by (<)
 
 
-impl print_vec {p: Print t}: Print (ref Vec t) with
+impl print_vec {p: Print t}: Print (Vec t) with
     print v =
         print "["
 
         for i in 0 .. v.len do
             if i != 0 then print ", "
-            print v.data.[i]
+            elem: t = v.data.[i]
+            print elem
 
         print "]"
 
-impl extract_vec: Extract (Vec t) Usz t with
+impl extract_vec_move: Extract (Vec t) Usz t with
     (.[]) v i = v.data.[i]
+
+impl extract_vec: Extract (ref Vec t) Usz (ref t) with
+    (.[]) v i = transmute (offset v.data i)
 
 // Note that this impl is different from `Vec.insert`.
 // Vec.insert will insert into a slot, moving the previous element and each
@@ -263,7 +269,7 @@ implicit stream_imm_vec: Stream (imm Vec a) (imm a) =
 
 impl drop_vec {Drop t}: Drop (Vec t) with
     drop (v: mut Vec t) =
-        if v.cap != 0usz then
+        if v.cap != 0 then
             for i in 0 .. v.len do
                 elem = offset v.data i
                 Drop.drop (ptr_to_mut elem)
@@ -275,6 +281,8 @@ impl eq_vec {Eq t}: Eq (Vec t) with
             return false
 
         for i in 0 .. l.len do
-            if l.data.[i] != r.data.[i] then
+            le = l.data.[i]
+            re = r.data.[i]
+            if le != re then
                 return false
         true

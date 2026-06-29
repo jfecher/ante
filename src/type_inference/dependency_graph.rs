@@ -88,7 +88,7 @@ pub fn get_type_check_graph_impl(_: &TypeCheckDependencyGraph, db: &DbHandle) ->
     for crate_ in crates.values() {
         for file in crate_.source_files.values() {
             let exported = ExportedDefinitions(*file).get(db);
-            for (_type_id, methods) in &exported.methods {
+            for methods in exported.methods.values() {
                 let mut method_ids =
                     methods.values().map(|name| &name.top_level_item).filter(|id| item_lacks_known_type(**id, db));
 

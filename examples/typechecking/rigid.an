@@ -10,7 +10,7 @@ main () = ()
 // args: -e ast-t --no-color
 // expected exit status: 1
 // expected stdout:
-// (ex1: fn a -> b) ((x: a)) : b = (+: fn b b {Add b} [Ptr Unit] -> b) (x: a) 1_U32 {(error)}
+// (ex1: fn a -> b) ((x: a)) : b = (+: fn a a {Add a} [Ptr Unit] -> a) (x: a) 1_U32 {(error)}
 // 
 // (ex2: fn a -> b) =
 //     fn (x: a) -> (x: a)
@@ -19,15 +19,20 @@ main () = ()
 
 // expected stderr:
 // examples/typechecking/rigid.an:2:17
-// 2 | ex1 (x: a): b = x + 1u32	// error: Argument 1 has type a but b was expected
-//   |                 ^
+//   | // error: The body of this function has type a but it is expected to return b
+// 2 | ex1 (x: a): b = x + 1u32
+//   |                 ^^^^^
+// 
+// examples/typechecking/rigid.an:2:17
+// 2 | ex1 (x: a): b = x + 1u32	// error: This function call returns a but b was expected
+//   |                 ^^^^^
 // 
 // examples/typechecking/rigid.an:2:19
-// 2 | ex1 (x: a): b = x + 1u32	// error: No implicit found for type Add b required by +
+// 2 | ex1 (x: a): b = x + 1u32	// error: No implicit found for type Add a required by +
 //   |                   ^
 // 
 // examples/typechecking/rigid.an:2:21
-// 2 | ex1 (x: a): b = x + 1u32	// error: Argument 2 has type U32 but b was expected
+// 2 | ex1 (x: a): b = x + 1u32	// error: Argument 2 has type U32 but a was expected
 //   |                     ^
 // 
 // examples/typechecking/rigid.an:6:13
@@ -35,4 +40,5 @@ main () = ()
 // 6 |     fn x -> x	// error: The body of this function has type a but it is expected to return b
 //   |             ^
 // 
-// Found 4 errors and 0 warnings
+// Found 5 errors and 0 warnings
+

@@ -301,12 +301,12 @@ fn fix_fn_ptr_id_chains(definition: &mut Definition) {
         // If the original type was already a raw fn ptr, it was left untouched
         // by the rewrite, leave it alone here too.
         let typ = &definition.instruction_result_types[id];
-        if let Type::Tuple(fields) = typ {
-            if fields.len() == 2 {
-                if matches!(&fields[0], Type::Function(_)) && !matches!(&fields[1], Type::Function(_)) {
-                    definition.instruction_result_types[id] = fields[0].clone();
-                }
-            }
+        if let Type::Tuple(fields) = typ
+            && fields.len() == 2
+            && matches!(&fields[0], Type::Function(_))
+            && !matches!(&fields[1], Type::Function(_))
+        {
+            definition.instruction_result_types[id] = fields[0].clone();
         }
     }
 }

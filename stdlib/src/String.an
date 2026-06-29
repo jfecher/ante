@@ -41,7 +41,8 @@ split (s: String) (c: Char) = fn {Emit String} ->
     var subend = 0usz
     var substart = 0usz
     while U32 subend < s.length do
-        if s.data.[Usz subend] == c then
+        ch: Char = s.data.[Usz subend]
+        if ch == c then
             emit (substr (clone (ref s)) substart subend)
             substart := subend + 1
         subend += 1

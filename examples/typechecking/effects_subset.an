@@ -31,7 +31,7 @@ main () =
 // 
 // (iota: fn U32 {Emit U32} -> Unit) ((n: U32)) {(_: Emit U32)} : Unit =
 //     (recur: fn U32 [U32, (Emit U32)] -> Unit) (i: U32) [(n: U32), (_: Emit U32)] =
-//         if (<: fn U32 U32 {Cmp U32} [Ptr Unit] -> Bool) (i: U32) (n: U32) {(cmp_u32: Cmp U32)} then 
+//         if (<: fn (ref U32) (ref U32) {Cmp U32} [Ptr Unit] -> Bool) (ref (i: U32)) (ref (n: U32)) {(cmp_u32: Cmp U32)} then 
 //             (emit: fn U32 {Emit U32} [Ptr Unit] -> Unit) (i: U32) {(_: Emit U32)}
 //             (recur: fn U32 [U32, (Emit U32)] -> Unit) ((+: fn U32 U32 {Add U32} [Ptr Unit] -> U32) (i: U32) 1 {(add_u32: Add U32)})
 //     (recur: fn U32 [U32, (Emit U32)] -> Unit) 0
@@ -52,5 +52,5 @@ main () =
 //     in fn () [(stream: fn (Emit a) -> Unit)] -> (stream: fn (Emit a) -> Unit) (h: Emit a)
 // 
 // (main: fn Unit -> Unit) () =
-//     (for_: fn (fn (Emit U32) -> Unit) (fn U32 -> Unit) -> Unit) (fn (out: Emit U32) -> (filter: fn (fn (Emit U32) -> Unit) (fn U32 -> Bool) {Emit U32} {Copy U32} -> Unit) (fn (out2: Emit U32) -> (iota: fn U32 {Emit U32} -> Unit) 10 {(out2: Emit U32)}) (fn (x: U32) -> (==: fn U32 U32 {Eq U32} [Ptr Unit] -> Bool) ((%: fn U32 U32 {Mod U32} [Ptr Unit] -> U32) (x: U32) 2 {(mod_u32: Mod U32)}) 0 {(eq_u32: Eq U32)}) {(out: Emit U32)} {(copy_u32: Copy U32)}) (fn (_1: U32) -> (println: fn U32 {Print U32} -> Unit) (_1: U32) {(print_u32: Print U32)})
+//     (for_: fn (fn (Emit U32) -> Unit) (fn U32 -> Unit) -> Unit) (fn (out: Emit U32) -> (filter: fn (fn (Emit U32) -> Unit) (fn U32 -> Bool) {Emit U32} {Copy U32} -> Unit) (fn (out2: Emit U32) -> (iota: fn U32 {Emit U32} -> Unit) 10 {(out2: Emit U32)}) (fn (x: U32) -> (==: fn (ref U32) (ref U32) {Eq U32} [Ptr Unit] -> Bool) (ref (%: fn U32 U32 {Mod U32} [Ptr Unit] -> U32) (x: U32) 2 {(mod_u32: Mod U32)}) (ref 0) {(eq_u32: Eq U32)}) {(out: Emit U32)} {(copy_u32: Copy U32)}) (fn (_1: U32) -> (println: fn (ref U32) {Print U32} -> Unit) (ref (_1: U32)) {(print_u32: Print U32)})
 

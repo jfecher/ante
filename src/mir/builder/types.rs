@@ -89,7 +89,7 @@ where
     pub(super) fn convert_type(&self, typ: &TCType, args: Option<&[TCType]>) -> Type {
         match typ.follow(self.type_bindings) {
             TCType::Primitive(primitive_type) => self.convert_primitive_type(*primitive_type),
-            TCType::Generic(generic) => self.generics_in_scope.get(&generic).map_or(Type::ERROR, |g| Type::Generic(*g)),
+            TCType::Generic(generic) => self.generics_in_scope.get(generic).map_or(Type::ERROR, |g| Type::Generic(*g)),
             TCType::Variable(id) => {
                 // Any unbound variables at this point should be defaultable to Unit with only
                 // slight changes in behavior. Implicits should already be found so this won't affect
@@ -211,7 +211,7 @@ where
             TypeBody::Sum(variants) => {
                 let union = if let Some((_, variant_args)) = variant_index.and_then(|i| variants.get(i)) {
                     // If we want to retrieve 1 specific variant then create a tuple of each field
-                    Type::tuple(mapvec(variant_args, |field| self.convert_type(&field, None)))
+                    Type::tuple(mapvec(variant_args, |field| self.convert_type(field, None)))
                 } else {
                     // Otherwise we need a raw union of the fields of all variants
                     Type::union(mapvec(variants, |(_, fields)| {

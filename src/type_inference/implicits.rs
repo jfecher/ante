@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -123,7 +123,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // The reverse would be a type error.
         let mut new_expected = Vec::new();
 
-        let mut actual_params = actual.parameters.iter();
+        let actual_params = actual.parameters.iter();
         let mut expected_params = expected.parameters.iter().cloned();
         let mut current_expected = expected_params.next();
 
@@ -131,10 +131,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // at that position, or it is `Some(expr_id)` of the new expression.
         let mut implicits_added = Vec::new();
 
-        while let Some(actual) = actual_params.next() {
+        for actual in actual_params {
             match (actual.is_implicit, current_expected.as_ref()) {
                 // actual is implicit, but expected isn't, search for an implicit in scope
-                (true, expected) if expected.map_or(true, |param| !param.is_implicit) => {
+                (true, expected) if expected.is_none_or(|param| !param.is_implicit) => {
                     let value = self.delay_find_implicit_value(&actual.typ, new_expected.len(), function, call);
                     implicits_added.push(Some(value));
                     new_expected.push(ParameterType::implicit(self.expr_types[&value].clone()));
@@ -225,7 +225,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Returns `true` if the scope was delayed (extended into the parent) rather than resolved now.
     pub(super) fn pop_implicits_scope(&mut self) -> bool {
         let mut scope = self.implicits.pop().expect("More pops than pushes to `TypeChecker::implicits`");
-        let mut any_bubbled = false;
 
         // If there are no implicits defined in the current scope, delay checking them until later
         // so we get as much type information as possible. This particularly helps for polymorphic
@@ -238,6 +237,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             return has_delayed_implicits;
         }
 
+        let mut any_bubbled = false;
+
         // The scope has local implicits. Partition delayed implicits so ones that can't possibly
         // bind to a local name are deferred to the parent. Then transitively pull along any
         // bubbled candidate that shares a type variable with a staying implicit's target type:
@@ -248,68 +249,37 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             let local_implicits = scope.implicits_in_scope.clone();
             let mut stays_here = Vec::new();
             let mut candidates_to_bubble = Vec::new();
-            for di in std::mem::take(&mut scope.delayed_implicits) {
-                if !local_implicits.is_empty() && self.delayed_implicit_could_match_local(&di, &local_implicits) {
-                    stays_here.push(di);
+            for implicit in std::mem::take(&mut scope.delayed_implicits) {
+                if self.delayed_implicit_could_match_local(&implicit, &local_implicits) {
+                    stays_here.push(implicit);
                 } else {
-                    candidates_to_bubble.push(di);
+                    candidates_to_bubble.push(implicit);
                 }
             }
 
-            let mut stays_target_tvars = std::collections::HashSet::new();
-            for di in &stays_here {
-                let target = self.expr_types[&di.destination].clone().follow_all(&self.bindings);
-                Self::collect_tvars(&target, &mut stays_target_tvars);
-            }
-            loop {
-                let before = candidates_to_bubble.len();
-                let mut i = 0;
-                while i < candidates_to_bubble.len() {
-                    let di = candidates_to_bubble[i];
-                    let target = self.expr_types[&di.destination].clone().follow_all(&self.bindings);
-                    let mut tvars = std::collections::HashSet::new();
-                    Self::collect_tvars(&target, &mut tvars);
-                    if tvars.iter().any(|tv| stays_target_tvars.contains(tv)) {
-                        stays_target_tvars.extend(tvars);
-                        stays_here.push(di);
-                        candidates_to_bubble.swap_remove(i);
-                    } else {
-                        i += 1;
-                    }
-                }
-                if candidates_to_bubble.len() == before {
-                    break;
-                }
-            }
-            let bubbles_up = candidates_to_bubble;
+            let mut kept_vars = stays_here
+                .iter()
+                .flat_map(|implicit| self.expr_types[&implicit.destination].free_vars(&self.bindings))
+                .filter_map(|generic| generic.as_inferred())
+                .collect::<HashSet<_>>();
+
+            let bubbles_up = self.pull_transitive_implicits(&mut stays_here, candidates_to_bubble, &mut kept_vars);
 
             if stays_here.is_empty() {
                 let parent = self.implicits.last_mut().unwrap();
-                parent.delayed_implicits.extend(bubbles_up);
-                parent.deferred_closure_checks.append(&mut scope.deferred_closure_checks);
-                parent.integer_type_variables.append(&mut scope.integer_type_variables);
-                parent.float_type_variables.append(&mut scope.float_type_variables);
+                scope.delayed_implicits = bubbles_up;
+                scope.implicits_in_scope.clear(); // local names die with this scope, must not leak up
+                parent.extend(scope);
                 return true;
             }
 
-            // Partition int/float vars: keep here only those whose tvar appears in a staying
-            // implicit's target. The rest bubble up so defaulting waits for more type info.
-            let integers = std::mem::take(&mut scope.integer_type_variables);
+            // Keep here only int/float vars whose id appears in a kept implicit's target. The
+            // rest bubble up so defaulting waits for more type info.
+            let ints = std::mem::take(&mut scope.integer_type_variables);
+            let (keep_ints, bubble_ints) = self.partition_by_target_tvar(ints, &kept_vars, |(_, tvar, _)| *tvar);
+
             let floats = std::mem::take(&mut scope.float_type_variables);
-            let (keep_ints, bubble_ints): (Vec<_>, Vec<_>) = integers.into_iter().partition(|(_, tvar, _)| {
-                let resolved = match Type::Variable(*tvar).follow(&self.bindings) {
-                    Type::Variable(id) => *id,
-                    _ => return true,
-                };
-                stays_target_tvars.contains(&resolved)
-            });
-            let (keep_floats, bubble_floats): (Vec<_>, Vec<_>) = floats.into_iter().partition(|(tvar, _)| {
-                let resolved = match Type::Variable(*tvar).follow(&self.bindings) {
-                    Type::Variable(id) => *id,
-                    _ => return true,
-                };
-                stays_target_tvars.contains(&resolved)
-            });
+            let (keep_floats, bubble_floats) = self.partition_by_target_tvar(floats, &kept_vars, |(tvar, _)| *tvar);
 
             any_bubbled = !bubbles_up.is_empty() || !bubble_ints.is_empty() || !bubble_floats.is_empty();
 
@@ -317,7 +287,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             parent.delayed_implicits.extend(bubbles_up);
             parent.integer_type_variables.extend(bubble_ints);
             parent.float_type_variables.extend(bubble_floats);
-
             if any_bubbled {
                 parent.deferred_closure_checks.append(&mut scope.deferred_closure_checks);
             }
@@ -327,7 +296,52 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             scope.float_type_variables = keep_floats;
         }
 
-        // The rest of this function will query all of `self.implicits` so add the last scope back
+        self.resolve_scope(scope);
+        any_bubbled
+    }
+
+    /// Move bubble candidates sharing a type variable with a staying target into `stays_here` to a fixpoint,
+    /// returning the candidates to be bubbled up.
+    fn pull_transitive_implicits(
+        &mut self, stays_here: &mut Vec<DelayedImplicit>, mut candidates_to_bubble: Vec<DelayedImplicit>,
+        vars_to_keep: &mut HashSet<TypeVariableId>,
+    ) -> Vec<DelayedImplicit> {
+        loop {
+            let before = candidates_to_bubble.len();
+            let mut i = 0;
+            while i < candidates_to_bubble.len() {
+                let implicit = candidates_to_bubble[i];
+                let target = self.expr_types[&implicit.destination].clone().follow_all(&self.bindings);
+                let free_vars = target.free_unification_vars(&self.bindings);
+
+                if free_vars.iter().any(|tv| vars_to_keep.contains(tv)) {
+                    vars_to_keep.extend(free_vars);
+                    stays_here.push(implicit);
+                    candidates_to_bubble.swap_remove(i);
+                } else {
+                    i += 1;
+                }
+            }
+            if candidates_to_bubble.len() == before {
+                return candidates_to_bubble;
+            }
+        }
+    }
+
+    /// Partition into (keep here, bubble up) by whether each entry's tvar is in `keep_tvars`. An
+    /// already-bound tvar is kept since its type is settled and delaying it gains nothing.
+    fn partition_by_target_tvar<T>(
+        &self, entries: Vec<T>, vars_to_keep: &HashSet<TypeVariableId>, get_var: impl Fn(&T) -> TypeVariableId,
+    ) -> (Vec<T>, Vec<T>) {
+        entries.into_iter().partition(|entry| match Type::Variable(get_var(entry)).follow(&self.bindings) {
+            Type::Variable(id) => vars_to_keep.contains(id),
+            _ => true,
+        })
+    }
+
+    /// Resolve everything queued in `scope` while it is still visible in `self.implicits`, then pop.
+    fn resolve_scope(&mut self, scope: ImplicitsContext) {
+        // Queued requests query all of `self.implicits`, so keep the scope on the stack for now
         self.implicits.push(scope);
 
         // We must perform any queued requests before popping any implicits which should be visible
@@ -338,19 +352,13 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let integers = std::mem::take(&mut scope.integer_type_variables);
         let floats = std::mem::take(&mut scope.float_type_variables);
 
-        // Phase 1: Try to resolve all implicits, iterating to a fixpoint. Resolving one implicit
-        // binds type variables that may unblock others, so we keep retrying the failures as long
-        // as progress is made. This is required for chains of dependent implicits where each
-        // result feeds the next (e.g. `a.[i].[j] := v` desugars to nested `.[` reads whose result
-        // types feed the next read and finally the `.[]:=` insert). When the target type contains
-        // an unbound integer type variable, unification may still succeed (e.g. searching for
-        // `Foo _` where only `Foo U8` exists binds `_ := U8`). Remaining failures are kept for the
-        // post-defaulting retry phase.
-        let failed_implicits;
+        // Phase 1: resolve to a fixpoint, since binding one implicit can unblock another.
+        // FIXME: Likely performance issue. Remove the fixpoint maybe with eagerly trying each implicit
+        // and accepting any regressions.
         let implicits_in_scope = self.collect_implicits_in_scope();
 
         let mut pending = implicits;
-        loop {
+        let failed_implicits = loop {
             let mut still_pending = Vec::new();
             let mut progressed = false;
             for implicit in pending {
@@ -360,11 +368,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 }
             }
             if !progressed || still_pending.is_empty() {
-                failed_implicits = still_pending;
-                break;
+                break still_pending;
             }
             pending = still_pending.into_iter().map(|(implicit, _)| implicit).collect();
-        }
+        };
 
         // Default any still-unbound integers to I32 and ensure their value fits
         // in whatever type they are now.
@@ -376,11 +383,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             self.try_default_float_to_f64(type_variable, location);
         }
 
-        // Phase 2: Retry implicits that failed in phase 1, now that integer type variables
-        // have been defaulted to I32. This handles cases like `Add _` where phase 1 finds
-        // multiple `Add X` candidates (ambiguous on an unbound integer), but after defaulting
-        // `_ := I32` exactly one candidate remains. If the retry still fails, accumulate the
-        // original error so the diagnostic reflects the unbound type the user wrote.
+        // Phase 2: retry phase 1 failures now that ints & floats are defaulted
         for (implicit, mut original_error) in failed_implicits {
             if self.find_implicit_value(implicit, &implicits_in_scope).is_err() {
                 self.try_attach_import_suggestions(&implicit, &mut original_error);
@@ -395,7 +398,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
 
         self.implicits.pop().expect("More pops than pushes to `TypeChecker::implicits`");
-        any_bubbled
     }
 
     pub(super) fn push_inferred_int(&mut self, value: Integer, type_variable: TypeVariableId, location: Location) {
@@ -434,13 +436,18 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let typ = target_type.clone();
         let fresh_id = self.push_expr(cst::Expr::Error, typ, location);
         let delayed = DelayedImplicit { source: function, destination: fresh_id, parameter_index };
-        self.implicits.last_mut().unwrap().delayed_implicits.push(delayed);
 
-        if let Some(call_expr) = call {
-            if let cst::Expr::Call(mut existing) = self.current_extended_context()[call_expr].clone() {
-                existing.arguments.insert(parameter_index, cst::Argument::implicit(fresh_id));
-                self.current_extended_context_mut().insert_expr(call_expr, cst::Expr::Call(existing));
-            }
+        if let Some(call_expr) = call
+            && let cst::Expr::Call(mut existing) = self.current_extended_context()[call_expr].clone()
+        {
+            existing.arguments.insert(parameter_index, cst::Argument::implicit(fresh_id));
+            self.current_extended_context_mut().insert_expr(call_expr, cst::Expr::Call(existing));
+        }
+
+        // Try to resolve immediately. Slows down type inference but can help it in some cases.
+        let in_scope = self.collect_implicits_in_scope();
+        if self.find_implicit_value(delayed, &in_scope).is_err() {
+            self.implicits.last_mut().unwrap().delayed_implicits.push(delayed);
         }
 
         fresh_id
@@ -483,7 +490,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 self.bindings.insert(*id, Type::Primitive(PrimitiveType::Float(FloatKind::F64)));
             },
             Type::Primitive(PrimitiveType::Float(_)) => (),
-            Type::Primitive(PrimitiveType::Error) => return,
+            Type::Primitive(PrimitiveType::Error) => (),
             _ => {
                 // Unification rejects non-float bindings for literal type variables,
                 // so this arm is only reachable when the variable was bound to `Never`.
@@ -495,7 +502,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     function_environments_differ: false,
                     location,
                 });
-                return;
             },
         }
     }
@@ -503,6 +509,33 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Collect all implicits in scope into a single Vec
     pub(super) fn collect_implicits_in_scope(&self) -> Vec<NameId> {
         self.implicits.iter().flat_map(|scope| &scope.implicits_in_scope).copied().collect()
+    }
+
+    /// The current number of delayed implicits. Used with [Self::resolve_new_delayed_implicits] later
+    /// on to resolve a subset of implicits since a given point.
+    pub(super) fn delayed_implicits_count(&self) -> usize {
+        self.implicits.last().map(|scope| scope.delayed_implicits.len()).unwrap_or_default()
+    }
+
+    /// Eagerly resolve the delayed implicits registered in the innermost scope since `previous`
+    /// was snapshotted. Implicits that do not resolve to a unique impl now are left to be solved
+    /// again on scope's end. No diagnostics are emitted.
+    pub(super) fn resolve_new_delayed_implicits(&mut self, previous_length: usize) {
+        // TODO: See if we can remove this method when we add eager solving of implicits
+        let all = match self.implicits.last_mut() {
+            Some(scope) => &mut scope.delayed_implicits,
+            None => return,
+        };
+        let to_resolve = all.drain(previous_length..).collect::<Vec<_>>();
+        if to_resolve.is_empty() {
+            return;
+        }
+        let implicits_in_scope = self.collect_implicits_in_scope();
+        for implicit in to_resolve {
+            if self.find_implicit_value(implicit, &implicits_in_scope).is_err() {
+                self.implicits.last_mut().unwrap().delayed_implicits.push(implicit);
+            }
+        }
     }
 
     /// Find an implicit value & modify the current cst to insert the implicit if found,
@@ -527,7 +560,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         fuel: u32,
     ) -> Result<(), Diagnostic> {
         let target_type = self.expr_types[&implicit.destination].clone();
-        let target_type = target_type.follow_all_two(&self.bindings, &type_bindings);
+        let target_type = target_type.follow_all_two(&self.bindings, type_bindings);
 
         let parameter_index = implicit.parameter_index;
         let function = implicit.source;
@@ -708,7 +741,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     // error: No implicit found for parameter N of type T
     fn no_implicit_found_error(&self, implicit_type: &Type, parameter_index: usize, function: ExprId) -> Diagnostic {
-        let type_string = self.type_to_string(&implicit_type);
+        let type_string = self.type_to_string(implicit_type);
         let function_name = self.try_get_name(function);
         let location = function.locate(self);
         Diagnostic::NoImplicitFound { type_string, function_name, parameter_index, location, suggestions: Vec::new() }
@@ -716,7 +749,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     // error: Implicit type T is ambiguous, type annotations needed
     fn ambiguous_implicits_error(&self, implicit_type: &Type, parameter_index: usize, function: ExprId) -> Diagnostic {
-        let type_string = self.type_to_string(&implicit_type);
+        let type_string = self.type_to_string(implicit_type);
         let function_name = self.try_get_name(function);
         let location = function.locate(self);
         Diagnostic::AmbiguousImplicit { type_string, function_name, parameter_index, location }
@@ -726,7 +759,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     fn multiple_matching_implicits_error(
         &self, matching: Vec<Candidate>, implicit_type: &Type, parameter_index: usize, function: ExprId,
     ) -> Diagnostic {
-        let type_string = self.type_to_string(&implicit_type);
+        let type_string = self.type_to_string(implicit_type);
         let function_name = self.try_get_name(function);
         let location = function.locate(self);
 
@@ -824,8 +857,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let target_ctor = target_type.as_application().map(|(c, _)| c.clone());
         let no_bindings = TypeBindings::default();
 
-        for name in local_implicits.iter().copied() {
-            let name_type = self.name_types[&name].follow_two(&no_bindings, &self.bindings);
+        for name in local_implicits {
+            let name_type = self.name_types[name].follow_two(&no_bindings, &self.bindings);
             if !matches!(self.implicit_type_matches(&name_type, &target_type, &no_bindings), ImplicitMatch::NoMatch) {
                 return true;
             }
@@ -839,36 +872,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             }
         }
         false
-    }
-
-    /// Walk a type and collect all type variable IDs into the given set. The caller should pass
-    /// a type that has already been zonked via `follow_all`.
-    fn collect_tvars(typ: &Type, out: &mut std::collections::HashSet<TypeVariableId>) {
-        match typ {
-            Type::Variable(id) => {
-                out.insert(*id);
-            },
-            Type::Function(f) => {
-                for p in &f.parameters {
-                    Self::collect_tvars(&p.typ, out);
-                }
-                Self::collect_tvars(&f.environment, out);
-                Self::collect_tvars(&f.return_type, out);
-            },
-            Type::Application(ctor, args) => {
-                Self::collect_tvars(ctor, out);
-                for a in args.iter() {
-                    Self::collect_tvars(a, out);
-                }
-            },
-            Type::Forall(_, inner) => Self::collect_tvars(inner, out),
-            Type::Tuple(elems) => {
-                for t in elems.iter() {
-                    Self::collect_tvars(t, out);
-                }
-            },
-            Type::Primitive(_) | Type::Generic(_) | Type::UserDefined(_) | Type::U32(_) => (),
-        }
     }
 
     /// Try to add the given implicit into scope

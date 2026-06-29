@@ -130,30 +130,38 @@ impl LanguageServer for Backend {
             return;
         }
 
+        // Drop stale edits: a version older than the last seen one would mutate the rope
+        // out of order and corrupt it.
+        if let Some(previous) = self.document_versions.get(&uri).map(|v| *v) {
+            if version < previous {
+                let message = format!(
+                    "ante-ls did_change: version {version} arrived after {previous} for {uri:?}; dropping out-of-order edits"
+                );
+                self.client.log_message(MessageType::ERROR, message).await;
+                return;
+            }
+        }
+
+        // `alter`'s closure can't await, so collect any dropped edits and log them afterward.
+        let mut dropped_edits = 0;
         self.document_map.alter(&uri, |_, mut rope| {
             for change in params.content_changes {
-                // `range = None` means a full-document replace
-                match change.range.and_then(|r| lsp_range_to_rope_range(r, &rope).ok()) {
-                    Some(range) => {
-                        rope.remove(range.clone());
-                        rope.insert(range.start, &change.text);
-                    },
-                    None => rope = Rope::from_str(&change.text),
+                if !apply_content_change(&mut rope, change) {
+                    dropped_edits += 1;
                 }
             }
             rope
         });
-        let previous_version = self.document_versions.insert(uri.clone(), version);
+        self.document_versions.insert(uri.clone(), version);
         self.dirty.mark(uri.clone());
 
-        match previous_version {
-            Some(previous) if version < previous => {
-                let message = format!(
-                    "ante-ls did_change: version {version} arrived after {previous} for {uri:?}; edits may have been applied out of order"
-                );
-                self.client.log_message(MessageType::ERROR, message).await;
-            },
-            _ => self.client.log_message(MessageType::LOG, format!("ante-ls did_change: {uri:?}")).await,
+        if dropped_edits > 0 {
+            let message = format!(
+                "ante-ls did_change: dropped {dropped_edits} edit(s) for {uri:?} whose range could not be mapped onto the document"
+            );
+            self.client.log_message(MessageType::ERROR, message).await;
+        } else {
+            self.client.log_message(MessageType::LOG, format!("ante-ls did_change: {uri:?}")).await;
         }
     }
 
@@ -271,6 +279,26 @@ impl LanguageServer for Backend {
     }
 }
 
+/// Apply a single `didChange` content change to `rope` in place. A change with
+/// `range = None` is a full document replace, otherwise it is an incremental edit.
+/// Returns true if the change was successfully applied.
+fn apply_content_change(rope: &mut Rope, change: TextDocumentContentChangeEvent) -> bool {
+    match change.range {
+        None => {
+            *rope = Rope::from_str(&change.text);
+            true
+        },
+        Some(range) => match lsp_range_to_rope_range(range, rope) {
+            Ok(range) => {
+                rope.remove(range.clone());
+                rope.insert(range.start, &change.text);
+                true
+            },
+            Err(_) => false,
+        },
+    }
+}
+
 /// Everything `hover` and `goto_definition` need to share: the document's rope,
 /// the byte offset under the cursor, and the `SourceFileId` to look it up in the Db.
 struct RequestContext {
@@ -334,4 +362,37 @@ async fn main() {
     .finish();
 
     Server::new(stdin, stdout, socket).serve(service).await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn incremental_change(range: Range, text: &str) -> TextDocumentContentChangeEvent {
+        TextDocumentContentChangeEvent { range: Some(range), range_length: None, text: text.to_string() }
+    }
+
+    #[test]
+    fn full_replace_change_replaces_the_whole_document() {
+        let mut rope = Rope::from_str("hello world\n");
+        let change = TextDocumentContentChangeEvent { range: None, range_length: None, text: "new".to_string() };
+        assert!(apply_content_change(&mut rope, change));
+        assert_eq!(rope.to_string(), "new");
+    }
+
+    #[test]
+    fn incremental_change_edits_in_place() {
+        let mut rope = Rope::from_str("hello world\n");
+        let range = Range { start: Position { line: 0, character: 0 }, end: Position { line: 0, character: 5 } };
+        assert!(apply_content_change(&mut rope, incremental_change(range, "goodbye")));
+        assert_eq!(rope.to_string(), "goodbye world\n");
+    }
+
+    #[test]
+    fn out_of_bounds_incremental_change_is_dropped_not_applied() {
+        let mut rope = Rope::from_str("hello world\n");
+        let range = Range { start: Position { line: 99, character: 0 }, end: Position { line: 99, character: 1 } };
+        assert!(!apply_content_change(&mut rope, incremental_change(range, "x")));
+        assert_eq!(rope.to_string(), "hello world\n", "the document must be left untouched");
+    }
 }

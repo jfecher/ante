@@ -509,7 +509,7 @@ impl<'ctx> ModuleContext<'ctx> {
             mir::Value::Float(FloatConstant::F32(value)) => self.llvm.f32_type().const_float(value.0).into(),
             mir::Value::Float(FloatConstant::F64(value)) => self.llvm.f64_type().const_float(value.0).into(),
             mir::Value::InstructionResult(_) | mir::Value::Parameter(..) => {
-                *self.values.get(&value).unwrap_or_else(|| panic!("llvm codegen: mir value is not cached: {value}"))
+                *self.values.get(value).unwrap_or_else(|| panic!("llvm codegen: mir value is not cached: {value}"))
             },
             mir::Value::Definition(function_id) => self.codegen_value_for(*function_id).into_basic_value(),
         }

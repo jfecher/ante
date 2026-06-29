@@ -72,12 +72,12 @@ test_swap_last () =
 
 test_indexing () =
     v = Vec.of [10, 40, 30]
-    fourty = v.[1]
+    fourty = (ref v).[1]  // TODO: cumbersome
     println fourty
 
 test_stream () =
     v = Vec.of [7, 8, 9]
-    iter (imm v) (fn x -> println x.*)
+    iter (imm v) (fn (x: imm I32) -> println x.*)
 
 test_eq () =
     println (Vec.of [1, 2] == Vec.of [1, 2])
@@ -158,4 +158,3 @@ test_sort_by () =
 // []
 // [1, 2, 3, 4, 5]
 // [4, 3, 2, 1]
-

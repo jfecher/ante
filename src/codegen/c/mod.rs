@@ -49,7 +49,7 @@ pub fn codegen_c_for_mir(mir: &mir::Mir, binary_name: &str, opt_level: OptLevel)
     let o_file_name = format!("{binary_name}.o");
     let mut child = Command::new("cc")
         .arg(&c_file_name)
-        .arg(&format!("-o{o_file_name}"))
+        .arg(format!("-o{o_file_name}"))
         .arg(opt_level.as_cc_opt_string())
         .arg("-c")
         .arg("-w")

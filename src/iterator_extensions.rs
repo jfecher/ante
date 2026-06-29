@@ -46,7 +46,7 @@ pub(crate) fn join_arc_str(strings: &[Arc<String>], separator: &str) -> String {
     let mut result = first.as_ref().clone();
     for next in strings_iter {
         result += separator;
-        result += &next;
+        result += next;
     }
     result
 }

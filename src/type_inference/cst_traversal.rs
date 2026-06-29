@@ -14,6 +14,7 @@ use crate::{
     },
     type_inference::{
         Locateable, TypeChecker,
+        affine::MovePath,
         errors::TypeErrorKind,
         get_type::{get_partial_type, try_get_generalized_type},
         types::{self, FunctionType, ParameterType, Type},
@@ -35,7 +36,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     pub(super) fn check_definition(&mut self, definition: &Definition, is_top_level: bool) {
         let next_id = &mut self.next_type_variable_id.get();
         let expected_type =
-            get_partial_type(definition, self.current_context(), &self.current_resolve(), self.compiler, next_id);
+            get_partial_type(definition, self.current_context(), self.current_resolve(), self.compiler, next_id);
 
         self.next_type_variable_id.set(*next_id);
 
@@ -94,7 +95,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     ///
     /// `expected` is only used for resolving names with [Origin::TypeResolution],
     /// it is not unified against.
-    fn infer_expr(&mut self, id: ExprId, expected: &Type) -> Type {
+    pub(super) fn infer_expr(&mut self, id: ExprId, expected: &Type) -> Type {
         // Pre-insert the hint so coercions copying this expression mid-inference
         // can read a type for it. This is overwritten with the inferred type below.
         self.expr_types.insert(id, expected.clone());
@@ -171,7 +172,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Infer the expression's type, then unify it against `expected`, reporting an
     /// error with the given kind located at the expression on failure.
     /// Returns the inferred type.
-    fn check_expr(&mut self, id: ExprId, expected: &Type, kind: TypeErrorKind) -> Type {
+    pub(super) fn check_expr(&mut self, id: ExprId, expected: &Type, kind: TypeErrorKind) -> Type {
         let actual = self.infer_expr(id, expected);
         self.unify(&actual, expected, kind, id);
         actual
@@ -405,76 +406,61 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
 
         let expected_parameter_types =
-            mapvec(&call.arguments, |arg| types::ParameterType::new(self.next_type_variable(), arg.is_implicit));
-        let environment = self.next_type_variable();
+            mapvec(&call.arguments, |arg| ParameterType::new(self.next_type_variable(), arg.is_implicit));
 
-        // The hint type embeds `expected` as the return type so the callee's
-        // instantiation and type-directed resolution can see it.
-        let hint_function_type = Type::Function(Arc::new(FunctionType {
+        let mut expected_function_type = Arc::new(FunctionType {
             parameters: expected_parameter_types.clone(),
-            environment: environment.clone(),
+            environment: self.next_type_variable(),
             return_type: expected.clone(),
-        }));
-        let actual_function_type = self.infer_expr(call.function, &hint_function_type);
+        });
+        let actual_function_type = self.infer_expr(call.function, &Type::Function(expected_function_type.clone()));
 
-        // The real unification uses a fresh return variable so a return type mismatch
-        // surfaces as a focused FunctionReturn error instead of a whole-function-type error.
-        let return_type = self.next_type_variable();
-        let checked_function_type = Type::Function(Arc::new(FunctionType {
-            parameters: expected_parameter_types.clone(),
-            environment,
-            return_type: return_type.clone(),
-        }));
+        let actual_return_type = self.next_type_variable();
+        Arc::make_mut(&mut expected_function_type).return_type = actual_return_type.clone();
 
-        // Implicit parameter splicing targets the callee, so it must run here now that
-        // variables are no longer coerced at every use.
-        match self.try_coercion(&actual_function_type, &hint_function_type, call.function, Some(call_expr)) {
-            super::CoercionOutcome::ReplacedExpr => {
-                // The callee was wrapped (e.g. in a lambda supplying implicits); re-infer it
-                let actual = self.infer_expr(call.function, &hint_function_type);
-                self.unify(&actual, &checked_function_type, TypeErrorKind::Callee, call.function);
-            },
-            super::CoercionOutcome::InPlaceCall => {
-                // Implicit args were spliced into this Call; implicit_parameter_coercion
-                // already performed the needed unification
-            },
-            super::CoercionOutcome::None => {
-                self.unify(&actual_function_type, &checked_function_type, TypeErrorKind::Callee, call.function);
-            },
+        let implicit_count_before_call = self.delayed_implicits_count();
+
+        // This coerce covers inserting any necessary implicit arguments to this function call
+        self.coerce(
+            &actual_function_type,
+            &Type::Function(expected_function_type),
+            call.function,
+            Some(call_expr),
+            TypeErrorKind::Callee,
+            None,
+        );
+
+        // FIXME: This is a hack. Type inference benefits if we can push down more expected types by
+        // binding the return, which can affect argument types, but it can also lead to coercion errors.
+        // As a compromise, we only unify non-type variable returns currently just because it
+        // happened to keep most examples working.
+        if !matches!(self.follow_type(&actual_return_type), Type::Variable(_))
+            && let Ok(bindings) = self.try_unify(&actual_return_type, expected)
+        {
+            self.bindings.extend(bindings);
         }
 
-        // Unify before checking args so `expected` propagates into them
-        let return_type_matches = self.unify(&return_type, expected, TypeErrorKind::FunctionReturn, call_expr);
-
+        // Infer the arguments. For `+ - * / %`, allow auto-deref of operands.
+        let deref_operands = self.is_arithmetic_operator(call.function);
         for (index, (arg, expected_arg_type)) in call.arguments.iter().zip(expected_parameter_types).enumerate() {
-            // Capture the argument's path before any coercion replaces the expression
-            let original_path = match self.current_extended_context().extended_expr(arg.expr) {
-                Some(Expr::Variable(path)) => Some(*path),
-                Some(_) => None,
-                None => match &self.current_context()[arg.expr] {
-                    Expr::Variable(path) => Some(*path),
-                    _ => None,
-                },
-            };
-
-            let actual = self.infer_expr(arg.expr, &expected_arg_type.typ);
-            match self.try_coercion(&actual, &expected_arg_type.typ, arg.expr, None) {
-                super::CoercionOutcome::ReplacedExpr => {
-                    // If auto-ref wrapped a local variable, the move recorded while
-                    // inferring it no longer applies
-                    if let Some(Origin::Local(name)) = original_path.and_then(|path| self.path_origin(path)) {
-                        self.move_tracker.clear_moves(&super::affine::MovePath::Variable(name));
-                    }
-                    self.check_expr(arg.expr, &expected_arg_type.typ, TypeErrorKind::CallArgument { index });
-                },
-                super::CoercionOutcome::InPlaceCall | super::CoercionOutcome::None => {
-                    self.unify(&actual, &expected_arg_type.typ, TypeErrorKind::CallArgument { index }, arg.expr);
-                },
-            }
+            let kind = TypeErrorKind::CallArgument { index };
+            self.infer_and_coerce(arg.expr, &expected_arg_type.typ, kind, deref_operands);
         }
 
-        // Return ERROR on mismatch so callers don't report a second error for the same type
-        if return_type_matches { return_type } else { Type::ERROR }
+        // FIXME: Another related hack. Try to bind the return type now, this time if it has no unbound
+        // type variables. Doing so results in some better results when resolving implicits early below.
+        if expected.free_vars(&self.bindings).is_empty()
+            && let Ok(bindings) = self.try_unify(&actual_return_type, expected)
+        {
+            self.bindings.extend(bindings);
+        }
+
+        // A lot of Extract implicits (.[]) break without this
+        self.resolve_new_delayed_implicits(implicit_count_before_call);
+
+        // Ideally we only coerce on call arguments, but this is currently needed.
+        // TODO: Take another stab at cleaning up these call rules, but this took much iteration.
+        self.coerce(&actual_return_type, expected, call_expr, None, TypeErrorKind::CallReturn, None)
     }
 
     /// If `call` is `v.push 3` (MemberAccess + args), try to resolve `push` as a function
@@ -582,8 +568,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         };
 
         // Remember the return type so that it can be checked by `return` statements
-        let old_return_type =
-            std::mem::replace(&mut self.function_return_type, Some(function_type.return_type.clone()));
+        let old_return_type = self.function_return_type.replace(function_type.return_type.clone());
         // Closures capture by reference, so moves inside the lambda don't affect the outer scope
         let old_move_tracker = std::mem::take(&mut self.move_tracker);
 
@@ -693,35 +678,27 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             let struct_is_indirect = struct_is_ref || struct_type.pointer_element(&self.bindings).is_some();
 
             // Track partial moves only when the struct is not behind a reference or pointer.
-            if !struct_is_indirect {
-                if let Some(parent_path) = self.try_build_move_path(member_access.object) {
-                    let move_path = super::affine::MovePath::Field(Box::new(parent_path), member_access.member.clone());
-                    if !old_suppress_check {
-                        self.check_use_of_move_path(&move_path, expr);
-                    }
-                    if !old_suppress_record && !self.type_is_copy(&field) {
-                        let location = expr.locate(self);
-                        self.move_tracker.record_move(move_path, location);
-                    }
+            if !struct_is_indirect && let Some(parent_path) = self.try_build_move_path(member_access.object) {
+                let move_path = MovePath::Field(Box::new(parent_path), member_access.member.clone());
+                if !old_suppress_check {
+                    self.check_use_of_move_path(&move_path, expr);
+                }
+                if !old_suppress_record && !self.type_is_copy(&field) {
+                    let location = expr.locate(self);
+                    self.move_tracker.record_move(move_path, location);
                 }
             }
 
-            let expected_is_ref = expected.reference_element(&self.bindings).is_some();
-
-            if struct_is_ref && !expected_is_ref {
-                if let Some((_, inner_field_type)) = field.reference_element(&self.bindings) {
-                    if self.type_is_copy(&inner_field_type) {
-                        let new_expr = self.auto_deref_coercion(expr, inner_field_type);
-                        self.current_extended_context_mut().insert_expr(expr, new_expr);
-                        return self.infer_expr(expr, expected);
-                    }
-                }
+            // Copy the field if the expected is not a reference and the field is Copy
+            if expected.reference_element(&self.bindings).is_none()
+                && let Some((_, inner_field_type)) = field.reference_element(&self.bindings)
+                && self.type_is_copy(&inner_field_type)
+            {
+                let new_expr = self.auto_deref_coercion(expr, inner_field_type);
+                self.current_extended_context_mut().insert_expr(expr, new_expr);
+                return self.infer_expr(expr, expected);
             }
-
-            match self.try_coercion(&field, expected, expr, None) {
-                super::CoercionOutcome::ReplacedExpr => self.infer_expr(expr, expected),
-                super::CoercionOutcome::InPlaceCall | super::CoercionOutcome::None => field,
-            }
+            field
         } else if matches!(self.follow_type(&struct_type), Type::Variable(_)) {
             let location = expr.locate(self);
             self.compiler.accumulate(Diagnostic::TypeMustBeKnownMemberAccess { location });
@@ -875,9 +852,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 self.move_tracker = super::affine::MoveTracker::merge_branches(&pre_branch_moves, &[then_moves]);
             }
 
-            // Keep the specialized error when a non-Unit type is expected; return ERROR
-            // on failure so callers don't report a second error for the same mismatch
-            if self.unify(&Type::UNIT, expected, TypeErrorKind::IfStatement, expr) { Type::UNIT } else { Type::ERROR }
+            let ok = self.unify(&Type::UNIT, expected, TypeErrorKind::IfStatement, expr);
+            // Return error on failure to help prevent cascading errors
+            if !ok { Type::UNIT } else { Type::ERROR }
         }
     }
 
@@ -1088,7 +1065,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
             let branch_lambda = self.unwrap_lambda(*branch);
             self.expr_types.insert(*branch, handler_type.clone());
-            self.infer_lambda_impl(&branch_lambda, &handler_type, *branch, None, options);
+            self.infer_lambda_impl(branch_lambda, &handler_type, *branch, None, options);
         }
 
         self.push_implicits_scope();
@@ -1099,7 +1076,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         // `Some(handler_name)` exempts the variable from being captured as a closure.
         // This is instead handled as a special case in mir generation
-        self.infer_lambda_impl(&body_lambda, &body_type, handle.expression, Some(handle.handler_name), options);
+        self.infer_lambda_impl(body_lambda, &body_type, handle.expression, Some(handle.handler_name), options);
         self.pop_implicits_scope();
 
         result_type
@@ -1164,7 +1141,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             // before unifying like other function positions
             let actual = self.infer_expr(op_expr, &expected_fn_type);
             match self.try_coercion(&actual, &expected_fn_type, op_expr, None) {
-                super::CoercionOutcome::ReplacedExpr => {
+                super::CoercionOutcome::ReplacedExpr | super::CoercionOutcome::AutoRef => {
                     self.check_expr(op_expr, &expected_fn_type, TypeErrorKind::CompoundOperator);
                 },
                 super::CoercionOutcome::InPlaceCall | super::CoercionOutcome::None => {
@@ -1222,10 +1199,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                         if self.mutable_definitions.contains(&name) {
                             return Ok(());
                         }
-                        if let Some(typ) = self.name_types.get(&name) {
-                            if self.is_mut_or_uniq_reference(typ) {
-                                return Ok(());
-                            }
+                        if let Some(typ) = self.name_types.get(&name)
+                            && self.is_mut_or_uniq_reference(typ)
+                        {
+                            return Ok(());
                         }
                         let name = self.current_extended_context()[name].clone();
                         Err((Some(name), path_id.locate(self)))
@@ -1243,10 +1220,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Expr::MemberAccess(access) => {
                 let object = access.object;
                 // TODO: This allows `x: ref (mut a, b)` to assign to the inner `mut a`
-                if let Some(typ) = self.expr_types.get(&object) {
-                    if self.is_mut_or_uniq_reference(typ) {
-                        return Ok(());
-                    }
+                if let Some(typ) = self.expr_types.get(&object)
+                    && self.is_mut_or_uniq_reference(typ)
+                {
+                    return Ok(());
                 }
                 self.check_lhs_mutable(object)
             },

@@ -11,9 +11,8 @@ deref_ref (x: ref I32): I32 = x.*
 deref_mut (x: mut I32): I32 = x.*
 
 trait_through_deref (x: ref I32): I32 =
-    // Coerce ref I32 to I32. This only works since there is only
-    // a single impl for Double
-    Double.do_double x
+    // Auto-deref doesn't work on implicits
+    Double.do_double x.*
 
 main () =
     y = 42

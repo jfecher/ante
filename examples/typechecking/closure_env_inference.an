@@ -14,10 +14,17 @@ main () =
 // expected stderr:
 // examples/typechecking/closure_env_inference.an:10:12
 //  9 |     pair a = (a, fn n -> use (n, x))
-//    |     // error: This function call returns _, (fn _ => Unit) but I32, (fn I32 -> Unit) was expected
+//    |     // error: Argument 1 has type I32, (fn _ => Unit) but I32, (fn I32 -> Unit) was expected
 //    |     // note: Separate closures are not equal because they may capture different data
 // 10 |     needs (pair 0)
 //    |            ^^^^^^
 // 
-// Found 1 error and 0 warnings
+// examples/typechecking/closure_env_inference.an:10:12
+//  9 |     pair a = (a, fn n -> use (n, x))
+//    |     // error: This function call returns I32, (fn _ => Unit) but I32, (fn I32 -> Unit) was expected
+//    |     // note: Separate closures are not equal because they may capture different data
+// 10 |     needs (pair 0)
+//    |            ^^^^^^
+// 
+// Found 2 errors and 0 warnings
 

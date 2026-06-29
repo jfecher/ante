@@ -56,7 +56,10 @@ struct Parser<'tokens> {
 
 pub fn parse_impl(ctx: &incremental::Parse, db: &incremental::DbHandle) -> Arc<ParseResult> {
     let file = ctx.0.get(db);
-    let tokens = Lexer::new(&file.contents).collect::<Vec<_>>();
+    let (tokens, errors) = Lexer::lex(&file.contents, ctx.0);
+    for error in errors {
+        db.accumulate(error);
+    }
     Arc::new(Parser::new(ctx.0, &tokens).parse(db))
 }
 
@@ -862,13 +865,11 @@ impl<'tokens> Parser<'tokens> {
             true
         };
 
-        if expect_unindent {
-            if let Err(error) = self.expect(Token::Unindent, "the end of this block") {
-                // If we stopped short of the unindent, skip everything until the unindent
-                self.diagnostics.push(error);
-                if self.recover_to(Token::Unindent, &[]) {
-                    self.advance();
-                }
+        if expect_unindent && let Err(error) = self.expect(Token::Unindent, "the end of this block") {
+            // If we stopped short of the unindent, skip everything until the unindent
+            self.diagnostics.push(error);
+            if self.recover_to(Token::Unindent, &[]) {
+                self.advance();
             }
         }
 
@@ -1878,7 +1879,7 @@ impl<'tokens> Parser<'tokens> {
             Token::BracketLeft => self.parse_array_literal(),
             Token::Move | Token::Fn => self.parse_lambda(min_prec, ban_do),
             Token::Do if !ban_do => self.parse_do(),
-            Token::Error(_) => {
+            Token::Invalid(_) => {
                 // Report the lexer error and return Error to treat this as an expression value
                 let location = self.current_token_location();
                 let actual = self.current_token().clone();
@@ -2467,10 +2468,10 @@ impl<'tokens> Parser<'tokens> {
         // A named constructor `MyType with field1 = e1, field2 = e2` starts with a type,
         // so speculatively try to parse one when at a type name. We only commit to this
         // parse if the type is followed by `with`.
-        if matches!(self.current_token(), Token::TypeName(_)) {
-            if let Ok(constructor) = self.try_(|this| this.parse_named_constructor(ban_do)) {
-                return Ok(constructor);
-            }
+        if matches!(self.current_token(), Token::TypeName(_))
+            && let Ok(constructor) = self.try_(|this| this.parse_named_constructor(ban_do))
+        {
+            return Ok(constructor);
         }
 
         let function = self.parse_atom(min_prec, ban_do)?;

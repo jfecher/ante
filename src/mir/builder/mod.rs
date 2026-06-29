@@ -431,13 +431,13 @@ where
         // type and make an explicit [Instruction::Instantiate]. We cannot check this only in the
         // `Origin::TopLevelDefinition` case because local lambdas may also be polymorphic.
         // TODO: Closures may be wrapped in an Instruction result which would break this check
-        if let Value::Definition(id) = value {
-            if let Some(bindings) = self.types.result.context.get_instantiation(path_id) {
-                let typ = self.convert_path_type(path_id);
-                let bindings = Arc::new(mapvec(bindings, |typ| self.convert_type(typ, None)));
-                let instruction = Instruction::Instantiate(id, bindings);
-                value = self.push_instruction(instruction, typ);
-            }
+        if let Value::Definition(id) = value
+            && let Some(bindings) = self.types.result.context.get_instantiation(path_id)
+        {
+            let typ = self.convert_path_type(path_id);
+            let bindings = Arc::new(mapvec(bindings, |typ| self.convert_type(typ, None)));
+            let instruction = Instruction::Instantiate(id, bindings);
+            value = self.push_instruction(instruction, typ);
         }
 
         value
@@ -459,7 +459,7 @@ where
 
         if is_global {
             let typ = &self.types.get_generalized(name_id.unwrap());
-            self.set_generics_in_scope(&typ);
+            self.set_generics_in_scope(typ);
         }
 
         let previous_state = self.is_non_function_global(definition).then(|| {
@@ -548,11 +548,11 @@ where
         // operation wrappers, so the IndexTuple at the call site naturally picks up the
         // wrapper. For traits, the cap is a struct-typed impl value with the operation
         // closures as fields; the IndexTuple picks up the impl's method.
-        if let cst::Expr::Variable(path_id) = &self.context()[call.function] {
-            if let Some((effect_op, op_index)) = self.try_resolve_ability_method(*path_id) {
-                let arguments = mapvec(&call.arguments, |expr| self.expression(expr.expr));
-                return self.emit_ability_method_call(effect_op, op_index, arguments, result_type, diverges);
-            }
+        if let cst::Expr::Variable(path_id) = &self.context()[call.function]
+            && let Some((effect_op, op_index)) = self.try_resolve_ability_method(*path_id)
+        {
+            let arguments = mapvec(&call.arguments, |expr| self.expression(expr.expr));
+            return self.emit_ability_method_call(effect_op, op_index, arguments, result_type, diverges);
         }
 
         let function = self.expression(call.function);
@@ -625,11 +625,11 @@ where
         }
 
         let (item, _) = GetItemRaw(name.top_level_item).get(self.compiler);
-        if let cst::TopLevelItemKind::AbilityDefinition(effect) = &item.kind {
-            if let Some(op_index) = effect.body.iter().position(|d| d.name == name.local_name_id) {
-                let id = self.get_definition_id(&name);
-                return Some((id, op_index as u32));
-            }
+        if let cst::TopLevelItemKind::AbilityDefinition(effect) = &item.kind
+            && let Some(op_index) = effect.body.iter().position(|d| d.name == name.local_name_id)
+        {
+            let id = self.get_definition_id(&name);
+            return Some((id, op_index as u32));
         }
         None
     }
@@ -672,12 +672,12 @@ where
         // ability's type-constructor name or to a non-function field on the
         // ability (sub-ability reference)
         let (item, _) = GetItemRaw(name.top_level_item).get(self.compiler);
-        if let cst::TopLevelItemKind::AbilityDefinition(effect) = &item.kind {
-            if let Some(op_index) = effect.body.iter().position(|d| d.name == name.local_name_id) {
-                let id = self.get_definition_id(&name);
-                self.effect_op_indices.insert(id, op_index as u32);
-                return Some(id);
-            }
+        if let cst::TopLevelItemKind::AbilityDefinition(effect) = &item.kind
+            && let Some(op_index) = effect.body.iter().position(|d| d.name == name.local_name_id)
+        {
+            let id = self.get_definition_id(&name);
+            self.effect_op_indices.insert(id, op_index as u32);
+            return Some(id);
         }
         None
     }
@@ -801,12 +801,12 @@ where
                 let parameter_value = Value::Parameter(this.current_block, i as u32);
                 this.bind_pattern(parameter.pattern, parameter_value);
 
-                if parameter.is_mutable {
-                    if let Some((_, name_id)) = this.try_find_name(parameter.pattern) {
-                        let alloc = this.push_instruction(Instruction::StackAlloc(parameter_value), Type::POINTER);
-                        this.local_variables.insert(name_id, alloc);
-                        this.mutable_locals.insert(name_id);
-                    }
+                if parameter.is_mutable
+                    && let Some((_, name_id)) = this.try_find_name(parameter.pattern)
+                {
+                    let alloc = this.push_instruction(Instruction::StackAlloc(parameter_value), Type::POINTER);
+                    this.local_variables.insert(name_id, alloc);
+                    this.mutable_locals.insert(name_id);
                 }
             }
 
@@ -998,9 +998,9 @@ where
 
         self.switch_to_block(header);
         let cmp = if kind.is_signed() {
-            Instruction::LessSigned(variable, end_value.clone())
+            Instruction::LessSigned(variable, end_value)
         } else {
-            Instruction::LessUnsigned(variable, end_value.clone())
+            Instruction::LessUnsigned(variable, end_value)
         };
         let cond = self.push_instruction(cmp, Type::BOOL);
         self.terminate_block(TerminatorInstruction::if_(cond, body, exit, exit));
@@ -1269,13 +1269,10 @@ where
         // is already the StackAlloc pointer.
         if let cst::Expr::Variable(path_id) = &context[rhs] {
             let path_id = *path_id;
-            if let Some(Origin::Local(name)) = context.path_origin(path_id) {
-                if self.mutable_locals.contains(&name) {
-                    return *self
-                        .local_variables
-                        .get(&name)
-                        .expect("mutable local variable not found in local_variables");
-                }
+            if let Some(Origin::Local(name)) = context.path_origin(path_id)
+                && self.mutable_locals.contains(&name)
+            {
+                return *self.local_variables.get(&name).expect("mutable local variable not found in local_variables");
             }
         }
 
@@ -1365,7 +1362,7 @@ where
 
         match lhs_type.reference_element(&self.types.bindings) {
             Some((_, element)) => self.convert_type(&element, None),
-            None => self.convert_type(&lhs_type, None),
+            None => self.convert_type(lhs_type, None),
         }
     }
 
@@ -1544,7 +1541,7 @@ where
 
         if let Type::Forall(generics, _) = definition_type {
             for (i, generic) in generics.iter().enumerate() {
-                self.generics_in_scope.insert(generic.clone(), Generic(i as u32));
+                self.generics_in_scope.insert(*generic, Generic(i as u32));
             }
         }
     }
