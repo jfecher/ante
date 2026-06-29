@@ -38,7 +38,7 @@
 #![allow(mismatched_lifetime_syntaxes)]
 
 use clap::{CommandFactory, Parser};
-use cli::{Cli, Completions};
+use cli::{Cli, Commands, Completions};
 use colored::Colorize;
 use diagnostics::Diagnostic;
 use incremental::{Db, GetCrateGraph, Parse, Resolve};
@@ -92,7 +92,24 @@ fn main() {
 }
 
 fn compile(args: Cli) {
-    let (mut compiler, metadata_file) = make_compiler(&args.files, args.incremental);
+    let run = match &args.command {
+        Some(Commands::Build) => false,
+        Some(Commands::Run) => true,
+        None => !args.build,
+    };
+    let files = match &args.command {
+        Some(Commands::Build) | Some(Commands::Run) => {
+            crate::find_files::find_project_main_file().map(|path| vec![path]).unwrap_or_default()
+        },
+        None => args.files.clone(),
+    };
+    let program_name = match &args.command {
+        Some(Commands::Build) | Some(Commands::Run) => {
+            crate::find_files::find_project_name().unwrap_or_else(|| "a.out".to_string())
+        },
+        None => files_to_program_name(&files),
+    };
+    let (mut compiler, metadata_file) = make_compiler(&files, args.incremental);
 
     // TODO: Pointer size should be configurable depending on the target machine
     TargetPointerSize.set(&mut compiler, 8);
@@ -120,9 +137,9 @@ fn compile(args: Cli) {
         None => match resolve_backend(args.backend) {
             #[cfg(feature = "llvm")]
             cli::Backend::Llvm => {
-                llvm_codegen_all(&mut compiler, &args.files, !args.build, args.delete_binary, args.show_time, opt_level)
+                llvm_codegen_all(&mut compiler, &program_name, run, args.delete_binary, args.show_time, opt_level)
             },
-            cli::Backend::C => c_codegen_all(&mut compiler, &args.files, !args.build, args.delete_binary, opt_level),
+            cli::Backend::C => c_codegen_all(&mut compiler, &program_name, run, args.delete_binary, opt_level),
             _ => unreachable!("resolve_backend only returns backends this compiler can run"),
         },
     };
@@ -429,7 +446,7 @@ fn display_llvm_bitcode(result: &CodegenLlvmResult, module_name: &str) {
 /// Codegen everything, linking together each separate llvm module
 #[cfg(feature = "llvm")]
 fn llvm_codegen_all(
-    compiler: &mut Db, files: &[PathBuf], run: bool, delete_binary: bool, show_time: bool, opt_level: OptLevel,
+    compiler: &mut Db, program_name: &str, run: bool, delete_binary: bool, show_time: bool, opt_level: OptLevel,
 ) -> BTreeSet<Diagnostic> {
     let (mut modules, has_errors, diagnostics) = llvm_codegen_separate(compiler, false, show_time, opt_level);
     if has_errors {
@@ -439,16 +456,14 @@ fn llvm_codegen_all(
     // Each module is currently the whole program (monomorphization isn't yet incremental).
     modules.truncate(1);
 
-    let program_name = files_to_program_name(files);
-
-    let link_succeeded = codegen::llvm::link(modules, &program_name, show_time, opt_level);
+    let link_succeeded = codegen::llvm::link(modules, program_name, show_time, opt_level);
     if !link_succeeded {
         return diagnostics;
     }
 
     if run {
         // Use an absolute path so the binary can be found regardless of PATH.
-        let binary_path = binary_name(&program_name);
+        let binary_path = binary_name(program_name);
 
         Command::new(&binary_path).spawn().unwrap().wait().unwrap();
         if delete_binary {
@@ -461,7 +476,7 @@ fn llvm_codegen_all(
 
 /// Monomorphize and codegen the whole program through the C backend, then optionally run it.
 fn c_codegen_all(
-    compiler: &mut Db, files: &[PathBuf], run: bool, delete_binary: bool, opt_level: OptLevel,
+    compiler: &mut Db, program_name: &str, run: bool, delete_binary: bool, opt_level: OptLevel,
 ) -> BTreeSet<Diagnostic> {
     let diagnostics = collect_all_diagnostics(compiler);
     let (errors, _) = classify_diagnostics(&diagnostics);
@@ -469,12 +484,11 @@ fn c_codegen_all(
         return diagnostics;
     }
 
-    let program_name = files_to_program_name(files);
     let mir = mir::monomorphization::monomorphize(compiler);
-    codegen::c::codegen_c_for_mir(&mir, &program_name, opt_level);
+    codegen::c::codegen_c_for_mir(&mir, program_name, opt_level);
 
     if run {
-        let binary_path = binary_name(&program_name);
+        let binary_path = binary_name(program_name);
         Command::new(&binary_path).spawn().unwrap().wait().unwrap();
         if delete_binary {
             std::fs::remove_file(binary_path).unwrap();
