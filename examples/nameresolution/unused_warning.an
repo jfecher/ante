@@ -18,7 +18,7 @@ id x = error
 //   | ^^
 // 
 // examples/nameresolution/unused_warning.an:4:4
-// 4 | id x = error	// warning: `x` is never used
+// 4 | id x = error	// warning: `x` is never used. Prefix the name with `_` to silence this warning
 //   |    ^
 // 
 // examples/nameresolution/unused_warning.an:4:8
