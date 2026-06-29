@@ -102,6 +102,12 @@ fn compile(args: Cli) {
         },
         None => args.files.clone(),
     };
+    let program_name = match &args.command {
+        Some(Commands::Build) | Some(Commands::Run) => {
+            crate::find_files::find_project_name().unwrap_or_else(|| "a.out".to_string())
+        },
+        None => files_to_program_name(&files),
+    };
     let (mut compiler, metadata_file) = make_compiler(&files, args.incremental);
 
     // TODO: Pointer size should be configurable depending on the target machine
@@ -129,8 +135,10 @@ fn compile(args: Cli) {
         Some(EmitTarget::Ir) => display_ir(&mut compiler, args.show_time, opt_level),
         None => match resolve_backend(args.backend) {
             #[cfg(feature = "llvm")]
-            cli::Backend::Llvm => llvm_codegen_all(&mut compiler, run, args.delete_binary, args.show_time, opt_level),
-            cli::Backend::C => c_codegen_all(&mut compiler, run, args.delete_binary, opt_level),
+            cli::Backend::Llvm => {
+                llvm_codegen_all(&mut compiler, &program_name, run, args.delete_binary, args.show_time, opt_level)
+            },
+            cli::Backend::C => c_codegen_all(&mut compiler, &program_name, run, args.delete_binary, opt_level),
             _ => unreachable!("resolve_backend only returns backends this compiler can run"),
         },
     };
@@ -437,7 +445,7 @@ fn display_llvm_bitcode(result: &CodegenLlvmResult, module_name: &str) {
 /// Codegen everything, linking together each separate llvm module
 #[cfg(feature = "llvm")]
 fn llvm_codegen_all(
-    compiler: &mut Db, run: bool, delete_binary: bool, show_time: bool, opt_level: OptLevel,
+    compiler: &mut Db, program_name: &str, run: bool, delete_binary: bool, show_time: bool, opt_level: OptLevel,
 ) -> BTreeSet<Diagnostic> {
     let (mut modules, has_errors, diagnostics) = llvm_codegen_separate(compiler, false, show_time, opt_level);
     if has_errors {
@@ -447,18 +455,14 @@ fn llvm_codegen_all(
     // Each module is currently the whole program (monomorphization isn't yet incremental).
     modules.truncate(1);
 
-    let program_name: PathBuf =
-        crate::find_files::find_project_name().map(PathBuf::from).unwrap_or_else(|| "a.out".into());
-    let program_name = program_name.to_string_lossy();
-
-    let link_succeeded = codegen::llvm::link(modules, &program_name, show_time, opt_level);
+    let link_succeeded = codegen::llvm::link(modules, program_name, show_time, opt_level);
     if !link_succeeded {
         return diagnostics;
     }
 
     if run {
         // Use an absolute path so the binary can be found regardless of PATH.
-        let binary_path = binary_name(&program_name);
+        let binary_path = binary_name(program_name);
 
         Command::new(&binary_path).spawn().unwrap().wait().unwrap();
         if delete_binary {
@@ -470,19 +474,20 @@ fn llvm_codegen_all(
 }
 
 /// Monomorphize and codegen the whole program through the C backend, then optionally run it.
-fn c_codegen_all(compiler: &mut Db, run: bool, delete_binary: bool, opt_level: OptLevel) -> BTreeSet<Diagnostic> {
+fn c_codegen_all(
+    compiler: &mut Db, program_name: &str, run: bool, delete_binary: bool, opt_level: OptLevel,
+) -> BTreeSet<Diagnostic> {
     let diagnostics = collect_all_diagnostics(compiler);
     let (errors, _) = classify_diagnostics(&diagnostics);
     if errors != 0 {
         return diagnostics;
     }
 
-    let program_name = files_to_program_name();
     let mir = mir::monomorphization::monomorphize(compiler);
-    codegen::c::codegen_c_for_mir(&mir, &program_name, opt_level);
+    codegen::c::codegen_c_for_mir(&mir, program_name, opt_level);
 
     if run {
-        let binary_path = binary_name(&program_name);
+        let binary_path = binary_name(program_name);
         Command::new(&binary_path).spawn().unwrap().wait().unwrap();
         if delete_binary {
             std::fs::remove_file(binary_path).unwrap();
@@ -493,8 +498,8 @@ fn c_codegen_all(compiler: &mut Db, run: bool, delete_binary: bool, opt_level: O
 }
 
 /// Return the default name of the program given the source files.
-fn files_to_program_name() -> String {
-    let name: PathBuf = crate::find_files::find_project_name().map(PathBuf::from).unwrap_or_else(|| "a.out".into());
+fn files_to_program_name(files: &[PathBuf]) -> String {
+    let name = files.first().map_or_else(|| "a.out".into(), |file| file.with_extension(""));
     name.to_string_lossy().into_owned()
 }
 
