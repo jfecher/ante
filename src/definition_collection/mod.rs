@@ -454,6 +454,10 @@ impl<'local, 'db> Declarer<'local, 'db> {
                 let location = context.pattern_locations[pattern].clone();
                 self.db.accumulate(Diagnostic::InvalidPattern { location });
             },
+            Pattern::Alias(name, pattern) => {
+                self.declare_single(*name, id, context);
+                self.declare_names_in_pattern(*pattern, id, context);
+            },
         }
     }
 

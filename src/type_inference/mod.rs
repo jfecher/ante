@@ -191,6 +191,12 @@ struct TypeChecker<'local, 'inner> {
     /// plain `x := v` LHS (reassignment reads nothing from `x`).
     suppress_move_record: bool,
 
+    /// The place each local binding denotes. Absent ⇒ the binding denotes its own variable.
+    /// Present only for bindings that name a sub-place of another value — currently those
+    /// introduced under an alias pattern (`whole @ Box p` maps `p` to `whole.<inner-field>`),
+    /// so consuming both `whole` and `p` is caught as a partial move.
+    binding_places: FxHashMap<NameId, affine::MovePath>,
+
     /// Cached TopLevelName for the Prelude's `Copy` type, lazily resolved on first use.
     copy_type_name: Option<TopLevelName>,
 
@@ -242,6 +248,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             move_tracker: Default::default(),
             suppress_move_check: false,
             suppress_move_record: false,
+            binding_places: Default::default(),
             copy_type_name: None,
             mutable_definitions: Default::default(),
             integer_literal_vars: Default::default(),
@@ -380,6 +387,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     fn start_item(&mut self, item_id: TopLevelId) {
         self.current_item = Some(item_id);
         self.move_tracker = Default::default();
+        self.binding_places = Default::default();
 
         // Iterating over every item type here should be fine for performance.
         // The expected length of `self.item_types` is 1 in the vast majority of cases,

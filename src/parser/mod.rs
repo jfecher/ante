@@ -1469,14 +1469,14 @@ impl<'tokens> Parser<'tokens> {
         }
     }
 
-    /// tuple_pattern: type_annotation_pattern (',' type_annotation_pattern)*
+    /// tuple_pattern: alias_pattern (',' alias_pattern)*
     ///
     /// `,` is right-associative here, matching the comma operator in expressions
     /// and the pair type in `parse_pair_type`. With three or more elements,
     /// `(a, b, c)` becomes `Pair a (Pair b c)`.
     fn parse_tuple_pattern(&mut self) -> Result<Pattern> {
         let first_start = self.current_token_span();
-        let first_pattern = self.parse_type_annotation_pattern()?;
+        let first_pattern = self.parse_alias_pattern()?;
         let first_end = self.previous_token_span();
 
         if *self.current_token() != Token::Comma {
@@ -1495,7 +1495,7 @@ impl<'tokens> Parser<'tokens> {
             let comma_path = self.push_path(Path { components }, comma_location.clone());
             commas.push((comma_location, comma_path));
 
-            let element = self.with_pattern_id_and_location(Self::parse_type_annotation_pattern)?;
+            let element = self.with_pattern_id_and_location(Self::parse_alias_pattern)?;
             elements.push(element);
         }
 
@@ -1514,6 +1514,25 @@ impl<'tokens> Parser<'tokens> {
         // we already pushed the intermediate nodes, so unwrap the outermost.
         let final_pattern = self.current_context.patterns[acc_id].clone();
         Ok(final_pattern)
+    }
+
+    /// alias_pattern: type_annotation_pattern ('@' alias_pattern)?
+    ///
+    /// The left-hand side of `@` must be a plain identifier, bound to the matched value.
+    fn parse_alias_pattern(&mut self) -> Result<Pattern> {
+        let pattern = self.parse_type_annotation_pattern()?;
+
+        if *self.current_token() != Token::At {
+            return Ok(pattern);
+        }
+
+        let Pattern::Variable(name) = pattern else {
+            return self.expected("an identifier to the left of `@` in an alias pattern");
+        };
+
+        self.advance(); // consume `@`
+        let rhs = self.with_pattern_id_and_location(Self::parse_alias_pattern)?;
+        Ok(Pattern::Alias(name, rhs))
     }
 
     /// type_annotation_pattern: constructor_pattern (':' type)?

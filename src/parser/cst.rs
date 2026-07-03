@@ -87,6 +87,7 @@ impl PatternId {
                 Some(alt) => alt.name(context),
                 None => "#or".to_string(),
             },
+            Pattern::Alias(name, _) => context.get_name(*name).to_string(),
         }
     }
 }
@@ -549,6 +550,7 @@ pub enum Pattern {
     TypeAnnotation(PatternId, Type),
     MethodName { type_name: NameId, item_name: NameId },
     Or(Vec<PatternId>),
+    Alias(NameId, PatternId),
 }
 
 impl ErrorDefault for Pattern {

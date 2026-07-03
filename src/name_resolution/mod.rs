@@ -521,6 +521,10 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                     self.link_existing_pattern(*alt);
                 }
             },
+            Pattern::Alias(name, pattern) => {
+                self.link_existing_global(*name);
+                self.link_existing_pattern(*pattern);
+            },
         }
     }
 
@@ -839,6 +843,10 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             },
             Pattern::Or(alts) => {
                 self.declare_names_in_or_pattern(alts, declare_type_vars, allow_type_based_resolution, check_unused);
+            },
+            Pattern::Alias(name, pattern) => {
+                self.declare_name(*name, check_unused);
+                self.declare_names_in_pattern(*pattern, declare_type_vars, allow_type_based_resolution, check_unused);
             },
         }
     }

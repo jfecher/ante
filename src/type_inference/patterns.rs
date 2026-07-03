@@ -78,6 +78,9 @@ enum Pattern {
     /// A pattern binding a variable such as `a` or `_`
     Variable(NameId),
 
+    /// An alias pattern `name @ pattern` binding `name` to the value matched against `pattern`
+    Binding(NameId, Box<Pattern>),
+
     /// Multiple patterns combined with `|` where we should match this pattern if any
     /// constituent pattern matches. e.g. `Some(3) | None` or `Some(1) | Some(2) | None`
     Or(Vec<Pattern>),
@@ -203,6 +206,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 return None;
             },
             cst::Pattern::Or(alts) => Pattern::Or(opt_mapvec(alts, |alt| self.convert_pattern(*alt))?),
+            cst::Pattern::Alias(name, inner) => {
+                let (name, inner) = (*name, *inner);
+                Pattern::Binding(name, Box::new(self.convert_pattern(inner)?))
+            },
         })
     }
 
@@ -406,6 +413,9 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
             return Ok(DecisionTree::Failure { missing_case: true });
         }
 
+        // Peel alias bindings first so any OR-pattern hidden behind a `name @ (..)` is
+        // exposed before expansion; the trailing call handles variables OR-expansion exposes.
+        self.push_tests_against_bare_variables(&mut rows);
         expand_or_patterns(&mut rows);
         self.push_tests_against_bare_variables(&mut rows);
 
@@ -689,14 +699,29 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
 
     fn push_tests_against_bare_variables(&mut self, rows: &mut Vec<Row>) {
         for row in rows {
-            row.columns.retain(|col| {
-                if let Pattern::Variable(variable) = &col.pattern {
-                    row.body = self.checker.let_binding_with_path(*variable, col.variable_to_match, row.body);
-                    false
-                } else {
-                    true
+            let mut new_columns = Vec::with_capacity(row.columns.len());
+            for mut col in std::mem::take(&mut row.columns) {
+                // Peel alias bindings, binding each name, then drop a bare variable column
+                // or keep the remaining pattern.
+                loop {
+                    let variable_to_match = col.variable_to_match;
+                    match col.pattern {
+                        Pattern::Binding(name, inner) => {
+                            row.body = self.checker.let_binding_with_path(name, variable_to_match, row.body);
+                            col = Column::new(variable_to_match, *inner);
+                        },
+                        Pattern::Variable(variable) => {
+                            row.body = self.checker.let_binding_with_path(variable, variable_to_match, row.body);
+                            break;
+                        },
+                        other => {
+                            new_columns.push(Column::new(variable_to_match, other));
+                            break;
+                        },
+                    }
                 }
-            });
+            }
+            row.columns = new_columns;
         }
     }
 

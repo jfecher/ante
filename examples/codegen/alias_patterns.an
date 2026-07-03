@@ -1,0 +1,46 @@
+type Shape =
+   | Circle I32
+   | Rect I32 I32
+
+area (s: Shape): I32 =
+    match s
+    | Circle r -> 3 * r * r
+    | Rect w h -> w * h
+
+double_area (s: Shape): I32 =
+    match s
+    | whole @ Circle _ -> 2 * area whole
+    | whole @ Rect _ _ -> 2 * area whole
+
+describe (s: Shape): I32 =
+    match s
+    | Circle r -> r
+    | full @ Rect w h -> w + h + area full
+
+first (pair: (I32, I32)): I32 =
+    match pair
+    | (a @ x, _) -> a + x
+
+main () =
+    println (double_area (Circle 5))
+    println (double_area (Rect 3 4))
+    println (describe (Circle 7))
+    println (describe (Rect 3 4))
+    println (first (10, 20))
+
+    whole @ (a, b) = (1, 2)
+    println a
+    println b
+    match whole
+    | (x, y) -> println (x + y)
+
+// args: --delete-binary --no-color
+// expected stdout:
+// 150
+// 24
+// 7
+// 19
+// 20
+// 1
+// 2
+// 3

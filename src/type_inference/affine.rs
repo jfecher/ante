@@ -26,6 +26,11 @@ pub(super) enum MovePath {
 }
 
 impl MovePath {
+    /// Project a field out of a parent place, e.g. `whole` + `"a"` becomes `whole.a`.
+    pub(super) fn field(parent: MovePath, field: String) -> MovePath {
+        MovePath::Field(Box::new(parent), field)
+    }
+
     /// Check if `self` is a proper descendant of `ancestor` (but is not itself the ancestor).
     /// E.g. `x.a.b` is a descendant of `x.a` and `x`, but not of `x.a.b`.
     fn is_descendant_of(&self, ancestor: &MovePath) -> bool {
@@ -301,6 +306,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
+    /// The place a binding denotes: a recorded sub-place, or its own variable by default.
+    pub(super) fn binding_place(&self, name: NameId) -> MovePath {
+        self.binding_places.get(&name).cloned().unwrap_or(MovePath::Variable(name))
+    }
+
     /// Try to build a MovePath from an expression by walking through
     /// variable references and member access chains.
     /// Returns None if the expression is not a simple path.
@@ -308,14 +318,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         match &self.current_extended_context()[expr] {
             Expr::Variable(path) => {
                 if let Some(Origin::Local(name)) = self.path_origin(*path) {
-                    Some(MovePath::Variable(name))
+                    Some(self.binding_place(name))
                 } else {
                     None
                 }
             },
             Expr::MemberAccess(access) => {
                 let parent = self.try_build_move_path(access.object)?;
-                Some(MovePath::Field(Box::new(parent), access.member.clone()))
+                Some(MovePath::field(parent, access.member.clone()))
             },
             _ => None,
         }

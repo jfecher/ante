@@ -168,6 +168,10 @@ impl PatternId {
                 }
             },
             super::cst::Pattern::TypeAnnotation(pattern, _) => pattern.for_each_variable(context, f),
+            super::cst::Pattern::Alias(name, pattern) => {
+                f(*name);
+                pattern.for_each_variable(context, f);
+            },
             super::cst::Pattern::Or(alts) => {
                 // Use only the first alt so we don't report the same NameId multiple times.
                 if let Some(alt) = alts.first() {

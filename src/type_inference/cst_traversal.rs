@@ -210,13 +210,19 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
+    /// Read the pattern for `id`, preferring one added by this type-checking pass and
+    /// falling back to the original parsed pattern.
+    fn pattern_of(&self, id: PatternId) -> Cow<'local, Pattern> {
+        match self.current_extended_context().extended_pattern(id) {
+            Some(pattern) => Cow::Owned(pattern.clone()),
+            None => Cow::Borrowed(&self.current_context()[id]),
+        }
+    }
+
     fn check_pattern(&mut self, id: PatternId, expected: &Type) {
         self.pattern_types.insert(id, expected.clone());
 
-        let pattern = match self.current_extended_context().extended_pattern(id) {
-            Some(pattern) => Cow::Owned(pattern.clone()),
-            None => Cow::Borrowed(&self.current_context()[id]),
-        };
+        let pattern = self.pattern_of(id);
 
         match pattern.as_ref() {
             Pattern::Error => (),
@@ -257,7 +263,54 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     self.check_pattern(*alt, expected);
                 }
             },
+            Pattern::Alias(name, inner_pattern) => {
+                self.check_name(*name, expected);
+                self.check_pattern(*inner_pattern, expected);
+                // Runs after `check_pattern` so `pattern_types` is populated for the whole subtree.
+                let root = super::affine::MovePath::Variable(*name);
+                self.assign_binding_places(*inner_pattern, root);
+            },
         };
+    }
+
+    /// Assign each binding introduced by `pattern` the place it denotes, rooted at `place`, so a
+    /// binding and the equivalent member access (`whole.field`) resolve to the same `MovePath`.
+    fn assign_binding_places(&mut self, id: PatternId, place: super::affine::MovePath) {
+        let pattern = self.pattern_of(id);
+        match pattern.as_ref() {
+            Pattern::Variable(name) | Pattern::MethodName { item_name: name, .. } => {
+                self.binding_places.insert(*name, place);
+            },
+            Pattern::Alias(name, inner) => {
+                self.binding_places.insert(*name, place.clone());
+                self.assign_binding_places(*inner, place);
+            },
+            Pattern::TypeAnnotation(inner, _) => self.assign_binding_places(*inner, place),
+            Pattern::Or(alts) => {
+                for alt in alts {
+                    self.assign_binding_places(*alt, place.clone());
+                }
+            },
+            Pattern::Constructor(_, args) => {
+                // Prefer real struct field names; enum payloads and tuples fall back to indices.
+                let names_by_index = self.field_names_by_index(id);
+                for (i, arg) in args.iter().enumerate() {
+                    let field = names_by_index.get(&(i as u32)).cloned().unwrap_or_else(|| i.to_string());
+                    let child = super::affine::MovePath::field(place.clone(), field);
+                    self.assign_binding_places(*arg, child);
+                }
+            },
+            Pattern::Literal(_) | Pattern::Error => (),
+        }
+    }
+
+    /// Map each field index of the constructor pattern `id` to its declared field name.
+    /// Returns an empty map for non-struct types (enum variants, tuples).
+    fn field_names_by_index(&mut self, id: PatternId) -> BTreeMap<u32, String> {
+        let Some(typ) = self.pattern_types.get(&id).cloned() else {
+            return BTreeMap::default();
+        };
+        self.get_field_types(&typ, None).into_iter().map(|(name, (_, index))| (index, name.to_string())).collect()
     }
 
     fn infer_path(&mut self, path: PathId, expected: &Type) -> Type {
@@ -271,7 +324,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     return expected.clone();
                 };
 
-                let move_path = super::affine::MovePath::Variable(name);
+                let move_path = self.binding_place(name);
                 if !self.suppress_move_check {
                     self.check_use_of_move_path(&move_path, path);
                 }
@@ -679,7 +732,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
             // Track partial moves only when the struct is not behind a reference or pointer.
             if !struct_is_indirect && let Some(parent_path) = self.try_build_move_path(member_access.object) {
-                let move_path = MovePath::Field(Box::new(parent_path), member_access.member.clone());
+                let move_path = MovePath::field(parent_path, member_access.member.clone());
                 if !old_suppress_check {
                     self.check_use_of_move_path(&move_path, expr);
                 }
@@ -1180,6 +1233,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             // top-level methods which should never be mutable
             Pattern::MethodName { .. } => (),
             Pattern::Or(_) => unreachable!("`|` pattern in record_mutable_pattern"),
+            Pattern::Alias(name, inner) => {
+                self.mutable_definitions.insert(*name);
+                self.record_mutable_pattern(*inner);
+            },
         }
     }
 

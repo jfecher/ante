@@ -1099,6 +1099,11 @@ impl<'a> CstDisplay<'a> {
                 }
                 Ok(())
             },
+            Pattern::Alias(name, pattern) => {
+                self.fmt_name(*name, context, f)?;
+                write!(f, " @ ")?;
+                self.fmt_pattern_atom(*pattern, context, f)
+            },
         }
     }
 
@@ -1176,6 +1181,7 @@ impl<'a> CstDisplay<'a> {
             Constructor(_, args) => args.is_empty(),
             TypeAnnotation(_, _) => false,
             Or(_) => false,
+            Alias(_, _) => false,
         }
     }
 

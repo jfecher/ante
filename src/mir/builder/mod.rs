@@ -688,9 +688,9 @@ where
             cst::Pattern::Literal(_) => None,
             cst::Pattern::Constructor(..) => None,
             cst::Pattern::TypeAnnotation(pattern, _) => self.try_find_name(*pattern),
-            cst::Pattern::Variable(name) | cst::Pattern::MethodName { item_name: name, .. } => {
-                Some((self.context()[*name].clone(), *name))
-            },
+            cst::Pattern::Variable(name)
+            | cst::Pattern::MethodName { item_name: name, .. }
+            | cst::Pattern::Alias(name, _) => Some((self.context()[*name].clone(), *name)),
             cst::Pattern::Or(alts) => alts.first().and_then(|alt| self.try_find_name(*alt)),
         }
     }
@@ -713,6 +713,10 @@ where
                 if let Some(alt) = alts.first() {
                     self.collect_pattern_names(*alt, out);
                 }
+            },
+            cst::Pattern::Alias(name, inner) => {
+                out.push(*name);
+                self.collect_pattern_names(*inner, out);
             },
         }
     }
@@ -1520,6 +1524,12 @@ where
             },
             cst::Pattern::Or(_) => {
                 unreachable!("OR-patterns must be expanded by the decision tree compiler before MIR lowering")
+            },
+            cst::Pattern::Alias(name, inner) => {
+                if let Some(origin) = self.context().name_origin(*name) {
+                    self.define_variable(origin, value.clone());
+                }
+                self.bind_pattern(*inner, value);
             },
         }
     }

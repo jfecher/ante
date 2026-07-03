@@ -1,0 +1,14 @@
+f x =
+    match x
+    | foo @ Some y | None -> foo
+    | bar @ baz -> bar
+
+// `@` binds tighter than `|`, so `foo @ Some y | None` parses as
+// `(foo @ Some y) | None` rather than `foo @ (Some y | None)`.
+
+// args: -e ast --no-color
+// expected stdout:
+// f x =
+//     match x
+//     |  (foo @  (Some y)) | None -> foo
+//     | bar @ baz -> bar

@@ -66,7 +66,9 @@ impl TypeChecker<'_, '_> {
         for name in &context.free_vars {
             let typ = self.name_types[name].clone();
             if !self.type_is_copy(&typ) {
-                self.move_tracker.record_move(super::affine::MovePath::Variable(*name), location.clone());
+                // Capturing a binding moves the place it denotes, as a direct use would.
+                let move_path = self.binding_place(*name);
+                self.move_tracker.record_move(move_path, location.clone());
             }
         }
     }
@@ -212,6 +214,10 @@ impl FreeVars {
                 if let Some(alt) = alts.first() {
                     self.declare_pattern(*alt, checker);
                 }
+            },
+            cst::Pattern::Alias(name, inner) => {
+                self.defined_in_fn.insert(*name);
+                self.declare_pattern(*inner, checker);
             },
         }
     }
