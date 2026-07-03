@@ -16,7 +16,7 @@ use_resume () =
       | set _ -> resume ()
     in ()
 
-does_use x {Use _} =
+does_use x {Use I32} =
     y = get ()
     set (y + x)
 
@@ -49,9 +49,9 @@ main () =
 //     | (set: fn I32 {Use I32} [Ptr Unit] -> Unit) (_: I32) -> fn (_: I32) (resume: fn Unit [Ptr] -> Unit) -> (resume: fn Unit [Ptr] -> Unit) ()
 //     in fn () -> ()
 // 
-// (does_use: fn _ {Use _} -> Unit) (x: _) {(_: Use _)} =
-//     (y: _) = (get: fn Unit {Use _} [Ptr Unit] -> _) () {(_: Use _)}
-//     (set: fn _ {Use _} [Ptr Unit] -> Unit) ((+: fn _ _ {Add _} [Ptr Unit] -> _) (y: _) (x: _) {(error)}) {(_: Use _)}
+// (does_use: fn I32 {Use I32} -> Unit) (x: I32) {(_: Use I32)} =
+//     (y: I32) = (get: fn Unit {Use I32} [Ptr Unit] -> I32) () {(_: Use I32)}
+//     (set: fn I32 {Use I32} [Ptr Unit] -> Unit) ((+: fn I32 I32 {Add I32} [Ptr Unit] -> I32) (y: I32) (x: I32) {(add_i32: Add I32)}) {(_: Use I32)}
 // 
 // (pure_fn: fn Unit -> Unit) () =
 //     (log: fn String {Log} [Ptr Unit] -> Unit) "foo" {(error)}
@@ -60,11 +60,6 @@ main () =
 //     (log: fn String {Log} [Ptr Unit] -> Unit) "foo" {(error)}
 
 // expected stderr:
-// examples/typechecking/effects.an:21:12
-// 20 |     y = get ()
-// 21 |     set (y + x)	// error: No implicit found for type Add _ required by +
-//    |            ^
-// 
 // examples/typechecking/effects.an:25:5
 // 24 | pure_fn () =
 // 25 |     log "foo"	// error: No implicit found for type Log required by log
@@ -75,5 +70,5 @@ main () =
 // 29 |     log "foo"	// error: No implicit found for type Log required by log
 //    |     ^^^
 // 
-// Found 3 errors and 0 warnings
+// Found 2 errors and 0 warnings
 

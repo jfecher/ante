@@ -1,0 +1,20 @@
+type Pair a b = first: a, second: b
+
+use_hole () =
+    p: Pair _ _ = Pair 1 2
+    p.first
+
+f (g: fn _ -> _) = g 1
+
+// args: -e ast-t --no-color
+// expected stdout:
+// type Pair a b =
+//     first: a
+//     second: b
+// 
+// (use_hole: fn Unit -> I32) () =
+//     (p: Pair I32 I32) = (Pair: fn I32 I32 -> Pair I32 I32) 1 2
+//     (p: Pair I32 I32).first
+// 
+// (f: fn (fn I32 -> _) -> _) ((g: fn I32 -> _)) = (g: fn I32 -> _) 1
+

@@ -1096,6 +1096,11 @@ impl<'tokens> Parser<'tokens> {
                 let location = start.to(&self.previous_token_location());
                 Ok(Type::new(TypeKind::Lifetime(name), location))
             },
+            Token::Identifier(name) if name == "_" => {
+                let location = self.current_token_location();
+                self.advance();
+                Ok(Type::new(TypeKind::Hole, location))
+            },
             Token::Identifier(_) => {
                 let location = self.current_token_location();
                 let name = self.parse_ident_id()?;
