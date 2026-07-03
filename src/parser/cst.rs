@@ -214,6 +214,7 @@ impl ParameterType {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct TypeDefinition {
     pub shared: bool,
+    pub mutable: bool,
     /// AbilityDefinitions are desugared into type definitions
     pub is_ability: bool,
     pub name: NameId,

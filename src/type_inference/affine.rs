@@ -242,18 +242,27 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
-    fn is_shared_user_defined(&self, typ: &Type) -> bool {
+    /// Returns the `(shared, mutable)` flags if `typ` resolves to a user-defined type definition.
+    fn shared_type_flags(&self, typ: &Type) -> Option<(bool, bool)> {
         match typ.follow(&self.bindings) {
-            Type::Application(constructor, _) => self.is_shared_user_defined(constructor),
-            Type::UserDefined(origin) => match origin {
-                Origin::TopLevelDefinition(name) => {
-                    let (item, _) = GetItemRaw(name.top_level_item).get(self.compiler);
-                    matches!(&item.kind, TopLevelItemKind::TypeDefinition(td) if td.shared)
-                },
-                _ => false,
+            Type::Application(constructor, _) => self.shared_type_flags(constructor),
+            Type::UserDefined(Origin::TopLevelDefinition(name)) => {
+                let (item, _) = GetItemRaw(name.top_level_item).get(self.compiler);
+                match &item.kind {
+                    TopLevelItemKind::TypeDefinition(td) => Some((td.shared, td.mutable)),
+                    _ => None,
+                }
             },
-            _ => false,
+            _ => None,
         }
+    }
+
+    fn is_shared_user_defined(&self, typ: &Type) -> bool {
+        matches!(self.shared_type_flags(typ), Some((true, _)))
+    }
+
+    pub(super) fn is_shared_mut_user_defined(&self, typ: &Type) -> bool {
+        matches!(self.shared_type_flags(typ), Some((true, true)))
     }
 
     /// Check if using `path` is valid (not already moved or partially moved).

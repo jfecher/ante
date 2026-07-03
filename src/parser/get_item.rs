@@ -134,6 +134,7 @@ fn desugar_ability(ability: &AbilityDefinition, context: &mut DesugarContext) ->
 
     TopLevelItemKind::TypeDefinition(super::cst::TypeDefinition {
         shared: false,
+        mutable: false,
         is_ability: true,
         name: ability.name,
         generics: ability.generics.clone(),

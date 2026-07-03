@@ -460,6 +460,9 @@ impl<'a> CstDisplay<'a> {
         if type_definition.shared {
             write!(f, "shared ")?;
         }
+        if type_definition.mutable {
+            write!(f, "mut ")?;
+        }
 
         write!(f, "type ")?;
         self.fmt_type_name(type_definition.name, context, f)?;

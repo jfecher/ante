@@ -216,7 +216,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Try to convert the given path to a constructor, issuing an error and returning [None] on
     /// failure.
     fn path_to_constructor(&mut self, path: PathId) -> Option<Constructor> {
-        let mut origin = self.current_resolve().path_origins[&path];
+        let mut origin = self.path_origin(path)?;
         // Most times we can immediately grab the origin, but in the case of
         // Origin::TypeResolution we need to grab it from another map. A loop
         // is used here instead of recursion to prevent infinite recursion in the

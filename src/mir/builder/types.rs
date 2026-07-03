@@ -37,25 +37,28 @@ where
         self.convert_type(typ, None)
     }
 
-    pub(super) fn convert_type(&self, typ: &TCType, args: Option<&[TCType]>) -> Type {
-        let ctx = ConvertTypeContext {
+    fn convert_context(&self) -> ConvertTypeContext<'_, Db> {
+        ConvertTypeContext {
             compiler: self.compiler,
             type_bindings: &self.types.bindings,
             generics_in_scope: &self.generics_in_scope,
             in_progress: RefCell::new(FxHashSet::default()),
-        };
-        ctx.convert_type(typ, args)
+        }
+    }
+
+    pub(super) fn convert_type(&self, typ: &TCType, args: Option<&[TCType]>) -> Type {
+        self.convert_context().convert_type(typ, args)
     }
 
     /// If `typ` resolves to a `shared` user-defined type, returns its inner layout behind the pointer.
     pub(super) fn shared_inner_layout_of(&self, typ: &TCType) -> Option<Type> {
-        let ctx = ConvertTypeContext {
-            compiler: self.compiler,
-            type_bindings: &self.types.bindings,
-            generics_in_scope: &self.generics_in_scope,
-            in_progress: RefCell::new(FxHashSet::default()),
-        };
-        ctx.shared_inner_layout_of(typ, None)
+        self.convert_context().shared_inner_layout_of(typ, None).map(|(layout, _)| layout)
+    }
+
+    /// Like [Self::shared_inner_layout_of] but only returns the inner layout when the type is
+    /// declared `shared mut`, used to decide whether `:=` mutates the pointee in place.
+    pub(super) fn shared_mut_inner_layout_of(&self, typ: &TCType) -> Option<Type> {
+        self.convert_context().shared_inner_layout_of(typ, None).and_then(|(layout, mutable)| mutable.then_some(layout))
     }
 
     /// Returns the nth field of the tuple type, or [Type::ERROR] if there is none
@@ -172,8 +175,9 @@ where
     }
 
     /// Look through `Type::Application` and `Type::UserDefined` to find a top-level type
-    /// definition; if it is `shared`, return the inner layout the pointer wraps.
-    fn shared_inner_layout_of(&self, typ: &TCType, args: Option<&[TCType]>) -> Option<Type> {
+    /// definition. If it is `shared`, return the inner layout the pointer wraps along with
+    /// whether the type is `shared mut`.
+    fn shared_inner_layout_of(&self, typ: &TCType, args: Option<&[TCType]>) -> Option<(Type, bool)> {
         match typ.follow(self.type_bindings) {
             TCType::Application(constructor, new_args) => {
                 assert!(args.is_none());
@@ -181,8 +185,8 @@ where
             },
             TCType::Forall(_, inner) => self.shared_inner_layout_of(inner, args),
             TCType::UserDefined(Origin::TopLevelDefinition(id)) => {
-                Self::is_shared_type_definition(self.compiler, id.top_level_item)
-                    .then(|| self.expand_user_defined_body(id.top_level_item, args, None))
+                let (shared, mutable) = Self::shared_type_flags(self.compiler, id.top_level_item);
+                shared.then(|| (self.expand_user_defined_body(id.top_level_item, args, None), mutable))
             },
             _ => None,
         }
@@ -194,8 +198,16 @@ where
     }
 
     fn is_shared_type_definition(compiler: &Db, id: TopLevelId) -> bool {
+        Self::shared_type_flags(compiler, id).0
+    }
+
+    /// Returns the `(shared, mutable)` flags of a top-level type definition, or `(false, false)`.
+    fn shared_type_flags(compiler: &Db, id: TopLevelId) -> (bool, bool) {
         let (item, _) = GetItem(id).get(compiler);
-        matches!(&item.kind, TopLevelItemKind::TypeDefinition(td) if td.shared)
+        match &item.kind {
+            TopLevelItemKind::TypeDefinition(td) => (td.shared, td.mutable),
+            _ => (false, false),
+        }
     }
 
     /// Converts a type body to the general representation of that type.

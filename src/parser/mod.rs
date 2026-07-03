@@ -703,6 +703,8 @@ impl<'tokens> Parser<'tokens> {
 
     fn parse_type_definition(&mut self) -> Result<TypeDefinition> {
         let shared = self.accept(Token::Shared);
+        let mutable = shared && self.accept(Token::Mut);
+
         self.expect(Token::Type, "`type`")?;
         let name = self.parse_type_name_id()?;
         let generics = self.parse_generics();
@@ -711,7 +713,7 @@ impl<'tokens> Parser<'tokens> {
             _ => e,
         })?;
         let body = self.parse_type_body()?;
-        Ok(TypeDefinition { shared, name, generics, body, is_ability: false })
+        Ok(TypeDefinition { shared, mutable, name, generics, body, is_ability: false })
     }
 
     /// generics: ( ident | '(' ident ':' kind ')' )*

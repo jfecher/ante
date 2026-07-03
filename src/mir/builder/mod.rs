@@ -516,7 +516,8 @@ where
             let struct_ptr = self.expression(object_expr);
             self.push_instruction(Instruction::GetFieldPtr { struct_ptr, struct_type, index }, Type::POINTER)
         } else {
-            let tuple = self.expression(object_expr);
+            let value = self.expression(object_expr);
+            let tuple = self.deref_if_shared(value, &object_type);
             let element_type = match self.type_of_value(&tuple) {
                 Type::Tuple(elements) => elements.get(index as usize).cloned().unwrap_or(Type::ERROR),
                 _ => Type::ERROR,
@@ -1296,6 +1297,13 @@ where
     }
 
     fn lhs_as_pointer(&mut self, lhs: ExprId) -> Value {
+        // Storing a shared mut type should mutate the inner element
+        let lhs_type = self.types.result.maps.expr_types[&lhs].follow(&self.types.bindings);
+        let shared_mut = self.shared_mut_inner_layout_of(lhs_type).is_some();
+        if shared_mut {
+            return self.expression(lhs);
+        }
+
         let context = self.context();
         let lhs_kind = match &context[lhs] {
             cst::Expr::Variable(path_id) => {
@@ -1322,8 +1330,9 @@ where
 
                 // If the object has a reference type, use the inner type for GEP.
                 let struct_type = self.types.result.maps.expr_types[&object_expr].follow(&self.types.bindings);
-                let struct_type = if let Some(element) = struct_type.reference_or_pointer_element(&self.types.bindings)
-                {
+                let struct_type = if let Some(inner) = self.shared_mut_inner_layout_of(struct_type) {
+                    inner
+                } else if let Some(element) = struct_type.reference_or_pointer_element(&self.types.bindings) {
                     self.convert_type(element, None)
                 } else {
                     self.convert_type(struct_type, None)
@@ -1352,7 +1361,14 @@ where
             };
             self.push_instruction(instruction, value_type)
         } else {
-            self.expression(assignment.rhs)
+            let rhs = self.expression(assignment.rhs);
+
+            // Overwriting a whole `shared mut` cell: copy the RHS's contents into the LHS rather than rebinding the pointer.
+            let lhs_type = self.types.result.maps.expr_types[&assignment.lhs].follow(&self.types.bindings);
+            match self.shared_mut_inner_layout_of(lhs_type) {
+                Some(inner_layout) => self.push_instruction(Instruction::Deref(rhs), inner_layout),
+                None => rhs,
+            }
         };
 
         self.push_instruction(Instruction::Store { pointer, value }, Type::UNIT);

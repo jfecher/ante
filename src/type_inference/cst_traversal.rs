@@ -1257,7 +1257,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                             return Ok(());
                         }
                         if let Some(typ) = self.name_types.get(&name)
-                            && self.is_mut_or_uniq_reference(typ)
+                            && (self.is_mut_or_uniq_reference(typ) || self.is_shared_mut_user_defined(typ))
                         {
                             return Ok(());
                         }
@@ -1278,7 +1278,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 let object = access.object;
                 // TODO: This allows `x: ref (mut a, b)` to assign to the inner `mut a`
                 if let Some(typ) = self.expr_types.get(&object)
-                    && self.is_mut_or_uniq_reference(typ)
+                    && (self.is_mut_or_uniq_reference(typ) || self.is_shared_mut_user_defined(typ))
                 {
                     return Ok(());
                 }
