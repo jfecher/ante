@@ -409,17 +409,17 @@ impl<'local> FunctionContext<'local> {
 
     /// Specialize each element of a type list, returning `Some(new_vec)` if any element changed.
     fn specialize_each(&self, items: &[Type]) -> Option<Vec<Type>> {
-        let mut changed = false;
-        let new_items = items
-            .iter()
-            .map(|item| match self.specialize_type_opt(item) {
-                Some(new) => {
-                    changed = true;
-                    new
+        let mut result: Option<Vec<Type>> = None;
+        for (i, item) in items.iter().enumerate() {
+            match self.specialize_type_opt(item) {
+                Some(new) => result.get_or_insert_with(|| items[..i].to_vec()).push(new),
+                None => {
+                    if let Some(new_items) = result.as_mut() {
+                        new_items.push(item.clone());
+                    }
                 },
-                None => item.clone(),
-            })
-            .collect();
-        changed.then_some(new_items)
+            }
+        }
+        result
     }
 }

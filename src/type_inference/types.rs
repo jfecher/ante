@@ -340,15 +340,18 @@ impl Type {
     /// `Some(new_vec)` if at least one element changed, or `None` if none did — mirroring
     /// [Self::follow_all_opt]'s "reuse the original when unchanged" contract.
     fn follow_all_each<T: Clone>(items: &[T], mut f: impl FnMut(&T) -> Option<T>) -> Option<Vec<T>> {
-        let mut changed = false;
-        let new_items = mapvec(items, |item| match f(item) {
-            Some(new) => {
-                changed = true;
-                new
-            },
-            None => item.clone(),
-        });
-        changed.then_some(new_items)
+        let mut result: Option<Vec<T>> = None;
+        for (i, item) in items.iter().enumerate() {
+            match f(item) {
+                Some(new) => result.get_or_insert_with(|| items[..i].to_vec()).push(new),
+                None => {
+                    if let Some(new_items) = result.as_mut() {
+                        new_items.push(item.clone());
+                    }
+                },
+            }
+        }
+        result
     }
 
     /// Similar to substitute, but substitutes `Type::Generic` instead of `Type::TypeVariable`
