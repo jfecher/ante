@@ -1,6 +1,8 @@
-use std::collections::{BTreeSet, HashSet};
+use std::collections::BTreeSet;
 use std::path::Path;
 use std::sync::Arc;
+
+use rustc_hash::FxHashSet;
 
 use crate::{
     diagnostics::{Diagnostic, ImportSuggestion, Location},
@@ -261,7 +263,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 .iter()
                 .flat_map(|implicit| self.expr_types[&implicit.destination].free_vars(&self.bindings))
                 .filter_map(|generic| generic.as_inferred())
-                .collect::<HashSet<_>>();
+                .collect::<FxHashSet<_>>();
 
             let bubbles_up = self.pull_transitive_implicits(&mut stays_here, candidates_to_bubble, &mut kept_vars);
 
@@ -304,7 +306,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// returning the candidates to be bubbled up.
     fn pull_transitive_implicits(
         &mut self, stays_here: &mut Vec<DelayedImplicit>, mut candidates_to_bubble: Vec<DelayedImplicit>,
-        vars_to_keep: &mut HashSet<TypeVariableId>,
+        vars_to_keep: &mut FxHashSet<TypeVariableId>,
     ) -> Vec<DelayedImplicit> {
         loop {
             let before = candidates_to_bubble.len();
@@ -331,7 +333,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Partition into (keep here, bubble up) by whether each entry's tvar is in `keep_tvars`. An
     /// already-bound tvar is kept since its type is settled and delaying it gains nothing.
     fn partition_by_target_tvar<T>(
-        &self, entries: Vec<T>, vars_to_keep: &HashSet<TypeVariableId>, get_var: impl Fn(&T) -> TypeVariableId,
+        &self, entries: Vec<T>, vars_to_keep: &FxHashSet<TypeVariableId>, get_var: impl Fn(&T) -> TypeVariableId,
     ) -> (Vec<T>, Vec<T>) {
         entries.into_iter().partition(|entry| match Type::Variable(get_var(entry)).follow(&self.bindings) {
             Type::Variable(id) => vars_to_keep.contains(id),

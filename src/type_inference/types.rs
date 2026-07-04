@@ -1,6 +1,5 @@
 use std::{
     borrow::Cow,
-    collections::HashSet,
     num::NonZeroUsize,
     sync::{Arc, LazyLock},
 };
@@ -277,44 +276,48 @@ impl Type {
     }
 
     pub fn follow_all_two(&self, bindings: &TypeBindings, more_bindings: &TypeBindings) -> Type {
+        self.follow_all_opt(bindings, more_bindings).unwrap_or_else(|| self.clone())
+    }
+
+    /// Returns `Some(new_type)` when a binding was substituted somewhere in this subtree, and `None`
+    /// when the subtree is unchanged so the caller can reuse the original `Arc` instead of allocating.
+    fn follow_all_opt(&self, bindings: &TypeBindings, more_bindings: &TypeBindings) -> Option<Type> {
         match self {
-            Type::Primitive(_) | Type::Generic(Generic::Named(_)) => self.clone(),
-            Type::Generic(Generic::Inferred(id)) => {
-                if let Some(binding) = bindings.get(id) {
-                    binding.follow_all_two(bindings, more_bindings)
-                } else if let Some(binding) = more_bindings.get(id) {
-                    binding.follow_all_two(bindings, more_bindings)
-                } else {
-                    Type::Generic(Generic::Inferred(*id))
-                }
-            },
-            Type::Variable(id) => {
-                if let Some(binding) = bindings.get(id) {
-                    binding.follow_all_two(bindings, more_bindings)
-                } else if let Some(binding) = more_bindings.get(id) {
-                    binding.follow_all_two(bindings, more_bindings)
-                } else {
-                    Type::Variable(*id)
-                }
+            Type::Primitive(_) | Type::Generic(Generic::Named(_)) | Type::UserDefined(_) | Type::U32(_) => None,
+            Type::Generic(Generic::Inferred(id)) | Type::Variable(id) => {
+                let binding = bindings.get(id).or_else(|| more_bindings.get(id))?;
+                Some(binding.follow_all_two(bindings, more_bindings))
             },
             Type::Function(function) => {
-                let parameters = mapvec(function.parameters.iter(), |param| {
-                    let typ = param.typ.follow_all_two(bindings, more_bindings);
-                    ParameterType::new(typ, param.is_implicit)
+                let parameters = Self::follow_all_each(&function.parameters, |param| {
+                    param
+                        .typ
+                        .follow_all_opt(bindings, more_bindings)
+                        .map(|typ| ParameterType::new(typ, param.is_implicit))
                 });
 
-                Type::Function(Arc::new(FunctionType {
-                    parameters,
-                    environment: function.environment.follow_all_two(bindings, more_bindings),
-                    return_type: function.return_type.follow_all_two(bindings, more_bindings),
-                }))
+                let environment = function.environment.follow_all_opt(bindings, more_bindings);
+                let return_type = function.return_type.follow_all_opt(bindings, more_bindings);
+                if parameters.is_none() && environment.is_none() && return_type.is_none() {
+                    return None;
+                }
+
+                Some(Type::Function(Arc::new(FunctionType {
+                    parameters: parameters.unwrap_or_else(|| function.parameters.clone()),
+                    environment: environment.unwrap_or_else(|| function.environment.clone()),
+                    return_type: return_type.unwrap_or_else(|| function.return_type.clone()),
+                })))
             },
             Type::Application(constructor, args) => {
-                let constructor = Arc::new(constructor.follow_all_two(bindings, more_bindings));
-                let args = Arc::new(mapvec(args.iter(), |arg| arg.follow_all_two(bindings, more_bindings)));
-                Type::Application(constructor, args)
+                let new_constructor = constructor.follow_all_opt(bindings, more_bindings);
+                let new_args = Self::follow_all_each(&args[..], |arg| arg.follow_all_opt(bindings, more_bindings));
+                if new_constructor.is_none() && new_args.is_none() {
+                    return None;
+                }
+                let constructor = new_constructor.map(Arc::new).unwrap_or_else(|| constructor.clone());
+                let args = new_args.map(Arc::new).unwrap_or_else(|| args.clone());
+                Some(Type::Application(constructor, args))
             },
-            Type::UserDefined(origin) => Type::UserDefined(*origin),
             Type::Forall(generics, typ) => {
                 for generic in generics.iter() {
                     if let Generic::Inferred(id) = generic {
@@ -323,14 +326,29 @@ impl Type {
                     }
                 }
 
-                let typ = Arc::new(typ.follow_all_two(bindings, more_bindings));
-                Type::Forall(generics.clone(), typ)
+                let typ = typ.follow_all_opt(bindings, more_bindings)?;
+                Some(Type::Forall(generics.clone(), Arc::new(typ)))
             },
             Type::Tuple(elements) => {
-                Type::Tuple(Arc::new(mapvec(elements.iter(), |t| t.follow_all_two(bindings, more_bindings))))
+                let new_elements = Self::follow_all_each(elements, |t| t.follow_all_opt(bindings, more_bindings))?;
+                Some(Type::Tuple(Arc::new(new_elements)))
             },
-            Type::U32(_) => self.clone(),
         }
+    }
+
+    /// Map `f` over `items`, cloning any element for which `f` returns `None`. Returns
+    /// `Some(new_vec)` if at least one element changed, or `None` if none did — mirroring
+    /// [Self::follow_all_opt]'s "reuse the original when unchanged" contract.
+    fn follow_all_each<T: Clone>(items: &[T], mut f: impl FnMut(&T) -> Option<T>) -> Option<Vec<T>> {
+        let mut changed = false;
+        let new_items = mapvec(items, |item| match f(item) {
+            Some(new) => {
+                changed = true;
+                new
+            },
+            None => item.clone(),
+        });
+        changed.then_some(new_items)
     }
 
     /// Similar to substitute, but substitutes `Type::Generic` instead of `Type::TypeVariable`
@@ -796,9 +814,9 @@ impl Type {
     }
 
     /// Return the list of unbound type variables within this type.
-    /// Unlike [Self::free_vars], this excludes [Type::Generic]s within the type, and returns a [HashSet].
-    pub fn free_unification_vars(&self, bindings: &TypeBindings) -> HashSet<TypeVariableId> {
-        self.free_vars(bindings).into_iter().filter_map(Generic::as_inferred).collect::<HashSet<_>>()
+    /// Unlike [Self::free_vars], this excludes [Type::Generic]s within the type and it returns a set.
+    pub fn free_unification_vars(&self, bindings: &TypeBindings) -> FxHashSet<TypeVariableId> {
+        self.free_vars(bindings).into_iter().filter_map(Generic::as_inferred).collect::<FxHashSet<_>>()
     }
 
     /// If this is a function, return its return type. Otherwise return None.

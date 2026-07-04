@@ -789,8 +789,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         match (a, b) {
             (Type::Variable(a_id), b) => {
-                if let Some(a) = self.bindings.get(a_id).cloned() {
-                    self.subtype(&a, b, variance, new_bindings)
+                if let Some(a) = self.bindings.get(a_id) {
+                    self.subtype(a, b, variance, new_bindings)
                 } else if let Some(a) = new_bindings.get(a_id).cloned() {
                     self.subtype(&a, b, variance, new_bindings)
                 } else {
@@ -799,8 +799,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 }
             },
             (a, Type::Variable(b_id)) => {
-                if let Some(b) = self.bindings.get(b_id).cloned() {
-                    self.subtype(a, &b, variance, new_bindings)
+                if let Some(b) = self.bindings.get(b_id) {
+                    self.subtype(a, b, variance, new_bindings)
                 } else if let Some(b) = new_bindings.get(b_id).cloned() {
                     self.subtype(a, &b, variance, new_bindings)
                 } else {

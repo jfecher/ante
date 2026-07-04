@@ -1,0 +1,14 @@
+main () =
+    var i = 0
+    n = true
+    m = true
+    if n then
+        if m then
+            i := 100
+        else ()
+        if m then
+            i := 3
+    else ()
+    println i
+
+// args: --delete-binary --no-color

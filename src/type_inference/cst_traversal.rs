@@ -907,7 +907,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
             let ok = self.unify(&Type::UNIT, expected, TypeErrorKind::IfStatement, expr);
             // Return error on failure to help prevent cascading errors
-            if !ok { Type::UNIT } else { Type::ERROR }
+            if ok { Type::UNIT } else { Type::ERROR }
         }
     }
 
