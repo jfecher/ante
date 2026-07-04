@@ -1290,10 +1290,30 @@ where
             return self.expression(rhs);
         }
 
+        if let cst::Expr::MemberAccess(_) = &self.context()[rhs]
+            && self.reference_target_is_addressable(rhs)
+        {
+            return self.lhs_as_pointer(rhs);
+        }
+
         // For all other cases (non-mutable local, temporary): evaluate the expression and
         // allocate a new stack slot for it.
         let value = self.expression(rhs);
         self.push_instruction(Instruction::StackAlloc(value), Type::POINTER)
+    }
+
+    /// Returns true if `expr` is a field-access chain (or annotated variant) rooted at a
+    /// mutable local.
+    fn reference_target_is_addressable(&self, expr: ExprId) -> bool {
+        match &self.context()[expr] {
+            cst::Expr::Variable(path_id) => {
+                let path_id = *path_id;
+                matches!(self.context().path_origin(path_id), Some(Origin::Local(name)) if self.mutable_locals.contains(&name))
+            },
+            cst::Expr::MemberAccess(ma) => self.reference_target_is_addressable(ma.object),
+            cst::Expr::TypeAnnotation(ta) => self.reference_target_is_addressable(ta.lhs),
+            _ => false,
+        }
     }
 
     fn lhs_as_pointer(&mut self, lhs: ExprId) -> Value {

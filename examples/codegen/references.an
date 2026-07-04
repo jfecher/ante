@@ -39,12 +39,19 @@ struct_ref_assign () =
     set_point_x (mut p) 55
     println p.x
 
+field_ref_mutate () =
+    var p = Point 3 4
+    set_value (mut p.x) 77
+    println p.x
+    println p.y
+
 main () =
     assign_mutable_local ()
     assign_reference ()
     struct_field_assign ()
     partial_field_assign ()
     struct_ref_assign ()
+    field_ref_mutate ()
 
 // args: --delete-binary --no-color
 // expected stdout:
@@ -55,4 +62,6 @@ main () =
 // 5
 // 99
 // 55
+// 77
+// 4
 
