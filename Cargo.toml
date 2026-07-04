@@ -24,9 +24,13 @@ rayon = "1.10.0"
 rmp-serde = "1.3"
 rustc-hash = "2.1.1"
 serde = { version = "1.0.219", features = ["derive", "rc"] }
+mimalloc = { version = "0.1", default-features = false }
 
 [dev-dependencies]
+# Enabling 'parallel' makes `cargo t` nondeterministic
 goldentests = { version = "1.4.2", default-features = false }
 
 [profile.release]
 debug = true
+lto = "thin"
+codegen-units = 1

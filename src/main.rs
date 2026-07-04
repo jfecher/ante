@@ -81,6 +81,9 @@ mod vecmap;
 
 use crate::timings::{print_total_time_of_phases, time_phase};
 
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 fn main() {
     if let Ok(Completions { shell_completion }) = Completions::try_parse() {
         let mut cmd = Cli::command();
