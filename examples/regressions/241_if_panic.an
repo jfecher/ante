@@ -12,3 +12,5 @@ main () =
     println i
 
 // args: --delete-binary --no-color
+// expected stdout: 3
+
