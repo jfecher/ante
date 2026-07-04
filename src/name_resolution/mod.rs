@@ -149,7 +149,7 @@ fn alias_body_head_origin(alias_item: TopLevelId, body: &Type, db: &DbHandle) ->
     }
 }
 
-pub fn resolve_impl(context: &Resolve, compiler: &DbHandle) -> ResolutionResult {
+pub fn resolve_impl(context: &Resolve, compiler: &DbHandle) -> Arc<ResolutionResult> {
     incremental::enter_query();
     let (statement, statement_ctx) = GetItem(context.0).get(compiler);
     incremental::println(format!("Resolving {:?}", statement.kind.name()));
@@ -175,7 +175,7 @@ pub fn resolve_impl(context: &Resolve, compiler: &DbHandle) -> ResolutionResult 
     }
 
     incremental::exit_query();
-    resolver.result()
+    Arc::new(resolver.result())
 }
 
 impl<'local, 'inner> Resolver<'local, 'inner> {

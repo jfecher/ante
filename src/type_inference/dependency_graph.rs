@@ -71,7 +71,7 @@ pub fn get_type_check_graph_impl(_: &TypeCheckDependencyGraph, db: &DbHandle) ->
         let resolution = Resolve(item).get(db);
         let item_index = add_node(&mut graph, item);
 
-        for dependency_id in resolution.referenced_items {
+        for &dependency_id in &resolution.referenced_items {
             let dependency_index = add_node(&mut graph, dependency_id);
 
             if item_lacks_known_type(dependency_id, db) {
@@ -170,7 +170,7 @@ pub fn get_type_check_scc_impl(context: &GetTypeCheckSCC, db: &DbHandle) -> SCC 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TypeCheckResult {
     pub result: IndividualTypeCheckResult,
-    pub bindings: TypeBindings,
+    pub bindings: Arc<TypeBindings>,
 }
 
 pub fn type_check_impl(context: &TypeCheck, db: &DbHandle) -> Arc<TypeCheckResult> {
@@ -188,7 +188,7 @@ pub fn type_check_impl(context: &TypeCheck, db: &DbHandle) -> Arc<TypeCheckResul
         }
     });
 
-    Arc::new(TypeCheckResult { result: item_result, bindings: result.bindings })
+    Arc::new(TypeCheckResult { result: item_result, bindings: result.bindings.clone() })
 }
 
 impl TypeCheckResult {

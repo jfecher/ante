@@ -279,7 +279,7 @@ define_intermediate!(1000, GetImports -> Vec<(Arc<PathBuf>, Location)>, DbStorag
 /// re-resolved!
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Resolve(pub TopLevelId);
-define_intermediate!(1100, Resolve -> ResolutionResult, DbStorage, name_resolution::resolve_impl);
+define_intermediate!(1100, Resolve -> Arc<ResolutionResult>, DbStorage, name_resolution::resolve_impl);
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 /// To go from queries which resolve entire files like `Parse` to queries that resolve only a
@@ -341,7 +341,7 @@ impl DebugWithDb<DbStorage> for GetType {
 /// group. Hence the rare case where `TypeCheckSCC` may be given more than one `TopLevelId`.
 #[derive(Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TypeCheckSCC(pub SCC);
-define_intermediate!(1500, assume_changed TypeCheckSCC -> TypeCheckSCCResult, DbStorage, type_inference::type_check_impl);
+define_intermediate!(1500, assume_changed TypeCheckSCC -> Arc<TypeCheckSCCResult>, DbStorage, type_inference::type_check_impl);
 
 impl DebugWithDb<DbStorage> for TypeCheckSCC {
     fn fmt_with_db(&self, db: &inc_complete::Db<DbStorage>, f: &mut std::fmt::Formatter) -> std::fmt::Result {

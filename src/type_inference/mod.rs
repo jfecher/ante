@@ -49,7 +49,7 @@ pub use type_body::TypeBody;
 /// Actually type check a statement and its contents.
 /// Unlike `get_type_impl`, this always type checks the expressions inside a statement
 /// to ensure they type check correctly.
-pub fn type_check_impl(context: &TypeCheckSCC, compiler: &DbHandle) -> TypeCheckSCCResult {
+pub fn type_check_impl(context: &TypeCheckSCC, compiler: &DbHandle) -> Arc<TypeCheckSCCResult> {
     incremental::enter_query();
     let items = TypeChecker::item_contexts(&context.0, compiler);
     let mut checker = TypeChecker::new(&items, compiler);
@@ -77,7 +77,7 @@ pub fn type_check_impl(context: &TypeCheckSCC, compiler: &DbHandle) -> TypeCheck
     });
 
     incremental::exit_query();
-    checker.finish(items)
+    Arc::new(checker.finish(items))
 }
 
 /// A `TypeCheckSCCResult` holds the `IndividualTypeCheckResult` of every item in
@@ -85,7 +85,7 @@ pub fn type_check_impl(context: &TypeCheckSCC, compiler: &DbHandle) -> TypeCheck
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TypeCheckSCCResult {
     pub items: BTreeMap<TopLevelId, IndividualTypeCheckResult>,
-    pub bindings: TypeBindings,
+    pub bindings: Arc<TypeBindings>,
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -219,7 +219,7 @@ struct TypeChecker<'local, 'inner> {
 }
 
 /// Map from each TopLevelId to a tuple of (the item, parse context, resolution context)
-type ItemContexts = FxHashMap<TopLevelId, (Arc<TopLevelItem>, Arc<DesugarContext>, ResolutionResult)>;
+type ItemContexts = FxHashMap<TopLevelId, (Arc<TopLevelItem>, Arc<DesugarContext>, Arc<ResolutionResult>)>;
 
 impl<'local, 'inner> TypeChecker<'local, 'inner> {
     fn new(item_contexts: &'local ItemContexts, compiler: &'local DbHandle<'inner>) -> Self {
@@ -302,7 +302,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     fn current_resolve(&self) -> &'local ResolutionResult {
         let item = self.current_item.expect("TypeChecker: Expected current_item to be set");
-        &self.item_contexts[&item].2
+        self.item_contexts[&item].2.as_ref()
     }
 
     /// Return the current extended context.
@@ -362,12 +362,12 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 let generalized = generalized.remove(&id).unwrap_or_default();
                 let mut context = self.id_contexts.remove(&id).unwrap();
                 let item_context = self.item_contexts.get(&id).unwrap();
-                context.extend_from_resolution_result(&item_context.2);
+                context.extend_from_resolution_result(item_context.2.as_ref());
                 (id, IndividualTypeCheckResult { maps, generalized, context })
             })
             .collect();
 
-        TypeCheckSCCResult { items, bindings: self.bindings }
+        TypeCheckSCCResult { items, bindings: Arc::new(self.bindings) }
     }
 
     /// Check if the integer fits in the given kind, error if not
