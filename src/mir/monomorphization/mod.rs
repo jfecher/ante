@@ -15,7 +15,7 @@ mod select_largest_variant;
 use crate::{
     incremental::{GetCrateGraph, GetItem, GetItemRaw, Parse, TargetPointerSize, TypeCheck},
     mir::{
-        self, Definition, DefinitionId, GenericBindings, Instruction, Mir, Type, Value,
+        self, Definition, DefinitionId, FunctionType, GenericBindings, Instruction, Mir, Type, Value,
         builder::build_initial_mir_with_shared_map, next_definition_id,
     },
     parser::ids::TopLevelId,
@@ -85,7 +85,7 @@ where
         .collect::<Vec<_>>();
 
     // TODO: More concrete perf testing, but this is fine for smaller programs.
-    monomorphic_definitions
+    let mir = monomorphic_definitions
         //.into_par_iter()
         .into_iter()
         .fold(Mir::default(), |acc, definition| {
@@ -94,11 +94,16 @@ where
             acc.extend(monomorphized)
         })
         //.reduce(Mir::default, Mir::extend)
-        .lower_closures()
+        .lower_closures();
+
+    #[cfg(debug_assertions)]
+    let mir = mir
         .assert_fully_linked()
         .assert_type_checks()
         .assert_no_unions_or_generics()
-        .assert_no_closure_types()
+        .assert_no_closure_types();
+
+    mir
 }
 
 /// The entry point to monomorphization is any non-generic definition.
@@ -358,46 +363,63 @@ impl<'local> FunctionContext<'local> {
     /// Replace any instances of generics in `self.generic_mapping` of the given type with their mapping.
     /// The resulting type should be guaranteed free of [Type::Generic].
     fn specialize_type(&self, typ: &mut Type) {
-        // Avoid allocating new `Arc`s if there are no generics to specialize away
-        if !typ.contains_generic() {
-            return;
+        if let Some(new_type) = self.specialize_type_opt(typ) {
+            *typ = new_type;
         }
+    }
 
-        let recur = |typ| self.specialize_type(typ);
+    /// Returns `Some(new_type)` when a generic was specialized somewhere within `typ`, and `None`
+    /// when the subtree contains no generic so that the caller can reuse the original `Arc`s.
+    fn specialize_type_opt(&self, typ: &Type) -> Option<Type> {
         match typ {
-            Type::Primitive(_) => (),
-            Type::Tuple(fields) => {
-                let mut new_fields = fields.to_vec();
-                new_fields.iter_mut().for_each(recur);
-                *fields = Arc::new(new_fields);
-            },
-            Type::Function(function) => {
-                let mut new_function = function.as_ref().clone();
-                new_function.parameters.iter_mut().for_each(recur);
-                recur(&mut new_function.environment);
-                recur(&mut new_function.return_type);
-                *function = Arc::new(new_function);
-            },
-            Type::Union(variants) => {
-                let mut new_variants = variants.to_vec();
-                new_variants.iter_mut().for_each(recur);
-                *variants = Arc::new(new_variants);
-            },
-            Type::Array { length, element } => {
-                let mut new_length = length.as_ref().clone();
-                let mut new_element = element.as_ref().clone();
-                recur(&mut new_length);
-                recur(&mut new_element);
-                *length = Arc::new(new_length);
-                *element = Arc::new(new_element);
-            },
-            Type::U32(_) => (),
+            Type::Primitive(_) | Type::U32(_) => None,
             Type::Generic(generic) => {
                 let Some(mapping) = self.generic_mapping.get(generic.0 as usize) else {
                     unreachable!("Unmapped generic found in monomorphization: {generic:?}")
                 };
-                *typ = mapping.clone();
+                Some(mapping.clone())
+            },
+            Type::Tuple(fields) => self.specialize_each(fields).map(|v| Type::Tuple(Arc::new(v))),
+            Type::Union(variants) => self.specialize_each(variants).map(|v| Type::Union(Arc::new(v))),
+            Type::Function(function) => {
+                let parameters = self.specialize_each(&function.parameters);
+                let environment = self.specialize_type_opt(&function.environment);
+                let return_type = self.specialize_type_opt(&function.return_type);
+                if parameters.is_none() && environment.is_none() && return_type.is_none() {
+                    return None;
+                }
+                Some(Type::Function(Arc::new(FunctionType {
+                    parameters: parameters.unwrap_or_else(|| function.parameters.to_vec()),
+                    environment: environment.unwrap_or_else(|| function.environment.clone()),
+                    return_type: return_type.unwrap_or_else(|| function.return_type.clone()),
+                })))
+            },
+            Type::Array { length, element } => {
+                let new_length = self.specialize_type_opt(length);
+                let new_element = self.specialize_type_opt(element);
+                if new_length.is_none() && new_element.is_none() {
+                    return None;
+                }
+                let length = new_length.map(Arc::new).unwrap_or_else(|| length.clone());
+                let element = new_element.map(Arc::new).unwrap_or_else(|| element.clone());
+                Some(Type::Array { length, element })
             },
         }
+    }
+
+    /// Specialize each element of a type list, returning `Some(new_vec)` if any element changed.
+    fn specialize_each(&self, items: &[Type]) -> Option<Vec<Type>> {
+        let mut changed = false;
+        let new_items = items
+            .iter()
+            .map(|item| match self.specialize_type_opt(item) {
+                Some(new) => {
+                    changed = true;
+                    new
+                },
+                None => item.clone(),
+            })
+            .collect();
+        changed.then_some(new_items)
     }
 }

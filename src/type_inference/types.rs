@@ -353,31 +353,50 @@ impl Type {
 
     /// Similar to substitute, but substitutes `Type::Generic` instead of `Type::TypeVariable`
     pub fn substitute(&self, bindings_to_substitute: &GenericSubstitutions, bindings_in_scope: &TypeBindings) -> Type {
+        self.substitute_opt(bindings_to_substitute, bindings_in_scope).unwrap_or_else(|| self.clone())
+    }
+
+    /// Returns `Some(new_type)` when a substitution changed something in this subtree, and `None`
+    /// when the subtree is unchanged
+    fn substitute_opt(
+        &self, bindings_to_substitute: &GenericSubstitutions, bindings_in_scope: &TypeBindings,
+    ) -> Option<Type> {
+        // A composite reached by following a bound type variable must resolve to that binding rather
+        // than reuse `self` (the variable), so it can never report "unchanged".
+        let self_is_var = matches!(self, Type::Variable(_));
+
         match self.follow(bindings_in_scope) {
-            Type::Primitive(_) | Type::UserDefined(_) | Type::U32(_) => self.clone(),
-            Type::Generic(generic) => match bindings_to_substitute.get(generic) {
-                Some(binding) => binding.clone(),
-                None => self.clone(),
-            },
-            Type::Variable(id) => match bindings_to_substitute.get(&Generic::Inferred(*id)) {
-                Some(binding) => binding.clone(),
-                None => self.clone(),
-            },
+            Type::Primitive(_) | Type::UserDefined(_) | Type::U32(_) => None,
+            Type::Generic(generic) => bindings_to_substitute.get(generic).cloned(),
+            Type::Variable(id) => bindings_to_substitute.get(&Generic::Inferred(*id)).cloned(),
             Type::Function(function) => {
-                let function = function.clone();
-                let parameters = mapvec(&function.parameters, |param| {
-                    let typ = param.typ.substitute(bindings_to_substitute, bindings_in_scope);
-                    ParameterType::new(typ, param.is_implicit)
+                let parameters = Self::follow_all_each(&function.parameters, |param| {
+                    param
+                        .typ
+                        .substitute_opt(bindings_to_substitute, bindings_in_scope)
+                        .map(|typ| ParameterType::new(typ, param.is_implicit))
                 });
-                let environment = function.environment.substitute(bindings_to_substitute, bindings_in_scope);
-                let return_type = function.return_type.substitute(bindings_to_substitute, bindings_in_scope);
-                Type::Function(Arc::new(FunctionType { parameters, environment, return_type }))
+                let environment = function.environment.substitute_opt(bindings_to_substitute, bindings_in_scope);
+                let return_type = function.return_type.substitute_opt(bindings_to_substitute, bindings_in_scope);
+                if parameters.is_none() && environment.is_none() && return_type.is_none() && !self_is_var {
+                    return None;
+                }
+                Some(Type::Function(Arc::new(FunctionType {
+                    parameters: parameters.unwrap_or_else(|| function.parameters.clone()),
+                    environment: environment.unwrap_or_else(|| function.environment.clone()),
+                    return_type: return_type.unwrap_or_else(|| function.return_type.clone()),
+                })))
             },
             Type::Application(constructor, args) => {
-                let (constructor, args) = (constructor.clone(), args.clone());
-                let constructor = constructor.substitute(bindings_to_substitute, bindings_in_scope);
-                let args = mapvec(args.iter(), |arg| arg.substitute(bindings_to_substitute, bindings_in_scope));
-                Type::Application(Arc::new(constructor), Arc::new(args))
+                let new_constructor = constructor.substitute_opt(bindings_to_substitute, bindings_in_scope);
+                let new_args =
+                    Self::follow_all_each(&args[..], |arg| arg.substitute_opt(bindings_to_substitute, bindings_in_scope));
+                if new_constructor.is_none() && new_args.is_none() && !self_is_var {
+                    return None;
+                }
+                let constructor = new_constructor.map(Arc::new).unwrap_or_else(|| constructor.clone());
+                let args = new_args.map(Arc::new).unwrap_or_else(|| args.clone());
+                Some(Type::Application(constructor, args))
             },
             Type::Forall(generics, typ) => {
                 // We need to remove any generics in `generics` that are in `bindings`,
@@ -392,12 +411,17 @@ impl Type {
                         bindings = Cow::Owned(new_bindings);
                     }
                 }
-                let typ = typ.clone();
-                typ.substitute(&bindings, bindings_in_scope)
+                Some(typ.substitute_opt(&bindings, bindings_in_scope).unwrap_or_else(|| (**typ).clone()))
             },
-            Type::Tuple(elements) => Type::Tuple(Arc::new(mapvec(elements.iter(), |t| {
-                t.substitute(bindings_to_substitute, bindings_in_scope)
-            }))),
+            Type::Tuple(elements) => {
+                let new_elements =
+                    Self::follow_all_each(elements, |t| t.substitute_opt(bindings_to_substitute, bindings_in_scope));
+                if new_elements.is_none() && !self_is_var {
+                    return None;
+                }
+                let elements = new_elements.unwrap_or_else(|| elements.to_vec());
+                Some(Type::Tuple(Arc::new(elements)))
+            },
         }
     }
 

@@ -52,7 +52,7 @@ use std::{
 };
 
 #[cfg(feature = "llvm")]
-use crate::codegen::llvm::{CodegenLlvmResult, codegen_llvm};
+use crate::codegen::llvm::codegen_llvm;
 use crate::{
     cli::{EmitTarget, OptLevel},
     diagnostics::{DiagnosticKind, collect_all_diagnostics},
@@ -424,26 +424,12 @@ fn llvm_codegen_separate(
         return (Vec::new(), true, diagnostics);
     }
 
-    let modules = if let Some(result) = codegen_llvm(compiler, show_time, opt_level) {
-        if display_ir {
-            display_llvm_bitcode(&result, "program");
-        }
-        vec![result.module_bitcode]
+    let modules = if let Some(result) = codegen_llvm(compiler, show_time, opt_level, display_ir) {
+        vec![result.object]
     } else {
         Vec::new()
     };
     (modules, false, diagnostics)
-}
-
-#[cfg(feature = "llvm")]
-fn display_llvm_bitcode(result: &CodegenLlvmResult, module_name: &str) {
-    let buffer = inkwell::memory_buffer::MemoryBuffer::create_from_memory_range(&result.module_bitcode, module_name);
-    let context = inkwell::context::Context::create();
-    let new_module = inkwell::module::Module::parse_bitcode_from_buffer(&buffer, &context)
-        .expect("Failed to parse llvm module bitcode");
-    let module = new_module.print_to_string();
-    let module = module.to_string_lossy();
-    println!("{module}");
 }
 
 /// Codegen everything, linking together each separate llvm module

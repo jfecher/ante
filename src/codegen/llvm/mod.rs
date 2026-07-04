@@ -4,7 +4,6 @@ use inkwell::{
     AddressSpace, FloatPredicate, IntPredicate,
     basic_block::BasicBlock,
     builder::Builder,
-    memory_buffer::MemoryBuffer,
     module::{Linkage, Module},
     passes::PassBuilderOptions,
     targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine},
@@ -26,7 +25,7 @@ use crate::{
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CodegenLlvmResult {
-    pub module_bitcode: Arc<Vec<u8>>,
+    pub object: Arc<Vec<u8>>,
 }
 
 pub fn initialize_native_target() {
@@ -34,15 +33,18 @@ pub fn initialize_native_target() {
     Target::initialize_native(&config).unwrap();
 }
 
-pub fn codegen_llvm(compiler: &Db, show_time: bool, opt_level: OptLevel) -> Option<CodegenLlvmResult> {
+pub fn codegen_llvm(compiler: &Db, show_time: bool, opt_level: OptLevel, emit_ir: bool) -> Option<CodegenLlvmResult> {
     // Whole-program for now; ideally `CodegenLlvmResult` could be split per item.
     let mir =
         crate::timings::time_phase("Monomorphization", show_time, || mir::monomorphization::monomorphize(compiler));
-    crate::timings::time_phase("LLVM codegen", show_time, || codegen_llvm_for_mir(&mir, opt_level))
+    crate::timings::time_phase("LLVM codegen", show_time, || codegen_llvm_for_mir(&mir, opt_level, emit_ir, show_time))
 }
 
-/// LLVM IR generation on an already-monomorphized `Mir`
-pub(crate) fn codegen_llvm_for_mir(mir: &mir::Mir, opt_level: OptLevel) -> Option<CodegenLlvmResult> {
+/// LLVM IR generation & object emission on a monomorphized [mir::Mir].
+/// If `emit_ir` is set, the textual IR is printed to stdout.
+pub(crate) fn codegen_llvm_for_mir(
+    mir: &mir::Mir, opt_level: OptLevel, emit_ir: bool, show_time: bool,
+) -> Option<CodegenLlvmResult> {
     let name = &mir.definitions.iter().next().map_or("_", |(_, function)| &function.name);
 
     initialize_native_target();
@@ -62,46 +64,37 @@ pub(crate) fn codegen_llvm_for_mir(mir: &mir::Mir, opt_level: OptLevel) -> Optio
         eprintln!("llvm module failed to verify: {error}");
     }
 
+    let target_machine = native_target_machine(opt_level);
+
     if opt_level != OptLevel::O0 {
-        let target_machine = native_target_machine(opt_level);
         module
             .module
             .run_passes(opt_level.as_passes_string(), &target_machine, PassBuilderOptions::create())
             .expect("LLVM pass pipeline failed");
     }
 
-    // TODO: This is inefficient
-    let bitcode = module.module.write_bitcode_to_memory();
-    let bitcode = bitcode.as_slice().to_vec();
-    let module_bitcode = Arc::new(bitcode);
+    if emit_ir {
+        println!("{}", module.module.print_to_string().to_string_lossy());
+    }
 
-    // Per-function codegen + later link is likely slower than all-at-once, but easier to relax
-    // back into the whole-program path than the reverse.
-    Some(CodegenLlvmResult { module_bitcode })
+    let object = crate::timings::time_phase("Object emission", show_time, || {
+        target_machine
+            .write_to_memory_buffer(&module.module, FileType::Object)
+            .expect("Failed to emit object code")
+    });
+    let object = Arc::new(object.as_slice().to_vec());
+
+    Some(CodegenLlvmResult { object })
 }
 
-/// Link the given list of llvm bitcode modules into an executable.
+/// Link the given list of object code blobs into an executable.
 /// Returns `true` if linking succeeded, `false` otherwise.
-pub fn link(modules: Vec<Arc<Vec<u8>>>, binary_name: &str, show_time: bool, opt_level: OptLevel) -> bool {
-    let llvm = inkwell::context::Context::create();
-    let module = llvm.create_module(binary_name);
-
-    // O(program-size) even for a whole-program single module, so it gets its own bucket.
-    crate::timings::time_phase("Bitcode assembly", show_time, || {
-        for bitcode in modules {
-            let buffer = MemoryBuffer::create_from_memory_range(&bitcode, "buffer");
-            let new_module =
-                Module::parse_bitcode_from_buffer(&buffer, &llvm).expect("Failed to parse llvm module bitcode");
-            module.link_in_module(new_module).expect("Failed to link in llvm module");
-        }
-    });
-
+pub fn link(objects: Vec<Arc<Vec<u8>>>, binary_name: &str, show_time: bool, _opt_level: OptLevel) -> bool {
     let path = std::path::Path::new(binary_name).with_extension("o");
-    let target_machine = native_target_machine(opt_level);
 
-    // Typically the most expensive LLVM step (IR -> machine code).
     crate::timings::time_phase("Object emission", show_time, || {
-        target_machine.write_to_file(&module, FileType::Object, &path).unwrap();
+        let object = objects.first().expect("Expected at least one object to link");
+        std::fs::write(&path, object.as_slice()).expect("Failed to write object file");
     });
 
     crate::timings::time_phase("Linking", show_time, || {

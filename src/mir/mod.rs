@@ -965,22 +965,6 @@ impl Type {
             _ => false,
         }
     }
-
-    fn contains_generic(&self) -> bool {
-        match self {
-            Type::Primitive(_) => false,
-            Type::U32(_) => false,
-            Type::Tuple(fields) => fields.iter().any(Type::contains_generic),
-            Type::Union(variants) => variants.iter().any(Type::contains_generic),
-            Type::Function(function) => {
-                function.parameters.iter().any(Type::contains_generic)
-                    || function.environment.contains_generic()
-                    || function.return_type.contains_generic()
-            },
-            Type::Array { length, element } => length.contains_generic() || element.contains_generic(),
-            Type::Generic(_) => true,
-        }
-    }
 }
 
 /// Generics are represented as their index into their function's generic_count

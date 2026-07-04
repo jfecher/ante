@@ -1,4 +1,5 @@
 //! Various methods for validating the well-formedness of [Mir]
+#![cfg_attr(not(debug_assertions), allow(dead_code))]
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use rustc_hash::FxHashSet;
 

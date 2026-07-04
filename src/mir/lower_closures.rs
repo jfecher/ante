@@ -47,6 +47,7 @@ impl Mir {
         self
     }
 
+    #[cfg_attr(not(debug_assertions), allow(dead_code))]
     pub(crate) fn assert_no_closure_types(self) -> Self {
         for (id, definition) in &self.definitions {
             assert_no_closure_in_type(&definition.typ, &format!("definition {id} signature"));
@@ -382,6 +383,7 @@ fn lower_one_call_closure(
     block.instructions.splice(pos..pos, [extract_fn, extract_env]);
 }
 
+#[cfg_attr(not(debug_assertions), allow(dead_code))]
 fn assert_no_closure_in_type(typ: &Type, where_: &str) {
     match typ {
         Type::Primitive(_) | Type::Generic(_) | Type::U32(_) => {},
