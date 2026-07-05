@@ -31,14 +31,13 @@ pub fn find_project_main_file() -> Option<PathBuf> {
 pub fn find_project_name() -> Option<String> {
     let root = find_project_root()?;
     let contents = std::fs::read_to_string(root.join("ante.toml")).ok()?;
+    let manifest: Manifest = toml::from_str(&contents).ok()?;
+    manifest.name
+}
 
-    for line in contents.lines() {
-        if let Some(name) = line.strip_prefix("name = \"") {
-            return Some(name.trim_end_matches('"').to_string());
-        }
-    }
-
-    None
+#[derive(serde::Deserialize)]
+struct Manifest {
+    name: Option<String>,
 }
 // TODO:
 // - Error for cyclic dependencies

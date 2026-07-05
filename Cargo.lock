@@ -80,6 +80,7 @@ dependencies = [
  "rmp-serde",
  "rustc-hash",
  "serde",
+ "toml",
 ]
 
 [[package]]
