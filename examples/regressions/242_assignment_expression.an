@@ -1,0 +1,12 @@
+main () =
+    var x = 0
+    if true then x := 5
+    println x
+
+    if false then x := 100 else x := 42
+    println x
+
+// args: --delete-binary --no-color
+// expected stdout:
+// 5
+// 42

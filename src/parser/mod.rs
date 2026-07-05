@@ -2077,6 +2077,10 @@ impl<'tokens> Parser<'tokens> {
     }
 
     fn parse_statement(&mut self) -> Result<ExprId> {
+        self.parse_statement_trailing(0, false)
+    }
+
+    fn parse_statement_trailing(&mut self, min_prec: i8, ban_do: bool) -> Result<ExprId> {
         let start = self.current_token_span();
 
         if let Ok(definition) = self.try_(Self::parse_definition) {
@@ -2086,7 +2090,7 @@ impl<'tokens> Parser<'tokens> {
             return Ok(self.push_expr(expr, location));
         }
 
-        let expression = self.parse_expression()?;
+        let expression = self.parse_expression_trailing(min_prec, ban_do)?;
 
         // Try to parse a compound assignment (+=, -=, *=, /=, %=)
         if let Some((op, op_str)) = self.try_accept_compound_assign_op() {
@@ -2424,7 +2428,7 @@ impl<'tokens> Parser<'tokens> {
         match self.current_token() {
             Token::Indent => self.parse_block(),
             Token::Return => self.parse_return(min_prec, ban_do),
-            _ => self.parse_expression_trailing(min_prec, ban_do),
+            _ => self.parse_statement_trailing(min_prec, ban_do),
         }
     }
 
