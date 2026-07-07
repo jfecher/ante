@@ -12,6 +12,7 @@ pub mod diagnostics;
 pub mod files;
 pub mod incremental;
 mod iterator_extensions;
+pub mod manifest;
 pub mod paths;
 pub mod seq;
 pub mod timings;

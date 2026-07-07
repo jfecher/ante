@@ -74,6 +74,7 @@ mod diagnostics;
 mod files;
 mod incremental;
 mod iterator_extensions;
+mod manifest;
 mod paths;
 mod timings;
 mod vecmap;

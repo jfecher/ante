@@ -8,10 +8,7 @@ use clap::builder::OsStr;
 use rustc_hash::FxHashSet;
 
 use crate::{
-    files::read_file,
-    incremental::{Crate, Db, GetCrateGraph, SourceFile},
-    name_resolution::namespace::{CrateId, SourceFileId},
-    paths::stdlib_path,
+    files::read_file, incremental::{Crate, Db, GetCrateGraph, SourceFile}, manifest::Manifest, name_resolution::namespace::{CrateId, SourceFileId}, paths::stdlib_path
 };
 
 pub type CrateGraph = BTreeMap<CrateId, Crate>;
@@ -28,33 +25,17 @@ pub fn find_project_root() -> Option<PathBuf> {
         }
     }
 }
+
 pub fn find_project_main_file() -> Option<PathBuf> {
     let root = find_project_root()?;
     Some(root.join("src").join("main.an"))
 }
+
 pub fn find_project_name() -> Option<String> {
     let root = find_project_root()?;
-    read_manifest(&root)?.name
+    Manifest::read(&root)?.name
 }
 
-#[derive(serde::Deserialize, Default)]
-struct Manifest {
-    name: Option<String>,
-
-    /// Native libraries to link the final binary against, e.g. `link-lib = ["raylib"]`.
-    #[serde(rename = "link-lib")]
-    link_lib: Option<Vec<String>>,
-
-    /// Extra native library search directories, passed to the linker as `-L<path>`.
-    #[serde(rename = "link-search")]
-    link_search: Option<Vec<String>>,
-}
-
-/// Read and parse the `ante.toml` manifest in the given crate root directory, if present.
-fn read_manifest(root: &Path) -> Option<Manifest> {
-    let contents = std::fs::read_to_string(root.join("ante.toml")).ok()?;
-    toml::from_str(&contents).ok()
-}
 // TODO:
 // - Error for cyclic dependencies
 // - Handle crate versions
@@ -111,19 +92,13 @@ fn populate_local_crate_with_starting_files(
         source_files.insert(Arc::new(relative_path), id);
     }
 
-    // TODO: track name for local crate.
+    // TODO: apply name from manifest file if available to the local crate name
     let mut crate_ = Crate::new("Local".to_string(), local_crate_root.to_path_buf());
     crate_.source_files = source_files;
-    if let Some(manifest) = read_manifest(local_crate_root) {
-        apply_manifest(&mut crate_, &manifest);
+    if let Some(manifest) = Manifest::read(local_crate_root) {
+        manifest.apply(&mut crate_);
     }
     crates.insert(CrateId::LOCAL, crate_);
-}
-
-/// Copy a manifest's native-link settings onto a crate.
-fn apply_manifest(crate_: &mut Crate, manifest: &Manifest) {
-    crate_.link_libs = manifest.link_lib.clone().unwrap_or_default();
-    crate_.link_search_paths = manifest.link_search.clone().unwrap_or_default();
 }
 
 /// Set each CrateId -> Crate mapping as an input to the Db
@@ -250,14 +225,14 @@ fn find_crate_dependencies(crates: &mut CrateGraph, crate_id: CrateId) -> Vec<Cr
         for dependency in deps_folder.flatten() {
             let path = dependency.path();
             if path.is_dir() {
-                let manifest = read_manifest(&path).unwrap_or_default();
+                let manifest = Manifest::read(&path).unwrap_or_default();
                 let name =
                     manifest.name.clone().unwrap_or_else(|| path.file_name().unwrap().to_string_lossy().into_owned());
                 let id = new_crate_id(crates, &name, 0);
                 dependencies.push(id);
 
                 let mut dependency = Crate::new(name, path);
-                apply_manifest(&mut dependency, &manifest);
+                manifest.apply(&mut dependency);
                 crates.insert(id, dependency);
             }
         }
