@@ -297,6 +297,12 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                 return Some(Namespace::Module(id));
             }
 
+            // A subdirectory of `src` is a nested module (e.g. `Crate.Dir.Module`).
+            let directory = std::path::PathBuf::from(name);
+            if let Some(id) = crate_.source_files.get(&directory).copied() {
+                return Some(Namespace::Module(id));
+            }
+
             // Fall back to absolute path (crate_root/src/Vec.an)
             let absolute = crate_.path.join("src").join(&module_file);
             if let Some(id) = crate_.source_files.get(&absolute).copied() {

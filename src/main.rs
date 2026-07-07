@@ -127,16 +127,20 @@ fn compile(args: Cli) {
         Some(EmitTarget::MirTail) => display_mir(&mut compiler, args.emit_all, true),
         Some(EmitTarget::MirMono) => display_mir_mono(&mut compiler),
         Some(EmitTarget::Ir) => display_ir(&mut compiler, resolve_backend(args.backend), args.show_time, opt_level),
-        None => codegen_all(
-            &mut compiler,
-            resolve_backend(args.backend),
-            &program_name,
-            run,
-            args.delete_binary,
-            args.show_time,
-            opt_level,
-            args.bin.as_deref(),
-        ),
+        None => {
+            let link_options = build_link_options(&mut compiler, &args);
+            codegen_all(
+                &mut compiler,
+                resolve_backend(args.backend),
+                &program_name,
+                run,
+                args.delete_binary,
+                args.show_time,
+                opt_level,
+                args.bin.as_deref(),
+                &link_options,
+            )
+        },
     };
 
     let error_count = display_diagnostics(&diagnostics, &compiler, args.no_color);
@@ -381,11 +385,28 @@ fn display_ir(compiler: &mut Db, backend: cli::Backend, show_time: bool, opt_lev
     diagnostics
 }
 
+/// Collect the native libraries and search paths to link against from every crate's `ante.toml`
+/// and the CLI flags, preserving order.
+fn build_link_options(compiler: &mut Db, args: &Cli) -> codegen::LinkOptions {
+    let mut options = codegen::LinkOptions::default();
+
+    let crates = GetCrateGraph.get(compiler);
+    for crate_ in crates.values() {
+        options.search_paths.extend(crate_.link_search_paths.iter().cloned());
+        options.libs.extend(crate_.link_libs.iter().cloned());
+    }
+
+    options.search_paths.extend(args.link_search.iter().map(|p| p.to_string_lossy().into_owned()));
+    options.libs.extend(args.link_lib.iter().cloned());
+
+    options
+}
+
 /// Check the program, codegen the whole thing through the chosen backend, then optionally run it.
 #[allow(clippy::too_many_arguments)]
 fn codegen_all(
     compiler: &mut Db, backend: cli::Backend, program_name: &str, run: bool, delete_binary: bool, show_time: bool,
-    opt_level: OptLevel, bin: Option<&str>,
+    opt_level: OptLevel, bin: Option<&str>, link_options: &codegen::LinkOptions,
 ) -> BTreeSet<Diagnostic> {
     let (diagnostics, selected_main) = match check_and_select_main(compiler, show_time, bin) {
         Ok(ok) => ok,
@@ -400,11 +421,11 @@ fn codegen_all(
                 Some(result) => vec![result.object],
                 None => Vec::new(),
             };
-            codegen::llvm::link(modules, program_name, show_time, opt_level)
+            codegen::llvm::link(modules, program_name, show_time, opt_level, link_options)
         },
         cli::Backend::C => {
             let mir = mir::monomorphization::monomorphize(compiler);
-            codegen::c::codegen_c_for_mir(&mir, program_name, opt_level, Some(selected_main));
+            codegen::c::codegen_c_for_mir(&mir, program_name, opt_level, Some(selected_main), link_options);
             true
         },
         _ => unreachable!("resolve_backend only returns backends this compiler can run"),

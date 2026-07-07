@@ -381,7 +381,11 @@ impl Display for LexerError {
         use LexerError::*;
         match self {
             UnicodeWhitespaceCharacterInSignificantWhitespace(c) => {
-                write!(f, "Only spaces or tabs are allowed in significant whitespace, U+{:x} is not allowed here", *c as u32)
+                write!(
+                    f,
+                    "Only spaces or tabs are allowed in significant whitespace, U+{:x} is not allowed here",
+                    *c as u32
+                )
             },
             InvalidEscapeSequence(c) => write!(f, "Invalid character in escape sequence: '{}' (U+{:x})", c, *c as u32),
             InvalidIntegerSuffx => write!(

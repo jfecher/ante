@@ -40,7 +40,10 @@ use super::constant::{self, ConstantValue};
 /// Codegen the given Mir into a single C file, then invoke cc to create
 /// a object file and a binary. On success, the object file is removed, but
 /// the .c file is kept.
-pub fn codegen_c_for_mir(mir: &mir::Mir, binary_name: &str, opt_level: OptLevel, selected_main: Option<TopLevelName>) {
+pub fn codegen_c_for_mir(
+    mir: &mir::Mir, binary_name: &str, opt_level: OptLevel, selected_main: Option<TopLevelName>,
+    link_options: &super::LinkOptions,
+) {
     // Create the C file
     let c_file = build_c_file(mir, selected_main);
     let c_file_name = format!("{binary_name}.c");
@@ -60,7 +63,7 @@ pub fn codegen_c_for_mir(mir: &mir::Mir, binary_name: &str, opt_level: OptLevel,
     // And link it into a binary
     let status = child.wait().unwrap();
     if status.success() {
-        super::link_with_cc(&o_file_name, binary_name);
+        super::link_with_cc(&o_file_name, binary_name, link_options);
         std::fs::remove_file(&c_file_name).unwrap();
     }
 }

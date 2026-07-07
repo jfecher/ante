@@ -77,6 +77,14 @@ pub struct Cli {
     /// Path to the file containing the `main` function to use as an entry-point
     #[arg(long, value_name = "NAME")]
     pub bin: Option<String>,
+
+    /// Link the resulting binary against the given native library. May be repeated.
+    #[arg(long = "link-lib", short = 'l', value_name = "LIB")]
+    pub link_lib: Vec<String>,
+
+    /// Add a directory to the native library search path when linking. May be repeated.
+    #[arg(long = "link-search", short = 'L', value_name = "PATH", value_hint = ValueHint::DirPath)]
+    pub link_search: Vec<PathBuf>,
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone, ValueEnum)]

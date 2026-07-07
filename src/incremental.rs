@@ -150,11 +150,24 @@ pub struct Crate {
     /// The path buf these are keyed on does not include the `src` directory.
     /// For example, a module `MyCrate.Foo.Bar` would correspond to the path `foo/bar.an`
     pub source_files: BTreeMap<Arc<PathBuf>, SourceFileId>,
+
+    /// Native libraries to link against, from this crate's `ante.toml` `link-lib` field.
+    pub link_libs: Vec<String>,
+
+    /// Native library search paths, from this crate's `ante.toml` `link-search` field.
+    pub link_search_paths: Vec<String>,
 }
 
 impl Crate {
     pub fn new(name: String, path: PathBuf) -> Crate {
-        Crate { name, path, dependencies: Vec::new(), source_files: BTreeMap::new() }
+        Crate {
+            name,
+            path,
+            dependencies: Vec::new(),
+            source_files: BTreeMap::new(),
+            link_libs: Vec::new(),
+            link_search_paths: Vec::new(),
+        }
     }
 }
 

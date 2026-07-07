@@ -85,9 +85,7 @@ pub(crate) fn codegen_llvm_for_mir(
     }
 
     let object = crate::timings::time_phase("Object emission", show_time, || {
-        target_machine
-            .write_to_memory_buffer(&module.module, FileType::Object)
-            .expect("Failed to emit object code")
+        target_machine.write_to_memory_buffer(&module.module, FileType::Object).expect("Failed to emit object code")
     });
     let object = Arc::new(object.as_slice().to_vec());
 
@@ -96,7 +94,10 @@ pub(crate) fn codegen_llvm_for_mir(
 
 /// Link the given list of object code blobs into an executable.
 /// Returns `true` if linking succeeded, `false` otherwise.
-pub fn link(objects: Vec<Arc<Vec<u8>>>, binary_name: &str, show_time: bool, _opt_level: OptLevel) -> bool {
+pub fn link(
+    objects: Vec<Arc<Vec<u8>>>, binary_name: &str, show_time: bool, _opt_level: OptLevel,
+    link_options: &super::LinkOptions,
+) -> bool {
     let path = std::path::Path::new(binary_name).with_extension("o");
 
     crate::timings::time_phase("Object emission", show_time, || {
@@ -105,7 +106,7 @@ pub fn link(objects: Vec<Arc<Vec<u8>>>, binary_name: &str, show_time: bool, _opt
     });
 
     crate::timings::time_phase("Linking", show_time, || {
-        super::link_with_cc(path.to_string_lossy().as_ref(), binary_name)
+        super::link_with_cc(path.to_string_lossy().as_ref(), binary_name, link_options)
     })
 }
 

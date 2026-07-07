@@ -97,11 +97,7 @@ where
         .lower_closures();
 
     #[cfg(debug_assertions)]
-    let mir = mir
-        .assert_fully_linked()
-        .assert_type_checks()
-        .assert_no_unions_or_generics()
-        .assert_no_closure_types();
+    let mir = mir.assert_fully_linked().assert_type_checks().assert_no_unions_or_generics().assert_no_closure_types();
 
     mir
 }

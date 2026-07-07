@@ -392,8 +392,9 @@ impl Type {
             },
             Type::Application(constructor, args) => {
                 let new_constructor = constructor.substitute_opt(bindings_to_substitute, bindings_in_scope);
-                let new_args =
-                    Self::follow_all_each(&args[..], |arg| arg.substitute_opt(bindings_to_substitute, bindings_in_scope));
+                let new_args = Self::follow_all_each(&args[..], |arg| {
+                    arg.substitute_opt(bindings_to_substitute, bindings_in_scope)
+                });
                 if new_constructor.is_none() && new_args.is_none() && !self_is_var {
                     return None;
                 }

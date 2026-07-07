@@ -39,12 +39,8 @@ pub fn visible_definitions_impl(context: &VisibleDefinitions, db: &DbHandle) -> 
         // Ignore errors from imported files. We want to only collect errors
         // from this file. Otherwise we'll duplicate errors.
         let Some(import_file_id) = get_file_id(&import.crate_name, &import.module_path, db) else {
-            // When module_path is empty, items may refer to submodules (e.g. `import Std.Vec`)
-            if import.module_path.as_os_str().is_empty() {
-                resolve_submodule_imports(import, &mut visible, db);
-            } else {
-                push_no_such_file_error(import, db);
-            }
+            // The final segment may name a submodule rather than an item, e.g. `import Std.Vec`
+            resolve_submodule_imports(import, &mut visible, db);
             continue;
         };
         let exported = ExportedDefinitions(import_file_id).get(db);
@@ -121,8 +117,7 @@ pub fn visible_definitions_impl(context: &VisibleDefinitions, db: &DbHandle) -> 
     Arc::new(visible)
 }
 
-fn push_no_such_file_error(import: &Import, db: &DbHandle) {
-    let location = import.location.clone();
+fn push_no_such_file_error(import: &Import, location: Location, db: &DbHandle) {
     let module_name = import.module_path.clone();
     let crate_name = import.crate_name.clone();
     db.accumulate(Diagnostic::UnknownImportFile { crate_name, module_name, location })
@@ -146,19 +141,18 @@ fn get_file_id(target_crate_name: &String, module_path: &PathBuf, db: &DbHandle)
 fn resolve_submodule_imports(import: &Import, visible: &mut VisibleDefinitionsResult, db: &DbHandle) {
     let crates = GetCrateGraph.get(db);
     let Some(crate_) = crates.values().find(|c| c.name == import.crate_name) else {
-        push_no_such_file_error(import, db);
+        push_no_such_file_error(import, import.location.clone(), db);
         return;
     };
 
     for (item_name, item_location) in &import.items {
-        let module_file = PathBuf::from(item_name.as_str()).with_extension("an");
-        if let Some(&file_id) = crate_.source_files.get(&module_file) {
+        let child = import.module_path.join(item_name.as_str());
+        let as_file = child.with_extension("an");
+        let submodule = crate_.source_files.get(&as_file).or_else(|| crate_.source_files.get(&child));
+        if let Some(&file_id) = submodule {
             visible.imported_modules.insert(item_name.clone(), file_id);
         } else {
-            let location = item_location.clone();
-            let module_name = import.module_path.clone();
-            let crate_name = import.crate_name.clone();
-            db.accumulate(Diagnostic::UnknownImportFile { crate_name, module_name, location });
+            push_no_such_file_error(import, item_location.clone(), db);
         }
     }
 }

@@ -1,4 +1,8 @@
-use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use clap::builder::OsStr;
 use rustc_hash::FxHashSet;
@@ -30,14 +34,26 @@ pub fn find_project_main_file() -> Option<PathBuf> {
 }
 pub fn find_project_name() -> Option<String> {
     let root = find_project_root()?;
-    let contents = std::fs::read_to_string(root.join("ante.toml")).ok()?;
-    let manifest: Manifest = toml::from_str(&contents).ok()?;
-    manifest.name
+    read_manifest(&root)?.name
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Default)]
 struct Manifest {
     name: Option<String>,
+
+    /// Native libraries to link the final binary against, e.g. `link-lib = ["raylib"]`.
+    #[serde(rename = "link-lib")]
+    link_lib: Option<Vec<String>>,
+
+    /// Extra native library search directories, passed to the linker as `-L<path>`.
+    #[serde(rename = "link-search")]
+    link_search: Option<Vec<String>>,
+}
+
+/// Read and parse the `ante.toml` manifest in the given crate root directory, if present.
+fn read_manifest(root: &Path) -> Option<Manifest> {
+    let contents = std::fs::read_to_string(root.join("ante.toml")).ok()?;
+    toml::from_str(&contents).ok()
 }
 // TODO:
 // - Error for cyclic dependencies
@@ -96,13 +112,18 @@ fn populate_local_crate_with_starting_files(
     }
 
     // TODO: track name for local crate.
-    let crate_ = Crate {
-        name: "Local".to_string(),
-        path: local_crate_root.to_path_buf(),
-        dependencies: Vec::new(),
-        source_files,
-    };
+    let mut crate_ = Crate::new("Local".to_string(), local_crate_root.to_path_buf());
+    crate_.source_files = source_files;
+    if let Some(manifest) = read_manifest(local_crate_root) {
+        apply_manifest(&mut crate_, &manifest);
+    }
     crates.insert(CrateId::LOCAL, crate_);
+}
+
+/// Copy a manifest's native-link settings onto a crate.
+fn apply_manifest(crate_: &mut Crate, manifest: &Manifest) {
+    crate_.link_libs = manifest.link_lib.clone().unwrap_or_default();
+    crate_.link_search_paths = manifest.link_search.clone().unwrap_or_default();
 }
 
 /// Set each CrateId -> Crate mapping as an input to the Db
@@ -149,9 +170,48 @@ fn add_source_files_of_crate(compiler: &mut Db, crates: &mut CrateGraph, crate_i
         }
     }
 
+    register_directory_modules(compiler, crate_id, &mut source_files);
+
     // `extend` instead of setting it in case this is LOCAL_CRATE and `populate_local_crate_with_starting_files`
     // populated it with an initial set of files manually specified by the user.
     crates.get_mut(&crate_id).unwrap().source_files.extend(source_files);
+}
+
+/// Register a synthetic module for every subdirectory so nested paths like `Crate.Dir.Module`
+/// resolve. Each directory module holds a `submodules` map of its direct children.
+fn register_directory_modules(
+    compiler: &mut Db, crate_id: CrateId, source_files: &mut BTreeMap<Arc<PathBuf>, SourceFileId>,
+) {
+    // Map each directory (relative to `src`, empty path = crate root) to its direct children.
+    let mut dir_children: BTreeMap<PathBuf, BTreeMap<String, SourceFileId>> = BTreeMap::new();
+
+    let files: Vec<(PathBuf, SourceFileId)> = source_files.iter().map(|(path, id)| ((**path).clone(), *id)).collect();
+
+    for (path, id) in &files {
+        let name = path.file_stem().unwrap().to_string_lossy().into_owned();
+        let mut dir = path.parent().map(Path::to_path_buf).unwrap_or_default();
+        dir_children.entry(dir.clone()).or_default().insert(name, *id);
+
+        // Chain each ancestor directory up to its own parent as a submodule.
+        while !dir.as_os_str().is_empty() {
+            let parent = dir.parent().map(Path::to_path_buf).unwrap_or_default();
+            let dir_name = dir.file_name().unwrap().to_string_lossy().into_owned();
+            let dir_id = SourceFileId::new(crate_id, &dir);
+            dir_children.entry(parent.clone()).or_default().insert(dir_name, dir_id);
+            dir = parent;
+        }
+    }
+
+    for (dir, children) in dir_children {
+        if dir.as_os_str().is_empty() {
+            continue; // crate root is resolved specially, it has no backing SourceFile
+        }
+        let dir_id = SourceFileId::new(crate_id, &dir);
+        let mut source_file = SourceFile::new(Arc::new(dir.clone()), String::new());
+        source_file.submodules = children;
+        dir_id.set(compiler, Arc::new(source_file));
+        source_files.insert(Arc::new(dir), dir_id);
+    }
 }
 
 fn read_file_data(file: PathBuf) -> SourceFile {
@@ -190,11 +250,15 @@ fn find_crate_dependencies(crates: &mut CrateGraph, crate_id: CrateId) -> Vec<Cr
         for dependency in deps_folder.flatten() {
             let path = dependency.path();
             if path.is_dir() {
-                let name = path.file_name().unwrap().to_string_lossy().into_owned();
+                let manifest = read_manifest(&path).unwrap_or_default();
+                let name =
+                    manifest.name.clone().unwrap_or_else(|| path.file_name().unwrap().to_string_lossy().into_owned());
                 let id = new_crate_id(crates, &name, 0);
                 dependencies.push(id);
 
-                crates.insert(id, Crate::new(name, path));
+                let mut dependency = Crate::new(name, path);
+                apply_manifest(&mut dependency, &manifest);
+                crates.insert(id, dependency);
             }
         }
     }
