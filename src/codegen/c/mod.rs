@@ -89,7 +89,7 @@ struct TupleCache {
 }
 
 /// Builds a C File for the given [mir::Mir] in-memory. Returns the file contents
-fn build_c_file(mir: &mir::Mir, selected_main: Option<TopLevelName>) -> String {
+pub(crate) fn build_c_file(mir: &mir::Mir, selected_main: Option<TopLevelName>) -> String {
     // Split Mir definitions into N groups and compile in parallel.
     // Each worker `i` compiles definitions with id `Id % N = i`
     let n = rayon::current_num_threads() as u32;

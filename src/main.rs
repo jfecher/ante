@@ -53,7 +53,11 @@ use std::{
 #[cfg(feature = "llvm")]
 use crate::codegen::llvm::codegen_llvm;
 use crate::{
-    cli::{EmitTarget, OptLevel}, diagnostics::{collect_all_diagnostics, DiagnosticKind}, files::{make_compiler, write_metadata}, incremental::{TargetPointerSize, TypeCheck, ValidateExports}, paths::binary_name
+    cli::{EmitTarget, OptLevel},
+    diagnostics::{DiagnosticKind, collect_all_diagnostics},
+    files::{make_compiler, write_metadata},
+    incremental::{TargetPointerSize, TypeCheck, ValidateExports},
+    paths::binary_name,
 };
 
 mod codegen;
@@ -131,7 +135,7 @@ fn compile(args: Cli) {
         Some(EmitTarget::Mir) => display_mir(&mut compiler, args.emit_all, false),
         Some(EmitTarget::MirTail) => display_mir(&mut compiler, args.emit_all, true),
         Some(EmitTarget::MirMono) => display_mir_mono(&mut compiler),
-        Some(EmitTarget::Ir) => display_ir(&mut compiler, args.show_time, opt_level),
+        Some(EmitTarget::Ir) => display_ir(&mut compiler, resolve_backend(args.backend), args.show_time, opt_level),
         None => {
             let bin = args.bin.as_deref();
             match resolve_backend(args.backend) {
@@ -398,24 +402,24 @@ fn display_mir_mono(compiler: &mut Db) -> BTreeSet<Diagnostic> {
     diagnostics
 }
 
-fn display_ir(compiler: &mut Db, show_time: bool, opt_level: OptLevel) -> BTreeSet<Diagnostic> {
-    #[cfg(feature = "llvm")]
-    {
-        let diagnostics = time_phase("Diagnostics", show_time, || collect_all_diagnostics(compiler));
-        if classify_diagnostics(&diagnostics).0 == 0 {
-            codegen_llvm(compiler, show_time, opt_level, true, None);
+/// Emit the backend IR to stdout: Either llvm-ir or C depending on the backend.
+fn display_ir(compiler: &mut Db, backend: cli::Backend, show_time: bool, opt_level: OptLevel) -> BTreeSet<Diagnostic> {
+    let diagnostics = time_phase("Diagnostics", show_time, || collect_all_diagnostics(compiler));
+    if classify_diagnostics(&diagnostics).0 == 0 {
+        match backend {
+            #[cfg(feature = "llvm")]
+            cli::Backend::Llvm => {
+                codegen_llvm(compiler, show_time, opt_level, true, None);
+            },
+            cli::Backend::C => {
+                let _ = opt_level;
+                let mir = mir::monomorphization::monomorphize(compiler);
+                print!("{}", codegen::c::build_c_file(&mir, None));
+            },
+            _ => unreachable!("resolve_backend only returns backends this compiler can run"),
         }
-        diagnostics
     }
-    #[cfg(not(feature = "llvm"))]
-    {
-        let _ = (compiler, show_time, opt_level);
-        eprintln!(
-            "Emitting IR requires the llvm backend, but this compiler was built without \
-            the 'llvm' feature. Rebuild with `cargo build --features llvm` to enable it."
-        );
-        std::process::exit(1);
-    }
+    diagnostics
 }
 
 /// Codegen everything, linking together each separate llvm module
