@@ -95,15 +95,18 @@ fn main() {
 }
 
 fn compile(args: Cli) {
-    let (run, files, program_name) = match &args.command {
+    let (run, files, is_project) = match &args.command {
         Some(cmd) => (
             matches!(cmd, Commands::Run),
             crate::find_files::find_project_main_file().map(|path| vec![path]).unwrap_or_default(),
-            crate::find_files::find_project_name().unwrap_or_else(|| "a.out".to_string()),
+            true,
         ),
-        None => (!args.build, args.files.clone(), files_to_program_name(&args.files)),
+        None => (!args.build, args.files.clone(), false),
     };
     let (mut compiler, metadata_file) = make_compiler(&files, args.incremental);
+
+    let program_name =
+        if is_project { project_program_name(&mut compiler) } else { files_to_program_name(&args.files) };
 
     // TODO: Pointer size should be configurable depending on the target machine
     TargetPointerSize.set(&mut compiler, 8);
@@ -463,6 +466,17 @@ fn run_binary(program_name: &str, delete_binary: bool) {
 fn files_to_program_name(files: &[PathBuf]) -> String {
     let name = files.first().map_or_else(|| "a.out".into(), |file| file.with_extension(""));
     name.to_string_lossy().into_owned()
+}
+
+/// The output binary name for a project build
+fn project_program_name(compiler: &mut Db) -> String {
+    let crates = GetCrateGraph.get(compiler);
+    let name = &crates[&CrateId::LOCAL].name;
+    if name == crate::find_files::DEFAULT_LOCAL_CRATE_NAME {
+        "a.out".to_string()
+    } else {
+        name.clone()
+    }
 }
 
 /// Choose which `main` function to compile into the binary's entry point.

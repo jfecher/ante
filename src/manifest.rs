@@ -22,9 +22,12 @@ impl Manifest {
         toml::from_str(&contents).ok()
     }
 
-    /// Copy a manifest's native-link settings onto a crate.
-    pub fn apply(&self, crate_: &mut Crate) {
-        crate_.link_libs = self.link_lib.clone().unwrap_or_default();
-        crate_.link_search_paths = self.link_search.clone().unwrap_or_default();
+    /// Applies this manifest's name & link options onto a crate
+    pub fn apply(self, crate_: &mut Crate) {
+        if let Some(name) = self.name {
+            crate_.name = name;
+        }
+        crate_.link_libs = self.link_lib.unwrap_or_default();
+        crate_.link_search_paths = self.link_search.unwrap_or_default();
     }
 }

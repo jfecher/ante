@@ -22,10 +22,6 @@ pub struct Cli {
     #[arg(value_hint = ValueHint::FilePath)]
     pub files: Vec<PathBuf>,
 
-    /// Print out the input file annotated with inferred lifetimes of heap allocations
-    #[arg(long, short = 'L')]
-    pub show_lifetimes: bool,
-
     /// Check the file for errors without compiling
     #[arg(long, short, group = "compile_mode")]
     pub check: bool,

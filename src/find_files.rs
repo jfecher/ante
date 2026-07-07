@@ -12,6 +12,10 @@ use crate::{
 };
 
 pub type CrateGraph = BTreeMap<CrateId, Crate>;
+
+/// Default name of the local crate when its `ante.toml` has no `name` field.
+pub const DEFAULT_LOCAL_CRATE_NAME: &str = "Local";
+
 pub fn find_project_root() -> Option<PathBuf> {
     let mut current_dir = std::env::current_dir().ok()?;
 
@@ -29,11 +33,6 @@ pub fn find_project_root() -> Option<PathBuf> {
 pub fn find_project_main_file() -> Option<PathBuf> {
     let root = find_project_root()?;
     Some(root.join("src").join("main.an"))
-}
-
-pub fn find_project_name() -> Option<String> {
-    let root = find_project_root()?;
-    Manifest::read(&root)?.name
 }
 
 // TODO:
@@ -92,8 +91,7 @@ fn populate_local_crate_with_starting_files(
         source_files.insert(Arc::new(relative_path), id);
     }
 
-    // TODO: apply name from manifest file if available to the local crate name
-    let mut crate_ = Crate::new("Local".to_string(), local_crate_root.to_path_buf());
+    let mut crate_ = Crate::new(DEFAULT_LOCAL_CRATE_NAME.to_string(), local_crate_root.to_path_buf());
     crate_.source_files = source_files;
     if let Some(manifest) = Manifest::read(local_crate_root) {
         manifest.apply(&mut crate_);
@@ -226,13 +224,14 @@ fn find_crate_dependencies(crates: &mut CrateGraph, crate_id: CrateId) -> Vec<Cr
             let path = dependency.path();
             if path.is_dir() {
                 let manifest = Manifest::read(&path).unwrap_or_default();
-                let name =
-                    manifest.name.clone().unwrap_or_else(|| path.file_name().unwrap().to_string_lossy().into_owned());
-                let id = new_crate_id(crates, &name, 0);
-                dependencies.push(id);
+                let fallback_name = path.file_name().unwrap().to_string_lossy().into_owned();
 
-                let mut dependency = Crate::new(name, path);
+                // `apply` overrides the fallback directory name with the manifest name if present.
+                let mut dependency = Crate::new(fallback_name, path);
                 manifest.apply(&mut dependency);
+
+                let id = new_crate_id(crates, &dependency.name, 0);
+                dependencies.push(id);
                 crates.insert(id, dependency);
             }
         }
