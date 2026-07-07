@@ -94,22 +94,13 @@ fn main() {
 }
 
 fn compile(args: Cli) {
-    let run = match &args.command {
-        Some(Commands::Build) => false,
-        Some(Commands::Run) => true,
-        None => !args.build,
-    };
-    let files = match &args.command {
-        Some(Commands::Build) | Some(Commands::Run) => {
-            crate::find_files::find_project_main_file().map(|path| vec![path]).unwrap_or_default()
-        },
-        None => args.files.clone(),
-    };
-    let program_name = match &args.command {
-        Some(Commands::Build) | Some(Commands::Run) => {
-            crate::find_files::find_project_name().unwrap_or_else(|| "a.out".to_string())
-        },
-        None => files_to_program_name(&files),
+    let (run, files, program_name) = match &args.command {
+        Some(cmd) => (
+            matches!(cmd, Commands::Run),
+            crate::find_files::find_project_main_file().map(|path| vec![path]).unwrap_or_default(),
+            crate::find_files::find_project_name().unwrap_or_else(|| "a.out".to_string()),
+        ),
+        None => (!args.build, args.files.clone(), files_to_program_name(&args.files)),
     };
     let (mut compiler, metadata_file) = make_compiler(&files, args.incremental);
 
@@ -136,25 +127,19 @@ fn compile(args: Cli) {
         Some(EmitTarget::MirTail) => display_mir(&mut compiler, args.emit_all, true),
         Some(EmitTarget::MirMono) => display_mir_mono(&mut compiler),
         Some(EmitTarget::Ir) => display_ir(&mut compiler, resolve_backend(args.backend), args.show_time, opt_level),
-        None => {
-            let bin = args.bin.as_deref();
-            match resolve_backend(args.backend) {
-                #[rustfmt::skip]
-                #[cfg(feature = "llvm")]
-                cli::Backend::Llvm => {
-                    llvm_codegen_all(&mut compiler, &program_name, run, args.delete_binary, args.show_time, opt_level, bin)
-                },
-                #[rustfmt::skip]
-                cli::Backend::C => {
-                    c_codegen_all(&mut compiler, &program_name, run, args.delete_binary, args.show_time, opt_level, bin)
-                },
-                _ => unreachable!("resolve_backend only returns backends this compiler can run"),
-            }
-        },
+        None => codegen_all(
+            &mut compiler,
+            resolve_backend(args.backend),
+            &program_name,
+            run,
+            args.delete_binary,
+            args.show_time,
+            opt_level,
+            args.bin.as_deref(),
+        ),
     };
 
-    let (error_count, _) = classify_diagnostics(&diagnostics);
-    display_diagnostics(&diagnostics, &compiler, args.no_color);
+    let error_count = display_diagnostics(&diagnostics, &compiler, args.no_color);
 
     if let Some(metadata_file) = metadata_file {
         let result = time_phase("Write metadata", args.show_time, || write_metadata(&compiler, &metadata_file));
@@ -257,28 +242,24 @@ fn classify_diagnostics(diagnostics: &BTreeSet<Diagnostic>) -> (usize, usize) {
     (error_count, warning_count)
 }
 
-fn display_diagnostics(diagnostics: &BTreeSet<Diagnostic>, compiler: &Db, no_color: bool) {
+/// Print each diagnostic followed by a summary line, returning the error count.
+fn display_diagnostics(diagnostics: &BTreeSet<Diagnostic>, compiler: &Db, no_color: bool) -> usize {
     let (error_count, warning_count) = classify_diagnostics(diagnostics);
-    for diganostic in diagnostics {
-        eprintln!("{}", diganostic.display(!no_color, compiler));
+    for diagnostic in diagnostics {
+        eprintln!("{}", diagnostic.display(!no_color, compiler));
     }
+
+    let warnings = format!("{warning_count} warning{}", if warning_count == 1 { "" } else { "s" });
+    let warnings = if no_color || warning_count == 0 { warnings.normal() } else { warnings.yellow() };
 
     if error_count != 0 {
-        let error_s = if error_count == 1 { "" } else { "s" };
-        let errors = format!("{error_count} error{error_s}");
-        let errors = if no_color { errors.into() } else { errors.red() };
-
-        let warning_s = if warning_count == 1 { "" } else { "s" };
-        let warnings = format!("{warning_count} warning{warning_s}");
-        let warnings = if no_color || warning_count == 0 { warnings.into() } else { warnings.yellow() };
-
+        let errors = format!("{error_count} error{}", if error_count == 1 { "" } else { "s" });
+        let errors = if no_color { errors.normal() } else { errors.red() };
         eprintln!("Found {errors} and {warnings}");
     } else if warning_count != 0 {
-        let warning_s = if warning_count == 1 { "" } else { "s" };
-        let warnings = format!("{warning_count} warning{warning_s}");
-        let warnings = if no_color { warnings.into() } else { warnings.yellow() };
         eprintln!("Compiled with {warnings}");
     }
+    error_count
 }
 
 fn display_tokens(compiler: &Db) {
@@ -294,102 +275,80 @@ fn display_tokens(compiler: &Db) {
     }
 }
 
-fn display_parse_tree(compiler: &mut Db, emit_all: bool) -> BTreeSet<Diagnostic> {
+/// Iterate the source files of the local crate (or all crates when `emit_all`), invoking
+/// `f` for each and collecting the diagnostics it returns.
+fn for_each_emitted_file(
+    compiler: &mut Db, emit_all: bool, mut f: impl FnMut(&mut Db, SourceFileId) -> BTreeSet<Diagnostic>,
+) -> BTreeSet<Diagnostic> {
     let crates = GetCrateGraph.get(compiler);
     let mut diagnostics = BTreeSet::new();
-
     for (crate_id, crate_) in crates.iter() {
         if emit_all || *crate_id == CrateId::LOCAL {
             for file in crate_.source_files.values() {
-                let result = Parse(*file).get(compiler);
-                println!("{}", result.cst.display(&result.top_level_data));
-
-                let parse_diagnostics = compiler.get_accumulated_uncached(Parse(*file));
-                diagnostics.extend(parse_diagnostics);
+                diagnostics.extend(f(compiler, *file));
             }
         }
     }
     diagnostics
+}
+
+fn display_parse_tree(compiler: &mut Db, emit_all: bool) -> BTreeSet<Diagnostic> {
+    for_each_emitted_file(compiler, emit_all, |compiler, file| {
+        let result = Parse(file).get(compiler);
+        println!("{}", result.cst.display(&result.top_level_data));
+        compiler.get_accumulated_uncached(Parse(file))
+    })
 }
 
 fn display_name_resolution(compiler: &mut Db, emit_all: bool) -> BTreeSet<Diagnostic> {
-    let crates = GetCrateGraph.get(compiler);
-    let mut diagnostics = BTreeSet::new();
-
-    for (crate_id, crate_) in crates.iter() {
-        if emit_all || *crate_id == CrateId::LOCAL {
-            for file in crate_.source_files.values() {
-                let parse = Parse(*file).get(compiler);
-
-                for item in &parse.cst.top_level_items {
-                    let resolve_diagnostics = compiler.get_accumulated_uncached(Resolve(item.id));
-                    diagnostics.extend(resolve_diagnostics);
-                }
-
-                let export_diagnostics = compiler.get_accumulated_uncached(ValidateExports(*file));
-                diagnostics.extend(export_diagnostics);
-
-                println!("{}", parse.cst.display_resolved(&parse.top_level_data, compiler))
-            }
+    for_each_emitted_file(compiler, emit_all, |compiler, file| {
+        let parse = Parse(file).get(compiler);
+        let mut diagnostics = BTreeSet::new();
+        for item in &parse.cst.top_level_items {
+            diagnostics.extend(compiler.get_accumulated_uncached(Resolve(item.id)));
         }
-    }
-    diagnostics
+        diagnostics.extend(compiler.get_accumulated_uncached(ValidateExports(file)));
+        println!("{}", parse.cst.display_resolved(&parse.top_level_data, compiler));
+        diagnostics
+    })
 }
 
 fn display_type_checking(compiler: &mut Db, show_types: bool, emit_all: bool) -> BTreeSet<Diagnostic> {
-    let crates = GetCrateGraph.get(compiler);
-    let mut diagnostics = BTreeSet::new();
-
-    for (crate_id, crate_) in crates.iter() {
-        if emit_all || *crate_id == CrateId::LOCAL {
-            for file in crate_.source_files.values() {
-                let parse = Parse(*file).get(compiler);
-
-                for item in &parse.cst.top_level_items {
-                    let more_diagnostics = compiler.get_accumulated_uncached(TypeCheck(item.id));
-                    diagnostics.extend(more_diagnostics);
-                }
-
-                if show_types {
-                    println!("{}", parse.cst.display_typed(&parse.top_level_data, compiler))
-                }
-            }
+    for_each_emitted_file(compiler, emit_all, |compiler, file| {
+        let parse = Parse(file).get(compiler);
+        let mut diagnostics = BTreeSet::new();
+        for item in &parse.cst.top_level_items {
+            diagnostics.extend(compiler.get_accumulated_uncached(TypeCheck(item.id)));
         }
-    }
-    diagnostics
+        if show_types {
+            println!("{}", parse.cst.display_typed(&parse.top_level_data, compiler));
+        }
+        diagnostics
+    })
 }
 
 fn display_mir(compiler: &mut Db, emit_all: bool, optimize_tail_calls: bool) -> BTreeSet<Diagnostic> {
-    let crates = GetCrateGraph.get(compiler);
-    let mut diagnostics = BTreeSet::new();
+    for_each_emitted_file(compiler, emit_all, |compiler, file| {
+        let parse = Parse(file).get(compiler);
+        let mut diagnostics = BTreeSet::new();
+        for item in &parse.cst.top_level_items {
+            let item_diagnostics = compiler.get_accumulated_uncached(TypeCheck(item.id));
+            let item_has_errors = item_diagnostics.iter().any(|d| matches!(d.kind(), DiagnosticKind::Error));
+            diagnostics.extend(item_diagnostics);
 
-    for (crate_id, crate_) in crates.iter() {
-        if emit_all || *crate_id == CrateId::LOCAL {
-            for file in crate_.source_files.values() {
-                let parse = Parse(*file).get(compiler);
+            if item_has_errors {
+                continue;
+            }
 
-                for item in &parse.cst.top_level_items {
-                    let item_diagnostics = compiler.get_accumulated_uncached(TypeCheck(item.id));
-                    let item_has_errors = item_diagnostics.iter().any(|d| matches!(d.kind(), DiagnosticKind::Error));
-                    diagnostics.extend(item_diagnostics);
-
-                    if item_has_errors {
-                        continue;
-                    }
-
-                    let mir = mir::builder::build_initial_mir_with_shared_map(compiler, item.id);
-                    if let Some(mut mir) = mir {
-                        if optimize_tail_calls {
-                            mir = mir.optimize_tail_resume().optimize_abort_handlers().lower_effects();
-                        }
-
-                        print!("{mir}");
-                    }
+            if let Some(mut mir) = mir::builder::build_initial_mir_with_shared_map(compiler, item.id) {
+                if optimize_tail_calls {
+                    mir = mir.optimize_tail_resume().optimize_abort_handlers().lower_effects();
                 }
+                print!("{mir}");
             }
         }
-    }
-    diagnostics
+        diagnostics
+    })
 }
 
 fn display_mir_mono(compiler: &mut Db) -> BTreeSet<Diagnostic> {
@@ -422,43 +381,36 @@ fn display_ir(compiler: &mut Db, backend: cli::Backend, show_time: bool, opt_lev
     diagnostics
 }
 
-/// Codegen everything, linking together each separate llvm module
-#[cfg(feature = "llvm")]
-fn llvm_codegen_all(
-    compiler: &mut Db, program_name: &str, run: bool, delete_binary: bool, show_time: bool, opt_level: OptLevel,
-    bin: Option<&str>,
+/// Check the program, codegen the whole thing through the chosen backend, then optionally run it.
+#[allow(clippy::too_many_arguments)]
+fn codegen_all(
+    compiler: &mut Db, backend: cli::Backend, program_name: &str, run: bool, delete_binary: bool, show_time: bool,
+    opt_level: OptLevel, bin: Option<&str>,
 ) -> BTreeSet<Diagnostic> {
     let (diagnostics, selected_main) = match check_and_select_main(compiler, show_time, bin) {
         Ok(ok) => ok,
         Err(diagnostics) => return diagnostics,
     };
 
-    // Each module is currently the whole program (monomorphization isn't yet incremental).
-    let modules = match codegen_llvm(compiler, show_time, opt_level, false, Some(selected_main)) {
-        Some(result) => vec![result.object],
-        None => Vec::new(),
+    let ready = match backend {
+        #[cfg(feature = "llvm")]
+        cli::Backend::Llvm => {
+            // Each module is currently the whole program (monomorphization isn't yet incremental).
+            let modules = match codegen_llvm(compiler, show_time, opt_level, false, Some(selected_main)) {
+                Some(result) => vec![result.object],
+                None => Vec::new(),
+            };
+            codegen::llvm::link(modules, program_name, show_time, opt_level)
+        },
+        cli::Backend::C => {
+            let mir = mir::monomorphization::monomorphize(compiler);
+            codegen::c::codegen_c_for_mir(&mir, program_name, opt_level, Some(selected_main));
+            true
+        },
+        _ => unreachable!("resolve_backend only returns backends this compiler can run"),
     };
 
-    if codegen::llvm::link(modules, program_name, show_time, opt_level) && run {
-        run_binary(program_name, delete_binary);
-    }
-    diagnostics
-}
-
-/// Monomorphize and codegen the whole program through the C backend, then optionally run it.
-fn c_codegen_all(
-    compiler: &mut Db, program_name: &str, run: bool, delete_binary: bool, show_time: bool, opt_level: OptLevel,
-    bin: Option<&str>,
-) -> BTreeSet<Diagnostic> {
-    let (diagnostics, selected_main) = match check_and_select_main(compiler, show_time, bin) {
-        Ok(ok) => ok,
-        Err(diagnostics) => return diagnostics,
-    };
-
-    let mir = mir::monomorphization::monomorphize(compiler);
-    codegen::c::codegen_c_for_mir(&mir, program_name, opt_level, Some(selected_main));
-
-    if run {
+    if ready && run {
         run_binary(program_name, delete_binary);
     }
     diagnostics
