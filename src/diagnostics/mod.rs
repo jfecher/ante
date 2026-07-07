@@ -10,14 +10,12 @@ use colored::{Color, ColoredString, Colorize};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    incremental::{
-        AllDefinitions, CheckAll, Db, DbHandle, GetCrateGraph, Parse, SourceFile, TypeCheck, ValidateExports,
-    },
+    incremental::{CheckAll, Db, DbHandle, GetCrateGraph, Parse, SourceFile, TypeCheck, ValidateExports},
     iterator_extensions::mapvec,
     lexer::{
-        token::{lookup_keyword, Integer, IntegerKind, LexerError, Token}, Lexer
+        Lexer,
+        token::{Integer, IntegerKind, LexerError, Token, lookup_keyword},
     },
-    name_resolution::namespace::CrateId,
     parser::cst::Name,
     type_inference::{errors::TypeErrorKind, kinds::Kind},
 };
@@ -31,7 +29,10 @@ pub use unimplemented_item::*;
 /// Any diagnostic that the compiler can issue.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub enum Diagnostic {
-    LexerError { error: LexerError, location: Location },
+    LexerError {
+        error: LexerError,
+        location: Location,
+    },
     // TODO: `message` could be an enum to save allocation costs
     ParserExpected {
         message: String,
@@ -233,9 +234,6 @@ pub enum Diagnostic {
     IntegerTooLarge {
         value: Integer,
         kind: IntegerKind,
-        location: Location,
-    },
-    NoMainFunction {
         location: Location,
     },
     TypeAnnotationNeeded {
@@ -622,7 +620,6 @@ impl Diagnostic {
             Diagnostic::IntegerTooLarge { value, kind, location: _ } => {
                 format!("{} is too large for type {}", color_name(&value.to_string()), color_type(&kind.to_string()))
             },
-            Diagnostic::NoMainFunction { location: _ } => "This program has no `main` function".to_string(),
             Diagnostic::TypeAnnotationNeeded { location: _ } => "Type annotation needed".to_string(),
             Diagnostic::NotAType { name, location: _ } => {
                 format!("{} is not a type", color_name(name))
@@ -740,8 +737,7 @@ impl Diagnostic {
             | Diagnostic::HandlerDuplicateMethod { second_location: location, .. }
             | Diagnostic::HandlerCrossEffect { location, .. }
             | Diagnostic::AssignToImmutable { location, .. }
-            | Diagnostic::ConfusingOperatorAfterBody { operator_location: location, .. }
-            | Diagnostic::NoMainFunction { location } => location,
+            | Diagnostic::ConfusingOperatorAfterBody { operator_location: location, .. } => location,
         }
     }
 
@@ -1200,18 +1196,6 @@ pub(crate) fn check_all(_: &CheckAll, compiler: &DbHandle) {
 
             ValidateExports(*file).get(compiler);
         }
-    }
-
-    let local_crate = &crates[&CrateId::LOCAL];
-    let has_main = local_crate
-        .source_files
-        .values()
-        .any(|file| AllDefinitions(*file).get(compiler).definitions.keys().any(|k| k.as_str() == "main"));
-
-    if !has_main && let Some(first_file) = local_crate.source_files.values().next() {
-        let position = Position::start();
-        let location = Span { start: position, end: position }.in_file(*first_file);
-        compiler.accumulate(Diagnostic::NoMainFunction { location });
     }
 }
 

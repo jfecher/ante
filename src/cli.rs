@@ -73,6 +73,10 @@ pub struct Cli {
     /// Enable incremental compilation by reading from and writing to metadata for the current program
     #[arg(long, short = 'i')]
     pub incremental: bool,
+
+    /// Path to the file containing the `main` function to use as an entry-point
+    #[arg(long, value_name = "NAME")]
+    pub bin: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone, ValueEnum)]

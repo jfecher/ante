@@ -7,14 +7,9 @@ if true then
 // expected exit status: 1
 // expected stderr:
 // examples/regressions/119_top_level_subscopes.an:1:1
-// 1 | if true then	// error: This program has no `main` function
-//   | 
-// 2 |     f () = print "hi"
-// 
-// examples/regressions/119_top_level_subscopes.an:1:1
 // 1 | if true then	// error: Expected a top-level item but found `if`
 //   | ^^
 // 2 |     f () = print "hi"
 // 
-// Found 2 errors and 0 warnings
+// Found 1 error and 0 warnings
 

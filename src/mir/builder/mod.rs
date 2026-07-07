@@ -50,6 +50,11 @@ pub(crate) type SharedIdsMap = DashMap<TopLevelName, DefinitionId>;
 /// [build_initial_mir].
 static NAME_IDS: LazyLock<SharedIdsMap> = LazyLock::new(DashMap::new);
 
+/// Look up a MIR function by a [TopLevelName]
+pub(crate) fn lookup_definition_id(name: &TopLevelName) -> Option<DefinitionId> {
+    NAME_IDS.get(name).map(|entry| *entry.value())
+}
+
 /// Builds the MIR with the default shared global [SharedIdsMap].
 pub(crate) fn build_initial_mir_with_shared_map<T>(compiler: &T, item_id: TopLevelId) -> Option<Mir>
 where

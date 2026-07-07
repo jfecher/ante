@@ -7,12 +7,6 @@ match 3
 // args: --delete-binary --no-color
 // expected exit status: 1
 // expected stderr:
-// examples/regressions/80_empty_match.an:1:1
-//   | // error: This program has no `main` function
-// 1 | // #80: match expression fails to assign variables when there are no constructors to match against
-//   | 
-// 2 | // Before the fix this crashed during codegen with an internal error message
-// 
 // examples/regressions/80_empty_match.an:4:1
 // 4 | match 3	// error: Expected a top-level item but found `match`
 //   | ^^^^^
@@ -23,5 +17,5 @@ match 3
 // 5 | | x -> x	// error: Expected a top-level item but found `|`
 //   | ^
 // 
-// Found 3 errors and 0 warnings
+// Found 2 errors and 0 warnings
 

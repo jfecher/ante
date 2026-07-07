@@ -10,11 +10,6 @@ print y
 // expected exit status: 1
 // expected stderr:
 // examples/regressions/201_mutable_variables_copy.an:1:1
-// 1 | var x = 4	// error: This program has no `main` function
-//   | 
-// 2 | y = x
-// 
-// examples/regressions/201_mutable_variables_copy.an:1:1
 // 1 | var x = 4	// error: Expected a top-level item but found `var`
 //   | ^^^
 // 2 | y = x
@@ -42,5 +37,5 @@ print y
 // 5 | print y	// error: Expected `=` to begin the function body but found `y`
 //   |       ^
 // 
-// Found 6 errors and 0 warnings
+// Found 5 errors and 0 warnings
 

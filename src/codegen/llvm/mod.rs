@@ -20,6 +20,7 @@ use crate::{
     iterator_extensions::mapvec,
     lexer::token::{FloatKind, IntegerKind},
     mir::{self, BlockId, DefinitionId, FloatConstant, InstructionId, PrimitiveType, TerminatorInstruction},
+    parser::ids::TopLevelName,
     vecmap::VecMap,
 };
 
@@ -33,23 +34,29 @@ pub fn initialize_native_target() {
     Target::initialize_native(&config).unwrap();
 }
 
-pub fn codegen_llvm(compiler: &Db, show_time: bool, opt_level: OptLevel, emit_ir: bool) -> Option<CodegenLlvmResult> {
+pub fn codegen_llvm(
+    compiler: &Db, show_time: bool, opt_level: OptLevel, emit_ir: bool, selected_main: Option<TopLevelName>,
+) -> Option<CodegenLlvmResult> {
     // Whole-program for now; ideally `CodegenLlvmResult` could be split per item.
+    // NOTE: Monomorphization being whole-program essentially prevents the above comment
     let mir =
         crate::timings::time_phase("Monomorphization", show_time, || mir::monomorphization::monomorphize(compiler));
-    crate::timings::time_phase("LLVM codegen", show_time, || codegen_llvm_for_mir(&mir, opt_level, emit_ir, show_time))
+    crate::timings::time_phase("LLVM codegen", show_time, || {
+        codegen_llvm_for_mir(&mir, opt_level, emit_ir, show_time, selected_main)
+    })
 }
 
 /// LLVM IR generation & object emission on a monomorphized [mir::Mir].
 /// If `emit_ir` is set, the textual IR is printed to stdout.
 pub(crate) fn codegen_llvm_for_mir(
-    mir: &mir::Mir, opt_level: OptLevel, emit_ir: bool, show_time: bool,
+    mir: &mir::Mir, opt_level: OptLevel, emit_ir: bool, show_time: bool, selected_main: Option<TopLevelName>,
 ) -> Option<CodegenLlvmResult> {
     let name = &mir.definitions.iter().next().map_or("_", |(_, function)| &function.name);
+    let main_id = super::resolve_main_id(selected_main);
 
     initialize_native_target();
     let llvm = inkwell::context::Context::create();
-    let mut module = ModuleContext::new(&llvm, mir, name);
+    let mut module = ModuleContext::new(&llvm, mir, name, main_id);
 
     for (id, function) in &mir.definitions {
         module.codegen_function(function, *id);
@@ -147,6 +154,9 @@ struct ModuleContext<'ctx> {
     /// This is `None` for libraries that do not define `main`.
     ante_main: Option<FunctionValue<'ctx>>,
 
+    /// The entry-point selected for this binary. `None` for libraries with no `main`.
+    main_id: Option<DefinitionId>,
+
     definitions: FxHashMap<DefinitionId, CodegenValue<'ctx>>,
     values: FxHashMap<mir::Value, BasicValueEnum<'ctx>>,
 
@@ -161,7 +171,9 @@ struct ModuleContext<'ctx> {
 }
 
 impl<'ctx> ModuleContext<'ctx> {
-    fn new(llvm: &'ctx inkwell::context::Context, mir: &'ctx mir::Mir, name: &str) -> Self {
+    fn new(
+        llvm: &'ctx inkwell::context::Context, mir: &'ctx mir::Mir, name: &str, main_id: Option<DefinitionId>,
+    ) -> Self {
         let module = llvm.create_module(name);
         let target = TargetMachine::get_default_triple();
         module.set_triple(&target);
@@ -172,6 +184,7 @@ impl<'ctx> ModuleContext<'ctx> {
             current_function: None,
             current_function_value: None,
             ante_main: None,
+            main_id,
             definitions: Default::default(),
             values: Default::default(),
             builder: llvm.create_builder(),
@@ -249,7 +262,7 @@ impl<'ctx> ModuleContext<'ctx> {
             return;
         }
 
-        let is_ante_main = function.name.as_str() == "main";
+        let is_ante_main = self.main_id == Some(id);
         let function_value = match self.definitions.get(&id) {
             Some(CodegenValue::Function(fv)) => *fv,
             Some(CodegenValue::Literal(_)) => panic!(

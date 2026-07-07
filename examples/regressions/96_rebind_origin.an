@@ -11,11 +11,6 @@ twice 1u8 2u16
 // args: --delete-binary --no-color
 // expected exit status: 1
 // expected stderr:
-// examples/regressions/96_rebind_origin.an:1:1
-// 1 | 	// error: This program has no `main` function
-//   | 
-// 2 | origin foo =
-// 
 // examples/regressions/96_rebind_origin.an:3:5
 // 2 | origin foo =
 //   |     // error: Multiple matching implicits found for type Cast _ U64 required by cast: cast_char_u64, cast_u8_u64, cast_u16_u64, cast_u32_u64, cast_usz_u64, ..
@@ -26,5 +21,5 @@ twice 1u8 2u16
 //  9 | twice 1u8 2u16	// error: Expected `=` to begin the function body but found `1_U8`
 //    |       ^
 // 
-// Found 3 errors and 0 warnings
+// Found 2 errors and 0 warnings
 

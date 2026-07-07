@@ -41,10 +41,9 @@ use clap::{CommandFactory, Parser};
 use cli::{Cli, Commands, Completions};
 use colored::Colorize;
 use diagnostics::Diagnostic;
-use incremental::{Db, GetCrateGraph, Parse, Resolve};
+use incremental::{AllDefinitions, Db, GetCrateGraph, Parse, Resolve};
 use name_resolution::namespace::{CrateId, LocalModuleId, SourceFileId};
-#[cfg(feature = "llvm")]
-use std::sync::Arc;
+use parser::ids::TopLevelName;
 use std::{
     collections::BTreeSet,
     path::{Path, PathBuf},
@@ -54,11 +53,7 @@ use std::{
 #[cfg(feature = "llvm")]
 use crate::codegen::llvm::codegen_llvm;
 use crate::{
-    cli::{EmitTarget, OptLevel},
-    diagnostics::{DiagnosticKind, collect_all_diagnostics},
-    files::{make_compiler, write_metadata},
-    incremental::{TargetPointerSize, TypeCheck, ValidateExports},
-    paths::binary_name,
+    cli::{EmitTarget, OptLevel}, diagnostics::{collect_all_diagnostics, DiagnosticKind}, files::{make_compiler, write_metadata}, incremental::{TargetPointerSize, TypeCheck, ValidateExports}, paths::binary_name
 };
 
 mod codegen;
@@ -137,13 +132,20 @@ fn compile(args: Cli) {
         Some(EmitTarget::MirTail) => display_mir(&mut compiler, args.emit_all, true),
         Some(EmitTarget::MirMono) => display_mir_mono(&mut compiler),
         Some(EmitTarget::Ir) => display_ir(&mut compiler, args.show_time, opt_level),
-        None => match resolve_backend(args.backend) {
-            #[cfg(feature = "llvm")]
-            cli::Backend::Llvm => {
-                llvm_codegen_all(&mut compiler, &program_name, run, args.delete_binary, args.show_time, opt_level)
-            },
-            cli::Backend::C => c_codegen_all(&mut compiler, &program_name, run, args.delete_binary, opt_level),
-            _ => unreachable!("resolve_backend only returns backends this compiler can run"),
+        None => {
+            let bin = args.bin.as_deref();
+            match resolve_backend(args.backend) {
+                #[rustfmt::skip]
+                #[cfg(feature = "llvm")]
+                cli::Backend::Llvm => {
+                    llvm_codegen_all(&mut compiler, &program_name, run, args.delete_binary, args.show_time, opt_level, bin)
+                },
+                #[rustfmt::skip]
+                cli::Backend::C => {
+                    c_codegen_all(&mut compiler, &program_name, run, args.delete_binary, args.show_time, opt_level, bin)
+                },
+                _ => unreachable!("resolve_backend only returns backends this compiler can run"),
+            }
         },
     };
 
@@ -399,7 +401,11 @@ fn display_mir_mono(compiler: &mut Db) -> BTreeSet<Diagnostic> {
 fn display_ir(compiler: &mut Db, show_time: bool, opt_level: OptLevel) -> BTreeSet<Diagnostic> {
     #[cfg(feature = "llvm")]
     {
-        llvm_codegen_separate(compiler, true, show_time, opt_level).2
+        let diagnostics = time_phase("Diagnostics", show_time, || collect_all_diagnostics(compiler));
+        if classify_diagnostics(&diagnostics).0 == 0 {
+            codegen_llvm(compiler, show_time, opt_level, true, None);
+        }
+        diagnostics
     }
     #[cfg(not(feature = "llvm"))]
     {
@@ -412,85 +418,110 @@ fn display_ir(compiler: &mut Db, show_time: bool, opt_level: OptLevel) -> BTreeS
     }
 }
 
-/// Codegen each item as a separate llvm module
-/// Returns (module strings, true if there are any errors, diagnostics)
-#[cfg(feature = "llvm")]
-fn llvm_codegen_separate(
-    compiler: &mut Db, display_ir: bool, show_time: bool, opt_level: OptLevel,
-) -> (Vec<Arc<Vec<u8>>>, bool, BTreeSet<Diagnostic>) {
-    let diagnostics = time_phase("Diagnostics", show_time, || collect_all_diagnostics(compiler));
-    let (errors, _) = classify_diagnostics(&diagnostics);
-    if errors != 0 {
-        return (Vec::new(), true, diagnostics);
-    }
-
-    let modules = if let Some(result) = codegen_llvm(compiler, show_time, opt_level, display_ir) {
-        vec![result.object]
-    } else {
-        Vec::new()
-    };
-    (modules, false, diagnostics)
-}
-
 /// Codegen everything, linking together each separate llvm module
 #[cfg(feature = "llvm")]
 fn llvm_codegen_all(
     compiler: &mut Db, program_name: &str, run: bool, delete_binary: bool, show_time: bool, opt_level: OptLevel,
+    bin: Option<&str>,
 ) -> BTreeSet<Diagnostic> {
-    let (mut modules, has_errors, diagnostics) = llvm_codegen_separate(compiler, false, show_time, opt_level);
-    if has_errors {
-        return diagnostics;
-    }
+    let (diagnostics, selected_main) = match check_and_select_main(compiler, show_time, bin) {
+        Ok(ok) => ok,
+        Err(diagnostics) => return diagnostics,
+    };
 
     // Each module is currently the whole program (monomorphization isn't yet incremental).
-    modules.truncate(1);
+    let modules = match codegen_llvm(compiler, show_time, opt_level, false, Some(selected_main)) {
+        Some(result) => vec![result.object],
+        None => Vec::new(),
+    };
 
-    let link_succeeded = codegen::llvm::link(modules, program_name, show_time, opt_level);
-    if !link_succeeded {
-        return diagnostics;
+    if codegen::llvm::link(modules, program_name, show_time, opt_level) && run {
+        run_binary(program_name, delete_binary);
     }
-
-    if run {
-        // Use an absolute path so the binary can be found regardless of PATH.
-        let binary_path = binary_name(program_name);
-
-        Command::new(&binary_path).spawn().unwrap().wait().unwrap();
-        if delete_binary {
-            std::fs::remove_file(binary_path).unwrap();
-        }
-    }
-
     diagnostics
 }
 
 /// Monomorphize and codegen the whole program through the C backend, then optionally run it.
 fn c_codegen_all(
-    compiler: &mut Db, program_name: &str, run: bool, delete_binary: bool, opt_level: OptLevel,
+    compiler: &mut Db, program_name: &str, run: bool, delete_binary: bool, show_time: bool, opt_level: OptLevel,
+    bin: Option<&str>,
 ) -> BTreeSet<Diagnostic> {
-    let diagnostics = collect_all_diagnostics(compiler);
-    let (errors, _) = classify_diagnostics(&diagnostics);
-    if errors != 0 {
-        return diagnostics;
-    }
+    let (diagnostics, selected_main) = match check_and_select_main(compiler, show_time, bin) {
+        Ok(ok) => ok,
+        Err(diagnostics) => return diagnostics,
+    };
 
     let mir = mir::monomorphization::monomorphize(compiler);
-    codegen::c::codegen_c_for_mir(&mir, program_name, opt_level);
+    codegen::c::codegen_c_for_mir(&mir, program_name, opt_level, Some(selected_main));
 
     if run {
-        let binary_path = binary_name(program_name);
-        Command::new(&binary_path).spawn().unwrap().wait().unwrap();
-        if delete_binary {
-            std::fs::remove_file(binary_path).unwrap();
-        }
+        run_binary(program_name, delete_binary);
     }
-
     diagnostics
+}
+
+/// Collect diagnostics and pick the `main` function to use if there are multiple or 0.
+fn check_and_select_main(
+    compiler: &mut Db, show_time: bool, bin: Option<&str>,
+) -> Result<(BTreeSet<Diagnostic>, TopLevelName), BTreeSet<Diagnostic>> {
+    let diagnostics = time_phase("Diagnostics", show_time, || collect_all_diagnostics(compiler));
+    if classify_diagnostics(&diagnostics).0 != 0 {
+        return Err(diagnostics);
+    }
+    let selected = select_main(compiler, bin);
+    Ok((diagnostics, selected))
+}
+
+/// Run the binary then optionally delete it.
+fn run_binary(program_name: &str, delete_binary: bool) {
+    let binary_path = binary_name(program_name);
+    Command::new(&binary_path).spawn().unwrap().wait().unwrap();
+    if delete_binary {
+        std::fs::remove_file(binary_path).unwrap();
+    }
 }
 
 /// Return the default name of the program given the source files.
 fn files_to_program_name(files: &[PathBuf]) -> String {
     let name = files.first().map_or_else(|| "a.out".into(), |file| file.with_extension(""));
     name.to_string_lossy().into_owned()
+}
+
+/// Choose which `main` function to compile into the binary's entry point.
+/// This will exit and print to stderr if a `main` function was failed to be selected.
+fn select_main(compiler: &Db, bin: Option<&str>) -> TopLevelName {
+    let crates = GetCrateGraph.get(compiler);
+    let local_crate = &crates[&CrateId::LOCAL];
+
+    let mut mains = BTreeSet::new();
+    for (path, file_id) in &local_crate.source_files {
+        let definitions = AllDefinitions(*file_id).get(compiler);
+        for (name, top_level_name) in &definitions.definitions {
+            if name.as_str() == "main" && top_level_name.top_level_item.source_file == *file_id {
+                let module = path.to_string_lossy().into_owned();
+                mains.insert((module, *top_level_name));
+            }
+        }
+    }
+
+    if mains.is_empty() {
+        eprintln!("{}: This program has no main function", "error".red());
+        std::process::exit(1);
+    } else if mains.len() == 1 {
+        mains.into_iter().next().unwrap().1
+    } else {
+        if let Some(requested) = bin
+            && let Some((_, main)) = mains.iter().find(|(module, _)| module == requested)
+        {
+            return *main;
+        }
+
+        eprintln!("{}: This program has multiple main functions. Use --bin to specify which to use:", "error".red());
+        for (path, _) in mains {
+            eprintln!("  - {path}");
+        }
+        std::process::exit(1);
+    }
 }
 
 pub fn path_to_id(crate_id: CrateId, path: &Path) -> SourceFileId {

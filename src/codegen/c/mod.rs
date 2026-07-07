@@ -29,6 +29,7 @@ use crate::{
     cli::OptLevel,
     lexer::token::{FloatKind, IntegerKind},
     mir::{self, DefinitionId, FloatConstant, InstructionId, IntConstant},
+    parser::ids::TopLevelName,
 };
 
 mod cfile;
@@ -39,9 +40,9 @@ use super::constant::{self, ConstantValue};
 /// Codegen the given Mir into a single C file, then invoke cc to create
 /// a object file and a binary. On success, the object file is removed, but
 /// the .c file is kept.
-pub fn codegen_c_for_mir(mir: &mir::Mir, binary_name: &str, opt_level: OptLevel) {
+pub fn codegen_c_for_mir(mir: &mir::Mir, binary_name: &str, opt_level: OptLevel, selected_main: Option<TopLevelName>) {
     // Create the C file
-    let c_file = build_c_file(mir);
+    let c_file = build_c_file(mir, selected_main);
     let c_file_name = format!("{binary_name}.c");
     std::fs::write(&c_file_name, c_file).unwrap();
 
@@ -88,7 +89,7 @@ struct TupleCache {
 }
 
 /// Builds a C File for the given [mir::Mir] in-memory. Returns the file contents
-fn build_c_file(mir: &mir::Mir) -> String {
+fn build_c_file(mir: &mir::Mir, selected_main: Option<TopLevelName>) -> String {
     // Split Mir definitions into N groups and compile in parallel.
     // Each worker `i` compiles definitions with id `Id % N = i`
     let n = rayon::current_num_threads() as u32;
@@ -122,11 +123,9 @@ fn build_c_file(mir: &mir::Mir) -> String {
         file.add_function_definition(&init);
     }
 
-    // Emit a C-callable `main` that captures argc/argv (so `Std.Env` can read them via the
-    // accessors below), runs the startup initializer, then calls the Ante `main` (mangled
-    // `main_<id>`, so no clash) and returns 0. Ante's `main` takes a unit argument and returns
-    // unit. Skipped for libraries (which then also lack the argc/argv accessors, as in LLVM).
-    if let Some((id, _)) = mir.definitions.iter().find(|(_, d)| d.name.as_str() == "main") {
+    // Emit `main` that captures argc/argv, runs the startup initializer, then calls the program's
+    // `main` function which will be mangled, and returns 0. Skipped for libraries.
+    if let Some(id) = super::resolve_main_id(selected_main) {
         let init_call = if has_initializers { "__ante_init_globals();" } else { "" };
         let accessors = "static int32_t ante_argc = 0;\nstatic void* ante_argv = 0;\n\
             int32_t ante_get_argc(Unit _0) { return ante_argc; }\n\

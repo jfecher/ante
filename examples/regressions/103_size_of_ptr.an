@@ -4,11 +4,4 @@ _ = boom ()
 
 // args: --delete-binary --no-color
 // expected exit status: 1
-// expected stderr:
-// examples/regressions/103_size_of_ptr.an:1:1
-// 1 | 	// error: This program has no `main` function
-//   | 
-// 2 | boom () : Maybe (Ptr Char) = None
-// 
-// Found 1 error and 0 warnings
-
+// expected stderr: error: This program has no main function
