@@ -1,6 +1,7 @@
 #![allow(mismatched_lifetime_syntaxes)]
 
 mod definition_collection;
+pub mod dependencies;
 pub mod find_files;
 pub mod lexer;
 pub mod name_resolution;

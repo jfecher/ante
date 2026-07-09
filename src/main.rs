@@ -61,6 +61,7 @@ use crate::{
 };
 
 mod codegen;
+mod dependencies;
 mod definition_collection;
 mod find_files;
 mod lexer;
@@ -90,17 +91,23 @@ fn main() {
         let name = cmd.get_name().to_string();
         clap_complete::generate(shell_completion, &mut cmd, name, &mut std::io::stdout());
     } else {
-        compile(Cli::parse())
+        let args = Cli::parse();
+        if let Some(Commands::Add { dep_url }) = &args.command {
+            dependencies::add_git_dependency(dep_url);
+        } else {
+            compile(args)
+        }
     }
 }
 
 fn compile(args: Cli) {
     let (run, files, is_project) = match &args.command {
-        Some(cmd) => (
+        Some(cmd @ (Commands::Build | Commands::Run)) => (
             matches!(cmd, Commands::Run),
             crate::find_files::find_project_main_file().map(|path| vec![path]).unwrap_or_default(),
             true,
         ),
+        Some(Commands::Add { .. }) => unreachable!("add commands are handled before compiling"),
         None => (!args.build, args.files.clone(), false),
     };
     let (mut compiler, metadata_file) = make_compiler(&files, args.incremental);
@@ -456,7 +463,12 @@ fn check_and_select_main(
 /// Run the binary then optionally delete it.
 fn run_binary(program_name: &str, delete_binary: bool) {
     let binary_path = binary_name(program_name);
-    Command::new(&binary_path).spawn().unwrap().wait().unwrap();
+    let run_path = if binary_path.components().count() == 1 {
+        Path::new(".").join(&binary_path)
+    } else {
+        binary_path.clone()
+    };
+    Command::new(&run_path).spawn().unwrap().wait().unwrap();
     if delete_binary {
         std::fs::remove_file(binary_path).unwrap();
     }
@@ -464,7 +476,7 @@ fn run_binary(program_name: &str, delete_binary: bool) {
 
 /// Return the default name of the program given the source files.
 fn files_to_program_name(files: &[PathBuf]) -> String {
-    let name = files.first().map_or_else(|| "a.out".into(), |file| file.with_extension(""));
+    let name = files.first().map_or_else(|| "a".into(), |file| file.with_extension(""));
     name.to_string_lossy().into_owned()
 }
 
@@ -473,7 +485,7 @@ fn project_program_name(compiler: &mut Db) -> String {
     let crates = GetCrateGraph.get(compiler);
     let name = &crates[&CrateId::LOCAL].name;
     if name == crate::find_files::DEFAULT_LOCAL_CRATE_NAME {
-        "a.out".to_string()
+        "a".to_string()
     } else {
         name.clone()
     }

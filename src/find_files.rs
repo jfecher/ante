@@ -8,7 +8,12 @@ use clap::builder::OsStr;
 use rustc_hash::FxHashSet;
 
 use crate::{
-    files::read_file, incremental::{Crate, Db, GetCrateGraph, SourceFile}, manifest::Manifest, name_resolution::namespace::{CrateId, SourceFileId}, paths::stdlib_path
+    dependencies::DEPENDENCIES_DIR_NAME,
+    files::read_file,
+    incremental::{Crate, Db, GetCrateGraph, SourceFile},
+    manifest::{MANIFEST_FILE_NAME, Manifest},
+    name_resolution::namespace::{CrateId, SourceFileId},
+    paths::stdlib_path,
 };
 
 pub type CrateGraph = BTreeMap<CrateId, Crate>;
@@ -16,23 +21,28 @@ pub type CrateGraph = BTreeMap<CrateId, Crate>;
 /// Default name of the local crate when its `ante.toml` has no `name` field.
 pub const DEFAULT_LOCAL_CRATE_NAME: &str = "Local";
 
-pub fn find_project_root() -> Option<PathBuf> {
-    let mut current_dir = std::env::current_dir().ok()?;
+/// Default name of the src folder.
+pub(crate) const SRC_FOLDER: &str = "src";
+pub(crate) const MAIN_FILE: &str = "main.an";
+
+/// Search the current directory and its ancestors for an Ante manifest.
+pub fn find_nearest_project_root() -> Option<PathBuf> {
+    let mut dir = std::env::current_dir().ok()?;
 
     loop {
-        if current_dir.join("ante.toml").exists() {
-            return Some(current_dir);
+        if dir.join(MANIFEST_FILE_NAME).is_file() {
+            return Some(dir);
         }
 
-        if !current_dir.pop() {
+        if !dir.pop() {
             return None;
         }
     }
 }
 
 pub fn find_project_main_file() -> Option<PathBuf> {
-    let root = find_project_root()?;
-    Some(root.join("src").join("main.an"))
+    let root = find_nearest_project_root()?;
+    Some(root.join(SRC_FOLDER).join(MAIN_FILE))
 }
 
 // TODO:
@@ -110,7 +120,7 @@ fn set_crate_inputs(compiler: &mut Db, crates: CrateGraph) {
 fn add_source_files_of_crate(compiler: &mut Db, crates: &mut CrateGraph, crate_id: CrateId) {
     let crate_root = crates[&crate_id].path.clone();
     let mut src_folder = crate_root.clone();
-    src_folder.push("src");
+    src_folder.push(SRC_FOLDER);
 
     let mut remaining = vec![src_folder.clone()];
     let mut source_files = BTreeMap::new();
@@ -204,36 +214,35 @@ fn read_file_data(file: PathBuf) -> SourceFile {
 /// It never checks for duplicates.
 fn find_crate_dependencies(crates: &mut CrateGraph, crate_id: CrateId) -> Vec<CrateId> {
     let mut deps_folder = crates[&crate_id].path.clone();
-    deps_folder.push("deps");
+    deps_folder.push(DEPENDENCIES_DIR_NAME);
 
     // Every crate currently depends on the stdlib
     let mut dependencies = vec![CrateId::STDLIB];
-    let mut remaining = vec![deps_folder];
 
-    // Push every crate in the `deps` folder as a new crate
-    while let Some(deps_folder) = remaining.pop() {
-        // We should error in the future when failing to read a directory but for now we want to
-        // allow either the local crate or the stdlib to not be present and still compile when
-        // we're only working on a single source file. We may want to separate the compile mode
-        // more explicitly in the CLI in the future.
-        let Ok(deps_folder) = deps_folder.read_dir() else {
-            continue;
-        };
+    // We should error in the future when failing to read a directory but for now we want to
+    // allow either the local crate or the stdlib to not be present and still compile when
+    // we're only working on a single source file. We may want to separate the compile mode
+    // more explicitly in the CLI in the future.
+    let Ok(deps_folder) = deps_folder.read_dir() else {
+        return dependencies;
+    };
 
-        for dependency in deps_folder.flatten() {
-            let path = dependency.path();
-            if path.is_dir() {
-                let manifest = Manifest::read(&path).unwrap_or_default();
-                let fallback_name = path.file_name().unwrap().to_string_lossy().into_owned();
+    // Push every crate in the dependencies directory as a new direct dependency.
+    // Transitive dependencies are discovered by `populate_crates_and_files` when these crates
+    // are later processed from its stack.
+    for dependency in deps_folder.flatten() {
+        let path = dependency.path();
+        if path.is_dir() {
+            let manifest = Manifest::read(&path).unwrap_or_default();
+            let fallback_name = path.file_name().unwrap().to_string_lossy().into_owned();
 
-                // `apply` overrides the fallback directory name with the manifest name if present.
-                let mut dependency = Crate::new(fallback_name, path);
-                manifest.apply(&mut dependency);
+            // `apply` overrides the fallback directory name with the manifest name if present.
+            let mut dependency = Crate::new(fallback_name, path);
+            manifest.apply(&mut dependency);
 
-                let id = new_crate_id(crates, &dependency.name, 0);
-                dependencies.push(id);
-                crates.insert(id, dependency);
-            }
+            let id = new_crate_id(crates, &dependency.name, 0);
+            dependencies.push(id);
+            crates.insert(id, dependency);
         }
     }
 
@@ -251,4 +260,96 @@ fn new_crate_id(crates: &CrateGraph, name: &String, version: u32) -> CrateId {
         }
     }
     unreachable!("We have somehow had i32::MAX hash collisions")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct TestDir {
+        path: PathBuf,
+    }
+
+    impl TestDir {
+        fn new(name: &str) -> Self {
+            let mut path = std::env::temp_dir();
+            path.push(format!("ante-{name}-{}-{}", std::process::id(), crate::parser::ids::hash(name)));
+            let _ = std::fs::remove_dir_all(&path);
+            std::fs::create_dir_all(&path).unwrap();
+            TestDir { path }
+        }
+
+        fn create_dependency(&self, dirname: &str, manifest_name: Option<&str>) -> PathBuf {
+            let path = self.path.join(DEPENDENCIES_DIR_NAME).join(dirname);
+            std::fs::create_dir_all(&path).unwrap();
+            if let Some(name) = manifest_name {
+                std::fs::write(path.join(MANIFEST_FILE_NAME), format!("name = \"{name}\"\n")).unwrap();
+            }
+            path
+        }
+    }
+
+    impl Drop for TestDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.path);
+        }
+    }
+
+    fn local_crate_graph(path: PathBuf) -> CrateGraph {
+        let mut crates = CrateGraph::default();
+        crates.insert(CrateId::LOCAL, Crate::new(DEFAULT_LOCAL_CRATE_NAME.to_string(), path));
+        crates
+    }
+
+    #[test]
+    fn missing_dependencies_directory_only_depends_on_stdlib() {
+        let dir = TestDir::new("missing-deps");
+        let mut crates = local_crate_graph(dir.path.clone());
+
+        let dependencies = find_crate_dependencies(&mut crates, CrateId::LOCAL);
+
+        assert_eq!(dependencies, vec![CrateId::STDLIB]);
+        assert_eq!(crates.len(), 1);
+    }
+
+    #[test]
+    fn discovers_direct_dependencies_from_dependencies_directory() {
+        let dir = TestDir::new("direct-deps");
+        let alpha_path = dir.create_dependency("alpha", Some("Alpha"));
+        let beta_path = dir.create_dependency("beta", None);
+        let mut crates = local_crate_graph(dir.path.clone());
+
+        let dependencies = find_crate_dependencies(&mut crates, CrateId::LOCAL);
+
+        assert_eq!(dependencies.len(), 3);
+        assert_eq!(dependencies[0], CrateId::STDLIB);
+
+        let dependency_crates = dependencies
+            .iter()
+            .skip(1)
+            .map(|id| crates.get(id).unwrap())
+            .map(|crate_| (crate_.name.as_str(), crate_.path.as_path()))
+            .collect::<BTreeMap<_, _>>();
+
+        assert_eq!(dependency_crates["Alpha"], alpha_path.as_path());
+        assert_eq!(dependency_crates["beta"], beta_path.as_path());
+    }
+
+    #[test]
+    fn transitive_dependencies_are_not_returned_as_direct_dependencies() {
+        let dir = TestDir::new("transitive-deps");
+        let alpha_path = dir.create_dependency("alpha", Some("Alpha"));
+        let nested_path = alpha_path.join(DEPENDENCIES_DIR_NAME).join("nested");
+        std::fs::create_dir_all(&nested_path).unwrap();
+        std::fs::write(nested_path.join(MANIFEST_FILE_NAME), "name = \"Nested\"\n").unwrap();
+        let mut crates = local_crate_graph(dir.path.clone());
+
+        let dependencies = find_crate_dependencies(&mut crates, CrateId::LOCAL);
+
+        assert_eq!(dependencies.len(), 2);
+        let alpha = crates.get(&dependencies[1]).unwrap();
+        assert_eq!(alpha.name, "Alpha");
+        assert_eq!(alpha.path, alpha_path);
+        assert!(!crates.values().any(|crate_| crate_.name == "Nested"));
+    }
 }

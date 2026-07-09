@@ -29,7 +29,7 @@ pub fn make_compiler(source_files: &[PathBuf], incremental: bool) -> (Db, Option
     // Use the discovered project root when building a project.
     // Fall back to the current directory for explicit file compilation.
     let local_crate_root =
-        crate::find_files::find_project_root().unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+        crate::find_files::find_nearest_project_root().unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
     crate::find_files::populate_crates_and_files(&mut compiler, &local_crate_root, source_files);
     (compiler, metadata_file)
 }
