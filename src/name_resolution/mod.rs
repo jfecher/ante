@@ -12,6 +12,7 @@ pub mod namespace;
 
 use crate::{
     diagnostics::{Diagnostic, Location},
+    find_files::SRC_FOLDER,
     incremental::{
         self, DbHandle, ExportedTypes, GetCrateGraph, GetItem, Resolve, VisibleDefinitions, VisibleDefinitionsResult,
     },
@@ -304,7 +305,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             }
 
             // Fall back to absolute path (crate_root/src/Vec.an)
-            let absolute = crate_.path.join("src").join(&module_file);
+            let absolute = crate_.path.join(SRC_FOLDER).join(&module_file);
             if let Some(id) = crate_.source_files.get(&absolute).copied() {
                 return Some(Namespace::Module(id));
             }

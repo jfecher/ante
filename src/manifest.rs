@@ -2,6 +2,8 @@ use std::path::Path;
 
 use crate::incremental::Crate;
 
+pub const MANIFEST_FILE_NAME: &str = "ante.toml";
+
 #[derive(serde::Deserialize, Default)]
 pub struct Manifest {
     pub name: Option<String>,
@@ -18,7 +20,7 @@ pub struct Manifest {
 impl Manifest {
     /// Read and parse the `ante.toml` manifest in the given crate root directory, if present.
     pub fn read(root: &Path) -> Option<Manifest> {
-        let contents = std::fs::read_to_string(root.join("ante.toml")).ok()?;
+        let contents = std::fs::read_to_string(root.join(MANIFEST_FILE_NAME)).ok()?;
         toml::from_str(&contents).ok()
     }
 

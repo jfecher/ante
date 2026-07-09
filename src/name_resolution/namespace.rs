@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{parser::ids::TopLevelId, paths::prelude_path_relative_to_stdlib_source_folder};
+use crate::{find_files::SRC_FOLDER, parser::ids::TopLevelId, paths::prelude_path_relative_to_stdlib_source_folder};
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub(super) enum Namespace {
@@ -56,7 +56,7 @@ impl SourceFileId {
     /// - Remove a `src` directory prefix
     pub fn normalize_path<'a>(root: &'a std::path::Path, path: &'a std::path::Path) -> &'a std::path::Path {
         let relative = path.strip_prefix(root).unwrap_or(path);
-        relative.strip_prefix("src").unwrap_or(relative)
+        relative.strip_prefix(SRC_FOLDER).unwrap_or(relative)
     }
 
     pub fn prelude() -> SourceFileId {

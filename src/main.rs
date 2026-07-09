@@ -61,6 +61,7 @@ use crate::{
 };
 
 mod codegen;
+mod dependencies;
 mod definition_collection;
 mod find_files;
 mod lexer;
@@ -90,17 +91,23 @@ fn main() {
         let name = cmd.get_name().to_string();
         clap_complete::generate(shell_completion, &mut cmd, name, &mut std::io::stdout());
     } else {
-        compile(Cli::parse())
+        let args = Cli::parse();
+        if let Some(Commands::Add { dep_url }) = &args.command {
+            dependencies::add_git_dependency(dep_url);
+        } else {
+            compile(args)
+        }
     }
 }
 
 fn compile(args: Cli) {
     let (run, files, is_project) = match &args.command {
-        Some(cmd) => (
+        Some(cmd @ (Commands::Build | Commands::Run)) => (
             matches!(cmd, Commands::Run),
             crate::find_files::find_project_main_file().map(|path| vec![path]).unwrap_or_default(),
             true,
         ),
+        Some(Commands::Add { .. }) => unreachable!("add commands are handled before compiling"),
         None => (!args.build, args.files.clone(), false),
     };
     let (mut compiler, metadata_file) = make_compiler(&files, args.incremental);

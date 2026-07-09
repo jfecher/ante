@@ -12,6 +12,12 @@ pub struct Completions {
 pub enum Commands {
     Build,
     Run,
+    /// Clone a git dependency into this project's dependency directory
+    Add {
+        /// Git repository URL to add as a dependency
+        #[arg(value_hint = ValueHint::Url)]
+        dep_url: String,
+    },
 }
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
