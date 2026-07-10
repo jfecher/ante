@@ -270,6 +270,24 @@ impl Definition {
                     instr_assert_subtype!(a_type, *result_type, self, id, mir, "Argument type does not match result type `{a_type}` != `{result_type}`");
                 },
 
+                Instruction::OverflowingAddInt(a, b)
+                | Instruction::OverflowingSubInt(a, b)
+                | Instruction::OverflowingMulInt(a, b) => {
+                    let a_type = mir.type_of_value(a, self);
+                    let b_type = mir.type_of_value(b, self);
+                    let expected = Type::tuple(vec![a_type.clone(), Type::BOOL]);
+                    instr_assert!(a_type.is_int(), self, id, mir, "Argument type is not an integer");
+                    instr_assert_subtype!(a_type, b_type, self, id, mir, "Argument types do not match: {a_type} != {b_type}");
+                    instr_assert_subtype!(
+                        expected,
+                        *result_type,
+                        self,
+                        id,
+                        mir,
+                        "Overflowing int result type should be `(argument_type, Bool)`, got `{result_type}`"
+                    );
+                },
+
                 Instruction::AddFloat(a, b)
                 | Instruction::SubFloat(a, b)
                 | Instruction::MulFloat(a, b)
