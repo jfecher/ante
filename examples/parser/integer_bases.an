@@ -1,0 +1,19 @@
+main () =
+    0xff
+    0b1010
+    0o17
+    0xdead_beef
+    0b1111_0000
+    0xffu8
+    0b1010i16
+
+// args: -e ast --no-color
+// expected stdout:
+// main () =
+//     255
+//     10
+//     15
+//     3735928559
+//     240
+//     255_U8
+//     10_I16

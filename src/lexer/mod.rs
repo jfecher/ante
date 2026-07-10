@@ -259,7 +259,55 @@ impl<'contents> Lexer<'contents> {
         }
     }
 
+    /// Lex the digits of an integer literal in the given radix, skipping `_` separators.
+    /// Returns the digit string with separators removed.
+    fn lex_radix_integer(&mut self, radix: u32) -> String {
+        let start = self.current_position.byte_index;
+
+        while !self.at_end_of_input() && (self.current.is_digit(radix) || self.current == '_') {
+            self.advance();
+        }
+
+        let end = self.current_position.byte_index;
+        self.file_contents[start..end].replace('_', "")
+    }
+
+    /// Lex a non-decimal integer literal after seeing a `0x`, `0b`, or `0o` prefix.
+    /// `self.current` is expected to be the base character (`x`, `b`, or `o`).
+    fn lex_prefixed_integer(&mut self, radix: u32) -> IterElem {
+        self.advance();
+        let digits = self.lex_radix_integer(radix);
+        let location = self.locate();
+
+        let Ok(magnitude) = u64::from_str_radix(&digits, radix) else {
+            self.errors.push((LexerError::FailedToParseNumber { integer_string: digits }, location));
+            return Some((Token::IntegerLiteral(Integer::positive(0), None), location));
+        };
+
+        let integer = Integer::positive(magnitude);
+        match self.lex_integer_suffix() {
+            Ok(suffix) => Some((Token::IntegerLiteral(integer, suffix), location)),
+            Err(lexer_error) => {
+                self.errors.push((lexer_error, location));
+                Some((Token::IntegerLiteral(integer, None), location))
+            },
+        }
+    }
+
     fn lex_number(&mut self) -> IterElem {
+        if self.current == '0' {
+            let radix = match self.next {
+                'x' => Some(16),
+                'b' => Some(2),
+                'o' => Some(8),
+                _ => None,
+            };
+            if let Some(radix) = radix {
+                self.advance();
+                return self.lex_prefixed_integer(radix);
+            }
+        }
+
         let integer_string = self.lex_integer();
 
         if self.current == '.' && self.next.is_ascii_digit() {
