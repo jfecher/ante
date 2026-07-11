@@ -931,6 +931,9 @@ impl Builder {
             },
             mir::Instruction::Transmute(value) => {
                 // C can't reinterpret an rvalue's bits directly, so round-trip through memcpy.
+                // Copy only min(sizeof(src), sizeof(dst)) bytes: a widening transmute (e.g. a
+                // small union variant into the max-size union type) would otherwise read past
+                // the source. The destination is zero-initialized so the widened tail is defined.
                 let source = mir.type_of_value(value, definition);
                 self.write_declarator(&source, &|this| {
                     let _ = write!(this.current_item, "{id}_src");
@@ -942,9 +945,10 @@ impl Builder {
                 self.write_declarator(result, &|this| {
                     let _ = write!(this.current_item, "{id}");
                 });
-                let _ = write!(self.current_item, "; memcpy(&{id}, &{id}_src, sizeof(");
-                self.write_type(result, "");
-                self.write("));");
+                let _ = write!(
+                    self.current_item,
+                    "; memset(&{id}, 0, sizeof({id})); memcpy(&{id}, &{id}_src, sizeof({id}) < sizeof({id}_src) ? sizeof({id}) : sizeof({id}_src));"
+                );
             },
             mir::Instruction::Id(value) => {
                 self.write_result_binding(id, definition);

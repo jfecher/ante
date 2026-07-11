@@ -150,6 +150,7 @@ typedef double ante_f64;
         self.type_declarations += "typedef struct { char _unused; } Unit;\n";
         self.function_declarations += "void* malloc(size_t);\n";
         self.function_declarations += "void* memcpy(void*, void*, size_t);\n";
+        self.function_declarations += "void* memset(void*, int, size_t);\n";
         self.function_declarations += "double fmod(double, double);\n";
         self
     }
