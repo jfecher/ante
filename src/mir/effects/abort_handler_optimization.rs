@@ -285,7 +285,7 @@ fn splice_in_handle_replacement(
     let definition = mir.definitions.get_mut(&definition_id).expect("definition vanished");
 
     let mut prologue: Vec<InstructionId> = Vec::new();
-    let SetjmpPrologue { result_slot_ptr, body_closure, is_zero } = build_setjmp_prologue(
+    let SetjmpPrologue { buf_ptr, result_slot_ptr, body_closure, is_zero } = build_setjmp_prologue(
         definition,
         &mut prologue,
         &site.result_type,
@@ -306,14 +306,32 @@ fn splice_in_handle_replacement(
         end: merge_block,
     });
     fill_then_block(definition, then_block, body_closure, result_slot_ptr, &site.result_type, merge_block);
+    // The longjmp landing: when the abort crossed coroutine stacks, restore this
+    // stack's sanitizer identity and unpoison the frames the longjmp skipped.
+    let mut e = Emitter::in_block(definition, else_block);
+    emit_abort_helper_call(&mut e, "mco_abort_land", buf_ptr);
+    drop(e);
     definition.blocks[else_block].terminator = Some(TerminatorInstruction::jmp_no_args(merge_block));
     finalize_merge_block(definition, merge_block, site.id, result_slot_ptr, site.result_type, split);
 }
 
 struct SetjmpPrologue {
+    buf_ptr: Value,
     result_slot_ptr: Value,
     body_closure: Value,
     is_zero: Value,
+}
+
+/// Emit a call to a `fn (Pointer) -> Unit` aminicoro helper (`mco_abort_prepare` /
+/// `mco_abort_land`).
+fn emit_abort_helper_call(e: &mut Emitter, name: &str, buf_ptr: Value) {
+    let helper_type = Type::Function(Arc::new(FunctionType {
+        parameters: vec![Type::POINTER],
+        environment: Type::NO_CLOSURE_ENV,
+        return_type: Type::UNIT,
+    }));
+    let helper = e.push_instruction(Instruction::Extern(name.to_string()), helper_type);
+    e.push_instruction(Instruction::Call { function: helper, arguments: vec![buf_ptr] }, Type::UNIT);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -324,19 +342,24 @@ fn build_setjmp_prologue(
 ) -> SetjmpPrologue {
     let mut e = Emitter::pending(definition, prologue);
     let buf_ptr = e.push_instruction(Instruction::StackAllocUninit(jmp_buf_type()), Type::POINTER);
+    // Record the coroutine context owning this setjmp so an abort performed from a
+    // nested coroutine can pop minicoro's running chain before the longjmp
+    // (fiber-safe aborts; see mco_abort_longjmp in aminicoro/minicoro.c).
+    emit_abort_helper_call(&mut e, "mco_abort_prepare", buf_ptr);
     let result_slot_ptr = e.push_instruction(Instruction::StackAllocUninit(result_type.clone()), Type::POINTER);
     let cap_value =
         emit_cap_tuple(&mut e, decisions, wrapper_ids, wrapper_closure_types, buf_ptr, result_slot_ptr, cap_tuple_type);
     let body_closure = emit_body_closure(&mut e, body, body_fn_type, cap_value);
     let is_zero = emit_setjmp_test(&mut e, buf_ptr);
-    SetjmpPrologue { result_slot_ptr, body_closure, is_zero }
+    SetjmpPrologue { buf_ptr, result_slot_ptr, body_closure, is_zero }
 }
 
-/// 256 bytes should hopefully covers all common platforms. Windows seems to be the largest at 256B.
+/// MCO_ABORT_BUF_SIZE = 256+64 = 8*40 bytes should hopefully cover all common platforms.
+/// Windows seems to be the largest at 256B.
 ///
 /// TODO: Tighten this or replace it, test on more platforms, etc.
 fn jmp_buf_type() -> Type {
-    Type::Tuple(Arc::new(vec![Type::int(IntegerKind::U64); 32]))
+    Type::Tuple(Arc::new(vec![Type::int(IntegerKind::U64); 40]))
 }
 
 /// For each case, build `(buf, slot, handler_env)`, stack-alloc it, and pack the wrapper

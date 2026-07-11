@@ -1,0 +1,49 @@
+// The setjmp side of the abort handler lives inside a coroutine: the
+// outer foldr's generator runs on a coroutine stack, and the `try`
+// performed there is aborted from a second, nested coroutine. After the
+// abort lands, the outer generator keeps running and yields again — so
+// minicoro (and ASan's fiber-switch bookkeeping) must be left in a
+// state where ordinary coroutine switching still works.
+//
+// This used to fail with:
+//   mco_coro_suspend: Assertion `res == MCO_SUCCESS' failed
+
+import Std.Stream.foldr, Emit, emit, stream_fn
+import Std.Fail.Fail, fail, try
+import Std.C.VoidPtr
+
+mco_running: fn Unit -> VoidPtr = extern "mco_running"
+
+/// True when minicoro reports no running coroutine, i.e. we are on the main stack.
+on_main_stack (): Bool = (transmute (mco_running ()) : Usz) == 0usz
+
+main () =
+    gen = fn (e: Emit Usz) ->
+        // On the outer generator's coroutine stack.
+        println (on_main_stack ())
+        result = try fn {f} ->
+            gen2 = fn (e2: Emit Usz) ->
+                emit 5 {e2}
+                // Two coroutine stacks deep; the abort must land one stack up,
+                // not on the main stack.
+                fail ()
+            foldr gen2 0usz (+)
+        println (result : Maybe Usz)
+        // Landed back on the outer generator's stack; minicoro must agree.
+        println (on_main_stack ())
+        // Keep the outer generator going: this yield (and the resume after it)
+        // only works if the abort left the switch bookkeeping coherent.
+        emit 7 {e}
+        emit 35 {e}
+
+    total = foldr gen 0usz (+)
+    println total
+    println (on_main_stack ())
+
+// args: --delete-binary --no-color
+// expected stdout:
+// false
+// None
+// false
+// 42
+// true
