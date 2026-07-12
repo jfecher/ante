@@ -346,10 +346,13 @@ fn fmt_instruction(
             }
         },
         mir::Instruction::AddInt(a, b) => write!(f, "add_int {}, {}", v(a), v(b))?,
+        mir::Instruction::OverflowingAddInt(a, b) => write!(f, "overflowing_add_int {}, {}", v(a), v(b))?,
         mir::Instruction::AddFloat(a, b) => write!(f, "add_float {}, {}", v(a), v(b))?,
         mir::Instruction::SubInt(a, b) => write!(f, "sub_int {}, {}", v(a), v(b))?,
+        mir::Instruction::OverflowingSubInt(a, b) => write!(f, "overflowing_sub_int {}, {}", v(a), v(b))?,
         mir::Instruction::SubFloat(a, b) => write!(f, "sub_float {}, {}", v(a), v(b))?,
         mir::Instruction::MulInt(a, b) => write!(f, "mul_int {}, {}", v(a), v(b))?,
+        mir::Instruction::OverflowingMulInt(a, b) => write!(f, "overflowing_mul_int {}, {}", v(a), v(b))?,
         mir::Instruction::MulFloat(a, b) => write!(f, "mul_float {}, {}", v(a), v(b))?,
         mir::Instruction::DivSigned(a, b) => write!(f, "div_signed {}, {}", v(a), v(b))?,
         mir::Instruction::DivUnsigned(a, b) => write!(f, "div_unsigned {}, {}", v(a), v(b))?,

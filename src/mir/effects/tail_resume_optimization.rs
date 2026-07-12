@@ -613,10 +613,13 @@ pub(super) fn substitute_value(definition: &mut Definition, find: Value, replace
                 sub(value);
             },
             Instruction::AddInt(a, b)
+            | Instruction::OverflowingAddInt(a, b)
             | Instruction::AddFloat(a, b)
             | Instruction::SubInt(a, b)
+            | Instruction::OverflowingSubInt(a, b)
             | Instruction::SubFloat(a, b)
             | Instruction::MulInt(a, b)
+            | Instruction::OverflowingMulInt(a, b)
             | Instruction::MulFloat(a, b)
             | Instruction::DivSigned(a, b)
             | Instruction::DivUnsigned(a, b)

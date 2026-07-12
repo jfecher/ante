@@ -1,4 +1,6 @@
 import Std.Math.sqrt, pow, floor, ceil, abs
+import Std.Math.overflowing_add_i32, overflowing_sub_i32, overflowing_mul_i32
+import Std.Math.checked_add_i32, checked_sub_i32, checked_mul_i32
 
 main () =
     println <| sqrt 16.0
@@ -8,6 +10,19 @@ main () =
     println <| abs (0.0 - 7.5)
     println <| abs 5
     println <| abs (0 - 12345)
+    println <| checked_add_i32 2_147_483_647 1
+    println <| checked_add_i32 40 2
+    println <| checked_sub_i32 -2_147_483_648 1
+    println <| checked_sub_i32 40 2
+    println <| checked_mul_i32 50_000 50_000
+    println <| checked_mul_i32 -2_147_483_648 -1
+    println <| checked_mul_i32 -12 3
+    println <| overflowing_add_i32 40 2
+    println <| overflowing_add_i32 2_147_483_647 1
+    println <| overflowing_sub_i32 40 2
+    println <| overflowing_sub_i32 -2_147_483_648 1
+    println <| overflowing_mul_i32 -12 3
+    println <| overflowing_mul_i32 -2_147_483_648 -1
 
 // args: --delete-binary --no-color
 // expected stdout:
@@ -18,4 +33,16 @@ main () =
 // 7.5000
 // 5
 // 12345
-
+// None
+// Some 42
+// None
+// Some 38
+// None
+// None
+// Some -36
+// 42, false
+// -2_147_483_648, true
+// 38, false
+// 2147483647, true
+// -36, false
+// -2_147_483_648, true

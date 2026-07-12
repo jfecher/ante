@@ -1,7 +1,9 @@
 export sqrt, sqrtf, cbrt, pow, powf, exp, log, log2, log10,
     sin, cos, tan, asin, acos, atan, atan2,
     floor, ceil, round, trunc, fmod, hypot,
-    pi, tau, e, abs
+    pi, tau, e, abs,
+    overflowing_add_i32, overflowing_sub_i32, overflowing_mul_i32,
+    checked_add_i32, checked_sub_i32, checked_mul_i32
 
 // Libm wrappers
 sqrt = extern "sqrt": fn F64 -> F64
@@ -41,6 +43,33 @@ abs (x: t) {n: Num t} {Copy t}: t =
     (<) = n.cmp.(<)
     (-) = n.sub.(-)
     if x < n.zero then n.zero - x else x
+
+/// Add two I32 values, returning `None` on overflow.
+checked_add_i32 (x: I32) (y: I32): Maybe I32 =
+    result, overflowed = overflowing_add_i32 x y
+    if overflowed then None else Some result
+
+/// Subtract two I32 values, returning `None` on overflow.
+checked_sub_i32 (x: I32) (y: I32): Maybe I32 =
+    result, overflowed = overflowing_sub_i32 x y
+    if overflowed then None else Some result
+
+/// Multiply two I32 values, returning `None` on overflow.
+checked_mul_i32 (x: I32) (y: I32): Maybe I32 =
+    result, overflowed = overflowing_mul_i32 x y
+    if overflowed then None else Some result
+
+/// Add two I32 values, returning the wrapped result and whether overflow occurred.
+overflowing_add_i32 (x: I32) (y: I32): (I32, Bool) =
+    intrinsic "OverflowingAddInt" x y
+
+/// Subtract two I32 values, returning the wrapped result and whether overflow occurred.
+overflowing_sub_i32 (x: I32) (y: I32): (I32, Bool) =
+    intrinsic "OverflowingSubInt" x y
+
+/// Multiply two I32 values, returning the wrapped result and whether overflow occurred.
+overflowing_mul_i32 (x: I32) (y: I32): (I32, Bool) =
+    intrinsic "OverflowingMulInt" x y
 
 ability Bounded t =
     min: t

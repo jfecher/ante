@@ -47,12 +47,15 @@ where
 
         Some(match intrinsic.as_ref() {
             "AddInt" => push_2arg_ins(self, Instruction::AddInt),
+            "OverflowingAddInt" => push_2arg_ins(self, Instruction::OverflowingAddInt),
             "AddFloat" => push_2arg_ins(self, Instruction::AddFloat),
 
             "SubInt" => push_2arg_ins(self, Instruction::SubInt),
+            "OverflowingSubInt" => push_2arg_ins(self, Instruction::OverflowingSubInt),
             "SubFloat" => push_2arg_ins(self, Instruction::SubFloat),
 
             "MulInt" => push_2arg_ins(self, Instruction::MulInt),
+            "OverflowingMulInt" => push_2arg_ins(self, Instruction::OverflowingMulInt),
             "MulFloat" => push_2arg_ins(self, Instruction::MulFloat),
 
             "DivSigned" => push_2arg_ins(self, Instruction::DivSigned),

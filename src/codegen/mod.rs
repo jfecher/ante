@@ -7,6 +7,31 @@ pub mod constant;
 #[cfg(feature = "llvm")]
 pub mod llvm;
 
+#[derive(Clone, Copy)]
+pub(crate) enum OverflowingIntOp {
+    Add,
+    Sub,
+    Mul,
+}
+
+impl OverflowingIntOp {
+    pub(crate) fn c_builtin_name(self) -> &'static str {
+        match self {
+            OverflowingIntOp::Add => "__builtin_add_overflow",
+            OverflowingIntOp::Sub => "__builtin_sub_overflow",
+            OverflowingIntOp::Mul => "__builtin_mul_overflow",
+        }
+    }
+
+    pub(crate) fn llvm_name_part(self) -> &'static str {
+        match self {
+            OverflowingIntOp::Add => "add",
+            OverflowingIntOp::Sub => "sub",
+            OverflowingIntOp::Mul => "mul",
+        }
+    }
+}
+
 /// Resolve which MIR definition is the binary's entry-point
 pub(crate) fn resolve_main_id(selected_main: Option<TopLevelName>) -> Option<mir::DefinitionId> {
     selected_main.and_then(|name| mir::builder::lookup_definition_id(&name))
