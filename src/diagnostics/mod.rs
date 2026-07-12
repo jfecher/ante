@@ -14,7 +14,7 @@ use crate::{
     iterator_extensions::mapvec,
     lexer::{
         Lexer,
-        token::{Integer, IntegerKind, LexerError, Token, lookup_keyword},
+        token::{Integer, IntegerKind, LexerError, LexerWarning, Token, lookup_keyword},
     },
     parser::cst::Name,
     type_inference::{errors::TypeErrorKind, kinds::Kind},
@@ -31,6 +31,10 @@ pub use unimplemented_item::*;
 pub enum Diagnostic {
     LexerError {
         error: LexerError,
+        location: Location,
+    },
+    LexerWarning {
+        warning: LexerWarning,
         location: Location,
     },
     // TODO: `message` could be an enum to save allocation costs
@@ -374,7 +378,8 @@ impl Diagnostic {
     pub fn kind(&self) -> DiagnosticKind {
         use Diagnostic::*;
         match self {
-            NameAlreadyInScope { .. }
+            LexerWarning { .. }
+            | NameAlreadyInScope { .. }
             | ImportedNameAlreadyInScope { .. }
             | UnusedName { .. }
             | UnreachableCase { .. }
@@ -399,6 +404,7 @@ impl Diagnostic {
     pub fn message(&self) -> String {
         match self {
             Diagnostic::LexerError { error, .. } => error.to_string(),
+            Diagnostic::LexerWarning { warning, .. } => warning.to_string(),
             Diagnostic::ParserExpected { message, actual, .. } => {
                 if actual.to_string().contains(" ") {
                     format!("Expected {message} but found {actual}")
@@ -679,6 +685,7 @@ impl Diagnostic {
     pub fn location(&self) -> &Location {
         match self {
             Diagnostic::LexerError { location, .. }
+            | Diagnostic::LexerWarning { location, .. }
             | Diagnostic::ParserExpected { location, .. }
             | Diagnostic::ParserComplexImplItemName { location, .. }
             | Diagnostic::ExpectedPathForImport { location }

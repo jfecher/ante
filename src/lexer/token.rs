@@ -35,6 +35,8 @@ pub(crate) const INDEX_ASSIGN_OPERATOR_FUNCTION_NAME: &str = ".[]:=";
 pub enum LexerError {
     UnicodeWhitespaceCharacterInSignificantWhitespace(char),
     InvalidEscapeSequence(char),
+    InvalidHexEscape,
+    InvalidUnicodeEscape,
     InvalidIntegerSuffx,
     InvalidFloatSuffx,
     IndentChangeTooSmall, // We require >= 2 spaces to indent or any number of tabs.
@@ -388,6 +390,13 @@ impl Display for LexerError {
                 )
             },
             InvalidEscapeSequence(c) => write!(f, "Invalid character in escape sequence: '{}' (U+{:x})", c, *c as u32),
+            InvalidHexEscape => {
+                write!(f, "Invalid `\\x` escape sequence, expected exactly 2 hexadecimal digits, e.g. `\\x7f`")
+            },
+            InvalidUnicodeEscape => write!(
+                f,
+                "Invalid `\\u{{...}}` escape sequence, expected 1 to 6 hexadecimal digits forming a valid Unicode codepoint, e.g. `\\u{{1f600}}`"
+            ),
             InvalidIntegerSuffx => write!(
                 f,
                 "Invalid suffix after integer literal. Expected an integer type like i32 or a space to separate the two tokens"
@@ -416,6 +425,28 @@ impl Display for LexerError {
             FailedToParseNumber { integer_string } => {
                 write!(f, "Integer is too large: {}", integer_string.purple())
             },
+        }
+    }
+}
+
+/// Non-fatal lexing issues. Unlike [LexerError] these still produce a normal, usable
+/// token; the token's value should be used as-is, just with the caveat this describes.
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, Hash)]
+pub enum LexerWarning {
+    /// A `\u{...}` escape in a char literal produced a codepoint above U+FF. Ante's
+    /// `Char` is a single byte, so this value is truncated to its low byte at codegen.
+    CodepointDoesNotFitInChar { codepoint: u32 },
+}
+
+impl Display for LexerWarning {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use LexerWarning::*;
+        match self {
+            CodepointDoesNotFitInChar { codepoint } => write!(
+                f,
+                "Codepoint U+{:x} does not fit in a single byte; this Char literal's value will be truncated to its low byte at compile time",
+                codepoint
+            ),
         }
     }
 }

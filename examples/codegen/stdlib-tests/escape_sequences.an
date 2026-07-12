@@ -1,0 +1,18 @@
+import Std.String.bytes
+import Std.Stream.iter, stream_fn, Emit, emit
+
+main () =
+    println "\x41\x42\x43"
+    println "\u{48}\u{65}\u{6c}\u{6c}\u{6f}"
+    println '\x41'
+    println '\u{48}'
+    iter (bytes "\xff") println
+
+// args: --delete-binary --no-color
+// expected stdout:
+// ABC
+// Hello
+// A
+// H
+// 195
+// 191

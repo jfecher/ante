@@ -44,7 +44,7 @@ use crate::{
     name_resolution::namespace::SourceFileId,
 };
 use std::{str::Chars, sync::Arc};
-use token::{ClosingBracket, F64, FloatKind, Integer, IntegerKind, LexerError, Token, lookup_keyword};
+use token::{ClosingBracket, F64, FloatKind, Integer, IntegerKind, LexerError, LexerWarning, Token, lookup_keyword};
 
 #[derive(Clone)]
 struct OpenBraces {
@@ -70,6 +70,7 @@ pub struct Lexer<'contents> {
     open_braces: OpenBraces,
     pending_interpolations: Vec<usize>,
     errors: Vec<(LexerError, Span)>,
+    warnings: Vec<(LexerWarning, Span)>,
 }
 
 /// The lexer maintains a stack of IndentLevels to remember
@@ -115,6 +116,7 @@ impl<'contents> Lexer<'contents> {
             open_braces: OpenBraces { parenthesis: 0, curly: 0, square: 0 },
             pending_interpolations: Vec::new(),
             errors: Vec::new(),
+            warnings: Vec::new(),
         }
     }
 
@@ -147,6 +149,13 @@ impl<'contents> Lexer<'contents> {
     pub fn errors(&self, file: SourceFileId) -> Vec<Diagnostic> {
         mapvec(&self.errors, |(error, span)| Diagnostic::LexerError {
             error: error.clone(),
+            location: span.in_file(file),
+        })
+    }
+
+    pub fn warnings(&self, file: SourceFileId) -> Vec<Diagnostic> {
+        mapvec(&self.warnings, |(warning, span)| Diagnostic::LexerWarning {
+            warning: warning.clone(),
             location: span.in_file(file),
         })
     }
@@ -377,33 +386,134 @@ impl<'contents> Lexer<'contents> {
         self.advance();
         let mut contents = String::new();
         while !(self.current == '"' || self.at_end_of_input()) {
-            let current_char = match (self.current, self.next) {
+            match (self.current, self.next) {
                 ('$', '{') => {
                     return Some((Token::StringLiteral(contents), self.locate()));
                 },
-                ('\\', c) => {
-                    let escape_sequence_start = self.current_position;
-                    self.advance();
-                    match c {
-                        '\\' | '"' | '$' => c,
-                        'n' => '\n',
-                        'r' => '\r',
-                        't' => '\t',
-                        '0' => '\0',
-                        c => {
-                            self.advance();
-                            let span = Span { start: escape_sequence_start, end: self.current_position };
-                            self.errors.push((LexerError::InvalidEscapeSequence(c), span));
-                            continue;
-                        },
+                ('\\', _) => {
+                    if let Some(c) = self.lex_string_escape() {
+                        contents.push(c);
                     }
                 },
-                (c, _) => c,
-            };
-            contents.push(current_char);
-            self.advance();
+                (c, _) => {
+                    contents.push(c);
+                    self.advance();
+                },
+            }
         }
         self.expect('"', Token::StringLiteral(contents))
+    }
+
+    /// Lex a single escape sequence within a string literal, e.g. `\n` or `\x41`.
+    /// Expects `self.current == '\\'`. Always leaves `self.current` positioned just past
+    /// everything consumed as part of the escape (valid or invalid) - the caller performs
+    /// no additional advance. Returns `None` (having already recorded a [LexerError]) if
+    /// the escape was invalid, in which case nothing should be pushed to the string.
+    fn lex_string_escape(&mut self) -> Option<char> {
+        let escape_start = self.current_position;
+        self.advance(); // consume '\'
+        let selector = self.current;
+
+        match selector {
+            '\\' | '"' | '$' => {
+                self.advance();
+                Some(selector)
+            },
+            'n' => {
+                self.advance();
+                Some('\n')
+            },
+            'r' => {
+                self.advance();
+                Some('\r')
+            },
+            't' => {
+                self.advance();
+                Some('\t')
+            },
+            '0' => {
+                self.advance();
+                Some('\0')
+            },
+            'x' => {
+                self.advance();
+                self.lex_hex_escape(escape_start)
+            },
+            'u' => {
+                self.advance();
+                self.lex_unicode_escape(escape_start)
+            },
+            _ => {
+                self.advance();
+                let span = Span { start: escape_start, end: self.current_position };
+                self.errors.push((LexerError::InvalidEscapeSequence(selector), span));
+                None
+            },
+        }
+    }
+
+    /// Lex the `NN` in a `\xNN` escape (shared by string and char literals). Expects
+    /// `self.current` to be the first hex digit (`\` and `x` are already consumed).
+    /// Consumes at most 2 hex-digit characters and never consumes a non-hex-digit, so
+    /// callers can always resume normal lexing immediately after this returns.
+    fn lex_hex_escape(&mut self, escape_start: Position) -> Option<char> {
+        let digits_start = self.current_position.byte_index;
+        while !self.at_end_of_input()
+            && self.current.is_ascii_hexdigit()
+            && self.current_position.byte_index - digits_start < 2
+        {
+            self.advance();
+        }
+        let digits = &self.file_contents[digits_start..self.current_position.byte_index];
+
+        if digits.len() == 2 {
+            let byte = u8::from_str_radix(digits, 16).expect("lex_hex_escape: scanned exactly 2 ascii hex digits");
+            Some(byte as char)
+        } else {
+            let span = Span { start: escape_start, end: self.current_position };
+            self.errors.push((LexerError::InvalidHexEscape, span));
+            None
+        }
+    }
+
+    /// Lex the `{XXXXXX}` in a `\u{...}` escape (shared by string and char literals).
+    /// Expects `self.current` to be positioned right after `u`. A `}` immediately
+    /// following the digit scan is always consumed, even on error, since it
+    /// unambiguously belongs to this escape; a `}` that never appears (e.g. the digit
+    /// scan runs into the literal's own closing quote) is never consumed, so callers can
+    /// recover cleanly without cascading errors.
+    fn lex_unicode_escape(&mut self, escape_start: Position) -> Option<char> {
+        if self.current != '{' {
+            let span = Span { start: escape_start, end: self.current_position };
+            self.errors.push((LexerError::InvalidUnicodeEscape, span));
+            return None;
+        }
+        self.advance(); // consume '{'
+
+        let digits_start = self.current_position.byte_index;
+        self.advance_while(|c, _| c.is_ascii_hexdigit());
+        let digits = &self.file_contents[digits_start..self.current_position.byte_index];
+
+        let found_closing_brace = self.current == '}';
+        if found_closing_brace {
+            self.advance();
+        }
+        let span = Span { start: escape_start, end: self.current_position };
+
+        if !found_closing_brace || !(1..=6).contains(&digits.len()) {
+            self.errors.push((LexerError::InvalidUnicodeEscape, span));
+            return None;
+        }
+
+        let codepoint = u32::from_str_radix(digits, 16).expect("lex_unicode_escape: scanned only ascii hex digits");
+        match char::from_u32(codepoint) {
+            Some(ch) => Some(ch),
+            None => {
+                // Not a valid Unicode scalar value: either a surrogate (D800-DFFF) or > 10FFFF.
+                self.errors.push((LexerError::InvalidUnicodeEscape, span));
+                None
+            },
+        }
     }
 
     fn lex_quoted(&mut self) -> IterElem {
@@ -451,25 +561,72 @@ impl<'contents> Lexer<'contents> {
     /// Expects the initial ' to already be advanced past
     fn lex_char_literal(&mut self) -> IterElem {
         let contents = if self.current == '\\' {
-            self.advance();
-            match self.current {
-                '\\' | '\'' => self.current,
-                'n' => '\n',
-                'r' => '\r',
-                't' => '\t',
-                '0' => '\0',
-                c => {
-                    let span = self.locate();
-                    self.errors.push((LexerError::InvalidEscapeSequence(c), span));
-                    '\0'
-                },
-            }
+            self.lex_char_escape()
         } else {
-            self.current
+            let c = self.current;
+            self.advance();
+            c
         };
 
-        self.advance();
         self.expect('\'', Token::CharLiteral(contents))
+    }
+
+    /// Lex a single escape sequence within a char literal, e.g. `\n` or `\x41`. Expects
+    /// `self.current == '\\'`. Always leaves `self.current` positioned just past
+    /// everything consumed as part of the escape - the caller performs no additional
+    /// advance. Returns `'\0'` as a placeholder if the escape was invalid, having
+    /// already recorded a [LexerError].
+    fn lex_char_escape(&mut self) -> char {
+        let escape_start = self.current_position;
+        self.advance(); // consume '\'
+        let selector = self.current;
+
+        match selector {
+            '\\' | '\'' => {
+                self.advance();
+                selector
+            },
+            'n' => {
+                self.advance();
+                '\n'
+            },
+            'r' => {
+                self.advance();
+                '\r'
+            },
+            't' => {
+                self.advance();
+                '\t'
+            },
+            '0' => {
+                self.advance();
+                '\0'
+            },
+            'x' => {
+                self.advance();
+                self.lex_hex_escape(escape_start).unwrap_or('\0')
+            },
+            'u' => {
+                self.advance();
+                match self.lex_unicode_escape(escape_start) {
+                    Some(ch) => {
+                        if ch as u32 > 0xFF {
+                            let span = Span { start: escape_start, end: self.current_position };
+                            let codepoint = ch as u32;
+                            self.warnings.push((LexerWarning::CodepointDoesNotFitInChar { codepoint }, span));
+                        }
+                        ch
+                    },
+                    None => '\0',
+                }
+            },
+            _ => {
+                self.advance();
+                let span = Span { start: escape_start, end: self.current_position };
+                self.errors.push((LexerError::InvalidEscapeSequence(selector), span));
+                '\0'
+            },
+        }
     }
 
     fn lex_newline(&mut self) -> IterElem {
@@ -682,7 +839,10 @@ impl<'contents> Lexer<'contents> {
 
     pub fn lex(file_contents: &'contents str, id: SourceFileId) -> (Vec<(Token, Span)>, Vec<Diagnostic>) {
         let mut lexer = Lexer::new(file_contents);
-        ((&mut lexer).collect(), lexer.errors(id))
+        let tokens = (&mut lexer).collect();
+        let mut diagnostics = lexer.errors(id);
+        diagnostics.extend(lexer.warnings(id));
+        (tokens, diagnostics)
     }
 }
 
