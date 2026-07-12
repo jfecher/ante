@@ -10,8 +10,15 @@ on_fail (f: fn Fail => a) (default: fn Unit => a): a =
     handler h for fail () -> default ()
     f h
 
-assert (cond: Bool) {Fail} : Unit =
+/// Fails if `cond` is false
+/// Note that this is the inverse of `fail_if`
+assert (cond: Bool) {Fail}: Unit =
     if not cond then fail ()
+
+/// Fails if `cond` is true
+/// Note that this is the inverse of `assert`
+fail_if (cond: Bool) {Fail}: Unit =
+    if cond then fail ()
 
 /// Asserts the operation cannot fail.
 /// Panics at runtime if it does.
