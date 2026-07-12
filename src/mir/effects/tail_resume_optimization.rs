@@ -650,6 +650,20 @@ pub(super) fn substitute_value(definition: &mut Definition, find: Value, replace
             | Instruction::Truncate(v)
             | Instruction::Deref(v) => sub(v),
             Instruction::GetFieldPtr { struct_ptr, .. } => sub(struct_ptr),
+            Instruction::AtomicLoad { pointer, .. } => sub(pointer),
+            Instruction::AtomicStore { pointer, value, .. } => {
+                sub(pointer);
+                sub(value);
+            },
+            Instruction::AtomicRmw { pointer, value, .. } => {
+                sub(pointer);
+                sub(value);
+            },
+            Instruction::AtomicCmpxchg { pointer, expected, desired, .. } => {
+                sub(pointer);
+                sub(expected);
+                sub(desired);
+            },
             Instruction::MakeBytes(_)
             | Instruction::Instantiate(_, _)
             | Instruction::Extern(_)

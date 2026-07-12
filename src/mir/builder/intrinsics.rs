@@ -2,7 +2,7 @@ use inc_complete::DbGet;
 
 use crate::{
     incremental::{GetItem, GetItemRaw, TypeCheck},
-    mir::{Instruction, Value, builder::Context},
+    mir::{AtomicOrdering, AtomicRmwOp, Instruction, Value, builder::Context},
     name_resolution::{Origin, builtin::Builtin},
     parser::{
         cst::{self, Argument},
@@ -43,6 +43,15 @@ where
             let arg1 = this.expression(args[0].expr);
             let arg2 = this.expression(args[1].expr);
             this.push_instruction(f(arg1, arg2), result_type.clone())
+        };
+
+        // TODO: Support more AtomicOrderings. We only use SeqCst
+        let push_atomic_rmw = |this: &mut Self, op: AtomicRmwOp| {
+            assert_eq!(args.len(), 2);
+            let pointer = this.expression(args[0].expr);
+            let value = this.expression(args[1].expr);
+            let ins = Instruction::AtomicRmw { op, pointer, value, ordering: AtomicOrdering::SeqCst };
+            this.push_instruction(ins, result_type.clone())
         };
 
         Some(match intrinsic.as_ref() {
@@ -104,6 +113,39 @@ where
                 // monomorphization can specialize the array's length to a constant.
                 let t = self.get_t_from_type_t(args).unwrap_or(super::Type::ERROR);
                 self.push_instruction(Instruction::ArrayLen(t), result_type.clone())
+            },
+            "AtomicLoad" => {
+                assert_eq!(args.len(), 1);
+                let pointer = self.expression(args[0].expr);
+                let ins = Instruction::AtomicLoad { pointer, ordering: AtomicOrdering::SeqCst };
+                self.push_instruction(ins, result_type.clone())
+            },
+            "AtomicStore" => {
+                assert_eq!(args.len(), 2);
+                let pointer = self.expression(args[0].expr);
+                let value = self.expression(args[1].expr);
+                let ins = Instruction::AtomicStore { pointer, value, ordering: AtomicOrdering::SeqCst };
+                self.push_instruction(ins, result_type.clone())
+            },
+            "AtomicSwap" => push_atomic_rmw(self, AtomicRmwOp::Xchg),
+            "AtomicFetchAdd" => push_atomic_rmw(self, AtomicRmwOp::Add),
+            "AtomicFetchSub" => push_atomic_rmw(self, AtomicRmwOp::Sub),
+            "AtomicFetchAnd" => push_atomic_rmw(self, AtomicRmwOp::And),
+            "AtomicFetchOr" => push_atomic_rmw(self, AtomicRmwOp::Or),
+            "AtomicFetchXor" => push_atomic_rmw(self, AtomicRmwOp::Xor),
+            "AtomicCompareAndSwap" => {
+                assert_eq!(args.len(), 3);
+                let pointer = self.expression(args[0].expr);
+                let expected = self.expression(args[1].expr);
+                let desired = self.expression(args[2].expr);
+                let ins = Instruction::AtomicCmpxchg {
+                    pointer,
+                    expected,
+                    desired,
+                    success: AtomicOrdering::SeqCst,
+                    failure: AtomicOrdering::SeqCst,
+                };
+                self.push_instruction(ins, result_type.clone())
             },
             other => panic!("Unknown intrinsic `{other}`"),
         })

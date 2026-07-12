@@ -1,0 +1,20 @@
+import Std.Sync.Thread, spawn, join, Arc, as_ref, clone_arc, drop_arc
+
+// Clone an Arc into a spawned thread. When the thread's clone is dropped the shared
+// value survives (count > 0), so main's clone still reads it correctly after join.
+reader (a: Arc I32): I32 =
+    deref (Arc.as_ref a)
+
+main () =
+    original = Arc.of 99
+    c = clone original
+    t = spawn (do reader c)
+    from_thread: I32 = join t
+    from_main = deref (Arc.as_ref original)
+    println from_thread
+    println from_main
+
+// args: --delete-binary --no-color
+// expected stdout:
+// 99
+// 99

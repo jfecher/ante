@@ -771,6 +771,45 @@ impl<'ctx> ModuleContext<'ctx> {
             },
             mir::Instruction::SizeOf(_) => todo!("SizeOf should be removed by monomorphization"),
             mir::Instruction::ArrayLen(_) => todo!("ArrayLen should be removed by monomorphization"),
+            mir::Instruction::AtomicLoad { pointer, ordering } => {
+                // An atomic load is expressed as `atomicrmw or ptr, 0`, which reads and returns
+                // the current value. This avoids the separate-instruction alignment/ordering setup.
+                let ptr = self.lookup_value(pointer).into_pointer_value();
+                let result_type = self.convert_type(function.instruction_result_type(id)).into_int_type();
+                let zero = result_type.const_zero();
+                self.builder
+                    .build_atomicrmw(inkwell::AtomicRMWBinOp::Or, ptr, zero, to_llvm_ordering(*ordering))
+                    .unwrap()
+                    .as_basic_value_enum()
+            },
+            mir::Instruction::AtomicStore { pointer, value, ordering } => {
+                // An atomic store is expressed as `atomicrmw xchg`, discarding the previous value.
+                let ptr = self.lookup_value(pointer).into_pointer_value();
+                let value = self.lookup_value(value).into_int_value();
+                self.builder
+                    .build_atomicrmw(inkwell::AtomicRMWBinOp::Xchg, ptr, value, to_llvm_ordering(*ordering))
+                    .unwrap();
+                self.unit_value()
+            },
+            mir::Instruction::AtomicRmw { op, pointer, value, ordering } => {
+                let ptr = self.lookup_value(pointer).into_pointer_value();
+                let value = self.lookup_value(value).into_int_value();
+                self.builder
+                    .build_atomicrmw(to_llvm_rmw(*op), ptr, value, to_llvm_ordering(*ordering))
+                    .unwrap()
+                    .as_basic_value_enum()
+            },
+            mir::Instruction::AtomicCmpxchg { pointer, expected, desired, success, failure } => {
+                let ptr = self.lookup_value(pointer).into_pointer_value();
+                let expected = self.lookup_value(expected).into_int_value();
+                let desired = self.lookup_value(desired).into_int_value();
+                let result = self
+                    .builder
+                    .build_cmpxchg(ptr, expected, desired, to_llvm_ordering(*success), to_llvm_ordering(*failure))
+                    .unwrap();
+                // cmpxchg yields `{ old_value, success_flag }`; return the previous value.
+                self.builder.build_extract_value(result, 0, "").unwrap()
+            },
             mir::Instruction::Extern(name) => {
                 let typ = function.instruction_result_type(id);
                 match self.convert_function_type(typ) {
@@ -967,5 +1006,28 @@ impl<'ctx> ModuleContext<'ctx> {
                 unreachable!("Result terminator encountered during function codegen")
             },
         }
+    }
+}
+
+fn to_llvm_ordering(ordering: crate::mir::AtomicOrdering) -> inkwell::AtomicOrdering {
+    use crate::mir::AtomicOrdering as O;
+    match ordering {
+        O::Relaxed => inkwell::AtomicOrdering::Monotonic,
+        O::Acquire => inkwell::AtomicOrdering::Acquire,
+        O::Release => inkwell::AtomicOrdering::Release,
+        O::AcqRel => inkwell::AtomicOrdering::AcquireRelease,
+        O::SeqCst => inkwell::AtomicOrdering::SequentiallyConsistent,
+    }
+}
+
+fn to_llvm_rmw(op: crate::mir::AtomicRmwOp) -> inkwell::AtomicRMWBinOp {
+    use crate::mir::AtomicRmwOp as Op;
+    match op {
+        Op::Xchg => inkwell::AtomicRMWBinOp::Xchg,
+        Op::Add => inkwell::AtomicRMWBinOp::Add,
+        Op::Sub => inkwell::AtomicRMWBinOp::Sub,
+        Op::And => inkwell::AtomicRMWBinOp::And,
+        Op::Or => inkwell::AtomicRMWBinOp::Or,
+        Op::Xor => inkwell::AtomicRMWBinOp::Xor,
     }
 }

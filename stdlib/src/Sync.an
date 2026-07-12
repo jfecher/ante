@@ -1,0 +1,214 @@
+import Std.C.malloc, free, VoidPtr
+
+export
+    Thread, spawn, join, detach,
+    Mutex, with_lock,
+    Condvar, wait, signal, broadcast,
+    Atomic, load, store, swap, compare_and_swap,
+    fetch_add, fetch_sub, fetch_and, fetch_or, fetch_xor,
+    Arc, as_ref, clone_arc, drop_arc, drop_mutex
+
+pthread_create: fn VoidPtr VoidPtr (fn VoidPtr -> VoidPtr) VoidPtr -> I32 = extern "pthread_create"
+pthread_join: fn VoidPtr (Ptr VoidPtr) -> I32 = extern "pthread_join"
+pthread_detach: fn VoidPtr -> I32 = extern "pthread_detach"
+
+pthread_mutex_init: fn VoidPtr VoidPtr -> I32 = extern "pthread_mutex_init"
+pthread_mutex_lock: fn VoidPtr -> I32 = extern "pthread_mutex_lock"
+pthread_mutex_unlock: fn VoidPtr -> I32 = extern "pthread_mutex_unlock"
+pthread_mutex_destroy: fn VoidPtr -> I32 = extern "pthread_mutex_destroy"
+
+pthread_cond_init: fn VoidPtr VoidPtr -> I32 = extern "pthread_cond_init"
+pthread_cond_wait: fn VoidPtr VoidPtr -> I32 = extern "pthread_cond_wait"
+pthread_cond_signal: fn VoidPtr -> I32 = extern "pthread_cond_signal"
+pthread_cond_broadcast: fn VoidPtr -> I32 = extern "pthread_cond_broadcast"
+pthread_cond_destroy: fn VoidPtr -> I32 = extern "pthread_cond_destroy"
+
+// These sizes should be large enough on mac & linux gcc at least.
+// TODO: Remove hard-coded sizes
+mutex_buf_size: Usz = 64
+cond_buf_size: Usz = 64
+pthread_t_size: Usz = 8
+
+// ================================================
+// Atomics: all use SeqCst internally currently
+// TODO: Remove hard-coded SeqCst in the compiler
+// ================================================
+
+atomic_ptr_load (p: ref t): t = intrinsic "AtomicLoad" p
+atomic_ptr_store (p: ref t) (value: t): Unit = intrinsic "AtomicStore" p value
+atomic_ptr_swap (p: ref t) (value: t): t = intrinsic "AtomicSwap" p value
+atomic_ptr_cas (p: ref t) (current: t) (desired: t): t = intrinsic "AtomicCompareAndSwap" p current desired
+atomic_ptr_fetch_add (p: ref t) (delta: t): t = intrinsic "AtomicFetchAdd" p delta
+atomic_ptr_fetch_sub (p: ref t) (delta: t): t = intrinsic "AtomicFetchSub" p delta
+atomic_ptr_fetch_and (p: ref t) (mask: t): t = intrinsic "AtomicFetchAnd" p mask
+atomic_ptr_fetch_or (p: ref t) (mask: t): t = intrinsic "AtomicFetchOr" p mask
+atomic_ptr_fetch_xor (p: ref t) (mask: t): t = intrinsic "AtomicFetchXor" p mask
+
+type Atomic t = value: t
+
+Atomic.of (value: t): Atomic t =
+    Atomic value
+
+Atomic.load (a: ref Atomic t): t =
+    atomic_ptr_load a.value
+
+Atomic.store (a: ref Atomic t) (value: t): Unit =
+    atomic_ptr_store a.value value
+
+/// Replace the value, returning the previous one.
+Atomic.swap (a: ref Atomic t) (value: t): t =
+    atomic_ptr_swap a.value value
+
+/// If the current value equals `current`, replace it with `desired`.
+/// Returns the previous value.
+Atomic.compare_and_swap (a: ref Atomic t) (current: t) (desired: t): t =
+    atomic_ptr_cas a.value current desired
+
+Atomic.fetch_add (a: ref Atomic t) (delta: t): t = atomic_ptr_fetch_add a.value delta
+Atomic.fetch_sub (a: ref Atomic t) (delta: t): t = atomic_ptr_fetch_sub a.value delta
+Atomic.fetch_and (a: ref Atomic t) (mask: t): t = atomic_ptr_fetch_and a.value mask
+Atomic.fetch_or (a: ref Atomic t) (mask: t): t = atomic_ptr_fetch_or a.value mask
+Atomic.fetch_xor (a: ref Atomic t) (mask: t): t = atomic_ptr_fetch_xor a.value mask
+
+// ================================================
+// Mutex
+// ================================================
+type Mutex t =
+    // Actually a pthread_mutex_t
+    handle: VoidPtr
+    value: t
+
+Mutex.of (value: t): Mutex t =
+    handle = malloc mutex_buf_size
+    pthread_mutex_init handle (null ())
+    Mutex handle value
+
+/// Acquires the lock, blocking until it can be acquired, then runs `f`, then releases the
+/// lock, returning the result of `f`.
+///
+/// This may deadlock 
+Mutex.with_lock (m: ref Mutex t) (f: fn (mut t) => r): r =
+    pthread_mutex_lock m.handle
+
+    // We have to use an unsafe conversion for the internal mutability here
+    ref_to_mut: fn (ref t) -> mut t = transmute
+    result = f (ref_to_mut m.value)
+
+    pthread_mutex_unlock m.handle
+    result
+
+impl drop_mutex {Drop t}: Drop (Mutex t) with
+    drop (m: mut Mutex t) =
+        pthread_mutex_destroy m.handle
+        free m.handle
+        drop m.value
+
+// ================================================
+// Condvar
+// ================================================
+type Condvar = raw: VoidPtr
+
+Condvar.new (): Condvar =
+    raw = malloc cond_buf_size
+    pthread_cond_init raw (null ())
+    Condvar raw
+
+/// Atomically release `m`'s lock and block until signalled, then re-acquire it. Must be
+/// called while holding `m`'s lock (i.e. from within a `Mutex.with_lock` body that also
+/// captured `m`).
+/// TODO: Add MutexGuard and require that instead of a Mutex
+Condvar.wait (c: ref Condvar) (m: ref Mutex t): Unit =
+    pthread_cond_wait c.raw m.handle
+    ()
+
+/// Unblock one thread waiting on this condvar
+Condvar.signal (c: ref Condvar): Unit =
+    pthread_cond_signal c.raw
+    ()
+
+/// Unblock all threads waiting on this condvar
+Condvar.broadcast (c: ref Condvar): Unit =
+    pthread_cond_broadcast c.raw
+    ()
+
+impl drop_condvar: Drop Condvar with
+    drop c =
+        pthread_cond_destroy c.raw
+        free c.raw
+
+// ================================================
+// Thread
+// ================================================
+type Thread a = handle: VoidPtr
+
+/// Spawn a new OS thread running `f`. The returned thread must be joined or detached.
+Thread.spawn (f: fn Unit [e] -> a): Thread a =
+    // pthread_create needs a free function so we use this wrapper to take a pointer
+    // to the closure to run as an argument.
+    wrapper (thunk: VoidPtr): VoidPtr =
+        closure_ptr = transmute thunk : Ptr (fn Unit [e] -> a)
+        thunk = deref_ptr closure_ptr
+        free closure_ptr
+        out = malloc (size_of (MkType: Type a))
+        ptr_store out (thunk ())
+        transmute out
+
+    closure_ptr = malloc (size_of (MkType: Type (fn Unit [e] -> a)))
+    ptr_store closure_ptr f
+    args_ptr = transmute closure_ptr : VoidPtr
+    handle = malloc pthread_t_size
+    pthread_create handle (null ()) wrapper args_ptr
+    Thread handle
+
+/// Block until the thread finishes and return its result.
+Thread.join (t: Thread a): a =
+    var ret = null ()
+
+    tid = deref_ptr (transmute t.handle : Ptr VoidPtr)
+    // TODO: this can mangle ret with PTHREAD_CANCELED
+    pthread_join tid (transmute (mut ret))
+    result = deref_ptr ret
+    free ret
+    free t.handle
+    result
+
+/// Detach the thread so its resources are reclaimed automatically on exit.
+/// The result value is leaked; use `join` if you need it.
+Thread.detach (t: Thread a): Unit =
+    tid = deref_ptr (transmute t.handle : Ptr VoidPtr)
+    pthread_detach tid
+    free t.handle
+
+// ================================================
+// Arc
+// ================================================
+type ArcInner t =
+    count: Atomic U32
+    value: t
+
+type Arc t = ptr: Ptr (ArcInner t)
+
+Arc.of (value: t): Arc t =
+    ptr = malloc (size_of (MkType: Type (ArcInner t)))
+    count = Atomic.of 1
+    ptr_store ptr (ArcInner count value)
+    Arc ptr
+
+Arc.as_ref (a: imm Arc t): imm t =
+    ptr_to_imm: fn (Ptr (ArcInner t)) -> imm ArcInner t = transmute
+    inner = ptr_to_imm a.ptr
+    inner.value
+
+impl clone_arc: Clone (Arc t) with
+    clone (a: ref Arc t) =
+        inner = ptr_to_mut a.ptr
+        inner.count.fetch_add 1
+        deref a
+
+impl drop_arc {Drop t}: Drop (Arc t) with
+    drop (a: mut Arc t) =
+        inner = ptr_to_mut a.ptr
+        previous = inner.count.fetch_sub 1
+        if previous == 1 then
+            drop inner.value
+            free a.ptr

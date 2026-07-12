@@ -47,7 +47,7 @@ pub struct LinkOptions {
 pub fn link_with_cc(object_filename: &str, binary_filename: &str, link_options: &LinkOptions) -> bool {
     let output = format!("-o{}", binary_filename);
     let mut command = Command::new("cc");
-    command.arg(object_filename).arg(aminicoro_path()).arg("-O0").arg("-lm").arg("-w").arg(output);
+    command.arg(object_filename).arg(aminicoro_path()).arg("-O0").arg("-lm").arg("-lpthread").arg("-w").arg(output);
 
     for path in &link_options.search_paths {
         command.arg(format!("-L{path}"));

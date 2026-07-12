@@ -428,6 +428,23 @@ impl Definition {
                         "Capability result type should be a Tuple (capability), got `{result_type}`"
                     );
                 },
+                Instruction::AtomicLoad { pointer, .. } => {
+                    let pointer_type = mir.type_of_value(pointer, self);
+                    instr_assert!(matches!(pointer_type, Type::POINTER), self, id, mir, "AtomicLoad pointer must be a pointer");
+                },
+                Instruction::AtomicStore { pointer, .. } => {
+                    let pointer_type = mir.type_of_value(pointer, self);
+                    instr_assert_subtype!(pointer_type, Type::POINTER, self, id, mir, "AtomicStore pointer must be a pointer, got `{pointer_type}`");
+                    instr_assert_subtype!(*result_type, Type::UNIT, self, id, mir, "AtomicStore result must be unit");
+                },
+                Instruction::AtomicRmw { pointer, .. } => {
+                    let pointer_type = mir.type_of_value(pointer, self);
+                    instr_assert!(matches!(pointer_type, Type::POINTER), self, id, mir, "AtomicRmw pointer must be a pointer");
+                },
+                Instruction::AtomicCmpxchg { pointer, .. } => {
+                    let pointer_type = mir.type_of_value(pointer, self);
+                    instr_assert!(matches!(pointer_type, Type::POINTER), self, id, mir, "AtomicCmpxchg pointer must be a pointer");
+                },
             }
         }
     }
