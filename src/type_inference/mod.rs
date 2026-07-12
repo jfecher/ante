@@ -191,10 +191,8 @@ struct TypeChecker<'local, 'inner> {
     /// plain `x := v` LHS (reassignment reads nothing from `x`).
     suppress_move_record: bool,
 
-    /// The place each local binding denotes. Absent ⇒ the binding denotes its own variable.
-    /// Present only for bindings that name a sub-place of another value — currently those
-    /// introduced under an alias pattern (`whole @ Box p` maps `p` to `whole.<inner-field>`),
-    /// so consuming both `whole` and `p` is caught as a partial move.
+    /// Keep track of which variable pattern aliases alias to catch double or partial
+    /// moves when both an alias and the original name are moved.
     binding_places: FxHashMap<NameId, affine::MovePath>,
 
     /// Cached TopLevelName for the Prelude's `Copy` type, lazily resolved on first use.

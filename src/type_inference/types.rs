@@ -337,8 +337,7 @@ impl Type {
     }
 
     /// Map `f` over `items`, cloning any element for which `f` returns `None`. Returns
-    /// `Some(new_vec)` if at least one element changed, or `None` if none did — mirroring
-    /// [Self::follow_all_opt]'s "reuse the original when unchanged" contract.
+    /// `Some(new_vec)` if at least one element changed, or `None` if none did.
     fn follow_all_each<T: Clone>(items: &[T], mut f: impl FnMut(&T) -> Option<T>) -> Option<Vec<T>> {
         let mut result: Option<Vec<T>> = None;
         for (i, item) in items.iter().enumerate() {
