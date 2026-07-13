@@ -1,6 +1,7 @@
-import Std.String.bytes, chars, substr, string_of, join, split, reverse
+import Std.String.bytes, chars, substr, string_of, join, split, reverse, parse_i32
 import Std.Stream.iter, intersperse, stream_fn, Emit, emit
 import Std.String.starts_with, ends_with, contains, trim, trim_start, trim_end
+import Std.Fail.try
 
 main () =
     // bytes & chars:
@@ -26,6 +27,7 @@ main () =
     // join over an interspersed stream → single String "a, b, c"
     println (intersperse abc_stream ", " |> join)
     test_predicates ()
+    test_parse ()
 
 abc_stream {Emit String}: Unit =
     emit "a"
@@ -47,6 +49,36 @@ test_predicates () =
     println ("[" ++ trim_end "  hi  " ++ "]")
     println ("[" ++ trim "   " ++ "]")
     println ("[" ++ trim "no-trim" ++ "]")
+
+test_parse () =
+    println (try do parse_i32 "0")
+    println (try do parse_i32 "-0")
+    println (try do parse_i32 "+0")
+    println (try do parse_i32 "000123")
+    println (try do parse_i32 "12345")
+    println (try do parse_i32 "-42")
+    println (try do parse_i32 "+7")
+    println (try do parse_i32 "+123")
+    println (try do parse_i32 "")
+    println (try do parse_i32 "-")
+    println (try do parse_i32 "+")
+    println (try do parse_i32 "--")
+    println (try do parse_i32 "+-")
+    println (try do parse_i32 "-+")
+    println (try do parse_i32 "++")
+    println (try do parse_i32 "12x")
+    println (try do parse_i32 "x12")
+    println (try do parse_i32 "1_000")
+    println (try do parse_i32 " 1")
+    println (try do parse_i32 "1 ")
+    println (try do parse_i32 "0xff")
+    println (try do parse_i32 "2147483647")
+    println (try do parse_i32 "2147483648")
+    println (try do parse_i32 "999999999999999999999999999")
+    println (try do parse_i32 "-2147483647")
+    println (try do parse_i32 "-2147483648")
+    println (try do parse_i32 "-2147483649")
+    println (try do parse_i32 "-999999999999999999999999999")
 
 // args: --delete-binary --no-color
 // expected stdout:
@@ -79,3 +111,31 @@ test_predicates () =
 // [  hi]
 // []
 // [no-trim]
+// Some 0
+// Some 0
+// Some 0
+// Some 123
+// Some 12345
+// Some -42
+// Some 7
+// Some 123
+// None
+// None
+// None
+// None
+// None
+// None
+// None
+// None
+// None
+// None
+// None
+// None
+// None
+// Some 2147483647
+// None
+// None
+// Some -2147483647
+// Some -2_147_483_648
+// None
+// None
