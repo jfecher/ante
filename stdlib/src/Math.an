@@ -4,8 +4,15 @@ export sqrt, sqrtf, cbrt, pow, powf, exp, log, log2, log10,
     sin, cos, tan, asin, acos, atan, atan2,
     floor, ceil, round, trunc, fmod, hypot,
     pi, tau, e, abs,
-    overflowing_add_i32, overflowing_sub_i32, overflowing_mul_i32,
-    checked_add_i32, checked_sub_i32, checked_mul_i32
+    CheckedNum, checked_add, checked_sub, checked_mul,
+    checked_num_i8, checked_num_i16, checked_num_i32, checked_num_i64, checked_num_isz,
+    checked_num_u8, checked_num_u16, checked_num_u32, checked_num_u64, checked_num_usz,
+    checked_add_i8, checked_add_i16, checked_add_i32, checked_add_i64, checked_add_isz,
+    checked_add_u8, checked_add_u16, checked_add_u32, checked_add_u64, checked_add_usz,
+    checked_sub_i8, checked_sub_i16, checked_sub_i32, checked_sub_i64, checked_sub_isz,
+    checked_sub_u8, checked_sub_u16, checked_sub_u32, checked_sub_u64, checked_sub_usz,
+    checked_mul_i8, checked_mul_i16, checked_mul_i32, checked_mul_i64, checked_mul_isz,
+    checked_mul_u8, checked_mul_u16, checked_mul_u32, checked_mul_u64, checked_mul_usz
 
 // Libm wrappers
 sqrt = extern "sqrt": fn F64 -> F64
@@ -46,9 +53,64 @@ abs (x: t) {n: Num t} {Copy t}: t =
     (-) = n.sub.(-)
     if x < n.zero then n.zero - x else x
 
+checked_add_i8 (x: I8) (y: I8) {Fail}: I8 =
+    result, overflowed = overflowing_add_i8 x y
+    fail_if overflowed
+    result
+
+checked_add_i16 (x: I16) (y: I16) {Fail}: I16 =
+    result, overflowed = overflowing_add_i16 x y
+    fail_if overflowed
+    result
+
 /// Add two I32 values, failing on overflow.
 checked_add_i32 (x: I32) (y: I32) {Fail}: I32 =
     result, overflowed = overflowing_add_i32 x y
+    fail_if overflowed
+    result
+
+checked_add_i64 (x: I64) (y: I64) {Fail}: I64 =
+    result, overflowed = overflowing_add_i64 x y
+    fail_if overflowed
+    result
+
+checked_add_isz (x: Isz) (y: Isz) {Fail}: Isz =
+    result, overflowed = overflowing_add_isz x y
+    fail_if overflowed
+    result
+
+checked_add_u8 (x: U8) (y: U8) {Fail}: U8 =
+    result, overflowed = overflowing_add_u8 x y
+    fail_if overflowed
+    result
+
+checked_add_u16 (x: U16) (y: U16) {Fail}: U16 =
+    result, overflowed = overflowing_add_u16 x y
+    fail_if overflowed
+    result
+
+checked_add_u32 (x: U32) (y: U32) {Fail}: U32 =
+    result, overflowed = overflowing_add_u32 x y
+    fail_if overflowed
+    result
+
+checked_add_u64 (x: U64) (y: U64) {Fail}: U64 =
+    result, overflowed = overflowing_add_u64 x y
+    fail_if overflowed
+    result
+
+checked_add_usz (x: Usz) (y: Usz) {Fail}: Usz =
+    result, overflowed = overflowing_add_usz x y
+    fail_if overflowed
+    result
+
+checked_sub_i8 (x: I8) (y: I8) {Fail}: I8 =
+    result, overflowed = overflowing_sub_i8 x y
+    fail_if overflowed
+    result
+
+checked_sub_i16 (x: I16) (y: I16) {Fail}: I16 =
+    result, overflowed = overflowing_sub_i16 x y
     fail_if overflowed
     result
 
@@ -58,23 +120,239 @@ checked_sub_i32 (x: I32) (y: I32) {Fail}: I32 =
     fail_if overflowed
     result
 
+checked_sub_i64 (x: I64) (y: I64) {Fail}: I64 =
+    result, overflowed = overflowing_sub_i64 x y
+    fail_if overflowed
+    result
+
+checked_sub_isz (x: Isz) (y: Isz) {Fail}: Isz =
+    result, overflowed = overflowing_sub_isz x y
+    fail_if overflowed
+    result
+
+checked_sub_u8 (x: U8) (y: U8) {Fail}: U8 =
+    result, overflowed = overflowing_sub_u8 x y
+    fail_if overflowed
+    result
+
+checked_sub_u16 (x: U16) (y: U16) {Fail}: U16 =
+    result, overflowed = overflowing_sub_u16 x y
+    fail_if overflowed
+    result
+
+checked_sub_u32 (x: U32) (y: U32) {Fail}: U32 =
+    result, overflowed = overflowing_sub_u32 x y
+    fail_if overflowed
+    result
+
+checked_sub_u64 (x: U64) (y: U64) {Fail}: U64 =
+    result, overflowed = overflowing_sub_u64 x y
+    fail_if overflowed
+    result
+
+checked_sub_usz (x: Usz) (y: Usz) {Fail}: Usz =
+    result, overflowed = overflowing_sub_usz x y
+    fail_if overflowed
+    result
+
+checked_mul_i8 (x: I8) (y: I8) {Fail}: I8 =
+    result, overflowed = overflowing_mul_i8 x y
+    fail_if overflowed
+    result
+
+checked_mul_i16 (x: I16) (y: I16) {Fail}: I16 =
+    result, overflowed = overflowing_mul_i16 x y
+    fail_if overflowed
+    result
+
 /// Multiply two I32 values, failing on overflow.
 checked_mul_i32 (x: I32) (y: I32) {Fail}: I32 =
     result, overflowed = overflowing_mul_i32 x y
     fail_if overflowed
     result
 
+checked_mul_i64 (x: I64) (y: I64) {Fail}: I64 =
+    result, overflowed = overflowing_mul_i64 x y
+    fail_if overflowed
+    result
+
+checked_mul_isz (x: Isz) (y: Isz) {Fail}: Isz =
+    result, overflowed = overflowing_mul_isz x y
+    fail_if overflowed
+    result
+
+checked_mul_u8 (x: U8) (y: U8) {Fail}: U8 =
+    result, overflowed = overflowing_mul_u8 x y
+    fail_if overflowed
+    result
+
+checked_mul_u16 (x: U16) (y: U16) {Fail}: U16 =
+    result, overflowed = overflowing_mul_u16 x y
+    fail_if overflowed
+    result
+
+checked_mul_u32 (x: U32) (y: U32) {Fail}: U32 =
+    result, overflowed = overflowing_mul_u32 x y
+    fail_if overflowed
+    result
+
+checked_mul_u64 (x: U64) (y: U64) {Fail}: U64 =
+    result, overflowed = overflowing_mul_u64 x y
+    fail_if overflowed
+    result
+
+checked_mul_usz (x: Usz) (y: Usz) {Fail}: Usz =
+    result, overflowed = overflowing_mul_usz x y
+    fail_if overflowed
+    result
+
+overflowing_add_i8 (x: I8) (y: I8): (I8, Bool) =
+    intrinsic "OverflowingAddInt" x y
+
+overflowing_add_i16 (x: I16) (y: I16): (I16, Bool) =
+    intrinsic "OverflowingAddInt" x y
+
 /// Add two I32 values, returning the wrapped result and whether overflow occurred.
 overflowing_add_i32 (x: I32) (y: I32): (I32, Bool) =
     intrinsic "OverflowingAddInt" x y
+
+overflowing_add_i64 (x: I64) (y: I64): (I64, Bool) =
+    intrinsic "OverflowingAddInt" x y
+
+overflowing_add_isz (x: Isz) (y: Isz): (Isz, Bool) =
+    intrinsic "OverflowingAddInt" x y
+
+overflowing_add_u8 (x: U8) (y: U8): (U8, Bool) =
+    intrinsic "OverflowingAddInt" x y
+
+overflowing_add_u16 (x: U16) (y: U16): (U16, Bool) =
+    intrinsic "OverflowingAddInt" x y
+
+overflowing_add_u32 (x: U32) (y: U32): (U32, Bool) =
+    intrinsic "OverflowingAddInt" x y
+
+overflowing_add_u64 (x: U64) (y: U64): (U64, Bool) =
+    intrinsic "OverflowingAddInt" x y
+
+overflowing_add_usz (x: Usz) (y: Usz): (Usz, Bool) =
+    intrinsic "OverflowingAddInt" x y
+
+overflowing_sub_i8 (x: I8) (y: I8): (I8, Bool) =
+    intrinsic "OverflowingSubInt" x y
+
+overflowing_sub_i16 (x: I16) (y: I16): (I16, Bool) =
+    intrinsic "OverflowingSubInt" x y
 
 /// Subtract two I32 values, returning the wrapped result and whether overflow occurred.
 overflowing_sub_i32 (x: I32) (y: I32): (I32, Bool) =
     intrinsic "OverflowingSubInt" x y
 
+overflowing_sub_i64 (x: I64) (y: I64): (I64, Bool) =
+    intrinsic "OverflowingSubInt" x y
+
+overflowing_sub_isz (x: Isz) (y: Isz): (Isz, Bool) =
+    intrinsic "OverflowingSubInt" x y
+
+overflowing_sub_u8 (x: U8) (y: U8): (U8, Bool) =
+    intrinsic "OverflowingSubInt" x y
+
+overflowing_sub_u16 (x: U16) (y: U16): (U16, Bool) =
+    intrinsic "OverflowingSubInt" x y
+
+overflowing_sub_u32 (x: U32) (y: U32): (U32, Bool) =
+    intrinsic "OverflowingSubInt" x y
+
+overflowing_sub_u64 (x: U64) (y: U64): (U64, Bool) =
+    intrinsic "OverflowingSubInt" x y
+
+overflowing_sub_usz (x: Usz) (y: Usz): (Usz, Bool) =
+    intrinsic "OverflowingSubInt" x y
+
+overflowing_mul_i8 (x: I8) (y: I8): (I8, Bool) =
+    intrinsic "OverflowingMulInt" x y
+
+overflowing_mul_i16 (x: I16) (y: I16): (I16, Bool) =
+    intrinsic "OverflowingMulInt" x y
+
 /// Multiply two I32 values, returning the wrapped result and whether overflow occurred.
 overflowing_mul_i32 (x: I32) (y: I32): (I32, Bool) =
     intrinsic "OverflowingMulInt" x y
+
+overflowing_mul_i64 (x: I64) (y: I64): (I64, Bool) =
+    intrinsic "OverflowingMulInt" x y
+
+overflowing_mul_isz (x: Isz) (y: Isz): (Isz, Bool) =
+    intrinsic "OverflowingMulInt" x y
+
+overflowing_mul_u8 (x: U8) (y: U8): (U8, Bool) =
+    intrinsic "OverflowingMulInt" x y
+
+overflowing_mul_u16 (x: U16) (y: U16): (U16, Bool) =
+    intrinsic "OverflowingMulInt" x y
+
+overflowing_mul_u32 (x: U32) (y: U32): (U32, Bool) =
+    intrinsic "OverflowingMulInt" x y
+
+overflowing_mul_u64 (x: U64) (y: U64): (U64, Bool) =
+    intrinsic "OverflowingMulInt" x y
+
+overflowing_mul_usz (x: Usz) (y: Usz): (Usz, Bool) =
+    intrinsic "OverflowingMulInt" x y
+
+ability CheckedNum t =
+    checked_add: fn t t {Fail} -> t
+    checked_sub: fn t t {Fail} -> t
+    checked_mul: fn t t {Fail} -> t
+
+impl checked_num_i8: CheckedNum I8 with
+    checked_add = checked_add_i8
+    checked_sub = checked_sub_i8
+    checked_mul = checked_mul_i8
+
+impl checked_num_i16: CheckedNum I16 with
+    checked_add = checked_add_i16
+    checked_sub = checked_sub_i16
+    checked_mul = checked_mul_i16
+
+impl checked_num_i32: CheckedNum I32 with
+    checked_add = checked_add_i32
+    checked_sub = checked_sub_i32
+    checked_mul = checked_mul_i32
+
+impl checked_num_i64: CheckedNum I64 with
+    checked_add = checked_add_i64
+    checked_sub = checked_sub_i64
+    checked_mul = checked_mul_i64
+
+impl checked_num_isz: CheckedNum Isz with
+    checked_add = checked_add_isz
+    checked_sub = checked_sub_isz
+    checked_mul = checked_mul_isz
+
+impl checked_num_u8: CheckedNum U8 with
+    checked_add = checked_add_u8
+    checked_sub = checked_sub_u8
+    checked_mul = checked_mul_u8
+
+impl checked_num_u16: CheckedNum U16 with
+    checked_add = checked_add_u16
+    checked_sub = checked_sub_u16
+    checked_mul = checked_mul_u16
+
+impl checked_num_u32: CheckedNum U32 with
+    checked_add = checked_add_u32
+    checked_sub = checked_sub_u32
+    checked_mul = checked_mul_u32
+
+impl checked_num_u64: CheckedNum U64 with
+    checked_add = checked_add_u64
+    checked_sub = checked_sub_u64
+    checked_mul = checked_mul_u64
+
+impl checked_num_usz: CheckedNum Usz with
+    checked_add = checked_add_usz
+    checked_sub = checked_sub_usz
+    checked_mul = checked_mul_usz
 
 ability Bounded t =
     min: t

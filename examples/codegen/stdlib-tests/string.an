@@ -1,4 +1,8 @@
-import Std.String.bytes, chars, substr, string_of, join, split, reverse, parse_i32
+import Std.String.bytes, chars, substr, string_of, join, split, reverse
+import Std.String.parse_i8, parse_i16, parse_i32, parse_i64, parse_isz
+import Std.String.parse_u8, parse_u16, parse_u32, parse_u64, parse_usz
+import Std.String.try_cast_string_i8, try_cast_string_i16, try_cast_string_i32, try_cast_string_i64, try_cast_string_isz
+import Std.String.try_cast_string_u8, try_cast_string_u16, try_cast_string_u32, try_cast_string_u64, try_cast_string_usz
 import Std.Stream.iter, intersperse, stream_fn, Emit, emit
 import Std.String.starts_with, ends_with, contains, trim, trim_start, trim_end
 import Std.Fail.try
@@ -79,6 +83,75 @@ test_parse () =
     println (try do parse_i32 "-2147483648")
     println (try do parse_i32 "-2147483649")
     println (try do parse_i32 "-999999999999999999999999999")
+    parsed: Maybe I32 = try do try_cast "321"
+    println parsed
+    println (try do parse_i8 "127")
+    println (try do parse_i8 "128")
+    println (try do parse_i8 "-128")
+    println (try do parse_i8 "-129")
+    println (try do parse_i16 "32767")
+    println (try do parse_i16 "32768")
+    println (try do parse_i16 "-32768")
+    println (try do parse_i16 "-32769")
+    println (try do parse_i64 "123456789012345")
+    println (try do parse_i64 "-9223372036854775808")
+    println (try do parse_i64 "-9223372036854775809")
+    println (try do parse_i64 "9223372036854775808")
+    println (try do parse_isz "12345")
+    println (try do parse_isz "-12345")
+    println (try do parse_u8 "255")
+    println (try do parse_u8 "256")
+    println (try do parse_u8 "+255")
+    println (try do parse_u8 "-1")
+    println (try do parse_u16 "65535")
+    println (try do parse_u16 "65536")
+    println (try do parse_u16 "+65535")
+    println (try do parse_u32 "4294967295")
+    println (try do parse_u32 "4294967296")
+    println (try do parse_u32 "+4294967295")
+    println (try do parse_u64 "18446744073709551615")
+    println (try do parse_u64 "18446744073709551616")
+    println (try do parse_u64 "+18446744073709551615")
+    println (try do parse_usz "12345")
+    println (try do parse_usz "+12345")
+    from_i8: Maybe I8 = try do try_cast "-5"
+    println from_i8
+    from_i8_overflow: Maybe I8 = try do try_cast "128"
+    println from_i8_overflow
+    from_i16: Maybe I16 = try do try_cast "-123"
+    println from_i16
+    from_i16_overflow: Maybe I16 = try do try_cast "32768"
+    println from_i16_overflow
+    from_i32: Maybe I32 = try do try_cast "-123456"
+    println from_i32
+    from_i32_overflow: Maybe I32 = try do try_cast "2147483648"
+    println from_i32_overflow
+    from_i64: Maybe I64 = try do try_cast "123456789"
+    println from_i64
+    from_i64_overflow: Maybe I64 = try do try_cast "9223372036854775808"
+    println from_i64_overflow
+    from_isz: Maybe Isz = try do try_cast "-12345"
+    println from_isz
+    from_u8: Maybe U8 = try do try_cast "42"
+    println from_u8
+    from_u8_negative: Maybe U8 = try do try_cast "-1"
+    println from_u8_negative
+    from_u8_overflow: Maybe U8 = try do try_cast "256"
+    println from_u8_overflow
+    from_u16: Maybe U16 = try do try_cast "65535"
+    println from_u16
+    from_u16_overflow: Maybe U16 = try do try_cast "65536"
+    println from_u16_overflow
+    from_u32: Maybe U32 = try do try_cast "4294967295"
+    println from_u32
+    from_u32_overflow: Maybe U32 = try do try_cast "4294967296"
+    println from_u32_overflow
+    from_u64: Maybe U64 = try do try_cast "42"
+    println from_u64
+    from_u64_overflow: Maybe U64 = try do try_cast "18446744073709551616"
+    println from_u64_overflow
+    from_usz: Maybe Usz = try do try_cast "12345"
+    println from_usz
 
 // args: --delete-binary --no-color
 // expected stdout:
@@ -139,3 +212,52 @@ test_parse () =
 // Some -2_147_483_648
 // None
 // None
+// Some 321
+// Some 127
+// None
+// Some -128
+// None
+// Some 32767
+// None
+// Some -32_768
+// None
+// Some 123456789012345
+// Some -9_223_372_036_854_775_808
+// None
+// None
+// Some 12345
+// Some -12345
+// Some 255
+// None
+// Some 255
+// None
+// Some 65535
+// None
+// Some 65535
+// Some 4294967295
+// None
+// Some 4294967295
+// Some 18446744073709551615
+// None
+// Some 18446744073709551615
+// Some 12345
+// Some 12345
+// Some -5
+// None
+// Some -123
+// None
+// Some -123456
+// None
+// Some 123456789
+// None
+// Some -12345
+// Some 42
+// None
+// None
+// Some 65535
+// None
+// Some 4294967295
+// None
+// Some 42
+// None
+// Some 12345
