@@ -1,3 +1,5 @@
+import Std.Fail.Fail, fail_if
+
 export sqrt, sqrtf, cbrt, pow, powf, exp, log, log2, log10,
     sin, cos, tan, asin, acos, atan, atan2,
     floor, ceil, round, trunc, fmod, hypot,
@@ -44,20 +46,23 @@ abs (x: t) {n: Num t} {Copy t}: t =
     (-) = n.sub.(-)
     if x < n.zero then n.zero - x else x
 
-/// Add two I32 values, returning `None` on overflow.
-checked_add_i32 (x: I32) (y: I32): Maybe I32 =
+/// Add two I32 values, failing on overflow.
+checked_add_i32 (x: I32) (y: I32) {Fail}: I32 =
     result, overflowed = overflowing_add_i32 x y
-    if overflowed then None else Some result
+    fail_if overflowed
+    result
 
-/// Subtract two I32 values, returning `None` on overflow.
-checked_sub_i32 (x: I32) (y: I32): Maybe I32 =
+/// Subtract two I32 values, failing on overflow.
+checked_sub_i32 (x: I32) (y: I32) {Fail}: I32 =
     result, overflowed = overflowing_sub_i32 x y
-    if overflowed then None else Some result
+    fail_if overflowed
+    result
 
-/// Multiply two I32 values, returning `None` on overflow.
-checked_mul_i32 (x: I32) (y: I32): Maybe I32 =
+/// Multiply two I32 values, failing on overflow.
+checked_mul_i32 (x: I32) (y: I32) {Fail}: I32 =
     result, overflowed = overflowing_mul_i32 x y
-    if overflowed then None else Some result
+    fail_if overflowed
+    result
 
 /// Add two I32 values, returning the wrapped result and whether overflow occurred.
 overflowing_add_i32 (x: I32) (y: I32): (I32, Bool) =

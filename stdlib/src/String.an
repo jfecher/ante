@@ -2,7 +2,9 @@ import Std.Vec
 import Std.C.malloc, memcpy, memcmp
 import Std.Stream.Emit, emit, Stream, foldl, map, stream_fn
 import Std.Vec.Vec
-import Std.Char.is_whitespace
+import Std.Char.is_whitespace, to_digit
+import Std.Math.checked_add_i32, checked_sub_i32, checked_mul_i32
+import Std.Fail.Fail, fail, fail_if
 
 // TODO: All functions in this file should be a method on String, but String isn't defined in this file
 
@@ -139,3 +141,40 @@ trim_end (s: String): String =
 /// Return a substring with both leading and trailing ASCII whitespace removed.
 trim (s: String): String =
     trim_start s |> trim_end
+
+/// Parse a base-10 I32 from a string.
+///
+/// Fails for empty strings, sign-only strings, non-digits, or overflow.
+parse_i32 (s: String) {Fail}: I32 =
+    len = Usz s.length
+    fail_if (len == 0)
+
+    var i = 0usz
+    var negative = false
+
+    first: Char = s.data.[0]
+    if first == '-' then
+        negative := true
+        i += 1
+    else if first == '+' then
+        i += 1
+
+    fail_if (i == len)
+
+    var result = 0i32
+
+    while i < len do
+        digit = match to_digit s.data.[i]
+        | Some d -> I32 d
+        | None -> fail ()
+
+        result := checked_mul_i32 result 10
+
+        if negative then
+            result := checked_sub_i32 result digit
+        else
+            result := checked_add_i32 result digit
+
+        i += 1
+
+    result
