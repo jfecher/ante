@@ -1,0 +1,30 @@
+main () =
+    "\x41\x42\x43"
+    "\xff"
+    "\u{48}\u{65}\u{6c}\u{6c}\u{6f}"
+    "\u{1F600}"
+    '\x41'
+    '\u{48}'
+    '\u{1F600}'
+
+// args: -e ast --no-color
+// expected stdout:
+// main () =
+//     "ABC"
+//     "ÿ"
+//     "Hello"
+//     "😀"
+//     'A'
+//     'H'
+//     '😀'
+// 
+// 
+
+// expected stderr:
+// examples/parser/escape_sequences.an:8:6
+//  7 |     '\u{48}'
+//    |     // warning: Codepoint U+1f600 does not fit in a single byte and will be truncated
+//  8 |     '\u{1F600}'
+//    |      ^^^^^^^^^
+// 
+// Compiled with 1 warning
