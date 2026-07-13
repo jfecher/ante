@@ -4,6 +4,7 @@
     into every Ante source file.
 */
 import Std.C.putchar, exit, memcmp, malloc, memcpy, free
+import Std.Fail.Fail, fail, panic_on_fail
 
 export String, from_parts, Maybe, None, Some, iff, unwrap, unwrap_or_else, Result, Ok, Error, (,),
     first, second, third, fourth, fifth,
@@ -341,7 +342,7 @@ impl cast_i32_string: Cast I32 String with
         x = I64 x
         is_neg = x < 0
         abs = if is_neg then 0 - x else x
-        var digits: U64 = Maybe.unwrap (try_cast abs)
+        var digits: U64 = try_cast abs ~> panic_on_fail
 
         var len = count_digits digits
         if is_neg then
@@ -364,10 +365,10 @@ impl cast_i32_string: Cast I32 String with
 
 /// Represents a failable type cast from a to b
 ability TryCast a b =
-    try_cast: fn a -> Maybe b
+    try_cast: fn a {Fail} -> b
 
 impl try_cast_from_cast {Cast a b}: TryCast a b with
-    try_cast a = Some (cast a)
+    try_cast a {Fail} = cast a
 
 
 // // Huge block of intrinsic numeric operators incoming
@@ -738,14 +739,14 @@ impl num_f64: Num F64 with
 
 
 impl try_cast_i64_u64: TryCast I64 U64 with
-    try_cast (x: I64) =
-        if x < 0i64 then None
-        else Some (transmute x)
+    try_cast (x: I64) {Fail} =
+        if x < 0i64 then fail ()
+        else transmute x
 
 impl try_cast_u64: TryCast U64 I64 with
-    try_cast (x: U64) =
-        if x > 9_223_372_036_854_775_807u64 then None
-        else Some (transmute x)
+    try_cast (x: U64) {Fail} =
+        if x > 9_223_372_036_854_775_807u64 then fail ()
+        else transmute x
 
 ability Append a =
     (++): fn a a -> a
@@ -1074,9 +1075,9 @@ print_signed (x: I64) (min: I64) (min_string: String): Unit =
             print min_string
         else
             putchar '-'
-            print_unsigned (Maybe.unwrap (try_cast (0i64 - x)))
+            print_unsigned (try_cast (0i64 - x) ~> panic_on_fail)
     else
-        print_unsigned (Maybe.unwrap (try_cast x))
+        print_unsigned (try_cast x ~> panic_on_fail)
 
 impl print_bool: Print Bool with
     print b =
