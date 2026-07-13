@@ -429,12 +429,10 @@ impl Display for LexerError {
     }
 }
 
-/// Non-fatal lexing issues. Unlike [LexerError] these still produce a normal, usable
-/// token; the token's value should be used as-is, just with the caveat this describes.
+/// Non-fatal lexing diagnostics.
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, Hash)]
 pub enum LexerWarning {
-    /// A `\u{...}` escape in a char literal produced a codepoint above U+FF. Ante's
-    /// `Char` is a single byte, so this value is truncated to its low byte at codegen.
+    /// A `\u{...}` codepoint above U+FF was used in a char literal.
     CodepointDoesNotFitInChar { codepoint: u32 },
 }
 
@@ -442,11 +440,9 @@ impl Display for LexerWarning {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use LexerWarning::*;
         match self {
-            CodepointDoesNotFitInChar { codepoint } => write!(
-                f,
-                "Codepoint U+{:x} does not fit in a single byte; this Char literal's value will be truncated to its low byte at compile time",
-                codepoint
-            ),
+            CodepointDoesNotFitInChar { codepoint } => {
+                write!(f, "Codepoint U+{codepoint:x} does not fit in a single byte and will be truncated")
+            },
         }
     }
 }

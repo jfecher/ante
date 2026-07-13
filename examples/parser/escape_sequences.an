@@ -23,7 +23,7 @@ main () =
 // expected stderr:
 // examples/parser/escape_sequences.an:8:6
 //  7 |     '\u{48}'
-//    |     // warning: Codepoint U+1f600 does not fit in a single byte; this Char literal's value will be truncated to its low byte at compile time
+//    |     // warning: Codepoint U+1f600 does not fit in a single byte and will be truncated
 //  8 |     '\u{1F600}'
 //    |      ^^^^^^^^^
 // 
