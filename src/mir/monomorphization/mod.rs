@@ -349,6 +349,20 @@ impl<'local> FunctionContext<'local> {
                     self.specialize_type(struct_type);
                 }
             },
+            Instruction::AtomicLoad { pointer, .. } => self.remap_value(pointer),
+            Instruction::AtomicStore { pointer, value, .. } => {
+                self.remap_value(pointer);
+                self.remap_value(value);
+            },
+            Instruction::AtomicRmw { pointer, value, .. } => {
+                self.remap_value(pointer);
+                self.remap_value(value);
+            },
+            Instruction::AtomicCmpxchg { pointer, expected, desired, .. } => {
+                self.remap_value(pointer);
+                self.remap_value(expected);
+                self.remap_value(desired);
+            },
         }
     }
 

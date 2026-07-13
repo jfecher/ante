@@ -2,12 +2,15 @@ export String, cstring_copy, puts, putchar, getchar, exit, system, strlen,
     malloc, calloc, realloc, free, memcpy, memcmp,
     File, copy_file, fopen, fclose, fputs, fputc, fwrite,
     fgetc, fgets, ungetc, fgetpos, ftell, fsetpos, fseek, feof, ferror,
-    FilePos, Clock, clock_gettime, nanosleep
+    FilePos, Clock, clock_gettime, nanosleep, VoidPtr
 
 /// A C string is a pointer to a null-terminated character array.
 /// This is meant to be used qualified as `C.String`
 type String = ptr: Ptr Char
 impl cstring_copy: Copy String with (.*) = deref
+
+/// A convenience type for translating C APIs
+type VoidPtr = Ptr U8
 
 // TODO: These functions use absolute sized types like I32
 //       which are not exact standins for C's integer types.
@@ -19,13 +22,12 @@ system = extern "system": fn String -> I32
 strlen = extern "strlen": fn String -> Usz
 
 // The compiler doesn't have checks for generic externs yet
-// `Ptr U8` is used here as a stand-in for void pointer.
-malloc_: fn /*size:*/Usz -> Ptr U8 = extern "malloc"
-calloc_: fn /*items:*/Usz /*size:*/Usz -> Ptr U8 = extern "calloc"
-realloc_: fn (Ptr U8) Usz -> Ptr U8 = extern "realloc"
-free_: fn (Ptr U8) -> Unit = extern "free"
-memcpy_: fn (Ptr U8) (Ptr U8) Usz -> Ptr U8 = extern "memcpy"
-memcmp_: fn (Ptr U8) (Ptr U8) Usz -> I32 = extern "memcmp"
+malloc_: fn /*size:*/Usz -> VoidPtr = extern "malloc"
+calloc_: fn /*items:*/Usz /*size:*/Usz -> VoidPtr = extern "calloc"
+realloc_: fn VoidPtr Usz -> VoidPtr = extern "realloc"
+free_: fn VoidPtr -> Unit = extern "free"
+memcpy_: fn VoidPtr VoidPtr Usz -> VoidPtr = extern "memcpy"
+memcmp_: fn VoidPtr VoidPtr Usz -> I32 = extern "memcmp"
 
 // Generic wrappers for some extern fns
 malloc (size: Usz): Ptr a =
@@ -58,7 +60,7 @@ fclose = extern "fclose": fn File -> Unit
 
 fputs = extern "fputs": fn String File -> I32
 fputc = extern "fputc": fn I32 File -> I32
-fwrite = extern "fwrite": fn (Ptr U8) Usz Usz File -> Usz
+fwrite = extern "fwrite": fn VoidPtr Usz Usz File -> Usz
 
 fgetc = extern "fgetc": fn File -> I32
 fgets = extern "fgets": fn String I32 File -> String

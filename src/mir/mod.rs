@@ -405,6 +405,32 @@ impl Block {
     }
 }
 
+/// Memory ordering for atomic operations
+/// TODO: Use other variants besides SeqCst
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AtomicOrdering {
+    #[allow(dead_code)]
+    Relaxed,
+    #[allow(dead_code)]
+    Acquire,
+    #[allow(dead_code)]
+    Release,
+    #[allow(dead_code)]
+    AcqRel,
+    SeqCst,
+}
+
+/// The read-modify-write operation performed by [Instruction::AtomicRmw].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AtomicRmwOp {
+    Xchg,
+    Add,
+    Sub,
+    And,
+    Or,
+    Xor,
+}
+
 #[derive(Debug, Clone)]
 pub enum Instruction {
     Call {
@@ -550,6 +576,34 @@ pub enum Instruction {
     SizeOf(Type),
     /// Static length of an array. Resolved to a `Usz` constant during monomorphization.
     ArrayLen(Type),
+
+    /// Atomic load from `pointer`. The result type is the loaded value's type.
+    AtomicLoad {
+        pointer: Value,
+        ordering: AtomicOrdering,
+    },
+    /// Atomic store of `value` into `pointer`. Returns unit.
+    AtomicStore {
+        pointer: Value,
+        value: Value,
+        ordering: AtomicOrdering,
+    },
+    /// Atomic read-modify-write. Returns the previous value.
+    AtomicRmw {
+        op: AtomicRmwOp,
+        pointer: Value,
+        value: Value,
+        ordering: AtomicOrdering,
+    },
+    /// Atomic compare-and-exchange. Compares `pointer.*` with `expected` and on equality stores
+    /// `desired`. Returns the previous value.
+    AtomicCmpxchg {
+        pointer: Value,
+        expected: Value,
+        desired: Value,
+        success: AtomicOrdering,
+        failure: AtomicOrdering,
+    },
 }
 
 /// A handler case attached to an [Instruction::Handle]. Maps an effect operation
@@ -633,6 +687,14 @@ impl Instruction {
             Instruction::ArrayLen(_typ) => (),
             Instruction::GetFieldPtr { struct_ptr, .. } => f(struct_ptr),
             Instruction::Extern(_) => (),
+            Instruction::AtomicLoad { pointer, .. } => f(pointer),
+            Instruction::AtomicStore { pointer, value, .. } => two(pointer, value),
+            Instruction::AtomicRmw { pointer, value, .. } => two(pointer, value),
+            Instruction::AtomicCmpxchg { pointer, expected, desired, .. } => {
+                f(pointer);
+                f(expected);
+                f(desired);
+            },
         }
     }
 }

@@ -958,6 +958,64 @@ impl Builder {
                 self.write(name);
                 self.write(";");
             },
+            mir::Instruction::AtomicLoad { pointer, ordering } => {
+                let result = definition.instruction_result_type(id).clone();
+                self.write_result_binding(id, definition);
+                self.write("__atomic_load_n((");
+                self.write_type(&result, "");
+                self.write("*)");
+                self.write_value(pointer, mir);
+                let _ = write!(self.current_item, ", {});", c_atomic_order(*ordering));
+            },
+            mir::Instruction::AtomicStore { pointer, value, ordering } => {
+                let typ = mir.type_of_value(value, definition);
+                self.write("__atomic_store_n((");
+                self.write_type(&typ, "");
+                self.write("*)");
+                self.write_value(pointer, mir);
+                self.write(", ");
+                self.write_value(value, mir);
+                let _ = write!(self.current_item, ", {}); Unit {id} = (Unit){{0}};", c_atomic_order(*ordering));
+            },
+            mir::Instruction::AtomicRmw { op, pointer, value, ordering } => {
+                let typ = mir.type_of_value(value, definition);
+                let func = match op {
+                    mir::AtomicRmwOp::Xchg => "__atomic_exchange_n",
+                    mir::AtomicRmwOp::Add => "__atomic_fetch_add",
+                    mir::AtomicRmwOp::Sub => "__atomic_fetch_sub",
+                    mir::AtomicRmwOp::And => "__atomic_fetch_and",
+                    mir::AtomicRmwOp::Or => "__atomic_fetch_or",
+                    mir::AtomicRmwOp::Xor => "__atomic_fetch_xor",
+                };
+                self.write_result_binding(id, definition);
+                let _ = write!(self.current_item, "{func}((");
+                self.write_type(&typ, "");
+                self.write("*)");
+                self.write_value(pointer, mir);
+                self.write(", ");
+                self.write_value(value, mir);
+                let _ = write!(self.current_item, ", {});", c_atomic_order(*ordering));
+            },
+            mir::Instruction::AtomicCmpxchg { pointer, expected, desired, success, failure } => {
+                let typ = mir.type_of_value(expected, definition);
+                self.write_type(&typ, "");
+                let _ = write!(self.current_item, " {id}_exp = ");
+                self.write_value(expected, mir);
+                self.write("; __atomic_compare_exchange_n((");
+                self.write_type(&typ, "");
+                self.write("*)");
+                self.write_value(pointer, mir);
+                let _ = write!(self.current_item, ", &{id}_exp, ");
+                self.write_value(desired, mir);
+                let _ = write!(
+                    self.current_item,
+                    ", 0, {}, {}); ",
+                    c_atomic_order(*success),
+                    c_atomic_order(*failure)
+                );
+                self.write_type(&typ, "");
+                let _ = write!(self.current_item, " {id} = {id}_exp;");
+            },
             mir::Instruction::Deref(value) => {
                 let result = definition.instruction_result_type(id);
                 if matches!(result, mir::Type::Array { .. }) {
@@ -1169,6 +1227,18 @@ fn resolve_tuple_field<'mir>(
             _ => None,
         },
         _ => None,
+    }
+}
+
+/// The GCC/Clang `__ATOMIC_*` memory-order constant for a given ordering.
+/// TODO: Support more C compilers
+fn c_atomic_order(ordering: mir::AtomicOrdering) -> &'static str {
+    match ordering {
+        mir::AtomicOrdering::Relaxed => "__ATOMIC_RELAXED",
+        mir::AtomicOrdering::Acquire => "__ATOMIC_ACQUIRE",
+        mir::AtomicOrdering::Release => "__ATOMIC_RELEASE",
+        mir::AtomicOrdering::AcqRel => "__ATOMIC_ACQ_REL",
+        mir::AtomicOrdering::SeqCst => "__ATOMIC_SEQ_CST",
     }
 }
 
