@@ -1633,7 +1633,7 @@ where
         // as a function by the frontend so we must generate actual functions for each field such
         // that `Cast.cast` is an actual function accepting a `Cast` instance and forwarding the
         // appropriate arguments to the `cast` field.
-        if type_definition.is_ability {
+        if type_definition.kind.is_ability() {
             self.define_ability_methods(type_definition);
         }
     }

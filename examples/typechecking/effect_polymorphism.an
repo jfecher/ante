@@ -1,0 +1,28 @@
+effect Log =
+    log: fn String -> Unit
+
+// Expect an error when calling `f` since `foo` did not declare any effects
+foo (f: fn Unit -> Unit): Unit =
+    f ()
+
+bar (f: fn Unit -> Unit): Unit =
+    f ()
+    log "bar"
+
+// Using an effect type as an implicit parameter is a kind error
+uses_effect_as_implicit {Log}: Unit = ()
+
+main () =
+    foo (fn () -> ())
+    handler h for log _ -> resume ()
+    in bar (fn () -> ())
+
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/effect_polymorphism.an:16:26
+// 15 | // Using an effect type as an implicit parameter is a kind error.
+//    | // error: This is an effect and cannot be used as an ordinary type or value - effects may only appear in a `can`/`pure` clause
+// 16 | uses_effect_as_implicit {Log}: Unit = ()
+// 
+// Found 1 error and 0 warnings
+

@@ -69,6 +69,10 @@ pub enum Type {
     /// A type-level U32 constant, used as the length parameter of [PrimitiveType::Array].
     /// Has [Kind::U32].
     U32(u32),
+
+    /// An effects row. Effects are kept sorted & deduplicated in this Vec. The Type field
+    /// is an optional tail for extending this effect row.
+    Effects(Arc<Vec<Type>>, Option<Arc<Type>>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -81,6 +85,8 @@ pub struct FunctionType {
     pub environment: Type,
 
     pub return_type: Type,
+
+    pub effects: Type,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -232,6 +238,11 @@ impl Type {
         matches!(self, Type::Primitive(PrimitiveType::Int(_)))
     }
 
+    /// True if this type is `Type::Primitive(PrimitiveType::Error)`
+    pub(crate) fn is_error(&self) -> bool {
+        matches!(self, Type::Primitive(PrimitiveType::Error))
+    }
+
     /// Follow all of this type's type variable bindings so that we only return
     /// `Type::Variable` if the type variable is unbound. Note that this may still return
     /// a composite type such as `Type::Application` with bound type variables within.
@@ -298,7 +309,8 @@ impl Type {
 
                 let environment = function.environment.follow_all_opt(bindings, more_bindings);
                 let return_type = function.return_type.follow_all_opt(bindings, more_bindings);
-                if parameters.is_none() && environment.is_none() && return_type.is_none() {
+                let effects = function.effects.follow_all_opt(bindings, more_bindings);
+                if parameters.is_none() && environment.is_none() && return_type.is_none() && effects.is_none() {
                     return None;
                 }
 
@@ -306,6 +318,7 @@ impl Type {
                     parameters: parameters.unwrap_or_else(|| function.parameters.clone()),
                     environment: environment.unwrap_or_else(|| function.environment.clone()),
                     return_type: return_type.unwrap_or_else(|| function.return_type.clone()),
+                    effects: effects.unwrap_or_else(|| function.effects.clone()),
                 })))
             },
             Type::Application(constructor, args) => {
@@ -332,6 +345,16 @@ impl Type {
             Type::Tuple(elements) => {
                 let new_elements = Self::follow_all_each(elements, |t| t.follow_all_opt(bindings, more_bindings))?;
                 Some(Type::Tuple(Arc::new(new_elements)))
+            },
+            Type::Effects(list, tail) => {
+                let new_list = Self::follow_all_each(list, |t| t.follow_all_opt(bindings, more_bindings));
+                let new_tail = tail.as_ref().and_then(|t| t.follow_all_opt(bindings, more_bindings));
+                if new_list.is_none() && new_tail.is_none() {
+                    return None;
+                }
+                let list = new_list.unwrap_or_else(|| (**list).clone());
+                let tail = new_tail.or_else(|| tail.as_ref().map(|t| (**t).clone()));
+                Some(Type::effects(list, tail))
             },
         }
     }
@@ -380,13 +403,20 @@ impl Type {
                 });
                 let environment = function.environment.substitute_opt(bindings_to_substitute, bindings_in_scope);
                 let return_type = function.return_type.substitute_opt(bindings_to_substitute, bindings_in_scope);
-                if parameters.is_none() && environment.is_none() && return_type.is_none() && !self_is_var {
+                let effects = function.effects.substitute_opt(bindings_to_substitute, bindings_in_scope);
+                if parameters.is_none()
+                    && environment.is_none()
+                    && return_type.is_none()
+                    && effects.is_none()
+                    && !self_is_var
+                {
                     return None;
                 }
                 Some(Type::Function(Arc::new(FunctionType {
                     parameters: parameters.unwrap_or_else(|| function.parameters.clone()),
                     environment: environment.unwrap_or_else(|| function.environment.clone()),
                     return_type: return_type.unwrap_or_else(|| function.return_type.clone()),
+                    effects: effects.unwrap_or_else(|| function.effects.clone()),
                 })))
             },
             Type::Application(constructor, args) => {
@@ -424,6 +454,17 @@ impl Type {
                 }
                 let elements = new_elements.unwrap_or_else(|| elements.to_vec());
                 Some(Type::Tuple(Arc::new(elements)))
+            },
+            Type::Effects(list, tail) => {
+                let new_list =
+                    Self::follow_all_each(list, |t| t.substitute_opt(bindings_to_substitute, bindings_in_scope));
+                let new_tail = tail.as_ref().and_then(|t| t.substitute_opt(bindings_to_substitute, bindings_in_scope));
+                if new_list.is_none() && new_tail.is_none() && !self_is_var {
+                    return None;
+                }
+                let list = new_list.unwrap_or_else(|| (**list).clone());
+                let tail = new_tail.or_else(|| tail.as_ref().map(|t| (**t).clone()));
+                Some(Type::effects(list, tail))
             },
         }
     }
@@ -531,6 +572,16 @@ impl Type {
         TypeConverter::new(resolve, db, next_id, local_kinds, insert_implicit_type_vars, &mut visited)
             .convert(typ, expected)
     }
+
+    /// Convert an effects clause into an effect row [Type].
+    pub(crate) fn from_cst_effects_clause(
+        effects: Option<&[cst::Type]>, resolve: &ResolutionResult, db: &DbHandle, next_id: &mut u32,
+        local_kinds: &mut LocalKinds, insert_implicit_type_vars: bool,
+    ) -> Type {
+        let mut visited = Vec::new();
+        TypeConverter::new(resolve, db, next_id, local_kinds, insert_implicit_type_vars, &mut visited)
+            .convert_effects_clause(effects)
+    }
 }
 
 /// Converts a [cst::Type] to a type-checker [Type].
@@ -620,8 +671,9 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
                     None => Type::NO_CLOSURE_ENV,
                 };
                 let return_type = self.convert_with_kind(&function.return_type, Kind::Type);
+                let effects = self.convert_effects_clause(function.effects.as_deref());
 
-                let f = Type::Function(Arc::new(FunctionType { parameters, environment, return_type }));
+                let f = Type::Function(Arc::new(FunctionType { parameters, environment, return_type, effects }));
                 (f, Kind::Type)
             },
             crate::parser::cst::TypeKind::Error => (Type::ERROR, Kind::Error),
@@ -635,6 +687,8 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
                     self.db.accumulate(Diagnostic::FunctionArgCountMismatch { actual: args.len(), expected, location });
                     return (Type::ERROR, Kind::Type);
                 }
+
+                let result_kind = f_kind.result_kind();
 
                 let converted_args = mapvec(args.iter().enumerate(), |(i, arg)| {
                     let expected_kind = f_kind.get_nth_parameter_kind(i);
@@ -651,16 +705,17 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
                 }
 
                 let typ = Type::Application(Arc::new(f), Arc::new(converted_args));
-                (typ, Kind::Type)
+                (typ, result_kind)
             },
             crate::parser::cst::TypeKind::Reference(kind) => (
                 Type::Primitive(PrimitiveType::Reference(*kind)),
-                Kind::TypeConstructorComplex(vec![Kind::Lifetime, Kind::Type]),
+                Kind::TypeConstructorComplex { params: vec![Kind::Lifetime, Kind::Type], result: Box::new(Kind::Type) },
             ),
             crate::parser::cst::TypeKind::NoClosureEnv => (Type::NO_CLOSURE_ENV, Kind::Type),
-            crate::parser::cst::TypeKind::Pointer => {
-                (Type::POINTER, Kind::TypeConstructorSimple(NonZeroUsize::new(1).unwrap()))
-            },
+            crate::parser::cst::TypeKind::Pointer => (
+                Type::POINTER,
+                Kind::TypeConstructorSimple { arity: NonZeroUsize::new(1).unwrap(), result: Box::new(Kind::Type) },
+            ),
             crate::parser::cst::TypeKind::Tuple(elements) => {
                 let elements = mapvec(elements, |t| self.convert_with_kind(t, Kind::Type));
                 (Type::Tuple(Arc::new(elements)), Kind::Type)
@@ -688,6 +743,38 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
                     self.local_kinds.insert(param.name, kind);
                 }
                 self.convert(body, expected)
+            },
+        }
+    }
+
+    /// Convert an effects clause into an effect row.
+    ///
+    /// If `self.insert_implicit_type_vars` is true `None` corresponds to an open effect row.
+    /// Otherwise, `None` is translated into a closed, empty effects row.
+    fn convert_effects_clause(&mut self, effects: Option<&[cst::Type]>) -> Type {
+        match effects {
+            None if self.insert_implicit_type_vars => {
+                let tail = Type::Variable(TypeVariableId(*self.next_id));
+                *self.next_id += 1;
+                Type::effects(Vec::new(), Some(tail))
+            },
+            None => Type::pure(),
+            Some(list) => {
+                let mut tail = None;
+                let mut concrete = Vec::new();
+                for entry in list {
+                    if matches!(entry.kind, crate::parser::cst::TypeKind::Variable(_)) {
+                        if tail.is_some() {
+                            self.db.accumulate(Diagnostic::MultipleEffectRowVariables {
+                                location: entry.location.clone(),
+                            });
+                        }
+                        tail = Some(self.convert_with_kind(entry, Kind::Effect));
+                    } else {
+                        concrete.push(self.convert_with_kind(entry, Kind::Effect));
+                    }
+                }
+                Type::effects(concrete, tail)
             },
         }
     }
@@ -743,8 +830,14 @@ impl Type {
                 Builtin::Unit => (Type::UNIT, Kind::Type),
                 Builtin::Char => (Type::CHAR, Kind::Type),
                 Builtin::Bool => (Type::BOOL, Kind::Type),
-                Builtin::Ptr => (Type::POINTER, Kind::TypeConstructorSimple(NonZeroUsize::new(1).unwrap())),
-                Builtin::Array => (Type::ARRAY, Kind::TypeConstructorComplex(vec![Kind::U32, Kind::Type])),
+                Builtin::Ptr => (
+                    Type::POINTER,
+                    Kind::TypeConstructorSimple { arity: NonZeroUsize::new(1).unwrap(), result: Box::new(Kind::Type) },
+                ),
+                Builtin::Array => (
+                    Type::ARRAY,
+                    Kind::TypeConstructorComplex { params: vec![Kind::U32, Kind::Type], result: Box::new(Kind::Type) },
+                ),
                 Builtin::Never => (Type::NEVER, Kind::Type),
                 Builtin::Intrinsic => (Type::ERROR, Kind::Error),
             },
@@ -810,6 +903,7 @@ impl Type {
                     }
                     free_vars_helper(&function.environment, bindings, free_vars);
                     free_vars_helper(&function.return_type, bindings, free_vars);
+                    free_vars_helper(&function.effects, bindings, free_vars);
                 },
                 Type::Application(constructor, args) => {
                     free_vars_helper(constructor, bindings, free_vars);
@@ -832,6 +926,14 @@ impl Type {
                     }
                 },
                 Type::U32(_) => (),
+                Type::Effects(list, tail) => {
+                    for effect in list.iter() {
+                        free_vars_helper(effect, bindings, free_vars);
+                    }
+                    if let Some(tail) = tail {
+                        free_vars_helper(tail, bindings, free_vars);
+                    }
+                },
             }
         }
 
@@ -918,6 +1020,22 @@ impl Type {
             },
             _ => None,
         }
+    }
+
+    /// Construct a canonicalized effect row by following the tail and deduplicating entries
+    pub(crate) fn effects(mut list: Vec<Type>, mut tail: Option<Type>) -> Type {
+        while let Some(Type::Effects(inner_list, inner_tail)) = tail {
+            list.extend(inner_list.iter().cloned());
+            tail = inner_tail.as_ref().map(|t| (**t).clone());
+        }
+        list.sort();
+        list.dedup();
+        Type::Effects(Arc::new(list), tail.map(Arc::new))
+    }
+
+    /// An empty, closed effect row
+    pub fn pure() -> Type {
+        Type::Effects(Arc::new(Vec::new()), None)
     }
 
     /// If this is a `Array n t`, return its element type `t`.
@@ -1009,7 +1127,8 @@ where
                     }
                     write!(f, " -> ")?;
                 }
-                self.fmt_type(&function.return_type, false, f)
+                self.fmt_type(&function.return_type, false, f)?;
+                self.fmt_effects_suffix(&function.effects, f)
             }),
             Type::Application(constructor, args) => try_parenthesize(parenthesize, f, |f| {
                 // Hack: If the constructor formats to `,` then print it infix
@@ -1062,6 +1181,80 @@ where
                 Ok(())
             }),
             Type::U32(n) => write!(f, "{n}"),
+            Type::Effects(list, tail) => {
+                write!(f, "<")?;
+                self.fmt_effect_list(list, tail, f)?;
+                write!(f, ">")
+            },
+        }
+    }
+
+    fn fmt_effect_list(
+        &self, list: &[Type], tail: &Option<Arc<Type>>, f: &mut std::fmt::Formatter,
+    ) -> std::fmt::Result {
+        let (full_list, final_tail) = self.flatten_effect_row(list, tail);
+        self.fmt_flat_effect_list(&full_list, &final_tail, f)
+    }
+
+    fn flatten_effect_row(&self, list: &[Type], tail: &Option<Arc<Type>>) -> (Vec<Type>, Option<Type>) {
+        let mut full_list = list.to_vec();
+        let final_tail = tail.as_deref().and_then(|tail| self.flatten_effects_tail(tail.clone(), &mut full_list));
+        full_list.sort();
+        full_list.dedup();
+        (full_list, final_tail)
+    }
+
+    fn fmt_flat_effect_list(
+        &self, list: &[Type], tail: &Option<Type>, f: &mut std::fmt::Formatter,
+    ) -> std::fmt::Result {
+        for (i, effect) in list.iter().enumerate() {
+            if i != 0 {
+                write!(f, ", ")?;
+            }
+            self.fmt_type(effect, true, f)?;
+        }
+        if let Some(tail) = tail {
+            if !list.is_empty() {
+                write!(f, ", ")?;
+            }
+            self.fmt_type(tail, true, f)?;
+        }
+        Ok(())
+    }
+
+    fn flatten_effects_tail(&self, mut tail: Type, list: &mut Vec<Type>) -> Option<Type> {
+        loop {
+            match tail.follow(self.bindings).clone() {
+                Type::Effects(inner_list, inner_tail) => {
+                    list.extend(inner_list.iter().cloned());
+                    match inner_tail {
+                        Some(next) => tail = (*next).clone(),
+                        None => return None,
+                    }
+                },
+                other => return Some(other),
+            }
+        }
+    }
+
+    fn fmt_effects_suffix(&self, effects: &Type, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match effects.follow(self.bindings) {
+            Type::Variable(_) => Ok(()),
+            Type::Effects(list, tail) => {
+                let (full_list, final_tail) = self.flatten_effect_row(list, tail);
+                match &final_tail {
+                    Some(Type::Variable(_)) if full_list.is_empty() => Ok(()),
+                    None if full_list.is_empty() => write!(f, " pure"),
+                    _ => {
+                        write!(f, " can ")?;
+                        self.fmt_flat_effect_list(&full_list, &final_tail, f)
+                    },
+                }
+            },
+            other => {
+                write!(f, " can ")?;
+                self.fmt_type(other, true, f)
+            },
         }
     }
 

@@ -131,6 +131,7 @@ where
             },
             // Carry through to MIR so monomorphization can substitute into Array lengths.
             TCType::U32(n) => Type::U32(*n),
+            TCType::Effects(..) => unreachable!(),
         }
     }
 

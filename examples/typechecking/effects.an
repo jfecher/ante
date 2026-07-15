@@ -5,10 +5,10 @@ effect Use a =
     get: fn Unit -> a
     set: fn a -> Unit
 
-// Expect handler typed with Use String, not Log
-handle_basic () {Log} {Use String} =
+// `log` is handled here; `set` (from a different effect) escapes
+handle_basic (): Unit can (Use String) =
     handler h for log v -> set v in
-    log "test1" {h}
+    log "test1"
 
 use_resume () =
     handler h for
@@ -16,12 +16,12 @@ use_resume () =
       | set _ -> resume ()
     in ()
 
-does_use x {Use I32} =
-    y = get ()
+does_use (x: I32): Unit can (Use I32) =
+    y: I32 = get ()
     set (y + x)
 
 // Ensure a function with unhandled effects errors
-pure_fn () =
+pure_fn (): Unit pure =
     log "foo"
 
 // main should always handle all non-primitive effects
@@ -32,43 +32,45 @@ main () =
 // expected exit status: 1
 // expected stdout:
 // type Log =
-//     log: fn String [Ptr Unit] -> Unit
+//     log: fn String -> Unit
 // 
 // type Use a =
-//     get: fn Unit [Ptr Unit] -> a
-//     set: fn a [Ptr Unit] -> Unit
+//     get: fn Unit -> a
+//     set: fn a -> Unit
 // 
-// (handle_basic: fn Unit {Log} {Use String} -> Unit) () {(_: Log)} {(_: Use String)} =
-//     handler (h: Log) for
-//     | (log: fn String {Log} [Ptr Unit] -> Unit) (v: String) -> fn (v: String) (resume: fn Unit [Ptr] -> Unit) [(_: Use String)] -> (set: fn String {Use String} [Ptr Unit] -> Unit) (v: String) {(_: Use String)}
-//     in fn () -> (log: fn String {Log} [Ptr Unit] -> Unit) "test1" {(h: Log)}
+// (handle_basic: fn Unit -> Unit can (Use String)) () : Unit can Use String =
+//     handler (h: <Log>) for
+//     | (log: fn String -> Unit can Log) (v: String) -> fn (v: String) (resume: fn Unit [Ptr] -> Unit pure) -> (set: fn String -> Unit can (Use String)) (v: String)
+//     in fn () -> (log: fn String -> Unit can Log) "test1"
 // 
 // (use_resume: fn Unit -> Unit) () =
-//     handler (h: Use I32) for
-//     | (get: fn Unit {Use I32} [Ptr Unit] -> I32) () -> fn () (resume: fn I32 [Ptr] -> Unit) -> (resume: fn I32 [Ptr] -> Unit) 3_I32
-//     | (set: fn I32 {Use I32} [Ptr Unit] -> Unit) (_: I32) -> fn (_: I32) (resume: fn Unit [Ptr] -> Unit) -> (resume: fn Unit [Ptr] -> Unit) ()
+//     handler (h: <(Use I32)>) for
+//     | (get: fn Unit -> I32 can (Use I32)) () -> fn () (resume: fn I32 [Ptr] -> Unit pure) -> (resume: fn I32 [Ptr] -> Unit pure) 3_I32
+//     | (set: fn I32 -> Unit can (Use I32)) (_: I32) -> fn (_: I32) (resume: fn Unit [Ptr] -> Unit pure) -> (resume: fn Unit [Ptr] -> Unit pure) ()
 //     in fn () -> ()
 // 
-// (does_use: fn I32 {Use I32} -> Unit) (x: I32) {(_: Use I32)} =
-//     (y: I32) = (get: fn Unit {Use I32} [Ptr Unit] -> I32) () {(_: Use I32)}
-//     (set: fn I32 {Use I32} [Ptr Unit] -> Unit) ((+: fn I32 I32 {Add I32} [Ptr Unit] -> I32) (y: I32) (x: I32) {(add_i32: Add I32)}) {(_: Use I32)}
+// (does_use: fn I32 -> Unit can (Use I32)) ((x: I32)) : Unit can Use I32 =
+//     (y: I32) = (get: fn Unit -> I32 can (Use I32)) ()
+//     (set: fn I32 -> Unit can (Use I32)) ((+: fn I32 I32 {Add I32} [Ptr Unit] -> I32 can (Use I32)) (y: I32) (x: I32) {(add_i32: Add I32)})
 // 
-// (pure_fn: fn Unit -> Unit) () =
-//     (log: fn String {Log} [Ptr Unit] -> Unit) "foo" {(error)}
+// (pure_fn: fn Unit -> Unit pure) () : Unit pure =
+//     (log: fn String -> Unit can Log) "foo"
 // 
-// (main: fn Unit -> Unit) () =
-//     (log: fn String {Log} [Ptr Unit] -> Unit) "foo" {(error)}
+// (main: fn Unit -> Unit can Log, _) () =
+//     (log: fn String -> Unit can Log) "foo"
 
 // expected stderr:
 // examples/typechecking/effects.an:25:5
-// 24 | pure_fn () =
-// 25 |     log "foo"	// error: No implicit found for type Log required by log
+// 24 | pure_fn (): Unit pure =
+// 25 |     log "foo"	// error: This can perform <Log, _> but only <> is allowed here
 //    |     ^^^
 // 
-// examples/typechecking/effects.an:29:5
+// examples/typechecking/effects.an:28:1
+// 27 | // main should always handle all non-primitive effects
+//    | // error: main here has type fn Unit -> Unit can Log, _ but it should always have type fn Unit -> Unit pure
 // 28 | main () =
-// 29 |     log "foo"	// error: No implicit found for type Log required by log
-//    |     ^^^
+//    | ^^^^
+// 29 |     log "foo"
 // 
 // Found 2 errors and 0 warnings
 

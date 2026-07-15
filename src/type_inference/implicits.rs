@@ -168,6 +168,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 parameters: new_expected,
                 environment: expected.environment.clone(),
                 return_type: expected.return_type.clone(),
+                effects: expected.effects.clone(),
             }));
             self.unify(&Type::Function(actual), &new_fn, TypeErrorKind::General, function);
 
@@ -1037,11 +1038,20 @@ fn collect_user_defined_crates(typ: &Type, out: &mut BTreeSet<CrateId>) {
             }
             collect_user_defined_crates(&f.return_type, out);
             collect_user_defined_crates(&f.environment, out);
+            collect_user_defined_crates(&f.effects, out);
         },
         Type::Forall(_, t) => collect_user_defined_crates(t, out),
         Type::Tuple(ts) => {
             for t in ts.iter() {
                 collect_user_defined_crates(t, out);
+            }
+        },
+        Type::Effects(list, tail) => {
+            for effect in list.iter() {
+                collect_user_defined_crates(effect, out);
+            }
+            if let Some(tail) = tail {
+                collect_user_defined_crates(tail, out);
             }
         },
         Type::UserDefined(_) | Type::Variable(_) | Type::Generic(_) | Type::Primitive(_) | Type::U32(_) => {},

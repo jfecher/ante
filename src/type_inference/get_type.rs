@@ -88,7 +88,8 @@ pub fn try_get_generalized_type(
         // Any lambda at global scope shouldn't be able to capture any local variables
         let environment = None;
 
-        let cst_function_type = cst::FunctionType { parameters, environment, return_type, effects: None };
+        let cst_function_type =
+            cst::FunctionType { parameters, environment, return_type, effects: lambda.effects.clone() };
 
         // We construct a function type to convert wholesale instead of converting as we go
         // to avoid repeating logic in [Type::from_cst_type], namely handling of effect types.
@@ -157,7 +158,8 @@ pub fn get_partial_type(
         });
 
         let environment = Some(Box::new(cst::Type::new(cst::TypeKind::Hole, lambda_location.clone())));
-        let cst_function_type = cst::FunctionType { parameters, environment, return_type, effects: None };
+        let cst_function_type =
+            cst::FunctionType { parameters, environment, return_type, effects: lambda.effects.clone() };
 
         let cst_fn_type = cst::Type::new(TypeKind::Function(cst_function_type), lambda_location);
         let mut local_kinds = LocalKinds::default();

@@ -214,12 +214,31 @@ impl ParameterType {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub enum TypeDefinitionKind {
+    Type,
+    Trait,
+    /// Effect operations get `Kind::Effect` and are type-checked as top-level
+    /// `can`-annotated functions rather than implicit-dictionary struct fields.
+    Effect,
+}
+
+impl TypeDefinitionKind {
+    /// True for traits and effects
+    pub fn is_ability(self) -> bool {
+        matches!(self, TypeDefinitionKind::Trait | TypeDefinitionKind::Effect)
+    }
+
+    pub fn is_effect(self) -> bool {
+        matches!(self, TypeDefinitionKind::Effect)
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct TypeDefinition {
     pub shared: bool,
     pub mutable: bool,
-    /// Trait/effect definitions are desugared into type definitions
-    pub is_ability: bool,
+    pub kind: TypeDefinitionKind,
     pub name: NameId,
     pub generics: Generics,
     pub body: TypeDefinitionBody,

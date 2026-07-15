@@ -22,7 +22,7 @@ use crate::{
 
 use self::cst::{
     Call, Cst, Definition, Expr, GenericParam, Import, KindAnnotation, Literal, Path, SequenceItem, TopLevelItem,
-    TopLevelItemKind, Type, TypeDefinition, TypeDefinitionBody, TypeKind,
+    TopLevelItemKind, Type, TypeDefinition, TypeDefinitionBody, TypeDefinitionKind, TypeKind,
 };
 
 pub mod context;
@@ -720,7 +720,7 @@ impl<'tokens> Parser<'tokens> {
             _ => e,
         })?;
         let body = self.parse_type_body()?;
-        Ok(TypeDefinition { shared, mutable, name, generics, body, is_ability: false })
+        Ok(TypeDefinition { shared, mutable, name, generics, body, kind: TypeDefinitionKind::Type })
     }
 
     /// generics: ( ident | '(' ident ':' kind ')' )*

@@ -204,15 +204,16 @@ pub fn visible_types_impl(context: &VisibleTypes, db: &DbHandle) -> Arc<TypeDefi
 
 pub(crate) fn kind_of_type_definition(definition: &TypeDefinition) -> Kind {
     use std::num::NonZeroUsize;
+    let result = if definition.kind.is_effect() { Kind::Effect } else { Kind::Type };
     let n = definition.generics.len();
     if n == 0 {
-        Kind::Type
+        result
     } else if definition.generics.iter().all(|p| p.kind.is_none()) {
         // Common case: all generics default to Kind::Type, no allocation needed.
-        Kind::TypeConstructorSimple(NonZeroUsize::new(n).unwrap())
+        Kind::TypeConstructorSimple { arity: NonZeroUsize::new(n).unwrap(), result: Box::new(result) }
     } else {
         let kinds = definition.generics.iter().map(kind_of_generic_param).collect();
-        Kind::TypeConstructorComplex(kinds)
+        Kind::TypeConstructorComplex { params: kinds, result: Box::new(result) }
     }
 }
 

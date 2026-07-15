@@ -20,9 +20,15 @@ pub fn get_item_impl(context: &GetItem, db: &DbHandle) -> (Arc<TopLevelItem>, Ar
     let (item, context) = GetItemRaw(context.0).get(db);
 
     match &item.kind {
-        TopLevelItemKind::TraitDefinition(def) | TopLevelItemKind::EffectDefinition(def) => {
+        TopLevelItemKind::TraitDefinition(def) => {
             let mut new_context = DesugarContext::new(context);
-            let new_kind = desugar_trait_or_effect(def, &mut new_context);
+            let new_kind = desugar_trait_or_effect(def, false, &mut new_context);
+            let new_item = Arc::new(TopLevelItem { comments: item.comments.clone(), kind: new_kind, id: item.id });
+            (new_item, Arc::new(new_context))
+        },
+        TopLevelItemKind::EffectDefinition(def) => {
+            let mut new_context = DesugarContext::new(context);
+            let new_kind = desugar_trait_or_effect(def, true, &mut new_context);
             let new_item = Arc::new(TopLevelItem { comments: item.comments.clone(), kind: new_kind, id: item.id });
             (new_item, Arc::new(new_context))
         },
@@ -111,7 +117,9 @@ fn desugar_trait_impl(impl_: &TraitImpl, context: &mut DesugarContext) -> Defini
 ///     ...
 ///     declarationN: fn Arg1_N ... ArgN_N [Pointer] -> Ret_N
 /// ```
-fn desugar_trait_or_effect(ability: &TraitOrEffectDefinition, context: &mut DesugarContext) -> TopLevelItemKind {
+fn desugar_trait_or_effect(
+    ability: &TraitOrEffectDefinition, is_effect: bool, context: &mut DesugarContext,
+) -> TopLevelItemKind {
     let name_location = context.name_location(ability.name).clone();
 
     // Set every function-typed field's closure environment to `Ptr Unit` so each ability value
@@ -124,7 +132,7 @@ fn desugar_trait_or_effect(ability: &TraitOrEffectDefinition, context: &mut Desu
     };
     let fields = mapvec(&ability.body, |decl| {
         let typ = match &decl.typ.kind {
-            cst::TypeKind::Function(f) if f.environment.is_none() => {
+            cst::TypeKind::Function(f) if f.environment.is_none() && !is_effect => {
                 let mut f = f.clone();
                 f.environment = Some(Box::new(ptr_unit()));
                 Type::new(cst::TypeKind::Function(f), decl.typ.location.clone())
@@ -134,10 +142,11 @@ fn desugar_trait_or_effect(ability: &TraitOrEffectDefinition, context: &mut Desu
         (decl.name, typ)
     });
 
+    let kind = if is_effect { cst::TypeDefinitionKind::Effect } else { cst::TypeDefinitionKind::Trait };
     TopLevelItemKind::TypeDefinition(super::cst::TypeDefinition {
         shared: false,
         mutable: false,
-        is_ability: true,
+        kind,
         name: ability.name,
         generics: ability.generics.clone(),
         body: TypeDefinitionBody::Struct(fields),

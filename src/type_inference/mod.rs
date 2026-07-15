@@ -158,6 +158,10 @@ struct TypeChecker<'local, 'inner> {
     /// The return type of the current function. Used to type check `return` statements.
     function_return_type: Option<Type>,
 
+    /// The effect row of the function whose body is currently being checked.
+    /// This is `None` for `pure` functions or on non-function globals.
+    current_effect_row: Option<Type>,
+
     /// Types of each top-level item in the current SCC being worked on
     item_types: Rc<FxHashMap<TopLevelName, Type>>,
 
@@ -237,6 +241,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             item_types: Default::default(),
             current_item: None,
             function_return_type: None,
+            current_effect_row: None,
             item_contexts,
             id_contexts,
             implicits: Vec::new(),
@@ -420,6 +425,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         Type::Variable(self.next_type_variable_id())
     }
 
+    /// A fresh, open effect row.
+    fn fresh_effect_row(&self) -> Type {
+        Type::effects(Vec::new(), Some(self.next_type_variable()))
+    }
+
     /// Generalize all types in the current SCC.
     /// The returned Vec is in the same order as the SCC.
     ///
@@ -520,6 +530,7 @@ fn strip_environments(typ: &Type) -> Type {
             }),
             environment: Type::NO_CLOSURE_ENV,
             return_type: strip_environments(&function.return_type),
+            effects: function.effects.clone(),
         })),
         Type::Application(constructor, args) => Type::Application(
             Arc::new(strip_environments(constructor)),
@@ -527,7 +538,12 @@ fn strip_environments(typ: &Type) -> Type {
         ),
         Type::Tuple(elements) => Type::Tuple(Arc::new(mapvec(elements.iter(), strip_environments))),
         Type::Forall(generics, body) => Type::Forall(generics.clone(), Arc::new(strip_environments(body))),
-        Type::Primitive(_) | Type::Generic(_) | Type::Variable(_) | Type::UserDefined(_) | Type::U32(_) => typ.clone(),
+        Type::Primitive(_)
+        | Type::Generic(_)
+        | Type::Variable(_)
+        | Type::UserDefined(_)
+        | Type::U32(_)
+        | Type::Effects(_, _) => typ.clone(),
     }
 }
 
@@ -751,6 +767,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             parameters: vec![ParameterType::explicit(original_type)],
             environment: Type::NO_CLOSURE_ENV,
             return_type: element_type,
+            effects: Type::pure(),
         }));
         let func_expr = self.push_expr(cst::Expr::Variable(deref_path), function_type, location);
         cst::Expr::Call(cst::Call { function: func_expr, arguments: vec![cst::Argument::explicit(arg_id)] })
@@ -839,7 +856,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 if !env_skip {
                     self.subtype(&a_fn.environment, &b_fn.environment, Variance::Invariant, new_bindings)?;
                 }
-                self.subtype(&a_fn.return_type, &b_fn.return_type, variance, new_bindings)
+                self.subtype(&a_fn.return_type, &b_fn.return_type, variance, new_bindings)?;
+                self.subtype(&a_fn.effects, &b_fn.effects, variance, new_bindings)
             },
             (Type::Application(a_constructor, a_args), Type::Application(b_constructor, b_args)) => {
                 if a_args.len() != b_args.len() {
@@ -890,8 +908,109 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     _ => Err(()),
                 }
             },
+            (Type::Effects(..), Type::Effects(..)) => self.row_subtype(a, b, new_bindings),
             (a, b) if a == b => Ok(()),
             _ => Err(()),
+        }
+    }
+
+    /// Find the first position in `candidates` (skipping any where `skip(i)` is true) whose head
+    /// matches `target`, invariantly subtype it against `target`, and return that position.
+    fn subtype_matching_effect(
+        &self, candidates: &[Type], skip: impl Fn(usize) -> bool, target: &Type, new_bindings: &mut TypeBindings,
+    ) -> Result<Option<usize>, ()> {
+        let Some(pos) = candidates
+            .iter()
+            .enumerate()
+            .find(|(i, e)| !skip(*i) && Self::effect_heads_match(e, target))
+            .map(|(i, _)| i)
+        else {
+            return Ok(None);
+        };
+        self.subtype(&candidates[pos], target, Variance::Invariant, new_bindings)?;
+        Ok(Some(pos))
+    }
+
+    /// Row-subtype two effect rows: is `a`'s actual set of effects permitted by `b`'s
+    /// expected set? Fewer effects is a subtype of more.
+    ///
+    /// Both `a` and `b` must already be `Type::Effects(list, tail)`.
+    fn row_subtype(&self, a: &Type, b: &Type, new_bindings: &mut TypeBindings) -> Result<(), ()> {
+        let a = self.canonical_effects_row(a, new_bindings);
+        let b = self.canonical_effects_row(b, new_bindings);
+        let (Type::Effects(a_list, a_tail), Type::Effects(b_list, b_tail)) = (&a, &b) else {
+            unreachable!("row_subtype called with non-Effects type");
+        };
+
+        let is_error = |tail: &Option<Arc<Type>>| tail.as_deref().is_some_and(Type::is_error);
+        if is_error(a_tail) || is_error(b_tail) {
+            return Ok(());
+        }
+
+        let mut a_leftover = Vec::new();
+        let mut b_matched = vec![false; b_list.len()];
+
+        for a_effect in a_list.iter() {
+            match self.subtype_matching_effect(b_list, |i| b_matched[i], a_effect, new_bindings)? {
+                Some(pos) => b_matched[pos] = true,
+                None => a_leftover.push(a_effect.clone()),
+            }
+        }
+
+        if !a_leftover.is_empty() {
+            let fresh_tail = self.next_type_variable();
+            self.bind_open_tail(b_tail.as_deref(), a_leftover, Some(fresh_tail), true, new_bindings)?;
+        }
+
+        let b_unmatched: Vec<Type> =
+            b_list.iter().enumerate().filter(|(i, _)| !b_matched[*i]).map(|(_, t)| t.clone()).collect();
+
+        let new_tail = b_tail.as_deref().cloned();
+        self.bind_open_tail(a_tail.as_deref(), b_unmatched, new_tail, false, new_bindings)?;
+
+        Ok(())
+    }
+
+    fn bind_open_tail(
+        &self, tail: Option<&Type>, new_list: Vec<Type>, new_tail: Option<Type>, error_if_not_variable: bool,
+        new_bindings: &mut TypeBindings,
+    ) -> Result<(), ()> {
+        match tail {
+            Some(Type::Variable(id)) => {
+                let is_self_bind = new_list.is_empty() && matches!(&new_tail, Some(Type::Variable(t)) if t == id);
+                if is_self_bind {
+                    Ok(())
+                } else {
+                    self.try_bind_type_variable(*id, Type::effects(new_list, new_tail), new_bindings)
+                }
+            },
+            _ if error_if_not_variable => Err(()),
+            _ => Ok(()),
+        }
+    }
+
+    /// Follow `effects` to the inner [Type::Effects] variant holding the entire effect row.
+    fn canonical_effects_row(&self, effects: &Type, new_bindings: &TypeBindings) -> Type {
+        match effects.follow_two(&self.bindings, new_bindings) {
+            Type::Effects(list, tail) => {
+                let list = list.iter().map(|t| t.follow_two(&self.bindings, new_bindings)).collect();
+                let tail = tail.as_deref().map(|t| self.canonical_effects_row(t, new_bindings));
+                Type::effects(list, tail)
+            },
+            // A bare variable/generic tail with no accumulated effects yet.
+            other => Type::effects(Vec::new(), Some(other)),
+        }
+    }
+
+    /// True if two effect-row entries share the same effect constructor ignoring type arguments,
+    /// e.g. both are `Throw _`.
+    fn effect_heads_match(a: &Type, b: &Type) -> bool {
+        let head = |effect: &Type| {
+            effect.as_user_defined().copied().or_else(|| effect.as_application()?.0.as_user_defined().copied())
+        };
+        match (head(a), head(b)) {
+            (Some(a), Some(b)) => a == b,
+            _ => false,
         }
     }
 
@@ -987,6 +1106,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 function_type.parameters.iter().any(|param| self.occurs(&param.typ, variable, new_bindings))
                     || self.occurs(&function_type.environment, variable, new_bindings)
                     || self.occurs(&function_type.return_type, variable, new_bindings)
+                    || self.occurs(&function_type.effects, variable, new_bindings)
             },
             Type::Application(constructor, args) => {
                 self.occurs(constructor, variable, new_bindings)
@@ -994,6 +1114,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
             Type::Forall(_, typ) => self.occurs(typ, variable, new_bindings),
             Type::Tuple(elements) => elements.iter().any(|element| self.occurs(element, variable, new_bindings)),
+            Type::Effects(list, tail) => {
+                list.iter().any(|effect| self.occurs(effect, variable, new_bindings))
+                    || tail.as_ref().is_some_and(|tail| self.occurs(tail, variable, new_bindings))
+            },
         }
     }
 
@@ -1152,6 +1276,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             parameters: vec![ParameterType::explicit(Type::UNIT)],
             environment: Type::NO_CLOSURE_ENV,
             return_type: Type::UNIT,
+            effects: Type::pure(),
         }));
 
         self.unify(typ, &expected, TypeErrorKind::MainFn, pattern);

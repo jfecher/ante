@@ -48,6 +48,10 @@ impl TopLevelId {
         };
 
         match &type_definition.body {
+            cst::TypeDefinitionBody::Struct(_) if type_definition.kind.is_effect() => {
+                let type_name = item_context[type_definition.name].clone();
+                TypeBody::Product { type_name, fields: Vec::new() }
+            },
             cst::TypeDefinitionBody::Struct(fields) => {
                 // This'd be easier with an explicit type data field
                 let constructor_type = result.get_generalized(type_definition.name);

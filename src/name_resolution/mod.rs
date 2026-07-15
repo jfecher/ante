@@ -627,6 +627,11 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                 if let Some(return_type) = &lambda.return_type {
                     self.resolve_type(return_type, true);
                 }
+                if let Some(effects) = &lambda.effects {
+                    for effect in effects {
+                        self.resolve_type(effect, true);
+                    }
+                }
                 self.resolve_expr(lambda.body);
                 self.pop_local_scope();
             },
@@ -950,6 +955,11 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                     self.resolve_type(environment, declare_type_vars);
                 }
                 self.resolve_type(&function.return_type, declare_type_vars);
+                if let Some(effects) = function.effects.as_ref() {
+                    for effect in effects {
+                        self.resolve_type(effect, declare_type_vars);
+                    }
+                }
             },
             TypeKind::Application(f, args) => {
                 self.resolve_type(f, declare_type_vars);
@@ -997,7 +1007,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             TypeDefinitionBody::Error => (),
             TypeDefinitionBody::Struct(fields) => {
                 for (name, field_type) in fields {
-                    if type_definition.is_ability {
+                    if type_definition.kind.is_ability() {
                         self.link_existing_union_variant(type_definition.name, *name);
                     }
                     self.resolve_type(field_type, false);
@@ -1054,7 +1064,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             };
             let (item, item_context) = GetItem(name.top_level_item).get(self.compiler);
             let TopLevelItemKind::TypeDefinition(type_definition) = &item.kind else { continue };
-            if !type_definition.is_ability {
+            if !type_definition.kind.is_ability() {
                 continue;
             }
             let TypeDefinitionBody::Struct(fields) = &type_definition.body else { continue };
