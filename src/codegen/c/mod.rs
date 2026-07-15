@@ -1011,12 +1011,7 @@ impl Builder {
                 self.write_value(pointer, mir);
                 let _ = write!(self.current_item, ", &{id}_exp, ");
                 self.write_value(desired, mir);
-                let _ = write!(
-                    self.current_item,
-                    ", 0, {}, {}); ",
-                    c_atomic_order(*success),
-                    c_atomic_order(*failure)
-                );
+                let _ = write!(self.current_item, ", 0, {}, {}); ", c_atomic_order(*success), c_atomic_order(*failure));
                 self.write_type(&typ, "");
                 let _ = write!(self.current_item, " {id} = {id}_exp;");
             },

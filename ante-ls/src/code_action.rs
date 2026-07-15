@@ -85,6 +85,10 @@ pub fn code_actions_at(
         }
     }
 
+    if let Some(action) = crate::exports::add_to_exports_action(compiler, file_id, start_byte, end_byte, uri, rope) {
+        actions.push(action);
+    }
+
     if !missing.is_empty() {
         // One pass over the crate graph builds `name -> Vec<Candidate>`, then each
         // missing name is an O(log M) lookup. Previously each name triggered its

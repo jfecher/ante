@@ -600,9 +600,7 @@ impl<'ctx> ModuleContext<'ctx> {
                 let b = self.lookup_value(b).into_int_value();
                 self.builder.build_int_add(a, b, "").unwrap().as_basic_value_enum()
             },
-            mir::Instruction::OverflowingAddInt(a, b) => {
-                self.overflowing_int_op(function, a, b, OverflowingIntOp::Add)
-            },
+            mir::Instruction::OverflowingAddInt(a, b) => self.overflowing_int_op(function, a, b, OverflowingIntOp::Add),
             mir::Instruction::AddFloat(a, b) => {
                 let a = self.lookup_value(a).into_float_value();
                 let b = self.lookup_value(b).into_float_value();
@@ -613,9 +611,7 @@ impl<'ctx> ModuleContext<'ctx> {
                 let b = self.lookup_value(b).into_int_value();
                 self.builder.build_int_sub(a, b, "").unwrap().as_basic_value_enum()
             },
-            mir::Instruction::OverflowingSubInt(a, b) => {
-                self.overflowing_int_op(function, a, b, OverflowingIntOp::Sub)
-            },
+            mir::Instruction::OverflowingSubInt(a, b) => self.overflowing_int_op(function, a, b, OverflowingIntOp::Sub),
             mir::Instruction::SubFloat(a, b) => {
                 let a = self.lookup_value(a).into_float_value();
                 let b = self.lookup_value(b).into_float_value();
@@ -626,9 +622,7 @@ impl<'ctx> ModuleContext<'ctx> {
                 let b = self.lookup_value(b).into_int_value();
                 self.builder.build_int_mul(a, b, "").unwrap().as_basic_value_enum()
             },
-            mir::Instruction::OverflowingMulInt(a, b) => {
-                self.overflowing_int_op(function, a, b, OverflowingIntOp::Mul)
-            },
+            mir::Instruction::OverflowingMulInt(a, b) => self.overflowing_int_op(function, a, b, OverflowingIntOp::Mul),
             mir::Instruction::MulFloat(a, b) => {
                 let a = self.lookup_value(a).into_float_value();
                 let b = self.lookup_value(b).into_float_value();
@@ -850,16 +844,12 @@ impl<'ctx> ModuleContext<'ctx> {
         let fn_type = overflow_type.fn_type(&[int_type.into(), int_type.into()], false);
         let intrinsic_name =
             format!("llvm.{signedness}{}.with.overflow.i{}", op.llvm_name_part(), int_type.get_bit_width());
-        let intrinsic = self.module.get_function(&intrinsic_name).unwrap_or_else(|| {
-            self.module.add_function(&intrinsic_name, fn_type, None)
-        });
+        let intrinsic = self
+            .module
+            .get_function(&intrinsic_name)
+            .unwrap_or_else(|| self.module.add_function(&intrinsic_name, fn_type, None));
 
-        self.builder
-            .build_call(intrinsic, &[a.into(), b.into()], "")
-            .unwrap()
-            .try_as_basic_value()
-            .basic()
-            .unwrap()
+        self.builder.build_call(intrinsic, &[a.into(), b.into()], "").unwrap().try_as_basic_value().basic().unwrap()
     }
 
     fn transmute(&mut self, value: &mir::Value, function: &mir::Definition, id: InstructionId) -> BasicValueEnum<'ctx> {

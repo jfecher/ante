@@ -61,8 +61,8 @@ use crate::{
 };
 
 mod codegen;
-mod dependencies;
 mod definition_collection;
+mod dependencies;
 mod find_files;
 mod lexer;
 mod mir;
@@ -463,11 +463,8 @@ fn check_and_select_main(
 /// Run the binary then optionally delete it.
 fn run_binary(program_name: &str, delete_binary: bool) {
     let binary_path = binary_name(program_name);
-    let run_path = if binary_path.components().count() == 1 {
-        Path::new(".").join(&binary_path)
-    } else {
-        binary_path.clone()
-    };
+    let run_path =
+        if binary_path.components().count() == 1 { Path::new(".").join(&binary_path) } else { binary_path.clone() };
     Command::new(&run_path).spawn().unwrap().wait().unwrap();
     if delete_binary {
         std::fs::remove_file(binary_path).unwrap();
@@ -484,11 +481,7 @@ fn files_to_program_name(files: &[PathBuf]) -> String {
 fn project_program_name(compiler: &mut Db) -> String {
     let crates = GetCrateGraph.get(compiler);
     let name = &crates[&CrateId::LOCAL].name;
-    if name == crate::find_files::DEFAULT_LOCAL_CRATE_NAME {
-        "a".to_string()
-    } else {
-        name.clone()
-    }
+    if name == crate::find_files::DEFAULT_LOCAL_CRATE_NAME { "a".to_string() } else { name.clone() }
 }
 
 /// Choose which `main` function to compile into the binary's entry point.

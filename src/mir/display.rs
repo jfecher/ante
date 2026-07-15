@@ -385,9 +385,7 @@ fn fmt_instruction(
         mir::Instruction::AllocShared(value) => write!(f, "alloc_shared {}", v(value))?,
         mir::Instruction::Extern(name) => write!(f, "extern \"{name}\"")?,
         mir::Instruction::AtomicLoad { pointer, .. } => write!(f, "atomic_load {}", v(pointer))?,
-        mir::Instruction::AtomicStore { pointer, value, .. } => {
-            write!(f, "atomic_store {}, {}", v(pointer), v(value))?
-        },
+        mir::Instruction::AtomicStore { pointer, value, .. } => write!(f, "atomic_store {}, {}", v(pointer), v(value))?,
         mir::Instruction::AtomicRmw { op, pointer, value, .. } => {
             write!(f, "atomic_rmw {op:?} {}, {}", v(pointer), v(value))?
         },

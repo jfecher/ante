@@ -12,6 +12,7 @@ mod code_action;
 mod completion;
 mod definition;
 mod diagnostics;
+mod exports;
 mod hover;
 mod util;
 

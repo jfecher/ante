@@ -146,10 +146,9 @@ impl<'contents> Lexer<'contents> {
     }
 
     pub fn errors(&self, file: SourceFileId) -> impl Iterator<Item = Diagnostic> + '_ {
-        self.errors.iter().map(move |(error, span)| Diagnostic::LexerError {
-            error: error.clone(),
-            location: span.in_file(file),
-        })
+        self.errors
+            .iter()
+            .map(move |(error, span)| Diagnostic::LexerError { error: error.clone(), location: span.in_file(file) })
     }
 
     pub fn warnings(&self, file: SourceFileId) -> impl Iterator<Item = Diagnostic> + '_ {
