@@ -1,5 +1,5 @@
-ability AddEff =
-    add: resume fn U32 -> Unit
+effect AddEff =
+    add: fn U32 -> Unit
 
 foo () {AddEff} =
     println "foo"

@@ -1,5 +1,5 @@
 
-ability Foo a b =
+trait Foo a b =
     foo: fn a -> b
 
 implicit foo_impl: Foo I32 String =

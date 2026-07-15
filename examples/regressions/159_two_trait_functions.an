@@ -1,4 +1,4 @@
-ability MultiTrait a =
+trait MultiTrait a =
     one: fn Unit -> Unit
     two: fn Unit -> Unit
 

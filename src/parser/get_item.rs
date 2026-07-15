@@ -7,8 +7,9 @@ use crate::{
     lexer::token::{FloatKind, IntegerKind},
     parser::{
         cst::{
-            self, AbilityDefinition, AbilityImpl, Argument, Constructor, Definition, Expr, If, Lambda, Literal,
-            Parameter, Path, Pattern, SequenceItem, TopLevelItem, TopLevelItemKind, Type, TypeDefinitionBody, TypeKind,
+            self, Argument, Constructor, Definition, Expr, If, Lambda, Literal,
+            Parameter, Path, Pattern, SequenceItem, TopLevelItem, TopLevelItemKind, TraitImpl, TraitOrEffectDefinition,
+            Type, TypeDefinitionBody, TypeKind,
         },
         desugar_context::DesugarContext,
         ids::{ExprId, PathId, PatternId},
@@ -19,15 +20,15 @@ pub fn get_item_impl(context: &GetItem, db: &DbHandle) -> (Arc<TopLevelItem>, Ar
     let (item, context) = GetItemRaw(context.0).get(db);
 
     match &item.kind {
-        TopLevelItemKind::AbilityDefinition(trait_definition) => {
+        TopLevelItemKind::TraitDefinition(def) | TopLevelItemKind::EffectDefinition(def) => {
             let mut new_context = DesugarContext::new(context);
-            let new_kind = desugar_ability(trait_definition, &mut new_context);
+            let new_kind = desugar_trait_or_effect(def, &mut new_context);
             let new_item = Arc::new(TopLevelItem { comments: item.comments.clone(), kind: new_kind, id: item.id });
             (new_item, Arc::new(new_context))
         },
-        TopLevelItemKind::AbilityImpl(ability_impl) => {
+        TopLevelItemKind::TraitImpl(trait_impl) => {
             let mut new_context = DesugarContext::new(context);
-            let new_definition = desugar_ability_impl(ability_impl, &mut new_context);
+            let new_definition = desugar_trait_impl(trait_impl, &mut new_context);
             desugar_expression(new_definition.rhs, &mut new_context);
             let kind = TopLevelItemKind::Definition(new_definition);
             let new_item = Arc::new(TopLevelItem { comments: item.comments.clone(), kind, id: item.id });
@@ -57,15 +58,15 @@ pub fn get_item_impl(context: &GetItem, db: &DbHandle) -> (Arc<TopLevelItem>, Ar
 ///     method1 = ...
 ///     method2 = ...
 /// ```
-fn desugar_ability_impl(impl_: &AbilityImpl, context: &mut DesugarContext) -> Definition {
+fn desugar_trait_impl(impl_: &TraitImpl, context: &mut DesugarContext) -> Definition {
     let location = context.name_location(impl_.name).clone();
     let variable = context.push_pattern(Pattern::Variable(impl_.name), location.clone());
 
-    let mut ability_type = Type::new(TypeKind::Named(impl_.ability_path), location.clone());
+    let mut ability_type = Type::new(TypeKind::Named(impl_.trait_path), location.clone());
 
-    if !impl_.ability_arguments.is_empty() {
+    if !impl_.trait_arguments.is_empty() {
         ability_type =
-            Type::new(TypeKind::Application(Box::new(ability_type), impl_.ability_arguments.clone()), location.clone());
+            Type::new(TypeKind::Application(Box::new(ability_type), impl_.trait_arguments.clone()), location.clone());
     }
 
     // If this is not a function we need to put the type annotation on the name itself rather than
@@ -88,6 +89,7 @@ fn desugar_ability_impl(impl_: &AbilityImpl, context: &mut DesugarContext) -> De
             return_type: Some(ability_type),
             body: constructor,
             is_move: false,
+            effects: None,
         });
         context.push_expr(lambda, location)
     };
@@ -109,7 +111,7 @@ fn desugar_ability_impl(impl_: &AbilityImpl, context: &mut DesugarContext) -> De
 ///     ...
 ///     declarationN: fn Arg1_N ... ArgN_N [Pointer] -> Ret_N
 /// ```
-fn desugar_ability(ability: &AbilityDefinition, context: &mut DesugarContext) -> TopLevelItemKind {
+fn desugar_trait_or_effect(ability: &TraitOrEffectDefinition, context: &mut DesugarContext) -> TopLevelItemKind {
     let name_location = context.name_location(ability.name).clone();
 
     // Set every function-typed field's closure environment to `Ptr Unit` so each ability value
@@ -314,7 +316,7 @@ fn desugar_loop(expr: ExprId, context: &mut DesugarContext) {
     let recur = cst::Pattern::Variable(name_id);
     let recur = context.push_pattern(recur, location.clone());
 
-    let lambda = cst::Expr::Lambda(cst::Lambda { parameters, return_type: None, body, is_move: false });
+    let lambda = cst::Expr::Lambda(cst::Lambda { parameters, return_type: None, body, is_move: false, effects: None });
     let lambda = context.push_expr(lambda, location.clone());
 
     let definition =
@@ -371,7 +373,10 @@ fn desugar_call_wildcards(expr: ExprId, context: &mut DesugarContext) {
     let new_call = Expr::Call(cst::Call { function: call.function, arguments: new_arguments });
     let new_call_id = context.push_expr(new_call, location.clone());
 
-    context.set_expr(expr, Expr::Lambda(Lambda { parameters, return_type: None, body: new_call_id, is_move: false }));
+    context.set_expr(
+        expr,
+        Expr::Lambda(Lambda { parameters, return_type: None, body: new_call_id, is_move: false, effects: None }),
+    );
 }
 
 enum ExprDesugar {
@@ -634,6 +639,7 @@ fn desugar_do(expr: ExprId, context: &mut DesugarContext) {
         return_type: None,
         body: do_.body,
         is_move: true,
+        effects: None,
     });
     context.set_expr(expr, lambda);
 }
@@ -657,6 +663,7 @@ fn desugar_tilde_arrow(expr: ExprId, context: &mut DesugarContext) {
         return_type: None,
         body: a,
         is_move: false,
+        effects: None,
     });
     let lambda = context.push_expr(lambda, location);
 

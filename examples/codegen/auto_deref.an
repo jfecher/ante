@@ -1,4 +1,4 @@
-ability Double a =
+trait Double a =
     do_double: fn a -> a
 
 implicit double_i32: Double I32 =

@@ -1,5 +1,5 @@
-ability Emit a =
-    emit: resume fn a -> Unit
+effect Emit a =
+    emit: fn a -> Unit
 
 iota (n: U32) {Emit U32} = loop (i = 0) ->
     if i < n then

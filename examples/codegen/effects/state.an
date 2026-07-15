@@ -1,6 +1,6 @@
-ability Use a =
-    get: resume fn Unit -> a
-    set: resume fn a -> Unit
+effect Use a =
+    get: fn Unit -> a
+    set: fn a -> Unit
 
 use_state (y: I32) {Use I32} =
     x = get ()

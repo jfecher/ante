@@ -1,9 +1,9 @@
-ability Three =
+effect Three =
     one: fn Unit -> Unit
     two: fn I32 -> I32
     three: fn I32 I32 -> I32
 
-ability State a =
+effect State a =
     get: fn Unit -> a
     put: fn a -> Unit
 

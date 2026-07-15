@@ -234,7 +234,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Type::UserDefined(origin) => match origin {
                 Origin::TopLevelDefinition(name) => {
                     let (item, _) = GetItemRaw(name.top_level_item).get(self.compiler);
-                    matches!(&item.kind, TopLevelItemKind::AbilityDefinition(_))
+                    matches!(&item.kind, TopLevelItemKind::TraitDefinition(_) | TopLevelItemKind::EffectDefinition(_))
                 },
                 _ => false,
             },

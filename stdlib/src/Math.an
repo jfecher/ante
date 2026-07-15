@@ -71,7 +71,7 @@ overflowing_sub_i32 (x: I32) (y: I32): (I32, Bool) =
 overflowing_mul_i32 (x: I32) (y: I32): (I32, Bool) =
     intrinsic "OverflowingMulInt" x y
 
-ability Bounded t =
+trait Bounded t =
     min: t
     max: t
 

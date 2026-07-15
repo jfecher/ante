@@ -1,5 +1,5 @@
 
-ability Bar a b =
+trait Bar a b =
     bar: fn a a -> b
 
 

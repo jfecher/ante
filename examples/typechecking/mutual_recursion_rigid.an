@@ -14,8 +14,8 @@ ex1b (a: u) b =
 
 
 // Second example
-ability T1 a = trait1: fn a -> Unit
-ability T2 a = trait2: fn a -> Unit
+trait T1 a = trait1: fn a -> Unit
+trait T2 a = trait2: fn a -> Unit
 
 ex2a (a: t) b {Copy t} =
     ex2b a b

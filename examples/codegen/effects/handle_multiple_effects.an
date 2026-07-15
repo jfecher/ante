@@ -1,9 +1,9 @@
 
-ability MyFail =
-    fail: resume fn Unit -> Unit
+effect MyFail =
+    fail: fn Unit -> Unit
 
-ability Read a =
-    read: resume fn Unit -> a
+effect Read a =
+    read: fn Unit -> a
 
 read_or_none (f: fn Unit {MyFail} {Read U32} -> U32): Maybe U32 =
     handler hf for fail () -> None

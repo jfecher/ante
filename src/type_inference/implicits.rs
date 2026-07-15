@@ -948,7 +948,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let body_type = Type::ERROR;
         let body = self.push_expr(body, body_type, location);
 
-        Some(cst::Expr::Lambda(cst::Lambda { parameters, body, return_type: None, is_move: false }))
+        Some(cst::Expr::Lambda(cst::Lambda { parameters, body, return_type: None, is_move: false, effects: None }))
     }
 
     /// Creates a new expression referring to the given implicit value.

@@ -85,7 +85,7 @@ fourth (_, _, _, d) = d
 fifth (_, _, _, _, e) = e
 
 /// A type conversion from a to b
-ability Cast a b =
+trait Cast a b =
     cast: fn a -> b
 
 impl cast_same: Cast a a with
@@ -363,7 +363,7 @@ impl cast_i32_string: Cast I32 String with
         String.from_parts buf len
 
 /// Represents a failable type cast from a to b
-ability TryCast a b =
+trait TryCast a b =
     try_cast: fn a -> Maybe b
 
 impl try_cast_from_cast {Cast a b}: TryCast a b with
@@ -371,7 +371,7 @@ impl try_cast_from_cast {Cast a b}: TryCast a b with
 
 
 // // Huge block of intrinsic numeric operators incoming
-ability Add n = (+): fn n n -> n
+trait Add n = (+): fn n n -> n
 impl add_i8: Add I8 with
     (+) x y = intrinsic "AddInt" x y
 impl add_i16: Add I16 with
@@ -397,7 +397,7 @@ impl add_f32: Add F32 with
 impl add_f64: Add F64 with
     (+) x y = intrinsic "AddFloat" x y
 
-ability Sub n = (-): fn n n -> n
+trait Sub n = (-): fn n n -> n
 impl sub_i8: Sub I8 with
     (-) x y = intrinsic "SubInt" x y
 impl sub_i16: Sub I16 with
@@ -423,7 +423,7 @@ impl sub_f32: Sub F32 with
 impl sub_f64: Sub F64 with
     (-) x y = intrinsic "SubFloat" x y
 
-ability Mul n = (*): fn n n -> n
+trait Mul n = (*): fn n n -> n
 impl mul_i8: Mul I8 with
     (*) x y = intrinsic "MulInt" x y
 impl mul_i16: Mul I16 with
@@ -449,7 +449,7 @@ impl mul_f32: Mul F32 with
 impl mul_f64: Mul F64 with
     (*) x y = intrinsic "MulFloat" x y
 
-ability Div n = (/): fn n n -> n
+trait Div n = (/): fn n n -> n
 impl div_i8: Div I8 with
     (/) x y = intrinsic "DivSigned" x y
 impl div_i16: Div I16 with
@@ -475,7 +475,7 @@ impl div_f32: Div F32 with
 impl div_f64: Div F64 with
     (/) x y = intrinsic "DivFloat" x y
 
-ability Mod n = (%): fn n n -> n
+trait Mod n = (%): fn n n -> n
 impl mod_i8: Mod I8 with
     (%) x y = intrinsic "ModSigned" x y
 impl mod_i16: Mod I16 with
@@ -504,7 +504,7 @@ impl mod_usz: Mod Usz with
     a % b == cast 0u8 : t
 
 
-ability Eq t = (==): fn (ref t) (ref t) -> Bool
+trait Eq t = (==): fn (ref t) (ref t) -> Bool
 impl eq_i8: Eq I8 with
     (==) x y = intrinsic "EqInt" x.* y.*
 impl eq_i16: Eq I16 with
@@ -555,7 +555,7 @@ impl eq_pair {Eq a} {Eq b}: Eq (a, b) with
 
 (!=) (l: t) (r: t) {Eq t} = not (l == r)
 
-ability Not t =
+trait Not t =
     (not): fn t -> t
 
 impl not_bool: Not Bool with
@@ -564,7 +564,7 @@ impl not_bool: Not Bool with
 impl not_i32: Not I32 with
     (not) x = intrinsic "BitwiseNot" x
 
-ability Cmp a =
+trait Cmp a =
     (<): fn (ref a) (ref a) -> Bool
 
 // TODO: Partial ordering screws everything up
@@ -606,7 +606,7 @@ max (l: ref t) (r: ref t) {Cmp t}: ref t = if l > r then l else r
 min (l: ref t) (r: ref t) {Cmp t}: ref t = if l < r then l else r
 
 
-ability Num a =
+trait Num a =
     add: Add a
     sub: Sub a
     mul: Mul a
@@ -747,7 +747,7 @@ impl try_cast_u64: TryCast U64 I64 with
         if x > 9_223_372_036_854_775_807u64 then None
         else Some (transmute x)
 
-ability Append a =
+trait Append a =
     (++): fn a a -> a
 
 // TODO: This needs to be in the prelude to keep string interpolation working
@@ -769,7 +769,7 @@ impl append_string: Append String with
 (|>) x f = f x
 (<|) f x = f x
 
-ability Extract collection index elem =
+trait Extract collection index elem =
     (.[]): fn collection index -> elem
 
 // TODO: Remove. This breaks ownership
@@ -818,7 +818,7 @@ impl extract_array_mut: Extract (mut Array n t) Usz (mut t) with
 //       Currently this is prevented by the use of 'intrinsic'
 //       which is limited to the prelude.
 
-ability Bitwise t =
+trait Bitwise t =
     band: fn t t -> t
     bor: fn t t -> t
     bxor: fn t t -> t
@@ -869,13 +869,13 @@ ptr_to_mut: fn (Ptr a) -> mut a = transmute
 ptr_to_uniq: fn (Ptr a) -> uniq a = transmute
 ref_to_ptr: fn (ref a) -> Ptr a = transmute
 
-ability Copy t =
+trait Copy t =
     (.*): fn (ref t) -> t
 
-ability Clone t =
+trait Clone t =
     clone: fn (ref t) -> t
 
-ability Drop t =
+trait Drop t =
     drop: fn (mut t) -> Unit
 
 impl copy_i8: Copy I8 with
@@ -971,7 +971,7 @@ transmute (x: a): b =
 
 /// Insert an element into a collection.
 /// `col.[i] := elem` resolves to `Insert` while `col.[i]` alone resolves to `Extract`
-ability Insert collection index elem =
+trait Insert collection index elem =
     (.[]:=): fn collection index elem -> Unit
 
 impl insert_ptr_usz: Insert (mut Ptr t) Usz t with
@@ -981,7 +981,7 @@ impl insert_array: Insert (mut Array n t) Usz t with
     (.[]:=) arr index value = array_set arr index value
 
 // TODO: Take argument by reference
-ability Print t =
+trait Print t =
     print: fn (ref t) -> Unit
 
 println (x: ref t) {Print t} =
@@ -1096,7 +1096,7 @@ impl print_array {Print t}: Print (Array n t) with
 impl print_ref {Print a}: Print (ref a) with
     print x = print x.*
 
-ability Iterator it elem =
+trait Iterator it elem =
     next: fn it -> Maybe (it, elem)
 
 iter (iterable: it) f {i: Iterator it elem} =

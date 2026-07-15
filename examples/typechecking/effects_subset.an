@@ -1,5 +1,5 @@
 // Regression for #215
-ability Emit a =
+effect Emit a =
     emit: fn a -> Unit
 
 iota (n: U32) {Emit U32}: Unit = loop (i = 0) ->

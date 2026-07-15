@@ -1,4 +1,4 @@
-ability Count =
+effect Count =
     count: fn Unit -> Unit
 
 foo {Count} =

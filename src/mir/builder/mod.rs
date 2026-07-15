@@ -87,8 +87,10 @@ where
             context.type_definition(type_definition);
             Some(context.finish())
         },
-        cst::TopLevelItemKind::AbilityDefinition(_) => unreachable!("Abilities should be desguared to types"),
-        cst::TopLevelItemKind::AbilityImpl(_) => unreachable!("AbilityImpls should be desugared to definitions"),
+        cst::TopLevelItemKind::TraitDefinition(_) | cst::TopLevelItemKind::EffectDefinition(_) => {
+            unreachable!("Traits/effects should be desugared to types")
+        },
+        cst::TopLevelItemKind::TraitImpl(_) => unreachable!("TraitImpls should be desugared to definitions"),
         cst::TopLevelItemKind::Comptime(_) => None,
     }
 }
@@ -622,7 +624,8 @@ where
 
         let is_ability = self.ability_defs.get(&name.top_level_item).copied().unwrap_or_else(|| {
             let (item, _) = GetItemRaw(name.top_level_item).get(self.compiler);
-            let is_ability = matches!(&item.kind, cst::TopLevelItemKind::AbilityDefinition(_));
+            let is_ability =
+                matches!(&item.kind, cst::TopLevelItemKind::TraitDefinition(_) | cst::TopLevelItemKind::EffectDefinition(_));
             self.ability_defs.insert(name.top_level_item, is_ability);
             is_ability
         });
@@ -631,7 +634,7 @@ where
         }
 
         let (item, _) = GetItemRaw(name.top_level_item).get(self.compiler);
-        if let cst::TopLevelItemKind::AbilityDefinition(effect) = &item.kind
+        if let cst::TopLevelItemKind::TraitDefinition(effect) | cst::TopLevelItemKind::EffectDefinition(effect) = &item.kind
             && let Some(op_index) = effect.body.iter().position(|d| d.name == name.local_name_id)
         {
             let id = self.get_definition_id(&name);
@@ -665,7 +668,8 @@ where
 
         let is_ability = self.ability_defs.get(&name.top_level_item).copied().unwrap_or_else(|| {
             let (item, _) = GetItemRaw(name.top_level_item).get(self.compiler);
-            let is_ability = matches!(&item.kind, cst::TopLevelItemKind::AbilityDefinition(_));
+            let is_ability =
+                matches!(&item.kind, cst::TopLevelItemKind::TraitDefinition(_) | cst::TopLevelItemKind::EffectDefinition(_));
             self.ability_defs.insert(name.top_level_item, is_ability);
             is_ability
         });
@@ -678,7 +682,7 @@ where
         // ability's type-constructor name or to a non-function field on the
         // ability (sub-ability reference)
         let (item, _) = GetItemRaw(name.top_level_item).get(self.compiler);
-        if let cst::TopLevelItemKind::AbilityDefinition(effect) = &item.kind
+        if let cst::TopLevelItemKind::TraitDefinition(effect) | cst::TopLevelItemKind::EffectDefinition(effect) = &item.kind
             && let Some(op_index) = effect.body.iter().position(|d| d.name == name.local_name_id)
         {
             let id = self.get_definition_id(&name);

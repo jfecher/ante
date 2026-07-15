@@ -63,11 +63,11 @@ pub fn type_check_impl(context: &TypeCheckSCC, compiler: &DbHandle) -> Arc<TypeC
         match &item.kind {
             TopLevelItemKind::Definition(definition) => checker.check_definition(definition, true),
             TopLevelItemKind::TypeDefinition(type_definition) => checker.check_type_definition(type_definition),
-            TopLevelItemKind::AbilityDefinition(_) => {
-                unreachable!("Abilities should be desugared into types by this point")
+            TopLevelItemKind::TraitDefinition(_) | TopLevelItemKind::EffectDefinition(_) => {
+                unreachable!("Traits/effects should be desugared into types by this point")
             },
-            TopLevelItemKind::AbilityImpl(_) => {
-                unreachable!("AbilityImpls should be desugared into definitions by this point")
+            TopLevelItemKind::TraitImpl(_) => {
+                unreachable!("TraitImpls should be desugared into definitions by this point")
             },
             TopLevelItemKind::Comptime(comptime) => checker.check_comptime(comptime),
         };

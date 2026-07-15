@@ -1,5 +1,5 @@
-ability Count =
-    count: resume fn Unit -> Unit
+effect Count =
+    count: fn Unit -> Unit
 
 foo {Count} =
     count ()

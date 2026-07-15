@@ -1,7 +1,7 @@
-ability Log =
+effect Log =
     log: fn String -> Unit
 
-ability Use a =
+effect Use a =
     get: fn Unit -> a
     set: fn a -> Unit
 

@@ -1,5 +1,5 @@
 import Std.C.malloc, realloc, memcpy, free
-import Std.Stream.Stream, foldl
+import Std.Stream.Stream, foldl, emit
 
 export Seq, empty, of, with_capacity, push, pop, remove_last, get, get_copied, iter, clone_seq, drop_seq, print_seq, stream_seq
 
@@ -273,7 +273,7 @@ drop_data (var data: Ptr (Data t)) {Drop t}: Unit =
                 data := null ()
 
 implicit stream_seq: Stream (Seq a) (ref a) =
-    Stream fn seq e ->
+    Stream fn seq ->
         for i in 0 .. seq.len do
             elem = offset seq.data.elements (Usz i)
-            e.emit (ptr_to_mut elem)
+            emit (ptr_to_mut elem)

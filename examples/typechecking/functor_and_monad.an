@@ -1,8 +1,8 @@
 
-ability Functor f =
+trait Functor f =
     map: fn (f a) (fn a -> b) -> f b
 
-ability Monad m =
+trait Monad m =
     wrap: fn a -> m a
     bind: fn (m a) (fn a -> m b) -> m b
 
@@ -40,49 +40,49 @@ implicit monad_maybe: Monad Maybe =
 
 // expected stderr:
 // examples/typechecking/functor_and_monad.an:3:13
-// 2 | ability Functor f =
+// 2 | trait Functor f =
 // 3 |     map: fn (f a) (fn a -> b) -> f b	// error: Expected 0 arguments but found 1
 //   |             ^^^^^
 // 
 // examples/typechecking/functor_and_monad.an:3:16
-// 2 | ability Functor f =
+// 2 | trait Functor f =
 // 3 |     map: fn (f a) (fn a -> b) -> f b	// error: `a` not found in scope
 //   |                ^
 // 
 // examples/typechecking/functor_and_monad.an:3:23
-// 2 | ability Functor f =
+// 2 | trait Functor f =
 // 3 |     map: fn (f a) (fn a -> b) -> f b	// error: `a` not found in scope
 //   |                       ^
 // 
 // examples/typechecking/functor_and_monad.an:3:28
-// 2 | ability Functor f =
+// 2 | trait Functor f =
 // 3 |     map: fn (f a) (fn a -> b) -> f b	// error: `b` not found in scope
 //   |                            ^
 // 
 // examples/typechecking/functor_and_monad.an:3:34
-// 2 | ability Functor f =
+// 2 | trait Functor f =
 // 3 |     map: fn (f a) (fn a -> b) -> f b	// error: Expected 0 arguments but found 1
 //   |                                  ^^^
 // 
 // examples/typechecking/functor_and_monad.an:3:36
-// 2 | ability Functor f =
+// 2 | trait Functor f =
 // 3 |     map: fn (f a) (fn a -> b) -> f b	// error: `b` not found in scope
 //   |                                    ^
 // 
 // examples/typechecking/functor_and_monad.an:6:14
-// 5 | ability Monad m =
+// 5 | trait Monad m =
 // 6 |     wrap: fn a -> m a	// error: `a` not found in scope
 //   |              ^
 // 7 |     bind: fn (m a) (fn a -> m b) -> m b
 // 
 // examples/typechecking/functor_and_monad.an:6:19
-// 5 | ability Monad m =
+// 5 | trait Monad m =
 // 6 |     wrap: fn a -> m a	// error: Expected 0 arguments but found 1
 //   |                   ^^^
 // 7 |     bind: fn (m a) (fn a -> m b) -> m b
 // 
 // examples/typechecking/functor_and_monad.an:6:21
-// 5 | ability Monad m =
+// 5 | trait Monad m =
 // 6 |     wrap: fn a -> m a	// error: `a` not found in scope
 //   |                     ^
 // 7 |     bind: fn (m a) (fn a -> m b) -> m b

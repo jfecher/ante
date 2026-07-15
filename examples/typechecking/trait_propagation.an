@@ -1,7 +1,7 @@
 
 bar: a = extern bar
 
-ability Baz a = baz: fn a -> Unit
+trait Baz a = baz: fn a -> Unit
 
 foo () = baz bar
 
