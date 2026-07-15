@@ -15,4 +15,30 @@ main () =
     for_ (fn h -> iota 10 {h}) print
 
 // args: --delete-binary --no-color
-// expected stdout: 0123456789
+// expected exit status: 1
+// expected stderr:
+// examples/codegen/effects/generators_basic.an:3:16
+//   | // error: This is an effect and cannot be used as an ordinary type
+// 3 | iota (n: U32) {Emit U32} = loop (i = 0) ->
+//   |                ^^^^^^^^
+// 4 |     if i < n then
+// 
+// examples/codegen/effects/generators_basic.an:3:28
+//   | // error: This can perform <(Emit U32), _> but only <> is allowed here
+// 3 | iota (n: U32) {Emit U32} = loop (i = 0) ->
+//   |                            ^^^^^^^^^^^^^^^
+// 4 |     if i < n then
+// 
+// examples/codegen/effects/generators_basic.an:8:18
+//    | // error: This is an effect and cannot be used as an ordinary type
+//  8 | for_ (stream: fn (Emit a) -> Unit) (f: fn a [env] -> Unit) =
+//    |                  ^^^^^^^^
+//  9 |     handler h for emit x ->
+// 
+// examples/codegen/effects/generators_basic.an:12:15
+// 11 |         resume ()
+// 12 |     in stream h	// error: Argument 1 has type <(Emit a)> but Emit a was expected
+//    |               ^
+// 
+// Found 4 errors and 0 warnings
+

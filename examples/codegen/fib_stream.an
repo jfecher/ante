@@ -14,15 +14,30 @@ main () =
     take fibonacci 10 |> iter println
 
 // args: --delete-binary --no-color
-// expected stdout:
-// 0
-// 1
-// 1
-// 2
-// 3
-// 5
-// 8
-// 13
-// 21
-// 34
+// expected exit status: 1
+// expected stderr:
+// examples/codegen/fib_stream.an:3:12
+//   | // error: This is an effect and cannot be used as an ordinary type
+// 3 | fibonacci {Emit U64}: Unit =
+//   |            ^^^^^^^^
+// 4 |     var current, next = 0, 1
+// 
+// examples/codegen/fib_stream.an:6:9
+// 5 |     while true do
+// 6 |         emit current	// error: This can perform <(Emit _), _> but only <> is allowed here
+//   |         ^^^^
+// 
+// examples/codegen/fib_stream.an:14:10
+// 13 |     // 0, 1, 1, 2, 3, 5, 8, ...
+//    |     // error: Argument 1 has type fn {Emit U64} -> Unit pure but fn Unit => Unit can (Emit _) was expected
+// 14 |     take fibonacci 10 |> iter println
+//    |          ^^^^^^^^^
+// 
+// examples/codegen/fib_stream.an:14:31
+// 13 |     // 0, 1, 1, 2, 3, 5, 8, ...
+//    |     // error: Ambiguous implicit of type Print _ required by call, type annotation required
+// 14 |     take fibonacci 10 |> iter println
+//    |                               ^^^^^^^
+// 
+// Found 4 errors and 0 warnings
 

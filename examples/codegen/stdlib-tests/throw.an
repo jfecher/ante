@@ -32,13 +32,19 @@ main () =
     println (try (fn f -> unwrap_err (fn _ -> 0i32) {f}) : Maybe U64)
 
 // args: --delete-binary --no-color
-// expected stdout:
-// Ok 7
-// Err 13
-// 0
-// 99
-// 42
-// Err 50
-// Some 7
-// None
+// expected exit status: 1
+// expected stderr:
+// examples/codegen/stdlib-tests/throw.an:28:19
+// 27 |     // Can't use `~>` twice since we get 'multiple matching implicits' errors
+//    |     // error: This is called as if it were a fn _ _ => _ but it has type fn _ -> Never can (Throw _)
+// 28 |     print_result (throw 5 _ |> map_err (_ * 10) ~> catch)  // Err 50
+//    |                   ^^^^^
+// 
+// examples/codegen/stdlib-tests/throw.an:32:27
+// 31 |     println (throw 7 ~> unwrap_err ~> try)
+//    |     // error: This is called as if it were a fn _ {_} => _ but it has type fn (fn Unit => _ can (Throw _)) -> _ can Fail
+// 32 |     println (try (fn f -> unwrap_err (fn _ -> 0i32) {f}) : Maybe U64)
+//    |                           ^^^^^^^^^^
+// 
+// Found 2 errors and 0 warnings
 

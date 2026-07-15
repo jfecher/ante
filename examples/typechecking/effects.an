@@ -24,7 +24,7 @@ does_use (x: I32): Unit can (Use I32) =
 pure_fn (): Unit pure =
     log "foo"
 
-// main should always handle all non-primitive effects
+// main must always handle all non-primitive effects
 main () =
     log "foo"
 
@@ -59,6 +59,7 @@ main () =
 // (main: fn Unit -> Unit can Log, _) () =
 //     (log: fn String -> Unit can Log) "foo"
 
+
 // expected stderr:
 // examples/typechecking/effects.an:25:5
 // 24 | pure_fn (): Unit pure =
@@ -66,7 +67,7 @@ main () =
 //    |     ^^^
 // 
 // examples/typechecking/effects.an:28:1
-// 27 | // main should always handle all non-primitive effects
+// 27 | // main must always handle all non-primitive effects
 //    | // error: main here has type fn Unit -> Unit can Log, _ but it should always have type fn Unit -> Unit pure
 // 28 | main () =
 //    | ^^^^

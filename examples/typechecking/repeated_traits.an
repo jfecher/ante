@@ -9,6 +9,7 @@ foo a =
 //     (print: fn (ref _) {Print _} [Ptr Unit] -> Unit) (ref (a: _)) {(error)}
 //     (print: fn (ref _) {Print _} [Ptr Unit] -> Unit) (ref (a: _)) {(error)}
 
+
 // expected stderr:
 // examples/typechecking/repeated_traits.an:2:5
 // 1 | foo a =

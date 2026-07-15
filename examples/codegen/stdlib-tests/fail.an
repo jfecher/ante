@@ -42,14 +42,85 @@ main () =
     println "done"
 
 // args: --delete-binary --no-color
-// expected stdout:
-// Some 7
-// None
-// 7
-// 42
-// asserted true
-// ignored fail
-// ignored ok
-// 2
-// done
+// expected exit status: 1
+// expected stderr:
+// examples/codegen/stdlib-tests/fail.an:4:11
+//   | // error: This is an effect and cannot be used as an ordinary type
+// 4 | fail_int {Fail}: I32 = fail ()
+//   |           ^^^^
+// 5 | ok_int {Fail}: I32 = 7
+// 
+// examples/codegen/stdlib-tests/fail.an:4:24
+//   | // error: This can perform <Fail, _> but only <> is allowed here
+// 4 | fail_int {Fail}: I32 = fail ()
+//   |                        ^^^^
+// 5 | ok_int {Fail}: I32 = 7
+// 
+// examples/codegen/stdlib-tests/fail.an:5:9
+// 4 | fail_int {Fail}: I32 = fail ()
+// 5 | ok_int {Fail}: I32 = 7	// error: This is an effect and cannot be used as an ordinary type
+//   |         ^^^^
+// 
+// examples/codegen/stdlib-tests/fail.an:9:18
+//  8 |     // try:
+//    |     // error: Argument 1 has type fn {Fail} -> I32 pure but fn Unit => I32 can Fail was expected
+//  9 |     println (try ok_int : Maybe I32)   // Some 7
+//    |                  ^^^^^^
+// 10 |     println (try fail_int : Maybe I32) // None
+// 
+// examples/codegen/stdlib-tests/fail.an:10:18
+//  9 |     println (try ok_int : Maybe I32)   // Some 7
+//    |     // error: Argument 1 has type fn {Fail} -> I32 pure but fn Unit => I32 can Fail was expected
+// 10 |     println (try fail_int : Maybe I32) // None
+//    |                  ^^^^^^^^
+// 
+// examples/codegen/stdlib-tests/fail.an:13:22
+// 12 |     // on_fail:
+//    |     // error: Argument 1 has type fn {Fail} -> I32 pure but fn Unit => _ can Fail was expected
+// 13 |     println (on_fail ok_int do 42)    // 7
+//    |                      ^^^^^^
+// 14 |     println (on_fail fail_int do 42)  // 42
+// 
+// examples/codegen/stdlib-tests/fail.an:14:22
+// 13 |     println (on_fail ok_int do 42)    // 7
+//    |     // error: Argument 1 has type fn {Fail} -> I32 pure but fn Unit => _ can Fail was expected
+// 14 |     println (on_fail fail_int do 42)  // 42
+//    |                      ^^^^^^^^
+// 
+// examples/codegen/stdlib-tests/fail.an:19:9
+// 18 |     ignore_fail fn f ->
+//    |         // error: This is called as if it were a fn _ {_} => _ but it has type fn Bool -> Unit can Fail
+// 19 |         assert true {f}
+//    |         ^^^^^^
+// 20 |         println "asserted true"
+// 
+// examples/codegen/stdlib-tests/fail.an:21:9
+// 20 |         println "asserted true"
+//    |         // error: This is called as if it were a fn _ {_} => _ but it has type fn Bool -> Unit can Fail
+// 21 |         assert false {f}
+//    |         ^^^^^^
+// 22 |         println "never shown"
+// 
+// examples/codegen/stdlib-tests/fail.an:25:17
+// 24 |     // ignore_fail:
+//    |     // error: Argument 1 has type fn {Fail} -> I32 pure but fn Unit => _ can Fail was expected
+// 25 |     ignore_fail fail_int
+//    |                 ^^^^^^^^
+// 26 |     println "ignored fail"
+// 
+// examples/codegen/stdlib-tests/fail.an:27:17
+// 26 |     println "ignored fail"
+//    |     // error: Argument 1 has type fn {Fail} -> I32 pure but fn Unit => _ can Fail was expected
+// 27 |     ignore_fail ok_int
+//    |                 ^^^^^^
+// 28 |     println "ignored ok"
+// 
+// examples/codegen/stdlib-tests/fail.an:37:23
+// 36 |         ptr_store counter (n + 1)
+//    |         // error: This is called as if it were a fn _ {_} => _ but it has type fn Unit -> Never can Fail
+// 37 |         if n < 2 then fail () {f}
+//    |                       ^^^^
+// 38 |         n
+// 
+// Found 12 errors and 0 warnings
 

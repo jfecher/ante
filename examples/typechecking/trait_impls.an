@@ -26,21 +26,21 @@ _ = bar "four" "five"
 //     bar: fn a a [Ptr Unit] -> b
 // 
 // implicit (bar1: Bar I32 String) =
-//     (Bar: fn (fn I32 I32 [Ptr Unit] -> String) -> Bar I32 String) (fn (_: I32) (_: I32) -> "good")
+//     (Bar: fn (fn I32 I32 [Ptr Unit] -> String) -> Bar I32 String pure) (fn (_: I32) (_: I32) -> "good")
 // 
 // implicit (bar2: Bar I32 I32) =
-//     (Bar: fn (fn I32 I32 [Ptr Unit] -> I32) -> Bar I32 I32) (fn (_: I32) (_: I32) -> 0)
+//     (Bar: fn (fn I32 I32 [Ptr Unit] -> I32) -> Bar I32 I32 pure) (fn (_: I32) (_: I32) -> 0)
 // 
 // implicit (bar4: Bar I32 F64) =
-//     (Bar: fn (fn I32 I32 [Ptr Unit] -> F64) -> Bar I32 F64) (fn (_: I32) (_: I32) -> 23.2)
+//     (Bar: fn (fn I32 I32 [Ptr Unit] -> F64) -> Bar I32 F64 pure) (fn (_: I32) (_: I32) -> 23.2)
 // 
-// (foo: fn _ _ -> _) (a: _) (b: _) = (bar: fn _ _ {Bar _ _} [Ptr Unit] -> _) (a: _) (b: _) {(error)}
+// (foo: fn _ _ -> _ pure) (a: _) (b: _) pure = (bar: fn _ _ {Bar _ _} [Ptr Unit] -> _ pure) (a: _) (b: _) {(error)}
 // 
-// (baz: fn String String -> _) ((x: String)) (y: String) = (bar: fn String String {Bar String _} [Ptr Unit] -> _) (x: String) (y: String) {(error)}
+// (baz: fn String String -> _ pure) ((x: String)) (y: String) pure = (bar: fn String String {Bar String _} [Ptr Unit] -> _ pure) (x: String) (y: String) {(error)}
 // 
-// (_: _) = (bar: fn I32 I32 {Bar I32 _} [Ptr Unit] -> _) 3 2 {(error)}
+// (_: _) = (bar: fn I32 I32 {Bar I32 _} [Ptr Unit] -> _ pure) 3 2 {(error)}
 // 
-// (_: _) = (bar: fn String String {Bar String _} [Ptr Unit] -> _) "four" "five" {(error)}
+// (_: _) = (bar: fn String String {Bar String _} [Ptr Unit] -> _ pure) "four" "five" {(error)}
 
 // expected stderr:
 // examples/typechecking/trait_impls.an:15:11

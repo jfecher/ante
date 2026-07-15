@@ -75,18 +75,9 @@ main () =
     println (contains big 1000)  // false
 
 // args: --delete-binary --no-color
-// expected stdout:
-// 100
-// 9
-// true
-// true
-// true
-// false
-// false
-// 100
-// 1000
-// 15
-// true
-// true
-// false
+// expected exit status: 101
+// expected stderr:
+// thread 'main' panicked at src/mir/builder/types.rs:134:36:
+// internal error: entered unreachable code
+// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 

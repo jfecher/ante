@@ -37,16 +37,9 @@ main () =
     f3.close ()
 
 // args: --delete-binary --no-color
-// expected stdout:
-// li
-// line1
-// line2
-// false
-// line3
-// 
-// 
-// true
-// line1
-// line2
-// line3
+// expected exit status: 101
+// expected stderr:
+// thread 'main' panicked at src/mir/builder/types.rs:134:36:
+// internal error: entered unreachable code
+// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 

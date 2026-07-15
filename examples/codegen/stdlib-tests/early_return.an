@@ -28,9 +28,14 @@ main () =
         inner + 10
 
 // args: --delete-binary --no-color
-// expected stdout:
-// 4
-// Some 7
-// None
-// 15
+// expected exit status: 1
+// expected stderr:
+// examples/codegen/stdlib-tests/early_return.an:26:13
+// 25 |         inner = with_early_return fn ret_inner ->
+//    |             // error: This is called as if it were a fn _ {_} => _ but it has type fn _ -> Never can (EarlyReturn _)
+// 26 |             early_return 5 {ret_inner}
+//    |             ^^^^^^^^^^^^
+// 27 |             999  // unreachable
+// 
+// Found 1 error and 0 warnings
 

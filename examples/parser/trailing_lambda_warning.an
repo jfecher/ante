@@ -32,6 +32,7 @@ foo () =
 //     (x == f (fn y -> y + 1)) == g
 //     (x == f (fn y -> y + 1)) == g
 
+
 // expected stderr:
 // examples/parser/trailing_lambda_warning.an:4:25
 // 3 |     bar a b

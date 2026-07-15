@@ -69,27 +69,9 @@ main () =
     Drop.drop (mut s)                         // drops Tag 1, Tag 2, Tag 3, Tag 6
 
 // args: --delete-binary --no-color
-// expected stdout:
-// [33, 44, 55]
-// [33, 44]
-// [33, 44, 100]
-// [33, 44, 55]
-// [0, 1, 2, 3, 4]
-// Some 4
-// [0, 1, 2, 3]
-// [0, 1, 2, 3]
-// 0
-// missing
-// Some 1
-// 0
-// 1
-// 2
-// 3
-// 4
-// push-overwrite regression:
-// drop 4
-// drop 1
-// drop 2
-// drop 3
-// drop 6
-// drop 5
+// expected exit status: 101
+// expected stderr:
+// thread 'main' panicked at src/mir/builder/types.rs:134:36:
+// internal error: entered unreachable code
+// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+

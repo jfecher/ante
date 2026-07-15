@@ -31,12 +31,12 @@ main () =
 // args: -e ast-t --no-color
 // expected exit status: 1
 // expected stdout:
-// (main: fn Unit -> Unit) () =
+// (main: fn Unit -> Unit pure) () pure =
 //     (match_var27: (error)) = (Maybe.None: Maybe _)
 //     switch (match_var27: Maybe _)
 //     | 0 -> 1
 //     | 1, (match_var28: _) -> #missing_case
-//     (match_var29: (error)) = 2 (,: fn I32 (Maybe _) -> I32, (Maybe _)) (Maybe.None: Maybe _)
+//     (match_var29: (error)) = 2 (,: fn I32 (Maybe _) -> I32, (Maybe _) pure) (Maybe.None: Maybe _)
 //     switch (match_var29: I32, (Maybe _))
 //     | 0, (match_var30: I32), (match_var31: Maybe _) -> switch (match_var31: Maybe _)
 //         | 0 -> switch (match_var30: I32)
@@ -57,7 +57,7 @@ main () =
 //         | 1, (match_var35: _) -> 
 //                 (_: _) = (match_var35: _)
 //                 0
-//     (match_var36: (error)) = 1 (,: fn I32 I32 -> I32, I32) 2
+//     (match_var36: (error)) = 1 (,: fn I32 I32 -> I32, I32 pure) 2
 //     switch (match_var36: I32, I32)
 //     | 0, (match_var37: I32), (match_var38: I32) -> switch (match_var37: I32)
 //         | 1 -> 
@@ -68,7 +68,7 @@ main () =
 //                     (_: I32) = (match_var37: I32)
 //                     2
 //             | _ -> #missing_case
-//     (match_var39: (error)) = true (,: fn Bool Bool -> Bool, Bool) true
+//     (match_var39: (error)) = true (,: fn Bool Bool -> Bool, Bool pure) true
 //     switch (match_var39: Bool, Bool)
 //     | 0, (match_var40: Bool), (match_var41: Bool) -> switch (match_var41: Bool)
 //         | false -> switch (match_var40: Bool)
@@ -77,7 +77,7 @@ main () =
 //         | true -> switch (match_var40: Bool)
 //             | false -> 0
 //             | true -> #missing_case
-//     (match_var42: (error)) = 1 (,: fn I32 (I32, (I32, I32)) -> I32, (I32, (I32, I32))) (2 (,: fn I32 (I32, I32) -> I32, (I32, I32)) (3 (,: fn I32 I32 -> I32, I32) 4))
+//     (match_var42: (error)) = 1 (,: fn I32 (I32, (I32, I32)) -> I32, (I32, (I32, I32)) pure) (2 (,: fn I32 (I32, I32) -> I32, (I32, I32) pure) (3 (,: fn I32 I32 -> I32, I32 pure) 4))
 //     switch (match_var42: I32, (I32, (I32, I32)))
 //     | 0, (match_var43: I32), (match_var44: I32, (I32, I32)) -> switch (match_var44: I32, (I32, I32))
 //         | 0, (match_var45: I32), (match_var46: I32, I32) -> switch (match_var43: I32)

@@ -16,5 +16,36 @@ main () =
     handle_count foo |> println
 
 // args: --delete-binary --no-color
-// expected stdout: 11
+// expected exit status: 1
+// expected stderr:
+// examples/codegen/effects/count_effect.an:4:6
+// 4 | foo {Count} =	// error: This is an effect and cannot be used as an ordinary type
+//   |      ^^^^^
+// 5 |     count ()
+// 
+// examples/codegen/effects/count_effect.an:5:5
+// 4 | foo {Count} =
+// 5 |     count ()	// error: This can perform <Count, _> but only <> is allowed here
+//   |     ^^^^^
+// 6 |     repeat 10 fn _ -> count ()
+// 
+// examples/codegen/effects/count_effect.an:6:23
+// 5 |     count ()
+//   |     // error: This can perform <Count, _> but only <> is allowed here
+// 6 |     repeat 10 fn _ -> count ()
+//   |                       ^^^^^
+// 
+// examples/codegen/effects/count_effect.an:8:22
+//    | // error: This is an effect and cannot be used as an ordinary type
+//  8 | handle_count (f: fn {Count} -> Unit) =
+//    |                      ^^^^^
+//  9 |     handler h for count () ->
+// 
+// examples/codegen/effects/count_effect.an:12:12
+// 11 |     in
+// 12 |         f {h}	// error: Argument 1 has type <Count> but Count was expected
+//    |            ^
+// 13 |         0
+// 
+// Found 5 errors and 0 warnings
 

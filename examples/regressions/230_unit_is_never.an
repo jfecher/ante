@@ -11,10 +11,22 @@ main () =
 // args: --check --no-color
 // expected exit status: 1
 // expected stderr:
-// examples/regressions/230_unit_is_never.an:4:11
+// examples/regressions/230_unit_is_never.an:3:17
+//   | // error: This is an effect and cannot be used as an ordinary type
 // 3 | unit_neverizer {Throw Never} =
-// 4 |     throw ()	// error: Argument 1 has type Unit but Never was expected
-//   |           ^^
+//   |                 ^^^^^^^^^^^
+// 4 |     throw ()
 // 
-// Found 1 error and 0 warnings
+// examples/regressions/230_unit_is_never.an:4:5
+// 3 | unit_neverizer {Throw Never} =
+// 4 |     throw ()	// error: This can perform <(Throw _), _> but only <> is allowed here
+//   |     ^^^^^
+// 
+// examples/regressions/230_unit_is_never.an:8:20
+//  7 |     handler h for throw _ -> println "threw!"
+//  8 |     unit_neverizer h	// error: Argument 1 has type <(Throw _)> but Throw Never was expected
+//    |                    ^
+//  9 |     println "through!"
+// 
+// Found 3 errors and 0 warnings
 

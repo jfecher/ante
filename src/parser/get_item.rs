@@ -42,6 +42,7 @@ pub fn get_item_impl(context: &GetItem, db: &DbHandle) -> (Arc<TopLevelItem>, Ar
         },
         TopLevelItemKind::Definition(definition) => {
             let mut new_context = DesugarContext::new(context);
+            default_effects(definition.rhs, &mut new_context);
             desugar_expression(definition.rhs, &mut new_context);
             (item, Arc::new(new_context))
         },
@@ -151,6 +152,43 @@ fn desugar_trait_or_effect(
         generics: ability.generics.clone(),
         body: TypeDefinitionBody::Struct(fields),
     })
+}
+
+/// Defaults a definition's missing effects clause.
+/// - Adds a `can e` to any function typed parameters without explicit clauses, and adds the same
+/// `can e` to the outer definition as well.
+fn default_effects(expr: ExprId, context: &mut DesugarContext) {
+    let Expr::Lambda(mut lambda) = context[expr].clone() else { return };
+    if lambda.effects.is_some() || lambda.return_type.is_none() {
+        return;
+    }
+
+    let is_bare_function_parameter = |context: &DesugarContext, parameter: &Parameter| {
+        matches!(&context[parameter.pattern],
+            Pattern::TypeAnnotation(_, typ) if matches!(&typ.kind, TypeKind::Function(f) if f.effects.is_none()))
+    };
+
+    if !lambda.parameters.iter().any(|p| is_bare_function_parameter(context, p)) {
+        lambda.effects = Some(Vec::new());
+        context.set_expr(expr, Expr::Lambda(lambda));
+        return;
+    }
+
+    // Unspellable, so it can't collide with a real user-written generic.
+    let location = context.expr_location(expr).clone();
+    let e = context.push_name(Arc::new("$effect".to_string()), location.clone());
+
+    for parameter in &lambda.parameters {
+        if is_bare_function_parameter(context, parameter) {
+            let Pattern::TypeAnnotation(inner, mut typ) = context[parameter.pattern].clone() else { unreachable!() };
+            let TypeKind::Function(function_type) = &mut typ.kind else { unreachable!() };
+            function_type.effects = Some(vec![Type::new(TypeKind::Variable(e), location.clone())]);
+            context.set_pattern(parameter.pattern, Pattern::TypeAnnotation(inner, typ));
+        }
+    }
+
+    lambda.effects = Some(vec![Type::new(TypeKind::Variable(e), location)]);
+    context.set_expr(expr, Expr::Lambda(lambda));
 }
 
 /// Traverse the expression recursively, desugaring along the way looking for

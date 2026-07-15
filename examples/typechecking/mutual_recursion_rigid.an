@@ -56,6 +56,7 @@ ex2c (a: v) b {Copy v} =
 // (ex2c: fn v _ {Copy v} -> Unit) ((a: v)) (b: _) {(_: Copy v)} =
 //     (ex2a: fn v _ {Copy v} -> Unit) (a: v) (b: _) {(_: Copy v)}
 
+
 // expected stderr:
 // examples/typechecking/mutual_recursion_rigid.an:22:5
 // 21 |     ex2b a b

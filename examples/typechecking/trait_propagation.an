@@ -15,6 +15,7 @@ foo () = baz bar
 // 
 // (foo: fn Unit -> Unit) () = (baz: fn _ {Baz _} [Ptr Unit] -> Unit) (bar: _) {(error)}
 
+
 // expected stderr:
 // examples/typechecking/trait_propagation.an:6:10
 // 6 | foo () = baz bar	// error: No implicit found for type Baz _ required by baz

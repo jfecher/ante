@@ -23,7 +23,7 @@ main () =
 // 
 // examples/typechecking/function_contravariance.an:13:18
 // 12 |     needs_mut_fn use_ref
-//    |     // error: Argument 1 has type fn (mut I32) -> Unit but fn (ref I32) -> Unit was expected
+//    |     // error: Argument 1 has type fn (mut I32) -> Unit pure but fn (ref I32) -> Unit was expected
 // 13 |     needs_ref_fn use_mut
 //    |                  ^^^^^^^
 // 

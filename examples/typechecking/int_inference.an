@@ -3,6 +3,6 @@ main () =
 
 // args: -e ast-t --no-color
 // expected stdout:
-// (main: fn Unit -> Unit) () =
-//     (print: fn (ref I32) {Print I32} [Ptr Unit] -> Unit) (ref 2) {(print_i32: Print I32)}
+// (main: fn Unit -> Unit pure) () pure =
+//     (print: fn (ref I32) {Print I32} [Ptr Unit] -> Unit pure) (ref 2) {(print_i32: Print I32)}
 

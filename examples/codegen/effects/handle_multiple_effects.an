@@ -18,4 +18,53 @@ main () =
     println <| read_or_none foo
 
 // args: --delete-binary --no-color
-// expected stdout: Some 5
+// expected exit status: 1
+// expected stderr:
+// examples/codegen/effects/handle_multiple_effects.an:8:27
+//    | // error: This is an effect and cannot be used as an ordinary type
+//  8 | read_or_none (f: fn Unit {MyFail} {Read U32} -> U32): Maybe U32 =
+//    |                           ^^^^^^
+//  9 |     handler hf for fail () -> None
+// 
+// examples/codegen/effects/handle_multiple_effects.an:8:36
+//    | // error: This is an effect and cannot be used as an ordinary type
+//  8 | read_or_none (f: fn Unit {MyFail} {Read U32} -> U32): Maybe U32 =
+//    |                                    ^^^^^^^^
+//  9 |     handler hf for fail () -> None
+// 
+// examples/codegen/effects/handle_multiple_effects.an:11:11
+// 10 |     handler hr for read () -> resume 5u32
+// 11 |     Some (f ())	// error: No implicit found for type MyFail required by f
+//    |           ^
+// 
+// examples/codegen/effects/handle_multiple_effects.an:11:11
+// 10 |     handler hr for read () -> resume 5u32
+// 11 |     Some (f ())	// error: No implicit found for type Read U32 required by f
+//    |           ^
+// 
+// examples/codegen/effects/handle_multiple_effects.an:13:9
+//    | // error: This is an effect and cannot be used as an ordinary type
+// 13 | foo () {MyFail} {Read U32} =
+//    |         ^^^^^^
+// 14 |     if false then fail ()
+// 
+// examples/codegen/effects/handle_multiple_effects.an:13:18
+//    | // error: This is an effect and cannot be used as an ordinary type
+// 13 | foo () {MyFail} {Read U32} =
+//    |                  ^^^^^^^^
+// 14 |     if false then fail ()
+// 
+// examples/codegen/effects/handle_multiple_effects.an:14:19
+// 13 | foo () {MyFail} {Read U32} =
+//    |     // error: This can perform <MyFail, _> but only <> is allowed here
+// 14 |     if false then fail ()
+//    |                   ^^^^
+// 15 |     read ()
+// 
+// examples/codegen/effects/handle_multiple_effects.an:15:5
+// 14 |     if false then fail ()
+// 15 |     read ()	// error: This can perform <(Read _), _> but only <> is allowed here
+//    |     ^^^^
+// 
+// Found 8 errors and 0 warnings
+

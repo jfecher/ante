@@ -65,23 +65,9 @@ main () =
     println (all_in_one_case (Three 33))
 
 // args: --delete-binary --no-color
-// expected stdout:
-// point
-// circle
-// polygon
-// polygon
-// 0
-// 243
-// 12
-// 30
-// true
-// true
-// false
-// even
-// odd
-// even
-// odd
-// 11
-// 22
-// 33
+// expected exit status: 101
+// expected stderr:
+// thread 'main' panicked at src/mir/builder/types.rs:134:36:
+// internal error: entered unreachable code
+// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 

@@ -19,6 +19,7 @@ main () =
 //     foo_c1m27_3132_0 4 library_int_?
 //     foo_c1m27_3132_0 5 (library_fn_? ())
 
+
 // expected stderr:
 // examples/nameresolution/import.an:1:8
 // 1 | import Library.library_int, library_fn	// error: Could not find crate `Library`

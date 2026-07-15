@@ -30,21 +30,21 @@ main () =
 // type Bar =
 //     bar: Char
 // 
-// (stringify: fn String -> String) ((s: String)) = (s: String)
+// (stringify: fn String -> String pure) ((s: String)) pure = (s: String)
 // 
-// (foo_and_bar: fn _ _ -> String) (a: _) (b: _) =
+// (foo_and_bar: fn _ _ -> String pure) (a: _) (b: _) pure =
 //     (a: _).foo
-//     (stringify: fn String -> String) (b: _).bar
+//     (stringify: fn String -> String pure) (b: _).bar
 // 
-// (foobar: FooBar) = (FooBar: fn I32 String -> FooBar) 1 "one"
+// (foobar: FooBar) = (FooBar: fn I32 String -> FooBar pure) 1 "one"
 // 
-// (foo: Foo) = (Foo: fn F64 -> Foo) 2.0
+// (foo: Foo) = (Foo: fn F64 -> Foo pure) 2.0
 // 
-// (bar: Bar) = (Bar: fn Char -> Bar) '3'
+// (bar: Bar) = (Bar: fn Char -> Bar pure) '3'
 // 
-// (main: fn Unit -> Unit) () =
-//     (foo_and_bar: fn FooBar FooBar -> String) (foobar: FooBar) (foobar: FooBar)
-//     (foo_and_bar: fn Foo Bar -> String) (foo: Foo) (bar: Bar)
+// (main: fn Unit -> Unit pure) () pure =
+//     (foo_and_bar: fn FooBar FooBar -> String pure) (foobar: FooBar) (foobar: FooBar)
+//     (foo_and_bar: fn Foo Bar -> String pure) (foo: Foo) (bar: Bar)
 //     ()
 
 // expected stderr:
@@ -60,3 +60,4 @@ main () =
 //    |                ^^^^
 // 
 // Found 2 errors and 0 warnings
+

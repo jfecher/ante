@@ -24,10 +24,52 @@ main () =
         println
 
 // args: --delete-binary --no-color
-// expected stdout:
-// 0
-// 2
-// 4
-// 6
-// 8
+// expected exit status: 1
+// expected stderr:
+// examples/regressions/217_filter.an:4:16
+//   | // error: This is an effect and cannot be used as an ordinary type
+// 4 | iota (n: U32) {Emit U32} = loop (i = 0) ->
+//   |                ^^^^^^^^
+// 5 |     if i < n then
+// 
+// examples/regressions/217_filter.an:4:28
+//   | // error: This can perform <(Emit U32), _> but only <> is allowed here
+// 4 | iota (n: U32) {Emit U32} = loop (i = 0) ->
+//   |                            ^^^^^^^^^^^^^^^
+// 5 |     if i < n then
+// 
+// examples/regressions/217_filter.an:9:20
+//    | // error: This is an effect and cannot be used as an ordinary type
+//  9 | filter (stream: fn (Emit a) -> Unit) {Emit a} {Copy a} (f: fn a -> Bool) =
+//    |                    ^^^^^^^^
+// 10 |     handler h for emit x ->
+// 
+// examples/regressions/217_filter.an:9:39
+//    | // error: This is an effect and cannot be used as an ordinary type
+//  9 | filter (stream: fn (Emit a) -> Unit) {Emit a} {Copy a} (f: fn a -> Bool) =
+//    |                                       ^^^^^^
+// 10 |     handler h for emit x ->
+// 
+// examples/regressions/217_filter.an:14:8
+// 13 |         resume ()
+// 14 |     in stream h	// error: This can perform <(Emit a), _> but only <> is allowed here
+//    |        ^^^^^^^^
+// 
+// examples/regressions/217_filter.an:14:15
+// 13 |         resume ()
+// 14 |     in stream h	// error: Argument 1 has type <(Emit a)> but Emit a was expected
+//    |               ^
+// 
+// examples/regressions/217_filter.an:16:18
+//    | // error: This is an effect and cannot be used as an ordinary type
+// 16 | for_ (stream: fn (Emit a) -> Unit) (f: fn a -> Unit) =
+//    |                  ^^^^^^^^
+// 17 |     handler h for emit x ->
+// 
+// examples/regressions/217_filter.an:20:15
+// 19 |         resume ()
+// 20 |     in stream h	// error: Argument 1 has type <(Emit a)> but Emit a was expected
+//    |               ^
+// 
+// Found 8 errors and 0 warnings
 
