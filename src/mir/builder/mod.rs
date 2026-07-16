@@ -695,7 +695,8 @@ where
         let value = self.expression(arg_expr);
         let Some(expected) = expected else { return value };
         let cst::Expr::Variable(path_id) = &self.context()[arg_expr] else { return value };
-        let Some(Origin::TopLevelDefinition(name)) = self.context().path_origin(*path_id) else { return value };
+        let path_id = *path_id;
+        let Some(Origin::TopLevelDefinition(name)) = self.context().path_origin(path_id) else { return value };
 
         let TCType::Function(expected_fn) = expected.follow(&self.types.bindings) else { return value };
         let TCType::Effects(expected_list, Some(_)) = expected_fn.effects.follow(&self.types.bindings) else {
@@ -716,7 +717,7 @@ where
         }
         let own_list = own_list.clone();
 
-        self.build_capability_adapter(value, expected, own_fn, &own_list, callee_expr)
+        self.build_capability_adapter(path_id, expected, own_fn, &own_list, callee_expr)
     }
 
     /// Effects normally translate to 1 capability argument per effect, but effect polymorphic
@@ -725,13 +726,9 @@ where
     /// function with e.g. 5 effect parameters to one expecting only 2 + a generic effect. The 3
     /// remaining effects in this case get bundled in a tuple and passed into `e`'s corresponding parameter.
     fn build_capability_adapter(
-        &mut self, value: Value, expected: &TCType, own_fn: &type_inference::types::FunctionType, own_list: &[TCType],
-        callee_expr: ExprId,
+        &mut self, path_id: PathId, expected: &TCType, own_fn: &type_inference::types::FunctionType,
+        own_list: &[TCType], callee_expr: ExprId,
     ) -> Value {
-        let Value::Definition(def_id) = value else {
-            panic!("capability adapter: only plain top-level function references are supported");
-        };
-
         let TCType::Function(expected_fn) = expected.follow(&self.types.bindings) else {
             unreachable!("checked by caller");
         };
@@ -773,7 +770,7 @@ where
                 real_arguments.push(cap);
             }
 
-            let function_value = Value::Definition(def_id);
+            let function_value = this.variable(path_id);
             let instruction = if this.type_of_value(&function_value).is_closure() {
                 Instruction::CallClosure { closure: function_value, arguments: real_arguments }
             } else {

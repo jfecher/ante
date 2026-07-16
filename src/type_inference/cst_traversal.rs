@@ -486,11 +486,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             None,
         );
 
-        let current_row = self.current_effect_row.clone().unwrap_or_else(Type::pure);
+        let current_row = self.current_effect_row.clone();
         self.unify(&effects_var, &current_row, TypeErrorKind::Effects, call.function);
-        if self.current_effect_row.is_some() {
-            self.current_effect_row = Some(self.canonical_effects_row(&current_row, &TypeBindings::default()));
-        }
+        self.current_effect_row = self.canonical_effects_row(&current_row, &TypeBindings::default());
 
         // FIXME: This is a hack. Type inference benefits if we can push down more expected types by
         // binding the return, which can affect argument types, but it can also lead to coercion errors.
@@ -650,7 +648,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         // Remember the return type so that it can be checked by `return` statements
         let old_return_type = self.function_return_type.replace(function_type.return_type.clone());
-        let old_effect_row = self.current_effect_row.replace(function_type.effects.clone());
+        let old_effect_row = std::mem::replace(&mut self.current_effect_row, function_type.effects.clone());
         // Closures capture by reference, so moves inside the lambda don't affect the outer scope
         let old_move_tracker = std::mem::take(&mut self.move_tracker);
 
@@ -1183,9 +1181,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         for branch_row in &branch_rows {
             self.unify(branch_row, &combined, TypeErrorKind::Effects, handle.expression);
         }
-        if let Some(current_row) = self.current_effect_row.clone() {
-            self.unify(&combined, &current_row, TypeErrorKind::Effects, handle.expression);
-        }
+        let current_row = self.current_effect_row.clone();
+        self.unify(&combined, &current_row, TypeErrorKind::Effects, handle.expression);
 
         result_type
     }

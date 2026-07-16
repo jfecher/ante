@@ -159,8 +159,8 @@ struct TypeChecker<'local, 'inner> {
     function_return_type: Option<Type>,
 
     /// The effect row of the function whose body is currently being checked.
-    /// This is `None` for `pure` functions or on non-function globals.
-    current_effect_row: Option<Type>,
+    /// This is a closed, empty row for pure functions and on non-function globals.
+    current_effect_row: Type,
 
     /// Types of each top-level item in the current SCC being worked on
     item_types: Rc<FxHashMap<TopLevelName, Type>>,
@@ -241,7 +241,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             item_types: Default::default(),
             current_item: None,
             function_return_type: None,
-            current_effect_row: None,
+            current_effect_row: Type::pure(),
             item_contexts,
             id_contexts,
             implicits: Vec::new(),
@@ -441,11 +441,24 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         for (name, typ) in self.item_types.clone().iter() {
             self.current_item = Some(name.top_level_item);
+            self.default_unshared_effects_to_pure(typ);
             let typ = typ.generalize(&self.bindings);
             items.entry(name.top_level_item).or_default().insert(name.local_name_id, typ);
         }
 
         items
+    }
+
+    /// For a function inferred to `can e` where `e` is not referenced elsewhere in the function
+    /// type, it should be defaulted to `pure`.
+    fn default_unshared_effects_to_pure(&mut self, typ: &Type) {
+        let Type::Function(function_type) = typ.follow(&self.bindings) else { return };
+        let Type::Effects(_, Some(tail)) = function_type.effects.follow_all(&self.bindings) else { return };
+        let Type::Variable(tail_id) = *tail else { return };
+        let shared = function_type.parameters.iter().any(|p| p.typ.free_unification_vars(&self.bindings).contains(&tail_id));
+        if !shared {
+            self.unify(&tail, &Type::pure(), TypeErrorKind::Effects, self.current_context().location().clone());
+        }
     }
 
     /// Unifies the two types. Returns false on failure
