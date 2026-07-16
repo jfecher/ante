@@ -97,7 +97,7 @@ impl TopLevelId {
 ///
 // This assumes constructor args are in the same order as the type args.
 // This should be guaranteed by [TypeChecker::build_constructor_type].
-fn apply_type_constructor(typ: &Type, args: Option<&[Type]>, types: &TypeCheckResult) -> Type {
+pub(crate) fn apply_type_constructor(typ: &Type, args: Option<&[Type]>, types: &TypeCheckResult) -> Type {
     let expected_generic_count = match typ.follow(&types.bindings) {
         Type::Forall(generics, _) => generics.len(),
         _ => 0,

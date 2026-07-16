@@ -4,7 +4,7 @@ use inc_complete::DbGet;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
-    incremental::{GetItem, TypeCheck},
+    incremental::{GetItem, GetItemRaw, TypeCheck},
     iterator_extensions::mapvec,
     mir::{FunctionType, Type, builder::Context},
     name_resolution::{Origin, builtin::Builtin},
@@ -20,7 +20,7 @@ use crate::{
 
 impl<'local, Db> Context<'local, Db>
 where
-    Db: DbGet<TypeCheck> + DbGet<GetItem>,
+    Db: DbGet<TypeCheck> + DbGet<GetItem> + DbGet<GetItemRaw>,
 {
     pub(super) fn convert_expr_type(&self, expr: ExprId) -> Type {
         let typ = &self.types.result.maps.expr_types[&expr];
@@ -37,7 +37,7 @@ where
         self.convert_type(typ, None)
     }
 
-    fn convert_context(&self) -> ConvertTypeContext<'_, Db> {
+    pub(super) fn convert_context(&self) -> ConvertTypeContext<'_, Db> {
         ConvertTypeContext {
             compiler: self.compiler,
             type_bindings: &self.types.bindings,
@@ -73,7 +73,7 @@ where
 /// Maps type inference generics to Mir generics
 type GenericsInScope = FxHashMap<crate::type_inference::generics::Generic, crate::mir::Generic>;
 
-struct ConvertTypeContext<'a, Db> {
+pub(super) struct ConvertTypeContext<'a, Db> {
     compiler: &'a Db,
     type_bindings: &'a TypeBindings,
     generics_in_scope: &'a GenericsInScope,
@@ -86,7 +86,7 @@ struct ConvertTypeContext<'a, Db> {
 
 impl<Db> ConvertTypeContext<'_, Db>
 where
-    Db: DbGet<TypeCheck> + DbGet<GetItem>,
+    Db: DbGet<TypeCheck> + DbGet<GetItem> + DbGet<GetItemRaw>,
 {
     /// TODO: The split of this from [Context::convert_type] ended up being unnecessary.
     pub(super) fn convert_type(&self, typ: &TCType, args: Option<&[TCType]>) -> Type {
@@ -131,8 +131,47 @@ where
             },
             // Carry through to MIR so monomorphization can substitute into Array lengths.
             TCType::U32(n) => Type::U32(*n),
-            TCType::Effects(..) => unreachable!(),
+            // A concrete effect row bound to what was an abstract capability-bundle generic.
+            TCType::Effects(list, _tail) => {
+                Type::Tuple(Arc::new(mapvec(list.iter(), |effect_ty| self.effect_capability_tuple_type_of(effect_ty))))
+            },
         }
+    }
+
+    /// Builds an effect's capability tuple type. The resulting tuple has each effect in declared order.
+    pub(super) fn effect_capability_tuple_type(&self, effect_item: TopLevelId, args: Option<&[TCType]>) -> Type {
+        let (item, _) = GetItemRaw(effect_item).get(self.compiler);
+        let TopLevelItemKind::EffectDefinition(effect) = &item.kind else {
+            panic!("effect_capability_tuple_type: item is not an effect definition");
+        };
+        let checked = TypeCheck(effect_item).get(self.compiler);
+        let fields = mapvec(effect.body.iter(), |decl| {
+            let method_type = checked.get_generalized(decl.name);
+            let method_type = crate::type_inference::type_body::apply_type_constructor(method_type, args, &checked);
+            self.convert_type(&method_type, None)
+        });
+        Type::Tuple(Arc::new(fields))
+    }
+
+    /// Resolves a concrete effect to its capability tuple type.
+    pub(super) fn effect_capability_tuple_type_of(&self, mut effect_type: &TCType) -> Type {
+        while let TCType::Effects(list, None) = effect_type
+            && let [single] = list.as_slice()
+        {
+            effect_type = single;
+        }
+        let (origin, args) = match effect_type {
+            TCType::UserDefined(origin) => (*origin, None),
+            TCType::Application(constructor, args) => match constructor.as_ref() {
+                TCType::UserDefined(origin) => (*origin, Some(args.as_slice())),
+                _ => panic!("effect_capability_tuple_type_of: not an effect type: {effect_type:?}"),
+            },
+            _ => panic!("effect_capability_tuple_type_of: not an effect type: {effect_type:?}"),
+        };
+        let Origin::TopLevelDefinition(name) = origin else {
+            panic!("effect_capability_tuple_type_of: effect origin is not a top-level definition");
+        };
+        self.effect_capability_tuple_type(name.top_level_item, args)
     }
 
     fn convert_type_variable(&self, id: TypeVariableId, default: Type) -> Type {

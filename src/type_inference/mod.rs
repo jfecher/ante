@@ -39,7 +39,7 @@ pub mod get_type;
 mod implicits;
 pub mod kinds;
 pub mod patterns;
-mod type_body;
+pub(crate) mod type_body;
 mod type_definitions;
 pub mod types;
 
