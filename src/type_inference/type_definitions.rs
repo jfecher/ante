@@ -30,7 +30,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 // Convert the body even though the result is unused to issue kind or recursion errors
                 Self::reject_implicit_lifetimes(body, self.compiler);
                 let mut local_kinds = Self::local_kinds_from_generics(&definition.generics);
-                let _ = self.from_cst_type_with_local_kinds(body, false, &mut local_kinds);
+                let _ = self.from_cst_type_with_local_kinds(body, false, false, &mut local_kinds);
                 return;
             },
             cst::TypeDefinitionBody::Struct(fields) => {
@@ -234,8 +234,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // TODO: Review allowing abilities to desugar here. The new type variables need to be
         // tracked
         let insert_implicit_type_vars = item.kind.is_ability();
+
+        // `false` here stops `can` clauses from being polymorphic by default. They need to be
+        // explicit in trait methods.
         let parameters = mapvec(variant_args, |arg| {
-            let param = self.from_cst_type_with_local_kinds(arg, insert_implicit_type_vars, local_kinds);
+            let param = self.from_cst_type_with_local_kinds(arg, insert_implicit_type_vars, false, local_kinds);
             types::ParameterType::explicit(param)
         });
 
@@ -307,8 +310,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             // from the trait/effect's own generic annotations.
             let mut local_kinds = Self::local_kinds_from_generics(&definition.generics);
 
-            // true to expand omitted effects clauses. TODO: Ensure the new variables are tracked somewhere
-            let mut method_type = self.from_cst_type_with_local_kinds(method_type, true, &mut local_kinds);
+            let mut method_type = self.from_cst_type_with_local_kinds(method_type, true, false, &mut local_kinds);
 
             if matches!(method_type, Type::Function(_)) {
                 method_type = if definition.kind.is_effect() {

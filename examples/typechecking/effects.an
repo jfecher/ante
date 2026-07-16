@@ -51,14 +51,13 @@ main () =
 // 
 // (does_use: fn I32 -> Unit can (Use I32)) ((x: I32)) : Unit can Use I32 =
 //     (y: I32) = (get: fn Unit -> I32 can (Use I32)) ()
-//     (set: fn I32 -> Unit can (Use I32)) ((+: fn I32 I32 {Add I32} [Ptr Unit] -> I32 can (Use I32)) (y: I32) (x: I32) {(add_i32: Add I32)})
+//     (set: fn I32 -> Unit can (Use I32)) ((+: fn I32 I32 {Add I32} [Ptr Unit] -> I32 pure) (y: I32) (x: I32) {(add_i32: Add I32)})
 // 
 // (pure_fn: fn Unit -> Unit pure) () : Unit pure =
 //     (log: fn String -> Unit can Log) "foo"
 // 
 // (main: fn Unit -> Unit can Log, _) () =
 //     (log: fn String -> Unit can Log) "foo"
-
 
 // expected stderr:
 // examples/typechecking/effects.an:25:5

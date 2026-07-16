@@ -621,6 +621,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             &mut next_id,
             &mut local_kinds,
             true,
+            true,
         );
         self.next_type_variable_id.set(next_id);
         typ

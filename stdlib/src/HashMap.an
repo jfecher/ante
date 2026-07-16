@@ -218,7 +218,7 @@ HashMap.merge (dst: mut HashMap k v) (src: HashMap k v) {Hash k} {Eq k}: Unit =
     iter src (fn (k, v) -> ignore (HashMap.insert dst k v))
 
 impl extract_hashmap {Hash k} {Eq k}: Extract (ref HashMap k v) (ref k) (ref v) with
-    (.[]) map key = map.get key
+    (.[]) map key = map.get key ~> panic_on_fail
 
 impl insert_hashmap {Hash k} {Eq k}: Insert (mut HashMap k v) k v with
     (.[]:=) map key value =

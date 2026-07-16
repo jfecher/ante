@@ -1136,7 +1136,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// in function signatures or expressions.
     fn from_cst_type(&mut self, typ: &cst::Type, allow_implicit_type_vars: bool) -> Type {
         let mut local_kinds = crate::type_inference::types::LocalKinds::default();
-        self.from_cst_type_with_local_kinds(typ, allow_implicit_type_vars, &mut local_kinds)
+        self.from_cst_type_with_local_kinds(typ, allow_implicit_type_vars, allow_implicit_type_vars, &mut local_kinds)
     }
 
     /// Build an initial [LocalKinds] map seeded from the explicit kind annotations on
@@ -1150,7 +1150,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// for type variables in this type are shared with sibling types in the same scope
     /// (e.g., multiple fields of one constructor).
     fn from_cst_type_with_local_kinds(
-        &mut self, typ: &cst::Type, allow_implicit_type_vars: bool, local_kinds: &mut LocalKinds,
+        &mut self, typ: &cst::Type, allow_implicit_type_vars: bool, open_effects_by_default: bool,
+        local_kinds: &mut LocalKinds,
     ) -> Type {
         let mut next_id = self.next_type_variable_id.get();
         let typ = Type::from_cst_type(
@@ -1160,6 +1161,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             &mut next_id,
             local_kinds,
             allow_implicit_type_vars,
+            open_effects_by_default,
         );
         self.next_type_variable_id.set(next_id);
         typ
@@ -1180,6 +1182,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             self.compiler,
             &mut next_id,
             &mut local_kinds,
+            allow_implicit_type_vars,
             allow_implicit_type_vars,
         );
         self.next_type_variable_id.set(next_id);

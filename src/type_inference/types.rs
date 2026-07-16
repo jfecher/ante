@@ -516,9 +516,18 @@ impl Type {
     /// - A name [Origin] was used which does not point to a type
     pub(crate) fn from_cst_type(
         typ: &cst::Type, resolve: &ResolutionResult, db: &DbHandle, next_id: &mut u32, local_kinds: &mut LocalKinds,
-        insert_implicit_type_vars: bool,
+        insert_implicit_type_vars: bool, open_effects_by_default: bool,
     ) -> Type {
-        Self::from_cst_type_with_kind(typ, Kind::Type, resolve, db, next_id, local_kinds, insert_implicit_type_vars)
+        Self::from_cst_type_with_kind(
+            typ,
+            Kind::Type,
+            resolve,
+            db,
+            next_id,
+            local_kinds,
+            insert_implicit_type_vars,
+            open_effects_by_default,
+        )
     }
 
     /// Converts an ast type to a generalized Type, with any free type variables
@@ -526,7 +535,7 @@ impl Type {
     /// will not be wrapped in a `forall`.
     pub(crate) fn from_cst_type_generalized(
         typ: &cst::Type, resolve: &crate::name_resolution::ResolutionResult, db: &DbHandle,
-        insert_implicit_type_vars: bool,
+        insert_implicit_type_vars: bool, open_effects_by_default: bool,
     ) -> Type {
         let mut next_id = 0;
         let mut local_kinds = LocalKinds::default();
@@ -538,6 +547,7 @@ impl Type {
             &mut next_id,
             &mut local_kinds,
             insert_implicit_type_vars,
+            open_effects_by_default,
         );
 
         if next_id == 0 {
@@ -550,12 +560,13 @@ impl Type {
 
     /// Convert this [cst::Type] into a [Type] with the expected [Kind].
     /// Error if the converted [Kind] does not match the expected [Kind].
+    #[allow(clippy::too_many_arguments)]
     fn from_cst_type_with_kind(
         typ: &cst::Type, expected: Kind, resolve: &ResolutionResult, db: &DbHandle, next_id: &mut u32,
-        local_kinds: &mut LocalKinds, insert_implicit_type_vars: bool,
+        local_kinds: &mut LocalKinds, insert_implicit_type_vars: bool, open_effects_by_default: bool,
     ) -> Type {
         let mut visited = Vec::new();
-        TypeConverter::new(resolve, db, next_id, local_kinds, insert_implicit_type_vars, &mut visited)
+        TypeConverter::new(resolve, db, next_id, local_kinds, insert_implicit_type_vars, open_effects_by_default, &mut visited)
             .convert_with_kind(typ, expected)
     }
 
@@ -564,22 +575,23 @@ impl Type {
     /// - The kind of the converted type
     ///
     /// Does not error if the returned type is not of kind [Kind::Type].
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn from_cst_type_helper(
         typ: &cst::Type, expected: Option<&Kind>, resolve: &ResolutionResult, db: &DbHandle, next_id: &mut u32,
-        local_kinds: &mut LocalKinds, insert_implicit_type_vars: bool,
+        local_kinds: &mut LocalKinds, insert_implicit_type_vars: bool, open_effects_by_default: bool,
     ) -> (Type, Kind) {
         let mut visited = Vec::new();
-        TypeConverter::new(resolve, db, next_id, local_kinds, insert_implicit_type_vars, &mut visited)
+        TypeConverter::new(resolve, db, next_id, local_kinds, insert_implicit_type_vars, open_effects_by_default, &mut visited)
             .convert(typ, expected)
     }
 
     /// Convert an effects clause into an effect row [Type].
     pub(crate) fn from_cst_effects_clause(
         effects: Option<&[cst::Type]>, resolve: &ResolutionResult, db: &DbHandle, next_id: &mut u32,
-        local_kinds: &mut LocalKinds, insert_implicit_type_vars: bool,
+        local_kinds: &mut LocalKinds, insert_implicit_type_vars: bool, open_effects_by_default: bool,
     ) -> Type {
         let mut visited = Vec::new();
-        TypeConverter::new(resolve, db, next_id, local_kinds, insert_implicit_type_vars, &mut visited)
+        TypeConverter::new(resolve, db, next_id, local_kinds, insert_implicit_type_vars, open_effects_by_default, &mut visited)
             .convert_effects_clause(effects)
     }
 }
@@ -591,6 +603,10 @@ struct TypeConverter<'a, 'b> {
     next_id: &'a mut u32,
     local_kinds: &'a mut LocalKinds,
     insert_implicit_type_vars: bool,
+
+    /// Whether an omitted `can` clause converts to an open effect row instead of a closed one.
+    open_effects_by_default: bool,
+
     /// The stack of type aliases currently being expanded, used to detect recursive aliases
     visited: &'a mut Vec<TopLevelName>,
 }
@@ -598,9 +614,9 @@ struct TypeConverter<'a, 'b> {
 impl<'a, 'b> TypeConverter<'a, 'b> {
     fn new(
         resolve: &'a ResolutionResult, db: &'a DbHandle<'b>, next_id: &'a mut u32, local_kinds: &'a mut LocalKinds,
-        insert_implicit_type_vars: bool, visited: &'a mut Vec<TopLevelName>,
+        insert_implicit_type_vars: bool, open_effects_by_default: bool, visited: &'a mut Vec<TopLevelName>,
     ) -> Self {
-        TypeConverter { resolve, db, next_id, local_kinds, insert_implicit_type_vars, visited }
+        TypeConverter { resolve, db, next_id, local_kinds, insert_implicit_type_vars, open_effects_by_default, visited }
     }
 
     /// Convert `typ` and error if its [Kind] does not unify with `expected`.
@@ -749,11 +765,11 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
 
     /// Convert an effects clause into an effect row.
     ///
-    /// If `self.insert_implicit_type_vars` is true `None` corresponds to an open effect row.
+    /// If `self.open_effects_by_default` is true `None` corresponds to an open effect row.
     /// Otherwise, `None` is translated into a closed, empty effects row.
     fn convert_effects_clause(&mut self, effects: Option<&[cst::Type]>) -> Type {
         match effects {
-            None if self.insert_implicit_type_vars => {
+            None if self.open_effects_by_default => {
                 let tail = Type::Variable(TypeVariableId(*self.next_id));
                 *self.next_id += 1;
                 Type::effects(Vec::new(), Some(tail))
@@ -803,8 +819,9 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
 
         let resolve = Resolve(name.top_level_item).get(self.db);
         let mut local_kinds = TypeChecker::local_kinds_from_generics(&definition.generics);
-        let (body_type, _) = TypeConverter::new(&resolve, self.db, self.next_id, &mut local_kinds, false, self.visited)
-            .convert(body, Some(&Kind::Type));
+        let (body_type, _) =
+            TypeConverter::new(&resolve, self.db, self.next_id, &mut local_kinds, false, false, self.visited)
+                .convert(body, Some(&Kind::Type));
 
         let result = if definition.generics.is_empty() {
             body_type

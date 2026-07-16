@@ -254,7 +254,7 @@ impl extract_vec: Extract (ref Vec t) Usz (ref t) with
 impl insert_vec: Insert (mut Vec t) Usz t with
     (.[]:=) (v: mut Vec t) i e =
         v: uniq Vec t = transmute v
-        slot = v.get_mut i
+        slot = v.get_mut i ~> panic_on_fail
         slot := e
 
 implicit stream_vec: Stream (Vec a) a =

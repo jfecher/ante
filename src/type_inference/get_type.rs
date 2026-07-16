@@ -56,7 +56,7 @@ pub fn try_get_generalized_type(
     definition: &Definition, context: &DesugarContext, resolve: &ResolutionResult, compiler: &DbHandle,
 ) -> Option<Type> {
     if let Pattern::TypeAnnotation(_, typ) = &context[definition.pattern] {
-        return Some(Type::from_cst_type_generalized(typ, resolve, compiler, true));
+        return Some(Type::from_cst_type_generalized(typ, resolve, compiler, true, true));
     }
 
     if let Expr::Lambda(lambda) = &context[definition.rhs] {
@@ -96,15 +96,15 @@ pub fn try_get_generalized_type(
         let lambda_location = context.expr_location(definition.rhs).clone();
         let cst_fn_type = cst::Type::new(TypeKind::Function(cst_function_type), lambda_location);
 
-        Some(Type::from_cst_type_generalized(&cst_fn_type, resolve, compiler, true))
+        Some(Type::from_cst_type_generalized(&cst_fn_type, resolve, compiler, true, true))
 
     // The body being a type annotation is common for `extern` declarations: `puts = extern "puts": fn ...`
     } else if let Expr::TypeAnnotation(annotation) = &context[definition.rhs] {
-        Some(Type::from_cst_type_generalized(&annotation.rhs, resolve, compiler, true))
+        Some(Type::from_cst_type_generalized(&annotation.rhs, resolve, compiler, true, true))
     } else if let Expr::Constructor(constructor) = &context[definition.rhs]
         && constructor_type_is_fully_applied(&constructor.typ, resolve, compiler)
     {
-        Some(Type::from_cst_type_generalized(&constructor.typ, resolve, compiler, true))
+        Some(Type::from_cst_type_generalized(&constructor.typ, resolve, compiler, true, true))
     } else {
         None
     }
@@ -136,7 +136,7 @@ pub fn get_partial_type(
 ) -> Type {
     if let Pattern::TypeAnnotation(_, typ) = &context[definition.pattern] {
         let mut local_kinds = LocalKinds::default();
-        return Type::from_cst_type(typ, resolve, compiler, next_id, &mut local_kinds, true);
+        return Type::from_cst_type(typ, resolve, compiler, next_id, &mut local_kinds, true, true);
     }
 
     if let Expr::Lambda(lambda) = &context[definition.rhs] {
@@ -163,19 +163,19 @@ pub fn get_partial_type(
 
         let cst_fn_type = cst::Type::new(TypeKind::Function(cst_function_type), lambda_location);
         let mut local_kinds = LocalKinds::default();
-        Type::from_cst_type(&cst_fn_type, resolve, compiler, next_id, &mut local_kinds, true)
+        Type::from_cst_type(&cst_fn_type, resolve, compiler, next_id, &mut local_kinds, true, true)
     } else if let Expr::TypeAnnotation(annotation) = &context[definition.rhs] {
         let mut local_kinds = LocalKinds::default();
-        Type::from_cst_type(&annotation.rhs, resolve, compiler, next_id, &mut local_kinds, true)
+        Type::from_cst_type(&annotation.rhs, resolve, compiler, next_id, &mut local_kinds, true, true)
     } else if let Expr::Constructor(constructor) = &context[definition.rhs]
         && constructor_type_is_fully_applied(&constructor.typ, resolve, compiler)
     {
         let mut local_kinds = LocalKinds::default();
-        Type::from_cst_type(&constructor.typ, resolve, compiler, next_id, &mut local_kinds, true)
+        Type::from_cst_type(&constructor.typ, resolve, compiler, next_id, &mut local_kinds, true, true)
     } else {
         let lambda_location = context.expr_location(definition.rhs).clone();
         let hole = cst::Type::new(cst::TypeKind::Hole, lambda_location);
         let mut local_kinds = LocalKinds::default();
-        Type::from_cst_type(&hole, resolve, compiler, next_id, &mut local_kinds, true)
+        Type::from_cst_type(&hole, resolve, compiler, next_id, &mut local_kinds, true, true)
     }
 }
