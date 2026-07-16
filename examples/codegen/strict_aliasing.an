@@ -1,0 +1,16 @@
+// Caveat: This would cease to be a good test if the compiler were to inline the helper function
+// and constant-fold it.  4602678819172646912 = 0x3FE0000000000000
+
+bits_roundtrip (i: mut I64) (f: mut F64): I64 =
+    i.* := 11
+    f.* := 0.5
+    i.*
+
+main () =
+    var x = 0 : I64
+    f = transmute (mut x) : mut F64
+    println (bits_roundtrip (mut x) f)
+
+// args: --delete-binary --no-color -O 3
+// expected stdout:
+// 4602678819172646912

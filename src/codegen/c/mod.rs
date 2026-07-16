@@ -58,6 +58,7 @@ pub fn codegen_c_for_mir(
         .arg(&c_file_name)
         .arg(format!("-o{o_file_name}"))
         .arg(opt_level.as_cc_opt_string())
+        .arg("-fno-strict-aliasing")
         .arg("-c")
         .arg("-w")
         .spawn()
