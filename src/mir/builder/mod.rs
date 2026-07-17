@@ -103,6 +103,15 @@ enum LhsKind {
     Other,
 }
 
+/// Effects are translated into capability parameters in Mir.
+/// Concrete effects are a single parameter while effect variables may be a tuple of capabilities.
+enum Capability {
+    /// One concrete effect, keyed for insertion into `self.capabilities`.
+    Concrete(TCType, Type),
+    /// An opaque bundle for an open effect row tail.
+    Bundle(Type),
+}
+
 /// True if `typ` is a function whose return type is `Never`. Checked before `convert_type`
 /// erases `Never`, since we need the divergence info to emit `Unreachable` after the call.
 fn function_returns_never<'a>(mut typ: &'a TCType, bindings: &'a type_inference::types::TypeBindings) -> bool {
@@ -709,6 +718,33 @@ where
         effects.iter().map(|t| self.capability_key(t)).filter(|key| !excluded_keys.contains(key)).collect()
     }
 
+    /// The capability parameters a function's effects row manifests as.
+    fn effect_capabilities(&self, tc_effects: &TCType) -> Vec<Capability> {
+        let TCType::Effects(list, _) = tc_effects else { return Vec::new() };
+        let mut types = Vec::new();
+        self.convert_context().append_capability_parameter_types(tc_effects, &mut types);
+        let mut types = types.into_iter();
+        let mut capabilities: Vec<Capability> =
+            list.iter().map(|effect_ty| Capability::Concrete(self.capability_key(effect_ty), types.next().unwrap())).collect();
+        capabilities.extend(types.map(Capability::Bundle));
+        capabilities
+    }
+
+    /// Removes the last `count` parameters from a function type's declared parameter list.
+    fn strip_trailing_parameters(&self, full_type: Type, count: usize) -> Type {
+        if count == 0 {
+            return full_type;
+        }
+        let Type::Function(ft) = &full_type else { unreachable!("Lambda does not have a function type") };
+        let mut parameters = ft.parameters.clone();
+        parameters.truncate(parameters.len() - count);
+        Type::Function(Arc::new(FunctionType {
+            parameters,
+            environment: ft.environment.clone(),
+            return_type: ft.return_type.clone(),
+        }))
+    }
+
     /// Extends a lambda's environment type with a trailing field per needed capability.
     fn extend_environment_with_capabilities(&self, full_type: Type, needed_capability_keys: &[TCType]) -> Type {
         if needed_capability_keys.is_empty() {
@@ -1104,8 +1140,14 @@ where
         } else {
             Vec::new()
         };
+        let own_capabilities = self.effect_capabilities(&tc_effects);
 
-        let full_type = self.extend_environment_with_capabilities(self.convert_expr_type(expr), &needed_capability_keys);
+        // A suppressed lambda can't keep the capability params convert_expr_type just added; strip them, route via environment below instead.
+        let mut full_type = self.convert_expr_type(expr);
+        if suppress_capabilities {
+            full_type = self.strip_trailing_parameters(full_type, own_capabilities.len());
+        }
+        let full_type = self.extend_environment_with_capabilities(full_type, &needed_capability_keys);
         let Type::Function(function_type) = &full_type else { unreachable!("Lambda does not have a function type") };
 
         let is_move = self.context().is_move_closure(expr);
@@ -1180,22 +1222,17 @@ where
                 }
             }
 
-            // One trailing parameter per concrete effect in this lambda's own effects row, plus
-            // one more opaque bundle parameter if the row has an open, polymorphic tail.
-            if !suppress_capabilities
-                && let TCType::Effects(list, tail) = &tc_effects
-            {
-                for effect_ty in list.iter() {
-                    let cap_type = this.effect_capability_tuple_type_of(effect_ty);
-                    let cap_value = this.push_capability_parameter(cap_type);
-                    let key = this.capability_key(effect_ty);
-                    this.capabilities.insert(key, cap_value);
-                }
-                if let Some(tail_ty) = tail {
-                    let followed_tail = tail_ty.follow(&this.types.bindings);
-                    if matches!(followed_tail, TCType::Generic(_) | TCType::Variable(_)) {
-                        let bundle_type = this.convert_type(&followed_tail, None);
-                        this.capability_bundle = Some(this.push_capability_parameter(bundle_type));
+            // Matches full_type; skipped when suppressed since those go through the environment instead.
+            if !suppress_capabilities {
+                for capability in &own_capabilities {
+                    match capability {
+                        Capability::Concrete(key, cap_type) => {
+                            let cap_value = this.push_capability_parameter(cap_type.clone());
+                            this.capabilities.insert(key.clone(), cap_value);
+                        },
+                        Capability::Bundle(bundle_type) => {
+                            this.capability_bundle = Some(this.push_capability_parameter(bundle_type.clone()));
+                        },
                     }
                 }
             }
@@ -1759,10 +1796,12 @@ where
             let rhs = self.expression(assignment.rhs);
 
             let function = self.expression(op_expr);
+            let mut arguments = vec![current, rhs];
+            self.append_capability_arguments(op_expr, &mut arguments);
             let instruction = if self.type_of_value(&function).is_closure() {
-                Instruction::CallClosure { closure: function, arguments: vec![current, rhs] }
+                Instruction::CallClosure { closure: function, arguments }
             } else {
-                Instruction::Call { function, arguments: vec![current, rhs] }
+                Instruction::Call { function, arguments }
             };
             self.push_instruction(instruction, value_type)
         } else {

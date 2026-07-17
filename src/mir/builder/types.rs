@@ -102,17 +102,10 @@ where
                 self.convert_type_variable(*id, Type::UNIT)
             },
             TCType::Function(function_type) => {
-                // Effects on the function type are dropped in MIR
-                let parameters = mapvec(&function_type.parameters, |typ| self.convert_type(&typ.typ, None));
-
-                // Default to NoClosureEnv instead of Unit
-                let environment = match function_type.environment.follow(self.type_bindings) {
-                    TCType::Variable(id) => self.convert_type_variable(*id, Type::NO_CLOSURE_ENV),
-                    other => self.convert_type(other, None),
-                };
-
-                let return_type = self.convert_type(&function_type.return_type, None);
-                Type::Function(Arc::new(FunctionType { parameters, environment, return_type }))
+                // Each effect in the row becomes a trailing capability parameter.
+                let mut parameters = mapvec(&function_type.parameters, |typ| self.convert_type(&typ.typ, None));
+                self.append_capability_parameter_types(&function_type.effects, &mut parameters);
+                self.build_function_type(function_type, parameters)
             },
             TCType::Application(constructor, new_args) => {
                 assert!(args.is_none());
@@ -138,6 +131,21 @@ where
         }
     }
 
+    /// Appends the capability parameter types a function's effects row manifests as.
+    pub(super) fn append_capability_parameter_types(&self, effects: &TCType, parameters: &mut Vec<Type>) {
+        let TCType::Effects(list, tail) = effects.follow(self.type_bindings) else { return };
+        parameters.extend(list.iter().map(|effect_ty| self.effect_capability_tuple_type_of(effect_ty)));
+        let Some(tail_ty) = tail else { return };
+        match tail_ty.follow_all(self.type_bindings) {
+            TCType::Effects(concrete, None) if concrete.is_empty() => {},
+            TCType::Effects(concrete, None) => {
+                parameters.push(self.convert_type(&TCType::Effects(concrete, None), None));
+            },
+            TCType::Effects(_, Some(inner_tail)) => parameters.push(self.convert_type(&inner_tail, None)),
+            followed => parameters.push(self.convert_type(&followed, None)),
+        }
+    }
+
     /// Builds an effect's capability tuple type. The resulting tuple has each effect in declared order.
     pub(super) fn effect_capability_tuple_type(&self, effect_item: TopLevelId, args: Option<&[TCType]>) -> Type {
         let (item, _) = GetItemRaw(effect_item).get(self.compiler);
@@ -148,9 +156,28 @@ where
         let fields = mapvec(effect.body.iter(), |decl| {
             let method_type = checked.get_generalized(decl.name);
             let method_type = crate::type_inference::type_body::apply_type_constructor(method_type, args, &checked);
-            self.convert_type(&method_type, None)
+            self.convert_operation_type(&method_type)
         });
         Type::Tuple(Arc::new(fields))
+    }
+
+    /// An effect operation's own signature, as provided by a handler branch: no capability
+    /// parameters for its own effects row, since those come through the branch's environment.
+    fn convert_operation_type(&self, typ: &TCType) -> Type {
+        let TCType::Function(function_type) = typ.follow(self.type_bindings) else {
+            return self.convert_type(typ, None);
+        };
+        let parameters = mapvec(&function_type.parameters, |typ| self.convert_type(&typ.typ, None));
+        self.build_function_type(function_type, parameters)
+    }
+
+    fn build_function_type(&self, function_type: &crate::type_inference::types::FunctionType, parameters: Vec<Type>) -> Type {
+        let environment = match function_type.environment.follow(self.type_bindings) {
+            TCType::Variable(id) => self.convert_type_variable(*id, Type::NO_CLOSURE_ENV),
+            other => self.convert_type(other, None),
+        };
+        let return_type = self.convert_type(&function_type.return_type, None);
+        Type::Function(Arc::new(FunctionType { parameters, environment, return_type }))
     }
 
     /// Resolves a concrete effect to its capability tuple type.
