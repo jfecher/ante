@@ -25,13 +25,13 @@ main () =
 // 
 // (foo: fn I32 String -> Char pure) ((_: I32)) ((_: String)) : Char pure = 'a'
 // 
-// (bar: fn a a -> I32) =
+// (bar: fn a a -> I32 pure) =
 //     fn (_: a) (b: a) -> (b: a)
 // 
 // (baz: fn Usz -> Ptr a pure) ((a: Usz)) : Ptr a pure =
 //     (transmute: fn Usz -> Ptr a pure) (a: Usz)
 // 
-// (main: fn Unit -> Unit pure) () pure =
+// (main: fn Unit -> Unit pure) () =
 //     (exit2: fn I32 -> Unit pure) = (exit: fn I32 -> Unit pure)
 //     (puts2: fn String -> I32) = (puts: fn String -> I32)
 //     (exit2: fn I32 -> Unit pure) "test"

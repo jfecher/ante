@@ -22,7 +22,7 @@ use _y = ()
 
 // args: -east-t --no-color
 // expected stdout:
-// (main: fn Unit -> Unit pure) () pure =
+// (main: fn Unit -> Unit pure) () =
 //     (a: I32) = 1
 //     (b: I32) = 2
 //     (_c: I32) = 3
@@ -39,5 +39,5 @@ use _y = ()
 //     (_: Unit) = (captures_closure: fn I32 [(fn I32 [I32, I32] -> Unit pure)] -> Unit pure) 0
 //     (_: Unit) = (captures_nested: fn I32 [I32] -> Unit pure) 0
 // 
-// (use: fn _ -> Unit pure) (_y: _) pure = ()
+// (use: fn _ -> Unit pure) (_y: _) = ()
 

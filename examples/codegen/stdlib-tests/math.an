@@ -25,9 +25,25 @@ main () =
     println <| overflowing_mul_i32 -2_147_483_648 -1
 
 // args: --delete-binary --no-color
-// expected exit status: 101
-// expected stderr:
-// thread 'main' panicked at src/mir/builder/types.rs:134:36:
-// internal error: entered unreachable code
-// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+// expected stdout:
+// 4.0
+// 1024.0
+// 3.0
+// 4.0
+// 7.5000
+// 5
+// 12345
+// None
+// Some 42
+// None
+// Some 38
+// None
+// None
+// Some -36
+// 42, false
+// -2_147_483_648, true
+// 38, false
+// 2147483647, true
+// -36, false
+// -2_147_483_648, true
 

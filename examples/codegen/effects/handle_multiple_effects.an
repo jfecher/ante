@@ -54,17 +54,11 @@ main () =
 //    |                  ^^^^^^^^
 // 14 |     if false then fail ()
 // 
-// examples/codegen/effects/handle_multiple_effects.an:14:19
-// 13 | foo () {MyFail} {Read U32} =
-//    |     // error: This can perform <MyFail, _> but only <> is allowed here
-// 14 |     if false then fail ()
-//    |                   ^^^^
-// 15 |     read ()
+// examples/codegen/effects/handle_multiple_effects.an:17:1
+//    | // error: main here has type fn Unit -> Unit can (Read U32), MyFail, _ but it should always have type fn Unit -> Unit pure
+// 17 | main () =
+//    | ^^^^
+// 18 |     println <| read_or_none foo
 // 
-// examples/codegen/effects/handle_multiple_effects.an:15:5
-// 14 |     if false then fail ()
-// 15 |     read ()	// error: This can perform <(Read _), _> but only <> is allowed here
-//    |     ^^^^
-// 
-// Found 8 errors and 0 warnings
+// Found 7 errors and 0 warnings
 

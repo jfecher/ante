@@ -18,9 +18,15 @@ my_iter iterable f =
 main () = my_iter 10 println
 
 // args: --delete-binary --no-color
-// expected exit status: 101
-// expected stderr:
-// thread 'main' panicked at src/mir/builder/types.rs:134:36:
-// internal error: entered unreachable code
-// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+// expected stdout:
+// 10
+// 9
+// 8
+// 7
+// 6
+// 5
+// 4
+// 3
+// 2
+// 1
 

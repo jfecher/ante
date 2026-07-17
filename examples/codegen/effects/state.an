@@ -30,30 +30,6 @@ main () =
 //   |                     ^^^^^^^
 // 6 |     x = get ()
 // 
-// examples/codegen/effects/state.an:6:9
-// 5 | use_state (y: I32) {Use I32} =
-// 6 |     x = get ()	// error: This can perform <(Use _), _> but only <> is allowed here
-//   |         ^^^
-// 7 |     set (x + y)
-// 
-// examples/codegen/effects/state.an:7:5
-// 6 |     x = get ()
-// 7 |     set (x + y)	// error: This can perform <(Use _), _> but only <> is allowed here
-//   |     ^^^
-// 8 |     state = get ()
-// 
-// examples/codegen/effects/state.an:8:13
-//  7 |     set (x + y)
-//  8 |     state = get ()	// error: This can perform <(Use _), _> but only <> is allowed here
-//    |             ^^^
-//  9 |     println "Ending state = ${state}"
-// 
-// examples/codegen/effects/state.an:9:13
-//  8 |     state = get ()
-//    |     // error: Multiple matching implicits found for type Cast _ String required by cast: cast_i32_string, cast_same
-//  9 |     println "Ending state = ${state}"
-//    |             ^^^^^^^^^^^^^^^^^^^^^^^^^
-// 
 // examples/codegen/effects/state.an:11:15
 //    | // error: This is an effect and cannot be used as an ordinary type
 // 11 | state (f: fn {Use s} -> a) (initial: s) {Copy s}: a =
@@ -65,5 +41,11 @@ main () =
 // 18 |     in f {h}	// error: Argument 1 has type <(Use s)> but Use s was expected
 //    |           ^
 // 
-// Found 7 errors and 0 warnings
+// examples/codegen/effects/state.an:20:1
+//    | // error: main here has type fn Unit -> Unit can (Use I32), _ but it should always have type fn Unit -> Unit pure
+// 20 | main () =
+//    | ^^^^
+// 21 |     state (use_state 10 {_}) 1
+// 
+// Found 4 errors and 0 warnings
 

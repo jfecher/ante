@@ -23,7 +23,7 @@ main () =
 //     (count: fn Unit -> Unit can Count) ()
 //     (repeat: fn Usz (fn Usz -> Unit can Count) -> Unit can Count) 10 (fn (_: Usz) -> (count: fn Unit -> Unit can Count) ())
 // 
-// (handle_count: fn (fn Unit [_] -> Unit can Count) -> I32) ((f: fn Unit [_] -> Unit can Count)) =
+// (handle_count: fn (fn Unit [_] -> Unit can Count) -> I32 pure) ((f: fn Unit [_] -> Unit can Count)) =
 //     handler (h: <Count>) for
 //     | (count: fn Unit -> Unit can Count) () -> fn () (resume: fn Unit [Ptr] -> I32 pure) -> (+: fn I32 I32 {Add I32} [Ptr Unit] -> I32 pure) 1 ((resume: fn Unit [Ptr] -> I32 pure) ()) {(add_i32: Add I32)}
 //     in fn () [(f: fn Unit [_] -> Unit can Count)] ->

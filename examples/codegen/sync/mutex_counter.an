@@ -20,7 +20,97 @@ main () =
 // args: --delete-binary --no-color
 // expected exit status: 101
 // expected stderr:
-// thread 'main' panicked at src/mir/builder/types.rs:134:36:
-// internal error: entered unreachable code
+// thread '<unnamed>' panicked at src/mir/validation.rs:460:9:
+// fn spawn d1213: fn ((fn Unit ((Pointer,),) -> Unit), ((Pointer,),)) -> (Pointer,)
+//   b0(b0_0: (fn Unit ((Pointer,),) -> Unit), ((Pointer,),), b0_1: #empty_tuple):
+//     v0: fn Pointer -> Pointer = id wrapper_d1229
+//     v1: fn Usz -> Pointer = id malloc_d1230
+//     v2: fn (#empty_tuple) -> Usz = id size_of_d1231
+//     v3: #empty_tuple = id MkType_d1232
+//     v4: Usz = v2 v3
+//     v5: Pointer = v1 v4
+//     v6: fn Pointer ((fn Unit ((Pointer,),) -> Unit), ((Pointer,),)) -> Unit = id ptr_store_d1233
+//     v7: Unit = v6 v5 b0_0
+//     v8: fn Pointer -> Pointer = id transmute_d1201
+//     v9: Pointer = v8 v5
+//     v10: fn Usz -> Pointer = id malloc_d1234
+//     v11: Pointer = v10 pthread_t_size_d1059
+//     v12: fn Pointer Pointer (fn Pointer -> Pointer) Pointer -> I32 = id pthread_create_d1235
+//     v13: fn Unit -> Pointer = id null_d1236
+//     v14: Pointer = v13 ()
+//     v15: I32 = v12 v11 v14 v0 v9 b0_1
+//     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ parameter type len does not match arg type len
+// 
+//     v16: fn Pointer -> (Pointer,) = id Thread_d1237
+//     v17: Pointer, = v16 v11
+//     return v17
 // note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+// 
+// thread '<unnamed>' panicked at src/mir/validation.rs:129:13:
+// assertion `left == right` failed: 
+// fn lambda d1194: fn U32 U32 -> U32
+//   b0(b0_0: U32, b0_1: U32, b0_2: Unit):
+//     v0: (fn U32 U32 Pointer -> U32), Pointer = add_u32_d508.0
+//     v2: fn U32 U32 Pointer -> U32 = v0.0
+//     v3: Pointer = v0.1
+//     v1: U32 = v2 b0_0 b0_1 v3
+//     return v1
+// 
+// Entry block parameter count should match the number of parameters in the function type + 1 if the closure environment is non-empty
+//   left: 2
+//  right: 3
+// 
+// thread '<unnamed>' panicked at src/mir/validation.rs:460:9:
+// fn with_lock d1199: fn Pointer (fn Pointer -> Unit) -> Unit
+//   b0(b0_0: Pointer, b0_1: fn Pointer -> Unit, b0_2: #empty_tuple):
+//     v0: fn Pointer -> I32 = id pthread_mutex_lock_d1205
+//     v1: Pointer = field_ptr b0_0.0
+//     v2: ((fn Pointer Pointer -> Pointer), Pointer), = id copy_ptr_d1206
+//     v3: (fn Pointer Pointer -> Pointer), Pointer = v2.0
+//     v16: fn Pointer Pointer -> Pointer = v3.0
+//     v17: Pointer = v3.1
+//     v4: Pointer = v16 v1 v17
+//     v5: I32 = v0 v4 b0_2
+//     ^^^^^^^^^^^^^^^^^^^^ parameter type len does not match arg type len
+// 
+//     v6: fn Pointer -> Pointer = id transmute_d1201
+//     v7: Pointer = field_ptr b0_0.1
+//     v8: Pointer = v6 v7 b0_2
+//     v9: Unit = b0_1 v8 b0_2
+//     v10: fn Pointer -> I32 = id pthread_mutex_unlock_d1207
+//     v11: Pointer = field_ptr b0_0.0
+//     v12: ((fn Pointer Pointer -> Pointer), Pointer), = id copy_ptr_d1206
+//     v13: (fn Pointer Pointer -> Pointer), Pointer = v12.0
+//     v18: fn Pointer Pointer -> Pointer = v13.0
+//     v19: Pointer = v13.1
+//     v14: Pointer = v18 v11 v19
+//     v15: I32 = v10 v14 b0_2
+//     return v9
+// 
+// thread '<unnamed>' panicked at src/mir/validation.rs:460:9:
+// fn with_lock d1216: fn Pointer (fn Pointer -> U32) -> U32
+//   b0(b0_0: Pointer, b0_1: fn Pointer -> U32, b0_2: #empty_tuple):
+//     v0: fn Pointer -> I32 = id pthread_mutex_lock_d1205
+//     v1: Pointer = field_ptr b0_0.0
+//     v2: ((fn Pointer Pointer -> Pointer), Pointer), = id copy_ptr_d1206
+//     v3: (fn Pointer Pointer -> Pointer), Pointer = v2.0
+//     v16: fn Pointer Pointer -> Pointer = v3.0
+//     v17: Pointer = v3.1
+//     v4: Pointer = v16 v1 v17
+//     v5: I32 = v0 v4 b0_2
+//     ^^^^^^^^^^^^^^^^^^^^ parameter type len does not match arg type len
+// 
+//     v6: fn Pointer -> Pointer = id transmute_d1201
+//     v7: Pointer = field_ptr b0_0.1
+//     v8: Pointer = v6 v7 b0_2
+//     v9: U32 = b0_1 v8 b0_2
+//     v10: fn Pointer -> I32 = id pthread_mutex_unlock_d1207
+//     v11: Pointer = field_ptr b0_0.0
+//     v12: ((fn Pointer Pointer -> Pointer), Pointer), = id copy_ptr_d1206
+//     v13: (fn Pointer Pointer -> Pointer), Pointer = v12.0
+//     v18: fn Pointer Pointer -> Pointer = v13.0
+//     v19: Pointer = v13.1
+//     v14: Pointer = v18 v11 v19
+//     v15: I32 = v10 v14 b0_2
+//     return v9
 

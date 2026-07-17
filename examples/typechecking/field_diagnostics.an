@@ -25,7 +25,7 @@ main () =
 // args: -e ast-t --no-color
 // expected exit status: 1
 // expected stdout:
-// (main: fn Unit -> Unit pure) () pure =
+// (main: fn Unit -> Unit pure) () =
 //     (tuple: I32, I32) = 1 (,: fn I32 I32 -> I32, I32 pure) 1
 //     (_: ref I32) = (ref ref (tuple: I32, I32)).first (.*: fn (ref (ref I32)) {Copy (ref I32)} [Ptr Unit] -> ref I32 pure) (copy_ref: Copy (ref I32))
 //     (_: mut I32) = mut (tuple: I32, I32).first

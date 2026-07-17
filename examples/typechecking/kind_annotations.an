@@ -40,18 +40,17 @@ type Mismatch (n: type) =
 // (get_first: fn (ref (Array n t)) -> ref t pure) ((arr: ref (Array n t))) : ref t pure =
 //     (array_get_unchecked: fn (ref (Array n t)) Usz -> ref t pure) (arr: ref (Array n t)) 0
 // 
-// (take_len: fn (ref (Array n t)) -> Usz) =
+// (take_len: fn (ref (Array n t)) -> Usz pure) =
 //     fn (arr: ref (Array n t)) -> (array_len: fn (ref (Array n t)) -> Usz pure) (arr: ref (Array n t))
 // 
 // type Bad n t =
 //     arr: Array n t
 //     extra: n
 // 
-// (bad_fn: fn n (Array n t) -> n) ((x: n)) ((_array: Array n t)) = (x: n)
+// (bad_fn: fn n (Array n t) -> n pure) ((x: n)) ((_array: Array n t)) = (x: n)
 // 
 // type Mismatch (n: type) =
 //     arr: Array n I32
-
 
 // expected stderr:
 // examples/typechecking/kind_annotations.an:21:16

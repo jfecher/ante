@@ -6,7 +6,46 @@ main () =
 // args: --delete-binary --no-color
 // expected exit status: 101
 // expected stderr:
-// thread 'main' panicked at src/mir/builder/types.rs:134:36:
-// internal error: entered unreachable code
+// thread '<unnamed>' panicked at src/mir/validation.rs:129:13:
+// assertion `left == right` failed: 
+// fn lambda d515: fn U32 U32 -> U32
+//   b0(b0_0: U32, b0_1: U32, b0_2: Unit):
+//     v0: (fn U32 U32 Pointer -> U32), Pointer = add_u32_d508.0
+//     v2: fn U32 U32 Pointer -> U32 = v0.0
+//     v3: Pointer = v0.1
+//     v1: U32 = v2 b0_0 b0_1 v3
+//     return v1
+// 
+// Entry block parameter count should match the number of parameters in the function type + 1 if the closure environment is non-empty
+//   left: 2
+//  right: 3
 // note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+// 
+// thread '<unnamed>' panicked at src/mir/validation.rs:129:13:
+// assertion `left == right` failed: 
+// fn lambda d519: fn Usz Usz -> Usz
+//   b0(b0_0: Usz, b0_1: Usz, b0_2: Unit):
+//     v0: (fn Usz Usz Pointer -> Usz), Pointer = sub_usz_d207.0
+//     v2: fn Usz Usz Pointer -> Usz = v0.0
+//     v3: Pointer = v0.1
+//     v1: Usz = v2 b0_0 b0_1 v3
+//     return v1
+// 
+// Entry block parameter count should match the number of parameters in the function type + 1 if the closure environment is non-empty
+//   left: 2
+//  right: 3
+// 
+// thread '<unnamed>' panicked at src/mir/validation.rs:129:13:
+// assertion `left == right` failed: 
+// fn lambda d518: fn U64 U64 -> U64
+//   b0(b0_0: U64, b0_1: U64, b0_2: Unit):
+//     v0: (fn U64 U64 Pointer -> U64), Pointer = div_u64_d155.0
+//     v2: fn U64 U64 Pointer -> U64 = v0.0
+//     v3: Pointer = v0.1
+//     v1: U64 = v2 b0_0 b0_1 v3
+//     return v1
+// 
+// Entry block parameter count should match the number of parameters in the function type + 1 if the closure environment is non-empty
+//   left: 2
+//  right: 3
 

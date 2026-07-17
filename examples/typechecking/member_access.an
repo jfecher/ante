@@ -30,9 +30,9 @@ main () =
 // type Bar =
 //     bar: Char
 // 
-// (stringify: fn String -> String pure) ((s: String)) pure = (s: String)
+// (stringify: fn String -> String pure) ((s: String)) = (s: String)
 // 
-// (foo_and_bar: fn _ _ -> String pure) (a: _) (b: _) pure =
+// (foo_and_bar: fn _ _ -> String pure) (a: _) (b: _) =
 //     (a: _).foo
 //     (stringify: fn String -> String pure) (b: _).bar
 // 
@@ -42,7 +42,7 @@ main () =
 // 
 // (bar: Bar) = (Bar: fn Char -> Bar pure) '3'
 // 
-// (main: fn Unit -> Unit pure) () pure =
+// (main: fn Unit -> Unit pure) () =
 //     (foo_and_bar: fn FooBar FooBar -> String pure) (foobar: FooBar) (foobar: FooBar)
 //     (foo_and_bar: fn Foo Bar -> String pure) (foo: Foo) (bar: Bar)
 //     ()

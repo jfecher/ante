@@ -23,7 +23,7 @@ use crate::{
     iterator_extensions::mapvec,
     lexer::token::{FloatKind, Integer, IntegerKind},
     mir::{
-        Block, BlockId, Definition, DefinitionId, FloatConstant, Generic, Instruction, IntConstant, Mir,
+        Block, BlockId, Definition, DefinitionId, FloatConstant, FunctionType, Generic, Instruction, IntConstant, Mir,
         TerminatorInstruction, Type, Value, next_definition_id,
     },
     name_resolution::Origin,
@@ -646,7 +646,7 @@ where
                 let bundle = self.push_instruction(Instruction::MakeTuple(fields), bundle_type);
                 arguments.push(bundle);
             },
-            // Still open from the caller's perspective: forward our own bundle.
+            // Still open from the caller's perspective: forward our own bundle. Not captured for a suppressed lambda.
             _ => {
                 if let Some(bundle) = self.capability_bundle {
                     arguments.push(bundle);
@@ -675,6 +675,56 @@ where
                  capabilities besides the one a handler body/branch handles"
             )
         })
+    }
+
+    /// Capabilities a handler body/branch needs beyond what it handles, to thread through its
+    /// closure environment since it can't gain new capability parameters.
+    fn suppressed_lambda_needed_capabilities(
+        &self, tc_effects: &TCType, handle_body_handler_name: Option<NameId>,
+    ) -> Vec<TCType> {
+        let TCType::Effects(list, tail) = tc_effects else { return Vec::new() };
+        // The tail is often an unresolved unification variable at this point even though it's
+        // actually bound to a concrete row; fully resolve it to see the effects it's hiding.
+        let mut effects: Vec<TCType> = list.as_ref().clone();
+        if let Some(tail) = tail
+            && let TCType::Effects(tail_list, _) = tail.follow_all(&self.types.bindings)
+        {
+            effects.extend(tail_list.as_ref().clone());
+        }
+
+        // A body excludes its own handled effect(s) (sourced from the placeholder instead);
+        // a branch excludes nothing since a reperform legitimately targets the next outer handler.
+        let excluded_keys: Vec<TCType> = match handle_body_handler_name {
+            Some(handler_name) => {
+                let h_tc_type = self.types.result.maps.name_types[&handler_name].follow_all(&self.types.bindings);
+                let h_list = match h_tc_type {
+                    TCType::Effects(h_list, _) => h_list.as_ref().clone(),
+                    other => vec![other],
+                };
+                h_list.iter().map(|t| self.capability_key(t)).collect()
+            },
+            None => Vec::new(),
+        };
+
+        effects.iter().map(|t| self.capability_key(t)).filter(|key| !excluded_keys.contains(key)).collect()
+    }
+
+    /// Extends a lambda's environment type with a trailing field per needed capability.
+    fn extend_environment_with_capabilities(&self, full_type: Type, needed_capability_keys: &[TCType]) -> Type {
+        if needed_capability_keys.is_empty() {
+            return full_type;
+        }
+        let Type::Function(ft) = &full_type else { unreachable!("Lambda does not have a function type") };
+        let mut env_fields: Vec<Type> = match &ft.environment {
+            Type::Tuple(fields) => (**fields).clone(),
+            _ => Vec::new(),
+        };
+        env_fields.extend(needed_capability_keys.iter().map(|key| self.effect_capability_tuple_type_of(key)));
+        Type::Function(Arc::new(FunctionType {
+            parameters: ft.parameters.clone(),
+            environment: Type::tuple(env_fields),
+            return_type: ft.return_type.clone(),
+        }))
     }
 
     /// A top-level function reference's declared un-instantiated parameter types, used by
@@ -733,8 +783,6 @@ where
             unreachable!("checked by caller");
         };
 
-        let declared_type = self.convert_type(expected, None);
-
         // Reuse the outer call's own effects-row resolution instead of re-deriving the tail from
         // `expected` independently. The outer call's instantiation bindings resolve the callee's
         // own row generic, which isn't guaranteed to share identity with the generic on this
@@ -746,6 +794,17 @@ where
         let bundle_type = self.convert_type(&resolved_tail, None);
         let return_type = self.convert_type(&own_fn.return_type, None);
         let surface_types: Vec<Type> = mapvec(expected_fn.parameters.iter(), |p| self.convert_type(&p.typ, None));
+
+        // The bundle is a real positional parameter (this adapter is called directly, not through
+        // a captured environment), so it must be reflected in the declared type too.
+        let environment = match self.convert_type(expected, None) {
+            Type::Function(ft) => ft.environment.clone(),
+            _ => Type::NO_CLOSURE_ENV,
+        };
+        let mut declared_parameters = surface_types.clone();
+        declared_parameters.push(bundle_type.clone());
+        let declared_type =
+            Type::Function(Arc::new(FunctionType { parameters: declared_parameters, environment, return_type: return_type.clone() }));
 
         let generics_count = self.generics_in_scope.len() as u32;
         let old_scope = std::mem::take(&mut self.local_variables);
@@ -1035,13 +1094,19 @@ where
         handle_body_handler_name: Option<NameId>, is_handler_branch: bool,
     ) -> Value {
         let name = name.unwrap_or_else(|| Arc::new("lambda".to_string()));
-        let full_type = self.convert_expr_type(expr);
-        let Type::Function(function_type) = &full_type else { unreachable!("Lambda does not have a function type") };
         let suppress_capabilities = handle_body_handler_name.is_some() || is_handler_branch;
         let tc_effects = match self.types.result.maps.expr_types[&expr].follow(&self.types.bindings) {
             TCType::Function(tc_function_type) => tc_function_type.effects.follow(&self.types.bindings),
             _ => unreachable!("Lambda does not have a function type"),
         };
+        let needed_capability_keys = if suppress_capabilities {
+            self.suppressed_lambda_needed_capabilities(&tc_effects, handle_body_handler_name)
+        } else {
+            Vec::new()
+        };
+
+        let full_type = self.extend_environment_with_capabilities(self.convert_expr_type(expr), &needed_capability_keys);
+        let Type::Function(function_type) = &full_type else { unreachable!("Lambda does not have a function type") };
 
         let is_move = self.context().is_move_closure(expr);
 
@@ -1062,6 +1127,14 @@ where
         let old_loop_targets = std::mem::take(&mut self.loop_targets);
         let old_capabilities = std::mem::take(&mut self.capabilities);
         let old_capability_bundle = self.capability_bundle.take();
+        let needed_capability_values: Vec<Value> = needed_capability_keys
+            .iter()
+            .map(|key| {
+                *old_capabilities.get(key).unwrap_or_else(|| {
+                    panic!("handler body/branch needs outer capability {key:?} but it isn't available in the enclosing scope")
+                })
+            })
+            .collect();
 
         let id = self.new_definition(name.clone(), name_id, generics_count, full_type.clone(), |this| {
             for (i, parameter) in lambda.parameters.iter().enumerate() {
@@ -1083,15 +1156,18 @@ where
             let env_is_pointer =
                 matches!(function_type.environment, Type::Primitive(crate::mir::PrimitiveType::Pointer));
             let free_vars = this.context().get_closure_environment(expr);
-            let needs_env_param = free_vars.is_some() || env_is_pointer;
+            let has_captures = free_vars.is_some() || !needed_capability_keys.is_empty();
+            let needs_env_param = has_captures || env_is_pointer;
             if needs_env_param {
                 if let Some(env) = function_type.environment() {
                     this.push_parameter(env.clone());
                 }
 
-                if let Some(free_vars) = free_vars {
+                if has_captures {
+                    let empty_free_vars = BTreeSet::new();
+                    let free_vars = free_vars.unwrap_or(&empty_free_vars);
                     let environment = Value::Parameter(this.current_block, lambda.parameters.len() as u32);
-                    this.unpack_closure_environment(free_vars.iter().copied(), environment);
+                    this.unpack_closure_environment(free_vars.iter().copied(), &needed_capability_keys, environment);
 
                     // For regular closures, mutable captures are pointers (by reference).
                     if !is_move {
@@ -1174,9 +1250,11 @@ where
         let free_vars = self.context().get_closure_environment(expr).cloned();
         let env_type = function_type.environment.clone();
         let env_is_pointer = matches!(env_type, Type::Primitive(crate::mir::PrimitiveType::Pointer));
-        if free_vars.is_some() || env_is_pointer {
-            let environment = if let Some(free_vars) = &free_vars {
-                self.pack_closure_environment(free_vars, is_move, &env_type)
+        let has_captures = free_vars.is_some() || !needed_capability_values.is_empty();
+        if has_captures || env_is_pointer {
+            let environment = if has_captures {
+                let free_vars = free_vars.unwrap_or_default();
+                self.pack_closure_environment(&free_vars, &needed_capability_values, is_move, &env_type)
             } else {
                 // Pointer-env slot with no captures (e.g. an ability impl assigning a plain function):
                 // use a null pointer for the env. Transmute from Unit so constant-folding works
@@ -1188,13 +1266,15 @@ where
         value
     }
 
-    /// Packs each given variable into a closure environment.
+    /// Packs each given variable, plus any needed capability values, into a closure environment.
     /// When `env_type` is a pointer, the capture tuple is heap-allocated (via [Instruction::AllocShared])
     /// and the returned value is the resulting pointer. Otherwise returns the tuple directly.
-    fn pack_closure_environment(&mut self, free_vars: &BTreeSet<NameId>, is_move: bool, env_type: &Type) -> Value {
-        assert!(!free_vars.is_empty());
+    fn pack_closure_environment(
+        &mut self, free_vars: &BTreeSet<NameId>, capability_values: &[Value], is_move: bool, env_type: &Type,
+    ) -> Value {
+        assert!(!free_vars.is_empty() || !capability_values.is_empty());
 
-        let values = mapvec(free_vars, |var| {
+        let mut values = mapvec(free_vars, |var| {
             let value = *self.local_variables.get(var).unwrap();
 
             if is_move && self.mutable_locals.contains(var) {
@@ -1207,6 +1287,7 @@ where
                 value
             }
         });
+        values.extend_from_slice(capability_values);
         let types = mapvec(&values, |value| self.type_of_value(value));
         let tuple = self.push_instruction(Instruction::MakeTuple(values), Type::tuple(types));
 
@@ -1217,21 +1298,24 @@ where
         }
     }
 
-    /// Unpack a closure environment parameter, binding each captured name to its value.
-    /// When the env value is a `Pointer` (ability-method-style heap env), it is dereferenced first
-    /// to recover the capture tuple. Expects `free_vars` to be non-empty.
+    /// Unpack a closure environment parameter, binding each captured name and needed capability
+    /// to its value. When the env value is a `Pointer` (ability-method-style heap env), it is
+    /// dereferenced first to recover the capture tuple.
     fn unpack_closure_environment(
-        &mut self, free_vars: impl ExactSizeIterator<Item = NameId> + Clone, environment: Value,
+        &mut self, free_vars: impl ExactSizeIterator<Item = NameId> + Clone, capability_keys: &[TCType],
+        environment: Value,
     ) {
+        let free_vars_len = free_vars.len();
         let env_value =
             if matches!(self.type_of_value(&environment), Type::Primitive(crate::mir::PrimitiveType::Pointer)) {
-                let field_types: Vec<Type> = free_vars
+                let mut field_types: Vec<Type> = free_vars
                     .clone()
                     .map(|var| {
                         let tc_type = &self.types.result.maps.name_types[&var];
                         self.convert_type(tc_type, None)
                     })
                     .collect();
+                field_types.extend(capability_keys.iter().map(|key| self.effect_capability_tuple_type_of(key)));
                 let tuple_type = Type::tuple(field_types);
                 self.push_instruction(Instruction::Deref(environment), tuple_type)
             } else {
@@ -1239,13 +1323,19 @@ where
             };
 
         let Type::Tuple(env_fields) = self.type_of_value(&env_value) else { unreachable!() };
-        assert_eq!(env_fields.len(), free_vars.len());
+        assert_eq!(env_fields.len(), free_vars_len + capability_keys.len());
 
         for (i, (var, env_field)) in free_vars.zip(env_fields.iter().cloned()).enumerate() {
             let index = Instruction::IndexTuple { tuple: env_value, index: i as u32 };
             let result = self.push_instruction(index, env_field);
             let existing = self.local_variables.insert(var, result);
             assert!(existing.is_none(), "Closure is overwriting values from the outer scope");
+        }
+        for (i, key) in capability_keys.iter().enumerate() {
+            let field_ty = env_fields[free_vars_len + i].clone();
+            let index = Instruction::IndexTuple { tuple: env_value, index: (free_vars_len + i) as u32 };
+            let result = self.push_instruction(index, field_ty);
+            self.capabilities.insert(key.clone(), result);
         }
     }
 

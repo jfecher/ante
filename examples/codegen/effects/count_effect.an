@@ -23,18 +23,6 @@ main () =
 //   |      ^^^^^
 // 5 |     count ()
 // 
-// examples/codegen/effects/count_effect.an:5:5
-// 4 | foo {Count} =
-// 5 |     count ()	// error: This can perform <Count, _> but only <> is allowed here
-//   |     ^^^^^
-// 6 |     repeat 10 fn _ -> count ()
-// 
-// examples/codegen/effects/count_effect.an:6:23
-// 5 |     count ()
-//   |     // error: This can perform <Count, _> but only <> is allowed here
-// 6 |     repeat 10 fn _ -> count ()
-//   |                       ^^^^^
-// 
 // examples/codegen/effects/count_effect.an:8:22
 //    | // error: This is an effect and cannot be used as an ordinary type
 //  8 | handle_count (f: fn {Count} -> Unit) =
@@ -47,5 +35,11 @@ main () =
 //    |            ^
 // 13 |         0
 // 
-// Found 5 errors and 0 warnings
+// examples/codegen/effects/count_effect.an:15:1
+//    | // error: main here has type fn Unit -> Unit can Count, _ but it should always have type fn Unit -> Unit pure
+// 15 | main () =
+//    | ^^^^
+// 16 |     handle_count foo |> println
+// 
+// Found 4 errors and 0 warnings
 

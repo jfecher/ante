@@ -43,7 +43,7 @@ main () =
 //     | (log: fn String -> Unit can Log) (v: String) -> fn (v: String) (resume: fn Unit [Ptr] -> Unit pure) -> (set: fn String -> Unit can (Use String)) (v: String)
 //     in fn () -> (log: fn String -> Unit can Log) "test1"
 // 
-// (use_resume: fn Unit -> Unit) () =
+// (use_resume: fn Unit -> Unit pure) () =
 //     handler (h: <(Use I32)>) for
 //     | (get: fn Unit -> I32 can (Use I32)) () -> fn () (resume: fn I32 [Ptr] -> Unit pure) -> (resume: fn I32 [Ptr] -> Unit pure) 3_I32
 //     | (set: fn I32 -> Unit can (Use I32)) (_: I32) -> fn (_: I32) (resume: fn Unit [Ptr] -> Unit pure) -> (resume: fn Unit [Ptr] -> Unit pure) ()
@@ -56,7 +56,7 @@ main () =
 // (pure_fn: fn Unit -> Unit pure) () : Unit pure =
 //     (log: fn String -> Unit can Log) "foo"
 // 
-// (main: fn Unit -> Unit can Log, _) () =
+// (main: fn Unit -> Unit can Log) () =
 //     (log: fn String -> Unit can Log) "foo"
 
 // expected stderr:

@@ -36,7 +36,7 @@ main () =
 //             (recur: fn U32 [U32] -> Unit can (Emit U32)) ((+: fn U32 U32 {Add U32} [Ptr Unit] -> U32 pure) (i: U32) 1 {(add_u32: Add U32)})
 //     (recur: fn U32 [U32] -> Unit can (Emit U32)) 0
 // 
-// (filter: fn (fn Unit [_] -> Unit can (Emit a)) (fn a [_] -> Bool can (Emit a)) {Copy a} -> fn Unit [(fn Unit [_] -> Unit can (Emit a)), (fn a [_] -> Bool can (Emit a))] -> Unit can (Emit a)) ((stream: fn Unit [_] -> Unit can (Emit a))) ((predicate: fn a [_] -> Bool can (Emit a))) {(_: Copy a)} = fn () [(stream: fn Unit [_] -> Unit can (Emit a)), (predicate: fn a [_] -> Bool can (Emit a))] can Emit a ->
+// (filter: fn (fn Unit [_] -> Unit can (Emit a)) (fn a [_] -> Bool can (Emit a)) {Copy a} -> fn Unit [(fn Unit [_] -> Unit can (Emit a)), (fn a [_] -> Bool can (Emit a))] -> Unit can (Emit a) pure) ((stream: fn Unit [_] -> Unit can (Emit a))) ((predicate: fn a [_] -> Bool can (Emit a))) {(_: Copy a)} = fn () [(stream: fn Unit [_] -> Unit can (Emit a)), (predicate: fn a [_] -> Bool can (Emit a))] can Emit a ->
 //     handler (h: <(Emit a)>) for
 //     | (emit: fn a -> Unit can (Emit a)) (x: a) -> fn (x: a) (resume: fn Unit [Ptr] -> Unit pure) [(predicate: fn a [_] -> Bool can (Emit a))] ->
 //         if (predicate: fn a [_] -> Bool can (Emit a)) (x: a) then 

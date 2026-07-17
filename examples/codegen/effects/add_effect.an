@@ -34,32 +34,10 @@ main () =
 //   |         ^^^^^^
 // 5 |     println "foo"
 // 
-// examples/codegen/effects/add_effect.an:6:5
-// 5 |     println "foo"
-// 6 |     add 1	// error: This can perform <AddEff, _> but only <> is allowed here
-//   |     ^^^
-// 7 |     add 2
-// 
-// examples/codegen/effects/add_effect.an:7:5
-// 6 |     add 1
-// 7 |     add 2	// error: This can perform <AddEff, _> but only <> is allowed here
-//   |     ^^^
-// 
 // examples/codegen/effects/add_effect.an:9:9
 //  9 | bar () {AddEff} =	// error: This is an effect and cannot be used as an ordinary type
 //    |         ^^^^^^
 // 10 |     println "bar"
-// 
-// examples/codegen/effects/add_effect.an:11:5
-// 10 |     println "bar"
-// 11 |     add 3	// error: This can perform <AddEff, _> but only <> is allowed here
-//    |     ^^^
-// 12 |     add 4
-// 
-// examples/codegen/effects/add_effect.an:12:5
-// 11 |     add 3
-// 12 |     add 4	// error: This can perform <AddEff, _> but only <> is allowed here
-//    |     ^^^
 // 
 // examples/codegen/effects/add_effect.an:21:5
 // 21 |     foo ()	// error: No implicit found for type AddEff required by foo
@@ -72,5 +50,5 @@ main () =
 //    |     ^^^
 // 23 |     0
 // 
-// Found 8 errors and 0 warnings
+// Found 4 errors and 0 warnings
 

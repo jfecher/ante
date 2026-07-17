@@ -29,9 +29,17 @@ main () =
     test_int 3
 
 // args: --delete-binary --no-color
-// expected exit status: 101
-// expected stderr:
-// thread 'main' panicked at src/mir/builder/types.rs:134:36:
-// internal error: entered unreachable code
-// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+// expected stdout:
+// 6 -3 9 1 0
+// 6 253 9 1 0
+// 6 -3 9 1 0
+// 6 65533 9 1 0
+// 6 -3 9 1 0
+// 6 4294967293 9 1 0
+// 6 -3 9 1 0
+// 6 18446744073709551613 9 1 0
+// 6 -3 9 1 0
+// 6 18446744073709551613 9 1 0
+// default int:
+// 6 -3 9 1 0
 

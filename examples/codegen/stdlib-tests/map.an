@@ -72,7 +72,7 @@ test_insert_duplicate () =
 // args: --delete-binary --no-color
 // expected exit status: 101
 // expected stderr:
-// thread 'main' panicked at src/mir/builder/types.rs:134:36:
-// internal error: entered unreachable code
+// thread 'main' panicked at src/mir/monomorphization/mod.rs:117:13:
+// Monomorphization: no definition for id d80, was monomorphize not given every top-level-item in a single invocation?
 // note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 

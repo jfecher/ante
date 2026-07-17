@@ -54,27 +54,27 @@ implicit_call () =
 // 
 // (requires_box: fn {Box a} Unit -> Unit pure) {(b: Box a)} () : Unit pure = ()
 // 
-// (zero_matching: fn Unit -> Unit pure) () pure =
+// (zero_matching: fn Unit -> Unit pure) () =
 //     (requires_string: fn {String} Unit -> Unit pure) {(error)} ()
 // 
-// (one_matching: fn Unit -> Unit pure) () pure =
+// (one_matching: fn Unit -> Unit pure) () =
 //     implicit (hello: String) = "hello"
 //     (requires_string: fn {String} Unit -> Unit pure) {(hello: String)} ()
 // 
-// (multiple_matching: fn Unit -> Unit pure) () pure =
+// (multiple_matching: fn Unit -> Unit pure) () =
 //     implicit (empty: String) = ""
 //     implicit (spaces: String) = "  "
 //     implicit (greeting: String) = "hi!"
 //     (requires_string: fn {String} Unit -> Unit pure) {(error)} ()
 // 
-// (one_matching_global: fn Unit -> Unit pure) () pure =
+// (one_matching_global: fn Unit -> Unit pure) () =
 //     (requires_bool: fn {Bool} Unit -> Unit pure) {(false_: Bool)} ()
 // 
-// (multiple_matching_with_global: fn Unit -> Unit pure) () pure =
+// (multiple_matching_with_global: fn Unit -> Unit pure) () =
 //     implicit (zero: U32) = 0_U32
 //     (requires_u32: fn {U32} Unit -> Unit pure) {(error)} ()
 // 
-// (ambiguous_unknown_type_args: fn Unit -> Unit pure) () pure =
+// (ambiguous_unknown_type_args: fn Unit -> Unit pure) () =
 //     implicit (box_i32: Box I32) = (Box: fn I32 -> Box I32 pure) 1
 //     implicit (box_u32: Box U32) = (Box: fn U32 -> Box U32 pure) 2
 //     (requires_box: fn {Box _} Unit -> Unit pure) {(error)} ()
@@ -87,7 +87,7 @@ implicit_call () =
 // 
 // implicit (untyped_float: F64) = 1.0
 // 
-// (implicit_call: fn Unit -> Unit pure) () pure =
+// (implicit_call: fn Unit -> Unit pure) () =
 //     implicit (make_string: fn {Bool} -> String) {(_: Bool)} = ""
 //     (requires_string: fn {String} Unit -> Unit pure) {(make_string: fn {Bool} -> String) {(false_: Bool)}} ()
 

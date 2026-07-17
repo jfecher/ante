@@ -32,12 +32,6 @@ main () =
 //   |                ^^^^^^^^
 // 5 |     if i < n then
 // 
-// examples/regressions/217_filter.an:4:28
-//   | // error: This can perform <(Emit U32), _> but only <> is allowed here
-// 4 | iota (n: U32) {Emit U32} = loop (i = 0) ->
-//   |                            ^^^^^^^^^^^^^^^
-// 5 |     if i < n then
-// 
 // examples/regressions/217_filter.an:9:20
 //    | // error: This is an effect and cannot be used as an ordinary type
 //  9 | filter (stream: fn (Emit a) -> Unit) {Emit a} {Copy a} (f: fn a -> Bool) =
@@ -49,11 +43,6 @@ main () =
 //  9 | filter (stream: fn (Emit a) -> Unit) {Emit a} {Copy a} (f: fn a -> Bool) =
 //    |                                       ^^^^^^
 // 10 |     handler h for emit x ->
-// 
-// examples/regressions/217_filter.an:14:8
-// 13 |         resume ()
-// 14 |     in stream h	// error: This can perform <(Emit a), _> but only <> is allowed here
-//    |        ^^^^^^^^
 // 
 // examples/regressions/217_filter.an:14:15
 // 13 |         resume ()
@@ -71,5 +60,11 @@ main () =
 // 20 |     in stream h	// error: Argument 1 has type <(Emit a)> but Emit a was expected
 //    |               ^
 // 
-// Found 8 errors and 0 warnings
+// examples/regressions/217_filter.an:22:1
+//    | // error: main here has type fn Unit -> Unit can (Emit U32), _ but it should always have type fn Unit -> Unit pure
+// 22 | main () =
+//    | ^^^^
+// 23 |     for_ (fn out -> filter (fn out2 -> iota 10 {out2}) {out} (_ %% 2))
+// 
+// Found 7 errors and 0 warnings
 

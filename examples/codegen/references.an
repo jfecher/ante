@@ -54,9 +54,14 @@ main () =
     field_ref_mutate ()
 
 // args: --delete-binary --no-color
-// expected exit status: 101
-// expected stderr:
-// thread 'main' panicked at src/mir/builder/types.rs:134:36:
-// internal error: entered unreachable code
-// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+// expected stdout:
+// 42
+// 99
+// 10
+// 20
+// 5
+// 99
+// 55
+// 77
+// 4
 

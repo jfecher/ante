@@ -129,7 +129,8 @@ impl Definition {
             assert_eq!(
                 parameters.len() + env_adjustment,
                 entry_block.parameter_types.len(),
-                "Entry block parameter count should match the number of parameters in the function type + 1 if the closure environment is non-empty"
+                "\n{}\n\nEntry block parameter count should match the number of parameters in the function type + 1 if the closure environment is non-empty",
+                self.display(Some(mir))
             );
 
             assert_eq!(

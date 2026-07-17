@@ -30,7 +30,7 @@ main () =
 // (mix: fn (ref a (Array n t)) (ref (Array m t)) -> ref a t pure) ((a: ref a (Array n t))) ((_b: ref (Array m t))) : ref 'a t pure =
 //     (array_get_unchecked: fn (ref a (Array n t)) Usz -> ref a t pure) (a: ref a (Array n t)) 0
 // 
-// (main: fn Unit -> Unit pure) () pure =
+// (main: fn Unit -> Unit pure) () =
 //     (arr: Array 3 I32) = [1, 2, 3]
 //     (s: Slice _ I32) = (slice: fn (ref (Array 3 I32)) -> Slice _ I32 pure) (ref (arr: Array 3 I32))
 //     (_: Usz) = (s: Slice _ I32).len

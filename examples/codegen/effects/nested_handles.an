@@ -48,30 +48,6 @@ main () =
 //   |             ^^^^
 // 8 |     a = do_ping 1
 // 
-// examples/codegen/effects/nested_handles.an:8:9
-//  7 | foo {Ping} {Pong} =
-//  8 |     a = do_ping 1	// error: This can perform <Ping, _> but only <> is allowed here
-//    |         ^^^^^^^
-//  9 |     b = do_pong 2
-// 
-// examples/codegen/effects/nested_handles.an:9:9
-//  8 |     a = do_ping 1
-//  9 |     b = do_pong 2	// error: This can perform <Pong, _> but only <> is allowed here
-//    |         ^^^^^^^
-// 10 |     c = do_ping 3
-// 
-// examples/codegen/effects/nested_handles.an:10:9
-//  9 |     b = do_pong 2
-// 10 |     c = do_ping 3	// error: This can perform <Ping, _> but only <> is allowed here
-//    |         ^^^^^^^
-// 11 |     d = do_pong 4
-// 
-// examples/codegen/effects/nested_handles.an:11:9
-// 10 |     c = do_ping 3
-// 11 |     d = do_pong 4	// error: This can perform <Pong, _> but only <> is allowed here
-//    |         ^^^^^^^
-// 12 |     a + c, b + d
-// 
 // examples/codegen/effects/nested_handles.an:14:13
 //    | // error: This is an effect and cannot be used as an ordinary type
 // 14 | ping (f: fn Ping [env] -> a) =
@@ -94,5 +70,11 @@ main () =
 // 28 |     in f h	// error: Argument 1 has type <Pong> but Pong was expected
 //    |          ^
 // 
-// Found 10 errors and 0 warnings
+// examples/codegen/effects/nested_handles.an:30:1
+//    | // error: main here has type fn Unit -> Unit can Pong, Ping, _ but it should always have type fn Unit -> Unit pure
+// 30 | main () =
+//    | ^^^^
+// 31 |     a, b = ping fn pinger ->
+// 
+// Found 7 errors and 0 warnings
 
