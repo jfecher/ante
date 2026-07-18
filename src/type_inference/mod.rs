@@ -159,7 +159,6 @@ struct TypeChecker<'local, 'inner> {
     function_return_type: Option<Type>,
 
     /// The effect row of the function whose body is currently being checked.
-    /// This is a closed, empty row for pure functions and on non-function globals.
     current_effect_row: Type,
 
     /// Types of each top-level item in the current SCC being worked on
@@ -441,7 +440,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         for (name, typ) in self.item_types.clone().iter() {
             self.current_item = Some(name.top_level_item);
-            self.default_unshared_effects_to_pure(typ);
+            self.default_unshared_effects_to_pure(typ, typ);
             let typ = typ.generalize(&self.bindings);
             items.entry(name.top_level_item).or_default().insert(name.local_name_id, typ);
         }
@@ -449,16 +448,25 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         items
     }
 
-    /// For a function inferred to `can e` where `e` is not referenced elsewhere in the function
-    /// type, it should be defaulted to `pure`.
-    fn default_unshared_effects_to_pure(&mut self, typ: &Type) {
+    /// Defaults a `can e` to `pure` when `e` isn't referenced elsewhere in `root`, recursing into nested function types.
+    fn default_unshared_effects_to_pure(&mut self, root: &Type, typ: &Type) {
         let Type::Function(function_type) = typ.follow(&self.bindings) else { return };
-        let Type::Effects(_, Some(tail)) = function_type.effects.follow_all(&self.bindings) else { return };
-        let Type::Variable(tail_id) = *tail else { return };
-        let shared = function_type.parameters.iter().any(|p| p.typ.free_unification_vars(&self.bindings).contains(&tail_id));
-        if !shared {
-            self.unify(&tail, &Type::pure(), TypeErrorKind::Effects, self.current_context().location().clone());
+        let parameter_types: Vec<Type> = function_type.parameters.iter().map(|p| p.typ.clone()).collect();
+        let return_type = function_type.return_type.clone();
+
+        if let Type::Effects(_, Some(tail)) = function_type.effects.follow_all(&self.bindings)
+            && let Type::Variable(tail_id) = *tail
+        {
+            let occurrences = root.count_unification_var_occurrences(tail_id, &self.bindings);
+            if occurrences <= 1 {
+                self.unify(&tail, &Type::pure(), TypeErrorKind::Effects, self.current_context().location().clone());
+            }
         }
+
+        for parameter_type in &parameter_types {
+            self.default_unshared_effects_to_pure(root, parameter_type);
+        }
+        self.default_unshared_effects_to_pure(root, &return_type);
     }
 
     /// Unifies the two types. Returns false on failure
@@ -927,8 +935,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
-    /// Find the first position in `candidates` (skipping any where `skip(i)` is true) whose head
-    /// matches `target`, invariantly subtype it against `target`, and return that position.
+    /// Find the first non-skipped candidate whose head matches `target` and invariantly subtype it against `target`.
     fn subtype_matching_effect(
         &self, candidates: &[Type], skip: impl Fn(usize) -> bool, target: &Type, new_bindings: &mut TypeBindings,
     ) -> Result<Option<usize>, ()> {
@@ -944,10 +951,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         Ok(Some(pos))
     }
 
-    /// Row-subtype two effect rows: is `a`'s actual set of effects permitted by `b`'s
-    /// expected set? Fewer effects is a subtype of more.
-    ///
-    /// Both `a` and `b` must already be `Type::Effects(list, tail)`.
+    /// Row-subtype two effect rows: is `a`'s actual set of effects permitted by `b`'s expected set?
     fn row_subtype(&self, a: &Type, b: &Type, new_bindings: &mut TypeBindings) -> Result<(), ()> {
         let a = self.canonical_effects_row(a, new_bindings);
         let b = self.canonical_effects_row(b, new_bindings);
@@ -1015,8 +1019,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
-    /// True if two effect-row entries share the same effect constructor ignoring type arguments,
-    /// e.g. both are `Throw _`.
+    /// True if two effect-row entries share the same effect constructor ignoring type arguments.
     fn effect_heads_match(a: &Type, b: &Type) -> bool {
         let head = |effect: &Type| {
             effect.as_user_defined().copied().or_else(|| effect.as_application()?.0.as_user_defined().copied())

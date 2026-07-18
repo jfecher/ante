@@ -75,69 +75,18 @@ main () =
     println (contains big 1000)  // false
 
 // args: --delete-binary --no-color
-// expected exit status: 101
-// expected stderr:
-// thread '<unnamed>' panicked at src/mir/validation.rs:460:9:
-// fn lambda d1219: fn ((fn Unit (Usz,) -> Unit), (Usz,)) Pointer -> Unit
-//   b0(b0_0: (fn Unit (Usz,) -> Unit), (Usz,), b0_1: Pointer, b0_2: (fn Usz -> Unit),):
-//     v1: fn Unit (Usz,) -> Unit = b0_0.0
-//     v2: Usz, = b0_0.1
-//     v0: Unit = v1 () b0_2 v2
-//     ^^^^^^^^^^^^^^^^^^^^^^^^ parameter type len does not match arg type len
-// 
-//     return v0
-// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
-// 
-// thread '<unnamed>' panicked at src/mir/validation.rs:129:13:
-// assertion `left == right` failed: 
-// fn lambda d972: fn Unit (Usz,) -> Unit
-//   b0(b0_0: Unit, b0_1: Usz,, b0_2: (fn Usz -> Unit),):
-//     v0: Usz = b0_1.0
-//     jmp b1 0_usz
-//   b1(b1_0: Usz):
-//     v1: Bool = less_unsigned b1_0, v0
-//     if v1 then b2 else b4 end b4
-//   b2():
-//     v2: fn Usz -> Unit = b0_2.0
-//     v3: Unit = v2 b1_0
-//     jmp b3
-//   b3():
-//     v4: Usz = add_int b1_0, 1_usz
-//     jmp b1 v4
-//   b4():
-//     return ()
-// 
-// Entry block parameter count should match the number of parameters in the function type + 1 if the closure environment is non-empty
-//   left: 2
-//  right: 3
-// 
-// thread '<unnamed>' panicked at src/mir/validation.rs:129:13:
-// assertion `left == right` failed: 
-// fn foldl d1216: fn ((fn Unit (Usz,) -> Unit), (Usz,)) (((fn ((fn Unit (Usz,) -> Unit), (Usz,)) Pointer -> Unit), Pointer),) Pointer (fn Pointer Usz -> Pointer) -> Pointer
-//   b0(b0_0: (fn Unit (Usz,) -> Unit), (Usz,), b0_1: ((fn ((fn Unit (Usz,) -> Unit), (Usz,)) Pointer -> Unit), Pointer),, b0_2: Pointer, b0_3: fn Pointer Usz -> Pointer, b0_4: #empty_tuple):
-//     v0: Pointer = alloca b0_2
-//     v1: fn Unit (((fn Unit (Usz,) -> Unit), (Usz,)), (((fn ((fn Unit (Usz,) -> Unit), (Usz,)) Pointer -> Unit), Pointer),)) -> Unit = id lambda_d1220
-//     v2: ((fn Unit (Usz,) -> Unit), (Usz,)), (((fn ((fn Unit (Usz,) -> Unit), (Usz,)) Pointer -> Unit), Pointer),) = (b0_0, b0_1)
-//     v3: (fn Unit (((fn Unit (Usz,) -> Unit), (Usz,)), (((fn ((fn Unit (Usz,) -> Unit), (Usz,)) Pointer -> Unit), Pointer),)) -> Unit), (((fn Unit (Usz,) -> Unit), (Usz,)), (((fn ((fn Unit (Usz,) -> Unit), (Usz,)) Pointer -> Unit), Pointer),)) = (v1, v2)
-//     v4: fn Usz ((fn Unit Pointer -> Unit), Pointer) ((fn Pointer Usz -> Pointer), Pointer) -> Unit = id lambda_d1221
-//     v5: (fn Pointer Usz -> Pointer), Pointer = (b0_3, v0)
-//     v6: (fn Usz ((fn Unit Pointer -> Unit), Pointer) ((fn Pointer Usz -> Pointer), Pointer) -> Unit), ((fn Pointer Usz -> Pointer), Pointer) = (v4, v5)
-//     v9: Pointer = alloca v5
-//     v10: fn Usz Pointer -> Unit = id lambda_tail_resume_wrapper_d1222
-//     v11: (fn Usz Pointer -> Unit), Pointer = (v10, v9)
-//     v12: ((fn Usz Pointer -> Unit), Pointer), = (v11)
-//     v13: (fn Unit (Usz,) -> Unit), (Usz,) = v2.0
-//     v14: ((fn ((fn Unit (Usz,) -> Unit), (Usz,)) Pointer -> Unit), Pointer), = v2.1
-//     v15: ((fn Unit (Usz,) -> Unit), (Usz,)), (((fn ((fn Unit (Usz,) -> Unit), (Usz,)) Pointer -> Unit), Pointer),), (((fn Usz Pointer -> Unit), Pointer),) = (v13, v14, v12)
-//     v16: fn Unit (((fn Unit (Usz,) -> Unit), (Usz,)), (((fn ((fn Unit (Usz,) -> Unit), (Usz,)) Pointer -> Unit), Pointer),), (((fn Usz Pointer -> Unit), Pointer),)) -> Unit = id lambda_tail_resume_body_d1223
-//     v17: (fn Unit (((fn Unit (Usz,) -> Unit), (Usz,)), (((fn ((fn Unit (Usz,) -> Unit), (Usz,)) Pointer -> Unit), Pointer),), (((fn Usz Pointer -> Unit), Pointer),)) -> Unit), (((fn Unit (Usz,) -> Unit), (Usz,)), (((fn ((fn Unit (Usz,) -> Unit), (Usz,)) Pointer -> Unit), Pointer),), (((fn Usz Pointer -> Unit), Pointer),)) = (v16, v15)
-//     v18: fn Unit (((fn Unit (Usz,) -> Unit), (Usz,)), (((fn ((fn Unit (Usz,) -> Unit), (Usz,)) Pointer -> Unit), Pointer),), (((fn Usz Pointer -> Unit), Pointer),)) -> Unit = v17.0
-//     v19: ((fn Unit (Usz,) -> Unit), (Usz,)), (((fn ((fn Unit (Usz,) -> Unit), (Usz,)) Pointer -> Unit), Pointer),), (((fn Usz Pointer -> Unit), Pointer),) = v17.1
-//     v7: Unit = v18 () v19
-//     v8: Pointer = deref v0
-//     return v8
-// 
-// Entry block parameter count should match the number of parameters in the function type + 1 if the closure environment is non-empty
-//   left: 4
-//  right: 5
+// expected stdout:
+// 100
+// 9
+// true
+// true
+// true
+// false
+// false
+// 100
+// 1000
+// 15
+// true
+// true
+// false
 

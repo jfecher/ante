@@ -45,48 +45,16 @@ main () =
     println (Rc.unwrap_or_clone rc4)
 
 // args: --delete-binary --no-color
-// expected exit status: 101
-// expected stderr:
-// thread '<unnamed>' panicked at src/mir/validation.rs:129:13:
-// assertion `left == right` failed: 
-// fn lambda d1215: fn U32 U32 -> U32
-//   b0(b0_0: U32, b0_1: U32, b0_2: Unit):
-//     v0: (fn U32 U32 Pointer -> U32), Pointer = add_u32_d508.0
-//     v2: fn U32 U32 Pointer -> U32 = v0.0
-//     v3: Pointer = v0.1
-//     v1: U32 = v2 b0_0 b0_1 v3
-//     return v1
-// 
-// Entry block parameter count should match the number of parameters in the function type + 1 if the closure environment is non-empty
-//   left: 2
-//  right: 3
-// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
-// 
-// thread '<unnamed>' panicked at src/mir/validation.rs:129:13:
-// assertion `left == right` failed: 
-// fn lambda d1250: fn U32 U32 -> U32
-//   b0(b0_0: U32, b0_1: U32, b0_2: Unit):
-//     v0: (fn U32 U32 Pointer -> U32), Pointer = add_u32_d508.0
-//     v2: fn U32 U32 Pointer -> U32 = v0.0
-//     v3: Pointer = v0.1
-//     v1: U32 = v2 b0_0 b0_1 v3
-//     return v1
-// 
-// Entry block parameter count should match the number of parameters in the function type + 1 if the closure environment is non-empty
-//   left: 2
-//  right: 3
-// 
-// thread '<unnamed>' panicked at src/mir/validation.rs:129:13:
-// assertion `left == right` failed: 
-// fn lambda d1249: fn U32 U32 -> U32
-//   b0(b0_0: U32, b0_1: U32, b0_2: Unit):
-//     v0: (fn U32 U32 Pointer -> U32), Pointer = sub_u32_d516.0
-//     v2: fn U32 U32 Pointer -> U32 = v0.0
-//     v3: Pointer = v0.1
-//     v1: U32 = v2 b0_0 b0_1 v3
-//     return v1
-// 
-// Entry block parameter count should match the number of parameters in the function type + 1 if the closure environment is non-empty
-//   left: 2
-//  right: 3
+// expected stdout:
+// 1
+// 42
+// 2
+// 3
+// 2
+// 99
+// done
+// 42
+// 7
+// hello
+// world
 

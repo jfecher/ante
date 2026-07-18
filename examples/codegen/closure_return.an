@@ -8,21 +8,5 @@ main () =
     foo ()
 
 // args: --delete-binary --no-color
-// expected exit status: 101
-// expected stderr:
-// thread '<unnamed>' panicked at src/mir/validation.rs:129:13:
-// assertion `left == right` failed: 
-// fn stuff d1197: fn Unit ((Pointer, Pointer, U32, U32),) -> Unit
-//   b0(b0_0: Unit, b0_1: (Pointer, Pointer, U32, U32),, b0_2: #empty_tuple):
-//     v0: Pointer, Pointer, U32, U32 = b0_1.0
-//     v1: (fn Unit ((Pointer, Pointer, U32, U32),) -> Unit), ((Pointer, Pointer, U32, U32),) = (stuff_d1197, b0_1)
-//     v2: fn Pointer (((fn Pointer Pointer -> Unit), Pointer),) -> Unit = id println_d1198
-//     v3: Pointer = alloca v0
-//     v4: Unit = v2 v3 print_string_d97
-//     return v4
-// 
-// Entry block parameter count should match the number of parameters in the function type + 1 if the closure environment is non-empty
-//   left: 2
-//  right: 3
-// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+// expected stdout: hi there
 

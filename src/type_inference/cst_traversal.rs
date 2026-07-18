@@ -1071,8 +1071,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // and so `Never`-typed branches unify against it as the actual type.
         let result_type = expected.clone();
 
-        // TODO: Add a way for users to use this handler name to manually specify
-        // an effect handler when there are multiple in scope.
+        // TODO: Let users use this handler name to manually pick a handler when several are in scope.
         let handler_name_type = self.next_type_variable();
         self.name_types.insert(handle.handler_name, handler_name_type.clone());
 
@@ -1187,8 +1186,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         result_type
     }
 
-    /// Peel `effect` out of `row`'s canonicalized effect list, returning the row with that entry removed.
-    /// Returns Err if `effect` isn't present in `row`.
+    /// Peel `effect` out of `row`'s canonicalized effect list; `Err` if `effect` isn't present.
     fn discharge_effect(&self, row: &Type, effect: &Type, new_bindings: &mut TypeBindings) -> Result<Type, ()> {
         let row = self.canonical_effects_row(row, new_bindings);
         let effect = self.canonical_effects_row(effect, new_bindings);
@@ -1257,6 +1255,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // For compound assignments (+=, -=, etc.), resolve the operator function through
         // implicits dispatch. The operator has type `fn value_type value_type -> value_type`.
         if let Some((_, op_expr)) = assignment.op {
+            let effects_var = self.fresh_effect_row();
             let expected_fn_type = Type::Function(Arc::new(FunctionType {
                 parameters: vec![
                     ParameterType::explicit(value_type.clone()),
@@ -1264,7 +1263,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 ],
                 environment: self.next_type_variable(),
                 return_type: value_type.clone(),
-                effects: self.fresh_effect_row(),
+                effects: effects_var.clone(),
             }));
             // The operator's ability constraint is an implicit parameter, so coerce
             // before unifying like other function positions
@@ -1277,6 +1276,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     self.unify(&actual, &expected_fn_type, TypeErrorKind::CompoundOperator, op_expr);
                 },
             }
+
+            // Same as a normal call: link the operator's effects to the ambient row.
+            let current_row = self.current_effect_row.clone();
+            self.unify(&effects_var, &current_row, TypeErrorKind::Effects, op_expr);
+            self.current_effect_row = self.canonical_effects_row(&current_row, &TypeBindings::default());
         }
 
         self.check_expr(assignment.rhs, &value_type, TypeErrorKind::Assignment);

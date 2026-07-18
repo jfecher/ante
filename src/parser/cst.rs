@@ -189,8 +189,7 @@ pub struct FunctionType {
     pub environment: Option<Box<Type>>,
     pub return_type: Box<Type>,
 
-    /// `None` if there is no `can`/`pure` clause, `Some(vec![])` for `pure`,
-    /// `Some(effects)` for `can e1, e2, ...`.
+    /// `None` for no clause, `Some(vec![])` for `pure`, `Some(effects)` for `can e1, e2, ...`.
     pub effects: Option<Vec<Type>>,
 }
 
@@ -218,8 +217,7 @@ impl ParameterType {
 pub enum TypeDefinitionKind {
     Type,
     Trait,
-    /// Effect operations get `Kind::Effect` and are type-checked as top-level
-    /// `can`-annotated functions rather than implicit-dictionary struct fields.
+    /// Effect operations get `Kind::Effect` and are type-checked as top-level `can`-annotated functions.
     Effect,
 }
 
@@ -419,8 +417,7 @@ pub struct Lambda {
     pub body: ExprId,
     pub is_move: bool,
 
-    /// `None` if there is no `can`/`pure` clause, `Some(vec![])` for `pure`,
-    /// `Some(effects)` for `can e1, e2, ...`.
+    /// `None` for no clause, `Some(vec![])` for `pure`, `Some(effects)` for `can e1, e2, ...`.
     pub effects: Option<Vec<Type>>,
 }
 

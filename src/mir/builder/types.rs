@@ -124,9 +124,21 @@ where
             },
             // Carry through to MIR so monomorphization can substitute into Array lengths.
             TCType::U32(n) => Type::U32(*n),
-            // A concrete effect row bound to what was an abstract capability-bundle generic.
-            TCType::Effects(list, _tail) => {
-                Type::Tuple(Arc::new(mapvec(list.iter(), |effect_ty| self.effect_capability_tuple_type_of(effect_ty))))
+            // The tail must be flattened in, not dropped: it may resolve to further concrete effects.
+            TCType::Effects(list, tail) => {
+                let mut effects: Vec<&TCType> = list.iter().collect();
+                let mut current = tail.as_deref();
+                while let Some(tail_ty) = current {
+                    match tail_ty.follow(self.type_bindings) {
+                        TCType::Effects(tail_list, tail_tail) => {
+                            effects.extend(tail_list.iter());
+                            current = tail_tail.as_deref();
+                        },
+                        // Still-open tail: contributes nothing at this instantiation.
+                        _ => break,
+                    }
+                }
+                Type::Tuple(Arc::new(mapvec(effects, |effect_ty| self.effect_capability_tuple_type_of(effect_ty))))
             },
         }
     }
@@ -155,20 +167,20 @@ where
         let checked = TypeCheck(effect_item).get(self.compiler);
         let fields = mapvec(effect.body.iter(), |decl| {
             let method_type = checked.get_generalized(decl.name);
-            let method_type = crate::type_inference::type_body::apply_type_constructor(method_type, args, &checked);
+            let method_type = crate::type_inference::type_body::apply_type_constructor(&method_type, args, &checked);
             self.convert_operation_type(&method_type)
         });
         Type::Tuple(Arc::new(fields))
     }
 
-    /// An effect operation's own signature, as provided by a handler branch: no capability
-    /// parameters for its own effects row, since those come through the branch's environment.
+    /// An effect operation's own signature, as provided by a handler branch: no capability parameters, `Pointer` environment.
     fn convert_operation_type(&self, typ: &TCType) -> Type {
         let TCType::Function(function_type) = typ.follow(self.type_bindings) else {
             return self.convert_type(typ, None);
         };
         let parameters = mapvec(&function_type.parameters, |typ| self.convert_type(&typ.typ, None));
-        self.build_function_type(function_type, parameters)
+        let return_type = self.convert_type(&function_type.return_type, None);
+        Type::Function(Arc::new(FunctionType { parameters, environment: Type::POINTER, return_type }))
     }
 
     fn build_function_type(&self, function_type: &crate::type_inference::types::FunctionType, parameters: Vec<Type>) -> Type {

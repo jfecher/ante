@@ -70,8 +70,7 @@ pub enum Type {
     /// Has [Kind::U32].
     U32(u32),
 
-    /// An effects row. Effects are kept sorted & deduplicated in this Vec. The Type field
-    /// is an optional tail for extending this effect row.
+    /// An effects row: sorted & deduplicated effects, plus an optional tail to extend the row.
     Effects(Arc<Vec<Type>>, Option<Arc<Type>>),
 }
 
@@ -763,10 +762,7 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
         }
     }
 
-    /// Convert an effects clause into an effect row.
-    ///
-    /// If `self.open_effects_by_default` is true `None` corresponds to an open effect row.
-    /// Otherwise, `None` is translated into a closed, empty effects row.
+    /// Convert an effects clause into an effect row; `None` is open or closed per `self.open_effects_by_default`.
     fn convert_effects_clause(&mut self, effects: Option<&[cst::Type]>) -> Type {
         match effects {
             None if self.open_effects_by_default => {
@@ -963,6 +959,51 @@ impl Type {
     /// Unlike [Self::free_vars], this excludes [Type::Generic]s within the type and it returns a set.
     pub fn free_unification_vars(&self, bindings: &TypeBindings) -> FxHashSet<TypeVariableId> {
         self.free_vars(bindings).into_iter().filter_map(Generic::as_inferred).collect::<FxHashSet<_>>()
+    }
+
+    /// Counts every occurrence of `target` within this type, unlike [Self::free_unification_vars] which dedups into a set.
+    pub fn count_unification_var_occurrences(&self, target: TypeVariableId, bindings: &TypeBindings) -> usize {
+        fn helper(typ: &Type, target: TypeVariableId, bindings: &TypeBindings, count: &mut usize) {
+            match typ.follow(bindings) {
+                Type::Primitive(_) | Type::UserDefined(_) | Type::Generic(_) | Type::U32(_) => (),
+                Type::Variable(id) => {
+                    if *id == target {
+                        *count += 1;
+                    }
+                },
+                Type::Function(function) => {
+                    for parameter in &function.parameters {
+                        helper(&parameter.typ, target, bindings, count);
+                    }
+                    helper(&function.environment, target, bindings, count);
+                    helper(&function.return_type, target, bindings, count);
+                    helper(&function.effects, target, bindings, count);
+                },
+                Type::Application(constructor, args) => {
+                    helper(constructor, target, bindings, count);
+                    for arg in args.iter() {
+                        helper(arg, target, bindings, count);
+                    }
+                },
+                Type::Forall(_, typ) => helper(typ, target, bindings, count),
+                Type::Tuple(elements) => {
+                    for element in elements.iter() {
+                        helper(element, target, bindings, count);
+                    }
+                },
+                Type::Effects(list, tail) => {
+                    for effect in list.iter() {
+                        helper(effect, target, bindings, count);
+                    }
+                    if let Some(tail) = tail {
+                        helper(tail, target, bindings, count);
+                    }
+                },
+            }
+        }
+        let mut count = 0;
+        helper(self, target, bindings, &mut count);
+        count
     }
 
     /// If this is a function, return its return type. Otherwise return None.

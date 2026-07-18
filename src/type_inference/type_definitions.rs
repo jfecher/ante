@@ -231,12 +231,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             }
         }
 
-        // TODO: Review allowing abilities to desugar here. The new type variables need to be
-        // tracked
+        // TODO: Review allowing abilities to desugar here; the new type variables need to be tracked.
         let insert_implicit_type_vars = item.kind.is_ability();
 
-        // `false` here stops `can` clauses from being polymorphic by default. They need to be
-        // explicit in trait methods.
+        // `false` here stops `can` clauses from being polymorphic by default.
         let parameters = mapvec(variant_args, |arg| {
             let param = self.from_cst_type_with_local_kinds(arg, insert_implicit_type_vars, false, local_kinds);
             types::ParameterType::explicit(param)
@@ -331,8 +329,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         })
     }
 
-    /// Given an effect operation's function type, set its effect row to the closed singleton
-    /// containing `effect_type`.
+    /// Given an effect operation's function type, set its effect row to the closed singleton containing `effect_type`.
     fn set_effect_on_function_type(&self, method_type: Type, effect_type: Type) -> Type {
         Self::map_function_type(method_type, "set_effect_on_function_type", |function_type| {
             function_type.effects = Type::effects(vec![effect_type], None);

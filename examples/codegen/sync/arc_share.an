@@ -15,31 +15,7 @@ main () =
     println from_main
 
 // args: --delete-binary --no-color
-// expected exit status: 101
-// expected stderr:
-// thread '<unnamed>' panicked at src/mir/validation.rs:460:9:
-// fn spawn d1227: fn ((fn Unit ((Pointer,),) -> I32), ((Pointer,),)) -> (Pointer,)
-//   b0(b0_0: (fn Unit ((Pointer,),) -> I32), ((Pointer,),), b0_1: #empty_tuple):
-//     v0: fn Pointer -> Pointer = id wrapper_d1238
-//     v1: fn Usz -> Pointer = id malloc_d1239
-//     v2: fn (#empty_tuple) -> Usz = id size_of_d1240
-//     v3: #empty_tuple = id MkType_d1241
-//     v4: Usz = v2 v3
-//     v5: Pointer = v1 v4
-//     v6: fn Pointer ((fn Unit ((Pointer,),) -> I32), ((Pointer,),)) -> Unit = id ptr_store_d1242
-//     v7: Unit = v6 v5 b0_0
-//     v8: fn Pointer -> Pointer = id transmute_d1199
-//     v9: Pointer = v8 v5
-//     v10: fn Usz -> Pointer = id malloc_d1243
-//     v11: Pointer = v10 pthread_t_size_d1059
-//     v12: fn Pointer Pointer (fn Pointer -> Pointer) Pointer -> I32 = id pthread_create_d1244
-//     v13: fn Unit -> Pointer = id null_d1245
-//     v14: Pointer = v13 ()
-//     v15: I32 = v12 v11 v14 v0 v9 b0_1
-//     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ parameter type len does not match arg type len
-// 
-//     v16: fn Pointer -> (Pointer,) = id Thread_d1246
-//     v17: Pointer, = v16 v11
-//     return v17
-// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+// expected stdout:
+// 99
+// 99
 

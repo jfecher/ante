@@ -5,20 +5,8 @@ main () =
         i += 1
 
 // args: --delete-binary --no-color
-// expected exit status: 101
-// expected stderr:
-// thread '<unnamed>' panicked at src/mir/validation.rs:129:13:
-// assertion `left == right` failed: 
-// fn lambda d1193: fn I32 I32 -> I32
-//   b0(b0_0: I32, b0_1: I32, b0_2: Unit):
-//     v0: (fn I32 I32 Pointer -> I32), Pointer = add_i32_d528.0
-//     v2: fn I32 I32 Pointer -> I32 = v0.0
-//     v3: Pointer = v0.1
-//     v1: I32 = v2 b0_0 b0_1 v3
-//     return v1
-// 
-// Entry block parameter count should match the number of parameters in the function type + 1 if the closure environment is non-empty
-//   left: 2
-//  right: 3
-// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+// expected stdout:
+// 0
+// 1
+// 2
 

@@ -33,7 +33,7 @@ main () =
 // 
 // (main: fn Unit -> Unit pure) () =
 //     (exit2: fn I32 -> Unit pure) = (exit: fn I32 -> Unit pure)
-//     (puts2: fn String -> I32) = (puts: fn String -> I32)
+//     (puts2: fn String -> I32) = (puts: fn String -> I32 pure)
 //     (exit2: fn I32 -> Unit pure) "test"
 //     (puts2: fn String -> I32)
 //     ()

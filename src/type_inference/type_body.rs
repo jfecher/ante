@@ -55,7 +55,7 @@ impl TopLevelId {
             cst::TypeDefinitionBody::Struct(fields) => {
                 // This'd be easier with an explicit type data field
                 let constructor_type = result.get_generalized(type_definition.name);
-                let constructor = apply_type_constructor(constructor_type, arguments, &result);
+                let constructor = apply_type_constructor(&constructor_type, arguments, &result);
                 let field_types = constructor.function_parameter_types();
 
                 assert_eq!(fields.len(), field_types.len());
@@ -69,7 +69,7 @@ impl TopLevelId {
             cst::TypeDefinitionBody::Enum(variants) => {
                 let mut variants = mapvec(variants, |(name, _)| {
                     let constructor_type = result.get_generalized(*name);
-                    let constructor = apply_type_constructor(constructor_type, arguments, &result);
+                    let constructor = apply_type_constructor(&constructor_type, arguments, &result);
                     let fields: Vec<_> = constructor.function_parameter_types().collect();
                     (item_context[*name].clone(), fields)
                 });

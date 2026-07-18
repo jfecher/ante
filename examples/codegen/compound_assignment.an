@@ -40,104 +40,12 @@ impl add_t: Add T with
     (+) a b = T (a.x + b.x)
 
 // args: --delete-binary --no-color
-// expected exit status: 101
-// expected stderr:
-// thread '<unnamed>' panicked at src/mir/validation.rs:129:13:
-// assertion `left == right` failed: 
-// fn lambda d1195: fn I32 I32 -> I32
-//   b0(b0_0: I32, b0_1: I32, b0_2: Unit):
-//     v0: (fn I32 I32 Pointer -> I32), Pointer = mul_i32_d570.0
-//     v2: fn I32 I32 Pointer -> I32 = v0.0
-//     v3: Pointer = v0.1
-//     v1: I32 = v2 b0_0 b0_1 v3
-//     return v1
-// 
-// Entry block parameter count should match the number of parameters in the function type + 1 if the closure environment is non-empty
-//   left: 2
-//  right: 3
-// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
-// 
-// thread '<unnamed>' panicked at src/mir/validation.rs:129:13:
-// assertion `left == right` failed: 
-// fn lambda d1194: fn I32 I32 -> I32
-//   b0(b0_0: I32, b0_1: I32, b0_2: Unit):
-//     v0: (fn I32 I32 Pointer -> I32), Pointer = sub_i32_d549.0
-//     v2: fn I32 I32 Pointer -> I32 = v0.0
-//     v3: Pointer = v0.1
-//     v1: I32 = v2 b0_0 b0_1 v3
-//     return v1
-// 
-// Entry block parameter count should match the number of parameters in the function type + 1 if the closure environment is non-empty
-//   left: 2
-//  right: 3
-// 
-// thread '<unnamed>' panicked at src/mir/validation.rs:129:13:
-// assertion `left == right` failed: 
-// fn lambda d1200: fn (I32,) (I32,) -> (I32,)
-//   b0(b0_0: I32,, b0_1: I32,, b0_2: Unit):
-//     v0: (fn (I32,) (I32,) Pointer -> (I32,)), Pointer = add_t_d1201.0
-//     v2: fn (I32,) (I32,) Pointer -> (I32,) = v0.0
-//     v3: Pointer = v0.1
-//     v1: I32, = v2 b0_0 b0_1 v3
-//     return v1
-// 
-// Entry block parameter count should match the number of parameters in the function type + 1 if the closure environment is non-empty
-//   left: 2
-//  right: 3
-// 
-// thread '<unnamed>' panicked at src/mir/validation.rs:129:13:
-// assertion `left == right` failed: 
-// fn lambda d1193: fn I32 I32 -> I32
-//   b0(b0_0: I32, b0_1: I32, b0_2: Unit):
-//     v0: (fn I32 I32 Pointer -> I32), Pointer = add_i32_d528.0
-//     v2: fn I32 I32 Pointer -> I32 = v0.0
-//     v3: Pointer = v0.1
-//     v1: I32 = v2 b0_0 b0_1 v3
-//     return v1
-// 
-// Entry block parameter count should match the number of parameters in the function type + 1 if the closure environment is non-empty
-//   left: 2
-//  right: 3
-// 
-// thread '<unnamed>' panicked at src/mir/validation.rs:129:13:
-// assertion `left == right` failed: 
-// fn lambda d1210: fn I32 I32 -> I32
-//   b0(b0_0: I32, b0_1: I32, b0_2: Unit):
-//     v0: (fn I32 I32 Pointer -> I32), Pointer = add_i32_d528.0
-//     v2: fn I32 I32 Pointer -> I32 = v0.0
-//     v3: Pointer = v0.1
-//     v1: I32 = v2 b0_0 b0_1 v3
-//     return v1
-// 
-// Entry block parameter count should match the number of parameters in the function type + 1 if the closure environment is non-empty
-//   left: 2
-//  right: 3
-// 
-// thread '<unnamed>' panicked at src/mir/validation.rs:129:13:
-// assertion `left == right` failed: 
-// fn lambda d1197: fn I32 I32 -> I32
-//   b0(b0_0: I32, b0_1: I32, b0_2: Unit):
-//     v0: (fn I32 I32 Pointer -> I32), Pointer = mod_i32_d617.0
-//     v2: fn I32 I32 Pointer -> I32 = v0.0
-//     v3: Pointer = v0.1
-//     v1: I32 = v2 b0_0 b0_1 v3
-//     return v1
-// 
-// Entry block parameter count should match the number of parameters in the function type + 1 if the closure environment is non-empty
-//   left: 2
-//  right: 3
-// 
-// thread '<unnamed>' panicked at src/mir/validation.rs:129:13:
-// assertion `left == right` failed: 
-// fn lambda d1196: fn I32 I32 -> I32
-//   b0(b0_0: I32, b0_1: I32, b0_2: Unit):
-//     v0: (fn I32 I32 Pointer -> I32), Pointer = div_i32_d593.0
-//     v2: fn I32 I32 Pointer -> I32 = v0.0
-//     v3: Pointer = v0.1
-//     v1: I32 = v2 b0_0 b0_1 v3
-//     return v1
-// 
-// Entry block parameter count should match the number of parameters in the function type + 1 if the closure environment is non-empty
-//   left: 2
-//  right: 3
+// expected stdout:
+// 15
+// 12
+// 48
+// 8
+// 2
+// 110
+// 7
 

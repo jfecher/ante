@@ -10,19 +10,7 @@ main () =
     println (ref map)
 
 // args: --delete-binary --no-color
-// expected exit status: 101
-// expected stderr:
-// thread '<unnamed>' panicked at src/mir/validation.rs:460:9:
-// fn repeat d1231: fn Usz ((fn Usz (Pointer, (((fn U8 Pointer -> U64), Pointer),), (((fn Pointer Pointer Pointer -> Bool), Pointer),), Pointer) -> Unit), (Pointer, (((fn U8 Pointer -> U64), Pointer),), (((fn Pointer Pointer Pointer -> Bool), Pointer),), Pointer)) -> Unit
-//   b0(b0_0: Usz, b0_1: (fn Usz (Pointer, (((fn U8 Pointer -> U64), Pointer),), (((fn Pointer Pointer Pointer -> Bool), Pointer),), Pointer) -> Unit), (Pointer, (((fn U8 Pointer -> U64), Pointer),), (((fn Pointer Pointer Pointer -> Bool), Pointer),), Pointer), b0_2: #empty_tuple):
-//     v0: fn Usz (Usz, ((fn Usz (Pointer, (((fn U8 Pointer -> U64), Pointer),), (((fn Pointer Pointer Pointer -> Bool), Pointer),), Pointer) -> Unit), (Pointer, (((fn U8 Pointer -> U64), Pointer),), (((fn Pointer Pointer Pointer -> Bool), Pointer),), Pointer))) -> Unit = id recur_d1236
-//     v1: Usz, ((fn Usz (Pointer, (((fn U8 Pointer -> U64), Pointer),), (((fn Pointer Pointer Pointer -> Bool), Pointer),), Pointer) -> Unit), (Pointer, (((fn U8 Pointer -> U64), Pointer),), (((fn Pointer Pointer Pointer -> Bool), Pointer),), Pointer)) = (b0_0, b0_1)
-//     v2: (fn Usz (Usz, ((fn Usz (Pointer, (((fn U8 Pointer -> U64), Pointer),), (((fn Pointer Pointer Pointer -> Bool), Pointer),), Pointer) -> Unit), (Pointer, (((fn U8 Pointer -> U64), Pointer),), (((fn Pointer Pointer Pointer -> Bool), Pointer),), Pointer))) -> Unit), (Usz, ((fn Usz (Pointer, (((fn U8 Pointer -> U64), Pointer),), (((fn Pointer Pointer Pointer -> Bool), Pointer),), Pointer) -> Unit), (Pointer, (((fn U8 Pointer -> U64), Pointer),), (((fn Pointer Pointer Pointer -> Bool), Pointer),), Pointer))) = (v0, v1)
-//     v4: fn Usz (Usz, ((fn Usz (Pointer, (((fn U8 Pointer -> U64), Pointer),), (((fn Pointer Pointer Pointer -> Bool), Pointer),), Pointer) -> Unit), (Pointer, (((fn U8 Pointer -> U64), Pointer),), (((fn Pointer Pointer Pointer -> Bool), Pointer),), Pointer))) -> Unit = v2.0
-//     v5: Usz, ((fn Usz (Pointer, (((fn U8 Pointer -> U64), Pointer),), (((fn Pointer Pointer Pointer -> Bool), Pointer),), Pointer) -> Unit), (Pointer, (((fn U8 Pointer -> U64), Pointer),), (((fn Pointer Pointer Pointer -> Bool), Pointer),), Pointer)) = v2.1
-//     v3: Unit = v4 0_usz b0_2 v5
-//     ^^^^^^^^^^^^^^^^^^^^^^^^^^^ parameter type len does not match arg type len
-// 
-//     return v3
-// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+// expected stdout:
+// [1 -> 3]
+// [1 -> 3]
 

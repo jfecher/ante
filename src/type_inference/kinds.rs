@@ -128,8 +128,7 @@ impl Kind {
         }
     }
 
-    /// The kind produced once this type constructor is fully applied.
-    /// Returns `self` on any non-type constructor kind.
+    /// The kind produced once this type constructor is fully applied; `self` otherwise.
     pub fn result_kind(&self) -> Kind {
         match self {
             Kind::TypeConstructorSimple { result, .. } => (**result).clone(),

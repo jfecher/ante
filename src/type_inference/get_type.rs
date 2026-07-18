@@ -56,7 +56,7 @@ pub fn try_get_generalized_type(
     definition: &Definition, context: &DesugarContext, resolve: &ResolutionResult, compiler: &DbHandle,
 ) -> Option<Type> {
     if let Pattern::TypeAnnotation(_, typ) = &context[definition.pattern] {
-        return Some(Type::from_cst_type_generalized(typ, resolve, compiler, true, true));
+        return Some(Type::from_cst_type_generalized(typ, resolve, compiler, true, false));
     }
 
     if let Expr::Lambda(lambda) = &context[definition.rhs] {
@@ -96,15 +96,15 @@ pub fn try_get_generalized_type(
         let lambda_location = context.expr_location(definition.rhs).clone();
         let cst_fn_type = cst::Type::new(TypeKind::Function(cst_function_type), lambda_location);
 
-        Some(Type::from_cst_type_generalized(&cst_fn_type, resolve, compiler, true, true))
+        Some(Type::from_cst_type_generalized(&cst_fn_type, resolve, compiler, true, false))
 
     // The body being a type annotation is common for `extern` declarations: `puts = extern "puts": fn ...`
     } else if let Expr::TypeAnnotation(annotation) = &context[definition.rhs] {
-        Some(Type::from_cst_type_generalized(&annotation.rhs, resolve, compiler, true, true))
+        Some(Type::from_cst_type_generalized(&annotation.rhs, resolve, compiler, true, false))
     } else if let Expr::Constructor(constructor) = &context[definition.rhs]
         && constructor_type_is_fully_applied(&constructor.typ, resolve, compiler)
     {
-        Some(Type::from_cst_type_generalized(&constructor.typ, resolve, compiler, true, true))
+        Some(Type::from_cst_type_generalized(&constructor.typ, resolve, compiler, true, false))
     } else {
         None
     }

@@ -155,8 +155,6 @@ fn desugar_trait_or_effect(
 }
 
 /// Defaults a definition's missing effects clause.
-/// - Adds a `can e` to any function typed parameters without explicit clauses, and adds the same
-/// `can e` to the outer definition as well.
 fn default_effects(expr: ExprId, context: &mut DesugarContext) {
     let Expr::Lambda(mut lambda) = context[expr].clone() else { return };
     if lambda.effects.is_some() || lambda.return_type.is_none() {

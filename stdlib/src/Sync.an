@@ -142,18 +142,18 @@ impl drop_condvar: Drop Condvar with
 type Thread a = handle: VoidPtr
 
 /// Spawn a new OS thread running `f`. The returned thread must be joined or detached.
-Thread.spawn (f: fn Unit [e] -> a): Thread a =
+Thread.spawn (f: fn Unit [e] -> a pure): Thread a =
     // pthread_create needs a free function so we use this wrapper to take a pointer
     // to the closure to run as an argument.
     wrapper (thunk: VoidPtr): VoidPtr =
-        closure_ptr = transmute thunk : Ptr (fn Unit [e] -> a)
+        closure_ptr = transmute thunk : Ptr (fn Unit [e] -> a pure)
         thunk = deref_ptr closure_ptr
         free closure_ptr
         out = malloc (size_of (MkType: Type a))
         ptr_store out (thunk ())
         transmute out
 
-    closure_ptr = malloc (size_of (MkType: Type (fn Unit [e] -> a)))
+    closure_ptr = malloc (size_of (MkType: Type (fn Unit [e] -> a pure)))
     ptr_store closure_ptr f
     args_ptr = transmute closure_ptr : VoidPtr
     handle = malloc pthread_t_size

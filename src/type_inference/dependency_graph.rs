@@ -192,8 +192,8 @@ pub fn type_check_impl(context: &TypeCheck, db: &DbHandle) -> Arc<TypeCheckResul
 }
 
 impl TypeCheckResult {
-    /// Retrieves the given generalized type of the given name
-    pub fn get_generalized(&self, name: NameId) -> &Type {
-        self.result.generalized[&name].follow(&self.bindings)
+    /// Retrieves the given generalized type of the given name, fully resolved.
+    pub fn get_generalized(&self, name: NameId) -> Type {
+        self.result.generalized[&name].follow_all(&self.bindings)
     }
 }
