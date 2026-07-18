@@ -51,7 +51,7 @@ main () =
 // 5 | ok_int {Fail}: I32 = 7
 // 
 // examples/codegen/stdlib-tests/fail.an:4:24
-//   | // error: This can perform <Fail, _> but only <> is allowed here
+//   | // error: This can perform Fail but no effects are allowed here
 // 4 | fail_int {Fail}: I32 = fail ()
 //   |                        ^^^^
 // 5 | ok_int {Fail}: I32 = 7

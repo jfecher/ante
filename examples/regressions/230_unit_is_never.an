@@ -19,7 +19,7 @@ main () =
 // 
 // examples/regressions/230_unit_is_never.an:8:20
 //  7 |     handler h for throw _ -> println "threw!"
-//  8 |     unit_neverizer h	// error: Argument 1 has type <(Throw _)> but Throw Never was expected
+//  8 |     unit_neverizer h	// error: Argument 1 has type (Throw _) but Throw Never was expected
 //    |                    ^
 //  9 |     println "through!"
 // 

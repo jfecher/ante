@@ -46,7 +46,7 @@ main () =
 // 
 // examples/regressions/217_filter.an:14:15
 // 13 |         resume ()
-// 14 |     in stream h	// error: Argument 1 has type <(Emit a)> but Emit a was expected
+// 14 |     in stream h	// error: Argument 1 has type (Emit a) but Emit a was expected
 //    |               ^
 // 
 // examples/regressions/217_filter.an:16:18
@@ -57,11 +57,11 @@ main () =
 // 
 // examples/regressions/217_filter.an:20:15
 // 19 |         resume ()
-// 20 |     in stream h	// error: Argument 1 has type <(Emit a)> but Emit a was expected
+// 20 |     in stream h	// error: Argument 1 has type (Emit a) but Emit a was expected
 //    |               ^
 // 
 // examples/regressions/217_filter.an:22:1
-//    | // error: main here has type fn Unit -> Unit can (Emit U32), _ but it should always have type fn Unit -> Unit pure
+//    | // error: main here has type fn Unit -> Unit can (Emit U32) but it should always have type fn Unit -> Unit pure
 // 22 | main () =
 //    | ^^^^
 // 23 |     for_ (fn out -> filter (fn out2 -> iota 10 {out2}) {out} (_ %% 2))

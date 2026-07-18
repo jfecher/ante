@@ -39,12 +39,12 @@ main () =
 //     set: fn a -> Unit
 // 
 // (handle_basic: fn Unit -> Unit can (Use String)) () : Unit can Use String =
-//     handler (h: <Log>) for
+//     handler (h: Log) for
 //     | (log: fn String -> Unit can Log) (v: String) -> fn (v: String) (resume: fn Unit [Ptr] -> Unit pure) -> (set: fn String -> Unit can (Use String)) (v: String)
 //     in fn () -> (log: fn String -> Unit can Log) "test1"
 // 
 // (use_resume: fn Unit -> Unit pure) () =
-//     handler (h: <(Use I32)>) for
+//     handler (h: (Use I32)) for
 //     | (get: fn Unit -> I32 can (Use I32)) () -> fn () (resume: fn I32 [Ptr] -> Unit pure) -> (resume: fn I32 [Ptr] -> Unit pure) 3_I32
 //     | (set: fn I32 -> Unit can (Use I32)) (_: I32) -> fn (_: I32) (resume: fn Unit [Ptr] -> Unit pure) -> (resume: fn Unit [Ptr] -> Unit pure) ()
 //     in fn () -> ()
@@ -62,12 +62,12 @@ main () =
 // expected stderr:
 // examples/typechecking/effects.an:25:5
 // 24 | pure_fn (): Unit pure =
-// 25 |     log "foo"	// error: This can perform <Log, _> but only <> is allowed here
+// 25 |     log "foo"	// error: This can perform Log but no effects are allowed here
 //    |     ^^^
 // 
 // examples/typechecking/effects.an:28:1
 // 27 | // main must always handle all non-primitive effects
-//    | // error: main here has type fn Unit -> Unit can Log, _ but it should always have type fn Unit -> Unit pure
+//    | // error: main here has type fn Unit -> Unit can Log but it should always have type fn Unit -> Unit pure
 // 28 | main () =
 //    | ^^^^
 // 29 |     log "foo"

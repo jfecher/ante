@@ -24,7 +24,7 @@ main () =
 // 
 // examples/codegen/fib_stream.an:6:9
 // 5 |     while true do
-// 6 |         emit current	// error: This can perform <(Emit _), _> but only <> is allowed here
+// 6 |         emit current	// error: This can perform (Emit _) but no effects are allowed here
 //   |         ^^^^
 // 
 // examples/codegen/fib_stream.an:14:10

@@ -26,10 +26,11 @@ main () = ()
 // args: --check --no-color
 // expected exit status: 1
 // expected stderr:
-// examples/typechecking/handle_closed_row_conflict.an:20:1
-// 19 |     in
-// 20 |         f ()	// error: This can perform <Bail, Log, _> but only <Count> is allowed here
+// examples/typechecking/handle_closed_row_conflict.an:21:1
+// 20 |     in
+// 21 |         f ()	// error: This can perform Bail, Log but only Count is allowed here
 //    | ^^^^^^^^^^^^
-// 21 |         0
+// 22 |         0
 // 
 // Found 1 error and 0 warnings
+

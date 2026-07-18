@@ -38,11 +38,11 @@ main () =
 // 
 // examples/codegen/effects/state.an:18:11
 // 17 |         resume ()
-// 18 |     in f {h}	// error: Argument 1 has type <(Use s)> but Use s was expected
+// 18 |     in f {h}	// error: Argument 1 has type (Use s) but Use s was expected
 //    |           ^
 // 
 // examples/codegen/effects/state.an:20:1
-//    | // error: main here has type fn Unit -> Unit can (Use I32), _ but it should always have type fn Unit -> Unit pure
+//    | // error: main here has type fn Unit -> Unit can (Use I32) but it should always have type fn Unit -> Unit pure
 // 20 | main () =
 //    | ^^^^
 // 21 |     state (use_state 10 {_}) 1

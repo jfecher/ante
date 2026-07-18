@@ -31,12 +31,12 @@ main () =
 // 
 // examples/codegen/effects/count_effect.an:12:12
 // 11 |     in
-// 12 |         f {h}	// error: Argument 1 has type <Count> but Count was expected
+// 12 |         f {h}	// error: Argument 1 has type Count but Count was expected
 //    |            ^
 // 13 |         0
 // 
 // examples/codegen/effects/count_effect.an:15:1
-//    | // error: main here has type fn Unit -> Unit can Count, _ but it should always have type fn Unit -> Unit pure
+//    | // error: main here has type fn Unit -> Unit can Count but it should always have type fn Unit -> Unit pure
 // 15 | main () =
 //    | ^^^^
 // 16 |     handle_count foo |> println

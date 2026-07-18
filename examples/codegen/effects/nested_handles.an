@@ -56,7 +56,7 @@ main () =
 // 
 // examples/codegen/effects/nested_handles.an:20:10
 // 19 |         r
-// 20 |     in f h	// error: Argument 1 has type <Ping> but Ping was expected
+// 20 |     in f h	// error: Argument 1 has type Ping but Ping was expected
 //    |          ^
 // 
 // examples/codegen/effects/nested_handles.an:22:13
@@ -67,11 +67,11 @@ main () =
 // 
 // examples/codegen/effects/nested_handles.an:28:10
 // 27 |         r
-// 28 |     in f h	// error: Argument 1 has type <Pong> but Pong was expected
+// 28 |     in f h	// error: Argument 1 has type Pong but Pong was expected
 //    |          ^
 // 
 // examples/codegen/effects/nested_handles.an:30:1
-//    | // error: main here has type fn Unit -> Unit can Pong, Ping, _ but it should always have type fn Unit -> Unit pure
+//    | // error: main here has type fn Unit -> Unit can Pong, Ping but it should always have type fn Unit -> Unit pure
 // 30 | main () =
 //    | ^^^^
 // 31 |     a, b = ping fn pinger ->

@@ -66,19 +66,19 @@ test_predicates () =
 // 
 // examples/codegen/stdlib-tests/string.an:31:5
 // 30 | abc_stream {Emit String}: Unit =
-// 31 |     emit "a"	// error: This can perform <(Emit _), _> but only <> is allowed here
+// 31 |     emit "a"	// error: This can perform (Emit _) but no effects are allowed here
 //    |     ^^^^
 // 32 |     emit "b"
 // 
 // examples/codegen/stdlib-tests/string.an:32:5
 // 31 |     emit "a"
-// 32 |     emit "b"	// error: This can perform <(Emit _), _> but only <> is allowed here
+// 32 |     emit "b"	// error: This can perform (Emit _) but no effects are allowed here
 //    |     ^^^^
 // 33 |     emit "c"
 // 
 // examples/codegen/stdlib-tests/string.an:33:5
 // 32 |     emit "b"
-// 33 |     emit "c"	// error: This can perform <(Emit _), _> but only <> is allowed here
+// 33 |     emit "c"	// error: This can perform (Emit _) but no effects are allowed here
 //    |     ^^^^
 // 
 // Found 5 errors and 0 warnings

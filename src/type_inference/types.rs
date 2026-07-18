@@ -1239,11 +1239,7 @@ where
                 Ok(())
             }),
             Type::U32(n) => write!(f, "{n}"),
-            Type::Effects(list, tail) => {
-                write!(f, "<")?;
-                self.fmt_effect_list(list, tail, f)?;
-                write!(f, ">")
-            },
+            Type::Effects(list, tail) => self.fmt_effect_list(list, tail, f),
         }
     }
 
@@ -1272,10 +1268,14 @@ where
             self.fmt_type(effect, true, f)?;
         }
         if let Some(tail) = tail {
-            if !list.is_empty() {
-                write!(f, ", ")?;
+            // An unbound tail variable represents an open, unconstrained row; printing it as `_`
+            // adds no information for the reader, so it's omitted here.
+            if !matches!(tail, Type::Variable(_)) {
+                if !list.is_empty() {
+                    write!(f, ", ")?;
+                }
+                self.fmt_type(tail, true, f)?;
             }
-            self.fmt_type(tail, true, f)?;
         }
         Ok(())
     }

@@ -55,7 +55,7 @@ main () =
 // 14 |     if false then fail ()
 // 
 // examples/codegen/effects/handle_multiple_effects.an:17:1
-//    | // error: main here has type fn Unit -> Unit can (Read U32), MyFail, _ but it should always have type fn Unit -> Unit pure
+//    | // error: main here has type fn Unit -> Unit can (Read U32), MyFail but it should always have type fn Unit -> Unit pure
 // 17 | main () =
 //    | ^^^^
 // 18 |     println <| read_or_none foo
