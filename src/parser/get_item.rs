@@ -16,6 +16,9 @@ use crate::{
     },
 };
 
+/// Unspellable name for the synthetic generic used to default a bare parameter's missing effects.
+pub(crate) const IMPLICIT_EFFECT_NAME: &str = "$effect";
+
 pub fn get_item_impl(context: &GetItem, db: &DbHandle) -> (Arc<TopLevelItem>, Arc<DesugarContext>) {
     let (item, context) = GetItemRaw(context.0).get(db);
 
@@ -171,7 +174,7 @@ fn default_effects(expr: ExprId, context: &mut DesugarContext) {
 
     // Unspellable, so it can't collide with a real user-written generic.
     let location = context.expr_location(expr).clone();
-    let e = context.push_name(Arc::new("$effect".to_string()), location.clone());
+    let e = context.push_name(Arc::new(IMPLICIT_EFFECT_NAME.to_string()), location.clone());
 
     for parameter in bare_parameters {
         let Pattern::TypeAnnotation(inner, mut typ) = context[parameter.pattern].clone() else { unreachable!() };

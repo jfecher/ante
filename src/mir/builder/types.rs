@@ -143,9 +143,35 @@ where
         }
     }
 
+    /// Converts a definition's own function type. A definition's solved row is an inference
+    /// artifact, so it and any row in return position are canonicalized via `follow_all`;
+    /// parameter rows keep their declared structure.
+    pub(super) fn convert_definition_function_type(
+        &self, function_type: &crate::type_inference::types::FunctionType,
+    ) -> Type {
+        let effects = function_type.effects.follow_all(self.type_bindings);
+        let mut parameters = mapvec(&function_type.parameters, |typ| self.convert_type(&typ.typ, None));
+        self.append_capability_parameter_types(&effects, &mut parameters);
+
+        let environment = match function_type.environment.follow(self.type_bindings) {
+            TCType::Variable(id) => self.convert_type_variable(*id, Type::NO_CLOSURE_ENV),
+            other => self.convert_type(other, None),
+        };
+        let return_type = match function_type.return_type.follow(self.type_bindings) {
+            TCType::Function(inner) => self.convert_definition_function_type(inner),
+            _ => self.convert_type(&function_type.return_type, None),
+        };
+        Type::Function(Arc::new(FunctionType { parameters, environment, return_type }))
+    }
+
     /// Appends the capability parameter types a function's effects row manifests as.
     pub(super) fn append_capability_parameter_types(&self, effects: &TCType, parameters: &mut Vec<Type>) {
-        let TCType::Effects(list, tail) = effects.follow(self.type_bindings) else { return };
+        let TCType::Effects(list, tail) = effects.follow(self.type_bindings) else {
+            if std::env::var("ANTE_DEBUG_CAPS").is_ok() {
+                eprintln!("append bail: effects = {:?}", effects.follow(self.type_bindings));
+            }
+            return;
+        };
         parameters.extend(list.iter().map(|effect_ty| self.effect_capability_tuple_type_of(effect_ty)));
         let Some(tail_ty) = tail else { return };
         match tail_ty.follow_all(self.type_bindings) {

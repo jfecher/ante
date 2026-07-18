@@ -27,7 +27,7 @@ main () =
     println (intersperse abc_stream ", " |> join)
     test_predicates ()
 
-abc_stream {Emit String}: Unit =
+abc_stream (): Unit can Emit String =
     emit "a"
     emit "b"
     emit "c"

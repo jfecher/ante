@@ -24,12 +24,11 @@ main () =
     println (throw "x" : I32 ~> catch_or_else (fn _s -> 42))  // 42
 
     // map_err:
-    // Can't use `~>` twice since we get 'multiple matching implicits' errors
-    print_result (throw 5 _ |> map_err (_ * 10) ~> catch)  // Err 50
+    print_result (throw 5 ~> map_err (_ * 10) ~> catch)  // Err 50
 
     // unwrap_err combined with try
     println (throw 7 ~> unwrap_err ~> try)
-    println (try (fn f -> unwrap_err (fn _ -> 0i32) {f}) : Maybe U64)
+    println (try (do unwrap_err (do 0i32)) : Maybe U64)
 
 // args: --delete-binary --no-color
 // expected exit status: 1

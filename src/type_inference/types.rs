@@ -18,6 +18,7 @@ use crate::{
     name_resolution::{Origin, ResolutionResult, builtin::Builtin},
     parser::{
         cst::{self, KindAnnotation, ReferenceKind},
+        get_item::IMPLICIT_EFFECT_NAME,
         ids::{NameId, NameStore, TopLevelName},
     },
     type_inference::{TypeChecker, generics::Generic, kinds::Kind},
@@ -1268,9 +1269,8 @@ where
             self.fmt_type(effect, true, f)?;
         }
         if let Some(tail) = tail {
-            // An unbound tail variable represents an open, unconstrained row; printing it as `_`
-            // adds no information for the reader, so it's omitted here.
-            if !matches!(tail, Type::Variable(_)) {
+            // An open, unconstrained row tail adds no information for the reader, so it's omitted.
+            if !self.is_omittable_effect_tail(tail) {
                 if !list.is_empty() {
                     write!(f, ", ")?;
                 }
@@ -1278,6 +1278,16 @@ where
             }
         }
         Ok(())
+    }
+
+    fn is_omittable_effect_tail(&self, tail: &Type) -> bool {
+        match tail {
+            Type::Variable(_) => true,
+            Type::Generic(Generic::Named(Origin::Local(name_id))) => {
+                self.names.try_get_name(*name_id).is_some_and(|n| n.as_str() == IMPLICIT_EFFECT_NAME)
+            },
+            _ => false,
+        }
     }
 
     fn flatten_effects_tail(&self, mut tail: Type, list: &mut Vec<Type>) -> Option<Type> {

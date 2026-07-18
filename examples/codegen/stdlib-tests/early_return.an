@@ -21,9 +21,9 @@ main () =
         Maybe.None
 
     // Nested with_early_return: inner returns early but outer should continue
-    println <| with_early_return fn _ret_outer ->
-        inner = with_early_return fn ret_inner ->
-            early_return 5 {ret_inner}
+    println <| with_early_return do
+        inner = with_early_return do
+            early_return 5
             999  // unreachable
         inner + 10
 

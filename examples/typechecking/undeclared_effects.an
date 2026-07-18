@@ -22,7 +22,7 @@ main () =
 // expected stderr:
 // examples/typechecking/undeclared_effects.an:11:5
 // 10 |     f ()
-// 11 |     log "bar"	// error: This can perform Log but only $effect is allowed here
+// 11 |     log "bar"	// error: This can perform Log but no effects are allowed here
 // 
 // examples/typechecking/undeclared_effects.an:14:26
 // 13 | // Using an effect type as an implicit parameter is a kind error

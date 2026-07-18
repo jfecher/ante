@@ -1,8 +1,8 @@
 import Std.Fail.Fail, fail, try, on_fail, assert, ignore_fail, retry_until_success
 import Std.C.malloc, free
 
-fail_int {Fail}: I32 = fail ()
-ok_int {Fail}: I32 = 7
+fail_int (): I32 can Fail = fail ()
+ok_int (): I32 can Fail = 7
 
 main () =
     // try:
@@ -14,11 +14,10 @@ main () =
     println (on_fail fail_int do 42)  // 42
 
     // assert:
-    // TODO: type error when declaring `{f}` instead of `f`
-    ignore_fail fn f ->
-        assert true {f}
+    ignore_fail do
+        assert true
         println "asserted true"
-        assert false {f}
+        assert false
         println "never shown"
 
     // ignore_fail:
@@ -31,10 +30,10 @@ main () =
     // succeeds on the third attempt.
     counter: Ptr U32 = malloc 4
     ptr_store counter 0u32
-    val = retry_until_success fn f ->
+    val = retry_until_success do
         n = deref_ptr counter
         ptr_store counter (n + 1)
-        if n < 2 then fail () {f}
+        if n < 2 then fail ()
         n
 
     println val  // 2
