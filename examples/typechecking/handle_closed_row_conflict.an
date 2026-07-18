@@ -1,0 +1,35 @@
+effect Count =
+    count: fn Unit -> Unit
+
+effect Log =
+    log: fn Unit -> Unit
+
+effect Bail =
+    bail: fn Unit -> Unit
+
+foo (): Unit can Count, Bail =
+    count ()
+    bail ()
+
+// Regression test showing the error message quality of this test.
+// Previously Bail and Log mismatches were reported in separate errors
+handle_count (f: fn Unit => Unit can Count, Bail): I32 can Count =
+    handler h for count () ->
+        log ()
+        1 + resume ()
+    in
+        f ()
+        0
+
+main () = ()
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/handle_closed_row_conflict.an:20:1
+// 19 |     in
+// 20 |         f ()	// error: This can perform <Bail, Log, _> but only <Count> is allowed here
+//    | ^^^^^^^^^^^^
+// 21 |         0
+// 
+// Found 1 error and 0 warnings

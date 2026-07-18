@@ -147,7 +147,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Expr::While(while_) => self.infer_while(while_),
             Expr::For(for_) => self.infer_for(for_, id),
             // Allow break/continue to return any type
-            // TODO: Add bottom type
             Expr::Break | Expr::Continue => Type::NEVER,
             Expr::Return(return_) => {
                 self.check_return(return_.expression, id);
@@ -1171,7 +1170,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         self.bindings.extend(new_bindings);
 
-        // TODO: Is it really necessary to reunify combined with each row
+        // Reunifying with each row here lets us give a single error message of each unhandled capability
         let combined = self.fresh_effect_row();
         self.unify(&leftover, &combined, TypeErrorKind::Effects, handle.expression);
 
