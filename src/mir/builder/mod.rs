@@ -710,14 +710,14 @@ where
             cst::Expr::Variable(path_id) => Some(*path_id),
             _ => None,
         };
+        let instantiated_has_slot = match self.type_of_value(callee_value) {
+            Type::Function(ft) => ft.parameters.len() > arguments.len(),
+            _ => false,
+        };
         match tail_ty.follow_all(&self.types.bindings) {
             // A resolved-empty tail still needs an (empty-tuple) argument if the callee is genuinely row-polymorphic.
             TCType::Effects(concrete_list, None) if concrete_list.is_empty() => {
                 let declared_open = callee_path_id.is_some_and(|p| self.path_declared_tail_is_open(p));
-                let instantiated_has_slot = match self.type_of_value(callee_value) {
-                    Type::Function(ft) => ft.parameters.len() > arguments.len(),
-                    _ => false,
-                };
                 if declared_open || instantiated_has_slot {
                     let bundle = self.push_instruction(Instruction::MakeTuple(Vec::new()), Type::tuple(Vec::new()));
                     arguments.push(bundle);
@@ -732,10 +732,6 @@ where
             },
             // Still open from the caller's perspective: forward our own bundle, but only if the callee has a slot for it.
             _ => {
-                let instantiated_has_slot = match self.type_of_value(callee_value) {
-                    Type::Function(ft) => ft.parameters.len() > arguments.len(),
-                    _ => false,
-                };
                 if instantiated_has_slot
                     && let Some(bundle) = self.capability_bundle
                 {
@@ -830,46 +826,41 @@ where
         }
     }
 
+    /// Extends a lambda's environment type with trailing fields.
+    fn extend_environment_with_fields(&self, full_type: Type, extra_fields: impl IntoIterator<Item = Type>) -> Type {
+        let Type::Function(ft) = &full_type else { unreachable!("Lambda does not have a function type") };
+        let mut env_fields: Vec<Type> = match &ft.environment {
+            Type::Tuple(fields) => (**fields).clone(),
+            _ => Vec::new(),
+        };
+        env_fields.extend(extra_fields);
+        Type::Function(Arc::new(FunctionType {
+            parameters: ft.parameters.clone(),
+            environment: Type::tuple(env_fields),
+            return_type: ft.return_type.clone(),
+        }))
+    }
+
     /// Extends a lambda's environment type with a trailing field per needed capability.
     fn extend_environment_with_capabilities(&self, full_type: Type, needed_capability_keys: &[TCType]) -> Type {
         if needed_capability_keys.is_empty() {
             return full_type;
         }
-        let Type::Function(ft) = &full_type else { unreachable!("Lambda does not have a function type") };
-        let mut env_fields: Vec<Type> = match &ft.environment {
-            Type::Tuple(fields) => (**fields).clone(),
-            _ => Vec::new(),
-        };
-        env_fields.extend(needed_capability_keys.iter().map(|key| self.effect_capability_tuple_type_of(key)));
-        Type::Function(Arc::new(FunctionType {
-            parameters: ft.parameters.clone(),
-            environment: Type::tuple(env_fields),
-            return_type: ft.return_type.clone(),
-        }))
+        self.extend_environment_with_fields(
+            full_type,
+            needed_capability_keys.iter().map(|key| self.effect_capability_tuple_type_of(key)),
+        )
     }
 
     /// Extends a lambda's environment type with one trailing field for a captured, still-open capability bundle.
     fn extend_environment_with_bundle(&self, full_type: Type, bundle_type: Type) -> Type {
-        let Type::Function(ft) = &full_type else { unreachable!("Lambda does not have a function type") };
-        let mut env_fields: Vec<Type> = match &ft.environment {
-            Type::Tuple(fields) => (**fields).clone(),
-            _ => Vec::new(),
-        };
-        env_fields.push(bundle_type);
-        Type::Function(Arc::new(FunctionType {
-            parameters: ft.parameters.clone(),
-            environment: Type::tuple(env_fields),
-            return_type: ft.return_type.clone(),
-        }))
+        self.extend_environment_with_fields(full_type, std::iter::once(bundle_type))
     }
 
     /// A top-level function reference's declared un-instantiated parameter types.
     fn callee_declared_parameter_types(&self, callee_expr: ExprId) -> Option<Vec<TCType>> {
         let cst::Expr::Variable(path_id) = &self.context()[callee_expr] else { return None };
-        let Some(Origin::TopLevelDefinition(name)) = self.context().path_origin(*path_id) else { return None };
-        let checked = TypeCheck(name.top_level_item).get(self.compiler);
-        let declared = checked.get_generalized(name.local_name_id).ignore_forall().clone();
-        let TCType::Function(function_type) = declared else { return None };
+        let TCType::Function(function_type) = self.path_declared_type(*path_id)? else { return None };
         Some(function_type.parameters.iter().map(|p| p.typ.clone()).collect())
     }
 
@@ -900,14 +891,12 @@ where
             // Not a bare top-level reference: wrap it generically instead.
             return self.wrap_with_ignored_bundle(value, expected, function, callee_expr, parameter_index);
         };
-        let Some(Origin::TopLevelDefinition(name)) = self.context().path_origin(path_id) else {
+        let Some(Origin::TopLevelDefinition(_)) = self.context().path_origin(path_id) else {
             return self.wrap_with_ignored_bundle(value, expected, function, callee_expr, parameter_index);
         };
 
         // Only used for this structural open/closed check; the adapter itself uses the instantiated reference type.
-        let checked = TypeCheck(name.top_level_item).get(self.compiler);
-        let declared = checked.get_generalized(name.local_name_id).ignore_forall().clone();
-        let TCType::Function(own_fn) = &declared else { return value };
+        let Some(TCType::Function(own_fn)) = self.path_declared_type(path_id) else { return value };
         let TCType::Effects(_, own_tail) = own_fn.effects.follow(&self.types.bindings) else { return value };
         if own_tail.is_some() {
             // Already row-polymorphic itself: already matches the bundle convention.
@@ -950,14 +939,9 @@ where
         let ability_method = self.try_resolve_ability_method(path_id);
 
         let generics_count = self.generics_in_scope.len() as u32;
-        let old_scope = std::mem::take(&mut self.local_variables);
-        let old_mutables = std::mem::take(&mut self.mutable_locals);
-        let old_capabilities = std::mem::take(&mut self.capabilities);
-        let old_capability_bundle = self.capability_bundle.take();
-
         let surface_count = surface_types.len() as u32;
         let name = Arc::new("capability_adapter".to_string());
-        let id = self.new_definition(name.clone(), None, generics_count, declared_type.clone(), |this| {
+        let id = self.new_isolated_definition(name.clone(), generics_count, declared_type.clone(), |this| {
             for typ in &surface_types {
                 this.push_parameter(typ.clone());
             }
@@ -994,11 +978,6 @@ where
             };
             this.terminate_block(TerminatorInstruction::Return(result));
         });
-
-        self.local_variables = old_scope;
-        self.mutable_locals = old_mutables;
-        self.capabilities = old_capabilities;
-        self.capability_bundle = old_capability_bundle;
 
         self.make_definition_value(id, name, declared_type)
     }
@@ -1078,15 +1057,10 @@ where
         }));
 
         let generics_count = self.generics_in_scope.len() as u32;
-        let old_scope = std::mem::take(&mut self.local_variables);
-        let old_mutables = std::mem::take(&mut self.mutable_locals);
-        let old_capabilities = std::mem::take(&mut self.capabilities);
-        let old_capability_bundle = self.capability_bundle.take();
-
         let surface_count = surface_types.len() as u32;
         let needs_env_param = env_type != Type::NO_CLOSURE_ENV;
         let name = Arc::new("bundle_adapter".to_string());
-        let id = self.new_definition(name.clone(), None, generics_count, declared_type.clone(), |this| {
+        let id = self.new_isolated_definition(name.clone(), generics_count, declared_type.clone(), |this| {
             for typ in &surface_types {
                 this.push_parameter(typ.clone());
             }
@@ -1117,11 +1091,6 @@ where
             this.terminate_block(TerminatorInstruction::Return(result));
         });
 
-        self.local_variables = old_scope;
-        self.mutable_locals = old_mutables;
-        self.capabilities = old_capabilities;
-        self.capability_bundle = old_capability_bundle;
-
         let function_value = self.make_definition_value(id, name, declared_type.clone());
         Some(match inner_environment {
             Some(environment) => {
@@ -1146,13 +1115,8 @@ where
         }));
 
         let generics_count = self.generics_in_scope.len() as u32;
-        let old_scope = std::mem::take(&mut self.local_variables);
-        let old_mutables = std::mem::take(&mut self.mutable_locals);
-        let old_capabilities = std::mem::take(&mut self.capabilities);
-        let old_capability_bundle = self.capability_bundle.take();
-
         let name = Arc::new("bundle_adapter".to_string());
-        let id = self.new_definition(name.clone(), None, generics_count, declared_type.clone(), |this| {
+        let id = self.new_isolated_definition(name.clone(), generics_count, declared_type.clone(), |this| {
             let real_arguments: Vec<Value> =
                 surface_types.iter().map(|typ| this.push_capability_parameter(typ.clone())).collect();
             this.push_capability_parameter(bundle_type.clone());
@@ -1165,11 +1129,6 @@ where
             let result = this.push_instruction(instruction, return_type.clone());
             this.terminate_block(TerminatorInstruction::Return(result));
         });
-
-        self.local_variables = old_scope;
-        self.mutable_locals = old_mutables;
-        self.capabilities = old_capabilities;
-        self.capability_bundle = old_capability_bundle;
 
         let function_value = self.make_definition_value(id, name, declared_type.clone());
         self.push_instruction(Instruction::PackClosure { function: function_value, environment: value }, declared_type)
@@ -1277,12 +1236,7 @@ where
     ) -> Value {
         self.effect_op_indices.insert(effect_op, op_index);
         let effect_type = self.effect_type_of_op(path_id);
-        let cap_value = *self.capabilities.get(&effect_type).unwrap_or_else(|| {
-            panic!(
-                "no capability for effect {effect_type:?} in scope at this call site \
-                 (handler branches/bodies can't receive capabilities besides the one they handle)"
-            )
-        });
+        let cap_value = self.capability_for(&effect_type);
         self.emit_indexed_method_call(None, cap_value, op_index, arguments, result_type, diverges)
     }
 
@@ -1430,6 +1384,23 @@ where
         let state = self.start_global(name, name_id, generic_count, typ);
         f(self);
         self.end_global(state)
+    }
+
+    /// Builds a new isolated top-level definition, saving and restoring this builder's local
+    /// scope state (locals, mutability, capabilities) around it.
+    fn new_isolated_definition(&mut self, name: Name, generic_count: u32, typ: Type, f: impl FnOnce(&mut Self)) -> DefinitionId {
+        let old_scope = std::mem::take(&mut self.local_variables);
+        let old_mutables = std::mem::take(&mut self.mutable_locals);
+        let old_capabilities = std::mem::take(&mut self.capabilities);
+        let old_capability_bundle = self.capability_bundle.take();
+
+        let id = self.new_definition(name, None, generic_count, typ, f);
+
+        self.local_variables = old_scope;
+        self.mutable_locals = old_mutables;
+        self.capabilities = old_capabilities;
+        self.capability_bundle = old_capability_bundle;
+        id
     }
 
     fn start_global(

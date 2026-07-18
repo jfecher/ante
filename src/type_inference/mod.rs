@@ -492,6 +492,13 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
+    /// Unifies `effects_var` with the ambient effect row, then re-canonicalizes it as the new ambient row.
+    fn thread_call_effects(&mut self, effects_var: &Type, locator: impl Locateable) {
+        let current_row = self.current_effect_row.clone();
+        self.unify(effects_var, &current_row, TypeErrorKind::Effects, locator);
+        self.current_effect_row = self.canonical_effects_row(&current_row, &TypeBindings::default());
+    }
+
     /// True if `a` and `b` are equal except for one or more function environments.
     /// Assumes the two types are not equal to begin with (we only reach here after a failed
     /// unification), so if they unify once every function environment is erased, the

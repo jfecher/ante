@@ -31,7 +31,7 @@ or_panic (f: fn Unit => a can Fail) (message: String): a =
 
 /// Ignores a `Fail` effect, discarding it and returning Unit
 ignore_fail (f: fn Unit => a can Fail): Unit =
-    on_fail (fn () -> ignore (f ())) do ()
+    on_fail (do ignore (f ())) do ()
 
 /// Retry a function until it succeeds (doesn't call fail).
 /// This should be used with functions using a Fail effect
@@ -45,6 +45,6 @@ ignore_fail (f: fn Unit => a can Fail): Unit =
 ///     input = get_input ()
 ///     parse input
 /// ```
-retry_until_success (f: fn Unit [env] -> a can Fail): a =
+retry_until_success (f: fn Unit => a can Fail): a =
     handler h for fail () -> retry_until_success f
     f ()

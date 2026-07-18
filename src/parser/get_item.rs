@@ -20,15 +20,10 @@ pub fn get_item_impl(context: &GetItem, db: &DbHandle) -> (Arc<TopLevelItem>, Ar
     let (item, context) = GetItemRaw(context.0).get(db);
 
     match &item.kind {
-        TopLevelItemKind::TraitDefinition(def) => {
+        TopLevelItemKind::TraitDefinition(def) | TopLevelItemKind::EffectDefinition(def) => {
+            let is_effect = matches!(&item.kind, TopLevelItemKind::EffectDefinition(_));
             let mut new_context = DesugarContext::new(context);
-            let new_kind = desugar_trait_or_effect(def, false, &mut new_context);
-            let new_item = Arc::new(TopLevelItem { comments: item.comments.clone(), kind: new_kind, id: item.id });
-            (new_item, Arc::new(new_context))
-        },
-        TopLevelItemKind::EffectDefinition(def) => {
-            let mut new_context = DesugarContext::new(context);
-            let new_kind = desugar_trait_or_effect(def, true, &mut new_context);
+            let new_kind = desugar_trait_or_effect(def, is_effect, &mut new_context);
             let new_item = Arc::new(TopLevelItem { comments: item.comments.clone(), kind: new_kind, id: item.id });
             (new_item, Arc::new(new_context))
         },
@@ -166,7 +161,9 @@ fn default_effects(expr: ExprId, context: &mut DesugarContext) {
             Pattern::TypeAnnotation(_, typ) if matches!(&typ.kind, TypeKind::Function(f) if f.effects.is_none()))
     };
 
-    if !lambda.parameters.iter().any(|p| is_bare_function_parameter(context, p)) {
+    let bare_parameters: Vec<&Parameter> =
+        lambda.parameters.iter().filter(|p| is_bare_function_parameter(context, p)).collect();
+    if bare_parameters.is_empty() {
         lambda.effects = Some(Vec::new());
         context.set_expr(expr, Expr::Lambda(lambda));
         return;
@@ -176,13 +173,11 @@ fn default_effects(expr: ExprId, context: &mut DesugarContext) {
     let location = context.expr_location(expr).clone();
     let e = context.push_name(Arc::new("$effect".to_string()), location.clone());
 
-    for parameter in &lambda.parameters {
-        if is_bare_function_parameter(context, parameter) {
-            let Pattern::TypeAnnotation(inner, mut typ) = context[parameter.pattern].clone() else { unreachable!() };
-            let TypeKind::Function(function_type) = &mut typ.kind else { unreachable!() };
-            function_type.effects = Some(vec![Type::new(TypeKind::Variable(e), location.clone())]);
-            context.set_pattern(parameter.pattern, Pattern::TypeAnnotation(inner, typ));
-        }
+    for parameter in bare_parameters {
+        let Pattern::TypeAnnotation(inner, mut typ) = context[parameter.pattern].clone() else { unreachable!() };
+        let TypeKind::Function(function_type) = &mut typ.kind else { unreachable!() };
+        function_type.effects = Some(vec![Type::new(TypeKind::Variable(e), location.clone())]);
+        context.set_pattern(parameter.pattern, Pattern::TypeAnnotation(inner, typ));
     }
 
     lambda.effects = Some(vec![Type::new(TypeKind::Variable(e), location)]);

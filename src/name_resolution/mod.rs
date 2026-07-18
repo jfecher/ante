@@ -627,11 +627,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                 if let Some(return_type) = &lambda.return_type {
                     self.resolve_type(return_type, true);
                 }
-                if let Some(effects) = &lambda.effects {
-                    for effect in effects {
-                        self.resolve_type(effect, true);
-                    }
-                }
+                self.resolve_effects(&lambda.effects, true);
                 self.resolve_expr(lambda.body);
                 self.pop_local_scope();
             },
@@ -928,6 +924,15 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
         }
     }
 
+    /// Resolves each effect in an optional effects clause.
+    fn resolve_effects(&mut self, effects: &Option<Vec<Type>>, declare_type_vars: bool) {
+        if let Some(effects) = effects {
+            for effect in effects {
+                self.resolve_type(effect, declare_type_vars);
+            }
+        }
+    }
+
     /// Resolves a type ensuring all names used are in scope and issuing errors
     /// for any that are not. If `declare_type_vars` is set then any type variables
     /// not already in scope will be declared in the current local scope. Otherwise,
@@ -955,11 +960,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                     self.resolve_type(environment, declare_type_vars);
                 }
                 self.resolve_type(&function.return_type, declare_type_vars);
-                if let Some(effects) = function.effects.as_ref() {
-                    for effect in effects {
-                        self.resolve_type(effect, declare_type_vars);
-                    }
-                }
+                self.resolve_effects(&function.effects, declare_type_vars);
             },
             TypeKind::Application(f, args) => {
                 self.resolve_type(f, declare_type_vars);

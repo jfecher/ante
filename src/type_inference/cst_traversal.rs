@@ -486,9 +486,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             None,
         );
 
-        let current_row = self.current_effect_row.clone();
-        self.unify(&effects_var, &current_row, TypeErrorKind::Effects, call.function);
-        self.current_effect_row = self.canonical_effects_row(&current_row, &TypeBindings::default());
+        self.thread_call_effects(&effects_var, call.function);
 
         // FIXME: This is a hack. Type inference benefits if we can push down more expected types by
         // binding the return, which can affect argument types, but it can also lead to coercion errors.
@@ -1278,9 +1276,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             }
 
             // Same as a normal call: link the operator's effects to the ambient row.
-            let current_row = self.current_effect_row.clone();
-            self.unify(&effects_var, &current_row, TypeErrorKind::Effects, op_expr);
-            self.current_effect_row = self.canonical_effects_row(&current_row, &TypeBindings::default());
+            self.thread_call_effects(&effects_var, op_expr);
         }
 
         self.check_expr(assignment.rhs, &value_type, TypeErrorKind::Assignment);
