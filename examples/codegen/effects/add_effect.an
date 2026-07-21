@@ -1,12 +1,12 @@
 effect AddEff =
     add: fn U32 -> Unit
 
-foo () {AddEff} =
+foo (): Unit can AddEff =
     println "foo"
     add 1
     add 2
 
-bar () {AddEff} =
+bar (): Unit can AddEff =
     println "bar"
     add 3
     add 4
@@ -27,28 +27,15 @@ main () =
     sum_all () |> println
 
 // args: --delete-binary --no-color
-// expected exit status: 1
-// expected stderr:
-// examples/codegen/effects/add_effect.an:4:9
-// 4 | foo () {AddEff} =	// error: This is an effect and cannot be used as an ordinary type
-//   |         ^^^^^^
-// 5 |     println "foo"
-// 
-// examples/codegen/effects/add_effect.an:9:9
-//  9 | bar () {AddEff} =	// error: This is an effect and cannot be used as an ordinary type
-//    |         ^^^^^^
-// 10 |     println "bar"
-// 
-// examples/codegen/effects/add_effect.an:21:5
-// 21 |     foo ()	// error: No implicit found for type AddEff required by foo
-//    |     ^^^
-// 22 |     bar ()
-// 
-// examples/codegen/effects/add_effect.an:22:5
-// 21 |     foo ()
-// 22 |     bar ()	// error: No implicit found for type AddEff required by bar
-//    |     ^^^
-// 23 |     0
-// 
-// Found 4 errors and 0 warnings
-
+// expected stdout:
+// foo
+// add called
+// add called
+// bar
+// add called
+// add called
+// add resume finished
+// add resume finished
+// add resume finished
+// add resume finished
+// 10

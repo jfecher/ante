@@ -1,45 +1,19 @@
 effect Count =
     count: fn Unit -> Unit
 
-foo {Count} =
+foo (): Unit can Count =
     count ()
     repeat 10 fn _ -> count ()
 
-handle_count (f: fn {Count} -> Unit) =
+handle_count (f: fn Unit => Unit can Count) =
     handler h for count () ->
         1 + resume ()
     in
-        f {h}
+        f ()
         0
 
 main () =
     handle_count foo |> println
 
 // args: --delete-binary --no-color
-// expected exit status: 1
-// expected stderr:
-// examples/codegen/effects/count_effect.an:4:6
-// 4 | foo {Count} =	// error: This is an effect and cannot be used as an ordinary type
-//   |      ^^^^^
-// 5 |     count ()
-// 
-// examples/codegen/effects/count_effect.an:8:22
-//    | // error: This is an effect and cannot be used as an ordinary type
-//  8 | handle_count (f: fn {Count} -> Unit) =
-//    |                      ^^^^^
-//  9 |     handler h for count () ->
-// 
-// examples/codegen/effects/count_effect.an:12:12
-// 11 |     in
-// 12 |         f {h}	// error: Argument 1 has type Count but Count was expected
-//    |            ^
-// 13 |         0
-// 
-// examples/codegen/effects/count_effect.an:15:1
-//    | // error: main here has type fn Unit -> Unit can Count but it should always have type fn Unit -> Unit pure
-// 15 | main () =
-//    | ^^^^
-// 16 |     handle_count foo |> println
-// 
-// Found 4 errors and 0 warnings
-
+// expected stdout: 11

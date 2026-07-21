@@ -1,44 +1,19 @@
 import Std.Stream.Emit, emit
 
-iota (n: U32) {Emit U32} = loop (i = 0) ->
+iota (n: U32): Unit can Emit U32 = loop (i = 0) ->
     if i < n then
         emit i
         recur (i + 1)
 
-for_ (stream: fn (Emit a) -> Unit) (f: fn a [env] -> Unit) =
+for_ (stream: fn Unit => Unit can Emit a) (f: fn a [env] -> Unit) =
     handler h for emit x ->
         f x
         resume ()
-    in stream h
+    in stream ()
 
 main () =
-    for_ (fn h -> iota 10 {h}) print
+    for_ (fn () -> iota 10) print
 
 // args: --delete-binary --no-color
-// expected exit status: 1
-// expected stderr:
-// examples/codegen/effects/generators_basic.an:3:16
-//   | // error: This is an effect and cannot be used as an ordinary type
-// 3 | iota (n: U32) {Emit U32} = loop (i = 0) ->
-//   |                ^^^^^^^^
-// 4 |     if i < n then
-// 
-// examples/codegen/effects/generators_basic.an:8:18
-//    | // error: This is an effect and cannot be used as an ordinary type
-//  8 | for_ (stream: fn (Emit a) -> Unit) (f: fn a [env] -> Unit) =
-//    |                  ^^^^^^^^
-//  9 |     handler h for emit x ->
-// 
-// examples/codegen/effects/generators_basic.an:12:15
-// 11 |         resume ()
-// 12 |     in stream h	// error: Argument 1 has type (Emit a) but Emit a was expected
-//    |               ^
-// 
-// examples/codegen/effects/generators_basic.an:14:1
-//    | // error: main here has type fn Unit -> Unit can (Emit U32) but it should always have type fn Unit -> Unit pure
-// 14 | main () =
-//    | ^^^^
-// 15 |     for_ (fn h -> iota 10 {h}) print
-// 
-// Found 4 errors and 0 warnings
+// expected stdout: 0123456789
 

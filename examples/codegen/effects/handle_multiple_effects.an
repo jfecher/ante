@@ -5,12 +5,12 @@ effect MyFail =
 effect Read a =
     read: fn Unit -> a
 
-read_or_none (f: fn Unit {MyFail} {Read U32} -> U32): Maybe U32 =
+read_or_none (f: fn Unit => U32 can MyFail, Read U32): Maybe U32 =
     handler hf for fail () -> None
     handler hr for read () -> resume 5u32
     Some (f ())
 
-foo () {MyFail} {Read U32} =
+foo (): U32 can MyFail, Read U32 =
     if false then fail ()
     read ()
 
@@ -18,47 +18,5 @@ main () =
     println <| read_or_none foo
 
 // args: --delete-binary --no-color
-// expected exit status: 1
-// expected stderr:
-// examples/codegen/effects/handle_multiple_effects.an:8:27
-//    | // error: This is an effect and cannot be used as an ordinary type
-//  8 | read_or_none (f: fn Unit {MyFail} {Read U32} -> U32): Maybe U32 =
-//    |                           ^^^^^^
-//  9 |     handler hf for fail () -> None
-// 
-// examples/codegen/effects/handle_multiple_effects.an:8:36
-//    | // error: This is an effect and cannot be used as an ordinary type
-//  8 | read_or_none (f: fn Unit {MyFail} {Read U32} -> U32): Maybe U32 =
-//    |                                    ^^^^^^^^
-//  9 |     handler hf for fail () -> None
-// 
-// examples/codegen/effects/handle_multiple_effects.an:11:11
-// 10 |     handler hr for read () -> resume 5u32
-// 11 |     Some (f ())	// error: No implicit found for type MyFail required by f
-//    |           ^
-// 
-// examples/codegen/effects/handle_multiple_effects.an:11:11
-// 10 |     handler hr for read () -> resume 5u32
-// 11 |     Some (f ())	// error: No implicit found for type Read U32 required by f
-//    |           ^
-// 
-// examples/codegen/effects/handle_multiple_effects.an:13:9
-//    | // error: This is an effect and cannot be used as an ordinary type
-// 13 | foo () {MyFail} {Read U32} =
-//    |         ^^^^^^
-// 14 |     if false then fail ()
-// 
-// examples/codegen/effects/handle_multiple_effects.an:13:18
-//    | // error: This is an effect and cannot be used as an ordinary type
-// 13 | foo () {MyFail} {Read U32} =
-//    |                  ^^^^^^^^
-// 14 |     if false then fail ()
-// 
-// examples/codegen/effects/handle_multiple_effects.an:17:1
-//    | // error: main here has type fn Unit -> Unit can (Read U32), MyFail but it should always have type fn Unit -> Unit pure
-// 17 | main () =
-//    | ^^^^
-// 18 |     println <| read_or_none foo
-// 
-// Found 7 errors and 0 warnings
+// expected stdout: Some 5
 

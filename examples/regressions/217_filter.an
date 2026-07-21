@@ -1,70 +1,32 @@
 effect Emit a =
     emit: fn a -> Unit
 
-iota (n: U32) {Emit U32} = loop (i = 0) ->
+iota (n: U32): Unit can Emit U32 = loop (i = 0) ->
     if i < n then
         emit i
         recur (i + 1)
 
-filter (stream: fn (Emit a) -> Unit) {Emit a} {Copy a} (f: fn a -> Bool) =
+filter (stream: fn Unit => Unit can Emit a) {Copy a} (f: fn a -> Bool) =
     handler h for emit x ->
         if f x then
             emit x
         resume ()
-    in stream h
+    in stream ()
 
-for_ (stream: fn (Emit a) -> Unit) (f: fn a -> Unit) =
+for_ (stream: fn Unit => Unit can Emit a) (f: fn a -> Unit) =
     handler h for emit x ->
         f x
         resume ()
-    in stream h
+    in stream ()
 
 main () =
-    for_ (fn out -> filter (fn out2 -> iota 10 {out2}) {out} (_ %% 2))
+    for_ (fn () -> filter (fn () -> iota 10) (_ %% 2))
         println
 
 // args: --delete-binary --no-color
-// expected exit status: 1
-// expected stderr:
-// examples/regressions/217_filter.an:4:16
-//   | // error: This is an effect and cannot be used as an ordinary type
-// 4 | iota (n: U32) {Emit U32} = loop (i = 0) ->
-//   |                ^^^^^^^^
-// 5 |     if i < n then
-// 
-// examples/regressions/217_filter.an:9:20
-//    | // error: This is an effect and cannot be used as an ordinary type
-//  9 | filter (stream: fn (Emit a) -> Unit) {Emit a} {Copy a} (f: fn a -> Bool) =
-//    |                    ^^^^^^^^
-// 10 |     handler h for emit x ->
-// 
-// examples/regressions/217_filter.an:9:39
-//    | // error: This is an effect and cannot be used as an ordinary type
-//  9 | filter (stream: fn (Emit a) -> Unit) {Emit a} {Copy a} (f: fn a -> Bool) =
-//    |                                       ^^^^^^
-// 10 |     handler h for emit x ->
-// 
-// examples/regressions/217_filter.an:14:15
-// 13 |         resume ()
-// 14 |     in stream h	// error: Argument 1 has type (Emit a) but Emit a was expected
-//    |               ^
-// 
-// examples/regressions/217_filter.an:16:18
-//    | // error: This is an effect and cannot be used as an ordinary type
-// 16 | for_ (stream: fn (Emit a) -> Unit) (f: fn a -> Unit) =
-//    |                  ^^^^^^^^
-// 17 |     handler h for emit x ->
-// 
-// examples/regressions/217_filter.an:20:15
-// 19 |         resume ()
-// 20 |     in stream h	// error: Argument 1 has type (Emit a) but Emit a was expected
-//    |               ^
-// 
-// examples/regressions/217_filter.an:22:1
-//    | // error: main here has type fn Unit -> Unit can (Emit U32) but it should always have type fn Unit -> Unit pure
-// 22 | main () =
-//    | ^^^^
-// 23 |     for_ (fn out -> filter (fn out2 -> iota 10 {out2}) {out} (_ %% 2))
-// 
-// Found 7 errors and 0 warnings
-
+// expected stdout:
+// 0
+// 2
+// 4
+// 6
+// 8

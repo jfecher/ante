@@ -1,46 +1,17 @@
-import Std.Fail.Fail, ignore_fail
-
-foo {Fail} =
+foo {Print I32} =
     println "in foo"
 
-foo2 {Fail} {Fail} =
+foo2 {Print I32} {Print I32} =
     println "in foo2"
 
 // We should allow calling functions like `foo` with only implicit args with a ()
-bar {Fail} =
+bar {Copy I32} =
     foo ()
     foo2 ()
 
-main () = ignore_fail bar
+main () = bar ()
 
 // args: --delete-binary --no-color
-// expected exit status: 1
-// expected stderr:
-// examples/codegen/implicit_only_call_with_unit.an:3:6
-// 3 | foo {Fail} =	// error: This is an effect and cannot be used as an ordinary type
-//   |      ^^^^
-// 4 |     println "in foo"
-// 
-// examples/codegen/implicit_only_call_with_unit.an:6:7
-// 6 | foo2 {Fail} {Fail} =	// error: This is an effect and cannot be used as an ordinary type
-//   |       ^^^^
-// 7 |     println "in foo2"
-// 
-// examples/codegen/implicit_only_call_with_unit.an:6:14
-// 6 | foo2 {Fail} {Fail} =	// error: This is an effect and cannot be used as an ordinary type
-//   |              ^^^^
-// 7 |     println "in foo2"
-// 
-// examples/codegen/implicit_only_call_with_unit.an:10:6
-//  9 | // We should allow calling functions like `foo` with only implicit args with a ()
-// 10 | bar {Fail} =	// error: This is an effect and cannot be used as an ordinary type
-//    |      ^^^^
-// 11 |     foo ()
-// 
-// examples/codegen/implicit_only_call_with_unit.an:14:23
-//    | // error: Argument 1 has type fn {Fail} -> Unit pure but fn Unit => _ can Fail was expected
-// 14 | main () = ignore_fail bar
-//    |                       ^^^
-// 
-// Found 5 errors and 0 warnings
-
+// expected stdout:
+// in foo
+// in foo2
