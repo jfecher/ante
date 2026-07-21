@@ -1021,9 +1021,26 @@ where
     /// Canonicalizes a concrete effect type to a stable capabilities map key.
     fn capability_key(&self, effect_ty: &TCType) -> TCType {
         let followed = effect_ty.follow_all(&self.types.bindings);
-        match &followed {
+        let followed = match &followed {
             TCType::Effects(list, None) if list.len() == 1 => list[0].clone(),
             _ => followed,
+        };
+        Self::widen_reference_kinds(&followed)
+    }
+
+    /// Widens every reference-kind occurrence in `ty` to `Ref` (mut/uniq/imm/ref all share one
+    /// representation) so e.g. `Emit (mut a)` and `Emit (ref a)` key to the same capability slot.
+    fn widen_reference_kinds(ty: &TCType) -> TCType {
+        match ty {
+            TCType::Primitive(type_inference::types::PrimitiveType::Reference(_)) => TCType::REF,
+            TCType::Application(constructor, args) => TCType::Application(
+                Arc::new(Self::widen_reference_kinds(constructor)),
+                Arc::new(args.iter().map(Self::widen_reference_kinds).collect()),
+            ),
+            TCType::Tuple(elements) => {
+                TCType::Tuple(Arc::new(elements.iter().map(Self::widen_reference_kinds).collect()))
+            },
+            other => other.clone(),
         }
     }
 

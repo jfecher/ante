@@ -13,7 +13,7 @@ use crate::{
         ids::{ExprId, NameId, PathId, PatternId, TopLevelId, TopLevelName},
     },
     type_inference::{
-        Locateable, TypeChecker,
+        Locateable, TypeChecker, Variance,
         affine::MovePath,
         errors::TypeErrorKind,
         get_type::{get_partial_type, try_get_generalized_type},
@@ -485,8 +485,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             None,
         );
 
-        self.thread_call_effects(&effects_var, call.function);
-
         // FIXME: This is a hack. Type inference benefits if we can push down more expected types by
         // binding the return, which can affect argument types, but it can also lead to coercion errors.
         // As a compromise, we only unify non-type variable returns currently just because it
@@ -503,6 +501,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             let kind = TypeErrorKind::CallArgument { index };
             self.infer_and_coerce(arg.expr, &expected_arg_type.typ, kind, deref_operands);
         }
+
+        // Linked after arguments so same-head ambient entries route by the argument's pinned type.
+        self.thread_call_effects(&effects_var, call.function);
 
         // FIXME: Another related hack. Try to bind the return type now, this time if it has no unbound
         // type variables. Doing so results in some better results when resolving implicits early below.
@@ -1193,7 +1194,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let mut new_list = list.to_vec();
         let mut found = false;
         for entry in to_remove.iter() {
-            if let Some(pos) = self.subtype_matching_effect(&new_list, |_| false, entry, new_bindings)? {
+            let matched =
+                self.subtype_matching_effect(&new_list, |_| false, entry, Variance::Covariant, new_bindings)?;
+            if let Some(pos) = matched {
                 new_list.remove(pos);
                 found = true;
             }

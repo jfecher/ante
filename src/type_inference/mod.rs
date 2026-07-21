@@ -942,18 +942,17 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
-    /// Find a non-skipped candidate whose head matches `target` and which invariantly
-    /// subtypes against it. Each head-match is tried speculatively so that same-head
-    /// entries with different arguments route to the one that actually unifies.
+    /// Find a non-skipped head-matching candidate that subtypes `target` per `variance`, trying each speculatively.
     fn subtype_matching_effect(
-        &self, candidates: &[Type], skip: impl Fn(usize) -> bool, target: &Type, new_bindings: &mut TypeBindings,
+        &self, candidates: &[Type], skip: impl Fn(usize) -> bool, target: &Type, variance: Variance,
+        new_bindings: &mut TypeBindings,
     ) -> Result<Option<usize>, ()> {
         for (i, candidate) in candidates.iter().enumerate() {
             if skip(i) || !Self::effect_heads_match(candidate, target) {
                 continue;
             }
             let mut trial = new_bindings.clone();
-            if self.subtype(candidate, target, Variance::Invariant, &mut trial).is_ok() {
+            if self.subtype(candidate, target, variance, &mut trial).is_ok() {
                 *new_bindings = trial;
                 return Ok(Some(i));
             }
@@ -978,7 +977,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let mut b_matched = vec![false; b_list.len()];
 
         for a_effect in a_list.iter() {
-            match self.subtype_matching_effect(b_list, |i| b_matched[i], a_effect, new_bindings)? {
+            let matched = self.subtype_matching_effect(
+                b_list,
+                |i| b_matched[i],
+                a_effect,
+                Variance::Contravariant,
+                new_bindings,
+            )?;
+            match matched {
                 Some(pos) => b_matched[pos] = true,
                 None => a_leftover.push(a_effect.clone()),
             }
