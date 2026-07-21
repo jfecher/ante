@@ -155,7 +155,7 @@ fn desugar_trait_or_effect(
 /// Defaults a definition's missing effects clause.
 fn default_effects(expr: ExprId, context: &mut DesugarContext) {
     let Expr::Lambda(mut lambda) = context[expr].clone() else { return };
-    if lambda.effects.is_some() || lambda.return_type.is_none() {
+    if lambda.return_type.is_none() {
         return;
     }
 
@@ -167,14 +167,24 @@ fn default_effects(expr: ExprId, context: &mut DesugarContext) {
     let bare_parameters: Vec<&Parameter> =
         lambda.parameters.iter().filter(|p| is_bare_function_parameter(context, p)).collect();
     if bare_parameters.is_empty() {
-        lambda.effects = Some(Vec::new());
-        context.set_expr(expr, Expr::Lambda(lambda));
+        if lambda.effects.is_none() {
+            lambda.effects = Some(Vec::new());
+            context.set_expr(expr, Expr::Lambda(lambda));
+        }
         return;
     }
 
-    // Unspellable, so it can't collide with a real user-written generic.
     let location = context.expr_location(expr).clone();
-    let e = context.push_name(Arc::new(IMPLICIT_EFFECT_NAME.to_string()), location.clone());
+    let existing_row_variable = lambda.effects.as_ref().and_then(|clause| {
+        clause.iter().find_map(|entry| match &entry.kind {
+            TypeKind::Variable(name) => Some(*name),
+            _ => None,
+        })
+    });
+    // Reuse the clause's row variable if it has one; otherwise synthesize the
+    // unspellable `$effect`, which can't collide with a real user-written generic.
+    let e = existing_row_variable
+        .unwrap_or_else(|| context.push_name(Arc::new(IMPLICIT_EFFECT_NAME.to_string()), location.clone()));
 
     for parameter in bare_parameters {
         let Pattern::TypeAnnotation(inner, mut typ) = context[parameter.pattern].clone() else { unreachable!() };
@@ -183,7 +193,15 @@ fn default_effects(expr: ExprId, context: &mut DesugarContext) {
         context.set_pattern(parameter.pattern, Pattern::TypeAnnotation(inner, typ));
     }
 
-    lambda.effects = Some(vec![Type::new(TypeKind::Variable(e), location)]);
+    // The parameters' effects must also flow into this function's own row, even
+    // when it has an explicit clause: `can X` becomes the open row `can X, $effect`.
+    if existing_row_variable.is_none() {
+        let effect_entry = Type::new(TypeKind::Variable(e), location);
+        match &mut lambda.effects {
+            Some(clause) => clause.push(effect_entry),
+            None => lambda.effects = Some(vec![effect_entry]),
+        }
+    }
     context.set_expr(expr, Expr::Lambda(lambda));
 }
 

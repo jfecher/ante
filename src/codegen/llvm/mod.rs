@@ -375,7 +375,8 @@ impl<'ctx> ModuleContext<'ctx> {
         self.builder.build_store(argv_global.as_pointer_value(), argv).unwrap();
 
         let unit = self.unit_value().into();
-        self.builder.build_direct_call(ante_main, &[unit], "").unwrap();
+        let evidence = self.llvm.struct_type(&[], false).const_zero().into();
+        self.builder.build_direct_call(ante_main, &[unit, evidence], "").unwrap();
         self.builder.build_return(Some(&i32_type.const_int(0, false))).unwrap();
     }
 

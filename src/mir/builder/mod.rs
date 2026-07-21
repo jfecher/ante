@@ -103,27 +103,6 @@ enum LhsKind {
     Other,
 }
 
-/// Whether a fully-resolved effects value still has a genuinely open tail.
-fn effects_tail_is_declared_open(mut effects: &TCType) -> bool {
-    loop {
-        match effects {
-            TCType::Effects(_, None) => return false,
-            TCType::Effects(_, Some(inner)) => effects = inner,
-            TCType::Generic(_) | TCType::Variable(_) => return true,
-            _ => return false,
-        }
-    }
-}
-
-/// A capability parameter an effect is translated to in Mir.
-#[derive(Debug)]
-enum Capability {
-    /// One concrete effect, keyed for insertion into `self.capabilities`.
-    Concrete(TCType, Type),
-    /// An opaque bundle for an open effect row tail.
-    Bundle(Type),
-}
-
 /// True if `typ` is a function whose return type is `Never`. Checked before `convert_type`
 /// erases `Never`, since we need the divergence info to emit `Unreachable` after the call.
 fn function_returns_never<'a>(mut typ: &'a TCType, bindings: &'a type_inference::types::TypeBindings) -> bool {
@@ -447,12 +426,11 @@ where
     }
 
     fn variable(&mut self, path_id: PathId) -> Value {
-        // An effect operation as a first-class value is the op_index'th field of its effect's capability tuple.
+        // An effect operation as a first-class value receives its capability through its
+        // own evidence: wrap it in a static function of the uniform convention.
         if let Some((effect_op, op_index, AbilityKind::Effect)) = self.try_resolve_ability_method(path_id) {
             self.effect_op_indices.insert(effect_op, op_index);
-            let effect_type = self.effect_type_of_op(path_id);
-            let cap_value = self.capability_for(&effect_type);
-            return self.index_capability_method(cap_value, op_index);
+            return self.effect_op_value_wrapper(path_id, op_index);
         }
 
         // Deliberately allow us to reference variables not in the context.
@@ -462,9 +440,19 @@ where
             match self.context().path_origin(path_id) {
                 Some(Origin::TopLevelDefinition(name)) => {
                     let id = self.get_definition_id(&name);
+                    let is_extern = self.name_is_extern(&name);
                     let name = self.get_definition_name(&name);
-                    let typ = self.extend_reference_type_with_capabilities(path_id, self.convert_path_type(path_id));
-                    self.make_definition_value(id, name, typ)
+                    if is_extern {
+                        // Extern symbols keep their C shape (no evidence parameter); a
+                        // first-class reference is wrapped into the uniform convention.
+                        let tc_type = self.types.result.maps.path_types[&path_id].clone();
+                        let c_type = self.convert_context().convert_c_function_type(&tc_type);
+                        let target = self.make_definition_value(id, name.clone(), c_type);
+                        self.extern_evidence_wrapper(target, name, self.convert_path_type(path_id))
+                    } else {
+                        let typ = self.convert_path_type(path_id);
+                        self.make_definition_value(id, name, typ)
+                    }
                 },
                 Some(Origin::Local(name)) => {
                     let ptr = *self.local_variables.get(&name).unwrap_or_else(|| {
@@ -493,7 +481,7 @@ where
         if let Value::Definition(id) = value
             && let Some(bindings) = self.types.result.context.get_instantiation(path_id)
         {
-            let typ = self.extend_reference_type_with_capabilities(path_id, self.convert_path_type(path_id));
+            let typ = self.convert_path_type(path_id);
             let bindings = Arc::new(mapvec(bindings, |typ| self.convert_type(typ, None)));
             let instruction = Instruction::Instantiate(id, bindings);
             value = self.push_instruction(instruction, typ);
@@ -523,7 +511,12 @@ where
 
         let previous_state = self.is_non_function_global(definition).then(|| {
             let generic_count = self.generics_in_scope.len() as u32;
-            let typ = self.convert_pattern_type(definition.pattern);
+            // Extern globals hold C-shaped function values: no evidence parameter.
+            let pattern_type = &self.types.result.maps.pattern_types[&definition.pattern];
+            let typ = match self.rhs_is_extern(definition.rhs) {
+                true => self.convert_context().convert_c_function_type(&pattern_type.clone()),
+                false => self.convert_pattern_type(definition.pattern),
+            };
             self.start_global(name, name_id, generic_count, typ)
         });
 
@@ -595,21 +588,7 @@ where
         }
 
         let diverges = self.callee_diverges(call.function);
-        let result_type = if diverges {
-            Type::UNIT
-        } else {
-            let base = self.expr_type(id);
-            // A row-polymorphic closure in the callee's return type needs the same bundle-slot patching as a direct reference.
-            match &self.context()[call.function] {
-                cst::Expr::Variable(path_id) => match self.path_declared_type(*path_id) {
-                    Some(TCType::Function(declared_fn)) => {
-                        self.patch_missing_capability_slots(base, &declared_fn.return_type)
-                    },
-                    _ => base,
-                },
-                _ => base,
-            }
-        };
+        let result_type = if diverges { Type::UNIT } else { self.expr_type(id) };
 
         // Trait & effect method calls dispatch through `IndexTuple cap op_index + CallClosure`.
         if let cst::Expr::Variable(path_id) = &self.context()[call.function]
@@ -629,12 +608,11 @@ where
         }
 
         let function = self.expression(call.function);
-        let expected_parameter_types = self.callee_declared_parameter_types(call.function);
         let mut arguments = mapvec(call.arguments.iter().enumerate(), |(i, expr)| {
-            let expected = expected_parameter_types.as_ref().and_then(|types| types.get(i));
-            self.adapt_argument(expr.expr, expected, call.function, &function, i)
+            let value = self.expression(expr.expr);
+            self.coerce_argument_evidence(value, &function, call.function, i)
         });
-        self.append_capability_arguments(call.function, &function, &mut arguments);
+        self.append_evidence_argument(call.function, &function, &mut arguments);
 
         let instruction = if self.type_of_value(&function).is_closure() {
             Instruction::CallClosure { closure: function, arguments }
@@ -649,135 +627,395 @@ where
         value
     }
 
-    /// The callee's effects row, in declaration order.
-    fn callee_effects_row(&self, callee_expr: ExprId) -> (Vec<TCType>, Option<TCType>) {
+    /// A first-class effect operation: a static function projecting the operation out of
+    /// the capability at the head of its own evidence.
+    fn effect_op_value_wrapper(&mut self, path_id: PathId, op_index: u32) -> Value {
+        let uniform_type = self.convert_path_type(path_id);
+        let Type::Function(uniform_ft) = &uniform_type else { return Value::Error };
+        let parameters = uniform_ft.parameters.clone();
+        let return_type = uniform_ft.return_type.clone();
+        let surface_count = parameters.len() - 1;
+
+        let generics_count = self.generics_in_scope.len() as u32;
+        let name = Arc::new("effect_op".to_string());
+        let id = self.new_isolated_definition(name.clone(), generics_count, uniform_type.clone(), |this| {
+            let params: Vec<Value> = mapvec(&parameters, |typ| this.push_capability_parameter(typ.clone()));
+            let evidence = params[surface_count];
+            let Type::Tuple(fields) = &parameters[surface_count] else {
+                unreachable!("effect operation's evidence must contain its capability")
+            };
+            let index = Instruction::IndexTuple { tuple: evidence, index: 0 };
+            let capability = this.push_instruction(index, fields[0].clone());
+            let method = this.index_capability_method(capability, op_index);
+            let arguments = params[..surface_count].to_vec();
+            let instruction = Instruction::CallClosure { closure: method, arguments };
+            let result = this.push_instruction(instruction, return_type.clone());
+            this.terminate_block(TerminatorInstruction::Return(result));
+        });
+        self.make_definition_value(id, name, uniform_type)
+    }
+
+    /// Wraps a C-shaped extern function value into the uniform evidence convention.
+    fn extern_evidence_wrapper(&mut self, target: Value, name: Name, uniform_type: Type) -> Value {
+        let Type::Function(uniform_ft) = &uniform_type else { return target };
+        let parameters = uniform_ft.parameters.clone();
+        let return_type = uniform_ft.return_type.clone();
+        let surface_count = parameters.len().saturating_sub(1);
+        let Value::Definition(target_id) = target else { return target };
+
+        let generics_count = self.generics_in_scope.len() as u32;
+        let name = Arc::new(format!("{name}_wrapper"));
+        let id = self.new_isolated_definition(name.clone(), generics_count, uniform_type.clone(), |this| {
+            let params: Vec<Value> = mapvec(&parameters, |typ| this.push_capability_parameter(typ.clone()));
+            let arguments = params[..surface_count].to_vec();
+            let function = Value::Definition(target_id);
+            let result = this.push_instruction(Instruction::Call { function, arguments }, return_type.clone());
+            this.terminate_block(TerminatorInstruction::Return(result));
+        });
+        self.make_definition_value(id, name, uniform_type)
+    }
+
+    /// Whether an expression is (an annotation of) an `extern` declaration.
+    fn rhs_is_extern(&self, expr: ExprId) -> bool {
+        match &self.context()[expr] {
+            cst::Expr::Extern(_) => true,
+            cst::Expr::TypeAnnotation(annotation) => self.rhs_is_extern(annotation.lhs),
+            _ => false,
+        }
+    }
+
+    /// Whether a top-level name is defined as an `extern` symbol.
+    fn name_is_extern(&self, name: &TopLevelName) -> bool {
+        let (item, context) = GetItem(name.top_level_item).get(self.compiler);
+        let cst::TopLevelItemKind::Definition(definition) = &item.kind else { return false };
+        let mut expr = definition.rhs;
+        loop {
+            match &context[expr] {
+                cst::Expr::Extern(_) => return true,
+                cst::Expr::TypeAnnotation(annotation) => expr = annotation.lhs,
+                _ => return false,
+            }
+        }
+    }
+
+    /// The callee's raw effects row.
+    fn callee_effects(&self, callee_expr: ExprId) -> TCType {
         // `expr_types` for a `Variable` may hold the post-unification expected type instead.
         let typ = match &self.context()[callee_expr] {
             cst::Expr::Variable(path_id) => self.types.result.maps.path_types[path_id].follow(&self.types.bindings),
             _ => self.types.result.maps.expr_types[&callee_expr].follow(&self.types.bindings),
         };
-        let TCType::Function(function_type) = typ else {
-            panic!("callee_effects_row: callee is not a function type");
-        };
-        let TCType::Effects(list, tail) = function_type.effects.follow(&self.types.bindings) else {
-            panic!("callee_effects_row: callee has no effects row");
-        };
-        (list.as_ref().clone(), tail.as_deref().cloned())
-    }
-
-    /// The top-level definition `path_id` refers to, fully resolved and Forall-stripped.
-    fn path_declared_type(&self, path_id: PathId) -> Option<TCType> {
-        let Some(Origin::TopLevelDefinition(name)) = self.context().path_origin(path_id) else { return None };
-        let checked = TypeCheck(name.top_level_item).get(self.compiler);
-        Some(checked.get_generalized(name.local_name_id).ignore_forall().clone())
-    }
-
-    /// Whether `path_id`'s own declaration is genuinely row-polymorphic, regardless of this reference's instantiation.
-    fn path_declared_tail_is_open(&self, path_id: PathId) -> bool {
-        let Some(TCType::Function(function_type)) = self.path_declared_type(path_id) else { return false };
-        effects_tail_is_declared_open(&function_type.effects)
-    }
-
-    /// Recursively adds a bundle parameter slot wherever `declared` is row-polymorphic but `typ` resolved it to empty.
-    fn patch_missing_capability_slots(&self, typ: Type, declared: &TCType) -> Type {
-        let (Type::Function(ft), TCType::Function(declared_fn)) = (&typ, declared) else { return typ };
-        let surface_count = declared_fn.parameters.len();
-
-        let mut parameters = ft.parameters.clone();
-        for (i, declared_param) in declared_fn.parameters.iter().enumerate() {
-            if let Some(p) = parameters.get_mut(i) {
-                *p = self.patch_missing_capability_slots(p.clone(), &declared_param.typ);
-            }
+        match typ {
+            TCType::Function(function_type) => function_type.effects.clone(),
+            _ => TCType::Effects(Arc::new(Vec::new()), None),
         }
-        if effects_tail_is_declared_open(&declared_fn.effects) && parameters.len() == surface_count {
-            parameters.push(Type::tuple(Vec::new()));
-        }
-
-        let return_type = self.patch_missing_capability_slots(ft.return_type.clone(), &declared_fn.return_type);
-        Type::Function(Arc::new(FunctionType { parameters, environment: ft.environment.clone(), return_type }))
     }
 
-    /// Appends capability arguments for a call to `callee_expr`. The callee's row determines
-    /// which capabilities are needed; the callee value's own type decides the packaging:
-    /// canonical (one parameter per resolved effect, e.g. a local lambda) or declared
-    /// (head-list effects individually, everything else through one bundle).
-    fn append_capability_arguments(&mut self, callee_expr: ExprId, callee_value: &Value, arguments: &mut Vec<Value>) {
-        let (list, tail) = self.callee_effects_row(callee_expr);
+    /// If `value` statically references a definition, returns its id and any instantiation.
+    fn as_static_function(&mut self, value: Value) -> Option<(DefinitionId, Option<Arc<Vec<Type>>>)> {
+        match value {
+            Value::Definition(id) => Some((id, None)),
+            Value::InstructionResult(iid) => match &self.current_function().instructions[iid] {
+                Instruction::Instantiate(id, bindings) => Some((*id, Some(bindings.clone()))),
+                Instruction::Id(Value::Definition(id)) => Some((*id, None)),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
 
-        let callee_path_id = match &self.context()[callee_expr] {
-            cst::Expr::Variable(path_id) => Some(*path_id),
+    /// Inference row-subtypes function arguments (the argument's row may be smaller than
+    /// the parameter's), but evidence shapes are invariant. When the shapes differ, wrap the
+    /// argument in an adapter of the expected shape whose body projects the argument's own
+    /// (smaller) evidence out of the expected evidence.
+    fn coerce_argument_evidence(
+        &mut self, value: Value, function: &Value, callee_expr: ExprId, parameter_index: usize,
+    ) -> Value {
+        let Type::Function(callee_ft) = self.type_of_value(function) else { return value };
+        let Some(Type::Function(expected_ft)) = callee_ft.parameters.get(parameter_index).cloned() else {
+            return value;
+        };
+        let value_type = self.type_of_value(&value);
+        let Type::Function(vt) = &value_type else { return value };
+        if vt.parameters == expected_ft.parameters {
+            return value;
+        }
+        // Only a differing trailing evidence parameter is coercible.
+        let (Some((value_evidence, value_surface)), Some((expected_evidence, expected_surface))) =
+            (vt.parameters.split_last(), expected_ft.parameters.split_last())
+        else {
+            return value;
+        };
+        if value_surface != expected_surface || vt.return_type != expected_ft.return_type {
+            return value;
+        }
+
+        // The adapter re-references a static target directly. A closure argument reuses its
+        // own environment, so the adapted closure's type matches the expected one exactly.
+        let static_closure = match value {
+            Value::InstructionResult(iid) => match self.current_function().instructions[iid].clone() {
+                Instruction::PackClosure { function, environment } => {
+                    self.as_static_function(function).map(|target| (target, function, environment))
+                },
+                _ => None,
+            },
             _ => None,
         };
-        let is_top_level_ref = callee_path_id
-            .is_some_and(|path| matches!(self.context().path_origin(path), Some(Origin::TopLevelDefinition(_))));
-        if !is_top_level_ref && self.try_append_canonical_capability_arguments(&list, &tail, callee_value, arguments) {
+        let (target, environment) = match self.as_static_function(value) {
+            Some(target) => (target, None),
+            None => match static_closure {
+                Some((target, function, environment)) => {
+                    (target, Some((environment, self.type_of_value(&function), self.type_of_value(&environment))))
+                },
+                // A dynamic function value (e.g. a captured closure): wrap it opaquely and
+                // patch the callee's environment-generic instantiation to the new shape.
+                None => {
+                    return self.coerce_dynamic_argument_evidence(
+                        value,
+                        &expected_ft,
+                        expected_evidence,
+                        value_evidence,
+                        callee_expr,
+                        function,
+                        parameter_index,
+                    );
+                },
+            },
+        };
+        let (target_id, target_bindings) = target;
+        let target_type = match &environment {
+            Some((_, function_type, _)) => function_type.clone(),
+            None => value_type.clone(),
+        };
+
+        let return_type = vt.return_type.clone();
+        let value_evidence = value_evidence.clone();
+        let expected_evidence = expected_evidence.clone();
+        let expected_parameters = expected_ft.parameters.clone();
+        let surface_count = expected_surface.len();
+        let environment_type = environment.as_ref().map(|(_, _, env_type)| env_type.clone());
+
+        let declared_type = Type::Function(Arc::new(FunctionType {
+            parameters: expected_parameters.clone(),
+            environment: environment_type.clone().unwrap_or(Type::NO_CLOSURE_ENV),
+            return_type: return_type.clone(),
+        }));
+
+        let generics_count = self.generics_in_scope.len() as u32;
+        let name = Arc::new("evidence_adapter".to_string());
+        let id = self.new_isolated_definition(name.clone(), generics_count, declared_type.clone(), |this| {
+            let params: Vec<Value> =
+                mapvec(&expected_parameters, |typ| this.push_capability_parameter(typ.clone()));
+            let environment_param = environment_type.clone().map(|typ| this.push_capability_parameter(typ));
+
+            let provided = params[surface_count];
+            let Some(evidence) = this.project_evidence(provided, &expected_evidence, &value_evidence) else {
+                panic!(
+                    "cannot project argument evidence {value_evidence} out of the expected evidence {expected_evidence}"
+                )
+            };
+
+            let target = match &target_bindings {
+                Some(bindings) => {
+                    this.push_instruction(Instruction::Instantiate(target_id, bindings.clone()), target_type.clone())
+                },
+                None => Value::Definition(target_id),
+            };
+            let mut arguments: Vec<Value> = params[..surface_count].to_vec();
+            arguments.push(evidence);
+            arguments.extend(environment_param);
+            let result = this.push_instruction(Instruction::Call { function: target, arguments }, return_type.clone());
+            this.terminate_block(TerminatorInstruction::Return(result));
+        });
+
+        let adapted = self.make_definition_value(id, name, declared_type.clone());
+        match environment {
+            Some((environment, _, _)) => {
+                self.push_instruction(Instruction::PackClosure { function: adapted, environment }, declared_type)
+            },
+            None => adapted,
+        }
+    }
+
+    /// Evidence coercion for a dynamic function value: an adapter closure captures the
+    /// value itself as its environment. The callee's environment generic was instantiated
+    /// to the original environment, so its binding is patched to the adapter's shape.
+    #[allow(clippy::too_many_arguments)]
+    fn coerce_dynamic_argument_evidence(
+        &mut self, value: Value, expected_ft: &FunctionType, expected_evidence: &Type, value_evidence: &Type,
+        callee_expr: ExprId, function: &Value, parameter_index: usize,
+    ) -> Value {
+        let value_type = self.type_of_value(&value);
+        let return_type = expected_ft.return_type.clone();
+        let expected_parameters = expected_ft.parameters.clone();
+        let surface_count = expected_parameters.len() - 1;
+        let expected_evidence = expected_evidence.clone();
+        let value_evidence = value_evidence.clone();
+        let is_closure = value_type.is_closure();
+
+        let declared_type = Type::Function(Arc::new(FunctionType {
+            parameters: expected_parameters.clone(),
+            environment: value_type.clone(),
+            return_type: return_type.clone(),
+        }));
+
+        let generics_count = self.generics_in_scope.len() as u32;
+        let name = Arc::new("evidence_adapter".to_string());
+        let inner_type = value_type.clone();
+        let id = self.new_isolated_definition(name.clone(), generics_count, declared_type.clone(), |this| {
+            let params: Vec<Value> =
+                mapvec(&expected_parameters, |typ| this.push_capability_parameter(typ.clone()));
+            let inner = this.push_capability_parameter(inner_type.clone());
+
+            let provided = params[surface_count];
+            let Some(evidence) = this.project_evidence(provided, &expected_evidence, &value_evidence) else {
+                panic!(
+                    "cannot project argument evidence {value_evidence} out of the expected evidence {expected_evidence}"
+                )
+            };
+
+            let mut arguments: Vec<Value> = params[..surface_count].to_vec();
+            arguments.push(evidence);
+            let instruction = if is_closure {
+                Instruction::CallClosure { closure: inner, arguments }
+            } else {
+                Instruction::Call { function: inner, arguments }
+            };
+            let result = this.push_instruction(instruction, return_type.clone());
+            this.terminate_block(TerminatorInstruction::Return(result));
+        });
+
+        let adapter = self.make_definition_value(id, name, declared_type.clone());
+        let adapted =
+            self.push_instruction(Instruction::PackClosure { function: adapter, environment: value }, declared_type);
+        self.patch_environment_binding(function, callee_expr, parameter_index, value_type);
+        adapted
+    }
+
+    /// Patches a callee's already-built `Instantiate` binding for the environment generic of
+    /// its `parameter_index`'th parameter to `new_env_type`.
+    fn patch_environment_binding(
+        &mut self, function: &Value, callee_expr: ExprId, parameter_index: usize, new_env_type: Type,
+    ) {
+        let Value::InstructionResult(inst_id) = *function else { return };
+        let Instruction::Instantiate(callee_id, bindings) = &self.current_function().instructions[inst_id] else {
+            return;
+        };
+        let callee_id = *callee_id;
+        let old_bindings = bindings.as_ref().clone();
+
+        let cst::Expr::Variable(path_id) = &self.context()[callee_expr] else { return };
+        let Some(Origin::TopLevelDefinition(name)) = self.context().path_origin(*path_id) else { return };
+        let checked = TypeCheck(name.top_level_item).get(self.compiler);
+        let Some(TCType::Forall(generics, inner)) = checked.result.generalized.get(&name.local_name_id) else {
+            return;
+        };
+        let TCType::Function(callee_fn) = inner.as_ref() else { return };
+        let Some(parameter) = callee_fn.parameters.get(parameter_index) else { return };
+        let TCType::Function(param_fn) = parameter.typ.follow(&checked.bindings) else { return };
+        let TCType::Generic(target) = param_fn.environment.follow(&checked.bindings) else { return };
+        let Some(idx) = generics.iter().position(|g| g == target) else { return };
+        if idx >= old_bindings.len() {
             return;
         }
 
-        for effect_ty in &list {
-            arguments.push(self.capability_for(effect_ty));
-        }
+        let mut new_bindings = old_bindings;
+        new_bindings[idx] = new_env_type.clone();
 
-        let Some(tail_ty) = tail else { return };
-        let instantiated_has_slot = match self.type_of_value(callee_value) {
-            Type::Function(ft) => ft.parameters.len() > arguments.len(),
-            _ => false,
-        };
-        match tail_ty.follow_all(&self.types.bindings) {
-            // A resolved-empty tail still needs an (empty-tuple) argument if the callee is genuinely row-polymorphic.
-            TCType::Effects(concrete_list, None) if concrete_list.is_empty() => {
-                let declared_open = callee_path_id.is_some_and(|p| self.path_declared_tail_is_open(p));
-                if declared_open || instantiated_has_slot {
-                    let bundle = self.push_instruction(Instruction::MakeTuple(Vec::new()), Type::tuple(Vec::new()));
-                    arguments.push(bundle);
-                }
-            },
-            TCType::Effects(concrete_list, None) => {
-                let fields = mapvec(concrete_list.iter(), |effect_ty| self.capability_for(effect_ty));
-                let followed = TCType::Effects(concrete_list, None);
-                let bundle_type = self.convert_type(&followed, None);
-                let bundle = self.push_instruction(Instruction::MakeTuple(fields), bundle_type);
-                arguments.push(bundle);
-            },
-            // Still open from the caller's perspective: forward our own bundle, but only if the callee has a slot for it.
-            _ => {
-                if instantiated_has_slot
-                    && let Some(bundle) = self.capability_bundle
-                {
-                    arguments.push(bundle);
-                }
-            },
+        // Patch the recorded result type in place to match the new binding.
+        let Type::Function(ft) = self.type_of_value(function) else { return };
+        let Some(Type::Function(param_ft)) = ft.parameters.get(parameter_index) else { return };
+        let patched_param = Type::Function(Arc::new(FunctionType {
+            parameters: param_ft.parameters.clone(),
+            environment: new_env_type,
+            return_type: param_ft.return_type.clone(),
+        }));
+        let mut new_parameters = ft.parameters.clone();
+        new_parameters[parameter_index] = patched_param;
+        let new_typ = Type::Function(Arc::new(FunctionType {
+            parameters: new_parameters,
+            environment: ft.environment.clone(),
+            return_type: ft.return_type.clone(),
+        }));
+
+        let current = self.current_function();
+        current.instructions[inst_id] = Instruction::Instantiate(callee_id, Arc::new(new_bindings));
+        current.instruction_result_types[inst_id] = new_typ;
+    }
+
+    /// Builds a `needed` evidence value out of a larger `provided` one by walking the
+    /// provided cons chain and picking the entries the needed chain requires.
+    fn project_evidence(&mut self, provided: Value, provided_type: &Type, needed_type: &Type) -> Option<Value> {
+        if provided_type == needed_type {
+            return Some(provided);
+        }
+        // The empty evidence needs nothing from the provided chain.
+        if matches!(needed_type, Type::Tuple(fields) if fields.is_empty()) {
+            return Some(self.push_instruction(Instruction::MakeTuple(Vec::new()), Type::tuple(Vec::new())));
+        }
+        let Type::Tuple(needed_fields) = needed_type else { return None };
+        let [needed_head, needed_rest] = needed_fields.as_slice() else { return None };
+
+        // Find the needed capability in the provided chain.
+        let mut current = provided;
+        let mut current_type = provided_type.clone();
+        loop {
+            let Type::Tuple(fields) = &current_type else { return None };
+            let [head, rest] = fields.as_slice() else { return None };
+            let (head, rest) = (head.clone(), rest.clone());
+            if head == *needed_head {
+                let index = Instruction::IndexTuple { tuple: current, index: 0 };
+                let capability = self.push_instruction(index, head.clone());
+                let index = Instruction::IndexTuple { tuple: current, index: 1 };
+                let rest_value = self.push_instruction(index, rest.clone());
+                let rest_evidence = self.project_evidence(rest_value, &rest, needed_rest)?;
+                let tuple = Instruction::MakeTuple(vec![capability, rest_evidence]);
+                return Some(self.push_instruction(tuple, needed_type.clone()));
+            }
+            let index = Instruction::IndexTuple { tuple: current, index: 1 };
+            current = self.push_instruction(index, rest.clone());
+            current_type = rest;
         }
     }
 
-    /// If the callee value's remaining parameters are exactly its canonical row's individual
-    /// capabilities (a definition-convention value, e.g. a local lambda), appends those
-    /// capabilities and returns true. Returns false for bundle-convention values.
-    fn try_append_canonical_capability_arguments(
-        &mut self, list: &[TCType], tail: &Option<TCType>, callee_value: &Value, arguments: &mut Vec<Value>,
-    ) -> bool {
-        let row = TCType::Effects(Arc::new(list.to_vec()), tail.clone().map(Arc::new)).follow_all(&self.types.bindings);
-        let TCType::Effects(c_list, c_tail) = &row else { return false };
-        let open = c_tail.is_some();
+    /// Appends the callee's evidence argument. A callee whose value type has no evidence
+    /// slot (externs, `resume`, effect operations) takes none.
+    fn append_evidence_argument(&mut self, callee_expr: ExprId, callee_value: &Value, arguments: &mut Vec<Value>) {
+        if let Type::Function(function_type) = self.type_of_value(callee_value)
+            && function_type.parameters.len() <= arguments.len()
+        {
+            return;
+        }
+        let effects = self.callee_effects(callee_expr);
+        let evidence = self.build_evidence(&effects);
+        arguments.push(evidence);
+    }
 
-        let Type::Function(ft) = self.type_of_value(callee_value) else { return false };
-        let Some(slots) = ft.parameters.get(arguments.len()..) else { return false };
-        if slots.len() != c_list.len() + open as usize {
-            return false;
+    /// Builds the evidence value for a row: a cons list of the row's capabilities from this
+    /// function's own scope; a row-polymorphic end reuses this function's own evidence rest.
+    fn build_evidence(&mut self, effects: &TCType) -> Value {
+        let (concretes, end) = self.convert_context().split_row(effects);
+        let (mut evidence, mut evidence_type) = match end {
+            types::RowEnd::Closed => {
+                let typ = Type::tuple(Vec::new());
+                (self.push_instruction(Instruction::MakeTuple(Vec::new()), typ.clone()), typ)
+            },
+            types::RowEnd::Generic(_) => {
+                let rest = self
+                    .capability_bundle
+                    .unwrap_or_else(|| panic!("no ambient evidence to forward to a row-polymorphic callee"));
+                let typ = self.type_of_value(&rest);
+                (rest, typ)
+            },
+        };
+        for effect in concretes.iter().rev() {
+            let capability = self.capability_for(effect);
+            let capability_type = self.type_of_value(&capability);
+            evidence_type = Type::tuple(vec![capability_type, evidence_type]);
+            evidence =
+                self.push_instruction(Instruction::MakeTuple(vec![capability, evidence]), evidence_type.clone());
         }
-        let cap_types: Vec<Type> = mapvec(c_list.iter(), |effect_ty| self.effect_capability_tuple_type_of(effect_ty));
-        if !slots.iter().zip(&cap_types).all(|(slot, cap)| slot == cap) {
-            return false;
-        }
-
-        for effect_ty in c_list.iter() {
-            arguments.push(self.capability_for(effect_ty));
-        }
-        if open {
-            let Some(bundle) = self.capability_bundle else { return false };
-            arguments.push(bundle);
-        }
-        true
+        evidence
     }
 
     /// Canonicalizes a concrete effect type to a stable capabilities map key.
@@ -793,11 +1031,7 @@ where
     fn capability_for(&self, effect_ty: &TCType) -> Value {
         let key = self.capability_key(effect_ty);
         *self.capabilities.get(&key).unwrap_or_else(|| {
-            panic!(
-                "no capability for effect {key:?} in scope at this call site \
-                 - handler branches/bodies and trait-method implementations can't receive \
-                 capabilities besides the one a handler body/branch handles"
-            )
+            panic!("no capability for effect {key:?} in scope at this call site")
         })
     }
 
@@ -805,9 +1039,7 @@ where
     fn suppressed_lambda_needed_capabilities(
         &self, tc_effects: &TCType, handle_body_handler_name: Option<NameId>,
     ) -> Vec<TCType> {
-        // The row is canonical (see [Self::lambda_impl]): all concrete effects are in the head list.
-        let TCType::Effects(list, _) = tc_effects else { return Vec::new() };
-        let effects: Vec<TCType> = list.as_ref().clone();
+        let (effects, _) = self.convert_context().split_row(tc_effects);
 
         // A body excludes its own handled effect(s); a branch excludes nothing.
         let excluded_keys: Vec<TCType> = match handle_body_handler_name {
@@ -823,47 +1055,6 @@ where
         };
 
         effects.iter().map(|t| self.capability_key(t)).filter(|key| !excluded_keys.contains(key)).collect()
-    }
-
-    /// The capability parameters a function's effects row manifests as.
-    fn effect_capabilities(&self, tc_effects: &TCType) -> Vec<Capability> {
-        let TCType::Effects(list, _) = tc_effects else { return Vec::new() };
-        let mut types = Vec::new();
-        self.convert_context().append_capability_parameter_types(tc_effects, &mut types);
-        let mut types = types.into_iter();
-        let mut capabilities: Vec<Capability> =
-            list.iter().map(|effect_ty| Capability::Concrete(self.capability_key(effect_ty), types.next().unwrap())).collect();
-        capabilities.extend(types.map(Capability::Bundle));
-        capabilities
-    }
-
-    /// Removes the last `count` parameters from a function type's declared parameter list.
-    fn strip_trailing_parameters(&self, full_type: Type, count: usize) -> Type {
-        if count == 0 {
-            return full_type;
-        }
-        let Type::Function(ft) = &full_type else { unreachable!("Lambda does not have a function type") };
-        let mut parameters = ft.parameters.clone();
-        parameters.truncate(parameters.len() - count);
-        Type::Function(Arc::new(FunctionType {
-            parameters,
-            environment: ft.environment.clone(),
-            return_type: ft.return_type.clone(),
-        }))
-    }
-
-    /// Patches a reference's already-converted type with any capability slots this specific instantiation dropped.
-    fn extend_reference_type_with_capabilities(&self, path_id: PathId, typ: Type) -> Type {
-        match self.path_declared_type(path_id) {
-            Some(declared) => {
-                let patched = self.patch_missing_capability_slots(typ.clone(), &declared);
-                if std::env::var("ANTE_DEBUG_CAPS").is_ok() {
-                    eprintln!("patch ref {}: declared={declared:?}\n  before={typ}\n  after={patched}", self.context()[path_id]);
-                }
-                patched
-            },
-            None => typ,
-        }
     }
 
     /// Extends a lambda's environment type with trailing fields.
@@ -892,407 +1083,9 @@ where
         )
     }
 
-    /// Extends a lambda's environment type with one trailing field for a captured, still-open capability bundle.
+    /// Extends a lambda's environment type with one trailing field for the captured enclosing evidence rest.
     fn extend_environment_with_bundle(&self, full_type: Type, bundle_type: Type) -> Type {
         self.extend_environment_with_fields(full_type, std::iter::once(bundle_type))
-    }
-
-    /// A top-level function reference's declared un-instantiated parameter types.
-    fn callee_declared_parameter_types(&self, callee_expr: ExprId) -> Option<Vec<TCType>> {
-        let cst::Expr::Variable(path_id) = &self.context()[callee_expr] else { return None };
-        let TCType::Function(function_type) = self.path_declared_type(*path_id)? else { return None };
-        Some(function_type.parameters.iter().map(|p| p.typ.clone()).collect())
-    }
-
-    /// Evaluates `arg_expr`, adapting it if it's a bare function reference needing the bundle-parameter convention.
-    fn adapt_argument(
-        &mut self, arg_expr: ExprId, expected: Option<&TCType>, callee_expr: ExprId, function: &Value,
-        parameter_index: usize,
-    ) -> Value {
-        let value = self.expression(arg_expr);
-        let Some(expected) = expected else { return value };
-
-        let TCType::Function(expected_fn) = expected.follow(&self.types.bindings) else {
-            return value;
-        };
-        let followed_expected_effects = expected_fn.effects.follow(&self.types.bindings);
-        let TCType::Effects(expected_list, Some(_)) = followed_expected_effects else {
-            return value;
-        };
-        if !expected_list.is_empty() {
-            // A mixed concrete+polymorphic expected row is out of scope for this adapter.
-            return value;
-        }
-
-        let Some(path_id) = (match &self.context()[arg_expr] {
-            cst::Expr::Variable(path_id) => Some(*path_id),
-            _ => None,
-        }) else {
-            // Not a bare top-level reference: wrap it generically instead.
-            return self.adapt_local_value_to_bundle(arg_expr, value, expected, function, callee_expr, parameter_index);
-        };
-        let Some(Origin::TopLevelDefinition(_)) = self.context().path_origin(path_id) else {
-            return self.adapt_local_value_to_bundle(arg_expr, value, expected, function, callee_expr, parameter_index);
-        };
-
-        // Only used for this structural open/closed check; the adapter itself uses the instantiated reference type.
-        let Some(TCType::Function(own_fn)) = self.path_declared_type(path_id) else { return value };
-        let TCType::Effects(_, own_tail) = own_fn.effects.follow(&self.types.bindings) else { return value };
-        if own_tail.is_some() {
-            // Already row-polymorphic itself: already matches the bundle convention.
-            return value;
-        }
-
-        self.build_capability_adapter(path_id, callee_expr)
-    }
-
-    /// Builds an adapter bridging a function's real capability parameters to the caller's single bundle-parameter convention.
-    fn build_capability_adapter(&mut self, path_id: PathId, callee_expr: ExprId) -> Value {
-        // Use the argument's own instantiated reference type; a foreign declaration-level type would convert to `Type::ERROR`.
-        let TCType::Function(arg_fn) = self.types.result.maps.path_types[&path_id].follow(&self.types.bindings) else {
-            unreachable!("adapt_argument only calls this for a Function-typed reference");
-        };
-        let TCType::Effects(own_list, _) = arg_fn.effects.follow(&self.types.bindings) else {
-            unreachable!("checked by adapt_argument");
-        };
-        let own_list = own_list.clone();
-
-        // Reuse the outer call's own effects-row resolution rather than re-deriving the tail independently.
-        let (_, outer_tail) = self.callee_effects_row(callee_expr);
-        let resolved_tail = outer_tail
-            .unwrap_or_else(|| panic!("capability adapter: callee has no open effects row to bridge into"))
-            .follow_all(&self.types.bindings);
-        let bundle_type = self.convert_type(&resolved_tail, None);
-        let return_type = self.convert_type(&arg_fn.return_type, None);
-        let surface_types: Vec<Type> = mapvec(arg_fn.parameters.iter(), |p| self.convert_type(&p.typ, None));
-
-        // The adapter calls `path_id` directly, so it never needs an environment of its own.
-        let mut declared_parameters = surface_types.clone();
-        declared_parameters.push(bundle_type.clone());
-        let declared_type = Type::Function(Arc::new(FunctionType {
-            parameters: declared_parameters,
-            environment: Type::NO_CLOSURE_ENV,
-            return_type: return_type.clone(),
-        }));
-
-        // Resolved outside `new_definition` since the adapter body build clears builder state.
-        let ability_method = self.try_resolve_ability_method(path_id);
-
-        let generics_count = self.generics_in_scope.len() as u32;
-        let surface_count = surface_types.len() as u32;
-        let name = Arc::new("capability_adapter".to_string());
-        let id = self.new_isolated_definition(name.clone(), generics_count, declared_type.clone(), |this| {
-            for typ in &surface_types {
-                this.push_parameter(typ.clone());
-            }
-            let bundle = this.push_capability_parameter(bundle_type.clone());
-
-            let surface_arguments: Vec<Value> =
-                (0..surface_count).map(|i| Value::Parameter(this.current_block, i)).collect();
-            let caps: Vec<Value> = own_list
-                .iter()
-                .enumerate()
-                .map(|(index, effect_ty)| {
-                    let cap_type = this.effect_capability_tuple_type_of(effect_ty);
-                    this.push_instruction(Instruction::IndexTuple { tuple: bundle, index: index as u32 }, cap_type)
-                })
-                .collect();
-
-            let result = match &ability_method {
-                // An effect operation has no definition to call: dispatch through its own capability instead.
-                Some((effect_op, op_index, AbilityKind::Effect)) => {
-                    this.effect_op_indices.insert(*effect_op, *op_index);
-                    this.emit_indexed_method_call(None, caps[0], *op_index, surface_arguments, return_type.clone(), false)
-                },
-                _ => {
-                    let mut real_arguments = surface_arguments;
-                    real_arguments.extend(caps);
-                    let function_value = this.variable(path_id);
-                    let instruction = if this.type_of_value(&function_value).is_closure() {
-                        Instruction::CallClosure { closure: function_value, arguments: real_arguments }
-                    } else {
-                        Instruction::Call { function: function_value, arguments: real_arguments }
-                    };
-                    this.push_instruction(instruction, return_type.clone())
-                },
-            };
-            this.terminate_block(TerminatorInstruction::Return(result));
-        });
-
-        self.make_definition_value(id, name, declared_type)
-    }
-
-    /// Adapts a local function value to a bundle-convention slot based on its canonical row:
-    /// resolved concrete effects mean trailing individual capability parameters to repack.
-    fn adapt_local_value_to_bundle(
-        &mut self, arg_expr: ExprId, value: Value, expected: &TCType, function: &Value, callee_expr: ExprId,
-        parameter_index: usize,
-    ) -> Value {
-        let concretes = match self.types.result.maps.expr_types.get(&arg_expr).map(|t| t.follow(&self.types.bindings)) {
-            Some(TCType::Function(f)) => match f.effects.follow_all(&self.types.bindings) {
-                TCType::Effects(list, None) => list.len(),
-                // A still-open remainder means the value already ends in a bundle parameter.
-                _ => 0,
-            },
-            _ => 0,
-        };
-        if concretes == 0 {
-            return self.wrap_with_ignored_bundle(value, expected, function, callee_expr, parameter_index);
-        }
-        self.wrap_with_unpacked_bundle(value, concretes, expected, function, callee_expr, parameter_index)
-    }
-
-    /// Wraps a non-reference argument value in a closure that adds one trailing, ignored empty-tuple parameter.
-    fn wrap_with_ignored_bundle(
-        &mut self, value: Value, expected: &TCType, function: &Value, callee_expr: ExprId, parameter_index: usize,
-    ) -> Value {
-        let value_type = self.type_of_value(&value);
-        let Type::Function(vt) = &value_type else { return value };
-        let TCType::Function(expected_fn) = expected.follow(&self.types.bindings) else { return value };
-        if vt.parameters.len() > expected_fn.parameters.len() {
-            // Already has a trailing parameter accounting for the bundle position.
-            return value;
-        }
-
-        if let Some(adapted) = self.try_static_bundle_adapter(value, vt) {
-            return adapted;
-        }
-
-        // General fallback: capture `value` wholesale as the new adapter's environment, then patch the callee's instantiation to match.
-        let adapted = self.wrap_opaque_closure(value, value_type.clone(), vt);
-        self.patch_instantiate_binding_for_environment(function, callee_expr, expected, parameter_index, value_type);
-        adapted
-    }
-
-    /// The common case: `value` is a static reference (or a closure packing one), so the adapter can reuse its environment as-is.
-    fn try_static_bundle_adapter(&mut self, value: Value, vt: &FunctionType) -> Option<Value> {
-        let function_and_environment = match value {
-            Value::Definition(_) if vt.environment == Type::NO_CLOSURE_ENV => (value, None),
-            Value::InstructionResult(inst_id) => {
-                let Instruction::PackClosure { function, environment } = &self.current_function().instructions[inst_id]
-                else {
-                    return None;
-                };
-                (*function, Some(*environment))
-            },
-            _ => return None,
-        };
-        let (function, inner_environment) = function_and_environment;
-        let static_ref = match function {
-            Value::Definition(id) => Some((id, None)),
-            Value::InstructionResult(iid) => match &self.current_function().instructions[iid] {
-                Instruction::Instantiate(id, bindings) => Some((*id, Some(bindings.as_ref().clone()))),
-                Instruction::Id(Value::Definition(id)) => Some((*id, None)),
-                _ => None,
-            },
-            _ => None,
-        };
-        let (inner_def_id, inner_bindings) = static_ref?;
-
-        // This adapter re-references `inner_def_id` directly, so its recorded type must be genuinely accurate.
-        let inner_declared_typ = if let Some(def) = self.finished_functions.get(&inner_def_id) {
-            def.typ.clone()
-        } else if let Some(current) = self.current_function.as_ref().filter(|d| d.id == inner_def_id) {
-            current.typ.clone()
-        } else if let Some(external) = self.external.get(&inner_def_id) {
-            external.typ.clone()
-        } else {
-            return None;
-        };
-        let inner_typ = match &inner_bindings {
-            Some(bindings) => inner_declared_typ.substitute(bindings),
-            None => inner_declared_typ,
-        };
-
-        let surface_types = vt.parameters.clone();
-        let return_type = vt.return_type.clone();
-        let bundle_type = Type::tuple(Vec::new());
-        let env_type = inner_environment.map(|e| self.type_of_value(&e)).unwrap_or(Type::NO_CLOSURE_ENV);
-        let mut declared_parameters = surface_types.clone();
-        declared_parameters.push(bundle_type.clone());
-        let declared_type = Type::Function(Arc::new(FunctionType {
-            parameters: declared_parameters,
-            environment: env_type.clone(),
-            return_type: return_type.clone(),
-        }));
-
-        let generics_count = self.generics_in_scope.len() as u32;
-        let surface_count = surface_types.len() as u32;
-        let needs_env_param = env_type != Type::NO_CLOSURE_ENV;
-        let name = Arc::new("bundle_adapter".to_string());
-        let id = self.new_isolated_definition(name.clone(), generics_count, declared_type.clone(), |this| {
-            for typ in &surface_types {
-                this.push_parameter(typ.clone());
-            }
-            this.push_parameter(bundle_type.clone());
-            let real_arguments: Vec<Value> =
-                (0..surface_count).map(|i| Value::Parameter(this.current_block, i)).collect();
-            let inner_function = match &inner_bindings {
-                Some(bindings) => {
-                    this.push_instruction(Instruction::Instantiate(inner_def_id, Arc::new(bindings.clone())), inner_typ)
-                },
-                None => Value::Definition(inner_def_id),
-            };
-            // Re-pack through PackClosure/CallClosure so closure lowering rewrites this call site like any other.
-            let instruction = if needs_env_param {
-                this.push_parameter(env_type.clone());
-                let environment = Value::Parameter(this.current_block, surface_count + 1);
-                let closure_type = Type::Function(Arc::new(FunctionType {
-                    parameters: surface_types.clone(),
-                    environment: env_type.clone(),
-                    return_type: return_type.clone(),
-                }));
-                let closure = this.push_instruction(Instruction::PackClosure { function: inner_function, environment }, closure_type);
-                Instruction::CallClosure { closure, arguments: real_arguments }
-            } else {
-                Instruction::Call { function: inner_function, arguments: real_arguments }
-            };
-            let result = this.push_instruction(instruction, return_type.clone());
-            this.terminate_block(TerminatorInstruction::Return(result));
-        });
-
-        let function_value = self.make_definition_value(id, name, declared_type.clone());
-        Some(match inner_environment {
-            Some(environment) => {
-                self.push_instruction(Instruction::PackClosure { function: function_value, environment }, declared_type)
-            },
-            None => function_value,
-        })
-    }
-
-    /// General fallback for [Self::try_static_bundle_adapter]: captures `value` wholesale as the new adapter's environment.
-    fn wrap_opaque_closure(&mut self, value: Value, value_type: Type, vt: &FunctionType) -> Value {
-        let surface_types = vt.parameters.clone();
-        let return_type = vt.return_type.clone();
-        let bundle_type = Type::tuple(Vec::new());
-        let is_closure = value_type.is_closure();
-        let mut declared_parameters = surface_types.clone();
-        declared_parameters.push(bundle_type.clone());
-        let declared_type = Type::Function(Arc::new(FunctionType {
-            parameters: declared_parameters,
-            environment: value_type.clone(),
-            return_type: return_type.clone(),
-        }));
-
-        let generics_count = self.generics_in_scope.len() as u32;
-        let name = Arc::new("bundle_adapter".to_string());
-        let id = self.new_isolated_definition(name.clone(), generics_count, declared_type.clone(), |this| {
-            let real_arguments: Vec<Value> =
-                surface_types.iter().map(|typ| this.push_capability_parameter(typ.clone())).collect();
-            this.push_capability_parameter(bundle_type.clone());
-            let inner_value = this.push_capability_parameter(value_type.clone());
-            let instruction = if is_closure {
-                Instruction::CallClosure { closure: inner_value, arguments: real_arguments }
-            } else {
-                Instruction::Call { function: inner_value, arguments: real_arguments }
-            };
-            let result = this.push_instruction(instruction, return_type.clone());
-            this.terminate_block(TerminatorInstruction::Return(result));
-        });
-
-        let function_value = self.make_definition_value(id, name, declared_type.clone());
-        self.push_instruction(Instruction::PackClosure { function: function_value, environment: value }, declared_type)
-    }
-
-    /// Wraps `value`, whose trailing `cap_count` parameters are individual capabilities, in a
-    /// closure taking one bundle parameter instead, unpacked into the individual capabilities.
-    fn wrap_with_unpacked_bundle(
-        &mut self, value: Value, cap_count: usize, expected: &TCType, function: &Value, callee_expr: ExprId,
-        parameter_index: usize,
-    ) -> Value {
-        let value_type = self.type_of_value(&value);
-        let Type::Function(vt) = &value_type else { return value };
-        if vt.parameters.len() < cap_count {
-            return value;
-        }
-        let surface_count = vt.parameters.len() - cap_count;
-        let surface_types = vt.parameters[..surface_count].to_vec();
-        let cap_types = vt.parameters[surface_count..].to_vec();
-        let bundle_type = Type::tuple(cap_types.clone());
-        let return_type = vt.return_type.clone();
-        let is_closure = value_type.is_closure();
-
-        let mut declared_parameters = surface_types.clone();
-        declared_parameters.push(bundle_type.clone());
-        let declared_type = Type::Function(Arc::new(FunctionType {
-            parameters: declared_parameters,
-            environment: value_type.clone(),
-            return_type: return_type.clone(),
-        }));
-
-        let generics_count = self.generics_in_scope.len() as u32;
-        let name = Arc::new("bundle_adapter".to_string());
-        let id = self.new_isolated_definition(name.clone(), generics_count, declared_type.clone(), |this| {
-            let mut real_arguments: Vec<Value> =
-                surface_types.iter().map(|typ| this.push_capability_parameter(typ.clone())).collect();
-            let bundle = this.push_capability_parameter(bundle_type.clone());
-            let inner_value = this.push_capability_parameter(value_type.clone());
-            for (index, cap_type) in cap_types.iter().enumerate() {
-                let index = Instruction::IndexTuple { tuple: bundle, index: index as u32 };
-                real_arguments.push(this.push_instruction(index, cap_type.clone()));
-            }
-            let instruction = if is_closure {
-                Instruction::CallClosure { closure: inner_value, arguments: real_arguments }
-            } else {
-                Instruction::Call { function: inner_value, arguments: real_arguments }
-            };
-            let result = this.push_instruction(instruction, return_type.clone());
-            this.terminate_block(TerminatorInstruction::Return(result));
-        });
-
-        let function_value = self.make_definition_value(id, name, declared_type.clone());
-        let adapted =
-            self.push_instruction(Instruction::PackClosure { function: function_value, environment: value }, declared_type);
-        self.patch_instantiate_binding_for_environment(function, callee_expr, expected, parameter_index, value_type);
-        adapted
-    }
-
-    /// Patches a callee's already-built `Instantiate` binding for `expected`'s environment generic to `new_env_type`.
-    fn patch_instantiate_binding_for_environment(
-        &mut self, function: &Value, callee_expr: ExprId, expected: &TCType, parameter_index: usize, new_env_type: Type,
-    ) {
-        let Value::InstructionResult(inst_id) = *function else { return };
-        let Instruction::Instantiate(callee_id, bindings) = &self.current_function().instructions[inst_id] else {
-            return;
-        };
-        let callee_id = *callee_id;
-        let old_bindings = bindings.as_ref().clone();
-
-        let TCType::Function(expected_fn) = expected.follow(&self.types.bindings) else { return };
-        let TCType::Generic(target) = expected_fn.environment.follow(&self.types.bindings) else { return };
-        let target = *target;
-
-        let cst::Expr::Variable(path_id) = &self.context()[callee_expr] else { return };
-        let Some(Origin::TopLevelDefinition(name)) = self.context().path_origin(*path_id) else { return };
-        let checked = TypeCheck(name.top_level_item).get(self.compiler);
-        let Some(TCType::Forall(generics, _)) = checked.result.generalized.get(&name.local_name_id) else { return };
-        let Some(idx) = generics.iter().position(|g| *g == target) else { return };
-        if idx >= old_bindings.len() {
-            return;
-        }
-
-        let mut new_bindings = old_bindings;
-        new_bindings[idx] = new_env_type.clone();
-
-        // Patch the recorded result type in place; re-deriving it from the callee's own generalized type would use the wrong type-variable namespace.
-        let Type::Function(ft) = self.type_of_value(function) else { return };
-        let Some(Type::Function(param_ft)) = ft.parameters.get(parameter_index) else { return };
-        let patched_param = Type::Function(Arc::new(FunctionType {
-            parameters: param_ft.parameters.clone(),
-            environment: new_env_type,
-            return_type: param_ft.return_type.clone(),
-        }));
-        let mut new_parameters = ft.parameters.clone();
-        new_parameters[parameter_index] = patched_param;
-        let new_typ = Type::Function(Arc::new(FunctionType {
-            parameters: new_parameters,
-            environment: ft.environment.clone(),
-            return_type: ft.return_type.clone(),
-        }));
-
-        let current = self.current_function();
-        current.instructions[inst_id] = Instruction::Instantiate(callee_id, Arc::new(new_bindings));
-        current.instruction_result_types[inst_id] = new_typ;
     }
 
     /// Extracts the `op_index`'th method out of a capability/dictionary tuple value.
@@ -1317,7 +1110,7 @@ where
         let method = self.index_capability_method(cap_value, op_index);
         let method_type = self.type_of_value(&method);
         if let Some(callee_expr) = callee_expr {
-            self.append_capability_arguments(callee_expr, &method, &mut arguments);
+            self.append_evidence_argument(callee_expr, &method, &mut arguments);
         }
 
         let instruction = if method_type.is_closure() {
@@ -1567,27 +1360,39 @@ where
             TCType::Function(tc_function_type) => tc_function_type.clone(),
             _ => unreachable!("Lambda does not have a function type"),
         };
-        // Canonicalize the row: an inferred row hides its concrete effects behind bound tail
-        // variables, but this function's capability convention must match the canonical
-        // (generalized) form its callers see.
-        let tc_effects = tc_function_type.effects.follow_all(&self.types.bindings);
+        let tc_effects = tc_function_type.effects.clone();
+        let (own_concretes, own_end) = self.convert_context().split_row(&tc_effects);
         let needed_capability_keys = if suppress_capabilities {
             self.suppressed_lambda_needed_capabilities(&tc_effects, handle_body_handler_name)
         } else {
             Vec::new()
         };
-        // A suppressed lambda still needing the ambient open bundle must capture it through the environment instead.
-        let needs_bundle_capture =
-            suppress_capabilities && effects_tail_is_declared_open(&tc_effects) && self.capability_bundle.is_some();
+        // A suppressed lambda still needing the ambient evidence rest must capture it through the environment.
+        let needs_bundle_capture = suppress_capabilities
+            && matches!(own_end, types::RowEnd::Generic(_))
+            && self.capability_bundle.is_some();
         let bundle_capture_value = if needs_bundle_capture { self.capability_bundle } else { None };
         let bundle_capture_type = bundle_capture_value.map(|v| self.type_of_value(&v));
-        let own_capabilities = self.effect_capabilities(&tc_effects);
 
-        // A suppressed lambda routes capabilities through the environment instead, so strip the appended params.
-        let mut full_type = self.convert_context().convert_definition_function_type(&tc_function_type);
-        if suppress_capabilities {
-            full_type = self.strip_trailing_parameters(full_type, own_capabilities.len());
-        }
+        // A handler branch's trailing `resume` parameter is a coroutine primitive: C-shaped, no evidence.
+        let parameter_types: Vec<Type> = mapvec(lambda.parameters.iter().enumerate(), |(i, parameter)| {
+            let parameter_type = &self.types.result.maps.pattern_types[&parameter.pattern];
+            if is_handler_branch && i + 1 == lambda.parameters.len() {
+                self.convert_context().convert_c_function_type(parameter_type)
+            } else {
+                self.convert_type(parameter_type, None)
+            }
+        });
+        let evidence_type = self.convert_context().evidence_type(&tc_effects);
+
+        // A suppressed lambda routes capabilities through the environment instead of an evidence parameter.
+        let full_type = {
+            let mut parameters = parameter_types.clone();
+            if !suppress_capabilities {
+                parameters.push(evidence_type.clone());
+            }
+            self.convert_context().build_function_type(&tc_function_type, parameters)
+        };
         let full_type = self.extend_environment_with_capabilities(full_type, &needed_capability_keys);
         let full_type = match &bundle_capture_type {
             Some(bundle_type) => self.extend_environment_with_bundle(full_type, bundle_type.clone()),
@@ -1628,8 +1433,7 @@ where
 
         let id = self.new_definition(name.clone(), name_id, generics_count, full_type.clone(), |this| {
             for (i, parameter) in lambda.parameters.iter().enumerate() {
-                let parameter_type = &this.types.result.maps.pattern_types[&parameter.pattern];
-                this.push_parameter(this.convert_type(parameter_type, None));
+                this.push_parameter(parameter_types[i].clone());
 
                 let parameter_value = Value::Parameter(this.current_block, i as u32);
                 this.bind_pattern(parameter.pattern, parameter_value);
@@ -1643,18 +1447,25 @@ where
                 }
             }
 
-            // Must happen before the environment parameter below, matching full_type's parameter order.
+            // The evidence parameter: project each of the row's capabilities out of the cons
+            // list into scope; a row-polymorphic end leaves its rest as the forwardable evidence.
             if !suppress_capabilities {
-                for capability in &own_capabilities {
-                    match capability {
-                        Capability::Concrete(key, cap_type) => {
-                            let cap_value = this.push_capability_parameter(cap_type.clone());
-                            this.capabilities.insert(key.clone(), cap_value);
-                        },
-                        Capability::Bundle(bundle_type) => {
-                            this.capability_bundle = Some(this.push_capability_parameter(bundle_type.clone()));
-                        },
-                    }
+                let mut current = this.push_capability_parameter(evidence_type.clone());
+                let mut current_type = evidence_type.clone();
+                for effect in &own_concretes {
+                    let Type::Tuple(fields) = &current_type else {
+                        unreachable!("evidence type shorter than its row's effects")
+                    };
+                    let (capability_type, rest_type) = (fields[0].clone(), fields[1].clone());
+                    let index = Instruction::IndexTuple { tuple: current, index: 0 };
+                    let capability = this.push_instruction(index, capability_type);
+                    this.capabilities.insert(this.capability_key(effect), capability);
+                    let index = Instruction::IndexTuple { tuple: current, index: 1 };
+                    current = this.push_instruction(index, rest_type.clone());
+                    current_type = rest_type;
+                }
+                if matches!(own_end, types::RowEnd::Generic(_)) {
+                    this.capability_bundle = Some(current);
                 }
             }
 
@@ -1664,7 +1475,7 @@ where
             let has_captures =
                 free_vars.is_some() || !needed_capability_keys.is_empty() || bundle_capture_type.is_some();
             let needs_env_param = has_captures || env_is_pointer;
-            let pushed_capability_count = if suppress_capabilities { 0 } else { own_capabilities.len() as u32 };
+            let pushed_capability_count = if suppress_capabilities { 0 } else { 1 };
             let env_param_index = lambda.parameters.len() as u32 + pushed_capability_count;
             if needs_env_param {
                 if let Some(env) = function_type.environment() {
@@ -2260,7 +2071,7 @@ where
 
             let function = self.expression(op_expr);
             let mut arguments = vec![current, rhs];
-            self.append_capability_arguments(op_expr, &function, &mut arguments);
+            self.append_evidence_argument(op_expr, &function, &mut arguments);
             let instruction = if self.type_of_value(&function).is_closure() {
                 Instruction::CallClosure { closure: function, arguments }
             } else {
@@ -2409,7 +2220,7 @@ where
     }
 
     fn extern_(&mut self, extern_: &cst::Extern, id: ExprId) -> Value {
-        let typ = self.convert_expr_type(id);
+        let typ = self.convert_context().convert_c_function_type(&self.types.result.maps.expr_types[&id]);
         self.push_instruction(Instruction::Extern(extern_.name.clone()), typ)
     }
 
@@ -2572,6 +2383,10 @@ where
             self.push_parameter(field_type.clone());
             Value::Parameter(BlockId::ENTRY_BLOCK, i as u32)
         });
+        // The (ignored) evidence parameter every function takes.
+        if !field_types.is_empty() {
+            self.push_parameter(Type::tuple(Vec::new()));
+        }
 
         let mut payload = self.push_instruction(Instruction::MakeTuple(fields), Type::tuple(field_types));
 
@@ -2609,8 +2424,12 @@ where
                 let Type::Function(fn_type) = field_type else { continue };
                 let (value_param_types, return_type) = (fn_type.parameters.clone(), fn_type.return_type.clone());
 
+                // Callers see the method's TC type: surface params, implicit receiver, then
+                // the uniform evidence parameter last.
                 let mut wrapper_params = value_param_types;
+                let evidence = wrapper_params.pop().unwrap_or_else(|| Type::tuple(Vec::new()));
                 wrapper_params.push(struct_type.clone());
+                wrapper_params.push(evidence);
                 let wrapper_type = Type::Function(Arc::new(super::FunctionType {
                     parameters: wrapper_params.clone(),
                     environment: Type::NO_CLOSURE_ENV,
@@ -2627,13 +2446,17 @@ where
                     for pt in &wrapper_params {
                         this.push_parameter(pt.clone());
                     }
-                    // Last parameter is the implicit struct receiver.
-                    let struct_param = Value::Parameter(BlockId::ENTRY_BLOCK, n_params as u32 - 1);
+                    // Second-to-last parameter is the implicit struct receiver (evidence is last).
+                    let struct_index = n_params - 2;
+                    let struct_param = Value::Parameter(BlockId::ENTRY_BLOCK, struct_index as u32);
                     let extracted = this.push_instruction(
                         Instruction::IndexTuple { tuple: struct_param, index: i as u32 },
                         field_type_clone,
                     );
-                    let value_args = mapvec(0..n_params - 1, |j| Value::Parameter(BlockId::ENTRY_BLOCK, j as u32));
+                    let value_args = mapvec(
+                        (0..n_params).filter(|j| *j != struct_index),
+                        |j| Value::Parameter(BlockId::ENTRY_BLOCK, j as u32),
+                    );
                     let instruction = if field_is_closure {
                         Instruction::CallClosure { closure: extracted, arguments: value_args }
                     } else {

@@ -136,8 +136,13 @@ pub(crate) fn build_c_file(mir: &mir::Mir, selected_main: Option<TopLevelName>) 
         let accessors = "static int32_t ante_argc = 0;\nstatic void* ante_argv = 0;\n\
             int32_t ante_get_argc(Unit _0) { return ante_argc; }\n\
             void* ante_get_argv(Unit _0) { return ante_argv; }\n";
+        // `main`'s trailing evidence parameter is the empty tuple, registered in the cache
+        // when main's own signature was emitted.
+        let empty_evidence = Arc::new(Vec::new());
+        let evidence_name =
+            tuples.types.get(&empty_evidence).map_or("Unit".to_string(), |entry| format!("Tuple{}", entry.value().0));
         let wrapper = format!(
-            "int main(int argc, char** argv) {{ ante_argc = argc; ante_argv = (void*)argv; {init_call} main_{}((Unit){{0}}); return 0; }}",
+            "int main(int argc, char** argv) {{ ante_argc = argc; ante_argv = (void*)argv; {init_call} main_{}((Unit){{0}}, ({evidence_name}){{0}}); return 0; }}",
             id.0
         );
         file.add_function_definition(accessors);
@@ -1026,6 +1031,14 @@ impl Builder {
                     let _ = write!(self.current_item, "; memcpy({id}, ");
                     self.write_value(value, mir);
                     let _ = write!(self.current_item, ", sizeof({id}));");
+                } else if matches!(result, mir::Type::Function(_)) {
+                    // A function pointer needs its extra `*` inside the declarator: `T (**)(args)`.
+                    self.write_result_binding(id, definition);
+                    self.write("*(");
+                    self.write_declarator(result, &|this| this.write("*"));
+                    self.write(")");
+                    self.write_value(value, mir);
+                    self.write(";");
                 } else {
                     self.write_result_binding(id, definition);
                     self.write("*(");

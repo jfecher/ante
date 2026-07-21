@@ -49,37 +49,34 @@ test_predicates () =
     println ("[" ++ trim "no-trim" ++ "]")
 
 // args: --delete-binary --no-color
-// expected exit status: 1
-// expected stderr:
-// examples/codegen/stdlib-tests/string.an:27:26
-// 26 |     // join over an interspersed stream → single String "a, b, c"
-//    |     // error: Argument 1 has type fn {Emit String} -> Unit pure but fn Unit => Unit can (Emit String) was expected
-// 27 |     println (intersperse abc_stream ", " |> join)
-//    |                          ^^^^^^^^^^
-// 28 |     test_predicates ()
+// expected stdout:
+// 65
+// 66
+// A
+// B
+// bcd
 // 
-// examples/codegen/stdlib-tests/string.an:30:13
-//    | // error: This is an effect and cannot be used as an ordinary type
-// 30 | abc_stream {Emit String}: Unit =
-//    |             ^^^^^^^^^^^
-// 31 |     emit "a"
+// hi
+// olleh
+// dlrow
+// foo
+// bar
 // 
-// examples/codegen/stdlib-tests/string.an:31:5
-// 30 | abc_stream {Emit String}: Unit =
-// 31 |     emit "a"	// error: This can perform (Emit _) but no effects are allowed here
-//    |     ^^^^
-// 32 |     emit "b"
+// baz
 // 
-// examples/codegen/stdlib-tests/string.an:32:5
-// 31 |     emit "a"
-// 32 |     emit "b"	// error: This can perform (Emit _) but no effects are allowed here
-//    |     ^^^^
-// 33 |     emit "c"
-// 
-// examples/codegen/stdlib-tests/string.an:33:5
-// 32 |     emit "b"
-// 33 |     emit "c"	// error: This can perform (Emit _) but no effects are allowed here
-//    |     ^^^^
-// 
-// Found 5 errors and 0 warnings
+// end of split
+// a, b, c
+// true
+// false
+// false
+// true
+// false
+// true
+// false
+// true
+// [hi]
+// [hi  ]
+// [  hi]
+// []
+// [no-trim]
 

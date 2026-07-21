@@ -942,20 +942,23 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
-    /// Find the first non-skipped candidate whose head matches `target` and invariantly subtype it against `target`.
+    /// Find a non-skipped candidate whose head matches `target` and which invariantly
+    /// subtypes against it. Each head-match is tried speculatively so that same-head
+    /// entries with different arguments route to the one that actually unifies.
     fn subtype_matching_effect(
         &self, candidates: &[Type], skip: impl Fn(usize) -> bool, target: &Type, new_bindings: &mut TypeBindings,
     ) -> Result<Option<usize>, ()> {
-        let Some(pos) = candidates
-            .iter()
-            .enumerate()
-            .find(|(i, e)| !skip(*i) && Self::effect_heads_match(e, target))
-            .map(|(i, _)| i)
-        else {
-            return Ok(None);
-        };
-        self.subtype(&candidates[pos], target, Variance::Invariant, new_bindings)?;
-        Ok(Some(pos))
+        for (i, candidate) in candidates.iter().enumerate() {
+            if skip(i) || !Self::effect_heads_match(candidate, target) {
+                continue;
+            }
+            let mut trial = new_bindings.clone();
+            if self.subtype(candidate, target, Variance::Invariant, &mut trial).is_ok() {
+                *new_bindings = trial;
+                return Ok(Some(i));
+            }
+        }
+        Ok(None)
     }
 
     /// Row-subtype two effect rows: is `a`'s actual set of effects permitted by `b`'s expected set?

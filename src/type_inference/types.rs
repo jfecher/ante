@@ -1081,15 +1081,29 @@ impl Type {
         }
     }
 
-    /// Construct a canonicalized effect row by following the tail and deduplicating entries
+    /// Construct a canonicalized effect row by following the tail and deduplicating entries.
+    ///
+    /// Entries sort by their effect head only, stably: a full-type order would reorder
+    /// same-head entries under substitution (`Send a, Send b` vs their instantiations),
+    /// silently changing the evidence layout.
     pub(crate) fn effects(mut list: Vec<Type>, mut tail: Option<Type>) -> Type {
         while let Some(Type::Effects(inner_list, inner_tail)) = tail {
             list.extend(inner_list.iter().cloned());
             tail = inner_tail.as_ref().map(|t| (**t).clone());
         }
-        list.sort();
-        list.dedup();
-        Type::Effects(Arc::new(list), tail.map(Arc::new))
+        list.sort_by_key(|effect| effect.effect_head().copied());
+        let mut deduped = Vec::with_capacity(list.len());
+        for effect in list {
+            if !deduped.contains(&effect) {
+                deduped.push(effect);
+            }
+        }
+        Type::Effects(Arc::new(deduped), tail.map(Arc::new))
+    }
+
+    /// The effect constructor an effect-row entry refers to, ignoring its type arguments.
+    pub(crate) fn effect_head(&self) -> Option<&Origin> {
+        self.as_user_defined().or_else(|| self.as_application()?.0.as_user_defined())
     }
 
     /// An empty, closed effect row

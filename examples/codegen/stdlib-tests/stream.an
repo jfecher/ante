@@ -90,71 +90,63 @@ extra_tests () =
         println x
 
 // args: --delete-binary --no-color
-// expected exit status: 1
-// expected stderr:
-// examples/codegen/stdlib-tests/stream.an:51:19
-// 50 |     // intersperse:
-//    |     // error: This is called as if it were a fn _ _ => _ but it has type fn _ -> Unit can (Emit _)
-// 51 |     chain (chain (emit "a" _) (emit "b" _)) (emit "c" _)
-//    |                   ^^^^
-// 52 |         |> intersperse ", "
-// 
-// examples/codegen/stdlib-tests/stream.an:51:32
-// 50 |     // intersperse:
-//    |     // error: This is called as if it were a fn _ _ => _ but it has type fn _ -> Unit can (Emit _)
-// 51 |     chain (chain (emit "a" _) (emit "b" _)) (emit "c" _)
-//    |                                ^^^^
-// 52 |         |> intersperse ", "
-// 
-// examples/codegen/stdlib-tests/stream.an:51:46
-// 50 |     // intersperse:
-//    |     // error: This is called as if it were a fn _ _ => _ but it has type fn _ -> Unit can (Emit _)
-// 51 |     chain (chain (emit "a" _) (emit "b" _)) (emit "c" _)
-//    |                                              ^^^^
-// 52 |         |> intersperse ", "
-// 
-// examples/codegen/stdlib-tests/stream.an:87:20
-// 86 |     println "for_:"
-// 87 |     for_ (iota 20) fn x {l} ->	// error: Expected 1 argument but found 2
-//    |                    ^^^^^^^^^^^
-// 88 |         if x %% 3 then continue_ ()
-// 
-// examples/codegen/stdlib-tests/stream.an:88:14
-// 87 |     for_ (iota 20) fn x {l} ->
-//    |         // error: Multiple matching implicits found for type Cast U8 (error) required by %%: cast_u8_char, cast_u8_f32, cast_u8_f64, cast_u8_i32, cast_u8_u16, ..
-// 88 |         if x %% 3 then continue_ ()
-//    |              ^^
-// 89 |         if x == 8 then break_ ()
-// 
-// examples/codegen/stdlib-tests/stream.an:88:14
-// 87 |     for_ (iota 20) fn x {l} ->
-//    |         // error: No implicit found for type Eq (error) required by %%
-// 88 |         if x %% 3 then continue_ ()
-//    |              ^^
-// 89 |         if x == 8 then break_ ()
-//    = note: did you mean to import Std.Prelude.eq_bool or Std.Prelude.eq_char? (or 3 more)
-// 
-// examples/codegen/stdlib-tests/stream.an:88:14
-// 87 |     for_ (iota 20) fn x {l} ->
-//    |         // error: No implicit found for type Mod (error) required by %%
-// 88 |         if x %% 3 then continue_ ()
-//    |              ^^
-// 89 |         if x == 8 then break_ ()
-//    = note: did you mean to import Std.Prelude.mod_i16 or Std.Prelude.mod_i32? (or 3 more)
-// 
-// examples/codegen/stdlib-tests/stream.an:89:14
-// 88 |         if x %% 3 then continue_ ()
-//    |         // error: No implicit found for type Eq (error) required by ==
-// 89 |         if x == 8 then break_ ()
-//    |              ^^
-// 90 |         println x
-//    = note: did you mean to import Std.Prelude.eq_bool or Std.Prelude.eq_char? (or 3 more)
-// 
-// examples/codegen/stdlib-tests/stream.an:90:9
-// 89 |         if x == 8 then break_ ()
-// 90 |         println x	// error: No implicit found for type Print (error) required by println
-//    |         ^^^^^^^
-//    = note: did you mean to import Std.HashMap.print_hashmap or Std.Prelude.print_array? (or 3 more)
-// 
-// Found 9 errors and 0 warnings
+// expected stdout:
+// 0, 0
+// 1, 4
+// 2, 8
+// 3, 12
+// 4, 16
+// true
+// -10
+// 2
+// true
+// false
+// 0
+// 20
+// 40
+// Some 10
+// None
+// 0
+// 2
+// 4
+// 0, 0
+// 1, 1
+// 2, 2
+// a
+// , 
+// b
+// , 
+// c
+// 0
+// 88
+// 1
+// 88
+// 2
+// 0
+// 1
+// 0
+// 1
+// 7
+// Some 3
+// None
+// Some 30
+// 0
+// 1
+// 2
+// 0
+// 1
+// 2
+// 3
+// 4
+// 2
+// 3
+// 4
+// 10
+// 120
+// for_:
+// 1
+// 2
+// 4
+// 5
+// 7
 

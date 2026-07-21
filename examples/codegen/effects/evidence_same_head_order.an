@@ -1,0 +1,29 @@
+effect Send a =
+    send: fn a -> Unit
+
+// The surface arguments force `a := U8, b := I32`. Sorting row entries by their full type
+// would order the generic view `Send a, Send b` but the instantiated view `Send I32, Send U8`,
+// silently flipping which capability sits where in the evidence.
+both (_x: a) (_y: b) (f: fn Unit -> Unit can Send a, Send b): Unit can Send a, Send b =
+    f ()
+
+take_u8 (_v: U8): Unit = ()
+take_i32 (_v: I32): Unit = ()
+
+main () =
+    handler hu for send v ->
+        take_u8 v
+        println "u8"
+        resume ()
+    in handler hi for send v ->
+        take_i32 v
+        println "i32"
+        resume ()
+    in both 1u8 2i32 fn () ->
+        send 3u8
+        send 4i32
+
+// args: --delete-binary --no-color
+// expected stdout:
+// u8
+// i32
