@@ -1,0 +1,20 @@
+effect Emit a =
+    emit: fn a -> Unit
+
+// This function used to incorrectly not forward the `Emit` capability leading to
+// this program not printing anything
+pass_through (f: fn Unit [env] -> Unit can Emit I32): fn Unit [env] -> Unit can Emit I32 = f
+
+use_it (g: fn Unit => Unit pure): Unit can Emit I32 =
+    h = pass_through g
+    h ()
+
+main () =
+    x = 111
+    handler _ for emit _v ->
+        resume ()
+    use_it do println x
+
+// args: --delete-binary --no-color
+// expected stdout:
+// 111

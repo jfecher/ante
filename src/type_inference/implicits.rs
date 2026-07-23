@@ -192,20 +192,13 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     }
 
     pub(super) fn call_ends_with_unit_arg(&self, call_expr: ExprId) -> bool {
-        let expr = match self.current_extended_context().extended_expr(call_expr) {
-            Some(expr) => expr,
-            None => &self.current_context()[call_expr],
-        };
-        let cst::Expr::Call(call) = expr else { return false };
+        let expr = self.resolved_expr(call_expr);
+        let cst::Expr::Call(call) = expr.as_ref() else { return false };
         call.arguments.last().is_some_and(|arg| self.is_unit_literal(arg.expr))
     }
 
     fn is_unit_literal(&self, expr: ExprId) -> bool {
-        let expr = match self.current_extended_context().extended_expr(expr) {
-            Some(expr) => expr,
-            None => &self.current_context()[expr],
-        };
-        matches!(expr, cst::Expr::Literal(cst::Literal::Unit))
+        matches!(self.resolved_expr(expr).as_ref(), cst::Expr::Literal(cst::Literal::Unit))
     }
 
     /// If the expression is a variable, return its name

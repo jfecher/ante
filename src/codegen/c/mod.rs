@@ -1031,19 +1031,12 @@ impl Builder {
                     let _ = write!(self.current_item, "; memcpy({id}, ");
                     self.write_value(value, mir);
                     let _ = write!(self.current_item, ", sizeof({id}));");
-                } else if matches!(result, mir::Type::Function(_)) {
-                    // A function pointer needs its extra `*` inside the declarator: `T (**)(args)`.
+                } else {
+                    // `T (**)(args)`
                     self.write_result_binding(id, definition);
                     self.write("*(");
                     self.write_declarator(result, &|this| this.write("*"));
                     self.write(")");
-                    self.write_value(value, mir);
-                    self.write(";");
-                } else {
-                    self.write_result_binding(id, definition);
-                    self.write("*(");
-                    self.write_type(result, "");
-                    self.write("*)");
                     self.write_value(value, mir);
                     self.write(";");
                 }

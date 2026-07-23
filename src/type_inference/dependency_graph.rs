@@ -162,7 +162,7 @@ pub fn get_type_check_scc_impl(context: &GetTypeCheckSCC, db: &DbHandle) -> SCC 
         Some(index) => graph.sccs[*index as usize].clone(),
         // Ids in the stdlib currently are excluded from the dependency graph.
         // We assume these are mostly types currently and return them in their own SCC.
-        // This should be replaced with an unwrap when the stdlib type checks.
+        // TODO: This should be replaced with an unwrap when the stdlib type checks.
         None => Arc::new(vec![context.0]),
     }
 }

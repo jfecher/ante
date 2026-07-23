@@ -1,6 +1,5 @@
 use std::{
     borrow::Cow,
-    num::NonZeroUsize,
     sync::{Arc, LazyLock},
 };
 
@@ -725,13 +724,10 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
             },
             crate::parser::cst::TypeKind::Reference(kind) => (
                 Type::Primitive(PrimitiveType::Reference(*kind)),
-                Kind::TypeConstructorComplex { params: vec![Kind::Lifetime, Kind::Type], result: Box::new(Kind::Type) },
+                Kind::from_args(vec![Kind::Lifetime, Kind::Type]),
             ),
             crate::parser::cst::TypeKind::NoClosureEnv => (Type::NO_CLOSURE_ENV, Kind::Type),
-            crate::parser::cst::TypeKind::Pointer => (
-                Type::POINTER,
-                Kind::TypeConstructorSimple { arity: NonZeroUsize::new(1).unwrap(), result: Box::new(Kind::Type) },
-            ),
+            crate::parser::cst::TypeKind::Pointer => (Type::POINTER, Kind::from_args(vec![Kind::Type])),
             crate::parser::cst::TypeKind::Tuple(elements) => {
                 let elements = mapvec(elements, |t| self.convert_with_kind(t, Kind::Type));
                 (Type::Tuple(Arc::new(elements)), Kind::Type)
@@ -844,14 +840,8 @@ impl Type {
                 Builtin::Unit => (Type::UNIT, Kind::Type),
                 Builtin::Char => (Type::CHAR, Kind::Type),
                 Builtin::Bool => (Type::BOOL, Kind::Type),
-                Builtin::Ptr => (
-                    Type::POINTER,
-                    Kind::TypeConstructorSimple { arity: NonZeroUsize::new(1).unwrap(), result: Box::new(Kind::Type) },
-                ),
-                Builtin::Array => (
-                    Type::ARRAY,
-                    Kind::TypeConstructorComplex { params: vec![Kind::U32, Kind::Type], result: Box::new(Kind::Type) },
-                ),
+                Builtin::Ptr => (Type::POINTER, Kind::from_args(vec![Kind::Type])),
+                Builtin::Array => (Type::ARRAY, Kind::from_args(vec![Kind::U32, Kind::Type])),
                 Builtin::Never => (Type::NEVER, Kind::Type),
                 Builtin::Intrinsic => (Type::ERROR, Kind::Error),
             },
@@ -892,11 +882,52 @@ impl Type {
         }
     }
 
+    /// Walk every subterm of this type, although does not recur into [Type::Forall].
+    fn for_each_subterm(&self, bindings: &TypeBindings, f: &mut impl FnMut(&Type, &TypeBindings)) {
+        let typ = self.follow(bindings);
+        f(&typ, bindings);
+        match typ {
+            Type::Primitive(_) | Type::UserDefined(_) | Type::Variable(_) | Type::Generic(_) | Type::U32(_) => (),
+            Type::Function(function) => {
+                for parameter in &function.parameters {
+                    parameter.typ.for_each_subterm(bindings, f);
+                }
+                function.environment.for_each_subterm(bindings, f);
+                function.return_type.for_each_subterm(bindings, f);
+                function.effects.for_each_subterm(bindings, f);
+            },
+            Type::Application(constructor, args) => {
+                constructor.for_each_subterm(bindings, f);
+                for arg in args.iter() {
+                    arg.for_each_subterm(bindings, f);
+                }
+            },
+            // Bound generics need different treatment per-caller (e.g. `free_vars` filters
+            // them back out after recursing), so `f` is responsible for recursing into `typ`.
+            Type::Forall(..) => (),
+            Type::Tuple(elements) => {
+                for element in elements.iter() {
+                    element.for_each_subterm(bindings, f);
+                }
+            },
+            Type::Effects(list, tail) => {
+                for effect in list.iter() {
+                    effect.for_each_subterm(bindings, f);
+                }
+                if let Some(tail) = tail {
+                    tail.for_each_subterm(bindings, f);
+                }
+            },
+        }
+    }
+
     /// Return the list of unbound type variables or generics within this type
     pub fn free_vars(&self, bindings: &TypeBindings) -> Vec<Generic> {
-        fn free_vars_helper(typ: &Type, bindings: &TypeBindings, free_vars: &mut Vec<Generic>) {
-            match typ.follow(bindings) {
-                Type::Primitive(_) | Type::UserDefined(_) => (),
+        let mut free_vars = Vec::new();
+
+        // `for_each_subterm` doesn't recur into Type::Forall, so do it manually here
+        fn go(typ: &Type, bindings: &TypeBindings, free_vars: &mut Vec<Generic>) {
+            typ.for_each_subterm(bindings, &mut |typ, bindings| match typ {
                 Type::Variable(id) => {
                     // The number of free vars is expected to remain too small so we're
                     // not too worried about asymptotic behavior. It is more important we
@@ -911,48 +942,15 @@ impl Type {
                         free_vars.push(*generic);
                     }
                 },
-                Type::Function(function) => {
-                    for parameter in &function.parameters {
-                        free_vars_helper(&parameter.typ, bindings, free_vars);
-                    }
-                    free_vars_helper(&function.environment, bindings, free_vars);
-                    free_vars_helper(&function.return_type, bindings, free_vars);
-                    free_vars_helper(&function.effects, bindings, free_vars);
-                },
-                Type::Application(constructor, args) => {
-                    free_vars_helper(constructor, bindings, free_vars);
-                    for arg in args.iter() {
-                        free_vars_helper(arg, bindings, free_vars);
-                    }
-                },
-                Type::Forall(generics, typ) => {
-                    free_vars_helper(typ, bindings, free_vars);
-
-                    // Remove any free variable contained within `generics`.
-                    // This is technically incorrect in the case any of these variables appeared in
-                    // `free_vars` before the previous call to `free_vars_helper(_, typ, _)`, but
-                    // we expect scoping rules to prevent these cases.
+                Type::Forall(generics, inner) => {
+                    go(inner, bindings, free_vars);
                     free_vars.retain(|generic| !generics.contains(generic));
                 },
-                Type::Tuple(elements) => {
-                    for element in elements.iter() {
-                        free_vars_helper(element, bindings, free_vars);
-                    }
-                },
-                Type::U32(_) => (),
-                Type::Effects(list, tail) => {
-                    for effect in list.iter() {
-                        free_vars_helper(effect, bindings, free_vars);
-                    }
-                    if let Some(tail) = tail {
-                        free_vars_helper(tail, bindings, free_vars);
-                    }
-                },
-            }
+                _ => (),
+            });
         }
 
-        let mut free_vars = Vec::new();
-        free_vars_helper(self, bindings, &mut free_vars);
+        go(self, bindings, &mut free_vars);
         free_vars
     }
 
@@ -964,46 +962,19 @@ impl Type {
 
     /// Counts every occurrence of `target` within this type, unlike [Self::free_unification_vars] which dedups into a set.
     pub fn count_unification_var_occurrences(&self, target: TypeVariableId, bindings: &TypeBindings) -> usize {
-        fn helper(typ: &Type, target: TypeVariableId, bindings: &TypeBindings, count: &mut usize) {
-            match typ.follow(bindings) {
-                Type::Primitive(_) | Type::UserDefined(_) | Type::Generic(_) | Type::U32(_) => (),
+        fn go(typ: &Type, target: TypeVariableId, bindings: &TypeBindings, count: &mut usize) {
+            typ.for_each_subterm(bindings, &mut |typ, bindings| match typ {
                 Type::Variable(id) => {
                     if *id == target {
                         *count += 1;
                     }
                 },
-                Type::Function(function) => {
-                    for parameter in &function.parameters {
-                        helper(&parameter.typ, target, bindings, count);
-                    }
-                    helper(&function.environment, target, bindings, count);
-                    helper(&function.return_type, target, bindings, count);
-                    helper(&function.effects, target, bindings, count);
-                },
-                Type::Application(constructor, args) => {
-                    helper(constructor, target, bindings, count);
-                    for arg in args.iter() {
-                        helper(arg, target, bindings, count);
-                    }
-                },
-                Type::Forall(_, typ) => helper(typ, target, bindings, count),
-                Type::Tuple(elements) => {
-                    for element in elements.iter() {
-                        helper(element, target, bindings, count);
-                    }
-                },
-                Type::Effects(list, tail) => {
-                    for effect in list.iter() {
-                        helper(effect, target, bindings, count);
-                    }
-                    if let Some(tail) = tail {
-                        helper(tail, target, bindings, count);
-                    }
-                },
-            }
+                Type::Forall(_, inner) => go(inner, target, bindings, count),
+                _ => (),
+            });
         }
         let mut count = 0;
-        helper(self, target, bindings, &mut count);
+        go(self, target, bindings, &mut count);
         count
     }
 

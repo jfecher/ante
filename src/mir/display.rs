@@ -27,8 +27,7 @@ impl Display for mir::Mir {
 }
 
 impl Definition {
-    /// Create a wrapper that can display this [Definition]. The optional [mir::Mir], if provided, allows
-    /// definition names to be printed instead of just their ids.
+    /// If [mir::Mir] is provided, definition names are printed instead of just their ids.
     pub(crate) fn display<'a>(&'a self, mir: Option<&'a mir::Mir>) -> DefinitionDisplay<'a> {
         DefinitionDisplay(self, mir)
     }
@@ -43,8 +42,7 @@ impl Display for DefinitionDisplay<'_> {
 }
 
 impl InstructionId {
-    /// Create a wrapper that can display this instruction. The optional [mir::Mir], if provided, allows
-    /// definition names to be printed instead of just their ids.
+    /// If [mir::Mir] is provided, definition names are printed instead of just their ids.
     pub(crate) fn display<'a>(self, definition: &'a Definition, mir: Option<&'a mir::Mir>) -> InstructionDisplay<'a> {
         InstructionDisplay(self, definition, mir)
     }

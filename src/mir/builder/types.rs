@@ -50,13 +50,31 @@ where
         self.convert_context().convert_type(typ, args)
     }
 
+    /// Recomputes a callee's whole instantiated type from a different already-generalized
+    /// definition's bindings, so that every occurrence of a patched generic (see
+    /// `Context::patch_environment_binding`) stays consistent, not just the one param the caller touched.
+    pub(super) fn convert_and_instantiate(
+        &self, typ: &TCType, generics: &[crate::type_inference::generics::Generic], type_bindings: &TypeBindings,
+        instantiation: &Vec<Type>,
+    ) -> Type {
+        let generics_in_scope =
+            generics.iter().enumerate().map(|(i, g)| (*g, crate::mir::Generic(i as u32))).collect();
+
+        let ctx = ConvertTypeContext {
+            compiler: self.compiler,
+            type_bindings,
+            generics_in_scope: &generics_in_scope,
+            in_progress: RefCell::new(FxHashSet::default()),
+        };
+        ctx.convert_type(typ, None).substitute(instantiation)
+    }
+
     /// If `typ` resolves to a `shared` user-defined type, returns its inner layout behind the pointer.
     pub(super) fn shared_inner_layout_of(&self, typ: &TCType) -> Option<Type> {
         self.convert_context().shared_inner_layout_of(typ, None).map(|(layout, _)| layout)
     }
 
-    /// Like [Self::shared_inner_layout_of] but only returns the inner layout when the type is
-    /// declared `shared mut`, used to decide whether `:=` mutates the pointee in place.
+    /// Like [Self::shared_inner_layout_of] but only for `shared mut`. Used to decide whether `:=` mutates in place.
     pub(super) fn shared_mut_inner_layout_of(&self, typ: &TCType) -> Option<Type> {
         self.convert_context().shared_inner_layout_of(typ, None).and_then(|(layout, mutable)| mutable.then_some(layout))
     }
@@ -136,9 +154,7 @@ where
         }
     }
 
-    /// The type of a row's evidence: a cons list of capability tuples for the row's resolved
-    /// effects, ending in `()` (closed) or the row's generic. Determined solely by the row's
-    /// resolved content, so every view of a row agrees on it.
+    /// An effect row's evidence: nested pairs of capability tuples ending in `()` or the row's generic.
     pub(super) fn evidence_type(&self, effects: &TCType) -> Type {
         let (concretes, end) = self.split_row(effects);
         let mut evidence = match end {
@@ -151,9 +167,7 @@ where
         evidence
     }
 
-    /// Splits a row into its resolved concrete effects and its end. Purely structural (no
-    /// sorting or deduplication) so that converting an instantiated row is identical to
-    /// substituting into the converted generic row.
+    /// Splits a row into its resolved effects and end.
     pub(super) fn split_row(&self, effects: &TCType) -> (Vec<TCType>, RowEnd) {
         let mut concretes = Vec::new();
         let mut current = effects.clone();
@@ -178,10 +192,8 @@ where
                 _ => break RowEnd::Closed,
             }
         };
-        // A chain ending at a generic is a definition-side view: canonicalize its prefix to
-        // match the generalized scheme callers instantiate (same head-stable order as
-        // [crate::type_inference::types::Type::effects]). A closed chain mirrors the
-        // instantiation structure exactly and must stay as-is.
+
+        // Canonicalize a generic-ending chain's prefix to match the scheme callers use
         if matches!(end, RowEnd::Generic(_)) {
             concretes.sort_by_key(|effect| effect.effect_head().copied());
             let mut deduped = Vec::with_capacity(concretes.len());
@@ -195,8 +207,7 @@ where
         (concretes, end)
     }
 
-    /// C-compatible function conversion: no evidence parameter. Used for `extern` symbols
-    /// and `resume` (a coroutine primitive), whose shapes are fixed by their consumers.
+    /// C-compatible conversion (no evidence parameter) for `extern` symbols and `resume`
     pub(super) fn convert_c_function_type(&self, typ: &TCType) -> Type {
         let TCType::Function(function_type) = typ.follow(self.type_bindings) else {
             return self.convert_type(typ, None);

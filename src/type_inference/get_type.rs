@@ -29,14 +29,12 @@ pub fn get_type_impl(context: &GetType, compiler: &DbHandle) -> Type {
                 .map(|t| t.generalize(&TypeBindings::default()))
                 .unwrap_or_else(|| {
                     let check = TypeCheck(context.0.top_level_item).get(compiler);
-                    let typ = check.get_generalized(context.0.local_name_id);
-                    typ.follow_all(&check.bindings)
+                    check.get_generalized(context.0.local_name_id)
                 })
         },
         _ => {
             let check = TypeCheck(context.0.top_level_item).get(compiler);
-            let typ = check.get_generalized(context.0.local_name_id);
-            typ.follow_all(&check.bindings)
+            check.get_generalized(context.0.local_name_id)
         },
     };
     incremental::exit_query();
@@ -127,9 +125,8 @@ fn constructor_type_is_fully_applied(typ: &cst::Type, resolve: &ResolutionResult
 }
 
 /// Like `try_get_generalized_type` but allows the resulting type to contain fresh type variables
-/// for ability closure environments. The caller passes a `next_id` counter so that
-/// fresh IDs don't collide with other type variables.
-/// This function always succeeds. In the case there are no annotations, a fresh type variable is returned.
+/// for ability closure environments.
+/// In the case there are no annotations, a fresh type variable is returned.
 pub fn get_partial_type(
     definition: &Definition, context: &DesugarContext, resolve: &ResolutionResult, compiler: &DbHandle,
     next_id: &mut u32,

@@ -122,8 +122,7 @@ impl MoveTracker {
     }
 
     /// Merge move trackers from multiple branches.
-    /// A path is considered moved after the branch if it was moved in the base
-    /// OR in ANY branch (since one of the branches will execute).
+    /// A path is considered moved after the branch if it was moved in the base or in any branch.
     pub(super) fn merge_branches(base: &MoveTracker, branches: &[MoveTracker]) -> MoveTracker {
         let mut result = base.clone();
         for branch in branches {
@@ -158,7 +157,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     pub(super) fn type_is_copy(&mut self, typ: &Type) -> bool {
         let typ = self.follow_type(typ).clone();
 
-        // Fast path: all primitive types are Copy (uniq refs are Type::Applications)
         if matches!(&typ, Type::Primitive(_)) {
             return true;
         }
@@ -293,16 +291,12 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     /// Emit errors for any non-Copy outer variables moved during a context whose
     /// body may run more than once (handler branches, `for` bodies, `while`
-    /// condition + body). Call this with `self.move_tracker` set to the scope-local
-    /// tracker (started empty via `mem::take`); `outer_names` is the set of NameIds
-    /// that existed *before* the scope was entered.
+    /// condition + body). `outer_names` is the set of NameIds that existed before the scope was entered.
     pub(super) fn check_moves_in_repeated_context(
         &mut self, outer_names: &rustc_hash::FxHashSet<NameId>, context: RepeatedContext,
     ) {
-        let outer_moves: Vec<(MovePath, Location)> = self
-            .move_tracker
-            .moved
-            .iter()
+        let moved = self.move_tracker.moved.iter();
+        let outer_moves: Vec<(MovePath, Location)> = moved
             .filter(|(path, _)| outer_names.contains(&path.root_variable()))
             .map(|(p, l)| (p.clone(), l.clone()))
             .collect();

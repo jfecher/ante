@@ -19,8 +19,6 @@ use crate::{
 };
 
 impl<'local, 'inner> TypeChecker<'local, 'inner> {
-    /// A type definition always returns a unit value, but we must still create the
-    /// types of the type constructors
     pub(super) fn check_type_definition(&mut self, definition: &cst::TypeDefinition) {
         let id = self.current_item.unwrap();
 
@@ -34,8 +32,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 return;
             },
             cst::TypeDefinitionBody::Struct(fields) => {
-                // If this is from an ability, each field needs to be given its own type
-                // since they are publically visible, e.g. as `Eq.eq` or `Emit.emit`
+                // Ability fields are publicly visible (e.g. `Eq.eq`), so each needs its own type.
                 if definition.kind.is_ability() {
                     self.build_method_types(id, definition, fields);
                 }
@@ -69,7 +66,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
-    /// Checks for an unboxed recursive reference to `type_name` within the variant fields of `definition`.
     fn type_definition_is_recursive_and_unboxed(
         &self, definition: &cst::TypeDefinition, type_name: TopLevelName,
     ) -> bool {
@@ -131,7 +127,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
-    /// True only if `typ` uses `target` unboxed.
     /// Used to check for recursively infinitely sized types.
     fn type_uses_target_unboxed(typ: &cst::Type, target: Origin, resolve: &ResolutionResult) -> bool {
         match &typ.kind {
@@ -147,10 +142,15 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 elements.iter().any(|e| Self::type_uses_target_unboxed(e, target, resolve))
             },
             cst::TypeKind::Forall(_, body) => Self::type_uses_target_unboxed(body, target, resolve),
-            // Function types are pointer-sized, so recursion through them does not require
-            // unbounded representation.
-            cst::TypeKind::Function(_)
-            | cst::TypeKind::Variable(_)
+            cst::TypeKind::Function(typ) => {
+                if let Some(env) = typ.environment.as_ref() {
+                    Self::type_uses_target_unboxed(env, target, resolve)
+                } else {
+                    false
+                }
+            }
+
+            cst::TypeKind::Variable(_)
             | cst::TypeKind::Reference(_)
             | cst::TypeKind::Pointer
             | cst::TypeKind::NoClosureEnv
@@ -300,6 +300,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// For effects, each function in `E` gets a `can E` clause.
     fn build_method_types(&mut self, id: TopLevelId, definition: &cst::TypeDefinition, fields: &[(NameId, cst::Type)]) {
         let type_name = TopLevelName::new(id, definition.name);
+        let is_effect = definition.kind.is_effect();
 
         for (method_name, method_type) in fields.iter() {
             let (arg, substitutions) = self.type_definition_type(type_name, definition, false);
@@ -311,7 +312,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             let mut method_type = self.from_cst_type_with_local_kinds(method_type, true, false, &mut local_kinds);
 
             if matches!(method_type, Type::Function(_)) {
-                method_type = if definition.kind.is_effect() {
+                method_type = if is_effect {
                     self.set_effect_on_function_type(method_type, arg)
                 } else {
                     self.add_implicit_arg_to_function_type(method_type, arg)

@@ -1,4 +1,4 @@
-use std::{cell::Cell, collections::BTreeMap, rc::Rc, sync::Arc};
+use std::{borrow::Cow, cell::Cell, collections::BTreeMap, rc::Rc, sync::Arc};
 
 use rustc_hash::{FxHashMap, FxHashSet};
 use serde::{Deserialize, Serialize};
@@ -316,6 +316,15 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         self.id_contexts.get(&item).expect("Expected TopLevelId to be in id_contexts")
     }
 
+    /// Resolve `id` to its rewritten expr if this pass has replaced it in the extended
+    /// context, falling back to the original parse-time expr otherwise.
+    fn resolved_expr(&self, id: ExprId) -> Cow<'local, cst::Expr> {
+        match self.current_extended_context().extended_expr(id) {
+            Some(expr) => Cow::Owned(expr.clone()),
+            None => Cow::Borrowed(&self.current_context()[id]),
+        }
+    }
+
     /// Return the current extended context.
     /// Note that this context only includes new items added by this type checker, it does
     /// not contain any existing items from the resolver until the type checker finishes
@@ -424,6 +433,33 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         Type::Variable(self.next_type_variable_id())
     }
 
+    /// Run `f` with a reference to `self.next_type_variable_id`
+    fn with_next_id<T>(&self, f: impl FnOnce(&mut u32) -> T) -> T {
+        let mut next_id = self.next_type_variable_id.get();
+        let result = f(&mut next_id);
+        self.next_type_variable_id.set(next_id);
+        result
+    }
+
+    /// Run `f` with both `suppress_move_check` and `suppress_move_record` set to `true`,
+    /// restoring their previous values afterward.
+    fn with_suppressed_moves<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
+        let old_check = std::mem::replace(&mut self.suppress_move_check, true);
+        let old_record = std::mem::replace(&mut self.suppress_move_record, true);
+        let result = f(self);
+        self.suppress_move_check = old_check;
+        self.suppress_move_record = old_record;
+        result
+    }
+
+    /// Like [Self::with_suppressed_moves] but only suppresses `suppress_move_record`.
+    fn with_suppressed_move_record<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
+        let old_record = std::mem::replace(&mut self.suppress_move_record, true);
+        let result = f(self);
+        self.suppress_move_record = old_record;
+        result
+    }
+
     /// A fresh, open effect row.
     fn fresh_effect_row(&self) -> Type {
         Type::effects(Vec::new(), Some(self.next_type_variable()))
@@ -451,7 +487,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Defaults a `can e` to `pure` when `e` isn't referenced elsewhere in `root`, recursing into nested function types.
     fn default_unshared_effects_to_pure(&mut self, root: &Type, typ: &Type) {
         let Type::Function(function_type) = typ.follow(&self.bindings) else { return };
-        let parameter_types: Vec<Type> = function_type.parameters.iter().map(|p| p.typ.clone()).collect();
+        let parameter_types: Vec<Type> = mapvec(&function_type.parameters, |p| p.typ.clone());
         let return_type = function_type.return_type.clone();
 
         if let Type::Effects(_, Some(tail)) = function_type.effects.follow_all(&self.bindings)
@@ -695,11 +731,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         {
             let new_expr = self.auto_deref_coercion(expr, inner);
             self.current_extended_context_mut().insert_expr(expr, new_expr);
-            let old_check = std::mem::replace(&mut self.suppress_move_check, true);
-            let old_record = std::mem::replace(&mut self.suppress_move_record, true);
-            self.check_expr(expr, expected, kind);
-            self.suppress_move_check = old_check;
-            self.suppress_move_record = old_record;
+            self.with_suppressed_moves(|this| this.check_expr(expr, expected, kind));
             return actual;
         }
         self.coerce(&actual, expected, expr, None, kind, saved);
@@ -717,12 +749,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             CoercionOutcome::AutoRef => self.type_autoref_wrapper(expr, expected, kind),
             CoercionOutcome::ReplacedExpr => {
                 // Re-check the wrapper but ignore moves since they were already recorded.
-                let old_check = std::mem::replace(&mut self.suppress_move_check, true);
-                let old_record = std::mem::replace(&mut self.suppress_move_record, true);
-                let actual = self.check_expr(expr, expected, kind);
-                self.suppress_move_check = old_check;
-                self.suppress_move_record = old_record;
-                actual
+                self.with_suppressed_moves(|this| this.check_expr(expr, expected, kind))
             },
             CoercionOutcome::None => {
                 self.unify(actual, expected, kind, expr);
@@ -1026,7 +1053,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     fn canonical_effects_row(&self, effects: &Type, new_bindings: &TypeBindings) -> Type {
         match effects.follow_two(&self.bindings, new_bindings) {
             Type::Effects(list, tail) => {
-                let list = list.iter().map(|t| t.follow_two(&self.bindings, new_bindings)).collect();
+                let list = mapvec(list.iter(), |t| t.follow_two(&self.bindings, new_bindings));
                 let tail = tail.as_deref().map(|t| self.canonical_effects_row(t, new_bindings));
                 Type::effects(list, tail)
             },
@@ -1185,18 +1212,17 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         &mut self, typ: &cst::Type, allow_implicit_type_vars: bool, open_effects_by_default: bool,
         local_kinds: &mut LocalKinds,
     ) -> Type {
-        let mut next_id = self.next_type_variable_id.get();
-        let typ = Type::from_cst_type(
-            typ,
-            self.current_resolve(),
-            self.compiler,
-            &mut next_id,
-            local_kinds,
-            allow_implicit_type_vars,
-            open_effects_by_default,
-        );
-        self.next_type_variable_id.set(next_id);
-        typ
+        self.with_next_id(|next_id| {
+            Type::from_cst_type(
+                typ,
+                self.current_resolve(),
+                self.compiler,
+                next_id,
+                local_kinds,
+                allow_implicit_type_vars,
+                open_effects_by_default,
+            )
+        })
     }
 
     /// Like [Self::from_cst_type] but does not require the converted type to be of kind
@@ -1206,19 +1232,18 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         &mut self, typ: &cst::Type, allow_implicit_type_vars: bool,
     ) -> (Type, crate::type_inference::kinds::Kind) {
         let mut local_kinds = crate::type_inference::types::LocalKinds::default();
-        let mut next_id = self.next_type_variable_id.get();
-        let result = Type::from_cst_type_helper(
-            typ,
-            None,
-            self.current_resolve(),
-            self.compiler,
-            &mut next_id,
-            &mut local_kinds,
-            allow_implicit_type_vars,
-            allow_implicit_type_vars,
-        );
-        self.next_type_variable_id.set(next_id);
-        result
+        self.with_next_id(|next_id| {
+            Type::from_cst_type_helper(
+                typ,
+                None,
+                self.current_resolve(),
+                self.compiler,
+                next_id,
+                &mut local_kinds,
+                allow_implicit_type_vars,
+                allow_implicit_type_vars,
+            )
+        })
     }
 
     /// Try to retrieve the types of each field of the given type.
