@@ -41,7 +41,7 @@ reverse (var s: String): String =
 ///
 /// For example `split "foo bar  baz "` will emit all of:
 /// ["foo", "bar", "", "baz", ""]
-split (s: String) (c: Char) = fn {Emit String} ->
+split (s: String) (c: Char) = fn () can (Emit String) ->
     var subend = 0usz
     var substart = 0usz
     while U32 subend < s.length do
@@ -83,12 +83,12 @@ join (s: s) {Stream s String}: String =
     foldl s "" (++)
 
 /// Emits each byte in this string
-bytes (s: String) = fn (e: Emit U8) ->
+bytes (s: String) = fn () can (Emit U8) ->
     var data = transmute s.data : Usz
     for i in 0 .. s.length do
         ptr = data + Usz i
         c = deref_ptr <| transmute ptr : Ptr U8
-        e.emit c
+        emit c
 
 /// Emits each character in this string
 ///
@@ -147,37 +147,37 @@ trim (s: String): String =
 /// Parse a base-10 I32 from a string.
 ///
 /// Fails for empty strings, sign-only strings, non-digits, or overflow.
-parse_i32 (s: String) {Fail}: I32 =
+parse_i32 (s: String): I32 can Fail =
     parse_signed_int s
 
-parse_i8 (s: String) {Fail}: I8 =
+parse_i8 (s: String): I8 can Fail =
     parse_signed_int s
 
-parse_i16 (s: String) {Fail}: I16 =
+parse_i16 (s: String): I16 can Fail =
     parse_signed_int s
 
-parse_i64 (s: String) {Fail}: I64 =
+parse_i64 (s: String): I64 can Fail =
     parse_signed_int s
 
-parse_isz (s: String) {Fail}: Isz =
+parse_isz (s: String): Isz can Fail =
     parse_signed_int s
 
-parse_u8 (s: String) {Fail}: U8 =
+parse_u8 (s: String): U8 can Fail =
     parse_unsigned_int s
 
-parse_u16 (s: String) {Fail}: U16 =
+parse_u16 (s: String): U16 can Fail =
     parse_unsigned_int s
 
-parse_u32 (s: String) {Fail}: U32 =
+parse_u32 (s: String): U32 can Fail =
     parse_unsigned_int s
 
-parse_u64 (s: String) {Fail}: U64 =
+parse_u64 (s: String): U64 can Fail =
     parse_unsigned_int s
 
-parse_usz (s: String) {Fail}: Usz =
+parse_usz (s: String): Usz can Fail =
     parse_unsigned_int s
 
-parse_signed_int (s: String) {n: Num t} {CheckedNum t} {Cast I32 t} {Copy t} {Fail}: t =
+parse_signed_int (s: String) {n: Num t} {CheckedNum t} {Cast I32 t} {Copy t}: t can Fail =
     len = Usz s.length
     fail_if (len == 0)
 
@@ -212,7 +212,7 @@ parse_signed_int (s: String) {n: Num t} {CheckedNum t} {Cast I32 t} {Copy t} {Fa
 
     result
 
-parse_unsigned_int (s: String) {n: Num t} {CheckedNum t} {Cast U8 t} {Copy t} {Fail}: t =
+parse_unsigned_int (s: String) {n: Num t} {CheckedNum t} {Cast U8 t} {Copy t}: t can Fail =
     len = Usz s.length
     fail_if (len == 0)
 
@@ -234,39 +234,37 @@ parse_unsigned_int (s: String) {n: Num t} {CheckedNum t} {Cast U8 t} {Copy t} {F
         | None -> fail ()
 
         result := checked_mul result ten.*
-
         result := checked_add result digit
-
         i += 1
 
     result
 
 impl try_cast_string_i8: TryCast String I8 with
-    try_cast s {Fail} = parse_i8 s
+    try_cast s = parse_i8 s
 
 impl try_cast_string_i16: TryCast String I16 with
-    try_cast s {Fail} = parse_i16 s
+    try_cast s = parse_i16 s
 
 impl try_cast_string_i32: TryCast String I32 with
-    try_cast s {Fail} = parse_i32 s
+    try_cast s = parse_i32 s
 
 impl try_cast_string_i64: TryCast String I64 with
-    try_cast s {Fail} = parse_i64 s
+    try_cast s = parse_i64 s
 
 impl try_cast_string_isz: TryCast String Isz with
-    try_cast s {Fail} = parse_isz s
+    try_cast s = parse_isz s
 
 impl try_cast_string_u8: TryCast String U8 with
-    try_cast s {Fail} = parse_u8 s
+    try_cast s = parse_u8 s
 
 impl try_cast_string_u16: TryCast String U16 with
-    try_cast s {Fail} = parse_u16 s
+    try_cast s = parse_u16 s
 
 impl try_cast_string_u32: TryCast String U32 with
-    try_cast s {Fail} = parse_u32 s
+    try_cast s = parse_u32 s
 
 impl try_cast_string_u64: TryCast String U64 with
-    try_cast s {Fail} = parse_u64 s
+    try_cast s = parse_u64 s
 
 impl try_cast_string_usz: TryCast String Usz with
-    try_cast s {Fail} = parse_usz s
+    try_cast s = parse_usz s

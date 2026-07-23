@@ -21,20 +21,20 @@ main () =
 // expected stdout:
 // import Std.Slice.Slice, slice
 // 
-// (first_of: fn (ref (Array n t)) -> ref t) ((array: ref (Array n t))) : ref t =
-//     (array_get_unchecked: fn (ref (Array n t)) Usz -> ref t) (array: ref (Array n t)) 0
+// (first_of: fn (ref (Array n t)) -> ref t pure) ((array: ref (Array n t))) : ref t pure =
+//     (array_get_unchecked: fn (ref (Array n t)) Usz -> ref t pure) (array: ref (Array n t)) 0
 // 
-// (first_of_explicit: fn (ref a (Array n t)) -> ref a t) ((array: ref a (Array n t))) : ref 'a t =
-//     (array_get_unchecked: fn (ref a (Array n t)) Usz -> ref a t) (array: ref a (Array n t)) 0
+// (first_of_explicit: fn (ref a (Array n t)) -> ref a t pure) ((array: ref a (Array n t))) : ref 'a t pure =
+//     (array_get_unchecked: fn (ref a (Array n t)) Usz -> ref a t pure) (array: ref a (Array n t)) 0
 // 
-// (mix: fn (ref a (Array n t)) (ref (Array m t)) -> ref a t) ((a: ref a (Array n t))) ((_b: ref (Array m t))) : ref 'a t =
-//     (array_get_unchecked: fn (ref a (Array n t)) Usz -> ref a t) (a: ref a (Array n t)) 0
+// (mix: fn (ref a (Array n t)) (ref (Array m t)) -> ref a t pure) ((a: ref a (Array n t))) ((_b: ref (Array m t))) : ref 'a t pure =
+//     (array_get_unchecked: fn (ref a (Array n t)) Usz -> ref a t pure) (a: ref a (Array n t)) 0
 // 
-// (main: fn Unit -> Unit) () =
+// (main: fn Unit -> Unit pure) () =
 //     (arr: Array 3 I32) = [1, 2, 3]
-//     (s: Slice _ I32) = (slice: fn (ref (Array 3 I32)) -> Slice _ I32) (ref (arr: Array 3 I32))
+//     (s: Slice _ I32) = (slice: fn (ref (Array 3 I32)) -> Slice _ I32 pure) (ref (arr: Array 3 I32))
 //     (_: Usz) = (s: Slice _ I32).len
-//     (_: ref I32) = (first_of: fn (ref (Array 3 I32)) -> ref I32) (ref (arr: Array 3 I32))
-//     (_: ref I32) = (first_of_explicit: fn (ref (Array 3 I32)) -> ref I32) (ref (arr: Array 3 I32))
+//     (_: ref I32) = (first_of: fn (ref (Array 3 I32)) -> ref I32 pure) (ref (arr: Array 3 I32))
+//     (_: ref I32) = (first_of_explicit: fn (ref (Array 3 I32)) -> ref I32 pure) (ref (arr: Array 3 I32))
 //     ()
 

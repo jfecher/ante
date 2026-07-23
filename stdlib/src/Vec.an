@@ -1,5 +1,5 @@
 import Std.C.realloc, free
-import Std.Stream.Stream, iter
+import Std.Stream.Stream, iter, emit
 import Std.Fail.Fail, fail, panic_on_fail
 
 export Vec, empty, of, is_empty, len, extend, capacity, reserve, push, pop, get, get_unchecked,
@@ -61,14 +61,14 @@ Vec.pop (v: mut Vec t): Maybe t =
 
 /// Retrieves the element at the given 0-based index.
 /// Fails if the index is out of bounds
-Vec.get (v: imm Vec t) (i: Usz) {Fail}: imm t =
+Vec.get (v: imm Vec t) (i: Usz): imm t can Fail =
     if i < v.len
     then v.get_unchecked i
     else fail ()
 
 /// Retrieves a mutable reference to the element at the given 0-based index.
 /// Fails if the index is out of bounds
-Vec.get_mut (v: uniq Vec t) (i: Usz) {Fail}: uniq t =
+Vec.get_mut (v: uniq Vec t) (i: Usz): uniq t can Fail =
     if i < v.len
     then v.get_mut_unchecked i
     else fail ()
@@ -87,7 +87,7 @@ Vec.get_mut_unchecked (v: uniq Vec t) (i: Usz): uniq t =
 
 /// Remove the element at the given index and return it.
 /// will Fail if the index is out of bounds.
-Vec.remove_index (v: mut Vec t) (idx: Usz) {Fail}: t =
+Vec.remove_index (v: mut Vec t) (idx: Usz): t can Fail =
     if idx >= 0 and idx < v.len then
         item = v.data.[idx]
         for i in idx .. v.len - 1 do
@@ -103,14 +103,14 @@ Vec.remove_index (v: mut Vec t) (idx: Usz) {Fail}: t =
 Vec.remove_first (v: mut Vec t) (elem: t) {Eq t} {Copy t}: Maybe Usz =
     for i in 0 .. v.len do
         if elem == v.data.[i] then
-            v.remove_index i ~> panic_on_fail
+            panic_on_fail (fn () -> v.remove_index i)
             return Some i
     None
 
 /// Remove the given indices from the vector
 /// Expects the indices to be in sorted order.
 /// Will Fail if any index is out of bounds.
-Vec.remove_indices (v: mut Vec t) (idxs: Vec Usz) {Fail}: Unit =
+Vec.remove_indices (v: mut Vec t) (idxs: Vec Usz): Unit can Fail =
     var moved = 0usz
     for i in 0 .. idxs.len do
         cur = idxs.data.[i]
@@ -141,7 +141,7 @@ Vec.remove_all (v: mut Vec t) (elem: t) {Eq t} {Copy t}: Usz =
             idxs.push i
 
     count = idxs.len
-    v.remove_indices idxs ~> panic_on_fail
+    panic_on_fail (fn () -> v.remove_indices idxs)
     count
 
 
@@ -166,7 +166,7 @@ Vec.reverse (v: mut Vec t): Unit =
         array_insert v.data opposite tmp
 
 /// Swap the elements at indices `i` and `j`. Fails if either index is out of bounds.
-Vec.swap (v: mut Vec t) (i: Usz) (j: Usz) {Fail}: Unit =
+Vec.swap (v: mut Vec t) (i: Usz) (j: Usz): Unit can Fail =
     if i >= v.len or j >= v.len then fail ()
     if i == j then return ()
     tmp = v.data.[i]
@@ -175,7 +175,7 @@ Vec.swap (v: mut Vec t) (i: Usz) (j: Usz) {Fail}: Unit =
 
 /// Insert `elem` at `idx`, shifting elements at `[idx, len)` one position right.
 /// Fails if `idx > len`.
-Vec.insert (v: mut Vec t) (idx: Usz) (elem: t) {Fail}: Unit =
+Vec.insert (v: mut Vec t) (idx: Usz) (elem: t): Unit can Fail =
     if idx > v.len then fail ()
     if v.len >= v.cap then
         v.reserve (if v.cap == 0 then 1 else v.cap)
@@ -251,21 +251,21 @@ impl extract_vec: Extract (ref Vec t) Usz (ref t) with
 // Vec.insert will insert into a slot, moving the previous element and each
 // element after to the right. This `Insert` implementation will instead
 // directly mutate the element at the given index to the new element.
-impl insert_vec {Fail}: Insert (mut Vec t) Usz t with
+impl insert_vec: Insert (mut Vec t) Usz t with
     (.[]:=) (v: mut Vec t) i e =
         v: uniq Vec t = transmute v
-        slot = v.get_mut i
+        slot = v.get_mut i ~> panic_on_fail
         slot := e
 
 implicit stream_vec: Stream (Vec a) a =
-    Stream fn vec e ->
+    Stream fn vec ->
         for i in 0 .. vec.len do
-            e.emit (deref (vec.get_unchecked i))
+            emit (deref (vec.get_unchecked i))
 
 implicit stream_imm_vec: Stream (imm Vec a) (imm a) =
-    Stream fn vec e ->
+    Stream fn vec ->
         for i in 0 .. vec.len do
-            e.emit (vec.get_unchecked i)
+            emit (vec.get_unchecked i)
 
 impl drop_vec {Drop t}: Drop (Vec t) with
     drop (v: mut Vec t) =

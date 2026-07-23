@@ -168,6 +168,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 parameters: new_expected,
                 environment: expected.environment.clone(),
                 return_type: expected.return_type.clone(),
+                effects: expected.effects.clone(),
             }));
             self.unify(&Type::Function(actual), &new_fn, TypeErrorKind::General, function);
 
@@ -191,20 +192,13 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     }
 
     pub(super) fn call_ends_with_unit_arg(&self, call_expr: ExprId) -> bool {
-        let expr = match self.current_extended_context().extended_expr(call_expr) {
-            Some(expr) => expr,
-            None => &self.current_context()[call_expr],
-        };
-        let cst::Expr::Call(call) = expr else { return false };
+        let expr = self.resolved_expr(call_expr);
+        let cst::Expr::Call(call) = expr.as_ref() else { return false };
         call.arguments.last().is_some_and(|arg| self.is_unit_literal(arg.expr))
     }
 
     fn is_unit_literal(&self, expr: ExprId) -> bool {
-        let expr = match self.current_extended_context().extended_expr(expr) {
-            Some(expr) => expr,
-            None => &self.current_context()[expr],
-        };
-        matches!(expr, cst::Expr::Literal(cst::Literal::Unit))
+        matches!(self.resolved_expr(expr).as_ref(), cst::Expr::Literal(cst::Literal::Unit))
     }
 
     /// If the expression is a variable, return its name
@@ -948,7 +942,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let body_type = Type::ERROR;
         let body = self.push_expr(body, body_type, location);
 
-        Some(cst::Expr::Lambda(cst::Lambda { parameters, body, return_type: None, is_move: false }))
+        Some(cst::Expr::Lambda(cst::Lambda { parameters, body, return_type: None, is_move: false, effects: None }))
     }
 
     /// Creates a new expression referring to the given implicit value.
@@ -1037,11 +1031,20 @@ fn collect_user_defined_crates(typ: &Type, out: &mut BTreeSet<CrateId>) {
             }
             collect_user_defined_crates(&f.return_type, out);
             collect_user_defined_crates(&f.environment, out);
+            collect_user_defined_crates(&f.effects, out);
         },
         Type::Forall(_, t) => collect_user_defined_crates(t, out),
         Type::Tuple(ts) => {
             for t in ts.iter() {
                 collect_user_defined_crates(t, out);
+            }
+        },
+        Type::Effects(list, tail) => {
+            for effect in list.iter() {
+                collect_user_defined_crates(effect, out);
+            }
+            if let Some(tail) = tail {
+                collect_user_defined_crates(tail, out);
             }
         },
         Type::UserDefined(_) | Type::Variable(_) | Type::Generic(_) | Type::Primitive(_) | Type::U32(_) => {},

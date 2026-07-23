@@ -22,7 +22,7 @@ use crate::{
 
 use self::cst::{
     Call, Cst, Definition, Expr, GenericParam, Import, KindAnnotation, Literal, Path, SequenceItem, TopLevelItem,
-    TopLevelItemKind, Type, TypeDefinition, TypeDefinitionBody, TypeKind,
+    TopLevelItemKind, Type, TypeDefinition, TypeDefinitionBody, TypeDefinitionKind, TypeKind,
 };
 
 pub mod context;
@@ -597,15 +597,20 @@ impl<'tokens> Parser<'tokens> {
                 id = self.new_top_level_id_from_name_id(definition.name);
                 TopLevelItemKind::TypeDefinition(definition)
             },
-            Token::Ability => {
-                let ability = self.parse_ability_definition()?;
-                id = self.new_top_level_id_from_name_id(ability.name);
-                TopLevelItemKind::AbilityDefinition(ability)
+            Token::Trait => {
+                let trait_definition = self.parse_trait_definition()?;
+                id = self.new_top_level_id_from_name_id(trait_definition.name);
+                TopLevelItemKind::TraitDefinition(trait_definition)
+            },
+            Token::Effect => {
+                let effect_definition = self.parse_effect_definition()?;
+                id = self.new_top_level_id_from_name_id(effect_definition.name);
+                TopLevelItemKind::EffectDefinition(effect_definition)
             },
             Token::Impl => {
-                let ability_impl = self.parse_ability_impl()?;
-                id = self.new_top_level_id_from_name_id(ability_impl.name);
-                TopLevelItemKind::AbilityImpl(ability_impl)
+                let trait_impl = self.parse_trait_impl()?;
+                id = self.new_top_level_id_from_name_id(trait_impl.name);
+                TopLevelItemKind::TraitImpl(trait_impl)
             },
             Token::Octothorpe => {
                 let comptime = self.parse_comptime()?;
@@ -673,6 +678,8 @@ impl<'tokens> Parser<'tokens> {
             None
         };
 
+        let effects = self.parse_effects_clause();
+
         self.expect(Token::Equal, "`=` to begin the function body")?;
 
         let lambda_id = self.reserve_expr();
@@ -680,7 +687,7 @@ impl<'tokens> Parser<'tokens> {
             .try_parse_or_recover_to_newline(|this| this.parse_block_or_expression())
             .unwrap_or_else(|| self.push_expr(Expr::Error, self.current_token_location()));
 
-        let lambda = Expr::Lambda(Lambda { parameters, return_type, body, is_move: false });
+        let lambda = Expr::Lambda(Lambda { parameters, return_type, body, is_move: false, effects });
         self.insert_expr(lambda_id, lambda, start_location);
         Ok(Definition { implicit, mutable: false, pattern: name, rhs: lambda_id })
     }
@@ -713,7 +720,7 @@ impl<'tokens> Parser<'tokens> {
             _ => e,
         })?;
         let body = self.parse_type_body()?;
-        Ok(TypeDefinition { shared, mutable, name, generics, body, is_ability: false })
+        Ok(TypeDefinition { shared, mutable, name, generics, body, kind: TypeDefinitionKind::Type })
     }
 
     /// generics: ( ident | '(' ident ':' kind ')' )*
@@ -924,14 +931,6 @@ impl<'tokens> Parser<'tokens> {
     fn parse_function_type(&mut self) -> Result<Type> {
         let start = self.current_token_location();
 
-        let mut has_resume = false;
-        if let Token::Identifier(name) = self.current_token()
-            && name == "resume"
-        {
-            self.advance();
-            has_resume = true;
-        }
-
         self.expect(Token::Fn, "`fn` to start this function type")?;
 
         let mut parameters = self.many0(Self::parse_parameter_type);
@@ -955,12 +954,24 @@ impl<'tokens> Parser<'tokens> {
         }
 
         let return_type = Box::new(self.parse_type()?);
+        let effects = self.parse_effects_clause();
         let location = start.to(&self.previous_token_location());
 
         Ok(Type::new(
-            TypeKind::Function(cst::FunctionType { parameters, environment, return_type, has_resume }),
+            TypeKind::Function(cst::FunctionType { parameters, environment, return_type, effects }),
             location,
         ))
+    }
+
+    /// effects_clause: 'pure' | 'can' type_application (',' type_application)*
+    fn parse_effects_clause(&mut self) -> Option<Vec<Type>> {
+        if self.accept(Token::Pure) {
+            Some(Vec::new())
+        } else if self.accept(Token::Can) {
+            Some(self.delimited(Self::parse_type_application, Token::Comma, false))
+        } else {
+            None
+        }
     }
 
     /// pair_type: type_no_pair ',' pair_type
@@ -1000,7 +1011,6 @@ impl<'tokens> Parser<'tokens> {
             Token::Fn => self.parse_function_type(),
             Token::Ref | Token::Mut | Token::Imm | Token::Uniq => self.parse_reference_type(),
             Token::Forall => self.parse_forall_type(),
-            Token::Identifier(name) if name == "resume" => self.parse_function_type(),
             _ => self.parse_type_application(),
         }
     }
@@ -1974,6 +1984,8 @@ impl<'tokens> Parser<'tokens> {
                 None
             };
 
+            let effects = this.parse_effects_clause();
+
             this.expect(Token::RightArrow, "a `->` to separate this lambda's parameters from its body")?;
             let body_was_block = matches!(this.current_token(), Token::Indent);
             let body = this.parse_block_or_expression_trailing(min_prec, ban_do)?;
@@ -1981,7 +1993,7 @@ impl<'tokens> Parser<'tokens> {
                 this.warn_if_operator_outside_body(body, min_prec, ConfusingBodyKind::Lambda);
             }
 
-            Ok(Expr::Lambda(Lambda { parameters, return_type, body, is_move }))
+            Ok(Expr::Lambda(Lambda { parameters, return_type, body, is_move, effects }))
         })
     }
 
@@ -2371,7 +2383,7 @@ impl<'tokens> Parser<'tokens> {
 
     fn wrap_in_lambda(&mut self, parameters: Vec<cst::Parameter>, body: ExprId) -> ExprId {
         let location = self.current_context.expr_locations[body].clone();
-        let lambda = Expr::Lambda(cst::Lambda { parameters, return_type: None, body, is_move: false });
+        let lambda = Expr::Lambda(cst::Lambda { parameters, return_type: None, body, is_move: false, effects: None });
         self.push_expr(lambda, location)
     }
 
@@ -2558,6 +2570,8 @@ impl<'tokens> Parser<'tokens> {
                 None
             };
 
+            let effects = self.parse_effects_clause();
+
             self.expect(Token::Equal, "`=` to begin the function body")?;
             let body = if inline {
                 self.parse_shunting_yard(0, ban_do, /*ban_comma:*/ true)?
@@ -2565,7 +2579,7 @@ impl<'tokens> Parser<'tokens> {
                 self.parse_block_or_expression()?
             };
 
-            let lambda = Expr::Lambda(Lambda { parameters, return_type, body, is_move: false });
+            let lambda = Expr::Lambda(Lambda { parameters, return_type, body, is_move: false, effects });
             let location = start.to(&self.previous_token_span()).in_file(self.file_id);
             return Ok((name, self.push_expr(lambda, location)));
         }
@@ -2725,19 +2739,28 @@ impl<'tokens> Parser<'tokens> {
         }
     }
 
-    fn parse_ability_definition(&mut self) -> Result<cst::AbilityDefinition> {
-        self.expect(Token::Ability, "`ability` to start this ability definition")?;
+    fn parse_trait_definition(&mut self) -> Result<cst::TraitOrEffectDefinition> {
+        self.expect(Token::Trait, "`trait` to start this trait definition")?;
+        self.parse_trait_or_effect_body()
+    }
+
+    fn parse_effect_definition(&mut self) -> Result<cst::TraitOrEffectDefinition> {
+        self.expect(Token::Effect, "`effect` to start this effect definition")?;
+        self.parse_trait_or_effect_body()
+    }
+
+    fn parse_trait_or_effect_body(&mut self) -> Result<cst::TraitOrEffectDefinition> {
         let name = self.parse_type_name_id()?;
         let generics = self.parse_generics();
 
-        self.expect(Token::Equal, "`=` to separate this ability's signature from its body")?;
+        self.expect(Token::Equal, "`=` to separate this definition's signature from its body")?;
         let body = self.parse_declaration_block()?;
 
-        Ok(cst::AbilityDefinition { name, generics, body })
+        Ok(cst::TraitOrEffectDefinition { name, generics, body })
     }
 
-    fn parse_ability_impl(&mut self) -> Result<cst::AbilityImpl> {
-        self.expect(Token::Impl, "`impl` to start this ability implementation")?;
+    fn parse_trait_impl(&mut self) -> Result<cst::TraitImpl> {
+        self.expect(Token::Impl, "`impl` to start this trait implementation")?;
 
         let name = self.parse_ident_id()?;
         let parameters = self.parse_impl_parameters();
@@ -2745,8 +2768,8 @@ impl<'tokens> Parser<'tokens> {
         self.accept(Token::Newline);
         self.expect(Token::Colon, "a `:` to separate this impl's name from its type")?;
 
-        let ability_path = self.parse_type_path_id()?;
-        let ability_arguments = self.many0(Self::parse_type_arg);
+        let trait_path = self.parse_type_path_id()?;
+        let trait_arguments = self.many0(Self::parse_type_arg);
         self.expect(Token::With, "`with` to separate this impl's signature from its body")?;
 
         let body =
@@ -2759,7 +2782,7 @@ impl<'tokens> Parser<'tokens> {
                     (name, definition.rhs)
                 },
             });
-        Ok(cst::AbilityImpl { name, parameters, ability_path, ability_arguments, body })
+        Ok(cst::TraitImpl { name, parameters, trait_path, trait_arguments, body })
     }
 
     /// An impl may be a value (0 parameters) or a function (1+ parameters)

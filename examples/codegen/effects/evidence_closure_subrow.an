@@ -1,0 +1,19 @@
+import Std.Stream.Emit, emit
+
+apply (f: fn Unit => a): a = f ()
+
+main () =
+    x = 3
+
+    // `g` is a closure (it captures x) with an explicitly pure row. Passing it to `apply`
+    // whose row-generic instantiates non-pure requires an evidence coercion of a closure.
+    g: fn Unit [_] -> I32 pure = fn () -> x
+
+    handler h for emit y ->
+        println y
+        resume ()
+    in emit (apply g)
+
+// args: --delete-binary --no-color
+// expected stdout:
+// 3

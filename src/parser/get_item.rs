@@ -7,27 +7,32 @@ use crate::{
     lexer::token::{FloatKind, IntegerKind},
     parser::{
         cst::{
-            self, AbilityDefinition, AbilityImpl, Argument, Constructor, Definition, Expr, If, Lambda, Literal,
-            Parameter, Path, Pattern, SequenceItem, TopLevelItem, TopLevelItemKind, Type, TypeDefinitionBody, TypeKind,
+            self, Argument, Constructor, Definition, Expr, If, Lambda, Literal,
+            Parameter, Path, Pattern, SequenceItem, TopLevelItem, TopLevelItemKind, TraitImpl, TraitOrEffectDefinition,
+            Type, TypeDefinitionBody, TypeKind,
         },
         desugar_context::DesugarContext,
         ids::{ExprId, PathId, PatternId},
     },
 };
 
+/// Unspellable name for the synthetic generic used to default a bare parameter's missing effects.
+pub(crate) const IMPLICIT_EFFECT_NAME: &str = "$effect";
+
 pub fn get_item_impl(context: &GetItem, db: &DbHandle) -> (Arc<TopLevelItem>, Arc<DesugarContext>) {
     let (item, context) = GetItemRaw(context.0).get(db);
 
     match &item.kind {
-        TopLevelItemKind::AbilityDefinition(trait_definition) => {
+        TopLevelItemKind::TraitDefinition(def) | TopLevelItemKind::EffectDefinition(def) => {
+            let is_effect = matches!(&item.kind, TopLevelItemKind::EffectDefinition(_));
             let mut new_context = DesugarContext::new(context);
-            let new_kind = desugar_ability(trait_definition, &mut new_context);
+            let new_kind = desugar_trait_or_effect(def, is_effect, &mut new_context);
             let new_item = Arc::new(TopLevelItem { comments: item.comments.clone(), kind: new_kind, id: item.id });
             (new_item, Arc::new(new_context))
         },
-        TopLevelItemKind::AbilityImpl(ability_impl) => {
+        TopLevelItemKind::TraitImpl(trait_impl) => {
             let mut new_context = DesugarContext::new(context);
-            let new_definition = desugar_ability_impl(ability_impl, &mut new_context);
+            let new_definition = desugar_trait_impl(trait_impl, &mut new_context);
             desugar_expression(new_definition.rhs, &mut new_context);
             let kind = TopLevelItemKind::Definition(new_definition);
             let new_item = Arc::new(TopLevelItem { comments: item.comments.clone(), kind, id: item.id });
@@ -35,6 +40,7 @@ pub fn get_item_impl(context: &GetItem, db: &DbHandle) -> (Arc<TopLevelItem>, Ar
         },
         TopLevelItemKind::Definition(definition) => {
             let mut new_context = DesugarContext::new(context);
+            default_effects(definition.rhs, &mut new_context);
             desugar_expression(definition.rhs, &mut new_context);
             (item, Arc::new(new_context))
         },
@@ -57,15 +63,15 @@ pub fn get_item_impl(context: &GetItem, db: &DbHandle) -> (Arc<TopLevelItem>, Ar
 ///     method1 = ...
 ///     method2 = ...
 /// ```
-fn desugar_ability_impl(impl_: &AbilityImpl, context: &mut DesugarContext) -> Definition {
+fn desugar_trait_impl(impl_: &TraitImpl, context: &mut DesugarContext) -> Definition {
     let location = context.name_location(impl_.name).clone();
     let variable = context.push_pattern(Pattern::Variable(impl_.name), location.clone());
 
-    let mut ability_type = Type::new(TypeKind::Named(impl_.ability_path), location.clone());
+    let mut ability_type = Type::new(TypeKind::Named(impl_.trait_path), location.clone());
 
-    if !impl_.ability_arguments.is_empty() {
+    if !impl_.trait_arguments.is_empty() {
         ability_type =
-            Type::new(TypeKind::Application(Box::new(ability_type), impl_.ability_arguments.clone()), location.clone());
+            Type::new(TypeKind::Application(Box::new(ability_type), impl_.trait_arguments.clone()), location.clone());
     }
 
     // If this is not a function we need to put the type annotation on the name itself rather than
@@ -88,6 +94,7 @@ fn desugar_ability_impl(impl_: &AbilityImpl, context: &mut DesugarContext) -> De
             return_type: Some(ability_type),
             body: constructor,
             is_move: false,
+            effects: None,
         });
         context.push_expr(lambda, location)
     };
@@ -109,7 +116,9 @@ fn desugar_ability_impl(impl_: &AbilityImpl, context: &mut DesugarContext) -> De
 ///     ...
 ///     declarationN: fn Arg1_N ... ArgN_N [Pointer] -> Ret_N
 /// ```
-fn desugar_ability(ability: &AbilityDefinition, context: &mut DesugarContext) -> TopLevelItemKind {
+fn desugar_trait_or_effect(
+    ability: &TraitOrEffectDefinition, is_effect: bool, context: &mut DesugarContext,
+) -> TopLevelItemKind {
     let name_location = context.name_location(ability.name).clone();
 
     // Set every function-typed field's closure environment to `Ptr Unit` so each ability value
@@ -122,7 +131,7 @@ fn desugar_ability(ability: &AbilityDefinition, context: &mut DesugarContext) ->
     };
     let fields = mapvec(&ability.body, |decl| {
         let typ = match &decl.typ.kind {
-            cst::TypeKind::Function(f) if f.environment.is_none() => {
+            cst::TypeKind::Function(f) if f.environment.is_none() && !is_effect => {
                 let mut f = f.clone();
                 f.environment = Some(Box::new(ptr_unit()));
                 Type::new(cst::TypeKind::Function(f), decl.typ.location.clone())
@@ -132,14 +141,68 @@ fn desugar_ability(ability: &AbilityDefinition, context: &mut DesugarContext) ->
         (decl.name, typ)
     });
 
+    let kind = if is_effect { cst::TypeDefinitionKind::Effect } else { cst::TypeDefinitionKind::Trait };
     TopLevelItemKind::TypeDefinition(super::cst::TypeDefinition {
         shared: false,
         mutable: false,
-        is_ability: true,
+        kind,
         name: ability.name,
         generics: ability.generics.clone(),
         body: TypeDefinitionBody::Struct(fields),
     })
+}
+
+/// Defaults a definition's missing effects clause.
+fn default_effects(expr: ExprId, context: &mut DesugarContext) {
+    let Expr::Lambda(mut lambda) = context[expr].clone() else { return };
+    if lambda.return_type.is_none() {
+        return;
+    }
+
+    let is_bare_function_parameter = |context: &DesugarContext, parameter: &Parameter| {
+        matches!(&context[parameter.pattern],
+            Pattern::TypeAnnotation(_, typ) if matches!(&typ.kind, TypeKind::Function(f) if f.effects.is_none()))
+    };
+
+    let bare_parameters: Vec<&Parameter> =
+        lambda.parameters.iter().filter(|p| is_bare_function_parameter(context, p)).collect();
+    if bare_parameters.is_empty() {
+        if lambda.effects.is_none() {
+            lambda.effects = Some(Vec::new());
+            context.set_expr(expr, Expr::Lambda(lambda));
+        }
+        return;
+    }
+
+    let location = context.expr_location(expr).clone();
+    let existing_row_variable = lambda.effects.as_ref().and_then(|clause| {
+        clause.iter().find_map(|entry| match &entry.kind {
+            TypeKind::Variable(name) => Some(*name),
+            _ => None,
+        })
+    });
+    // Reuse the clause's row variable if it has one; otherwise synthesize the
+    // unspellable `$effect`, which can't collide with a real user-written generic.
+    let e = existing_row_variable
+        .unwrap_or_else(|| context.push_name(Arc::new(IMPLICIT_EFFECT_NAME.to_string()), location.clone()));
+
+    for parameter in bare_parameters {
+        let Pattern::TypeAnnotation(inner, mut typ) = context[parameter.pattern].clone() else { unreachable!() };
+        let TypeKind::Function(function_type) = &mut typ.kind else { unreachable!() };
+        function_type.effects = Some(vec![Type::new(TypeKind::Variable(e), location.clone())]);
+        context.set_pattern(parameter.pattern, Pattern::TypeAnnotation(inner, typ));
+    }
+
+    // The parameters' effects must also flow into this function's own row, even
+    // when it has an explicit clause: `can X` becomes the open row `can X, $effect`.
+    if existing_row_variable.is_none() {
+        let effect_entry = Type::new(TypeKind::Variable(e), location);
+        match &mut lambda.effects {
+            Some(clause) => clause.push(effect_entry),
+            None => lambda.effects = Some(vec![effect_entry]),
+        }
+    }
+    context.set_expr(expr, Expr::Lambda(lambda));
 }
 
 /// Traverse the expression recursively, desugaring along the way looking for
@@ -314,7 +377,7 @@ fn desugar_loop(expr: ExprId, context: &mut DesugarContext) {
     let recur = cst::Pattern::Variable(name_id);
     let recur = context.push_pattern(recur, location.clone());
 
-    let lambda = cst::Expr::Lambda(cst::Lambda { parameters, return_type: None, body, is_move: false });
+    let lambda = cst::Expr::Lambda(cst::Lambda { parameters, return_type: None, body, is_move: false, effects: None });
     let lambda = context.push_expr(lambda, location.clone());
 
     let definition =
@@ -371,7 +434,10 @@ fn desugar_call_wildcards(expr: ExprId, context: &mut DesugarContext) {
     let new_call = Expr::Call(cst::Call { function: call.function, arguments: new_arguments });
     let new_call_id = context.push_expr(new_call, location.clone());
 
-    context.set_expr(expr, Expr::Lambda(Lambda { parameters, return_type: None, body: new_call_id, is_move: false }));
+    context.set_expr(
+        expr,
+        Expr::Lambda(Lambda { parameters, return_type: None, body: new_call_id, is_move: false, effects: None }),
+    );
 }
 
 enum ExprDesugar {
@@ -634,6 +700,7 @@ fn desugar_do(expr: ExprId, context: &mut DesugarContext) {
         return_type: None,
         body: do_.body,
         is_move: true,
+        effects: None,
     });
     context.set_expr(expr, lambda);
 }
@@ -657,6 +724,7 @@ fn desugar_tilde_arrow(expr: ExprId, context: &mut DesugarContext) {
         return_type: None,
         body: a,
         is_move: false,
+        effects: None,
     });
     let lambda = context.push_expr(lambda, location);
 

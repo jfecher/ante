@@ -1,0 +1,33 @@
+effect Log =
+    log: fn String -> Unit
+
+// A `can e` clause gets added to both `f` and `foo`
+foo (f: fn Unit -> Unit): Unit =
+    f ()
+
+// `bar` doesn't declare `can Log`, so `log` is an error here
+bar (f: fn Unit -> Unit): Unit =
+    f ()
+    log "bar"
+
+// Using an effect type as an implicit parameter is a kind error
+uses_effect_as_implicit {Log}: Unit = ()
+
+main () =
+    foo (fn () -> ())
+    handler h for log _ -> resume ()
+    in bar (fn () -> ())
+
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/undeclared_effects.an:11:5
+// 10 |     f ()
+// 11 |     log "bar"	// error: This can perform Log but no effects are allowed here
+// 
+// examples/typechecking/undeclared_effects.an:14:26
+// 13 | // Using an effect type as an implicit parameter is a kind error
+//    | // error: This is an effect and cannot be used as an ordinary type
+// 14 | uses_effect_as_implicit {Log}: Unit = ()
+// 
+// Found 2 errors and 0 warnings
+

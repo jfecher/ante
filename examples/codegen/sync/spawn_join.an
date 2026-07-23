@@ -7,5 +7,5 @@ main () =
     println (join t)
 
 // args: --delete-binary --no-color
-// expected stdout:
-// 142
+// expected stdout: 142
+

@@ -1,20 +1,17 @@
-import Std.Fail.Fail, ignore_fail
-
-foo {Fail} =
+foo {Print I32} =
     println "in foo"
 
-foo2 {Fail} {Fail} =
+foo2 {Print I32} {Print I32} =
     println "in foo2"
 
 // We should allow calling functions like `foo` with only implicit args with a ()
-bar {Fail} =
+bar {Copy I32} =
     foo ()
     foo2 ()
 
-main () = ignore_fail bar
+main () = bar ()
 
 // args: --delete-binary --no-color
 // expected stdout:
 // in foo
 // in foo2
-

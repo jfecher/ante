@@ -24,7 +24,7 @@ main () =
 // ignored_param_c1m723_4219_0 _x_1 = 0
 // 
 // // id = c1m723_2389
-// typed_c1m723_2389_0 (a_1: t_2) : t_2 = a_1
+// typed_c1m723_2389_0 (a_1: t_2) : t_2 pure = a_1
 // 
 // // id = c1m723_1944
 // main_c1m723_1944_0 () =
@@ -34,6 +34,7 @@ main () =
 //     match Maybe.Some_c0m703_5164_3 used_2
 //     | Some_td bound_3 -> ()
 //     | None_td -> ()
+
 
 // expected stderr:
 // examples/nameresolution/unused_local.an:2:14

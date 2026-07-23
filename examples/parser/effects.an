@@ -1,7 +1,7 @@
 
-ability Log = log: fn String -> Unit
+effect Log = log: fn String -> Unit
 
-ability Use a =
+effect Use a =
     get: fn Unit -> a
     set: fn a I32 -> Unit
 
@@ -31,10 +31,10 @@ map3 (l: List a) (f: fn a -> b) {Log} : List b = ()
 
 // args: -e ast --no-color
 // expected stdout:
-// ability Log =
+// effect Log =
 //     log: fn String -> Unit
 // 
-// ability Use a =
+// effect Use a =
 //     get: fn Unit -> a
 //     set: fn a I32 -> Unit
 // 

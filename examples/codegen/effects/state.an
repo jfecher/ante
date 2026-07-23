@@ -1,28 +1,27 @@
-ability Use a =
-    get: resume fn Unit -> a
-    set: resume fn a -> Unit
+effect Use a =
+    get: fn Unit -> a
+    set: fn a -> Unit
 
-use_state (y: I32) {Use I32} =
+use_state (y: I32): Unit can Use I32 =
     x = get ()
     set (x + y)
     state = get ()
     println "Ending state = ${state}"
 
-state (f: fn {Use s} -> a) (initial: s) {Copy s}: a =
+state (f: fn Unit => a can Use s) (initial: s) {Copy s}: a =
     var current = initial
     handler h for
     | get () -> resume current
     | set new_state ->
         current := new_state
         resume ()
-    in f {h}
+    in f ()
 
 main () =
-    state (use_state 10 {_}) 1
-    state (fn h -> use_state 20 {h}) 2
+    state (fn () -> use_state 10) 1
+    state (fn () -> use_state 20) 2
 
 // args: --delete-binary --no-color
 // expected stdout:
 // Ending state = 11
 // Ending state = 22
-

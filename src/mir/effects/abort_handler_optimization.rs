@@ -174,16 +174,15 @@ fn prepare_body_fn(
     rewrite_handler_caps_in_body(mir, fn_id, &layout, cap_tuple_type);
 
     // The original body fn is now dead (only the outer definition's dead PackClosure references it).
-    // Don't re-process its Handles; the clone carries the live copies.
+    // Don't re-process its Handles, the clone carries the live copies.
     dead_bodies.insert(orig_id);
 
     (PreparedBody { fn_id, env_value, bindings, layout }, created_ids)
 }
 
 /// Wrapper signature: `fn op_args.. [Pointer] -> op_return_type`. The Pointer points to a
-/// stack-allocated `(buf_ptr, result_slot_ptr, handler_env)` (`handler_env` is `Unit` when the
-/// handler isn't a closure). Each `Return v` in the inlined handler body becomes
-/// `Store(slot, v); longjmp(buf, 1); unreachable`.
+/// stack-allocated `(buf_ptr, result_slot_ptr, handler_env)`. Each `Return v` in the
+/// inlined handler body becomes `Store(slot, v); longjmp(buf, 1); unreachable`.
 fn materialize_abort_wrapper(mir: &mut Mir, decision: &CaseDecision, case_index: u32) -> DefinitionId {
     let new_id = next_definition_id();
     let mut def =

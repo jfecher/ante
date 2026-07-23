@@ -1,8 +1,8 @@
 
-ability Functor f =
+trait Functor f =
     map: fn (f a) (fn a -> b) -> f b
 
-ability Monad m =
+trait Monad m =
     wrap: fn a -> m a
     bind: fn (m a) (fn a -> m b) -> m b
 
@@ -30,59 +30,59 @@ implicit monad_maybe: Monad Maybe =
 //     wrap: fn a [Ptr Unit] -> m a
 //     bind: fn (m a) (fn a -> m b) [Ptr Unit] -> m b
 // 
-// implicit (functor_maybe: Functor Maybe) = (Functor: fn (fn (error) (fn (error) -> (error)) [Ptr Unit] -> (error)) -> Functor Maybe) (fn (m: (error)) (f: fn (error) -> (error)) ->
+// implicit (functor_maybe: Functor Maybe) = (Functor: fn (fn (error) (fn (error) -> (error) pure) [Ptr Unit] -> (error) pure) -> Functor Maybe pure) (fn (m: (error)) (f: fn (error) -> (error) pure) ->
 //     match (m: (error))
-//     | (Some: (error)) (x: (error)) -> (Some: (error)) ((f: fn (error) -> (error)) (x: (error)))
+//     | (Some: (error)) (x: (error)) -> (Some: (error)) ((f: fn (error) -> (error) pure) (x: (error)))
 //     | (None: (error)) -> (None: (error)))
 // 
 // implicit (monad_maybe: Monad Maybe) =
-//     (Monad: fn (fn (error) [Ptr Unit] -> (error)) (fn (error) (fn (error) -> (error)) [Ptr Unit] -> (error)) -> Monad _) (fn (a: _) -> (Some: (error)) (a: _))
+//     (Monad: fn (fn (error) [Ptr Unit] -> (error) pure) (fn (error) (fn (error) -> (error) pure) [Ptr Unit] -> (error) pure) -> Monad _ pure) (fn (a: _) -> (Some: (error)) (a: _))
 
 // expected stderr:
 // examples/typechecking/functor_and_monad.an:3:13
-// 2 | ability Functor f =
+// 2 | trait Functor f =
 // 3 |     map: fn (f a) (fn a -> b) -> f b	// error: Expected 0 arguments but found 1
 //   |             ^^^^^
 // 
 // examples/typechecking/functor_and_monad.an:3:16
-// 2 | ability Functor f =
+// 2 | trait Functor f =
 // 3 |     map: fn (f a) (fn a -> b) -> f b	// error: `a` not found in scope
 //   |                ^
 // 
 // examples/typechecking/functor_and_monad.an:3:23
-// 2 | ability Functor f =
+// 2 | trait Functor f =
 // 3 |     map: fn (f a) (fn a -> b) -> f b	// error: `a` not found in scope
 //   |                       ^
 // 
 // examples/typechecking/functor_and_monad.an:3:28
-// 2 | ability Functor f =
+// 2 | trait Functor f =
 // 3 |     map: fn (f a) (fn a -> b) -> f b	// error: `b` not found in scope
 //   |                            ^
 // 
 // examples/typechecking/functor_and_monad.an:3:34
-// 2 | ability Functor f =
+// 2 | trait Functor f =
 // 3 |     map: fn (f a) (fn a -> b) -> f b	// error: Expected 0 arguments but found 1
 //   |                                  ^^^
 // 
 // examples/typechecking/functor_and_monad.an:3:36
-// 2 | ability Functor f =
+// 2 | trait Functor f =
 // 3 |     map: fn (f a) (fn a -> b) -> f b	// error: `b` not found in scope
 //   |                                    ^
 // 
 // examples/typechecking/functor_and_monad.an:6:14
-// 5 | ability Monad m =
+// 5 | trait Monad m =
 // 6 |     wrap: fn a -> m a	// error: `a` not found in scope
 //   |              ^
 // 7 |     bind: fn (m a) (fn a -> m b) -> m b
 // 
 // examples/typechecking/functor_and_monad.an:6:19
-// 5 | ability Monad m =
+// 5 | trait Monad m =
 // 6 |     wrap: fn a -> m a	// error: Expected 0 arguments but found 1
 //   |                   ^^^
 // 7 |     bind: fn (m a) (fn a -> m b) -> m b
 // 
 // examples/typechecking/functor_and_monad.an:6:21
-// 5 | ability Monad m =
+// 5 | trait Monad m =
 // 6 |     wrap: fn a -> m a	// error: `a` not found in scope
 //   |                     ^
 // 7 |     bind: fn (m a) (fn a -> m b) -> m b
@@ -158,7 +158,7 @@ implicit monad_maybe: Monad Maybe =
 // 
 // examples/typechecking/functor_and_monad.an:16:5
 // 15 | implicit monad_maybe: Monad Maybe =
-//    |     // error: This is called as if it were a fn _ => _ but it has type fn (fn (error) => (error)) (fn (error) (fn (error) -> (error)) => (error)) -> Monad _
+//    |     // error: This is called as if it were a fn _ => _ but it has type fn (fn (error) => (error) pure) (fn (error) (fn (error) -> (error) pure) => (error) pure) -> Monad _ pure
 // 16 |     Monad
 //    |     ^^^^^
 // 17 |         (fn a -> Some a)
@@ -181,8 +181,8 @@ implicit monad_maybe: Monad Maybe =
 //    |                           ^
 // 
 // examples/typechecking/functor_and_monad.an:189:1
-// 188 | // Found 27 errors and 0 warnings
 // 189 | 	// error: Expected a top-level item but found an unindent
 //     | 
 // 
 // Found 27 errors and 0 warnings
+

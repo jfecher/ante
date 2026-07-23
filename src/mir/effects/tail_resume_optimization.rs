@@ -1,8 +1,7 @@
-//! Inline [super::Instruction::Handle]s whose handler cases all use `resume` in tail position
-//! into plain MIR control flow using closures. The transformation resembles function inlining:
-//! the body closure is pasted in, each [super::Instruction::Perform] is replaced with the inlined
-//! handler, and `resume v` in the handler becomes a jump to the continuation block with `v` as its
-//! argument.
+//! Inline [crate::mir::Instruction::Handle]s whose handler cases all use `resume` in tail position
+//! into plain closures. The transformation resembles function inlining: the body closure is pasted in,
+//! each [crate::mir::Instruction::Perform] is replaced with the inlined handler, and `resume v` in the
+//! handler becomes a jump to the continuation block with `v` as its argument.
 //!
 //! If any case uses `resume` outside of a tail-position, the Handle is left for
 //! [crate::mir::effects::effect_lowering] to lower into coroutine primitives.
@@ -38,7 +37,7 @@ struct HandleSite {
 }
 
 /// Optimize every tail-resumptive Handle in `definition_id`, returning the ids of any new
-/// definitions created (body clones) so the caller can enqueue them for processing.
+/// definitions created so the caller can enqueue them for processing.
 fn optimize_in_definition(
     mir: &mut Mir, definition_id: DefinitionId, dead_bodies: &mut FxHashSet<DefinitionId>,
 ) -> Vec<DefinitionId> {

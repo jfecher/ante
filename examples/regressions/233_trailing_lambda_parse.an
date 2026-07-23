@@ -23,6 +23,7 @@ single_line () =
 //     (foo |> baz (fn c -> (insert c) is None)) |> count
 //     (foo |> map (fn x -> x + 1)) |> filter
 
+
 // expected stderr:
 // examples/regressions/233_trailing_lambda_parse.an:12:41
 // 11 | single_line () =

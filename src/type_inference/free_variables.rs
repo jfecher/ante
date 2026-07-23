@@ -15,10 +15,8 @@ use crate::{
     },
 };
 
-/// True if `typ` resolves to a pointer-shaped closure env: either the raw `Pointer` primitive or
-/// `Ptr T`. Lambdas filling such a slot capture their env onto the heap and store the pointer
-/// instead of trying to unify the captures' tuple type against the slot's `Ptr T`.
-pub(super) fn is_pointer_env(typ: &Type, bindings: &TypeBindings) -> bool {
+/// True if `typ` is a pointer type
+pub(super) fn is_pointer(typ: &Type, bindings: &TypeBindings) -> bool {
     match typ.follow(bindings) {
         Type::Primitive(PrimitiveType::Pointer) => true,
         Type::Application(constructor, _) => {
@@ -42,7 +40,7 @@ impl TypeChecker<'_, '_> {
         }
         context.find_free_variables(id, self);
 
-        if !is_pointer_env(expected_environment_type, &self.bindings) {
+        if !is_pointer(expected_environment_type, &self.bindings) {
             let env_type = make_env_type_with_names(&context.free_vars, self, is_move);
             self.unify(&env_type, expected_environment_type, TypeErrorKind::ClosureEnv, id);
         }
@@ -66,7 +64,7 @@ impl TypeChecker<'_, '_> {
         for name in &context.free_vars {
             let typ = self.name_types[name].clone();
             if !self.type_is_copy(&typ) {
-                // Capturing a binding moves the place it denotes, as a direct use would.
+                // Capturing a binding moves the place it denotes, same as a direct use.
                 let move_path = self.binding_place(*name);
                 self.move_tracker.record_move(move_path, location.clone());
             }
@@ -137,18 +135,14 @@ impl FreeVars {
             cst::Expr::Is(_) => unreachable!("Expr::Is should be desugared during GetItem"),
             cst::Expr::Do(_) => unreachable!("Expr::Do should be desugared during GetItem"),
             cst::Expr::Handle(handle) => {
-                // The handler name is declared by the `handle` itself, not by any
-                // surrounding scope. Treat it as defined-in-fn so references to it
-                // inside the wrapped body lambda aren't reported as captures of the
-                // surrounding function.
+                // Declared by the `handle` itself so refs inside the body lambda aren't reported as captures.
                 self.defined_in_fn.insert(handle.handler_name);
                 self.find_free_variables(handle.expression, checker);
                 for (pattern, branch) in handle.cases.iter() {
                     for argument in pattern.args.iter() {
                         self.declare_pattern(*argument, checker);
                     }
-                    // The synthetic `resume` binding is introduced for each
-                    // branch; declare it so it isn't counted as a free variable.
+                    // Declare resume so it isn't counted as free.
                     self.defined_in_fn.insert(pattern.resume_name);
                     self.find_free_variables(*branch, checker);
                 }

@@ -1,13 +1,13 @@
 
-ability Show a =
+trait Show a =
     show: fn a -> String
 
-ability Cast a b c =
+trait Cast a b c =
     cast: fn a -> b
 
 
 // A collection c of elements of type e
-ability Collection c e =
+trait Collection c e =
     push: fn c e -> c
     pop: fn c -> Maybe e
     empty: c
@@ -27,13 +27,13 @@ implicit collection_id: Collection (fn a -> a) Unit =
 
 // args: -e ast --no-color
 // expected stdout:
-// ability Show a =
+// trait Show a =
 //     show: fn a -> String
 // 
-// ability Cast a b c =
+// trait Cast a b c =
 //     cast: fn a -> b
 // 
-// ability Collection c e =
+// trait Collection c e =
 //     push: fn c e -> c
 //     pop: fn c -> Maybe e
 //     empty: c

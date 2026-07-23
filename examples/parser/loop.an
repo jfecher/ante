@@ -11,6 +11,7 @@ main () =
 //     a = 0
 //     b = 1
 
+
 // expected stderr:
 // examples/parser/loop.an:4:12
 // 3 |     b = 1

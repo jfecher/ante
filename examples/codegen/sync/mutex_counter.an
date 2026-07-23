@@ -18,5 +18,5 @@ main () =
     println (Mutex.with_lock (Arc.as_ref m) deref)
 
 // args: --delete-binary --no-color
-// expected stdout:
-// 2000
+// expected stdout: 2000
+

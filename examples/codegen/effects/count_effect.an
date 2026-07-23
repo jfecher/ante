@@ -1,15 +1,15 @@
-ability Count =
-    count: resume fn Unit -> Unit
+effect Count =
+    count: fn Unit -> Unit
 
-foo {Count} =
+foo (): Unit can Count =
     count ()
     repeat 10 fn _ -> count ()
 
-handle_count (f: fn {Count} -> Unit) =
+handle_count (f: fn Unit => Unit can Count) =
     handler h for count () ->
         1 + resume ()
     in
-        f {h}
+        f ()
         0
 
 main () =
@@ -17,4 +17,3 @@ main () =
 
 // args: --delete-binary --no-color
 // expected stdout: 11
-

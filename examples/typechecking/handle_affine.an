@@ -2,7 +2,7 @@ type Resource = id: I32
 
 consume _ = ()
 
-ability Emit a =
+effect Emit a =
     emit: fn a -> Unit
 
 // Moving a non-copy outer variable in a handler branch should error
@@ -40,5 +40,17 @@ main () = ()
 //    |                 ^
 // 13 |         resume ()
 // 
-// Found 1 error and 0 warnings
+// examples/typechecking/handle_affine.an:14:8
+// 13 |         resume ()
+//    |     // error: This is called as if it were a fn _ {_} => _ but it has type fn _ -> Unit can (Emit _)
+// 14 |     in emit () {h}
+//    |        ^^^^
+// 
+// examples/typechecking/handle_affine.an:23:8
+// 22 |         resume ()
+//    |     // error: This is called as if it were a fn _ {_} => _ but it has type fn _ -> Unit can (Emit _)
+// 23 |     in emit (Resource 1) {h}
+//    |        ^^^^
+// 
+// Found 3 errors and 0 warnings
 

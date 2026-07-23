@@ -100,6 +100,10 @@ impl DesugarContext {
         self.more_exprs.insert(id, expr);
     }
 
+    pub fn set_pattern(&mut self, id: PatternId, pattern: Pattern) {
+        self.more_patterns.insert(id, pattern);
+    }
+
     pub fn expr_location(&self, id: ExprId) -> &Location {
         match self.more_expr_locations.get(&id) {
             Some(loc) => loc,

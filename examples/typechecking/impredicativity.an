@@ -30,7 +30,7 @@ a7 = choose id auto
 // args: -e ast-t --no-color
 // expected exit status: 1
 // expected stdout:
-// (id: fn _ -> _) (x: _) = (x: _)
+// (id: fn _ -> _ pure) (x: _) = (x: _)
 // 
 // (ids: _) = (error)
 // 
@@ -38,24 +38,24 @@ a7 = choose id auto
 // 
 // (auto_prime: fn (fn a -> a) -> a) ((x: fn a -> a)) = (x: fn a -> a) (x: fn a -> a)
 // 
-// (f5: _) = (auto: fn (fn _ -> _) -> _) (error)
+// (f5: _) = (auto: fn (fn _ -> _ pure) -> _ pure) (error)
 // 
 // (poly: fn (fn a -> a) -> a, a) ((f: fn a -> a)) =
-//     (f: fn a -> a) 42 (,: fn a a -> a, a) (f: fn a -> a) true
+//     (f: fn a -> a) 42 (,: fn a a -> a, a pure) (f: fn a -> a) true
 // 
 // (f9: _) =
-//     (f: fn (fn (fn _ -> _) -> _, _) [_] -> _) = (revapp: fn _ [_] -> fn (fn (fn _ -> _) -> _, _) [_] -> _) (error)
-//     (f: fn (fn (fn _ -> _) -> _, _) [_] -> _) (poly: fn (fn _ -> _) -> _, _)
+//     (f: fn (fn (fn _ -> _) -> _, _) [_] -> _ pure) = (revapp: fn _ [_] -> fn (fn (fn _ -> _) -> _, _) [_] -> _ pure pure) (error)
+//     (f: fn (fn (fn _ -> _) -> _, _) [_] -> _ pure) (poly: fn (fn _ -> _) -> _, _)
 // 
-// (choose: fn a a -> a) ((x: a)) ((_y: a)) = (x: a)
+// (choose: fn a a -> a pure) ((x: a)) ((_y: a)) = (x: a)
 // 
-// (a5: fn (fn _ -> _) -> _) = (id: fn (fn (fn _ -> _) -> _) -> fn (fn _ -> _) -> _) (auto: fn (fn _ -> _) -> _)
+// (a5: fn (fn _ -> _) -> _) = (id: fn (fn (fn _ -> _) -> _) -> fn (fn _ -> _) -> _ pure) (auto: fn (fn _ -> _) -> _)
 // 
-// (a6: fn (fn _ -> _) -> _) = (id: fn (fn (fn _ -> _) -> _) -> fn (fn _ -> _) -> _) (auto_prime: fn (fn _ -> _) -> _)
+// (a6: fn (fn _ -> _) -> _) = (id: fn (fn (fn _ -> _) -> _) -> fn (fn _ -> _) -> _ pure) (auto_prime: fn (fn _ -> _) -> _)
 // 
-// (a6_: _) = (id: fn _ -> _) (error)
+// (a6_: _) = (id: fn _ -> _ pure) (error)
 // 
-// (a7: fn _ -> _) = (choose: fn (fn _ -> _) (fn _ -> _) -> fn _ -> _) (id: fn _ -> _) (auto: fn (fn _ -> _) -> _)
+// (a7: fn _ -> _ pure) = (choose: fn (fn _ -> _ pure) (fn _ -> _ pure) -> fn _ -> _ pure pure) (id: fn _ -> _ pure) (auto: fn (fn _ -> _) -> _)
 
 // expected stderr:
 // examples/typechecking/impredicativity.an:4:8
@@ -104,7 +104,7 @@ a7 = choose id auto
 //    |           ^^^^^^
 // 
 // examples/typechecking/impredicativity.an:28:16
-//    | // error: Argument 2 has type fn (fn _ -> _) -> _ but fn _ -> _ was expected
+//    | // error: Argument 2 has type fn (fn _ -> _) -> _ but fn _ -> _ pure was expected
 // 28 | a7 = choose id auto
 //    |                ^^^^
 // 

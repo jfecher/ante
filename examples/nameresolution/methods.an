@@ -35,7 +35,7 @@ Tree.map (self: Tree q) (f: fn q -> z): Tree z =
 //     | Node_c1m412_2966_4 (Tree_c1m412_2966_0 t_1) (Tree_c1m412_2966_0 t_1)
 // 
 // // id = c1m412_4625
-// Tree_c1m412_2966_0.map_c1m412_4625_1 (self_2: Tree_c1m412_2966_0 q_3) (f_4: fn q_3 -> z_6) : Tree_c1m412_2966_0 z_6 =
+// Tree_c1m412_2966_0.map_c1m412_4625_1 (self_2: Tree_c1m412_2966_0 q_3) (f_4: fn q_3 -> z_6 can $effect_11) : Tree_c1m412_2966_0 z_6 can $effect_11 =
 //     match self_2
 //     | Leaf_td x_8 -> Leaf_td (f_4 x_8)
 //     | Node_td l_9 r_10 -> Node_td (l_9.map f_4) (r_10.map f_4)

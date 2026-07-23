@@ -1,37 +1,37 @@
 // TODO: Should this be merged with the Throw effect?
-ability Fail =
-    fail: resume fn Unit -> Never
+effect Fail =
+    fail: fn Unit -> Never
 
-try (f: fn Fail => a): Maybe a =
+try (f: fn Unit => a can Fail): Maybe a =
     handler h for fail () -> None
-    Some (f h)
+    Some (f ())
 
-on_fail (f: fn Fail => a) (default: fn Unit => a): a =
+on_fail (f: fn Unit => a can Fail) (default: fn Unit => a): a =
     handler h for fail () -> default ()
-    f h
+    f ()
 
 /// Fails if `cond` is false
 /// Note that this is the inverse of `fail_if`
-assert (cond: Bool) {Fail}: Unit =
+assert (cond: Bool): Unit can Fail =
     if not cond then fail ()
 
 /// Fails if `cond` is true
 /// Note that this is the inverse of `assert`
-fail_if (cond: Bool) {Fail}: Unit =
+fail_if (cond: Bool): Unit can Fail =
     if cond then fail ()
 
 /// Asserts the operation cannot fail.
 /// Panics at runtime if it does.
-panic_on_fail (f: fn Fail => a): a =
+panic_on_fail (f: fn Unit => a can Fail): a =
     on_fail f do panic "panic_on_fail: failed"
 
 /// Panics on failure with the given error message
-or_panic (f: fn Fail => a) (message: String): a =
+or_panic (f: fn Unit => a can Fail) (message: String): a =
     on_fail f do panic message
 
 /// Ignores a `Fail` effect, discarding it and returning Unit
-ignore_fail (f: fn Fail => a): Unit =
-    on_fail (fn h -> ignore (f h)) do ()
+ignore_fail (f: fn Unit => a can Fail): Unit =
+    on_fail (do ignore (f ())) do ()
 
 /// Retry a function until it succeeds (doesn't call fail).
 /// This should be used with functions using a Fail effect
@@ -45,6 +45,6 @@ ignore_fail (f: fn Fail => a): Unit =
 ///     input = get_input ()
 ///     parse input
 /// ```
-retry_until_success (f: fn Fail [env] -> a): a =
+retry_until_success (f: fn Unit => a can Fail): a =
     handler h for fail () -> retry_until_success f
-    f h
+    f ()

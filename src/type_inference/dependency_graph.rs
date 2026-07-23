@@ -148,8 +148,8 @@ fn item_lacks_known_type(dependency_id: TopLevelId, db: &DbHandle) -> bool {
             try_get_generalized_type(definition, &context, &resolve, db).is_none()
         },
         TopLevelItemKind::TypeDefinition(_) => false,
-        TopLevelItemKind::AbilityDefinition(_) => false,
-        TopLevelItemKind::AbilityImpl(_) => false,
+        TopLevelItemKind::TraitDefinition(_) | TopLevelItemKind::EffectDefinition(_) => false,
+        TopLevelItemKind::TraitImpl(_) => false,
         // Comptime items shouldn't be possible to be referred to in this way
         TopLevelItemKind::Comptime(_) => false,
     }
@@ -162,7 +162,7 @@ pub fn get_type_check_scc_impl(context: &GetTypeCheckSCC, db: &DbHandle) -> SCC 
         Some(index) => graph.sccs[*index as usize].clone(),
         // Ids in the stdlib currently are excluded from the dependency graph.
         // We assume these are mostly types currently and return them in their own SCC.
-        // This should be replaced with an unwrap when the stdlib type checks.
+        // TODO: This should be replaced with an unwrap when the stdlib type checks.
         None => Arc::new(vec![context.0]),
     }
 }
@@ -192,8 +192,8 @@ pub fn type_check_impl(context: &TypeCheck, db: &DbHandle) -> Arc<TypeCheckResul
 }
 
 impl TypeCheckResult {
-    /// Retrieves the given generalized type of the given name
-    pub fn get_generalized(&self, name: NameId) -> &Type {
-        self.result.generalized[&name].follow(&self.bindings)
+    /// Retrieves the given generalized type of the given name, fully resolved.
+    pub fn get_generalized(&self, name: NameId) -> Type {
+        self.result.generalized[&name].follow_all(&self.bindings)
     }
 }

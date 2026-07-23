@@ -482,7 +482,8 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
             | Type::Function(_)
             | Type::Forall(..)
             | Type::Tuple(_)
-            | Type::U32(_) => {
+            | Type::U32(_)
+            | Type::Effects(..) => {
                 let typ = self.checker.type_to_string(definition_type);
                 Err(Diagnostic::CannotMatchOnType { typ, location })
             },

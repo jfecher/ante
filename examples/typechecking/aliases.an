@@ -53,23 +53,23 @@ too_many_args (_x: Pair I32 I32): I32 = 0
 // expected stdout:
 // type Name = String
 // 
-// (get_name: fn String -> String) ((x: String)) : String = (x: String)
+// (get_name: fn String -> String pure) ((x: String)) : String pure = (x: String)
 // 
-// (set_name: fn String -> String) ((x: String)) : Name = (x: String)
+// (set_name: fn String -> String pure) ((x: String)) : Name pure = (x: String)
 // 
 // type Pair a = a, a
 // 
-// (mk_pair: fn a a -> a, a) ((x: a)) ((y: a)) : Pair a = (x: a) (,: fn a a -> a, a) (y: a)
+// (mk_pair: fn a a -> a, a pure) ((x: a)) ((y: a)) : Pair a pure = (x: a) (,: fn a a -> a, a pure) (y: a)
 // 
 // type IntFn = fn I32 -> I32
 // 
-// (apply_fn: fn (fn I32 -> I32) I32 -> I32) ((f: fn I32 -> I32)) ((x: I32)) : I32 = (f: fn I32 -> I32) (x: I32)
+// (apply_fn: fn (fn I32 -> I32 pure) I32 -> I32 pure) ((f: fn I32 -> I32 pure)) ((x: I32)) : I32 pure = (f: fn I32 -> I32 pure) (x: I32)
 // 
 // type Person =
 //     name: Name
 //     age: I32
 // 
-// Person.(get_name: fn Person -> String) ((p: Person)) : String = (p: Person).name
+// Person.(get_name: fn Person -> String pure) ((p: Person)) : String pure = (p: Person).name
 // 
 // type Point =
 //     x: I32
@@ -77,11 +77,11 @@ too_many_args (_x: Pair I32 I32): I32 = 0
 // 
 // type Coord = Point
 // 
-// (origin: fn Unit -> Point) () : Coord = (Coord: fn I32 I32 -> Point) 0 0
+// (origin: fn Unit -> Point pure) () : Coord pure = (Coord: fn I32 I32 -> Point pure) 0 0
 // 
-// (get_x: fn Point -> I32) ((c: Point)) : I32 = (c: Point).x
+// (get_x: fn Point -> I32 pure) ((c: Point)) : I32 pure = (c: Point).x
 // 
-// (unwrap: fn Point -> I32) ((c: Point)) : I32 =
+// (unwrap: fn Point -> I32 pure) ((c: Point)) : I32 pure =
 //     (match_var4: (error)) = (c: Point)
 //     switch (match_var4: Point)
 //     | 0, (match_var5: I32), (match_var6: I32) -> 
@@ -94,7 +94,7 @@ too_many_args (_x: Pair I32 I32): I32 = 0
 // 
 // type StringPairNested = StringPair
 // 
-// (string_pair: fn (String, String) -> String, String) ((pair: String, String)) : StringPairNested = (pair: String, String)
+// (string_pair: fn (String, String) -> String, String pure) ((pair: String, String)) : StringPairNested pure = (pair: String, String)
 // 
 // type A = B
 // 
@@ -102,9 +102,9 @@ too_many_args (_x: Pair I32 I32): I32 = 0
 // 
 // type C = C
 // 
-// (use_a: fn (error) -> (error)) ((x: (error))) : A = (x: (error))
+// (use_a: fn (error) -> (error) pure) ((x: (error))) : A pure = (x: (error))
 // 
-// (too_many_args: fn (error) -> I32) ((_x: (error))) : I32 = 0
+// (too_many_args: fn (error) -> I32 pure) ((_x: (error))) : I32 pure = 0
 
 // expected stderr:
 // examples/typechecking/aliases.an:43:6

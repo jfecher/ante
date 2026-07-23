@@ -22,82 +22,97 @@ use _y = ()
 
 // args: -emir --no-color
 // expected stdout:
-// extern , d4: fn I32 I32 -> (I32, I32)
-// extern use d2: fn (I32, I32) -> Unit
+// extern , d4: fn I32 I32 (#empty_tuple) -> (I32, I32)
+// extern use d2: fn (I32, I32) (#empty_tuple) -> Unit
 // 
-// fn main d0: fn Unit -> Unit
-//   b0(b0_0: Unit):
+// fn main d0: fn Unit (#empty_tuple) -> Unit
+//   b0(b0_0: Unit, b0_1: #empty_tuple):
 //     v0: I32, = (1_i32)
-//     v1: fn I32 [I32,] -> Unit = pack-closure d3, v0
+//     v1: fn I32 (#empty_tuple) [I32,] -> Unit = pack-closure d3, v0
 //     v2: I32, I32 = (1_i32, 2_i32)
-//     v3: fn I32 [I32, I32] -> Unit = pack-closure d5, v2
-//     v4: (fn I32 [I32, I32] -> Unit), = (v3)
-//     v5: fn I32 [(fn I32 [I32, I32] -> Unit),] -> Unit = pack-closure d6, v4
+//     v3: fn I32 (#empty_tuple) [I32, I32] -> Unit = pack-closure d5, v2
+//     v4: (fn I32 (#empty_tuple) [I32, I32] -> Unit), = (v3)
+//     v5: fn I32 (#empty_tuple) [(fn I32 (#empty_tuple) [I32, I32] -> Unit),] -> Unit = pack-closure d6, v4
 //     v6: I32, = (1_i32)
-//     v7: fn I32 [I32,] -> Unit = pack-closure d7, v6
-//     v8: Unit = free_function_d1 0_i32
-//     v9: Unit = closure-call v1 0_i32
-//     v10: Unit = closure-call v3 0_i32
-//     v11: Unit = closure-call v5 0_i32
-//     v12: Unit = closure-call v7 0_i32
+//     v7: fn I32 (#empty_tuple) [I32,] -> Unit = pack-closure d7, v6
+//     v8: #empty_tuple = ()
+//     v9: Unit = free_function_d1 0_i32 v8
+//     v10: #empty_tuple = ()
+//     v11: Unit = closure-call v1 0_i32 v10
+//     v12: #empty_tuple = ()
+//     v13: Unit = closure-call v3 0_i32 v12
+//     v14: #empty_tuple = ()
+//     v15: Unit = closure-call v5 0_i32 v14
+//     v16: #empty_tuple = ()
+//     v17: Unit = closure-call v7 0_i32 v16
 //     return ()
 // 
-// fn captures_nested d7: fn I32 [I32,] -> Unit
-//   b0(b0_0: I32, b0_1: I32,):
-//     v0: I32 = b0_1.0
-//     v1: fn I32 [I32,] -> Unit = pack-closure d7, b0_1
+// fn captures_nested d7: fn I32 (#empty_tuple) [I32,] -> Unit
+//   b0(b0_0: I32, b0_1: #empty_tuple, b0_2: I32,):
+//     v0: I32 = b0_2.0
+//     v1: fn I32 (#empty_tuple) [I32,] -> Unit = pack-closure d7, b0_2
 //     v2: I32, = (v0)
-//     v3: fn Unit [I32,] -> I32 = pack-closure d8, v2
-//     v4: fn (I32, I32) -> Unit = instantiate d2 I32, I32
-//     v5: fn I32 I32 -> (I32, I32) = instantiate d4 I32 I32
-//     v6: I32 = closure-call v3 ()
-//     v7: I32, I32 = v5 b0_0 v6
-//     v8: Unit = v4 v7
-//     return v8
+//     v3: fn Unit (#empty_tuple) [I32,] -> I32 = pack-closure d8, v2
+//     v4: fn (I32, I32) (#empty_tuple) -> Unit = instantiate d2 I32, I32
+//     v5: fn I32 I32 (#empty_tuple) -> (I32, I32) = instantiate d4 I32 I32
+//     v6: #empty_tuple = ()
+//     v7: I32 = closure-call v3 () v6
+//     v8: #empty_tuple = ()
+//     v9: I32, I32 = v5 b0_0 v7 v8
+//     v10: #empty_tuple = ()
+//     v11: Unit = v4 v9 v10
+//     return v11
 // 
-// fn captures2 d5: fn I32 [I32, I32] -> Unit
-//   b0(b0_0: I32, b0_1: I32, I32):
-//     v0: I32 = b0_1.0
-//     v1: I32 = b0_1.1
-//     v2: fn I32 [I32, I32] -> Unit = pack-closure d5, b0_1
-//     v3: fn (I32, (I32, I32)) -> Unit = instantiate d2 I32, (I32, I32)
-//     v4: fn I32 (I32, I32) -> (I32, (I32, I32)) = instantiate d4 I32 I32, I32
-//     v5: fn I32 I32 -> (I32, I32) = instantiate d4 I32 I32
-//     v6: I32, I32 = v5 v0 v1
-//     v7: I32, (I32, I32) = v4 b0_0 v6
-//     v8: Unit = v3 v7
-//     return v8
+// fn captures2 d5: fn I32 (#empty_tuple) [I32, I32] -> Unit
+//   b0(b0_0: I32, b0_1: #empty_tuple, b0_2: I32, I32):
+//     v0: I32 = b0_2.0
+//     v1: I32 = b0_2.1
+//     v2: fn I32 (#empty_tuple) [I32, I32] -> Unit = pack-closure d5, b0_2
+//     v3: fn (I32, (I32, I32)) (#empty_tuple) -> Unit = instantiate d2 I32, (I32, I32)
+//     v4: fn I32 (I32, I32) (#empty_tuple) -> (I32, (I32, I32)) = instantiate d4 I32 I32, I32
+//     v5: fn I32 I32 (#empty_tuple) -> (I32, I32) = instantiate d4 I32 I32
+//     v6: #empty_tuple = ()
+//     v7: I32, I32 = v5 v0 v1 v6
+//     v8: #empty_tuple = ()
+//     v9: I32, (I32, I32) = v4 b0_0 v7 v8
+//     v10: #empty_tuple = ()
+//     v11: Unit = v3 v9 v10
+//     return v11
 // 
-// fn captures1 d3: fn I32 [I32,] -> Unit
-//   b0(b0_0: I32, b0_1: I32,):
-//     v0: I32 = b0_1.0
-//     v1: fn I32 [I32,] -> Unit = pack-closure d3, b0_1
-//     v2: fn (I32, I32) -> Unit = instantiate d2 I32, I32
-//     v3: fn I32 I32 -> (I32, I32) = instantiate d4 I32 I32
-//     v4: I32, I32 = v3 b0_0 v0
-//     v5: Unit = v2 v4
-//     return v5
+// fn captures1 d3: fn I32 (#empty_tuple) [I32,] -> Unit
+//   b0(b0_0: I32, b0_1: #empty_tuple, b0_2: I32,):
+//     v0: I32 = b0_2.0
+//     v1: fn I32 (#empty_tuple) [I32,] -> Unit = pack-closure d3, b0_2
+//     v2: fn (I32, I32) (#empty_tuple) -> Unit = instantiate d2 I32, I32
+//     v3: fn I32 I32 (#empty_tuple) -> (I32, I32) = instantiate d4 I32 I32
+//     v4: #empty_tuple = ()
+//     v5: I32, I32 = v3 b0_0 v0 v4
+//     v6: #empty_tuple = ()
+//     v7: Unit = v2 v5 v6
+//     return v7
 // 
-// fn free_function d1: fn I32 -> Unit
-//   b0(b0_0: I32):
-//     v0: fn I32 -> Unit = instantiate d2 I32
-//     v1: Unit = v0 b0_0
-//     return v1
-// 
-// fn captures_closure d6: fn I32 [(fn I32 [I32, I32] -> Unit),] -> Unit
-//   b0(b0_0: I32, b0_1: (fn I32 [I32, I32] -> Unit),):
-//     v0: fn I32 [I32, I32] -> Unit = b0_1.0
-//     v1: fn I32 [(fn I32 [I32, I32] -> Unit),] -> Unit = pack-closure d6, b0_1
-//     v2: Unit = closure-call v0 b0_0
+// fn free_function d1: fn I32 (#empty_tuple) -> Unit
+//   b0(b0_0: I32, b0_1: #empty_tuple):
+//     v0: fn I32 (#empty_tuple) -> Unit = instantiate d2 I32
+//     v1: #empty_tuple = ()
+//     v2: Unit = v0 b0_0 v1
 //     return v2
 // 
-// fn nested d8: fn Unit [I32,] -> I32
-//   b0(b0_0: Unit, b0_1: I32,):
-//     v0: I32 = b0_1.0
-//     v1: fn Unit [I32,] -> I32 = pack-closure d8, b0_1
+// fn captures_closure d6: fn I32 (#empty_tuple) [(fn I32 (#empty_tuple) [I32, I32] -> Unit),] -> Unit
+//   b0(b0_0: I32, b0_1: #empty_tuple, b0_2: (fn I32 (#empty_tuple) [I32, I32] -> Unit),):
+//     v0: fn I32 (#empty_tuple) [I32, I32] -> Unit = b0_2.0
+//     v1: fn I32 (#empty_tuple) [(fn I32 (#empty_tuple) [I32, I32] -> Unit),] -> Unit = pack-closure d6, b0_2
+//     v2: #empty_tuple = ()
+//     v3: Unit = closure-call v0 b0_0 v2
+//     return v3
+// 
+// fn nested d8: fn Unit (#empty_tuple) [I32,] -> I32
+//   b0(b0_0: Unit, b0_1: #empty_tuple, b0_2: I32,):
+//     v0: I32 = b0_2.0
+//     v1: fn Unit (#empty_tuple) [I32,] -> I32 = pack-closure d8, b0_2
 //     return v0
 // 
-// fn use d2: forall '0. fn '0 -> Unit
-//   b0(b0_0: '0):
+// fn use d2: forall '0. fn '0 (#empty_tuple) -> Unit
+//   b0(b0_0: '0, b0_1: #empty_tuple):
 //     return ()
 

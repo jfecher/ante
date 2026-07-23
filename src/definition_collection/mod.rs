@@ -204,15 +204,16 @@ pub fn visible_types_impl(context: &VisibleTypes, db: &DbHandle) -> Arc<TypeDefi
 
 pub(crate) fn kind_of_type_definition(definition: &TypeDefinition) -> Kind {
     use std::num::NonZeroUsize;
+    let result = if definition.kind.is_effect() { Kind::Effect } else { Kind::Type };
     let n = definition.generics.len();
     if n == 0 {
-        Kind::Type
+        result
     } else if definition.generics.iter().all(|p| p.kind.is_none()) {
         // Common case: all generics default to Kind::Type, no allocation needed.
-        Kind::TypeConstructorSimple(NonZeroUsize::new(n).unwrap())
+        Kind::TypeConstructorSimple { arity: NonZeroUsize::new(n).unwrap(), result: Box::new(result) }
     } else {
         let kinds = definition.generics.iter().map(kind_of_generic_param).collect();
-        Kind::TypeConstructorComplex(kinds)
+        Kind::TypeConstructorComplex { params: kinds, result: Box::new(result) }
     }
 }
 
@@ -253,11 +254,11 @@ pub fn all_types_impl(context: &AllTypes, db: &DbHandle) -> Arc<TypeDefinitions>
     for item in result.cst.top_level_items.iter() {
         let item_context = &result.top_level_data[&item.id];
 
-        // AbilityDefinitions are desugared into TypeDefinitions by `GetItem`, so treat them
+        // Trait/effect definitions are desugared into TypeDefinitions by `GetItem`, so treat them
         // as types here without needing the desugar step.
         let type_name = match &item.kind {
             TopLevelItemKind::TypeDefinition(definition) => definition.name,
-            TopLevelItemKind::AbilityDefinition(ability) => ability.name,
+            TopLevelItemKind::TraitDefinition(def) | TopLevelItemKind::EffectDefinition(def) => def.name,
             _ => continue,
         };
 
@@ -330,7 +331,7 @@ pub fn all_definitions_impl(context: &AllDefinitions, db: &DbHandle) -> Arc<Visi
                     }
                 }
             },
-            TopLevelItemKind::AbilityDefinition(ability) => {
+            TopLevelItemKind::TraitDefinition(ability) | TopLevelItemKind::EffectDefinition(ability) => {
                 for declaration in &ability.body {
                     declare_method(ability.name, declaration.name);
                 }
@@ -340,7 +341,7 @@ pub fn all_definitions_impl(context: &AllDefinitions, db: &DbHandle) -> Arc<Visi
 
         // Ability methods are callable as free identifiers without qualifying by the ability name,
         // so also expose them in the regular definitions namespace.
-        if let TopLevelItemKind::AbilityDefinition(ability) = &item.kind {
+        if let TopLevelItemKind::TraitDefinition(ability) | TopLevelItemKind::EffectDefinition(ability) = &item.kind {
             let ctx = &result.top_level_data[&item.id];
             for declaration in &ability.body {
                 declarer.declare_single(declaration.name, item.id, ctx);

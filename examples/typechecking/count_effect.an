@@ -1,13 +1,13 @@
-ability Count =
+effect Count =
     count: fn Unit -> Unit
 
-foo {Count} =
+foo (): Unit can Count =
     count ()
     repeat 10 fn _ -> count ()
 
-handle_count (f: fn Count -> Unit) =
+handle_count (f: fn Unit => Unit can Count) =
     handler h for count () -> 1 + resume () in
-        f h
+        f ()
         0
 
 main () =
@@ -17,20 +17,20 @@ main () =
 // args: -e ast-t --no-color
 // expected stdout:
 // type Count =
-//     count: fn Unit [Ptr Unit] -> Unit
+//     count: fn Unit -> Unit
 // 
-// (foo: fn {Count} -> Unit) {(_: Count)} =
-//     (count: fn Unit {Count} [Ptr Unit] -> Unit) () {(_: Count)}
-//     (repeat: fn Usz (fn Usz [Count] -> Unit) -> Unit) 10 (fn (_: Usz) [(_: Count)] -> (count: fn Unit {Count} [Ptr Unit] -> Unit) () {(_: Count)})
+// (foo: fn Unit -> Unit can Count) () : Unit can Count =
+//     (count: fn Unit -> Unit can Count) ()
+//     (repeat: fn Usz (fn Usz -> Unit can Count) -> Unit can Count) 10 (fn (_: Usz) -> (count: fn Unit -> Unit can Count) ())
 // 
-// (handle_count: fn (fn Count -> Unit) -> I32) ((f: fn Count -> Unit)) =
+// (handle_count: fn (fn Unit [_] -> Unit can Count) -> I32 pure) ((f: fn Unit [_] -> Unit can Count)) =
 //     handler (h: Count) for
-//     | (count: fn Unit {Count} [Ptr Unit] -> Unit) () -> fn () (resume: fn Unit [Ptr] -> I32) -> (+: fn I32 I32 {Add I32} [Ptr Unit] -> I32) 1 ((resume: fn Unit [Ptr] -> I32) ()) {(add_i32: Add I32)}
-//     in fn () [(f: fn Count -> Unit)] ->
-//         (f: fn Count -> Unit) (h: Count)
+//     | (count: fn Unit -> Unit can Count) () -> fn () (resume: fn Unit [Ptr] -> I32 pure) -> (+: fn I32 I32 {Add I32} [Ptr Unit] -> I32 pure) 1 ((resume: fn Unit [Ptr] -> I32 pure) ()) {(add_i32: Add I32)}
+//     in fn () [(f: fn Unit [_] -> Unit can Count)] ->
+//         (f: fn Unit [_] -> Unit can Count) ()
 //         0
 // 
-// (main: fn Unit -> Unit) () =
-//     (handle_count: fn (fn Count -> Unit) -> I32) (foo: fn {Count} -> Unit)
+// (main: fn Unit -> Unit pure) () =
+//     (handle_count: fn (fn Unit -> Unit can Count) -> I32 pure) (foo: fn Unit -> Unit can Count)
 //     ()
 

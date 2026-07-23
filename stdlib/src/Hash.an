@@ -1,7 +1,7 @@
 import Std.Stream.foldl, stream_fn
 import Std.String.bytes
 
-ability Hash t =
+trait Hash t =
     hash: fn t -> U64
 
 // FNV-1a 64-bit. Offset basis: 14695981039346656037 (0xcbf29ce484222325).

@@ -19,8 +19,6 @@ use crate::{
 };
 
 impl<'local, 'inner> TypeChecker<'local, 'inner> {
-    /// A type definition always returns a unit value, but we must still create the
-    /// types of the type constructors
     pub(super) fn check_type_definition(&mut self, definition: &cst::TypeDefinition) {
         let id = self.current_item.unwrap();
 
@@ -30,14 +28,16 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 // Convert the body even though the result is unused to issue kind or recursion errors
                 Self::reject_implicit_lifetimes(body, self.compiler);
                 let mut local_kinds = Self::local_kinds_from_generics(&definition.generics);
-                let _ = self.from_cst_type_with_local_kinds(body, false, &mut local_kinds);
+                let _ = self.from_cst_type_with_local_kinds(body, false, false, &mut local_kinds);
                 return;
             },
             cst::TypeDefinitionBody::Struct(fields) => {
-                // If this is from an ability, each field needs to be given its own type
-                // since they are publically visible, e.g. as `Eq.eq` or `Emit.emit`
-                if definition.is_ability {
+                // Ability fields are publicly visible (e.g. `Eq.eq`), so each needs its own type.
+                if definition.kind.is_ability() {
                     self.build_method_types(id, definition, fields);
+                }
+                if definition.kind.is_effect() {
+                    return;
                 }
                 let fields = mapvec(fields, |(_, field_type)| field_type.clone());
                 Cow::Owned(vec![(definition.name, fields)])
@@ -66,7 +66,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
-    /// Checks for an unboxed recursive reference to `type_name` within the variant fields of `definition`.
     fn type_definition_is_recursive_and_unboxed(
         &self, definition: &cst::TypeDefinition, type_name: TopLevelName,
     ) -> bool {
@@ -128,7 +127,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
-    /// True only if `typ` uses `target` unboxed.
     /// Used to check for recursively infinitely sized types.
     fn type_uses_target_unboxed(typ: &cst::Type, target: Origin, resolve: &ResolutionResult) -> bool {
         match &typ.kind {
@@ -144,10 +142,15 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 elements.iter().any(|e| Self::type_uses_target_unboxed(e, target, resolve))
             },
             cst::TypeKind::Forall(_, body) => Self::type_uses_target_unboxed(body, target, resolve),
-            // Function types are pointer-sized, so recursion through them does not require
-            // unbounded representation.
-            cst::TypeKind::Function(_)
-            | cst::TypeKind::Variable(_)
+            cst::TypeKind::Function(typ) => {
+                if let Some(env) = typ.environment.as_ref() {
+                    Self::type_uses_target_unboxed(env, target, resolve)
+                } else {
+                    false
+                }
+            }
+
+            cst::TypeKind::Variable(_)
             | cst::TypeKind::Reference(_)
             | cst::TypeKind::Pointer
             | cst::TypeKind::NoClosureEnv
@@ -222,14 +225,18 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         // TODO: Change lifetime desugaring to work on function types better.
         // `fn (ref t) (ref t) -> Bool` should likely be `forall 'a. fn (ref 'a t) (ref 'a t) -> Bool`
-        if !item.is_ability {
+        if !item.kind.is_ability() {
             for arg in variant_args {
                 Self::reject_implicit_lifetimes(arg, self.compiler);
             }
         }
 
+        // TODO: Review allowing abilities to desugar here; the new type variables need to be tracked.
+        let insert_implicit_type_vars = item.kind.is_ability();
+
+        // `false` here stops `can` clauses from being polymorphic by default.
         let parameters = mapvec(variant_args, |arg| {
-            let param = self.from_cst_type_with_local_kinds(arg, false, local_kinds);
+            let param = self.from_cst_type_with_local_kinds(arg, insert_implicit_type_vars, false, local_kinds);
             types::ParameterType::explicit(param)
         });
 
@@ -238,6 +245,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 parameters,
                 environment: Type::NO_CLOSURE_ENV,
                 return_type: result,
+                effects: Type::pure(),
             }));
         }
 
@@ -281,26 +289,34 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         result
     }
 
-    /// The name `Eq.eq` is publically visible. We want to give it the type:
+    /// For a trait, the name `Eq.eq` is publically visible. We want to give it the type:
     /// `Eq.eq: fn t t {Eq t} -> Bool`
     ///
     /// It should be generalized to `forall t. fn t t {Eq t} -> Bool` later.
     ///
     /// The function's closure environment is hard-coded to `Pointer` by the ability
     /// desugarer so every ability value has uniform size.
+    ///
+    /// For effects, each function in `E` gets a `can E` clause.
     fn build_method_types(&mut self, id: TopLevelId, definition: &cst::TypeDefinition, fields: &[(NameId, cst::Type)]) {
         let type_name = TopLevelName::new(id, definition.name);
+        let is_effect = definition.kind.is_effect();
 
         for (method_name, method_type) in fields.iter() {
-            let (implicit_arg, substitutions) = self.type_definition_type(type_name, definition, false);
+            let (arg, substitutions) = self.type_definition_type(type_name, definition, false);
             assert!(substitutions.is_empty());
             // Each method is generalized independently, so it gets a fresh kind map seeded
             // from the trait/effect's own generic annotations.
             let mut local_kinds = Self::local_kinds_from_generics(&definition.generics);
-            let mut method_type = self.from_cst_type_with_local_kinds(method_type, false, &mut local_kinds);
+
+            let mut method_type = self.from_cst_type_with_local_kinds(method_type, true, false, &mut local_kinds);
 
             if matches!(method_type, Type::Function(_)) {
-                method_type = self.add_implicit_arg_to_function_type(method_type, implicit_arg);
+                method_type = if is_effect {
+                    self.set_effect_on_function_type(method_type, arg)
+                } else {
+                    self.add_implicit_arg_to_function_type(method_type, arg)
+                };
             }
             self.check_name(*method_name, &method_type);
         }
@@ -309,13 +325,26 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Given a function type, return a new function type with the given argument added to the end
     /// as an implicit argument.
     fn add_implicit_arg_to_function_type(&self, method_type: Type, implicit_arg: Type) -> Type {
+        Self::map_function_type(method_type, "add_implicit_arg_to_function_type", |function_type| {
+            function_type.parameters.push(ParameterType::implicit(implicit_arg));
+        })
+    }
+
+    /// Given an effect operation's function type, set its effect row to the closed singleton containing `effect_type`.
+    fn set_effect_on_function_type(&self, method_type: Type, effect_type: Type) -> Type {
+        Self::map_function_type(method_type, "set_effect_on_function_type", |function_type| {
+            function_type.effects = Type::effects(vec![effect_type], None);
+        })
+    }
+
+    fn map_function_type(method_type: Type, caller: &str, f: impl FnOnce(&mut types::FunctionType)) -> Type {
         match method_type {
             Type::Function(function_type) => {
                 let mut function_type = Arc::unwrap_or_clone(function_type);
-                function_type.parameters.push(ParameterType::implicit(implicit_arg));
+                f(&mut function_type);
                 Type::Function(Arc::new(function_type))
             },
-            other => unreachable!("add_implicit_arg_to_function_type expected function type, found {other:?}"),
+            other => unreachable!("{caller} expected function type, found {other:?}"),
         }
     }
 }

@@ -81,8 +81,7 @@ pub struct ExtendedTopLevelContext {
     /// set of variables it captures. Free functions are excluded from the map entirely.
     closure_environments: FxHashMap<ExprId, BTreeSet<NameId>>,
 
-    /// Closures declared with the `move` keyword. These capture by value/move instead of
-    /// by reference. Used by the MIR builder to determine capture semantics.
+    /// Closures declared with `move`, which capture by value instead of by reference.
     move_closures: FxHashSet<ExprId>,
 }
 

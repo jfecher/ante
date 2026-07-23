@@ -22,13 +22,11 @@ where
             return None;
         }
 
-        // If it is, we can assume the stdlib is correctly formed, and thus each call to `intrinsic`
-        // has a string literal argument followed by 0 or more other arguments.
+        // Assumes the stdlib is well-formed: a string literal tag followed by 0+ other arguments.
         let cst::Expr::Literal(cst::Literal::String(intrinsic)) = &self.context()[call.arguments[0].expr] else {
             panic!("Malformed call to `intrinsic`")
         };
 
-        // The actual arguments to the intrinsic after the string tag
         let args = &call.arguments[1..];
         let result_type = self.convert_type(&self.types.result.maps.expr_types[&call_id], None);
 
@@ -103,6 +101,7 @@ where
             "Transmute" => push_1arg_ins(self, Instruction::Transmute),
 
             "SizeOf" => {
+                // TODO: Why don't we panic on error here again? Can it be removed?
                 // The argument has type `Type t`, we need to extract `t` from it.
                 // The Mir builder must still be resiliant to type errors
                 let t = self.get_t_from_type_t(args).unwrap_or(super::Type::ERROR);
@@ -157,7 +156,6 @@ where
             return None;
         }
 
-        // `Type t` type
         let type_t = self.types.result.maps.expr_types[&args[0].expr].follow(&self.types.bindings);
         match &type_t {
             TCType::Application(_, args) if args.len() == 1 => Some(self.convert_type(&args[0], None)),

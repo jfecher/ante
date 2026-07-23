@@ -37,8 +37,9 @@ pub struct TopLevelItem {
 pub enum TopLevelItemKind {
     Definition(Definition),
     TypeDefinition(TypeDefinition),
-    AbilityDefinition(AbilityDefinition),
-    AbilityImpl(AbilityImpl),
+    TraitDefinition(TraitOrEffectDefinition),
+    EffectDefinition(TraitOrEffectDefinition),
+    TraitImpl(TraitImpl),
     Comptime(Comptime),
 }
 
@@ -47,8 +48,10 @@ impl TopLevelItemKind {
         match self {
             TopLevelItemKind::Definition(definition) => ItemName::Pattern(definition.pattern),
             TopLevelItemKind::TypeDefinition(type_definition) => ItemName::Single(type_definition.name),
-            TopLevelItemKind::AbilityDefinition(trait_definition) => ItemName::Single(trait_definition.name),
-            TopLevelItemKind::AbilityImpl(ability_impl) => ItemName::Single(ability_impl.name),
+            TopLevelItemKind::TraitDefinition(def) | TopLevelItemKind::EffectDefinition(def) => {
+                ItemName::Single(def.name)
+            },
+            TopLevelItemKind::TraitImpl(trait_impl) => ItemName::Single(trait_impl.name),
             TopLevelItemKind::Comptime(_) => ItemName::None,
         }
     }
@@ -186,9 +189,8 @@ pub struct FunctionType {
     pub environment: Option<Box<Type>>,
     pub return_type: Box<Type>,
 
-    /// True if this is a `resume fn`.
-    /// Only valid as an ability field.
-    pub has_resume: bool,
+    /// `None` for no clause, `Some(vec![])` for `pure`, `Some(effects)` for `can e1, e2, ...`.
+    pub effects: Option<Vec<Type>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
@@ -211,12 +213,30 @@ impl ParameterType {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub enum TypeDefinitionKind {
+    Type,
+    Trait,
+    /// Effect operations get `Kind::Effect` and are type-checked as top-level `can`-annotated functions.
+    Effect,
+}
+
+impl TypeDefinitionKind {
+    /// True for traits and effects
+    pub fn is_ability(self) -> bool {
+        matches!(self, TypeDefinitionKind::Trait | TypeDefinitionKind::Effect)
+    }
+
+    pub fn is_effect(self) -> bool {
+        matches!(self, TypeDefinitionKind::Effect)
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct TypeDefinition {
     pub shared: bool,
     pub mutable: bool,
-    /// AbilityDefinitions are desugared into type definitions
-    pub is_ability: bool,
+    pub kind: TypeDefinitionKind,
     pub name: NameId,
     pub generics: Generics,
     pub body: TypeDefinitionBody,
@@ -396,6 +416,9 @@ pub struct Lambda {
     pub return_type: Option<Type>,
     pub body: ExprId,
     pub is_move: bool,
+
+    /// `None` for no clause, `Some(vec![])` for `pure`, `Some(effects)` for `can e1, e2, ...`.
+    pub effects: Option<Vec<Type>>,
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -612,18 +635,18 @@ pub enum KindAnnotation {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct AbilityDefinition {
+pub struct TraitOrEffectDefinition {
     pub name: NameId,
     pub generics: Generics,
     pub body: Vec<Declaration>,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct AbilityImpl {
+pub struct TraitImpl {
     pub name: NameId,
     pub parameters: Vec<Parameter>,
-    pub ability_path: PathId,
-    pub ability_arguments: Vec<Type>,
+    pub trait_path: PathId,
+    pub trait_arguments: Vec<Type>,
     pub body: Vec<(NameId, ExprId)>,
 }
 

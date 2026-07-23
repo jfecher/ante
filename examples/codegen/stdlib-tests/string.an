@@ -33,7 +33,7 @@ main () =
     test_predicates ()
     test_parse ()
 
-abc_stream {Emit String}: Unit =
+abc_stream (): Unit can Emit String =
     emit "a"
     emit "b"
     emit "c"
@@ -47,7 +47,7 @@ test_predicates () =
     println (contains (ref "hello world") (ref "lo wo"))
     println (contains (ref "hello world") (ref "xyz"))
     println (contains (ref "abc") (ref ""))
-    // Brackets so trailing whitespace is visible (and matches goldentest).
+    // Brackets so trailing whitespace is more visible
     println ("[" ++ trim "  hi  " ++ "]")
     println ("[" ++ trim_start "  hi  " ++ "]")
     println ("[" ++ trim_end "  hi  " ++ "]")
@@ -83,8 +83,8 @@ test_parse () =
     println (try do parse_i32 "-2147483648")
     println (try do parse_i32 "-2147483649")
     println (try do parse_i32 "-999999999999999999999999999")
-    parsed: Maybe I32 = try do try_cast "321"
-    println parsed
+
+    println (try do try_cast "321" : I32)
     println (try do parse_i8 "127")
     println (try do parse_i8 "128")
     println (try do parse_i8 "-128")
@@ -114,44 +114,27 @@ test_parse () =
     println (try do parse_u64 "+18446744073709551615")
     println (try do parse_usz "12345")
     println (try do parse_usz "+12345")
-    from_i8: Maybe I8 = try do try_cast "-5"
-    println from_i8
-    from_i8_overflow: Maybe I8 = try do try_cast "128"
-    println from_i8_overflow
-    from_i16: Maybe I16 = try do try_cast "-123"
-    println from_i16
-    from_i16_overflow: Maybe I16 = try do try_cast "32768"
-    println from_i16_overflow
-    from_i32: Maybe I32 = try do try_cast "-123456"
-    println from_i32
-    from_i32_overflow: Maybe I32 = try do try_cast "2147483648"
-    println from_i32_overflow
-    from_i64: Maybe I64 = try do try_cast "123456789"
-    println from_i64
-    from_i64_overflow: Maybe I64 = try do try_cast "9223372036854775808"
-    println from_i64_overflow
-    from_isz: Maybe Isz = try do try_cast "-12345"
-    println from_isz
-    from_u8: Maybe U8 = try do try_cast "42"
-    println from_u8
-    from_u8_negative: Maybe U8 = try do try_cast "-1"
-    println from_u8_negative
-    from_u8_overflow: Maybe U8 = try do try_cast "256"
-    println from_u8_overflow
-    from_u16: Maybe U16 = try do try_cast "65535"
-    println from_u16
-    from_u16_overflow: Maybe U16 = try do try_cast "65536"
-    println from_u16_overflow
-    from_u32: Maybe U32 = try do try_cast "4294967295"
-    println from_u32
-    from_u32_overflow: Maybe U32 = try do try_cast "4294967296"
-    println from_u32_overflow
-    from_u64: Maybe U64 = try do try_cast "42"
-    println from_u64
-    from_u64_overflow: Maybe U64 = try do try_cast "18446744073709551616"
-    println from_u64_overflow
-    from_usz: Maybe Usz = try do try_cast "12345"
-    println from_usz
+
+    println (try do try_cast "-5" : I8)
+    println (try do try_cast "128" : I8)
+    println (try do try_cast "-123" : I16)
+    println (try do try_cast "32768" : I16)
+    println (try do try_cast "-123456" : I32)
+    println (try do try_cast "2147483648" : I32)
+    println (try do try_cast "123456789" : I64)
+    println (try do try_cast "9223372036854775808" : I64)
+    println (try do try_cast "-12345" : Isz)
+
+    println (try do try_cast "42" : U8)
+    println (try do try_cast "-1" : U8)
+    println (try do try_cast "256" : U8)
+    println (try do try_cast "65535" : U16)
+    println (try do try_cast "65536" : U16)
+    println (try do try_cast "4294967295" : U32)
+    println (try do try_cast "4294967296" : U32)
+    println (try do try_cast "42" : U64)
+    println (try do try_cast "18446744073709551616" : U64)
+    println (try do try_cast "12345" : Usz)
 
 // args: --delete-binary --no-color
 // expected stdout:

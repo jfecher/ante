@@ -10,16 +10,17 @@ exit2_result = exit2 0
 
 // args: -e ast-t --no-color
 // expected stdout:
-// (foo: fn a -> b) = extern "foo"
+// (foo: fn a -> b pure) = extern "foo"
 // 
-// (add: fn I32 I32 -> I32) = extern "add"
+// (add: fn I32 I32 -> I32 pure) = extern "add"
 // 
-// (puts2: fn String -> Unit) = extern "puts2"
+// (puts2: fn String -> Unit pure) = extern "puts2"
 // 
-// (exit2: fn I32 -> never_returns) = extern "exit2"
+// (exit2: fn I32 -> never_returns pure) = extern "exit2"
 // 
-// (foo_result: _) = (foo: fn I32 -> _) 1
+// (foo_result: _) = (foo: fn I32 -> _ pure) 1
 // 
-// (puts2_result: Unit) = (puts2: fn String -> Unit) "test"
+// (puts2_result: Unit) = (puts2: fn String -> Unit pure) "test"
 // 
-// (exit2_result: _) = (exit2: fn I32 -> _) 0
+// (exit2_result: _) = (exit2: fn I32 -> _ pure) 0
+

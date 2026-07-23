@@ -137,7 +137,7 @@ HashMap.get_entry_mut (map: mut HashMap k v) (key: ref k) {Hash k} {eq: Eq k}: M
         | Found value -> Some (ptr_to_mut value)
         | _ -> None
 
-HashMap.get (map: ref HashMap k v) (key: ref k) {Hash k} {Eq k} {Fail}: ref v =
+HashMap.get (map: ref HashMap k v) (key: ref k) {Hash k} {Eq k}: ref v can Fail =
     match map.get_entry key
     | Some entry -> entry.value
     | None -> fail ()
@@ -172,23 +172,23 @@ impl print_hashmap {Print k} {Print v}: Print (HashMap k v) with
         putchar ']'
 
 implicit stream_map: Stream (HashMap k v) (k, v) =
-    Stream fn map e ->
+    Stream fn map ->
         for i in 0 .. map.capacity do
             entry: Entry k v = map.entries.[i]
             if entry.occupied then
-                e.emit (entry.key, entry.value)
+                emit (entry.key, entry.value)
 
 /// Emit each key. Bit-copies the key; safe for `Copy` keys.
-HashMap.keys (m: ref HashMap k v) = fn (e: Emit k) ->
+HashMap.keys (m: ref HashMap k v) = fn () can (Emit k) ->
     for i in 0 .. m.capacity do
         entry: Entry k v = m.entries.[i]
-        if entry.occupied then e.emit entry.key
+        if entry.occupied then emit entry.key
 
 /// Emit each value. Bit-copies the value; safe for `Copy` values.
-HashMap.values (m: ref HashMap k v) = fn (e: Emit v) ->
+HashMap.values (m: ref HashMap k v) = fn () can (Emit v) ->
     for i in 0 .. m.capacity do
         entry: Entry k v = m.entries.[i]
-        if entry.occupied then e.emit entry.value
+        if entry.occupied then emit entry.value
 
 /// Return the existing value at `key`, or insert `default` and return it.
 HashMap.get_or_insert (m: mut HashMap k v) (key: k) (default: v) {Hash k} {Eq k}: ref v =
@@ -217,8 +217,8 @@ HashMap.retain (m: mut HashMap k v) (pred: fn k v => Bool) {Copy k} {Copy v}: Un
 HashMap.merge (dst: mut HashMap k v) (src: HashMap k v) {Hash k} {Eq k}: Unit =
     iter src (fn (k, v) -> ignore (HashMap.insert dst k v))
 
-impl extract_hashmap {Hash k} {Eq k} {Fail}: Extract (ref HashMap k v) (ref k) (ref v) with
-    (.[]) map key = map.get key
+impl extract_hashmap {Hash k} {Eq k}: Extract (ref HashMap k v) (ref k) (ref v) with
+    (.[]) map key = map.get key ~> panic_on_fail
 
 impl insert_hashmap {Hash k} {Eq k}: Insert (mut HashMap k v) k v with
     (.[]:=) map key value =

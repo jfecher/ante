@@ -1,36 +1,36 @@
-ability Ping =
-    do_ping: resume fn U32 -> U32
+effect Ping =
+    do_ping: fn U32 -> U32
 
-ability Pong =
-    do_pong: resume fn U64 -> U64
+effect Pong =
+    do_pong: fn U64 -> U64
 
-foo {Ping} {Pong} =
+foo (): (U32, U64) can Ping, Pong =
     a = do_ping 1
     b = do_pong 2
     c = do_ping 3
     d = do_pong 4
     a + c, b + d
 
-ping (f: fn Ping [env] -> a) =
+ping (f: fn Unit => a can Ping) =
     handler h for do_ping x ->
         println "ping?"
         r = resume (x * 2)
         println "ping!"
         r
-    in f h
+    in f ()
 
-pong (f: fn Pong [env] -> a) =
+pong (f: fn Unit => a can Ping, Pong) =
     handler h for do_pong x ->
         println "pong?"
         r = resume (x * 3)
         println "pong!"
         r
-    in f h
+    in f ()
 
 main () =
-    a, b = ping fn pinger ->
-        pong fn ponger ->
-            foo {pinger} {ponger}
+    a, b = ping fn () ->
+        pong fn () ->
+            foo ()
 
     println a //=> (1*2 + 3*2) = 8
     println b //=> (2*3 + 4*3) = 18

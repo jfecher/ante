@@ -4,6 +4,7 @@ foo x =
 
 // args: -e ast-t --no-color
 // expected stdout:
-// (foo: fn _ -> fn _ [_] -> _) (x: _) =
-//     (y: fn _ [_] -> _) (_: _) [(x: _)] = (x: _)
-//     (y: fn _ [_] -> _)
+// (foo: fn _ -> fn _ [_] -> _ pure pure) (x: _) =
+//     (y: fn _ [_] -> _ pure) (_: _) [(x: _)] = (x: _)
+//     (y: fn _ [_] -> _ pure)
+

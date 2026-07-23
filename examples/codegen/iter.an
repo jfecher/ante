@@ -1,5 +1,5 @@
 
-ability MyIterable it elem =
+trait MyIterable it elem =
     mynext: fn it -> Maybe (elem, it)
 
 // Define iterating on I32s as counting down until 0

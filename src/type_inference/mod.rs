@@ -1,4 +1,4 @@
-use std::{cell::Cell, collections::BTreeMap, rc::Rc, sync::Arc};
+use std::{borrow::Cow, cell::Cell, collections::BTreeMap, rc::Rc, sync::Arc};
 
 use rustc_hash::{FxHashMap, FxHashSet};
 use serde::{Deserialize, Serialize};
@@ -39,7 +39,7 @@ pub mod get_type;
 mod implicits;
 pub mod kinds;
 pub mod patterns;
-mod type_body;
+pub(crate) mod type_body;
 mod type_definitions;
 pub mod types;
 
@@ -63,11 +63,11 @@ pub fn type_check_impl(context: &TypeCheckSCC, compiler: &DbHandle) -> Arc<TypeC
         match &item.kind {
             TopLevelItemKind::Definition(definition) => checker.check_definition(definition, true),
             TopLevelItemKind::TypeDefinition(type_definition) => checker.check_type_definition(type_definition),
-            TopLevelItemKind::AbilityDefinition(_) => {
-                unreachable!("Abilities should be desugared into types by this point")
+            TopLevelItemKind::TraitDefinition(_) | TopLevelItemKind::EffectDefinition(_) => {
+                unreachable!("Traits/effects should be desugared into types by this point")
             },
-            TopLevelItemKind::AbilityImpl(_) => {
-                unreachable!("AbilityImpls should be desugared into definitions by this point")
+            TopLevelItemKind::TraitImpl(_) => {
+                unreachable!("TraitImpls should be desugared into definitions by this point")
             },
             TopLevelItemKind::Comptime(comptime) => checker.check_comptime(comptime),
         };
@@ -158,6 +158,9 @@ struct TypeChecker<'local, 'inner> {
     /// The return type of the current function. Used to type check `return` statements.
     function_return_type: Option<Type>,
 
+    /// The effect row of the function whose body is currently being checked.
+    current_effect_row: Type,
+
     /// Types of each top-level item in the current SCC being worked on
     item_types: Rc<FxHashMap<TopLevelName, Type>>,
 
@@ -237,6 +240,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             item_types: Default::default(),
             current_item: None,
             function_return_type: None,
+            current_effect_row: Type::pure(),
             item_contexts,
             id_contexts,
             implicits: Vec::new(),
@@ -310,6 +314,15 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     fn current_extended_context(&self) -> &ExtendedTopLevelContext {
         let item = self.current_item.expect("TypeChecker: Expected current_item to be set");
         self.id_contexts.get(&item).expect("Expected TopLevelId to be in id_contexts")
+    }
+
+    /// Resolve `id` to its rewritten expr if this pass has replaced it in the extended
+    /// context, falling back to the original parse-time expr otherwise.
+    fn resolved_expr(&self, id: ExprId) -> Cow<'local, cst::Expr> {
+        match self.current_extended_context().extended_expr(id) {
+            Some(expr) => Cow::Owned(expr.clone()),
+            None => Cow::Borrowed(&self.current_context()[id]),
+        }
     }
 
     /// Return the current extended context.
@@ -420,6 +433,38 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         Type::Variable(self.next_type_variable_id())
     }
 
+    /// Run `f` with a reference to `self.next_type_variable_id`
+    fn with_next_id<T>(&self, f: impl FnOnce(&mut u32) -> T) -> T {
+        let mut next_id = self.next_type_variable_id.get();
+        let result = f(&mut next_id);
+        self.next_type_variable_id.set(next_id);
+        result
+    }
+
+    /// Run `f` with both `suppress_move_check` and `suppress_move_record` set to `true`,
+    /// restoring their previous values afterward.
+    fn with_suppressed_moves<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
+        let old_check = std::mem::replace(&mut self.suppress_move_check, true);
+        let old_record = std::mem::replace(&mut self.suppress_move_record, true);
+        let result = f(self);
+        self.suppress_move_check = old_check;
+        self.suppress_move_record = old_record;
+        result
+    }
+
+    /// Like [Self::with_suppressed_moves] but only suppresses `suppress_move_record`.
+    fn with_suppressed_move_record<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
+        let old_record = std::mem::replace(&mut self.suppress_move_record, true);
+        let result = f(self);
+        self.suppress_move_record = old_record;
+        result
+    }
+
+    /// A fresh, open effect row.
+    fn fresh_effect_row(&self) -> Type {
+        Type::effects(Vec::new(), Some(self.next_type_variable()))
+    }
+
     /// Generalize all types in the current SCC.
     /// The returned Vec is in the same order as the SCC.
     ///
@@ -431,11 +476,33 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         for (name, typ) in self.item_types.clone().iter() {
             self.current_item = Some(name.top_level_item);
+            self.default_unshared_effects_to_pure(typ, typ);
             let typ = typ.generalize(&self.bindings);
             items.entry(name.top_level_item).or_default().insert(name.local_name_id, typ);
         }
 
         items
+    }
+
+    /// Defaults a `can e` to `pure` when `e` isn't referenced elsewhere in `root`, recursing into nested function types.
+    fn default_unshared_effects_to_pure(&mut self, root: &Type, typ: &Type) {
+        let Type::Function(function_type) = typ.follow(&self.bindings) else { return };
+        let parameter_types: Vec<Type> = mapvec(&function_type.parameters, |p| p.typ.clone());
+        let return_type = function_type.return_type.clone();
+
+        if let Type::Effects(_, Some(tail)) = function_type.effects.follow_all(&self.bindings)
+            && let Type::Variable(tail_id) = *tail
+        {
+            let occurrences = root.count_unification_var_occurrences(tail_id, &self.bindings);
+            if occurrences <= 1 {
+                self.unify(&tail, &Type::pure(), TypeErrorKind::Effects, self.current_context().location().clone());
+            }
+        }
+
+        for parameter_type in &parameter_types {
+            self.default_unshared_effects_to_pure(root, parameter_type);
+        }
+        self.default_unshared_effects_to_pure(root, &return_type);
     }
 
     /// Unifies the two types. Returns false on failure
@@ -459,6 +526,13 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             });
             false
         }
+    }
+
+    /// Unifies `effects_var` with the ambient effect row, then re-canonicalizes it as the new ambient row.
+    fn thread_call_effects(&mut self, effects_var: &Type, locator: impl Locateable) {
+        let current_row = self.current_effect_row.clone();
+        self.unify(effects_var, &current_row, TypeErrorKind::Effects, locator);
+        self.current_effect_row = self.canonical_effects_row(&current_row, &TypeBindings::default());
     }
 
     /// True if `a` and `b` are equal except for one or more function environments.
@@ -520,6 +594,7 @@ fn strip_environments(typ: &Type) -> Type {
             }),
             environment: Type::NO_CLOSURE_ENV,
             return_type: strip_environments(&function.return_type),
+            effects: function.effects.clone(),
         })),
         Type::Application(constructor, args) => Type::Application(
             Arc::new(strip_environments(constructor)),
@@ -527,7 +602,12 @@ fn strip_environments(typ: &Type) -> Type {
         ),
         Type::Tuple(elements) => Type::Tuple(Arc::new(mapvec(elements.iter(), strip_environments))),
         Type::Forall(generics, body) => Type::Forall(generics.clone(), Arc::new(strip_environments(body))),
-        Type::Primitive(_) | Type::Generic(_) | Type::Variable(_) | Type::UserDefined(_) | Type::U32(_) => typ.clone(),
+        Type::Primitive(_)
+        | Type::Generic(_)
+        | Type::Variable(_)
+        | Type::UserDefined(_)
+        | Type::U32(_)
+        | Type::Effects(_, _) => typ.clone(),
     }
 }
 
@@ -651,11 +731,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         {
             let new_expr = self.auto_deref_coercion(expr, inner);
             self.current_extended_context_mut().insert_expr(expr, new_expr);
-            let old_check = std::mem::replace(&mut self.suppress_move_check, true);
-            let old_record = std::mem::replace(&mut self.suppress_move_record, true);
-            self.check_expr(expr, expected, kind);
-            self.suppress_move_check = old_check;
-            self.suppress_move_record = old_record;
+            self.with_suppressed_moves(|this| this.check_expr(expr, expected, kind));
             return actual;
         }
         self.coerce(&actual, expected, expr, None, kind, saved);
@@ -673,12 +749,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             CoercionOutcome::AutoRef => self.type_autoref_wrapper(expr, expected, kind),
             CoercionOutcome::ReplacedExpr => {
                 // Re-check the wrapper but ignore moves since they were already recorded.
-                let old_check = std::mem::replace(&mut self.suppress_move_check, true);
-                let old_record = std::mem::replace(&mut self.suppress_move_record, true);
-                let actual = self.check_expr(expr, expected, kind);
-                self.suppress_move_check = old_check;
-                self.suppress_move_record = old_record;
-                actual
+                self.with_suppressed_moves(|this| this.check_expr(expr, expected, kind))
             },
             CoercionOutcome::None => {
                 self.unify(actual, expected, kind, expr);
@@ -751,6 +822,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             parameters: vec![ParameterType::explicit(original_type)],
             environment: Type::NO_CLOSURE_ENV,
             return_type: element_type,
+            effects: Type::pure(),
         }));
         let func_expr = self.push_expr(cst::Expr::Variable(deref_path), function_type, location);
         cst::Expr::Call(cst::Call { function: func_expr, arguments: vec![cst::Argument::explicit(arg_id)] })
@@ -839,7 +911,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 if !env_skip {
                     self.subtype(&a_fn.environment, &b_fn.environment, Variance::Invariant, new_bindings)?;
                 }
-                self.subtype(&a_fn.return_type, &b_fn.return_type, variance, new_bindings)
+                self.subtype(&a_fn.return_type, &b_fn.return_type, variance, new_bindings)?;
+                self.subtype(&a_fn.effects, &b_fn.effects, variance, new_bindings)
             },
             (Type::Application(a_constructor, a_args), Type::Application(b_constructor, b_args)) => {
                 if a_args.len() != b_args.len() {
@@ -890,8 +963,113 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     _ => Err(()),
                 }
             },
+            (Type::Effects(..), Type::Effects(..)) => self.row_subtype(a, b, new_bindings),
             (a, b) if a == b => Ok(()),
             _ => Err(()),
+        }
+    }
+
+    /// Find a non-skipped head-matching candidate that subtypes `target` per `variance`, trying each speculatively.
+    fn subtype_matching_effect(
+        &self, candidates: &[Type], skip: impl Fn(usize) -> bool, target: &Type, variance: Variance,
+        new_bindings: &mut TypeBindings,
+    ) -> Result<Option<usize>, ()> {
+        for (i, candidate) in candidates.iter().enumerate() {
+            if skip(i) || !Self::effect_heads_match(candidate, target) {
+                continue;
+            }
+            let mut trial = new_bindings.clone();
+            if self.subtype(candidate, target, variance, &mut trial).is_ok() {
+                *new_bindings = trial;
+                return Ok(Some(i));
+            }
+        }
+        Ok(None)
+    }
+
+    /// Row-subtype two effect rows: is `a`'s actual set of effects permitted by `b`'s expected set?
+    fn row_subtype(&self, a: &Type, b: &Type, new_bindings: &mut TypeBindings) -> Result<(), ()> {
+        let a = self.canonical_effects_row(a, new_bindings);
+        let b = self.canonical_effects_row(b, new_bindings);
+        let (Type::Effects(a_list, a_tail), Type::Effects(b_list, b_tail)) = (&a, &b) else {
+            unreachable!("row_subtype called with non-Effects type");
+        };
+
+        let is_error = |tail: &Option<Arc<Type>>| tail.as_deref().is_some_and(Type::is_error);
+        if is_error(a_tail) || is_error(b_tail) {
+            return Ok(());
+        }
+
+        let mut a_leftover = Vec::new();
+        let mut b_matched = vec![false; b_list.len()];
+
+        for a_effect in a_list.iter() {
+            let matched = self.subtype_matching_effect(
+                b_list,
+                |i| b_matched[i],
+                a_effect,
+                Variance::Contravariant,
+                new_bindings,
+            )?;
+            match matched {
+                Some(pos) => b_matched[pos] = true,
+                None => a_leftover.push(a_effect.clone()),
+            }
+        }
+
+        if !a_leftover.is_empty() {
+            let fresh_tail = self.next_type_variable();
+            self.bind_open_tail(b_tail.as_deref(), a_leftover, Some(fresh_tail), true, new_bindings)?;
+        }
+
+        let b_unmatched: Vec<Type> =
+            b_list.iter().enumerate().filter(|(i, _)| !b_matched[*i]).map(|(_, t)| t.clone()).collect();
+
+        let new_tail = b_tail.as_deref().cloned();
+        self.bind_open_tail(a_tail.as_deref(), b_unmatched, new_tail, false, new_bindings)?;
+
+        Ok(())
+    }
+
+    fn bind_open_tail(
+        &self, tail: Option<&Type>, new_list: Vec<Type>, new_tail: Option<Type>, error_if_not_variable: bool,
+        new_bindings: &mut TypeBindings,
+    ) -> Result<(), ()> {
+        match tail {
+            Some(Type::Variable(id)) => {
+                let is_self_bind = new_list.is_empty() && matches!(&new_tail, Some(Type::Variable(t)) if t == id);
+                if is_self_bind {
+                    Ok(())
+                } else {
+                    self.try_bind_type_variable(*id, Type::effects(new_list, new_tail), new_bindings)
+                }
+            },
+            _ if error_if_not_variable => Err(()),
+            _ => Ok(()),
+        }
+    }
+
+    /// Follow `effects` to the inner [Type::Effects] variant holding the entire effect row.
+    fn canonical_effects_row(&self, effects: &Type, new_bindings: &TypeBindings) -> Type {
+        match effects.follow_two(&self.bindings, new_bindings) {
+            Type::Effects(list, tail) => {
+                let list = mapvec(list.iter(), |t| t.follow_two(&self.bindings, new_bindings));
+                let tail = tail.as_deref().map(|t| self.canonical_effects_row(t, new_bindings));
+                Type::effects(list, tail)
+            },
+            // A bare variable/generic tail with no accumulated effects yet.
+            other => Type::effects(Vec::new(), Some(other)),
+        }
+    }
+
+    /// True if two effect-row entries share the same effect constructor ignoring type arguments.
+    fn effect_heads_match(a: &Type, b: &Type) -> bool {
+        let head = |effect: &Type| {
+            effect.as_user_defined().copied().or_else(|| effect.as_application()?.0.as_user_defined().copied())
+        };
+        match (head(a), head(b)) {
+            (Some(a), Some(b)) => a == b,
+            _ => false,
         }
     }
 
@@ -987,6 +1165,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 function_type.parameters.iter().any(|param| self.occurs(&param.typ, variable, new_bindings))
                     || self.occurs(&function_type.environment, variable, new_bindings)
                     || self.occurs(&function_type.return_type, variable, new_bindings)
+                    || self.occurs(&function_type.effects, variable, new_bindings)
             },
             Type::Application(constructor, args) => {
                 self.occurs(constructor, variable, new_bindings)
@@ -994,6 +1173,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
             Type::Forall(_, typ) => self.occurs(typ, variable, new_bindings),
             Type::Tuple(elements) => elements.iter().any(|element| self.occurs(element, variable, new_bindings)),
+            Type::Effects(list, tail) => {
+                list.iter().any(|effect| self.occurs(effect, variable, new_bindings))
+                    || tail.as_ref().is_some_and(|tail| self.occurs(tail, variable, new_bindings))
+            },
         }
     }
 
@@ -1012,7 +1195,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// in function signatures or expressions.
     fn from_cst_type(&mut self, typ: &cst::Type, allow_implicit_type_vars: bool) -> Type {
         let mut local_kinds = crate::type_inference::types::LocalKinds::default();
-        self.from_cst_type_with_local_kinds(typ, allow_implicit_type_vars, &mut local_kinds)
+        self.from_cst_type_with_local_kinds(typ, allow_implicit_type_vars, allow_implicit_type_vars, &mut local_kinds)
     }
 
     /// Build an initial [LocalKinds] map seeded from the explicit kind annotations on
@@ -1026,19 +1209,20 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// for type variables in this type are shared with sibling types in the same scope
     /// (e.g., multiple fields of one constructor).
     fn from_cst_type_with_local_kinds(
-        &mut self, typ: &cst::Type, allow_implicit_type_vars: bool, local_kinds: &mut LocalKinds,
+        &mut self, typ: &cst::Type, allow_implicit_type_vars: bool, open_effects_by_default: bool,
+        local_kinds: &mut LocalKinds,
     ) -> Type {
-        let mut next_id = self.next_type_variable_id.get();
-        let typ = Type::from_cst_type(
-            typ,
-            self.current_resolve(),
-            self.compiler,
-            &mut next_id,
-            local_kinds,
-            allow_implicit_type_vars,
-        );
-        self.next_type_variable_id.set(next_id);
-        typ
+        self.with_next_id(|next_id| {
+            Type::from_cst_type(
+                typ,
+                self.current_resolve(),
+                self.compiler,
+                next_id,
+                local_kinds,
+                allow_implicit_type_vars,
+                open_effects_by_default,
+            )
+        })
     }
 
     /// Like [Self::from_cst_type] but does not require the converted type to be of kind
@@ -1048,18 +1232,18 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         &mut self, typ: &cst::Type, allow_implicit_type_vars: bool,
     ) -> (Type, crate::type_inference::kinds::Kind) {
         let mut local_kinds = crate::type_inference::types::LocalKinds::default();
-        let mut next_id = self.next_type_variable_id.get();
-        let result = Type::from_cst_type_helper(
-            typ,
-            None,
-            self.current_resolve(),
-            self.compiler,
-            &mut next_id,
-            &mut local_kinds,
-            allow_implicit_type_vars,
-        );
-        self.next_type_variable_id.set(next_id);
-        result
+        self.with_next_id(|next_id| {
+            Type::from_cst_type_helper(
+                typ,
+                None,
+                self.current_resolve(),
+                self.compiler,
+                next_id,
+                &mut local_kinds,
+                allow_implicit_type_vars,
+                allow_implicit_type_vars,
+            )
+        })
     }
 
     /// Try to retrieve the types of each field of the given type.
@@ -1152,6 +1336,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             parameters: vec![ParameterType::explicit(Type::UNIT)],
             environment: Type::NO_CLOSURE_ENV,
             return_type: Type::UNIT,
+            effects: Type::pure(),
         }));
 
         self.unify(typ, &expected, TypeErrorKind::MainFn, pattern);

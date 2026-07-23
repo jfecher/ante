@@ -1,16 +1,16 @@
 
-ability MyFail =
-    fail: resume fn Unit -> Unit
+effect MyFail =
+    fail: fn Unit -> Unit
 
-ability Read a =
-    read: resume fn Unit -> a
+effect Read a =
+    read: fn Unit -> a
 
-read_or_none (f: fn Unit {MyFail} {Read U32} -> U32): Maybe U32 =
+read_or_none (f: fn Unit => U32 can MyFail, Read U32): Maybe U32 =
     handler hf for fail () -> None
     handler hr for read () -> resume 5u32
     Some (f ())
 
-foo () {MyFail} {Read U32} =
+foo (): U32 can MyFail, Read U32 =
     if false then fail ()
     read ()
 
@@ -19,3 +19,4 @@ main () =
 
 // args: --delete-binary --no-color
 // expected stdout: Some 5
+

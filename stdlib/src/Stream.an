@@ -2,30 +2,29 @@ import Std.Vec.Vec, get_unchecked
 import Std.Fail.Fail, fail
 
 /// Emit a single item of type `a`. Another name for this is `Yield`.
-ability Emit a =
-    emit: resume fn a -> Unit
+effect Emit a =
+    emit: fn a -> Unit
 
 /// Common control-flow effects for looping
 /// - break_: ends the loop early
 /// - continue_: ends the current iteration of the loop early
-ability Loop =
-    break_: resume fn Unit -> Never
-    continue_: resume fn Unit -> Never
+effect Loop =
+    break_: fn Unit -> Never
+    continue_: fn Unit -> Never
 
-/// Stream the contents of `t` into the `Emit a` capability
-ability Stream t a =
-    stream: fn t (Emit a) -> Unit
+/// Stream the contents of `t`, emitting each element via the `Emit a` effect
+trait Stream t a =
+    stream: fn t -> Unit can Emit a
 
-/// This is the most common stream impl. Most streams will just be functions
-/// with an `Emit` capability. This impl is most common in the middle of
-/// stream chains since functions like `map` and `filter` return functions taking
-/// an `Emit` argument.
-implicit stream_fn: Stream (fn (Emit a) [env] -> Unit) a =
-    Stream fn f e -> f e
+/// This is the most common stream impl. Most streams will just be thunks
+/// that emit. This impl is most common in the middle of stream chains since
+/// functions like `map` and `filter` return such thunks.
+implicit stream_fn: Stream (fn Unit [env] -> Unit can Emit a) a =
+    Stream fn f -> f ()
 
 /// Emits each element in the array
 impl stream_array: Stream (Array n t) t with
-    stream (array: Array n t) {Emit t} =
+    stream (array: Array n t): Unit can Emit t =
         for i in 0 .. array_len array do
             array_get_unchecked array i |> deref |> emit
 
@@ -36,7 +35,7 @@ iter (s: s) {Stream s a} (f: fn a => b): Unit =
     handler h for emit a ->
         f a
         resume ()
-    Stream.stream s h
+    Stream.stream s
 
 /// Consumes the given stream, applying `f` to each element, with
 /// an additional Loop handler installed to allow breaking/continuing
@@ -44,11 +43,11 @@ iter (s: s) {Stream s a} (f: fn a => b): Unit =
 ///
 /// E.g. The following will print 012
 /// ```
-/// for_ (iota 5) fn i {l} ->
+/// for_ (iota 5) fn i ->
 ///     if i > 2 then break_ ()
 ///     print i
 /// ```
-for_ (s: s) {Stream s a} (f: fn a Loop => b): Unit =
+for_ (s: s) {Stream s a} (f: fn a => b can Loop): Unit =
     var broke = false
     handler h for emit a ->
         handler l for
@@ -56,48 +55,48 @@ for_ (s: s) {Stream s a} (f: fn a Loop => b): Unit =
             broke := true
         | continue_ () -> ()
         in
-            f a l
+            f a
             ()
         if not broke then resume ()
-    Stream.stream s h
+    Stream.stream s
 
 /// Applies `f` to each element from the stream, re-emitting each result.
 /// 
 /// Given `a1, a2, .., aN`, emit `f a1, f a2, .., f aN`
-map (s: s) {Stream s a} (f: fn a => b) = fn (e: Emit b) ->
+map (s: s) {Stream s a} (f: fn a => b) = fn () ->
     handler h for emit a ->
-        e.emit (f a)
+        emit (f a)
         resume ()
-    Stream.stream s h
+    Stream.stream s
 
 /// Re-emits only the elements from the original stream for which `f elem` is true
 ///
 /// E.g. `filter (iota 5) (_ > 2)` will emit `3` and `4`.
-filter (s: s) {Stream s a} (f: fn (ref a) => Bool) = fn (e: Emit a) ->
+filter (s: s) {Stream s a} (f: fn (ref a) => Bool) = fn () ->
     handler h for emit a ->
-        if f (ref a) then e.emit a
+        if f (ref a) then emit a
         resume ()
-    Stream.stream s h
+    Stream.stream s
 
 /// Performs a combined map and filter opereration, applying `f` to each element in
 /// the stream, filtering out any elements for which `None` is returned, leaving only
 /// the `Some` elements.
-filter_map (s: s) {Stream s a} (f: fn a => Maybe b) = fn (e: Emit b) ->
+filter_map (s: s) {Stream s a} (f: fn a => Maybe b) = fn () ->
     handler h for emit a ->
         match f a
-        | Some b -> e.emit b
+        | Some b -> emit b
         | None -> ()
         resume ()
-    Stream.stream s h
+    Stream.stream s
 
 /// Given `a1, a2, .., aN`, emit `(0, a1), (1, a2), .., (N-1, aN)`
-enumerate (s: s) {Stream s a} = fn (e: Emit (Usz, a)) ->
+enumerate (s: s) {Stream s a} = fn () can Emit (Usz, a) ->
     var i = 0
     handler h for emit a ->
-        e.emit (i, a)
+        emit (i, a)
         i += 1
         resume ()
-    in Stream.stream s h
+    in Stream.stream s
 
 /// Given `a1, a2, .., aN` and an initial value `initial`, return `(f (.. (f (f initial a1) a2) ..) aN)`
 ///
@@ -109,7 +108,7 @@ foldl (s: s) {Stream s b} (initial: a) (f: fn a b => a): a =
     handler h for emit value ->
         result := f result value
         resume ()
-    in Stream.stream s h
+    in Stream.stream s
 
     result
 
@@ -123,7 +122,7 @@ foldr (s: s) {Stream s a} (initial: b) (f: fn a b => b): b =
         rest = resume ()
         f value rest
 
-    Stream.stream s h
+    Stream.stream s
     initial
 
 /// Similar to `foldl` but uses the first element as the initial value.
@@ -131,7 +130,7 @@ foldr (s: s) {Stream s a} (initial: b) (f: fn a b => b): b =
 /// Given `a1, a2, a3, .., aN`, return `f (.. (f (f a1 a2) a3) ..) aN`
 ///
 /// This function is tail-resumptive. Fails if the stream is empty.
-reduce (s: s) {Stream s a} (f: fn a a => a) {Fail}: a =
+reduce (s: s) {Stream s a} (f: fn a a => a): a can Fail =
     var result = Maybe.None
 
     // TODO: Can this be simplified? This would be easier with shallow handlers
@@ -143,7 +142,7 @@ reduce (s: s) {Stream s a} (f: fn a a => a) {Fail}: a =
         | None ->
             result := Some value
         resume ()
-    in Stream.stream s h
+    in Stream.stream s
 
     match result
     | Some value -> value
@@ -152,7 +151,7 @@ reduce (s: s) {Stream s a} (f: fn a a => a) {Fail}: a =
 /// Given `a1, a2, .., aN` and `b1, b2, .., bN`, emit `f a1 b1, f a2 b2, .., f aN bN`.
 /// If the two input streams are not the same length, the length of the resulting stream
 /// will be the shorter of the two.
-map2 (s1: s1) (s2: s2) {Stream s1 a} {Stream s2 b} {Copy a} {Copy b} (f: fn a b => c) = fn (e: Emit c) ->
+map2 (s1: s1) (s2: s2) {Stream s1 a} {Stream s2 b} {Copy a} {Copy b} (f: fn a b => c) = fn () ->
     // TODO: Old impl was broken, rewrite again to remove collecting to Vec
     v1 = Vec.of s1
     v2 = Vec.of s2
@@ -160,11 +159,11 @@ map2 (s1: s1) (s2: s2) {Stream s1 a} {Stream s2 b} {Copy a} {Copy b} (f: fn a b 
     for i in 0 .. n do
         a = (v1.get_unchecked i).*
         b = (v2.get_unchecked i).*
-        e.emit (f a b)
+        emit (f a b)
 
 /// Emit numbers from 0 to `n`, end-exclusive
-iota n = fn (e: Emit Usz) ->
-    for i in 0usz .. n do emit i {e}
+iota n = fn () ->
+    for i in 0usz .. n do emit i
 
 /// Zip the two streams together, emitting `x, y` for each
 /// `x` returned by the first stream and each `y` returned by the second.
@@ -184,7 +183,7 @@ all (s: s) {Stream s a} (f: fn a => Bool): Bool =
         if f a then resume ()
         else false
 
-    Stream.stream s h
+    Stream.stream s
     true
 
 /// Apply the function `f` to all elements of the given stream,
@@ -198,39 +197,39 @@ any (s: s) {Stream s a} (f: fn a => Bool): Bool =
         if f a then true
         else resume ()
 
-    Stream.stream s h
+    Stream.stream s
     false
 
 /// Intersperse an item in between each element of the stream.
 ///
 /// Given `a1, a2, .., aN` and `item`, emit `a1, item, a2, item, .., item, aN`
-intersperse (s: s) {Stream s a} (item: a) {Clone a} = fn (e: Emit a) ->
+intersperse (s: s) {Stream s a} (item: a) {Clone a} = fn () ->
     var not_first = false
     handler h for emit a ->
-        if not_first then e.emit (clone item)
+        if not_first then emit (clone item)
         not_first := true
-        e.emit a
+        emit a
         resume ()
 
-    Stream.stream s h
+    Stream.stream s
 
 /// Intersperse an item from the given function in between each element of the stream.
 ///
 /// Given `a1, a2, .., aN` and `item`, emit `a1, item, a2, item, .., item, aN`
-intersperse_with (s: s) {Stream s a} (item: fn Unit => a) = fn (e: Emit a) ->
+intersperse_with (s: s) {Stream s a} (item: fn Unit => a) = fn () ->
     var not_first = false
     handler h for emit a ->
-        if not_first then e.emit (item ())
+        if not_first then emit (item ())
         not_first := true
-        e.emit a
+        emit a
         resume ()
 
-    Stream.stream s h
+    Stream.stream s
 
 /// Emits all elements from the first stream followed by all elements from the second stream
-chain (s1: s1) {Stream s1 a} (s2: s2) {Stream s2 a} = fn (e: Emit a) ->
-    Stream.stream s1 e
-    Stream.stream s2 e
+chain (s1: s1) {Stream s1 a} (s2: s2) {Stream s2 a} = fn () ->
+    Stream.stream s1
+    Stream.stream s2
 
 /// Consume the stream, returning the total number of elements in it
 count (s: s) {Stream s a}: U32 =
@@ -238,28 +237,28 @@ count (s: s) {Stream s a}: U32 =
 
 /// Find an element in the stream for which `predicate` returns true.
 /// Fails if there is no such element
-find (s: s) {Stream s a} (predicate: fn (ref a) => Bool) {Fail}: a =
+find (s: s) {Stream s a} (predicate: fn (ref a) => Bool): a can Fail =
     handler h for emit a ->
         if predicate (ref a) then a
         else resume ()
 
-    Stream.stream s h
+    Stream.stream s
     fail ()
 
 /// Find an element in the stream for which `predicate` returns `Some b`, and return that `b`.
 /// Fails if there is no such element
-find_map (s: s) {Stream s a} (predicate: fn a => Maybe b) {Fail}: b =
+find_map (s: s) {Stream s a} (predicate: fn a => Maybe b): b can Fail =
     // TODO: Should `predicate` be `fn a {Fail} => b` instead?
     handler h for emit a ->
         match predicate a
         | Some b -> b
         | None -> resume ()
 
-    Stream.stream s h
+    Stream.stream s
     fail ()
 
 /// Re-emit only the first `n` items from the stream
-take (s: s) {Stream s a} (initial_n: U32) = fn {Emit a} ->
+take (s: s) {Stream s a} (initial_n: U32) = fn () ->
     var n = initial_n
     handler h for emit a ->
         if n != 0 then
@@ -267,20 +266,20 @@ take (s: s) {Stream s a} (initial_n: U32) = fn {Emit a} ->
             n -= 1
             resume ()
 
-    Stream.stream s h
+    Stream.stream s
 
 /// Re-emit items from the stream only while `predicate` keeps returning true.
 /// When the predicate first returns false, the stream will stop.
-take_while (s: s) {Stream s a} (predicate: fn (ref a) => Bool) = fn {Emit a} ->
+take_while (s: s) {Stream s a} (predicate: fn (ref a) => Bool) = fn () ->
     handler h for emit a ->
         if predicate (ref a) then
             emit a
             resume ()
 
-    Stream.stream s h
+    Stream.stream s
 
 /// Skips the first `n` items from the stream, emitting the rest as normal.
-skip (s: s) {Stream s a} (initial_n: U32) = fn {Emit a} ->
+skip (s: s) {Stream s a} (initial_n: U32) = fn () ->
     var n = initial_n
     handler h for emit a ->
         if n == 0 then
@@ -289,11 +288,11 @@ skip (s: s) {Stream s a} (initial_n: U32) = fn {Emit a} ->
             n -= 1
         resume ()
 
-    Stream.stream s h
+    Stream.stream s
 
 /// Skips elements while `predicate elem` is true. After the first `false`,
 /// no more elements will be skipped (including the element itself).
-skip_while (s: s) {Stream s a} (predicate: fn (ref a) => Bool) = fn {Emit a} ->
+skip_while (s: s) {Stream s a} (predicate: fn (ref a) => Bool) = fn () ->
     var found_false = false
     handler h for emit a ->
         if found_false then
@@ -304,7 +303,7 @@ skip_while (s: s) {Stream s a} (predicate: fn (ref a) => Bool) = fn {Emit a} ->
 
         resume ()
 
-    Stream.stream s h
+    Stream.stream s
 
 /// Return the sum of all elements in the stream from the given initial value.
 sum (s: s) {Stream s a} (initial: a) {Add a}: a =
@@ -312,7 +311,7 @@ sum (s: s) {Stream s a} (initial: a) {Add a}: a =
     handler h for emit a ->
         sum += a
         resume ()
-    in Stream.stream s h
+    in Stream.stream s
     sum
 
 /// Return the product of all elements in the stream from the given initial value.
@@ -321,5 +320,5 @@ product (s: s) {Stream s a} (initial: a) {Mul a}: a =
     handler h for emit a ->
         product *= a
         resume ()
-    in Stream.stream s h
+    in Stream.stream s
     product

@@ -1,7 +1,7 @@
 
 bar: a = extern bar
 
-ability Baz a = baz: fn a -> Unit
+trait Baz a = baz: fn a -> Unit
 
 foo () = baz bar
 
@@ -13,7 +13,7 @@ foo () = baz bar
 // type Baz a =
 //     baz: fn a [Ptr Unit] -> Unit
 // 
-// (foo: fn Unit -> Unit) () = (baz: fn _ {Baz _} [Ptr Unit] -> Unit) (bar: _) {(error)}
+// (foo: fn Unit -> Unit pure) () = (baz: fn _ {Baz _} [Ptr Unit] -> Unit pure) (bar: _) {(error)}
 
 // expected stderr:
 // examples/typechecking/trait_propagation.an:6:10

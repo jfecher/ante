@@ -2,6 +2,3 @@ main () = print "Hello, World!"
 
 // args: -e ast --no-color
 // expected stdout: main () = print "Hello, World!"
-
-
-

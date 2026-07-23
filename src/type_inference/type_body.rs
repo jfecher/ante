@@ -48,10 +48,14 @@ impl TopLevelId {
         };
 
         match &type_definition.body {
+            cst::TypeDefinitionBody::Struct(_) if type_definition.kind.is_effect() => {
+                let type_name = item_context[type_definition.name].clone();
+                TypeBody::Product { type_name, fields: Vec::new() }
+            },
             cst::TypeDefinitionBody::Struct(fields) => {
                 // This'd be easier with an explicit type data field
                 let constructor_type = result.get_generalized(type_definition.name);
-                let constructor = apply_type_constructor(constructor_type, arguments, &result);
+                let constructor = apply_type_constructor(&constructor_type, arguments, &result);
                 let field_types = constructor.function_parameter_types();
 
                 assert_eq!(fields.len(), field_types.len());
@@ -65,7 +69,7 @@ impl TopLevelId {
             cst::TypeDefinitionBody::Enum(variants) => {
                 let mut variants = mapvec(variants, |(name, _)| {
                     let constructor_type = result.get_generalized(*name);
-                    let constructor = apply_type_constructor(constructor_type, arguments, &result);
+                    let constructor = apply_type_constructor(&constructor_type, arguments, &result);
                     let fields: Vec<_> = constructor.function_parameter_types().collect();
                     (item_context[*name].clone(), fields)
                 });
@@ -93,7 +97,7 @@ impl TopLevelId {
 ///
 // This assumes constructor args are in the same order as the type args.
 // This should be guaranteed by [TypeChecker::build_constructor_type].
-fn apply_type_constructor(typ: &Type, args: Option<&[Type]>, types: &TypeCheckResult) -> Type {
+pub(crate) fn apply_type_constructor(typ: &Type, args: Option<&[Type]>, types: &TypeCheckResult) -> Type {
     let expected_generic_count = match typ.follow(&types.bindings) {
         Type::Forall(generics, _) => generics.len(),
         _ => 0,

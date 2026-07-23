@@ -62,6 +62,8 @@ pub enum TypeErrorKind {
     LoopRange,
     /// An array literal element (actual) does not match the array's element type (expected)
     ArrayElement,
+    /// A call performs an effect (actual) not permitted by the enclosing function's effects clause (expected)
+    Effects,
 }
 
 impl TypeErrorKind {
@@ -131,6 +133,15 @@ impl TypeErrorKind {
             },
             TypeErrorKind::EffectPattern => {
                 format!("This handler pattern has type {expected} but the effect operation has type {actual}")
+            },
+            TypeErrorKind::Effects => {
+                if expected_type.is_empty() {
+                    format!("This can perform {actual} but no effects are allowed here")
+                } else if actual_type.is_empty() {
+                    format!("This performs no effects here, but {expected} is required")
+                } else {
+                    format!("This can perform {actual} but only {expected} is allowed here")
+                }
             },
             TypeErrorKind::CompoundOperator => {
                 format!("This operator has type {actual} but its operands require it to have type {expected}")

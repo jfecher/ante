@@ -12,8 +12,9 @@ foo = hello_foo 42
 //     x: a
 //     y: b
 // 
-// (hello_foo: fn _ -> Foo String _) (y: _) = Foo with
+// (hello_foo: fn _ -> Foo String _ pure) (y: _) = Foo with
 //     (x: String) = "Hello World"
 //     (y: _) = (y: _)
 // 
-// (foo: Foo String I32) = (hello_foo: fn I32 -> Foo String I32) 42
+// (foo: Foo String I32) = (hello_foo: fn I32 -> Foo String I32 pure) 42
+

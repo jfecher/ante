@@ -98,6 +98,9 @@ pub enum Diagnostic {
         expected: Kind,
         location: Location,
     },
+    MultipleEffectRowVariables {
+        location: Location,
+    },
     RecursiveType {
         typ: String,
         location: Location,
@@ -607,9 +610,13 @@ impl Diagnostic {
                 "Type annotations are required on top-level implicits".to_string()
             },
             Diagnostic::ExpectedTypeKind { actual, location: _ } => {
-                let n = actual.required_argument_count();
-                let s = if n == 1 { "" } else { "s" };
-                format!("Expected a type here, this type constructor is missing {n} argument{s}")
+                if actual.result_kind() == Kind::Effect {
+                    "This is an effect and cannot be used as an ordinary type".to_string()
+                } else {
+                    let n = actual.required_argument_count();
+                    let s = if n == 1 { "" } else { "s" };
+                    format!("Expected a type here, this type constructor is missing {n} argument{s}")
+                }
             },
             Diagnostic::ExpectedKind { actual, expected, location } => {
                 if *expected == Kind::Type {
@@ -619,6 +626,9 @@ impl Diagnostic {
                     let actual = color_type(&actual.to_string());
                     format!("Expected a type constructor of kind {expected}, but found one of kind {actual}")
                 }
+            },
+            Diagnostic::MultipleEffectRowVariables { location: _ } => {
+                format!("A {} clause may only have one variable", color_keyword("can"))
             },
             Diagnostic::ReturnNotInFunction { location: _ } => "`return` can only be used in a function".to_string(),
             Diagnostic::BreakNotInLoop { location: _ } => "`break` can only be used inside a loop".to_string(),
@@ -727,6 +737,7 @@ impl Diagnostic {
             | Diagnostic::TopLevelImplicitTypeAnnotationRequired { location }
             | Diagnostic::ExpectedTypeKind { location, .. }
             | Diagnostic::ExpectedKind { location, .. }
+            | Diagnostic::MultipleEffectRowVariables { location }
             | Diagnostic::ReturnNotInFunction { location }
             | Diagnostic::BreakNotInLoop { location }
             | Diagnostic::ContinueNotInLoop { location }
