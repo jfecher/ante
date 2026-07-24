@@ -105,7 +105,11 @@ impl Kind {
             (
                 Kind::TypeConstructorComplex { params: l_kinds, result: l_res },
                 Kind::TypeConstructorComplex { params: r_kinds, result: r_res },
-            ) => l_kinds.len() == r_kinds.len() && l_kinds.iter().zip(r_kinds).all(|(l, r)| l.unifies(r)) && l_res.unifies(r_res),
+            ) => {
+                l_kinds.len() == r_kinds.len()
+                    && l_kinds.iter().zip(r_kinds).all(|(l, r)| l.unifies(r))
+                    && l_res.unifies(r_res)
+            },
             (Kind::U32, Kind::U32) => true,
             (Kind::Lifetime, Kind::Lifetime) => true,
             _ => false,

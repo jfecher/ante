@@ -269,8 +269,9 @@ where
 
     /// Panics if the shapes are incompatible, since evidence shapes should always nest.
     fn project_evidence_or_panic(&mut self, provided: Value, expected: &Type, needed: &Type) -> Value {
-        self.project_evidence(provided, expected, needed)
-            .unwrap_or_else(|| panic!("cannot project argument evidence {needed} out of the expected evidence {expected}"))
+        self.project_evidence(provided, expected, needed).unwrap_or_else(|| {
+            panic!("cannot project argument evidence {needed} out of the expected evidence {expected}")
+        })
     }
 
     fn terminate_block(&mut self, terminator: TerminatorInstruction) {
@@ -767,8 +768,9 @@ where
             },
             _ => None,
         };
-        let static_closure = peeked_closure
-            .and_then(|(function, environment)| self.as_static_function(function).map(|target| (target, function, environment)));
+        let static_closure = peeked_closure.and_then(|(function, environment)| {
+            self.as_static_function(function).map(|target| (target, function, environment))
+        });
         let (target, environment) = match self.as_static_function(value) {
             Some(target) => (target, None),
             None => match static_closure {
@@ -990,8 +992,7 @@ where
             let capability = self.capability_value(*source);
             let capability_type = self.type_of_value(&capability);
             evidence_type = Type::tuple(vec![capability_type, evidence_type]);
-            evidence =
-                self.push_instruction(Instruction::MakeTuple(vec![capability, evidence]), evidence_type.clone());
+            evidence = self.push_instruction(Instruction::MakeTuple(vec![capability, evidence]), evidence_type.clone());
         }
         evidence
     }
@@ -1201,7 +1202,8 @@ where
         }
 
         let (item, _) = GetItemRaw(name.top_level_item).get(self.compiler);
-        if let cst::TopLevelItemKind::TraitDefinition(effect) | cst::TopLevelItemKind::EffectDefinition(effect) = &item.kind
+        if let cst::TopLevelItemKind::TraitDefinition(effect) | cst::TopLevelItemKind::EffectDefinition(effect) =
+            &item.kind
             && let Some(op_index) = effect.body.iter().position(|d| d.name == name.local_name_id)
         {
             let id = self.get_definition_id(&name);
@@ -1276,7 +1278,9 @@ where
 
     /// Builds a new isolated top-level definition, saving and restoring this builder's local
     /// scope state (locals, mutability, capabilities) around it.
-    fn new_isolated_definition(&mut self, name: Name, generic_count: u32, typ: Type, f: impl FnOnce(&mut Self)) -> DefinitionId {
+    fn new_isolated_definition(
+        &mut self, name: Name, generic_count: u32, typ: Type, f: impl FnOnce(&mut Self),
+    ) -> DefinitionId {
         let saved = self.take_scope();
         let id = self.new_definition(name, None, generic_count, typ, f);
         self.restore_scope(saved);
@@ -1371,9 +1375,8 @@ where
         let needed_capability_values = mapvec(&needed_capabilities, |(_, v)| *v);
 
         // A suppressed lambda still needing the ambient evidence rest must capture it through the environment.
-        let needs_bundle_capture = suppress_capabilities
-            && matches!(own_end, types::RowEnd::Generic(_))
-            && self.capability_bundle.is_some();
+        let needs_bundle_capture =
+            suppress_capabilities && matches!(own_end, types::RowEnd::Generic(_)) && self.capability_bundle.is_some();
         let bundle_capture_value = if needs_bundle_capture { self.capability_bundle } else { None };
         let bundle_capture_type = bundle_capture_value.map(|v| self.type_of_value(&v));
 
@@ -1463,8 +1466,7 @@ where
             let env_is_pointer =
                 matches!(function_type.environment, Type::Primitive(crate::mir::PrimitiveType::Pointer));
             let free_vars = this.context().get_closure_environment(expr);
-            let has_captures =
-                free_vars.is_some() || !needed_capabilities.is_empty() || bundle_capture_type.is_some();
+            let has_captures = free_vars.is_some() || !needed_capabilities.is_empty() || bundle_capture_type.is_some();
             let needs_env_param = has_captures || env_is_pointer;
             let pushed_capability_count = if suppress_capabilities { 0 } else { 1 };
             let env_param_index = lambda.parameters.len() as u32 + pushed_capability_count;
@@ -2442,10 +2444,9 @@ where
                         Instruction::IndexTuple { tuple: struct_param, index: i as u32 },
                         field_type_clone,
                     );
-                    let value_args = mapvec(
-                        (0..n_params).filter(|j| *j != struct_index),
-                        |j| Value::Parameter(BlockId::ENTRY_BLOCK, j as u32),
-                    );
+                    let value_args = mapvec((0..n_params).filter(|j| *j != struct_index), |j| {
+                        Value::Parameter(BlockId::ENTRY_BLOCK, j as u32)
+                    });
                     let instruction = if field_is_closure {
                         Instruction::CallClosure { closure: extracted, arguments: value_args }
                     } else {

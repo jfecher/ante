@@ -565,8 +565,16 @@ impl Type {
         local_kinds: &mut LocalKinds, insert_implicit_type_vars: bool, open_effects_by_default: bool,
     ) -> Type {
         let mut visited = Vec::new();
-        TypeConverter::new(resolve, db, next_id, local_kinds, insert_implicit_type_vars, open_effects_by_default, &mut visited)
-            .convert_with_kind(typ, expected)
+        TypeConverter::new(
+            resolve,
+            db,
+            next_id,
+            local_kinds,
+            insert_implicit_type_vars,
+            open_effects_by_default,
+            &mut visited,
+        )
+        .convert_with_kind(typ, expected)
     }
 
     /// Returns a tuple of:
@@ -580,8 +588,16 @@ impl Type {
         local_kinds: &mut LocalKinds, insert_implicit_type_vars: bool, open_effects_by_default: bool,
     ) -> (Type, Kind) {
         let mut visited = Vec::new();
-        TypeConverter::new(resolve, db, next_id, local_kinds, insert_implicit_type_vars, open_effects_by_default, &mut visited)
-            .convert(typ, expected)
+        TypeConverter::new(
+            resolve,
+            db,
+            next_id,
+            local_kinds,
+            insert_implicit_type_vars,
+            open_effects_by_default,
+            &mut visited,
+        )
+        .convert(typ, expected)
     }
 
     /// Convert an effects clause into an effect row [Type].
@@ -590,8 +606,16 @@ impl Type {
         local_kinds: &mut LocalKinds, insert_implicit_type_vars: bool, open_effects_by_default: bool,
     ) -> Type {
         let mut visited = Vec::new();
-        TypeConverter::new(resolve, db, next_id, local_kinds, insert_implicit_type_vars, open_effects_by_default, &mut visited)
-            .convert_effects_clause(effects)
+        TypeConverter::new(
+            resolve,
+            db,
+            next_id,
+            local_kinds,
+            insert_implicit_type_vars,
+            open_effects_by_default,
+            &mut visited,
+        )
+        .convert_effects_clause(effects)
     }
 }
 
@@ -722,10 +746,9 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
                 let typ = Type::Application(Arc::new(f), Arc::new(converted_args));
                 (typ, result_kind)
             },
-            crate::parser::cst::TypeKind::Reference(kind) => (
-                Type::Primitive(PrimitiveType::Reference(*kind)),
-                Kind::from_args(vec![Kind::Lifetime, Kind::Type]),
-            ),
+            crate::parser::cst::TypeKind::Reference(kind) => {
+                (Type::Primitive(PrimitiveType::Reference(*kind)), Kind::from_args(vec![Kind::Lifetime, Kind::Type]))
+            },
             crate::parser::cst::TypeKind::NoClosureEnv => (Type::NO_CLOSURE_ENV, Kind::Type),
             crate::parser::cst::TypeKind::Pointer => (Type::POINTER, Kind::from_args(vec![Kind::Type])),
             crate::parser::cst::TypeKind::Tuple(elements) => {

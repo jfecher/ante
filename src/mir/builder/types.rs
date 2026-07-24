@@ -57,8 +57,7 @@ where
         &self, typ: &TCType, generics: &[crate::type_inference::generics::Generic], type_bindings: &TypeBindings,
         instantiation: &Vec<Type>,
     ) -> Type {
-        let generics_in_scope =
-            generics.iter().enumerate().map(|(i, g)| (*g, crate::mir::Generic(i as u32))).collect();
+        let generics_in_scope = generics.iter().enumerate().map(|(i, g)| (*g, crate::mir::Generic(i as u32))).collect();
 
         let ctx = ConvertTypeContext {
             compiler: self.compiler,
@@ -241,7 +240,9 @@ where
         Type::Function(Arc::new(FunctionType { parameters, environment: Type::POINTER, return_type }))
     }
 
-    pub(super) fn build_function_type(&self, function_type: &crate::type_inference::types::FunctionType, parameters: Vec<Type>) -> Type {
+    pub(super) fn build_function_type(
+        &self, function_type: &crate::type_inference::types::FunctionType, parameters: Vec<Type>,
+    ) -> Type {
         let environment = match function_type.environment.follow(self.type_bindings) {
             TCType::Variable(id) => self.convert_type_variable(*id, Type::NO_CLOSURE_ENV),
             other => self.convert_type(other, None),

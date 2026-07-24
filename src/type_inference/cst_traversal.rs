@@ -586,7 +586,15 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let Some(effects) = &lambda.effects else { return self.fresh_effect_row() };
         let mut local_kinds = types::LocalKinds::default();
         self.with_next_id(|next_id| {
-            Type::from_cst_effects_clause(Some(effects), self.current_resolve(), self.compiler, next_id, &mut local_kinds, true, true)
+            Type::from_cst_effects_clause(
+                Some(effects),
+                self.current_resolve(),
+                self.compiler,
+                next_id,
+                &mut local_kinds,
+                true,
+                true,
+            )
         })
     }
 

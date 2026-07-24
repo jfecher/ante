@@ -7,9 +7,8 @@ use crate::{
     lexer::token::{FloatKind, IntegerKind},
     parser::{
         cst::{
-            self, Argument, Constructor, Definition, Expr, If, Lambda, Literal,
-            Parameter, Path, Pattern, SequenceItem, TopLevelItem, TopLevelItemKind, TraitImpl, TraitOrEffectDefinition,
-            Type, TypeDefinitionBody, TypeKind,
+            self, Argument, Constructor, Definition, Expr, If, Lambda, Literal, Parameter, Path, Pattern, SequenceItem,
+            TopLevelItem, TopLevelItemKind, TraitImpl, TraitOrEffectDefinition, Type, TypeDefinitionBody, TypeKind,
         },
         desugar_context::DesugarContext,
         ids::{ExprId, PathId, PatternId},

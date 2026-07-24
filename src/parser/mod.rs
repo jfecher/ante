@@ -957,10 +957,7 @@ impl<'tokens> Parser<'tokens> {
         let effects = self.parse_effects_clause();
         let location = start.to(&self.previous_token_location());
 
-        Ok(Type::new(
-            TypeKind::Function(cst::FunctionType { parameters, environment, return_type, effects }),
-            location,
-        ))
+        Ok(Type::new(TypeKind::Function(cst::FunctionType { parameters, environment, return_type, effects }), location))
     }
 
     /// effects_clause: 'pure' | 'can' type_application (',' type_application)*

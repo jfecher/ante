@@ -148,7 +148,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 } else {
                     false
                 }
-            }
+            },
 
             cst::TypeKind::Variable(_)
             | cst::TypeKind::Reference(_)
