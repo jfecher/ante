@@ -687,16 +687,16 @@ fn desugar_logical_operators(expr: ExprId, context: &mut DesugarContext, is_or: 
     );
 }
 
-/// Desugars `do <body>` into `move fn {param} -> <body>)`.
+/// Desugars `do <body>` into `move fn _ -> <body>)`.
 fn desugar_do(expr: ExprId, context: &mut DesugarContext) {
     let Expr::Do(do_) = context[expr].clone() else { unreachable!() };
     let location = context.expr_location(expr).clone();
 
-    let name = context.push_name(Arc::new("do_param".to_string()), location.clone());
+    let name = context.push_name(Arc::new("_".to_string()), location.clone());
     let param = context.push_pattern(Pattern::Variable(name), location);
 
     let lambda = Expr::Lambda(cst::Lambda {
-        parameters: vec![Parameter::implicit(param)],
+        parameters: vec![Parameter::new(param)],
         return_type: None,
         body: do_.body,
         is_move: true,
@@ -705,10 +705,10 @@ fn desugar_do(expr: ExprId, context: &mut DesugarContext) {
     context.set_expr(expr, lambda);
 }
 
-/// Desugars `a ~> b` into `b (fn {h} -> a)`
+/// Desugars `a ~> b` into `b (fn _ -> a)`
 ///
 /// If `b` is itself a call, `a` is prepended to its arguments directly:
-/// `a ~> b c d` desugars to `b (fn {h} -> a) c d`
+/// `a ~> b c d` desugars to `b (fn _ -> a) c d`
 fn desugar_tilde_arrow(expr: ExprId, context: &mut DesugarContext) {
     let Expr::Call(call) = &context[expr] else { unreachable!() };
 
@@ -716,11 +716,11 @@ fn desugar_tilde_arrow(expr: ExprId, context: &mut DesugarContext) {
     let b = call.arguments[1].expr;
     let location = context.expr_location(expr).clone();
 
-    let variable_name = Arc::new("~>_handler".to_string());
+    let variable_name = Arc::new("_".to_string());
     let variable_name = context.push_name(variable_name, location.clone());
-    let pattern = context.push_pattern(cst::Pattern::Variable(variable_name), location.clone());
+    let pattern = context.push_pattern(Pattern::Variable(variable_name), location.clone());
     let lambda = Expr::Lambda(cst::Lambda {
-        parameters: vec![cst::Parameter::implicit(pattern)],
+        parameters: vec![Parameter::new(pattern)],
         return_type: None,
         body: a,
         is_move: false,
