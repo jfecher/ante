@@ -3,6 +3,8 @@ use std::{ffi::OsString, path::PathBuf};
 use clap::{Args, CommandFactory, Parser, ValueEnum, ValueHint, error::ErrorKind};
 use clap_complete::Shell;
 
+use crate::{dependencies, project};
+
 #[derive(Parser, Debug)]
 pub struct Completions {
     #[arg(long)]
@@ -14,6 +16,8 @@ pub enum Commands {
     Run(RunArgs),
     /// Clone a git dependency into this project's dependency directory
     Add(AddArgs),
+    /// Inits an ante project
+    Init(InitArgs),
 }
 
 #[derive(Parser, Debug)]
@@ -149,6 +153,50 @@ pub struct CompileArgs {
     /// Add a directory to the native library search path when linking. May be repeated.
     #[arg(long = "link-search", short = 'L', value_name = "PATH", value_hint = ValueHint::DirPath)]
     pub link_search: Vec<PathBuf>,
+}
+
+#[derive(Args, Debug)]
+pub struct InitArgs {
+    #[arg(default_value = ".", value_hint = ValueHint::DirPath)]
+    pub path: PathBuf,
+}
+
+/// CommandError represents an error propagated up by any commands.
+/// This should be extensive and is useful for pretty printing
+#[derive(Debug)]
+pub enum CommandError {
+    Dependency(dependencies::DependencyError),
+    InitProject(project::InitProjectError),
+}
+
+impl std::fmt::Display for CommandError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Dependency(error) => write!(formatter, "Failed to add Dependency: {error}"),
+            Self::InitProject(error) => write!(formatter, "Failed to init project: {error}"),
+        }
+    }
+}
+
+impl std::error::Error for CommandError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Dependency(error) => Some(error),
+            Self::InitProject(error) => Some(error),
+        }
+    }
+}
+
+impl From<dependencies::DependencyError> for CommandError {
+    fn from(error: dependencies::DependencyError) -> Self {
+        Self::Dependency(error)
+    }
+}
+
+impl From<project::InitProjectError> for CommandError {
+    fn from(error: project::InitProjectError) -> Self {
+        Self::InitProject(error)
+    }
 }
 
 impl CompileArgs {

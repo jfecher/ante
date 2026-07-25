@@ -12,7 +12,6 @@ pub mod namespace;
 
 use crate::{
     diagnostics::{Diagnostic, Location},
-    find_files::SRC_FOLDER,
     incremental::{
         self, DbHandle, ExportedTypes, GetCrateGraph, GetItem, Resolve, VisibleDefinitions, VisibleDefinitionsResult,
     },
@@ -26,6 +25,7 @@ use crate::{
         desugar_context::DesugarContext,
         ids::{ExprId, NameId, PathId, PatternId, TopLevelId, TopLevelName},
     },
+    project::SRC_FOLDER,
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]

@@ -54,7 +54,7 @@ use std::{
 #[cfg(feature = "llvm")]
 use crate::codegen::llvm::codegen_llvm;
 use crate::{
-    cli::{EmitTarget, OptLevel},
+    cli::{CommandError, EmitTarget, OptLevel},
     diagnostics::{DiagnosticKind, collect_all_diagnostics},
     files::{make_compiler, write_metadata},
     incremental::{TargetPointerSize, TypeCheck, ValidateExports},
@@ -69,6 +69,7 @@ mod lexer;
 mod mir;
 mod name_resolution;
 mod parser;
+mod project;
 mod type_inference;
 
 mod cli;
@@ -129,6 +130,13 @@ impl CompileRequest {
 }
 
 fn main() {
+    if let Err(error) = run() {
+        eprintln!("{}: {error}", "error".red());
+        std::process::exit(1)
+    }
+}
+
+fn run() -> Result<(), CommandError> {
     if let Ok(Completions { shell_completion }) = Completions::try_parse() {
         let mut cmd = Cli::command();
         let name = cmd.get_name().to_string();
@@ -140,10 +148,13 @@ fn main() {
             Some(Commands::Run(args)) => {
                 compile(CompileRequest::project(args.compile, true, args.delete_binary, args.program_args))
             },
-            Some(Commands::Add(args)) => dependencies::add_git_dependency(&args.dep_url),
+            Some(Commands::Add(args)) => dependencies::add_dependency(&args.dep_url)?,
+            Some(Commands::Init(args)) => project::init_project(&args.path)?,
             None => compile(CompileRequest::files(file)),
         }
     }
+
+    Ok(())
 }
 
 fn compile(request: CompileRequest) {

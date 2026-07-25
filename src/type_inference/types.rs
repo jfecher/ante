@@ -908,7 +908,7 @@ impl Type {
     /// Walk every subterm of this type, although does not recur into [Type::Forall].
     fn for_each_subterm(&self, bindings: &TypeBindings, f: &mut impl FnMut(&Type, &TypeBindings)) {
         let typ = self.follow(bindings);
-        f(&typ, bindings);
+        f(typ, bindings);
         match typ {
             Type::Primitive(_) | Type::UserDefined(_) | Type::Variable(_) | Type::Generic(_) | Type::U32(_) => (),
             Type::Function(function) => {

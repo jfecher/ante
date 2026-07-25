@@ -614,7 +614,7 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
                     let idx = constructor.variant_index();
                     let mut cols = row.columns;
 
-                    for (var, pat) in cases[idx].1.iter().zip(args.into_iter()) {
+                    for (var, pat) in cases[idx].1.iter().zip(args) {
                         cols.push(Column::new(*var, pat));
                     }
 

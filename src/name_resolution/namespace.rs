@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{find_files::SRC_FOLDER, parser::ids::TopLevelId, paths::prelude_path_relative_to_stdlib_source_folder};
+use crate::{parser::ids::TopLevelId, paths::prelude_path_relative_to_stdlib_source_folder, project::SRC_FOLDER};
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub(super) enum Namespace {

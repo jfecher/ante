@@ -30,6 +30,7 @@ mimalloc = { version = "0.1", default-features = false }
 [dev-dependencies]
 # Enabling 'parallel' makes `cargo t` nondeterministic
 goldentests = { version = "1.4.2", default-features = false }
+tempfile = "3"
 
 [profile.release]
 debug = true
