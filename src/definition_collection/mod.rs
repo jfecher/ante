@@ -423,6 +423,8 @@ impl<'local, 'db> Declarer<'local, 'db> {
         Self { definitions: Default::default(), methods: Default::default(), db }
     }
 
+    /// This is only called in top-level patterns since that is all definition
+    /// collection is concerned with.
     fn declare_names_in_pattern(&mut self, pattern: PatternId, id: TopLevelId, context: &TopLevelContext) {
         match &context.patterns[pattern] {
             Pattern::Error => (),
@@ -447,7 +449,7 @@ impl<'local, 'db> Declarer<'local, 'db> {
             // `declare_names_in_pattern` is only for top-level patterns, which must be irrefutable
             Pattern::Or(_) => {
                 let location = context.pattern_locations[pattern].clone();
-                self.db.accumulate(Diagnostic::InvalidPattern { location });
+                self.db.accumulate(Diagnostic::OrInIrrefutablePattern { location });
             },
             Pattern::Alias(name, pattern) => {
                 self.declare_single(*name, id, context);

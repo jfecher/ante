@@ -193,6 +193,9 @@ pub enum Diagnostic {
         name: Name,
         location: Location,
     },
+    OrInIrrefutablePattern {
+        location: Location,
+    },
     Unimplemented {
         item: UnimplementedItem,
         location: Location,
@@ -542,6 +545,9 @@ impl Diagnostic {
             Diagnostic::OrPatternBindingMismatch { name, location: _ } => {
                 format!("Variable {} is not bound by every alternative of this OR-pattern", color_constant(name))
             },
+            Diagnostic::OrInIrrefutablePattern { location: _ } => {
+                format!("`|` can only be used in {} or {} patterns, ", color_keyword("match"), color_keyword("is"))
+            },
             Diagnostic::Unimplemented { item, location: _ } => {
                 format!("{item} are currently unimplemented")
             },
@@ -728,6 +734,7 @@ impl Diagnostic {
             | Diagnostic::InvalidRangeInPattern { location, .. }
             | Diagnostic::InvalidPattern { location }
             | Diagnostic::OrPatternBindingMismatch { location, .. }
+            | Diagnostic::OrInIrrefutablePattern { location }
             | Diagnostic::TypeMustBeKnownMemberAccess { location }
             | Diagnostic::ConstructorExpectedFoundType { location, .. }
             | Diagnostic::ImplicitNotAVariable { location }

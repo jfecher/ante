@@ -525,6 +525,8 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                 self.resolve_type(typ, true);
             },
             Pattern::MethodName { type_name, item_name } => self.link_existing_union_variant(*type_name, *item_name),
+            // This is only called on top-level patterns where Or would be invalid anyway but it
+            // should be fine to link either way
             Pattern::Or(alts) => {
                 for alt in alts {
                     self.link_existing_pattern(*alt);
@@ -622,7 +624,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                 // Resolve body with the parameter name in scope
                 self.push_local_scope();
                 for parameter in &lambda.parameters {
-                    self.declare_names_in_pattern(parameter.pattern, true, false, !parameter.is_implicit);
+                    self.declare_names_in_pattern(parameter.pattern, true, false, !parameter.is_implicit, false);
                 }
                 if let Some(return_type) = &lambda.return_type {
                     self.resolve_type(return_type, true);
@@ -659,7 +661,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                 self.resolve_expr(match_.expression);
                 for (pattern, branch) in &match_.cases {
                     self.push_local_scope();
-                    self.declare_names_in_pattern(*pattern, false, true, true);
+                    self.declare_names_in_pattern(*pattern, false, true, true, true);
                     self.resolve_expr(*branch);
                     self.pop_local_scope();
                 }
@@ -745,13 +747,13 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
         if is_lambda {
             // Lambda definitions can call themselves recursively, so the name must be in scope
             // before resolving the body.
-            self.declare_names_in_pattern(definition.pattern, true, false, check_unused);
+            self.declare_names_in_pattern(definition.pattern, true, false, check_unused, false);
         }
         // TODO: Type variables declared in pattern type annotations should be in scope for the rhs,
         // but the value variable itself should not see itself in its own rhs.
         self.resolve_expr(definition.rhs);
         if !is_lambda {
-            self.declare_names_in_pattern(definition.pattern, true, false, check_unused);
+            self.declare_names_in_pattern(definition.pattern, true, false, check_unused, false);
         }
     }
 
@@ -828,8 +830,13 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
     ///
     /// If `declare_type_vars` is true, any type variables used that are not in scope will
     /// automatically be declared. Otherwise an error will be issued.
+    ///
+    /// `refutable` should be `true` only for `match` arm patterns; any other pattern (a
+    /// `let`/`var` binding, function parameter, etc.) must always match, so an OR-pattern
+    /// there is rejected with a diagnostic instead of having its names declared.
     fn declare_names_in_pattern(
         &mut self, pattern: PatternId, declare_type_vars: bool, allow_type_based_resolution: bool, check_unused: bool,
+        refutable: bool,
     ) {
         match &self.context[pattern] {
             Pattern::Variable(name) => {
@@ -841,12 +848,24 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             Pattern::Constructor(function, args) => {
                 self.link(*function, allow_type_based_resolution, false);
                 for arg in args {
-                    self.declare_names_in_pattern(*arg, declare_type_vars, allow_type_based_resolution, check_unused);
+                    self.declare_names_in_pattern(
+                        *arg,
+                        declare_type_vars,
+                        allow_type_based_resolution,
+                        check_unused,
+                        refutable,
+                    );
                 }
             },
             Pattern::Error => (),
             Pattern::TypeAnnotation(pattern, typ) => {
-                self.declare_names_in_pattern(*pattern, declare_type_vars, allow_type_based_resolution, check_unused);
+                self.declare_names_in_pattern(
+                    *pattern,
+                    declare_type_vars,
+                    allow_type_based_resolution,
+                    check_unused,
+                    refutable,
+                );
                 self.resolve_type(typ, declare_type_vars);
             },
             Pattern::MethodName { type_name, item_name } => {
@@ -854,11 +873,22 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                 self.declare_name(*item_name, check_unused);
             },
             Pattern::Or(alts) => {
+                if !refutable {
+                    let location = self.context.pattern_location(pattern).clone();
+                    self.emit_diagnostic(Diagnostic::OrInIrrefutablePattern { location });
+                    return;
+                }
                 self.declare_names_in_or_pattern(alts, declare_type_vars, allow_type_based_resolution, check_unused);
             },
             Pattern::Alias(name, pattern) => {
                 self.declare_name(*name, check_unused);
-                self.declare_names_in_pattern(*pattern, declare_type_vars, allow_type_based_resolution, check_unused);
+                self.declare_names_in_pattern(
+                    *pattern,
+                    declare_type_vars,
+                    allow_type_based_resolution,
+                    check_unused,
+                    refutable,
+                );
             },
         }
     }
@@ -883,7 +913,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
 
         let names_in_each_alt = mapvec(alts, |alt| {
             self.push_local_scope();
-            self.declare_names_in_pattern(*alt, declare_type_vars, allow_type_based_resolution, check_unused);
+            self.declare_names_in_pattern(*alt, declare_type_vars, allow_type_based_resolution, check_unused, true);
             self.pop_scratch_scope()
         });
 

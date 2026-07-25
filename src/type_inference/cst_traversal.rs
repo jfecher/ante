@@ -1254,7 +1254,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             // This may be reachable on a parse error but these should only be for
             // top-level methods which should never be mutable
             Pattern::MethodName { .. } => (),
-            Pattern::Or(_) => unreachable!("`|` pattern in record_mutable_pattern"),
+            Pattern::Or(alts) => {
+                alts.iter().for_each(|pattern| self.record_mutable_pattern(*pattern));
+            },
             Pattern::Alias(name, inner) => {
                 self.mutable_definitions.insert(*name);
                 self.record_mutable_pattern(*inner);
