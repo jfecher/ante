@@ -50,12 +50,6 @@ fn find_top_level_name_at(
                     .try_offer(loc.span.start.byte_index, loc.span.end.byte_index)
                     .then(|| ctx.get_name(def.name).to_string())
             },
-            TopLevelItemKind::AbilityDefinition(def) => {
-                let loc = &ctx.name_locations[def.name];
-                searcher
-                    .try_offer(loc.span.start.byte_index, loc.span.end.byte_index)
-                    .then(|| ctx.get_name(def.name).to_string())
-            },
             TopLevelItemKind::Definition(def) => {
                 let loc = &ctx.pattern_locations[def.pattern];
                 if searcher.try_offer(loc.span.start.byte_index, loc.span.end.byte_index) {
@@ -64,7 +58,13 @@ fn find_top_level_name_at(
                     None
                 }
             },
-            TopLevelItemKind::AbilityImpl(_) | TopLevelItemKind::Comptime(_) => None,
+            TopLevelItemKind::TraitDefinition(def) | TopLevelItemKind::EffectDefinition(def) => {
+                let loc = &ctx.name_locations[def.name];
+                searcher
+                    .try_offer(loc.span.start.byte_index, loc.span.end.byte_index)
+                    .then(|| ctx.get_name(def.name).to_string())
+            },
+            TopLevelItemKind::TraitImpl(_) | TopLevelItemKind::Comptime(_) => None,
         };
 
         if let Some(name) = found {
