@@ -190,12 +190,12 @@ fn materialize_abort_wrapper(mir: &mut Mir, decision: &CaseDecision, case_index:
     let n = decision.shape.op_arg_types.len();
     let env_pointer = Value::Parameter(BlockId::ENTRY_BLOCK, n as u32);
     let old_env_param = Value::Parameter(BlockId::ENTRY_BLOCK, (n + 1) as u32);
-    let (buf_ptr, result_slot, handler_env) =
+    let (buf_ptr, result_slot, target_coro, handler_env) =
         emit_wrapper_prologue(&mut def, env_pointer, &decision.handler_env_type, decision.handler_is_closure);
     if let Some(replacement) = handler_env {
         substitute_value(&mut def, old_env_param, replacement);
     }
-    rewrite_returns_as_longjmp(&mut def, buf_ptr, result_slot);
+    rewrite_returns_as_longjmp(&mut def, buf_ptr, target_coro, result_slot);
     mir.definitions.insert(new_id, def);
     new_id
 }
@@ -215,25 +215,28 @@ fn clone_handler_for_wrapper(
     def
 }
 
-/// Emit `env = *env_pointer; (buf, slot, handler_env) = (env.0, env.1, env.2)` at the start
-/// of the wrapper's entry block, returning the three Values.
+/// Emit `env = *env_pointer; (buf, slot, target_coro, handler_env) = (env.0, env.1, env.2, env.3)`
+/// at the start of the wrapper's entry block, returning the four Values. `target_coro`
+/// is the coroutine (if any) running when this wrapper's `try`/setjmp site was installed.
 fn emit_wrapper_prologue(
     def: &mut Definition, env_pointer: Value, handler_env_type: &Type, handler_is_closure: bool,
-) -> (Value, Value, Option<Value>) {
-    let env_struct_type = Type::Tuple(Arc::new(vec![Type::POINTER, Type::POINTER, handler_env_type.clone()]));
+) -> (Value, Value, Value, Option<Value>) {
+    let env_struct_type =
+        Type::Tuple(Arc::new(vec![Type::POINTER, Type::POINTER, Type::POINTER, handler_env_type.clone()]));
     let mut prologue = Vec::new();
     let mut e = Emitter::pending(def, &mut prologue);
     let env_struct = e.push_instruction(Instruction::Deref(env_pointer), env_struct_type);
     let buf_ptr = e.push_instruction(Instruction::IndexTuple { tuple: env_struct, index: 0 }, Type::POINTER);
     let result_slot = e.push_instruction(Instruction::IndexTuple { tuple: env_struct, index: 1 }, Type::POINTER);
+    let target_coro = e.push_instruction(Instruction::IndexTuple { tuple: env_struct, index: 2 }, Type::POINTER);
     let handler_env = handler_is_closure
-        .then(|| e.push_instruction(Instruction::IndexTuple { tuple: env_struct, index: 2 }, handler_env_type.clone()));
+        .then(|| e.push_instruction(Instruction::IndexTuple { tuple: env_struct, index: 3 }, handler_env_type.clone()));
     def.blocks[BlockId::ENTRY_BLOCK].instructions.splice(0..0, prologue);
-    (buf_ptr, result_slot, handler_env)
+    (buf_ptr, result_slot, target_coro, handler_env)
 }
 
-/// Replace each `Return v` terminator with `Store(slot, v); longjmp(buf, 1); unreachable`.
-fn rewrite_returns_as_longjmp(def: &mut Definition, buf_ptr: Value, result_slot: Value) {
+/// Replace each `Return v` terminator with `Store(slot, v); longjmp(buf, target_coro, 1); unreachable`.
+fn rewrite_returns_as_longjmp(def: &mut Definition, buf_ptr: Value, target_coro: Value, result_slot: Value) {
     let return_blocks: Vec<(BlockId, Value)> = def
         .blocks
         .iter()
@@ -246,7 +249,7 @@ fn rewrite_returns_as_longjmp(def: &mut Definition, buf_ptr: Value, result_slot:
         return;
     }
     let longjmp_type = Type::Function(Arc::new(FunctionType {
-        parameters: vec![Type::POINTER, Type::int(IntegerKind::I32)],
+        parameters: vec![Type::POINTER, Type::POINTER, Type::int(IntegerKind::I32)],
         environment: Type::NO_CLOSURE_ENV,
         return_type: Type::UNIT,
     }));
@@ -256,7 +259,10 @@ fn rewrite_returns_as_longjmp(def: &mut Definition, buf_ptr: Value, result_slot:
         let mut e = Emitter::in_block(def, block);
         e.push_instruction(Instruction::Store { pointer: result_slot, value: ret_val }, Type::UNIT);
         e.push_instruction(
-            Instruction::Call { function: longjmp, arguments: vec![buf_ptr, Value::Integer(IntConstant::I32(1))] },
+            Instruction::Call {
+                function: longjmp,
+                arguments: vec![buf_ptr, target_coro, Value::Integer(IntConstant::I32(1))],
+            },
             Type::UNIT,
         );
         def.blocks[block].terminator = Some(TerminatorInstruction::Unreachable);
@@ -324,11 +330,40 @@ fn build_setjmp_prologue(
     let mut e = Emitter::pending(definition, prologue);
     let buf_ptr = e.push_instruction(Instruction::StackAllocUninit(jmp_buf_type()), Type::POINTER);
     let result_slot_ptr = e.push_instruction(Instruction::StackAllocUninit(result_type.clone()), Type::POINTER);
-    let cap_value =
-        emit_cap_tuple(&mut e, decisions, wrapper_ids, wrapper_closure_types, buf_ptr, result_slot_ptr, cap_tuple_type);
+
+    // Captured before the body runs, so a nested coroutine abort knows where to unwind to
+    let target_coro = emit_mco_coro_running(&mut e);
+    let cap_value = emit_cap_tuple(
+        &mut e, decisions, wrapper_ids, wrapper_closure_types, buf_ptr, result_slot_ptr, target_coro, cap_tuple_type,
+    );
+
     let body_closure = emit_body_closure(&mut e, body, body_fn_type, cap_value);
     let is_zero = emit_setjmp_test(&mut e, buf_ptr);
+
+    // Frees any coroutine an abort had to abandon mid-unwind.
+    // This is a no-op on the normal, non-longjmp path.
+    emit_reap_pending_abort(&mut e);
     SetjmpPrologue { result_slot_ptr, body_closure, is_zero }
+}
+
+/// Calls `mco_coro_running`, returning the coroutine currently executing, or NULL for the main stack.
+fn emit_mco_coro_running(e: &mut Emitter) -> Value {
+    let running_type =
+        Type::Function(Arc::new(FunctionType { parameters: vec![], environment: Type::NO_CLOSURE_ENV, return_type: Type::POINTER }));
+    let running = e.push_instruction(Instruction::Extern("mco_coro_running".to_string()), running_type);
+    e.push_instruction(Instruction::Call { function: running, arguments: vec![] }, Type::POINTER)
+}
+
+/// Calls `mco_reap_pending_abort`, freeing a coroutine `mco_abort_longjmp` couldn't free immediately.
+/// This is a no-op if none is pending.
+fn emit_reap_pending_abort(e: &mut Emitter) {
+    let reap_type = Type::Function(Arc::new(FunctionType {
+        parameters: vec![],
+        environment: Type::NO_CLOSURE_ENV,
+        return_type: Type::int(IntegerKind::U8),
+    }));
+    let reap = e.push_instruction(Instruction::Extern("mco_reap_pending_abort".to_string()), reap_type);
+    e.push_instruction(Instruction::Call { function: reap, arguments: vec![] }, Type::int(IntegerKind::U8));
 }
 
 /// 256 bytes should hopefully covers all common platforms. Windows seems to be the largest at 256B.
@@ -338,16 +373,18 @@ fn jmp_buf_type() -> Type {
     Type::Tuple(Arc::new(vec![Type::int(IntegerKind::U64); 32]))
 }
 
-/// For each case, build `(buf, slot, handler_env)`, stack-alloc it, and pack the wrapper
-/// closure with that pointer. Tuple all wrapper closures into the cap value.
+/// For each case, build `(buf, slot, target_coro, handler_env)`, stack-alloc it, and pack the
+/// wrapper closure with that pointer. Tuple all wrapper closures into the cap value.
+#[allow(clippy::too_many_arguments)]
 fn emit_cap_tuple(
     e: &mut Emitter, decisions: Vec<CaseDecision>, wrapper_ids: &[DefinitionId], wrapper_closure_types: Vec<Type>,
-    buf_ptr: Value, result_slot_ptr: Value, cap_tuple_type: &Type,
+    buf_ptr: Value, result_slot_ptr: Value, target_coro: Value, cap_tuple_type: &Type,
 ) -> Value {
     let cap_closures = mapvec(decisions.into_iter().zip(wrapper_ids).zip(wrapper_closure_types), |((d, &wid), wty)| {
-        let cap_state_type = Type::Tuple(Arc::new(vec![Type::POINTER, Type::POINTER, d.handler_env_type]));
+        let cap_state_type =
+            Type::Tuple(Arc::new(vec![Type::POINTER, Type::POINTER, Type::POINTER, d.handler_env_type]));
         let cap_state = e.push_instruction(
-            Instruction::MakeTuple(vec![buf_ptr, result_slot_ptr, d.handler_env.unwrap_or(Value::Unit)]),
+            Instruction::MakeTuple(vec![buf_ptr, result_slot_ptr, target_coro, d.handler_env.unwrap_or(Value::Unit)]),
             cap_state_type,
         );
         let cap_state_ptr = e.push_instruction(Instruction::StackAlloc(cap_state), Type::POINTER);

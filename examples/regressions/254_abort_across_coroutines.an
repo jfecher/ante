@@ -1,0 +1,41 @@
+// Regression test: The abort optimization used to fail at runtime when aborting from
+// within the handler to another effect.
+// 
+// Used to crash with:
+//   mco_coro_suspend: Assertion `res == MCO_SUCCESS' failed
+import Std.Stream.Emit, emit
+import Std.Fail.Fail, fail, try
+import Std.C.VoidPtr
+
+// Std.Stream.foldr isn't effect polymorphic at time of writing, but it should be.
+// For now we have this copy
+// TODO: This fails to type check without an explicit signature
+foldr (gen: fn Unit => Unit can Emit a, e) (initial: b) (f: fn a b => b): b can e =
+    handler h for emit value ->
+        rest = resume ()
+        f value rest
+    gen ()
+    initial
+
+main () =
+    gen = do
+        result = try do
+            gen2 = do
+                emit 5
+                fail ()
+
+            // 5 -> fail -> outer try returns None
+            foldr gen2 0 (+)
+
+        println result
+
+        // The following two calls only work if the abort left coroutine bookkeeping coherent
+        emit 7
+        emit 35
+
+    foldr gen 0 (+) |> println
+
+// args: --delete-binary --no-color
+// expected stdout:
+// None
+// 42

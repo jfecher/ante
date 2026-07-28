@@ -1,0 +1,28 @@
+import Std.Stream.Emit, emit
+import Std.Fail.Fail, fail, try
+
+// This used to panic MIR evidence projection since `e` would end up duplicating an effect
+foldr (gen: fn Unit => Unit can Emit a, e) (initial: b) (f: fn a b => b): b can e =
+    handler h for emit value ->
+        rest = resume ()
+        f value rest
+    gen ()
+    initial
+
+emit_1_2_3 () =
+    emit 1
+    emit 2
+    emit 3
+
+failing_gen () =
+    emit 5
+    fail ()
+
+main () =
+    println <| foldr emit_1_2_3 0 (+)
+    println <| try do foldr failing_gen 0 (+)
+
+// args: --delete-binary --no-color
+// expected stdout:
+// 6
+// None

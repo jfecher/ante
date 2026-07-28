@@ -927,34 +927,64 @@ where
 
     /// Builds a needed evidence value out of a larger `provided` one by walking the provided cons chain.
     fn project_evidence(&mut self, provided: Value, provided_type: &Type, needed_type: &Type) -> Option<Value> {
-        if provided_type == needed_type {
-            return Some(provided);
+        self.project_evidence_rec(provided.clone(), provided_type.clone(), provided, provided_type, needed_type)
+    }
+
+    fn project_evidence_rec(
+        &mut self, cursor: Value, cursor_type: Type, chain_start: Value, chain_start_type: &Type,
+        needed_type: &Type,
+    ) -> Option<Value> {
+        if &cursor_type == needed_type {
+            return Some(cursor);
         }
-        // The empty evidence needs nothing from the provided chain.
+        // Empty evidence
         if matches!(needed_type, Type::Tuple(fields) if fields.is_empty()) {
             return Some(self.push_instruction(Instruction::MakeTuple(Vec::new()), Type::tuple(Vec::new())));
         }
+
         let Type::Tuple(needed_fields) = needed_type else { return None };
         let [needed_head, needed_rest] = needed_fields.as_slice() else { return None };
 
-        let mut current = provided;
-        let mut current_type = provided_type.clone();
+        let (capability, rest_value, rest_type) =
+            self.find_evidence_capability(cursor, cursor_type, chain_start, chain_start_type, needed_head)?;
+        let rest_evidence =
+            self.project_evidence_rec(rest_value, rest_type, chain_start, chain_start_type, needed_rest)?;
+        let tuple = Instruction::MakeTuple(vec![capability, rest_evidence]);
+        Some(self.push_instruction(tuple, needed_type.clone()))
+    }
+
+    /// Search forward from `cursor` for an entry matching `needed_head`, wrapping around to
+    /// `(chain_start, chain_start_type)` at most once if the forward walk reaches the end without a match.
+    /// Returns the matched capability value and the `(value, type)` of the tail after the match.
+    fn find_evidence_capability(
+        &mut self, cursor: Value, cursor_type: Type, chain_start: Value, chain_start_type: &Type,
+        needed_head: &Type,
+    ) -> Option<(Value, Value, Type)> {
+        let mut current = cursor;
+        let mut current_type = cursor_type;
+        let mut wrapped = false;
         loop {
-            let Type::Tuple(fields) = &current_type else { return None };
-            let [head, rest] = fields.as_slice() else { return None };
-            let (head, rest) = (head.clone(), rest.clone());
-            if head == *needed_head {
-                let index = Instruction::IndexTuple { tuple: current, index: 0 };
-                let capability = self.push_instruction(index, head.clone());
-                let index = Instruction::IndexTuple { tuple: current, index: 1 };
-                let rest_value = self.push_instruction(index, rest.clone());
-                let rest_evidence = self.project_evidence(rest_value, &rest, needed_rest)?;
-                let tuple = Instruction::MakeTuple(vec![capability, rest_evidence]);
-                return Some(self.push_instruction(tuple, needed_type.clone()));
+            match &current_type {
+                Type::Tuple(fields) if fields.len() == 2 => {
+                    let (head, rest) = (fields[0].clone(), fields[1].clone());
+                    if head == *needed_head {
+                        let index = Instruction::IndexTuple { tuple: current, index: 0 };
+                        let capability = self.push_instruction(index, head);
+                        let index = Instruction::IndexTuple { tuple: current, index: 1 };
+                        let rest_value = self.push_instruction(index, rest.clone());
+                        return Some((capability, rest_value, rest));
+                    }
+                    let index = Instruction::IndexTuple { tuple: current, index: 1 };
+                    current = self.push_instruction(index, rest.clone());
+                    current_type = rest;
+                },
+                _ if !wrapped => {
+                    wrapped = true;
+                    current = chain_start.clone();
+                    current_type = chain_start_type.clone();
+                },
+                _ => return None,
             }
-            let index = Instruction::IndexTuple { tuple: current, index: 1 };
-            current = self.push_instruction(index, rest.clone());
-            current_type = rest;
         }
     }
 

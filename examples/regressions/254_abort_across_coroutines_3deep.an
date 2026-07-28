@@ -1,0 +1,36 @@
+// Regression test: same scenario as abort_across_coroutines.an but three coroutine
+// stacks deep, so the abort must destroy an intermediate coroutine mid-unwind.
+import Std.Stream.Emit, emit
+import Std.Fail.Fail, fail, try
+import Std.C.VoidPtr
+
+foldr (gen: fn Unit => Unit can Emit a, e) (initial: b) (f: fn a b => b): b can e =
+    handler h for emit value ->
+        rest = resume ()
+        f value rest
+    gen ()
+    initial
+
+main () =
+    gen0 = do
+        result = try do
+            gen1 = do
+                emit 100
+                gen2 = do
+                    emit 200
+                    // The abort must unwind through and free gen1's coroutine on its way back to `try`
+                    fail ()
+
+                ignore (foldr gen2 0 (+))
+            foldr gen1 0 (+)
+        println result
+        emit 7
+        emit 35
+
+    total = foldr gen0 0 (+)
+    println total
+
+// args: --delete-binary --no-color
+// expected stdout:
+// None
+// 42
