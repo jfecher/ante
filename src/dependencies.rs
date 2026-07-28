@@ -14,7 +14,7 @@ pub enum DependencyError {
 impl fmt::Display for DependencyError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::MissingProjectRoot => write!(formatter, "Missing project root; please create one with `ante init`"),
+            Self::MissingProjectRoot => write!(formatter, "Missing project root, please create one with `ante init`"),
             Self::Io(error) => error.fmt(formatter),
             Self::GitClone(error) => write!(formatter, "Git clone failed: {error}"),
         }
