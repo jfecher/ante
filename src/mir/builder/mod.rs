@@ -575,7 +575,7 @@ where
             self.push_instruction(Instruction::GetFieldPtr { struct_ptr, struct_type, index }, Type::POINTER)
         } else {
             let value = self.expression(object_expr);
-            let tuple = self.deref_if_shared(value, &object_type);
+            let tuple = self.deref_if_shared(value, object_type);
             let element_type = match self.type_of_value(&tuple) {
                 Type::Tuple(elements) => elements.get(index as usize).cloned().unwrap_or(Type::ERROR),
                 _ => Type::ERROR,
@@ -2282,7 +2282,7 @@ where
             },
             cst::Pattern::Alias(name, inner) => {
                 if let Some(origin) = self.context().name_origin(*name) {
-                    self.define_variable(origin, value.clone());
+                    self.define_variable(origin, value);
                 }
                 self.bind_pattern(*inner, value);
             },

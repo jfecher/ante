@@ -9,12 +9,14 @@ pub mod parser;
 pub mod type_inference;
 
 // Util modules:
+pub mod cli;
 pub mod diagnostics;
 pub mod files;
 pub mod incremental;
 mod iterator_extensions;
 pub mod manifest;
 pub mod paths;
+pub mod project;
 pub mod seq;
 pub mod timings;
 pub mod vecmap;

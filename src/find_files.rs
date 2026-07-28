@@ -14,16 +14,13 @@ use crate::{
     manifest::{MANIFEST_FILE_NAME, Manifest},
     name_resolution::namespace::{CrateId, SourceFileId},
     paths::stdlib_path,
+    project::{MAIN_FILE, SRC_FOLDER},
 };
 
 pub type CrateGraph = BTreeMap<CrateId, Crate>;
 
 /// Default name of the local crate when its `ante.toml` has no `name` field.
 pub const DEFAULT_LOCAL_CRATE_NAME: &str = "Local";
-
-/// Default name of the src folder.
-pub(crate) const SRC_FOLDER: &str = "src";
-pub(crate) const MAIN_FILE: &str = "main.an";
 
 /// Search the current directory and its ancestors for an Ante manifest.
 pub fn find_nearest_project_root() -> Option<PathBuf> {
