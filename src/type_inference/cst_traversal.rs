@@ -1287,6 +1287,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     ///
     /// On error, returns the first offending name not matching the above rules if found
     fn check_lhs_mutable(&self, lhs: ExprId) -> Result<(), (Option<Name>, Location)> {
+        self.check_lhs_mutable_rec(lhs, true)
+    }
+
+    fn check_lhs_mutable_rec(&self, lhs: ExprId, lvalue: bool) -> Result<(), (Option<Name>, Location)> {
         match &self.current_extended_context()[lhs] {
             Expr::Variable(path) => {
                 let path_id = *path;
@@ -1312,7 +1316,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     None => Ok(()),
                 }
             },
-            Expr::TypeAnnotation(ta) => self.check_lhs_mutable(ta.lhs),
+            Expr::TypeAnnotation(ta) => self.check_lhs_mutable_rec(ta.lhs, lvalue),
             Expr::MemberAccess(access) => {
                 let object = access.object;
                 // TODO: This allows `x: ref (mut a, b)` to assign to the inner `mut a`
@@ -1321,19 +1325,23 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 {
                     return Ok(());
                 }
-                self.check_lhs_mutable(object)
+                self.check_lhs_mutable_rec(object, false)
             },
             Expr::Call(call) => {
                 // If this is a call, just assume it is something like `a.* :=` or `a.[0] :=` and check the obj type.
                 // TODO: Make this check more rigorous
                 if let Some(obj) = call.arguments.first() {
-                    self.check_lhs_mutable(obj.expr)
+                    self.check_lhs_mutable_rec(obj.expr, false)
                 } else {
                     let location = self.current_extended_context().expr_location(lhs);
                     Err((None, location))
                 }
             },
             // TODO: We could have a different variant for lvalues instead of reusing ExprIds
+            _ if lvalue => {
+                let location = self.current_extended_context().expr_location(lhs);
+                Err((None, location))
+            },
             _ => Ok(()),
         }
     }
