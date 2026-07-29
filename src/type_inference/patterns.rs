@@ -291,6 +291,25 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         self.compiler.accumulate(Diagnostic::ConstructorExpectedFoundType { type_name, constructor_names, location });
     }
 
+    /// Errors with [Diagnostic::MissingCases] if this constructor isn't its type's only variant.
+    pub(super) fn check_constructor_exhaustive(&mut self, path: PathId, location: &Location) {
+        let Some(constructor) = self.path_to_constructor(path) else { return };
+        let variant_index = constructor.variant_index();
+
+        // TODO: Make this more lightweight for the fast case
+        let mut matcher = MatchCompiler { checker: self, has_missing_cases: false, unreachable_cases: BTreeMap::new() };
+        let all = matcher.all_constructors(&constructor, location);
+        let cases: BTreeSet<_> = all
+            .iter()
+            .filter(|(other, _)| other.variant_index() != variant_index)
+            .map(|(other, _)| matcher.constructor_string(other))
+            .collect();
+
+        if !cases.is_empty() {
+            self.compiler.accumulate(Diagnostic::MissingCases { cases, location: location.clone() });
+        }
+    }
+
     pub(super) fn fresh_variable(
         &mut self, name_prefix: &str, variable_type: Type, location: Location,
     ) -> (PathId, NameId) {

@@ -38,7 +38,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             get_partial_type(definition, self.current_context(), self.current_resolve(), self.compiler, next_id)
         });
 
-        self.check_pattern(definition.pattern, &expected_type);
+        self.check_irrefutable_pattern(definition.pattern, &expected_type);
 
         // Track mutable definitions so closure capture analysis can wrap them in reference types
         if definition.mutable {
@@ -207,7 +207,16 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
-    fn check_pattern(&mut self, id: PatternId, expected: &Type) {
+    fn check_refutable_pattern(&mut self, id: PatternId, expected: &Type) {
+        self.check_pattern_rec(id, expected, false);
+    }
+
+    /// Errors if a constructor is used in this pattern from a type with multiple variants
+    fn check_irrefutable_pattern(&mut self, id: PatternId, expected: &Type) {
+        self.check_pattern_rec(id, expected, true);
+    }
+
+    fn check_pattern_rec(&mut self, id: PatternId, expected: &Type, irrefutable: bool) {
         self.pattern_types.insert(id, expected.clone());
 
         let pattern = self.pattern_of(id);
@@ -238,23 +247,29 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
                 let actual = self.infer_path(*path, &expected_function_type);
                 self.unify(&actual, &expected_function_type, TypeErrorKind::Pattern, *path);
+
+                if irrefutable {
+                    let location = self.current_context().path_location(*path).clone();
+                    self.check_constructor_exhaustive(*path, &location);
+                }
+
                 for (expected_arg_type, arg) in parameters.into_iter().zip(args) {
-                    self.check_pattern(*arg, &expected_arg_type.typ);
+                    self.check_pattern_rec(*arg, &expected_arg_type.typ, irrefutable);
                 }
             },
             Pattern::TypeAnnotation(inner_pattern, typ) => {
                 let annotated = self.from_cst_type(typ, true);
                 self.unify(expected, &annotated, TypeErrorKind::TypeAnnotationMismatch, id);
-                self.check_pattern(*inner_pattern, expected);
+                self.check_pattern_rec(*inner_pattern, expected, irrefutable);
             },
             Pattern::Or(alts) => {
                 for alt in alts {
-                    self.check_pattern(*alt, expected);
+                    self.check_pattern_rec(*alt, expected, irrefutable);
                 }
             },
             Pattern::Alias(name, inner_pattern) => {
                 self.check_name(*name, expected);
-                self.check_pattern(*inner_pattern, expected);
+                self.check_pattern_rec(*inner_pattern, expected, irrefutable);
                 // Runs after `check_pattern` so `pattern_types` is populated for the whole subtree.
                 let root = super::affine::MovePath::Variable(*name);
                 self.assign_binding_places(*inner_pattern, root);
@@ -632,7 +647,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         for (parameter, expected_type) in lambda.parameters.iter().zip(function_type.parameters.iter()) {
             // Avoid extra errors if the parameter length isn't as expected
             let expected_type = if parameter_lengths_match { &expected_type.typ } else { &Type::ERROR };
-            self.check_pattern(parameter.pattern, expected_type);
+            self.check_irrefutable_pattern(parameter.pattern, expected_type);
 
             if parameter.is_mutable {
                 self.record_mutable_pattern(parameter.pattern);
@@ -645,7 +660,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         // Required in case `function_type` has fewer parameters, to ensure we check all of `lambda.parameters`
         for parameter in lambda.parameters.iter().skip(function_type.parameters.len()) {
-            self.check_pattern(parameter.pattern, &Type::ERROR);
+            self.check_irrefutable_pattern(parameter.pattern, &Type::ERROR);
         }
 
         let return_type = if let Some(return_type) = lambda.return_type.as_ref() {
@@ -916,7 +931,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         for (pattern, branch) in match_.cases.iter() {
             self.move_tracker = pre_branch_moves.clone();
-            self.check_pattern(*pattern, &expr_type);
+            self.check_refutable_pattern(*pattern, &expr_type);
             self.push_implicits_scope();
             if self.diverges(&result_type) {
                 result_type = self.infer_expr(*branch, expected);
