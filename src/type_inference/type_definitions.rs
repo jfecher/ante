@@ -31,6 +31,22 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 let _ = self.from_cst_type_with_local_kinds(body, false, false, &mut local_kinds);
                 return;
             },
+            cst::TypeDefinitionBody::EffectAlias(effects) => {
+                // Convert each effect even though the result is unused to issue kind or recursion errors
+                let mut local_kinds = Self::local_kinds_from_generics(&definition.generics);
+                let _ = self.with_next_id(|next_id| {
+                    Type::from_cst_effects_clause(
+                        Some(effects),
+                        self.current_resolve(),
+                        self.compiler,
+                        next_id,
+                        &mut local_kinds,
+                        false,
+                        false,
+                    )
+                });
+                return;
+            },
             cst::TypeDefinitionBody::Struct(fields) => {
                 // Ability fields are publicly visible (e.g. `Eq.eq`), so each needs its own type.
                 if definition.kind.is_ability() {

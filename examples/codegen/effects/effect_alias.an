@@ -1,0 +1,23 @@
+effect Read =
+    read: fn Unit -> String
+
+effect Write =
+    write: fn String -> Unit
+
+effect FileIO = Read, Write
+
+copy_file (): Unit can FileIO =
+    read () |> write
+    read () |> write
+
+main () =
+    handler _ for read () -> resume "hello"
+    handler _ for write s ->
+      println s
+      resume ()
+    copy_file ()
+
+// args: --delete-binary --no-color
+// expected stdout:
+// hello
+// hello

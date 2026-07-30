@@ -16,7 +16,7 @@ main () =
 
 // args: -e ast-t --no-color
 // expected stdout:
-// type Count =
+// effect Count =
 //     count: fn Unit -> Unit
 // 
 // (foo: fn Unit -> Unit can Count) () : Unit can Count =

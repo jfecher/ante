@@ -1,0 +1,13 @@
+effect FileIO = Read, Write
+
+effect WithLog e = Log, e
+
+foo (f: fn Unit -> Unit can FileIO) : Unit = ()
+
+// args: -e ast --no-color
+// expected stdout:
+// effect FileIO = Read, Write
+// 
+// effect WithLog e = Log, e
+// 
+// foo (f: fn Unit -> Unit can FileIO) : Unit = ()

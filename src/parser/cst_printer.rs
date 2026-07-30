@@ -311,6 +311,7 @@ impl<'a> CstDisplay<'a> {
                 let kind_str = match kind {
                     cst::KindAnnotation::Type => "type",
                     cst::KindAnnotation::U32 => "U32",
+                    cst::KindAnnotation::Effect => "effect",
                     cst::KindAnnotation::Lifetime => unreachable!(),
                 };
                 write!(f, "(")?;
@@ -467,7 +468,8 @@ impl<'a> CstDisplay<'a> {
             write!(f, "mut ")?;
         }
 
-        write!(f, "type ")?;
+        let keyword = if type_definition.kind.is_effect() { "effect" } else { "type" };
+        write!(f, "{keyword} ")?;
         self.fmt_type_name(type_definition.name, context, f)?;
 
         for generic in &type_definition.generics {
@@ -504,6 +506,15 @@ impl<'a> CstDisplay<'a> {
             TypeDefinitionBody::Alias(typ) => {
                 write!(f, " ")?;
                 self.fmt_type(typ, context, f)?;
+            },
+            TypeDefinitionBody::EffectAlias(effects) => {
+                write!(f, " ")?;
+                for (i, effect) in effects.iter().enumerate() {
+                    if i != 0 {
+                        write!(f, ", ")?;
+                    }
+                    self.fmt_type(effect, context, f)?;
+                }
             },
         }
         Ok(())

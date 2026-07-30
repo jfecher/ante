@@ -2327,7 +2327,10 @@ where
                     mapvec(variants.iter().enumerate(), |(i, (name, _))| (*name, Some(i.try_into().unwrap())))
                 }
             },
-            cst::TypeDefinitionBody::Alias(_) | cst::TypeDefinitionBody::Error => return,
+            // Aliases are already desugared
+            cst::TypeDefinitionBody::Alias(_) | cst::TypeDefinitionBody::EffectAlias(_) | cst::TypeDefinitionBody::Error => {
+                return;
+            },
         };
 
         for (constructor_name, tag) in constructors {

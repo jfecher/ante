@@ -31,10 +31,10 @@ main () =
 // args: -e ast-t --no-color
 // expected exit status: 1
 // expected stdout:
-// type Log =
+// effect Log =
 //     log: fn String -> Unit
 // 
-// type Use a =
+// effect Use a =
 //     get: fn Unit -> a
 //     set: fn a -> Unit
 // 

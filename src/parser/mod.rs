@@ -603,9 +603,9 @@ impl<'tokens> Parser<'tokens> {
                 TopLevelItemKind::TraitDefinition(trait_definition)
             },
             Token::Effect => {
-                let effect_definition = self.parse_effect_definition()?;
-                id = self.new_top_level_id_from_name_id(effect_definition.name);
-                TopLevelItemKind::EffectDefinition(effect_definition)
+                let (name, item) = self.parse_effect_definition()?;
+                id = self.new_top_level_id_from_name_id(name);
+                item
             },
             Token::Impl => {
                 let trait_impl = self.parse_trait_impl()?;
@@ -760,7 +760,8 @@ impl<'tokens> Parser<'tokens> {
         }
     }
 
-    /// kind: 'type' | 'U32'
+    /// kind: 'type' | 'U32' | 'effect'
+    /// TODO: type constructor kinds
     fn parse_kind_annotation(&mut self) -> Result<KindAnnotation> {
         match self.current_token() {
             Token::Type => {
@@ -771,7 +772,11 @@ impl<'tokens> Parser<'tokens> {
                 self.advance();
                 Ok(KindAnnotation::U32)
             },
-            _ => self.expected("a kind annotation (`type` or `U32`)"),
+            Token::Effect => {
+                self.advance();
+                Ok(KindAnnotation::Effect)
+            },
+            _ => self.expected("a kind annotation (`type`, `U32`, or `effect`)"),
         }
     }
 
@@ -960,15 +965,20 @@ impl<'tokens> Parser<'tokens> {
         Ok(Type::new(TypeKind::Function(cst::FunctionType { parameters, environment, return_type, effects }), location))
     }
 
-    /// effects_clause: 'pure' | 'can' type_application (',' type_application)*
+    /// effects_clause: 'pure' | 'can' effect_list
     fn parse_effects_clause(&mut self) -> Option<Vec<Type>> {
         if self.accept(Token::Pure) {
             Some(Vec::new())
         } else if self.accept(Token::Can) {
-            Some(self.delimited(Self::parse_type_application, Token::Comma, false))
+            Some(self.parse_effect_list())
         } else {
             None
         }
+    }
+
+    /// effect_list: type_application (',' type_application)*
+    fn parse_effect_list(&mut self) -> Vec<Type> {
+        self.delimited(Self::parse_type_application, Token::Comma, false)
     }
 
     /// pair_type: type_no_pair ',' pair_type
@@ -2741,19 +2751,45 @@ impl<'tokens> Parser<'tokens> {
         self.parse_trait_or_effect_body()
     }
 
-    fn parse_effect_definition(&mut self) -> Result<cst::TraitOrEffectDefinition> {
-        self.expect(Token::Effect, "`effect` to start this effect definition")?;
-        self.parse_trait_or_effect_body()
-    }
-
     fn parse_trait_or_effect_body(&mut self) -> Result<cst::TraitOrEffectDefinition> {
         let name = self.parse_type_name_id()?;
         let generics = self.parse_generics();
-
         self.expect(Token::Equal, "`=` to separate this definition's signature from its body")?;
         let body = self.parse_declaration_block()?;
-
         Ok(cst::TraitOrEffectDefinition { name, generics, body })
+    }
+
+    /// A declaration block for effects is a possibly indented series of idents, while an effect alias
+    /// is a possibly indented list of TypeNames
+    fn at_declaration_block(&self) -> bool {
+        let start = if *self.current_token() == Token::Indent { self.token_index + 1 } else { self.token_index };
+        matches!(self.tokens.get(start), Some((Token::Identifier(_), _)))
+            && matches!(self.tokens.get(start + 1), Some((Token::Colon, _)))
+    }
+
+    /// Parses an effect definition whose body can either be a series of operations comprising the
+    /// new effect or a list of existing effects, in which case this is an effect alias.
+    fn parse_effect_definition(&mut self) -> Result<(NameId, TopLevelItemKind)> {
+        self.expect(Token::Effect, "`effect` to start this effect definition")?;
+        let name = self.parse_type_name_id()?;
+        let generics = self.parse_generics();
+        self.expect(Token::Equal, "`=` to separate this definition's signature from its body")?;
+
+        let item = if self.at_declaration_block() {
+            let body = self.parse_declaration_block()?;
+            TopLevelItemKind::EffectDefinition(cst::TraitOrEffectDefinition { name, generics, body })
+        } else {
+            let effects = self.parse_effect_list();
+            TopLevelItemKind::TypeDefinition(cst::TypeDefinition {
+                shared: false,
+                mutable: false,
+                kind: cst::TypeDefinitionKind::Effect,
+                name,
+                generics,
+                body: cst::TypeDefinitionBody::EffectAlias(effects),
+            })
+        };
+        Ok((name, item))
     }
 
     fn parse_trait_impl(&mut self) -> Result<cst::TraitImpl> {

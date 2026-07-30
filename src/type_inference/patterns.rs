@@ -268,6 +268,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             // Name resolution should already resolve aliases to their underlying constructor,
             // so a path reaching here means that failed and it is not a constructor.
             cst::TypeDefinitionBody::Alias(_) => return None,
+            // Effect aliases are never constructors
+            cst::TypeDefinitionBody::EffectAlias(_) => return None,
         };
 
         let type_name = TopLevelName::new(item.id, type_definition.name);

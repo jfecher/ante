@@ -26,7 +26,7 @@ main () =
 
 // args: -e ast-t --no-color
 // expected stdout:
-// type Emit a =
+// effect Emit a =
 //     emit: fn a -> Unit
 // 
 // (iota: fn U32 -> Unit can (Emit U32)) ((n: U32)) : Unit can Emit U32 =

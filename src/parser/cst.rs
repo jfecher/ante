@@ -13,7 +13,7 @@ use super::ids::{ExprId, IdStore, NameId, PathId, PatternId, TopLevelId};
 /// This is expected to mirror the source file without removing too much information.
 /// This isn't a perfect mirroring - we keep only enough information for pretty-printing
 /// the CST back into a file. So while things like comments are kept, certain syntax
-/// constructs like `foo = fn a -> expr` may be sugared into `foo x = expr`.
+/// constructs like `foo = fn a -> expr` may be sugared into `foo a = expr`.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct Cst {
     pub imports: Vec<Import>,
@@ -248,6 +248,7 @@ pub enum TypeDefinitionBody {
     Struct(Vec<(NameId, Type)>),
     Enum(Vec<(NameId, Vec<Type>)>),
     Alias(Type),
+    EffectAlias(Vec<Type>),
 }
 
 impl ErrorDefault for TypeDefinitionBody {
@@ -632,6 +633,7 @@ pub enum KindAnnotation {
     Type,
     U32,
     Lifetime,
+    Effect,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]

@@ -115,6 +115,7 @@ impl Origin {
                             visited.push(id);
                             alias_body_fields(id.top_level_item, body, db, visited)
                         },
+                        TypeDefinitionBody::EffectAlias(_) => FieldsResult::NotAStruct,
                         TypeDefinitionBody::Struct(fields) => {
                             let names = fields.iter().map(|(name, _)| item_context[*name].clone());
                             FieldsResult::Fields(names.collect())
@@ -575,8 +576,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
         match &target_def.body {
             TypeDefinitionBody::Struct(_) => Some(Origin::TopLevelDefinition(target)),
             TypeDefinitionBody::Alias(_) => self.follow_alias_to_constructor(target, visited),
-            // The name of an enum/union is only a type, not a constructor.
-            TypeDefinitionBody::Enum(_) | TypeDefinitionBody::Error => None,
+            TypeDefinitionBody::Enum(_) | TypeDefinitionBody::EffectAlias(_) | TypeDefinitionBody::Error => None,
         }
     }
 
@@ -593,8 +593,11 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                         match &def.body {
                             // Struct type names may be used as a type OR value constructor
                             TypeDefinitionBody::Struct(_) | TypeDefinitionBody::Error => true,
-                            // Union (enum) type name is only valid as a type; its variants are handled below
-                            TypeDefinitionBody::Enum(_) | TypeDefinitionBody::Alias(_) => is_type,
+
+                            // Each of these are only valid as types
+                            TypeDefinitionBody::Enum(_)
+                            | TypeDefinitionBody::Alias(_)
+                            | TypeDefinitionBody::EffectAlias(_) => is_type,
                         }
                     },
                     // Enum variants are only values, as are ability methods
@@ -1054,6 +1057,11 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             },
             TypeDefinitionBody::Alias(typ) => {
                 self.resolve_type(typ, false);
+            },
+            TypeDefinitionBody::EffectAlias(effects) => {
+                for effect in effects {
+                    self.resolve_type(effect, false);
+                }
             },
         }
     }

@@ -17,6 +17,7 @@ use crate::{
     name_resolution::{Origin, ResolutionResult, builtin::Builtin},
     parser::{
         cst::{self, KindAnnotation, ReferenceKind},
+        desugar_context::DesugarContext,
         get_item::IMPLICIT_EFFECT_NAME,
         ids::{NameId, NameStore, TopLevelName},
     },
@@ -32,6 +33,7 @@ pub(crate) fn kind_from_annotation(kind: KindAnnotation) -> Kind {
         KindAnnotation::Type => Kind::Type,
         KindAnnotation::U32 => Kind::U32,
         KindAnnotation::Lifetime => Kind::Lifetime,
+        KindAnnotation::Effect => Kind::Effect,
     }
 }
 
@@ -681,15 +683,19 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
                 let (typ, kind) =
                     Type::convert_origin_to_type(origin, self.db, &typ.location, self.local_kinds, Type::UserDefined);
 
-                // Expand a type alias if necessary
-                if kind == Kind::Type
-                    && let Type::UserDefined(Origin::TopLevelDefinition(name)) = typ
-                    && let Some(expanded) = self.expand_alias(name, &[])
-                {
-                    (expanded, Kind::Type)
-                } else {
-                    (typ, kind)
+                // Expand a type or effect alias if necessary
+                if let Type::UserDefined(Origin::TopLevelDefinition(name)) = typ {
+                    if kind == Kind::Type
+                        && let Some(expanded) = self.expand_type_alias(name, &[])
+                    {
+                        return (expanded, Kind::Type);
+                    } else if kind == Kind::Effect
+                        && let Some(expanded) = self.expand_effect_alias(name, &[])
+                    {
+                        return (expanded, Kind::Effect);
+                    }
                 }
+                (typ, kind)
             },
             crate::parser::cst::TypeKind::Variable(name) | crate::parser::cst::TypeKind::Lifetime(name) => {
                 let origin = self.resolve.name_origins.get(name).copied();
@@ -736,11 +742,13 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
 
                 assert!(!converted_args.is_empty());
 
-                // Expand a generic type alias if necessary
-                if let Type::UserDefined(Origin::TopLevelDefinition(name)) = &f
-                    && let Some(expanded) = self.expand_alias(*name, &converted_args)
-                {
-                    return (expanded, Kind::Type);
+                // Expand a generic type or effect alias if necessary
+                if let Type::UserDefined(Origin::TopLevelDefinition(name)) = &f {
+                    if let Some(expanded) = self.expand_type_alias(*name, &converted_args) {
+                        return (expanded, Kind::Type);
+                    } else if let Some(expanded) = self.expand_effect_alias(*name, &converted_args) {
+                        return (expanded, Kind::Effect);
+                    }
                 }
 
                 let typ = Type::Application(Arc::new(f), Arc::new(converted_args));
@@ -812,11 +820,10 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
     }
 
     /// If `name` refers to a type alias, return its body type with `args` substituted
-    /// for the alias's generic parameters, with any aliases referenced within the body expanded
-    /// transparently as well. Returns `None` if `name` is not a type alias.
+    /// for the alias's generic parameters. Returns `None` if `name` is not a type alias.
     ///
     /// Emits [Diagnostic::RecursiveTypeAlias] if the type alias is infinitely recursive.
-    fn expand_alias(&mut self, name: TopLevelName, args: &[Type]) -> Option<Type> {
+    fn expand_type_alias(&mut self, name: TopLevelName, args: &[Type]) -> Option<Type> {
         let (item, ctx) = GetItem(name.top_level_item).get(self.db);
         let cst::TopLevelItemKind::TypeDefinition(definition) = &item.kind else {
             return None;
@@ -824,7 +831,28 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
         let cst::TypeDefinitionBody::Alias(body) = &definition.body else {
             return None;
         };
+        self.expand_alias(name, ctx, definition, args, |converter| converter.convert(body, Some(&Kind::Type)).0)
+    }
 
+    /// If `name` refers to an effect alias, return its expansion with `args` substituted
+    /// for the alias's generic parameters. Returns `None` if `name` is not an effect alias.
+    ///
+    /// Emits [Diagnostic::RecursiveTypeAlias] if the effect alias is infinitely recursive.
+    fn expand_effect_alias(&mut self, name: TopLevelName, args: &[Type]) -> Option<Type> {
+        let (item, ctx) = GetItem(name.top_level_item).get(self.db);
+        let cst::TopLevelItemKind::TypeDefinition(definition) = &item.kind else {
+            return None;
+        };
+        let cst::TypeDefinitionBody::EffectAlias(effects) = &definition.body else {
+            return None;
+        };
+        self.expand_alias(name, ctx, definition, args, |converter| converter.convert_effects_clause(Some(effects)))
+    }
+
+    fn expand_alias(
+        &mut self, name: TopLevelName, ctx: Arc<DesugarContext>, definition: &cst::TypeDefinition, args: &[Type],
+        convert_body: impl FnOnce(&mut TypeConverter) -> Type,
+    ) -> Option<Type> {
         if self.visited.contains(&name) {
             let typ = ctx[definition.name].to_string();
             let location = ctx.name_location(definition.name).clone();
@@ -835,9 +863,10 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
 
         let resolve = Resolve(name.top_level_item).get(self.db);
         let mut local_kinds = TypeChecker::local_kinds_from_generics(&definition.generics);
-        let (body_type, _) =
-            TypeConverter::new(&resolve, self.db, self.next_id, &mut local_kinds, false, false, self.visited)
-                .convert(body, Some(&Kind::Type));
+        let mut converter =
+            TypeConverter::new(&resolve, self.db, self.next_id, &mut local_kinds, false, false, self.visited);
+
+        let body_type = convert_body(&mut converter);
 
         let result = if definition.generics.is_empty() {
             body_type
@@ -1080,19 +1109,33 @@ impl Type {
     /// Entries sort by their effect head only, stably: a full-type order would reorder
     /// same-head entries under substitution (`Send a, Send b` vs their instantiations),
     /// silently changing the evidence layout.
-    pub(crate) fn effects(mut list: Vec<Type>, mut tail: Option<Type>) -> Type {
-        while let Some(Type::Effects(inner_list, inner_tail)) = tail {
-            list.extend(inner_list.iter().cloned());
-            tail = inner_tail.as_ref().map(|t| (**t).clone());
-        }
-        list.sort_by_key(|effect| effect.effect_head().copied());
-        let mut deduped = Vec::with_capacity(list.len());
+    pub(crate) fn effects(list: Vec<Type>, mut tail: Option<Type>) -> Type {
+        let mut flattened = Vec::with_capacity(list.len());
         for effect in list {
-            if !deduped.contains(&effect) {
-                deduped.push(effect);
+            if let Type::Effects(inner_list, inner_tail) = effect {
+                flattened.extend(inner_list.iter().cloned());
+                if let Some(inner_tail) = inner_tail {
+                    tail.get_or_insert_with(|| (*inner_tail).clone());
+                }
+            } else {
+                flattened.push(effect);
             }
         }
-        Type::Effects(Arc::new(deduped), tail.map(Arc::new))
+
+        while let Some(Type::Effects(inner_list, inner_tail)) = tail {
+            flattened.extend(inner_list.iter().cloned());
+            tail = inner_tail.as_ref().map(|t| (**t).clone());
+        }
+
+        if let Some(t) = &tail
+            && !matches!(t, Type::Variable(_) | Type::Generic(_))
+        {
+            flattened.push(tail.take().unwrap());
+        }
+
+        flattened.sort_by_key(|effect| effect.effect_head().copied());
+        flattened.dedup();
+        Type::Effects(Arc::new(flattened), tail.map(Arc::new))
     }
 
     /// The effect constructor an effect-row entry refers to, ignoring its type arguments.
