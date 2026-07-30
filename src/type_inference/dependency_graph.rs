@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     incremental::{
-        DbHandle, ExportedDefinitions, GetCrateGraph, GetItem, GetTypeCheckSCC, Parse, Resolve, TypeCheck,
+        self, DbHandle, ExportedDefinitions, GetCrateGraph, GetItem, GetTypeCheckSCC, Parse, Resolve, TypeCheck,
         TypeCheckDependencyGraph, TypeCheckSCC,
     },
     iterator_extensions::mapvec,
@@ -156,15 +156,21 @@ fn item_lacks_known_type(dependency_id: TopLevelId, db: &DbHandle) -> bool {
 }
 
 pub fn get_type_check_scc_impl(context: &GetTypeCheckSCC, db: &DbHandle) -> SCC {
+    incremental::enter_query();
+    incremental::println(format!("Getting the type-check SCC of {:?}", context.0));
+
     let graph = TypeCheckDependencyGraph.get(db);
 
-    match graph.id_to_scc.get(&context.0) {
+    let result = match graph.id_to_scc.get(&context.0) {
         Some(index) => graph.sccs[*index as usize].clone(),
         // Ids in the stdlib currently are excluded from the dependency graph.
         // We assume these are mostly types currently and return them in their own SCC.
         // TODO: This should be replaced with an unwrap when the stdlib type checks.
         None => Arc::new(vec![context.0]),
-    }
+    };
+
+    incremental::exit_query();
+    result
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -174,6 +180,9 @@ pub struct TypeCheckResult {
 }
 
 pub fn type_check_impl(context: &TypeCheck, db: &DbHandle) -> Arc<TypeCheckResult> {
+    incremental::enter_query();
+    incremental::println(format!("Type checking {:?}", context.0));
+
     let scc = GetTypeCheckSCC(context.0).get(db);
     let result = TypeCheckSCC(scc).get(db);
 
@@ -188,6 +197,7 @@ pub fn type_check_impl(context: &TypeCheck, db: &DbHandle) -> Arc<TypeCheckResul
         }
     });
 
+    incremental::exit_query();
     Arc::new(TypeCheckResult { result: item_result, bindings: result.bindings.clone() })
 }
 

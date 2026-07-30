@@ -388,6 +388,7 @@ pub fn exported_definitions_impl(context: &ExportedDefinitions, db: &DbHandle) -
 /// here, issuing `ExportedItemNotFound` diagnostics if not.
 pub fn validate_exports_impl(context: &ValidateExports, db: &DbHandle) {
     incremental::enter_query();
+    incremental::println(format!("Validating exports of {:?}", context.0));
     let parse = Parse(context.0).get(db);
 
     if let Some(exports) = &parse.cst.exports {

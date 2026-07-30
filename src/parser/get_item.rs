@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::{
     diagnostics::Location,
-    incremental::{DbHandle, GetItem, GetItemRaw},
+    incremental::{self, DbHandle, GetItem, GetItemRaw},
     iterator_extensions::mapvec,
     lexer::token::{FloatKind, IntegerKind},
     parser::{
@@ -19,9 +19,12 @@ use crate::{
 pub(crate) const IMPLICIT_EFFECT_NAME: &str = "$effect";
 
 pub fn get_item_impl(context: &GetItem, db: &DbHandle) -> (Arc<TopLevelItem>, Arc<DesugarContext>) {
+    incremental::enter_query();
+    incremental::println(format!("Desugaring {:?}", context.0));
+
     let (item, context) = GetItemRaw(context.0).get(db);
 
-    match &item.kind {
+    let result = match &item.kind {
         TopLevelItemKind::TraitDefinition(def) | TopLevelItemKind::EffectDefinition(def) => {
             let is_effect = matches!(&item.kind, TopLevelItemKind::EffectDefinition(_));
             let mut new_context = DesugarContext::new(context);
@@ -47,7 +50,10 @@ pub fn get_item_impl(context: &GetItem, db: &DbHandle) -> (Arc<TopLevelItem>, Ar
             let new_context = DesugarContext::new(context);
             (item, Arc::new(new_context))
         },
-    }
+    };
+
+    incremental::exit_query();
+    result
 }
 
 /// Desugars

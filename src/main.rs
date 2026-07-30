@@ -159,6 +159,7 @@ fn run() -> Result<(), CommandError> {
 
 fn compile(request: CompileRequest) {
     let options = &request.options;
+    incremental::set_trace_enabled(options.show_queries);
     let (mut compiler, metadata_file) = make_compiler(&request.files, options.incremental);
 
     let program_name =

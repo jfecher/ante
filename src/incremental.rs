@@ -1,4 +1,12 @@
-use std::{cell::Cell, collections::BTreeMap, path::PathBuf, sync::Arc};
+use std::{
+    cell::Cell,
+    collections::BTreeMap,
+    path::PathBuf,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 
 use inc_complete::{
     DebugWithDb, Storage,
@@ -101,14 +109,30 @@ pub fn exit_query() {
     });
 }
 
-/// Currently disabled until a Cli argument is added to opt into these traces
-pub fn println(_msg: String) {
-    // let level = QUERY_NESTING.with(|cell| cell.get());
-    // let spaces = "  ".repeat(level);
+/// Controlled by the `--show-queries` Cli argument.
+///
+/// Normally a global that is separate from the query system and may change values between
+/// runs would break the query system, but in this case that is what we want since we don't
+/// want this value to change what is cached, and this shouldn't affect the resulting compiled code.
+static TRACE_ENABLED: AtomicBool = AtomicBool::new(false);
+
+/// Enable or disable the query execution trace printed by `println` below.
+/// This should be called once at startup, before any incremental computations run.
+pub fn set_trace_enabled(enabled: bool) {
+    TRACE_ENABLED.store(enabled, Ordering::Relaxed);
+}
+
+pub fn println(msg: String) {
+    if !TRACE_ENABLED.load(Ordering::Relaxed) {
+        return;
+    }
+
+    let level = QUERY_NESTING.with(|cell| cell.get());
+    let spaces = "  ".repeat(level);
 
     // Thread ids are usually in the form `ThreadId(X)` or `ThreadId(XX)`.
     // Add some padding to keep output aligned for both cases.
-    // println!("{:02?}: {spaces}- {msg}", std::thread::current().id());
+    println!("{:02?}: {spaces}- {msg}", std::thread::current().id());
 }
 
 #[derive(PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -305,12 +329,16 @@ pub struct GetItemRaw(pub TopLevelId);
 
 // This one is quick and simple, let's just define it here.
 define_intermediate!(1200, GetItemRaw -> (Arc<TopLevelItem>, Arc<TopLevelContext>), DbStorage, |context, db| {
+    enter_query();
+    println(format!("Getting raw item {:?} out of its parse tree", context.0));
+
     let target_id = &context.0;
     let ast = Parse(context.0.source_file).get(db);
 
     for item in ast.cst.top_level_items.iter() {
         if item.id == *target_id {
             let ctx = ast.top_level_data[target_id].clone();
+            exit_query();
             return (item.clone(), ctx);
         }
     }

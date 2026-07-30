@@ -10,7 +10,7 @@ use colored::{Color, ColoredString, Colorize};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    incremental::{CheckAll, Db, DbHandle, GetCrateGraph, Parse, SourceFile, TypeCheck, ValidateExports},
+    incremental::{self, CheckAll, Db, DbHandle, GetCrateGraph, Parse, SourceFile, TypeCheck, ValidateExports},
     iterator_extensions::mapvec,
     lexer::{
         Lexer,
@@ -1209,6 +1209,9 @@ impl std::fmt::Display for DiagnosticDisplay<'_> {
 
 /// Check the entire program, collecting all diagnostics
 pub(crate) fn check_all(_: &CheckAll, compiler: &DbHandle) {
+    incremental::enter_query();
+    incremental::println("Checking the entire program".to_string());
+
     let crates = GetCrateGraph.get(compiler);
 
     for crate_ in crates.values() {
@@ -1222,6 +1225,8 @@ pub(crate) fn check_all(_: &CheckAll, compiler: &DbHandle) {
             ValidateExports(*file).get(compiler);
         }
     }
+
+    incremental::exit_query();
 }
 
 pub fn collect_all_diagnostics(compiler: &mut Db) -> BTreeSet<Diagnostic> {

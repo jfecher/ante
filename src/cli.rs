@@ -142,6 +142,10 @@ pub struct CompileArgs {
     #[arg(long, short = 'i')]
     pub incremental: bool,
 
+    /// Print a trace of every incremental query that executes
+    #[arg(long)]
+    pub show_queries: bool,
+
     /// Path to the file containing the `main` function to use as an entry-point
     #[arg(long, value_name = "NAME")]
     pub bin: Option<String>,
@@ -207,6 +211,7 @@ impl CompileArgs {
             || self.no_color
             || self.show_time
             || self.incremental
+            || self.show_queries
             || self.bin.is_some()
             || !self.link_lib.is_empty()
             || !self.link_search.is_empty()

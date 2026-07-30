@@ -55,12 +55,18 @@ struct Parser<'tokens> {
 }
 
 pub fn parse_impl(ctx: &incremental::Parse, db: &incremental::DbHandle) -> Arc<ParseResult> {
+    incremental::enter_query();
+    incremental::println(format!("Parsing {:?}", ctx.0));
+
     let file = ctx.0.get(db);
     let (tokens, errors) = Lexer::lex(&file.contents, ctx.0);
     for error in errors {
         db.accumulate(error);
     }
-    Arc::new(Parser::new(ctx.0, &tokens).parse(db))
+    let result = Arc::new(Parser::new(ctx.0, &tokens).parse(db));
+
+    incremental::exit_query();
+    result
 }
 
 impl<'tokens> Parser<'tokens> {
