@@ -15,7 +15,10 @@ pub fn make_compiler(source_files: &[PathBuf], incremental: bool) -> (Db, Option
     {
         let metadata_file = file.with_extension("inc");
         let db = match read_binary_file(&metadata_file) {
-            Ok(bytes) => rmp_serde::from_slice(&bytes).unwrap_or_default(),
+            Ok(bytes) => rmp_serde::from_slice(&bytes).unwrap_or_else(|error| {
+                eprintln!("warning: failed to load incremental cache `{}`: {error}", metadata_file.display());
+                Db::default()
+            }),
             Err(_) => Db::default(),
         };
         (db, Some(metadata_file))

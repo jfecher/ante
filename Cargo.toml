@@ -16,7 +16,7 @@ clap_complete = "4"
 colored = "3.0"
 dashmap = "6.2"
 deterministic-hash = "1.0.1"
-inc-complete = "0.10.3"
+inc-complete = "0.10.4"
 inkwell = { version = "0.9.0", features = ["llvm21-1"], optional = true }
 petgraph = { version = "0.8.2", features = ["serde"] }
 rangemap = "1.6.0"
