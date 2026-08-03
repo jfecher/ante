@@ -7,6 +7,7 @@ use std::{
 };
 
 use colored::{Color, ColoredString, Colorize};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -1213,9 +1214,8 @@ pub(crate) fn check_all(_: &CheckAll, compiler: &DbHandle) {
     incremental::println("Checking the entire program".to_string());
 
     let crates = GetCrateGraph.get(compiler);
-
-    for crate_ in crates.values() {
-        for file in crate_.source_files.values() {
+    crates.par_iter().for_each(|(_, crate_)| {
+        crate_.source_files.par_iter().for_each(|(_, file)| {
             let parse = Parse(*file).get(compiler);
 
             for item in &parse.cst.top_level_items {
@@ -1223,8 +1223,8 @@ pub(crate) fn check_all(_: &CheckAll, compiler: &DbHandle) {
             }
 
             ValidateExports(*file).get(compiler);
-        }
-    }
+        });
+    });
 
     incremental::exit_query();
 }
