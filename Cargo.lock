@@ -689,9 +689,9 @@ dependencies = [
 
 [[package]]
 name = "inc-complete"
-version = "0.10.5"
+version = "0.10.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c797817e942d46bf3eacf1c3bccd60bef3b0880ef0e1af5e7f36f1cee684654c"
+checksum = "3ab1cc685dc9445817384888fbeb16ce7e074c2348ddf4749da88bd698e86e10"
 dependencies = [
  "dashmap 6.2.1",
  "inc-complete-derive",
