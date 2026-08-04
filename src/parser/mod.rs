@@ -2786,14 +2786,18 @@ impl<'tokens> Parser<'tokens> {
             TopLevelItemKind::EffectDefinition(cst::TraitOrEffectDefinition { name, generics, body })
         } else {
             let effects = self.parse_effect_list();
-            TopLevelItemKind::TypeDefinition(cst::TypeDefinition {
-                shared: false,
-                mutable: false,
-                kind: cst::TypeDefinitionKind::Effect,
-                name,
-                generics,
-                body: cst::TypeDefinitionBody::EffectAlias(effects),
-            })
+
+            // TODO: We can't distinguish between an alias to 0 effects and a new effect of 0 operations.
+            // The later is assumed here since it is more useful.
+            if effects.is_empty() {
+                TopLevelItemKind::EffectDefinition(cst::TraitOrEffectDefinition { name, generics, body: Vec::new() })
+            } else {
+                let kind = cst::TypeDefinitionKind::Effect;
+                let body = cst::TypeDefinitionBody::EffectAlias(effects);
+                let shared = false;
+                let mutable = false;
+                TopLevelItemKind::TypeDefinition(cst::TypeDefinition { shared, mutable, kind, name, generics, body })
+            }
         };
         Ok((name, item))
     }

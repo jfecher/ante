@@ -53,7 +53,7 @@ use_a (): Unit can A = ()
 // 
 // effect B = A
 // 
-// (use_a: fn Unit [_] -> Unit can (error)) () : Unit can A = ()
+// (use_a: fn Unit -> Unit can (error)) () : Unit can A = ()
 
 // expected stderr:
 // examples/typechecking/effect_aliases.an:21:8
@@ -67,10 +67,5 @@ use_a (): Unit can A = ()
 // 22 | effect B = A	// error: `B` is infinitely recursive
 //    |        ^
 // 
-// examples/typechecking/effect_aliases.an:24:1
-//    | // error: This is bound to type fn Unit => Unit can (error) here but was previously bound to type fn Unit => Unit can (error)
-// 24 | use_a (): Unit can A = ()
-//    | ^^^^^
-// 
-// Found 3 errors and 0 warnings
+// Found 2 errors and 0 warnings
 

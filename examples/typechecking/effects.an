@@ -67,7 +67,7 @@ main () =
 // 
 // examples/typechecking/effects.an:28:1
 // 27 | // main must always handle all non-primitive effects
-//    | // error: main here has type fn Unit -> Unit can Log but it should always have type fn Unit -> Unit pure
+//    | // error: main here has type fn Unit -> Unit can Log but it should always have type fn Unit -> Unit can Fs, Net
 // 28 | main () =
 //    | ^^^^
 // 29 |     log "foo"

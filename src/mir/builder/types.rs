@@ -203,7 +203,17 @@ where
             }
             concretes = deduped;
         }
+
+        // No reason to carry capabilities for effects with no operations
+        concretes.retain(|effect| !self.effect_has_no_operations(effect));
         (concretes, end)
+    }
+
+    /// True if `effect` refers to an effect definition with zero operations.
+    fn effect_has_no_operations(&self, effect: &TCType) -> bool {
+        let Some(Origin::TopLevelDefinition(name)) = effect.effect_head() else { return false };
+        let (item, _) = GetItemRaw(name.top_level_item).get(self.compiler);
+        matches!(&item.kind, TopLevelItemKind::EffectDefinition(effect) if effect.body.is_empty())
     }
 
     /// C-compatible conversion (no evidence parameter) for `extern` symbols and `resume`

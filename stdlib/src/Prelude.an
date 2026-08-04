@@ -7,6 +7,7 @@ import Std.C.putchar, exit, memcmp, malloc, memcpy, free
 import Std.Fail.Fail, fail, panic_on_fail, fail_if
 
 export String, from_parts, Maybe, None, Some, iff, unwrap, unwrap_or_else, Result, Ok, Error, (,),
+    Fs, Net, IO,
     first, second, third, fourth, fifth,
     Cast, cast, cast_same, cast_ptr_usz, cast_usz_ptr,
     cast_u8_u16, cast_u8_u32, cast_u8_u64, cast_u8_usz, cast_u16_u8, cast_u16_u32, cast_u16_u64, cast_u16_usz, cast_u32_u8, cast_u32_u16, cast_u32_u64, cast_u32_usz, cast_u64_u8, cast_u64_u16, cast_u64_u32, cast_u64_usz,
@@ -72,6 +73,20 @@ Maybe.unwrap_or_else (m: Maybe t) (f: fn Unit => t): t =
     match m
     | Some x -> x
     | None -> f ()
+
+// Any file system-modifying action
+// TODO: Temporarily an empty effect set rather than a built-in.
+//       This being empty instead of a primitive incorrectly allows users to handle these effects.
+effect Fs =
+
+// Any action connecting to a network
+// TODO: Temporarily an empty effect set rather than a built-in.
+//       This being empty instead of a primitive incorrectly allows users to handle these effects.
+effect Net =
+
+// A convenience alias for the set of all primitive effects.
+// This may expand over time.
+effect IO = Fs, Net
 
 type Result t e =
    | Ok t

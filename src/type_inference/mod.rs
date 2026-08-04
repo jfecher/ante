@@ -365,6 +365,15 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         *top_level_name
     }
 
+    /// Returns the `IO` effect alias defined in the Prelude
+    fn get_io_effects(&mut self) -> Type {
+        let exported_types = ExportedTypes(SourceFileId::prelude()).get(self.compiler);
+        let io_name = *exported_types.get(&Arc::new("IO".to_string())).expect("IO effect not found in Prelude");
+
+        crate::type_inference::types::expand_effect_alias(self.compiler, io_name)
+            .expect("ICE: IO effect not found in Prelude")
+    }
+
     fn finish(mut self, items: Vec<(TopLevelId, TypeMaps)>) -> TypeCheckSCCResult {
         let mut generalized = self.generalize_all();
         let items = items
@@ -995,8 +1004,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             unreachable!("row_subtype called with non-Effects type");
         };
 
-        let is_error = |tail: &Option<Arc<Type>>| tail.as_deref().is_some_and(Type::is_error);
-        if is_error(a_tail) || is_error(b_tail) {
+        let is_error = |list: &[Type], tail: &Option<Arc<Type>>| {
+            tail.as_deref().is_some_and(Type::is_error) || list.iter().any(Type::is_error)
+        };
+        if is_error(a_list, a_tail) || is_error(b_list, b_tail) {
             return Ok(());
         }
 
@@ -1332,13 +1343,16 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             return;
         }
 
+        self.default_unshared_effects_to_pure(typ, typ);
+
         let expected = Type::Function(Arc::new(FunctionType {
             parameters: vec![ParameterType::explicit(Type::UNIT)],
             environment: Type::NO_CLOSURE_ENV,
             return_type: Type::UNIT,
-            effects: Type::pure(),
+            effects: self.get_io_effects(),
         }));
 
+        // TODO: A dedicated error message for effects mismatch on main
         self.unify(typ, &expected, TypeErrorKind::MainFn, pattern);
     }
 }

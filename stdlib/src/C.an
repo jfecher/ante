@@ -14,7 +14,7 @@ type VoidPtr = Ptr U8
 
 // TODO: These functions use absolute sized types like I32
 //       which are not exact standins for C's integer types.
-puts = extern "puts": fn String -> I32
+puts = extern "puts": fn String -> I32 can Fs
 putchar = extern "putchar": fn Char -> Unit
 getchar = extern "getchar": fn Unit -> I32
 exit = extern "exit": fn I32 -> Unit

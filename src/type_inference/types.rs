@@ -882,6 +882,22 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
     }
 }
 
+/// Expand an effect alias to `IO` into a row like `Fs, Net`.
+/// Returns `None` if `name` is not an effect alias or if any implicit type variables were inserted.
+pub(crate) fn expand_effect_alias(db: &DbHandle, name: TopLevelName) -> Option<Type> {
+    // TODO: This is a lot of setup just to call one function
+    let mut next_id = 0u32;
+    let mut visited = Vec::new();
+    let resolve = Resolve(name.top_level_item).get(db);
+    let mut local_kinds = LocalKinds::default();
+    let mut converter = TypeConverter::new(&resolve, db, &mut next_id, &mut local_kinds, false, false, &mut visited);
+    let result = converter.expand_effect_alias(name, &[]);
+    if next_id != 0 {
+        return None;
+    }
+    result
+}
+
 impl Type {
     fn convert_origin_to_type(
         origin: Option<Origin>, db: &DbHandle, location: &Location, local_kinds: &LocalKinds,
