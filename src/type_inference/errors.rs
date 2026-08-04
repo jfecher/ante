@@ -32,8 +32,10 @@ pub enum TypeErrorKind {
     /// The return type of a function call (actual) does not match the
     /// type expected by the surrounding context (expected)
     CallReturn,
-    /// `main` function defined with a type other than `fn Unit -> Unit pure`
+    /// `main` defined with a type other than `fn Unit -> Unit`
     MainFn,
+    /// Effects other than those in `IO` were used in `main`
+    MainEffects,
     /// A name is bound (actual) with a type conflicting with a previous binding (expected)
     NameAlreadyBound,
     /// A pattern's type (actual) does not match the type of the value being matched (expected)
@@ -109,6 +111,9 @@ impl TypeErrorKind {
             },
             TypeErrorKind::MainFn => {
                 format!("{} here has type {actual} but it should always have type {expected}", "main".purple())
+            },
+            TypeErrorKind::MainEffects => {
+                format!("{} here uses {actual} but it should only use {expected}", "main".purple())
             },
             TypeErrorKind::NameAlreadyBound => {
                 format!("This is bound to type {actual} here but was previously bound to type {expected}")

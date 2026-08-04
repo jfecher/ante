@@ -1345,15 +1345,22 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         self.default_unshared_effects_to_pure(typ, typ);
 
+        let main_effects = self.next_type_variable();
+
         let expected = Type::Function(Arc::new(FunctionType {
             parameters: vec![ParameterType::explicit(Type::UNIT)],
             environment: Type::NO_CLOSURE_ENV,
             return_type: Type::UNIT,
-            effects: self.get_io_effects(),
+            effects: main_effects.clone(),
         }));
 
-        // TODO: A dedicated error message for effects mismatch on main
+        // TODO: Apply this type (and the following effect type) to main beforehand so
+        // that errors can be in the main body where the incorrect effect is used rather
+        // than on main after the inferred type is closed.
         self.unify(typ, &expected, TypeErrorKind::MainFn, pattern);
+
+        let io = self.get_io_effects();
+        self.unify(&main_effects, &io, TypeErrorKind::MainEffects, pattern);
     }
 }
 
