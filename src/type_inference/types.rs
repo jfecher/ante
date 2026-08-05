@@ -1381,9 +1381,10 @@ where
             Type::Variable(_) => Ok(()),
             Type::Effects(list, tail) => {
                 let (full_list, final_tail) = self.flatten_effect_row(list, tail);
-                match &final_tail {
-                    Some(Type::Variable(_)) if full_list.is_empty() => Ok(()),
-                    None if full_list.is_empty() => write!(f, " is pure"),
+                match (&final_tail, &final_tail) {
+                    (Some(Type::Variable(_)), Some(tail)) if full_list.is_empty() && self.is_omittable_effect_tail(tail) => Ok(()),
+                    (Some(Type::Variable(_)), None) if full_list.is_empty() => Ok(()),
+                    (None, _) if full_list.is_empty() => write!(f, " is pure"),
                     _ => {
                         write!(f, " can ")?;
                         self.fmt_flat_effect_list(&full_list, &final_tail, f)

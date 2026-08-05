@@ -984,6 +984,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     Err(())
                 }
             },
+            // Prevents infinite recursion in row_subtype below which calls into try_unify
+            (Type::UserDefined(_), Type::Application(..))
+            | (Type::Application(..), Type::UserDefined(_)) => Err(()),
             // Any of these three variants can be effects
             (
                 Type::UserDefined(_) | Type::Application(..) | Type::Effects(..),
@@ -1000,9 +1003,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         new_bindings: &mut TypeBindings,
     ) -> Result<Option<usize>, ()> {
         for (i, candidate) in candidates.iter().enumerate() {
-            if skip(i) || !Self::effect_heads_match(candidate, target) {
+            if skip(i) {
                 continue;
             }
+            // TODO: Prevent the need to clone for obvious mismatches
             let mut trial = new_bindings.clone();
             if self.subtype(candidate, target, variance, &mut trial).is_ok() {
                 *new_bindings = trial;
@@ -1107,17 +1111,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             other => {
                 eprintln!("Warning: possible kind error in collect_effects_rec: {}", self.type_to_string(other));
             },
-        }
-    }
-
-    /// True if two effect-row entries share the same effect constructor ignoring type arguments.
-    fn effect_heads_match(a: &Type, b: &Type) -> bool {
-        let head = |effect: &Type| {
-            effect.as_user_defined().copied().or_else(|| effect.as_application()?.0.as_user_defined().copied())
-        };
-        match (head(a), head(b)) {
-            (Some(a), Some(b)) => a == b,
-            _ => false,
         }
     }
 
