@@ -1130,8 +1130,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         // Any unhandled effects escape this handler
         let mut new_bindings = TypeBindings::default();
-        let leftover =
-            self.discharge_effect(&body_row, handled_effect, &mut new_bindings).unwrap_or_else(|_| body_row.clone());
+
+        // TODO: Handle the error case here
+        let leftover = self.discharge_effect(&body_row, handled_effect, &mut new_bindings)
+            .unwrap_or(Type::ERROR);
 
         self.bindings.extend(new_bindings);
 
@@ -1150,10 +1152,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     /// Peel `effect` out of `row`'s canonicalized effect list; `Err` if `effect` isn't present.
     fn discharge_effect(&self, row: &Type, effect: &Type, new_bindings: &mut TypeBindings) -> Result<Type, ()> {
-        let row = self.canonical_effects_row(row, new_bindings);
-        let effect = self.canonical_effects_row(effect, new_bindings);
-        let Type::Effects(list, tail) = &row else { unreachable!("canonical_effects_row always returns Effects") };
-        let Type::Effects(to_remove, _) = &effect else { unreachable!("canonical_effects_row always returns Effects") };
+        let (list, tail) = self.collect_effects(row, new_bindings)?;
+        let (to_remove, _) = self.collect_effects(effect, new_bindings)?;
 
         let mut new_list = list.to_vec();
         let mut found = false;
@@ -1169,7 +1169,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         if !found {
             return Err(());
         }
-        Ok(Type::effects(new_list, tail.as_deref().cloned()))
+        Ok(Type::effects(new_list, tail.map(Type::Variable)))
     }
 
     /// Retrieve the [`cst::Lambda`] at `expr_id` or panic otherwise.

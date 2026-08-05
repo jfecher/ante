@@ -139,6 +139,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             | cst::TypeKind::Hole
             | cst::TypeKind::Unit
             | cst::TypeKind::Lifetime(_)
+            | cst::TypeKind::Pure
             | cst::TypeKind::IntegerConstant(_) => (),
         }
     }
@@ -178,6 +179,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             | cst::TypeKind::Float(_)
             | cst::TypeKind::Lifetime(_)
             | cst::TypeKind::ImplicitLifetime
+            | cst::TypeKind::Pure
             | cst::TypeKind::IntegerConstant(_) => false,
         }
     }

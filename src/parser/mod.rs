@@ -684,7 +684,7 @@ impl<'tokens> Parser<'tokens> {
             None
         };
 
-        let effects = self.parse_effects_clause();
+        let effects = self.parse_effects_clause()?;
 
         self.expect(Token::Equal, "`=` to begin the function body")?;
 
@@ -965,20 +965,21 @@ impl<'tokens> Parser<'tokens> {
         }
 
         let return_type = Box::new(self.parse_type()?);
-        let effects = self.parse_effects_clause();
+        let effects = self.parse_effects_clause()?;
         let location = start.to(&self.previous_token_location());
 
         Ok(Type::new(TypeKind::Function(cst::FunctionType { parameters, environment, return_type, effects }), location))
     }
 
-    /// effects_clause: 'pure' | 'can' effect_list
-    fn parse_effects_clause(&mut self) -> Option<Vec<Type>> {
-        if self.accept(Token::Pure) {
-            Some(Vec::new())
+    /// effects_clause: 'is' 'pure' | 'can' effect_list
+    fn parse_effects_clause(&mut self) -> Result<Option<Vec<Type>>> {
+        if self.accept(Token::Is) {
+            self.expect(Token::Pure, "`pure` after `is`")?;
+            Ok(Some(Vec::new()))
         } else if self.accept(Token::Can) {
-            Some(self.parse_effect_list())
+            Ok(Some(self.parse_effect_list()))
         } else {
-            None
+            Ok(None)
         }
     }
 
@@ -1123,6 +1124,11 @@ impl<'tokens> Parser<'tokens> {
                 let location = self.current_token_location();
                 self.advance();
                 Ok(Type::new(TypeKind::Hole, location))
+            },
+            Token::Pure => {
+                let location = self.current_token_location();
+                self.advance();
+                Ok(Type::new(TypeKind::Pure, location))
             },
             Token::Identifier(_) => {
                 let location = self.current_token_location();
@@ -1997,7 +2003,7 @@ impl<'tokens> Parser<'tokens> {
                 None
             };
 
-            let effects = this.parse_effects_clause();
+            let effects = this.parse_effects_clause()?;
 
             this.expect(Token::RightArrow, "a `->` to separate this lambda's parameters from its body")?;
             let body_was_block = matches!(this.current_token(), Token::Indent);
@@ -2576,6 +2582,7 @@ impl<'tokens> Parser<'tokens> {
 
         // Function definition sugar: `field arg1 arg2 = body` desugars to a lambda,
         // mirroring `parse_function_definition`.
+        // TODO: Refactor to remove this repeated code
         if let Ok(parameters) = self.try_(Self::parse_function_parameters) {
             let return_type = if self.accept(Token::Colon) {
                 self.parse_with_recovery(Self::parse_type, Token::Equal, &[Token::Newline, Token::Indent]).ok()
@@ -2583,7 +2590,7 @@ impl<'tokens> Parser<'tokens> {
                 None
             };
 
-            let effects = self.parse_effects_clause();
+            let effects = self.parse_effects_clause()?;
 
             self.expect(Token::Equal, "`=` to begin the function body")?;
             let body = if inline {

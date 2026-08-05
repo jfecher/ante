@@ -541,7 +541,12 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     fn thread_call_effects(&mut self, effects_var: &Type, locator: impl Locateable) {
         let current_row = self.current_effect_row.clone();
         self.unify(effects_var, &current_row, TypeErrorKind::Effects, locator);
-        self.current_effect_row = self.canonical_effects_row(&current_row, &TypeBindings::default());
+
+        // TODO: Error if collect_effects errors?
+        self.current_effect_row = self
+            .collect_effects(&current_row, &TypeBindings::default())
+            .map(|(effects, tail)| Type::Effects(Arc::new(effects), tail.map(|id| Arc::new(Type::Variable(id)))))
+            .unwrap_or(Type::ERROR);
     }
 
     /// True if `a` and `b` are equal except for one or more function environments.
@@ -972,13 +977,24 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     _ => Err(()),
                 }
             },
-            (Type::Effects(..), Type::Effects(..)) => self.row_subtype(a, b, new_bindings),
+            (Type::UserDefined(a), Type::UserDefined(b)) => {
+                if a == b {
+                    Ok(())
+                } else {
+                    Err(())
+                }
+            },
+            // Any of these three variants can be effects
+            (
+                Type::UserDefined(_) | Type::Application(..) | Type::Effects(..),
+                Type::UserDefined(_) | Type::Application(..) | Type::Effects(..),
+            ) => self.row_subtype(a, b, new_bindings),
             (a, b) if a == b => Ok(()),
             _ => Err(()),
         }
     }
 
-    /// Find a non-skipped head-matching candidate that subtypes `target` per `variance`, trying each speculatively.
+    /// Find a non-skipped head-matching candidate that subtypes `target` per `variance`
     fn subtype_matching_effect(
         &self, candidates: &[Type], skip: impl Fn(usize) -> bool, target: &Type, variance: Variance,
         new_bindings: &mut TypeBindings,
@@ -998,16 +1014,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     /// Row-subtype two effect rows: is `a`'s actual set of effects permitted by `b`'s expected set?
     fn row_subtype(&self, a: &Type, b: &Type, new_bindings: &mut TypeBindings) -> Result<(), ()> {
-        let a = self.canonical_effects_row(a, new_bindings);
-        let b = self.canonical_effects_row(b, new_bindings);
-        let (Type::Effects(a_list, a_tail), Type::Effects(b_list, b_tail)) = (&a, &b) else {
-            unreachable!("row_subtype called with non-Effects type");
-        };
+        let (a_list, a_tail) = self.collect_effects(a, new_bindings)?;
+        let (b_list, b_tail) = self.collect_effects(b, new_bindings)?;
 
-        let is_error = |list: &[Type], tail: &Option<Arc<Type>>| {
-            tail.as_deref().is_some_and(Type::is_error) || list.iter().any(Type::is_error)
-        };
-        if is_error(a_list, a_tail) || is_error(b_list, b_tail) {
+        if a_list.iter().any(Type::is_error) || b_list.iter().any(Type::is_error) {
             return Ok(());
         }
 
@@ -1016,7 +1026,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         for a_effect in a_list.iter() {
             let matched = self.subtype_matching_effect(
-                b_list,
+                &b_list,
                 |i| b_matched[i],
                 a_effect,
                 Variance::Contravariant,
@@ -1029,47 +1039,74 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
 
         if !a_leftover.is_empty() {
-            let fresh_tail = self.next_type_variable();
-            self.bind_open_tail(b_tail.as_deref(), a_leftover, Some(fresh_tail), true, new_bindings)?;
+            if let Some(b_tail) = b_tail {
+                let leftover = Type::Effects(Arc::new(a_leftover), Some(Arc::new(self.next_type_variable())));
+                self.try_bind_type_variable(b_tail, leftover, new_bindings)?;
+            } else {
+                return Err(());
+            }
         }
 
         let b_unmatched: Vec<Type> =
             b_list.iter().enumerate().filter(|(i, _)| !b_matched[*i]).map(|(_, t)| t.clone()).collect();
 
-        let new_tail = b_tail.as_deref().cloned();
-        self.bind_open_tail(a_tail.as_deref(), b_unmatched, new_tail, false, new_bindings)?;
+        if !b_unmatched.is_empty() {
+            if let Some(a_tail) = a_tail {
+                let leftover = Type::Effects(Arc::new(b_unmatched), Some(Arc::new(self.next_type_variable())));
+                self.try_bind_type_variable(a_tail, leftover, new_bindings)?;
+            } else {
+                return Err(());
+            }
+        }
 
         Ok(())
     }
 
-    fn bind_open_tail(
-        &self, tail: Option<&Type>, new_list: Vec<Type>, new_tail: Option<Type>, error_if_not_variable: bool,
-        new_bindings: &mut TypeBindings,
-    ) -> Result<(), ()> {
-        match tail {
-            Some(Type::Variable(id)) => {
-                let is_self_bind = new_list.is_empty() && matches!(&new_tail, Some(Type::Variable(t)) if t == id);
-                if is_self_bind {
-                    Ok(())
-                } else {
-                    self.try_bind_type_variable(*id, Type::effects(new_list, new_tail), new_bindings)
-                }
-            },
-            _ if error_if_not_variable => Err(()),
-            _ => Ok(()),
+    /// Collect each effect in `effects` into a single flat list, returning the list and the row variable
+    fn collect_effects(
+        &self, effects: &Type, new_bindings: &TypeBindings,
+    ) -> Result<(Vec<Type>, Option<TypeVariableId>), ()> {
+        let mut found = Vec::new();
+        let mut found_variables = FxHashSet::default();
+        self.collect_effects_rec(effects, new_bindings, &mut found, &mut found_variables);
+
+        found.sort();
+        found.dedup();
+
+        if found_variables.len() < 2 {
+            Ok((found, found_variables.into_iter().next()))
+        // >1 row variable, effect row is malformed
+        } else {
+            Err(())
         }
     }
 
-    /// Follow `effects` to the inner [Type::Effects] variant holding the entire effect row.
-    fn canonical_effects_row(&self, effects: &Type, new_bindings: &TypeBindings) -> Type {
-        match effects.follow_two(&self.bindings, new_bindings) {
+    fn collect_effects_rec(
+        &self, effects: &Type, new_bindings: &TypeBindings, found: &mut Vec<Type>,
+        variables: &mut FxHashSet<TypeVariableId>,
+    ) {
+        let effects = effects.follow_two(&self.bindings, new_bindings);
+        match &effects {
             Type::Effects(list, tail) => {
-                let list = mapvec(list.iter(), |t| t.follow_two(&self.bindings, new_bindings));
-                let tail = tail.as_deref().map(|t| self.canonical_effects_row(t, new_bindings));
-                Type::effects(list, tail)
+                for effect in list.iter() {
+                    self.collect_effects_rec(effect, new_bindings, found, variables);
+                }
+                if let Some(tail) = tail {
+                    self.collect_effects_rec(tail, new_bindings, found, variables);
+                }
             },
-            // A bare variable/generic tail with no accumulated effects yet.
-            other => Type::effects(Vec::new(), Some(other)),
+            // A single effect
+            // TODO: Expand aliases or verify that we don't need to
+            Type::Application(..) | Type::UserDefined(..) | Type::Generic(..) => {
+                found.push(effects);
+            },
+            Type::Variable(id) => {
+                variables.insert(*id);
+            },
+            // Any remaining variant should be a kind error, emitted elsewhere (TODO: verify)
+            other => {
+                eprintln!("Warning: possible kind error in collect_effects_rec: {}", self.type_to_string(other));
+            },
         }
     }
 

@@ -541,6 +541,7 @@ impl<'a> CstDisplay<'a> {
             TypeKind::Tuple(elements) => self.fmt_tuple_type(elements, context, f),
             TypeKind::Hole => write!(f, "_"),
             TypeKind::ImplicitLifetime => write!(f, "'_"),
+            TypeKind::Pure => write!(f, "pure"),
             TypeKind::IntegerConstant(n) => write!(f, "{n}"),
             TypeKind::Forall(generics, body) => {
                 write!(f, "forall")?;
@@ -669,7 +670,7 @@ impl<'a> CstDisplay<'a> {
     ) -> std::fmt::Result {
         match effects {
             None => Ok(()),
-            Some(effects) if effects.is_empty() => write!(f, " pure"),
+            Some(effects) if effects.is_empty() => write!(f, " is pure"),
             Some(effects) => {
                 write!(f, " can ")?;
                 for (i, effect) in effects.iter().enumerate() {

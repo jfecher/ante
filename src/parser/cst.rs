@@ -153,6 +153,9 @@ pub enum TypeKind {
 
     /// An explicit `forall (n: U32) t. T` polytype
     Forall(Generics, Box<Type>),
+
+    /// An empty effect set
+    Pure,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Copy, Clone, PartialOrd, Ord)]
@@ -189,7 +192,7 @@ pub struct FunctionType {
     pub environment: Option<Box<Type>>,
     pub return_type: Box<Type>,
 
-    /// `None` for no clause, `Some(vec![])` for `pure`, `Some(effects)` for `can e1, e2, ...`.
+    /// `None` for no clause, `Some(vec![])` for `is pure`, `Some(effects)` for `can e1, e2, ...`.
     pub effects: Option<Vec<Type>>,
 }
 
@@ -418,7 +421,7 @@ pub struct Lambda {
     pub body: ExprId,
     pub is_move: bool,
 
-    /// `None` for no clause, `Some(vec![])` for `pure`, `Some(effects)` for `can e1, e2, ...`.
+    /// `None` for no clause, `Some(vec![])` for `is pure`, `Some(effects)` for `can e1, e2, ...`.
     pub effects: Option<Vec<Type>>,
 }
 

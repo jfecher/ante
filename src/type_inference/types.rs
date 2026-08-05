@@ -780,6 +780,7 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
                 (typ, Kind::Lifetime)
             },
             crate::parser::cst::TypeKind::IntegerConstant(v) => (Type::U32(*v), Kind::U32),
+            crate::parser::cst::TypeKind::Pure => (Type::pure(), Kind::Effect),
             crate::parser::cst::TypeKind::Forall(generics, body) => {
                 for param in generics {
                     let kind = param.kind.map(kind_from_annotation).unwrap_or(Kind::Type);
@@ -1315,6 +1316,9 @@ where
         &self, list: &[Type], tail: &Option<Arc<Type>>, f: &mut std::fmt::Formatter,
     ) -> std::fmt::Result {
         let (full_list, final_tail) = self.flatten_effect_row(list, tail);
+        if full_list.is_empty() && final_tail.is_none() {
+            return write!(f, "pure");
+        }
         self.fmt_flat_effect_list(&full_list, &final_tail, f)
     }
 
@@ -1379,7 +1383,7 @@ where
                 let (full_list, final_tail) = self.flatten_effect_row(list, tail);
                 match &final_tail {
                     Some(Type::Variable(_)) if full_list.is_empty() => Ok(()),
-                    None if full_list.is_empty() => write!(f, " pure"),
+                    None if full_list.is_empty() => write!(f, " is pure"),
                     _ => {
                         write!(f, " can ")?;
                         self.fmt_flat_effect_list(&full_list, &final_tail, f)
