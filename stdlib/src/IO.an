@@ -6,30 +6,30 @@ export File, open, close, drop_file, eof, write, next_char, next_line,
 
 type File = c_file: C.File
 
-File.open (path: String) (mode: String): File =
+File.open (path: String) (mode: String): File can Fs =
     // TODO: Add null byte here
     File <| fopen (C.String path.data) (C.String mode.data)
 
-File.close (file: File): Unit =
+File.close (file: File): Unit can Fs =
     fclose file.c_file
 
-impl drop_file: Drop File with
+impl drop_file: Drop File Fs with
     drop f =
         fclose f.c_file
 
 //Convenience function for using feof with better types
-File.eof (f: ref File): Bool =
+File.eof (f: ref File): Bool can Fs =
     feof f.c_file != 0
 
-File.write (f: mut File) (text: String): Unit =
+File.write (f: mut File) (text: String): Unit can Fs =
     // TODO: Add null byte here
     fputs (C.String text.data) f.c_file
     ()
 
-File.next_char (f: ref File): Char =
+File.next_char (f: ref File): Char can Fs =
     Char (fgetc f.c_file)
 
-File.next_line (f: mut File): String =
+File.next_line (f: mut File): String can Fs =
     if f.eof () then return ""
 
     len, cstr = loop (len = 0) (capacity = 32) (cstr = malloc 32) ->
@@ -55,13 +55,13 @@ File.next_line (f: mut File): String =
     String.from_parts cstr (U32 len)
 
 // Iterating through a File iterates through each line
-impl iterator_file: Iterator (mut File) String with
+impl iterator_file: Iterator (mut File) String Fs with
     next file =
         if file.eof () then None
         else Some (file, file.next_line ())
 
 // Read a line from stdin, ending with (and not including) a terminating '\n'
-read_line (): String =
+read_line (): String can Fs =
     buffer, len = loop (buffer = null ()) (len = 0) ->
         c = getchar ()
         c_char = Char c

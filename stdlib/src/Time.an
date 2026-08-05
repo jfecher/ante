@@ -18,16 +18,16 @@ Duration.as_nanos (d: Duration): I64 = d.nanos
 type Instant = nanos: I64
 
 // TODO: None of this is platform agnostic
-Instant.now (): Instant =
+Instant.now (): Instant can Fs =
     var ts = Clock 0 0
     clock_gettime 1 (transmute (mut ts) : Ptr Clock)
     Instant (ts.sec * 1_000_000_000 + ts.nsec)
 
-Instant.elapsed (start: Instant): Duration =
+Instant.elapsed (start: Instant): Duration can Fs =
     Duration ((Instant.now ()).nanos - start.nanos)
 
 /// Block the current thread for the specified duration.
-sleep (d: Duration): Unit =
+sleep (d: Duration): Unit can Fs =
     secs = d.nanos / 1_000_000_000
     nsecs = d.nanos % 1_000_000_000
     var req = Clock secs nsecs

@@ -97,7 +97,7 @@ Mutex.with_lock (m: ref Mutex t) (f: fn (mut t) => r): r =
     pthread_mutex_unlock m.handle
     result
 
-impl drop_mutex {Drop t}: Drop (Mutex t) with
+impl drop_mutex {Drop t e}: Drop (Mutex t) e with
     drop (m: mut Mutex t) =
         pthread_mutex_destroy m.handle
         free m.handle
@@ -131,7 +131,7 @@ Condvar.broadcast (c: ref Condvar): Unit =
     pthread_cond_broadcast c.raw
     ()
 
-impl drop_condvar: Drop Condvar with
+impl drop_condvar: Drop Condvar pure with
     drop c =
         pthread_cond_destroy c.raw
         free c.raw
@@ -142,18 +142,18 @@ impl drop_condvar: Drop Condvar with
 type Thread a = handle: VoidPtr
 
 /// Spawn a new OS thread running `f`. The returned thread must be joined or detached.
-Thread.spawn (f: fn Unit [e] -> a pure): Thread a =
+Thread.spawn (f: fn Unit [e] -> a is pure): Thread a =
     // pthread_create needs a free function so we use this wrapper to take a pointer
     // to the closure to run as an argument.
     wrapper (thunk: VoidPtr): VoidPtr =
-        closure_ptr = transmute thunk : Ptr (fn Unit [e] -> a pure)
+        closure_ptr = transmute thunk : Ptr (fn Unit [e] -> a is pure)
         thunk = deref_ptr closure_ptr
         free closure_ptr
         out = malloc (size_of (MkType: Type a))
         ptr_store out (thunk ())
         transmute out
 
-    closure_ptr = malloc (size_of (MkType: Type (fn Unit [e] -> a pure)))
+    closure_ptr = malloc (size_of (MkType: Type (fn Unit [e] -> a is pure)))
     ptr_store closure_ptr f
     args_ptr = transmute closure_ptr : VoidPtr
     handle = malloc pthread_t_size
@@ -205,7 +205,7 @@ impl clone_arc: Clone (Arc t) with
         inner.count.fetch_add 1
         deref a
 
-impl drop_arc {Drop t}: Drop (Arc t) with
+impl drop_arc {Drop t e}: Drop (Arc t) e with
     drop (a: mut Arc t) =
         inner = ptr_to_mut a.ptr
         previous = inner.count.fetch_sub 1

@@ -10,7 +10,7 @@ type Rc t =
 Rc.of (value: t): Rc t =
     size = size_of (MkType: Type (U32, t))
     ptr = malloc size
-    ptr_store ptr (1u32, value)
+    ptr_store ptr (1, value)
     Rc ptr
 
 /// Returns a shared reference into the inner element. Since other Rc clones of
@@ -50,7 +50,7 @@ dec_ref_count (rc: mut Rc t): Unit =
 /// using `Rc.unwrap_or_clone` which will clone the inner value in the shared case
 /// instead of returning an error.
 Rc.try_unwrap (var rc: Rc t): Result t (Rc t) =
-    if ref_count (ref rc) == 1u32 then
+    if ref_count rc == 1 then
         // Bit-copy the cell out before freeing. drop_rc does not run drop
         // on the inner t, so this transfers ownership cleanly.
         pair = deref_ptr rc.ptr
@@ -74,11 +74,14 @@ impl clone_rc: Clone (Rc t) with
         inc_ref_count (transmute rc)
         deref rc
 
-impl drop_rc: Drop (Rc t) with
+impl drop_rc {Drop t e}: Drop (Rc t) e with
     drop (rc: mut Rc t) =
         // Skip cells consumed by try_unwrap.
-        if rc.ptr == null () then return ()
-        if ref_count rc == 1 then
+        if rc.ptr == null () then
+            ()
+        else if ref_count rc == 1 then
+            ptr = ptr_to_mut rc.ptr
+            drop ptr.second
             free rc.ptr
         else
             dec_ref_count rc
