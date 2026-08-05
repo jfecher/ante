@@ -47,7 +47,7 @@ use_a (): Unit can A = ()
 // 
 // (with_log: fn Unit -> Unit can Log, Read) () : Unit can WithLog Read =
 //     (log: fn String -> Unit can Log) "reading"
-//     (read: fn Unit -> String can Read) () (|>: fn String (fn String -> Unit can Log, Read) -> Unit can Log, Read) (ignore: fn String -> Unit pure)
+//     (read: fn Unit -> String can Read) () (|>: fn String (fn String -> Unit can Log, Read) -> Unit can Log, Read) (ignore: fn String -> Unit is pure)
 // 
 // effect A = B
 // 

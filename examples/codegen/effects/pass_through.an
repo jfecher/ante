@@ -5,7 +5,7 @@ effect Emit a =
 // this program not printing anything
 pass_through (f: fn Unit [env] -> Unit can Emit I32): fn Unit [env] -> Unit can Emit I32 = f
 
-use_it (g: fn Unit => Unit pure): Unit can Emit I32 =
+use_it (g: fn Unit => Unit is pure): Unit can Emit I32 =
     h = pass_through g
     h ()
 
