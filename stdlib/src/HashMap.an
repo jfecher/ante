@@ -135,7 +135,7 @@ HashMap.get_entry_mut (map: mut HashMap k v) (key: ref k) {Hash k} {eq: Eq k}: M
             entry_ptr = offset map.entries start
             entry = deref_ptr entry_ptr
             if entry.occupied then
-                if ref entry.key == key then
+                if entry.key == key then
                     Found entry_ptr
                 else
                     iter_until (start + 1) end
