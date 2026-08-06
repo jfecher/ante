@@ -73,7 +73,7 @@ HashMap.insert (map: mut HashMap k v) (key: k) (value: v) {Hash k} {Eq k}: Maybe
         map.resize ((map.capacity + 1) * 2)
 
     var previous = Maybe.None
-    var first_tombstone: Maybe Usz = None
+    var first_tombstone = Maybe.None
     iter_until (map: mut HashMap k v) (key: ref k) (value: ref v) (start: Usz) (end: Usz)  : Bool =
         if start >= end then
             false
