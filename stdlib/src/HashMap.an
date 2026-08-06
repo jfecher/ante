@@ -105,8 +105,7 @@ HashMap.insert (map: mut HashMap k v) (key: k) (value: v) {Hash k} {Eq k}: Maybe
         if not iter_until map key value 0 h then
             match first_tombstone
             | Some index ->
-                entry = ptr_to_mut (offset map.entries index)
-                entry := Entry (deref key) (deref value) true false
+                array_insert map.entries index (Entry (deref key) (deref value) true false)
             | None ->
                 panic "Failed to insert entry into map"
 
