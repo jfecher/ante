@@ -93,9 +93,7 @@ HashMap.insert (map: mut HashMap k v) (key: k) (value: v) {Hash k} {Eq k}: Maybe
 
                 iter_until map key value (start + 1) end
             else
-                insertion_index = match first_tombstone
-                    | Some index -> index
-                    | None -> start
+                insertion_index = first_tombstone.unwrap_or_else do start
 
                 insertion_entry = ptr_to_mut (offset map.entries insertion_index)
                 insertion_entry := Entry (deref key) (deref value) true false
