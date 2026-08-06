@@ -97,8 +97,8 @@ test_collision_management () =
     // testing tombstone case
     m.remove (ref first)
     println (m.len ())
-    println (m.get (ref first) ~> try)
-    println (m.get (ref second) ~> panic_on_fail)
+    println (m.get first ~> try)
+    println (m.get second ~> panic_on_fail)
     println (m.insert second 3)
     println (m.get (ref second) ~> panic_on_fail)
     println (m.len ())
