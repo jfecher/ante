@@ -73,7 +73,8 @@ HashMap.insert (map: mut HashMap k v) (key: k) (value: v) {Hash k} {Eq k}: Maybe
         map.resize ((map.capacity + 1) * 2)
 
     var previous = Maybe.None
-    iter_until (map: mut HashMap k v) (key: ref k) (value: ref v) (start: Usz) (end: Usz) : Bool =
+    var first_tombstone = Maybe.None
+    iter_until (map: mut HashMap k v) (key: ref k) (value: ref v) (start: Usz) (end: Usz)  : Bool =
         if start >= end then
             false
         else
@@ -85,16 +86,28 @@ HashMap.insert (map: mut HashMap k v) (key: k) (value: v) {Hash k} {Eq k}: Maybe
                     entry := Entry (deref key) (deref value) true false
                     true
                 else
-                    iter_until map key value (start + 1) end
+                    iter_until map key value (start + 1) end 
+            else if entry.tombstone then
+                if first_tombstone is None then
+                    first_tombstone := Some start
+
+                iter_until map key value (start + 1) end
             else
-                entry := Entry (deref key) (deref value) true false
+                insertion_index = first_tombstone.unwrap_or_else do start
+
+                insertion_entry = ptr_to_mut (offset map.entries insertion_index)
+                insertion_entry := Entry (deref key) (deref value) true false
                 true
 
     h = Usz (Hash.hash (deref (ref key))) % map.capacity
 
     if not iter_until map key value h map.capacity then
         if not iter_until map key value 0 h then
-            panic "Failed to insert entry into map"
+            match first_tombstone
+            | Some index ->
+                array_insert map.entries index (Entry (deref key) (deref value) true false)
+            | None ->
+                panic "Failed to insert entry into map"
 
     if previous is None then
         map.len := map.len + 1usz
@@ -121,8 +134,11 @@ HashMap.get_entry_mut (map: mut HashMap k v) (key: ref k) {Hash k} {eq: Eq k}: M
         else
             entry_ptr = offset map.entries start
             entry = deref_ptr entry_ptr
-            if entry.occupied and ref entry.key == key then
-                Found entry_ptr
+            if entry.occupied then
+                if entry.key == key then
+                    Found entry_ptr
+                else
+                    iter_until (start + 1) end
             else if entry.tombstone then
                 iter_until (start + 1) end
             else

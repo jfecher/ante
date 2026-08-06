@@ -2,7 +2,7 @@ import Std.HashMap.HashMap, empty, of, clear, insert, print_hashmap, remove, get
     get_entry, stream_map
 import Std.Stream.iter, iota, map, stream_fn, stream_array
 import Std.Hash.Hash, hash_u8
-import Std.Fail.try
+import Std.Fail.try, panic_on_fail
 
 main () =
     var map = empty ()
@@ -32,6 +32,7 @@ main () =
     test_iter_and_clear ()
     test_get_or_insert_contains_and_merge ()
     test_insert_duplicate ()
+    test_collision_management ()
 
 test_iter_and_clear () =
     // stream_map impl: build a single-entry map (otherwise ordering isn't deterministic)
@@ -69,6 +70,40 @@ test_insert_duplicate () =
     println (m.insert 2 20)
     println (m.len ())
 
+
+type MyType = 
+    inner: Usz
+
+impl copy_mytype: Copy MyType with
+      (.*) = deref
+
+impl hash_mytype: Hash MyType with
+    hash _ = 1
+
+impl equal_mytype: Eq MyType with
+    (==) x y = x.inner == y.inner
+
+test_collision_management () =
+    first = MyType 1
+    second = MyType 2
+        
+    var m = HashMap.of [(first, 1), (second, 2)]
+    // these have the same hash so should be put in the same index
+    println (m.len ())
+
+    println (m.get first ~> panic_on_fail)
+    println (m.get second ~> panic_on_fail)
+
+    // testing tombstone case
+    m.remove (ref first)
+    println (m.len ())
+    println (m.get first ~> try)
+    println (m.get second ~> panic_on_fail)
+    println (m.insert second 3)
+    println (m.get second ~> panic_on_fail)
+    println (m.len ())
+
+
 // args: --delete-binary --no-color
 // expected stdout:
 // [1 -> 3, 2 -> 6, 3 -> 9, 4 -> 12, 6 -> 18, 7 -> 21]
@@ -89,4 +124,12 @@ test_insert_duplicate () =
 // Some 10
 // None
 // 2
-
+// 2
+// 1
+// 2
+// 1
+// None
+// 2
+// Some 2
+// 3
+// 1
