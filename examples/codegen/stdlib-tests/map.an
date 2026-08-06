@@ -100,7 +100,7 @@ test_collision_management () =
     println (m.get first ~> try)
     println (m.get second ~> panic_on_fail)
     println (m.insert second 3)
-    println (m.get (ref second) ~> panic_on_fail)
+    println (m.get second ~> panic_on_fail)
     println (m.len ())
 
 
