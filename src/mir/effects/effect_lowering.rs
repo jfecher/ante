@@ -161,8 +161,8 @@ struct Context<'local> {
 
 fn is_zero_sized(typ: &Type) -> bool {
     match typ {
-        Type::Primitive(PrimitiveType::Unit | PrimitiveType::NoClosureEnv) => true,
-        Type::Tuple(fields) => fields.iter().all(is_zero_sized),
+        Type::Primitive(PrimitiveType::NoClosureEnv) => true,
+        Type::Tuple(fields) => !fields.is_empty() && fields.iter().all(is_zero_sized),
         _ => false,
     }
 }

@@ -1,0 +1,28 @@
+import Std.Vec.Vec, stream_imm_vec
+import Std.Stream.iter, stream_array
+
+type MyType =
+    key: U8
+    idk: Unit
+    aboolean: Bool
+    tombstone: Bool
+
+print_mytype (res: imm MyType) =
+    print res.key
+    print ", "
+    println res.aboolean
+
+main () =
+    x = Vec.of [MyType 1 () true true, MyType 2 () false false]
+    iter (imm x) print_mytype
+
+
+    println (size_of (MkType: Type Unit))
+    println (size_of (MkType: Type MyType))
+
+// args: --delete-binary --no-color
+// expected stdout:
+// 1, true
+// 2, false
+// 1
+// 4
