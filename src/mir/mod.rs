@@ -965,7 +965,9 @@ impl Type {
                         max_align = a;
                     }
                 }
-                (offset + max_align - 1) & !(max_align - 1)
+                // empty tuples are emitted as one byte struct in C backend
+                // so we clamp to 1 minimum to match
+                ((offset + max_align - 1) & !(max_align - 1)).max(1)
             },
             Type::Function(_) => ptr_size,
             // This is a raw union so the tag isn't counted here
@@ -1066,7 +1068,8 @@ pub enum PrimitiveType {
 impl PrimitiveType {
     fn size_in_bytes(self, ptr_size: u32) -> u32 {
         match self {
-            PrimitiveType::Error | PrimitiveType::NoClosureEnv | PrimitiveType::Unit => 0,
+            PrimitiveType::Error | PrimitiveType::NoClosureEnv => 0,
+            PrimitiveType::Unit => 1,
             PrimitiveType::Bool => 1,
             PrimitiveType::Pointer => ptr_size,
             PrimitiveType::Char => 1,

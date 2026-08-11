@@ -7,7 +7,7 @@ use inkwell::{
     module::{Linkage, Module},
     passes::PassBuilderOptions,
     targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine},
-    types::{BasicType, BasicTypeEnum, IntType},
+    types::{BasicType, BasicTypeEnum, IntType, StructType},
     values::{AggregateValue, BasicValue, BasicValueEnum, FunctionValue, PhiValue},
 };
 use rustc_hash::FxHashMap;
@@ -216,6 +216,7 @@ impl<'ctx> ModuleContext<'ctx> {
             },
             ConstantValue::Float(FloatConstant::F32(v)) => self.llvm.f32_type().const_float(v.0).into(),
             ConstantValue::Float(FloatConstant::F64(v)) => self.llvm.f64_type().const_float(v.0).into(),
+            ConstantValue::Tuple(values) if values.is_empty() => self.unit_value(),
             ConstantValue::Tuple(values) => {
                 let fields = mapvec(values, |v| self.lower_constant(v));
                 self.llvm.const_struct(&fields, false).into()
@@ -330,7 +331,7 @@ impl<'ctx> ModuleContext<'ctx> {
 
         let i32_type = self.llvm.i32_type();
         let ptr_type = self.llvm.ptr_type(AddressSpace::default());
-        let unit_type = self.llvm.struct_type(&[], false);
+        let unit_type = self.convert_primitive_type(PrimitiveType::Unit).into_struct_type();
 
         // Module-local globals holding argc/argv for the lifetime of the process.
         let argc_global = self.module.add_global(i32_type, None, "ante_argc");
@@ -375,7 +376,7 @@ impl<'ctx> ModuleContext<'ctx> {
         self.builder.build_store(argv_global.as_pointer_value(), argv).unwrap();
 
         let unit = self.unit_value().into();
-        let evidence = self.llvm.struct_type(&[], false).const_zero().into();
+        let evidence = self.unit_value().into();
         self.builder.build_direct_call(ante_main, &[unit, evidence], "").unwrap();
         self.builder.build_return(Some(&i32_type.const_int(0, false))).unwrap();
     }
@@ -413,6 +414,7 @@ impl<'ctx> ModuleContext<'ctx> {
     fn convert_type(&self, typ: &mir::Type) -> BasicTypeEnum<'ctx> {
         match typ {
             mir::Type::Primitive(primitive_type) => self.convert_primitive_type(*primitive_type),
+            mir::Type::Tuple(fields) if fields.is_empty() => self.unit_type().into(),
             mir::Type::Tuple(fields) => {
                 let fields = mapvec(fields.iter(), |typ| self.convert_type(typ));
                 let struct_type = self.llvm.struct_type(&fields, false);
@@ -437,7 +439,7 @@ impl<'ctx> ModuleContext<'ctx> {
     fn convert_primitive_type(&self, primitive_type: PrimitiveType) -> BasicTypeEnum<'ctx> {
         match primitive_type {
             PrimitiveType::Error => unreachable!("Cannot codegen llvm with errors"),
-            PrimitiveType::Unit => self.llvm.struct_type(&[], false).into(),
+            PrimitiveType::Unit => self.unit_type().into(),
             PrimitiveType::Bool => self.llvm.bool_type().into(),
             PrimitiveType::Pointer => self.llvm.ptr_type(AddressSpace::default()).into(),
             PrimitiveType::Char => self.llvm.i8_type().into(),
@@ -526,8 +528,12 @@ impl<'ctx> ModuleContext<'ctx> {
         }
     }
 
-    fn unit_value(&mut self) -> BasicValueEnum<'ctx> {
-        self.llvm.const_struct(&[], false).into()
+    fn unit_type(&self) -> StructType<'ctx> {
+        self.llvm.struct_type(&[self.llvm.i8_type().into()], false)
+    }
+
+    fn unit_value(&self) -> BasicValueEnum<'ctx> {
+        self.unit_type().const_zero().into()
     }
 
     fn codegen_instruction(&mut self, function: &mir::Definition, id: mir::InstructionId) {
@@ -863,6 +869,9 @@ impl<'ctx> ModuleContext<'ctx> {
 
     fn make_tuple(&mut self, fields: &[mir::Value]) -> BasicValueEnum<'ctx> {
         let fields = mapvec(fields, |field| self.lookup_value(field));
+        if fields.is_empty() {
+            return self.unit_value();
+        }
         let const_fields =
             mapvec(&fields, |field| if field.is_const() { *field } else { Self::undef_value(field.get_type()) });
         let mut tuple = self.llvm.const_struct(&const_fields, false).as_aggregate_value_enum();
