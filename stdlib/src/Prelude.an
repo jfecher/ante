@@ -569,7 +569,7 @@ impl eq_maybe {Eq e}: Eq (Maybe e) with
 impl eq_pair {Eq a} {Eq b}: Eq (a, b) with
     (==) l r = l.first == r.first and l.second == r.second
 
-(!=) (l: t) (r: t) {Eq t} = not (l == r)
+(!=) (l: ref t) (r: ref t) {Eq t} = not (l == r)
 
 trait Not t =
     (not): fn t -> t
