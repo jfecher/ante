@@ -1,0 +1,79 @@
+import Std.HashSet.HashSet, empty, of, clear, contains, insert, remove, len,
+    is_empty, extend, retain, merge, keys, stream_set, stream_ref_hashset,
+    print_hashset
+import Std.Hash.hash_u8
+import Std.Stream.iter, stream_array, stream_fn
+
+main () =
+    test_basics ()
+    test_of_extend_retain_merge ()
+    test_stream_and_print ()
+
+is_even (key: U8) = key %% 2
+
+test_basics () =
+    var set: HashSet U8 = HashSet.empty ()
+
+    println (set.is_empty ())
+    println (set.len ())
+    println (set.insert 1)
+    println (set.insert 1)
+    println (set.contains 1)
+    println (set.remove 1)
+    println (set.remove 1)
+    println (set.is_empty ())
+
+
+test_of_extend_retain_merge () =
+    var set = HashSet.of [1, 2, 2]
+    println (set.len ())
+
+    set.extend [2, 3, 4]
+    println (set.len ())
+
+    set.retain is_even
+    println (set.len ())
+    println (set.contains 1)
+    println (set.contains 2)
+    println (set.contains 3)
+
+    other = HashSet.of [3, 5]
+    set.merge other
+    println (set.len ())
+    println (set.contains 5)
+
+    set.clear ()
+    println (set.is_empty ())
+
+test_stream_and_print () =
+    set = HashSet.of [42]
+    iter set println
+
+    set2 = HashSet.of [43]
+    iter (ref set2) println
+    iter (HashSet.keys set2) println
+    println set2
+
+// args: --delete-binary --no-color
+// expected stdout:
+// true
+// 0
+// true
+// false
+// true
+// true
+// false
+// true
+// 2
+// 4
+// 2
+// false
+// true
+// false
+// 4
+// true
+// true
+// 42
+// 43
+// 43
+// [43]
