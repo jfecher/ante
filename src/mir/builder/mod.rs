@@ -14,7 +14,7 @@ use crate::{
     lexer::token::{FloatKind, Integer, IntegerKind},
     mir::{
         Block, BlockId, Definition, DefinitionId, FloatConstant, FunctionType, Generic, Instruction, IntConstant, Mir,
-        TerminatorInstruction, Type, Value, next_definition_id,
+        PrimitiveType, TerminatorInstruction, Type, Value, next_definition_id,
     },
     name_resolution::Origin,
     parser::{
@@ -1898,6 +1898,7 @@ where
 
     fn extract_tag_value(&mut self, value_being_matched: Value) -> Value {
         match self.type_of_value(&value_being_matched) {
+            Type::Primitive(PrimitiveType::Unit) => Value::tag_value(0),
             Type::Primitive(_) => value_being_matched,
             Type::Tuple(fields) => {
                 if fields.is_empty() {
