@@ -23,6 +23,7 @@ impl OverflowingIntOp {
         }
     }
 
+    #[cfg(feature = "llvm")]
     pub(crate) fn llvm_name_part(self) -> &'static str {
         match self {
             OverflowingIntOp::Add => "add",
