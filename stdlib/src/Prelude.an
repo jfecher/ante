@@ -15,7 +15,7 @@ export String, from_parts, Maybe, None, Some, iff, unwrap, unwrap_or_else, Resul
     cast_i64_i8, cast_i64_i16, cast_i64_i32, cast_i64_isz, cast_isz_i8, cast_isz_i16, cast_isz_i32, cast_isz_i64, cast_i8_f32, cast_i16_f32, cast_i32_f32, cast_i64_f32, cast_isz_f32, cast_i8_f64, cast_i16_f64, cast_i32_f64,
     cast_u8_f32, cast_u16_f64, cast_u32_f64, cast_u64_f64, cast_usz_f64, cast_u8_f64, cast_u16_f32, cast_u32_f32, cast_u64_f32, cast_usz_f32, cast_f32_i8, cast_f32_i16, cast_f32_i32, cast_f32_i64, cast_f32_isz, cast_f64_i8,
     cast_f32_u8, cast_f32_u16, cast_f32_u32, cast_f32_u64, cast_f32_usz, cast_f64_u8, cast_f64_u16, cast_f64_u32, cast_f64_u64, cast_f64_usz, cast_i8_char, cast_i16_char, cast_i32_char, cast_i64_char, cast_isz_char, cast_u8_i32,
-    cast_i64_f64, cast_isz_f64, cast_f64_i16, cast_f64_i32, cast_f64_i64, cast_f64_isz, cast_u8_char, cast_u16_char, cast_u32_char, cast_u64_char, cast_usz_char, cast_f64_f32, cast_f32_f64, cast_i32_usz, cast_usz_i64, cast_i64_usz, cast_char_u8, cast_char_i32, cast_char_u64, cast_i32_string, cast_bool_i32,
+    cast_i64_f64, cast_isz_f64, cast_f64_i16, cast_f64_i32, cast_f64_i64, cast_f64_isz, cast_u8_char, cast_u16_char, cast_u32_char, cast_u64_char, cast_usz_char, cast_f64_f32, cast_f32_f64, cast_i32_usz, cast_usz_i64, cast_i64_usz, cast_char_u8, cast_char_i32, cast_char_u64, cast_i32_string, cast_f32_string, cast_f64_string, cast_bool_i32,
     TryCast, try_cast, try_cast_from_cast, try_cast_i64_u64, try_cast_u64,
     Add, (+), add_i8, add_i16, add_i32, add_i64, add_isz, add_u8, add_u16, add_u32, add_u64, add_usz, add_f32, add_f64,
     Sub, (-), sub_i8, sub_i16, sub_i32, sub_i64, sub_isz, sub_u8, sub_u16, sub_u32, sub_u64, sub_usz, sub_f32, sub_f64,
@@ -377,6 +377,33 @@ impl cast_i32_string: Cast I32 String with
         do ()
 
         String.from_parts buf len
+
+unsigned_to_string (var digits: U64): String =
+    len = count_digits digits
+    buf: Ptr Char = malloc (Usz len)
+    var pos = Usz (len - 1)
+    while
+        digit = digits % 10 + U64 '0'
+        array_insert buf pos (Char digit)
+        digits /= 10
+        pos -= 1
+        digits > 0
+    do ()
+    String.from_parts buf len
+
+float_to_string (f: F64): String =
+    is_neg = f < 0.0
+    abs = if is_neg then 0.0 - f else f
+    uint = U64 abs
+    fraction = U64 ((abs - F64 uint) * 10_000.0)
+    prefix = if is_neg then "-" else ""
+    prefix ++ unsigned_to_string uint ++ "." ++ unsigned_to_string fraction
+
+impl cast_f32_string: Cast F32 String with
+    cast f = float_to_string (F64 f)
+
+impl cast_f64_string: Cast F64 String with
+    cast = float_to_string
 
 /// Represents a failable type cast from a to b
 trait TryCast a b =
