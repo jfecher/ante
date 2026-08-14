@@ -2,7 +2,11 @@ main () =
     name = "world"
     n: I32 = 42
     println "hello, ${name}! n=${n}"
+    f32: F32 = 1.25f
+    f64: F64 = -2.5
+    println "f32=${f32}, f64=${f64}"
 
 // args: --delete-binary --no-color
-// expected stdout: hello, world! n=42
-
+// expected stdout:
+// hello, world! n=42
+// f32=1.2500, f64=-2.5000
