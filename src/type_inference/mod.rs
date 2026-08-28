@@ -498,7 +498,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let Type::Function(function_type) = typ.follow(&self.bindings) else { return };
         let function_type = function_type.clone();
 
-        let effects = Type::collect_effects(&function_type.effects, &self.bindings, &Default::default());
+        let effects = self.collect_effects(&function_type.effects, &Default::default());
         for effect in &effects {
             let Type::Variable(id) = effect.typ.follow(&self.bindings) else { continue };
             if root.count_unification_var_occurrences(*id, &self.bindings) <= 1 {
@@ -1251,7 +1251,13 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Flatten `effect` into a list of effects
     fn collect_effects(&self, effect: &Type, new_bindings: &TypeBindings) -> Vec<Effect> {
         match effect.follow_two(&self.bindings, new_bindings) {
-            Type::Effects(_) => Type::collect_effects(effect, &self.bindings, new_bindings),
+            Type::Effects(row) => {
+                let mut found = Vec::new();
+                if let Some(row) = row {
+                    Type::flatten_effects_into(&row, &mut found, &self.bindings, new_bindings);
+                }
+                found
+            },
             // A single effect, or an unbound variable standing in for the rest of the row.
             // TODO: Expand aliases or verify that we don't need to
             typ @ (Type::Application(..) | Type::UserDefined(..) | Type::Generic(_) | Type::Variable(_)) => {

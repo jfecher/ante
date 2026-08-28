@@ -1348,17 +1348,8 @@ impl Type {
         }
     }
 
-    /// Flatten every effect reachable within the row `typ` into a single Vec
-    pub(crate) fn collect_effects(typ: &Type, bindings: &TypeBindings, more_bindings: &TypeBindings) -> Vec<Effect> {
-        let mut found = Vec::new();
-        if let Type::Effects(Some(effects)) = typ.follow_two(bindings, more_bindings) {
-            Self::flatten_effects_into(&effects, &mut found, bindings, more_bindings);
-        }
-        found
-    }
-
-    /// [Self::collect_effects] over a row's entries, appending to `found`
-    fn flatten_effects_into(
+    /// Flatten every effect reachable from `effects` into `found`
+    pub(crate) fn flatten_effects_into(
         effects: &[Effect], found: &mut Vec<Effect>, bindings: &TypeBindings, more_bindings: &TypeBindings,
     ) {
         for effect in effects {

@@ -1157,8 +1157,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     /// Remove `handled`'s effect(s) out of `row`
     fn subtract_effect(&self, row: &Type, handled: &Type, new_bindings: &mut TypeBindings) -> Type {
-        let mut list = Type::collect_effects(row, &self.bindings, new_bindings);
-        let to_remove = Type::collect_effects(handled, &self.bindings, new_bindings);
+        let mut list = self.collect_effects(row, new_bindings);
+        let to_remove = self.collect_effects(handled, new_bindings);
 
         for entry in &to_remove {
             if let Some(pos) = self.subtype_matching_effect(&list, |_| false, entry, Variance::Covariant, new_bindings)
