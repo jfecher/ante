@@ -1,7 +1,7 @@
 import Std.C.fclose, fopen, fputs, fgetc, ungetc, feof, malloc, realloc, getchar, copy_file
 import Std.C
 
-export File, open, close, drop_file, eof, write, next_char, next_line,
+export File, File.open, File.close, drop_file, File.eof, File.write, File.next_char, File.next_line,
     iterator_file, read_line
 
 type File = c_file: C.File

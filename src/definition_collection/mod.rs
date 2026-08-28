@@ -270,10 +270,31 @@ pub fn all_types_impl(context: &AllTypes, db: &DbHandle) -> Arc<TypeDefinitions>
     Arc::new(definitions)
 }
 
+/// The names listed in a file's `export` clause.
+/// Any qualified names refer to methods or union variants.
+struct ExportSet<'a> {
+    names: HashSet<&'a Name>,
+    /// `(type name, method name)` pairs.
+    qualified: HashSet<(&'a Name, &'a Name)>,
+}
+
 /// Build the set of names listed in this file's `export` clause, or `None` if there's no
 /// clause (in which case the file exports everything).
-fn build_export_set(parse: &ParseResult) -> Option<HashSet<&Name>> {
-    parse.cst.exports.as_ref().map(|exports| exports.iter().map(|(n, _)| n).collect())
+fn build_export_set(parse: &ParseResult) -> Option<ExportSet> {
+    parse.cst.exports.as_ref().map(|exports| {
+        let mut set = ExportSet { names: HashSet::new(), qualified: HashSet::new() };
+        for entry in exports {
+            match &entry.qualifier {
+                Some((qualifier, _)) => {
+                    set.qualified.insert((qualifier, &entry.name));
+                },
+                None => {
+                    set.names.insert(&entry.name);
+                },
+            }
+        }
+        set
+    })
 }
 
 /// Collect exported type definitions, filtered by the file's export list.
@@ -289,7 +310,7 @@ pub fn exported_types_impl(context: &ExportedTypes, db: &DbHandle) -> Arc<TypeDe
         None => types,
         Some(export_set) => {
             let mut filtered = (*types).clone();
-            filtered.retain(|name, _| export_set.contains(name));
+            filtered.retain(|name, _| export_set.names.contains(name));
             Arc::new(filtered)
         },
     };
@@ -370,14 +391,30 @@ pub fn exported_definitions_impl(context: &ExportedDefinitions, db: &DbHandle) -
         return all;
     };
 
-    let in_exports = |(name, _): &(&Name, &TopLevelName)| export_set.contains(name);
-    let collect_functions = |items: &BTreeMap<Name, TopLevelName>| {
-        items.iter().filter(in_exports).map(|(k, v)| (k.clone(), *v)).collect::<BTreeMap<_, _>>()
-    };
+    let definitions = all
+        .definitions
+        .iter()
+        .filter(|(name, _)| export_set.names.contains(name))
+        .map(|(k, v)| (k.clone(), *v))
+        .collect();
 
-    let definitions = collect_functions(&all.definitions);
+    let qualified: HashSet<(TopLevelId, &Name)> = export_set
+        .qualified
+        .iter()
+        .filter_map(|(type_name, method)| {
+            let type_id = all.definitions.get(*type_name)?;
+            Some((type_id.top_level_item, *method))
+        })
+        .collect();
 
-    let methods = all.methods.iter().map(|(type_id, methods)| (*type_id, collect_functions(methods)));
+    let methods = all.methods.iter().map(|(type_id, methods)| {
+        let filtered = methods
+            .iter()
+            .filter(|(name, _)| qualified.contains(&(*type_id, *name)))
+            .map(|(k, v)| (k.clone(), *v))
+            .collect::<BTreeMap<_, _>>();
+        (*type_id, filtered)
+    });
     let methods = methods.filter(|(_, methods)| !methods.is_empty()).collect();
 
     incremental::exit_query();
@@ -397,21 +434,58 @@ pub fn validate_exports_impl(context: &ValidateExports, db: &DbHandle) {
         let import_names: HashSet<&Name> =
             parse.cst.imports.iter().flat_map(|i| i.items.iter().map(|(n, _)| n)).collect();
 
-        for (name, location) in exports {
-            let exists = defs.definitions.contains_key(name)
-                || types.contains_key(name)
-                || defs.methods.values().any(|m| m.contains_key(name))
-                || import_names.contains(name);
+        for entry in exports {
+            match &entry.qualifier {
+                Some((qualifier, qualifier_location)) => match defs.definitions.get(qualifier) {
+                    Some(type_id) => {
+                        let has_method =
+                            defs.methods.get(&type_id.top_level_item).is_some_and(|m| m.contains_key(&entry.name));
+                        if !has_method {
+                            let name = entry.name.clone();
+                            let location = entry.location.clone();
+                            db.accumulate(Diagnostic::ExportedItemNotFound { name, location });
+                        }
+                    },
+                    None => {
+                        let name = qualifier.clone();
+                        let location = qualifier_location.clone();
+                        db.accumulate(Diagnostic::ExportedItemNotFound { name, location });
+                    },
+                },
+                None => {
+                    let exists = defs.definitions.contains_key(&entry.name)
+                        || types.contains_key(&entry.name)
+                        || import_names.contains(&entry.name);
+                    if exists {
+                        continue;
+                    }
 
-            if !exists {
-                let name = name.clone();
-                let location = location.clone();
-                db.accumulate(Diagnostic::ExportedItemNotFound { name, location });
+                    let owner = defs.methods.iter().find(|(_, m)| m.contains_key(&entry.name));
+                    let name = entry.name.clone();
+                    let location = entry.location.clone();
+                    match owner.and_then(|(type_id, _)| type_name_of(&parse, *type_id)) {
+                        Some(type_name) => {
+                            db.accumulate(Diagnostic::MethodExportRequiresType { name, type_name, location });
+                        },
+                        None => db.accumulate(Diagnostic::ExportedItemNotFound { name, location }),
+                    }
+                },
             }
         }
     }
 
     incremental::exit_query();
+}
+
+/// The declared name of a type, trait, or effect item.
+fn type_name_of(parse: &ParseResult, type_id: TopLevelId) -> Option<Name> {
+    let item = parse.cst.top_level_items.iter().find(|item| item.id == type_id)?;
+    let name_id = match &item.kind {
+        TopLevelItemKind::TypeDefinition(definition) => definition.name,
+        TopLevelItemKind::TraitDefinition(def) | TopLevelItemKind::EffectDefinition(def) => def.name,
+        _ => return None,
+    };
+    Some(parse.top_level_data[&type_id].names[name_id].clone())
 }
 
 struct Declarer<'local, 'db> {

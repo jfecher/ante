@@ -1522,7 +1522,8 @@ where
                     }
                     write!(f, " -> ")?;
                 }
-                self.fmt_type(&function.return_type, false, f)?;
+                let returns_fn = matches!(function.return_type.follow(self.bindings), Type::Function(_));
+                self.fmt_type(&function.return_type, returns_fn, f)?;
                 self.fmt_effects_suffix(&function.effects, f)
             }),
             Type::Application(constructor, args) => try_parenthesize(parenthesize, f, |f| {

@@ -1,7 +1,7 @@
 import Std.C.malloc, free
 
-export Rc, of, as_ref, as_mut, ref_count, inc_ref_count, dec_ref_count,
-    try_unwrap, unwrap_or_clone, clone_rc, drop_rc
+export Rc, Rc.of, Rc.as_ref, Rc.as_mut, ref_count, inc_ref_count, dec_ref_count,
+    Rc.try_unwrap, Rc.unwrap_or_clone, clone_rc, drop_rc
 
 /// A non-threadsafe reference-counted pointer.
 type Rc t =

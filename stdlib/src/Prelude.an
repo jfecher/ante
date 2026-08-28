@@ -6,7 +6,7 @@
 import Std.C.putchar, exit, memcmp, malloc, memcpy, free
 import Std.Fail.Fail, fail, panic_on_fail, fail_if
 
-export String, from_parts, Maybe, None, Some, iff, unwrap, unwrap_or_else, Result, Ok, Error, (,),
+export String, String.from_parts, Maybe, Maybe.None, Maybe.Some, iff, Maybe.unwrap, Maybe.unwrap_or_else, Result, Result.Ok, Result.Error, (,),
     Fs, Net, IO,
     first, second, third, fourth, fifth,
     Cast, cast, cast_same, cast_ptr_usz, cast_usz_ptr,
@@ -32,7 +32,7 @@ export String, from_parts, Maybe, None, Some, iff, unwrap, unwrap_or_else, Resul
     Insert, (.[]:=), insert_ptr_usz, insert_array,
     array_len, array_get, array_get_mut, array_set, array_get_unchecked, array_set_unchecked,
     Bitwise, band, bor, bxor, bitwise_i32, bitwise_u64,
-    Type, MkType, size_of,
+    Type, Type.MkType, size_of,
     offset, offset_bytes, deref, deref_ptr, ptr_store, array_insert, ptr_to_mut, ptr_to_uniq,
     Clone, clone, Drop, drop, drop_string,
     drop_i8, drop_i16, drop_i32, drop_i64, drop_isz, drop_u8, drop_u16, drop_u32, drop_u64, drop_usz, drop_f32, drop_f64, drop_unit, drop_bool, drop_char, drop_ptr,

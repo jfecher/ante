@@ -19,11 +19,20 @@ pub struct Cst {
     pub imports: Vec<Import>,
     /// `None` when the file has no `export` statement (all items are exported by default).
     /// `Some(list)` when an explicit `export` statement restricts visibility to those items.
-    pub exports: Option<Vec<(Name, Location)>>,
+    pub exports: Option<Vec<ExportEntry>>,
     pub top_level_items: Vec<Arc<TopLevelItem>>,
 
     /// Comments after the last top level item
     pub ending_comments: Vec<String>,
+}
+
+/// One entry in an export list
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub struct ExportEntry {
+    /// The `Vec` in `Vec.push`. `None` for unqualified identifiers.
+    pub qualifier: Option<(Name, Location)>,
+    pub name: Name,
+    pub location: Location,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]

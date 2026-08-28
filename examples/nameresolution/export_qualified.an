@@ -1,0 +1,30 @@
+// Methods must be exported qualified with their type; `Box.get` is the valid form
+export Box, get, Box.missing, NotAType.get, Box.get
+
+type Box = val: I32
+
+Box.get (b: Box) = b.val
+
+main () = ()
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/nameresolution/export_qualified.an:2:13
+// 1 | // Methods must be exported qualified with their type; `Box.get` is the valid form
+//   | // error: `get` must be exported as `Box.get`
+// 2 | export Box, get, Box.missing, NotAType.get, Box.get
+//   |             ^^^
+// 
+// examples/nameresolution/export_qualified.an:2:22
+// 1 | // Methods must be exported qualified with their type; `Box.get` is the valid form
+// 2 | export Box, get, Box.missing, NotAType.get, Box.get	// error: `missing` is not defined
+//   |                      ^^^^^^^
+// 
+// examples/nameresolution/export_qualified.an:2:31
+// 1 | // Methods must be exported qualified with their type; `Box.get` is the valid form
+// 2 | export Box, get, Box.missing, NotAType.get, Box.get	// error: `NotAType` is not defined
+//   |                               ^^^^^^^^
+// 
+// Found 3 errors and 0 warnings
+

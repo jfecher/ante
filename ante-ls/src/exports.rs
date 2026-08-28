@@ -5,7 +5,7 @@ use ante::{
     incremental::{Db, Parse},
     name_resolution::namespace::SourceFileId,
     parser::context::TopLevelContext,
-    parser::cst::{Cst, Pattern, TopLevelItemKind},
+    parser::cst::{Cst, ExportEntry, Pattern, TopLevelItemKind},
     parser::ids::{IdStore, NameStore, PatternId, TopLevelId},
 };
 use tower_lsp::lsp_types::{CodeAction, CodeActionKind, TextEdit, Url, WorkspaceEdit};
@@ -75,17 +75,16 @@ fn find_top_level_name_at(
     hit
 }
 
-/// Restricted variant of `PatternId::name()`: `Pattern::MethodName` must resolve
-/// to the bare item name (e.g. `push`), not the dotted debug form (`Vec.push`),
-/// since that's what the export list expects.
-///
-/// TODO: This can be removed when push is changed to be exported as Vec.push
+/// The name a pattern's export entry needs, in export-list syntax.
+/// Methods are exported qualified with their type, e.g. `Vec.push`.
 fn exportable_pattern_name(pattern_id: PatternId, ctx: &TopLevelContext) -> Option<String> {
     match ctx.get_pattern(pattern_id) {
-        Pattern::Variable(name) => Some(ctx.get_name(*name).to_string()),
+        Pattern::Variable(name) => Some(to_export_syntax(ctx.get_name(*name)).into_owned()),
         Pattern::TypeAnnotation(inner, _) => exportable_pattern_name(*inner, ctx),
-        Pattern::MethodName { item_name, .. } => Some(ctx.get_name(*item_name).to_string()),
-        Pattern::Alias(name, _) => Some(ctx.get_name(*name).to_string()),
+        Pattern::MethodName { type_name, item_name } => {
+            Some(format!("{}.{}", ctx.get_name(*type_name), to_export_syntax(ctx.get_name(*item_name))))
+        },
+        Pattern::Alias(name, _) => Some(to_export_syntax(ctx.get_name(*name)).into_owned()),
         Pattern::Or(_) | Pattern::Literal(_) | Pattern::Constructor(..) | Pattern::Error => None,
     }
 }
@@ -102,26 +101,32 @@ fn to_export_syntax(name: &str) -> Cow<'_, str> {
     }
 }
 
-fn build_export_edit(name: &str, cst: &Cst, rope: &ropey::Rope) -> Option<TextEdit> {
-    let syntax_name = to_export_syntax(name);
+/// An existing entry rendered in the same syntax `exportable_pattern_name` produces.
+fn render_entry(entry: &ExportEntry) -> String {
+    match &entry.qualifier {
+        Some((qualifier, _)) => format!("{qualifier}.{}", to_export_syntax(&entry.name)),
+        None => to_export_syntax(&entry.name).into_owned(),
+    }
+}
 
+/// `name` must already be in export-list syntax.
+fn build_export_edit(name: &str, cst: &Cst, rope: &ropey::Rope) -> Option<TextEdit> {
     if let Some(exports) = &cst.exports {
-        if exports.iter().any(|(n, _)| n.as_str() == name) {
+        if exports.iter().any(|entry| render_entry(entry) == name) {
             return None;
         }
-        let (_, last_loc) = exports.last()?;
-        let insert_byte = last_loc.span.end.byte_index;
+        let insert_byte = exports.last()?.location.span.end.byte_index;
         let range = byte_range_to_lsp_range(insert_byte, insert_byte, rope).ok()?;
-        return Some(TextEdit { range, new_text: format!(", {syntax_name}") });
+        return Some(TextEdit { range, new_text: format!(", {name}") });
     }
 
     if let Some(last_import) = cst.imports.last() {
         let insert_byte = last_import.location.span.end.byte_index;
         let range = byte_range_to_lsp_range(insert_byte, insert_byte, rope).ok()?;
-        Some(TextEdit { range, new_text: format!("\n\nexport {syntax_name}") })
+        Some(TextEdit { range, new_text: format!("\n\nexport {name}") })
     } else {
         let range = byte_range_to_lsp_range(0, 0, rope).ok()?;
-        Some(TextEdit { range, new_text: format!("export {syntax_name}\n\n") })
+        Some(TextEdit { range, new_text: format!("export {name}\n\n") })
     }
 }
 
@@ -193,6 +198,21 @@ mod tests {
     fn non_top_level_name_yields_no_action() {
         let source = "foo x = x\n";
         let byte_offset = source.rfind('x').unwrap();
+        assert!(edit_at(source, byte_offset).is_none());
+    }
+
+    #[test]
+    fn method_export_action_uses_qualified_name() {
+        let source = "export Box\n\ntype Box = val: I32\n\nBox.get (b: Box) = b.val\n";
+        let byte_offset = source.find("Box.get").unwrap();
+        let edit = edit_at(source, byte_offset).expect("expected an edit");
+        assert_eq!(edit.new_text, ", Box.get");
+    }
+
+    #[test]
+    fn already_exported_qualified_method_yields_no_action() {
+        let source = "export Box, Box.get\n\ntype Box = val: I32\n\nBox.get (b: Box) = b.val\n";
+        let byte_offset = source.find("Box.get (").unwrap();
         assert!(edit_at(source, byte_offset).is_none());
     }
 }

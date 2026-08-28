@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, sync::Arc};
 
-use cst::{Comptime, Constructor, Declaration, Lambda, MemberAccess, Name, Parameter, Pattern};
+use cst::{Comptime, Constructor, Declaration, ExportEntry, Lambda, MemberAccess, Name, Parameter, Pattern};
 use ids::{ExprId, NameId, PathId, PatternId, TopLevelId};
 use rustc_hash::FxHashSet;
 use serde::{Deserialize, Serialize};
@@ -478,7 +478,7 @@ impl<'tokens> Parser<'tokens> {
         imports
     }
 
-    fn parse_exports(&mut self) -> Option<Vec<(Name, Location)>> {
+    fn parse_exports(&mut self) -> Option<Vec<ExportEntry>> {
         use Token::{Comma, EndOfInput, Export, Newline};
         self.accept(Newline);
 
@@ -491,8 +491,19 @@ impl<'tokens> Parser<'tokens> {
         }
 
         let items = self.delimited_until_recover(Comma, &[Newline, EndOfInput], |this| {
-            this.parse_ident_or_type_name()
-                .map_err(|_| this.expected::<()>("an identifier, type name, or operator to export").unwrap_err())
+            let (name, location) = this
+                .parse_ident_or_type_name()
+                .map_err(|_| this.expected::<()>("an identifier, type name, or operator to export").unwrap_err())?;
+
+            // `Type.method` or `Type.Variant`
+            if this.accept(Token::MemberAccess) {
+                let (method, method_location) = this
+                    .parse_ident_or_type_name()
+                    .map_err(|_| this.expected::<()>("a method name to export").unwrap_err())?;
+                Ok(ExportEntry { qualifier: Some((name, location)), name: method, location: method_location })
+            } else {
+                Ok(ExportEntry { qualifier: None, name, location })
+            }
         });
 
         if *self.current_token() != Newline {

@@ -110,6 +110,6 @@ mod tests {
         let file_id = crate::diagnostics::file_id_for_path(&roots, &foo);
         // Byte 38 is the 'i' in `iota` on line 4.
         let result = hover_at(&db, file_id, 38);
-        assert_eq!(result.as_deref(), Some("iota : fn Usz -> fn Unit [Usz] -> Unit can (Emit Usz) pure"));
+        assert_eq!(result.as_deref(), Some("iota : fn Usz -> (fn Unit [Usz] -> Unit can Emit Usz) is pure"));
     }
 }

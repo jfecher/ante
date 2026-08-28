@@ -44,18 +44,18 @@ a7 = choose id auto
 //     (f: fn a -> a can _) 42 (,: fn a a -> a, a is pure) (f: fn a -> a can _) true
 // 
 // (f9: _) =
-//     (f: fn (fn (fn _ -> _ is pure) -> _, _ is pure) [_] -> _ is pure) = (revapp: fn _ [_] -> fn (fn (fn _ -> _ is pure) -> _, _ is pure) [_] -> _ is pure is pure) (error)
+//     (f: fn (fn (fn _ -> _ is pure) -> _, _ is pure) [_] -> _ is pure) = (revapp: fn _ [_] -> (fn (fn (fn _ -> _ is pure) -> _, _ is pure) [_] -> _ is pure) is pure) (error)
 //     (f: fn (fn (fn _ -> _ is pure) -> _, _ is pure) [_] -> _ is pure) (poly: fn (fn _ -> _ is pure) -> _, _ is pure)
 // 
 // (choose: fn a a -> a is pure) ((x: a)) ((_y: a)) = (x: a)
 // 
-// (a5: fn (fn _ -> _ is pure) -> _ is pure) = (id: fn (fn (fn _ -> _ is pure) -> _ is pure) -> fn (fn _ -> _ is pure) -> _ is pure is pure) (auto: fn (fn _ -> _ is pure) -> _ is pure)
+// (a5: fn (fn _ -> _ is pure) -> _ is pure) = (id: fn (fn (fn _ -> _ is pure) -> _ is pure) -> (fn (fn _ -> _ is pure) -> _ is pure) is pure) (auto: fn (fn _ -> _ is pure) -> _ is pure)
 // 
-// (a6: fn (fn _ -> _ is pure) -> _ is pure) = (id: fn (fn (fn _ -> _ is pure) -> _ is pure) -> fn (fn _ -> _ is pure) -> _ is pure is pure) (auto_prime: fn (fn _ -> _ is pure) -> _ is pure)
+// (a6: fn (fn _ -> _ is pure) -> _ is pure) = (id: fn (fn (fn _ -> _ is pure) -> _ is pure) -> (fn (fn _ -> _ is pure) -> _ is pure) is pure) (auto_prime: fn (fn _ -> _ is pure) -> _ is pure)
 // 
 // (a6_: _) = (id: fn _ -> _ is pure) (error)
 // 
-// (a7: fn _ -> _ is pure) = (choose: fn (fn _ -> _ is pure) (fn _ -> _ is pure) -> fn _ -> _ is pure is pure) (id: fn _ -> _ is pure) (auto: fn (fn _ -> _ is pure) -> _ is pure)
+// (a7: fn _ -> _ is pure) = (choose: fn (fn _ -> _ is pure) (fn _ -> _ is pure) -> (fn _ -> _ is pure) is pure) (id: fn _ -> _ is pure) (auto: fn (fn _ -> _ is pure) -> _ is pure)
 
 // expected stderr:
 // examples/typechecking/impredicativity.an:4:8

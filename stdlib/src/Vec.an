@@ -2,9 +2,9 @@ import Std.C.realloc, free
 import Std.Stream.Stream, iter, emit
 import Std.Fail.Fail, fail, panic_on_fail
 
-export Vec, empty, of, is_empty, len, extend, capacity, reserve, push, pop, get, get_unchecked,
-    remove_index, remove_first, remove_indices, remove_all, swap_last,
-    reverse, swap, insert, dedup, truncate, clear, sort_by, sort,
+export Vec, Vec.empty, Vec.of, Vec.is_empty, Vec.len, Vec.extend, Vec.capacity, Vec.reserve, Vec.push, Vec.pop, Vec.get, Vec.get_unchecked,
+    Vec.remove_index, Vec.remove_first, Vec.remove_indices, Vec.remove_all, Vec.swap_last,
+    Vec.reverse, Vec.swap, Vec.insert, Vec.dedup, Vec.truncate, Vec.clear, Vec.sort_by, Vec.sort,
     print_vec, extract_vec, stream_vec, stream_imm_vec, eq_vec, drop_vec
 
 type Vec t =

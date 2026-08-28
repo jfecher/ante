@@ -1,12 +1,12 @@
 import Std.C.malloc, free, VoidPtr
 
 export
-    Thread, spawn, join, detach,
-    Mutex, with_lock,
-    Condvar, wait, signal, broadcast,
-    Atomic, load, store, swap, compare_and_swap,
-    fetch_add, fetch_sub, fetch_and, fetch_or, fetch_xor,
-    Arc, as_ref, clone_arc, drop_arc, drop_mutex
+    Thread, Thread.spawn, Thread.join, Thread.detach,
+    Mutex, Mutex.with_lock,
+    Condvar, Condvar.wait, Condvar.signal, Condvar.broadcast,
+    Atomic, Atomic.load, Atomic.store, Atomic.swap, Atomic.compare_and_swap,
+    Atomic.fetch_add, Atomic.fetch_sub, Atomic.fetch_and, Atomic.fetch_or, Atomic.fetch_xor,
+    Arc, Arc.as_ref, clone_arc, drop_arc, drop_mutex
 
 pthread_create: fn VoidPtr VoidPtr (fn VoidPtr -> VoidPtr) VoidPtr -> I32 = extern "pthread_create"
 pthread_join: fn VoidPtr (Ptr VoidPtr) -> I32 = extern "pthread_join"

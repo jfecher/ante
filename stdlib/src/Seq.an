@@ -1,7 +1,7 @@
 import Std.C.malloc, realloc, memcpy, free
 import Std.Stream.Stream, foldl, emit
 
-export Seq, empty, of, with_capacity, push, pop, remove_last, get, get_copied, iter, clone_seq, drop_seq, print_seq, stream_seq
+export Seq, Seq.empty, Seq.of, Seq.with_capacity, Seq.push, Seq.pop, Seq.remove_last, Seq.get, Seq.get_copied, Seq.iter, clone_seq, drop_seq, print_seq, stream_seq
 
 /// A persistent, contiguous, and growable sequence of elements.
 /// Performance is meant to be comparable to a mutable Vec.

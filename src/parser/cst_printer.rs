@@ -5,7 +5,6 @@ use std::{
 };
 
 use crate::{
-    diagnostics::Location,
     incremental::{Db, GetItem, Resolve, TypeCheck},
     lexer::token::INDEX_OPERATOR_FUNCTION_NAME,
     name_resolution::{Origin, namespace::SourceFileId},
@@ -22,10 +21,10 @@ use crate::{
 use super::{
     TopLevelContext,
     cst::{
-        self, Call, CompoundAssignOp, Comptime, Cst, Declaration, Definition, Do, Expr, Extern, FunctionType, Handle,
-        HandlePattern, If, Import, InterpolatedString, Is, Lambda, Literal, Match, MemberAccess, Name, Parameter, Path,
-        Pattern, Quoted, Reference, SequenceItem, TopLevelItem, TraitImpl, TraitOrEffectDefinition, Type,
-        TypeAnnotation, TypeDefinition, TypeDefinitionBody, TypeKind,
+        self, Call, CompoundAssignOp, Comptime, Cst, Declaration, Definition, Do, ExportEntry, Expr, Extern,
+        FunctionType, Handle, HandlePattern, If, Import, InterpolatedString, Is, Lambda, Literal, Match, MemberAccess,
+        Parameter, Path, Pattern, Quoted, Reference, SequenceItem, TopLevelItem, TraitImpl,
+        TraitOrEffectDefinition, Type, TypeAnnotation, TypeDefinition, TypeDefinitionBody, TypeKind,
     },
     ids::{ExprId, PatternId, TopLevelId},
 };
@@ -207,14 +206,17 @@ impl<'a> CstDisplay<'a> {
         Ok(())
     }
 
-    fn fmt_export(&mut self, exports: Option<&[(Name, Location)]>, f: &mut Formatter) -> std::fmt::Result {
+    fn fmt_export(&mut self, exports: Option<&[ExportEntry]>, f: &mut Formatter) -> std::fmt::Result {
         if let Some(exports) = exports {
             write!(f, "export ")?;
-            for (i, (item, _location)) in exports.iter().enumerate() {
+            for (i, entry) in exports.iter().enumerate() {
                 if i != 0 {
                     write!(f, ", ")?;
                 }
-                write!(f, "{item}")?;
+                if let Some((qualifier, _)) = &entry.qualifier {
+                    write!(f, "{qualifier}.")?;
+                }
+                write!(f, "{}", entry.name)?;
             }
             writeln!(f, "\n")?;
         }

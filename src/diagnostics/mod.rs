@@ -81,6 +81,11 @@ pub enum Diagnostic {
         name: Name,
         location: Location,
     },
+    MethodExportRequiresType {
+        name: Name,
+        type_name: Name,
+        location: Location,
+    },
     NameNotInScope {
         name: Name,
         location: Location,
@@ -455,6 +460,9 @@ impl Diagnostic {
             Diagnostic::ExportedItemNotFound { name, location: _ } => {
                 format!("`{name}` is not defined")
             },
+            Diagnostic::MethodExportRequiresType { name, type_name, location: _ } => {
+                format!("`{name}` must be exported as `{type_name}.{name}`")
+            },
             Diagnostic::NameNotInScope { name, location: _ } => {
                 format!("`{name}` not found in scope")
             },
@@ -723,6 +731,7 @@ impl Diagnostic {
             | Diagnostic::UnknownImportItem { location, .. }
             | Diagnostic::ItemNotExported { location, .. }
             | Diagnostic::ExportedItemNotFound { location, .. }
+            | Diagnostic::MethodExportRequiresType { location, .. }
             | Diagnostic::NameNotInScope { location, .. }
             | Diagnostic::ExpectedType { location, .. }
             | Diagnostic::RecursiveType { location, .. }
