@@ -14,7 +14,7 @@ use crate::{
     type_inference::{
         Locateable, TypeChecker,
         generics::Generic,
-        types::{self, GenericSubstitutions, ParameterType, Type},
+        types::{self, Effect, GenericSubstitutions, ParameterType, Type},
     },
 };
 
@@ -121,7 +121,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 }
                 Self::reject_implicit_lifetimes(&function.return_type, db);
             },
-            cst::TypeKind::Tuple(elements) => {
+            cst::TypeKind::Tuple(elements) | cst::TypeKind::EffectUnion(elements) => {
                 for element in elements {
                     Self::reject_implicit_lifetimes(element, db);
                 }
@@ -139,6 +139,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             | cst::TypeKind::Hole
             | cst::TypeKind::Unit
             | cst::TypeKind::Lifetime(_)
+            | cst::TypeKind::Pure
             | cst::TypeKind::IntegerConstant(_) => (),
         }
     }
@@ -154,7 +155,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 Self::type_uses_target_unboxed(f, target, resolve)
                     || args.iter().any(|a| Self::type_uses_target_unboxed(a, target, resolve))
             },
-            cst::TypeKind::Tuple(elements) => {
+            cst::TypeKind::Tuple(elements) | cst::TypeKind::EffectUnion(elements) => {
                 elements.iter().any(|e| Self::type_uses_target_unboxed(e, target, resolve))
             },
             cst::TypeKind::Forall(_, body) => Self::type_uses_target_unboxed(body, target, resolve),
@@ -178,6 +179,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             | cst::TypeKind::Float(_)
             | cst::TypeKind::Lifetime(_)
             | cst::TypeKind::ImplicitLifetime
+            | cst::TypeKind::Pure
             | cst::TypeKind::IntegerConstant(_) => false,
         }
     }
@@ -325,14 +327,25 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             // from the trait/effect's own generic annotations.
             let mut local_kinds = Self::local_kinds_from_generics(&definition.generics);
 
-            let mut method_type = self.from_cst_type_with_local_kinds(method_type, true, false, &mut local_kinds);
+            let cst_method_type = method_type;
+            let mut method_type = self.from_cst_type_with_local_kinds(cst_method_type, true, false, &mut local_kinds);
 
-            if matches!(method_type, Type::Function(_)) {
-                method_type = if is_effect {
-                    self.set_effect_on_function_type(method_type, arg)
-                } else {
-                    self.add_implicit_arg_to_function_type(method_type, arg)
-                };
+            if is_effect {
+                match &cst_method_type.kind {
+                    cst::TypeKind::Function(function) => {
+                        if function.effects.is_some() {
+                            let location = cst_method_type.location.clone();
+                            self.compiler.accumulate(Diagnostic::EffectOperationWithEffectClause { location });
+                        }
+                        method_type = self.set_effect_on_function_type(method_type, arg);
+                    },
+                    _ => {
+                        let location = cst_method_type.location.clone();
+                        self.compiler.accumulate(Diagnostic::EffectOperationMustBeFunction { location });
+                    },
+                }
+            } else if matches!(method_type, Type::Function(_)) {
+                method_type = self.add_implicit_arg_to_function_type(method_type, arg);
             }
             self.check_name(*method_name, &method_type);
         }
@@ -348,8 +361,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     /// Given an effect operation's function type, set its effect row to the closed singleton containing `effect_type`.
     fn set_effect_on_function_type(&self, method_type: Type, effect_type: Type) -> Type {
+        let id = self.next_type_variable();
         Self::map_function_type(method_type, "set_effect_on_function_type", |function_type| {
-            function_type.effects = Type::effects(vec![effect_type], None);
+            function_type.effects = Effect { id, typ: effect_type }.into_type();
         })
     }
 

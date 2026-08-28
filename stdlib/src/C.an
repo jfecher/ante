@@ -14,12 +14,12 @@ type VoidPtr = Ptr U8
 
 // TODO: These functions use absolute sized types like I32
 //       which are not exact standins for C's integer types.
-puts = extern "puts": fn String -> I32 can Fs
-putchar = extern "putchar": fn Char -> Unit
-getchar = extern "getchar": fn Unit -> I32
-exit = extern "exit": fn I32 -> Unit
-system = extern "system": fn String -> I32
-strlen = extern "strlen": fn String -> Usz
+puts: fn String -> I32 can Fs = extern "puts"
+putchar: fn Char -> Unit can Fs = extern "putchar"
+getchar: fn Unit -> I32 can Fs = extern "getchar"
+exit: fn I32 -> Unit = extern "exit"
+system: fn String -> I32 can IO = extern "system"
+strlen: fn String -> Usz = extern "strlen"
 
 // The compiler doesn't have checks for generic externs yet
 malloc_: fn /*size:*/Usz -> VoidPtr = extern "malloc"
@@ -55,29 +55,30 @@ type FilePos = f: Ptr Unit
 impl copy_file: Copy File with
     (.*) f = deref_ptr (transmute f)
 
-fopen = extern "fopen": fn String String -> File
-fclose = extern "fclose": fn File -> Unit
+fopen = extern "fopen": fn String String -> File can Fs
+fclose = extern "fclose": fn File -> Unit can Fs
 
-fputs = extern "fputs": fn String File -> I32
-fputc = extern "fputc": fn I32 File -> I32
-fwrite = extern "fwrite": fn VoidPtr Usz Usz File -> Usz
+fputs = extern "fputs": fn String File -> I32 can Fs
+fputc = extern "fputc": fn I32 File -> I32 can Fs
+fwrite = extern "fwrite": fn VoidPtr Usz Usz File -> Usz can Fs
 
-fgetc = extern "fgetc": fn File -> I32
-fgets = extern "fgets": fn String I32 File -> String
-ungetc = extern "ungetc": fn I32 File -> I32
+fgetc = extern "fgetc": fn File -> I32 can Fs
+fgets = extern "fgets": fn String I32 File -> String can Fs
+ungetc = extern "ungetc": fn I32 File -> I32 can Fs
 
-fgetpos = extern "fgetpos": fn File FilePos -> Unit
-ftell = extern "ftell": fn File -> I32
-fsetpos = extern "fsetpos": fn File FilePos -> Unit
-fseek = extern "fseek": fn File I32 I32 -> I32
+fgetpos = extern "fgetpos": fn File FilePos -> Unit can Fs
+ftell = extern "ftell": fn File -> I32 can Fs
+fsetpos = extern "fsetpos": fn File FilePos -> Unit can Fs
+fseek = extern "fseek": fn File I32 I32 -> I32 can Fs
 
-feof = extern "feof": fn File -> I32
-ferror = extern "ferror": fn File -> I32
+feof = extern "feof": fn File -> I32 can Fs
+ferror = extern "ferror": fn File -> I32 can Fs
 
 // TODO: Using I64 here assumes 64-bit systems
 type Clock =
     sec: I64
     nsec: I64
 
-clock_gettime = extern "clock_gettime": fn I32 (Ptr Clock) -> I32
-nanosleep = extern "nanosleep": fn (Ptr Clock) (Ptr Clock) -> I32
+// TODO: More narrow Clock effects
+clock_gettime = extern "clock_gettime": fn I32 (Ptr Clock) -> I32 can Fs
+nanosleep = extern "nanosleep": fn (Ptr Clock) (Ptr Clock) -> I32 can Fs

@@ -14,7 +14,7 @@ use crate::{
     },
     type_inference::{
         TypeBody,
-        types::{Type as TCType, TypeBindings, TypeVariableId},
+        types::{Effect, Type as TCType, TypeBindings, TypeVariableId},
     },
 };
 
@@ -50,24 +50,6 @@ where
         self.convert_context().convert_type(typ, args)
     }
 
-    /// Recomputes a callee's whole instantiated type from a different already-generalized
-    /// definition's bindings, so that every occurrence of a patched generic (see
-    /// `Context::patch_environment_binding`) stays consistent, not just the one param the caller touched.
-    pub(super) fn convert_and_instantiate(
-        &self, typ: &TCType, generics: &[crate::type_inference::generics::Generic], type_bindings: &TypeBindings,
-        instantiation: &Vec<Type>,
-    ) -> Type {
-        let generics_in_scope = generics.iter().enumerate().map(|(i, g)| (*g, crate::mir::Generic(i as u32))).collect();
-
-        let ctx = ConvertTypeContext {
-            compiler: self.compiler,
-            type_bindings,
-            generics_in_scope: &generics_in_scope,
-            in_progress: RefCell::new(FxHashSet::default()),
-        };
-        ctx.convert_type(typ, None).substitute(instantiation)
-    }
-
     /// If `typ` resolves to a `shared` user-defined type, returns its inner layout behind the pointer.
     pub(super) fn shared_inner_layout_of(&self, typ: &TCType) -> Option<Type> {
         self.convert_context().shared_inner_layout_of(typ, None).map(|(layout, _)| layout)
@@ -101,12 +83,31 @@ pub(super) struct ConvertTypeContext<'a, Db> {
     in_progress: RefCell<FxHashSet<(Origin, Arc<Vec<TCType>>)>>,
 }
 
-/// What a resolved effect row ends in after its concrete effects.
-pub(super) enum RowEnd {
-    /// The row is closed (or ends in a residual unbound variable, which defaults to pure).
-    Closed,
-    /// The row is genuinely polymorphic: it ends in a row generic.
-    Generic(TCType),
+#[derive(Clone)]
+pub(super) struct Effects {
+    /// Evidence slots in [Effect::id] order
+    pub(super) entries: Vec<Effect>,
+
+    /// The row generic this row stays polymorphic over, if any.
+    pub(super) end: Option<TCType>,
+}
+
+/// True if both row entries name the same capability
+pub(super) fn same_effect_id(a: &Effect, b: &Effect, bindings: &TypeBindings) -> bool {
+    a.id.follow(bindings) == b.id.follow(bindings)
+}
+
+impl Effects {
+    /// The slot holding the capability for `id`, if found
+    pub(super) fn slot_of(&self, effect: &Effect, bindings: &TypeBindings) -> Option<usize> {
+        self.entries.iter().position(|entry| same_effect_id(entry, effect, bindings))
+    }
+
+    /// The slot holding this row's open end bundle or the empty tuple that stands in
+    /// for one when the row is closed.
+    pub(super) fn rest_slot(&self) -> usize {
+        self.entries.len()
+    }
 }
 
 impl<Db> ConvertTypeContext<'_, Db>
@@ -149,69 +150,83 @@ where
             // Carry through to MIR so monomorphization can substitute into Array lengths.
             TCType::U32(n) => Type::U32(*n),
             // A row used as a type (e.g. a row-generic instantiation binding) is its evidence.
-            TCType::Effects(_, _) => self.evidence_type(typ),
+            TCType::Effects(_) => self.evidence_type(typ),
+            TCType::EffectId(id) => unreachable!("convert_type: effect id #{id} in a type position"),
         }
     }
 
-    /// An effect row's evidence: nested pairs of capability tuples ending in `()` or the row's generic.
+    /// An effect row's chain of `(capability, rest)` pairs ending in the row's open
+    /// end or a unit value.
     pub(super) fn evidence_type(&self, effects: &TCType) -> Type {
-        let (concretes, end) = self.split_row(effects);
-        let mut evidence = match end {
-            RowEnd::Closed => Type::tuple(Vec::new()),
-            RowEnd::Generic(generic) => self.convert_type(&generic, None),
+        self.row_evidence_type(&self.split_row(effects))
+    }
+
+    pub(super) fn row_evidence_type(&self, row: &Effects) -> Type {
+        let mut evidence = match &row.end {
+            Some(generic) => self.convert_type(generic, None),
+            None => Type::tuple(Vec::new()),
         };
-        for effect in concretes.iter().rev() {
+        for effect in row.entries.iter().rev() {
             evidence = Type::tuple(vec![self.effect_capability_tuple_type_of(effect), evidence]);
         }
         evidence
     }
 
-    /// Splits a row into its resolved effects and end.
-    pub(super) fn split_row(&self, effects: &TCType) -> (Vec<TCType>, RowEnd) {
-        let mut concretes = Vec::new();
-        let mut current = effects.clone();
-        let end = loop {
-            match current.follow(self.type_bindings).clone() {
-                TCType::Effects(list, tail) => {
-                    concretes.extend(list.iter().cloned());
-                    match tail {
-                        Some(tail) => current = (*tail).clone(),
-                        None => break RowEnd::Closed,
-                    }
-                },
-                generic @ TCType::Generic(_) => break RowEnd::Generic(generic),
-                TCType::Variable(id) => {
-                    // An unbound variable is a generic if it was generalized, else residual (pure).
-                    let generic = crate::type_inference::generics::Generic::Inferred(id);
-                    break match self.generics_in_scope.contains_key(&generic) {
-                        true => RowEnd::Generic(TCType::Variable(id)),
-                        false => RowEnd::Closed,
-                    };
-                },
-                _ => break RowEnd::Closed,
-            }
+    /// Resolves a row into its evidence slots and its end.
+    pub(super) fn split_row(&self, effects: &TCType) -> Effects {
+        let mut entries = Vec::new();
+        let mut ends = Vec::new();
+
+        // Only entries have ids so the row starts with the id that matches nothing
+        self.collect_row_items(effects, &TCType::ERROR, &mut entries, &mut ends);
+
+        let mut rigid = ends.iter().filter(|end| matches!(end, TCType::Generic(_)));
+        let end = match (rigid.next(), rigid.next()) {
+            // TODO: This will not work when a row has multiple open variables
+            (Some(first), _) => Some(first.clone()),
+            (None, _) => ends.first().cloned(),
         };
 
-        // Canonicalize a generic-ending chain's prefix to match the scheme callers use
-        if matches!(end, RowEnd::Generic(_)) {
-            concretes.sort_by_key(|effect| effect.effect_head().copied());
-            let mut deduped = Vec::with_capacity(concretes.len());
-            for effect in concretes {
-                if !deduped.contains(&effect) {
-                    deduped.push(effect);
-                }
+        let mut deduped: Vec<Effect> = Vec::with_capacity(entries.len());
+        for entry in entries {
+            if !deduped.iter().any(|kept: &Effect| kept.typ == entry.typ) {
+                deduped.push(entry);
             }
-            concretes = deduped;
         }
 
         // No reason to carry capabilities for effects with no operations
-        concretes.retain(|effect| !self.effect_has_no_operations(effect));
-        (concretes, end)
+        deduped.retain(|effect| !self.effect_has_no_operations(&effect.typ));
+        Effects { entries: deduped, end }
+    }
+
+    /// Recursively flattens `typ` into concrete effects and any open ends
+    ///
+    /// `id` is the id of the row entry `typ` came from.
+    fn collect_row_items(&self, typ: &TCType, id: &TCType, entries: &mut Vec<Effect>, ends: &mut Vec<TCType>) {
+        let followed = typ.follow(self.type_bindings);
+        match followed {
+            TCType::Effects(_) => {
+                for effect in followed.effect_entries() {
+                    self.collect_row_items(&effect.typ, &effect.id, entries, ends);
+                }
+            },
+            // An unbound variable is only open if it is one of the enclosing function's own generics,
+            // anything else is defaulted to `pure`
+            TCType::Generic(_) | TCType::Variable(_) if self.is_open_end(followed) => {
+                if !ends.contains(followed) {
+                    ends.push(followed.clone());
+                }
+            },
+            TCType::Variable(_) => (),
+            other if other.is_error() => (),
+            typ => entries.push(Effect { id: id.clone(), typ: typ.clone() }),
+        }
     }
 
     /// True if `effect` refers to an effect definition with zero operations.
     fn effect_has_no_operations(&self, effect: &TCType) -> bool {
-        let Some(Origin::TopLevelDefinition(name)) = effect.effect_head() else { return false };
+        let head = effect.effect_head(self.type_bindings, &TypeBindings::default());
+        let Some(Origin::TopLevelDefinition(name)) = head else { return false };
         let (item, _) = GetItemRaw(name.top_level_item).get(self.compiler);
         matches!(&item.kind, TopLevelItemKind::EffectDefinition(effect) if effect.body.is_empty())
     }
@@ -234,7 +249,8 @@ where
         let checked = TypeCheck(effect_item).get(self.compiler);
         let fields = mapvec(effect.body.iter(), |decl| {
             let method_type = checked.get_generalized(decl.name);
-            let method_type = crate::type_inference::type_body::apply_type_constructor(&method_type, args, &checked);
+            let method_type =
+                crate::type_inference::type_body::apply_type_constructor(&method_type, args, &checked, None);
             self.convert_operation_type(&method_type)
         });
         Type::Tuple(Arc::new(fields))
@@ -261,16 +277,23 @@ where
         Type::Function(Arc::new(FunctionType { parameters, environment, return_type }))
     }
 
-    /// Resolves a concrete effect to its capability tuple type.
-    pub(super) fn effect_capability_tuple_type_of(&self, mut effect_type: &TCType) -> Type {
-        while let TCType::Effects(list, None) = effect_type
-            && let [single] = list.as_slice()
-        {
-            effect_type = single;
+    fn is_open_end(&self, typ: &TCType) -> bool {
+        match typ {
+            TCType::Generic(_) => true,
+            TCType::Variable(id) => {
+                let generic = crate::type_inference::generics::Generic::Inferred(*id);
+                self.generics_in_scope.contains_key(&generic)
+            },
+            _ => false,
         }
+    }
+
+    /// Resolves a [Self::split_row] entry to its capability tuple type
+    pub(super) fn effect_capability_tuple_type_of(&self, effect: &Effect) -> Type {
+        let effect_type = effect.typ.follow(self.type_bindings);
         let (origin, args) = match effect_type {
             TCType::UserDefined(origin) => (*origin, None),
-            TCType::Application(constructor, args) => match constructor.as_ref() {
+            TCType::Application(constructor, args) => match constructor.follow(self.type_bindings) {
                 TCType::UserDefined(origin) => (*origin, Some(args.as_slice())),
                 _ => panic!("effect_capability_tuple_type_of: not an effect type: {effect_type:?}"),
             },
@@ -341,7 +364,7 @@ where
     }
 
     fn expand_user_defined_body(&self, id: TopLevelId, args: Option<&[TCType]>, variant_index: Option<usize>) -> Type {
-        let body = id.type_body(args, self.compiler);
+        let body = id.type_body(args, self.compiler, None);
         self.convert_type_body(body, variant_index)
     }
 

@@ -247,17 +247,12 @@ fn try_optimize_handle(
     let (body_fn_id, original_env_layout, created_ids) =
         clone_body_with_extended_env(mir, orig_body_fn_id, &cap_tuple_type);
 
-    // The original body fn is now dead (only the outer definition's dead PackClosure references
-    // it). Don't process its Handles again; the clone carries the live copies.
+    // The original body fn is now dead. Don't process its Handles again
     dead_bodies.insert(orig_body_fn_id);
 
-    // The original body_fn is now dead code: the outer definition's now-dead PackClosure still
-    // references it, but its result is unused. It still gets visited by validation and codegen,
-    // so we have to make any `Capability` it contains lowering-safe. The simplest neutralization
-    // is `Transmute(Value::Unit)`: it type-checks (the Transmute validation arm has no
-    // constraints) and codegens to an undef of the expected cap tuple type. We do this *after*
-    // cloning so the clone retains its Capability instructions (which `rewrite_handler_caps_in_body`
-    // is about to expand into the env-IndexTuple form).
+    // The original body_fn still gets visited by validation and codegen,
+    // so we have to neutralize any `Capability` it contains.
+    // We do this after cloning so the clone retains its Capability instructions.
     neutralize_handler_caps_in_dead_body(mir, orig_body_fn_id);
 
     // Replace each Capability in the cloned body with an IndexTuple that fetches cap from the
@@ -283,7 +278,7 @@ fn try_optimize_handle(
     created_ids
 }
 
-/// Records what the body's env looked like *before* we appended cap. Used both to compute the
+/// Records what the body's env looked like before we appended cap. Used both to compute the
 /// Capability's IndexTuple index (= original count) and to splice the original env values into
 /// the new env at the Handle site.
 pub(super) struct OriginalEnvLayout {
@@ -713,8 +708,8 @@ fn splice_in_handle_replacement(
     decisions: &[CaseDecision], body_fn_id: DefinitionId, body_env_value: Option<Value>,
     body_bindings: Option<Arc<GenericBindings>>, cap_tuple_type: &Type, layout: &OriginalEnvLayout,
 ) {
-    // We need the wrapper closure types, the new body env type, and the body fn type *after*
-    // mutation. Read them all up front (immutable borrows) before getting the &mut to the def.
+    // We need the wrapper closure types, the new body env type, and the body fn type after
+    // mutation. Read them all up front before getting the &mut to the def.
     let wrapper_closure_types: Vec<Type> = wrapper_ids.iter().map(|id| mir.definitions[id].typ.clone()).collect();
     let body_fn_type = mir.definitions[&body_fn_id].typ.clone();
     let new_env_type = match &body_fn_type {

@@ -15,10 +15,11 @@ mod select_largest_variant;
 use crate::{
     incremental::{GetCrateGraph, GetItem, GetItemRaw, Parse, TargetPointerSize, TypeCheck},
     mir::{
-        self, Definition, DefinitionId, FunctionType, GenericBindings, Instruction, Mir, Type, Value,
-        builder::build_initial_mir_with_shared_map, next_definition_id,
+        self, Block, BlockId, Definition, DefinitionId, FunctionType, GenericBindings, Instruction, InstructionId, Mir,
+        Type, Value, builder::build_initial_mir_with_shared_map, next_definition_id,
     },
     parser::ids::TopLevelId,
+    vecmap::VecMap,
 };
 
 /// Collect all items in the program.
@@ -189,7 +190,7 @@ impl<'local> FunctionContext<'local> {
 
         // We can skip the blocks and go right to the instructions themselves. There shouldn't be
         // any that aren't used in a block.
-        for instruction in definition.instructions.values_mut() {
+        for (instruction_id, instruction) in definition.instructions.iter_mut() {
             if let Instruction::Instantiate(id, bindings) = instruction {
                 assert!(!bindings.is_empty());
                 if !self.generic_mapping.is_empty() {
@@ -202,18 +203,69 @@ impl<'local> FunctionContext<'local> {
                     new_id
                 });
 
+                // This instruction's result type was predicted structurally at its call site,
+                // before the callee's body existed -- it has no notion of the evidence-adapter
+                // wrapping a call inside the callee's own body may have introduced into a
+                // return-position closure's environment (see `reconcile_return_type_environment`
+                // in the MIR builder). Re-derive it from the callee's own declared type instead,
+                // mirroring what pre-monomorphization `Instantiate` validation already does
+                // (`validation.rs`), so a definition whose declared return type was corrected to
+                // match its actual body doesn't drift out of sync with its own call sites.
+                if let Some(target) = self.initial_mir.get(*id) {
+                    let target_type = target.typ.substitute(&*bindings);
+                    definition.instruction_result_types[instruction_id] = target_type;
+                }
+
                 *instruction = Instruction::Id(Value::Definition(new_id));
-            } else if !self.generic_mapping.is_empty() {
-                // When a generic function directly calls another definition (e.g. a recursive
-                // self-call) without going through `Instantiate`, the `Value::Definition` ID must
-                // still be remapped to the monomorphized version.  We only do this when the
-                // mapping already exists in `self.definitions`; if it is absent the reference is
-                // already monomorphic and needs no update.
-                self.remap_definition_values_in_instruction(instruction);
+            } else {
+                if !self.generic_mapping.is_empty() {
+                    // When a generic function directly calls another definition (e.g. a recursive
+                    // self-call) without going through `Instantiate`, the `Value::Definition` ID must
+                    // still be remapped to the monomorphized version.  We only do this when the
+                    // mapping already exists in `self.definitions`; if it is absent the reference is
+                    // already monomorphic and needs no update.
+                    self.remap_definition_values_in_instruction(instruction);
+                }
+
+                // A Call/CallClosure's result type is exactly its callee's function type's return
+                // type. Like an `Instantiate` reference (above), the type recorded here was
+                // predicted structurally at build time and can go stale relative to the callee's
+                // actual (possibly widened, see `reconcile_return_type_environment`) return type.
+                // Re-derive it from the callee value's current type instead of trusting the stale
+                // prediction. This relies on callees being visited before their call sites, which
+                // holds here since instructions are numbered in the order they were originally
+                // built (def-before-use).
+                let function = match &*instruction {
+                    Instruction::Call { function, .. } => Some(function),
+                    Instruction::CallClosure { closure, .. } => Some(closure),
+                    _ => None,
+                };
+                if let Some(function) = function
+                    && let Some(Type::Function(function_type)) =
+                        self.value_type_in(&definition.instruction_result_types, &definition.blocks, function)
+                {
+                    definition.instruction_result_types[instruction_id] = function_type.return_type.clone();
+                }
             }
         }
 
         self.finished_definitions.insert(definition.id, definition);
+    }
+
+    /// Looks up the type of `value` as currently known within `definition`'s own instructions and
+    /// block parameters, or from `self.initial_mir` for a direct top-level reference. Used to
+    /// re-derive a `Call`/`CallClosure` instruction's result type from its (possibly just-
+    /// corrected) callee, rather than trusting a structurally-predicted type recorded before the
+    /// callee's body existed.
+    fn value_type_in(
+        &self, instruction_result_types: &VecMap<InstructionId, Type>, blocks: &VecMap<BlockId, Block>, value: &Value,
+    ) -> Option<Type> {
+        match value {
+            Value::InstructionResult(id) => instruction_result_types.get(*id).cloned(),
+            Value::Parameter(block, index) => blocks.get(*block)?.parameter_types.get(*index as usize).cloned(),
+            Value::Definition(id) => self.initial_mir.get(*id).map(|d| d.typ.clone()),
+            _ => None,
+        }
     }
 
     fn update_value_types(&self, definition: &mut Definition) {

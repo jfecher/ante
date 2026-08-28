@@ -334,7 +334,14 @@ fn build_setjmp_prologue(
     // Captured before the body runs, so a nested coroutine abort knows where to unwind to
     let target_coro = emit_mco_coro_running(&mut e);
     let cap_value = emit_cap_tuple(
-        &mut e, decisions, wrapper_ids, wrapper_closure_types, buf_ptr, result_slot_ptr, target_coro, cap_tuple_type,
+        &mut e,
+        decisions,
+        wrapper_ids,
+        wrapper_closure_types,
+        buf_ptr,
+        result_slot_ptr,
+        target_coro,
+        cap_tuple_type,
     );
 
     let body_closure = emit_body_closure(&mut e, body, body_fn_type, cap_value);
@@ -348,8 +355,11 @@ fn build_setjmp_prologue(
 
 /// Calls `mco_coro_running`, returning the coroutine currently executing, or NULL for the main stack.
 fn emit_mco_coro_running(e: &mut Emitter) -> Value {
-    let running_type =
-        Type::Function(Arc::new(FunctionType { parameters: vec![], environment: Type::NO_CLOSURE_ENV, return_type: Type::POINTER }));
+    let running_type = Type::Function(Arc::new(FunctionType {
+        parameters: vec![],
+        environment: Type::NO_CLOSURE_ENV,
+        return_type: Type::POINTER,
+    }));
     let running = e.push_instruction(Instruction::Extern("mco_coro_running".to_string()), running_type);
     e.push_instruction(Instruction::Call { function: running, arguments: vec![] }, Type::POINTER)
 }

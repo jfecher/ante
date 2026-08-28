@@ -2,13 +2,13 @@
 // whereas `a.[i]` as a value resolves to `Extract`.
 import Std.C.malloc
 
-get2 (b: ref Array 2 (Array 2 I32)) (i: Usz) (j: Usz): I32 =
+get2 (b: ref Array 2 (Array 2 I32)) (i: Usz) (j: Usz): I32 can Fs =
     b.[i].[j].*
 
-set2 (b: mut Array 2 (Array 2 I32)) (i: Usz) (j: Usz) (v: I32): Unit =
+set2 (b: mut Array 2 (Array 2 I32)) (i: Usz) (j: Usz) (v: I32): Unit can Fs =
     b.[i].[j] := v
 
-get3 (b: ref Array 2 (Array 2 (Array 2 I32))) (i: Usz) (j: Usz) (k: Usz): I32 =
+get3 (b: ref Array 2 (Array 2 (Array 2 I32))) (i: Usz) (j: Usz) (k: Usz): I32 can Fs =
     b.[i].[j].[k].*
 
 main () =

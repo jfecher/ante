@@ -2,13 +2,13 @@ effect Use a =
     get: fn Unit -> a
     set: fn a -> Unit
 
-use_state (y: I32): Unit can Use I32 =
+use_state (y: I32): Unit can Use I32, Fs =
     x = get ()
     set (x + y)
     state = get ()
     println "Ending state = ${state}"
 
-state (f: fn Unit => a can Use s) (initial: s) {Copy s}: a =
+state (f: fn Unit => a can Use s, Fs) (initial: s) {Copy s}: a can Fs =
     var current = initial
     handler h for
     | get () -> resume current

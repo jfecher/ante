@@ -1,0 +1,33 @@
+effect Bad =
+    pure_op: fn Unit -> Unit is pure
+    extra_effects: fn Unit -> Unit can Fs
+    not_a_function: I32
+    ok: fn Unit -> Unit
+
+main () = ()
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/bidirectional_effects.an:2:14
+// 1 | effect Bad =
+//   |     // error: Effect operations cannot declare their own effects
+// 2 |     pure_op: fn Unit -> Unit is pure
+//   |              ^^^^^^^^^^^^^^^^^^^^^^^
+// 3 |     extra_effects: fn Unit -> Unit can Fs
+// 
+// examples/typechecking/bidirectional_effects.an:3:20
+// 2 |     pure_op: fn Unit -> Unit is pure
+//   |     // error: Effect operations cannot declare their own effects
+// 3 |     extra_effects: fn Unit -> Unit can Fs
+//   |                    ^^^^^^^^^^^^^^^^^^^^^^
+// 4 |     not_a_function: I32
+// 
+// examples/typechecking/bidirectional_effects.an:4:21
+// 3 |     extra_effects: fn Unit -> Unit can Fs
+// 4 |     not_a_function: I32	// error: Effect operations must be function types
+//   |                     ^^^
+// 5 |     ok: fn Unit -> Unit
+// 
+// Found 3 errors and 0 warnings
+

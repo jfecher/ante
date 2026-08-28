@@ -270,12 +270,16 @@ pub enum Diagnostic {
     HoleCantBeUsed {
         location: Location,
     },
-    /// A reference type appeared in a type-constructor position (e.g. inside a
-    /// `type ... = ...` body) without an explicit `'name` lifetime.
     MissingExplicitLifetime {
         location: Location,
     },
     FreeVarsInTypeConstructor {
+        location: Location,
+    },
+    EffectOperationMustBeFunction {
+        location: Location,
+    },
+    EffectOperationWithEffectClause {
         location: Location,
     },
     HandlerMissingMethods {
@@ -667,6 +671,12 @@ impl Diagnostic {
             Diagnostic::FreeVarsInTypeConstructor { location: _ } => {
                 "Internal compiler error: there are free variables in this type constructor".to_string()
             },
+            Diagnostic::EffectOperationMustBeFunction { location: _ } => {
+                "Effect operations must be function types".to_string()
+            },
+            Diagnostic::EffectOperationWithEffectClause { location: _ } => {
+                "Effect operations cannot declare their own effects".to_string()
+            },
             Diagnostic::HandlerMissingMethods { effect_name, missing_methods, location: _ } => {
                 let s = if missing_methods.len() == 1 { "" } else { "s" };
                 let methods = missing_methods.join(", ");
@@ -759,6 +769,8 @@ impl Diagnostic {
             | Diagnostic::HoleCantBeUsed { location, .. }
             | Diagnostic::MissingExplicitLifetime { location, .. }
             | Diagnostic::FreeVarsInTypeConstructor { location, .. }
+            | Diagnostic::EffectOperationMustBeFunction { location, .. }
+            | Diagnostic::EffectOperationWithEffectClause { location, .. }
             | Diagnostic::HandlerMissingMethods { location, .. }
             | Diagnostic::HandlerDuplicateMethod { second_location: location, .. }
             | Diagnostic::HandlerCrossEffect { location, .. }

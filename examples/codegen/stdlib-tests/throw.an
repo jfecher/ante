@@ -1,7 +1,7 @@
 import Std.Throw.Throw, throw, catch, catch_or, catch_or_else, map_err, unwrap_err, Result, Ok, Err
 import Std.Fail.Fail, fail, try
 
-print_result (r: Result I32 I32): Unit =
+print_result (r: Result I32 I32): Unit can Fs =
     match r
     | Ok x ->
         print "Ok "

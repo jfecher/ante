@@ -1,7 +1,7 @@
 import Std.IO.File, iterator_file
 import Std.C.fputs, fopen, fclose
 
-write_test_file (path: String): Unit =
+write_test_file (path: String): Unit can Fs =
     f = File.open path "w\0"
     f.write "line1\nline2\nline3\n\0"
     f.close ()

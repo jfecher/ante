@@ -420,7 +420,9 @@ impl<'a> CstDisplay<'a> {
             self.fmt_type(typ, context, f)?;
         }
 
-        self.fmt_effects_clause(&lambda.effects, context, f)?;
+        if lambda.effects.is_some() {
+            self.fmt_effects_clause(&lambda.effects, context, f)?;
+        }
 
         write!(f, " {}", if write_arrow { "->" } else { "=" })?;
         if !self.is_block(lambda.body, context) {
@@ -539,8 +541,18 @@ impl<'a> CstDisplay<'a> {
             TypeKind::NoClosureEnv => write!(f, "{}", NO_CLOSURE_ENV_STRING),
             TypeKind::Pointer => write!(f, "Ptr"),
             TypeKind::Tuple(elements) => self.fmt_tuple_type(elements, context, f),
+            TypeKind::EffectUnion(operands) => {
+                for (i, operand) in operands.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, " & ")?;
+                    }
+                    self.fmt_type(operand, context, f)?;
+                }
+                Ok(())
+            },
             TypeKind::Hole => write!(f, "_"),
             TypeKind::ImplicitLifetime => write!(f, "'_"),
+            TypeKind::Pure => write!(f, "pure"),
             TypeKind::IntegerConstant(n) => write!(f, "{n}"),
             TypeKind::Forall(generics, body) => {
                 write!(f, "forall")?;
@@ -669,7 +681,7 @@ impl<'a> CstDisplay<'a> {
     ) -> std::fmt::Result {
         match effects {
             None => Ok(()),
-            Some(effects) if effects.is_empty() => write!(f, " pure"),
+            Some(effects) if effects.is_empty() => write!(f, " is pure"),
             Some(effects) => {
                 write!(f, " can ")?;
                 for (i, effect) in effects.iter().enumerate() {

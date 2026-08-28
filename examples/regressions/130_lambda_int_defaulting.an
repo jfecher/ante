@@ -1,4 +1,4 @@
-impl countdown: Iterator I32 I32 with
+impl countdown: Iterator I32 I32 pure with
     next x =
         if x <= 0
         then None
@@ -8,7 +8,7 @@ type TakeWhile i a =
     iter: i
     pred: fn a -> Bool
 
-impl iter_take_while {Iterator i a} {Copy a}: Iterator (TakeWhile i a) a with
+impl iter_take_while {Iterator i a e} {Copy a}: Iterator (TakeWhile i a) a e with
     next tw =
         match Iterator.next tw.iter
         | Some (iter, new) ->

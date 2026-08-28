@@ -24,7 +24,7 @@ use crate::{
         fresh_expr::ExtendedTopLevelContext,
         generics::Generic,
         implicits::ImplicitsContext,
-        types::{FunctionType, LocalKinds, ParameterType, PrimitiveType, Type, TypeBindings, TypeVariableId},
+        types::{Effect, FunctionType, LocalKinds, ParameterType, PrimitiveType, Type, TypeBindings, TypeVariableId},
     },
 };
 
@@ -370,7 +370,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let exported_types = ExportedTypes(SourceFileId::prelude()).get(self.compiler);
         let io_name = *exported_types.get(&Arc::new("IO".to_string())).expect("IO effect not found in Prelude");
 
-        crate::type_inference::types::expand_effect_alias(self.compiler, io_name)
+        self.with_next_id(|next_id| crate::type_inference::types::expand_effect_alias(self.compiler, io_name, next_id))
             .expect("ICE: IO effect not found in Prelude")
     }
 
@@ -471,7 +471,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     /// A fresh, open effect row.
     fn fresh_effect_row(&self) -> Type {
-        Type::effects(Vec::new(), Some(self.next_type_variable()))
+        self.fresh_effect().into_type()
     }
 
     /// Generalize all types in the current SCC.
@@ -496,22 +496,37 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Defaults a `can e` to `pure` when `e` isn't referenced elsewhere in `root`, recursing into nested function types.
     fn default_unshared_effects_to_pure(&mut self, root: &Type, typ: &Type) {
         let Type::Function(function_type) = typ.follow(&self.bindings) else { return };
-        let parameter_types: Vec<Type> = mapvec(&function_type.parameters, |p| p.typ.clone());
-        let return_type = function_type.return_type.clone();
+        let function_type = function_type.clone();
 
-        if let Type::Effects(_, Some(tail)) = function_type.effects.follow_all(&self.bindings)
-            && let Type::Variable(tail_id) = *tail
-        {
-            let occurrences = root.count_unification_var_occurrences(tail_id, &self.bindings);
-            if occurrences <= 1 {
-                self.unify(&tail, &Type::pure(), TypeErrorKind::Effects, self.current_context().location().clone());
+        let effects = Type::collect_effects(&function_type.effects, &self.bindings, &Default::default());
+        for effect in &effects {
+            let Type::Variable(id) = effect.typ.follow(&self.bindings) else { continue };
+            if root.count_unification_var_occurrences(*id, &self.bindings) <= 1 {
+                let location = self.current_context().location().clone();
+                self.unify(&effect.typ, &Type::pure(), TypeErrorKind::Effects, location);
             }
         }
 
-        for parameter_type in &parameter_types {
-            self.default_unshared_effects_to_pure(root, parameter_type);
+        for parameter in &function_type.parameters {
+            self.default_unshared_effects_to_pure(root, &parameter.typ);
         }
-        self.default_unshared_effects_to_pure(root, &return_type);
+        self.default_unshared_effects_to_pure(root, &function_type.return_type);
+    }
+
+    /// Records every unbound effect row entry in `typ` so that [Self::try_default_effect_to_pure]
+    /// can close it if nothing binds it by the end of the scope.
+    ///
+    /// TODO: Record these variables when created in `self.next_type_variable_id` instead of finding
+    /// them here after the fact.
+    fn record_fresh_effect_variables(&mut self, typ: &Type) {
+        let ends = typ.unbound_effect_entries(&self.bindings);
+        if ends.is_empty() {
+            return;
+        }
+        let location = self.current_context().location().clone();
+        for id in ends {
+            self.push_inferred_effect(id, location.clone());
+        }
     }
 
     /// Unifies the two types. Returns false on failure
@@ -538,10 +553,27 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     }
 
     /// Unifies `effects_var` with the ambient effect row, then re-canonicalizes it as the new ambient row.
-    fn thread_call_effects(&mut self, effects_var: &Type, locator: impl Locateable) {
+    fn propagate_call_effects(
+        &mut self, effects_var: &Type, implicit_count_before_call: usize, locator: impl Locateable + Copy,
+    ) {
+        // Row subtyping lets an impl like `Eq I32 pure` match `Eq I32 e` without binding `e`,
+        // but the impl decides that effect. Close whatever it left open before the call's row is
+        // linked to the ambient row below, where an open `e` would absorb the whole row instead.
+        // TODO: Remove. This is a workaround for the lack of a constraint-based system.
+        let location = locator.locate(self);
+        for target in self.resolve_new_delayed_implicits(implicit_count_before_call) {
+            for id in target.unbound_effect_entries(&self.bindings) {
+                self.try_default_effect_to_pure(id, location.clone());
+            }
+        }
+
         let current_row = self.current_effect_row.clone();
         self.unify(effects_var, &current_row, TypeErrorKind::Effects, locator);
-        self.current_effect_row = self.canonical_effects_row(&current_row, &TypeBindings::default());
+
+        let mut new_bindings = TypeBindings::default();
+        let merged = self.collect_and_merge_effects(&current_row, &mut new_bindings);
+        self.current_effect_row = Type::effects_from_canonical(merged);
+        self.bindings.extend(new_bindings);
     }
 
     /// True if `a` and `b` are equal except for one or more function environments.
@@ -616,7 +648,8 @@ fn strip_environments(typ: &Type) -> Type {
         | Type::Variable(_)
         | Type::UserDefined(_)
         | Type::U32(_)
-        | Type::Effects(_, _) => typ.clone(),
+        | Type::EffectId(_)
+        | Type::Effects(_) => typ.clone(),
     }
 }
 
@@ -633,6 +666,9 @@ pub(super) enum CoercionOutcome {
     /// The Call at `call_expr` had implicit arguments spliced in; the function expression
     /// itself is untouched and should not be re-checked against the reduced expected type.
     InPlaceCall,
+    /// The function value at `expr` is coerced to a wider effect row.
+    /// We want to create a function wrapper which has the additional effects but does not use them.
+    FunctionEffects,
 }
 
 impl<'local, 'inner> TypeChecker<'local, 'inner> {
@@ -753,7 +789,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         &mut self, actual: &Type, expected: &Type, expr: ExprId, call_expr: Option<ExprId>, kind: TypeErrorKind,
         saved: Option<affine::SavedMove>,
     ) -> Type {
-        let result = self.try_coercion(actual, expected, expr, call_expr);
+        let result = if call_expr.is_none() && self.try_function_row_coercion(actual, expected, expr, kind.clone()) {
+            CoercionOutcome::FunctionEffects
+        } else {
+            self.try_coercion(actual, expected, expr, call_expr)
+        };
         let actual = match result {
             CoercionOutcome::AutoRef => self.type_autoref_wrapper(expr, expected, kind),
             CoercionOutcome::ReplacedExpr => {
@@ -765,13 +805,103 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 actual.clone()
             },
             // implicit_parameter_coercion already performed the needed unification against the type
-            CoercionOutcome::InPlaceCall => actual.clone(),
+            CoercionOutcome::InPlaceCall | CoercionOutcome::FunctionEffects => actual.clone(),
         };
         // Undo any moves if an auto-ref occurred
         if let (CoercionOutcome::AutoRef, Some(saved)) = (&result, saved) {
             self.move_tracker.restore_move(&saved.path, saved.location);
         }
         actual
+    }
+
+    /// Coerce a function value to a wider effect row, recording it for the MIR builder to wrap in a
+    /// closure of the expected type. That closure captures the value, so the expected environment
+    /// is bound to `actual` itself. Returns false if no coercion applies and the caller should unify.
+    fn try_function_row_coercion(&mut self, actual: &Type, expected: &Type, expr: ExprId, kind: TypeErrorKind) -> bool {
+        let Some((actual_fn, expected_fn)) = self.function_row_candidates(actual, expected) else { return false };
+
+        // A re-check of a coerced expression must keep its coerced environment
+        let already_coerced = self.current_extended_context().get_function_coercion(expr).is_some();
+        if !already_coerced && self.effect_rows_identical(&actual_fn.effects, &expected_fn.effects) {
+            return false;
+        }
+        let actual_fn = actual_fn.clone();
+        let expected_fn = expected_fn.clone();
+
+        // Without an environment to infer (e.g. a bare `fn` annotation) no closure can be introduced
+        if !already_coerced && !matches!(self.follow_type(&expected_fn.environment), Type::Variable(_)) {
+            if self.unify(actual, expected, kind, expr)
+                && let Err(()) =
+                    self.try_unify(&expected_fn.effects, &actual_fn.effects).map(|b| self.bindings.extend(b))
+            {
+                let actual = self.type_to_error_string(actual);
+                let expected = self.type_to_error_string(expected);
+                let location = expr.locate(self);
+                let function_environments_differ = false;
+                self.compiler.accumulate(Diagnostic::TypeError {
+                    actual,
+                    expected,
+                    kind,
+                    function_environments_differ,
+                    location,
+                });
+            }
+            return true;
+        }
+
+        let adapted = Type::Function(Arc::new(FunctionType {
+            parameters: actual_fn.parameters.clone(),
+            environment: Type::Function(actual_fn.clone()),
+            return_type: actual_fn.return_type.clone(),
+            effects: actual_fn.effects.clone(),
+        }));
+        self.unify(&adapted, expected, kind, expr);
+        self.current_extended_context_mut().insert_function_coercion(expr, expected.clone());
+        true
+    }
+
+    /// True if checking `actual` against `expected` requires [Self::try_function_row_coercion]
+    fn needs_function_row_coercion(&self, actual: &Type, expected: &Type) -> bool {
+        self.function_row_candidates(actual, expected).is_some_and(|(actual_fn, expected_fn)| {
+            !self.effect_rows_identical(&actual_fn.effects, &expected_fn.effects)
+        })
+    }
+
+    /// Returns `actual` and `expected` as functions if they have the same arity
+    fn function_row_candidates<'a>(
+        &'a self, actual: &'a Type, expected: &'a Type,
+    ) -> Option<(&'a Arc<FunctionType>, &'a Arc<FunctionType>)> {
+        let (Type::Function(actual_fn), Type::Function(expected_fn)) =
+            (self.follow_type(actual), self.follow_type(expected))
+        else {
+            return None;
+        };
+        let compatible = actual_fn.parameters.len() == expected_fn.parameters.len()
+            // TODO: This is a hack which excludes trait functions
+            // FIXME: This breaks on non-trait functions with ptr environments
+            && !self.is_pointer_env(&expected_fn.environment)
+            && !self.is_pointer_env(&actual_fn.environment);
+        compatible.then_some((actual_fn, expected_fn))
+    }
+
+    fn is_pointer_env(&self, env: &Type) -> bool {
+        match self.follow_type(env) {
+            Type::Primitive(PrimitiveType::Pointer) => true,
+            Type::Application(constructor, _) => {
+                matches!(self.follow_type(constructor), Type::Primitive(PrimitiveType::Pointer))
+            },
+            _ => false,
+        }
+    }
+
+    /// True if both rows have the same entries in the same order and the same open effect end.
+    /// Ids are ignored since unification links them. Order matters since it fixes the evidence layout.
+    fn effect_rows_identical(&self, a: &Type, b: &Type) -> bool {
+        let no_bindings = TypeBindings::default();
+        let a = self.collect_effects(a, &no_bindings);
+        let b = self.collect_effects(b, &no_bindings);
+        a.len() == b.len()
+            && a.iter().zip(b.iter()).all(|(a, b)| a.typ.follow_all(&self.bindings) == b.typ.follow_all(&self.bindings))
     }
 
     /// Wrap the expression's type in the given expected reference type. `expected` is a full reference
@@ -972,115 +1102,163 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     _ => Err(()),
                 }
             },
-            (Type::Effects(..), Type::Effects(..)) => self.row_subtype(a, b, new_bindings),
+            (Type::UserDefined(a), Type::UserDefined(b)) => {
+                if a == b {
+                    Ok(())
+                } else {
+                    Err(())
+                }
+            },
+            (Type::Generic(a), Type::Generic(b)) => {
+                if a == b {
+                    Ok(())
+                } else {
+                    Err(())
+                }
+            },
+            (Type::EffectId(_), _) | (_, Type::EffectId(_)) => {
+                unreachable!("ICE: an effect id reached unification: {a:?} against {b:?}")
+            },
+            // Prevents infinite recursion in row_subtype below which calls into try_unify
+            (Type::UserDefined(_), Type::Application(..)) | (Type::Application(..), Type::UserDefined(_)) => Err(()),
+            // Any of these three variants can be effects
+            (
+                Type::UserDefined(_) | Type::Application(..) | Type::Effects(..) | Type::Generic(_),
+                Type::UserDefined(_) | Type::Application(..) | Type::Effects(..) | Type::Generic(_),
+            ) => self.row_subtype(a, b, new_bindings),
             (a, b) if a == b => Ok(()),
             _ => Err(()),
         }
     }
 
-    /// Find a non-skipped head-matching candidate that subtypes `target` per `variance`, trying each speculatively.
+    /// Find a non-skipped head-matching candidate that subtypes `target` per `variance`.
+    /// Finding a candidate will also link its [Type::EffectId] with the target's.
     fn subtype_matching_effect(
-        &self, candidates: &[Type], skip: impl Fn(usize) -> bool, target: &Type, variance: Variance,
+        &self, candidates: &[Effect], skip: impl Fn(usize) -> bool, target: &Effect, variance: Variance,
         new_bindings: &mut TypeBindings,
-    ) -> Result<Option<usize>, ()> {
+    ) -> Option<usize> {
         for (i, candidate) in candidates.iter().enumerate() {
-            if skip(i) || !Self::effect_heads_match(candidate, target) {
+            if skip(i) || std::mem::discriminant(&candidate.typ) != std::mem::discriminant(&target.typ) {
                 continue;
             }
+
             let mut trial = new_bindings.clone();
-            if self.subtype(candidate, target, variance, &mut trial).is_ok() {
+            if self.subtype(&candidate.typ, &target.typ, variance, &mut trial).is_ok() {
+                self.link_effect_ids(&candidate.id, &target.id, &mut trial);
                 *new_bindings = trial;
-                return Ok(Some(i));
+                return Some(i);
             }
         }
-        Ok(None)
+        None
+    }
+
+    /// Record that two row entries refer to the same capability by unifying their ids.
+    /// This is expected to never fail.
+    fn link_effect_ids(&self, a: &Type, b: &Type, new_bindings: &mut TypeBindings) {
+        assert!(self.subtype(a, b, Variance::Invariant, new_bindings).is_ok());
     }
 
     /// Row-subtype two effect rows: is `a`'s actual set of effects permitted by `b`'s expected set?
     fn row_subtype(&self, a: &Type, b: &Type, new_bindings: &mut TypeBindings) -> Result<(), ()> {
-        let a = self.canonical_effects_row(a, new_bindings);
-        let b = self.canonical_effects_row(b, new_bindings);
-        let (Type::Effects(a_list, a_tail), Type::Effects(b_list, b_tail)) = (&a, &b) else {
-            unreachable!("row_subtype called with non-Effects type");
-        };
+        let a_list = self.collect_and_merge_effects(a, new_bindings);
+        let b_list = self.collect_and_merge_effects(b, new_bindings);
 
-        let is_error = |list: &[Type], tail: &Option<Arc<Type>>| {
-            tail.as_deref().is_some_and(Type::is_error) || list.iter().any(Type::is_error)
-        };
-        if is_error(a_list, a_tail) || is_error(b_list, b_tail) {
+        if a_list.iter().chain(b_list.iter()).any(|effect| effect.typ.is_error()) {
             return Ok(());
         }
 
-        let mut a_leftover = Vec::new();
-        let mut b_matched = vec![false; b_list.len()];
+        let (a_open, a_concrete): (Vec<Effect>, Vec<Effect>) =
+            a_list.into_iter().partition(|effect| effect.is_open(&self.bindings, new_bindings));
+        let (b_open, b_concrete): (Vec<Effect>, Vec<Effect>) =
+            b_list.into_iter().partition(|effect| effect.is_open(&self.bindings, new_bindings));
 
-        for a_effect in a_list.iter() {
+        let mut a_leftover = Vec::new();
+        let mut b_matched = vec![false; b_concrete.len()];
+
+        for a_effect in a_concrete.iter() {
             let matched = self.subtype_matching_effect(
-                b_list,
+                &b_concrete,
                 |i| b_matched[i],
                 a_effect,
                 Variance::Contravariant,
                 new_bindings,
-            )?;
+            );
             match matched {
                 Some(pos) => b_matched[pos] = true,
                 None => a_leftover.push(a_effect.clone()),
             }
         }
 
-        if !a_leftover.is_empty() {
-            let fresh_tail = self.next_type_variable();
-            self.bind_open_tail(b_tail.as_deref(), a_leftover, Some(fresh_tail), true, new_bindings)?;
-        }
-
-        let b_unmatched: Vec<Type> =
-            b_list.iter().enumerate().filter(|(i, _)| !b_matched[*i]).map(|(_, t)| t.clone()).collect();
-
-        let new_tail = b_tail.as_deref().cloned();
-        self.bind_open_tail(a_tail.as_deref(), b_unmatched, new_tail, false, new_bindings)?;
-
-        Ok(())
-    }
-
-    fn bind_open_tail(
-        &self, tail: Option<&Type>, new_list: Vec<Type>, new_tail: Option<Type>, error_if_not_variable: bool,
-        new_bindings: &mut TypeBindings,
-    ) -> Result<(), ()> {
-        match tail {
-            Some(Type::Variable(id)) => {
-                let is_self_bind = new_list.is_empty() && matches!(&new_tail, Some(Type::Variable(t)) if t == id);
-                if is_self_bind {
-                    Ok(())
-                } else {
-                    self.try_bind_type_variable(*id, Type::effects(new_list, new_tail), new_bindings)
-                }
+        // What is left of `b`'s row end after it absorbs the effects `a` performs that `b` didn't list
+        let b_residual = match (b_open.first(), a_leftover.is_empty()) {
+            (open, true) => open.cloned(),
+            (Some(open), false) => {
+                // Link the leftovers, preserving the effect ids
+                let fresh = self.fresh_effect();
+                a_leftover.push(fresh.clone());
+                let binding = Type::effects(&a_leftover, &self.bindings, new_bindings);
+                self.subtype(&open.typ, &binding, Variance::Invariant, new_bindings)?;
+                Some(fresh)
             },
-            _ if error_if_not_variable => Err(()),
-            _ => Ok(()),
-        }
-    }
-
-    /// Follow `effects` to the inner [Type::Effects] variant holding the entire effect row.
-    fn canonical_effects_row(&self, effects: &Type, new_bindings: &TypeBindings) -> Type {
-        match effects.follow_two(&self.bindings, new_bindings) {
-            Type::Effects(list, tail) => {
-                let list = mapvec(list.iter(), |t| t.follow_two(&self.bindings, new_bindings));
-                let tail = tail.as_deref().map(|t| self.canonical_effects_row(t, new_bindings));
-                Type::effects(list, tail)
-            },
-            // A bare variable/generic tail with no accumulated effects yet.
-            other => Type::effects(Vec::new(), Some(other)),
-        }
-    }
-
-    /// True if two effect-row entries share the same effect constructor ignoring type arguments.
-    fn effect_heads_match(a: &Type, b: &Type) -> bool {
-        let head = |effect: &Type| {
-            effect.as_user_defined().copied().or_else(|| effect.as_application()?.0.as_user_defined().copied())
+            // TODO: Hack: review & potentionally remove
+            (None, false) if a_leftover.iter().all(|effect| self.is_implicit_effect_placeholder(&effect.typ)) => None,
+            (None, false) => return Err(()),
         };
-        match (head(a), head(b)) {
-            (Some(a), Some(b)) => a == b,
+
+        let Some(a_open_first) = a_open.first() else { return Ok(()) };
+
+        let mut b_unmatched: Vec<Effect> =
+            b_concrete.into_iter().zip(b_matched).filter(|(_, matched)| !matched).map(|(e, _)| e).collect();
+
+        match b_residual {
+            // Binding `a_open_first` to a row containing itself would create an infinitely recursive type
+            Some(residual) if self.identical_effects(&residual, a_open_first, new_bindings) => return Ok(()),
+            Some(residual) => b_unmatched.push(residual),
+            None => (),
+        }
+
+        let binding = Type::effects(&b_unmatched, &self.bindings, new_bindings);
+        self.subtype(&a_open_first.typ, &binding, Variance::Invariant, new_bindings)
+    }
+
+    /// True if both effects are exactly equal after following type variables
+    fn identical_effects(&self, a: &Effect, b: &Effect, new_bindings: &TypeBindings) -> bool {
+        a.typ.follow_two(&self.bindings, new_bindings) == b.typ.follow_two(&self.bindings, new_bindings)
+    }
+
+    /// Returns a fresh, unbound effect type variable
+    fn fresh_effect(&self) -> Effect {
+        Effect { id: self.next_type_variable(), typ: self.next_type_variable() }
+    }
+
+    fn is_implicit_effect_placeholder(&self, typ: &Type) -> bool {
+        match typ {
+            Type::Generic(Generic::Named(Origin::Local(name_id))) => {
+                self.current_context()[*name_id].as_str() == crate::parser::get_item::IMPLICIT_EFFECT_NAME
+            },
             _ => false,
+        }
+    }
+
+    /// Flatten `effects` into a list of effects, merging any entries which refer to the same effect.
+    fn collect_and_merge_effects(&self, effects: &Type, new_bindings: &mut TypeBindings) -> Vec<Effect> {
+        let mut effects = self.collect_effects(effects, new_bindings);
+        Type::follow_effects(&mut effects, &self.bindings, new_bindings);
+        Type::sort_and_dedup_effects(&mut effects, |dropped, kept| self.link_effect_ids(dropped, kept, new_bindings));
+        effects
+    }
+
+    /// Flatten `effect` into a list of effects
+    fn collect_effects(&self, effect: &Type, new_bindings: &TypeBindings) -> Vec<Effect> {
+        match effect.follow_two(&self.bindings, new_bindings) {
+            Type::Effects(_) => Type::collect_effects(effect, &self.bindings, new_bindings),
+            // A single effect, or an unbound variable standing in for the rest of the row.
+            // TODO: Expand aliases or verify that we don't need to
+            typ @ (Type::Application(..) | Type::UserDefined(..) | Type::Generic(_) | Type::Variable(_)) => {
+                vec![Effect { id: self.next_type_variable(), typ }]
+            },
+            // Any remaining variant should be a kind error, emitted elsewhere (TODO: verify)
+            _ => Vec::new(),
         }
     }
 
@@ -1162,7 +1340,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Used to prevent the creation of infinitely recursive types when binding type variables.
     fn occurs(&self, typ: &Type, variable: TypeVariableId, new_bindings: &TypeBindings) -> bool {
         match typ {
-            Type::Primitive(_) | Type::Generic(_) | Type::UserDefined(_) | Type::U32(_) => false,
+            Type::Primitive(_) | Type::Generic(_) | Type::UserDefined(_) | Type::U32(_) | Type::EffectId(_) => false,
             Type::Variable(candidate_id) => {
                 if let Some(binding) = self.bindings.get(candidate_id) {
                     self.occurs(binding, variable, new_bindings)
@@ -1184,10 +1362,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
             Type::Forall(_, typ) => self.occurs(typ, variable, new_bindings),
             Type::Tuple(elements) => elements.iter().any(|element| self.occurs(element, variable, new_bindings)),
-            Type::Effects(list, tail) => {
-                list.iter().any(|effect| self.occurs(effect, variable, new_bindings))
-                    || tail.as_ref().is_some_and(|tail| self.occurs(tail, variable, new_bindings))
-            },
+            row @ Type::Effects(_) => row.effect_entries().iter().any(|effect| {
+                self.occurs(&effect.typ, variable, new_bindings) || self.occurs(&effect.id, variable, new_bindings)
+            }),
         }
     }
 
@@ -1296,7 +1473,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
             Type::UserDefined(origin) => {
                 if let Origin::TopLevelDefinition(id) = origin {
-                    let body = id.top_level_item.type_body(generic_args, self.compiler);
+                    let body = self.with_next_id(|next_id| {
+                        id.top_level_item.type_body(generic_args, self.compiler, Some(next_id))
+                    });
                     if let TypeBody::Product { fields, .. } = body {
                         let fields = fields.into_iter().enumerate();
                         return fields.map(|(i, (name, typ))| (name, (typ, i as u32))).collect();

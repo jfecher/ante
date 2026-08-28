@@ -80,7 +80,7 @@ impl copy_mytype: Copy MyType with
 impl hash_mytype: Hash MyType with
     hash _ = 1
 
-impl equal_mytype: Eq MyType with
+impl equal_mytype: Eq MyType pure with
     (==) x y = x.inner == y.inner
 
 test_collision_management () =

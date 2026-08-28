@@ -10,7 +10,7 @@ use crate::util::{is_internal_only_type, SpanSearcher};
 /// Find the innermost node (path, name, or pattern) at `byte_offset` in
 /// `file_id` and return a hover string of the form `name : Type`.
 ///
-/// Position lookups are done against the **desugared** context from `GetItem`
+/// Position lookups are done against the desugared context from `GetItem`
 /// rather than the raw parse result, because type-checking runs on the
 /// desugared form and the node IDs must match.
 pub fn hover_at(compiler: &Db, file_id: SourceFileId, byte_offset: usize) -> Option<String> {

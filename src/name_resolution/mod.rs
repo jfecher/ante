@@ -982,6 +982,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             | TypeKind::Hole
             | TypeKind::Reference(..)
             | TypeKind::ImplicitLifetime
+            | TypeKind::Pure
             | TypeKind::IntegerConstant(_) => (),
             TypeKind::Named(path) => self.link(*path, false, true),
             TypeKind::Variable(name) | TypeKind::Lifetime(name) => self.resolve_variable(*name, declare_type_vars),
@@ -1001,7 +1002,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                     self.resolve_type(arg, declare_type_vars);
                 }
             },
-            TypeKind::Tuple(elements) => {
+            TypeKind::Tuple(elements) | TypeKind::EffectUnion(elements) => {
                 for element in elements {
                     self.resolve_type(element, declare_type_vars);
                 }

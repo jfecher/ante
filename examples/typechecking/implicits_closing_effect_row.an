@@ -1,0 +1,10 @@
+// Resolving `Copy Bool` at the call must not close the row `e` shared with `f`
+apply (f: fn a -> b can e) (x: a) {Copy a}: b can e = f x
+
+main () =
+    g = apply _ true
+    g println
+
+// args: --delete-binary --no-color
+// expected stdout:
+// true

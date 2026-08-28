@@ -30,32 +30,32 @@ a7 = choose id auto
 // args: -e ast-t --no-color
 // expected exit status: 1
 // expected stdout:
-// (id: fn _ -> _ pure) (x: _) = (x: _)
+// (id: fn _ -> _ is pure) (x: _) = (x: _)
 // 
 // (ids: _) = (error)
 // 
-// (auto: fn (fn a -> a) -> a) ((x: fn a -> a)) = (x: fn a -> a) (error)
+// (auto: fn (fn a -> a can _) -> a can _) ((x: fn a -> a can _)) = (x: fn a -> a can _) (error)
 // 
-// (auto_prime: fn (fn a -> a) -> a) ((x: fn a -> a)) = (x: fn a -> a) (x: fn a -> a)
+// (auto_prime: fn (fn a -> a can _) -> a can _) ((x: fn a -> a can _)) = (x: fn a -> a can _) (x: fn a -> a can _)
 // 
-// (f5: _) = (auto: fn (fn _ -> _ pure) -> _ pure) (error)
+// (f5: _) = (auto: fn (fn _ -> _ is pure) -> _ is pure) (error)
 // 
-// (poly: fn (fn a -> a) -> a, a) ((f: fn a -> a)) =
-//     (f: fn a -> a) 42 (,: fn a a -> a, a pure) (f: fn a -> a) true
+// (poly: fn (fn a -> a can _) -> a, a can _) ((f: fn a -> a can _)) =
+//     (f: fn a -> a can _) 42 (,: fn a a -> a, a is pure) (f: fn a -> a can _) true
 // 
 // (f9: _) =
-//     (f: fn (fn (fn _ -> _) -> _, _) [_] -> _ pure) = (revapp: fn _ [_] -> fn (fn (fn _ -> _) -> _, _) [_] -> _ pure pure) (error)
-//     (f: fn (fn (fn _ -> _) -> _, _) [_] -> _ pure) (poly: fn (fn _ -> _) -> _, _)
+//     (f: fn (fn (fn _ -> _ is pure) -> _, _ is pure) [_] -> _ is pure) = (revapp: fn _ [_] -> fn (fn (fn _ -> _ is pure) -> _, _ is pure) [_] -> _ is pure is pure) (error)
+//     (f: fn (fn (fn _ -> _ is pure) -> _, _ is pure) [_] -> _ is pure) (poly: fn (fn _ -> _ is pure) -> _, _ is pure)
 // 
-// (choose: fn a a -> a pure) ((x: a)) ((_y: a)) = (x: a)
+// (choose: fn a a -> a is pure) ((x: a)) ((_y: a)) = (x: a)
 // 
-// (a5: fn (fn _ -> _) -> _) = (id: fn (fn (fn _ -> _) -> _) -> fn (fn _ -> _) -> _ pure) (auto: fn (fn _ -> _) -> _)
+// (a5: fn (fn _ -> _ is pure) -> _ is pure) = (id: fn (fn (fn _ -> _ is pure) -> _ is pure) -> fn (fn _ -> _ is pure) -> _ is pure is pure) (auto: fn (fn _ -> _ is pure) -> _ is pure)
 // 
-// (a6: fn (fn _ -> _) -> _) = (id: fn (fn (fn _ -> _) -> _) -> fn (fn _ -> _) -> _ pure) (auto_prime: fn (fn _ -> _) -> _)
+// (a6: fn (fn _ -> _ is pure) -> _ is pure) = (id: fn (fn (fn _ -> _ is pure) -> _ is pure) -> fn (fn _ -> _ is pure) -> _ is pure is pure) (auto_prime: fn (fn _ -> _ is pure) -> _ is pure)
 // 
-// (a6_: _) = (id: fn _ -> _ pure) (error)
+// (a6_: _) = (id: fn _ -> _ is pure) (error)
 // 
-// (a7: fn _ -> _ pure) = (choose: fn (fn _ -> _ pure) (fn _ -> _ pure) -> fn _ -> _ pure pure) (id: fn _ -> _ pure) (auto: fn (fn _ -> _) -> _)
+// (a7: fn _ -> _ is pure) = (choose: fn (fn _ -> _ is pure) (fn _ -> _ is pure) -> fn _ -> _ is pure is pure) (id: fn _ -> _ is pure) (auto: fn (fn _ -> _ is pure) -> _ is pure)
 
 // expected stderr:
 // examples/typechecking/impredicativity.an:4:8
@@ -68,7 +68,7 @@ a7 = choose id auto
 //   |                                    ^^^^^^
 // 
 // examples/typechecking/impredicativity.an:8:41
-//    | // error: Argument 1 has type fn a -> a but a was expected
+//    | // error: Argument 1 has type fn a -> a can _ but a was expected
 //  8 | auto_prime (x: forall a. fn a -> a) = x x
 //    |                                         ^
 // 
@@ -104,7 +104,7 @@ a7 = choose id auto
 //    |           ^^^^^^
 // 
 // examples/typechecking/impredicativity.an:28:16
-//    | // error: Argument 2 has type fn (fn _ -> _) -> _ but fn _ -> _ pure was expected
+//    | // error: Argument 2 has type fn (fn _ -> _ can _) -> _ can _ but fn _ -> _ is pure was expected
 // 28 | a7 = choose id auto
 //    |                ^^^^
 // 

@@ -32,11 +32,15 @@ impl TopLevelId {
     /// Note that if `arguments` are not provided, the type will be instantiated and thus
     /// any fields may refer to type type variables that have not been tracked.
     ///
+    /// The constructor's generalized type carries its effect ids.
+    /// When `next_id` is given these are instantiated to fresh variables.
+    /// Otherwise, the same effect ids are kept.
+    ///
     /// - For a struct: returns each field name & type
     /// - For a union: returns each variant with its name and arguments
     ///
     /// TODO: This function is called somewhat often but is a lot of work to redo each time.
-    pub fn type_body<Db>(self, arguments: Option<&[Type]>, compiler: &Db) -> TypeBody
+    pub fn type_body<Db>(self, arguments: Option<&[Type]>, compiler: &Db, mut next_id: Option<&mut u32>) -> TypeBody
     where
         Db: DbGet<TypeCheck> + DbGet<GetItem>,
     {
@@ -55,7 +59,7 @@ impl TopLevelId {
             cst::TypeDefinitionBody::Struct(fields) => {
                 // This'd be easier with an explicit type data field
                 let constructor_type = result.get_generalized(type_definition.name);
-                let constructor = apply_type_constructor(&constructor_type, arguments, &result);
+                let constructor = apply_type_constructor(&constructor_type, arguments, &result, next_id);
                 let field_types = constructor.function_parameter_types();
 
                 assert_eq!(fields.len(), field_types.len());
@@ -69,7 +73,8 @@ impl TopLevelId {
             cst::TypeDefinitionBody::Enum(variants) => {
                 let mut variants = mapvec(variants, |(name, _)| {
                     let constructor_type = result.get_generalized(*name);
-                    let constructor = apply_type_constructor(&constructor_type, arguments, &result);
+                    let constructor =
+                        apply_type_constructor(&constructor_type, arguments, &result, next_id.as_deref_mut());
                     let fields: Vec<_> = constructor.function_parameter_types().collect();
                     (item_context[*name].clone(), fields)
                 });
@@ -97,9 +102,13 @@ impl TopLevelId {
 /// Try to apply the given type to the given type arguments. Note that this assumes there are no
 /// bound type variables within `typ`!
 ///
+/// `next_id`, if given, instantiates the constructor's effect ids.
+///
 // This assumes constructor args are in the same order as the type args.
 // This should be guaranteed by [TypeChecker::build_constructor_type].
-pub(crate) fn apply_type_constructor(typ: &Type, args: Option<&[Type]>, types: &TypeCheckResult) -> Type {
+pub(crate) fn apply_type_constructor(
+    typ: &Type, args: Option<&[Type]>, types: &TypeCheckResult, next_id: Option<&mut u32>,
+) -> Type {
     let expected_generic_count = match typ.follow(&types.bindings) {
         Type::Forall(generics, _) => generics.len(),
         _ => 0,
@@ -112,7 +121,7 @@ pub(crate) fn apply_type_constructor(typ: &Type, args: Option<&[Type]>, types: &
 
     let no_type_var_bindings = TypeBindings::default();
 
-    match args {
+    let applied = match args {
         Some(args) => {
             if args.len() < expected_generic_count {
                 let mut new_args = args.to_vec();
@@ -131,5 +140,10 @@ pub(crate) fn apply_type_constructor(typ: &Type, args: Option<&[Type]>, types: &
             let args = mapvec(generics.iter(), |_| Type::ERROR);
             typ.apply_type(&args, &no_type_var_bindings)
         },
+    };
+
+    match next_id.and_then(|next_id| applied.instantiate_effect_ids(next_id, &no_type_var_bindings)) {
+        Some(instantiated) => instantiated,
+        None => applied,
     }
 }

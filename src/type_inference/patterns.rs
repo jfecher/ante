@@ -504,6 +504,7 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
             | Type::Forall(..)
             | Type::Tuple(_)
             | Type::U32(_)
+            | Type::EffectId(_)
             | Type::Effects(..) => {
                 let typ = self.checker.type_to_string(definition_type);
                 Err(Diagnostic::CannotMatchOnType { typ, location })
@@ -925,7 +926,7 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
         match self.checker.follow_type(typ) {
             Type::UserDefined(origin) => match origin {
                 Origin::TopLevelDefinition(top_level_name) => {
-                    match top_level_name.top_level_item.type_body(None, self.checker.compiler) {
+                    match top_level_name.top_level_item.type_body(None, self.checker.compiler, None) {
                         TypeBody::Product { type_name, .. } => type_name,
                         TypeBody::Sum(variants) => variants[variant_index].0.clone(),
                     }
@@ -1000,7 +1001,11 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
         // case of a bug elsewhere in the compiler.
         match origin {
             Origin::TopLevelDefinition(top_level_name) => {
-                match top_level_name.top_level_item.type_body(Some(arguments), self.checker.compiler) {
+                let compiler = self.checker.compiler;
+                let body = self.checker.with_next_id(|next_id| {
+                    top_level_name.top_level_item.type_body(Some(arguments), compiler, Some(next_id))
+                });
+                match body {
                     TypeBody::Product { type_name: _, fields } => {
                         let fields = mapvec(fields, |(_name, typ)| typ);
                         Some(UserDefinedTypeKind::Product(fields))

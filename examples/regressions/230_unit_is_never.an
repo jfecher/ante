@@ -17,11 +17,10 @@ main () =
 //   |                 ^^^^^^^^^^^
 // 4 |     throw ()
 // 
-// examples/regressions/230_unit_is_never.an:8:20
-//  7 |     handler h for throw _ -> println "threw!"
-//  8 |     unit_neverizer h	// error: Argument 1 has type (Throw _) but Throw Never was expected
-//    |                    ^
-//  9 |     println "through!"
+// examples/regressions/230_unit_is_never.an:6:1
+// 6 | main () =	// error: main here uses Fs, Throw Unit but it should only use Fs, Net
+//   | ^^^^
+// 7 |     handler h for throw _ -> println "threw!"
 // 
 // Found 2 errors and 0 warnings
 

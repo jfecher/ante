@@ -170,9 +170,8 @@ pub(crate) fn is_c_constant(value: &ConstantValue, mir: &mir::Mir) -> bool {
     }
 }
 
-/// Collect into `out` every other global *variable* this value reads by value (a
-/// [ConstantValue::Definition] naming a global). These are the globals whose runtime
-/// initialization must precede this one's. Functions are skipped (their address is constant).
+/// Collect into `out` every other global variable this value reads by value.
+/// These are the globals whose runtime initialization must precede this one's. Functions are skipped.
 pub(crate) fn referenced_globals(value: &ConstantValue, mir: &mir::Mir, out: &mut Vec<DefinitionId>) {
     match value {
         ConstantValue::Definition(id) => {

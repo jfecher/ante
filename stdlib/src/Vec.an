@@ -21,16 +21,16 @@ Vec.len (v: ref Vec a) = v.len
 Vec.capacity (v: ref Vec a) = v.cap
 
 // Create a new Vec with the elements from the given stream
-Vec.of (s: s) {Stream s t}: Vec t =
+Vec.of (s: s) {Stream s t e}: Vec t can Fs, e =
     var vec = Vec.empty ()
     vec.extend s
     vec
 
-Vec.extend (vec: mut Vec t) (s: s) {Stream s t}: Unit =
+Vec.extend (vec: mut Vec t) (s: s) {Stream s t e}: Unit can Fs, e =
     iter s (vec.push _)
 
 //reserve numElements in Vec v, elements will be uninitialized
-Vec.reserve (v: mut Vec t) (numElems: Usz) : Unit =
+Vec.reserve (v: mut Vec t) (numElems: Usz): Unit can Fs =
     if v.len + numElems > v.cap then
         size = (v.cap + numElems) * size_of (MkType: Type t)
         ptr = realloc v.data size
@@ -44,19 +44,19 @@ Vec.reserve (v: mut Vec t) (numElems: Usz) : Unit =
 
 //push an element onto the end of the vector.
 //resizes if necessary
-Vec.push (v: mut Vec t) (elem: t) : Unit =
+Vec.push (v: mut Vec t) (elem: t): Unit can Fs =
     if v.len >= v.cap then
-        v.reserve (if v.cap == 0usz then 1 else v.cap)
+        v.reserve (if v.cap == 0 then 1 else v.cap)
 
     array_insert v.data v.len elem
-    v.len := v.len + 1usz
+    v.len += 1
 
 /// Removes the last element of this vector and returns it.
 /// Returns None if the vector is empty.
-Vec.pop (v: mut Vec t): Maybe t =
+Vec.pop (v: mut Vec t): Maybe t can Fs =
     if v.is_empty () then None
     else
-        v.len := v.len - 1
+        v.len -= 1
         Some (v.data.[v.len])
 
 /// Retrieves the element at the given 0-based index.
@@ -87,7 +87,7 @@ Vec.get_mut_unchecked (v: uniq Vec t) (i: Usz): uniq t =
 
 /// Remove the element at the given index and return it.
 /// will Fail if the index is out of bounds.
-Vec.remove_index (v: mut Vec t) (idx: Usz): t can Fail =
+Vec.remove_index (v: mut Vec t) (idx: Usz): t can Fail, Fs =
     if idx >= 0 and idx < v.len then
         item = v.data.[idx]
         for i in idx .. v.len - 1 do
@@ -100,7 +100,7 @@ Vec.remove_index (v: mut Vec t) (idx: Usz): t can Fail =
 
 /// Removes the first instance of the given element from the vector,
 /// returning the index it was found at. Returns `None` if the element was not found.
-Vec.remove_first (v: mut Vec t) (elem: t) {Eq t} {Copy t}: Maybe Usz =
+Vec.remove_first (v: mut Vec t) (elem: t) {Eq t e} {Copy t}: Maybe Usz can Fs, e =
     for i in 0 .. v.len do
         if elem == v.data.[i] then
             panic_on_fail (fn () -> v.remove_index i)
@@ -110,7 +110,7 @@ Vec.remove_first (v: mut Vec t) (elem: t) {Eq t} {Copy t}: Maybe Usz =
 /// Remove the given indices from the vector
 /// Expects the indices to be in sorted order.
 /// Will Fail if any index is out of bounds.
-Vec.remove_indices (v: mut Vec t) (idxs: Vec Usz): Unit can Fail =
+Vec.remove_indices (v: mut Vec t) (idxs: Vec Usz): Unit can Fail, Fs =
     var moved = 0usz
     for i in 0 .. idxs.len do
         cur = idxs.data.[i]
@@ -134,7 +134,7 @@ Vec.remove_indices (v: mut Vec t) (idxs: Vec Usz): Unit can Fail =
 /// Remove all matching elements from the vector and
 /// return the number of elements removed.
 /// Uses = to determine element equality.
-Vec.remove_all (v: mut Vec t) (elem: t) {Eq t} {Copy t}: Usz =
+Vec.remove_all (v: mut Vec t) (elem: t) {Eq t e} {Copy t}: Usz can Fs, e =
     var idxs = Vec.empty ()
     for i in 0 .. v.len do
         if elem == v.data.[i] then
@@ -148,7 +148,7 @@ Vec.remove_all (v: mut Vec t) (elem: t) {Eq t} {Copy t}: Usz =
 //Remove an element by swapping it with the last element in O(1) time.
 //Returns true if a swap was performed or false otherwise.
 //Will not swap if the given index is the index of the last element.
-Vec.swap_last (v: mut Vec t) (idx: Usz) : Bool =
+Vec.swap_last (v: mut Vec t) (idx: Usz) : Bool can Fs =
     if idx >= v.len or idx + 1 == v.len then false
     else
         v.len := v.len - 1
@@ -156,7 +156,7 @@ Vec.swap_last (v: mut Vec t) (idx: Usz) : Bool =
         true
 
 /// Reverse the elements of this vector in place.
-Vec.reverse (v: mut Vec t): Unit =
+Vec.reverse (v: mut Vec t): Unit can Fs =
     if v.len < 2 then return ()
     half = v.len / 2
     for i in 0 .. half do
@@ -166,7 +166,7 @@ Vec.reverse (v: mut Vec t): Unit =
         array_insert v.data opposite tmp
 
 /// Swap the elements at indices `i` and `j`. Fails if either index is out of bounds.
-Vec.swap (v: mut Vec t) (i: Usz) (j: Usz): Unit can Fail =
+Vec.swap (v: mut Vec t) (i: Usz) (j: Usz): Unit can Fail, Fs =
     if i >= v.len or j >= v.len then fail ()
     if i == j then return ()
     tmp = v.data.[i]
@@ -175,7 +175,7 @@ Vec.swap (v: mut Vec t) (i: Usz) (j: Usz): Unit can Fail =
 
 /// Insert `elem` at `idx`, shifting elements at `[idx, len)` one position right.
 /// Fails if `idx > len`.
-Vec.insert (v: mut Vec t) (idx: Usz) (elem: t): Unit can Fail =
+Vec.insert (v: mut Vec t) (idx: Usz) (elem: t): Unit can Fail, Fs =
     if idx > v.len then fail ()
     if v.len >= v.cap then
         v.reserve (if v.cap == 0 then 1 else v.cap)
@@ -187,7 +187,7 @@ Vec.insert (v: mut Vec t) (idx: Usz) (elem: t): Unit can Fail =
     v.len += 1
 
 /// Remove consecutive runs of equal elements, keeping only the first of each run.
-Vec.dedup (v: mut Vec t) {Eq t} {Copy t}: Unit =
+Vec.dedup (v: mut Vec t) {Eq t e} {Copy t}: Unit can Fs, e =
     if v.len < 2 then return ()
     var write = 1
     for read in 1 .. v.len do
@@ -199,7 +199,7 @@ Vec.dedup (v: mut Vec t) {Eq t} {Copy t}: Unit =
 
 /// Shrink the vector to at most `new_len` elements, dropping any tail.
 /// Does nothing if `new_len >= v.len`.
-Vec.truncate (v: mut Vec t) (new_len: Usz) {Drop t}: Unit =
+Vec.truncate (v: mut Vec t) (new_len: Usz) {Drop t e}: Unit can e =
     if new_len >= v.len then return ()
     for i in new_len .. v.len do
         elem = offset v.data i
@@ -208,12 +208,12 @@ Vec.truncate (v: mut Vec t) (new_len: Usz) {Drop t}: Unit =
 
 /// Remove and drop every element.
 /// After being cleared, a Vec's length will be zero, but its capacity will be unchanged.
-Vec.clear (v: mut Vec t) {Drop t}: Unit =
+Vec.clear (v: mut Vec t) {Drop t e}: Unit can e =
     v.truncate 0
 
 /// Sort the vector in place using `cmp` to compare elements.
 /// Insertion sort: stable, O(n^2) worst case. Good enough for small vectors.
-Vec.sort_by (v: mut Vec t) (cmp: fn (ref t) (ref t) => Bool): Unit =
+Vec.sort_by (v: mut Vec t) (cmp: fn (ref t) (ref t) => Bool): Unit can Fs =
     if v.len < 2 then return ()
     for i in 1 .. v.len do
         var j = i
@@ -226,7 +226,7 @@ Vec.sort_by (v: mut Vec t) (cmp: fn (ref t) (ref t) => Bool): Unit =
             j -= 1
 
 /// Sort the vector in place using the `Cmp` ordering.
-Vec.sort (v: mut Vec t) {Cmp t}: Unit =
+Vec.sort (v: mut Vec t) {Cmp t}: Unit can Fs =
     v.sort_by (<)
 
 
@@ -241,33 +241,33 @@ impl print_vec {p: Print t}: Print (Vec t) with
 
         print "]"
 
-impl extract_vec_move: Extract (Vec t) Usz t with
+impl extract_vec_move: Extract (Vec t) Usz t pure with
     (.[]) v i = v.data.[i]
 
-impl extract_vec: Extract (ref Vec t) Usz (ref t) with
+impl extract_vec: Extract (ref Vec t) Usz (ref t) pure with
     (.[]) v i = transmute (offset v.data i)
 
 // Note that this impl is different from `Vec.insert`.
 // Vec.insert will insert into a slot, moving the previous element and each
 // element after to the right. This `Insert` implementation will instead
 // directly mutate the element at the given index to the new element.
-impl insert_vec: Insert (mut Vec t) Usz t with
+impl insert_vec: Insert (mut Vec t) Usz t Fs with
     (.[]:=) (v: mut Vec t) i e =
         v: uniq Vec t = transmute v
         slot = v.get_mut i ~> panic_on_fail
         slot := e
 
-implicit stream_vec: Stream (Vec a) a =
+implicit stream_vec: Stream (Vec a) a pure =
     Stream fn vec ->
         for i in 0 .. vec.len do
             emit (deref (vec.get_unchecked i))
 
-implicit stream_imm_vec: Stream (imm Vec a) (imm a) =
+implicit stream_imm_vec: Stream (imm Vec a) (imm a) pure =
     Stream fn vec ->
         for i in 0 .. vec.len do
             emit (vec.get_unchecked i)
 
-impl drop_vec {Drop t}: Drop (Vec t) with
+impl drop_vec {Drop t e}: Drop (Vec t) e with
     drop (v: mut Vec t) =
         if v.cap != 0 then
             for i in 0 .. v.len do
@@ -275,7 +275,7 @@ impl drop_vec {Drop t}: Drop (Vec t) with
                 Drop.drop (ptr_to_mut elem)
             free v.data
 
-impl eq_vec {Eq t}: Eq (Vec t) with
+impl eq_vec {Eq t e}: Eq (Vec t) e with
     (==) l r =
         if l.len != r.len then
             return false

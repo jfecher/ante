@@ -1,0 +1,35 @@
+effect Throw a =
+    throw: fn a -> Unit
+
+type Thunk (e: effect) = f: fn Unit -> Unit can e
+
+// Should expect these effects to be reordered in the output with e last
+id (b: Thunk (e & Fs & Throw Unit)): Thunk (e & Fs & Throw Unit) = b
+
+mismatch (b: Thunk (e & Throw Unit & Fs)): I32 = b
+
+main () = ()
+
+// args: -e ast-t --no-color
+// expected exit status: 1
+// expected stdout:
+// effect Throw a =
+//     throw: fn a -> Unit
+// 
+// type Thunk (e: effect) =
+//     f: fn Unit -> Unit can e
+// 
+// (id: fn (Thunk (Fs, Throw Unit, e)) -> Thunk (Fs, Throw Unit, e) is pure) ((b: Thunk (Fs, Throw Unit, e))) : Thunk e & Fs & Throw Unit is pure = (b: Thunk (Fs, Throw Unit, e))
+// 
+// (mismatch: fn (Thunk (Fs, Throw Unit, e)) -> I32 is pure) ((b: Thunk (Fs, Throw Unit, e))) : I32 is pure = (b: Thunk (Fs, Throw Unit, e))
+// 
+// (main: fn Unit -> Unit is pure) () = ()
+
+// expected stderr:
+// examples/typechecking/effect_row_order.an:9:50
+//    | // error: The body of this function has type Thunk (Fs, Throw Unit, e) but it is expected to return I32
+//  9 | mismatch (b: Thunk (e & Throw Unit & Fs)): I32 = b
+//    |                                                  ^
+// 
+// Found 1 error and 0 warnings
+

@@ -17,7 +17,7 @@ use crate::{
         affine::MovePath,
         errors::TypeErrorKind,
         get_type::{get_partial_type, try_get_generalized_type},
-        types::{self, FunctionType, ParameterType, Type, TypeBindings},
+        types::{self, FunctionType, GenericSubstitutions, ParameterType, Type, TypeBindings},
     },
 };
 
@@ -121,8 +121,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Expr::Do(_) => unreachable!("Expr::Do should be desugared during GetItem"),
             Expr::TypeAnnotation(type_annotation) => {
                 let annotation = self.from_cst_type(&type_annotation.rhs, true);
-                let actual = self.infer_expr(type_annotation.lhs, &annotation);
-                self.unify(&actual, &annotation, TypeErrorKind::TypeAnnotationMismatch, id);
+                self.check_expr(type_annotation.lhs, &annotation, TypeErrorKind::TypeAnnotationMismatch);
                 annotation
             },
             Expr::Handle(handle) => self.infer_handle(handle, expected),
@@ -162,7 +161,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Returns the inferred type.
     pub(super) fn check_expr(&mut self, id: ExprId, expected: &Type, kind: TypeErrorKind) -> Type {
         let actual = self.infer_expr(id, expected);
-        self.unify(&actual, expected, kind, id);
+        if !self.try_function_row_coercion(&actual, expected, id, kind.clone()) {
+            self.unify(&actual, expected, kind, id);
+        }
         actual
     }
 
@@ -377,17 +378,28 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// This function should not be used outside of [Self::type_and_bindings_of_top_level_name] or [Self::type_of_top_level_name]
     /// since the resulting bindings always need to be remembered.
     fn instantiate(&mut self, typ: Type) -> (Type, Option<Vec<Type>>) {
-        match typ {
-            Type::Forall(generics, old_type) => {
-                assert!(!generics.is_empty());
-                let substitutions = generics.iter().map(|generic| (*generic, self.next_type_variable())).collect();
-                let typ = old_type.substitute(&substitutions, &self.bindings);
+        let (generics, body) = match &typ {
+            Type::Forall(generics, body) => (generics.as_slice(), body.as_ref()),
+            other => (&[][..], other),
+        };
 
-                let bindings = mapvec(generics.iter(), |generic| substitutions[generic].clone());
-                (typ, Some(bindings))
-            },
-            other => (other, None),
-        }
+        let substitutions: GenericSubstitutions =
+            generics.iter().map(|generic| (*generic, self.next_type_variable())).collect();
+        let bindings = (!generics.is_empty()).then(|| mapvec(generics, |generic| substitutions[generic].clone()));
+        let body = if generics.is_empty() {
+            Cow::Borrowed(body)
+        } else {
+            Cow::Owned(body.substitute(&substitutions, &self.bindings))
+        };
+
+        // Effect ids aren't generics but still need to be fresh per call site
+        let instantiated = self.with_next_id(|next_id| body.instantiate_effect_ids(next_id, &self.bindings));
+        let body = match (instantiated, body) {
+            (Some(body), _) | (None, Cow::Owned(body)) => body,
+            (None, Cow::Borrowed(_)) => return (typ, None),
+        };
+        self.record_fresh_effect_variables(&body);
+        (body, bindings)
     }
 
     fn resolve_type_resolution(&mut self, path: PathId, expected: &Type) -> Type {
@@ -493,6 +505,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // As a compromise, we only unify non-type variable returns currently just because it
         // happened to keep most examples working.
         if !matches!(self.follow_type(&actual_return_type), Type::Variable(_))
+            && !self.needs_function_row_coercion(&actual_return_type, expected)
             && let Ok(bindings) = self.try_unify(&actual_return_type, expected)
         {
             self.bindings.extend(bindings);
@@ -505,19 +518,16 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             self.infer_and_coerce(arg.expr, &expected_arg_type.typ, kind, deref_operands);
         }
 
-        // Linked after arguments so same-head ambient entries route by the argument's pinned type.
-        self.thread_call_effects(&effects_var, call.function);
-
         // FIXME: Another related hack. Try to bind the return type now, this time if it has no unbound
         // type variables. Doing so results in some better results when resolving implicits early below.
         if expected.free_vars(&self.bindings).is_empty()
+            && !self.needs_function_row_coercion(&actual_return_type, expected)
             && let Ok(bindings) = self.try_unify(&actual_return_type, expected)
         {
             self.bindings.extend(bindings);
         }
 
-        // A lot of Extract implicits (.[]) break without this
-        self.resolve_new_delayed_implicits(implicit_count_before_call);
+        self.propagate_call_effects(&effects_var, implicit_count_before_call, call.function);
 
         // Ideally we only coerce on call arguments, but this is currently needed.
         // TODO: Take another stab at cleaning up these call rules, but this took much iteration.
@@ -1039,11 +1049,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         // The parser wraps the handled expression in `fn () -> <body>` to serve as the
         // coroutine's init function.
-        let body_env = self.next_type_variable();
         let body_row = self.fresh_effect_row();
         let body_type = Type::Function(Arc::new(FunctionType {
             parameters: vec![ParameterType::explicit(Type::UNIT)],
-            environment: body_env,
+            environment: self.next_type_variable(),
             return_type: result_type.clone(),
             effects: body_row.clone(),
         }));
@@ -1121,18 +1130,16 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let handled_effect = handled_effect.as_ref().unwrap();
         self.unify(&handler_name_type, handled_effect, TypeErrorKind::General, handle.expression);
 
-        let options = LambdaOptions::default();
         let body_lambda = self.unwrap_lambda(handle.expression);
 
         // `Some(handler_name)` exempts the variable from being captured as a closure.
         // This is instead handled as a special case in mir generation
-        self.infer_lambda_impl(body_lambda, &body_type, handle.expression, Some(handle.handler_name), options);
+        let default = LambdaOptions::default();
+        self.infer_lambda_impl(body_lambda, &body_type, handle.expression, Some(handle.handler_name), default);
 
         // Any unhandled effects escape this handler
         let mut new_bindings = TypeBindings::default();
-        let leftover =
-            self.discharge_effect(&body_row, handled_effect, &mut new_bindings).unwrap_or_else(|_| body_row.clone());
-
+        let leftover = self.subtract_effect(&body_row, handled_effect, &mut new_bindings);
         self.bindings.extend(new_bindings);
 
         // Reunifying with each row here lets us give a single error message of each unhandled capability
@@ -1148,28 +1155,18 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         result_type
     }
 
-    /// Peel `effect` out of `row`'s canonicalized effect list; `Err` if `effect` isn't present.
-    fn discharge_effect(&self, row: &Type, effect: &Type, new_bindings: &mut TypeBindings) -> Result<Type, ()> {
-        let row = self.canonical_effects_row(row, new_bindings);
-        let effect = self.canonical_effects_row(effect, new_bindings);
-        let Type::Effects(list, tail) = &row else { unreachable!("canonical_effects_row always returns Effects") };
-        let Type::Effects(to_remove, _) = &effect else { unreachable!("canonical_effects_row always returns Effects") };
+    /// Remove `handled`'s effect(s) out of `row`
+    fn subtract_effect(&self, row: &Type, handled: &Type, new_bindings: &mut TypeBindings) -> Type {
+        let mut list = Type::collect_effects(row, &self.bindings, new_bindings);
+        let to_remove = Type::collect_effects(handled, &self.bindings, new_bindings);
 
-        let mut new_list = list.to_vec();
-        let mut found = false;
-        for entry in to_remove.iter() {
-            let matched =
-                self.subtype_matching_effect(&new_list, |_| false, entry, Variance::Covariant, new_bindings)?;
-            if let Some(pos) = matched {
-                new_list.remove(pos);
-                found = true;
+        for entry in &to_remove {
+            if let Some(pos) = self.subtype_matching_effect(&list, |_| false, entry, Variance::Covariant, new_bindings)
+            {
+                list.remove(pos);
             }
         }
-
-        if !found {
-            return Err(());
-        }
-        Ok(Type::effects(new_list, tail.as_deref().cloned()))
+        Type::effects(&list, &self.bindings, new_bindings)
     }
 
     /// Retrieve the [`cst::Lambda`] at `expr_id` or panic otherwise.
@@ -1214,6 +1211,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // For compound assignments (+=, -=, etc.), resolve the operator function through
         // implicits dispatch. The operator has type `fn value_type value_type -> value_type`.
         if let Some((_, op_expr)) = assignment.op {
+            let implicit_count_before_op = self.delayed_implicits_count();
             let effects_var = self.fresh_effect_row();
             let expected_fn_type = Type::Function(Arc::new(FunctionType {
                 parameters: vec![
@@ -1234,10 +1232,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 super::CoercionOutcome::InPlaceCall | super::CoercionOutcome::None => {
                     self.unify(&actual, &expected_fn_type, TypeErrorKind::CompoundOperator, op_expr);
                 },
+                super::CoercionOutcome::FunctionEffects => unreachable!("try_coercion never coerces effects"),
             }
 
             // Same as a normal call: link the operator's effects to the ambient row.
-            self.thread_call_effects(&effects_var, op_expr);
+            self.propagate_call_effects(&effects_var, implicit_count_before_op, op_expr);
         }
 
         self.check_expr(assignment.rhs, &value_type, TypeErrorKind::Assignment);

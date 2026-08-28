@@ -64,7 +64,7 @@ type Maybe t =
 iff (condition: Bool) (then_: fn Unit => a): Maybe a =
     if condition then Some (then_ ()) else None
 
-Maybe.unwrap (m: Maybe t): t =
+Maybe.unwrap (m: Maybe t): t can Fs =
     match m
     | Some x -> x
     | None -> panic "Tried to unwrap a None value"
@@ -101,249 +101,149 @@ fourth (_, _, _, d) = d
 fifth (_, _, _, _, e) = e
 
 /// A type conversion from a to b
-trait Cast a b =
-    cast: fn a -> b
+trait Cast a b (e: effect) =
+    cast: fn a -> b can e
 
-impl cast_same: Cast a a with
+impl cast_same: Cast a a pure with
     cast a = a
 
-impl cast_ptr_usz: Cast (Ptr a) Usz with
+impl cast_ptr_usz: Cast (Ptr a) Usz pure with
     cast ptr = transmute ptr
 
-impl cast_usz_ptr: Cast Usz (Ptr a) with
+impl cast_usz_ptr: Cast Usz (Ptr a) pure with
     cast address = transmute address
 
 // Begin wall of casts
 // TODO: Perhaps we should only expose infallible casts, forcing users to explicitly truncate otherwise
-impl cast_u8_u16: Cast U8 U16 with
-    cast x = intrinsic "ZeroExtend" x
-impl cast_u8_u32: Cast U8 U32 with
-    cast x = intrinsic "ZeroExtend" x
-impl cast_u8_u64: Cast U8 U64 with
-    cast x = intrinsic "ZeroExtend" x
-impl cast_u8_usz: Cast U8 Usz with
-    cast x = intrinsic "ZeroExtend" x
+impl cast_u8_u16: Cast U8 U16 pure with cast x = intrinsic "ZeroExtend" x
+impl cast_u8_u32: Cast U8 U32 pure with cast x = intrinsic "ZeroExtend" x
+impl cast_u8_u64: Cast U8 U64 pure with cast x = intrinsic "ZeroExtend" x
+impl cast_u8_usz: Cast U8 Usz pure with cast x = intrinsic "ZeroExtend" x
 
-impl cast_u16_u8: Cast U16 U8 with
-    cast x = intrinsic "Truncate" x
-impl cast_u16_u32: Cast U16 U32 with
-    cast x = intrinsic "ZeroExtend" x
-impl cast_u16_u64: Cast U16 U64 with
-    cast x = intrinsic "ZeroExtend" x
-impl cast_u16_usz: Cast U16 Usz with
-    cast x = intrinsic "ZeroExtend" x
+impl cast_u16_u8: Cast U16 U8 pure   with cast x = intrinsic "Truncate" x
+impl cast_u16_u32: Cast U16 U32 pure with cast x = intrinsic "ZeroExtend" x
+impl cast_u16_u64: Cast U16 U64 pure with cast x = intrinsic "ZeroExtend" x
+impl cast_u16_usz: Cast U16 Usz pure with cast x = intrinsic "ZeroExtend" x
 
-impl cast_u32_u8: Cast U32 U8 with
-    cast x = intrinsic "Truncate" x
-impl cast_u32_u16: Cast U32 U16 with
-    cast x = intrinsic "Truncate" x
-impl cast_u32_u64: Cast U32 U64 with
-    cast x = intrinsic "ZeroExtend" x
-impl cast_u32_usz: Cast U32 Usz with
-    cast x = intrinsic "ZeroExtend" x
+impl cast_u32_u8: Cast U32 U8 pure with cast x = intrinsic "Truncate" x
+impl cast_u32_u16: Cast U32 U16 pure with cast x = intrinsic "Truncate" x
+impl cast_u32_u64: Cast U32 U64 pure with cast x = intrinsic "ZeroExtend" x
+impl cast_u32_usz: Cast U32 Usz pure with cast x = intrinsic "ZeroExtend" x
 
-impl cast_u64_u8: Cast U64 U8 with
-    cast x = intrinsic "Truncate" x
-impl cast_u64_u16: Cast U64 U16 with
-    cast x = intrinsic "Truncate" x
-impl cast_u64_u32: Cast U64 U32 with
-    cast x = intrinsic "Truncate" x
-impl cast_u64_usz: Cast U64 Usz with
-    cast x = intrinsic "Truncate" x
+impl cast_u64_u8: Cast U64 U8 pure with cast x = intrinsic "Truncate" x
+impl cast_u64_u16: Cast U64 U16 pure with cast x = intrinsic "Truncate" x
+impl cast_u64_u32: Cast U64 U32 pure with cast x = intrinsic "Truncate" x
+impl cast_u64_usz: Cast U64 Usz pure with cast x = intrinsic "Truncate" x
 
-impl cast_usz_u8: Cast Usz U8 with
-    cast x = intrinsic "Truncate" x
-impl cast_usz_u16: Cast Usz U16 with
-    cast x = intrinsic "Truncate" x
-impl cast_usz_u32: Cast Usz U32 with
-    cast x = intrinsic "Truncate" x
-impl cast_usz_u64: Cast Usz U64 with
-    cast x = intrinsic "ZeroExtend" x
+impl cast_usz_u8: Cast Usz U8 pure with cast x = intrinsic "Truncate" x
+impl cast_usz_u16: Cast Usz U16 pure with cast x = intrinsic "Truncate" x
+impl cast_usz_u32: Cast Usz U32 pure with cast x = intrinsic "Truncate" x
+impl cast_usz_u64: Cast Usz U64 pure with cast x = intrinsic "ZeroExtend" x
 
-impl cast_u8_i32: Cast U8 I32 with
-    cast x = intrinsic "ZeroExtend" x
+impl cast_u8_i32: Cast U8 I32 pure with cast x = intrinsic "ZeroExtend" x
 
 // Signed types
-impl cast_i8_i16: Cast I8 I16 with
-    cast x = intrinsic "SignExtend" x
-impl cast_i8_i32: Cast I8 I32 with
-    cast x = intrinsic "SignExtend" x
-impl cast_i8_i64: Cast I8 I64 with
-    cast x = intrinsic "SignExtend" x
-impl cast_i8_isz: Cast I8 Isz with
-    cast x = intrinsic "SignExtend" x
+impl cast_i8_i16: Cast I8 I16 pure with cast x = intrinsic "SignExtend" x
+impl cast_i8_i32: Cast I8 I32 pure with cast x = intrinsic "SignExtend" x
+impl cast_i8_i64: Cast I8 I64 pure with cast x = intrinsic "SignExtend" x
+impl cast_i8_isz: Cast I8 Isz pure with cast x = intrinsic "SignExtend" x
 
-impl cast_i16_i8: Cast I16 I8 with
-    cast x = intrinsic "Truncate" x
-impl cast_i16_i32: Cast I16 I32 with
-    cast x = intrinsic "SignExtend" x
-impl cast_i16_i64: Cast I16 I64 with
-    cast x = intrinsic "SignExtend" x
-impl cast_i16_isz: Cast I16 Isz with
-    cast x = intrinsic "SignExtend" x
+impl cast_i16_i8: Cast I16 I8 pure with cast x = intrinsic "Truncate" x
+impl cast_i16_i32: Cast I16 I32 pure with cast x = intrinsic "SignExtend" x
+impl cast_i16_i64: Cast I16 I64 pure with cast x = intrinsic "SignExtend" x
+impl cast_i16_isz: Cast I16 Isz pure with cast x = intrinsic "SignExtend" x
 
-impl cast_i32_i8: Cast I32 I8 with
-    cast x = intrinsic "Truncate" x
-impl cast_i32_i16: Cast I32 I16 with
-    cast x = intrinsic "Truncate" x
-impl cast_i32_i64: Cast I32 I64 with
-    cast x = intrinsic "SignExtend" x
-impl cast_i32_isz: Cast I32 Isz with
-    cast x = intrinsic "SignExtend" x
+impl cast_i32_i8: Cast I32 I8 pure with cast x = intrinsic "Truncate" x
+impl cast_i32_i16: Cast I32 I16 pure with cast x = intrinsic "Truncate" x
+impl cast_i32_i64: Cast I32 I64 pure with cast x = intrinsic "SignExtend" x
+impl cast_i32_isz: Cast I32 Isz pure with cast x = intrinsic "SignExtend" x
 
-impl cast_i64_i8: Cast I64 I8 with
-    cast x = intrinsic "Truncate" x
-impl cast_i64_i16: Cast I64 I16 with
-    cast x = intrinsic "Truncate" x
-impl cast_i64_i32: Cast I64 I32 with
-    cast x = intrinsic "Truncate" x
-impl cast_i64_isz: Cast I64 Isz with
-    cast x = intrinsic "Truncate" x
+impl cast_i64_i8: Cast I64 I8 pure with cast x = intrinsic "Truncate" x
+impl cast_i64_i16: Cast I64 I16 pure with cast x = intrinsic "Truncate" x
+impl cast_i64_i32: Cast I64 I32 pure with cast x = intrinsic "Truncate" x
+impl cast_i64_isz: Cast I64 Isz pure with cast x = intrinsic "Truncate" x
 
-impl cast_isz_i8: Cast Isz I8 with
-    cast x = intrinsic "Truncate" x
-impl cast_isz_i16: Cast Isz I16 with
-    cast x = intrinsic "Truncate" x
-impl cast_isz_i32: Cast Isz I32 with
-    cast x = intrinsic "Truncate" x
-impl cast_isz_i64: Cast Isz I64 with
-    cast x = intrinsic "SignExtend" x
+impl cast_isz_i8: Cast Isz I8 pure with cast x = intrinsic "Truncate" x
+impl cast_isz_i16: Cast Isz I16 pure with cast x = intrinsic "Truncate" x
+impl cast_isz_i32: Cast Isz I32 pure with cast x = intrinsic "Truncate" x
+impl cast_isz_i64: Cast Isz I64 pure with cast x = intrinsic "SignExtend" x
 
 // Float casts
-impl cast_i8_f32: Cast I8  F32 with
-    cast x = intrinsic "SignedToFloat" x
-impl cast_i16_f32: Cast I16 F32 with
-    cast x = intrinsic "SignedToFloat" x
-impl cast_i32_f32: Cast I32 F32 with
-    cast x = intrinsic "SignedToFloat" x
-impl cast_i64_f32: Cast I64 F32 with
-    cast x = intrinsic "SignedToFloat" x
-impl cast_isz_f32: Cast Isz F32 with
-    cast x = intrinsic "SignedToFloat" x
-impl cast_i8_f64: Cast I8  F64 with
-    cast x = intrinsic "SignedToFloat" x
-impl cast_i16_f64: Cast I16 F64 with
-    cast x = intrinsic "SignedToFloat" x
-impl cast_i32_f64: Cast I32 F64 with
-    cast x = intrinsic "SignedToFloat" x
-impl cast_i64_f64: Cast I64 F64 with
-    cast x = intrinsic "SignedToFloat" x
-impl cast_isz_f64: Cast Isz F64 with
-    cast x = intrinsic "SignedToFloat" x
+impl cast_i8_f32:  Cast I8  F32 pure with cast x = intrinsic "SignedToFloat" x
+impl cast_i16_f32: Cast I16 F32 pure with cast x = intrinsic "SignedToFloat" x
+impl cast_i32_f32: Cast I32 F32 pure with cast x = intrinsic "SignedToFloat" x
+impl cast_i64_f32: Cast I64 F32 pure with cast x = intrinsic "SignedToFloat" x
+impl cast_isz_f32: Cast Isz F32 pure with cast x = intrinsic "SignedToFloat" x
+impl cast_i8_f64:  Cast I8  F64 pure with cast x = intrinsic "SignedToFloat" x
+impl cast_i16_f64: Cast I16 F64 pure with cast x = intrinsic "SignedToFloat" x
+impl cast_i32_f64: Cast I32 F64 pure with cast x = intrinsic "SignedToFloat" x
+impl cast_i64_f64: Cast I64 F64 pure with cast x = intrinsic "SignedToFloat" x
+impl cast_isz_f64: Cast Isz F64 pure with cast x = intrinsic "SignedToFloat" x
 
-impl cast_u8_f32: Cast U8  F32 with
-    cast x = intrinsic "UnsignedToFloat" x
-impl cast_u16_f64: Cast U16 F32 with
-    cast x = intrinsic "UnsignedToFloat" x
-impl cast_u32_f64: Cast U32 F32 with
-    cast x = intrinsic "UnsignedToFloat" x
-impl cast_u64_f64: Cast U64 F32 with
-    cast x = intrinsic "UnsignedToFloat" x
-impl cast_usz_f64: Cast Usz F32 with
-    cast x = intrinsic "UnsignedToFloat" x
-impl cast_u8_f64: Cast U8  F64 with
-    cast x = intrinsic "UnsignedToFloat" x
-impl cast_u16_f32: Cast U16 F64 with
-    cast x = intrinsic "UnsignedToFloat" x
-impl cast_u32_f32: Cast U32 F64 with
-    cast x = intrinsic "UnsignedToFloat" x
-impl cast_u64_f32: Cast U64 F64 with
-    cast x = intrinsic "UnsignedToFloat" x
-impl cast_usz_f32: Cast Usz F64 with
-    cast x = intrinsic "UnsignedToFloat" x
+impl cast_u8_f32:  Cast U8  F32 pure with cast x = intrinsic "UnsignedToFloat" x
+impl cast_u16_f64: Cast U16 F32 pure with cast x = intrinsic "UnsignedToFloat" x
+impl cast_u32_f64: Cast U32 F32 pure with cast x = intrinsic "UnsignedToFloat" x
+impl cast_u64_f64: Cast U64 F32 pure with cast x = intrinsic "UnsignedToFloat" x
+impl cast_usz_f64: Cast Usz F32 pure with cast x = intrinsic "UnsignedToFloat" x
+impl cast_u8_f64:  Cast U8  F64 pure with cast x = intrinsic "UnsignedToFloat" x
+impl cast_u16_f32: Cast U16 F64 pure with cast x = intrinsic "UnsignedToFloat" x
+impl cast_u32_f32: Cast U32 F64 pure with cast x = intrinsic "UnsignedToFloat" x
+impl cast_u64_f32: Cast U64 F64 pure with cast x = intrinsic "UnsignedToFloat" x
+impl cast_usz_f32: Cast Usz F64 pure with cast x = intrinsic "UnsignedToFloat" x
 
-impl cast_f32_i8: Cast F32 I8 with
-    cast x = intrinsic "FloatToSigned" x
-impl cast_f32_i16: Cast F32 I16 with
-    cast x = intrinsic "FloatToSigned" x
-impl cast_f32_i32: Cast F32 I32 with
-    cast x = intrinsic "FloatToSigned" x
-impl cast_f32_i64: Cast F32 I64 with
-    cast x = intrinsic "FloatToSigned" x
-impl cast_f32_isz: Cast F32 Isz with
-    cast x = intrinsic "FloatToSigned" x
-impl cast_f64_i8: Cast F64 I8 with
-    cast x = intrinsic "FloatToSigned" x
-impl cast_f64_i16: Cast F64 I16 with
-    cast x = intrinsic "FloatToSigned" x
-impl cast_f64_i32: Cast F64 I32 with
-    cast x = intrinsic "FloatToSigned" x
-impl cast_f64_i64: Cast F64 I64 with
-    cast x = intrinsic "FloatToSigned" x
-impl cast_f64_isz: Cast F64 Isz with
-    cast x = intrinsic "FloatToSigned" x
+impl cast_f32_i8:  Cast F32 I8  pure with cast x = intrinsic "FloatToSigned" x
+impl cast_f32_i16: Cast F32 I16 pure with cast x = intrinsic "FloatToSigned" x
+impl cast_f32_i32: Cast F32 I32 pure with cast x = intrinsic "FloatToSigned" x
+impl cast_f32_i64: Cast F32 I64 pure with cast x = intrinsic "FloatToSigned" x
+impl cast_f32_isz: Cast F32 Isz pure with cast x = intrinsic "FloatToSigned" x
+impl cast_f64_i8:  Cast F64 I8  pure with cast x = intrinsic "FloatToSigned" x
+impl cast_f64_i16: Cast F64 I16 pure with cast x = intrinsic "FloatToSigned" x
+impl cast_f64_i32: Cast F64 I32 pure with cast x = intrinsic "FloatToSigned" x
+impl cast_f64_i64: Cast F64 I64 pure with cast x = intrinsic "FloatToSigned" x
+impl cast_f64_isz: Cast F64 Isz pure with cast x = intrinsic "FloatToSigned" x
 
-impl cast_f32_u8: Cast F32 U8 with
-    cast x = intrinsic "FloatToUnsigned" x
-impl cast_f32_u16: Cast F32 U16 with
-    cast x = intrinsic "FloatToUnsigned" x
-impl cast_f32_u32: Cast F32 U32 with
-    cast x = intrinsic "FloatToUnsigned" x
-impl cast_f32_u64: Cast F32 U64 with
-    cast x = intrinsic "FloatToUnsigned" x
-impl cast_f32_usz: Cast F32 Usz with
-    cast x = intrinsic "FloatToUnsigned" x
-impl cast_f64_u8: Cast F64 U8 with
-    cast x = intrinsic "FloatToUnsigned" x
-impl cast_f64_u16: Cast F64 U16 with
-    cast x = intrinsic "FloatToUnsigned" x
-impl cast_f64_u32: Cast F64 U32 with
-    cast x = intrinsic "FloatToUnsigned" x
-impl cast_f64_u64: Cast F64 U64 with
-    cast x = intrinsic "FloatToUnsigned" x
-impl cast_f64_usz: Cast F64 Usz with
-    cast x = intrinsic "FloatToUnsigned" x
+impl cast_f32_u8:  Cast F32 U8  pure with cast x = intrinsic "FloatToUnsigned" x
+impl cast_f32_u16: Cast F32 U16 pure with cast x = intrinsic "FloatToUnsigned" x
+impl cast_f32_u32: Cast F32 U32 pure with cast x = intrinsic "FloatToUnsigned" x
+impl cast_f32_u64: Cast F32 U64 pure with cast x = intrinsic "FloatToUnsigned" x
+impl cast_f32_usz: Cast F32 Usz pure with cast x = intrinsic "FloatToUnsigned" x
+impl cast_f64_u8:  Cast F64 U8  pure with cast x = intrinsic "FloatToUnsigned" x
+impl cast_f64_u16: Cast F64 U16 pure with cast x = intrinsic "FloatToUnsigned" x
+impl cast_f64_u32: Cast F64 U32 pure with cast x = intrinsic "FloatToUnsigned" x
+impl cast_f64_u64: Cast F64 U64 pure with cast x = intrinsic "FloatToUnsigned" x
+impl cast_f64_usz: Cast F64 Usz pure with cast x = intrinsic "FloatToUnsigned" x
 
-impl cast_f64_f32: Cast F64 F32 with
-    cast x = intrinsic "FloatDemote" x
-impl cast_f32_f64: Cast F32 F64 with
-    cast x = intrinsic "FloatPromote" x
+impl cast_f64_f32: Cast F64 F32 pure with cast x = intrinsic "FloatDemote" x
+impl cast_f32_f64: Cast F32 F64 pure with cast x = intrinsic "FloatPromote" x
 
 // x -> Char casts
-impl cast_i8_char: Cast I8 Char with
-    cast = transmute
-impl cast_i16_char: Cast I16 Char with
-    cast x = intrinsic "Truncate" x
-impl cast_i32_char: Cast I32 Char with
-    cast x = intrinsic "Truncate" x
-impl cast_i64_char: Cast I64 Char with
-    cast x = intrinsic "Truncate" x
-impl cast_isz_char: Cast Isz Char with
-    cast x = intrinsic "Truncate" x
+impl cast_i8_char:  Cast I8  Char pure with cast = transmute
+impl cast_i16_char: Cast I16 Char pure with cast x = intrinsic "Truncate" x
+impl cast_i32_char: Cast I32 Char pure with cast x = intrinsic "Truncate" x
+impl cast_i64_char: Cast I64 Char pure with cast x = intrinsic "Truncate" x
+impl cast_isz_char: Cast Isz Char pure with cast x = intrinsic "Truncate" x
 
-impl cast_u8_char: Cast U8 Char with
-    cast = transmute
-impl cast_u16_char: Cast U16 Char with
-    cast x = intrinsic "Truncate" x
-impl cast_u32_char: Cast U32 Char with
-    cast x = intrinsic "Truncate" x
-impl cast_u64_char: Cast U64 Char with
-    cast x = intrinsic "Truncate" x
-impl cast_usz_char: Cast Usz Char with
-    cast x = intrinsic "Truncate" x
+impl cast_u8_char:  Cast U8  Char pure with cast = transmute
+impl cast_u16_char: Cast U16 Char pure with cast x = intrinsic "Truncate" x
+impl cast_u32_char: Cast U32 Char pure with cast x = intrinsic "Truncate" x
+impl cast_u64_char: Cast U64 Char pure with cast x = intrinsic "Truncate" x
+impl cast_usz_char: Cast Usz Char pure with cast x = intrinsic "Truncate" x
 
 // Other casts: TODO fill in
-impl cast_i32_usz: Cast I32 Usz with
+impl cast_i32_usz: Cast I32 Usz pure with
     cast x =
         // TODO: Review. Does this match C?
         transmute (cast x : Isz)
 
-impl cast_usz_i64: Cast Usz I64 with
-    cast x = intrinsic "ZeroExtend" x
-
-impl cast_i64_usz: Cast I64 Usz with
-    cast x = intrinsic "Truncate" x
+impl cast_usz_i64: Cast Usz I64 pure with cast x = intrinsic "ZeroExtend" x
+impl cast_i64_usz: Cast I64 Usz pure with cast x = intrinsic "Truncate" x
 
 // This impl needs to be removed if chars become 32-bit
-impl cast_char_u8: Cast Char U8 with
-    cast x = intrinsic "ZeroExtend" x
-impl cast_char_i32: Cast Char I32 with
-    cast x = intrinsic "ZeroExtend" x
-impl cast_char_u64: Cast Char U64 with
-    cast x = intrinsic "ZeroExtend" x
+impl cast_char_u8:  Cast Char U8  pure with cast x = intrinsic "ZeroExtend" x
+impl cast_char_i32: Cast Char I32 pure with cast x = intrinsic "ZeroExtend" x
+impl cast_char_u64: Cast Char U64 pure with cast x = intrinsic "ZeroExtend" x
 
-impl cast_bool_i32: Cast Bool I32 with
-    cast b = if b then 1 else 0
+impl cast_bool_i32: Cast Bool I32 pure with cast b = if b then 1 else 0
 
 // TODO: This `Cast I32 String` machinery is temporary. We should unify
 // `Cast x String` and `Print x` into a single `Display` ability
@@ -352,7 +252,7 @@ count_digits (x: U64): U32 =
         if x < 10 then sum
         else recur (x / 10) (sum + 1)
 
-impl cast_i32_string: Cast I32 String with
+impl cast_i32_string: Cast I32 String Fs with
     cast x =
         x = I64 x
         is_neg = x < 0
@@ -399,204 +299,131 @@ float_to_string (f: F64): String =
     prefix = if is_neg then "-" else ""
     prefix ++ unsigned_to_string uint ++ "." ++ unsigned_to_string fraction
 
-impl cast_f32_string: Cast F32 String with
+impl cast_f32_string: Cast F32 String pure with
     cast f = float_to_string (F64 f)
 
-impl cast_f64_string: Cast F64 String with
+impl cast_f64_string: Cast F64 String pure with
     cast = float_to_string
 
 /// Represents a failable type cast from a to b
-trait TryCast a b =
-    try_cast: fn a -> b can Fail
+trait TryCast a b (e: effect) =
+    try_cast: fn a -> b can Fail, e
 
-impl try_cast_from_cast {Cast a b}: TryCast a b with
+impl try_cast_from_cast {Cast a b e}: TryCast a b e with
     try_cast a = cast a
 
 
 // // Huge block of intrinsic numeric operators incoming
 trait Add n = (+): fn n n -> n
-impl add_i8: Add I8 with
-    (+) x y = intrinsic "AddInt" x y
-impl add_i16: Add I16 with
-    (+) x y = intrinsic "AddInt" x y
-impl add_i32: Add I32 with
-    (+) x y = intrinsic "AddInt" x y
-impl add_i64: Add I64 with
-    (+) x y = intrinsic "AddInt" x y
-impl add_isz: Add Isz with
-    (+) x y = intrinsic "AddInt" x y
-impl add_u8: Add U8 with
-    (+) x y = intrinsic "AddInt" x y
-impl add_u16: Add U16 with
-    (+) x y = intrinsic "AddInt" x y
-impl add_u32: Add U32 with
-    (+) x y = intrinsic "AddInt" x y
-impl add_u64: Add U64 with
-    (+) x y = intrinsic "AddInt" x y
-impl add_usz: Add Usz with
-    (+) x y = intrinsic "AddInt" x y
-impl add_f32: Add F32 with
-    (+) x y = intrinsic "AddFloat" x y
-impl add_f64: Add F64 with
-    (+) x y = intrinsic "AddFloat" x y
+impl add_i8: Add I8 with (+) x y = intrinsic "AddInt" x y
+impl add_i16: Add I16 with (+) x y = intrinsic "AddInt" x y
+impl add_i32: Add I32 with (+) x y = intrinsic "AddInt" x y
+impl add_i64: Add I64 with (+) x y = intrinsic "AddInt" x y
+impl add_isz: Add Isz with (+) x y = intrinsic "AddInt" x y
+impl add_u8: Add U8 with (+) x y = intrinsic "AddInt" x y
+impl add_u16: Add U16 with (+) x y = intrinsic "AddInt" x y
+impl add_u32: Add U32 with (+) x y = intrinsic "AddInt" x y
+impl add_u64: Add U64 with (+) x y = intrinsic "AddInt" x y
+impl add_usz: Add Usz with (+) x y = intrinsic "AddInt" x y
+impl add_f32: Add F32 with (+) x y = intrinsic "AddFloat" x y
+impl add_f64: Add F64 with (+) x y = intrinsic "AddFloat" x y
 
 trait Sub n = (-): fn n n -> n
-impl sub_i8: Sub I8 with
-    (-) x y = intrinsic "SubInt" x y
-impl sub_i16: Sub I16 with
-    (-) x y = intrinsic "SubInt" x y
-impl sub_i32: Sub I32 with
-    (-) x y = intrinsic "SubInt" x y
-impl sub_i64: Sub I64 with
-    (-) x y = intrinsic "SubInt" x y
-impl sub_isz: Sub Isz with
-    (-) x y = intrinsic "SubInt" x y
-impl sub_u8: Sub U8 with
-    (-) x y = intrinsic "SubInt" x y
-impl sub_u16: Sub U16 with
-    (-) x y = intrinsic "SubInt" x y
-impl sub_u32: Sub U32 with
-    (-) x y = intrinsic "SubInt" x y
-impl sub_u64: Sub U64 with
-    (-) x y = intrinsic "SubInt" x y
-impl sub_usz: Sub Usz with
-    (-) x y = intrinsic "SubInt" x y
-impl sub_f32: Sub F32 with
-    (-) x y = intrinsic "SubFloat" x y
-impl sub_f64: Sub F64 with
-    (-) x y = intrinsic "SubFloat" x y
+impl sub_i8: Sub I8 with (-) x y = intrinsic "SubInt" x y
+impl sub_i16: Sub I16 with (-) x y = intrinsic "SubInt" x y
+impl sub_i32: Sub I32 with (-) x y = intrinsic "SubInt" x y
+impl sub_i64: Sub I64 with (-) x y = intrinsic "SubInt" x y
+impl sub_isz: Sub Isz with (-) x y = intrinsic "SubInt" x y
+impl sub_u8: Sub U8 with (-) x y = intrinsic "SubInt" x y
+impl sub_u16: Sub U16 with (-) x y = intrinsic "SubInt" x y
+impl sub_u32: Sub U32 with (-) x y = intrinsic "SubInt" x y
+impl sub_u64: Sub U64 with (-) x y = intrinsic "SubInt" x y
+impl sub_usz: Sub Usz with (-) x y = intrinsic "SubInt" x y
+impl sub_f32: Sub F32 with (-) x y = intrinsic "SubFloat" x y
+impl sub_f64: Sub F64 with (-) x y = intrinsic "SubFloat" x y
 
 trait Mul n = (*): fn n n -> n
-impl mul_i8: Mul I8 with
-    (*) x y = intrinsic "MulInt" x y
-impl mul_i16: Mul I16 with
-    (*) x y = intrinsic "MulInt" x y
-impl mul_i32: Mul I32 with
-    (*) x y = intrinsic "MulInt" x y
-impl mul_i64: Mul I64 with
-    (*) x y = intrinsic "MulInt" x y
-impl mul_isz: Mul Isz with
-    (*) x y = intrinsic "MulInt" x y
-impl mul_u8: Mul U8 with
-    (*) x y = intrinsic "MulInt" x y
-impl mul_u16: Mul U16 with
-    (*) x y = intrinsic "MulInt" x y
-impl mul_u32: Mul U32 with
-    (*) x y = intrinsic "MulInt" x y
-impl mul_u64: Mul U64 with
-    (*) x y = intrinsic "MulInt" x y
-impl mul_usz: Mul Usz with
-    (*) x y = intrinsic "MulInt" x y
-impl mul_f32: Mul F32 with
-    (*) x y = intrinsic "MulFloat" x y
-impl mul_f64: Mul F64 with
-    (*) x y = intrinsic "MulFloat" x y
+impl mul_i8: Mul I8 with (*) x y = intrinsic "MulInt" x y
+impl mul_i16: Mul I16 with (*) x y = intrinsic "MulInt" x y
+impl mul_i32: Mul I32 with (*) x y = intrinsic "MulInt" x y
+impl mul_i64: Mul I64 with (*) x y = intrinsic "MulInt" x y
+impl mul_isz: Mul Isz with (*) x y = intrinsic "MulInt" x y
+impl mul_u8: Mul U8 with (*) x y = intrinsic "MulInt" x y
+impl mul_u16: Mul U16 with (*) x y = intrinsic "MulInt" x y
+impl mul_u32: Mul U32 with (*) x y = intrinsic "MulInt" x y
+impl mul_u64: Mul U64 with (*) x y = intrinsic "MulInt" x y
+impl mul_usz: Mul Usz with (*) x y = intrinsic "MulInt" x y
+impl mul_f32: Mul F32 with (*) x y = intrinsic "MulFloat" x y
+impl mul_f64: Mul F64 with (*) x y = intrinsic "MulFloat" x y
 
 trait Div n = (/): fn n n -> n
-impl div_i8: Div I8 with
-    (/) x y = intrinsic "DivSigned" x y
-impl div_i16: Div I16 with
-    (/) x y = intrinsic "DivSigned" x y
-impl div_i32: Div I32 with
-    (/) x y = intrinsic "DivSigned" x y
-impl div_i64: Div I64 with
-    (/) x y = intrinsic "DivSigned" x y
-impl div_isz: Div Isz with
-    (/) x y = intrinsic "DivSigned" x y
-impl div_u8: Div U8 with
-    (/) x y = intrinsic "DivUnsigned" x y
-impl div_u16: Div U16 with
-    (/) x y = intrinsic "DivUnsigned" x y
-impl div_u32: Div U32 with
-    (/) x y = intrinsic "DivUnsigned" x y
-impl div_u64: Div U64 with
-    (/) x y = intrinsic "DivUnsigned" x y
-impl div_usz: Div Usz with
-    (/) x y = intrinsic "DivUnsigned" x y
-impl div_f32: Div F32 with
-    (/) x y = intrinsic "DivFloat" x y
-impl div_f64: Div F64 with
-    (/) x y = intrinsic "DivFloat" x y
+impl div_i8: Div I8 with (/) x y = intrinsic "DivSigned" x y
+impl div_i16: Div I16 with (/) x y = intrinsic "DivSigned" x y
+impl div_i32: Div I32 with (/) x y = intrinsic "DivSigned" x y
+impl div_i64: Div I64 with (/) x y = intrinsic "DivSigned" x y
+impl div_isz: Div Isz with (/) x y = intrinsic "DivSigned" x y
+impl div_u8: Div U8 with (/) x y = intrinsic "DivUnsigned" x y
+impl div_u16: Div U16 with (/) x y = intrinsic "DivUnsigned" x y
+impl div_u32: Div U32 with (/) x y = intrinsic "DivUnsigned" x y
+impl div_u64: Div U64 with (/) x y = intrinsic "DivUnsigned" x y
+impl div_usz: Div Usz with (/) x y = intrinsic "DivUnsigned" x y
+impl div_f32: Div F32 with (/) x y = intrinsic "DivFloat" x y
+impl div_f64: Div F64 with (/) x y = intrinsic "DivFloat" x y
 
 trait Mod n = (%): fn n n -> n
-impl mod_i8: Mod I8 with
-    (%) x y = intrinsic "ModSigned" x y
-impl mod_i16: Mod I16 with
-    (%) x y = intrinsic "ModSigned" x y
-impl mod_i32: Mod I32 with
-    (%) x y = intrinsic "ModSigned" x y
-impl mod_i64: Mod I64 with
-    (%) x y = intrinsic "ModSigned" x y
-impl mod_isz: Mod Isz with
-    (%) x y = intrinsic "ModSigned" x y
-impl mod_u8: Mod U8 with
-    (%) x y = intrinsic "ModUnsigned" x y
-impl mod_u16: Mod U16 with
-    (%) x y = intrinsic "ModUnsigned" x y
-impl mod_u32: Mod U32 with
-    (%) x y = intrinsic "ModUnsigned" x y
-impl mod_u64: Mod U64 with
-    (%) x y = intrinsic "ModUnsigned" x y
-impl mod_usz: Mod Usz with
-    (%) x y = intrinsic "ModUnsigned" x y
+impl mod_i8: Mod I8 with (%) x y = intrinsic "ModSigned" x y
+impl mod_i16: Mod I16 with (%) x y = intrinsic "ModSigned" x y
+impl mod_i32: Mod I32 with (%) x y = intrinsic "ModSigned" x y
+impl mod_i64: Mod I64 with (%) x y = intrinsic "ModSigned" x y
+impl mod_isz: Mod Isz with (%) x y = intrinsic "ModSigned" x y
+impl mod_u8: Mod U8 with (%) x y = intrinsic "ModUnsigned" x y
+impl mod_u16: Mod U16 with (%) x y = intrinsic "ModUnsigned" x y
+impl mod_u32: Mod U32 with (%) x y = intrinsic "ModUnsigned" x y
+impl mod_u64: Mod U64 with (%) x y = intrinsic "ModUnsigned" x y
+impl mod_usz: Mod Usz with (%) x y = intrinsic "ModUnsigned" x y
 // Cranelift backend does not support floating-point remainder or modulus
 
-
 // TODO: We do not have an integer-generic 0 value to use here
-(%%) (a: t) (b: t) {Mod t} {Eq t} {Cast U8 t} =
+(%%) (a: t) (b: t) {Mod t} {Eq t e} {Cast U8 t e}: Bool can e =
     a % b == cast 0u8 : t
 
 
-trait Eq t = (==): fn (ref t) (ref t) -> Bool
-impl eq_i8: Eq I8 with
-    (==) x y = intrinsic "EqInt" x.* y.*
-impl eq_i16: Eq I16 with
-    (==) x y = intrinsic "EqInt" x.* y.*
-impl eq_i32: Eq I32 with
-    (==) x y = intrinsic "EqInt" x.* y.*
-impl eq_i64: Eq I64 with
-    (==) x y = intrinsic "EqInt" x.* y.*
-impl eq_isz: Eq Isz with
-    (==) x y = intrinsic "EqInt" x.* y.*
-impl eq_u8: Eq U8 with
-    (==) x y = intrinsic "EqInt" x.* y.*
-impl eq_u16: Eq U16 with
-    (==) x y = intrinsic "EqInt" x.* y.*
-impl eq_u32: Eq U32 with
-    (==) x y = intrinsic "EqInt" x.* y.*
-impl eq_u64: Eq U64 with
-    (==) x y = intrinsic "EqInt" x.* y.*
-impl eq_usz: Eq Usz with
-    (==) x y = intrinsic "EqInt" x.* y.*
-impl eq_f32: Eq F32 with
-    (==) x y = intrinsic "EqFloat" x.* y.*
-impl eq_f64: Eq F64 with
-    (==) x y = intrinsic "EqFloat" x.* y.*
+trait Eq t (e: effect) = (==): fn (ref t) (ref t) -> Bool can e
+impl eq_i8: Eq I8 pure with (==) x y = intrinsic "EqInt" x.* y.*
+impl eq_i16: Eq I16 pure with (==) x y = intrinsic "EqInt" x.* y.*
+impl eq_i32: Eq I32 pure with (==) x y = intrinsic "EqInt" x.* y.*
+impl eq_i64: Eq I64 pure with (==) x y = intrinsic "EqInt" x.* y.*
+impl eq_isz: Eq Isz pure with (==) x y = intrinsic "EqInt" x.* y.*
+impl eq_u8: Eq U8 pure with (==) x y = intrinsic "EqInt" x.* y.*
+impl eq_u16: Eq U16 pure with (==) x y = intrinsic "EqInt" x.* y.*
+impl eq_u32: Eq U32 pure with (==) x y = intrinsic "EqInt" x.* y.*
+impl eq_u64: Eq U64 pure with (==) x y = intrinsic "EqInt" x.* y.*
+impl eq_usz: Eq Usz pure with (==) x y = intrinsic "EqInt" x.* y.*
+impl eq_f32: Eq F32 pure with (==) x y = intrinsic "EqFloat" x.* y.*
+impl eq_f64: Eq F64 pure with (==) x y = intrinsic "EqFloat" x.* y.*
 
-impl eq_char: Eq Char with
-    (==) x y = intrinsic "EqInt" x.* y.*
-impl eq_bool: Eq Bool with
-    (==) x y = intrinsic "EqInt" x.* y.*
+impl eq_char: Eq Char pure with (==) x y = intrinsic "EqInt" x.* y.*
+impl eq_bool: Eq Bool pure with (==) x y = intrinsic "EqInt" x.* y.*
 
 // References are equal if their elements are equal
-impl eq_ref {Eq t}: Eq (ref t) with
+impl eq_ref {Eq t e}: Eq (ref t) e with
     (==) l r = deref l == deref r
 
 // Pointers are equal if their addresses are equal
-impl eq_ptr: Eq (Ptr t) with
+impl eq_ptr: Eq (Ptr t) pure with
     (==) l r = (transmute l.* : Usz) == (transmute r.* : Usz)
 
-impl eq_maybe {Eq e}: Eq (Maybe e) with
+impl eq_maybe {Eq e2 e}: Eq (Maybe e2) e with
     (==) l r =
         match deref l, deref r
         | Some lv, Some rv -> lv == rv
         | None, None -> true
         | _ -> false
 
-impl eq_pair {Eq a} {Eq b}: Eq (a, b) with
+impl eq_pair {Eq a e} {Eq b e}: Eq (a, b) e with
     (==) l r = l.first == r.first and l.second == r.second
 
-(!=) (l: ref t) (r: ref t) {Eq t} = not (l == r)
+(!=) (l: ref t) (r: ref t) {Eq t e} = not (l == r)
 
 trait Not t =
     (not): fn t -> t
@@ -615,35 +442,22 @@ trait Cmp a =
 (<=) (a: ref t) (b: ref t) {Cmp t} = not (b < a)
 (>=) (a: ref t) (b: ref t) {Cmp t} = not (a < b)
 
-impl cmp_i8: Cmp I8 with
-    (<) x y = intrinsic "LessSigned" x.* y.*
-impl cmp_i16: Cmp I16 with
-    (<) x y = intrinsic "LessSigned" x.* y.*
-impl cmp_i32: Cmp I32 with
-    (<) x y = intrinsic "LessSigned" x.* y.*
-impl cmp_i64: Cmp I64 with
-    (<) x y = intrinsic "LessSigned" x.* y.*
-impl cmp_isz: Cmp Isz with
-    (<) x y = intrinsic "LessSigned" x.* y.*
+impl cmp_i8: Cmp I8 with (<) x y = intrinsic "LessSigned" x.* y.*
+impl cmp_i16: Cmp I16 with (<) x y = intrinsic "LessSigned" x.* y.*
+impl cmp_i32: Cmp I32 with (<) x y = intrinsic "LessSigned" x.* y.*
+impl cmp_i64: Cmp I64 with (<) x y = intrinsic "LessSigned" x.* y.*
+impl cmp_isz: Cmp Isz with (<) x y = intrinsic "LessSigned" x.* y.*
 
-impl cmp_u8: Cmp U8 with
-    (<) x y = intrinsic "LessUnsigned" x.* y.*
-impl cmp_u16: Cmp U16 with
-    (<) x y = intrinsic "LessUnsigned" x.* y.*
-impl cmp_u32: Cmp U32 with
-    (<) x y = intrinsic "LessUnsigned" x.* y.*
-impl cmp_u64: Cmp U64 with
-    (<) x y = intrinsic "LessUnsigned" x.* y.*
-impl cmp_usz: Cmp Usz with
-    (<) x y = intrinsic "LessUnsigned" x.* y.*
+impl cmp_u8: Cmp U8 with (<) x y = intrinsic "LessUnsigned" x.* y.*
+impl cmp_u16: Cmp U16 with (<) x y = intrinsic "LessUnsigned" x.* y.*
+impl cmp_u32: Cmp U32 with (<) x y = intrinsic "LessUnsigned" x.* y.*
+impl cmp_u64: Cmp U64 with (<) x y = intrinsic "LessUnsigned" x.* y.*
+impl cmp_usz: Cmp Usz with (<) x y = intrinsic "LessUnsigned" x.* y.*
 
-impl cmp_f32: Cmp F32 with
-    (<) x y = intrinsic "LessFloat" x.* y.*
-impl cmp_f64: Cmp F64 with
-    (<) x y = intrinsic "LessFloat" x.* y.*
+impl cmp_f32: Cmp F32 with (<) x y = intrinsic "LessFloat" x.* y.*
+impl cmp_f64: Cmp F64 with (<) x y = intrinsic "LessFloat" x.* y.*
 
-impl cmp_char: Cmp Char with
-    (<) x y = intrinsic "LessUnsigned" x.* y.*
+impl cmp_char: Cmp Char with (<) x y = intrinsic "LessUnsigned" x.* y.*
 
 max (l: ref t) (r: ref t) {Cmp t}: ref t = if l > r then l else r
 min (l: ref t) (r: ref t) {Cmp t}: ref t = if l < r then l else r
@@ -654,7 +468,7 @@ trait Num a =
     sub: Sub a
     mul: Mul a
     div: Div a
-    eq: Eq a
+    eq: Eq a pure
     cmp: Cmp a
     zero: a
     one: a
@@ -780,12 +594,12 @@ impl num_f64: Num F64 with
     one = 1.0
 
 
-impl try_cast_i64_u64: TryCast I64 U64 with
+impl try_cast_i64_u64: TryCast I64 U64 pure with
     try_cast (x: I64) =
         fail_if (x < 0)
         transmute x
 
-impl try_cast_u64: TryCast U64 I64 with
+impl try_cast_u64: TryCast U64 I64 pure with
     try_cast (x: U64) =
         fail_if (x > 9_223_372_036_854_775_807)
         transmute x
@@ -812,11 +626,11 @@ impl append_string: Append String with
 (|>) x f = f x
 (<|) f x = f x
 
-trait Extract collection index elem =
-    (.[]): fn collection index -> elem
+trait Extract collection index elem (e: effect) =
+    (.[]): fn collection index -> elem can e
 
 // TODO: Remove. This breaks ownership
-impl extract_ptr_usz: Extract (Ptr t) Usz t with
+impl extract_ptr_usz: Extract (Ptr t) Usz t pure with
     (.[]) ptr index = deref_ptr <| offset ptr index
 
 array_len (_array: ref Array n t): Usz =
@@ -834,12 +648,12 @@ array_set_unchecked (array: mut Array n t) (i: Usz) (v: t): Unit =
     ptr: Ptr t = transmute array
     ptr_store (offset ptr i) v
 
-array_get (array: ref Array n t) (index: Usz): ref t =
+array_get (array: ref Array n t) (index: Usz): ref t can Fs =
     if index >= array_len array then
         panic "array_get index out of bounds"
     array_get_unchecked array index
 
-array_get_mut (array: mut Array n t) (index: Usz): mut t =
+array_get_mut (array: mut Array n t) (index: Usz): mut t can Fs =
     transmute (array_get array index)
 
 array_set (array: mut Array n t) (index: Usz) elem =
@@ -847,13 +661,13 @@ array_set (array: mut Array n t) (index: Usz) elem =
         panic "array_set index out of bounds"
     array_set_unchecked array index elem
 
-impl extract_array: Extract (ref Array n t) Usz (ref t) with
+impl extract_array: Extract (ref Array n t) Usz (ref t) Fs with
     (.[]) = array_get
 
-impl extract_array_move: Extract (Array n t) Usz t with
+impl extract_array_move: Extract (Array n t) Usz t Fs with
     (.[]) arr index = deref (array_get arr index)
 
-impl extract_array_mut: Extract (mut Array n t) Usz (mut t) with
+impl extract_array_mut: Extract (mut Array n t) Usz (mut t) Fs with
     (.[]) = array_get_mut
 
 // Bitwise functions
@@ -918,8 +732,8 @@ trait Copy t =
 trait Clone t =
     clone: fn (ref t) -> t
 
-trait Drop t =
-    drop: fn (mut t) -> Unit
+trait Drop t (e: effect) =
+    drop: fn (mut t) -> Unit can e
 
 impl copy_i8: Copy I8 with
     (.*) = deref
@@ -980,24 +794,24 @@ impl clone_string: Clone String with
             ptr_store s.refcount (deref_ptr s.refcount + 1)
         deref s
 
-impl drop_i8:  Drop I8  with drop _ = ()
-impl drop_i16: Drop I16 with drop _ = ()
-impl drop_i32: Drop I32 with drop _ = ()
-impl drop_i64: Drop I64 with drop _ = ()
-impl drop_isz: Drop Isz with drop _ = ()
-impl drop_u8:  Drop U8  with drop _ = ()
-impl drop_u16: Drop U16 with drop _ = ()
-impl drop_u32: Drop U32 with drop _ = ()
-impl drop_u64: Drop U64 with drop _ = ()
-impl drop_usz: Drop Usz with drop _ = ()
-impl drop_f32: Drop F32 with drop _ = ()
-impl drop_f64: Drop F64 with drop _ = ()
-impl drop_unit: Drop Unit with drop _ = ()
-impl drop_bool: Drop Bool with drop _ = ()
-impl drop_char: Drop Char with drop _ = ()
-impl drop_ptr: Drop (Ptr t) with drop _ = ()
+impl drop_i8:  Drop I8  pure with drop _ = ()
+impl drop_i16: Drop I16 pure with drop _ = ()
+impl drop_i32: Drop I32 pure with drop _ = ()
+impl drop_i64: Drop I64 pure with drop _ = ()
+impl drop_isz: Drop Isz pure with drop _ = ()
+impl drop_u8:  Drop U8  pure with drop _ = ()
+impl drop_u16: Drop U16 pure with drop _ = ()
+impl drop_u32: Drop U32 pure with drop _ = ()
+impl drop_u64: Drop U64 pure with drop _ = ()
+impl drop_usz: Drop Usz pure with drop _ = ()
+impl drop_f32: Drop F32 pure with drop _ = ()
+impl drop_f64: Drop F64 pure with drop _ = ()
+impl drop_unit: Drop Unit pure with drop _ = ()
+impl drop_bool: Drop Bool pure with drop _ = ()
+impl drop_char: Drop Char pure with drop _ = ()
+impl drop_ptr: Drop (Ptr t) pure with drop _ = ()
 
-impl drop_string: Drop String with
+impl drop_string: Drop String pure with
     drop (s: mut String) =
         if s.refcount != null () then
             count = deref_ptr s.refcount
@@ -1014,18 +828,18 @@ transmute (x: a): b =
 
 /// Insert an element into a collection.
 /// `col.[i] := elem` resolves to `Insert` while `col.[i]` alone resolves to `Extract`
-trait Insert collection index elem =
-    (.[]:=): fn collection index elem -> Unit
+trait Insert collection index elem (e: effect) =
+    (.[]:=): fn collection index elem -> Unit can e
 
-impl insert_ptr_usz: Insert (mut Ptr t) Usz t with
+impl insert_ptr_usz: Insert (mut Ptr t) Usz t pure with
     (.[]:=) ptr index value = ptr_store (offset ptr index) value
 
-impl insert_array: Insert (mut Array n t) Usz t with
+impl insert_array: Insert (mut Array n t) Usz t Fs with
     (.[]:=) arr index value = array_set arr index value
 
 // TODO: Take argument by reference
 trait Print t =
-    print: fn (ref t) -> Unit
+    print: fn (ref t) -> Unit can Fs
 
 println (x: ref t) {Print t} =
     Print.print x
@@ -1076,7 +890,7 @@ impl print_pair {Print a} {Print b}: Print (a, b) with
         print pair.second
 
 // TODO: temporary, very inaccurate
-print_float (f: F64): Unit =
+print_float (f: F64): Unit can Fs =
     if f < 0.0 then
         putchar '-'
         print_float (0.0-f)
@@ -1106,12 +920,12 @@ impl print_maybe {Print a}: Print (Maybe a) with
         | None -> print "None"
 
 // Naive replacement for printf which isn't supported by the cranelift backend
-print_unsigned (x: U64): Unit =
+print_unsigned (x: U64): Unit can Fs =
     if x >= 10u64 then print_unsigned (x / 10u64)
     digit = x % 10u64 + U64 '0'
     putchar (Char digit)
 
-print_signed (x: I64) (min: I64) (min_string: String): Unit =
+print_signed (x: I64) (min: I64) (min_string: String): Unit can Fs =
     if x < 0i64 then
         if x == min then
             print min_string
@@ -1139,10 +953,10 @@ impl print_array {Print t}: Print (Array n t) with
 impl print_ref {Print a}: Print (ref a) with
     print x = print x.*
 
-trait Iterator it elem =
-    next: fn it -> Maybe (it, elem)
+trait Iterator it elem (effects: effect) =
+    next: fn it -> Maybe (it, elem) can effects
 
-iter (iterable: it) f {i: Iterator it elem} =
+iter (iterable: it) f {i: Iterator it elem effects} =
     match i.next iterable
     | None -> ()
     | Some (rest, elem) ->
@@ -1151,7 +965,7 @@ iter (iterable: it) f {i: Iterator it elem} =
 
 type Range t = start: t, end: t
 
-impl iterator_range: Iterator (Range Usz) Usz with
+impl iterator_range: Iterator (Range Usz) Usz pure with
     next range =
         if range.start >= range.end
         then None
@@ -1168,7 +982,7 @@ repeat (count: Usz) (f: fn Usz => Unit): Unit =
             f i
             recur (i + 1)
 
-panic (msg: t) {Print t}: Never =
+panic (msg: t) {Print t}: Never can Fs =
     print msg
     exit 1
     // Unreachable, return any type

@@ -10,12 +10,12 @@ import Std.Fail.Fail, fail, fail_if
 
 // TODO: All functions in this file should be a method on String, but String isn't defined in this file
 
-impl eq_string: Eq String with
+impl eq_string: Eq String pure with
     (==) l r =
         l.length == r.length and
             memcmp l.data r.data (Usz l.length) == 0
 
-reverse (var s: String): String =
+reverse (var s: String): String can Fs =
     // String literals have a null refcount and read-only data, so we must
     // copy them. Only attempt the in-place reverse when the buffer is heap
     // owned and uniquely referenced.
@@ -41,7 +41,7 @@ reverse (var s: String): String =
 ///
 /// For example `split "foo bar  baz "` will emit all of:
 /// ["foo", "bar", "", "baz", ""]
-split (s: String) (c: Char) = fn () can (Emit String) ->
+split (s: String) (c: Char) = fn () can Emit String, Fs ->
     var subend = 0usz
     var substart = 0usz
     while U32 subend < s.length do
@@ -68,7 +68,7 @@ substr (var s: String) (begin: Usz) (end: Usz): String =
     String buf s.refcount len (s.offset + U32 begin)
 
 /// Collect each character from the given stream into a String
-string_of (s: s) {Stream s Char}: String =
+string_of (s: s) {Stream s Char e}: String can Fs, e =
     var chars = Vec.of s
     result = String.from_parts (chars.data) (U32 chars.len)
     // Leak the Vec, it has been transferred to the String
@@ -79,11 +79,11 @@ string_of (s: s) {Stream s Char}: String =
 /// 
 /// If a separator is desired between each string, use this
 /// in combination with `intersperse`, e.g. `join <| intersperse my_stream (fn () -> "")`
-join (s: s) {Stream s String}: String =
+join (s: s) {Stream s String e}: String can e =
     foldl s "" (++)
 
 /// Emits each byte in this string
-bytes (s: String) = fn () can (Emit U8) ->
+bytes (s: String) = fn () can Emit U8 ->
     var data = transmute s.data : Usz
     for i in 0 .. s.length do
         ptr = data + Usz i
@@ -121,7 +121,7 @@ contains (s: ref String) (needle: ref String): Bool =
 
 /// Return a substring with leading ASCII whitespace removed.
 /// Reuses the source refcount; no allocation.
-trim_start (s: String): String =
+trim_start (s: String): String can Fs =
     len = Usz s.length
     for i in 0 .. len do
         c: Char = s.data.[i]
@@ -130,7 +130,7 @@ trim_start (s: String): String =
     ""
 
 /// Return a substring with trailing ASCII whitespace removed.
-trim_end (s: String): String =
+trim_end (s: String): String can Fs =
     len = Usz s.length
     var i = len
     while i > 0 do
@@ -141,43 +141,43 @@ trim_end (s: String): String =
     ""
 
 /// Return a substring with both leading and trailing ASCII whitespace removed.
-trim (s: String): String =
+trim (s: String): String can Fs =
     trim_start s |> trim_end
 
 /// Parse a base-10 I32 from a string.
 ///
 /// Fails for empty strings, sign-only strings, non-digits, or overflow.
-parse_i32 (s: String): I32 can Fail =
+parse_i32 (s: String): I32 can Fail, Fs =
     parse_signed_int s
 
-parse_i8 (s: String): I8 can Fail =
+parse_i8 (s: String): I8 can Fail, Fs =
     parse_signed_int s
 
-parse_i16 (s: String): I16 can Fail =
+parse_i16 (s: String): I16 can Fail, Fs =
     parse_signed_int s
 
-parse_i64 (s: String): I64 can Fail =
+parse_i64 (s: String): I64 can Fail, Fs =
     parse_signed_int s
 
-parse_isz (s: String): Isz can Fail =
+parse_isz (s: String): Isz can Fail, Fs =
     parse_signed_int s
 
-parse_u8 (s: String): U8 can Fail =
+parse_u8 (s: String): U8 can Fail, Fs =
     parse_unsigned_int s
 
-parse_u16 (s: String): U16 can Fail =
+parse_u16 (s: String): U16 can Fail, Fs =
     parse_unsigned_int s
 
-parse_u32 (s: String): U32 can Fail =
+parse_u32 (s: String): U32 can Fail, Fs =
     parse_unsigned_int s
 
-parse_u64 (s: String): U64 can Fail =
+parse_u64 (s: String): U64 can Fail, Fs =
     parse_unsigned_int s
 
-parse_usz (s: String): Usz can Fail =
+parse_usz (s: String): Usz can Fail, Fs =
     parse_unsigned_int s
 
-parse_signed_int (s: String) {n: Num t} {CheckedNum t} {Cast I32 t} {Copy t}: t can Fail =
+parse_signed_int (s: String) {n: Num t} {CheckedNum t} {Cast I32 t e} {Copy t}: t can Fail, Fs, e =
     len = Usz s.length
     fail_if (len == 0)
 
@@ -212,7 +212,7 @@ parse_signed_int (s: String) {n: Num t} {CheckedNum t} {Cast I32 t} {Copy t}: t 
 
     result
 
-parse_unsigned_int (s: String) {n: Num t} {CheckedNum t} {Cast U8 t} {Copy t}: t can Fail =
+parse_unsigned_int (s: String) {n: Num t} {CheckedNum t} {Cast U8 t e} {Copy t}: t can Fail, Fs, e =
     len = Usz s.length
     fail_if (len == 0)
 
@@ -239,32 +239,32 @@ parse_unsigned_int (s: String) {n: Num t} {CheckedNum t} {Cast U8 t} {Copy t}: t
 
     result
 
-impl try_cast_string_i8: TryCast String I8 with
+impl try_cast_string_i8: TryCast String I8 Fs with
     try_cast s = parse_i8 s
 
-impl try_cast_string_i16: TryCast String I16 with
+impl try_cast_string_i16: TryCast String I16 Fs with
     try_cast s = parse_i16 s
 
-impl try_cast_string_i32: TryCast String I32 with
+impl try_cast_string_i32: TryCast String I32 Fs with
     try_cast s = parse_i32 s
 
-impl try_cast_string_i64: TryCast String I64 with
+impl try_cast_string_i64: TryCast String I64 Fs with
     try_cast s = parse_i64 s
 
-impl try_cast_string_isz: TryCast String Isz with
+impl try_cast_string_isz: TryCast String Isz Fs with
     try_cast s = parse_isz s
 
-impl try_cast_string_u8: TryCast String U8 with
+impl try_cast_string_u8: TryCast String U8 Fs with
     try_cast s = parse_u8 s
 
-impl try_cast_string_u16: TryCast String U16 with
+impl try_cast_string_u16: TryCast String U16 Fs with
     try_cast s = parse_u16 s
 
-impl try_cast_string_u32: TryCast String U32 with
+impl try_cast_string_u32: TryCast String U32 Fs with
     try_cast s = parse_u32 s
 
-impl try_cast_string_u64: TryCast String U64 with
+impl try_cast_string_u64: TryCast String U64 Fs with
     try_cast s = parse_u64 s
 
-impl try_cast_string_usz: TryCast String Usz with
+impl try_cast_string_usz: TryCast String Usz Fs with
     try_cast s = parse_usz s

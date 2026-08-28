@@ -23,18 +23,18 @@ main () =
 // import Std.C.puts, exit
 // import Std.C
 // 
-// (foo: fn I32 String -> Char pure) ((_: I32)) ((_: String)) : Char pure = 'a'
+// (foo: fn I32 String -> Char is pure) ((_: I32)) ((_: String)) : Char is pure = 'a'
 // 
-// (bar: fn a a -> I32 pure) =
+// (bar: fn a a -> I32 is pure) =
 //     fn (_: a) (b: a) -> (b: a)
 // 
-// (baz: fn Usz -> Ptr a pure) ((a: Usz)) : Ptr a pure =
-//     (transmute: fn Usz -> Ptr a pure) (a: Usz)
+// (baz: fn Usz -> Ptr a is pure) ((a: Usz)) : Ptr a is pure =
+//     (transmute: fn Usz -> Ptr a is pure) (a: Usz)
 // 
-// (main: fn Unit -> Unit pure) () =
-//     (exit2: fn I32 -> Unit pure) = (exit: fn I32 -> Unit pure)
+// (main: fn Unit -> Unit is pure) () =
+//     (exit2: fn I32 -> Unit is pure) = (exit: fn I32 -> Unit is pure)
 //     (puts2: fn String -> I32 can Fs) = (puts: fn String -> I32 can Fs)
-//     (exit2: fn I32 -> Unit pure) "test"
+//     (exit2: fn I32 -> Unit is pure) "test"
 //     (puts2: fn String -> I32 can Fs)
 //     ()
 

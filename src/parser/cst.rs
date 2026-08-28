@@ -131,6 +131,9 @@ pub enum TypeKind {
     /// mechanisms to automatically define their constructor and retrieve their fields.
     Tuple(Vec<Type>),
 
+    /// The `&` combinator to combine two effects, e.g. `Fs & Net`
+    EffectUnion(Vec<Type>),
+
     /// This type can't be parsed, it is only used by `GetItem` to desugar
     /// ability types into in some cases.
     NoClosureEnv,
@@ -153,6 +156,9 @@ pub enum TypeKind {
 
     /// An explicit `forall (n: U32) t. T` polytype
     Forall(Generics, Box<Type>),
+
+    /// An empty effect set
+    Pure,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Copy, Clone, PartialOrd, Ord)]
@@ -189,7 +195,7 @@ pub struct FunctionType {
     pub environment: Option<Box<Type>>,
     pub return_type: Box<Type>,
 
-    /// `None` for no clause, `Some(vec![])` for `pure`, `Some(effects)` for `can e1, e2, ...`.
+    /// `None` for no clause, `Some(vec![])` for `is pure`, `Some(effects)` for `can e1, e2, ...`.
     pub effects: Option<Vec<Type>>,
 }
 
@@ -418,7 +424,7 @@ pub struct Lambda {
     pub body: ExprId,
     pub is_move: bool,
 
-    /// `None` for no clause, `Some(vec![])` for `pure`, `Some(effects)` for `can e1, e2, ...`.
+    /// `None` for no clause, `Some(vec![])` for `is pure`, `Some(effects)` for `can e1, e2, ...`.
     pub effects: Option<Vec<Type>>,
 }
 

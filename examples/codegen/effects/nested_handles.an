@@ -11,7 +11,7 @@ foo (): (U32, U64) can Ping, Pong =
     d = do_pong 4
     a + c, b + d
 
-ping (f: fn Unit => a can Ping) =
+ping (f: fn Unit => a can Ping, Fs) =
     handler h for do_ping x ->
         println "ping?"
         r = resume (x * 2)

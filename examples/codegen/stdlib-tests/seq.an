@@ -4,7 +4,7 @@ import Std.Stream.iota, stream_fn
 
 type Tag = id: U32
 
-impl drop_tag: Drop Tag with
+impl drop_tag: Drop Tag Fs with
     drop (t: mut Tag) =
         print "drop "
         println t.id

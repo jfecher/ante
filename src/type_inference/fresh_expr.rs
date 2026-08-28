@@ -83,6 +83,10 @@ pub struct ExtendedTopLevelContext {
 
     /// Closures declared with `move`, which capture by value instead of by reference.
     move_closures: FxHashSet<ExprId>,
+
+    /// Function values coerced to a wider effect row, mapped to the function type they were
+    /// coerced to. The MIR builder wraps each in a closure of that type capturing the original.
+    function_coercions: FxHashMap<ExprId, Type>,
 }
 
 impl<'local, 'innter> TypeChecker<'local, 'innter> {
@@ -127,6 +131,7 @@ impl ExtendedTopLevelContext {
             instantiations: Default::default(),
             closure_environments: Default::default(),
             move_closures: Default::default(),
+            function_coercions: Default::default(),
         }
     }
 
@@ -311,6 +316,14 @@ impl ExtendedTopLevelContext {
         self.closure_environments.get(&expr)
     }
 
+    pub(crate) fn insert_function_coercion(&mut self, expr: ExprId, expected: Type) {
+        self.function_coercions.insert(expr, expected);
+    }
+
+    pub(crate) fn get_function_coercion(&self, expr: ExprId) -> Option<&Type> {
+        self.function_coercions.get(&expr)
+    }
+
     pub(crate) fn mark_move_closure(&mut self, expr: ExprId) {
         self.move_closures.insert(expr);
     }
@@ -331,6 +344,9 @@ impl ExtendedTopLevelContext {
         }
         if self.move_closures.contains(&from) {
             self.move_closures.insert(to);
+        }
+        if let Some(coercion) = self.function_coercions.get(&from).cloned() {
+            self.function_coercions.insert(to, coercion);
         }
     }
 

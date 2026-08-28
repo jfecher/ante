@@ -1,0 +1,24 @@
+import Std.Stream.Emit, emit
+
+four (): I32 = 4
+
+// A free function has no environment, so any effects must match exactly
+main () =
+    x: fn Unit -> I32 can Emit I32 = four
+    handler h for emit z ->
+        println z
+        resume ()
+    in println (x ())
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/coerce_annotated_let.an:7:38
+// 6 | main () =
+//   |     // error: Type annotation fn Unit -> I32 can Emit I32 does not match the inferred type fn Unit -> I32 is pure
+// 7 |     x: fn Unit -> I32 can Emit I32 = four
+//   |                                      ^^^^
+// 8 |     handler h for emit z ->
+// 
+// Found 1 error and 0 warnings
+

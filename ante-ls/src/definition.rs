@@ -4,12 +4,7 @@ use ante::name_resolution::{namespace::SourceFileId, Origin};
 
 use crate::util::SpanSearcher;
 
-/// Find the definition location of the symbol (path) under `byte_offset`.
-///
-/// Paths (variable uses, function calls) are looked up via the `Resolve` query
-/// which maps each `PathId` to its `Origin`. The definition location is then
-/// read from the **raw** parse context (not desugared), because that is what
-/// `TopLevelName::location` uses and where source positions are stored.
+/// Find the definition location of the path under `byte_offset`.
 ///
 /// Returns `None` for builtins, unresolved names, or when no path covers the
 /// given byte offset.

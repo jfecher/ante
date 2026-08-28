@@ -1,0 +1,21 @@
+import Std.Stream.Emit, emit
+
+apply (f: fn Unit => a): a = f ()
+
+// Passing `g` to `apply` widens its effect row. Type inference must record a coercion
+// for the MIR builder to wrap `g` in a closure of the widened type. This closure accepts
+// the additional `Emit I32` capability, which goes unused.
+use_it (g: fn Unit -> I32 is pure): I32 can Emit I32 =
+    emit 1
+    apply g
+
+main () =
+    handler h for emit y ->
+        println y
+        resume ()
+    in println (use_it (fn () -> 4))
+
+// args: --delete-binary --no-color
+// expected stdout:
+// 1
+// 4

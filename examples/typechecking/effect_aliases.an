@@ -40,14 +40,14 @@ use_a (): Unit can A = ()
 //     log: fn String -> Unit
 // 
 // (copy_file: fn Unit -> Unit can Write, Read) () : Unit can FileIO =
-//     (read: fn Unit -> String can Read) () (|>: fn String (fn String -> Unit can Write, Read) -> Unit can Write, Read) (write: fn String -> Unit can Write)
+//     (read: fn Unit -> String can Read) () (|>: fn String (fn String [fn String -> Unit can Write] -> Unit can Write, Read) -> Unit can Write, Read) (write: fn String -> Unit can Write)
 // 
 // (copy_file_expanded: fn Unit -> Unit can Write, Read) () : Unit can Read, Write =
-//     (read: fn Unit -> String can Read) () (|>: fn String (fn String -> Unit can Write, Read) -> Unit can Write, Read) (write: fn String -> Unit can Write)
+//     (read: fn Unit -> String can Read) () (|>: fn String (fn String [fn String -> Unit can Write] -> Unit can Write, Read) -> Unit can Write, Read) (write: fn String -> Unit can Write)
 // 
 // (with_log: fn Unit -> Unit can Log, Read) () : Unit can WithLog Read =
 //     (log: fn String -> Unit can Log) "reading"
-//     (read: fn Unit -> String can Read) () (|>: fn String (fn String -> Unit can Log, Read) -> Unit can Log, Read) (ignore: fn String -> Unit pure)
+//     (read: fn Unit -> String can Read) () (|>: fn String (fn String [fn String -> Unit is pure] -> Unit can Log, Read) -> Unit can Log, Read) (ignore: fn String -> Unit is pure)
 // 
 // effect A = B
 // 

@@ -20,7 +20,7 @@ for_ (stream: fn Unit => Unit can Emit a) (f: fn a -> Unit) =
     in stream ()
 
 main () =
-    for_ (fn () -> filter (fn () -> iota 10) (_ %% 2))
+    for_ (do filter (do iota 10) (_ %% 2))
         println
 
 // args: --delete-binary --no-color

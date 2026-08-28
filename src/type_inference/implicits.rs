@@ -57,6 +57,10 @@ pub(super) struct ImplicitsContext {
     /// This is a tuple of (the integer's value, the integer type variable, location to use for errors)
     integer_type_variables: Vec<(Integer, TypeVariableId, Location)>,
 
+    /// Any type variables created for the type of an effect row entry.
+    /// If not bound by the end of a scope they will be defaulted to `pure`.
+    effect_type_variables: Vec<(TypeVariableId, Location)>,
+
     /// Similar to polymorphic integers, we track polymorphic floats as well. Their value is not stored
     /// since we do not check if the float value fits in the resulting type.
     float_type_variables: Vec<(TypeVariableId, Location)>,
@@ -89,6 +93,7 @@ impl ImplicitsContext {
         self.deferred_closure_checks.extend(other.deferred_closure_checks);
         self.integer_type_variables.extend(other.integer_type_variables);
         self.float_type_variables.extend(other.float_type_variables);
+        self.effect_type_variables.extend(other.effect_type_variables);
     }
 }
 
@@ -277,12 +282,19 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             let floats = std::mem::take(&mut scope.float_type_variables);
             let (keep_floats, bubble_floats) = self.partition_by_target_tvar(floats, &kept_vars, |(tvar, _)| *tvar);
 
-            any_bubbled = !bubbles_up.is_empty() || !bubble_ints.is_empty() || !bubble_floats.is_empty();
+            let effects = std::mem::take(&mut scope.effect_type_variables);
+            let (keep_effects, bubble_effects) = self.partition_by_target_tvar(effects, &kept_vars, |(tvar, _)| *tvar);
+
+            any_bubbled = !bubbles_up.is_empty()
+                || !bubble_ints.is_empty()
+                || !bubble_floats.is_empty()
+                || !bubble_effects.is_empty();
 
             let parent = self.implicits.last_mut().unwrap();
             parent.delayed_implicits.extend(bubbles_up);
             parent.integer_type_variables.extend(bubble_ints);
             parent.float_type_variables.extend(bubble_floats);
+            parent.effect_type_variables.extend(bubble_effects);
             if any_bubbled {
                 parent.deferred_closure_checks.append(&mut scope.deferred_closure_checks);
             }
@@ -290,6 +302,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             scope.delayed_implicits = stays_here;
             scope.integer_type_variables = keep_ints;
             scope.float_type_variables = keep_floats;
+            scope.effect_type_variables = keep_effects;
         }
 
         self.resolve_scope(scope);
@@ -347,6 +360,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let closures = std::mem::take(&mut scope.deferred_closure_checks);
         let integers = std::mem::take(&mut scope.integer_type_variables);
         let floats = std::mem::take(&mut scope.float_type_variables);
+        let effect_variables = std::mem::take(&mut scope.effect_type_variables);
 
         // Phase 1: resolve to a fixpoint, since binding one implicit can unblock another.
         // FIXME: Likely performance issue. Remove the fixpoint maybe with eagerly trying each implicit
@@ -379,6 +393,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             self.try_default_float_to_f64(type_variable, location);
         }
 
+        for (type_variable, location) in effect_variables {
+            self.try_default_effect_to_pure(type_variable, location);
+        }
+
         // Phase 2: retry phase 1 failures now that ints & floats are defaulted
         for (implicit, mut original_error) in failed_implicits {
             if self.find_implicit_value(implicit, &implicits_in_scope).is_err() {
@@ -399,6 +417,18 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     pub(super) fn push_inferred_int(&mut self, value: Integer, type_variable: TypeVariableId, location: Location) {
         self.integer_literal_vars.insert(type_variable);
         self.implicits.last_mut().unwrap().integer_type_variables.push((value, type_variable, location));
+    }
+
+    pub(super) fn push_inferred_effect(&mut self, type_variable: TypeVariableId, location: Location) {
+        self.implicits.last_mut().unwrap().effect_type_variables.push((type_variable, location));
+    }
+
+    pub(super) fn try_default_effect_to_pure(&mut self, type_variable: TypeVariableId, location: Location) {
+        let typ = Type::Variable(type_variable);
+        if !matches!(typ.follow(&self.bindings), Type::Variable(_)) {
+            return;
+        }
+        self.unify(&typ, &Type::pure(), TypeErrorKind::Effects, location);
     }
 
     pub(super) fn push_inferred_float(&mut self, type_variable: TypeVariableId, location: Location) {
@@ -516,22 +546,30 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Eagerly resolve the delayed implicits registered in the innermost scope since `previous`
     /// was snapshotted. Implicits that do not resolve to a unique impl now are left to be solved
     /// again on scope's end. No diagnostics are emitted.
-    pub(super) fn resolve_new_delayed_implicits(&mut self, previous_length: usize) {
+    ///
+    /// Returns the target types of the implicits that were resolved.
+    pub(super) fn resolve_new_delayed_implicits(&mut self, previous_length: usize) -> Vec<Type> {
         // TODO: See if we can remove this method when we add eager solving of implicits
         let all = match self.implicits.last_mut() {
             Some(scope) => &mut scope.delayed_implicits,
-            None => return,
+            None => return Vec::new(),
         };
         let to_resolve = all.drain(previous_length..).collect::<Vec<_>>();
         if to_resolve.is_empty() {
-            return;
+            return Vec::new();
         }
         let implicits_in_scope = self.collect_implicits_in_scope();
+        let mut resolved = Vec::new();
         for implicit in to_resolve {
+            // Read before dispatch: on success the destination's type is replaced by the candidate's
+            let target = self.expr_types[&implicit.destination].clone();
             if self.find_implicit_value(implicit, &implicits_in_scope).is_err() {
                 self.implicits.last_mut().unwrap().delayed_implicits.push(implicit);
+            } else {
+                resolved.push(target);
             }
         }
+        resolved
     }
 
     /// Find an implicit value & modify the current cst to insert the implicit if found,
@@ -843,7 +881,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         suggestions
     }
 
-    /// Probe whether a delayed implicit's target type *could* match at least one of the given
+    /// Probe whether a delayed implicit's target type could match at least one of the given
     /// local implicit names. Used by `pop_implicits_scope` to decide whether the implicit must
     /// be resolved at this scope (because a local name is a candidate) or can be bubbled up to
     /// the parent (because no local name could possibly satisfy it).
@@ -930,19 +968,25 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             }
         }
 
-        // Since `function` is the ExprId we'll be replacing, we can't use it directly here. We
-        // have to copy it to a new id.
+        Some(self.create_call_wrapper_lambda(function, parameters, arguments))
+    }
+
+    /// Build `fn parameters.. -> function arguments..`, a lambda forwarding to `function`.
+    ///
+    /// `function` is the id being replaced by the wrapper, so its contents are copied to a fresh
+    /// id first. The new expressions are typed [Type::ERROR] since cst_traversal overwrites them
+    /// when it re-checks the wrapper.
+    pub(super) fn create_call_wrapper_lambda(
+        &mut self, function: ExprId, parameters: Vec<cst::Parameter>, arguments: Vec<cst::Argument>,
+    ) -> cst::Expr {
         let location = function.locate(self);
         let expr = self.current_extended_context()[function].clone();
-
-        // This type should be overwritten later when cst_traversal traverses this new expr
         let function = self.push_expr(expr, Type::ERROR, location.clone());
 
         let body = cst::Expr::Call(cst::Call { function, arguments });
-        let body_type = Type::ERROR;
-        let body = self.push_expr(body, body_type, location);
+        let body = self.push_expr(body, Type::ERROR, location);
 
-        Some(cst::Expr::Lambda(cst::Lambda { parameters, body, return_type: None, is_move: false, effects: None }))
+        cst::Expr::Lambda(cst::Lambda { parameters, body, return_type: None, is_move: false, effects: None })
     }
 
     /// Creates a new expression referring to the given implicit value.
@@ -1039,14 +1083,16 @@ fn collect_user_defined_crates(typ: &Type, out: &mut BTreeSet<CrateId>) {
                 collect_user_defined_crates(t, out);
             }
         },
-        Type::Effects(list, tail) => {
-            for effect in list.iter() {
-                collect_user_defined_crates(effect, out);
-            }
-            if let Some(tail) = tail {
-                collect_user_defined_crates(tail, out);
+        Type::Effects(_) => {
+            for effect in typ.effect_entries() {
+                collect_user_defined_crates(&effect.typ, out);
             }
         },
-        Type::UserDefined(_) | Type::Variable(_) | Type::Generic(_) | Type::Primitive(_) | Type::U32(_) => {},
+        Type::UserDefined(_)
+        | Type::Variable(_)
+        | Type::Generic(_)
+        | Type::Primitive(_)
+        | Type::U32(_)
+        | Type::EffectId(_) => {},
     }
 }

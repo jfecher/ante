@@ -2,56 +2,56 @@
 effect Emit a =
     emit: fn a -> Unit
 
-iota (n: U32): Unit can (Emit U32) = loop (i = 0) ->
+iota (n: U32): Unit can Emit U32 = loop (i = 0) ->
     if i < n then
         emit i
         recur (i + 1)
 
-filter (stream: fn Unit => Unit can (Emit a)) (predicate: fn a => Bool) {Copy a} = fn () can (Emit a) ->
+filter (stream: fn Unit => Unit can Emit a) (predicate: fn a => Bool) {Copy a} = fn () can Emit a ->
     handler h for emit x ->
         if predicate x then
             emit x
         resume ()
     in stream ()
 
-for_ (stream: fn Unit => Unit can (Emit a)) (f: fn a => b) =
+for_ (stream: fn Unit => Unit can Emit a) (f: fn a => b) =
     handler h for emit x ->
         f x
         resume ()
     in stream ()
 
 main () =
-    stream = filter (fn () -> iota 10) (fn x -> x % 2 == 0)
-    for_ (fn () -> stream ()) (println _ {print_u32})
+    stream = filter (do iota 10) (_ %% 2)
+    for_ stream (println _ {print_u32})
 
 // args: -e ast-t --no-color
 // expected stdout:
 // effect Emit a =
 //     emit: fn a -> Unit
 // 
-// (iota: fn U32 -> Unit can (Emit U32)) ((n: U32)) : Unit can Emit U32 =
-//     (recur: fn U32 [U32] -> Unit can (Emit U32)) (i: U32) [(n: U32)] =
-//         if (<: fn (ref U32) (ref U32) {Cmp U32} [Ptr Unit] -> Bool pure) (ref (i: U32)) (ref (n: U32)) {(cmp_u32: Cmp U32)} then 
-//             (emit: fn U32 -> Unit can (Emit U32)) (i: U32)
-//             (recur: fn U32 [U32] -> Unit can (Emit U32)) ((+: fn U32 U32 {Add U32} [Ptr Unit] -> U32 pure) (i: U32) 1 {(add_u32: Add U32)})
-//     (recur: fn U32 [U32] -> Unit can (Emit U32)) 0
+// (iota: fn U32 -> Unit can Emit U32) ((n: U32)) : Unit can Emit U32 =
+//     (recur: fn U32 [U32] -> Unit can Emit U32) (i: U32) [(n: U32)] =
+//         if (<: fn (ref U32) (ref U32) {Cmp U32} [Ptr Unit] -> Bool is pure) (ref (i: U32)) (ref (n: U32)) {(cmp_u32: Cmp U32)} then 
+//             (emit: fn U32 -> Unit can Emit U32) (i: U32)
+//             (recur: fn U32 [U32] -> Unit can Emit U32) ((+: fn U32 U32 {Add U32} [Ptr Unit] -> U32 is pure) (i: U32) 1 {(add_u32: Add U32)})
+//     (recur: fn U32 [U32] -> Unit can Emit U32) 0
 // 
-// (filter: fn (fn Unit [_] -> Unit can (Emit a)) (fn a [_] -> Bool can (Emit a)) {Copy a} -> fn Unit [(fn Unit [_] -> Unit can (Emit a)), (fn a [_] -> Bool can (Emit a))] -> Unit can (Emit a) pure) ((stream: fn Unit [_] -> Unit can (Emit a))) ((predicate: fn a [_] -> Bool can (Emit a))) {(_: Copy a)} = fn () [(stream: fn Unit [_] -> Unit can (Emit a)), (predicate: fn a [_] -> Bool can (Emit a))] can Emit a ->
-//     handler (h: (Emit a)) for
-//     | (emit: fn a -> Unit can (Emit a)) (x: a) -> fn (x: a) (resume: fn Unit [Ptr] -> Unit pure) [(predicate: fn a [_] -> Bool can (Emit a))] ->
-//         if (predicate: fn a [_] -> Bool can (Emit a)) (x: a) then 
-//             (emit: fn a -> Unit can (Emit a)) (x: a)
-//         (resume: fn Unit [Ptr] -> Unit pure) ()
-//     in fn () [(stream: fn Unit [_] -> Unit can (Emit a))] -> (stream: fn Unit [_] -> Unit can (Emit a)) ()
+// (filter: fn (fn Unit [_] -> Unit can Emit a) (fn a [_] -> Bool can $effect) {Copy a} -> fn Unit [(fn Unit [_] -> Unit can Emit a), (fn a [_] -> Bool can $effect)] -> Unit can Emit a is pure) ((stream: fn Unit [_] -> Unit can Emit a)) ((predicate: fn a [_] -> Bool can $effect)) {(_: Copy a)} = fn () [(stream: fn Unit [_] -> Unit can Emit a), (predicate: fn a [_] -> Bool can $effect)] can Emit a ->
+//     handler (h: Emit a) for
+//     | (emit: fn a -> Unit can Emit a) (x: a) -> fn (x: a) (resume: fn Unit [Ptr] -> Unit is pure) [(predicate: fn a [_] -> Bool can $effect)] ->
+//         if (predicate: fn a [_] -> Bool can $effect) (x: a) then 
+//             (emit: fn a -> Unit can Emit a) (x: a)
+//         (resume: fn Unit [Ptr] -> Unit is pure) ()
+//     in fn () [(stream: fn Unit [_] -> Unit can Emit a)] -> (stream: fn Unit [_] -> Unit can Emit a) ()
 // 
-// (for_: fn (fn Unit [_] -> Unit can (Emit a)) (fn a [_] -> b) -> Unit) ((stream: fn Unit [_] -> Unit can (Emit a))) ((f: fn a [_] -> b)) =
-//     handler (h: (Emit a)) for
-//     | (emit: fn a -> Unit can (Emit a)) (x: a) -> fn (x: a) (resume: fn Unit [Ptr] -> Unit pure) [(f: fn a [_] -> b)] ->
-//         (f: fn a [_] -> b) (x: a)
-//         (resume: fn Unit [Ptr] -> Unit pure) ()
-//     in fn () [(stream: fn Unit [_] -> Unit can (Emit a))] -> (stream: fn Unit [_] -> Unit can (Emit a)) ()
+// (for_: fn (fn Unit [_] -> Unit can Emit a) (fn a [_] -> b can $effect) -> Unit can $effect) ((stream: fn Unit [_] -> Unit can Emit a)) ((f: fn a [_] -> b can $effect)) =
+//     handler (h: Emit a) for
+//     | (emit: fn a -> Unit can Emit a) (x: a) -> fn (x: a) (resume: fn Unit [Ptr] -> Unit is pure) [(f: fn a [_] -> b can $effect)] ->
+//         (f: fn a [_] -> b can $effect) (x: a)
+//         (resume: fn Unit [Ptr] -> Unit is pure) ()
+//     in fn () [(stream: fn Unit [_] -> Unit can Emit a)] -> (stream: fn Unit [_] -> Unit can Emit a) ()
 // 
-// (main: fn Unit -> Unit pure) () =
-//     (stream: fn Unit [(fn Unit -> Unit can (Emit U32)), (fn U32 -> Bool can (Emit U32))] -> Unit can (Emit U32)) = (filter: fn (fn Unit -> Unit can (Emit U32)) (fn U32 -> Bool can (Emit U32)) {Copy U32} -> fn Unit [(fn Unit -> Unit can (Emit U32)), (fn U32 -> Bool can (Emit U32))] -> Unit can (Emit U32) pure) (fn () -> (iota: fn U32 -> Unit can (Emit U32)) 10) (fn (x: U32) -> (==: fn (ref U32) (ref U32) {Eq U32} [Ptr Unit] -> Bool pure) (ref (%: fn U32 U32 {Mod U32} [Ptr Unit] -> U32 pure) (x: U32) 2 {(mod_u32: Mod U32)}) (ref 0) {(eq_u32: Eq U32)}) {(copy_u32: Copy U32)}
-//     (for_: fn (fn Unit [(fn Unit [(fn Unit -> Unit can (Emit U32)), (fn U32 -> Bool can (Emit U32))] -> Unit can (Emit U32))] -> Unit can (Emit U32)) (fn U32 -> Unit pure) -> Unit pure) (fn () [(stream: fn Unit [(fn Unit -> Unit can (Emit U32)), (fn U32 -> Bool can (Emit U32))] -> Unit can (Emit U32))] -> (stream: fn Unit [(fn Unit -> Unit can (Emit U32)), (fn U32 -> Bool can (Emit U32))] -> Unit can (Emit U32)) ()) (fn (_1: U32) -> (println: fn (ref U32) {Print U32} -> Unit pure) (ref (_1: U32)) {(print_u32: Print U32)})
+// (main: fn Unit -> Unit can Fs) () =
+//     (stream: fn Unit [(fn Unit -> Unit can Emit U32), (fn U32 -> Bool is pure)] -> Unit can Emit U32) = (filter: fn (fn Unit -> Unit can Emit U32) (fn U32 -> Bool is pure) {Copy U32} -> fn Unit [(fn Unit -> Unit can Emit U32), (fn U32 -> Bool is pure)] -> Unit can Emit U32 is pure) (move fn (_: Unit) -> (iota: fn U32 -> Unit can Emit U32) 10) (fn (_1: U32) -> (%%: fn U32 U32 {Mod U32} {Eq U32 pure} {Cast U8 U32 pure} -> Bool is pure) (_1: U32) 2 {(mod_u32: Mod U32)} {(eq_u32: Eq U32 pure)} {(cast_u8_u32: Cast U8 U32 pure)}) {(copy_u32: Copy U32)}
+//     (for_: fn (fn Unit [fn Unit [(fn Unit -> Unit can Emit U32), (fn U32 -> Bool is pure)] -> Unit can Emit U32] -> Unit can Emit U32) (fn U32 -> Unit can Fs) -> Unit can Fs) (stream: fn Unit [(fn Unit -> Unit can Emit U32), (fn U32 -> Bool is pure)] -> Unit can Emit U32) (fn (_1: U32) -> (println: fn (ref U32) {Print U32} -> Unit can Fs) (ref (_1: U32)) {(print_u32: Print U32)})
 
