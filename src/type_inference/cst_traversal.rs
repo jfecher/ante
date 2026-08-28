@@ -569,9 +569,19 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             return None;
         };
 
+        // The member access location includes the leading `.` but the component span
+        // must cover only the member name so tooling can treat it as a reference.
+        let end = location.span.end;
+        let start = crate::diagnostics::Position {
+            byte_index: end.byte_index.saturating_sub(member.len()),
+            line_number: end.line_number,
+            column_number: end.column_number.saturating_sub(member.chars().count() as u32),
+        };
+        let member_location = crate::diagnostics::Span { start, end }.in_file(location.file_id);
+
         // Create a Variable expression for the method, with a fresh path
         let method_path = self.push_path(
-            cst::Path { components: vec![(member, location.clone())] },
+            cst::Path { components: vec![(member, member_location)] },
             method_type.clone(),
             location.clone(),
         );

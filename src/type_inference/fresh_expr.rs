@@ -225,7 +225,7 @@ impl ExtendedTopLevelContext {
     }
 
     /// Retrieve the location of the corresponding [Name] of the given [NameId]
-    pub(crate) fn name_location(&self, name: NameId) -> Location {
+    pub fn name_location(&self, name: NameId) -> Location {
         match self.more_name_locations.get(&name) {
             Some(location) => location.clone(),
             None => self.original.name_location(name).clone(),
@@ -252,12 +252,20 @@ impl ExtendedTopLevelContext {
         self.name_origins.insert(name_id, origin);
     }
 
-    pub(crate) fn path_origin(&self, path_id: PathId) -> Option<Origin> {
+    pub fn path_origin(&self, path_id: PathId) -> Option<Origin> {
         self.path_origins.get(&path_id).copied()
     }
 
     pub fn name_origin(&self, name_id: NameId) -> Option<Origin> {
         self.name_origins.get(&name_id).copied()
+    }
+
+    pub fn path_origins(&self) -> impl ExactSizeIterator<Item = (PathId, Origin)> {
+        self.path_origins.iter().map(|(id, origin)| (*id, *origin))
+    }
+
+    pub fn name_origins(&self) -> impl ExactSizeIterator<Item = (NameId, Origin)> {
+        self.name_origins.iter().map(|(id, origin)| (*id, *origin))
     }
 
     /// Insert a decision tree, replacing the expression at the given id

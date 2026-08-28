@@ -3,6 +3,7 @@ use std::{
     sync::Arc,
 };
 
+use inc_complete::DbGet;
 use namespace::{CRATE_ROOT_MODULE, Namespace, SourceFileId};
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
@@ -257,65 +258,14 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
     /// Retrieve each visible namespace in the given namespace, restricting the namespace
     /// to only items visible from `self.namespace()`
     fn get_child_namespace(&self, name: &String, namespace: Namespace) -> Option<Namespace> {
-        match namespace {
-            Namespace::Local => {
-                if let Some(submodule) = self.get_item_in_submodule(self.item.source_file, name) {
-                    return Some(submodule);
-                }
-
-                if let Some(&module_id) = self.names_in_global_scope.imported_modules.get(name) {
-                    return Some(Namespace::Module(module_id));
-                }
-
-                let type_id = self.names_in_global_scope.definitions.get(name)?;
-                let (item, _) = GetItem(type_id.top_level_item).get(self.compiler);
-                if matches!(&item.kind, TopLevelItemKind::TypeDefinition(_)) {
-                    Some(Namespace::Type(type_id.top_level_item))
-                } else {
-                    None
-                }
-            },
-            Namespace::Type(_) => None,
-            Namespace::Module(id) => {
-                if let Some(submodule) = self.get_item_in_submodule(id, name) {
-                    return Some(submodule);
-                }
-
-                let exported = ExportedTypes(id).get(self.compiler);
-                let id = exported.get(name)?;
-                Some(Namespace::Type(id.top_level_item))
-            },
-        }
-    }
-
-    fn get_item_in_submodule(&self, parent_module: SourceFileId, name: &str) -> Option<Namespace> {
-        if parent_module.local_module_id == CRATE_ROOT_MODULE {
-            let crates = GetCrateGraph.get(self.compiler);
-            let crate_ = crates.get(&parent_module.crate_id)?;
-            let module_file = std::path::PathBuf::from(name).with_extension("an");
-
-            // TODO: This should be a relative lookup, not an absolute one in the current crate
-            // TODO: calling `parent_module.get()` can panic if the parent module is not a valid
-            //       source file to begin with. We should ensure it is always valid.
-            if let Some(id) = crate_.source_files.get(&module_file).copied() {
-                return Some(Namespace::Module(id));
-            }
-
-            // A subdirectory of `src` is a nested module (e.g. `Crate.Dir.Module`).
-            let directory = std::path::PathBuf::from(name);
-            if let Some(id) = crate_.source_files.get(&directory).copied() {
-                return Some(Namespace::Module(id));
-            }
-
-            // Fall back to absolute path (crate_root/src/Vec.an)
-            let absolute = crate_.path.join(SRC_FOLDER).join(&module_file);
-            if let Some(id) = crate_.source_files.get(&absolute).copied() {
-                return Some(Namespace::Module(id));
-            }
-
-            None
-        } else {
-            parent_module.get(self.compiler).submodules.get(name).copied().map(Namespace::Module)
+        let current = match namespace {
+            Namespace::Local => None,
+            Namespace::Module(id) => Some(Qualifier::Module(id)),
+            Namespace::Type(_) => return None,
+        };
+        match resolve_qualifier_child(self.compiler, self.item.source_file, name, current)? {
+            Qualifier::Module(id) => Some(Namespace::Module(id)),
+            Qualifier::Type(type_name) => Some(Namespace::Type(type_name.top_level_item)),
         }
     }
 
@@ -1161,4 +1111,109 @@ enum FieldsResult {
     /// A prior error occurred, avoid issuing another
     PriorError,
     NotAStruct,
+}
+
+/// Each component before the final in a path is a qualifier
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Qualifier {
+    Module(SourceFileId),
+    Type(TopLevelName),
+}
+
+/// Resolve the qualifier at `components[index]` as seen from `file`, walking the same
+/// namespaces `Resolver::lookup` does. `index` must not be the final component of a path.
+#[allow(unused)] // used by ante-ls
+pub fn resolve_path_qualifier<Db>(
+    db: &Db, file: SourceFileId, components: &[(String, Location)], index: usize,
+) -> Option<Qualifier>
+where
+    Db: DbGet<GetCrateGraph> + DbGet<VisibleDefinitions> + DbGet<GetItem> + DbGet<ExportedTypes> + DbGet<SourceFileId>,
+{
+    if index + 1 >= components.len() {
+        return None;
+    }
+
+    let mut current = None;
+    let mut i = 0;
+
+    // The first component of a multi-component path may name a dependency crate.
+    let crates = GetCrateGraph.get(db);
+    if let Some(local_crate) = crates.get(&CrateId::LOCAL) {
+        let dependency =
+            local_crate.dependencies.iter().copied().find(|dependency| components[0].0 == crates[dependency].name);
+
+        if let Some(crate_id) = dependency {
+            current = Some(Qualifier::Module(SourceFileId { crate_id, local_module_id: CRATE_ROOT_MODULE }));
+            i = 1;
+        }
+    }
+
+    while i <= index {
+        current = Some(resolve_qualifier_child(db, file, &components[i].0, current)?);
+        i += 1;
+    }
+    current
+}
+
+/// Resolve one qualifier component within `current`.
+/// `current = None` will resolve `name` in `current_file`
+fn resolve_qualifier_child<Db>(
+    db: &Db, current_file: SourceFileId, name: &String, current: Option<Qualifier>,
+) -> Option<Qualifier>
+where
+    Db: DbGet<GetCrateGraph> + DbGet<VisibleDefinitions> + DbGet<GetItem> + DbGet<ExportedTypes> + DbGet<SourceFileId>,
+{
+    match current {
+        None => {
+            if let Some(submodule) = get_item_in_submodule(db, current_file, name) {
+                return Some(Qualifier::Module(submodule));
+            }
+
+            let visible = VisibleDefinitions(current_file).get(db);
+            if let Some(&module_id) = visible.imported_modules.get(name) {
+                return Some(Qualifier::Module(module_id));
+            }
+
+            let type_id = visible.definitions.get(name)?;
+            let (item, _) = GetItem(type_id.top_level_item).get(db);
+            matches!(&item.kind, TopLevelItemKind::TypeDefinition(_)).then_some(Qualifier::Type(*type_id))
+        },
+        Some(Qualifier::Type(_)) => None,
+        Some(Qualifier::Module(id)) => {
+            if let Some(submodule) = get_item_in_submodule(db, id, name) {
+                return Some(Qualifier::Module(submodule));
+            }
+
+            let exported = ExportedTypes(id).get(db);
+            exported.get(name).copied().map(Qualifier::Type)
+        },
+    }
+}
+
+fn get_item_in_submodule(
+    db: &(impl DbGet<GetCrateGraph> + DbGet<SourceFileId>), parent_module: SourceFileId, name: &str,
+) -> Option<SourceFileId> {
+    if parent_module.local_module_id == CRATE_ROOT_MODULE {
+        let crates = GetCrateGraph.get(db);
+        let crate_ = crates.get(&parent_module.crate_id)?;
+        let module_file = std::path::PathBuf::from(name).with_extension("an");
+
+        // TODO: This should be a relative lookup, not an absolute one in the current crate
+        // TODO: calling `parent_module.get()` can panic if the parent module is not a valid
+        //       source file to begin with. We should ensure it is always valid.
+        if let Some(id) = crate_.source_files.get(&module_file).copied() {
+            return Some(id);
+        }
+
+        let directory = std::path::PathBuf::from(name);
+        if let Some(id) = crate_.source_files.get(&directory).copied() {
+            return Some(id);
+        }
+
+        // Fall back to absolute path
+        let absolute = crate_.path.join(SRC_FOLDER).join(&module_file);
+        crate_.source_files.get(&absolute).copied()
+    } else {
+        parent_module.get(db).submodules.get(name).copied()
+    }
 }

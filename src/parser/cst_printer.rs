@@ -23,8 +23,8 @@ use super::{
     cst::{
         self, Call, CompoundAssignOp, Comptime, Cst, Declaration, Definition, Do, ExportEntry, Expr, Extern,
         FunctionType, Handle, HandlePattern, If, Import, InterpolatedString, Is, Lambda, Literal, Match, MemberAccess,
-        Parameter, Path, Pattern, Quoted, Reference, SequenceItem, TopLevelItem, TraitImpl,
-        TraitOrEffectDefinition, Type, TypeAnnotation, TypeDefinition, TypeDefinitionBody, TypeKind,
+        Parameter, Path, Pattern, Quoted, Reference, SequenceItem, TopLevelItem, TraitImpl, TraitOrEffectDefinition,
+        Type, TypeAnnotation, TypeDefinition, TypeDefinitionBody, TypeKind,
     },
     ids::{ExprId, PatternId, TopLevelId},
 };

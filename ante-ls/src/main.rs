@@ -5,7 +5,7 @@ use ante::{incremental::Db, name_resolution::namespace::SourceFileId};
 use dashmap::DashMap;
 use ropey::Rope;
 use tokio::sync::RwLock;
-use tower_lsp::{jsonrpc::Result, lsp_types::*, Client, LanguageServer, LspService, Server};
+use tower_lsp::{jsonrpc, jsonrpc::Result, lsp_types::*, Client, LanguageServer, LspService, Server};
 
 mod auto_import;
 mod code_action;
@@ -14,6 +14,7 @@ mod definition;
 mod diagnostics;
 mod exports;
 mod hover;
+mod rename;
 mod util;
 
 use code_action::code_actions_at;
@@ -89,6 +90,11 @@ impl LanguageServer for Backend {
                     completion_item: None,
                 }),
                 code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
+                references_provider: Some(OneOf::Left(true)),
+                rename_provider: Some(OneOf::Right(RenameOptions {
+                    prepare_provider: Some(true),
+                    work_done_progress_options: Default::default(),
+                })),
                 position_encoding: Some(PositionEncodingKind::UTF16),
                 ..Default::default()
             },
@@ -278,6 +284,91 @@ impl LanguageServer for Backend {
 
         Ok(Some(GotoDefinitionResponse::Scalar(Location { uri: def_uri, range })))
     }
+
+    async fn references(&self, params: ReferenceParams) -> Result<Option<Vec<Location>>> {
+        let include_declaration = params.context.include_declaration;
+        let Some(ctx) = self.resolve_position(params.text_document_position).await else {
+            return Ok(None);
+        };
+
+        let compiler = self.compiler.read().await;
+        let Ok(symbol) = rename::symbol_at(&compiler, ctx.file_id, ctx.byte_offset) else {
+            return Ok(None);
+        };
+
+        // collect_rename_locations rather than collect_reference_locations so that
+        // import items and export list entries show up as references too
+        let mut locations =
+            rename::collect_rename_locations(&compiler, &symbol.target, &symbol.old_name).into_references();
+        if !include_declaration {
+            if let Some(declaration) = rename::declaration_location(&compiler, &symbol.target) {
+                locations.retain(|loc| *loc != declaration);
+            }
+        }
+
+        let result = rename::locations_to_lsp(&compiler, locations, &symbol.old_name, &self.document_map);
+        Ok((!result.is_empty()).then_some(result))
+    }
+
+    async fn prepare_rename(&self, params: TextDocumentPositionParams) -> Result<Option<PrepareRenameResponse>> {
+        let Some(ctx) = self.resolve_position(params).await else {
+            return Ok(None);
+        };
+
+        let compiler = self.compiler.read().await;
+        let Some(symbol) = renameable_symbol_at(&compiler, ctx.file_id, ctx.byte_offset)? else {
+            return Ok(None);
+        };
+
+        let Ok(range) = byte_range_to_lsp_range(symbol.cursor_span.0, symbol.cursor_span.1, &ctx.rope) else {
+            return Ok(None);
+        };
+        Ok(Some(PrepareRenameResponse::RangeWithPlaceholder { range, placeholder: symbol.old_name }))
+    }
+
+    async fn rename(&self, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
+        let new_name = params.new_name;
+        let Some(ctx) = self.resolve_position(params.text_document_position).await else {
+            return Ok(None);
+        };
+        let Some(roots) = self.crate_roots.get() else {
+            return Ok(None);
+        };
+
+        // Flush pending edits so the collected spans match the live buffers
+        let mut compiler = self.compiler.write().await;
+        self.dirty.for_each_url(|uri| {
+            let Ok(path) = uri.to_file_path() else { return };
+            let Some(rope) = self.document_map.get(&uri).map(|r| r.clone()) else { return };
+            diagnostics::set_file_content(&mut compiler, roots, &path, &rope);
+        });
+        let compiler = &*compiler;
+
+        let Some(symbol) = renameable_symbol_at(compiler, ctx.file_id, ctx.byte_offset)? else {
+            return Ok(None);
+        };
+        rename::rename_symbol(compiler, &symbol, &new_name, &self.document_map).map_err(rename_error)
+    }
+}
+
+fn renameable_symbol_at(
+    compiler: &Db, file_id: SourceFileId, byte_offset: usize,
+) -> Result<Option<rename::SymbolAtCursor>> {
+    match rename::symbol_at(compiler, file_id, byte_offset) {
+        Ok(symbol) if !symbol.is_renameable() => Err(rename_error(rename::RenameError::ExternalCrate)),
+        Ok(symbol) => Ok(Some(symbol)),
+        Err(rename::RenameError::NoSymbol) => Ok(None),
+        Err(error) => Err(rename_error(error)),
+    }
+}
+
+fn rename_error(error: rename::RenameError) -> jsonrpc::Error {
+    let message = match error {
+        rename::RenameError::NoSymbol => "No renameable symbol under the cursor".to_string(),
+        rename::RenameError::ExternalCrate => "Cannot rename a symbol defined outside the current crate".to_string(),
+        rename::RenameError::InvalidName(message) => message,
+    };
+    jsonrpc::Error::invalid_params(message)
 }
 
 /// Apply a single `didChange` content change to `rope` in place. A change with
