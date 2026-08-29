@@ -1999,16 +1999,26 @@ impl<'tokens> Parser<'tokens> {
     fn loop_parameter(&mut self) -> Result<LoopParameter> {
         match self.current_token() {
             Token::Identifier(_) => {
-                let name = self.parse_ident_id()?;
-                Ok(LoopParameter::Variable(name))
+                let pattern = self.with_pattern_id_and_location(|this| this.parse_ident_id().map(Pattern::Variable))?;
+                Ok(LoopParameter::Pattern(pattern))
             },
             Token::ParenthesisLeft => {
                 self.advance();
-                let pattern = self.parse_pattern()?;
-                self.expect(Token::Equal, "`=` to separate the loop parameter's name from its initial valeu")?;
-                let expr = self.parse_expression()?;
+                let pattern = self.with_pattern_id_and_location(|this| {
+                    this.parse_with_recovery(
+                        Self::parse_pattern_inner,
+                        Token::ParenthesisRight,
+                        &[Token::Newline, Token::Equal],
+                    )
+                })?;
+                let parameter = if self.accept(Token::Equal) {
+                    let expr = self.parse_expression()?;
+                    LoopParameter::PatternAndExpr(pattern, expr)
+                } else {
+                    LoopParameter::Pattern(pattern)
+                };
                 self.expect(Token::ParenthesisRight, "`)` to close the opening `(` of this loop parameter")?;
-                Ok(LoopParameter::PatternAndExpr(pattern, expr))
+                Ok(parameter)
             },
             Token::UnitLiteral => {
                 let location = self.current_token_location();

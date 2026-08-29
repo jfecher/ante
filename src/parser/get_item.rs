@@ -353,17 +353,7 @@ fn desugar_loop(expr: ExprId, context: &mut DesugarContext) {
     let (parameters, arguments) = parameters
         .map(|parameter| {
             let (pattern, expr) = match parameter {
-                cst::LoopParameter::Variable(name) => {
-                    let pattern = cst::Pattern::Variable(name);
-                    let pattern = context.push_pattern(pattern, location.clone());
-
-                    let name_string = context[name].clone();
-                    let path = cst::Path::ident(name_string.to_string(), location.clone());
-                    let path = context.push_path(path, location.clone());
-                    let expr = cst::Expr::Variable(path);
-                    let expr = context.push_expr(expr, location.clone());
-                    (pattern, expr)
-                },
+                cst::LoopParameter::Pattern(pattern) => (pattern, pattern_to_expr(pattern, context)),
                 cst::LoopParameter::PatternAndExpr(pattern, expr) => (pattern, expr),
                 cst::LoopParameter::UnitLiteral(location) => {
                     let pattern = cst::Pattern::Literal(cst::Literal::Unit);
@@ -403,6 +393,33 @@ fn desugar_loop(expr: ExprId, context: &mut DesugarContext) {
 
     let replacement_expr = cst::Expr::Sequence(vec![definition, call]);
     context.set_expr(expr, replacement_expr);
+}
+
+/// Converts a pattern into an equivalent expression
+fn pattern_to_expr(pattern: PatternId, context: &mut DesugarContext) -> ExprId {
+    let location = context.pattern_location(pattern).clone();
+
+    match context[pattern].clone() {
+        cst::Pattern::Variable(name) | cst::Pattern::Alias(name, _) => {
+            let name_string = context[name].clone();
+            let path = cst::Path::ident(name_string.to_string(), location.clone());
+            let path = context.push_path(path, location.clone());
+            context.push_expr(cst::Expr::Variable(path), location)
+        },
+        cst::Pattern::TypeAnnotation(inner, _) => pattern_to_expr(inner, context),
+        cst::Pattern::Literal(literal) => context.push_expr(cst::Expr::Literal(literal), location),
+        cst::Pattern::Constructor(path, args) => {
+            let function = context.push_expr(cst::Expr::Variable(path), location.clone());
+            if args.is_empty() {
+                return function;
+            }
+            let arguments = args.into_iter().map(|arg| Argument::explicit(pattern_to_expr(arg, context))).collect();
+            context.push_expr(cst::Expr::Call(cst::Call { function, arguments }), location)
+        },
+        cst::Pattern::Or(_) | cst::Pattern::MethodName { .. } | cst::Pattern::Error => {
+            context.push_expr(cst::Expr::Error, location)
+        },
+    }
 }
 
 fn is_wildcard(expr_id: ExprId, context: &DesugarContext) -> bool {

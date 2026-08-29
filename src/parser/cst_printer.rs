@@ -1324,7 +1324,15 @@ impl<'a> CstDisplay<'a> {
         for parameter in &loop_.parameters {
             write!(f, " ")?;
             match parameter {
-                LoopParameter::Variable(name) => self.fmt_name(*name, context, f)?,
+                LoopParameter::Pattern(pattern) => {
+                    if matches!(context.get_pattern(*pattern), Pattern::Variable(_)) {
+                        self.fmt_pattern(*pattern, context, f)?;
+                    } else {
+                        write!(f, "(")?;
+                        self.fmt_pattern(*pattern, context, f)?;
+                        write!(f, ")")?;
+                    }
+                },
                 LoopParameter::PatternAndExpr(pattern, expr) => {
                     write!(f, "(")?;
                     self.fmt_pattern(*pattern, context, f)?;

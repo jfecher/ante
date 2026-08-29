@@ -571,12 +571,12 @@ pub struct Loop {
     pub body: ExprId,
 }
 
-/// A `loop` parameter is either an existing variable in scope (e.g. `x`)
-/// or a pattern, expression pair where the pattern is the loop helper function
+/// A `loop` parameter is either a pattern over existing bindings in scope, 
+/// or a `pattern = expression` pair where the pattern is the loop helper function
 /// parameter and the expression is its initial value - e.g `(y = 3)`.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
 pub enum LoopParameter {
-    Variable(NameId),
+    Pattern(PatternId),
     PatternAndExpr(PatternId, ExprId),
     UnitLiteral(Location),
 }
