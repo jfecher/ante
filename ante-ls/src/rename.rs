@@ -228,6 +228,10 @@ fn exported_targets_with_name(compiler: &Db, file_id: SourceFileId, name: &Strin
         targets.extend(methods.get(name).copied());
     }
     targets.extend(ExportedTypes(file_id).get(compiler).get(name).copied());
+
+    // Exported types appear in both the definitions and types maps
+    targets.sort_unstable();
+    targets.dedup();
     targets
 }
 
@@ -768,6 +772,33 @@ mod tests {
         let insertions: Vec<_> = changes.values().flatten().filter(|edit| edit.new_text == ", fetch").collect();
         assert_eq!(insertions.len(), 1, "the shared import item must gain the new name alongside the old");
         assert_eq!(total_edits(&changes), 4, "declaration, export entry, dot call site, and import insertion");
+    }
+
+    #[test]
+    fn rename_imported_type_rewrites_import_item() {
+        let root = ante_root();
+        let mut db = Db::default();
+        crate::diagnostics::init_db(&mut db, &root);
+        let crate_name = GetCrateGraph.get(&db)[&CrateId::LOCAL].name.clone();
+
+        let def_source = "export Foo\n\ntype Foo = val: I32\n";
+        let use_source = format!("import {crate_name}.RenameTypeDef.Foo\n\nmain () =\n    f = Foo 3\n    ()\n");
+
+        let roots = crate::diagnostics::CrateRoots::new(&db, root.clone());
+        let def_path = root.join("RenameTypeDef.an");
+        let use_path = root.join("RenameTypeUse.an");
+        crate::diagnostics::set_file_content(&mut db, &roots, &def_path, &Rope::from_str(def_source));
+        crate::diagnostics::set_file_content(&mut db, &roots, &use_path, &Rope::from_str(&use_source));
+        let def_file = crate::diagnostics::file_id_for_path(&roots, &def_path);
+
+        let changes = edits_at(&db, def_file, def_source.find("type Foo").unwrap() + 5, "Bar");
+        // An exported type is listed in both the definitions and types maps, the
+        // import item must still count as unambiguous and be rewritten in place.
+        for edit in changes.values().flatten() {
+            assert_eq!(edit.new_text, "Bar", "the import item must be rewritten, not appended to");
+        }
+        assert_eq!(changes.len(), 2, "both files must be edited");
+        assert_eq!(total_edits(&changes), 4, "type declaration, export entry, import item, and constructor use");
     }
 
     #[test]
