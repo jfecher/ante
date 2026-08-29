@@ -6,7 +6,8 @@ use serde::{Deserialize, Serialize};
 use crate::{
     diagnostics::Diagnostic,
     incremental::{
-        self, DbHandle, ExportedDefinitions, ExportedTypes, GetItem, Resolve, TargetPointerSize, TypeCheckSCC,
+        self, DbHandle, ExportedDefinitions, ExportedTypes, GetItem, GetItemRaw, Resolve, TargetPointerSize,
+        TypeCheckSCC,
     },
     iterator_extensions::{map_btree, mapvec},
     lexer::token::{Integer, IntegerKind},
@@ -15,7 +16,7 @@ use crate::{
         namespace::{CrateId, SourceFileId},
     },
     parser::{
-        cst::{self, Name, ReferenceKind, TopLevelItem, TopLevelItemKind},
+        cst::{self, KindAnnotation, Name, ReferenceKind, TopLevelItem, TopLevelItemKind},
         desugar_context::DesugarContext,
         ids::{ExprId, NameId, PathId, PatternId, TopLevelId, TopLevelName},
     },
@@ -615,6 +616,25 @@ enum Variance {
     Invariant,
 }
 
+/// Whether an effect row being compared sits in a covariant or invariant position
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RowMode {
+    /// A position where the mir builder can adapt a wider effect set so subtyping is possible
+    Coercible,
+    /// Both rows must unify exactly
+    Exact,
+}
+
+/// The result of matching one effect row's concrete effects against another's
+struct RowMatch {
+    a_open: Vec<Effect>,
+    b_open: Vec<Effect>,
+    /// `a`'s concrete effects with no match in `b`
+    a_leftover: Vec<Effect>,
+    /// `b`'s concrete effects with no match in `a`
+    b_leftover: Vec<Effect>,
+}
+
 impl Variance {
     fn flip(self) -> Variance {
         match self {
@@ -802,6 +822,12 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
             CoercionOutcome::None => {
                 self.unify(actual, expected, kind, expr);
+
+                // A dictionary's trait effect args may be narrower than the parameter's. Record the
+                // parameter type so the mir builder can adapt the dictionary to it
+                if self.trait_has_effect_args(expected) {
+                    self.current_extended_context_mut().insert_function_coercion(expr, expected.clone());
+                }
                 actual.clone()
             },
             // implicit_parameter_coercion already performed the needed unification against the type
@@ -987,21 +1013,25 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Returns any new bindings created on success.
     fn try_unify(&self, actual: &Type, expected: &Type) -> Result<TypeBindings, ()> {
         let mut bindings = TypeBindings::default();
-        self.subtype(actual, expected, Variance::Covariant, &mut bindings).map(|_| bindings)
+        self.subtype(actual, expected, Variance::Covariant, RowMode::Coercible, &mut bindings).map(|_| bindings)
     }
 
     /// Is `a` a subtype of `b`? (iff `variance == Covariant`)
-    fn subtype(&self, a: &Type, b: &Type, variance: Variance, new_bindings: &mut TypeBindings) -> Result<(), ()> {
+    ///
+    /// `row_mode` controls whether effects will be treated as covariant or invariant.
+    fn subtype(
+        &self, a: &Type, b: &Type, variance: Variance, row_mode: RowMode, new_bindings: &mut TypeBindings,
+    ) -> Result<(), ()> {
         if variance == Variance::Contravariant {
-            return self.subtype(b, a, Variance::Covariant, new_bindings);
+            return self.subtype(b, a, Variance::Covariant, row_mode, new_bindings);
         }
 
         match (a, b) {
             (Type::Variable(a_id), b) => {
                 if let Some(a) = self.bindings.get(a_id) {
-                    self.subtype(a, b, variance, new_bindings)
+                    self.subtype(a, b, variance, row_mode, new_bindings)
                 } else if let Some(a) = new_bindings.get(a_id).cloned() {
-                    self.subtype(&a, b, variance, new_bindings)
+                    self.subtype(&a, b, variance, row_mode, new_bindings)
                 } else {
                     let b = b.follow_two(&self.bindings, new_bindings);
                     self.try_bind_type_variable(*a_id, b, new_bindings)
@@ -1009,9 +1039,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
             (a, Type::Variable(b_id)) => {
                 if let Some(b) = self.bindings.get(b_id) {
-                    self.subtype(a, b, variance, new_bindings)
+                    self.subtype(a, b, variance, row_mode, new_bindings)
                 } else if let Some(b) = new_bindings.get(b_id).cloned() {
-                    self.subtype(a, &b, variance, new_bindings)
+                    self.subtype(a, &b, variance, row_mode, new_bindings)
                 } else {
                     let a = a.follow_two(&self.bindings, new_bindings);
                     self.try_bind_type_variable(*b_id, a, new_bindings)
@@ -1030,7 +1060,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
                 // Parameters are contravariant, the return type is covariant.
                 for (a_param, b_param) in a_fn.parameters.iter().zip(b_fn.parameters.iter()) {
-                    self.subtype(&a_param.typ, &b_param.typ, variance.flip(), new_bindings)?;
+                    self.subtype(&a_param.typ, &b_param.typ, variance.flip(), RowMode::Exact, new_bindings)?;
                 }
 
                 // Hack: Ability methods carry a `Ptr Unit` env so every ability value has a uniform
@@ -1048,10 +1078,16 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 };
                 let env_skip = (no_env(&a_env) && is_ptr_env(&b_env)) || (no_env(&b_env) && is_ptr_env(&a_env));
                 if !env_skip {
-                    self.subtype(&a_fn.environment, &b_fn.environment, Variance::Invariant, new_bindings)?;
+                    self.subtype(
+                        &a_fn.environment,
+                        &b_fn.environment,
+                        Variance::Invariant,
+                        RowMode::Exact,
+                        new_bindings,
+                    )?;
                 }
-                self.subtype(&a_fn.return_type, &b_fn.return_type, variance, new_bindings)?;
-                self.subtype(&a_fn.effects, &b_fn.effects, variance, new_bindings)
+                self.subtype(&a_fn.return_type, &b_fn.return_type, variance, RowMode::Exact, new_bindings)?;
+                self.subtype(&a_fn.effects, &b_fn.effects, variance, row_mode, new_bindings)
             },
             (Type::Application(a_constructor, a_args), Type::Application(b_constructor, b_args)) => {
                 if a_args.len() != b_args.len() {
@@ -1065,7 +1101,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 let b_kind = b_constructor.reference_constructor(&self.bindings);
                 if let (Some(_), Some(b_kind)) = (a_kind, b_kind) {
                     // Reference-kind subtyping (e.g. `uniq <: mut`) is handled by the arm below.
-                    self.subtype(a_constructor, b_constructor, variance, new_bindings)?;
+                    self.subtype(a_constructor, b_constructor, variance, RowMode::Exact, new_bindings)?;
 
                     // `mut`/`uniq` elements are invariant
                     let read_only = matches!(b_kind, ReferenceKind::Imm | ReferenceKind::Ref);
@@ -1073,13 +1109,21 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
                     for (index, (a_arg, b_arg)) in a_args.iter().zip(b_args.iter()).enumerate() {
                         let arg_variance = if index == 1 { element_variance } else { Variance::Invariant };
-                        self.subtype(a_arg, b_arg, arg_variance, new_bindings)?;
+                        self.subtype(a_arg, b_arg, arg_variance, RowMode::Exact, new_bindings)?;
                     }
                     Ok(())
                 } else {
-                    self.subtype(a_constructor, b_constructor, Variance::Invariant, new_bindings)?;
-                    for (a_arg, b_arg) in a_args.iter().zip(b_args.iter()) {
-                        self.subtype(a_arg, b_arg, Variance::Invariant, new_bindings)?;
+                    self.subtype(a_constructor, b_constructor, Variance::Invariant, RowMode::Exact, new_bindings)?;
+
+                    // A trait dictionary can be adapted to wider effect args, other types cannot
+                    let effect_args = match row_mode {
+                        RowMode::Coercible => self.trait_effect_args(a, new_bindings),
+                        RowMode::Exact => None,
+                    };
+                    for (index, (a_arg, b_arg)) in a_args.iter().zip(b_args.iter()).enumerate() {
+                        let is_effect_arg = effect_args.as_ref().is_some_and(|args| args.get(index) == Some(&true));
+                        let arg_rows = if is_effect_arg { RowMode::Coercible } else { RowMode::Exact };
+                        self.subtype(a_arg, b_arg, Variance::Invariant, arg_rows, new_bindings)?;
                     }
                     Ok(())
                 }
@@ -1089,9 +1133,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     return Err(());
                 }
                 for (a_generic, b_generic) in a_generics.iter().zip(b_generics.iter()) {
-                    self.subtype(&a_generic.as_type(), &b_generic.as_type(), Variance::Invariant, new_bindings)?;
+                    let (a_generic, b_generic) = (a_generic.as_type(), b_generic.as_type());
+                    self.subtype(&a_generic, &b_generic, Variance::Invariant, RowMode::Exact, new_bindings)?;
                 }
-                self.subtype(a_body, b_body, Variance::Invariant, new_bindings)
+                self.subtype(a_body, b_body, Variance::Invariant, RowMode::Exact, new_bindings)
             },
             (Type::Primitive(PrimitiveType::Reference(a_kind)), Type::Primitive(PrimitiveType::Reference(b_kind))) => {
                 match (a_kind, b_kind) {
@@ -1125,10 +1170,33 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             (
                 Type::UserDefined(_) | Type::Application(..) | Type::Effects(..) | Type::Generic(_),
                 Type::UserDefined(_) | Type::Application(..) | Type::Effects(..) | Type::Generic(_),
-            ) => self.row_subtype(a, b, new_bindings),
+            ) => match row_mode {
+                RowMode::Coercible => self.row_subtype(a, b, new_bindings),
+                RowMode::Exact => self.row_unify(a, b, new_bindings),
+            },
             (a, b) if a == b => Ok(()),
             _ => Err(()),
         }
+    }
+
+    /// If `typ` is a trait, return which of its parameters are effect rows
+    fn trait_effect_args(&self, typ: &Type, new_bindings: &TypeBindings) -> Option<Arc<[bool]>> {
+        let Some(Origin::TopLevelDefinition(name)) = typ.effect_head(&self.bindings, new_bindings) else { return None };
+        let item = GetItemRaw(name.top_level_item).get(self.compiler).0;
+        let effect_args = match &item.kind {
+            TopLevelItemKind::TraitDefinition(definition) => {
+                Some(Arc::from(mapvec(&definition.generics, |param| param.kind == Some(KindAnnotation::Effect))))
+            },
+            _ => None,
+        };
+        effect_args
+    }
+
+    /// True if `typ` is a trait applied to at least one effect row, the only dictionaries whose
+    /// rows the mir builder can widen.
+    pub(super) fn trait_has_effect_args(&self, typ: &Type) -> bool {
+        matches!(typ.follow(&self.bindings), Type::Application(..))
+            && self.trait_effect_args(typ, &TypeBindings::default()).is_some_and(|args| args.contains(&true))
     }
 
     /// Find a non-skipped head-matching candidate that subtypes `target` per `variance`.
@@ -1143,7 +1211,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             }
 
             let mut trial = new_bindings.clone();
-            if self.subtype(&candidate.typ, &target.typ, variance, &mut trial).is_ok() {
+            if self.subtype(&candidate.typ, &target.typ, variance, RowMode::Exact, &mut trial).is_ok() {
                 self.link_effect_ids(&candidate.id, &target.id, &mut trial);
                 *new_bindings = trial;
                 return Some(i);
@@ -1155,16 +1223,17 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Record that two row entries refer to the same capability by unifying their ids.
     /// This is expected to never fail.
     fn link_effect_ids(&self, a: &Type, b: &Type, new_bindings: &mut TypeBindings) {
-        assert!(self.subtype(a, b, Variance::Invariant, new_bindings).is_ok());
+        assert!(self.subtype(a, b, Variance::Invariant, RowMode::Exact, new_bindings).is_ok());
     }
 
-    /// Row-subtype two effect rows: is `a`'s actual set of effects permitted by `b`'s expected set?
-    fn row_subtype(&self, a: &Type, b: &Type, new_bindings: &mut TypeBindings) -> Result<(), ()> {
+    /// Flattens two effect rows and matches `a`'s concrete effects against `b`'s.
+    /// Returns `None` if either row contains an error type
+    fn match_rows(&self, a: &Type, b: &Type, variance: Variance, new_bindings: &mut TypeBindings) -> Option<RowMatch> {
         let a_list = self.collect_and_merge_effects(a, new_bindings);
         let b_list = self.collect_and_merge_effects(b, new_bindings);
 
         if a_list.iter().chain(b_list.iter()).any(|effect| effect.typ.is_error()) {
-            return Ok(());
+            return None;
         }
 
         let (a_open, a_concrete): (Vec<Effect>, Vec<Effect>) =
@@ -1176,18 +1245,25 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let mut b_matched = vec![false; b_concrete.len()];
 
         for a_effect in a_concrete.iter() {
-            let matched = self.subtype_matching_effect(
-                &b_concrete,
-                |i| b_matched[i],
-                a_effect,
-                Variance::Contravariant,
-                new_bindings,
-            );
+            let matched = self.subtype_matching_effect(&b_concrete, |i| b_matched[i], a_effect, variance, new_bindings);
             match matched {
                 Some(pos) => b_matched[pos] = true,
                 None => a_leftover.push(a_effect.clone()),
             }
         }
+
+        let b_leftover =
+            b_concrete.into_iter().zip(b_matched).filter_map(|(e, matched)| (!matched).then_some(e)).collect();
+        Some(RowMatch { a_open, b_open, a_leftover, b_leftover })
+    }
+
+    /// Row-subtype two effect rows: is `a`'s actual set of effects permitted by `b`'s expected set?
+    fn row_subtype(&self, a: &Type, b: &Type, new_bindings: &mut TypeBindings) -> Result<(), ()> {
+        let Some(RowMatch { a_open, b_open, mut a_leftover, mut b_leftover }) =
+            self.match_rows(a, b, Variance::Contravariant, new_bindings)
+        else {
+            return Ok(());
+        };
 
         // What is left of `b`'s row end after it absorbs the effects `a` performs that `b` didn't list
         let b_residual = match (b_open.first(), a_leftover.is_empty()) {
@@ -1197,7 +1273,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 let fresh = self.fresh_effect();
                 a_leftover.push(fresh.clone());
                 let binding = Type::effects(&a_leftover, &self.bindings, new_bindings);
-                self.subtype(&open.typ, &binding, Variance::Invariant, new_bindings)?;
+                self.subtype(&open.typ, &binding, Variance::Invariant, RowMode::Exact, new_bindings)?;
                 Some(fresh)
             },
             // TODO: Hack: review & potentionally remove
@@ -1207,18 +1283,51 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         let Some(a_open_first) = a_open.first() else { return Ok(()) };
 
-        let mut b_unmatched: Vec<Effect> =
-            b_concrete.into_iter().zip(b_matched).filter(|(_, matched)| !matched).map(|(e, _)| e).collect();
-
         match b_residual {
             // Binding `a_open_first` to a row containing itself would create an infinitely recursive type
             Some(residual) if self.identical_effects(&residual, a_open_first, new_bindings) => return Ok(()),
-            Some(residual) => b_unmatched.push(residual),
+            Some(residual) => b_leftover.push(residual),
             None => (),
         }
 
-        let binding = Type::effects(&b_unmatched, &self.bindings, new_bindings);
-        self.subtype(&a_open_first.typ, &binding, Variance::Invariant, new_bindings)
+        let binding = Type::effects(&b_leftover, &self.bindings, new_bindings);
+        self.subtype(&a_open_first.typ, &binding, Variance::Invariant, RowMode::Exact, new_bindings)
+    }
+
+    /// Unify two effect rows: both must end up with the same set of effects.
+    fn row_unify(&self, a: &Type, b: &Type, new_bindings: &mut TypeBindings) -> Result<(), ()> {
+        let Some(RowMatch { a_open, b_open, mut a_leftover, mut b_leftover }) =
+            self.match_rows(a, b, Variance::Invariant, new_bindings)
+        else {
+            return Ok(());
+        };
+
+        let both_closed = |a_leftover: &[Effect], b_leftover: &[Effect]| {
+            (a_leftover.is_empty() && b_leftover.is_empty()).then_some(()).ok_or(())
+        };
+        match (a_open.first(), b_open.first()) {
+            (None, None) => both_closed(&a_leftover, &b_leftover),
+            (Some(a_end), None) if a_leftover.is_empty() => self.bind_row_end(a_end, &b_leftover, new_bindings),
+            (None, Some(b_end)) if b_leftover.is_empty() => self.bind_row_end(b_end, &a_leftover, new_bindings),
+            (Some(_), None) | (None, Some(_)) => Err(()),
+            (Some(a_end), Some(b_end)) if self.identical_effects(a_end, b_end, new_bindings) => {
+                both_closed(&a_leftover, &b_leftover)
+            },
+            (Some(a_end), Some(b_end)) => {
+                // Each end absorbs what the other side has that it lacks, sharing a fresh end
+                let fresh = self.fresh_effect();
+                a_leftover.push(fresh.clone());
+                b_leftover.push(fresh);
+                self.bind_row_end(a_end, &b_leftover, new_bindings)?;
+                self.bind_row_end(b_end, &a_leftover, new_bindings)
+            },
+        }
+    }
+
+    /// Bind a row's open end to the row of `effects`
+    fn bind_row_end(&self, end: &Effect, effects: &[Effect], new_bindings: &mut TypeBindings) -> Result<(), ()> {
+        let binding = Type::effects(effects, &self.bindings, new_bindings);
+        self.subtype(&end.typ, &binding, Variance::Invariant, RowMode::Exact, new_bindings)
     }
 
     /// True if both effects are exactly equal after following type variables

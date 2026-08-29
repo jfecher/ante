@@ -1,0 +1,38 @@
+import Std.Stream.Emit, emit, Stream, iter
+
+effect Tick =
+    tick: fn Unit -> Unit
+
+effect Observe =
+    observe: fn U32 -> Unit
+
+type Counter = limit: U32
+
+implicit stream_counter: Stream Counter U32 Tick = Stream with
+    stream counter = loop (i = 0) ->
+        if i < counter.limit then
+            tick ()
+            emit i
+            recur (i + 1)
+
+consume (source: s) {Stream s U32 e}: Unit can Observe, e =
+    iter source observe
+
+main () =
+    handler t for tick () ->
+        println "tick"
+        resume ()
+    in handler o for observe x ->
+        println x
+        resume ()
+    in consume (Counter 3)
+
+// args: --delete-binary --no-color
+// expected stdout:
+// tick
+// 0
+// tick
+// 1
+// tick
+// 2
+

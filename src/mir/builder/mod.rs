@@ -325,7 +325,14 @@ where
     fn expression(&mut self, expr: ExprId) -> Value {
         let value = self.expression_inner(expr);
         match self.types.result.context.get_function_coercion(expr).cloned() {
-            Some(expected) => self.coerce_function_value(value, expr, &expected),
+            Some(expected) => {
+                let target = self.convert_type(&expected, None);
+                match &target {
+                    Type::Function(_) => self.coerce_function_value(value, expr, &expected, target),
+                    Type::Tuple(_) => self.coerce_dictionary_value(value, expr, &expected, target),
+                    _ => value,
+                }
+            },
             None => value,
         }
     }
@@ -722,52 +729,119 @@ where
     /// Wraps a function value type inference coerced to a wider row in a closure of the coerced type.
     /// For example, a pure function `f` may be used in a context where `can Fail` was expected.
     /// This will create a wrapper which ignores the additional capability: `fn fail -> f ()`
-    fn coerce_function_value(&mut self, value: Value, expr: ExprId, expected: &TCType) -> Value {
-        let target = self.convert_type(expected, None);
-        let Type::Function(expected_ft) = &target else { return value };
+    fn coerce_function_value(&mut self, value: Value, expr: ExprId, expected: &TCType, target: Type) -> Value {
         let value_type = self.type_of_value(&value);
-        let Type::Function(vt) = &value_type else { return value };
+        let Type::Function(expected_ft) = &target else { return value };
         assert_eq!(
             expected_ft.environment, value_type,
             "coerced function's environment does not match the value being coerced"
         );
-        assert!(
-            vt.parameters.split_last().map(|(_, p)| p) == expected_ft.parameters.split_last().map(|(_, p)| p)
-                && vt.return_type == expected_ft.return_type,
-            "function coercion changes more than the evidence: `{value_type}` to `{target}`"
+        let actual = &self.types.result.maps.expr_types[&expr];
+        let Some((value_row, expected_row)) = self.function_rows(actual, expected) else { return value };
+
+        // The value is the adapter's environment, so the callee is the environment parameter itself
+        self.evidence_adapter("evidence_adapter", target, value_type, &value_row, &expected_row, value, |_, env, _| env)
+    }
+
+    /// Rebuilds a trait dictionary whose effect args type inference widened, wrapping each method
+    /// whose row changed in a closure taking the wider evidence. For example, a `Stream s a e`
+    /// dictionary may be passed where `Stream s a (Fail, e)` is expected.
+    fn coerce_dictionary_value(&mut self, value: Value, expr: ExprId, expected: &TCType, target: Type) -> Value {
+        let value_type = self.type_of_value(&value);
+        if target == value_type {
+            return value;
+        }
+        let (Type::Tuple(expected_fields), Type::Tuple(value_fields)) = (&target, &value_type) else {
+            panic!("dictionary coercion from `{value_type}` to `{target}` is not between dictionaries");
+        };
+        assert_eq!(expected_fields.len(), value_fields.len(), "dictionary coercion changes the method count");
+
+        let convert = self.convert_context();
+        let actual_methods = convert.trait_method_types(&self.types.result.maps.expr_types[&expr]);
+        let expected_methods = convert.trait_method_types(expected);
+
+        let fields = mapvec(expected_fields.iter().zip(value_fields.iter()).enumerate(), |(i, (expected, actual))| {
+            let field =
+                self.push_instruction(Instruction::IndexTuple { tuple: value, index: i as u32 }, actual.clone());
+            if expected == actual {
+                field
+            } else {
+                self.adapt_dictionary_method(field, &actual_methods[i], &expected_methods[i], expected.clone())
+            }
+        });
+        self.push_instruction(Instruction::MakeTuple(fields), target)
+    }
+
+    /// Wraps the dictionary method `method` in a closure of the wider `target` type. The wrapper
+    /// keeps `method` in its environment and projects the evidence it needs out of
+    /// the evidence it is given.
+    fn adapt_dictionary_method(&mut self, method: Value, actual: &TCType, expected: &TCType, target: Type) -> Value {
+        let method_type = self.type_of_value(&method);
+        let (Type::Function(expected_ft), Type::Function(method_ft)) = (&target, &method_type) else {
+            panic!("dictionary method coercion from `{method_type}` to `{target}` is not between functions");
+        };
+        assert_eq!(
+            method_ft.environment, expected_ft.environment,
+            "dictionary method coercion changes the environment: `{method_type}` to `{target}`"
         );
+        let Some((method_row, expected_row)) = self.function_rows(actual, expected) else { return method };
 
-        let actual = self.types.result.maps.expr_types[&expr].clone();
-        let Some((value_row, expected_row)) = self.function_rows(&actual, expected) else { return value };
+        let environment = self.push_instruction(Instruction::AllocShared(method), Type::POINTER);
+        let load_method =
+            |this: &mut Self, env, typ: &Type| this.push_instruction(Instruction::Deref(env), typ.clone());
+        self.evidence_adapter(
+            "dictionary_adapter",
+            target,
+            method_type,
+            &method_row,
+            &expected_row,
+            environment,
+            load_method,
+        )
+    }
 
-        let return_type = expected_ft.return_type.clone();
-        let expected_parameters = expected_ft.parameters.clone();
-        let surface_count = expected_parameters.len() - 1;
-        let is_closure = value_type.is_closure();
+    /// Builds a closure of the function type `target` around a callee of a narrower row. The closure's
+    /// body loads the callee out of `environment` with `load_callee` and calls
+    /// it with the evidence `callee_row` needs projected out of the evidence `target_row` provides.
+    fn evidence_adapter(
+        &mut self, name: &str, target: Type, callee_type: Type, callee_row: &Effects, target_row: &Effects,
+        environment: Value, load_callee: impl FnOnce(&mut Self, Value, &Type) -> Value,
+    ) -> Value {
+        let (Type::Function(target_ft), Type::Function(callee_ft)) = (&target, &callee_type) else {
+            panic!("evidence adapter from `{callee_type}` to `{target}` is not between functions");
+        };
+        assert!(
+            callee_ft.parameters.split_last().map(|(_, p)| p) == target_ft.parameters.split_last().map(|(_, p)| p)
+                && callee_ft.return_type == target_ft.return_type,
+            "evidence adapter changes more than the evidence: `{callee_type}` to `{target}`"
+        );
+        let callee_is_closure = callee_ft.is_closure();
+        let return_type = target_ft.return_type.clone();
+        let parameters = target_ft.parameters.clone();
+        let environment_type = target_ft.environment.clone();
+        let surface_count = parameters.len() - 1;
 
         let generics_count = self.generics_in_scope.len() as u32;
-        let name = Arc::new("evidence_adapter".to_string());
-        let inner_type = value_type.clone();
+        let name = Arc::new(name.to_string());
         let id = self.new_isolated_definition(name.clone(), generics_count, target.clone(), |this| {
-            let params = this.push_capability_parameters(&expected_parameters);
-            let inner = this.push_capability_parameter(inner_type.clone());
+            let params = this.push_capability_parameters(&parameters);
+            let env = this.push_capability_parameter(environment_type);
+            let callee = load_callee(this, env, &callee_type);
 
-            let provided = params[surface_count];
-            let evidence = this.project_evidence(provided, &expected_row, &value_row);
-
+            let evidence = this.project_evidence(params[surface_count], target_row, callee_row);
             let mut arguments: Vec<Value> = params[..surface_count].to_vec();
             arguments.push(evidence);
-            let instruction = if is_closure {
-                Instruction::CallClosure { closure: inner, arguments }
+            let instruction = if callee_is_closure {
+                Instruction::CallClosure { closure: callee, arguments }
             } else {
-                Instruction::Call { function: inner, arguments }
+                Instruction::Call { function: callee, arguments }
             };
-            let result = this.push_instruction(instruction, return_type.clone());
+            let result = this.push_instruction(instruction, return_type);
             this.terminate_block(TerminatorInstruction::Return(result));
         });
 
         let adapter = self.make_definition_value(id, name, target.clone());
-        self.push_instruction(Instruction::PackClosure { function: adapter, environment: value }, target)
+        self.push_instruction(Instruction::PackClosure { function: adapter, environment }, target)
     }
 
     /// The rows of a function value and of the function type it flows into, as type inference
@@ -792,7 +866,12 @@ where
             fields.push(self.evidence_chain_head(links[slot]));
         }
 
-        self.cons_evidence(fields, links[provided_row.rest_slot()])
+        // A closed row wants no rest, whatever bundle the provided row carries
+        let rest = match &needed.end {
+            Some(_) => links[provided_row.rest_slot()],
+            None => self.push_instruction(Instruction::MakeTuple(Vec::new()), Type::tuple(Vec::new())),
+        };
+        self.cons_evidence(fields, rest)
     }
 
     /// Chain `capabilities` onto `rest`, in order, as nested `(capability, rest)` pairs.

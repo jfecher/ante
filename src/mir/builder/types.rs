@@ -9,7 +9,7 @@ use crate::{
     mir::{FunctionType, Type, builder::Context},
     name_resolution::{Origin, builtin::Builtin},
     parser::{
-        cst::TopLevelItemKind,
+        cst::{TopLevelItem, TopLevelItemKind, TypeDefinition, TypeDefinitionBody},
         ids::{ExprId, PathId, PatternId, TopLevelId},
     },
     type_inference::{
@@ -225,10 +225,47 @@ where
 
     /// True if `effect` refers to an effect definition with zero operations.
     fn effect_has_no_operations(&self, effect: &TCType) -> bool {
-        let head = effect.effect_head(self.type_bindings, &TypeBindings::default());
-        let Some(Origin::TopLevelDefinition(name)) = head else { return false };
-        let (item, _) = GetItemRaw(name.top_level_item).get(self.compiler);
-        matches!(&item.kind, TopLevelItemKind::EffectDefinition(effect) if effect.body.is_empty())
+        let Some((id, _)) = self.definition_head(effect) else { return false };
+        let (item, _) = GetItem(id).get(self.compiler);
+        matches!(Self::type_definition(&item), Some(definition) if Self::is_empty_effect(definition))
+    }
+
+    /// The top-level definition `typ` names with its arguments if applied
+    fn definition_head<'t>(&'t self, typ: &'t TCType) -> Option<(TopLevelId, Option<&'t [TCType]>)> {
+        match typ.follow(self.type_bindings) {
+            TCType::UserDefined(Origin::TopLevelDefinition(name)) => Some((name.top_level_item, None)),
+            TCType::Application(constructor, args) => match constructor.follow(self.type_bindings) {
+                TCType::UserDefined(Origin::TopLevelDefinition(name)) => {
+                    Some((name.top_level_item, Some(args.as_slice())))
+                },
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    fn type_definition(item: &TopLevelItem) -> Option<&TypeDefinition> {
+        match &item.kind {
+            TopLevelItemKind::TypeDefinition(definition) => Some(definition),
+            _ => None,
+        }
+    }
+
+    /// A desugared effect's fields are its operations
+    fn is_empty_effect(definition: &TypeDefinition) -> bool {
+        definition.kind.is_effect()
+            && matches!(&definition.body, TypeDefinitionBody::Struct(fields) if fields.is_empty())
+    }
+
+    /// The method types of a trait dictionary type
+    pub(super) fn trait_method_types(&self, dictionary: &TCType) -> Vec<TCType> {
+        let Some((id, args)) = self.definition_head(dictionary) else {
+            panic!("trait_method_types: `{dictionary:?}` is not a trait");
+        };
+        match id.type_body(args, self.compiler, None) {
+            TypeBody::Product { fields, .. } => mapvec(fields, |(_, typ)| typ),
+            TypeBody::Sum(_) => panic!("trait_method_types: trait is a sum type"),
+        }
     }
 
     /// C-compatible conversion (no evidence parameter) for `extern` symbols and `resume`
@@ -290,19 +327,10 @@ where
 
     /// Resolves a [Self::split_row] entry to its capability tuple type
     pub(super) fn effect_capability_tuple_type_of(&self, effect: &Effect) -> Type {
-        let effect_type = effect.typ.follow(self.type_bindings);
-        let (origin, args) = match effect_type {
-            TCType::UserDefined(origin) => (*origin, None),
-            TCType::Application(constructor, args) => match constructor.follow(self.type_bindings) {
-                TCType::UserDefined(origin) => (*origin, Some(args.as_slice())),
-                _ => panic!("effect_capability_tuple_type_of: not an effect type: {effect_type:?}"),
-            },
-            _ => panic!("effect_capability_tuple_type_of: not an effect type: {effect_type:?}"),
+        let Some((id, args)) = self.definition_head(&effect.typ) else {
+            panic!("effect_capability_tuple_type_of: not an effect type: {:?}", effect.typ);
         };
-        let Origin::TopLevelDefinition(name) = origin else {
-            panic!("effect_capability_tuple_type_of: effect origin is not a top-level definition");
-        };
-        self.effect_capability_tuple_type(name.top_level_item, args)
+        self.effect_capability_tuple_type(id, args)
     }
 
     fn convert_type_variable(&self, id: TypeVariableId, default: Type) -> Type {
@@ -326,9 +354,20 @@ where
     fn convert_type_origin(&self, origin: Origin, args: Option<&[TCType]>, variant_index: Option<usize>) -> Type {
         match origin {
             Origin::TopLevelDefinition(id) => {
-                // `shared` types are always represented as a pointer in MIR.
-                if Self::is_shared_type_definition(self.compiler, id.top_level_item) {
-                    return Type::POINTER;
+                let (item, _) = GetItem(id.top_level_item).get(self.compiler);
+                if let Some(definition) = Self::type_definition(&item) {
+                    // `shared` types are always represented as a pointer in MIR.
+                    if definition.shared {
+                        return Type::POINTER;
+                    }
+                    if definition.kind.is_effect() {
+                        let unit = Type::tuple(Vec::new());
+                        if Self::is_empty_effect(definition) {
+                            return unit;
+                        }
+                        let capability = self.effect_capability_tuple_type(id.top_level_item, args);
+                        return Type::tuple(vec![capability, unit]);
+                    }
                 }
                 let key = (origin, Arc::new(args.unwrap_or(&[]).to_vec()));
                 if !self.in_progress.borrow_mut().insert(key.clone()) {
@@ -356,8 +395,11 @@ where
             },
             TCType::Forall(_, inner) => self.shared_inner_layout_of(inner, args),
             TCType::UserDefined(Origin::TopLevelDefinition(id)) => {
-                let (shared, mutable) = Self::shared_type_flags(self.compiler, id.top_level_item);
-                shared.then(|| (self.expand_user_defined_body(id.top_level_item, args, None), mutable))
+                let (item, _) = GetItem(id.top_level_item).get(self.compiler);
+                let definition = Self::type_definition(&item)?;
+                definition
+                    .shared
+                    .then(|| (self.expand_user_defined_body(id.top_level_item, args, None), definition.mutable))
             },
             _ => None,
         }
@@ -366,19 +408,6 @@ where
     fn expand_user_defined_body(&self, id: TopLevelId, args: Option<&[TCType]>, variant_index: Option<usize>) -> Type {
         let body = id.type_body(args, self.compiler, None);
         self.convert_type_body(body, variant_index)
-    }
-
-    fn is_shared_type_definition(compiler: &Db, id: TopLevelId) -> bool {
-        Self::shared_type_flags(compiler, id).0
-    }
-
-    /// Returns the `(shared, mutable)` flags of a top-level type definition, or `(false, false)`.
-    fn shared_type_flags(compiler: &Db, id: TopLevelId) -> (bool, bool) {
-        let (item, _) = GetItem(id).get(compiler);
-        match &item.kind {
-            TopLevelItemKind::TypeDefinition(td) => (td.shared, td.mutable),
-            _ => (false, false),
-        }
     }
 
     /// Converts a type body to the general representation of that type.

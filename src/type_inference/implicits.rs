@@ -15,7 +15,7 @@ use crate::{
         ids::{ExprId, NameId, PatternId},
     },
     type_inference::{
-        Locateable, TypeChecker,
+        Locateable, RowMode, TypeChecker,
         Variance::Covariant,
         errors::TypeErrorKind,
         types::{FunctionType, ParameterType, PrimitiveType, Type, TypeBindings, TypeVariableId},
@@ -758,12 +758,12 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // every candidate. Reducing the number of candidates beforehand (e.g. keying them) would also help.
         let mut fresh_bindings = type_bindings.clone();
 
-        if self.subtype(implicit_type, target_type, Covariant, &mut fresh_bindings).is_ok() {
+        if self.subtype(implicit_type, target_type, Covariant, RowMode::Coercible, &mut fresh_bindings).is_ok() {
             ImplicitMatch::MatchedAsIs(fresh_bindings)
         } else if let Type::Function(f) = implicit_type {
             let mut fresh_bindings = type_bindings.clone();
 
-            if self.subtype(&f.return_type, target_type, Covariant, &mut fresh_bindings).is_ok() {
+            if self.subtype(&f.return_type, target_type, Covariant, RowMode::Coercible, &mut fresh_bindings).is_ok() {
                 ImplicitMatch::Call(f.clone(), fresh_bindings)
             } else {
                 ImplicitMatch::NoMatch
@@ -997,6 +997,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let path = self.push_path(cst::Path::ident(name, location.clone()), candidate.typ.clone(), location.clone());
         let variable = cst::Expr::Variable(path);
 
+        // Row subtyping may have accepted a dictionary whose trait effect args are narrower than
+        // the parameter's. The mir builder should adapt the dictionary to the parameter's type.
+        let target_type = &self.expr_types[&destination];
+        let dictionary_target = self.trait_has_effect_args(target_type).then(|| target_type.clone());
+
         // Commit type bindings from the prior `try_unify` call(s) made to find this implicit
         self.bindings.extend(candidate.type_bindings);
 
@@ -1018,7 +1023,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             (call, return_type)
         };
 
-        self.current_extended_context_mut().insert_expr(destination, expr);
+        let context = self.current_extended_context_mut();
+        context.insert_expr(destination, expr);
+        if let Some(target_type) = dictionary_target {
+            context.insert_function_coercion(destination, target_type);
+        }
         self.expr_types.insert(destination, typ);
     }
 }
