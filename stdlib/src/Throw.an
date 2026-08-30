@@ -7,31 +7,31 @@ type Result t e =
    | Ok t
    | Err e
 
-catch (f: fn Unit => a can (Throw e)): Result a e =
+catch (f: fn Unit => a can Throw e): Result a e =
     handler h for throw e -> Err e
     Ok (f ())
 
-catch_or (f: fn Unit => a can (Throw e)) (default: a): a =
+catch_or (f: fn Unit => a can Throw e) (default: a): a =
     handler h for throw _ -> default
     f ()
 
-catch_or_else (f: fn Unit => a can (Throw e)) (default: fn e => a): a =
+catch_or_else (f: fn Unit => a can Throw e) (default: fn e => a): a =
     handler h for throw e -> default e
     f ()
 
-on_err (f: fn Unit => a can (Throw e)) (on_err: fn e => Unit): Unit =
+on_err (f: fn Unit => a can Throw e) (on_err: fn e => Unit): Unit =
     handler h for throw e -> on_err e
     f ()
     ()
 
 /// Apply the given function to the thrown value and re-throw it
-map_err (f: fn Unit => t can (Throw e1)) (f2: fn e1 => e2): t can (Throw e2) =
+map_err (f: fn Unit => t can Throw e1) (f2: fn e1 => e2): t can Throw e2 =
     handler h for throw e ->
         throw (f2 e)
     f ()
 
 /// Returns the error when thrown or fails if the operation finishes without throwing.
-unwrap_err (f: fn Unit => t can (Throw e)): e can Fail =
+unwrap_err (f: fn Unit => t can Throw e): e can Fail =
     handler h for throw e -> e
     f ()
     fail ()
