@@ -415,7 +415,7 @@ where
                 Type::tuple(mapvec(fields, |(_, field)| self.convert_type(field, None)))
             },
             TypeBody::Sum(variants) => {
-                let union = Type::union(mapvec(variants, |(_, fields)| {
+                let union = Type::union(mapvec(variants, |(_, _, fields)| {
                     Type::tuple(mapvec(fields, |(_, field)| self.convert_type(field, None)))
                 }));
                 // Then pack the result with a separate tag value.

@@ -40,7 +40,7 @@ t = 3 : I32
 // 
 // type List a =
 //     | Nil
-//     | Cons (a (ref (List a)))
+//     | Cons a (ref (List a))
 // 
 // type Shape =
 //     | Circle (radius: U32)

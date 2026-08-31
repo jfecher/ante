@@ -17,7 +17,7 @@ use crate::{
     name_resolution::Origin,
     parser::{
         cst::{self, Literal, Name, Path, TopLevelItem},
-        ids::{ExprId, NameId, PathId, PatternId, TopLevelId, TopLevelName},
+        ids::{ExprId, NameId, PathId, PatternId, TopLevelName},
     },
     type_inference::{
         TypeBody, TypeChecker,
@@ -542,17 +542,14 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
 
         match self.classify_type_origin(origin, generics) {
             Some(UserDefinedTypeKind::Sum(variants)) => {
-                let enum_variants =
-                    (!rest_variant_indices.is_empty()).then(|| self.enum_variant_names(origin)).flatten();
+                let Origin::TopLevelDefinition(enum_name) = origin else { unreachable!() };
 
-                let cases = mapvec(variants.iter().enumerate(), |(idx, (_name, fields))| {
+                let cases = mapvec(variants.iter().enumerate(), |(idx, (name_id, _name, fields))| {
                     let constructor = Constructor::Variant(typ.clone(), idx);
                     let arg_types = fields.iter().map(|(_, t)| t);
                     let args = self.fresh_match_variables(arg_types, location.clone());
                     let whole_value = rest_variant_indices.contains(&idx).then(|| {
-                        let (enum_item, names) =
-                            enum_variants.as_ref().expect("variant_index came from this same enum");
-                        let variant_name = TopLevelName::new(*enum_item, names[idx]);
+                        let variant_name = TopLevelName::new(enum_name.top_level_item, *name_id);
                         let variant_type = typ.retarget_user_defined(variant_name);
                         self.fresh_match_variables(std::iter::once(&variant_type), location.clone())[0]
                     });
@@ -587,19 +584,10 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
         }
     }
 
-    fn fresh_match_variables<'a>(&mut self, variable_types: impl ExactSizeIterator<Item = &'a Type>, location: Location) -> Vec<PathId> {
+    fn fresh_match_variables<'a>(
+        &mut self, variable_types: impl ExactSizeIterator<Item = &'a Type>, location: Location,
+    ) -> Vec<PathId> {
         mapvec(variable_types, |typ| self.checker.fresh_variable("match_var", typ.clone(), location.clone()).0)
-    }
-
-    /// Given the `Origin` of an enum, return its defining item together with the names of each
-    /// of its variants in declaration order - i.e. enough to address any one variant's own type
-    /// (e.g. `Shape.Circle`) by index.
-    fn enum_variant_names(&self, origin: Origin) -> Option<(TopLevelId, Vec<NameId>)> {
-        let Origin::TopLevelDefinition(enum_name) = origin else { return None };
-        let (item, _) = GetItem(enum_name.top_level_item).get(self.checker.compiler);
-        let cst::TopLevelItemKind::TypeDefinition(def) = &item.kind else { return None };
-        let cst::TypeDefinitionBody::Enum(variants) = &def.body else { return None };
-        Some((enum_name.top_level_item, variants.iter().map(|(name, _)| *name).collect()))
     }
 
     /// Compiles the cases and fallback cases for integer and range patterns.
@@ -840,7 +828,7 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
         match self.classify_type(type_matched_on) {
             Some(UserDefinedTypeKind::Sum(variants)) => {
                 if !variants.is_empty() {
-                    let cases: BTreeSet<_> = variants.into_iter().map(|(name, _)| name).collect();
+                    let cases: BTreeSet<_> = variants.into_iter().map(|(_, name, _)| name).collect();
                     self.checker.compiler.accumulate(Diagnostic::MissingCases { cases, location });
                 }
                 return;
@@ -988,7 +976,7 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
                 Origin::TopLevelDefinition(top_level_name) => {
                     match top_level_name.top_level_item.type_body(None, self.checker.compiler, None) {
                         TypeBody::Product { type_name, .. } => type_name,
-                        TypeBody::Sum(variants) => variants[variant_index].0.clone(),
+                        TypeBody::Sum(variants) => variants[variant_index].1.clone(),
                     }
                 },
                 Origin::Local(_) | Origin::TypeResolution => unreachable!(),
@@ -1017,7 +1005,7 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
                     vec![(Constructor::Variant(typ.clone(), 0), fields.len())]
                 },
                 Some(UserDefinedTypeKind::Sum(variants)) => {
-                    mapvec(variants.into_iter().enumerate(), |(i, (_, fields))| {
+                    mapvec(variants.into_iter().enumerate(), |(i, (_, _, fields))| {
                         (Constructor::Variant(typ.clone(), i), fields.len())
                     })
                 },
@@ -1089,5 +1077,5 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
 enum UserDefinedTypeKind {
     NotUserDefined(Type),
     Product(Vec<Type>),
-    Sum(Vec<(Name, Vec<(Name, Type)>)>),
+    Sum(Vec<(NameId, Name, Vec<(Name, Type)>)>),
 }

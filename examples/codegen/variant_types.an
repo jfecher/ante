@@ -28,7 +28,8 @@ main () =
 
 // args: --delete-binary --no-color
 // expected stdout:
-// 9, 16
-// 9, 16
+// 12, 16
+// 12, 16
 // 5
 // 75
+

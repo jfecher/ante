@@ -17,7 +17,7 @@ use crate::{
 #[derive(Debug, PartialEq, Eq)]
 pub enum TypeBody {
     Product { type_name: Name, fields: Vec<(Name, Type)> },
-    Sum(Vec<(Name, Vec<(Name, Type)>)>),
+    Sum(Vec<(NameId, Name, Vec<(Name, Type)>)>),
 }
 
 impl TopLevelId {
@@ -79,7 +79,7 @@ fn type_body_from_item(
                 variant_name_and_fields(*name, cst_fields, arguments, result, next_id.as_deref_mut(), item_context)
             });
             if variants.len() == 1 {
-                let (type_name, fields) = variants.pop().unwrap();
+                let (_name_id, type_name, fields) = variants.pop().unwrap();
                 TypeBody::Product { type_name, fields }
             } else {
                 TypeBody::Sum(variants)
@@ -119,7 +119,7 @@ impl TopLevelName {
             .expect("TopLevelName::type_body: local_name_id names neither the type nor one of its variants");
 
         let result = TypeCheck(self.top_level_item).get(compiler);
-        let (type_name, fields) = variant_name_and_fields(
+        let (_name_id, type_name, fields) = variant_name_and_fields(
             self.local_name_id,
             cst_fields,
             arguments,
@@ -134,7 +134,7 @@ impl TopLevelName {
 fn variant_name_and_fields(
     name: NameId, cst_fields: &[(Option<NameId>, cst::Type)], arguments: Option<&[Type]>, result: &TypeCheckResult,
     next_id: Option<&mut u32>, item_context: &DesugarContext,
-) -> (Name, Vec<(Name, Type)>) {
+) -> (NameId, Name, Vec<(Name, Type)>) {
     let constructor_type = result.get_generalized(name);
     let constructor = apply_type_constructor(&constructor_type, arguments, result, next_id);
     let field_types = constructor.function_parameter_types();
@@ -142,7 +142,7 @@ fn variant_name_and_fields(
         let field_name = item_context.field_name_or_index(cst_fields.get(i).and_then(|(n, _)| *n), i);
         (field_name, field_type)
     });
-    (item_context[name].clone(), fields)
+    (name, item_context[name].clone(), fields)
 }
 
 /// Try to apply the given type to the given type arguments. Note that this assumes there are no
