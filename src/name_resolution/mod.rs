@@ -484,9 +484,14 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                     self.link_existing_pattern(*arg);
                 }
             },
-            Pattern::ConstructorRest(constructor, name) => {
+            Pattern::ConstructorRest(constructor, args, name) => {
                 self.link(*constructor, false, false);
-                self.link_existing_global(*name);
+                for arg in args {
+                    self.link_existing_pattern(*arg);
+                }
+                if let Some(name) = name {
+                    self.link_existing_global(*name);
+                }
             },
             Pattern::TypeAnnotation(pattern, typ) => {
                 self.link_existing_pattern(*pattern);
@@ -568,9 +573,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                         }
                     },
                     // Variant types are structs and are thus valid as types or values
-                    TopLevelItemKind::TypeDefinition(def) if matches!(&def.body, TypeDefinitionBody::Enum(_)) => {
-                        true
-                    },
+                    TopLevelItemKind::TypeDefinition(def) if matches!(&def.body, TypeDefinitionBody::Enum(_)) => true,
                     // Ability methods are only values
                     TopLevelItemKind::TypeDefinition(_) => !is_type,
                     TopLevelItemKind::TraitDefinition(_) | TopLevelItemKind::EffectDefinition(_) => {
@@ -831,9 +834,20 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                     );
                 }
             },
-            Pattern::ConstructorRest(function, name) => {
+            Pattern::ConstructorRest(function, args, name) => {
                 self.link(*function, allow_type_based_resolution, false);
-                self.declare_name(*name, check_unused);
+                for arg in args {
+                    self.declare_names_in_pattern(
+                        *arg,
+                        declare_type_vars,
+                        allow_type_based_resolution,
+                        check_unused,
+                        refutable,
+                    );
+                }
+                if let Some(name) = name {
+                    self.declare_name(*name, check_unused);
+                }
             },
             Pattern::Error => (),
             Pattern::TypeAnnotation(pattern, typ) => {

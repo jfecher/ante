@@ -19,6 +19,16 @@ good2 (shape: Shape): U32 =
 // Constructing without `with` constructs the union rather than the variant struct
 bad (): U32 = circle_radius (Shape.Circle 5)
 
+good3 (shape: Shape): U32 =
+    match shape
+    | Circle .. -> 0
+    | Rectangle length .. -> length
+
+good4 (shape: Shape): U32 =
+    match shape
+    | Circle .. -> 0
+    | Rectangle length ..r -> length + r.1
+
 main () = ()
 
 // args: --no-color

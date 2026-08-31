@@ -84,10 +84,12 @@ fn exportable_pattern_name(pattern_id: PatternId, ctx: &TopLevelContext) -> Opti
         Pattern::MethodName { type_name, item_name } => {
             Some(format!("{}.{}", ctx.get_name(*type_name), to_export_syntax(ctx.get_name(*item_name))))
         },
-        Pattern::Alias(name, _) | Pattern::ConstructorRest(_, name) => {
-            Some(to_export_syntax(ctx.get_name(*name)).into_owned())
-        },
-        Pattern::Or(_) | Pattern::Literal(_) | Pattern::Constructor(..) | Pattern::Error => None,
+        Pattern::Alias(name, _) => Some(to_export_syntax(ctx.get_name(*name)).into_owned()),
+        Pattern::Or(_)
+        | Pattern::Literal(_)
+        | Pattern::Constructor(..)
+        | Pattern::ConstructorRest(..)
+        | Pattern::Error => None,
     }
 }
 

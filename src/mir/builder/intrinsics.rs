@@ -2,8 +2,8 @@ use inc_complete::DbGet;
 
 use crate::{
     incremental::{GetItem, GetItemRaw, GetTypeBody, TypeCheck},
-    mir::{builder::Context, AtomicOrdering, AtomicRmwOp, Instruction, Value},
-    name_resolution::{builtin::Builtin, Origin},
+    mir::{AtomicOrdering, AtomicRmwOp, Instruction, Value, builder::Context},
+    name_resolution::{Origin, builtin::Builtin},
     parser::{
         cst::{self, Argument},
         ids::ExprId,

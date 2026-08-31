@@ -516,7 +516,14 @@ impl<'local, 'db> Declarer<'local, 'db> {
                     self.declare_names_in_pattern(*arg, id, context);
                 }
             },
-            Pattern::ConstructorRest(_, name) => self.declare_single(*name, id, context),
+            Pattern::ConstructorRest(_, args, name) => {
+                for arg in args {
+                    self.declare_names_in_pattern(*arg, id, context);
+                }
+                if let Some(name) = name {
+                    self.declare_single(*name, id, context);
+                }
+            },
             Pattern::TypeAnnotation(pattern, _) => {
                 self.declare_names_in_pattern(*pattern, id, context);
             },

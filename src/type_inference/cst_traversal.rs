@@ -258,11 +258,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     self.check_pattern_rec(*arg, &expected_arg_type.typ, irrefutable);
                 }
             },
-            Pattern::ConstructorRest(path, name) => {
+            Pattern::ConstructorRest(path, args, name) => {
                 let actual = self.infer_path(*path, expected);
-                let return_type = match actual.follow(&self.bindings) {
-                    Type::Function(f) => f.return_type.clone(),
-                    _ => actual.clone(),
+                let (parameters, return_type) = match actual.follow(&self.bindings) {
+                    Type::Function(f) => (f.parameters.clone(), f.return_type.clone()),
+                    other => (Vec::new(), other.clone()),
                 };
                 self.unify(&return_type, expected, TypeErrorKind::Pattern, *path);
 
@@ -271,14 +271,20 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     self.check_constructor_exhaustive(*path, &location);
                 }
 
-                let mut origin = self.path_origin(*path);
-                if let Some(Origin::TypeResolution) = origin {
-                    origin = self.current_extended_context().path_origin(*path);
+                for (parameter, arg) in parameters.iter().zip(args) {
+                    self.check_pattern_rec(*arg, &parameter.typ, irrefutable);
                 }
-                if let Some(Origin::TopLevelDefinition(variant_name)) = origin {
-                    // TODO: A bit of a hack, we should change `return_type` to be the variant type to begin with
-                    let variant_type = return_type.follow(&self.bindings).retarget_user_defined(variant_name);
-                    self.check_name(*name, &variant_type);
+
+                if let Some(name) = name {
+                    let mut origin = self.path_origin(*path);
+                    if let Some(Origin::TypeResolution) = origin {
+                        origin = self.current_extended_context().path_origin(*path);
+                    }
+                    if let Some(Origin::TopLevelDefinition(variant_name)) = origin {
+                        // TODO: A bit of a hack, we should change `return_type` to be the variant type to begin with
+                        let variant_type = return_type.follow(&self.bindings).retarget_user_defined(variant_name);
+                        self.check_name(*name, &variant_type);
+                    }
                 }
             },
             Pattern::TypeAnnotation(inner_pattern, typ) => {
@@ -320,17 +326,26 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
             Pattern::Constructor(_, args) => {
                 // Prefer real struct field names; enum payloads and tuples fall back to indices.
-                let names_by_index = self.field_names_by_index(id);
-                for (i, arg) in args.iter().enumerate() {
-                    let field = names_by_index.get(&(i as u32)).cloned().unwrap_or_else(|| i.to_string());
-                    let child = super::affine::MovePath::field(place.clone(), field);
-                    self.assign_binding_places(*arg, child);
+                self.assign_binding_places_for_args(id, &place, args);
+            },
+            Pattern::ConstructorRest(_, args, name) => {
+                self.assign_binding_places_for_args(id, &place, args);
+                if let Some(name) = name {
+                    self.binding_places.insert(*name, place);
                 }
             },
-            Pattern::ConstructorRest(_, name) => {
-                self.binding_places.insert(*name, place);
-            },
             Pattern::Literal(_) | Pattern::Error => (),
+        }
+    }
+
+    /// Assigns each argument in `args` its MovePath as a field of `place`
+    fn assign_binding_places_for_args(&mut self, id: PatternId, place: &MovePath, args: &[PatternId]) {
+        // Prefer real struct field names; enum payloads and tuples fall back to indices.
+        let names_by_index = self.field_names_by_index(id);
+        for (i, arg) in args.iter().enumerate() {
+            let field = names_by_index.get(&(i as u32)).cloned().unwrap_or_else(|| i.to_string());
+            let child = MovePath::field(place.clone(), field);
+            self.assign_binding_places(*arg, child);
         }
     }
 
@@ -1301,8 +1316,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Pattern::Constructor(_, patterns) => {
                 patterns.iter().for_each(|pattern| self.record_mutable_pattern(*pattern))
             },
-            Pattern::ConstructorRest(_, name) => {
-                self.mutable_definitions.insert(*name);
+            Pattern::ConstructorRest(_, args, name) => {
+                args.iter().for_each(|pattern| self.record_mutable_pattern(*pattern));
+                if let Some(name) = name {
+                    self.mutable_definitions.insert(*name);
+                }
             },
             // This may be reachable on a parse error but these should only be for
             // top-level methods which should never be mutable

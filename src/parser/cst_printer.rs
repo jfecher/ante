@@ -1125,6 +1125,17 @@ impl<'a> CstDisplay<'a> {
         Ok(())
     }
 
+    fn fmt_constructor_path_and_args(
+        &mut self, path: PathId, args: &[PatternId], context: &impl IdStore, f: &mut Formatter,
+    ) -> std::fmt::Result {
+        self.fmt_path(path, context, f)?;
+        for arg in args {
+            write!(f, " ")?;
+            self.fmt_pattern_atom(*arg, context, f)?;
+        }
+        Ok(())
+    }
+
     fn fmt_pattern_atom(&mut self, id: PatternId, context: &impl IdStore, f: &mut Formatter) -> std::fmt::Result {
         if self.is_pattern_atom(id, context) {
             self.fmt_pattern(id, context, f)
@@ -1139,18 +1150,14 @@ impl<'a> CstDisplay<'a> {
         match context.get_pattern(id) {
             Pattern::Variable(name) => self.fmt_name(*name, context, f),
             Pattern::Literal(literal) => self.fmt_literal(literal, f),
-            Pattern::Constructor(path, args) => {
-                self.fmt_path(*path, context, f)?;
-                for arg in args {
-                    write!(f, " ")?;
-                    self.fmt_pattern_atom(*arg, context, f)?;
+            Pattern::Constructor(path, args) => self.fmt_constructor_path_and_args(*path, args, context, f),
+            Pattern::ConstructorRest(path, args, name) => {
+                self.fmt_constructor_path_and_args(*path, args, context, f)?;
+                write!(f, " ..")?;
+                if let Some(name) = name {
+                    self.fmt_name(*name, context, f)?;
                 }
                 Ok(())
-            },
-            Pattern::ConstructorRest(path, name) => {
-                self.fmt_path(*path, context, f)?;
-                write!(f, " ..")?;
-                self.fmt_name(*name, context, f)
             },
             Pattern::Error => write!(f, "(error)"),
             Pattern::TypeAnnotation(pattern, typ) => {
@@ -1259,7 +1266,7 @@ impl<'a> CstDisplay<'a> {
         match context.get_pattern(pattern) {
             Error | Variable(_) | Literal(_) | MethodName { .. } => true,
             Constructor(_, args) => args.is_empty(),
-            ConstructorRest(_, _) => false,
+            ConstructorRest(_, _, _) => false,
             TypeAnnotation(_, _) => false,
             Or(_) => false,
             Alias(_, _) => false,

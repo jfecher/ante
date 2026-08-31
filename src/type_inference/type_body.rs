@@ -87,7 +87,9 @@ fn type_body_from_item(
         },
         // Type/effect aliases are expanded away wherever they are referenced in name resolution, so `type_body`
         // should never be queried for one.
-        cst::TypeDefinitionBody::Alias(_) | cst::TypeDefinitionBody::EffectAlias(_) | cst::TypeDefinitionBody::Error => {
+        cst::TypeDefinitionBody::Alias(_)
+        | cst::TypeDefinitionBody::EffectAlias(_)
+        | cst::TypeDefinitionBody::Error => {
             let type_name = item_context[type_definition.name].clone();
             TypeBody::Product { type_name, fields: Vec::new() }
         },

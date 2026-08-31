@@ -11,6 +11,21 @@ area_by_rest (shape: Shape): U32 =
     | Circle ..c -> 3 * c.radius * c.radius
     | Square ..s -> s.length * s.length
 
+is_circle (shape: Shape): Bool =
+    match shape
+    | Circle .. -> true
+    | Square .. -> false
+
+type Pair = | Two (a: U32) (b: U32)
+
+first (p: Pair): U32 =
+    match p
+    | Two a .. -> a
+
+first_and_whole (p: Pair): U32 =
+    match p
+    | Two a ..w -> a + w.b
+
 main () =
     print (area_by_field (Circle 2))
     print ", "
@@ -26,10 +41,19 @@ main () =
     // Going from Shape.Circle back to Shape currently requires an explicit reconstruction
     println (area_by_field (Circle c.radius))
 
+    println (is_circle (Circle 2))
+    println (is_circle (Square 4))
+    println (first (Two 3 4))
+    println (first_and_whole (Two 3 4))
+
 // args: --delete-binary --no-color
 // expected stdout:
 // 12, 16
 // 12, 16
 // 5
 // 75
+// true
+// false
+// 3
+// 7
 

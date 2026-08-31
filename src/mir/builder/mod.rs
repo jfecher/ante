@@ -13,7 +13,8 @@ use crate::{
     iterator_extensions::mapvec,
     lexer::token::{FloatKind, Integer, IntegerKind},
     mir::{
-        next_definition_id, Block, BlockId, Definition, DefinitionId, FloatConstant, FunctionType, Generic, Instruction, IntConstant, Mir, PrimitiveType, TerminatorInstruction, Type, Value
+        Block, BlockId, Definition, DefinitionId, FloatConstant, FunctionType, Generic, Instruction, IntConstant, Mir,
+        PrimitiveType, TerminatorInstruction, Type, Value, next_definition_id,
     },
     name_resolution::Origin,
     parser::{
@@ -1206,8 +1207,14 @@ where
             cst::Pattern::TypeAnnotation(pattern, _) => self.try_find_name(*pattern),
             cst::Pattern::Variable(name)
             | cst::Pattern::MethodName { item_name: name, .. }
-            | cst::Pattern::Alias(name, _)
-            | cst::Pattern::ConstructorRest(_, name) => Some((self.context()[*name].clone(), *name)),
+            | cst::Pattern::Alias(name, _) => Some((self.context()[*name].clone(), *name)),
+            cst::Pattern::ConstructorRest(_, args, name) => {
+                if args.is_empty() {
+                    name.map(|name| (self.context()[name].clone(), name))
+                } else {
+                    None
+                }
+            },
             cst::Pattern::Or(alts) => alts.first().and_then(|alt| self.try_find_name(*alt)),
         }
     }
@@ -1224,7 +1231,14 @@ where
                     self.collect_pattern_names(*argument, out);
                 }
             },
-            cst::Pattern::ConstructorRest(_, name) => out.push(*name),
+            cst::Pattern::ConstructorRest(_, args, name) => {
+                for arg in args {
+                    self.collect_pattern_names(*arg, out);
+                }
+                if let Some(name) = name {
+                    out.push(*name);
+                }
+            },
             // Each alternative of a valid OR-pattern binds the same names, so we only
             // need to inspect the first alternative.
             cst::Pattern::Or(alts) => {
@@ -2194,6 +2208,25 @@ where
         self.push_instruction(Instruction::Extern(extern_.name.clone()), typ)
     }
 
+    /// Deconstructs `value` as a tuple, binding each element to the corresponding pattern in `args`.
+    /// Does nothing if `args` is empty, since there is then nothing to deconstruct.
+    fn deconstruct_tuple_pattern_args(&mut self, value: Value, args: &[PatternId]) {
+        if args.is_empty() {
+            return;
+        }
+        match self.type_of_value(&value) {
+            Type::Union(_variants) => todo!("Deconstruct union"),
+            Type::Tuple(fields) => {
+                for (i, (field_type, argument)) in fields.iter().zip(args).enumerate() {
+                    let instruction = Instruction::IndexTuple { tuple: value, index: i as u32 };
+                    let field = self.push_instruction(instruction, field_type.clone());
+                    self.bind_pattern(*argument, field);
+                }
+            },
+            other => unreachable!("Expected tuple or union when deconstructing pattern, found {other}"),
+        }
+    }
+
     /// Bind the given value to the given pattern
     fn bind_pattern(&mut self, pattern: PatternId, value: Value) {
         match &self.context()[pattern] {
@@ -2208,23 +2241,17 @@ where
             cst::Pattern::Constructor(_type, arguments) => {
                 let pattern_tc_type = self.types.result.maps.pattern_types[&pattern].clone();
                 let value = self.deref_if_shared(value, &pattern_tc_type);
-                match self.type_of_value(&value) {
-                    Type::Union(_variants) => todo!("Deconstruct union"),
-                    Type::Tuple(fields) => {
-                        for (i, (field_type, argument)) in fields.iter().zip(arguments).enumerate() {
-                            let instruction = Instruction::IndexTuple { tuple: value, index: i as u32 };
-                            let field = self.push_instruction(instruction, field_type.clone());
-                            self.bind_pattern(*argument, field);
-                        }
-                    },
-                    other => unreachable!("Expected tuple or union when deconstructing pattern, found {other}"),
-                }
+                self.deconstruct_tuple_pattern_args(value, arguments);
             },
-            cst::Pattern::ConstructorRest(_path, name) => {
+            cst::Pattern::ConstructorRest(_path, args, name) => {
                 let pattern_tc_type = self.types.result.maps.pattern_types[&pattern].clone();
                 let value = self.deref_if_shared(value, &pattern_tc_type);
-                if let Some(origin) = self.context().name_origin(*name) {
-                    self.define_variable(origin, value);
+                self.deconstruct_tuple_pattern_args(value, args);
+
+                if let Some(name) = name {
+                    if let Some(origin) = self.context().name_origin(*name) {
+                        self.define_variable(origin, value);
+                    }
                 }
             },
             cst::Pattern::TypeAnnotation(pattern, _) => self.bind_pattern(*pattern, value),

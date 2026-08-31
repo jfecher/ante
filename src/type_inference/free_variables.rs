@@ -199,8 +199,13 @@ impl FreeVars {
                     self.declare_pattern(*field, checker);
                 }
             },
-            cst::Pattern::ConstructorRest(_, name) => {
-                self.defined_in_fn.insert(*name);
+            cst::Pattern::ConstructorRest(_, args, name) => {
+                for arg in args {
+                    self.declare_pattern(*arg, checker);
+                }
+                if let Some(name) = name {
+                    self.defined_in_fn.insert(*name);
+                }
             },
             cst::Pattern::TypeAnnotation(pattern, _) => self.declare_pattern(*pattern, checker),
             cst::Pattern::MethodName { type_name: _, item_name } => {

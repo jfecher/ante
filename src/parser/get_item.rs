@@ -400,7 +400,9 @@ fn pattern_to_expr(pattern: PatternId, context: &mut DesugarContext) -> ExprId {
     let location = context.pattern_location(pattern).clone();
 
     match context[pattern].clone() {
-        cst::Pattern::Variable(name) | cst::Pattern::Alias(name, _) | cst::Pattern::ConstructorRest(_, name) => {
+        cst::Pattern::Variable(name)
+        | cst::Pattern::Alias(name, _)
+        | cst::Pattern::ConstructorRest(_, _, Some(name)) => {
             let name_string = context[name].clone();
             let path = cst::Path::ident(name_string.to_string(), location.clone());
             let path = context.push_path(path, location.clone());
@@ -416,9 +418,10 @@ fn pattern_to_expr(pattern: PatternId, context: &mut DesugarContext) -> ExprId {
             let arguments = args.into_iter().map(|arg| Argument::explicit(pattern_to_expr(arg, context))).collect();
             context.push_expr(cst::Expr::Call(cst::Call { function, arguments }), location)
         },
-        cst::Pattern::Or(_) | cst::Pattern::MethodName { .. } | cst::Pattern::Error => {
-            context.push_expr(cst::Expr::Error, location)
-        },
+        cst::Pattern::Or(_)
+        | cst::Pattern::MethodName { .. }
+        | cst::Pattern::Error
+        | cst::Pattern::ConstructorRest(_, _, None) => context.push_expr(cst::Expr::Error, location),
     }
 }
 

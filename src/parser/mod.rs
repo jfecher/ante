@@ -1650,18 +1650,21 @@ impl<'tokens> Parser<'tokens> {
         }
     }
 
-    /// constructor_pattern: type_path function_parameter_pattern*
+    /// constructor_pattern: type_path function_parameter_pattern* ('..' ident?)?
     ///                    | function_parameter_pattern
-    ///                    | type_path '..' ident
     fn parse_constructor_pattern_inner(&mut self) -> Result<Pattern> {
         match self.current_token() {
             Token::TypeName(_) => {
                 let path = self.parse_type_path_id()?;
-                if self.accept(Token::Range) {
-                    let name = self.parse_ident_id()?;
-                    return Ok(Pattern::ConstructorRest(path, name));
-                }
                 let args = self.many0(Self::parse_function_parameter_pattern);
+                if self.accept(Token::Range) {
+                    let name = match self.current_token() {
+                        Token::Identifier(_) => Some(self.parse_ident_id()?),
+                        Token::ParenthesisLeft if self.at_operator_reference() => Some(self.parse_ident_id()?),
+                        _ => None,
+                    };
+                    return Ok(Pattern::ConstructorRest(path, args, name));
+                }
                 Ok(Pattern::Constructor(path, args))
             },
             _ => self.parse_function_parameter_pattern_inner(),

@@ -80,7 +80,7 @@ enum Pattern {
     Constructor(Constructor, Vec<Pattern>),
 
     /// `Circle ..c` binds the entire matched value
-    ConstructorRest(Constructor, NameId),
+    ConstructorRest(Constructor, Vec<Pattern>, Option<NameId>),
 
     /// A pattern binding a variable such as `a` or `_`
     Variable(NameId),
@@ -206,9 +206,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 let arguments = opt_mapvec(arguments, |argument| self.convert_pattern(*argument))?;
                 Pattern::Constructor(constructor, arguments)
             },
-            cst::Pattern::ConstructorRest(path_id, name) => {
+            cst::Pattern::ConstructorRest(path_id, args, name) => {
                 let constructor = self.path_to_constructor(*path_id)?;
-                Pattern::ConstructorRest(constructor, *name)
+                let arguments = opt_mapvec(args, |argument| self.convert_pattern(*argument))?;
+                Pattern::ConstructorRest(constructor, arguments, *name)
             },
             cst::Pattern::TypeAnnotation(pattern, _) => return self.convert_pattern(*pattern),
             cst::Pattern::MethodName { .. } => {
@@ -535,7 +536,7 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
             .iter()
             .filter_map(|row| row.columns.iter().find(|c| c.variable_to_match == branch_var))
             .filter_map(|col| match &col.pattern {
-                Pattern::ConstructorRest(constructor, _) => Some(constructor.variant_index()),
+                Pattern::ConstructorRest(constructor, _, _) => Some(constructor.variant_index()),
                 _ => None,
             })
             .collect();
@@ -673,15 +674,18 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
                 let (idx, extra_columns) = match col.pattern {
                     Pattern::Constructor(constructor, args) => {
                         let idx = constructor.variant_index();
-                        let columns: Vec<Column> =
-                            cases[idx].1.iter().zip(args).map(|(var, pat)| Column::new(*var, pat)).collect();
+                        let columns = mapvec(cases[idx].1.iter().zip(args), |(var, pat)| Column::new(*var, pat));
                         (idx, columns)
                     },
-                    Pattern::ConstructorRest(constructor, name) => {
+                    Pattern::ConstructorRest(constructor, args, name) => {
                         let idx = constructor.variant_index();
-                        let columns =
-                            cases[idx].2.map(|whole_var| Column::new(whole_var, Pattern::Variable(name))).into_iter();
-                        (idx, columns.collect())
+                        let mut columns = mapvec(cases[idx].1.iter().zip(args), |(var, pat)| Column::new(*var, pat));
+                        if let Some(name) = name
+                            && let Some(whole_var) = cases[idx].2
+                        {
+                            columns.push(Column::new(whole_var, Pattern::Variable(name)));
+                        }
+                        (idx, columns)
                     },
                     // Type-checking should reject any other pattern shape at this position.
                     _ => continue,

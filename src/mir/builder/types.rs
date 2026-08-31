@@ -4,7 +4,7 @@ use inc_complete::DbGet;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
-    incremental::{GetTypeBody, GetItem, GetItemRaw, TypeCheck},
+    incremental::{GetItem, GetItemRaw, GetTypeBody, TypeCheck},
     iterator_extensions::mapvec,
     mir::{FunctionType, Type, builder::Context},
     name_resolution::{Origin, builtin::Builtin},
