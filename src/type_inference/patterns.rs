@@ -17,7 +17,7 @@ use crate::{
     name_resolution::Origin,
     parser::{
         cst::{self, Literal, Name, Path, TopLevelItem},
-        ids::{ExprId, NameId, PathId, PatternId, TopLevelName},
+        ids::{ExprId, NameId, PathId, PatternId, TopLevelId, TopLevelName},
     },
     type_inference::{
         TypeBody, TypeChecker,
@@ -58,12 +58,16 @@ pub enum DecisionTree {
 pub struct Case {
     pub constructor: Constructor,
     pub arguments: Vec<PathId>,
+    /// Set only for `Circle ..c` patterns
+    pub whole_value: Option<PathId>,
     pub body: DecisionTree,
 }
 
 impl Case {
-    pub fn new(constructor: Constructor, arguments: Vec<PathId>, body: DecisionTree) -> Self {
-        Self { constructor, arguments, body }
+    pub fn new(
+        constructor: Constructor, arguments: Vec<PathId>, whole_value: Option<PathId>, body: DecisionTree,
+    ) -> Self {
+        Self { constructor, arguments, whole_value, body }
     }
 }
 
@@ -74,6 +78,9 @@ impl Case {
 enum Pattern {
     /// A pattern checking for a tag and possibly binding variables such as `Some(42)`
     Constructor(Constructor, Vec<Pattern>),
+
+    /// `Circle ..c` binds the entire matched value
+    ConstructorRest(Constructor, NameId),
 
     /// A pattern binding a variable such as `a` or `_`
     Variable(NameId),
@@ -199,6 +206,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 let arguments = opt_mapvec(arguments, |argument| self.convert_pattern(*argument))?;
                 Pattern::Constructor(constructor, arguments)
             },
+            cst::Pattern::ConstructorRest(path_id, name) => {
+                let constructor = self.path_to_constructor(*path_id)?;
+                Pattern::ConstructorRest(constructor, *name)
+            },
             cst::Pattern::TypeAnnotation(pattern, _) => return self.convert_pattern(*pattern),
             cst::Pattern::MethodName { .. } => {
                 let location = self.current_context().pattern_location(pattern).clone();
@@ -281,7 +292,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// - `type_name` is local to `item` and is included as part of the error message.
     /// - `path` is local to the match and is used for its location.
     fn issue_constructor_expected_found_type_error(
-        &self, item: &TopLevelItem, variants: &[(NameId, Vec<cst::Type>)], type_name: NameId, path: PathId,
+        &self, item: &TopLevelItem, variants: &[(NameId, Vec<(Option<NameId>, cst::Type)>)], type_name: NameId,
+        path: PathId,
     ) {
         // We don't need the desugaring [GetItem] provides since we don't need the item itself, only the context
         let item_context = GetItemRaw(item.id).get(self.compiler).1;
@@ -466,14 +478,16 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
                 Ok(DecisionTree::Switch(branch_var, cases, Some(fallback)))
             },
             Type::Primitive(PrimitiveType::Bool) => {
-                let cases =
-                    vec![(Constructor::False, Vec::new(), Vec::new()), (Constructor::True, Vec::new(), Vec::new())];
+                let cases = vec![
+                    (Constructor::False, Vec::new(), None, Vec::new()),
+                    (Constructor::True, Vec::new(), None, Vec::new()),
+                ];
 
                 let (cases, fallback) = self.compile_constructor_cases(rows, branch_var, cases)?;
                 Ok(DecisionTree::Switch(branch_var, cases, fallback))
             },
             Type::Primitive(PrimitiveType::Unit) => {
-                let cases = vec![(Constructor::Unit, Vec::new(), Vec::new())];
+                let cases = vec![(Constructor::Unit, Vec::new(), None, Vec::new())];
                 let (cases, fallback) = self.compile_constructor_cases(rows, branch_var, cases)?;
                 Ok(DecisionTree::Switch(branch_var, cases, fallback))
             },
@@ -516,12 +530,33 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
         &mut self, rows: Vec<Row>, branch_var: PathId, typ: &Type, origin: Origin, generics: &[Type],
         location: Location,
     ) -> Result<DecisionTree, Diagnostic> {
+        // Which variant indices have a `Circle ..c`-style row
+        let rest_variant_indices: BTreeSet<usize> = rows
+            .iter()
+            .filter_map(|row| row.columns.iter().find(|c| c.variable_to_match == branch_var))
+            .filter_map(|col| match &col.pattern {
+                Pattern::ConstructorRest(constructor, _) => Some(constructor.variant_index()),
+                _ => None,
+            })
+            .collect();
+
         match self.classify_type_origin(origin, generics) {
             Some(UserDefinedTypeKind::Sum(variants)) => {
-                let cases = mapvec(variants.iter().enumerate(), |(idx, (_name, args))| {
+                let enum_variants =
+                    (!rest_variant_indices.is_empty()).then(|| self.enum_variant_names(origin)).flatten();
+
+                let cases = mapvec(variants.iter().enumerate(), |(idx, (_name, fields))| {
                     let constructor = Constructor::Variant(typ.clone(), idx);
-                    let args = self.fresh_match_variables(args, location.clone());
-                    (constructor, args, Vec::new())
+                    let arg_types = fields.iter().map(|(_, t)| t);
+                    let args = self.fresh_match_variables(arg_types, location.clone());
+                    let whole_value = rest_variant_indices.contains(&idx).then(|| {
+                        let (enum_item, names) =
+                            enum_variants.as_ref().expect("variant_index came from this same enum");
+                        let variant_name = TopLevelName::new(*enum_item, names[idx]);
+                        let variant_type = typ.retarget_user_defined(variant_name);
+                        self.fresh_match_variables(std::iter::once(&variant_type), location.clone())[0]
+                    });
+                    (constructor, args, whole_value, Vec::new())
                 });
 
                 let (cases, fallback) = self.compile_constructor_cases(rows, branch_var, cases)?;
@@ -529,8 +564,11 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
             },
             Some(UserDefinedTypeKind::Product(fields)) => {
                 let constructor = Constructor::struct_(typ.clone());
-                let field_variables = self.fresh_match_variables(&fields, location);
-                let cases = vec![(constructor, field_variables, Vec::new())];
+                let field_variables = self.fresh_match_variables(fields.iter(), location.clone());
+                let whole_value = rest_variant_indices
+                    .contains(&0)
+                    .then(|| self.fresh_match_variables(std::iter::once(typ), location.clone())[0]);
+                let cases = vec![(constructor, field_variables, whole_value, Vec::new())];
                 let (cases, fallback) = self.compile_constructor_cases(rows, branch_var, cases)?;
                 Ok(DecisionTree::Switch(branch_var, cases, fallback))
             },
@@ -549,8 +587,19 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
         }
     }
 
-    fn fresh_match_variables(&mut self, variable_types: &[Type], location: Location) -> Vec<PathId> {
+    fn fresh_match_variables<'a>(&mut self, variable_types: impl ExactSizeIterator<Item = &'a Type>, location: Location) -> Vec<PathId> {
         mapvec(variable_types, |typ| self.checker.fresh_variable("match_var", typ.clone(), location.clone()).0)
+    }
+
+    /// Given the `Origin` of an enum, return its defining item together with the names of each
+    /// of its variants in declaration order - i.e. enough to address any one variant's own type
+    /// (e.g. `Shape.Circle`) by index.
+    fn enum_variant_names(&self, origin: Origin) -> Option<(TopLevelId, Vec<NameId>)> {
+        let Origin::TopLevelDefinition(enum_name) = origin else { return None };
+        let (item, _) = GetItem(enum_name.top_level_item).get(self.checker.compiler);
+        let cst::TopLevelItemKind::TypeDefinition(def) = &item.kind else { return None };
+        let cst::TypeDefinitionBody::Enum(variants) = &def.body else { return None };
+        Some((enum_name.top_level_item, variants.iter().map(|(name, _)| *name).collect()))
     }
 
     /// Compiles the cases and fallback cases for integer and range patterns.
@@ -596,7 +645,7 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
 
         let cases = try_mapvec(raw_cases, |(cons, vars, rows)| {
             let rows = self.compile_rows(rows)?;
-            Ok::<_, Diagnostic>(Case::new(cons, vars, rows))
+            Ok::<_, Diagnostic>(Case::new(cons, vars, None, rows))
         })?;
 
         Ok((cases, Box::new(self.compile_rows(fallback_rows)?)))
@@ -628,32 +677,43 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
     /// separately; they don't need most of this work anyway.
     #[allow(clippy::type_complexity)]
     fn compile_constructor_cases(
-        &mut self, rows: Vec<Row>, branch_var: PathId, mut cases: Vec<(Constructor, Vec<PathId>, Vec<Row>)>,
+        &mut self, rows: Vec<Row>, branch_var: PathId,
+        mut cases: Vec<(Constructor, Vec<PathId>, Option<PathId>, Vec<Row>)>,
     ) -> Result<(Vec<Case>, Option<Box<DecisionTree>>), Diagnostic> {
         for mut row in rows {
             if let Some(col) = row.remove_column(branch_var) {
-                if let Pattern::Constructor(constructor, args) = col.pattern {
-                    let idx = constructor.variant_index();
-                    let mut cols = row.columns;
+                let (idx, extra_columns) = match col.pattern {
+                    Pattern::Constructor(constructor, args) => {
+                        let idx = constructor.variant_index();
+                        let columns: Vec<Column> =
+                            cases[idx].1.iter().zip(args).map(|(var, pat)| Column::new(*var, pat)).collect();
+                        (idx, columns)
+                    },
+                    Pattern::ConstructorRest(constructor, name) => {
+                        let idx = constructor.variant_index();
+                        let columns =
+                            cases[idx].2.map(|whole_var| Column::new(whole_var, Pattern::Variable(name))).into_iter();
+                        (idx, columns.collect())
+                    },
+                    // Type-checking should reject any other pattern shape at this position.
+                    _ => continue,
+                };
 
-                    for (var, pat) in cases[idx].1.iter().zip(args) {
-                        cols.push(Column::new(*var, pat));
-                    }
-
-                    let mut new_row = Row::new(cols, row.guard, row.body, row.location);
-                    new_row.original_body = row.original_body;
-                    cases[idx].2.push(new_row);
-                }
+                let mut cols = row.columns;
+                cols.extend(extra_columns);
+                let mut new_row = Row::new(cols, row.guard, row.body, row.location);
+                new_row.original_body = row.original_body;
+                cases[idx].3.push(new_row);
             } else {
-                for (_, _, rows) in &mut cases {
+                for (_, _, _, rows) in &mut cases {
                     rows.push(row.clone());
                 }
             }
         }
 
-        let cases = try_mapvec(cases, |(cons, vars, rows)| {
+        let cases = try_mapvec(cases, |(cons, vars, whole_value, rows)| {
             let rows = self.compile_rows(rows)?;
-            Ok::<_, Diagnostic>(Case::new(cons, vars, rows))
+            Ok::<_, Diagnostic>(Case::new(cons, vars, whole_value, rows))
         })?;
 
         Ok(Self::deduplicate_cases(cases))
@@ -1002,9 +1062,9 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
         match origin {
             Origin::TopLevelDefinition(top_level_name) => {
                 let compiler = self.checker.compiler;
-                let body = self.checker.with_next_id(|next_id| {
-                    top_level_name.top_level_item.type_body(Some(arguments), compiler, Some(next_id))
-                });
+                let body = self
+                    .checker
+                    .with_next_id(|next_id| top_level_name.type_body(Some(arguments), compiler, Some(next_id)));
                 match body {
                     TypeBody::Product { type_name: _, fields } => {
                         let fields = mapvec(fields, |(_name, typ)| typ);
@@ -1029,5 +1089,5 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
 enum UserDefinedTypeKind {
     NotUserDefined(Type),
     Product(Vec<Type>),
-    Sum(Vec<(Name, Vec<Type>)>),
+    Sum(Vec<(Name, Vec<(Name, Type)>)>),
 }

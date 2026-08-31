@@ -400,7 +400,7 @@ fn pattern_to_expr(pattern: PatternId, context: &mut DesugarContext) -> ExprId {
     let location = context.pattern_location(pattern).clone();
 
     match context[pattern].clone() {
-        cst::Pattern::Variable(name) | cst::Pattern::Alias(name, _) => {
+        cst::Pattern::Variable(name) | cst::Pattern::Alias(name, _) | cst::Pattern::ConstructorRest(_, name) => {
             let name_string = context[name].clone();
             let path = cst::Path::ident(name_string.to_string(), location.clone());
             let path = context.push_path(path, location.clone());

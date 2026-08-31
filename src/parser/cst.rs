@@ -91,6 +91,7 @@ impl PatternId {
             Pattern::Variable(name) => context.get_name(*name).to_string(),
             Pattern::Literal(_) => "#literal".to_string(),
             Pattern::Constructor(..) => "#constructor".to_string(),
+            Pattern::ConstructorRest(_, name) => context.get_name(*name).to_string(),
             Pattern::TypeAnnotation(pattern, _) => pattern.name(context),
             Pattern::MethodName { type_name, item_name } => {
                 format!("{}.{}", context.get_name(*type_name), context.get_name(*item_name))
@@ -261,7 +262,7 @@ pub struct TypeDefinition {
 pub enum TypeDefinitionBody {
     Error,
     Struct(Vec<(NameId, Type)>),
-    Enum(Vec<(NameId, Vec<Type>)>),
+    Enum(Vec<(NameId, Vec<(Option<NameId>, Type)>)>),
     Alias(Type),
     EffectAlias(Vec<Type>),
 }
@@ -269,6 +270,16 @@ pub enum TypeDefinitionBody {
 impl ErrorDefault for TypeDefinitionBody {
     fn error_default(_: Location) -> Self {
         Self::Error
+    }
+}
+
+impl TypeDefinitionBody {
+    /// If this is an enum body, returns the variant named `name` along with its index
+    pub fn find_variant(&self, name: NameId) -> Option<(usize, &(NameId, Vec<(Option<NameId>, Type)>))> {
+        match self {
+            TypeDefinitionBody::Enum(variants) => variants.iter().enumerate().find(|(_, (n, _))| *n == name),
+            _ => None,
+        }
     }
 }
 
@@ -571,7 +582,7 @@ pub struct Loop {
     pub body: ExprId,
 }
 
-/// A `loop` parameter is either a pattern over existing bindings in scope, 
+/// A `loop` parameter is either a pattern over existing bindings in scope,
 /// or a `pattern = expression` pair where the pattern is the loop helper function
 /// parameter and the expression is its initial value - e.g `(y = 3)`.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
@@ -587,6 +598,8 @@ pub enum Pattern {
     Variable(NameId),
     Literal(Literal),
     Constructor(PathId, Vec<PatternId>),
+    // E.g. `Circle ..c`
+    ConstructorRest(PathId, NameId),
     TypeAnnotation(PatternId, Type),
     MethodName { type_name: NameId, item_name: NameId },
     Or(Vec<PatternId>),

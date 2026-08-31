@@ -13,6 +13,7 @@ type Maybe a =
 
 type List a = | Nil | Cons a (ref List a)
 
+type Shape = | Circle (radius: U32) | Square (length: U32) | Rect (width: U32) (height: U32) String
 
 type UniquePtr a = ref a
 
@@ -40,6 +41,11 @@ t = 3 : I32
 // type List a =
 //     | Nil
 //     | Cons (a (ref (List a)))
+// 
+// type Shape =
+//     | Circle (radius: U32)
+//     | Square (length: U32)
+//     | Rect (width: U32) (height: U32) String
 // 
 // type UniquePtr a = ref a
 // 

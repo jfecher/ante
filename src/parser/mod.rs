@@ -116,6 +116,13 @@ impl<'tokens> Parser<'tokens> {
             && self.tokens.get(self.token_index + 2).map(|(t, _)| t) == Some(&Token::ParenthesisRight)
     }
 
+    /// True if positioned at `(` identifier `:`
+    fn at_parenthesized_name_colon(&self) -> bool {
+        *self.current_token() == Token::ParenthesisLeft
+            && matches!(self.peek_next_token(), Token::Identifier(_))
+            && self.tokens.get(self.token_index + 2).map(|(t, _)| t) == Some(&Token::Colon)
+    }
+
     fn current_token_span(&self) -> Span {
         self.tokens[self.token_index].1
     }
@@ -762,10 +769,7 @@ impl<'tokens> Parser<'tokens> {
                 let name = self.parse_ident_id()?;
                 Ok(GenericParam { name, kind: Some(KindAnnotation::Lifetime) })
             },
-            Token::ParenthesisLeft
-                if matches!(self.try_peek_next_token(), Some(Token::Identifier(_)))
-                    && self.tokens.get(self.token_index + 2).map(|(t, _)| t) == Some(&Token::Colon) =>
-            {
+            Token::ParenthesisLeft if self.at_parenthesized_name_colon() => {
                 self.advance();
                 let name = self.parse_ident_id()?;
                 self.expect(Token::Colon, "a `:` between the generic name and its kind")?;
@@ -827,7 +831,7 @@ impl<'tokens> Parser<'tokens> {
                     |this| {
                         this.expect(Token::Pipe, "`|`")?;
                         let variant_name = this.parse_type_name_id()?;
-                        let parameters = this.many0(Self::parse_type_arg);
+                        let parameters = this.parse_variant_fields();
                         Ok((variant_name, parameters))
                     },
                     Token::Newline,
@@ -864,7 +868,7 @@ impl<'tokens> Parser<'tokens> {
                 let variants = self.many0(|this| {
                     this.expect(Token::Pipe, "`|`")?;
                     let variant_name = this.parse_type_name_id()?;
-                    let parameters = this.many0(Self::parse_type); // TODO: arg type
+                    let parameters = this.parse_variant_fields();
                     Ok((variant_name, parameters))
                 });
                 Ok(TypeDefinitionBody::Enum(variants))
@@ -874,6 +878,23 @@ impl<'tokens> Parser<'tokens> {
                 Err(_) => self.expected("a field name or `|` to start this type body"),
             },
         }
+    }
+
+    /// variant_fields: (named_field | type_arg)*
+    fn parse_variant_fields(&mut self) -> Vec<(Option<NameId>, Type)> {
+        self.many0(|this| {
+            if this.at_parenthesized_name_colon() {
+                this.expect(Token::ParenthesisLeft, "a `(` to start the named field")?;
+                let field_name = this.parse_ident_id()?;
+                this.expect(Token::Colon, "a colon separating the field name from its type")?;
+                let field_type = this.parse_type()?;
+                this.expect(Token::ParenthesisRight, "a `)` to close the named field")?;
+                Ok((Some(field_name), field_type))
+            } else {
+                let typ = this.parse_type_arg()?;
+                Ok((None, typ))
+            }
+        })
     }
 
     /// Parse an indented block using the given failable parser.
@@ -1222,6 +1243,18 @@ impl<'tokens> Parser<'tokens> {
                 Ok(operator)
             },
             _ => self.expected("an identifier"),
+        }
+    }
+
+    /// Parses the field name after a `.`
+    fn parse_member_name(&mut self) -> Result<String> {
+        match self.current_token() {
+            Token::IntegerLiteral(value, _) => {
+                let magnitude = value.magnitude;
+                self.advance();
+                Ok(magnitude.to_string())
+            },
+            _ => self.parse_ident(),
         }
     }
 
@@ -1619,10 +1652,15 @@ impl<'tokens> Parser<'tokens> {
 
     /// constructor_pattern: type_path function_parameter_pattern*
     ///                    | function_parameter_pattern
+    ///                    | type_path '..' ident
     fn parse_constructor_pattern_inner(&mut self) -> Result<Pattern> {
         match self.current_token() {
             Token::TypeName(_) => {
                 let path = self.parse_type_path_id()?;
+                if self.accept(Token::Range) {
+                    let name = self.parse_ident_id()?;
+                    return Ok(Pattern::ConstructorRest(path, name));
+                }
                 let args = self.many0(Self::parse_function_parameter_pattern);
                 Ok(Pattern::Constructor(path, args))
             },
@@ -1878,7 +1916,7 @@ impl<'tokens> Parser<'tokens> {
                 Token::MemberAccess => {
                     result = self.with_expr_id_and_location(|this| {
                         this.advance();
-                        let member = this.parse_ident()?;
+                        let member = this.parse_member_name()?;
                         Ok(Expr::MemberAccess(MemberAccess { object: result, member }))
                     })?;
                 },

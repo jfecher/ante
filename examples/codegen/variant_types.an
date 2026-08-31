@@ -1,0 +1,34 @@
+type Shape = | Circle (radius: U32) | Square (length: U32)
+
+area_by_field (shape: Shape): U32 =
+    match shape
+    | Circle radius -> 3 * radius * radius
+    | Square length -> length * length
+
+// `..c` extracts the whole matched variant as its own struct type instead.
+area_by_rest (shape: Shape): U32 =
+    match shape
+    | Circle ..c -> 3 * c.radius * c.radius
+    | Square ..s -> s.length * s.length
+
+main () =
+    print (area_by_field (Circle 2))
+    print ", "
+    println (area_by_field (Square 4))
+    print (area_by_rest (Circle 2))
+    print ", "
+    println (area_by_rest (Square 4))
+
+    // Shape.Circle is a struct type, constructable like any other
+    c = Shape.Circle with radius = 5
+    println c.radius
+
+    // Going from Shape.Circle back to Shape currently requires an explicit reconstruction
+    println (area_by_field (Circle c.radius))
+
+// args: --delete-binary --no-color
+// expected stdout:
+// 9, 16
+// 9, 16
+// 5
+// 75

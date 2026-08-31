@@ -167,6 +167,7 @@ impl PatternId {
                     arg.for_each_variable(context, f);
                 }
             },
+            super::cst::Pattern::ConstructorRest(_, name) => f(*name),
             super::cst::Pattern::TypeAnnotation(pattern, _) => pattern.for_each_variable(context, f),
             super::cst::Pattern::Alias(name, pattern) => {
                 f(*name);

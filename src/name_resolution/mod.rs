@@ -109,6 +109,19 @@ impl Origin {
                 }
                 let (item, item_context) = GetItem(id.top_level_item).get(db);
                 match &item.kind {
+                    // A variant type
+                    TopLevelItemKind::TypeDefinition(type_definition) if id.local_name_id != type_definition.name => {
+                        match type_definition.body.find_variant(id.local_name_id) {
+                            Some((_, (_, fields))) => {
+                                let names = fields
+                                    .iter()
+                                    .enumerate()
+                                    .map(|(i, (name, _))| item_context.field_name_or_index(*name, i));
+                                FieldsResult::Fields(names.collect())
+                            },
+                            None => FieldsResult::NotAStruct,
+                        }
+                    },
                     TopLevelItemKind::TypeDefinition(type_definition) => match &type_definition.body {
                         TypeDefinitionBody::Error => FieldsResult::PriorError,
                         TypeDefinitionBody::Enum(_) => FieldsResult::NotAStruct,
@@ -471,6 +484,10 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                     self.link_existing_pattern(*arg);
                 }
             },
+            Pattern::ConstructorRest(constructor, name) => {
+                self.link(*constructor, false, false);
+                self.link_existing_global(*name);
+            },
             Pattern::TypeAnnotation(pattern, typ) => {
                 self.link_existing_pattern(*pattern);
                 self.resolve_type(typ, true);
@@ -550,7 +567,11 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                             | TypeDefinitionBody::EffectAlias(_) => is_type,
                         }
                     },
-                    // Enum variants are only values, as are ability methods
+                    // Variant types are structs and are thus valid as types or values
+                    TopLevelItemKind::TypeDefinition(def) if matches!(&def.body, TypeDefinitionBody::Enum(_)) => {
+                        true
+                    },
+                    // Ability methods are only values
                     TopLevelItemKind::TypeDefinition(_) => !is_type,
                     TopLevelItemKind::TraitDefinition(_) | TopLevelItemKind::EffectDefinition(_) => {
                         unreachable!("Desugared by GetItem")
@@ -810,6 +831,10 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                     );
                 }
             },
+            Pattern::ConstructorRest(function, name) => {
+                self.link(*function, allow_type_based_resolution, false);
+                self.declare_name(*name, check_unused);
+            },
             Pattern::Error => (),
             Pattern::TypeAnnotation(pattern, typ) => {
                 self.declare_names_in_pattern(
@@ -1001,7 +1026,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             TypeDefinitionBody::Enum(variants) => {
                 for (name, variant_args) in variants {
                     self.link_existing_union_variant(type_definition.name, *name);
-                    for arg in variant_args {
+                    for (_, arg) in variant_args {
                         self.resolve_type(arg, false);
                     }
                 }

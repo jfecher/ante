@@ -250,6 +250,18 @@ impl Type {
 
     pub const NO_CLOSURE_ENV: Type = Type::Primitive(PrimitiveType::NoClosureEnv);
 
+    /// If this is an `App (UserDefined id) args`, return `App (UserDefined new_name) args`,
+    /// otherwise return `UserDefined new_name`
+    /// TODO: Remove
+    pub fn retarget_user_defined(&self, new_name: TopLevelName) -> Type {
+        match self {
+            Type::Application(_, args) => {
+                Type::Application(Arc::new(Type::UserDefined(Origin::TopLevelDefinition(new_name))), args.clone())
+            },
+            _ => Type::UserDefined(Origin::TopLevelDefinition(new_name)),
+        }
+    }
+
     pub fn integer(kind: crate::lexer::token::IntegerKind) -> Type {
         match kind {
             crate::lexer::token::IntegerKind::I8 => Type::I8,
@@ -1632,10 +1644,18 @@ where
         match origin {
             Origin::TopLevelDefinition(id) => {
                 let (item, context) = GetItem(id.top_level_item).get(self.db);
-                if let cst::ItemName::Single(name) = item.kind.name() {
-                    write!(f, "{}", context[name])
-                } else {
-                    unreachable!()
+                match &item.kind {
+                    // A variant type
+                    cst::TopLevelItemKind::TypeDefinition(def) if id.local_name_id != def.name => {
+                        write!(f, "{}.{}", context[def.name], context[id.local_name_id])
+                    },
+                    _ => {
+                        if let cst::ItemName::Single(name) = item.kind.name() {
+                            write!(f, "{}", context[name])
+                        } else {
+                            unreachable!()
+                        }
+                    },
                 }
             },
             Origin::Local(name) => {

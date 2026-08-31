@@ -1,0 +1,39 @@
+type Shape =
+    | Circle (radius: U32)
+    // Fields without names are given the integer index of the field as a name.
+    // So Rectangle's fields are `length` and `1`
+    | Rectangle (length: U32) U32
+
+// `Shape.Circle` resolves as its own type, and field access on it type-checks.
+circle_radius (c: Shape.Circle): U32 = c.radius
+
+// `Shape.Circle` is directly constructible via the usual struct-literal syntax.
+good (): U32 = circle_radius (Shape.Circle with radius = 5)
+
+// `Circle ..c` extracts the whole variant as a `Shape.Circle`
+good2 (shape: Shape): U32 =
+    match shape
+    | Circle ..c -> circle_radius c
+    | Rectangle ..s -> s.length + s.1
+
+// Constructing without `with` constructs the union rather than the variant struct
+bad (): U32 = circle_radius (Shape.Circle 5)
+
+main () = ()
+
+// args: --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/variant_types.an:20:30
+// 19 | // Constructing without `with` constructs the union rather than the variant struct
+//    | // error: Argument 1 has type Shape but Shape.Circle was expected
+// 20 | bad (): U32 = circle_radius (Shape.Circle 5)
+//    |                              ^^^^^^^^^^^^^^
+// 
+// examples/typechecking/variant_types.an:20:30
+// 19 | // Constructing without `with` constructs the union rather than the variant struct
+//    | // error: This function call returns Shape but Shape.Circle was expected
+// 20 | bad (): U32 = circle_radius (Shape.Circle 5)
+//    |                              ^^^^^^^^^^^^^^
+// 
+// Found 2 errors and 0 warnings

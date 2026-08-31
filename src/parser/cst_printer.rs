@@ -434,17 +434,45 @@ impl<'a> CstDisplay<'a> {
     }
 
     /// Formats type arguments with a leading space in front of each (including the first)
-    fn fmt_type_args(&self, args: &[Type], context: &impl IdStore, f: &mut Formatter) -> std::fmt::Result {
+    fn fmt_type_args<'b>(
+        &self, args: impl IntoIterator<Item = &'b Type>, context: &impl IdStore, f: &mut Formatter,
+    ) -> std::fmt::Result {
         let requires_parens = |typ: &Type| matches!(typ.kind, TypeKind::Function(_) | TypeKind::Application(..));
 
         for arg in args {
-            if requires_parens(arg) {
-                write!(f, " (")?;
-                self.fmt_type(arg, context, f)?;
+            write!(f, " ")?;
+            self.parenthesize_type(arg, requires_parens(arg), context, f)?;
+        }
+        Ok(())
+    }
+
+    fn parenthesize_type<'b>(
+        &self, typ: &Type, should_parenthesize: bool, context: &impl IdStore, f: &mut Formatter,
+    ) -> std::fmt::Result {
+        if should_parenthesize {
+            write!(f, "(")?;
+            self.fmt_type(typ, context, f)?;
+            write!(f, ")")
+        } else {
+            self.fmt_type(typ, context, f)
+        }
+    }
+
+    fn fmt_variant_fields(
+        &self, fields: &[(Option<NameId>, Type)], context: &impl IdStore, f: &mut Formatter,
+    ) -> std::fmt::Result {
+        let requires_parens = |typ: &Type| matches!(typ.kind, TypeKind::Function(_) | TypeKind::Application(..));
+
+        for (name, typ) in fields {
+            write!(f, " ")?;
+            if let Some(name) = name {
+                write!(f, "(")?;
+                self.fmt_name(*name, context, f)?;
+                write!(f, ": ")?;
+                self.fmt_type(typ, context, f)?;
                 write!(f, ")")?;
             } else {
-                write!(f, " ")?;
-                self.fmt_type(arg, context, f)?;
+                self.parenthesize_type(typ, requires_parens(typ), context, f)?;
             }
         }
         Ok(())
@@ -503,7 +531,7 @@ impl<'a> CstDisplay<'a> {
                     self.newline(f)?;
                     write!(f, "| ")?;
                     self.fmt_type_name(*name, context, f)?;
-                    self.fmt_type_args(params, context, f)?;
+                    self.fmt_variant_fields(params, context, f)?;
                 }
                 self.indent_level -= 1;
             },
@@ -1119,6 +1147,11 @@ impl<'a> CstDisplay<'a> {
                 }
                 Ok(())
             },
+            Pattern::ConstructorRest(path, name) => {
+                self.fmt_path(*path, context, f)?;
+                write!(f, " ..")?;
+                self.fmt_name(*name, context, f)
+            },
             Pattern::Error => write!(f, "(error)"),
             Pattern::TypeAnnotation(pattern, typ) => {
                 self.fmt_pattern(*pattern, context, f)?;
@@ -1226,6 +1259,7 @@ impl<'a> CstDisplay<'a> {
         match context.get_pattern(pattern) {
             Error | Variable(_) | Literal(_) | MethodName { .. } => true,
             Constructor(_, args) => args.is_empty(),
+            ConstructorRest(_, _) => false,
             TypeAnnotation(_, _) => false,
             Or(_) => false,
             Alias(_, _) => false,

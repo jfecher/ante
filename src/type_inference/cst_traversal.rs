@@ -258,6 +258,29 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     self.check_pattern_rec(*arg, &expected_arg_type.typ, irrefutable);
                 }
             },
+            Pattern::ConstructorRest(path, name) => {
+                let actual = self.infer_path(*path, expected);
+                let return_type = match actual.follow(&self.bindings) {
+                    Type::Function(f) => f.return_type.clone(),
+                    _ => actual.clone(),
+                };
+                self.unify(&return_type, expected, TypeErrorKind::Pattern, *path);
+
+                if irrefutable {
+                    let location = self.current_context().path_location(*path).clone();
+                    self.check_constructor_exhaustive(*path, &location);
+                }
+
+                let mut origin = self.path_origin(*path);
+                if let Some(Origin::TypeResolution) = origin {
+                    origin = self.current_extended_context().path_origin(*path);
+                }
+                if let Some(Origin::TopLevelDefinition(variant_name)) = origin {
+                    // TODO: A bit of a hack, we should change `return_type` to be the variant type to begin with
+                    let variant_type = return_type.follow(&self.bindings).retarget_user_defined(variant_name);
+                    self.check_name(*name, &variant_type);
+                }
+            },
             Pattern::TypeAnnotation(inner_pattern, typ) => {
                 let annotated = self.from_cst_type(typ, true);
                 self.unify(expected, &annotated, TypeErrorKind::TypeAnnotationMismatch, id);
@@ -303,6 +326,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     let child = super::affine::MovePath::field(place.clone(), field);
                     self.assign_binding_places(*arg, child);
                 }
+            },
+            Pattern::ConstructorRest(_, name) => {
+                self.binding_places.insert(*name, place);
             },
             Pattern::Literal(_) | Pattern::Error => (),
         }
@@ -1274,6 +1300,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Pattern::Literal(_) => (),
             Pattern::Constructor(_, patterns) => {
                 patterns.iter().for_each(|pattern| self.record_mutable_pattern(*pattern))
+            },
+            Pattern::ConstructorRest(_, name) => {
+                self.mutable_definitions.insert(*name);
             },
             // This may be reachable on a parse error but these should only be for
             // top-level methods which should never be mutable

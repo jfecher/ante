@@ -159,6 +159,14 @@ impl DesugarContext {
     pub fn pattern_locations(&self) -> impl Iterator<Item = (PatternId, &Location)> {
         self.original.pattern_locations.iter().chain(self.more_pattern_locations.iter().map(|(k, v)| (*k, v)))
     }
+
+    /// A field's declared name if present in the source, or its field index if not
+    pub fn field_name_or_index(&self, name: Option<NameId>, index: usize) -> Name {
+        match name {
+            Some(name) => self[name].clone(),
+            None => Arc::new(index.to_string()),
+        }
+    }
 }
 
 impl Index<ExprId> for DesugarContext {

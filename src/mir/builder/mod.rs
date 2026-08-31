@@ -9,12 +9,11 @@ use inc_complete::DbGet;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    incremental::{GetItem, GetItemRaw, TypeCheck},
+    incremental::{GetItem, GetItemRaw, GetTypeBody, TypeCheck},
     iterator_extensions::mapvec,
     lexer::token::{FloatKind, Integer, IntegerKind},
     mir::{
-        Block, BlockId, Definition, DefinitionId, FloatConstant, FunctionType, Generic, Instruction, IntConstant, Mir,
-        PrimitiveType, TerminatorInstruction, Type, Value, next_definition_id,
+        next_definition_id, Block, BlockId, Definition, DefinitionId, FloatConstant, FunctionType, Generic, Instruction, IntConstant, Mir, PrimitiveType, TerminatorInstruction, Type, Value
     },
     name_resolution::Origin,
     parser::{
@@ -49,7 +48,7 @@ pub(crate) fn lookup_definition_id(name: &TopLevelName) -> Option<DefinitionId> 
 /// Builds the MIR with the default shared global [SharedIdsMap].
 pub(crate) fn build_initial_mir_with_shared_map<T>(compiler: &T, item_id: TopLevelId) -> Option<Mir>
 where
-    T: DbGet<TypeCheck> + DbGet<GetItem> + DbGet<GetItemRaw>,
+    T: DbGet<TypeCheck> + DbGet<GetItem> + DbGet<GetItemRaw> + DbGet<GetTypeBody>,
 {
     build_initial_mir(compiler, &NAME_IDS, item_id)
 }
@@ -63,7 +62,7 @@ where
 /// which will pass around unsized values by reference.
 pub(crate) fn build_initial_mir<T>(compiler: &T, ids: &SharedIdsMap, item_id: TopLevelId) -> Option<Mir>
 where
-    T: DbGet<TypeCheck> + DbGet<GetItem> + DbGet<GetItemRaw>,
+    T: DbGet<TypeCheck> + DbGet<GetItem> + DbGet<GetItemRaw> + DbGet<GetTypeBody>,
 {
     let types = TypeCheck(item_id).get(compiler);
     let (item, _) = GetItem(item_id).get(compiler);
@@ -230,7 +229,7 @@ impl<'local, Db> Context<'local, Db> {
 
 impl<'local, Db> Context<'local, Db>
 where
-    Db: DbGet<TypeCheck> + DbGet<GetItem> + DbGet<GetItemRaw>,
+    Db: DbGet<TypeCheck> + DbGet<GetItem> + DbGet<GetItemRaw> + DbGet<GetTypeBody>,
 {
     fn push_instruction(&mut self, instruction: Instruction, result_type: Type) -> Value {
         if self.current_block().terminator.is_some() {
@@ -1207,7 +1206,8 @@ where
             cst::Pattern::TypeAnnotation(pattern, _) => self.try_find_name(*pattern),
             cst::Pattern::Variable(name)
             | cst::Pattern::MethodName { item_name: name, .. }
-            | cst::Pattern::Alias(name, _) => Some((self.context()[*name].clone(), *name)),
+            | cst::Pattern::Alias(name, _)
+            | cst::Pattern::ConstructorRest(_, name) => Some((self.context()[*name].clone(), *name)),
             cst::Pattern::Or(alts) => alts.first().and_then(|alt| self.try_find_name(*alt)),
         }
     }
@@ -1224,6 +1224,7 @@ where
                     self.collect_pattern_names(*argument, out);
                 }
             },
+            cst::Pattern::ConstructorRest(_, name) => out.push(*name),
             // Each alternative of a valid OR-pattern binds the same names, so we only
             // need to inspect the first alternative.
             cst::Pattern::Or(alts) => {
@@ -1789,7 +1790,7 @@ where
         for ((_, (case_block, _)), case) in case_blocks.iter().zip(cases) {
             self.switch_to_block(*case_block);
 
-            if !case.arguments.is_empty() {
+            if !case.arguments.is_empty() || case.whole_value.is_some() {
                 let Constructor::Variant(_, variant_index) = &case.constructor else {
                     unreachable!("For this constructor to define arguments it must be a Constructor::Variant")
                 };
@@ -1798,6 +1799,13 @@ where
                 // and extract the variant from the tuple.
                 let variant = self.extract_variant(value_being_matched, *variant_index);
                 let variant_type = self.type_of_value(&variant);
+
+                // `Circle ..c` binds the whole variant directly
+                if let Some(whole_value) = case.whole_value
+                    && let Some(origin) = self.context().path_origin(whole_value)
+                {
+                    self.define_variable(origin, variant);
+                }
 
                 // And for each variable, extract the relevant field of the variant
                 for (i, argument) in case.arguments.iter().enumerate() {
@@ -2210,6 +2218,13 @@ where
                         }
                     },
                     other => unreachable!("Expected tuple or union when deconstructing pattern, found {other}"),
+                }
+            },
+            cst::Pattern::ConstructorRest(_path, name) => {
+                let pattern_tc_type = self.types.result.maps.pattern_types[&pattern].clone();
+                let value = self.deref_if_shared(value, &pattern_tc_type);
+                if let Some(origin) = self.context().name_origin(*name) {
+                    self.define_variable(origin, value);
                 }
             },
             cst::Pattern::TypeAnnotation(pattern, _) => self.bind_pattern(*pattern, value),

@@ -4,13 +4,13 @@ use inc_complete::DbGet;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
-    incremental::{GetItem, GetItemRaw, TypeCheck},
+    incremental::{GetTypeBody, GetItem, GetItemRaw, TypeCheck},
     iterator_extensions::mapvec,
     mir::{FunctionType, Type, builder::Context},
     name_resolution::{Origin, builtin::Builtin},
     parser::{
         cst::{TopLevelItem, TopLevelItemKind, TypeDefinition, TypeDefinitionBody},
-        ids::{ExprId, PathId, PatternId, TopLevelId},
+        ids::{ExprId, PathId, PatternId, TopLevelId, TopLevelName},
     },
     type_inference::{
         TypeBody,
@@ -20,7 +20,7 @@ use crate::{
 
 impl<'local, Db> Context<'local, Db>
 where
-    Db: DbGet<TypeCheck> + DbGet<GetItem> + DbGet<GetItemRaw>,
+    Db: DbGet<TypeCheck> + DbGet<GetItem> + DbGet<GetItemRaw> + DbGet<GetTypeBody>,
 {
     pub(super) fn convert_expr_type(&self, expr: ExprId) -> Type {
         let typ = &self.types.result.maps.expr_types[&expr];
@@ -112,7 +112,7 @@ impl Effects {
 
 impl<Db> ConvertTypeContext<'_, Db>
 where
-    Db: DbGet<TypeCheck> + DbGet<GetItem> + DbGet<GetItemRaw>,
+    Db: DbGet<TypeCheck> + DbGet<GetItem> + DbGet<GetItemRaw> + DbGet<GetTypeBody>,
 {
     /// TODO: The split of this from [Context::convert_type] ended up being unnecessary.
     pub(super) fn convert_type(&self, typ: &TCType, args: Option<&[TCType]>) -> Type {
@@ -141,7 +141,7 @@ where
                 }
                 self.convert_type(constructor, Some(new_args))
             },
-            TCType::UserDefined(origin) => self.convert_type_origin(*origin, args, None),
+            TCType::UserDefined(origin) => self.convert_type_origin(*origin, args),
             TCType::Forall(_, typ) => self.convert_type(typ, args),
             TCType::Tuple(elements) => {
                 let elements = mapvec(elements.iter(), |t| self.convert_type(t, None));
@@ -351,7 +351,7 @@ where
         Type::array_with_length(length, elem)
     }
 
-    fn convert_type_origin(&self, origin: Origin, args: Option<&[TCType]>, variant_index: Option<usize>) -> Type {
+    fn convert_type_origin(&self, origin: Origin, args: Option<&[TCType]>) -> Type {
         match origin {
             Origin::TopLevelDefinition(id) => {
                 let (item, _) = GetItem(id.top_level_item).get(self.compiler);
@@ -374,7 +374,7 @@ where
                     // The type recursively references itself in a non-pointer position.
                     return Type::ERROR;
                 }
-                let result = self.expand_user_defined_body(id.top_level_item, args, variant_index);
+                let result = self.expand_user_defined_body(id, args);
                 self.in_progress.borrow_mut().remove(&key);
                 result
             },
@@ -397,39 +397,27 @@ where
             TCType::UserDefined(Origin::TopLevelDefinition(id)) => {
                 let (item, _) = GetItem(id.top_level_item).get(self.compiler);
                 let definition = Self::type_definition(&item)?;
-                definition
-                    .shared
-                    .then(|| (self.expand_user_defined_body(id.top_level_item, args, None), definition.mutable))
+                definition.shared.then(|| (self.expand_user_defined_body(*id, args), definition.mutable))
             },
             _ => None,
         }
     }
 
-    fn expand_user_defined_body(&self, id: TopLevelId, args: Option<&[TCType]>, variant_index: Option<usize>) -> Type {
-        let body = id.type_body(args, self.compiler, None);
-        self.convert_type_body(body, variant_index)
+    fn expand_user_defined_body(&self, id: TopLevelName, args: Option<&[TCType]>) -> Type {
+        let body = GetTypeBody(id, args.map(|args| args.to_vec())).get(self.compiler);
+        self.convert_type_body(&body)
     }
 
     /// Converts a type body to the general representation of that type.
-    ///
-    /// If `variant_index` is specified, the default index used to represent the sum type
-    /// is overridden with the given index. In either case, sum types with multiple possible
-    /// constructors will always include the tag type.
-    fn convert_type_body(&self, body: TypeBody, variant_index: Option<usize>) -> Type {
+    fn convert_type_body(&self, body: &TypeBody) -> Type {
         match body {
             TypeBody::Product { type_name: _, fields } => {
-                Type::tuple(mapvec(fields, |(_, field)| self.convert_type(&field, None)))
+                Type::tuple(mapvec(fields, |(_, field)| self.convert_type(field, None)))
             },
             TypeBody::Sum(variants) => {
-                let union = if let Some((_, variant_args)) = variant_index.and_then(|i| variants.get(i)) {
-                    // If we want to retrieve 1 specific variant then create a tuple of each field
-                    Type::tuple(mapvec(variant_args, |field| self.convert_type(field, None)))
-                } else {
-                    // Otherwise we need a raw union of the fields of all variants
-                    Type::union(mapvec(variants, |(_, fields)| {
-                        Type::tuple(mapvec(fields, |field| self.convert_type(&field, None)))
-                    }))
-                };
+                let union = Type::union(mapvec(variants, |(_, fields)| {
+                    Type::tuple(mapvec(fields, |(_, field)| self.convert_type(field, None)))
+                }));
                 // Then pack the result with a separate tag value.
                 Type::tuple(vec![Type::tag_type(), union])
             },

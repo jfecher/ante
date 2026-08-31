@@ -1588,9 +1588,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
             Type::UserDefined(origin) => {
                 if let Origin::TopLevelDefinition(id) = origin {
-                    let body = self.with_next_id(|next_id| {
-                        id.top_level_item.type_body(generic_args, self.compiler, Some(next_id))
-                    });
+                    let body = self.with_next_id(|next_id| id.type_body(generic_args, self.compiler, Some(next_id)));
                     if let TypeBody::Product { fields, .. } = body {
                         let fields = fields.into_iter().enumerate();
                         return fields.map(|(i, (name, typ))| (name, (typ, i as u32))).collect();

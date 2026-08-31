@@ -19,6 +19,8 @@ t = Option.Just 1
 
 type MyRef a = ref a
 
+type Shape = | Circle (radius: U32) I32 | Square (length: U32)
+
 // args: -e ast-r --no-color
 // expected stdout:
 // // id = c1m929_4067
@@ -55,4 +57,9 @@ type MyRef a = ref a
 // 
 // // id = c1m929_2555
 // type MyRef_c1m929_2555_0 a_1 = ref a_1
+// 
+// // id = c1m929_1355
+// type Shape_c1m929_1355_0 =
+//     | Circle_c1m929_1355_1 (radius_?: U32) I32
+//     | Square_c1m929_1355_3 (length_?: U32)
 

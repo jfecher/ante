@@ -1,0 +1,18 @@
+type Shape = | Circle (radius: U32) | Square (length: U32)
+
+radius (shape: Shape): U32 =
+    match shape
+    | Circle ..c -> c.radius
+
+main () = ()
+
+// args: --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/variant_types_exhaustiveness.an:5:11
+// 4 | area (shape: Shape): U32 =
+// 5 |     match shape	// error: Missing case: Square _
+//   |           ^^^^^
+// 6 |     | Circle ..c -> c.radius
+// 
+// Found 1 error and 0 warnings

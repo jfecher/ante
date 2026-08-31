@@ -87,6 +87,10 @@ pub struct DbStorage {
     get_type_check_sccs: HashMapStorage<GetTypeCheckSCC>,
     all_diagnostics: SingletonStorage<CheckAll>,
 
+    // Skipped to save space in the .inc file
+    #[serde(skip)]
+    get_type_bodies: HashMapStorage<GetTypeBody>,
+
     #[inc_complete(accumulate)]
     diagnostics: Accumulator<Diagnostic>,
     diagnostics_storage: HashMapStorage<Accumulated<Diagnostic>>,
@@ -435,3 +439,11 @@ define_intermediate!(1800, GetTypeCheckSCC -> SCC, DbStorage, type_inference::de
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CheckAll;
 define_intermediate!(1900, CheckAll -> (), DbStorage, check_all);
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+/// The body of a type once its generics are substituted with the given types
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct GetTypeBody(pub TopLevelName, pub Option<Vec<type_inference::types::Type>>);
+define_intermediate!(2000, GetTypeBody -> Arc<type_inference::TypeBody>, DbStorage, |context, db| {
+    Arc::new(context.0.type_body(context.1.as_deref(), db, None))
+});

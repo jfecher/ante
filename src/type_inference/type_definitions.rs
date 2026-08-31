@@ -1,4 +1,4 @@
-use std::{borrow::Cow, sync::Arc};
+use std::sync::Arc;
 
 use rustc_hash::FxHashMap;
 
@@ -22,8 +22,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     pub(super) fn check_type_definition(&mut self, definition: &cst::TypeDefinition) {
         let id = self.current_item.unwrap();
 
-        let constructors = match &definition.body {
-            cst::TypeDefinitionBody::Error => Cow::Owned(Vec::new()),
+        let constructors: Vec<(NameId, Vec<&cst::Type>)> = match &definition.body {
+            cst::TypeDefinitionBody::Error => Vec::new(),
             cst::TypeDefinitionBody::Alias(body) => {
                 // Convert the body even though the result is unused to issue kind or recursion errors
                 Self::reject_implicit_lifetimes(body, self.compiler);
@@ -55,10 +55,12 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 if definition.kind.is_effect() {
                     return;
                 }
-                let fields = mapvec(fields, |(_, field_type)| field_type.clone());
-                Cow::Owned(vec![(definition.name, fields)])
+                let fields = mapvec(fields, |(_, field_type)| field_type);
+                vec![(definition.name, fields)]
             },
-            cst::TypeDefinitionBody::Enum(variants) => Cow::Borrowed(variants),
+            cst::TypeDefinitionBody::Enum(variants) => {
+                mapvec(variants, |(name, fields)| (*name, mapvec(fields, |(_, field_type)| field_type)))
+            },
         };
 
         let type_name = TopLevelName::new(id, definition.name);
@@ -88,9 +90,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let resolve = self.current_resolve();
         let target = Origin::TopLevelDefinition(type_name);
         match &definition.body {
-            cst::TypeDefinitionBody::Enum(variants) => {
-                variants.iter().any(|(_, args)| args.iter().any(|t| Self::type_uses_target_unboxed(t, target, resolve)))
-            },
+            cst::TypeDefinitionBody::Enum(variants) => variants
+                .iter()
+                .any(|(_, args)| args.iter().any(|(_, t)| Self::type_uses_target_unboxed(t, target, resolve))),
             cst::TypeDefinitionBody::Struct(fields) => {
                 fields.iter().any(|(_, t)| Self::type_uses_target_unboxed(t, target, resolve))
             },
@@ -236,7 +238,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// generics of the type since this is what [TopLevelId::type_body] later expects.
     fn build_constructor_type<'a>(
         &mut self, type_name: TopLevelName, item: &cst::TypeDefinition, generics: &[Generic],
-        variant_args: &[cst::Type], local_kinds: &mut crate::type_inference::types::LocalKinds,
+        variant_args: &[&cst::Type], local_kinds: &mut crate::type_inference::types::LocalKinds,
     ) -> Type {
         let (mut result, substitutions) = self.type_definition_type(type_name, item, false);
         assert!(substitutions.is_empty());
