@@ -1081,8 +1081,8 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                 let collision = fields.iter().find(|(field_name, _)| {
                     field_name.is_some_and(|id| !common_ids.contains(&id) && self.context[id] == name)
                 });
-                if let Some((_, field_type)) = collision {
-                    let second_location = field_type.location.clone();
+                if let Some((field_name, _)) = collision {
+                    let second_location = self.context.name_location(field_name.unwrap()).clone();
                     self.emit_diagnostic(Diagnostic::DuplicateField {
                         name: name.clone(),
                         first_location: first_location.clone(),

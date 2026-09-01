@@ -31,17 +31,17 @@ main () = ()
 // examples/typechecking/variant_types_with_clause_errors.an:13:25
 // 12 |     | B I32
 //    |     // error: Duplicate field `location`
-//    |     // note: Second location here
+//    |     // note: Originally used here
 // 13 |     with location: I32, location: I32
-//    |                         ^^^^^^^^
+//    |          --------       ^^^^^^^^
 // 
-// examples/typechecking/variant_types_with_clause_errors.an:16:20
+// examples/typechecking/variant_types_with_clause_errors.an:16:10
 // 15 | type Dup2 =
-//    |     // error: Duplicate field `location`
-//    |     // note: Second location here
-// 16 |     | A (location: I32)
-//    |                    ^^^
+// 16 |     | A (location: I32)	// error: Duplicate field `location`
+//    |          ^^^^^^^^
 // 17 |     | B I32
+// 18 |     with location: I32	// note: Originally used here
+//    |          --------
 // 
 // Found 3 errors and 0 warnings
 

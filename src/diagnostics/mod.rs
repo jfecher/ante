@@ -828,8 +828,8 @@ impl Diagnostic {
             Diagnostic::UnusedName { name: _, location } => {
                 Some((location, "Prefix the name with `_` to silence this warning".to_string()))
             },
-            Diagnostic::DuplicateField { second_location, .. } => {
-                Some((second_location, "Second location here".to_string()))
+            Diagnostic::DuplicateField { first_location, .. } => {
+                Some((first_location, "Originally used here".to_string()))
             },
             _ => None,
         }
