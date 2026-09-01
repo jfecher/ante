@@ -21,6 +21,11 @@ type MyRef a = ref a
 
 type Shape = | Circle (radius: U32) I32 | Square (length: U32)
 
+type Expr =
+   | Var String
+   | Lit I64
+   with location: I32
+
 // args: -e ast-r --no-color
 // expected stdout:
 // // id = c1m929_4067
@@ -62,4 +67,10 @@ type Shape = | Circle (radius: U32) I32 | Square (length: U32)
 // type Shape_c1m929_1355_0 =
 //     | Circle_c1m929_1355_1 (radius_?: U32) I32
 //     | Square_c1m929_1355_3 (length_?: U32)
+// 
+// // id = c1m929_6892
+// type Expr_c1m929_6892_0 =
+//     | Var_c1m929_6892_1 String_c0m703_9662_0
+//     | Lit_c1m929_6892_2 I64
+//     with location_?: I32
 

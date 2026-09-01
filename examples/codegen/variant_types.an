@@ -26,6 +26,28 @@ first_and_whole (p: Pair): U32 =
     match p
     | Two a ..w -> a + w.b
 
+// `location` should be added to the Expr.Var and Expr.Pair2 variant types as well
+type Expr =
+    | Var String
+    | Pair2 I64 I64
+    with location: I32
+
+loc (e: Expr): I32 = e.location
+loc_ref (e: ref Expr): ref I32 = e.location
+
+match_loc (e: Expr): I32 =
+    match e
+    | Var _s l -> l
+    | Pair2 _a _b l -> l
+
+rest_loc (e: Expr): I32 =
+    match e
+    | Var ..c -> c.location
+    | Pair2 ..c -> c.location
+
+set_loc (e: mut Expr) =
+    e.location := 99
+
 main () =
     print (area_by_field (Circle 2))
     print ", "
@@ -46,6 +68,18 @@ main () =
     println (first (Two 3 4))
     println (first_and_whole (Two 3 4))
 
+    println (loc (Var "x" 10))
+    println (loc (Pair2 1 2 20))
+    println (loc_ref (ref (Var "x" 10)))  // TODO: Can't use type-based resolution and ref coercion together
+    println (loc_ref (ref (Pair2 1 2 20)))
+    println (match_loc (Var "x" 10))
+    println (match_loc (Pair2 1 2 20))
+    println (rest_loc (Var "x" 10))
+    println (rest_loc (Pair2 1 2 20))
+    var e = Expr.Var "y" 5
+    set_loc (mut e)
+    println (loc e)
+
 // args: --delete-binary --no-color
 // expected stdout:
 // 12, 16
@@ -56,4 +90,13 @@ main () =
 // false
 // 3
 // 7
+// 10
+// 20
+// 10
+// 20
+// 10
+// 20
+// 10
+// 20
+// 99
 

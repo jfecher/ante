@@ -4,6 +4,16 @@ radius (shape: Shape): U32 =
     match shape
     | Circle ..c -> c.radius
 
+type Expr =
+    | Var String
+    | Lit I64
+    with location: I32
+
+loc (e: Expr): I32 =
+    match e
+    // Missing location field
+    | Var _s -> 0
+
 main () = ()
 
 // args: --no-color
@@ -15,5 +25,17 @@ main () = ()
 //   |           ^^^^^
 // 5 |     | Circle ..c -> c.radius
 // 
-// Found 1 error and 0 warnings
+// examples/typechecking/variant_types_exhaustiveness.an:13:11
+// 12 | loc (e: Expr): I32 =
+// 13 |     match e	// error: Missing case: Lit _ _
+//    |           ^
+// 14 |     // Missing location field
+// 
+// examples/typechecking/variant_types_exhaustiveness.an:15:7
+// 14 |     // Missing location field
+//    |     // error: This pattern has type fn String I32 -> Expr is pure but the matched value has type fn _ -> Expr is pure
+// 15 |     | Var _s -> 0
+//    |       ^^^
+// 
+// Found 3 errors and 0 warnings
 

@@ -1,0 +1,47 @@
+type Expr =
+    | Var (name: String)
+    | Lit I64
+    with location: I32
+
+// Ensure non-common fields still error
+bad_field (e: Expr): String = e.name
+ok_field (e: Expr): I32 = e.location
+
+type Dup1 =
+    | A I32
+    | B I32
+    with location: I32, location: I32
+
+type Dup2 =
+    | A (location: I32)
+    | B I32
+    with location: I32
+
+main () = ()
+
+// args: --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/variant_types_with_clause_errors.an:7:32
+// 6 | // Ensure non-common fields still error
+// 7 | bad_field (e: Expr): String = e.name	// error: Expr has no field named `name`
+//   |                                ^^^^^
+// 8 | ok_field (e: Expr): I32 = e.location
+// 
+// examples/typechecking/variant_types_with_clause_errors.an:13:25
+// 12 |     | B I32
+//    |     // error: Duplicate field `location`
+//    |     // note: Second location here
+// 13 |     with location: I32, location: I32
+//    |                         ^^^^^^^^
+// 
+// examples/typechecking/variant_types_with_clause_errors.an:16:20
+// 15 | type Dup2 =
+//    |     // error: Duplicate field `location`
+//    |     // note: Second location here
+// 16 |     | A (location: I32)
+//    |                    ^^^
+// 17 |     | B I32
+// 
+// Found 3 errors and 0 warnings
+

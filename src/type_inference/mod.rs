@@ -1589,9 +1589,24 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Type::UserDefined(origin) => {
                 if let Origin::TopLevelDefinition(id) = origin {
                     let body = self.with_next_id(|next_id| id.type_body(generic_args, self.compiler, Some(next_id)));
-                    if let TypeBody::Product { fields, .. } = body {
-                        let fields = fields.into_iter().enumerate();
-                        return fields.map(|(i, (name, typ))| (name, (typ, i as u32))).collect();
+                    match body {
+                        TypeBody::Product { fields, .. } => {
+                            let fields = fields.into_iter().enumerate();
+                            return fields.map(|(i, (name, typ))| (name, (typ, i as u32))).collect();
+                        },
+                        TypeBody::Sum(variants) => {
+                            // Common fields from a `with` clause are the trailing `k` entries of every variant
+                            let k = id.common_field_count(self.compiler);
+                            if k > 0 && !variants.is_empty() {
+                                let (_, _, fields) = &variants[0];
+                                let start = fields.len() - k;
+                                return fields[start..]
+                                    .iter()
+                                    .enumerate()
+                                    .map(|(i, (name, typ))| (name.clone(), (typ.clone(), i as u32)))
+                                    .collect();
+                            }
+                        },
                     }
                 }
                 BTreeMap::default()

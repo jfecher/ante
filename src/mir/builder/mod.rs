@@ -292,6 +292,13 @@ where
         }
     }
 
+    fn field_access_target(&mut self, element: &TCType, ptr: Value) -> (Value, Type) {
+        match self.shared_inner_layout_of(element) {
+            Some(inner_layout) => (self.push_instruction(Instruction::Deref(ptr), Type::POINTER), inner_layout),
+            None => (ptr, self.convert_type(element, None)),
+        }
+    }
+
     fn define_variable(&mut self, origin: Origin, value: Value) {
         match origin {
             Origin::Local(name) => self.local_variables.insert(name, value),
@@ -580,11 +587,11 @@ where
         // If the object has a reference/pointer type, the MIR value is a pointer, so use GetFieldPtr instead.
         let object_expr = member_access.object;
         let object_type = self.types.result.maps.expr_types[&object_expr].follow(&self.types.bindings);
-        let reference_element =
-            object_type.reference_or_pointer_element(&self.types.bindings).map(|typ| self.convert_type(typ, None));
+        let reference_element = object_type.reference_or_pointer_element(&self.types.bindings).cloned();
 
-        if let Some(struct_type) = reference_element {
+        if let Some(element) = reference_element {
             let struct_ptr = self.expression(object_expr);
+            let (struct_ptr, struct_type) = self.field_access_target(&element, struct_ptr);
             self.push_instruction(Instruction::GetFieldPtr { struct_ptr, struct_type, index }, Type::POINTER)
         } else {
             let value = self.expression(object_expr);
@@ -1778,8 +1785,10 @@ where
 
     fn switch(&mut self, tag: PathId, cases: Vec<Case>, else_: Option<Box<DecisionTree>>, match_expr: ExprId) -> Value {
         let path_type = self.types.result.maps.path_types[&tag].clone();
-        let value_being_matched = self.variable(tag);
-        let value_being_matched = self.deref_if_shared(value_being_matched, &path_type);
+        let outer_value = self.variable(tag);
+        let outer_value = self.deref_if_shared(outer_value, &path_type);
+        let with_field_count = self.convert_context().common_field_count_of_type(&path_type);
+        let value_being_matched = self.unwrap_hoisted_common_fields(outer_value, with_field_count);
         let int_value = self.extract_tag_value(value_being_matched);
         let start = self.current_block;
 
@@ -1813,20 +1822,33 @@ where
                 // and extract the variant from the tuple.
                 let variant = self.extract_variant(value_being_matched, *variant_index);
                 let variant_type = self.type_of_value(&variant);
+                // `case.arguments` has one entry per declared field, including any from a with-clause
+                let own_count = case.arguments.len() - with_field_count;
 
                 // `Circle ..c` binds the whole variant directly
                 if let Some(whole_value) = case.whole_value
                     && let Some(origin) = self.context().path_origin(whole_value)
                 {
-                    self.define_variable(origin, variant);
+                    let whole =
+                        self.reconstruct_whole_variant(variant, outer_value, own_count, with_field_count, whole_value);
+                    self.define_variable(origin, whole);
                 }
 
-                // And for each variable, extract the relevant field of the variant
+                // And for each variable, extract the relevant field of the variant.
+                // with-clause fields get extracted from outer_value instead
+                let outer_type = (with_field_count > 0).then(|| self.type_of_value(&outer_value));
                 for (i, argument) in case.arguments.iter().enumerate() {
                     if let Some(origin) = self.context().path_origin(*argument) {
-                        let field_type = Self::tuple_field_type(&variant_type, i);
-                        let index_tuple = Instruction::IndexTuple { tuple: variant, index: i as u32 };
-                        let field = self.push_instruction(index_tuple, field_type);
+                        let field = if i < own_count {
+                            let field_type = Self::tuple_field_type(&variant_type, i);
+                            let index_tuple = Instruction::IndexTuple { tuple: variant, index: i as u32 };
+                            self.push_instruction(index_tuple, field_type)
+                        } else {
+                            let common_index = (i - own_count) as u32;
+                            let field_type = Self::tuple_field_type(outer_type.as_ref().unwrap(), common_index as usize);
+                            let index_tuple = Instruction::IndexTuple { tuple: outer_value, index: common_index };
+                            self.push_instruction(index_tuple, field_type)
+                        };
                         self.define_variable(origin, field);
                     }
                 }
@@ -1913,6 +1935,46 @@ where
         let extract_union = Instruction::IndexTuple { tuple: value_being_matched, index: 1 };
         let union = self.push_instruction(extract_union, union_type);
         self.push_instruction(Instruction::Transmute(union), variant_type)
+    }
+
+    /// If hoisted, indexes into the last field to get the inner `(tag, Union)` pair.
+    /// Callers should pass the result to `extract_tag_value`/`extract_variant`.
+    fn unwrap_hoisted_common_fields(&mut self, value: Value, with_field_count: usize) -> Value {
+        if with_field_count == 0 {
+            return value;
+        }
+        let Type::Tuple(fields) = self.type_of_value(&value) else {
+            unreachable!("A union type with common fields must convert to a hoisted tuple layout")
+        };
+        let inner_type = fields.last().unwrap().clone();
+        let index = (fields.len() - 1) as u32;
+        self.push_instruction(Instruction::IndexTuple { tuple: value, index }, inner_type)
+    }
+
+    /// Combines `variant` with the with-clause fields in `outer_value`
+    fn reconstruct_whole_variant(
+        &mut self, variant: Value, outer_value: Value, own_count: usize, with_field_count: usize,
+        target_path: PathId,
+    ) -> Value {
+        if with_field_count == 0 {
+            return variant;
+        }
+        let outer_type = self.type_of_value(&outer_value);
+        debug_assert!(matches!(&outer_type, Type::Tuple(fields) if fields.len() > with_field_count));
+
+        let variant_type = self.type_of_value(&variant);
+        let mut fields = Vec::with_capacity(own_count + with_field_count);
+        for i in 0..own_count {
+            let field_type = Self::tuple_field_type(&variant_type, i);
+            fields.push(self.push_instruction(Instruction::IndexTuple { tuple: variant, index: i as u32 }, field_type));
+        }
+        for j in 0..with_field_count {
+            let field_type = Self::tuple_field_type(&outer_type, j);
+            fields.push(self.push_instruction(Instruction::IndexTuple { tuple: outer_value, index: j as u32 }, field_type));
+        }
+
+        let target_type = self.convert_path_type(target_path);
+        self.push_instruction(Instruction::MakeTuple(fields), target_type)
     }
 
     fn handle(&mut self, handle: &cst::Handle, expr: ExprId) -> Value {
@@ -2028,14 +2090,13 @@ where
                 let struct_ptr = self.lhs_as_pointer(object_expr);
                 let index = self.context().member_access_index(field_expr).unwrap_or(u32::MAX);
 
-                // If the object has a reference type, use the inner type for GEP.
                 let struct_type = self.types.result.maps.expr_types[&object_expr].follow(&self.types.bindings);
-                let struct_type = if let Some(inner) = self.shared_mut_inner_layout_of(struct_type) {
-                    inner
-                } else if let Some(element) = struct_type.reference_or_pointer_element(&self.types.bindings) {
-                    self.convert_type(element, None)
+                let (struct_ptr, struct_type) = if let Some(inner) = self.shared_mut_inner_layout_of(struct_type) {
+                    (struct_ptr, inner)
                 } else {
-                    self.convert_type(struct_type, None)
+                    let element = struct_type.reference_or_pointer_element(&self.types.bindings).cloned();
+                    let element = element.unwrap_or_else(|| struct_type.clone());
+                    self.field_access_target(&element, struct_ptr)
                 };
                 self.push_instruction(Instruction::GetFieldPtr { struct_ptr, struct_type, index }, Type::POINTER)
             },
@@ -2302,7 +2363,7 @@ where
 
         let constructors = match &type_definition.body {
             cst::TypeDefinitionBody::Struct(_) => vec![(type_definition.name, None)],
-            cst::TypeDefinitionBody::Enum(variants) => {
+            cst::TypeDefinitionBody::Enum(variants, _) => {
                 if variants.len() == 1 {
                     // `type_body` translates single constructor enums into products, we need to mirror that here
                     vec![(variants[0].0, None)]
@@ -2318,6 +2379,8 @@ where
             },
         };
 
+        let with_field_count = type_definition.body.common_fields().len();
+
         for (constructor_name, tag) in constructors {
             let constructor_type = self.types.get_generalized(constructor_name);
             self.set_generics_in_scope(&constructor_type);
@@ -2328,10 +2391,10 @@ where
             };
 
             let shared = type_definition.shared;
-            self.define_type_constructor(constructor_name, &constructor_type, parameters, tag, shared);
+            self.define_type_constructor(constructor_name, &constructor_type, parameters, tag, shared, with_field_count);
         }
 
-        // Abilities are sugar for a struct of function-typed fields, however each "field" is treated
+        // Abilities are sugar for a struct of function-typed fields, however each field is treated
         // as a function by the frontend so we must generate actual functions for each field such
         // that `Cast.cast` is an actual function accepting a `Cast` instance and forwarding the
         // appropriate arguments to the `cast` field.
@@ -2343,6 +2406,7 @@ where
     fn define_type_constructor(
         &mut self, name_id: NameId, constructor_type: &TCType,
         field_types: &[crate::type_inference::types::ParameterType], tag: Option<u8>, shared: bool,
+        with_field_count: usize,
     ) {
         let top_level_name = TopLevelName::new(self.top_level_id, name_id);
         let name = self.context()[name_id].clone();
@@ -2361,12 +2425,22 @@ where
             typ.function_return_type().cloned().unwrap_or_else(|| typ.clone())
         };
 
-        let raw_union_type = payload_type.without_union_tag();
+        // A single-variant enum collapses to a flat `Product` regardless of `with_field_count`.
+        let with_field_count = if tag.is_some() { with_field_count } else { 0 };
+
+        let raw_union_type = payload_type.without_union_tag_hoisted(with_field_count);
         let generic_count = self.generics_in_scope.len() as u32;
         let is_zero_arg = field_types.is_empty();
 
         let id = self.new_definition(name, Some(name_id), generic_count, typ, |this| {
-            let mut result = this.build_constructor_payload(field_types, tag, &payload_type, raw_union_type, name_id);
+            let mut result = this.build_constructor_payload(
+                field_types,
+                tag,
+                &payload_type,
+                raw_union_type,
+                name_id,
+                with_field_count,
+            );
             if shared {
                 result = this.push_instruction(Instruction::AllocShared(result), Type::POINTER);
             }
@@ -2381,14 +2455,15 @@ where
     }
 
     /// Build the value a constructor returns before any shared-pointer wrap.
-    /// Materializes block parameters, packs them into a tuple, and (for sum-type
-    /// variants) transmutes & wraps `(tag, union)`.
+    /// Materializes block parameters, packs them into a tuple, and for sum-type
+    /// variants transmutes & wraps `(tag, union)`. Trailing with-field parameters
+    /// are split off and wrapped around the tagged result instead.
     fn build_constructor_payload(
         &mut self, field_types: &[crate::type_inference::types::ParameterType], tag: Option<u8>, payload_type: &Type,
-        raw_union_type: Option<Type>, name_id: NameId,
+        raw_union_type: Option<Type>, name_id: NameId, with_field_count: usize,
     ) -> Value {
-        let field_types = mapvec(field_types, |param| self.convert_type(&param.typ, None));
-        let fields = mapvec(field_types.iter().enumerate(), |(i, field_type)| {
+        let mut field_types = mapvec(field_types, |param| self.convert_type(&param.typ, None));
+        let mut fields = mapvec(field_types.iter().enumerate(), |(i, field_type)| {
             self.push_parameter(field_type.clone());
             Value::Parameter(BlockId::ENTRY_BLOCK, i as u32)
         });
@@ -2396,6 +2471,11 @@ where
         if !field_types.is_empty() {
             self.push_parameter(Type::tuple(Vec::new()));
         }
+
+        let k = with_field_count;
+        let own_count = fields.len() - k;
+        let with_fields = fields.split_off(own_count);
+        field_types.truncate(own_count);
 
         let mut payload = self.push_instruction(Instruction::MakeTuple(fields), Type::tuple(field_types));
 
@@ -2405,8 +2485,21 @@ where
                 panic!("Failed to unwrap raw union type. Full result type is: {payload_type} for constructor {name}")
             });
             let casted = self.push_instruction(Instruction::Transmute(payload), raw_union_type);
-            payload = self
-                .push_instruction(Instruction::MakeTuple(vec![Value::tag_value(tag), casted]), payload_type.clone());
+            let tagged_type = if k == 0 {
+                payload_type.clone()
+            } else {
+                match payload_type {
+                    Type::Tuple(outer) => outer.last().unwrap().clone(),
+                    _ => unreachable!("hoisted union payload type must be a tuple"),
+                }
+            };
+            payload = self.push_instruction(Instruction::MakeTuple(vec![Value::tag_value(tag), casted]), tagged_type);
+        }
+
+        if k > 0 {
+            let mut outer = with_fields;
+            outer.push(payload);
+            payload = self.push_instruction(Instruction::MakeTuple(outer), payload_type.clone());
         }
 
         payload

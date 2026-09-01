@@ -29,6 +29,25 @@ good4 (shape: Shape): U32 =
     | Circle .. -> 0
     | Rectangle length ..r -> length + r.1
 
+// with-clause fields should be accessible on every variant type
+type Expr =
+    | Var String
+    | Lit I64
+    with location: I32
+
+loc (e: Expr): I32 = e.location
+loc_ref (e: ref Expr): ref I32 = e.location
+
+match_loc (e: Expr): I32 =
+    match e
+    | Var _s l -> l
+    | Lit _n l -> l
+
+rest_loc (e: Expr): I32 =
+    match e
+    | Var ..c -> c.location
+    | Lit ..c -> c.location
+
 main () = ()
 
 // args: --no-color

@@ -147,7 +147,7 @@ pub enum Diagnostic {
         expected: usize,
         location: Location,
     },
-    ConstructorFieldDuplicate {
+    DuplicateField {
         name: Name,
         first_location: Location,
         second_location: Location,
@@ -500,8 +500,7 @@ impl Diagnostic {
             Diagnostic::NoSuchFieldForType { name, typ, location: _ } => {
                 format!("{} has no field named `{name}`", color_type(typ))
             },
-            Diagnostic::ConstructorFieldDuplicate { name, first_location: _, second_location: _ } => {
-                // TODO: Show both locations in same error
+            Diagnostic::DuplicateField { name, first_location: _, second_location: _ } => {
                 format!("Duplicate field `{name}`")
             },
             Diagnostic::ConstructorMissingFields { missing_fields, location: _ } => {
@@ -746,7 +745,7 @@ impl Diagnostic {
             | Diagnostic::NoSuchFieldForType { location, .. }
             | Diagnostic::ConstructorMissingFields { location, .. }
             | Diagnostic::ConstructorNotAStruct { location, .. }
-            | Diagnostic::ConstructorFieldDuplicate { second_location: location, .. }
+            | Diagnostic::DuplicateField { second_location: location, .. }
             | Diagnostic::CannotMatchOnType { location, .. }
             | Diagnostic::UnreachableCase { location, .. }
             | Diagnostic::MissingCases { location, .. }
@@ -828,6 +827,9 @@ impl Diagnostic {
             )),
             Diagnostic::UnusedName { name: _, location } => {
                 Some((location, "Prefix the name with `_` to silence this warning".to_string()))
+            },
+            Diagnostic::DuplicateField { second_location, .. } => {
+                Some((second_location, "Second location here".to_string()))
             },
             _ => None,
         }

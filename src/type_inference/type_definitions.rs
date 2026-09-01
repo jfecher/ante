@@ -58,7 +58,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 let fields = mapvec(fields, |(_, field_type)| field_type);
                 vec![(definition.name, fields)]
             },
-            cst::TypeDefinitionBody::Enum(variants) => {
+            cst::TypeDefinitionBody::Enum(variants, _) => {
                 mapvec(variants, |(name, fields)| (*name, mapvec(fields, |(_, field_type)| field_type)))
             },
         };
@@ -90,7 +90,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let resolve = self.current_resolve();
         let target = Origin::TopLevelDefinition(type_name);
         match &definition.body {
-            cst::TypeDefinitionBody::Enum(variants) => variants
+            cst::TypeDefinitionBody::Enum(variants, _) => variants
                 .iter()
                 .any(|(_, args)| args.iter().any(|(_, t)| Self::type_uses_target_unboxed(t, target, resolve))),
             cst::TypeDefinitionBody::Struct(fields) => {

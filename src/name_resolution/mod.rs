@@ -124,7 +124,7 @@ impl Origin {
                     },
                     TopLevelItemKind::TypeDefinition(type_definition) => match &type_definition.body {
                         TypeDefinitionBody::Error => FieldsResult::PriorError,
-                        TypeDefinitionBody::Enum(_) => FieldsResult::NotAStruct,
+                        TypeDefinitionBody::Enum(_, _) => FieldsResult::NotAStruct,
                         TypeDefinitionBody::Alias(body) => {
                             visited.push(id);
                             alias_body_fields(id.top_level_item, body, db, visited)
@@ -548,7 +548,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
         match &target_def.body {
             TypeDefinitionBody::Struct(_) => Some(Origin::TopLevelDefinition(target)),
             TypeDefinitionBody::Alias(_) => self.follow_alias_to_constructor(target, visited),
-            TypeDefinitionBody::Enum(_) | TypeDefinitionBody::EffectAlias(_) | TypeDefinitionBody::Error => None,
+            TypeDefinitionBody::Enum(_, _) | TypeDefinitionBody::EffectAlias(_) | TypeDefinitionBody::Error => None,
         }
     }
 
@@ -567,13 +567,13 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                             TypeDefinitionBody::Struct(_) | TypeDefinitionBody::Error => true,
 
                             // Each of these are only valid as types
-                            TypeDefinitionBody::Enum(_)
+                            TypeDefinitionBody::Enum(_, _)
                             | TypeDefinitionBody::Alias(_)
                             | TypeDefinitionBody::EffectAlias(_) => is_type,
                         }
                     },
                     // Variant types are structs and are thus valid as types or values
-                    TopLevelItemKind::TypeDefinition(def) if matches!(&def.body, TypeDefinitionBody::Enum(_)) => true,
+                    TopLevelItemKind::TypeDefinition(def) if matches!(&def.body, TypeDefinitionBody::Enum(_, _)) => true,
                     // Ability methods are only values
                     TopLevelItemKind::TypeDefinition(_) => !is_type,
                     TopLevelItemKind::TraitDefinition(_) | TopLevelItemKind::EffectDefinition(_) => {
@@ -749,7 +749,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
 
                     if let Some(first_location) = already_defined.get(&name).cloned() {
                         let second_location = location;
-                        self.emit_diagnostic(Diagnostic::ConstructorFieldDuplicate {
+                        self.emit_diagnostic(Diagnostic::DuplicateField {
                             name,
                             first_location,
                             second_location,
@@ -1037,7 +1037,8 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                     self.resolve_type(field_type, false);
                 }
             },
-            TypeDefinitionBody::Enum(variants) => {
+            TypeDefinitionBody::Enum(variants, common_fields) => {
+                self.check_common_field_duplicates(common_fields, variants);
                 for (name, variant_args) in variants {
                     self.link_existing_union_variant(type_definition.name, *name);
                     for (_, arg) in variant_args {
@@ -1053,6 +1054,42 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                     self.resolve_type(effect, false);
                 }
             },
+        }
+    }
+
+    // Error if a union's with-clause fields conflict with any other fields in the type
+    fn check_common_field_duplicates(
+        &mut self, common_fields: &[(NameId, Type)], variants: &[(NameId, Vec<(Option<NameId>, Type)>)],
+    ) {
+        let common_ids: BTreeSet<NameId> = common_fields.iter().map(|(id, _)| *id).collect();
+
+        for (i, (name_id, _)) in common_fields.iter().enumerate() {
+            let name = self.context[*name_id].clone();
+            let first_location = self.context.name_location(*name_id).clone();
+
+            if let Some((other_id, _)) = common_fields[..i].iter().find(|(other, _)| self.context[*other] == name) {
+                let second_location = self.context.name_location(*other_id).clone();
+                self.emit_diagnostic(Diagnostic::DuplicateField {
+                    name,
+                    first_location: second_location,
+                    second_location: first_location,
+                });
+                continue;
+            }
+
+            for (_, fields) in variants {
+                let collision = fields.iter().find(|(field_name, _)| {
+                    field_name.is_some_and(|id| !common_ids.contains(&id) && self.context[id] == name)
+                });
+                if let Some((_, field_type)) = collision {
+                    let second_location = field_type.location.clone();
+                    self.emit_diagnostic(Diagnostic::DuplicateField {
+                        name: name.clone(),
+                        first_location: first_location.clone(),
+                        second_location,
+                    });
+                }
+            }
         }
     }
 

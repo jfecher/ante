@@ -347,7 +347,7 @@ pub fn all_definitions_impl(context: &AllDefinitions, db: &DbHandle) -> Arc<Visi
         // differentiate them.
         match &item.kind {
             TopLevelItemKind::TypeDefinition(type_definition) => {
-                if let TypeDefinitionBody::Enum(variants) = &type_definition.body {
+                if let TypeDefinitionBody::Enum(variants, _) = &type_definition.body {
                     for (name, _) in variants {
                         declare_method(type_definition.name, *name);
                     }

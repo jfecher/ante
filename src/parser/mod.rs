@@ -743,7 +743,9 @@ impl<'tokens> Parser<'tokens> {
             Token::Newline | Token::EndOfInput => e.with_hint(Hint::FieldlessTypesNeedConstructors),
             _ => e,
         })?;
+
         let body = self.parse_type_body()?;
+
         Ok(TypeDefinition { shared, mutable, name, generics, body, kind: TypeDefinitionKind::Type })
     }
 
@@ -810,7 +812,6 @@ impl<'tokens> Parser<'tokens> {
 
     fn parse_indented_type_body(&mut self) -> Result<TypeDefinitionBody> {
         match self.current_token() {
-            // struct - trailing commas are optional when we have newlines separating fields
             Token::Identifier(_) if *self.peek_next_token() == Token::Colon => {
                 let fields = self.delimited(
                     |this| {
@@ -827,7 +828,7 @@ impl<'tokens> Parser<'tokens> {
             },
             // enum
             Token::Pipe => {
-                let variants = self.delimited(
+                let mut variants = self.delimited(
                     |this| {
                         this.expect(Token::Pipe, "`|`")?;
                         let variant_name = this.parse_type_name_id()?;
@@ -835,9 +836,12 @@ impl<'tokens> Parser<'tokens> {
                         Ok((variant_name, parameters))
                     },
                     Token::Newline,
-                    false,
+                    // Trailing here so a following `with` clause doesn't give a "expected `|`" error
+                    true,
                 );
-                Ok(TypeDefinitionBody::Enum(variants))
+                let common_fields = self.parse_with_clause_fields();
+                Self::append_common_fields(&mut variants, &common_fields);
+                Ok(TypeDefinitionBody::Enum(variants, common_fields))
             },
             _ => match self.parse_type() {
                 Ok(typ) => Ok(TypeDefinitionBody::Alias(typ)),
@@ -865,18 +869,45 @@ impl<'tokens> Parser<'tokens> {
             },
             // enum
             Token::Pipe => {
-                let variants = self.many0(|this| {
+                let mut variants = self.many0(|this| {
                     this.expect(Token::Pipe, "`|`")?;
                     let variant_name = this.parse_type_name_id()?;
                     let parameters = this.parse_variant_fields();
                     Ok((variant_name, parameters))
                 });
-                Ok(TypeDefinitionBody::Enum(variants))
+                let common_fields = self.parse_with_clause_fields();
+                Self::append_common_fields(&mut variants, &common_fields);
+                Ok(TypeDefinitionBody::Enum(variants, common_fields))
             },
             _ => match self.parse_type() {
                 Ok(typ) => Ok(TypeDefinitionBody::Alias(typ)),
                 Err(_) => self.expected("a field name or `|` to start this type body"),
             },
+        }
+    }
+
+    /// with_clause: 'with' ident ':' type (',' ident ':' type)*
+    fn parse_with_clause_fields(&mut self) -> Vec<(NameId, Type)> {
+        if !self.accept(Token::With) {
+            return Vec::new();
+        }
+
+        self.delimited(
+            |this| {
+                let field_name = this.parse_ident_id()?;
+                this.expect(Token::Colon, "a colon separating the shared field name from its type")?;
+                let field_type = this.parse_type_no_pair()?;
+                Ok((field_name, field_type))
+            },
+            Token::Comma,
+            true,
+        )
+    }
+
+    /// Append each of `common_fields` to every variant of `variants`
+    fn append_common_fields(variants: &mut [(NameId, Vec<(Option<NameId>, Type)>)], common_fields: &[(NameId, Type)]) {
+        for (_, fields) in variants.iter_mut() {
+            fields.extend(common_fields.iter().map(|(field_name, typ)| (Some(*field_name), typ.clone())));
         }
     }
 

@@ -74,7 +74,7 @@ fn type_body_from_item(
             let type_name = item_context[type_definition.name].clone();
             TypeBody::Product { type_name, fields }
         },
-        cst::TypeDefinitionBody::Enum(variants) => {
+        cst::TypeDefinitionBody::Enum(variants, _) => {
             let mut variants = mapvec(variants, |(name, cst_fields)| {
                 variant_name_and_fields(*name, cst_fields, arguments, result, next_id.as_deref_mut(), item_context)
             });
@@ -130,6 +130,13 @@ impl TopLevelName {
             &item_context,
         );
         TypeBody::Product { type_name, fields }
+    }
+
+    /// Number of `with`-clause common fields on the union type `self`
+    pub fn common_field_count<Db: DbGet<GetItem>>(self, compiler: &Db) -> usize {
+        let (item, _) = GetItem(self.top_level_item).get(compiler);
+        let TopLevelItemKind::TypeDefinition(definition) = &item.kind else { return 0 };
+        if self.local_name_id == definition.name { definition.body.common_fields().len() } else { 0 }
     }
 }
 

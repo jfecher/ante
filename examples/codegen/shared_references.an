@@ -1,0 +1,64 @@
+// Regression test for a bug where field access/assignment through a reference to a
+// shared type panicked in codegen.
+shared type Point = x: I32, y: I32
+
+struct_field_assign () =
+    var p = Point 1 2
+    p.x := 10
+    p.y := 20
+    println p.x
+    println p.y
+
+partial_field_assign () =
+    var p = Point 5 7
+    p.y := 99
+    println p.x
+    println p.y
+
+set_point_x (p: mut Point) (val: I32) =
+    p.x := val
+
+struct_ref_assign () =
+    var p = Point 0 0
+    set_point_x (mut p) 55
+    println p.x
+
+read_x (p: ref Point): I32 = p.x
+
+read_through_ref () =
+    p = Point 9 10
+    println (read_x (ref p))
+
+set_value (n: mut I32) (val: I32) =
+    n.* := val
+
+field_ref_mutate () =
+    var p = Point 3 4
+    set_value (mut p.x) 77
+    println p.x
+    println p.y
+
+compound_field_assign () =
+    var p = Point 1 1
+    p.x += 41
+    println p.x
+
+main () =
+    struct_field_assign ()
+    partial_field_assign ()
+    struct_ref_assign ()
+    read_through_ref ()
+    field_ref_mutate ()
+    compound_field_assign ()
+
+// args: --delete-binary --no-color
+// expected stdout:
+// 10
+// 20
+// 5
+// 99
+// 55
+// 9
+// 77
+// 4
+// 42

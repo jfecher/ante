@@ -525,13 +525,27 @@ impl<'a> CstDisplay<'a> {
                 }
                 self.indent_level -= 1;
             },
-            TypeDefinitionBody::Enum(variants) => {
+            TypeDefinitionBody::Enum(variants, common_fields) => {
                 self.indent_level += 1;
+                let common_field_count = common_fields.len();
                 for (name, params) in variants {
                     self.newline(f)?;
                     write!(f, "| ")?;
                     self.fmt_type_name(*name, context, f)?;
-                    self.fmt_variant_fields(params, context, f)?;
+                    // Avoid repeating the with-clause fields in each variant
+                    self.fmt_variant_fields(&params[..params.len() - common_field_count], context, f)?;
+                }
+                if common_field_count > 0 {
+                    self.newline(f)?;
+                    write!(f, "with ")?;
+                    for (i, (name, typ)) in common_fields.iter().enumerate() {
+                        if i != 0 {
+                            write!(f, ", ")?;
+                        }
+                        self.fmt_name(*name, context, f)?;
+                        write!(f, ": ")?;
+                        self.fmt_type(typ, context, f)?;
+                    }
                 }
                 self.indent_level -= 1;
             },

@@ -59,6 +59,8 @@ impl Definition {
                 *instruction = Instruction::Id(Value::Integer(IntConstant::Usz(*n as usize)));
             } else if let Instruction::StackAllocUninit(typ) = instruction {
                 typ.select_largest_variants(ptr_size);
+            } else if let Instruction::GetFieldPtr { struct_type, .. } = instruction {
+                struct_type.select_largest_variants(ptr_size);
             }
         }
     }

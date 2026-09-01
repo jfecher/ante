@@ -357,7 +357,7 @@ where
                 let (item, _) = GetItem(id.top_level_item).get(self.compiler);
                 if let Some(definition) = Self::type_definition(&item) {
                     // `shared` types are always represented as a pointer in MIR.
-                    if definition.shared {
+                    if definition.shared && id.local_name_id == definition.name {
                         return Type::POINTER;
                     }
                     if definition.kind.is_effect() {
@@ -397,7 +397,8 @@ where
             TCType::UserDefined(Origin::TopLevelDefinition(id)) => {
                 let (item, _) = GetItem(id.top_level_item).get(self.compiler);
                 let definition = Self::type_definition(&item)?;
-                definition.shared.then(|| (self.expand_user_defined_body(*id, args), definition.mutable))
+                (definition.shared && id.local_name_id == definition.name)
+                    .then(|| (self.expand_user_defined_body(*id, args), definition.mutable))
             },
             _ => None,
         }
@@ -405,21 +406,49 @@ where
 
     fn expand_user_defined_body(&self, id: TopLevelName, args: Option<&[TCType]>) -> Type {
         let body = GetTypeBody(id, args.map(|args| args.to_vec())).get(self.compiler);
-        self.convert_type_body(&body)
+        self.convert_type_body(&body, self.common_field_count(id))
+    }
+
+    /// Number of with-clause fields on the union type `id` names
+    pub(super) fn common_field_count(&self, id: TopLevelName) -> usize {
+        id.common_field_count(self.compiler)
+    }
+
+    /// Like `common_field_count`, but resolves `typ` to its top-level definition first.
+    pub(super) fn common_field_count_of_type(&self, typ: &TCType) -> usize {
+        match typ.follow(self.type_bindings) {
+            TCType::Application(constructor, _) => self.common_field_count_of_type(constructor),
+            TCType::Forall(_, inner) => self.common_field_count_of_type(inner),
+            TCType::UserDefined(Origin::TopLevelDefinition(id)) => self.common_field_count(*id),
+            _ => 0,
+        }
     }
 
     /// Converts a type body to the general representation of that type.
-    fn convert_type_body(&self, body: &TypeBody) -> Type {
+    ///
+    /// Generally this is straightforward but with-clause fields on a union type are hoisted out
+    /// of the union into an outer tuple: `(common_fields.., (tag, Union[variant_tuples...]))`.
+    fn convert_type_body(&self, body: &TypeBody, common_field_count: usize) -> Type {
         match body {
             TypeBody::Product { type_name: _, fields } => {
                 Type::tuple(mapvec(fields, |(_, field)| self.convert_type(field, None)))
             },
             TypeBody::Sum(variants) => {
+                let k = common_field_count;
                 let union = Type::union(mapvec(variants, |(_, _, fields)| {
-                    Type::tuple(mapvec(fields, |(_, field)| self.convert_type(field, None)))
+                    Type::tuple(mapvec(&fields[..fields.len() - k], |(_, field)| self.convert_type(field, None)))
                 }));
-                // Then pack the result with a separate tag value.
-                Type::tuple(vec![Type::tag_type(), union])
+                let tagged = Type::tuple(vec![Type::tag_type(), union]);
+                if k == 0 {
+                    tagged
+                } else {
+                    let (_, _, first_variant_fields) = &variants[0];
+                    let mut outer = mapvec(&first_variant_fields[first_variant_fields.len() - k..], |(_, field)| {
+                        self.convert_type(field, None)
+                    });
+                    outer.push(tagged);
+                    Type::tuple(outer)
+                }
             },
         }
     }

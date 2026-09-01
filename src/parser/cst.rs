@@ -263,7 +263,7 @@ pub struct TypeDefinition {
 pub enum TypeDefinitionBody {
     Error,
     Struct(Vec<(NameId, Type)>),
-    Enum(Vec<(NameId, Vec<(Option<NameId>, Type)>)>),
+    Enum(/*variants*/ Vec<(NameId, Vec<(Option<NameId>, Type)>)>, /*with-clause*/ Vec<(NameId, Type)>),
     Alias(Type),
     EffectAlias(Vec<Type>),
 }
@@ -278,8 +278,16 @@ impl TypeDefinitionBody {
     /// If this is an enum body, returns the variant named `name` along with its index
     pub fn find_variant(&self, name: NameId) -> Option<(usize, &(NameId, Vec<(Option<NameId>, Type)>))> {
         match self {
-            TypeDefinitionBody::Enum(variants) => variants.iter().enumerate().find(|(_, (n, _))| *n == name),
+            TypeDefinitionBody::Enum(variants, _) => variants.iter().enumerate().find(|(_, (n, _))| *n == name),
             _ => None,
+        }
+    }
+
+    /// The `with`-clause common fields of an enum body, empty if this is not an enum
+    pub fn common_fields(&self) -> &[(NameId, Type)] {
+        match self {
+            TypeDefinitionBody::Enum(_, common_fields) => common_fields,
+            _ => &[],
         }
     }
 }

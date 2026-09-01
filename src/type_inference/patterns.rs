@@ -267,7 +267,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             cst::TypeDefinitionBody::Error => return None,
             // A struct only has 1 constructor, and its name should be the only NameId externally visible.
             cst::TypeDefinitionBody::Struct(_) => 0,
-            cst::TypeDefinitionBody::Enum(variants) => {
+            cst::TypeDefinitionBody::Enum(variants, _) => {
                 let result =
                     variants.iter().enumerate().find_map(|(i, (variant_name, _))| (*variant_name == name).then_some(i));
                 // The only other name visible within the enum should be the type name.

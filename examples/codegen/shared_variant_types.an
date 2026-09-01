@@ -1,0 +1,39 @@
+// Regression test for a bug where `..c` on a shared union followed by a field access on c panicked
+shared type Expr =
+    | Var (s: String)
+    | Bin Expr Expr
+
+// This used to panic
+describe (e: Expr): String =
+    match e
+    | Var ..c -> c.s
+    | Bin .._ -> "bin"
+
+shared type Tagged =
+    | Var String
+    | Bin Tagged Tagged
+    with tag: I32
+
+tag_of (e: Tagged): I32 = e.tag
+
+rest_tag (e: Tagged): I32 =
+    match e
+    | Var ..c -> c.tag
+    | Bin ..c -> c.tag
+
+main () =
+    println (describe (Var "leaf"))
+    println (describe (Bin (Var "a") (Var "b")))
+    println (tag_of (Var "x" 1))
+    println (tag_of (Bin (Var "a" 2) (Var "b" 3) 4))
+    println (rest_tag (Var "y" 5))
+    println (rest_tag (Bin (Var "a" 6) (Var "b" 7) 8))
+
+// args: --delete-binary --no-color
+// expected stdout:
+// leaf
+// bin
+// 1
+// 4
+// 5
+// 8

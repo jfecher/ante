@@ -920,6 +920,17 @@ impl Type {
         }
     }
 
+    /// Like `without_union_tag`, but first unwraps `common_field_count` leading hoisted fields.
+    fn without_union_tag_hoisted(&self, common_field_count: usize) -> Option<Self> {
+        if common_field_count == 0 {
+            return self.without_union_tag();
+        }
+        match self {
+            Type::Tuple(fields) if fields.len() > common_field_count => fields.last()?.without_union_tag(),
+            _ => None,
+        }
+    }
+
     /// Substitute in the given generic arguments. Replacing each `Generic(i)` with `generic_args[i]`.
     fn substitute(&self, generic_args: &Vec<Type>) -> Type {
         match self {
