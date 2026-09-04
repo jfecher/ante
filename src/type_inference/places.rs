@@ -14,11 +14,10 @@ use crate::{
         cst::{self, Expr},
         ids::{ExprId, NameId, NameStore},
     },
-    type_inference::TypeChecker,
+    type_inference::{row::{canonicalize_row, construct_row, flatten_row_into, follow_row, sort_and_dedup_row, RowMatch}, TypeChecker},
 };
 
 use super::{
-    RowEntry, RowMatch,
     types::{Type, TypeBindings, TypePrinter},
 };
 
@@ -38,58 +37,28 @@ impl Type {
     pub(crate) fn flatten_places_into(
         places: &[Type], found: &mut Vec<Type>, bindings: &TypeBindings, more_bindings: &TypeBindings,
     ) {
-        for place in places {
-            match place.follow_two(bindings, more_bindings) {
-                Type::Places(Some(row)) => Self::flatten_places_into(&row, found, bindings, more_bindings),
-                Type::Places(None) => (),
-                typ => found.push(typ),
-            }
-        }
-    }
-
-    /// Sort key used to canonicalize a places row: concrete atoms first,
-    /// then rigid generics, then unbound variables last.
-    fn place_sort_key(typ: &Type) -> (bool, bool, Option<PlaceAtom>) {
-        match typ {
-            Type::PlaceAtom(atom) => (false, false, Some(*atom)),
-            Type::Variable(_) => (true, true, None),
-            _ => (false, true, None),
-        }
+        flatten_row_into(places, found, bindings, more_bindings);
     }
 
     /// Flatten, follow, sort, and deduplicate `places`.
     /// Deduplication is done via exact equality rather than unification.
     pub(crate) fn canonicalize_places(places: &[Type], bindings: &TypeBindings, more_bindings: &TypeBindings) -> Vec<Type> {
-        let mut list = Vec::with_capacity(places.len());
-        Self::flatten_places_into(places, &mut list, bindings, more_bindings);
-        Self::follow_places(&mut list, bindings, more_bindings);
-        Self::sort_and_dedup_places(&mut list);
-        list
+        canonicalize_row(places, bindings, more_bindings, |_: &Type, _: &Type| ())
     }
 
     /// Zonk each entry in place
     pub(crate) fn follow_places(places: &mut [Type], bindings: &TypeBindings, more_bindings: &TypeBindings) {
-        for place in places {
-            if let Some(typ) = place.follow_all_opt(bindings, more_bindings) {
-                *place = typ;
-            }
-        }
+        follow_row(places, bindings, more_bindings);
     }
 
     /// Sort and deduplicate the given places row. Entries must already be zonked.
     pub(crate) fn sort_and_dedup_places(places: &mut Vec<Type>) {
-        places.sort_by(|a, b| Self::place_sort_key(a).cmp(&Self::place_sort_key(b)).then_with(|| a.cmp(b)));
-        places.dedup();
+        sort_and_dedup_row(places, |_: &Type, _: &Type| ());
     }
 
     /// Construct a canonicalized places row by following & deduplicating entries.
     pub(crate) fn places(list: &[Type], bindings: &TypeBindings, more_bindings: &TypeBindings) -> Type {
-        Self::places_from_canonical(Self::canonicalize_places(list, bindings, more_bindings))
-    }
-
-    /// Construct a places row from an already canonical place set
-    pub(crate) fn places_from_canonical(list: Vec<Type>) -> Type {
-        if list.is_empty() { Type::Places(None) } else { Type::Places(Some(Arc::new(list))) }
+        construct_row(list, bindings, more_bindings)
     }
 
     /// If this is a reference application, return its places argument
@@ -163,24 +132,6 @@ where
             }
             write!(f, ")")
         }
-    }
-}
-
-impl RowEntry for Type {
-    fn is_open(&self) -> bool {
-        matches!(self, Type::Variable(_))
-    }
-
-    fn inner_type(&self) -> &Type {
-        self
-    }
-
-    fn row_of(list: &[Self], bindings: &TypeBindings, more_bindings: &TypeBindings) -> Type {
-        Type::places(list, bindings, more_bindings)
-    }
-
-    fn fresh(next_var: &mut impl FnMut() -> Type) -> Self {
-        next_var()
     }
 }
 

@@ -14,13 +14,13 @@ use crate::{
     incremental::{DbHandle, GetItem, Resolve},
     iterator_extensions::mapvec,
     lexer::token::{FloatKind, IntegerKind},
-    name_resolution::{Origin, ResolutionResult, builtin::Builtin},
+    name_resolution::{builtin::Builtin, Origin, ResolutionResult},
     parser::{
         cst::{self, KindAnnotation, ReferenceKind},
         desugar_context::DesugarContext,
         ids::{NameId, NameStore, TopLevelName},
     },
-    type_inference::{TypeChecker, generics::Generic, kinds::Kind, places::PlaceAtom},
+    type_inference::{generics::Generic, kinds::Kind, places::PlaceAtom, row::{canonicalize_row, construct_row, flatten_row_into, follow_row, sort_and_dedup_row, Row, RowEntry}, TypeChecker},
 };
 
 /// Tracks the kind of each local type variable encountered while lowering a
@@ -95,8 +95,6 @@ pub enum Type {
     Places(Row<Type>),
 }
 
-type Row<T> = Option<Arc<Vec<T>>>;
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Effect {
     /// This id identifies the capability value used at runtime for this effect.
@@ -111,14 +109,6 @@ impl Effect {
     /// Return this effect as an effect row of just this effect
     pub(crate) fn into_type(self) -> Type {
         Type::Effects(Some(Arc::new(vec![self])))
-    }
-
-    /// Sort key used to canonicalize a row, computed from the entry's already-followed type.
-    /// Concrete effects come first, then rigid generics, then unbound variables.
-    fn sort_key(typ: &Type) -> (bool, bool, Option<Origin>) {
-        let no_bindings = TypeBindings::default();
-        let head = typ.effect_head(&no_bindings, &no_bindings);
-        (matches!(typ, Type::Variable(_)), head.is_none(), head)
     }
 
     /// Rewrite both halves of this entry with `f`, cloning whichever half `f` left alone.
@@ -1139,7 +1129,7 @@ impl Type {
                 if mapped.is_none() && !self_is_var && renumbered == **effects {
                     return None;
                 }
-                Some(Self::effects_from_canonical(renumbered))
+                Some(Effect::row_from_canonical(renumbered))
             },
             Type::Application(constructor, args) => {
                 let new_constructor = constructor.map_effect_ids(bindings, new_id);
@@ -1397,59 +1387,30 @@ impl Type {
     pub(crate) fn flatten_effects_into(
         effects: &[Effect], found: &mut Vec<Effect>, bindings: &TypeBindings, more_bindings: &TypeBindings,
     ) {
-        for effect in effects {
-            match effect.typ.follow_two(bindings, more_bindings) {
-                Type::Effects(Some(row)) => Self::flatten_effects_into(&row, found, bindings, more_bindings),
-                Type::Effects(None) => (),
-                typ => found.push(Effect { id: effect.id.follow_two(bindings, more_bindings), typ }),
-            }
-        }
+        flatten_row_into(effects, found, bindings, more_bindings);
     }
 
     /// Flatten, follow, sort, and deduplicate `effects`.
     /// Deduplication is done via exact equality rather than unification.
     pub(crate) fn canonicalize_effects(
-        effects: &[Effect], bindings: &TypeBindings, more_bindings: &TypeBindings, on_merge: impl FnMut(&Type, &Type),
+        effects: &[Effect], bindings: &TypeBindings, more_bindings: &TypeBindings, mut on_merge: impl FnMut(&Type, &Type),
     ) -> Vec<Effect> {
-        let mut list = Vec::with_capacity(effects.len());
-        Self::flatten_effects_into(effects, &mut list, bindings, more_bindings);
-        Self::follow_effects(&mut list, bindings, more_bindings);
-        Self::sort_and_dedup_effects(&mut list, on_merge);
-        list
+        canonicalize_row(effects, bindings, more_bindings, |dropped: &Effect, kept: &Effect| on_merge(&dropped.id, &kept.id))
     }
 
     /// Zonk each entry's type in place
     pub(crate) fn follow_effects(effects: &mut [Effect], bindings: &TypeBindings, more_bindings: &TypeBindings) {
-        for effect in effects {
-            if let Some(typ) = effect.typ.follow_all_opt(bindings, more_bindings) {
-                effect.typ = typ;
-            }
-        }
+        follow_row(effects, bindings, more_bindings);
     }
 
     /// Sort and deduplicate the given effect set. Entries must already be zonked.
     pub(crate) fn sort_and_dedup_effects(effects: &mut Vec<Effect>, mut on_merge: impl FnMut(&Type, &Type)) {
-        effects.sort_by(|a, b| {
-            let key = |effect: &Effect| Effect::sort_key(&effect.typ);
-            key(a).cmp(&key(b)).then_with(|| a.typ.cmp(&b.typ))
-        });
-        effects.dedup_by(|dropped, kept| {
-            let same = dropped.typ == kept.typ;
-            if same {
-                on_merge(&dropped.id, &kept.id);
-            }
-            same
-        });
+        sort_and_dedup_row(effects, |dropped: &Effect, kept: &Effect| on_merge(&dropped.id, &kept.id));
     }
 
     /// Construct a canonicalized effect row by following & deduplicating entries.
     pub(crate) fn effects(list: &[Effect], bindings: &TypeBindings, more_bindings: &TypeBindings) -> Type {
-        Self::effects_from_canonical(Self::canonicalize_effects(list, bindings, more_bindings, |_, _| ()))
-    }
-
-    /// Construct an effect row from an already canonical effect set
-    pub(crate) fn effects_from_canonical(list: Vec<Effect>) -> Type {
-        if list.is_empty() { Type::pure() } else { Type::Effects(Some(Arc::new(list))) }
+        construct_row(list, bindings, more_bindings)
     }
 
     /// The effect constructor an effect-row entry refers to, ignoring its type arguments.

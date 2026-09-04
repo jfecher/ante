@@ -9,17 +9,13 @@ use crate::{
     incremental::{ExportedDefinitions, GetCrateGraph, GetItem, VisibleImplicits},
     iterator_extensions::mapvec,
     lexer::token::{FloatKind, Integer, IntegerKind},
-    name_resolution::{Origin, namespace::CrateId},
+    name_resolution::{namespace::CrateId, Origin},
     parser::{
         cst::{self, Name, Pattern, TopLevelItemKind},
         ids::{ExprId, NameId, PatternId},
     },
     type_inference::{
-        Locateable, RowMode, TypeChecker,
-        Variance::Covariant,
-        errors::TypeErrorKind,
-        places::ScopeDepth,
-        types::{FunctionType, ParameterType, PrimitiveType, Type, TypeBindings, TypeVariableId},
+        errors::TypeErrorKind, places::ScopeDepth, row::RowMode, types::{FunctionType, ParameterType, PrimitiveType, Type, TypeBindings, TypeVariableId}, Locateable, TypeChecker, Variance::Covariant
     },
 };
 
