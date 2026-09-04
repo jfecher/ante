@@ -156,14 +156,14 @@ pub enum TypeKind {
     /// A filler type which corresponds to an unbound type variable to be inferred later
     Hole,
 
-    /// Synthesized by the parser for the lifetime arg of `ref t` / `mut t` / `imm t` /
-    /// `uniq t` when no `'name` was written. Becomes a fresh lifetime variable in normal
-    /// positions, and is rejected with `MissingExplicitLifetime` inside type-definition
-    /// bodies where lifetimes must be explicit.
-    ImplicitLifetime,
+    /// Synthesized by the parser for the place arg of `ref t` / `mut t` / `imm t` /
+    /// `uniq t` when no `'name` was written. Becomes a fresh place variable in normal
+    /// positions, and is rejected with `MissingExplicitPlace` inside type-definition
+    /// bodies where places must be explicit.
+    ImplicitPlace,
 
     /// A generic prepended with '
-    Lifetime(NameId),
+    Place(NameId),
 
     /// An explicit `forall (n: U32) t. T` polytype
     Forall(Generics, Box<Type>),
@@ -663,13 +663,11 @@ impl GenericParam {
 }
 
 /// Surface syntax for kind annotations on generic parameters.
-/// `U32` is needed for type-level array lengths; `Lifetime` for reference lifetime
-/// parameters introduced via `'a`.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum KindAnnotation {
     Type,
     U32,
-    Lifetime,
+    Place,
     Effect,
 }
 

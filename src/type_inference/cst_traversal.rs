@@ -1030,16 +1030,17 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             let hint = self.next_type_variable();
             let rhs_type = self.with_suppressed_move_record(|this| this.infer_expr(reference.rhs, &hint));
 
-            let element = match self.follow_type(&rhs_type).reference_element(&self.bindings) {
+            let rhs_type_followed = self.follow_type(&rhs_type).clone();
+            let (place, element) = match rhs_type_followed.reference_element(&self.bindings) {
                 Some((inner_kind, inner_element)) if matches!(inner_kind, ReferenceKind::Mut | ReferenceKind::Uniq) => {
-                    inner_element
+                    // Reborrow
+                    let place = rhs_type_followed.reference_places(&self.bindings).unwrap_or(Type::Places(None));
+                    (place, inner_element)
                 },
-                // Not a reborrow: wrap `rhs_type` in the requested reference kind.
-                _ => rhs_type,
+                _ => (self.infer_place(reference.rhs), rhs_type),
             };
 
-            let lifetime = self.next_type_variable();
-            return Type::Application(Arc::new(constructor), Arc::new(vec![lifetime, element]));
+            return Type::Application(Arc::new(constructor), Arc::new(vec![place, element]));
         }
 
         // Use the expected element type as a hint when it is available
@@ -1051,8 +1052,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // A reference doesn't move its rhs but still reads it, so check it isn't already moved.
         let element = self.with_suppressed_move_record(|this| this.infer_expr(reference.rhs, &element_hint));
 
-        let lifetime = self.next_type_variable();
-        Type::Application(Arc::new(constructor), Arc::new(vec![lifetime, element]))
+        let place = self.infer_place(reference.rhs);
+        Type::Application(Arc::new(constructor), Arc::new(vec![place, element]))
     }
 
     fn infer_constructor(&mut self, constructor: &cst::Constructor, expected: &Type, id: ExprId) -> Type {

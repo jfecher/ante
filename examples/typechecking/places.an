@@ -1,0 +1,29 @@
+foo (): I32 = 5
+
+main () =
+    x = 3
+    y = ref x
+    a = 1
+    b = 2
+    z = if true then ref a else ref b
+    w = ref (foo ())
+    _ = y
+    _ = z
+    _ = w
+    ()
+
+// args: -e ast-t --no-color
+// expected stdout:
+// (foo: fn Unit -> I32 is pure) () : I32 is pure = 5
+// 
+// (main: fn Unit -> Unit is pure) () =
+//     (x: I32) = 3
+//     (y: ref 'x I32) = ref (x: I32)
+//     (a: I32) = 1
+//     (b: I32) = 2
+//     (z: ref '(a, b) I32) = if true then ref (a: I32) else ref (b: I32)
+//     (w: ref '_20 I32) = ref (foo: fn Unit -> I32 is pure) ()
+//     (_: ref 'x I32) = (y: ref 'x I32)
+//     (_: ref '(a, b) I32) = (z: ref '(a, b) I32)
+//     (_: ref '_20 I32) = (w: ref '_20 I32)
+//     ()

@@ -4,5 +4,5 @@ main () =
 // args: -e ast-t --no-color
 // expected stdout:
 // (main: fn Unit -> Unit can Fs) () =
-//     (print: fn (ref I32) {Print I32} [Ptr Unit] -> Unit can Fs) (ref 2) {(print_i32: Print I32)}
+//     (print: fn (ref '_7 I32) {Print I32} [Ptr Unit] -> Unit can Fs) (ref 2) {(print_i32: Print I32)}
 

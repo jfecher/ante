@@ -20,7 +20,7 @@ use crate::{
         desugar_context::DesugarContext,
         ids::{NameId, NameStore, TopLevelName},
     },
-    type_inference::{TypeChecker, generics::Generic, kinds::Kind},
+    type_inference::{TypeChecker, generics::Generic, kinds::Kind, places::PlaceAtom},
 };
 
 /// Tracks the kind of each local type variable encountered while lowering a
@@ -31,7 +31,7 @@ pub(crate) fn kind_from_annotation(kind: KindAnnotation) -> Kind {
     match kind {
         KindAnnotation::Type => Kind::Type,
         KindAnnotation::U32 => Kind::U32,
-        KindAnnotation::Lifetime => Kind::Lifetime,
+        KindAnnotation::Place => Kind::Place,
         KindAnnotation::Effect => Kind::Effect,
     }
 }
@@ -74,7 +74,7 @@ pub enum Type {
     /// An effects row, each effect is sorted & deduplicated
     ///
     /// A value of None corresponds to an empty effect set to avoid allocation
-    Effects(Option<Arc<Vec<Effect>>>),
+    Effects(Row<Effect>),
 
     /// The canonical form of an [Effect::id] in a generalized type.
     ///
@@ -83,7 +83,19 @@ pub enum Type {
     ///
     /// These are replaced with [Type::Variable]s when instantiated
     EffectId(u32),
+
+    /// A single concrete place a reference may point to. Only ever appears as an entry
+    /// inside a [Type::Places] row
+    PlaceAtom(PlaceAtom),
+
+    /// The set of places a reference may borrow from, sorted & deduplicated.
+    /// Each entry is a [Type::PlaceAtom] or generic when concrete or a [Type::Variable] when not.
+    ///
+    /// A value of None corresponds to a reference pointing to nothing
+    Places(Row<Type>),
 }
+
+type Row<T> = Option<Arc<Vec<T>>>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Effect {
@@ -99,11 +111,6 @@ impl Effect {
     /// Return this effect as an effect row of just this effect
     pub(crate) fn into_type(self) -> Type {
         Type::Effects(Some(Arc::new(vec![self])))
-    }
-
-    /// True if this entry is an unbound type variable
-    pub(crate) fn is_open(&self, bindings: &TypeBindings, more_bindings: &TypeBindings) -> bool {
-        matches!(self.typ.follow_two(bindings, more_bindings), Type::Variable(_))
     }
 
     /// Sort key used to canonicalize a row, computed from the entry's already-followed type.
@@ -385,13 +392,14 @@ impl Type {
 
     /// Returns `Some(new_type)` when a binding was substituted somewhere in this subtree, and `None`
     /// when the subtree is unchanged so the caller can reuse the original `Arc` instead of allocating.
-    fn follow_all_opt(&self, bindings: &TypeBindings, more_bindings: &TypeBindings) -> Option<Type> {
+    pub(super) fn follow_all_opt(&self, bindings: &TypeBindings, more_bindings: &TypeBindings) -> Option<Type> {
         match self {
             Type::Primitive(_)
             | Type::Generic(Generic::Named(_))
             | Type::UserDefined(_)
             | Type::U32(_)
-            | Type::EffectId(_) => None,
+            | Type::EffectId(_)
+            | Type::PlaceAtom(_) => None,
             Type::Generic(Generic::Inferred(id)) | Type::Variable(id) => {
                 let binding = bindings.get(id).or_else(|| more_bindings.get(id))?;
                 Some(binding.follow_all_two(bindings, more_bindings))
@@ -447,6 +455,10 @@ impl Type {
                 let effects = Self::follow_all_each(effects.as_ref()?, |e| e.follow_all_opt(bindings, more_bindings))?;
                 Some(Type::effects(&effects, bindings, more_bindings))
             },
+            Type::Places(places) => {
+                let places = Self::follow_all_each(places.as_ref()?, |p| p.follow_all_opt(bindings, more_bindings))?;
+                Some(Type::places(&places, bindings, more_bindings))
+            },
         }
     }
 
@@ -482,7 +494,7 @@ impl Type {
         let self_is_var = matches!(self, Type::Variable(_));
 
         match self.follow(bindings_in_scope) {
-            Type::Primitive(_) | Type::UserDefined(_) | Type::U32(_) | Type::EffectId(_) => None,
+            Type::Primitive(_) | Type::UserDefined(_) | Type::U32(_) | Type::EffectId(_) | Type::PlaceAtom(_) => None,
             Type::Generic(generic) => bindings_to_substitute.get(generic).cloned(),
             Type::Variable(id) => bindings_to_substitute.get(&Generic::Inferred(*id)).cloned(),
             Type::Function(function) => {
@@ -558,6 +570,19 @@ impl Type {
                     None => effects.as_ref().map_or(&[][..], |effects| effects.as_slice()),
                 };
                 Some(Type::effects(entries, bindings_in_scope, &Default::default()))
+            },
+            Type::Places(places) => {
+                let new_places = places.as_ref().and_then(|places| {
+                    Self::follow_all_each(places, |p| p.substitute_opt(bindings_to_substitute, bindings_in_scope))
+                });
+                if new_places.is_none() && !self_is_var {
+                    return None;
+                }
+                let entries = match &new_places {
+                    Some(new_places) => new_places.as_slice(),
+                    None => places.as_ref().map_or(&[][..], |places| places.as_slice()),
+                };
+                Some(Type::places(entries, bindings_in_scope, &Default::default()))
             },
         }
     }
@@ -789,7 +814,7 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
                 }
                 (typ, kind)
             },
-            crate::parser::cst::TypeKind::Variable(name) | crate::parser::cst::TypeKind::Lifetime(name) => {
+            crate::parser::cst::TypeKind::Variable(name) | crate::parser::cst::TypeKind::Place(name) => {
                 let origin = self.resolve.name_origins.get(name).copied();
                 if let (Some(expected), Some(Origin::Local(name_id))) = (expected, origin) {
                     self.local_kinds.entry(name_id).or_insert_with(|| expected.clone());
@@ -847,7 +872,7 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
                 (typ, result_kind)
             },
             crate::parser::cst::TypeKind::Reference(kind) => {
-                (Type::Primitive(PrimitiveType::Reference(*kind)), Kind::from_args(vec![Kind::Lifetime, Kind::Type]))
+                (Type::Primitive(PrimitiveType::Reference(*kind)), Kind::from_args(vec![Kind::Place, Kind::Type]))
             },
             crate::parser::cst::TypeKind::NoClosureEnv => (Type::NO_CLOSURE_ENV, Kind::Type),
             crate::parser::cst::TypeKind::Pointer => (Type::POINTER, Kind::from_args(vec![Kind::Type])),
@@ -866,10 +891,10 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
             },
             // TODO: There is a separate check in type definition bodies to reject these.
             // Rework it to be more similar to the HoleCantBeUsed above.
-            crate::parser::cst::TypeKind::ImplicitLifetime => {
+            crate::parser::cst::TypeKind::ImplicitPlace => {
                 let typ = Type::Variable(TypeVariableId(*self.next_id));
                 *self.next_id += 1;
-                (typ, Kind::Lifetime)
+                (typ, Kind::Place)
             },
             crate::parser::cst::TypeKind::IntegerConstant(v) => (Type::U32(*v), Kind::U32),
             crate::parser::cst::TypeKind::Pure => (Type::pure(), Kind::Effect),
@@ -1195,7 +1220,8 @@ impl Type {
             | Type::Variable(_)
             | Type::Generic(_)
             | Type::U32(_)
-            | Type::EffectId(_) => (),
+            | Type::EffectId(_)
+            | Type::PlaceAtom(_) => (),
             Type::Function(function) => {
                 for parameter in &function.parameters {
                     parameter.typ.for_each_subterm(bindings, f);
@@ -1223,6 +1249,13 @@ impl Type {
                     for effect in effects.iter() {
                         effect.typ.for_each_subterm(bindings, f);
                         effect.id.for_each_subterm(bindings, f);
+                    }
+                }
+            },
+            Type::Places(places) => {
+                if let Some(places) = places.as_ref() {
+                    for place in places.iter() {
+                        place.for_each_subterm(bindings, f);
                     }
                 }
             },
@@ -1458,14 +1491,14 @@ impl Type {
 
 pub struct TypePrinter<'a, Db, Names> {
     typ: &'a Type,
-    bindings: &'a TypeBindings,
+    pub(super) bindings: &'a TypeBindings,
     /// Unbound variables in these sets render as their literal default (I32/F64) instead of `_`.
     integer_literal_vars: &'a FxHashSet<TypeVariableId>,
     float_literal_vars: &'a FxHashSet<TypeVariableId>,
     /// In error messages we omit the `[env]` block and instead write `=>` for functions
     /// with an environment. The typed AST dump keeps the env.
     hide_environments: bool,
-    names: &'a Names,
+    pub(super) names: &'a Names,
     db: &'a Db,
 }
 
@@ -1491,7 +1524,7 @@ where
     Db: DbGet<GetItem>,
     Names: NameStore,
 {
-    fn fmt_type(&self, typ: &Type, parenthesize: bool, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    pub(super) fn fmt_type(&self, typ: &Type, parenthesize: bool, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match typ {
             Type::Primitive(primitive_type) => write!(f, "{primitive_type}"),
             Type::EffectId(id) => write!(f, "#{id}"),
@@ -1557,15 +1590,19 @@ where
                     write!(f, ", ")?;
                     self.fmt_type(&args[1], true, f)
                 } else {
-                    let skip_implicit_lifetime = args.len() == 2
-                        && matches!(constructor.follow(self.bindings), Type::Primitive(PrimitiveType::Reference(_)))
-                        && matches!(args[0].follow(self.bindings), Type::Variable(_));
+                    let is_reference = args.len() == 2
+                        && matches!(constructor.follow(self.bindings), Type::Primitive(PrimitiveType::Reference(_)));
 
                     self.fmt_type(constructor, true, f)?;
-                    let start = if skip_implicit_lifetime { 1 } else { 0 };
-                    for arg in args[start..].iter() {
+                    if is_reference {
+                        self.fmt_place_arg(&args[0], f)?;
                         write!(f, " ")?;
-                        self.fmt_type(arg, true, f)?;
+                        self.fmt_type(&args[1], true, f)?;
+                    } else {
+                        for arg in args.iter() {
+                            write!(f, " ")?;
+                            self.fmt_type(arg, true, f)?;
+                        }
                     }
                     Ok(())
                 }
@@ -1590,6 +1627,11 @@ where
             }),
             Type::U32(n) => write!(f, "{n}"),
             Type::Effects(effects) => self.fmt_effects(effects, parenthesize, f),
+            Type::PlaceAtom(atom) => self.fmt_place_atom(*atom, f),
+            Type::Places(places) => {
+                let atoms = self.canonicalize_place_atoms(places);
+                if atoms.is_empty() { write!(f, "()") } else { self.fmt_place_atoms(&atoms, f) }
+            },
         }
     }
 

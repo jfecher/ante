@@ -17,7 +17,7 @@ main () =
 // expected stderr:
 // examples/typechecking/function_contravariance.an:11:14
 // 10 |     use_ref (mut 3)
-// 11 |     use_mut (ref 3)	// error: Argument 1 has type ref I32 but mut I32 was expected
+// 11 |     use_mut (ref 3)	// error: Argument 1 has type ref '_7 I32 but mut I32 was expected
 //    |              ^^^^^
 // 12 |     needs_mut_fn use_ref
 // 

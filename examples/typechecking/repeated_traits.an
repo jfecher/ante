@@ -6,8 +6,9 @@ foo a =
 // expected exit status: 1
 // expected stdout:
 // (foo: fn _ -> Unit can Fs) (a: _) =
-//     (print: fn (ref _) {Print _} [Ptr Unit] -> Unit can Fs) (ref (a: _)) {(error)}
-//     (print: fn (ref _) {Print _} [Ptr Unit] -> Unit can Fs) (ref (a: _)) {(error)}
+//     (print: fn (ref 'a _) {Print _} [Ptr Unit] -> Unit can Fs) (ref (a: _)) {(error)}
+//     (print: fn (ref 'a _) {Print _} [Ptr Unit] -> Unit can Fs) (ref (a: _)) {(error)}
+
 
 // expected stderr:
 // examples/typechecking/repeated_traits.an:2:5

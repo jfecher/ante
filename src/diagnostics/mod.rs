@@ -275,7 +275,7 @@ pub enum Diagnostic {
     HoleCantBeUsed {
         location: Location,
     },
-    MissingExplicitLifetime {
+    MissingExplicitPlace {
         location: Location,
     },
     FreeVarsInTypeConstructor {
@@ -672,8 +672,8 @@ impl Diagnostic {
                 "Ability types can't be used in this position".to_string()
             },
             Diagnostic::HoleCantBeUsed { location: _ } => "A type hole can't be used in this position".to_string(),
-            Diagnostic::MissingExplicitLifetime { location: _ } => {
-                "A reference in this position requires an explicit `'a` lifetime".to_string()
+            Diagnostic::MissingExplicitPlace { location: _ } => {
+                "A reference in this position requires an explicit `'a` place".to_string()
             },
             Diagnostic::FreeVarsInTypeConstructor { location: _ } => {
                 "Internal compiler error: there are free variables in this type constructor".to_string()
@@ -775,7 +775,7 @@ impl Diagnostic {
             | Diagnostic::MoveInRepeatedContext { location, .. }
             | Diagnostic::AbilityTypeCantBeUsed { location, .. }
             | Diagnostic::HoleCantBeUsed { location, .. }
-            | Diagnostic::MissingExplicitLifetime { location, .. }
+            | Diagnostic::MissingExplicitPlace { location, .. }
             | Diagnostic::FreeVarsInTypeConstructor { location, .. }
             | Diagnostic::EffectOperationMustBeFunction { location, .. }
             | Diagnostic::EffectOperationWithEffectClause { location, .. }

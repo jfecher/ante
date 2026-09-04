@@ -27,19 +27,20 @@ main () =
 // expected stdout:
 // (main: fn Unit -> Unit is pure) () =
 //     (tuple: I32, I32) = 1 (,: fn I32 I32 -> I32, I32 is pure) 1
-//     (_: ref I32) = (ref ref (tuple: I32, I32)).first (.*: fn (ref (ref I32)) {Copy (ref I32)} [Ptr Unit] -> ref I32 is pure) (copy_ref: Copy (ref I32))
-//     (_: mut I32) = mut (tuple: I32, I32).first
-//     (_: mut (error)) = mut (tuple: I32, I32).missing
-//     (imm_ref: ref (I32, I32)) = ref (tuple: I32, I32)
-//     (_: mut I32) = mut (imm_ref: ref (I32, I32)).first (.*: fn (ref I32) {Copy I32} [Ptr Unit] -> I32 is pure) (copy_i32: Copy I32)
-//     (_: mut (error)) = mut (imm_ref: ref (I32, I32)).missing
+//     (_: ref 'tuple I32) = (ref ref (tuple: I32, I32)).first (.*: fn (ref '_7 (ref 'tuple I32)) {Copy (ref 'tuple I32)} [Ptr Unit] -> ref 'tuple I32 is pure) (copy_ref: Copy (ref 'tuple I32))
+//     (_: mut 'tuple I32) = mut (tuple: I32, I32).first
+//     (_: mut 'tuple (error)) = mut (tuple: I32, I32).missing
+//     (imm_ref: ref 'tuple (I32, I32)) = ref (tuple: I32, I32)
+//     (_: mut '_24 I32) = mut (imm_ref: ref 'tuple (I32, I32)).first (.*: fn (ref 'tuple I32) {Copy I32} [Ptr Unit] -> I32 is pure) (copy_i32: Copy I32)
+//     (_: mut 'tuple (error)) = mut (imm_ref: ref 'tuple (I32, I32)).missing
 //     mut (mut_tuple: I32, I32) = 1 (,: fn I32 I32 -> I32, I32 is pure) 1
-//     (_: ref (error)) = ref (mut_tuple: I32, I32).missing
-//     (_: mut (error)) = mut (mut_tuple: I32, I32).missing
-//     (mut_ref: mut (I32, I32)) = mut (mut_tuple: I32, I32)
-//     (_: ref (error)) = ref (mut_ref: mut (I32, I32)).missing
-//     (_: mut (error)) = mut (mut_ref: mut (I32, I32)).missing
-//     (_: mut (ref I32)) = mut (mut ref (tuple: I32, I32)).first (.*: fn (ref (ref I32)) {Copy (ref I32)} [Ptr Unit] -> ref I32 is pure) (copy_ref: Copy (ref I32))
+//     (_: ref 'mut_tuple (error)) = ref (mut_tuple: I32, I32).missing
+//     (_: mut 'mut_tuple (error)) = mut (mut_tuple: I32, I32).missing
+//     (mut_ref: mut 'mut_tuple (I32, I32)) = mut (mut_tuple: I32, I32)
+//     (_: ref 'mut_tuple (error)) = ref (mut_ref: mut 'mut_tuple (I32, I32)).missing
+//     (_: mut 'mut_tuple (error)) = mut (mut_ref: mut 'mut_tuple (I32, I32)).missing
+//     (_: mut '_58 (ref 'tuple I32)) = mut (mut ref (tuple: I32, I32)).first (.*: fn (ref '_56 (ref 'tuple I32)) {Copy (ref 'tuple I32)} [Ptr Unit] -> ref 'tuple I32 is pure) (copy_ref: Copy (ref 'tuple I32))
+
 
 // expected stderr:
 // examples/typechecking/field_diagnostics.an:7:18
@@ -49,7 +50,7 @@ main () =
 // 
 // examples/typechecking/field_diagnostics.an:11:20
 // 10 |     _ = mut imm_ref.first
-// 11 |     _ = mut imm_ref.missing	// error: ref (_, _) has no field named `missing`
+// 11 |     _ = mut imm_ref.missing	// error: ref 'tuple (_, _) has no field named `missing`
 //    |                    ^^^^^^^^
 // 
 // examples/typechecking/field_diagnostics.an:15:22
@@ -63,13 +64,13 @@ main () =
 //    |                      ^^^^^^^^
 // 
 // examples/typechecking/field_diagnostics.an:20:20
-// 20 |     _ = ref mut_ref.missing	// error: mut (_, _) has no field named `missing`
+// 20 |     _ = ref mut_ref.missing	// error: mut 'mut_tuple (_, _) has no field named `missing`
 //    |                    ^^^^^^^^
 // 21 |     _ = mut mut_ref.missing
 // 
 // examples/typechecking/field_diagnostics.an:21:20
 // 20 |     _ = ref mut_ref.missing
-// 21 |     _ = mut mut_ref.missing	// error: mut (_, _) has no field named `missing`
+// 21 |     _ = mut mut_ref.missing	// error: mut 'mut_tuple (_, _) has no field named `missing`
 //    |                    ^^^^^^^^
 // 
 // Found 6 errors and 0 warnings

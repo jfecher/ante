@@ -305,7 +305,7 @@ impl<'a> CstDisplay<'a> {
         &self, param: &cst::GenericParam, context: &impl IdStore, f: &mut Formatter,
     ) -> std::fmt::Result {
         match param.kind {
-            Some(cst::KindAnnotation::Lifetime) => {
+            Some(cst::KindAnnotation::Place) => {
                 write!(f, "'")?;
                 self.fmt_type_name(param.name, context, f)
             },
@@ -314,7 +314,7 @@ impl<'a> CstDisplay<'a> {
                     cst::KindAnnotation::Type => "type",
                     cst::KindAnnotation::U32 => "U32",
                     cst::KindAnnotation::Effect => "effect",
-                    cst::KindAnnotation::Lifetime => unreachable!(),
+                    cst::KindAnnotation::Place => unreachable!(),
                 };
                 write!(f, "(")?;
                 self.fmt_type_name(param.name, context, f)?;
@@ -571,7 +571,7 @@ impl<'a> CstDisplay<'a> {
             TypeKind::Error => write!(f, "(error)"),
             TypeKind::Named(path) => self.fmt_type_path(*path, context, f),
             TypeKind::Variable(name) => self.fmt_type_name(*name, context, f),
-            TypeKind::Lifetime(name) => {
+            TypeKind::Place(name) => {
                 write!(f, "'")?;
                 self.fmt_type_name(*name, context, f)
             },
@@ -595,7 +595,7 @@ impl<'a> CstDisplay<'a> {
                 Ok(())
             },
             TypeKind::Hole => write!(f, "_"),
-            TypeKind::ImplicitLifetime => write!(f, "'_"),
+            TypeKind::ImplicitPlace => write!(f, "'_"),
             TypeKind::Pure => write!(f, "pure"),
             TypeKind::IntegerConstant(n) => write!(f, "{n}"),
             TypeKind::Forall(generics, body) => {
@@ -641,7 +641,7 @@ impl<'a> CstDisplay<'a> {
             && args.len() == 2
         {
             self.fmt_reference_type(*kind, f)?;
-            if !matches!(args[0].kind, TypeKind::ImplicitLifetime) {
+            if !matches!(args[0].kind, TypeKind::ImplicitPlace) {
                 write!(f, " ")?;
                 self.fmt_type(&args[0], context, f)?;
             }

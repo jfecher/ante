@@ -152,6 +152,7 @@ where
             // A row used as a type (e.g. a row-generic instantiation binding) is its evidence.
             TCType::Effects(_) => self.evidence_type(typ),
             TCType::EffectId(id) => unreachable!("convert_type: effect id #{id} in a type position"),
+            TCType::PlaceAtom(_) | TCType::Places(_) => Type::UNIT,
         }
     }
 

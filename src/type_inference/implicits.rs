@@ -18,6 +18,7 @@ use crate::{
         Locateable, RowMode, TypeChecker,
         Variance::Covariant,
         errors::TypeErrorKind,
+        places::ScopeDepth,
         types::{FunctionType, ParameterType, PrimitiveType, Type, TypeBindings, TypeVariableId},
     },
 };
@@ -216,6 +217,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     pub(super) fn push_implicits_scope(&mut self) {
         self.implicits.push(Default::default());
+        self.scope_depth += 1;
+    }
+
+    pub(super) fn current_scope_depth(&self) -> ScopeDepth {
+        ScopeDepth(self.scope_depth)
     }
 
     /// Pop an implicit scope:
@@ -225,6 +231,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// - Runs any deferred closure free variable checks after adding implicit arguments
     /// Returns `true` if the scope was delayed (extended into the parent) rather than resolved now.
     pub(super) fn pop_implicits_scope(&mut self) -> bool {
+        self.scope_depth -= 1;
         let mut scope = self.implicits.pop().expect("More pops than pushes to `TypeChecker::implicits`");
 
         // If there are no implicits defined in the current scope, delay checking them until later
@@ -1102,6 +1109,8 @@ fn collect_user_defined_crates(typ: &Type, out: &mut BTreeSet<CrateId>) {
         | Type::Generic(_)
         | Type::Primitive(_)
         | Type::U32(_)
-        | Type::EffectId(_) => {},
+        | Type::EffectId(_)
+        | Type::PlaceAtom(_)
+        | Type::Places(_) => {},
     }
 }

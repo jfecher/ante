@@ -30,8 +30,8 @@ pub enum Kind {
     /// A type-level `U32` used (for example) as an array length.
     U32,
 
-    /// The lifetime of a temporary reference
-    Lifetime,
+    /// A set of places a reference may borrow from
+    Place,
 
     /// The kind of a fully-applied, concrete effect like `Fail` or `Throw String`.
     Effect,
@@ -80,7 +80,7 @@ impl Kind {
                 }
                 Ok(())
             },
-            Kind::U32 | Kind::Lifetime => {
+            Kind::U32 | Kind::Place => {
                 if args.is_empty() {
                     Ok(())
                 } else {
@@ -111,7 +111,7 @@ impl Kind {
                     && l_res.unifies(r_res)
             },
             (Kind::U32, Kind::U32) => true,
-            (Kind::Lifetime, Kind::Lifetime) => true,
+            (Kind::Place, Kind::Place) => true,
             _ => false,
         }
     }
@@ -144,7 +144,7 @@ impl Kind {
     pub fn required_argument_count(&self) -> usize {
         use Kind::*;
         match self {
-            Type | U32 | Lifetime | Error | Effect => 0,
+            Type | U32 | Place | Error | Effect => 0,
             Kind::TypeConstructorSimple { arity, .. } => (*arity).into(),
             Kind::TypeConstructorComplex { params, .. } => params.len(),
         }
@@ -154,7 +154,7 @@ impl Kind {
     pub fn accepts_n_arguments(&self, n: usize) -> bool {
         use Kind::*;
         match self {
-            Type | U32 | Lifetime | Effect => n == 0,
+            Type | U32 | Place | Effect => n == 0,
             Kind::TypeConstructorSimple { arity, .. } => n == usize::from(*arity),
             Kind::TypeConstructorComplex { params, .. } => n == params.len(),
             Kind::Error => true,
@@ -173,7 +173,7 @@ impl Kind {
             },
             Kind::TypeConstructorComplex { params, .. } => params[n].clone(),
             Kind::U32 => panic!("Kind::U32 has no parameters"),
-            Kind::Lifetime => panic!("Kind::Lifetime has no parameters"),
+            Kind::Place => panic!("Kind::Place has no parameters"),
             Kind::Error => Kind::Error, // Try to avoid further errors
         }
     }
@@ -182,7 +182,7 @@ impl Kind {
 impl std::fmt::Display for Kind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let should_parenthesize = |kind: &Kind| match kind {
-            Kind::Type | Kind::U32 | Kind::Lifetime | Kind::Error | Kind::Effect => false,
+            Kind::Type | Kind::U32 | Kind::Place | Kind::Error | Kind::Effect => false,
             Kind::TypeConstructorSimple { .. } => true,
             Kind::TypeConstructorComplex { .. } => true,
         };
@@ -207,7 +207,7 @@ impl std::fmt::Display for Kind {
                 write!(f, "{result}")
             },
             Kind::U32 => write!(f, "U32"),
-            Kind::Lifetime => write!(f, "lifetime"),
+            Kind::Place => write!(f, "place"),
             Kind::Error => write!(f, "<Error>"),
         }
     }

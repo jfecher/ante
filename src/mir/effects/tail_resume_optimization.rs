@@ -730,18 +730,16 @@ fn splice_in_handle_replacement(
 
     // Helper: emit either Value::Definition(target) or an Instantiate instruction
     // depending on whether bindings were recovered from the original use site.
-    let make_def_value = |def: &mut Definition,
-                          push_fn: &mut dyn FnMut(&mut Definition, Instruction, Type) -> Value,
-                          target,
-                          target_typ,
-                          bindings|
-     -> Value {
+    fn make_def_value(
+        def: &mut Definition, push_fn: &mut impl FnMut(&mut Definition, Instruction, Type) -> Value,
+        target: DefinitionId, target_typ: Type, bindings: Option<Arc<GenericBindings>>,
+    ) -> Value {
         if let Some(bindings) = bindings {
             push_fn(def, Instruction::Instantiate(target, bindings), target_typ)
         } else {
             Value::Definition(target)
         }
-    };
+    }
 
     // 1. PackClosure each wrapper with a Pointer env: a StackAlloc of the handler's env tuple,
     //    or a null pointer when the handler had no env.

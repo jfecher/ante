@@ -31,7 +31,7 @@ main () =
 // 
 // (iota: fn U32 -> Unit can Emit U32) ((n: U32)) : Unit can Emit U32 =
 //     (recur: fn U32 [U32] -> Unit can Emit U32) (i: U32) [(n: U32)] =
-//         if (<: fn (ref U32) (ref U32) {Cmp U32} [Ptr Unit] -> Bool is pure) (ref (i: U32)) (ref (n: U32)) {(cmp_u32: Cmp U32)} then 
+//         if (<: fn (ref 'i U32) (ref 'n U32) {Cmp U32} [Ptr Unit] -> Bool is pure) (ref (i: U32)) (ref (n: U32)) {(cmp_u32: Cmp U32)} then 
 //             (emit: fn U32 -> Unit can Emit U32) (i: U32)
 //             (recur: fn U32 [U32] -> Unit can Emit U32) ((+: fn U32 U32 {Add U32} [Ptr Unit] -> U32 is pure) (i: U32) 1 {(add_u32: Add U32)})
 //     (recur: fn U32 [U32] -> Unit can Emit U32) 0
@@ -53,5 +53,5 @@ main () =
 // 
 // (main: fn Unit -> Unit can Fs) () =
 //     (stream: fn Unit [(fn Unit -> Unit can Emit U32), (fn U32 -> Bool is pure)] -> Unit can Emit U32) = (filter: fn (fn Unit -> Unit can Emit U32) (fn U32 -> Bool is pure) {Copy U32} -> (fn Unit [(fn Unit -> Unit can Emit U32), (fn U32 -> Bool is pure)] -> Unit can Emit U32) is pure) (move fn (_: Unit) -> (iota: fn U32 -> Unit can Emit U32) 10) (fn (_1: U32) -> (%%: fn U32 U32 {Mod U32} {Eq U32 pure} {Cast U8 U32 pure} -> Bool is pure) (_1: U32) 2 {(mod_u32: Mod U32)} {(eq_u32: Eq U32 pure)} {(cast_u8_u32: Cast U8 U32 pure)}) {(copy_u32: Copy U32)}
-//     (for_: fn (fn Unit [fn Unit [(fn Unit -> Unit can Emit U32), (fn U32 -> Bool is pure)] -> Unit can Emit U32] -> Unit can Emit U32) (fn U32 -> Unit can Fs) -> Unit can Fs) (stream: fn Unit [(fn Unit -> Unit can Emit U32), (fn U32 -> Bool is pure)] -> Unit can Emit U32) (fn (_1: U32) -> (println: fn (ref U32) {Print U32} -> Unit can Fs) (ref (_1: U32)) {(print_u32: Print U32)})
+//     (for_: fn (fn Unit [fn Unit [(fn Unit -> Unit can Emit U32), (fn U32 -> Bool is pure)] -> Unit can Emit U32] -> Unit can Emit U32) (fn U32 -> Unit can Fs) -> Unit can Fs) (stream: fn Unit [(fn Unit -> Unit can Emit U32), (fn U32 -> Bool is pure)] -> Unit can Emit U32) (fn (_1: U32) -> (println: fn (ref '_1 U32) {Print U32} -> Unit can Fs) (ref (_1: U32)) {(print_u32: Print U32)})
 

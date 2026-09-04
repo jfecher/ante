@@ -769,7 +769,7 @@ impl<'tokens> Parser<'tokens> {
             Token::Apostrophe if matches!(self.try_peek_next_token(), Some(Token::Identifier(_))) => {
                 self.advance();
                 let name = self.parse_ident_id()?;
-                Ok(GenericParam { name, kind: Some(KindAnnotation::Lifetime) })
+                Ok(GenericParam { name, kind: Some(KindAnnotation::Place) })
             },
             Token::ParenthesisLeft if self.at_parenthesized_name_colon() => {
                 self.advance();
@@ -978,25 +978,25 @@ impl<'tokens> Parser<'tokens> {
     }
 
     fn parse_reference_element_type(&mut self, kind: cst::ReferenceKind, ref_location: Location) -> Result<Type> {
-        // An optional `'name` lifetime can appear directly after the reference keyword,
-        // e.g. `ref 'a t`. If omitted, the lifetime slot is filled with an `ImplicitLifetime`
-        // placeholder so the type lowering can insert a fresh lifetime variable (or, in
+        // An optional `'name` place can appear directly after the reference keyword,
+        // e.g. `ref 'a t`. If omitted, the place slot is filled with an `ImplicitPlace`
+        // placeholder so the type lowering can insert a fresh place variable (or, in
         // type-definition bodies, reject it).
-        let lifetime = if matches!(self.current_token(), Token::Apostrophe) {
+        let place = if matches!(self.current_token(), Token::Apostrophe) {
             let start = self.current_token_location();
             self.advance();
             let name = self.parse_ident_id()?;
             let location = start.to(&self.previous_token_location());
-            Type::new(TypeKind::Lifetime(name), location)
+            Type::new(TypeKind::Place(name), location)
         } else {
-            Type::new(TypeKind::ImplicitLifetime, ref_location.clone())
+            Type::new(TypeKind::ImplicitPlace, ref_location.clone())
         };
 
         match self.parse_type_application() {
             Ok(application) => {
                 let location = ref_location.to(&application.location);
                 let ref_type = Type::new(TypeKind::Reference(kind), ref_location);
-                Ok(Type::new(TypeKind::Application(Box::new(ref_type), vec![lifetime, application]), location))
+                Ok(Type::new(TypeKind::Application(Box::new(ref_type), vec![place, application]), location))
             },
             Err(_) => Ok(Type::new(TypeKind::Reference(kind), ref_location)),
         }
@@ -1199,7 +1199,7 @@ impl<'tokens> Parser<'tokens> {
                 self.advance();
                 let name = self.parse_ident_id()?;
                 let location = start.to(&self.previous_token_location());
-                Ok(Type::new(TypeKind::Lifetime(name), location))
+                Ok(Type::new(TypeKind::Place(name), location))
             },
             Token::Identifier(name) if name == "_" => {
                 let location = self.current_token_location();
