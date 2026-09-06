@@ -278,6 +278,9 @@ pub enum Diagnostic {
     MissingExplicitPlace {
         location: Location,
     },
+    AmbiguousElidedPlace {
+        location: Location,
+    },
     FreeVarsInTypeConstructor {
         location: Location,
     },
@@ -310,6 +313,11 @@ pub enum Diagnostic {
         body_kind: ConfusingBodyKind,
         operator_location: Location,
         body_location: Location,
+    },
+    EscapingReference {
+        name: Option<Name>,
+        location: Location,
+        declared_at: Location,
     },
 }
 
@@ -675,6 +683,7 @@ impl Diagnostic {
             Diagnostic::MissingExplicitPlace { location: _ } => {
                 "A reference in this position requires an explicit `'a` place".to_string()
             },
+            Diagnostic::AmbiguousElidedPlace { location: _ } => "Place annotation required here".to_string(),
             Diagnostic::FreeVarsInTypeConstructor { location: _ } => {
                 "Internal compiler error: there are free variables in this type constructor".to_string()
             },
@@ -711,6 +720,13 @@ impl Diagnostic {
                 format!(
                     "This operator looks like it is in the {kind}, but it is actually part of the outer expression. Use parentheses to avoid confusion"
                 )
+            },
+            Diagnostic::EscapingReference { name, location: _, declared_at: _ } => {
+                if let Some(name) = name {
+                    format!("This reference to {} outlives its scope", color_name(name))
+                } else {
+                    "This reference to a temporary value outlives its scope".to_string()
+                }
             },
         }
     }
@@ -776,6 +792,7 @@ impl Diagnostic {
             | Diagnostic::AbilityTypeCantBeUsed { location, .. }
             | Diagnostic::HoleCantBeUsed { location, .. }
             | Diagnostic::MissingExplicitPlace { location, .. }
+            | Diagnostic::AmbiguousElidedPlace { location, .. }
             | Diagnostic::FreeVarsInTypeConstructor { location, .. }
             | Diagnostic::EffectOperationMustBeFunction { location, .. }
             | Diagnostic::EffectOperationWithEffectClause { location, .. }
@@ -783,7 +800,8 @@ impl Diagnostic {
             | Diagnostic::HandlerDuplicateMethod { second_location: location, .. }
             | Diagnostic::HandlerCrossEffect { location, .. }
             | Diagnostic::AssignToImmutable { location, .. }
-            | Diagnostic::ConfusingOperatorAfterBody { operator_location: location, .. } => location,
+            | Diagnostic::ConfusingOperatorAfterBody { operator_location: location, .. }
+            | Diagnostic::EscapingReference { location, .. } => location,
         }
     }
 
@@ -830,6 +848,14 @@ impl Diagnostic {
             },
             Diagnostic::DuplicateField { first_location, .. } => {
                 Some((first_location, "Originally used here".to_string()))
+            },
+            Diagnostic::EscapingReference { name, declared_at, .. } => {
+                let message = if let Some(name) = name {
+                    format!("{} is only valid until the end of this scope", color_name(name))
+                } else {
+                    "this value is only valid until the end of this scope".to_string()
+                };
+                Some((declared_at, message))
             },
             _ => None,
         }

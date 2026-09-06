@@ -34,7 +34,7 @@ main () =
 //     (arr: Array 3 I32) = [1, 2, 3]
 //     (s: Slice arr I32) = (slice: fn (ref 'arr (Array 3 I32)) -> Slice arr I32 is pure) (ref (arr: Array 3 I32))
 //     (_: Usz) = (s: Slice arr I32).len
-//     (_: ref I32) = (first_of: fn (ref 'arr (Array 3 I32)) -> ref I32 is pure) (ref (arr: Array 3 I32))
+//     (_: ref 'arr I32) = (first_of: fn (ref 'arr (Array 3 I32)) -> ref 'arr I32 is pure) (ref (arr: Array 3 I32))
 //     (_: ref 'arr I32) = (first_of_explicit: fn (ref 'arr (Array 3 I32)) -> ref 'arr I32 is pure) (ref (arr: Array 3 I32))
 //     ()
 

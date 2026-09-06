@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, sync::Arc};
 
 /// Shorthand for `items.into_iter().map(f).collect()`
 #[inline]
-fn map<T, U, R>(items: impl IntoIterator<Item = T>, f: impl FnMut(T) -> U) -> R
+pub(crate) fn map<T, U, R>(items: impl IntoIterator<Item = T>, f: impl FnMut(T) -> U) -> R
 where
     R: FromIterator<U>,
 {

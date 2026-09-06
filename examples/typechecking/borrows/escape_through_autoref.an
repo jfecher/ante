@@ -1,0 +1,22 @@
+compute (): I32 = 42
+
+pick (other: ref 'a I32): ref 'a I32 =
+    other
+
+bad (): ref I32 =
+    pick (compute ())
+
+main () = ()
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/borrows/escape_through_autoref.an:7:11
+// 6 | bad (): ref I32 =
+//   |     // error: This reference to a temporary value outlives its scope
+//   |     // note: this value is only valid until the end of this scope
+// 7 |     pick (compute ())
+//   |           ^^^^^^^^^^
+// 
+// Found 1 error and 0 warnings
+

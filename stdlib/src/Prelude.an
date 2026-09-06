@@ -459,8 +459,8 @@ impl cmp_f64: Cmp F64 with (<) x y = intrinsic "LessFloat" x.* y.*
 
 impl cmp_char: Cmp Char with (<) x y = intrinsic "LessUnsigned" x.* y.*
 
-max (l: ref t) (r: ref t) {Cmp t}: ref t = if l > r then l else r
-min (l: ref t) (r: ref t) {Cmp t}: ref t = if l < r then l else r
+max (l: ref 'a t) (r: ref 'a t) {Cmp t}: ref 'a t = if l > r then l else r
+min (l: ref 'a t) (r: ref 'a t) {Cmp t}: ref 'a t = if l < r then l else r
 
 
 trait Num a =

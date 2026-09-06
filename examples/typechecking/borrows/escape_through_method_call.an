@@ -1,0 +1,24 @@
+type Box = value: I32
+
+Box.get (self: ref 'a Box) (_unused: I32): ref 'a Box =
+    self
+
+make_box (): Box = Box 42
+
+bad (): ref Box =
+    (make_box ()).get 0
+
+main () = ()
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/borrows/escape_through_method_call.an:9:18
+//  8 | bad (): ref Box =
+//    |     // error: This reference to a temporary value outlives its scope
+//    |     // note: this value is only valid until the end of this scope
+//  9 |     (make_box ()).get 0
+//    |      ----------- ^^^^
+// 
+// Found 1 error and 0 warnings
+

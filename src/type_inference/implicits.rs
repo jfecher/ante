@@ -220,6 +220,16 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         ScopeDepth(self.scope_depth)
     }
 
+    /// Increment the scope counter used to tag the lifetime of anonymous references
+    pub(super) fn push_escape_scope(&mut self) {
+        self.scope_depth += 1;
+    }
+
+    /// Decrement the scope counter used to tag the lifetime of anonymous references
+    pub(super) fn pop_escape_scope(&mut self) {
+        self.scope_depth -= 1;
+    }
+
     /// Pop an implicit scope:
     /// - Removes implicits in the current scope from being used by outer scopes
     /// - Solves any implicits queued in the current scope

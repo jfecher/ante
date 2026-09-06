@@ -12,7 +12,8 @@ use crate::{
     iterator_extensions::{map_btree, mapvec},
     lexer::token::{Integer, IntegerKind},
     name_resolution::{
-        namespace::{CrateId, SourceFileId}, Origin, ResolutionResult
+        Origin, ResolutionResult,
+        namespace::{CrateId, SourceFileId},
     },
     parser::{
         cst::{self, KindAnnotation, Name, ReferenceKind, TopLevelItem, TopLevelItemKind},
@@ -20,11 +21,17 @@ use crate::{
         ids::{ExprId, NameId, PathId, PatternId, TopLevelId, TopLevelName},
     },
     type_inference::{
-        errors::{Locateable, TypeErrorKind}, fresh_expr::ExtendedTopLevelContext, generics::Generic, implicits::ImplicitsContext, row::{RowEntry, RowMode}, types::{Effect, FunctionType, LocalKinds, ParameterType, PrimitiveType, Type, TypeBindings, TypeVariableId}
+        errors::{Locateable, TypeErrorKind},
+        fresh_expr::ExtendedTopLevelContext,
+        generics::Generic,
+        implicits::ImplicitsContext,
+        row::{RowEntry, RowMode},
+        types::{Effect, FunctionType, LocalKinds, ParameterType, PrimitiveType, Type, TypeBindings, TypeVariableId},
     },
 };
 
 mod affine;
+mod borrows;
 mod cst_traversal;
 pub mod dependency_graph;
 pub mod errors;
@@ -36,10 +43,10 @@ mod implicits;
 pub mod kinds;
 pub mod patterns;
 mod places;
+mod row;
 pub(crate) mod type_body;
 mod type_definitions;
 pub mod types;
-mod row;
 
 pub use get_type::get_type_impl;
 pub use type_body::TypeBody;
@@ -59,7 +66,10 @@ pub fn type_check_impl(context: &TypeCheckSCC, compiler: &DbHandle) -> Arc<TypeC
 
         let item = &checker.item_contexts[item_id].0;
         match &item.kind {
-            TopLevelItemKind::Definition(definition) => checker.check_definition(definition, true),
+            TopLevelItemKind::Definition(definition) => {
+                checker.check_definition(definition, true);
+                checker.check_escaping_references(definition);
+            },
             TopLevelItemKind::TypeDefinition(type_definition) => checker.check_type_definition(type_definition),
             TopLevelItemKind::TraitDefinition(_) | TopLevelItemKind::EffectDefinition(_) => {
                 unreachable!("Traits/effects should be desugared into types by this point")
@@ -162,6 +172,13 @@ struct TypeChecker<'local, 'inner> {
     /// Types of each top-level item in the current SCC being worked on
     item_types: Rc<FxHashMap<TopLevelName, Type>>,
 
+    /// For a name whose signature is fully explicit, its frozen `Forall`-wrapped type from
+    /// `try_get_generalized_type` - using the exact same generic ids as `item_types`' entry for
+    /// that name, since both come from one `open_inferred_generics` call. `generalize_all` uses
+    /// this directly instead of re-deriving a type from the (possibly body-narrowed) `item_types`
+    /// entry, so nothing body-checking does can change what's exported for this name.
+    declared_types: FxHashMap<TopLevelName, Type>,
+
     /// The outer Vec represents each scope (roughly each block of code),
     /// while the inner Vec is the implicits context for that scope. This contains
     implicits: Vec<ImplicitsContext>,
@@ -240,6 +257,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             expr_types: Default::default(),
             pattern_types: Default::default(),
             item_types: Default::default(),
+            declared_types: Default::default(),
             current_item: None,
             function_return_type: None,
             current_effect_row: Type::pure(),
@@ -264,17 +282,33 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let mut item_types = FxHashMap::default();
         for (item_id, (item, context, resolution)) in item_contexts.iter() {
             for name in resolution.top_level_names.iter() {
+                let name = TopLevelName::new(*item_id, *name);
                 let typ = if let TopLevelItemKind::Definition(definition) = &item.kind {
                     let next_id = &mut this.next_type_variable_id.get();
 
-                    let typ = get_type::get_partial_type(definition, context.as_ref(), resolution, compiler, next_id);
+                    // TODO: This prevents a MIR panic in examples/codegen/sync/mutex_counter.an
+                    // from a subtype'd function having a different expected type at its definition
+                    // vs call site. This should ideally be fixable with only `get_partial_type`.
+                    let typ = match get_type::try_get_seeded_and_declared_type(
+                        definition,
+                        context.as_ref(),
+                        resolution,
+                        compiler,
+                        next_id,
+                    ) {
+                        Some((seeded, declared)) => {
+                            this.declared_types.insert(name, declared);
+                            seeded
+                        },
+                        None => get_type::get_partial_type(definition, context.as_ref(), resolution, compiler, next_id),
+                    };
 
                     this.next_type_variable_id.set(*next_id);
                     typ
                 } else {
                     this.next_type_variable()
                 };
-                item_types.insert(TopLevelName::new(*item_id, *name), typ);
+                item_types.insert(name, typ);
             }
         }
         // We have to go through this extra step since `generalize_all` needs an Rc
@@ -489,7 +523,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         for (name, typ) in self.item_types.clone().iter() {
             self.current_item = Some(name.top_level_item);
             self.default_unshared_effects_to_pure(typ, typ);
-            let typ = typ.generalize(&self.bindings);
+            let typ = self.declared_types.get(name).cloned().unwrap_or_else(|| typ.generalize(&self.bindings));
             items.entry(name.top_level_item).or_default().insert(name.local_name_id, typ);
         }
 
@@ -1019,7 +1053,16 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     self.subtype(&a, b, variance, row_mode, new_bindings)
                 } else {
                     let b = b.follow_two(&self.bindings, new_bindings);
-                    self.try_bind_type_variable(*a_id, b, new_bindings)
+
+                    // If both are type variables, bind the higher id
+                    // TODO: Investigate further, this fixes some Mir panics but is indicative of
+                    // problems elsewhere
+                    match b {
+                        Type::Variable(b_id) if b_id > *a_id => {
+                            self.try_bind_type_variable(b_id, Type::Variable(*a_id), new_bindings)
+                        },
+                        b => self.try_bind_type_variable(*a_id, b, new_bindings),
+                    }
                 }
             },
             (a, Type::Variable(b_id)) => {
@@ -1156,9 +1199,17 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             (Type::UserDefined(_), Type::Application(..)) | (Type::Application(..), Type::UserDefined(_)) => Err(()),
             // Any of these variants can be an effect row or a places row
             (
-                Type::UserDefined(_) | Type::Application(..) | Type::Effects(..) | Type::Generic(_) | Type::Places(..)
+                Type::UserDefined(_)
+                | Type::Application(..)
+                | Type::Effects(..)
+                | Type::Generic(_)
+                | Type::Places(..)
                 | Type::PlaceAtom(_),
-                Type::UserDefined(_) | Type::Application(..) | Type::Effects(..) | Type::Generic(_) | Type::Places(..)
+                Type::UserDefined(_)
+                | Type::Application(..)
+                | Type::Effects(..)
+                | Type::Generic(_)
+                | Type::Places(..)
                 | Type::PlaceAtom(_),
             ) => {
                 // TODO: Remove this check and combine the if branches below
@@ -1373,9 +1424,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             row @ Type::Effects(_) => row.effect_entries().iter().any(|effect| {
                 self.occurs(&effect.typ, variable, new_bindings) || self.occurs(&effect.id, variable, new_bindings)
             }),
-            Type::Places(places) => {
-                places.as_ref().is_some_and(|places| places.iter().any(|place| self.occurs(place, variable, new_bindings)))
-            },
+            Type::Places(places) => places
+                .as_ref()
+                .is_some_and(|places| places.iter().any(|place| self.occurs(place, variable, new_bindings))),
         }
     }
 

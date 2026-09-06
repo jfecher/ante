@@ -1,0 +1,21 @@
+bad (b: Bool) (other: ref I32): ref I32 =
+    if b then
+        x = 1
+        return ref x
+    other
+
+main () = ()
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/borrows/early_return_local.an:4:16
+// 2 |     if b then
+// 3 |         x = 1	// note: x is only valid until the end of this scope
+//   |         -
+// 4 |         return ref x	// error: This reference to x outlives its scope
+//   |                ^^^^^
+// 5 |     other
+// 
+// Found 1 error and 0 warnings
+

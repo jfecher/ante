@@ -9,21 +9,28 @@ use serde::{Deserialize, Serialize};
 use crate::{
     diagnostics::Diagnostic,
     incremental::{DbHandle, GetItem},
-    name_resolution::Origin,
+    name_resolution::{Origin, ResolutionResult},
     parser::{
         cst::{self, Expr},
         ids::{ExprId, NameId, NameStore},
     },
-    type_inference::{row::{canonicalize_row, construct_row, flatten_row_into, follow_row, sort_and_dedup_row, RowMatch}, TypeChecker},
+    type_inference::{
+        TypeChecker,
+        row::{RowMatch, canonicalize_row, construct_row, flatten_row_into, follow_row, sort_and_dedup_row},
+    },
 };
 
-use super::{
-    types::{Type, TypeBindings, TypePrinter},
-};
+use super::types::{Type, TypeBindings, TypePrinter};
 
 /// Anonymous references record the scope depth they're valid in for escape analysis
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct ScopeDepth(pub(crate) u32);
+
+impl ScopeDepth {
+    pub fn deeper(self) -> Self {
+        Self(self.0 + 1)
+    }
+}
 
 /// A concrete place a reference may point to
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -42,7 +49,9 @@ impl Type {
 
     /// Flatten, follow, sort, and deduplicate `places`.
     /// Deduplication is done via exact equality rather than unification.
-    pub(crate) fn canonicalize_places(places: &[Type], bindings: &TypeBindings, more_bindings: &TypeBindings) -> Vec<Type> {
+    pub(crate) fn canonicalize_places(
+        places: &[Type], bindings: &TypeBindings, more_bindings: &TypeBindings,
+    ) -> Vec<Type> {
         canonicalize_row(places, bindings, more_bindings, |_: &Type, _: &Type| ())
     }
 
@@ -77,11 +86,13 @@ where
     Db: DbGet<GetItem>,
     Names: NameStore,
 {
-    /// Canonicalize a places row for printing, returning just its concrete atoms.
-    pub(super) fn canonicalize_place_atoms(&self, places: &Option<Arc<Vec<Type>>>) -> Vec<PlaceAtom> {
+    /// Canonicalize a places row for printing
+    pub(super) fn canonicalize_place_entries(&self, places: &Option<Arc<Vec<Type>>>) -> Vec<Type> {
         let places = places.as_deref().map_or(&[][..], Vec::as_slice);
-        let canonical = Type::canonicalize_places(places, self.bindings, &Default::default());
-        canonical.iter().filter_map(|t| if let Type::PlaceAtom(a) = t { Some(*a) } else { None }).collect()
+        Type::canonicalize_places(places, self.bindings, &Default::default())
+            .into_iter()
+            .filter(|t| matches!(t, Type::PlaceAtom(_) | Type::Generic(_)))
+            .collect()
     }
 
     /// Print a reference's place argument, prefixed with a space and `'`, or nothing at all
@@ -90,12 +101,12 @@ where
         match places.follow(self.bindings) {
             Type::Variable(_) => Ok(()),
             Type::Places(row) => {
-                let atoms = self.canonicalize_place_atoms(row);
-                if atoms.is_empty() {
+                let entries = self.canonicalize_place_entries(row);
+                if entries.is_empty() {
                     Ok(())
                 } else {
                     write!(f, " '")?;
-                    self.fmt_place_atoms(&atoms, f)
+                    self.fmt_place_entries(&entries, f)
                 }
             },
             generic @ Type::Generic(_) => {
@@ -119,16 +130,23 @@ where
         }
     }
 
-    pub(super) fn fmt_place_atoms(&self, atoms: &[PlaceAtom], f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        if atoms.len() == 1 {
-            self.fmt_place_atom(atoms[0], f)
+    fn fmt_place_entry(&self, entry: &Type, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match entry {
+            Type::PlaceAtom(atom) => self.fmt_place_atom(*atom, f),
+            other => self.fmt_type(other, false, f),
+        }
+    }
+
+    pub(super) fn fmt_place_entries(&self, entries: &[Type], f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        if entries.len() == 1 {
+            self.fmt_place_entry(&entries[0], f)
         } else {
             write!(f, "(")?;
-            for (i, atom) in atoms.iter().enumerate() {
+            for (i, entry) in entries.iter().enumerate() {
                 if i != 0 {
                     write!(f, ", ")?;
                 }
-                self.fmt_place_atom(*atom, f)?;
+                self.fmt_place_entry(entry, f)?;
             }
             write!(f, ")")
         }
@@ -183,7 +201,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
-    /// Compute the set of places that a reference expression's RHS may point to
+    /// Returns the set of places a reference to the given expression may refer to.
+    /// This is generally either a single variable or an anonymous place.
     pub(super) fn infer_place(&self, expr: ExprId) -> Type {
         match &self.current_extended_context()[expr] {
             Expr::Variable(path) => match self.path_origin(*path) {
@@ -191,18 +210,22 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     let atom = self.binding_place(name).root_variable();
                     self.open_place(PlaceAtom::Variable(atom))
                 },
-                _ => Type::Places(None),
+                // TODO: Track places for globals
+                _ => self.next_type_variable(),
             },
             Expr::MemberAccess(access) => {
                 let object = access.object;
                 match self.expr_types.get(&object) {
                     // Object is already a reference
                     Some(t) if t.reference_element(&self.bindings).is_some() => {
-                        t.reference_places(&self.bindings).unwrap_or(Type::Places(None))
+                        t.reference_places(&self.bindings).unwrap_or_else(|| self.next_type_variable())
                     },
                     _ => self.infer_place(object),
                 }
             },
+            // A diverging expr may be coerced to any place
+            _ if self.expr_types.get(&expr).is_some_and(|t| self.diverges(t)) => self.next_type_variable(),
+            // Otherwise we have an anonymous local like `ref my_call ()`
             _ => self.open_place(PlaceAtom::Anonymous(expr, self.current_scope_depth())),
         }
     }
@@ -256,5 +279,83 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             | cst::TypeKind::Pure
             | cst::TypeKind::IntegerConstant(_) => (),
         }
+    }
+}
+
+/// This is the place inferred when a place in a return type position is elided
+pub enum PlaceElision {
+    /// There is one candidate input place, and it is an `ImplicitPlace`.
+    Elided,
+    /// There is one candidate input place, and it is already named.
+    Named(Origin),
+    /// No input place, this occurs in e.g. `ptr_to_ref: fn (Ptr t) -> ref t`.
+    Free,
+    /// Two or more candidate input places: an error should be issued.
+    Ambiguous,
+}
+
+/// Does `typ` contain at least one `ImplicitPlace`?
+///
+/// TODO: Kinds for type variables aren't tracked yet so only places on reference types are
+/// checked at the moment.
+pub fn cst_type_has_elided_place(typ: &cst::Type) -> bool {
+    match &typ.kind {
+        cst::TypeKind::Application(f, args) => {
+            let is_elided_ref_place = matches!(f.kind, cst::TypeKind::Reference(_))
+                && args.first().is_some_and(|arg| matches!(arg.kind, cst::TypeKind::ImplicitPlace));
+            is_elided_ref_place || args.iter().any(cst_type_has_elided_place)
+        },
+        cst::TypeKind::Tuple(elements) => elements.iter().any(cst_type_has_elided_place),
+        _ => false,
+    }
+}
+
+/// Collect every place in `typ`
+fn collect_places(resolve: &ResolutionResult, typ: &cst::Type, implicit_count: &mut usize, named: &mut Vec<Origin>) {
+    match &typ.kind {
+        cst::TypeKind::Application(f, args) => {
+            if matches!(f.kind, cst::TypeKind::Reference(_))
+                && let Some(place_arg) = args.first()
+            {
+                match &place_arg.kind {
+                    cst::TypeKind::ImplicitPlace => *implicit_count += 1,
+                    cst::TypeKind::Place(name) => {
+                        if let Some(origin) = resolve.name_origins.get(name).copied()
+                            && !named.contains(&origin)
+                        {
+                            named.push(origin);
+                        }
+                    },
+                    _ => (),
+                }
+            }
+            for arg in args.iter() {
+                collect_places(resolve, arg, implicit_count, named);
+            }
+        },
+        cst::TypeKind::Tuple(elements) => {
+            for element in elements {
+                collect_places(resolve, element, implicit_count, named);
+            }
+        },
+        _ => (),
+    }
+}
+
+/// Which input place an elided return place should be inferred from
+pub fn function_place_elision(resolve: &ResolutionResult, function: &cst::FunctionType) -> PlaceElision {
+    let mut implicit_count = 0;
+    let mut named = Vec::new();
+    for param in &function.parameters {
+        collect_places(resolve, &param.typ, &mut implicit_count, &mut named);
+    }
+    if let Some(environment) = function.environment.as_ref() {
+        collect_places(resolve, environment, &mut implicit_count, &mut named);
+    }
+    match (implicit_count, named.len()) {
+        (0, 0) => PlaceElision::Free,
+        (1, 0) => PlaceElision::Elided,
+        (0, 1) => PlaceElision::Named(named[0]),
+        _ => PlaceElision::Ambiguous,
     }
 }

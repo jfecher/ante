@@ -14,13 +14,19 @@ use crate::{
     incremental::{DbHandle, GetItem, Resolve},
     iterator_extensions::mapvec,
     lexer::token::{FloatKind, IntegerKind},
-    name_resolution::{builtin::Builtin, Origin, ResolutionResult},
+    name_resolution::{Origin, ResolutionResult, builtin::Builtin},
     parser::{
         cst::{self, KindAnnotation, ReferenceKind},
         desugar_context::DesugarContext,
         ids::{NameId, NameStore, TopLevelName},
     },
-    type_inference::{generics::Generic, kinds::Kind, places::PlaceAtom, row::{canonicalize_row, construct_row, flatten_row_into, follow_row, sort_and_dedup_row, Row, RowEntry}, TypeChecker},
+    type_inference::{
+        TypeChecker,
+        generics::Generic,
+        kinds::Kind,
+        places::{self, PlaceAtom},
+        row::{Row, RowEntry, canonicalize_row, construct_row, flatten_row_into, follow_row, sort_and_dedup_row},
+    },
 };
 
 /// Tracks the kind of each local type variable encountered while lowering a
@@ -385,12 +391,12 @@ impl Type {
     pub(super) fn follow_all_opt(&self, bindings: &TypeBindings, more_bindings: &TypeBindings) -> Option<Type> {
         match self {
             Type::Primitive(_)
-            | Type::Generic(Generic::Named(_))
+            | Type::Generic(_)
             | Type::UserDefined(_)
             | Type::U32(_)
             | Type::EffectId(_)
             | Type::PlaceAtom(_) => None,
-            Type::Generic(Generic::Inferred(id)) | Type::Variable(id) => {
+            Type::Variable(id) => {
                 let binding = bindings.get(id).or_else(|| more_bindings.get(id))?;
                 Some(binding.follow_all_two(bindings, more_bindings))
             },
@@ -427,13 +433,6 @@ impl Type {
                 Some(Type::Application(constructor, args))
             },
             Type::Forall(generics, typ) => {
-                for generic in generics.iter() {
-                    if let Generic::Inferred(id) = generic {
-                        assert!(!bindings.contains_key(id));
-                        assert!(!more_bindings.contains_key(id));
-                    }
-                }
-
                 let typ = typ.follow_all_opt(bindings, more_bindings)?;
                 Some(Type::Forall(generics.clone(), Arc::new(typ)))
             },
@@ -741,6 +740,9 @@ struct TypeConverter<'a, 'b> {
 
     /// The stack of type aliases currently being expanded, used to detect recursive aliases
     visited: &'a mut Vec<TopLevelName>,
+
+    /// The place to use for the return type, if it has an elided place
+    elided_return_place: Option<Type>,
 }
 
 impl<'a, 'b> TypeConverter<'a, 'b> {
@@ -748,7 +750,16 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
         resolve: &'a ResolutionResult, db: &'a DbHandle<'b>, next_id: &'a mut u32, local_kinds: &'a mut LocalKinds,
         insert_implicit_type_vars: bool, open_effects_by_default: bool, visited: &'a mut Vec<TopLevelName>,
     ) -> Self {
-        TypeConverter { resolve, db, next_id, local_kinds, insert_implicit_type_vars, open_effects_by_default, visited }
+        TypeConverter {
+            resolve,
+            db,
+            next_id,
+            local_kinds,
+            insert_implicit_type_vars,
+            open_effects_by_default,
+            visited,
+            elided_return_place: None,
+        }
     }
 
     /// Convert `typ` and error if its [Kind] does not unify with `expected`.
@@ -814,6 +825,12 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
                 })
             },
             crate::parser::cst::TypeKind::Function(function) => {
+                // TODO: Places on higher-order functions should likely be inferred to have
+                // a `forall` over the function type rather than changing elided places as is done
+                // here and still placing all places in the same forall over the outer function.
+                let outer_shared_place = std::mem::take(&mut self.elided_return_place);
+                self.elided_return_place = self.find_elided_place(function);
+
                 let parameters = mapvec(&function.parameters, |param| {
                     let typ = self.convert_with_kind(&param.typ, Kind::Type);
                     ParameterType::new(typ, param.is_implicit)
@@ -822,7 +839,10 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
                     Some(environment) => self.convert_with_kind(environment, Kind::Type),
                     None => Type::NO_CLOSURE_ENV,
                 };
+
                 let return_type = self.convert_with_kind(&function.return_type, Kind::Type);
+                self.elided_return_place = outer_shared_place;
+
                 let effects = self.convert_effects_clause(function.effects.as_deref());
 
                 let f = Type::Function(Arc::new(FunctionType { parameters, environment, return_type, effects }));
@@ -882,9 +902,13 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
             // TODO: There is a separate check in type definition bodies to reject these.
             // Rework it to be more similar to the HoleCantBeUsed above.
             crate::parser::cst::TypeKind::ImplicitPlace => {
-                let typ = Type::Variable(TypeVariableId(*self.next_id));
-                *self.next_id += 1;
-                (typ, Kind::Place)
+                if let Some(place) = &self.elided_return_place {
+                    (place.clone(), Kind::Place)
+                } else {
+                    let typ = Type::Variable(TypeVariableId(*self.next_id));
+                    *self.next_id += 1;
+                    (typ, Kind::Place)
+                }
             },
             crate::parser::cst::TypeKind::IntegerConstant(v) => (Type::U32(*v), Kind::U32),
             crate::parser::cst::TypeKind::Pure => (Type::pure(), Kind::Effect),
@@ -897,6 +921,37 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
                     self.local_kinds.insert(param.name, kind);
                 }
                 self.convert(body, expected)
+            },
+        }
+    }
+
+    /// If this function's return type has an elided place in its return,
+    /// return what it should be treated as, or error if it is ambiguous.
+    fn find_elided_place(&mut self, function: &cst::FunctionType) -> Option<Type> {
+        if !places::cst_type_has_elided_place(&function.return_type) {
+            return None;
+        }
+
+        match places::function_place_elision(self.resolve, function) {
+            places::PlaceElision::Elided | places::PlaceElision::Free => {
+                let place = Type::Variable(TypeVariableId(*self.next_id));
+                *self.next_id += 1;
+                Some(place)
+            },
+            places::PlaceElision::Named(origin) => {
+                let (place, _) = Type::convert_origin_to_type(
+                    Some(origin),
+                    self.db,
+                    &function.return_type.location,
+                    self.local_kinds,
+                    |origin| Type::Generic(Generic::Named(origin)),
+                );
+                Some(place)
+            },
+            places::PlaceElision::Ambiguous => {
+                let location = function.return_type.location.clone();
+                self.db.accumulate(Diagnostic::AmbiguousElidedPlace { location });
+                None
             },
         }
     }
@@ -1053,6 +1108,95 @@ impl Type {
             let substitutions = free_vars.iter().map(|var| (*var, Type::Generic(*var))).collect();
             let typ = this.substitute(&substitutions, bindings);
             Type::Forall(Arc::new(free_vars), Arc::new(typ))
+        }
+    }
+
+    /// Instantiates only `Generic::Inferred` generics with fresh type variables.
+    /// Also returns a forall-wrapped type with each new type variable.
+    pub(crate) fn open_inferred_generics(&self, next_id: &mut u32) -> (Type, Type) {
+        let (generics, body) = match self {
+            Type::Forall(generics, body) => (generics.as_slice(), body.as_ref()),
+            other => return (other.clone(), other.clone()),
+        };
+
+        let place_kinded = body.place_kinded_generics();
+        let mut new_generics = Vec::with_capacity(generics.len());
+        let mut seed_substitutions = GenericSubstitutions::default();
+        let mut declared_substitutions = GenericSubstitutions::default();
+        for generic in generics.iter() {
+            match generic {
+                Generic::Named(_) => new_generics.push(*generic),
+                Generic::Inferred(_) => {
+                    let id = TypeVariableId(*next_id);
+                    *next_id += 1;
+                    let new_generic = Generic::Inferred(id);
+                    new_generics.push(new_generic);
+                    let seed = if place_kinded.contains(generic) {
+                        Type::places(&[Type::Variable(id)], &TypeBindings::default(), &TypeBindings::default())
+                    } else {
+                        Type::Variable(id)
+                    };
+                    seed_substitutions.insert(*generic, seed);
+                    declared_substitutions.insert(*generic, Type::Generic(new_generic));
+                },
+            }
+        }
+
+        let seeded = if seed_substitutions.is_empty() {
+            body.clone()
+        } else {
+            body.substitute(&seed_substitutions, &TypeBindings::default())
+        };
+        let declared_body = if declared_substitutions.is_empty() {
+            body.clone()
+        } else {
+            body.substitute(&declared_substitutions, &TypeBindings::default())
+        };
+        (seeded, Type::Forall(Arc::new(new_generics), Arc::new(declared_body)))
+    }
+
+    /// Collect each [Type::Generic] with [Kind::Place].
+    /// FIXME: This is approximate until we track the kind of type variables
+    pub(crate) fn place_kinded_generics(&self) -> FxHashSet<Generic> {
+        let mut out = FxHashSet::default();
+        self.collect_place_kinded_generics(&mut out);
+        out
+    }
+
+    fn collect_place_kinded_generics(&self, out: &mut FxHashSet<Generic>) {
+        match self {
+            Type::Application(constructor, args) => {
+                if let Some(Type::Generic(g)) = args.first() {
+                    if constructor.reference_constructor(&TypeBindings::default()).is_some() {
+                        out.insert(*g);
+                    }
+                }
+                for arg in args.iter() {
+                    arg.collect_place_kinded_generics(out);
+                }
+            },
+            Type::Tuple(elements) => {
+                for element in elements.iter() {
+                    element.collect_place_kinded_generics(out);
+                }
+            },
+            Type::Function(f) => {
+                for parameter in &f.parameters {
+                    parameter.typ.collect_place_kinded_generics(out);
+                }
+                f.environment.collect_place_kinded_generics(out);
+                f.return_type.collect_place_kinded_generics(out);
+            },
+            Type::Forall(_, body) => body.collect_place_kinded_generics(out),
+            Type::Primitive(_)
+            | Type::Generic(_)
+            | Type::Variable(_)
+            | Type::UserDefined(_)
+            | Type::U32(_)
+            | Type::Effects(_)
+            | Type::EffectId(_)
+            | Type::PlaceAtom(_)
+            | Type::Places(_) => (),
         }
     }
 
@@ -1393,9 +1537,12 @@ impl Type {
     /// Flatten, follow, sort, and deduplicate `effects`.
     /// Deduplication is done via exact equality rather than unification.
     pub(crate) fn canonicalize_effects(
-        effects: &[Effect], bindings: &TypeBindings, more_bindings: &TypeBindings, mut on_merge: impl FnMut(&Type, &Type),
+        effects: &[Effect], bindings: &TypeBindings, more_bindings: &TypeBindings,
+        mut on_merge: impl FnMut(&Type, &Type),
     ) -> Vec<Effect> {
-        canonicalize_row(effects, bindings, more_bindings, |dropped: &Effect, kept: &Effect| on_merge(&dropped.id, &kept.id))
+        canonicalize_row(effects, bindings, more_bindings, |dropped: &Effect, kept: &Effect| {
+            on_merge(&dropped.id, &kept.id)
+        })
     }
 
     /// Zonk each entry's type in place
@@ -1590,8 +1737,8 @@ where
             Type::Effects(effects) => self.fmt_effects(effects, parenthesize, f),
             Type::PlaceAtom(atom) => self.fmt_place_atom(*atom, f),
             Type::Places(places) => {
-                let atoms = self.canonicalize_place_atoms(places);
-                if atoms.is_empty() { write!(f, "()") } else { self.fmt_place_atoms(&atoms, f) }
+                let entries = self.canonicalize_place_entries(places);
+                if entries.is_empty() { write!(f, "()") } else { self.fmt_place_entries(&entries, f) }
             },
         }
     }

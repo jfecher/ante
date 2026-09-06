@@ -5,7 +5,7 @@ use rustc_hash::FxHashSet;
 use crate::{
     diagnostics::{Diagnostic, Location, RepeatedContext, UnimplementedItem},
     incremental::{AllDefinitions, ExportedDefinitions, GetItemRaw, GetType, Resolve},
-    iterator_extensions::mapvec,
+    iterator_extensions::{map, mapvec},
     lexer::token::Integer,
     name_resolution::{Origin, builtin::Builtin, namespace::SourceFileId},
     parser::{
@@ -34,9 +34,7 @@ struct LambdaOptions {
 
 impl<'local, 'inner> TypeChecker<'local, 'inner> {
     pub(super) fn check_definition(&mut self, definition: &Definition, is_top_level: bool) {
-        let expected_type = self.with_next_id(|next_id| {
-            get_partial_type(definition, self.current_context(), self.current_resolve(), self.compiler, next_id)
-        });
+        let expected_type = self.expected_type_for_definition(definition, is_top_level);
 
         self.check_irrefutable_pattern(definition.pattern, &expected_type);
 
@@ -81,6 +79,36 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
 
         self.check_for_main(definition.pattern, &expected_type);
+    }
+
+    fn expected_type_for_definition(&mut self, definition: &Definition, is_top_level: bool) -> Type {
+        if is_top_level
+            && let Some(item) = self.current_item
+            && let Some(name) = self.definition_name(definition.pattern)
+            && let Some(typ) = self.item_types.get(&TopLevelName::new(item, name))
+        {
+            return typ.clone();
+        }
+
+        self.with_next_id(|next_id| {
+            get_partial_type(
+                definition,
+                self.current_context(),
+                self.current_resolve(),
+                self.compiler,
+                next_id,
+            )
+        })
+    }
+
+    /// If this definition has a single name, return it. Returns None for definitions with no name
+    /// or multiple names like `a, b = 1, 2.
+    fn definition_name(&self, pattern: PatternId) -> Option<NameId> {
+        match &self.current_extended_context()[pattern] {
+            Pattern::Variable(name) | Pattern::MethodName { item_name: name, .. } => Some(*name),
+            Pattern::TypeAnnotation(inner, _) => self.definition_name(*inner),
+            _ => None,
+        }
     }
 
     /// Infer an expression's type and return it.
@@ -201,7 +229,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     /// Read the pattern for `id`, preferring one added by this type-checking pass and
     /// falling back to the original parsed pattern.
-    fn pattern_of(&self, id: PatternId) -> Cow<'local, Pattern> {
+    pub(super) fn pattern_of(&self, id: PatternId) -> Cow<'local, Pattern> {
         match self.current_extended_context().extended_pattern(id) {
             Some(pattern) => Cow::Owned(pattern.clone()),
             None => Cow::Borrowed(&self.current_context()[id]),
@@ -424,8 +452,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             other => (&[][..], other),
         };
 
-        let substitutions: GenericSubstitutions =
-            generics.iter().map(|generic| (*generic, self.next_type_variable())).collect();
+        let substitutions: GenericSubstitutions = map(generics, |generic| (*generic, self.next_type_variable()));
         let bindings = (!generics.is_empty()).then(|| mapvec(generics, |generic| substitutions[generic].clone()));
         let body = if generics.is_empty() {
             Cow::Borrowed(body)
@@ -1430,7 +1457,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let old_tracker = std::mem::take(&mut self.move_tracker);
 
         self.check_expr(while_.condition, &Type::BOOL, TypeErrorKind::Condition);
+
+        self.push_escape_scope();
         self.check_expr(while_.body, &Type::UNIT, TypeErrorKind::LoopBody);
+        self.pop_escape_scope();
 
         self.check_moves_in_repeated_context(&outer_names, RepeatedContext::WhileLoop);
         self.move_tracker = old_tracker;
@@ -1456,7 +1486,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         self.name_types.insert(for_.variable, int_ty);
 
         let old_tracker = std::mem::take(&mut self.move_tracker);
+
+        self.push_escape_scope();
         self.check_expr(for_.body, &Type::UNIT, TypeErrorKind::LoopBody);
+        self.pop_escape_scope();
+
         self.check_moves_in_repeated_context(&outer_names, RepeatedContext::ForLoop);
         self.move_tracker = old_tracker;
 

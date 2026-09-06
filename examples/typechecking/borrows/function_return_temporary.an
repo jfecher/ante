@@ -1,0 +1,19 @@
+compute (): I32 = 42
+
+bad (): ref I32 =
+    ref (compute ())
+
+main () = ()
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/borrows/function_return_temporary.an:4:5
+// 3 | bad (): ref I32 =
+//   |     // error: This reference to a temporary value outlives its scope
+//   |     // note: this value is only valid until the end of this scope
+// 4 |     ref (compute ())
+//   |     ^^^^^^^^^^^^^^^
+// 
+// Found 1 error and 0 warnings
+

@@ -1,0 +1,15 @@
+main () =
+    for _i in 0 .. 3 do
+        x = 1
+        y = x + 2
+        println y
+
+    var j = 0
+    while j < 3 do
+        x = 1
+        y = x + 2
+        println y
+        j := j + 1
+
+// args: --check --no-color
+// expected exit status: 0

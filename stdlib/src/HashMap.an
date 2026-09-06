@@ -120,11 +120,11 @@ type EntryResult k v =
     | NotFound
     | NotFinished
 
-HashMap.get_entry (map: ref HashMap k v) (key: ref k) {Hash k} {eq: Eq k e}: Maybe (ref (Entry k v)) can e =
+HashMap.get_entry (map: ref 'm HashMap k v) (key: ref k) {Hash k} {eq: Eq k e}: Maybe (ref 'm (Entry k v)) can e =
     map = transmute map : mut HashMap k v
     map.get_entry_mut key
 
-HashMap.get_entry_mut (map: mut HashMap k v) (key: ref k) {Hash k} {eq: Eq k e}: Maybe (mut (Entry k v)) can e =
+HashMap.get_entry_mut (map: mut 'm HashMap k v) (key: ref k) {Hash k} {eq: Eq k e}: Maybe (mut 'm (Entry k v)) can e =
     if map.capacity == 0 then return None
 
     // Return whether to continue by wrapping around the end, and the value if found
@@ -153,7 +153,7 @@ HashMap.get_entry_mut (map: mut HashMap k v) (key: ref k) {Hash k} {eq: Eq k e}:
         | Found value -> Some (ptr_to_mut value)
         | _ -> None
 
-HashMap.get (map: ref HashMap k v) (key: ref k) {Hash k} {Eq k e}: ref v can Fail, e =
+HashMap.get (map: ref 'm HashMap k v) (key: ref k) {Hash k} {Eq k e}: ref 'm v can Fail, e =
     match map.get_entry key
     | Some entry -> entry.value
     | None -> fail ()
