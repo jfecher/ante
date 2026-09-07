@@ -159,7 +159,7 @@ impl RowEntry for Type {
     }
 
     fn row_head(typ: &Type) -> Option<Type> {
-        if let Type::PlaceAtom(_) = typ { Some(typ.clone()) } else { None }
+        if let Type::Place(_) = typ { Some(typ.clone()) } else { None }
     }
 
     fn as_row(typ: &Type) -> Option<Option<Arc<Vec<Type>>>> {

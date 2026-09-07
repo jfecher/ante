@@ -25,7 +25,7 @@ use crate::{
     },
 };
 
-const WILDCARD_PATTERN: &str = "_";
+pub(super) const WILDCARD_PATTERN: &str = "_";
 
 struct MatchCompiler<'tc, 'local, 'db> {
     checker: &'tc mut TypeChecker<'local, 'db>,
@@ -521,7 +521,7 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
             | Type::U32(_)
             | Type::EffectId(_)
             | Type::Effects(..)
-            | Type::PlaceAtom(_)
+            | Type::Place(_)
             | Type::Places(..) => {
                 let typ = self.checker.type_to_string(definition_type);
                 Err(Diagnostic::CannotMatchOnType { typ, location })

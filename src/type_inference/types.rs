@@ -24,7 +24,7 @@ use crate::{
         TypeChecker,
         generics::Generic,
         kinds::Kind,
-        places::{self, PlaceAtom},
+        places::{self, Place},
         row::{Row, RowEntry, canonicalize_row, construct_row, flatten_row_into, follow_row, sort_and_dedup_row},
     },
 };
@@ -92,10 +92,10 @@ pub enum Type {
 
     /// A single concrete place a reference may point to. Only ever appears as an entry
     /// inside a [Type::Places] row
-    PlaceAtom(PlaceAtom),
+    Place(Place),
 
     /// The set of places a reference may borrow from, sorted & deduplicated.
-    /// Each entry is a [Type::PlaceAtom] or generic when concrete or a [Type::Variable] when not.
+    /// Each entry is a [Type::Place] or generic when concrete or a [Type::Variable] when not.
     ///
     /// A value of None corresponds to a reference pointing to nothing
     Places(Row<Type>),
@@ -376,6 +376,33 @@ impl Type {
         panic!("Infinite loop in follow_two!")
     }
 
+    /// True if any type variable in this type is still unbound. Row tails of effect and place
+    /// rows are ignored since open rows do not affect which implicits match a type.
+    pub fn has_unbound_type_variables(&self, bindings: &TypeBindings) -> bool {
+        match self.follow(bindings) {
+            Type::Variable(_) => true,
+            Type::Primitive(_)
+            | Type::Generic(_)
+            | Type::UserDefined(_)
+            | Type::U32(_)
+            | Type::EffectId(_)
+            | Type::Place(_)
+            | Type::Effects(_)
+            | Type::Places(_) => false,
+            Type::Function(function) => {
+                function.parameters.iter().any(|param| param.typ.has_unbound_type_variables(bindings))
+                    || function.environment.has_unbound_type_variables(bindings)
+                    || function.return_type.has_unbound_type_variables(bindings)
+            },
+            Type::Application(constructor, args) => {
+                constructor.has_unbound_type_variables(bindings)
+                    || args.iter().any(|arg| arg.has_unbound_type_variables(bindings))
+            },
+            Type::Forall(_, typ) => typ.has_unbound_type_variables(bindings),
+            Type::Tuple(elements) => elements.iter().any(|element| element.has_unbound_type_variables(bindings)),
+        }
+    }
+
     /// Similar to [Self::follow] but will replace all bound type variables reachable within
     /// this type with their bindings if found. This is sometimes referred to as "zonking."
     pub fn follow_all(&self, bindings: &TypeBindings) -> Type {
@@ -395,7 +422,7 @@ impl Type {
             | Type::UserDefined(_)
             | Type::U32(_)
             | Type::EffectId(_)
-            | Type::PlaceAtom(_) => None,
+            | Type::Place(_) => None,
             Type::Variable(id) => {
                 let binding = bindings.get(id).or_else(|| more_bindings.get(id))?;
                 Some(binding.follow_all_two(bindings, more_bindings))
@@ -483,7 +510,7 @@ impl Type {
         let self_is_var = matches!(self, Type::Variable(_));
 
         match self.follow(bindings_in_scope) {
-            Type::Primitive(_) | Type::UserDefined(_) | Type::U32(_) | Type::EffectId(_) | Type::PlaceAtom(_) => None,
+            Type::Primitive(_) | Type::UserDefined(_) | Type::U32(_) | Type::EffectId(_) | Type::Place(_) => None,
             Type::Generic(generic) => bindings_to_substitute.get(generic).cloned(),
             Type::Variable(id) => bindings_to_substitute.get(&Generic::Inferred(*id)).cloned(),
             Type::Function(function) => {
@@ -1196,7 +1223,7 @@ impl Type {
             | Type::U32(_)
             | Type::Effects(_)
             | Type::EffectId(_)
-            | Type::PlaceAtom(_)
+            | Type::Place(_)
             | Type::Places(_) => (),
         }
     }
@@ -1356,7 +1383,7 @@ impl Type {
             | Type::Generic(_)
             | Type::U32(_)
             | Type::EffectId(_)
-            | Type::PlaceAtom(_) => (),
+            | Type::Place(_) => (),
             Type::Function(function) => {
                 for parameter in &function.parameters {
                     parameter.typ.for_each_subterm(bindings, f);
@@ -1736,7 +1763,7 @@ where
             }),
             Type::U32(n) => write!(f, "{n}"),
             Type::Effects(effects) => self.fmt_effects(effects, parenthesize, f),
-            Type::PlaceAtom(atom) => self.fmt_place_atom(*atom, f),
+            Type::Place(atom) => self.fmt_place_atom(atom, f),
             Type::Places(places) => {
                 let entries = self.canonicalize_place_entries(places);
                 if entries.is_empty() { write!(f, "()") } else { self.fmt_place_entries(&entries, f) }

@@ -12,7 +12,7 @@ use crate::{
     },
     type_inference::{
         Locateable, TypeChecker, Variance,
-        affine::MovePath,
+        places::PlacePath,
         errors::TypeErrorKind,
         get_type::{get_partial_type, try_get_generalized_type},
         types::{self, FunctionType, GenericSubstitutions, ParameterType, Type, TypeBindings},
@@ -111,7 +111,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         let typ = match expr.as_ref() {
             Expr::Literal(literal) => self.infer_literal(literal, id),
-            Expr::Variable(path) => self.infer_path(*path, expected),
+            Expr::Variable(path) => self.infer_variable(*path, expected, id),
             Expr::Call(call) => self.infer_call(call, expected, id),
             Expr::Lambda(lambda) => self.infer_lambda(lambda, expected, id, None),
             Expr::Sequence(items) => {
@@ -316,14 +316,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 self.check_name(*name, expected);
                 self.check_pattern_rec(*inner_pattern, expected, irrefutable);
                 // Runs after `check_pattern` so `pattern_types` is populated for the whole subtree.
-                let root = super::affine::MovePath::Variable(*name);
+                let root = PlacePath::Variable(*name);
                 self.assign_binding_places(*inner_pattern, root);
             },
         };
     }
 
-    /// Assigns each binding in `pattern` its MovePath rooted at `place`, so it matches the equivalent member access.
-    fn assign_binding_places(&mut self, id: PatternId, place: super::affine::MovePath) {
+    /// Assigns each binding in `pattern` its PlacePath rooted at `place`, so it matches the equivalent member access.
+    fn assign_binding_places(&mut self, id: PatternId, place: PlacePath) {
         let pattern = self.pattern_of(id);
         match pattern.as_ref() {
             Pattern::Variable(name) | Pattern::MethodName { item_name: name, .. } => {
@@ -353,13 +353,13 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
-    /// Assigns each argument in `args` its MovePath as a field of `place`
-    fn assign_binding_places_for_args(&mut self, id: PatternId, place: &MovePath, args: &[PatternId]) {
+    /// Assigns each argument in `args` its PlacePath as a field of `place`
+    fn assign_binding_places_for_args(&mut self, id: PatternId, place: &PlacePath, args: &[PatternId]) {
         // Prefer real struct field names; enum payloads and tuples fall back to indices.
         let names_by_index = self.field_names_by_index(id);
         for (i, arg) in args.iter().enumerate() {
             let field = names_by_index.get(&(i as u32)).cloned().unwrap_or_else(|| i.to_string());
-            let child = MovePath::field(place.clone(), field);
+            let child = PlacePath::field(place.clone(), field);
             self.assign_binding_places(*arg, child);
         }
     }
@@ -373,6 +373,15 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         self.get_field_types(&typ, None).into_iter().map(|(name, (_, index))| (index, name.to_string())).collect()
     }
 
+    /// Infer the type of a variable, and record whether it implements `Copy` or not for the borrow checker
+    fn infer_variable(&mut self, path: PathId, expected: &Type, expr: ExprId) -> Type {
+        let typ = self.infer_path(path, expected);
+        if let Some(Origin::Local(_)) = self.path_origin(path) {
+            self.request_copy_witness(expr, &typ);
+        }
+        typ
+    }
+
     fn infer_path(&mut self, path: PathId, expected: &Type) -> Type {
         let actual = match self.path_origin(path) {
             Some(Origin::TopLevelDefinition(id)) => self.type_of_top_level_name(&id, path),
@@ -383,7 +392,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     self.path_types.insert(path, expected.clone());
                     return expected.clone();
                 };
-
                 typ
             },
             Some(Origin::TypeResolution) => self.resolve_type_resolution(path, expected),
@@ -773,10 +781,18 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             let field_index = *field_index;
             self.current_extended_context_mut().push_member_access_index(expr, field_index);
 
+            // Accessing a field through a reference or pointer never moves it
+            let indirect = struct_type.reference_element(&self.bindings).is_some()
+                || struct_type.pointer_element(&self.bindings).is_some();
+
+            if !indirect && self.try_build_move_path(expr).is_some() {
+                self.request_copy_witness(expr, &field);
+            }
+
             // Copy the field if the expected is not a reference and the field is Copy
             if expected.reference_element(&self.bindings).is_none()
                 && let Some((_, inner_field_type)) = field.reference_element(&self.bindings)
-                && self.type_is_copy(&inner_field_type, &[])
+                && self.type_is_copy(&inner_field_type, expr.locate(self))
             {
                 let new_expr = self.auto_deref_coercion(expr, inner_field_type);
                 self.current_extended_context_mut().insert_expr(expr, new_expr);

@@ -1,0 +1,127 @@
+type Resource = id: I32
+
+consume _ = ()
+
+ref_used_after_move () =
+    r = Resource 1
+    x = ref r
+    consume r
+    _ = x
+
+ref_field_sibling_moved () =
+    p = Resource 2, Resource 3
+    x = ref p.first
+    consume p.second
+    _ = x  // ok
+
+ref_field_moved () =
+    p = Resource 4, Resource 5
+    x = ref p.first
+    consume p.first
+    _ = x  // error here
+
+ref_field_parent_moved () =
+    p = Resource 6, Resource 7
+    x = ref p.first
+    consume p
+    _ = x  // error, p is moved
+
+ref_child_moved () =
+    p = Resource 8, Resource 9
+    x = ref p
+    consume p.second
+    _ = x  // error, p.second was moved
+
+moved_in_branch (cond: Bool) =
+    r = Resource 10
+    x = ref r
+    if cond then consume r
+    _ = x
+
+reassigned_after_move () =
+    var r = Resource 11
+    x = ref r
+    consume r
+    r := Resource 12
+    // Ok. r is valid again and `ref` is not an exclusive reference kind
+    _ = x
+
+member_access_through_ref () =
+    p = Resource 13, Resource 14
+    x = ref p
+    consume p
+    _ = x.first  // error
+
+nested_ref_use () =
+    r = Resource 15
+    t = ref r, 1
+    consume r
+    _ = t  // error, r is moved and this references r
+
+ref_used_before_move () =
+    r = Resource 16
+    x = ref r
+    _ = x  // ok
+    consume r
+
+main () = ()
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/borrows/use_ref_after_move.an:9:9
+//  7 |     x = ref r
+//  8 |     consume r	// note: r was previously moved here
+//    |             -
+//  9 |     _ = x	// error: This reference may refer to r which has already been moved
+//    |         ^
+// 
+// examples/typechecking/borrows/use_ref_after_move.an:21:9
+// 19 |     x = ref p.first
+// 20 |     consume p.first	// note: p.first was previously moved here
+//    |              ------
+//    |     // error: This reference may refer to p.first which has already been moved
+// 21 |     _ = x  // error here
+//    |         ^
+// 
+// examples/typechecking/borrows/use_ref_after_move.an:27:9
+// 25 |     x = ref p.first
+// 26 |     consume p	// note: p.first was previously moved here
+//    |             -
+//    |     // error: This reference may refer to p.first which has already been moved
+// 27 |     _ = x  // error, p is moved
+//    |         ^
+// 
+// examples/typechecking/borrows/use_ref_after_move.an:33:9
+// 31 |     x = ref p
+// 32 |     consume p.second	// note: p.second was previously moved here
+//    |              -------
+//    |     // error: This reference may refer to p.second which has already been moved
+// 33 |     _ = x  // error, p.second was moved
+//    |         ^
+// 
+// examples/typechecking/borrows/use_ref_after_move.an:39:9
+// 37 |     x = ref r
+// 38 |     if cond then consume r	// note: r was previously moved here
+//    |                          -
+// 39 |     _ = x	// error: This reference may refer to r which has already been moved
+//    |         ^
+// 
+// examples/typechecking/borrows/use_ref_after_move.an:53:10
+// 51 |     x = ref p
+// 52 |     consume p	// note: p was previously moved here
+//    |             -
+//    |     // error: This reference may refer to p which has already been moved
+// 53 |     _ = x.first  // error
+//    |          ^^^^^^
+// 
+// examples/typechecking/borrows/use_ref_after_move.an:59:9
+// 57 |     t = ref r, 1
+// 58 |     consume r	// note: r was previously moved here
+//    |             -
+//    |     // error: This reference may refer to r which has already been moved
+// 59 |     _ = t  // error, r is moved and this references r
+//    |         ^
+// 
+// Found 7 errors and 0 warnings
+

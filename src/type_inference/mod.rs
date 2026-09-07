@@ -63,13 +63,11 @@ pub fn type_check_impl(context: &TypeCheckSCC, compiler: &DbHandle) -> Arc<TypeC
         incremental::println(format!("Type checking {item_id:?}"));
         checker.start_item(*item_id);
         checker.push_implicits_scope();
+        let depth = checker.current_scope_depth();
 
         let item = &checker.item_contexts[item_id].0;
         match &item.kind {
-            TopLevelItemKind::Definition(definition) => {
-                checker.check_definition(definition, true);
-                checker.check_borrows(definition);
-            },
+            TopLevelItemKind::Definition(definition) => checker.check_definition(definition, true),
             TopLevelItemKind::TypeDefinition(type_definition) => checker.check_type_definition(type_definition),
             TopLevelItemKind::TraitDefinition(_) | TopLevelItemKind::EffectDefinition(_) => {
                 unreachable!("Traits/effects should be desugared into types by this point")
@@ -80,7 +78,12 @@ pub fn type_check_impl(context: &TypeCheckSCC, compiler: &DbHandle) -> Arc<TypeC
             TopLevelItemKind::Comptime(comptime) => checker.check_comptime(comptime),
         };
 
+        // Need to resolve any remaining implicits before the borrowing pass runs
         checker.pop_implicits_scope();
+
+        if let TopLevelItemKind::Definition(definition) = &item.kind {
+            checker.check_borrows(definition, depth);
+        }
         (*item_id, checker.finish_item())
     });
 
@@ -200,7 +203,11 @@ struct TypeChecker<'local, 'inner> {
 
     /// Keep track of which variable pattern aliases alias to catch double or partial
     /// moves when both an alias and the original name are moved.
-    binding_places: FxHashMap<NameId, affine::MovePath>,
+    binding_places: FxHashMap<NameId, places::PlacePath>,
+
+    /// The `Copy` impl requested for each variable or member access expression in the current
+    /// item that may move a local place.
+    copy_witnesses: FxHashMap<ExprId, ExprId>,
 
     /// Cached TopLevelName for the Prelude's `Copy` type, lazily resolved on first use.
     copy_type_name: Option<TopLevelName>,
@@ -254,6 +261,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             string_type: None,
             deref_name: None,
             binding_places: Default::default(),
+            copy_witnesses: Default::default(),
             copy_type_name: None,
             mutable_definitions: Default::default(),
             integer_literal_vars: Default::default(),
@@ -426,11 +434,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     fn start_item(&mut self, item_id: TopLevelId) {
         self.current_item = Some(item_id);
         self.binding_places = Default::default();
+        self.copy_witnesses = Default::default();
 
-        // Iterating over every item type here should be fine for performance.
-        // The expected length of `self.item_types` is 1 in the vast majority of cases,
-        // and is only a bit longer with mutually recursive type-inferred definitions
-        // and definitions defining multiple names (e.g. `a, b = 1, 2`).
         for (name, typ) in self.item_types.iter() {
             if name.top_level_item == item_id {
                 self.name_types.insert(name.local_name_id, typ.clone());
@@ -649,7 +654,7 @@ fn strip_environments(typ: &Type) -> Type {
         | Type::U32(_)
         | Type::EffectId(_)
         | Type::Effects(_)
-        | Type::PlaceAtom(_)
+        | Type::Place(_)
         | Type::Places(_) => typ.clone(),
     }
 }
@@ -769,7 +774,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let actual = self.infer_expr(expr, expected);
         if allow_deref
             && let Some((_, inner)) = actual.reference_element(&self.bindings)
-            && self.type_is_copy(&inner, &[])
+            && self.type_is_copy(&inner, expr.locate(self))
         {
             let new_expr = self.auto_deref_coercion(expr, inner);
             self.current_extended_context_mut().insert_expr(expr, new_expr);
@@ -969,6 +974,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let original_expr = self.current_extended_context()[expr].clone();
         let rhs = self.push_expr(original_expr, element_type, location);
         self.current_extended_context_mut().copy_expr_metadata(expr, rhs);
+        if let Some(witness) = self.copy_witnesses.get(&expr).copied() {
+            self.copy_witnesses.insert(rhs, witness);
+        }
         cst::Expr::Reference(cst::Reference { kind, rhs })
     }
 
@@ -1153,17 +1161,17 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 | Type::Effects(..)
                 | Type::Generic(_)
                 | Type::Places(..)
-                | Type::PlaceAtom(_),
+                | Type::Place(_),
                 Type::UserDefined(_)
                 | Type::Application(..)
                 | Type::Effects(..)
                 | Type::Generic(_)
                 | Type::Places(..)
-                | Type::PlaceAtom(_),
+                | Type::Place(_),
             ) => {
                 // TODO: Remove this check and combine the if branches below
-                let is_place = matches!(a, Type::Places(..) | Type::PlaceAtom(_))
-                    || matches!(b, Type::Places(..) | Type::PlaceAtom(_));
+                let is_place = matches!(a, Type::Places(..) | Type::Place(_))
+                    || matches!(b, Type::Places(..) | Type::Place(_));
                 if is_place {
                     match row_mode {
                         RowMode::Coercible => self.place_subtype(a, b, new_bindings),
@@ -1348,7 +1356,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             | Type::UserDefined(_)
             | Type::U32(_)
             | Type::EffectId(_)
-            | Type::PlaceAtom(_) => false,
+            | Type::Place(_) => false,
             Type::Variable(candidate_id) => {
                 if let Some(binding) = self.bindings.get(candidate_id) {
                     self.occurs(binding, variable, new_bindings)

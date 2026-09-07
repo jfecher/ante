@@ -106,6 +106,31 @@ reassign_field_after_move_in_branch (cond: Bool) =
         o.inner := Holder (Resource 11)
         consume o.inner.field
 
+tuple_double_move () =
+    p = Resource 12, Resource 13
+    consume p
+    consume p  // error
+
+copy_tuple () =
+    t = 1, 2
+    _ = t
+    _ = t  // ok
+
+// A match without any bindings only inspects the value
+match_without_bindings () =
+    m = Maybe.Some (Resource 14)
+    if m is None then ()
+    consume m
+
+// A value reassigned in every branch is no longer moved afterward
+reassigned_in_every_branch (cond: Bool) =
+    var r = Resource 15
+    consume r
+    if cond
+    then r := Resource 16
+    else r := Resource 17
+    consume r
+
 main () = ()
 
 // args: --check --no-color
@@ -158,5 +183,12 @@ main () = ()
 // 89 |     take_two r r	// error: Use of moved value r
 //    |              ^
 // 
-// Found 6 errors and 0 warnings
+// examples/typechecking/affine.an:112:13
+// 110 |     p = Resource 12, Resource 13
+// 111 |     consume p	// note: p was previously moved here
+//     |             -
+// 112 |     consume p  // error	// error: Use of moved value p
+//     |             ^
+// 
+// Found 7 errors and 0 warnings
 

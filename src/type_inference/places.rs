@@ -32,10 +32,56 @@ impl ScopeDepth {
     }
 }
 
-/// A concrete place a reference may point to
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-pub enum PlaceAtom {
+/// A local variable or a chain of field accesses on one.
+/// Note that this alone cannot represent all places since it excludes anonymous places.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum PlacePath {
     Variable(NameId),
+    Field(Box<PlacePath>, String),
+}
+
+impl PlacePath {
+    /// Return `parent.field`
+    pub fn field(parent: PlacePath, field: String) -> PlacePath {
+        PlacePath::Field(Box::new(parent), field)
+    }
+
+    /// Check if `self` is a descendant of `ancestor` but is not itself the ancestor.
+    /// E.g. `x.a.b` is a descendant of `x.a` and `x`, but not of `x.a.b`.
+    pub fn is_descendant_of(&self, ancestor: &PlacePath) -> bool {
+        match self {
+            _ if self == ancestor => false,
+            PlacePath::Field(parent, _) => parent.as_ref() == ancestor || parent.is_descendant_of(ancestor),
+            PlacePath::Variable(_) => false,
+        }
+    }
+
+    /// Return the root variable name of this path.
+    /// E.g. for `x.one.two`, returns `x`.
+    pub fn root_variable(&self) -> NameId {
+        match self {
+            PlacePath::Variable(name) => *name,
+            PlacePath::Field(parent, _) => parent.root_variable(),
+        }
+    }
+
+    /// Build a display name for error messages
+    pub fn display_name(&self, names: &impl NameStore) -> String {
+        match self {
+            PlacePath::Variable(name) => match names.try_get_name(*name) {
+                Some(name) => name.to_string(),
+                // TODO: Is this reachable?
+                None => "#name-not-in-context".to_string(),
+            },
+            PlacePath::Field(parent, field) => format!("{}.{}", parent.display_name(names), field),
+        }
+    }
+}
+
+/// A concrete place a reference may point to
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum Place {
+    Path(PlacePath),
     Anonymous(ExprId, ScopeDepth),
 }
 
@@ -91,7 +137,7 @@ where
         let places = places.as_deref().map_or(&[][..], Vec::as_slice);
         Type::canonicalize_places(places, self.bindings, &Default::default())
             .into_iter()
-            .filter(|t| matches!(t, Type::PlaceAtom(_) | Type::Generic(_)))
+            .filter(|t| matches!(t, Type::Place(_) | Type::Generic(_)))
             .collect()
     }
 
@@ -117,22 +163,16 @@ where
         }
     }
 
-    pub(super) fn fmt_place_atom(&self, atom: PlaceAtom, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    pub(super) fn fmt_place_atom(&self, atom: &Place, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match atom {
-            PlaceAtom::Variable(name) => {
-                if let Some(name) = self.names.try_get_name(name) {
-                    write!(f, "{name}")
-                } else {
-                    write!(f, "#name-not-in-context")
-                }
-            },
-            PlaceAtom::Anonymous(expr, _scope) => write!(f, "_{}", expr.index()),
+            Place::Path(path) => write!(f, "{}", path.display_name(self.names)),
+            Place::Anonymous(expr, _scope) => write!(f, "_{}", expr.index()),
         }
     }
 
     fn fmt_place_entry(&self, entry: &Type, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match entry {
-            Type::PlaceAtom(atom) => self.fmt_place_atom(*atom, f),
+            Type::Place(atom) => self.fmt_place_atom(atom, f),
             other => self.fmt_type(other, false, f),
         }
     }
@@ -195,7 +235,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 }
                 found
             },
-            typ @ (Type::PlaceAtom(_) | Type::Generic(_) | Type::Variable(_)) => vec![typ],
+            typ @ (Type::Place(_) | Type::Generic(_) | Type::Variable(_)) => vec![typ],
             // Any remaining variant should be a kind error emitted elsewhere
             _ => Vec::new(),
         }
@@ -206,10 +246,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     pub(super) fn infer_place(&self, expr: ExprId) -> Type {
         match &self.current_extended_context()[expr] {
             Expr::Variable(path) => match self.path_origin(*path) {
-                Some(Origin::Local(name)) => {
-                    let atom = self.binding_place(name).root_variable();
-                    self.open_place(PlaceAtom::Variable(atom))
-                },
+                Some(Origin::Local(name)) => self.open_place(Place::Path(self.binding_place(name))),
                 // TODO: Track places for globals
                 _ => self.next_type_variable(),
             },
@@ -220,21 +257,24 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     Some(t) if t.reference_element(&self.bindings).is_some() => {
                         t.reference_places(&self.bindings).unwrap_or_else(|| self.next_type_variable())
                     },
-                    _ => self.infer_place(object),
+                    _ => match self.try_build_move_path(expr) {
+                        Some(path) => self.open_place(Place::Path(path)),
+                        None => self.infer_place(object),
+                    },
                 }
             },
             Expr::TypeAnnotation(annotation) => self.infer_place(annotation.lhs),
             // A diverging expr may be coerced to any place
             _ if self.expr_types.get(&expr).is_some_and(|t| self.diverges(t)) => self.next_type_variable(),
             // Otherwise we have an anonymous local like `ref my_call ()`
-            _ => self.open_place(PlaceAtom::Anonymous(expr, self.current_scope_depth())),
+            _ => self.open_place(Place::Anonymous(expr, self.current_scope_depth())),
         }
     }
 
     /// A places row containing just `atom` plus a fresh open tail
-    pub(crate) fn open_place(&self, atom: PlaceAtom) -> Type {
+    pub(crate) fn open_place(&self, atom: Place) -> Type {
         let fresh = self.next_type_variable();
-        Type::places(&[Type::PlaceAtom(atom), fresh], &self.bindings, &TypeBindings::default())
+        Type::places(&[Type::Place(atom), fresh], &self.bindings, &TypeBindings::default())
     }
 
     /// Walk a field type and emit a `MissingExplicitPlace` diagnostic for

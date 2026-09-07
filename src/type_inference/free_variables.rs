@@ -1,6 +1,6 @@
 use std::{collections::BTreeSet, sync::Arc};
 
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
     name_resolution::Origin,
@@ -11,7 +11,7 @@ use crate::{
     type_inference::{
         TypeChecker,
         errors::TypeErrorKind,
-        places::PlaceAtom,
+        places::Place,
         types::{PrimitiveType, Type, TypeBindings},
     },
 };
@@ -68,6 +68,9 @@ pub(super) struct FreeVars {
     /// The free variables found
     pub(super) free_vars: BTreeSet<NameId>,
 
+    /// The first expression each free variable is used in
+    pub(super) use_sites: FxHashMap<NameId, ExprId>,
+
     // We don't care about different scopes within the function
     pub(super) defined_in_fn: FxHashSet<NameId>,
 }
@@ -78,7 +81,7 @@ impl FreeVars {
             cst::Expr::Error => (),
             cst::Expr::Literal(_) => (),
             cst::Expr::Extern(_) => (),
-            cst::Expr::Variable(path) => self.find_free_variable(*path, checker),
+            cst::Expr::Variable(path) => self.find_free_variable(*path, expr, checker),
             cst::Expr::Sequence(items) => {
                 for item in items {
                     self.find_free_variables(item.expr, checker);
@@ -207,16 +210,21 @@ impl FreeVars {
         }
     }
 
-    fn find_free_variable(&mut self, path: PathId, checker: &TypeChecker) {
-        if let Some(Origin::Local(name)) = checker.path_origin(path) {
-            self.check_name(name);
+    fn find_free_variable(&mut self, path: PathId, expr: ExprId, checker: &TypeChecker) {
+        if let Some(Origin::Local(name)) = checker.path_origin(path)
+            && self.check_name(name)
+        {
+            self.use_sites.entry(name).or_insert(expr);
         }
     }
 
-    fn check_name(&mut self, name: NameId) {
-        if !self.defined_in_fn.contains(&name) {
+    /// Returns true if `name` is free
+    fn check_name(&mut self, name: NameId) -> bool {
+        let free = !self.defined_in_fn.contains(&name);
+        if free {
             self.free_vars.insert(name);
         }
+        free
     }
 }
 
@@ -229,7 +237,7 @@ fn make_env_type_with_names(free_vars: &BTreeSet<NameId>, checker: &TypeChecker,
         // - Capture immutable variables by value (FIXME)
         // - Capture everything by move if it is a `move` closure
         if !is_move && checker.mutable_definitions.contains(name) {
-            let place = checker.open_place(PlaceAtom::Variable(*name));
+            let place = checker.open_place(Place::Path(checker.binding_place(*name)));
             Type::Application(Arc::new(Type::MUT), Arc::new(vec![place, typ]))
         } else {
             typ

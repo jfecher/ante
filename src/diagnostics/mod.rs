@@ -269,6 +269,11 @@ pub enum Diagnostic {
         context: RepeatedContext,
         location: Location,
     },
+    ReferenceToMovedValue {
+        name: String,
+        location: Location,
+        moved_in: Location,
+    },
     AbilityTypeCantBeUsed {
         location: Location,
     },
@@ -315,7 +320,7 @@ pub enum Diagnostic {
         body_location: Location,
     },
     EscapingReference {
-        name: Option<Name>,
+        name: Option<String>,
         location: Location,
         declared_at: Location,
     },
@@ -676,6 +681,9 @@ impl Diagnostic {
                     context.description()
                 )
             },
+            Diagnostic::ReferenceToMovedValue { name, location: _, moved_in: _ } => {
+                format!("This reference may refer to {} which has already been moved", color_name(name))
+            },
             Diagnostic::AbilityTypeCantBeUsed { location: _ } => {
                 "Ability types can't be used in this position".to_string()
             },
@@ -789,6 +797,7 @@ impl Diagnostic {
             | Diagnostic::NotAType { location, .. }
             | Diagnostic::UseOfMovedValue { location, .. }
             | Diagnostic::MoveInRepeatedContext { location, .. }
+            | Diagnostic::ReferenceToMovedValue { location, .. }
             | Diagnostic::AbilityTypeCantBeUsed { location, .. }
             | Diagnostic::HoleCantBeUsed { location, .. }
             | Diagnostic::MissingExplicitPlace { location, .. }
@@ -809,7 +818,8 @@ impl Diagnostic {
     fn note(&self) -> Option<(&Location, String)> {
         match self {
             Diagnostic::ParserExpected { location, hint: Some(hint), .. } => Some((location, hint.to_string())),
-            Diagnostic::UseOfMovedValue { name, location: _, moved_in } => {
+            Diagnostic::UseOfMovedValue { name, location: _, moved_in }
+            | Diagnostic::ReferenceToMovedValue { name, location: _, moved_in } => {
                 let message = format!("{} was previously moved here", color_name(name));
                 Some((moved_in, message))
             },

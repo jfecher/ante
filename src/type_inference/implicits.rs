@@ -75,6 +75,9 @@ struct DelayedImplicit {
     /// The parameter index the implicit should slot into on the `self.source` expr.
     /// Used in error messages.
     parameter_index: usize,
+
+    /// Optional implicits do not error when not found
+    optional: bool,
 }
 
 impl ImplicitsContext {
@@ -246,7 +249,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         if scope.implicits_in_scope.is_empty()
             && let Some(top) = self.implicits.last_mut()
         {
-            let has_delayed_implicits = !scope.delayed_implicits.is_empty();
+            let has_delayed_implicits = scope.delayed_implicits.iter().any(|implicit| !implicit.optional);
             top.extend(scope);
             return has_delayed_implicits;
         }
@@ -412,7 +415,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         // Phase 2: retry phase 1 failures now that ints & floats are defaulted
         for (implicit, mut original_error) in failed_implicits {
-            if self.find_implicit_value(implicit, &implicits_in_scope).is_err() {
+            if self.find_implicit_value(implicit, &implicits_in_scope).is_err() && !implicit.optional {
                 self.try_attach_import_suggestions(&implicit, &mut original_error);
                 self.compiler.accumulate(original_error);
             }
@@ -474,7 +477,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let location = function.locate(self);
         let typ = target_type.clone();
         let fresh_id = self.push_expr(cst::Expr::Error, typ, location);
-        let delayed = DelayedImplicit { source: function, destination: fresh_id, parameter_index };
+        let delayed = DelayedImplicit { source: function, destination: fresh_id, parameter_index, optional: false };
 
         if let Some(call_expr) = call
             && let cst::Expr::Call(mut existing) = self.current_extended_context()[call_expr].clone()
@@ -483,13 +486,46 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             self.current_extended_context_mut().insert_expr(call_expr, cst::Expr::Call(existing));
         }
 
-        // Try to resolve immediately. Slows down type inference but can help it in some cases.
+        self.try_or_delay(delayed);
+        fresh_id
+    }
+
+    /// Try to resolve `delayed` immediately, queueing it on the current scope if it can't be yet.
+    /// Resolving immediately slows down type inference but can help it in some cases.
+    fn try_or_delay(&mut self, delayed: DelayedImplicit) -> bool {
         let in_scope = self.collect_implicits_in_scope();
-        if self.find_implicit_value(delayed, &in_scope).is_err() {
+        let found = self.find_implicit_value(delayed, &in_scope).is_ok();
+        if !found {
             self.implicits.last_mut().unwrap().delayed_implicits.push(delayed);
         }
+        found
+    }
 
-        fresh_id
+    /// An optional implicit's destination doubles as its source since the source is only used
+    /// for error messages, which are never issued for optional implicits.
+    fn new_optional_implicit(&mut self, target_type: Type, location: Location) -> DelayedImplicit {
+        let destination = self.push_expr(cst::Expr::Error, target_type, location);
+        DelayedImplicit { source: destination, destination, parameter_index: 0, optional: true }
+    }
+
+    /// Request an optional implicit value of `target_type`.
+    /// Returns the destination expr which holds the value once it is found.
+    pub(super) fn request_optional_implicit(&mut self, target_type: Type, location: Location) -> ExprId {
+        let delayed = self.new_optional_implicit(target_type, location);
+        self.try_or_delay(delayed);
+        delayed.destination
+    }
+
+    /// Whether an implicit value of `target_type` can be found right now, without queueing a search for later.
+    pub(super) fn implicit_exists_now(&mut self, target_type: Type, location: Location) -> bool {
+        let delayed = self.new_optional_implicit(target_type, location);
+        let in_scope = self.collect_implicits_in_scope();
+        self.find_implicit_value(delayed, &in_scope).is_ok()
+    }
+
+    /// Whether the implicit requested for `destination` has been found yet
+    pub(super) fn implicit_was_found(&self, destination: ExprId) -> bool {
+        !matches!(self.current_extended_context()[destination], cst::Expr::Error)
     }
 
     /// Try to default the given integer to an I32, issuing an error if it is bound
@@ -613,6 +649,12 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let function = implicit.source;
         let destination = implicit.destination;
 
+        // Searching with unbound type variables could bind them to whichever impl happens to
+        // match, which can change the inferred type of types in optional implicits.
+        if implicit.optional && target_type.has_unbound_type_variables(&self.bindings) {
+            return Err(self.no_implicit_found_error(&target_type, parameter_index, function));
+        }
+
         // If every argument of the target type is an unbound type variable, any implicit
         // of the same constructor will match. This happens often when types aren't known
         // so detect this and end early with a helpful error if there is >1 implicit.
@@ -735,7 +777,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                         let arg_location = function.locate(self);
                         let destination = self.push_expr(cst::Expr::Error, arg_type, arg_location);
 
-                        let implicit = DelayedImplicit { source: function, destination, parameter_index };
+                        let implicit =
+                            DelayedImplicit { source: function, destination, parameter_index, optional: false };
 
                         if self
                             .find_implicit_value_inner(implicit, implicits_in_local_scope, &type_bindings, fuel - 1)
@@ -1116,7 +1159,7 @@ fn collect_user_defined_crates(typ: &Type, out: &mut BTreeSet<CrateId>) {
         | Type::Primitive(_)
         | Type::U32(_)
         | Type::EffectId(_)
-        | Type::PlaceAtom(_)
+        | Type::Place(_)
         | Type::Places(_) => {},
     }
 }

@@ -20,7 +20,7 @@ main () =
 //         (not: fn Bool {Not Bool} [Ptr Unit] -> Bool is pure) ((is_odd: fn I32 -> Bool can Fs) ((-: fn I32 I32 {Sub I32} [Ptr Unit] -> I32 is pure) (n: I32) 1 {(sub_i32: Sub I32)})) {(not_bool: Not Bool)}
 // 
 // (is_odd: fn I32 -> Bool can Fs) (n: I32) =
-//     if (==: fn (ref 'n I32) (ref '_22 I32) {Eq I32 Fs} [Ptr Unit] -> Bool can Fs) (ref (n: I32)) (ref 1) {(eq_i32: Eq I32 pure)} then true else (not: fn Bool {Not Bool} [Ptr Unit] -> Bool is pure) ((is_even: fn I32 -> Bool can Fs) ((-: fn I32 I32 {Sub I32} [Ptr Unit] -> I32 is pure) (n: I32) 1 {(sub_i32: Sub I32)})) {(not_bool: Not Bool)}
+//     if (==: fn (ref 'n I32) (ref '_23 I32) {Eq I32 Fs} [Ptr Unit] -> Bool can Fs) (ref (n: I32)) (ref 1) {(eq_i32: Eq I32 pure)} then true else (not: fn Bool {Not Bool} [Ptr Unit] -> Bool is pure) ((is_even: fn I32 -> Bool can Fs) ((-: fn I32 I32 {Sub I32} [Ptr Unit] -> I32 is pure) (n: I32) 1 {(sub_i32: Sub I32)})) {(not_bool: Not Bool)}
 // 
 // (main: fn Unit -> Unit can Fs) () =
 //     (is_even: fn I32 -> Bool can Fs) 4
