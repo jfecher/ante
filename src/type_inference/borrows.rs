@@ -134,7 +134,6 @@ impl<'a, 'local, 'inner> EscapeChecker<'a, 'local, 'inner> {
                     self.walk_expr(op_expr, depth);
                 }
 
-                // FIXME: Properly handle assignments to mutable refs, arrays
                 let target_depth = self.assignment_target_depth(assignment.lhs).unwrap_or(ScopeDepth(0));
                 self.check_escapes(assignment.rhs, target_depth.deeper());
             },
@@ -217,14 +216,39 @@ impl<'a, 'local, 'inner> EscapeChecker<'a, 'local, 'inner> {
         self.check_escapes(expr, depth);
     }
 
-    /// Resolve an assignment's LHS to the declared scope depth of its root variable, if any.
-    ///
-    /// FIXME: This should check the type of the lhs instead and use the place from the mutable
-    /// reference on the type. We should only fall back to the name itself when assigning to a `var`
-    /// where there is no reference type.
+    /// The scope depth `e` in `x := e` must be valid for
     fn assignment_target_depth(&self, lhs: ExprId) -> Option<ScopeDepth> {
-        let root = self.tc.try_build_move_path(lhs)?.root_variable();
-        self.name_depths.get(&root).copied()
+        if let Some(depth) = self.reference_target_depth(lhs) {
+            return Some(depth);
+        }
+        if let Expr::Call(call) = self.tc.resolved_expr(lhs).as_ref() {
+            if let Some(arg) = call.arguments.first() {
+                return self.assignment_target_depth(arg.expr);
+            }
+        }
+        None
+    }
+
+    /// If `lhs`'s type is a reference, return the shallowest depth among the places it may reference
+    fn reference_target_depth(&self, lhs: ExprId) -> Option<ScopeDepth> {
+        let typ = self.tc.expr_types.get(&lhs)?;
+        let places = typ.reference_places(&self.tc.bindings)?;
+        let mut flattened = Vec::new();
+        let places = std::slice::from_ref(&places);
+        Type::flatten_places_into(places, &mut flattened, &self.tc.bindings, &TypeBindings::default());
+        let depths = flattened.into_iter().filter_map(|entry| match entry {
+            Type::PlaceAtom(atom) => self.atom_depth(&atom),
+            _ => None,
+        });
+        depths.min()
+    }
+
+    /// The scope depth `atom` is valid for, if known.
+    fn atom_depth(&self, atom: &PlaceAtom) -> Option<ScopeDepth> {
+        match atom {
+            PlaceAtom::Variable(name) => self.name_depths.get(name).copied(),
+            PlaceAtom::Anonymous(_, depth) => Some(*depth),
+        }
     }
 
     /// TODO: This is a hack, remove and replace with better location tracking. We shouldn't need
@@ -294,23 +318,33 @@ impl<'a, 'local, 'inner> EscapeChecker<'a, 'local, 'inner> {
     fn collect_escaping_places(&self, typ: &Type, boundary: ScopeDepth, out: &mut Vec<PlaceAtom>) {
         match typ.follow(&self.tc.bindings) {
             Type::Application(constructor, args) => {
-                        if !args.is_empty() && constructor.reference_constructor(&self.tc.bindings).is_some() {
-                            self.collect_escaping_places_row(&args[0], boundary, out);
-                        }
-                        for arg in args.iter() {
-                            self.collect_escaping_places(arg, boundary, out);
-                        }
-                    },
+                self.collect_escaping_places(constructor, boundary, out);
+                for arg in args.iter() {
+                    self.collect_escaping_places(arg, boundary, out);
+                }
+            },
             Type::Tuple(elements) => {
-                        for element in elements.iter() {
-                            self.collect_escaping_places(element, boundary, out);
-                        }
-                    },
+                for element in elements.iter() {
+                    self.collect_escaping_places(element, boundary, out);
+                }
+            },
             typ @ (Type::Places(_) | Type::PlaceAtom(_)) => self.collect_escaping_places_row(&typ, boundary, out),
             Type::Forall(_, typ) => self.collect_escaping_places(typ, boundary, out),
-            // TODO: Recur on Effects and Function
-            Type::Effects(_) => (),
-            Type::Function(_) => (),
+            Type::Effects(effects) => {
+                if let Some(effects) = effects.as_ref() {
+                    for effect in effects.iter() {
+                        self.collect_escaping_places(&effect.typ, boundary, out);
+                    }
+                }
+            },
+            Type::Function(function) => {
+                for parameter in &function.parameters {
+                    self.collect_escaping_places(&parameter.typ, boundary, out);
+                }
+                self.collect_escaping_places(&function.environment, boundary, out);
+                self.collect_escaping_places(&function.return_type, boundary, out);
+                self.collect_escaping_places(&function.effects, boundary, out);
+            },
             Type::Primitive(_)
             | Type::Generic(_)
             | Type::Variable(_)
@@ -331,11 +365,7 @@ impl<'a, 'local, 'inner> EscapeChecker<'a, 'local, 'inner> {
         );
         for entry in flattened {
             let Type::PlaceAtom(atom) = entry else { continue };
-            let escapes = match atom {
-                PlaceAtom::Variable(name) => self.name_depths.get(&name).is_some_and(|depth| *depth >= boundary),
-                PlaceAtom::Anonymous(_, depth) => depth >= boundary,
-            };
-            if escapes {
+            if self.atom_depth(&atom).is_some_and(|depth| depth >= boundary) {
                 out.push(atom);
             }
         }

@@ -1,0 +1,27 @@
+main () =
+    a = ref 5
+    if true then
+        m = mut a
+        y = 10
+        // m: mut 'm (ref 'a I32)
+        // Although m itself is local like `y` is, assignment here would require
+        // `ref 'a I32` be compatible with `ref 'y I32`
+        m := ref y
+
+    _ = a.*
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/borrows/write_through_alias.an:9:14
+//  4 |         m = mut a
+//  5 |         y = 10	// note: y is only valid until the end of this scope
+//    |         -
+//  6 |         // m: mut 'm (ref 'a I32)
+// .. | 
+//  8 |         // `ref 'a I32` be compatible with `ref 'y I32`
+//  9 |         m := ref y	// error: This reference to y outlives its scope
+//    |              ^^^^^
+// 
+// Found 1 error and 0 warnings
+

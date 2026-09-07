@@ -2010,51 +2010,43 @@ where
 
     fn reference(&mut self, reference: &cst::Reference) -> Value {
         let rhs = reference.rhs;
-        let context = self.context();
-
-        // If the RHS is a locally mutable variable, its value in local_variables
-        // is already the StackAlloc pointer.
-        if let cst::Expr::Variable(path_id) = &context[rhs] {
-            let path_id = *path_id;
-            if let Some(Origin::Local(name)) = context.path_origin(path_id)
-                && self.mutable_locals.contains(&name)
-            {
-                return *self.local_variables.get(&name).expect("mutable local variable not found in local_variables");
-            }
-        }
 
         // Reborrow: if the rhs already has a reference type its value is already a pointer
-        // (e.g. a `mut Array` parameter), so `mut x` reborrows that pointer directly instead of
-        // taking the address of the local holding it. Mirrors the type-level reborrow in
-        // `check_reference`.
+        // TODO: Probe this for bugs when creating nested references
         let rhs_type = self.types.result.maps.expr_types[&rhs].follow(&self.types.bindings);
         if rhs_type.reference_element(&self.types.bindings).is_some() {
             return self.expression(rhs);
         }
 
-        if let cst::Expr::MemberAccess(_) = &self.context()[rhs]
-            && self.reference_target_is_addressable(rhs)
-        {
+        if self.is_addressable(rhs) {
             return self.lhs_as_pointer(rhs);
         }
 
-        // For all other cases (non-mutable local, temporary): evaluate the expression and
-        // allocate a new stack slot for it.
+        // Not addressable, likely a temporary, so stack-allocate it
         let value = self.expression(rhs);
         self.push_instruction(Instruction::StackAlloc(value), Type::POINTER)
     }
 
-    /// Returns true if `expr` is a field-access chain (or annotated variant) rooted at a
-    /// mutable local.
-    fn reference_target_is_addressable(&self, expr: ExprId) -> bool {
+    /// True if `expr` denotes existing addressable storage
+    fn is_addressable(&self, expr: ExprId) -> bool {
+        match self.classify_lhs(expr) {
+            LhsKind::LocalVar(name) => self.mutable_locals.contains(&name),
+            LhsKind::Annotation(inner) | LhsKind::FieldAccess(inner, _) => self.is_addressable(inner),
+            LhsKind::DerefCall(_) | LhsKind::Other => false,
+        }
+    }
+
+    /// Classify an assignment/reference-target expression shape.
+    fn classify_lhs(&self, expr: ExprId) -> LhsKind {
         match &self.context()[expr] {
-            cst::Expr::Variable(path_id) => {
-                let path_id = *path_id;
-                matches!(self.context().path_origin(path_id), Some(Origin::Local(name)) if self.mutable_locals.contains(&name))
+            cst::Expr::Variable(path_id) => match self.context().path_origin(*path_id) {
+                Some(Origin::Local(name)) => LhsKind::LocalVar(name),
+                _ => LhsKind::Other,
             },
-            cst::Expr::MemberAccess(ma) => self.reference_target_is_addressable(ma.object),
-            cst::Expr::TypeAnnotation(ta) => self.reference_target_is_addressable(ta.lhs),
-            _ => false,
+            cst::Expr::Call(call) => LhsKind::DerefCall(call.arguments[0].expr),
+            cst::Expr::TypeAnnotation(ta) => LhsKind::Annotation(ta.lhs),
+            cst::Expr::MemberAccess(ma) => LhsKind::FieldAccess(ma.object, expr),
+            _ => LhsKind::Other,
         }
     }
 
@@ -2066,21 +2058,14 @@ where
             return self.expression(lhs);
         }
 
-        let context = self.context();
-        let lhs_kind = match &context[lhs] {
-            cst::Expr::Variable(path_id) => {
-                let path_id = *path_id;
-                match context.path_origin(path_id) {
-                    Some(Origin::Local(name)) => LhsKind::LocalVar(name),
-                    _ => LhsKind::Other,
-                }
-            },
-            cst::Expr::Call(call) => LhsKind::DerefCall(call.arguments[0].expr),
-            cst::Expr::TypeAnnotation(ta) => LhsKind::Annotation(ta.lhs),
-            cst::Expr::MemberAccess(ma) => LhsKind::FieldAccess(ma.object, lhs),
-            _ => LhsKind::Other,
-        };
-        match lhs_kind {
+        // `var`s in type inference are wrapped with a `mut` reference automatically when used in assignments
+        if let cst::Expr::Reference(reference) = &self.context()[lhs]
+            && matches!(reference.kind, cst::ReferenceKind::Mut | cst::ReferenceKind::Uniq)
+        {
+            return self.expression(lhs);
+        }
+
+        match self.classify_lhs(lhs) {
             LhsKind::LocalVar(name) => {
                 *self.local_variables.get(&name).expect("lhs_as_pointer: mutable local variable not found")
             },

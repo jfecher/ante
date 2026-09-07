@@ -933,11 +933,12 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
         }
 
         match places::function_place_elision(self.resolve, function) {
-            places::PlaceElision::Elided | places::PlaceElision::Free => {
+            places::PlaceElision::Elided => {
                 let place = Type::Variable(TypeVariableId(*self.next_id));
                 *self.next_id += 1;
                 Some(place)
             },
+            places::PlaceElision::Free => None,
             places::PlaceElision::Named(origin) => {
                 let (place, _) = Type::convert_origin_to_type(
                     Some(origin),

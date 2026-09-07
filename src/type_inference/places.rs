@@ -223,6 +223,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     _ => self.infer_place(object),
                 }
             },
+            Expr::TypeAnnotation(annotation) => self.infer_place(annotation.lhs),
             // A diverging expr may be coerced to any place
             _ if self.expr_types.get(&expr).is_some_and(|t| self.diverges(t)) => self.next_type_variable(),
             // Otherwise we have an anonymous local like `ref my_call ()`

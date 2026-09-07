@@ -1261,7 +1261,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         // Allow `x := v` to use `x` even if moved but `x += v` cannot since it reads `x`
         let is_plain = assignment.op.is_none();
-        let lhs_type = if is_plain {
+        let mut lhs_type = if is_plain {
             self.with_suppressed_moves(|this| this.infer_expr(assignment.lhs, &lhs_hint))
         } else {
             self.infer_expr(assignment.lhs, &lhs_hint)
@@ -1269,6 +1269,25 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         if let Err((name, location)) = self.check_lhs_mutable(assignment.lhs) {
             self.compiler.accumulate(Diagnostic::AssignToImmutable { name, location });
+        }
+
+        let move_path = self.try_build_move_path(assignment.lhs);
+
+        // Wrap `var`s in `mut` so `x := 3` becomes `mut x := 3` so the LHS of an assignment is
+        // always a reference.
+        // FIXME: Likely broken for `var`s of reference types
+        let lhs_has_reference = self.follow_type(&lhs_type).reference_element(&self.bindings).is_some();
+        let lhs_is_call = matches!(self.current_extended_context()[assignment.lhs], Expr::Call(_));
+
+        if !lhs_has_reference && !lhs_is_call {
+            let new_expr = self.auto_ref_coercion(assignment.lhs, ReferenceKind::Mut, lhs_type.clone());
+            let Expr::Reference(reference) = &new_expr else { unreachable!() };
+            let place = self.infer_place(reference.rhs);
+            let new_type =
+                Type::Application(Arc::new(Type::reference(ReferenceKind::Mut)), Arc::new(vec![place, lhs_type]));
+            self.current_extended_context_mut().insert_expr(assignment.lhs, new_expr);
+            self.expr_types.insert(assignment.lhs, new_type.clone());
+            lhs_type = new_type;
         }
 
         // If the LHS is a reference type (e.g. `p.x` where `p: mut Point` yields `mut I32`),
@@ -1321,7 +1340,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         self.check_expr(assignment.rhs, &value_type, TypeErrorKind::Assignment);
 
         // The LHS always holds a value after an assignment
-        if let Some(path) = self.try_build_move_path(assignment.lhs) {
+        if let Some(path) = move_path {
             self.move_tracker.clear_moves(&path);
         }
 
