@@ -3,14 +3,10 @@ use std::sync::Arc;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
-    diagnostics::{Diagnostic, Location, RepeatedContext},
-    incremental::{ExportedTypes, GetItemRaw, VisibleImplicits},
-    name_resolution::Origin,
-    parser::{
+    diagnostics::Location, incremental::{ExportedTypes, GetItemRaw, VisibleImplicits}, name_resolution::Origin, parser::{
         cst::{Expr, TopLevelItemKind},
         ids::{ExprId, NameId, TopLevelName},
-    },
-    type_inference::{Locateable, TypeChecker, types::Type},
+    }, type_inference::{types::Type, TypeChecker}
 };
 
 use super::fresh_expr::ExtendedTopLevelContext;
@@ -33,7 +29,7 @@ impl MovePath {
 
     /// Check if `self` is a proper descendant of `ancestor` (but is not itself the ancestor).
     /// E.g. `x.a.b` is a descendant of `x.a` and `x`, but not of `x.a.b`.
-    fn is_descendant_of(&self, ancestor: &MovePath) -> bool {
+    pub(super) fn is_descendant_of(&self, ancestor: &MovePath) -> bool {
         match self {
             _ if self == ancestor => false,
             MovePath::Field(parent, _) => parent.as_ref() == ancestor || parent.is_descendant_of(ancestor),
@@ -62,18 +58,10 @@ impl MovePath {
 }
 
 /// Tracks which paths have been moved in the current scope.
-/// Used for affine type checking: non-Copy values may only be used once.
 #[derive(Clone, Default)]
 pub(super) struct MoveTracker {
-    moved: FxHashMap<MovePath, Location>,
-    errored: FxHashSet<MovePath>,
-}
-
-/// A snapshot of a [`MovePath`]'s move record, taken before an expression is inferred so
-/// the auto-ref coercion can roll the place back to its pre-inference state.
-pub(super) struct SavedMove {
-    pub(super) path: MovePath,
-    pub(super) location: Option<Location>,
+    pub(super) moved: FxHashMap<MovePath, Location>,
+    pub(super) errored: FxHashSet<MovePath>,
 }
 
 impl MoveTracker {
@@ -88,19 +76,6 @@ impl MoveTracker {
         self.moved.retain(|p, _| !p.is_descendant_of(path));
         self.errored.remove(path);
         self.errored.retain(|p| !p.is_descendant_of(path));
-    }
-
-    /// Snapshot the move record for `path` so it can be restored after an auto-ref coercion.
-    pub(super) fn save_move(&self, path: &MovePath) -> Option<Location> {
-        self.moved.get(path).cloned()
-    }
-
-    /// Restore a previously saved move record, dropping this expression's own contribution.
-    pub(super) fn restore_move(&mut self, path: &MovePath, saved: Option<Location>) {
-        match saved {
-            Some(location) => self.moved.insert(path.clone(), location),
-            None => self.moved.remove(path),
-        };
     }
 
     /// Check if this path or any ancestor is already moved.
@@ -153,8 +128,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     /// Returns true if the given type implements Copy.
     ///
+    /// `extra_implicits` are additional local implicit names to check beyond whatever is
+    /// currently in [Self::collect_implicits_in_scope].
+    ///
     /// TODO: Write the actual implicit call to Copy when a copy variable is used.
-    pub(super) fn type_is_copy(&mut self, typ: &Type) -> bool {
+    pub(super) fn type_is_copy(&mut self, typ: &Type, extra_implicits: &[NameId]) -> bool {
         let typ = self.follow_type(typ).clone();
 
         if matches!(&typ, Type::Primitive(_)) {
@@ -170,7 +148,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         // Tuple types are Copy if all elements are Copy
         if let Type::Tuple(elems) = &typ {
-            return elems.iter().all(|e| self.type_is_copy(e));
+            return elems.iter().all(|e| self.type_is_copy(e, extra_implicits));
         }
 
         // TODO: Actually require abilities only capture `Copy` types
@@ -189,7 +167,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let copy_of_t = Type::Application(Arc::new(copy_constructor), Arc::new(vec![typ.clone()]));
 
         // Check local implicits in scope
-        let local_implicits = self.collect_implicits_in_scope();
+        let mut local_implicits = self.collect_implicits_in_scope();
+        local_implicits.extend_from_slice(extra_implicits);
         for name in &local_implicits {
             let name_type = self.name_types[name].follow_all(&self.bindings);
             if self.try_unify(&name_type, &copy_of_t).is_ok() {
@@ -261,52 +240,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     pub(super) fn is_shared_mut_user_defined(&self, typ: &Type) -> bool {
         matches!(self.shared_type_flags(typ), Some((true, true)))
-    }
-
-    /// Check if using `path` is valid (not already moved or partially moved).
-    /// Emits a diagnostic if the path was already moved.
-    /// Only emits the first error per path to avoid noisy duplicate diagnostics.
-    pub(super) fn check_use_of_move_path(&mut self, path: &MovePath, locator: impl Locateable) {
-        if self.move_tracker.errored.contains(path) {
-            return;
-        }
-
-        // Check if this exact path or an ancestor was moved
-        if let Some(moved_loc) = self.move_tracker.is_moved(path) {
-            let name = path.display_name(self.current_extended_context());
-            let location = locator.locate(self);
-            let moved_in = moved_loc.clone();
-            self.compiler.accumulate(Diagnostic::UseOfMovedValue { name: name.clone(), location, moved_in });
-            self.move_tracker.errored.insert(path.clone());
-
-        // Check if any child was moved (partial move)
-        } else if let Some((_child_path, moved_loc)) = self.move_tracker.has_child_moved(path) {
-            let name = path.display_name(self.current_extended_context());
-            let location = locator.locate(self);
-            let moved_in = moved_loc.clone();
-            self.compiler.accumulate(Diagnostic::UseOfMovedValue { name, location, moved_in });
-            self.move_tracker.errored.insert(path.clone());
-        }
-    }
-
-    /// Emit errors for any non-Copy outer variables moved during a context whose
-    /// body may run more than once (handler branches, `for` bodies, `while`
-    /// condition + body). `outer_names` is the set of NameIds that existed before the scope was entered.
-    pub(super) fn check_moves_in_repeated_context(
-        &mut self, outer_names: &rustc_hash::FxHashSet<NameId>, context: RepeatedContext,
-    ) {
-        let moved = self.move_tracker.moved.iter();
-        let outer_moves: Vec<(MovePath, Location)> = moved
-            .filter(|(path, _)| outer_names.contains(&path.root_variable()))
-            .map(|(p, l)| (p.clone(), l.clone()))
-            .collect();
-
-        for (path, location) in outer_moves {
-            if !self.type_is_copy(&self.name_types[&path.root_variable()].clone()) {
-                let name = path.display_name(self.current_extended_context());
-                self.compiler.accumulate(Diagnostic::MoveInRepeatedContext { name, context, location });
-            }
-        }
     }
 
     /// The place a binding denotes: a recorded sub-place, or its own variable by default.

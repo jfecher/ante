@@ -10,7 +10,7 @@ use crate::{
     },
     type_inference::{
         TypeChecker,
-        errors::{Locateable, TypeErrorKind},
+        errors::TypeErrorKind,
         places::PlaceAtom,
         types::{PrimitiveType, Type, TypeBindings},
     },
@@ -54,24 +54,6 @@ impl TypeChecker<'_, '_> {
         }
     }
 
-    pub(super) fn record_move_captures(&mut self, id: ExprId, self_name: Option<NameId>) {
-        let mut context = FreeVars::default();
-        if let Some(name) = self_name {
-            context.defined_in_fn.insert(name);
-        }
-        context.find_free_variables(id, self);
-
-        let location = id.locate(self);
-        for name in &context.free_vars {
-            let typ = self.name_types[name].clone();
-            if !self.type_is_copy(&typ) {
-                // Capturing a binding moves the place it denotes, same as a direct use.
-                let move_path = self.binding_place(*name);
-                self.move_tracker.record_move(move_path, location.clone());
-            }
-        }
-    }
-
     /// True if the given branch of a Handle expression references its `resume` variable.
     pub(super) fn handler_branch_uses_resume(&self, resume_name: NameId, branch: ExprId) -> bool {
         let cst::Expr::Lambda(lambda) = &self.current_extended_context()[branch] else { unreachable!() };
@@ -82,16 +64,16 @@ impl TypeChecker<'_, '_> {
 }
 
 #[derive(Default)]
-struct FreeVars {
+pub(super) struct FreeVars {
     /// The free variables found
-    free_vars: BTreeSet<NameId>,
+    pub(super) free_vars: BTreeSet<NameId>,
 
     // We don't care about different scopes within the function
-    defined_in_fn: FxHashSet<NameId>,
+    pub(super) defined_in_fn: FxHashSet<NameId>,
 }
 
 impl FreeVars {
-    fn find_free_variables(&mut self, expr: ExprId, checker: &TypeChecker) {
+    pub(super) fn find_free_variables(&mut self, expr: ExprId, checker: &TypeChecker) {
         match &checker.current_extended_context()[expr] {
             cst::Expr::Error => (),
             cst::Expr::Literal(_) => (),

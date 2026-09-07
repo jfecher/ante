@@ -88,6 +88,15 @@ move_long_ago () =
     ()
     take_two r r
 
+type Holder = field: Resource
+
+// Reassigning a moved field clears its move
+reassign_field_after_move () =
+    var h = Holder (Resource 8)
+    consume h.field
+    h.field := Resource 9
+    consume h.field
+
 main () = ()
 
 // args: --check --no-color

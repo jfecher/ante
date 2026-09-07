@@ -68,7 +68,7 @@ pub fn type_check_impl(context: &TypeCheckSCC, compiler: &DbHandle) -> Arc<TypeC
         match &item.kind {
             TopLevelItemKind::Definition(definition) => {
                 checker.check_definition(definition, true);
-                checker.check_escaping_references(definition);
+                checker.check_borrows(definition);
             },
             TopLevelItemKind::TypeDefinition(type_definition) => checker.check_type_definition(type_definition),
             TopLevelItemKind::TraitDefinition(_) | TopLevelItemKind::EffectDefinition(_) => {
@@ -198,21 +198,6 @@ struct TypeChecker<'local, 'inner> {
     /// Cached TopLevelName for the Prelude's `(.*)` (deref/Copy) function, lazily resolved on first use.
     deref_name: Option<TopLevelName>,
 
-    /// Tracks which local variables (and their sub-paths) have been moved.
-    /// Used for affine type checking: non-Copy values may only be used once.
-    move_tracker: affine::MoveTracker,
-
-    /// When true, suppresses the "is this path already moved" check in `check_path`.
-    /// Kept `false` inside `check_reference` - `ref x` must still verify `x` is valid
-    /// even though it doesn't itself record a move.
-    suppress_move_check: bool,
-
-    /// When true, suppresses recording a move in `check_path`.
-    /// Set by `check_reference` (ref doesn't move), the member-access / method-call
-    /// object probes (partial-move tracking is done at the field level), and the
-    /// plain `x := v` LHS (reassignment reads nothing from `x`).
-    suppress_move_record: bool,
-
     /// Keep track of which variable pattern aliases alias to catch double or partial
     /// moves when both an alias and the original name are moved.
     binding_places: FxHashMap<NameId, affine::MovePath>,
@@ -268,9 +253,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             coercion_wrapper_exprs: Default::default(),
             string_type: None,
             deref_name: None,
-            move_tracker: Default::default(),
-            suppress_move_check: false,
-            suppress_move_record: false,
             binding_places: Default::default(),
             copy_type_name: None,
             mutable_definitions: Default::default(),
@@ -443,7 +425,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Prepare the TypeChecker to type check another item.
     fn start_item(&mut self, item_id: TopLevelId) {
         self.current_item = Some(item_id);
-        self.move_tracker = Default::default();
         self.binding_places = Default::default();
 
         // Iterating over every item type here should be fine for performance.
@@ -484,25 +465,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let mut next_id = self.next_type_variable_id.get();
         let result = f(&mut next_id);
         self.next_type_variable_id.set(next_id);
-        result
-    }
-
-    /// Run `f` with both `suppress_move_check` and `suppress_move_record` set to `true`,
-    /// restoring their previous values afterward.
-    fn with_suppressed_moves<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
-        let old_check = std::mem::replace(&mut self.suppress_move_check, true);
-        let old_record = std::mem::replace(&mut self.suppress_move_record, true);
-        let result = f(self);
-        self.suppress_move_check = old_check;
-        self.suppress_move_record = old_record;
-        result
-    }
-
-    /// Like [Self::with_suppressed_moves] but only suppresses `suppress_move_record`.
-    fn with_suppressed_move_record<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
-        let old_record = std::mem::replace(&mut self.suppress_move_record, true);
-        let result = f(self);
-        self.suppress_move_record = old_record;
         result
     }
 
@@ -804,21 +766,17 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// If `allow_deref` is set, this will try to auto-deref `expr` if it is a reference to a Copy type,
     /// regardless of the `expected` type (ie. even if `expected` is a type variable).
     fn infer_and_coerce(&mut self, expr: ExprId, expected: &Type, kind: TypeErrorKind, allow_deref: bool) -> Type {
-        let saved = self
-            .try_build_move_path(expr)
-            .map(|path| affine::SavedMove { location: self.move_tracker.save_move(&path), path });
-
         let actual = self.infer_expr(expr, expected);
         if allow_deref
             && let Some((_, inner)) = actual.reference_element(&self.bindings)
-            && self.type_is_copy(&inner)
+            && self.type_is_copy(&inner, &[])
         {
             let new_expr = self.auto_deref_coercion(expr, inner);
             self.current_extended_context_mut().insert_expr(expr, new_expr);
-            self.with_suppressed_moves(|this| this.check_expr(expr, expected, kind));
+            self.check_expr(expr, expected, kind);
             return actual;
         }
-        self.coerce(&actual, expected, expr, None, kind, saved);
+        self.coerce(&actual, expected, expr, None, kind);
         actual
     }
 
@@ -826,19 +784,15 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Returns the actual result type (rather than the expected type)
     fn coerce(
         &mut self, actual: &Type, expected: &Type, expr: ExprId, call_expr: Option<ExprId>, kind: TypeErrorKind,
-        saved: Option<affine::SavedMove>,
     ) -> Type {
         let result = if call_expr.is_none() && self.try_function_row_coercion(actual, expected, expr, kind.clone()) {
             CoercionOutcome::FunctionEffects
         } else {
             self.try_coercion(actual, expected, expr, call_expr)
         };
-        let actual = match result {
+        match result {
             CoercionOutcome::AutoRef => self.type_autoref_wrapper(expr, expected, kind),
-            CoercionOutcome::ReplacedExpr => {
-                // Re-check the wrapper but ignore moves since they were already recorded.
-                self.with_suppressed_moves(|this| this.check_expr(expr, expected, kind))
-            },
+            CoercionOutcome::ReplacedExpr => self.check_expr(expr, expected, kind),
             CoercionOutcome::None => {
                 self.unify(actual, expected, kind, expr);
 
@@ -851,12 +805,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
             // implicit_parameter_coercion already performed the needed unification against the type
             CoercionOutcome::InPlaceCall | CoercionOutcome::FunctionEffects => actual.clone(),
-        };
-        // Undo any moves if an auto-ref occurred
-        if let (CoercionOutcome::AutoRef, Some(saved)) = (&result, saved) {
-            self.move_tracker.restore_move(&saved.path, saved.location);
         }
-        actual
     }
 
     /// Coerce a function value to a wider effect row, recording it for the MIR builder to wrap in a
