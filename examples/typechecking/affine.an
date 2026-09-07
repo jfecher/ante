@@ -97,6 +97,15 @@ reassign_field_after_move () =
     h.field := Resource 9
     consume h.field
 
+type Outer = inner: Holder
+
+reassign_field_after_move_in_branch (cond: Bool) =
+    var o = Outer (Holder (Resource 10))
+    consume o.inner.field
+    if cond then
+        o.inner := Holder (Resource 11)
+        consume o.inner.field
+
 main () = ()
 
 // args: --check --no-color

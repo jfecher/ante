@@ -16,7 +16,7 @@
 //! are merged and check at the end of each loop to ensure each variable moved was declared within
 //! the loop body.
 
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashMap;
 
 use crate::{
     diagnostics::{Diagnostic, RepeatedContext},
@@ -26,7 +26,11 @@ use crate::{
         cst::{self, Expr, Pattern},
         ids::{ExprId, NameId, PathId, PatternId},
     },
-    type_inference::{Locateable, TypeChecker, affine::MoveTracker, row::RowEntry},
+    type_inference::{
+        Locateable, TypeChecker,
+        affine::{MoveScope, MoveTracker},
+        row::RowEntry,
+    },
 };
 
 use super::{
@@ -360,10 +364,11 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
         }
     }
 
-    /// Emit errors for any non-Copy outer variables moved during a context whose body may run more than once.
-    /// `outer_names` is the set of NameIds that existed before the scope was entered.
-    fn check_moves_in_repeated_context(&mut self, outer_names: &FxHashSet<NameId>, context: RepeatedContext) {
-        let moved = self.moves.moved.iter().filter(|(path, _)| outer_names.contains(&path.root_variable()));
+    /// Emit errors for any non-Copy variable declared outside `body_scope` that were moved within it
+    fn check_moves_in_repeated_context(
+        &mut self, body_scope: &MoveScope, body_depth: ScopeDepth, context: RepeatedContext,
+    ) {
+        let moved = body_scope.moved_paths().filter(|(path, _)| self.name_depths[&path.root_variable()] < body_depth);
         let outer_moves = mapvec(moved, |(path, location)| (path.clone(), location.clone()));
 
         for (path, location) in outer_moves {
@@ -458,28 +463,21 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
         self.walk_expr(if_.condition, depth, check_move, record_move);
         let new_depth = depth.deeper();
 
-        let pre_branch = self.moves.clone();
+        self.moves.push_scope();
         self.walk_and_check_escapes(if_.then, new_depth, check_move, record_move);
+        let then_scope = self.moves.pop_scope();
         let then_type = self.tc.expr_types[&if_.then].clone();
-        let then_diverges = self.tc.diverges(&then_type);
+        let then_scope = (!self.tc.diverges(&then_type)).then_some(then_scope);
 
-        let mut branches = Vec::new();
-        if !then_diverges {
-            branches.push(std::mem::replace(&mut self.moves, pre_branch.clone()));
-        } else {
-            self.moves = pre_branch.clone();
-        }
-
-        if let Some(else_) = if_.else_ {
+        let else_scope = if_.else_.and_then(|else_| {
+            self.moves.push_scope();
             self.walk_and_check_escapes(else_, new_depth, check_move, record_move);
+            let else_scope = self.moves.pop_scope();
             let else_type = self.tc.expr_types[&else_].clone();
-            let else_diverges = self.tc.diverges(&else_type);
-            if !else_diverges {
-                branches.push(self.moves.clone());
-            }
-        }
+            (!self.tc.diverges(&else_type)).then_some(else_scope)
+        });
 
-        self.moves = MoveTracker::merge_branches(&pre_branch, &branches);
+        self.moves.merge_branches_into_parent(then_scope.into_iter().chain(else_scope));
     }
 
     fn walk_match(&mut self, match_: &cst::Match, depth: ScopeDepth, check_move: bool, record_move: bool) {
@@ -489,41 +487,38 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
         self.walk_expr(match_.expression, new_depth, check_move, record_move);
 
         let branch_depth = new_depth.deeper();
-        let pre_branch = self.moves.clone();
-        let mut branch_trackers = Vec::new();
+        let mut branches = Vec::with_capacity(match_.cases.len());
         for (pattern, branch) in &match_.cases {
-            self.moves = pre_branch.clone();
+            self.moves.push_scope();
             self.record_name_depths_in_pattern(*pattern, branch_depth);
             self.walk_and_check_escapes(*branch, branch_depth, check_move, record_move);
-            branch_trackers.push(self.moves.clone());
+            branches.push(self.moves.pop_scope());
         }
-        self.moves = MoveTracker::merge_branches(&pre_branch, &branch_trackers);
+        self.moves.merge_branches_into_parent(branches);
     }
 
     fn walk_while(&mut self, while_: &cst::While, depth: ScopeDepth, check_move: bool, record_move: bool) {
-        let outer_names = self.name_depths.keys().copied().collect::<FxHashSet<_>>();
-        let saved_tracker = std::mem::take(&mut self.moves);
-
+        let body_depth = depth.deeper();
+        self.moves.push_scope();
         self.walk_expr(while_.condition, depth, check_move, record_move);
-        self.walk_and_check_escapes(while_.body, depth.deeper(), check_move, record_move);
+        self.walk_and_check_escapes(while_.body, body_depth, check_move, record_move);
+        let body_scope = self.moves.pop_scope();
 
-        self.check_moves_in_repeated_context(&outer_names, RepeatedContext::WhileLoop);
-        self.moves = saved_tracker;
+        self.check_moves_in_repeated_context(&body_scope, body_depth, RepeatedContext::WhileLoop);
     }
 
     fn walk_for(&mut self, for_: &cst::For, depth: ScopeDepth, check_move: bool, record_move: bool) {
         self.walk_expr(for_.start, depth, check_move, record_move);
         self.walk_expr(for_.end, depth, check_move, record_move);
 
-        let outer_names = self.name_depths.keys().copied().collect::<FxHashSet<_>>();
         let body_depth = depth.deeper();
         self.name_depths.insert(for_.variable, body_depth);
 
-        let saved_tracker = std::mem::take(&mut self.moves);
+        self.moves.push_scope();
         self.walk_and_check_escapes(for_.body, body_depth, check_move, record_move);
+        let body_scope = self.moves.pop_scope();
 
-        self.check_moves_in_repeated_context(&outer_names, RepeatedContext::ForLoop);
-        self.moves = saved_tracker;
+        self.check_moves_in_repeated_context(&body_scope, body_depth, RepeatedContext::ForLoop);
     }
 
     fn walk_assignment(
@@ -555,19 +550,18 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
     fn walk_handle(&mut self, handle: &cst::Handle, depth: ScopeDepth) {
         self.walk_lambda(handle.expression, depth, Some(handle.handler_name), None);
 
-        let outer_names = self.name_depths.keys().copied().collect::<FxHashSet<_>>();
         for (pattern, branch) in &handle.cases {
             // Only allow moving variables into this branch if `resume` is never mentioned.
             // This notably keeps handlers like `try_or` working.
             let uses_resume = self.tc.handler_branch_uses_resume(pattern.resume_name, *branch);
-            let repeated_context = uses_resume.then(|| (RepeatedContext::HandlerBranch, &outer_names));
+            let repeated_context = uses_resume.then_some(RepeatedContext::HandlerBranch);
             self.walk_lambda(*branch, depth, None, repeated_context);
         }
     }
 
     fn walk_lambda(
         &mut self, lambda_expr: ExprId, depth: ScopeDepth, self_name: Option<NameId>,
-        repeated_context: Option<(RepeatedContext, &FxHashSet<NameId>)>,
+        repeated_context: Option<RepeatedContext>,
     ) {
         let Expr::Lambda(lambda) = self.tc.resolved_expr(lambda_expr).into_owned() else {
             unreachable!("walk_lambda called on a non-lambda expr")
@@ -585,13 +579,13 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
         }
 
         let old_function_depth = self.function_depth.replace(body_depth);
-        let saved_tracker = std::mem::take(&mut self.moves);
+        self.moves.push_scope();
         self.walk_and_check_escapes(lambda.body, body_depth, true, true);
+        let body_scope = self.moves.pop_scope();
 
-        if let Some((context, outer_names)) = repeated_context {
-            self.check_moves_in_repeated_context(outer_names, context);
+        if let Some(context) = repeated_context {
+            self.check_moves_in_repeated_context(&body_scope, body_depth, context);
         }
-        self.moves = saved_tracker;
         self.function_depth = old_function_depth;
 
         if lambda.is_move {

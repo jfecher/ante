@@ -195,19 +195,19 @@ implicit stream_map: Stream (HashMap k v) (k, v) pure =
                 emit (entry.key, entry.value)
 
 /// Emit each key. Bit-copies the key; safe for `Copy` keys.
-HashMap.keys (m: ref HashMap k v) = fn () can (Emit k) ->
+HashMap.keys (m: ref HashMap k v) = fn () can Emit k ->
     for i in 0 .. m.capacity do
         entry: Entry k v = m.entries.[i]
         if entry.occupied then emit entry.key
 
 /// Emit each value. Bit-copies the value; safe for `Copy` values.
-HashMap.values (m: ref HashMap k v) = fn () can (Emit v) ->
+HashMap.values (m: ref HashMap k v) = fn () can Emit v ->
     for i in 0 .. m.capacity do
         entry: Entry k v = m.entries.[i]
         if entry.occupied then emit entry.value
 
 /// Return the existing value at `key`, or insert `default` and return it.
-HashMap.get_or_insert (m: mut HashMap k v) (key: k) (default: v) {Hash k} {Eq k e}: ref v can Fs, e =
+HashMap.get_or_insert (m: mut HashMap k v) (key: k) (default: v) {Hash k} {Eq k e} {Copy k}: ref v can Fs, e =
     m.get key ~> on_fail do
         ignore (m.insert key default)
         m.get key ~> or_panic "HashMap.get_or_insert: lookup after insert failed"
