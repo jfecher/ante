@@ -17,7 +17,7 @@
 //! are merged and check at the end of each loop to ensure each variable moved was declared within
 //! the loop body.
 
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
     diagnostics::{Diagnostic, RepeatedContext},
@@ -30,7 +30,6 @@ use crate::{
     type_inference::{
         Locateable, TypeChecker,
         affine::{MoveScope, MoveTracker},
-        row::RowEntry,
     },
 };
 
@@ -47,7 +46,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             tc: self,
             name_depths: FxHashMap::default(),
             function_depth: None,
-            reference_locations: FxHashMap::default(),
+            reported_escapes: FxHashSet::default(),
             moves: MoveTracker::default(),
         };
         checker.record_name_depths_in_pattern(definition.pattern, depth);
@@ -64,10 +63,8 @@ struct BorrowChecker<'a, 'local, 'inner> {
     /// The scope depth of the current function's body, used to check `return` statements
     function_depth: Option<ScopeDepth>,
 
-    /// The location of each [Place], used for better error messages.
-    /// TODO: This should be cleaner, we shouldn't track by [Place]. This isn't sufficient when
-    /// there are multiple `ref e` expressions to the same `e`.
-    reference_locations: FxHashMap<Place, ExprId>,
+    /// Used so we only issue an error for each [Place] once
+    reported_escapes: FxHashSet<Place>,
 
     moves: MoveTracker,
 }
@@ -84,6 +81,9 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
                 let new_depth = depth.deeper();
                 for item in &items {
                     self.walk_expr(item.expr, new_depth, check_move, record_move);
+                }
+                if let Some(tail) = items.last() {
+                    self.check_escapes(tail.expr, new_depth);
                 }
             },
             Expr::Definition(definition) => {
@@ -105,13 +105,8 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
                 }
             },
             Expr::Assignment(assignment) => self.walk_assignment(&assignment, depth, check_move, record_move),
-            Expr::Reference(reference) => {
-                self.record_reference_location(expr);
-                self.walk_expr(reference.rhs, depth, check_move, false);
-            },
+            Expr::Reference(reference) => self.walk_expr(reference.rhs, depth, check_move, false),
             Expr::MemberAccess(access) => {
-                // The object is walked purely for escape-checking (e.g. nested `ref` locations);
-                // moves within it are never checked here (see this function's doc comment).
                 self.walk_expr(access.object, depth, false, false);
                 self.check_member_access_move(&access, expr, check_move, record_move);
             },
@@ -229,22 +224,7 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
         }
     }
 
-    /// TODO: This is a hack, remove and replace with better location tracking. We shouldn't need
-    /// to recur on the type for this.
-    fn record_reference_location(&mut self, reference_expr: ExprId) {
-        let Some(Type::Application(constructor, args)) = self.tc.expr_types.get(&reference_expr) else { return };
-        if args.is_empty() || constructor.reference_constructor(&self.tc.bindings).is_none() {
-            return;
-        }
-        let Some(Some(row)) = Type::as_row(&args[0]) else { return };
-        for entry in row.iter() {
-            if let Type::Place(atom) = entry {
-                self.reference_locations.entry(atom.clone()).or_insert(reference_expr);
-            }
-        }
-    }
-
-    /// Check that value's type carries only places that outlive `boundary`.
+    /// Check that `value`'s type carries only places that outlive `boundary`.
     fn check_escapes(&mut self, value: ExprId, boundary: ScopeDepth) {
         let Some(typ) = self.tc.expr_types.get(&value) else { return };
 
@@ -253,11 +233,10 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
         offending.retain(|atom| self.atom_depth(atom).is_some_and(|depth| depth >= boundary));
 
         for atom in offending {
-            let Some(&reference_expr) = self.reference_locations.get(&atom) else { continue };
-            if !self.is_value_source(value, reference_expr) {
+            if !self.reported_escapes.insert(atom.clone()) {
                 continue;
             }
-            let location = reference_expr.locate(self.tc);
+            let location = self.narrow_value_expr(value).locate(self.tc);
             let (name, declared_at) = match atom {
                 Place::Path(path) => {
                     let name = path.display_name(self.tc.current_extended_context());
@@ -269,27 +248,16 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
         }
     }
 
-    /// True if `target` is reachable from `root` by only stepping through positions that
-    /// directly determine `root`'s own value
-    /// TODO: Hack, remove
-    fn is_value_source(&self, root: ExprId, target: ExprId) -> bool {
-        if root == target {
-            return true;
-        }
-        match self.tc.resolved_expr(root).as_ref() {
-            Expr::Sequence(items) => items.last().is_some_and(|item| self.is_value_source(item.expr, target)),
-            Expr::Call(call) => {
-                self.is_value_source(call.function, target)
-                    || call.arguments.iter().any(|arg| self.is_value_source(arg.expr, target))
+    /// Make an expr's location a bit more precise by returning the last expr of a block
+    /// or the lhs of a type annotation.
+    fn narrow_value_expr(&self, value: ExprId) -> ExprId {
+        match self.tc.resolved_expr(value).as_ref() {
+            Expr::Sequence(items) => match items.last() {
+                Some(item) => self.narrow_value_expr(item.expr),
+                None => value,
             },
-            Expr::If(if_) => {
-                self.is_value_source(if_.then, target)
-                    || if_.else_.is_some_and(|else_| self.is_value_source(else_, target))
-            },
-            Expr::Match(match_) => match_.cases.iter().any(|(_, branch)| self.is_value_source(*branch, target)),
-            Expr::TypeAnnotation(annotation) => self.is_value_source(annotation.lhs, target),
-            Expr::MemberAccess(access) => self.is_value_source(access.object, target),
-            _ => false,
+            Expr::TypeAnnotation(annotation) => self.narrow_value_expr(annotation.lhs),
+            _ => value,
         }
     }
 
@@ -316,13 +284,19 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
                     }
                 }
             },
+            // A function holds its environment's places plus whatever its result may refer to
             Type::Function(function) => {
-                for parameter in &function.parameters {
-                    self.collect_place_atoms(&parameter.typ, out);
-                }
                 self.collect_place_atoms(&function.environment, out);
-                self.collect_place_atoms(&function.return_type, out);
                 self.collect_place_atoms(&function.effects, out);
+
+                // TODO: This keeps tests working but seems like a hack, investigate further
+                let mut supplied = Vec::new();
+                for parameter in &function.parameters {
+                    self.collect_place_atoms(&parameter.typ, &mut supplied);
+                }
+                let mut returned = Vec::new();
+                self.collect_place_atoms(&function.return_type, &mut returned);
+                out.extend(returned.into_iter().filter(|atom| !supplied.contains(atom)));
             },
             Type::Primitive(_)
             | Type::Generic(_)

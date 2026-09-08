@@ -1,0 +1,33 @@
+type Holder 'a = value: ref 'a I32
+
+bad_array (): Array 1 (ref I32) =
+    x = 5
+    [ref x]
+
+bad_struct () =
+    x = 5
+    h = Holder (ref x)
+    h
+
+main () = ()
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/borrows/aggregate_escape.an:5:5
+// 3 | bad_array (): Array 1 (ref I32) =
+// 4 |     x = 5	// note: x is only valid until the end of this scope
+//   |     -
+// 5 |     [ref x]	// error: This reference to x outlives its scope
+//   |     ^^^^^^^
+// 
+// examples/typechecking/borrows/aggregate_escape.an:10:5
+//  7 | bad_struct () =
+//  8 |     x = 5	// note: x is only valid until the end of this scope
+//    |     -
+//  9 |     h = Holder (ref x)
+// 10 |     h	// error: This reference to x outlives its scope
+//    |     ^
+// 
+// Found 2 errors and 0 warnings
+

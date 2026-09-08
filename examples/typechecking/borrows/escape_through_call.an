@@ -11,12 +11,12 @@ main () = ()
 // args: --check --no-color
 // expected exit status: 1
 // expected stderr:
-// examples/typechecking/borrows/escape_through_call.an:7:11
+// examples/typechecking/borrows/escape_through_call.an:7:5
 // 6 | bad (): ref I32 =
 //   |     // error: This reference to a temporary value outlives its scope
 //   |     // note: this value is only valid until the end of this scope
 // 7 |     pick (ref (compute ()))
-//   |           ^^^^^^^^^^^^^^^
+//   |     ^^^^^^^^^^^^^^^^^^^^^
 // 
 // Found 1 error and 0 warnings
 

@@ -1,0 +1,43 @@
+bad_while (cond: Bool): Maybe (ref I32) =
+    var r = Maybe.None
+    x = 1
+    while cond do
+        if cond then return r
+        r := Some (ref x)
+    None
+
+bad_for (cond: Bool): Maybe (ref I32) =
+    var s = Maybe.None
+    x = 1
+    for _i in 0 .. 3 do
+        r = s
+        if cond then return r
+        s := Some (ref x)
+    None
+
+main () = ()
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/borrows/loop_carried_escape.an:8:29
+//  5 |     var r = Maybe.None
+//  6 |     x = 1	// note: x is only valid until the end of this scope
+//    |     -
+//  7 |     while cond do
+//  8 |         if cond then return r	// error: This reference to x outlives its scope
+//    |                             ^
+//  9 |         r := Maybe.Some (ref x)
+// 
+// examples/typechecking/borrows/loop_carried_escape.an:17:29
+// 13 |     var s = Maybe.None
+// 14 |     x = 1	// note: x is only valid until the end of this scope
+//    |     -
+// 15 |     for _i in 0 .. 3 do
+// 16 |         r = s
+// 17 |         if cond then return r	// error: This reference to x outlives its scope
+//    |                             ^
+// 18 |         s := Maybe.Some (ref x)
+// 
+// Found 2 errors and 0 warnings
+

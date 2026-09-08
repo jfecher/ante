@@ -1,0 +1,19 @@
+pick2 (x: ref 'a I32) (_y: ref 'a I32): ref 'a I32 = x
+
+main () =
+    a = 1
+    // r: ref '(a, y) I32
+    // should be just 'a but row polymorphism infers the above instead.
+    // This makes the current system less precise then pure subtyping
+    r = ref a
+    if true then
+        y = 2
+        _z = pick2 r y
+
+    f = fn (x: ref I32) -> x.*
+    for i in 0 .. 3 do
+        v = i
+        _ = f (ref v)
+
+// args: --check --no-color
+// expected exit status: 0

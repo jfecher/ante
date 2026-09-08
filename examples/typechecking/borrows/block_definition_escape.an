@@ -1,0 +1,20 @@
+main () =
+    r =
+        a = 1
+        ref a
+    _ = r
+    ()
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/borrows/block_definition_escape.an:4:9
+// 2 |     r =
+// 3 |         a = 1	// note: a is only valid until the end of this scope
+//   |         -
+// 4 |         ref a	// error: This reference to a outlives its scope
+//   |         ^^^^^
+// 5 |     _ = r
+// 
+// Found 1 error and 0 warnings
+

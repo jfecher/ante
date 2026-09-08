@@ -1,0 +1,21 @@
+// Regression: Earlier refs should not prevent errors of later refs
+bad (): ref I32 =
+    x = 5
+    _ = ref x
+    ref x
+
+main () = ()
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/borrows/repeated_ref_escape.an:5:5
+// 2 | bad (): ref I32 =
+// 3 |     x = 5	// note: x is only valid until the end of this scope
+//   |     -
+// 4 |     _ = ref x
+// 5 |     ref x	// error: This reference to x outlives its scope
+//   |     ^^^^^
+// 
+// Found 1 error and 0 warnings
+

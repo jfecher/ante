@@ -1,0 +1,64 @@
+bad_return (): ref I32 =
+    x = 5
+    r = ref x
+    r
+
+bad_early_return (b: Bool) (other: ref I32): ref I32 =
+    if b then
+        x = 1
+        r = ref x
+        return r
+    other
+
+bad_match (b: Bool) (other: ref I32): ref I32 =
+    match b
+    | true ->
+        r = ref 1
+        r
+    | false -> other
+
+bad_tuple_field (): ref I32 =
+    x = 5
+    pair = ref x, 1
+    pair.first
+
+main () = ()
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/borrows/escape_through_variable.an:4:5
+// 1 | bad_return (): ref I32 =
+// 2 |     x = 5	// note: x is only valid until the end of this scope
+//   |     -
+// 3 |     r = ref x
+// 4 |     r	// error: This reference to x outlives its scope
+//   |     ^
+// 
+// examples/typechecking/borrows/escape_through_variable.an:10:16
+//  7 |     if b then
+//  8 |         x = 1	// note: x is only valid until the end of this scope
+//    |         -
+//  9 |         r = ref x
+// 10 |         return r	// error: This reference to x outlives its scope
+//    |                ^
+// 11 |     other
+// 
+// examples/typechecking/borrows/escape_through_variable.an:17:9
+// 15 |     | true ->
+// 16 |         r = ref 1	// note: this value is only valid until the end of this scope
+//    |                 -
+// 17 |         r	// error: This reference to a temporary value outlives its scope
+//    |         ^
+// 18 |     | false -> other
+// 
+// examples/typechecking/borrows/escape_through_variable.an:23:9
+// 20 | bad_tuple_field (): ref I32 =
+// 21 |     x = 5	// note: x is only valid until the end of this scope
+//    |     -
+// 22 |     pair = ref x, 1
+// 23 |     pair.first	// error: This reference to x outlives its scope
+//    |         ^^^^^^
+// 
+// Found 4 errors and 0 warnings
+

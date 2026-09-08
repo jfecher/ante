@@ -18,13 +18,5 @@ main () = ()
 //   |                      ^^^^^
 // 6 |     | r -> pick r
 // 
-// examples/typechecking/borrows/match_escape.an:5:33
-// 4 | bad (b: Bool): ref I32 =
-//   |     // error: This reference to a temporary value outlives its scope
-//   |     // note: this value is only valid until the end of this scope
-// 5 |     match (if b then ref 1 else ref 2)
-//   |                                 ^^^^^
-// 6 |     | r -> pick r
-// 
-// Found 2 errors and 0 warnings
+// Found 1 error and 0 warnings
 

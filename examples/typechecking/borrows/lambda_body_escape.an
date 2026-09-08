@@ -1,0 +1,62 @@
+four (): I32 = 42
+
+// When `ref` is used in a return position without a parameter's place to use,
+// it is assumed to be `ref 'a I32` for some concrete 'a. With no matching 'a
+// it is similar to 'static in Rust.
+bad_param (x: I32): ref I32 = ref x
+
+// This used to issue duplicate errors
+bad_param_block (x: I32): ref I32 =
+    ref x
+
+bad_early_return (x: I32) (b: Bool) (other: ref I32): ref I32 =
+    // We should catch the auto-ref return here
+    if b then return x
+    other
+
+main () =
+    _f = fn x -> ref x
+    _g = do ref four ()
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/borrows/lambda_body_escape.an:6:31
+//   | // error: This reference to x outlives its scope
+//   | // note: x is only valid until the end of this scope
+// 6 | bad_param (x: I32): ref I32 = ref x
+//   |            -                  ^^^^^
+// 
+// examples/typechecking/borrows/lambda_body_escape.an:10:5
+//  8 | bad_param_block (x: I32): ref I32 =	// note: x is only valid until the end of this scope
+//    |                  -
+//  9 |     _y = x
+// 10 |     ref x	// error: This reference to x outlives its scope
+//    |     ^^^^^
+// 
+// examples/typechecking/borrows/lambda_body_escape.an:13:22
+//    | // note: x is only valid until the end of this scope
+// 12 | bad_early_return (x: I32) (b: Bool) (other: ref I32): ref I32 =
+//    |                   -
+// 13 |     if b then return ref x	// error: This reference to x outlives its scope
+//    |                      ^^^^^
+// 14 |     other
+// 
+// examples/typechecking/borrows/lambda_body_escape.an:17:24
+// 16 | main () =
+//    |     // error: This reference to x outlives its scope
+//    |     // note: x is only valid until the end of this scope
+// 17 |     f = fn (x: I32) -> ref x
+//    |             -          ^^^^^
+// 18 |     g = fn () -> ref (compute ())
+// 
+// examples/typechecking/borrows/lambda_body_escape.an:18:18
+// 17 |     f = fn (x: I32) -> ref x
+//    |     // error: This reference to a temporary value outlives its scope
+//    |     // note: this value is only valid until the end of this scope
+// 18 |     g = fn () -> ref (compute ())
+//    |                  ^^^^^^^^^^^^^^^
+// 19 |     _ = f
+// 
+// Found 5 errors and 0 warnings
+

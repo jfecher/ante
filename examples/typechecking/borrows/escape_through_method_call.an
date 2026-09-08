@@ -18,7 +18,7 @@ main () = ()
 //    |     // error: This reference to a temporary value outlives its scope
 //    |     // note: this value is only valid until the end of this scope
 //  9 |     (make_box ()).get 0
-//    |      ----------- ^^^^
+//    |      ----------- ^^^^^^
 // 
 // Found 1 error and 0 warnings
 
