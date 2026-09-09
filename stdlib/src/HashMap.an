@@ -6,7 +6,7 @@ import Std.Fail.Fail, fail, panic_on_fail, or_panic, on_fail, try
 export HashMap, Entry, Hash, HashMap.empty, HashMap.of, HashMap.clear, HashMap.resize, HashMap.should_resize,
     HashMap.insert, HashMap.get_entry, HashMap.get, HashMap.contains, HashMap.remove, HashMap.len, HashMap.is_empty, HashMap.keys, HashMap.values,
     HashMap.get_or_insert, HashMap.get_or_insert_with, HashMap.retain, HashMap.merge,
-    print_hashmap, stream_map
+    HashMap.extend, print_hashmap, stream_map
 
 // A linear-scan mutable HashMap using a resize factor of 2.0
 type HashMap k v =
@@ -33,8 +33,11 @@ HashMap.empty () = HashMap 0 0 (null ())
 /// Create a HashMap containing each `k, v` pair from the given stream.
 HashMap.of (s: s) {Stream s (k, v) e} {Hash k} {Eq k e}: HashMap k v can Fs, e =
     var map = HashMap.empty ()
-    iter s (fn (k, v) -> map.insert k v)
+    map.extend s
     map
+
+HashMap.extend (map: mut HashMap k v) (s: s) {Stream s (k, v) e} {Hash k} {Eq k e}: Unit can Fs, e =
+    iter s (fn (k, v) -> map.insert k v)
  
 HashMap.clear (map: mut HashMap k v) : Unit =
     if map.capacity != 0 then

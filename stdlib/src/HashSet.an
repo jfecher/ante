@@ -1,0 +1,88 @@
+import Std.C.putchar
+import Std.Hash.Hash
+import Std.HashMap.HashMap
+import Std.Stream.Stream, iter, stream_fn, Emit, emit, map
+
+export HashSet, Hash, HashSet.len, HashSet.is_empty, HashSet.empty, HashSet.of,
+    HashSet.clear, HashSet.contains, HashSet.insert, HashSet.remove, HashSet.extend,
+    HashSet.retain, HashSet.merge, HashSet.keys, stream_set, stream_ref_hashset,
+    print_hashset
+
+to_unit_tuple s = (s, ())
+
+type HashSet k =
+    inner: HashMap k Unit
+
+HashSet.len (set: ref HashSet v): Usz = set.inner.len ()
+
+HashSet.is_empty (set: ref HashSet k): Bool =
+    set.inner.len () == 0
+
+HashSet.empty (): HashSet k = HashSet (HashMap.empty ())
+
+HashSet.of (s: s) {Stream s k e} {Hash k} {Eq k e}: HashSet k can Fs, e =
+    map s to_unit_tuple
+        |> HashMap.of
+        |> HashSet
+
+HashSet.clear (set: mut HashSet k) : Unit =
+    set.inner.clear ()
+
+HashSet.contains (set: ref HashSet k) (key: ref k) {Hash k} {Eq k e}: Bool can e =
+    set.inner.contains key
+
+// Insert a new element into the HashSet
+// Returns True if the key is newly inserted
+// Returns False if the key already existed
+HashSet.insert (set: mut HashSet k) (key: k) {Hash k} {Eq k e}: Bool can Fs, e =
+    set.inner.insert key () is None
+
+// Remove an element from the HashSet
+// Returns True if the key existed and was removed
+// Return False if the key was not present in the HashSet
+HashSet.remove (set: mut HashSet k) (key: ref k) {Hash k} {Eq k e}: Bool can e =
+    set.inner.remove key is Some _
+
+HashSet.extend (set: mut HashSet k) (s: s) {Stream s k e} {Hash k} {Eq k e}: Unit can Fs, e =
+    result = map s to_unit_tuple
+    set.inner.extend result
+
+HashSet.retain (set: mut HashSet k) (predicate: fn k => Bool) {Copy k}: Unit =
+    for i in 0 .. set.inner.capacity do
+        entry = ptr_to_mut (offset set.inner.entries i)
+        if entry.occupied and not (predicate entry.key) then
+            entry.occupied := false
+            entry.tombstone := true
+            set.inner.len -= 1
+
+HashSet.merge (dst: mut HashSet k) (src: HashSet k) {Hash k} {Eq k e}: Unit can Fs, e =
+    dst.inner.merge src.inner
+
+HashSet.keys (set: ref HashSet k) =
+    HashMap.keys set.inner
+
+implicit stream_set: Stream (HashSet k) k pure =
+    Stream fn set ->
+        repeat set.inner.capacity fn i ->
+            entry = set.inner.entries.[i]
+            if entry.occupied then
+                emit entry.key
+
+implicit stream_ref_hashset: Stream (ref HashSet k) k pure =
+    Stream fn set ->
+        keys = HashMap.keys set.inner
+        keys ()
+
+impl print_hashset {Print k}: Print (HashSet k) with
+    print set =
+        var printed_first = false
+
+        print_contents (key: k): Unit =
+            if printed_first then
+                print ", "
+            print key
+            printed_first := true
+
+        putchar '['
+        iter set print_contents
+        putchar ']'
