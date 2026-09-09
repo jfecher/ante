@@ -233,9 +233,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     }
 
     /// Returns true if `typ` is known to implement `Copy`.
-    /// FIXME: Types that aren't fully known yet are optimistically assumed to be `Copy`.
     pub(super) fn type_is_copy(&mut self, typ: &Type, location: Location) -> bool {
-        if self.is_trivially_copy(typ) || typ.has_unbound_type_variables(&self.bindings) {
+        if self.is_trivially_copy(typ) {
             return true;
         }
         let copy = self.copy_type(typ.clone());
@@ -256,10 +255,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     }
 
     /// Whether evaluating `expr` of type `typ` copies rather than moves.
-    /// FIXME: Values whose types aren't fully known are optimistically assumed to be `Copy`.
     pub(super) fn expr_is_copy(&self, expr: ExprId, typ: &Type) -> bool {
         self.is_trivially_copy(typ)
-            || typ.has_unbound_type_variables(&self.bindings)
             || self.copy_witnesses.get(&expr).is_some_and(|witness| self.implicit_was_found(*witness))
     }
 

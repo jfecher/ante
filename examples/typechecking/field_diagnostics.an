@@ -27,11 +27,11 @@ main () =
 // expected stdout:
 // (main: fn Unit -> Unit is pure) () =
 //     mut (tuple: I32, I32) = 1 (,: fn I32 I32 -> I32, I32 is pure) 1
-//     (_: ref 'tuple I32) = (ref ref (tuple: I32, I32)).first (.*: fn (ref '_7 (ref 'tuple I32)) {Copy (ref 'tuple I32)} [Ptr Unit] -> ref 'tuple I32 is pure) (copy_ref: Copy (ref 'tuple I32))
+//     (_: ref '_7 (ref 'tuple I32)) = (ref ref (tuple: I32, I32)).first
 //     (_: mut 'tuple.first I32) = mut (tuple: I32, I32).first
 //     (_: mut 'tuple.missing (error)) = mut (tuple: I32, I32).missing
 //     (imm_ref: ref 'tuple (I32, I32)) = ref (tuple: I32, I32)
-//     (_: mut '_24 I32) = mut (imm_ref: ref 'tuple (I32, I32)).first (.*: fn (ref 'tuple I32) {Copy I32} [Ptr Unit] -> I32 is pure) (copy_i32: Copy I32)
+//     (_: mut 'tuple (ref 'tuple I32)) = mut (imm_ref: ref 'tuple (I32, I32)).first
 //     (_: mut 'tuple (error)) = mut (imm_ref: ref 'tuple (I32, I32)).missing
 //     mut (mut_tuple: I32, I32) = 1 (,: fn I32 I32 -> I32, I32 is pure) 1
 //     (_: ref 'mut_tuple.missing (error)) = ref (mut_tuple: I32, I32).missing
@@ -39,7 +39,8 @@ main () =
 //     (mut_ref: mut 'mut_tuple (I32, I32)) = mut (mut_tuple: I32, I32)
 //     (_: ref 'mut_tuple (error)) = ref (mut_ref: mut 'mut_tuple (I32, I32)).missing
 //     (_: mut 'mut_tuple (error)) = mut (mut_ref: mut 'mut_tuple (I32, I32)).missing
-//     (_: mut '_58 (ref 'tuple I32)) = mut (mut ref (tuple: I32, I32)).first (.*: fn (ref '_56 (ref 'tuple I32)) {Copy (ref 'tuple I32)} [Ptr Unit] -> ref 'tuple I32 is pure) (copy_ref: Copy (ref 'tuple I32))
+//     (_: mut '_56 (ref 'tuple I32)) = mut (mut ref (tuple: I32, I32)).first
+
 
 // expected stderr:
 // examples/typechecking/field_diagnostics.an:7:18
