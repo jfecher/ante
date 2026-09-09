@@ -21,7 +21,7 @@ use crate::{
 use super::{
     TopLevelContext,
     cst::{
-        self, Call, CompoundAssignOp, Comptime, Cst, Declaration, Definition, Do, ExportEntry, Expr, Extern,
+        self, Attribute, Call, CompoundAssignOp, Comptime, Cst, Declaration, Definition, Do, ExportEntry, Expr, Extern,
         FunctionType, Handle, HandlePattern, If, Import, InterpolatedString, Is, Lambda, Literal, Match, MemberAccess,
         Parameter, Path, Pattern, Quoted, Reference, SequenceItem, TopLevelItem, TraitImpl, TraitOrEffectDefinition,
         Type, TypeAnnotation, TypeDefinition, TypeDefinitionBody, TypeKind,
@@ -229,6 +229,7 @@ impl<'a> CstDisplay<'a> {
         self.current_item_id = Some(item.id);
 
         self.fmt_comments(&item.comments, f)?;
+        self.fmt_attributes(&item.attributes, context, f)?;
 
         if self.config.show_resolved {
             writeln!(f, "// id = {}", item.id)?;
@@ -252,6 +253,19 @@ impl<'a> CstDisplay<'a> {
                 writeln!(f, "{comment}")?;
                 self.indent(f)?;
             }
+        }
+        Ok(())
+    }
+
+    fn fmt_attributes(&mut self, attributes: &[Attribute], context: &impl IdStore, f: &mut Formatter) -> std::fmt::Result {
+        for attribute in attributes {
+            write!(f, "#{}", attribute.name)?;
+            for arg in &attribute.args {
+                write!(f, " ")?;
+                self.fmt_expr(*arg, context, f)?;
+            }
+            writeln!(f)?;
+            self.indent(f)?;
         }
         Ok(())
     }

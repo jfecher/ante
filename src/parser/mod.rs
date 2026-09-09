@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, sync::Arc};
 
-use cst::{Comptime, Constructor, Declaration, ExportEntry, Lambda, MemberAccess, Name, Parameter, Pattern};
+use cst::{Attribute, Constructor, Declaration, ExportEntry, Lambda, MemberAccess, Name, Parameter, Pattern};
 use ids::{ExprId, NameId, PathId, PatternId, TopLevelId};
 use rustc_hash::FxHashSet;
 use serde::{Deserialize, Serialize};
@@ -266,14 +266,7 @@ impl<'tokens> Parser<'tokens> {
     }
 
     /// Create a new TopLevelId from the name of a given top level item.
-    /// In the case of definitions, this name will be only the last element in their path.
-    fn new_top_level_id(&mut self, data: impl std::hash::Hash) -> TopLevelId {
-        let hash = Self::hash_top_level_data(&mut self.top_level_item_hashes, &data);
-        self.new_top_level_id_helper(hash)
-    }
-
-    /// Create a new TopLevelId from the name of a given top level item.
-    /// This is a specialized version to avoid cloning the string given by the given NameId.
+    /// This is a specialized version to avoid cloning the string from the given NameId.
     fn new_top_level_id_from_name_id(&mut self, name: NameId) -> TopLevelId {
         let data = &self.current_context.names[name];
         let hash = Self::hash_top_level_data(&mut self.top_level_item_hashes, data);
@@ -603,6 +596,7 @@ impl<'tokens> Parser<'tokens> {
     }
 
     fn parse_top_level_item(&mut self, comments: Vec<String>) -> Result<TopLevelItem> {
+        let attributes = self.parse_attributes()?;
         let id: TopLevelId;
 
         let kind = match self.current_token() {
@@ -636,17 +630,10 @@ impl<'tokens> Parser<'tokens> {
                 id = self.new_top_level_id_from_name_id(trait_impl.name);
                 TopLevelItemKind::TraitImpl(trait_impl)
             },
-            Token::Octothorpe => {
-                let comptime = self.parse_comptime()?;
-                // Hashing the whole comptime object here contains ExprIds which means this
-                // top level id will not be stable if any of its contents change
-                id = self.new_top_level_id(&comptime);
-                TopLevelItemKind::Comptime(comptime)
-            },
             _ => return self.expected("a top-level item"),
         };
 
-        Ok(TopLevelItem { id, comments, kind })
+        Ok(TopLevelItem { id, attributes, comments, kind })
     }
 
     fn parse_comments(&mut self) -> Vec<String> {
@@ -659,6 +646,35 @@ impl<'tokens> Parser<'tokens> {
         }
 
         comments
+    }
+
+    /// attribute: '#' ident atom*
+    /// Terminated by a newline or another '#'
+    fn parse_attribute(&mut self) -> Result<Attribute> {
+        let start_location = self.current_token_location();
+        self.advance(); // `#`
+        let name = self.parse_ident()?;
+
+        let mut args = Vec::new();
+        while !matches!(self.current_token(), Token::Newline | Token::Octothorpe) && !self.at_end_of_input() {
+            args.push(self.parse_atom(0, false)?);
+        }
+
+        let location = start_location.to(&self.previous_token_location());
+        Ok(Attribute { name: Arc::new(name), args, location })
+    }
+
+    /// attributes: (attribute newline?)*
+    fn parse_attributes(&mut self) -> Result<Vec<Attribute>> {
+        let mut attributes = Vec::new();
+
+        while *self.current_token() == Token::Octothorpe {
+            let attr = self.try_parse_or_recover_to_newline(Self::parse_attribute);
+            attributes.extend(attr);
+            self.accept(Token::Newline);
+        }
+
+        Ok(attributes)
     }
 
     /// definition: non_function_definition | function_definition
@@ -2437,12 +2453,6 @@ impl<'tokens> Parser<'tokens> {
         self.parse_if(Self::parse_block_or_expression)
     }
 
-    /// A comptime if, unlike a regular if, requires a block so that we can quote
-    /// every token until we find the matching unindent.
-    fn parse_comptime_if(&mut self) -> Result<ExprId> {
-        self.parse_if(Self::parse_quoted_block)
-    }
-
     fn parse_match(&mut self) -> Result<ExprId> {
         self.with_expr_id_and_location(|this| {
             this.expect(Token::Match, "`match` to start this match expression")?;
@@ -2531,36 +2541,6 @@ impl<'tokens> Parser<'tokens> {
         let resume_name = self.push_name(Arc::new("resume".to_string()), resume_location);
 
         Ok(cst::HandlePattern { function, args, resume_name })
-    }
-
-    /// Parse an indent followed by any arbitrary tokens until a matching unindent
-    fn parse_quoted_block(&mut self) -> Result<ExprId> {
-        self.expect(Token::Indent, "an indent to start a quoted block")?;
-        let mut indent_count = 0;
-        let mut tokens = Vec::new();
-
-        self.with_expr_id_and_location(|this| {
-            loop {
-                this.advance();
-                match this.current_token() {
-                    Token::Indent => {
-                        indent_count += 1;
-                        tokens.push(Token::Indent);
-                    },
-                    Token::Unindent => {
-                        if indent_count == 0 {
-                            break;
-                        }
-                        indent_count -= 1;
-                    },
-                    // This should be unreachable since the lexer should guarantee indents are
-                    // always matched.
-                    Token::EndOfInput => break,
-                    other => tokens.push(other.clone()),
-                }
-            }
-            Ok(Expr::Quoted(cst::Quoted { tokens }))
-        })
     }
 
     /// Parse a block or expression bounded by tokens (such as `then` and `else`).
@@ -2776,27 +2756,6 @@ impl<'tokens> Parser<'tokens> {
         let location = start_location.to(&self.previous_token_location());
         let interpolated = cst::InterpolatedString { fragments, exprs };
         Ok(self.push_expr(Expr::InterpolatedString(interpolated), location))
-    }
-
-    fn parse_comptime(&mut self) -> Result<Comptime> {
-        // Skip `#`
-        self.advance();
-
-        match self.current_token() {
-            Token::If => {
-                let if_ = self.parse_comptime_if()?;
-                Ok(Comptime::Expr(if_))
-            },
-            Token::Identifier(_) | Token::TypeName(_) => {
-                let call = self.parse_expr_with_recovery(
-                    |this| Self::parse_function_call_or_atom(this, 0, false),
-                    Token::Newline,
-                    &[],
-                )?;
-                Ok(Comptime::Expr(call))
-            },
-            _ => self.expected("a compile-time item"),
-        }
     }
 
     fn parse_type_path_id(&mut self) -> Result<PathId> {

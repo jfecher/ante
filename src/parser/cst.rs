@@ -37,9 +37,18 @@ pub struct ExportEntry {
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct TopLevelItem {
+    pub attributes: Vec<Attribute>,
     pub comments: Vec<String>,
     pub kind: TopLevelItemKind,
     pub id: TopLevelId,
+}
+
+/// A `#name arg0 arg1 .. argN` annotation on a top-level item
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
+pub struct Attribute {
+    pub name: Name,
+    pub args: Vec<ExprId>,
+    pub location: Location,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -697,19 +706,7 @@ pub struct Extern {
     pub name: String,
 }
 
-/// A top-level item evaluated at compile-time, e.g:
-/// ```ante
-/// #if foo then
-///     function () = 3
-///
-/// // or
-/// #modify
-/// foo bar = ()
-///
-/// // or
-/// derive Foo Bar
-/// type MyType = x: I32
-/// ```
+/// A top-level item evaluated at compile-time
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum Comptime {
     Expr(ExprId),

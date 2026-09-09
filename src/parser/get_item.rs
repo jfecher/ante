@@ -29,7 +29,12 @@ pub fn get_item_impl(context: &GetItem, db: &DbHandle) -> (Arc<TopLevelItem>, Ar
             let is_effect = matches!(&item.kind, TopLevelItemKind::EffectDefinition(_));
             let mut new_context = DesugarContext::new(context);
             let new_kind = desugar_trait_or_effect(def, is_effect, &mut new_context);
-            let new_item = Arc::new(TopLevelItem { comments: item.comments.clone(), kind: new_kind, id: item.id });
+            let new_item = Arc::new(TopLevelItem {
+                attributes: item.attributes.clone(),
+                comments: item.comments.clone(),
+                kind: new_kind,
+                id: item.id,
+            });
             (new_item, Arc::new(new_context))
         },
         TopLevelItemKind::TraitImpl(trait_impl) => {
@@ -37,7 +42,12 @@ pub fn get_item_impl(context: &GetItem, db: &DbHandle) -> (Arc<TopLevelItem>, Ar
             let new_definition = desugar_trait_impl(trait_impl, &mut new_context);
             desugar_expression(new_definition.rhs, &mut new_context);
             let kind = TopLevelItemKind::Definition(new_definition);
-            let new_item = Arc::new(TopLevelItem { comments: item.comments.clone(), kind, id: item.id });
+            let new_item = Arc::new(TopLevelItem {
+                attributes: item.attributes.clone(),
+                comments: item.comments.clone(),
+                kind,
+                id: item.id,
+            });
             (new_item, Arc::new(new_context))
         },
         TopLevelItemKind::Definition(definition) => {
