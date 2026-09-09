@@ -1,0 +1,41 @@
+type P 'a =
+    x: ref 'a I32
+
+deref_of_ref (a: mut (ref I32)) =
+    a.* := 2
+
+field_through_mut (q: mut P 'a) =
+    q.x.* := 5
+
+field_of_var () =
+    y = 1
+    z = 2
+    var p = P (ref y)
+    p.x := 5
+    p.x := ref z
+
+main () = ()
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/assign_through_immutable.an:5:6
+// 4 | deref_of_ref (a: mut (ref I32)) =
+//   |     // error: Cannot assign through a value of type ref I32, a mut or uniq reference is required
+// 5 |     a.* := 2
+//   |      ^^
+// 
+// examples/typechecking/assign_through_immutable.an:8:8
+//  7 | field_through_mut (q: mut P 'a) =
+//    |     // error: Cannot assign through a value of type ref 'a I32, a mut or uniq reference is required
+//  8 |     q.x.* := 5
+//    |        ^^
+// 
+// examples/typechecking/assign_through_immutable.an:14:12
+// 13 |     var p = P (ref y)
+// 14 |     p.x := 5	// error: Cannot assign a value of type I32 to a target of type ref 'y I32
+//    |            ^
+// 15 |     p.x := ref z
+// 
+// Found 3 errors and 0 warnings
+

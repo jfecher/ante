@@ -1,0 +1,20 @@
+get_default
+    (map: mut 'r a)
+    (key: k)
+    {Hash k}
+    {Eq k}
+: mut 'r v =
+    key
+
+add
+    (a: I32)
+    b
+= a + b
+
+// args: -e ast --no-color
+// expected stdout:
+// get_default (map: mut 'r a) (key: k) {_: Hash k} {_: Eq k} : mut 'r v =
+//     key
+// 
+// add (a: I32) b = a + b
+

@@ -1,21 +1,17 @@
 main () =
-    var r: mut (ref I32) = mut (ref 0)
+    r = mut (ref 0)
     for i in 0 .. 10 do
-        x = i
-        r := ref x
-    _ = r
-    ()
+        r := ref i
 
 // args: --check --no-color
 // expected exit status: 1
 // expected stderr:
-// examples/typechecking/borrows/loop_assign_dangling.an:5:14
-// 3 |     for i in 0 .. 10 do
-// 4 |         x = i	// note: x is only valid until the end of this scope
+// examples/typechecking/borrows/loop_assign_dangling.an:4:14
+// 2 |     r = mut (ref 0)
+// 3 |     for i in 0 .. 10 do	// note: i is only valid until the end of this scope
 //   |         -
-// 5 |         r := ref x	// error: This reference to x outlives its scope
+// 4 |         r := ref i	// error: This reference to i outlives its scope
 //   |              ^^^^^
-// 6 |     _ = r
 // 
 // Found 1 error and 0 warnings
 

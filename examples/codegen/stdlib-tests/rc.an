@@ -2,7 +2,7 @@ import Std.Rc.Rc, of, as_ref, as_mut, ref_count, inc_ref_count, dec_ref_count, c
 
 main () =
     // Basic construction + as_ref + ref_count
-    rc = Rc.of 42
+    var rc = Rc.of 42
     println (ref_count rc)      // 1
     println (as_ref rc).*        // 42
 

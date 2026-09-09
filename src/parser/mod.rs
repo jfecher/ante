@@ -695,16 +695,7 @@ impl<'tokens> Parser<'tokens> {
         let implicit = self.accept(Token::Implicit);
         let name = self.parse_function_name_pattern()?;
         let parameters = self.parse_function_parameters()?;
-
-        let return_type = if self.accept(Token::Colon) {
-            self.parse_with_recovery(Self::parse_type, Token::Equal, &[Token::Newline, Token::Indent]).ok()
-        } else {
-            None
-        };
-
-        let effects = self.parse_effects_clause()?;
-
-        self.expect(Token::Equal, "`=` to begin the function body")?;
+        let (return_type, effects) = self.parse_function_signature_tail()?;
 
         let lambda_id = self.reserve_expr();
         let body = self
@@ -714,6 +705,19 @@ impl<'tokens> Parser<'tokens> {
         let lambda = Expr::Lambda(Lambda { parameters, return_type, body, is_move: false, effects });
         self.insert_expr(lambda_id, lambda, start_location);
         Ok(Definition { implicit, mutable: false, pattern: name, rhs: lambda_id })
+    }
+
+    /// function_signature_tail: (':' typ)? effects_clause '='
+    fn parse_function_signature_tail(&mut self) -> Result<(Option<Type>, Option<Vec<Type>>)> {
+        self.accept(Token::Newline);
+
+        let return_type = self.accept(Token::Colon).then_some(()).and_then(|_| {
+            self.parse_with_recovery(Self::parse_type, Token::Equal, &[Token::Newline, Token::Indent]).ok()
+        });
+
+        let effects = self.parse_effects_clause()?;
+        self.expect(Token::Equal, "`=` to begin the function body")?;
+        Ok((return_type, effects))
     }
 
     fn parse_function_name_pattern(&mut self) -> Result<PatternId> {
@@ -2695,15 +2699,7 @@ impl<'tokens> Parser<'tokens> {
         // mirroring `parse_function_definition`.
         // TODO: Refactor to remove this repeated code
         if let Ok(parameters) = self.try_(Self::parse_function_parameters) {
-            let return_type = if self.accept(Token::Colon) {
-                self.parse_with_recovery(Self::parse_type, Token::Equal, &[Token::Newline, Token::Indent]).ok()
-            } else {
-                None
-            };
-
-            let effects = self.parse_effects_clause()?;
-
-            self.expect(Token::Equal, "`=` to begin the function body")?;
+            let (return_type, effects) = self.parse_function_signature_tail()?;
             let body = if inline {
                 self.parse_shunting_yard(0, ban_do, /*ban_comma:*/ true)?
             } else {

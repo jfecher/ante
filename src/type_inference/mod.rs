@@ -216,6 +216,9 @@ struct TypeChecker<'local, 'inner> {
     /// to wrap mutable captures in a reference type so the closure shares the outer scope's storage.
     mutable_definitions: FxHashSet<NameId>,
 
+    /// True while inferring the left-hand side of an assignment
+    inferring_assignment_lhs: bool,
+
     /// Type variables created for polymorphic integer literals. Entries are never removed.
     /// Used during unification to restrict these variables to integer types so mismatches error
     /// at the unification site instead of a confusing error when defaulting to I32 later.
@@ -264,6 +267,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             copy_witnesses: Default::default(),
             copy_type_name: None,
             mutable_definitions: Default::default(),
+            inferring_assignment_lhs: false,
             integer_literal_vars: Default::default(),
             float_literal_vars: Default::default(),
             value_type_vars: Default::default(),

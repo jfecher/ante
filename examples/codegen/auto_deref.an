@@ -4,7 +4,7 @@ trait Double a =
 implicit double_i32: Double I32 =
     Double fn x -> x + x
 
-// Explicit deref: auto-deref only applies to call arguments, not return position
+// auto-deref only applies to call arguments not in a return position
 deref_ref (x: ref I32): I32 = x.*
 
 // Explicit deref with mut reference
@@ -15,7 +15,7 @@ trait_through_deref (x: ref I32): I32 =
     Double.do_double x.*
 
 main () =
-    y = 42
+    var y = 42
     println (deref_ref (ref y))
     println (deref_mut (mut y))
     println (trait_through_deref (ref y))

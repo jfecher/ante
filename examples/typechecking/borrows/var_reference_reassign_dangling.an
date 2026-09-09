@@ -1,0 +1,19 @@
+main () =
+    var a = 1
+    var r = mut a
+    if true then
+        var b = 2
+        r := mut b
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/borrows/var_reference_reassign_dangling.an:6:14
+// 4 |     if true then
+// 5 |         var b = 2	// note: b is only valid until the end of this scope
+//   |             -
+// 6 |         r := mut b	// error: This reference to b outlives its scope
+//   |              ^^^^^
+// 
+// Found 1 error and 0 warnings
+

@@ -1,0 +1,48 @@
+type Q 'a =
+    x: mut 'a I32
+
+type Plain =
+    n: I32
+
+main () =
+    var v = 0
+    var w = 10
+    var v2 = 20
+    var v3 = 30
+
+    // `var` is treated as having an extra `mut` wrapper when assigning
+    var p = Q (mut v)
+    p.x := mut w
+    p.x.* := 5
+    println v
+    println w
+
+    // Same as the above but with an explicit `mut` instead of `var`
+    q = mut p
+    q.x := mut v2
+    q.x.* := 6
+    println w
+    println v2
+
+    // `:=` requires a mutable reference as its lhs so `r.x` here is fine without another deref
+    r = Q (mut v3)
+    r.x := 7
+    println v3
+
+    var plain = Plain 1
+    plain.n := 2
+    println plain.n
+    pr = mut plain
+    pr.n := 3
+    println plain.n
+
+// args: --delete-binary --no-color
+// expected stdout:
+// 0
+// 5
+// 5
+// 6
+// 7
+// 2
+// 3
+

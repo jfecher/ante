@@ -314,6 +314,14 @@ pub enum Diagnostic {
         name: Option<Name>,
         location: Location,
     },
+    AssignThroughImmutableReference {
+        typ: String,
+        location: Location,
+    },
+    MutableReferenceToImmutable {
+        name: String,
+        location: Location,
+    },
     ConfusingOperatorAfterBody {
         body_kind: ConfusingBodyKind,
         operator_location: Location,
@@ -723,6 +731,18 @@ impl Diagnostic {
                     format!("Cannot assign to lvalue, declare it as a mutable variable first with {var}")
                 }
             },
+            Diagnostic::AssignThroughImmutableReference { typ, location: _ } => {
+                let typ = color_type(typ);
+                let mutable = color_keyword("mut");
+                let unique = color_keyword("uniq");
+                format!("Cannot assign through a value of type {typ}, a {mutable} or {unique} reference is required")
+            },
+            Diagnostic::MutableReferenceToImmutable { name, location: _ } => {
+                let name = color_name(name);
+                let var = color_keyword("var");
+                let mutable = color_keyword("mut");
+                format!("Cannot take a {mutable} reference to {name}, declare it with {var} to make it mutable")
+            },
             Diagnostic::ConfusingOperatorAfterBody { body_kind, .. } => {
                 let kind = body_kind.description();
                 format!(
@@ -809,6 +829,8 @@ impl Diagnostic {
             | Diagnostic::HandlerDuplicateMethod { second_location: location, .. }
             | Diagnostic::HandlerCrossEffect { location, .. }
             | Diagnostic::AssignToImmutable { location, .. }
+            | Diagnostic::AssignThroughImmutableReference { location, .. }
+            | Diagnostic::MutableReferenceToImmutable { location, .. }
             | Diagnostic::ConfusingOperatorAfterBody { operator_location: location, .. }
             | Diagnostic::EscapingReference { location, .. } => location,
         }

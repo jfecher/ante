@@ -359,7 +359,7 @@ where
             cst::Expr::Is(_) => unreachable!("Expr::Is should be desugared during GetItem"),
             cst::Expr::Do(_) => unreachable!("Expr::Do should be desugared during GetItem"),
             cst::Expr::Handle(handle) => self.handle(handle, expr),
-            cst::Expr::Reference(reference) => self.reference(reference),
+            cst::Expr::Reference(reference) => self.reference(reference, expr),
             cst::Expr::TypeAnnotation(type_annotation) => self.expression(type_annotation.lhs),
             cst::Expr::Constructor(constructor) => self.constructor(constructor, expr),
             cst::Expr::Quoted(quoted) => self.quoted(quoted),
@@ -2008,18 +2008,25 @@ where
         self.push_instruction(Instruction::Handle { body, cases }, result_type)
     }
 
-    fn reference(&mut self, reference: &cst::Reference) -> Value {
+    fn reference(&mut self, reference: &cst::Reference, expr: ExprId) -> Value {
         let rhs = reference.rhs;
 
         // Reborrow: if the rhs already has a reference type its value is already a pointer
         // TODO: Probe this for bugs when creating nested references
-        let rhs_type = self.types.result.maps.expr_types[&rhs].follow(&self.types.bindings);
-        if rhs_type.reference_element(&self.types.bindings).is_some() {
-            return self.expression(rhs);
+        let bindings = &self.types.bindings;
+        let rhs_type = self.types.result.maps.expr_types[&rhs].follow(bindings);
+        if rhs_type.reference_element(bindings).is_some() {
+            let expr_type = self.types.result.maps.expr_types[&expr].follow(bindings);
+            let element_is_ref = expr_type
+                .reference_element(bindings)
+                .is_some_and(|(_, element)| element.reference_element(bindings).is_some());
+            if !element_is_ref {
+                return self.expression(rhs);
+            }
         }
 
         if self.is_addressable(rhs) {
-            return self.lhs_as_pointer(rhs);
+            return self.address_of(rhs);
         }
 
         // Not addressable, likely a temporary, so stack-allocate it
@@ -2050,27 +2057,26 @@ where
         }
     }
 
+    /// The pointer an assignment to `lhs` stores into
     fn lhs_as_pointer(&mut self, lhs: ExprId) -> Value {
-        // Storing a shared mut type should mutate the inner element
         let lhs_type = self.types.result.maps.expr_types[&lhs].follow(&self.types.bindings);
-        let shared_mut = self.shared_mut_inner_layout_of(lhs_type).is_some();
-        if shared_mut {
+        let already_pointer = self.shared_mut_inner_layout_of(lhs_type).is_some()
+            || lhs_type.reference_or_pointer_element(&self.types.bindings).is_some();
+        if already_pointer {
             return self.expression(lhs);
         }
+        self.address_of(lhs)
+    }
 
-        // `var`s in type inference are wrapped with a `mut` reference automatically when used in assignments
-        if let cst::Expr::Reference(reference) = &self.context()[lhs]
-            && matches!(reference.kind, cst::ReferenceKind::Mut | cst::ReferenceKind::Uniq)
-        {
-            return self.expression(lhs);
-        }
-
-        match self.classify_lhs(lhs) {
+    /// The address of the existing storage `expr` denotes. This never reads through a reference
+    /// stored in `expr`, so for a `var` holding a reference it yields the variable's own slot.
+    fn address_of(&mut self, expr: ExprId) -> Value {
+        match self.classify_lhs(expr) {
             LhsKind::LocalVar(name) => {
-                *self.local_variables.get(&name).expect("lhs_as_pointer: mutable local variable not found")
+                *self.local_variables.get(&name).expect("address_of: mutable local variable not found")
             },
             LhsKind::DerefCall(ptr_expr) => self.expression(ptr_expr),
-            LhsKind::Annotation(inner) => self.lhs_as_pointer(inner),
+            LhsKind::Annotation(inner) => self.address_of(inner),
             LhsKind::FieldAccess(object_expr, field_expr) => {
                 let struct_ptr = self.lhs_as_pointer(object_expr);
                 let index = self.context().member_access_index(field_expr).unwrap_or(u32::MAX);
@@ -2094,7 +2100,6 @@ where
 
         let value = if let Some((_, op_expr)) = assignment.op {
             // Compound assignment: load current value, apply operator, then store.
-            // The LHS is evaluated only once via lhs_as_pointer above.
             let value_type = self.compound_assign_value_type(assignment.lhs);
             let current = self.push_instruction(Instruction::Deref(pointer), value_type.clone());
             let rhs = self.expression(assignment.rhs);

@@ -1,0 +1,47 @@
+type Thing = x: I32
+
+maybe_next (t: mut Thing): Maybe (mut Thing) =
+    if t.x == 1 then None else Some t
+
+main () =
+    var first = mut Thing 1
+    second = mut Thing 2
+
+    var temp = mut first
+    temp := second
+    println temp.x
+    println first.x
+
+    alias = mut first
+    alias := Thing 3
+    println first.x
+
+    var current = mut first
+    var i = 0
+    while i < 3 do
+        if maybe_next current is Some next then
+            current := next
+
+        current.x := 1
+        i += 1
+    println first.x
+    println second.x
+
+    var a = 1
+    var b = 2
+    var x = mut a
+    x := mut b
+    x.* := 4
+    println a
+    println b
+
+// args: --delete-binary --no-color
+// expected stdout:
+// 2
+// 1
+// 3
+// 1
+// 2
+// 1
+// 4
+

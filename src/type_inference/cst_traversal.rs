@@ -7,14 +7,14 @@ use crate::{
     lexer::token::Integer,
     name_resolution::{Origin, builtin::Builtin, namespace::SourceFileId},
     parser::{
-        cst::{self, Definition, Expr, Literal, Name, Pattern, ReferenceKind},
+        cst::{self, Definition, Expr, Literal, Pattern, ReferenceKind},
         ids::{ExprId, NameId, PathId, PatternId, TopLevelId, TopLevelName},
     },
     type_inference::{
         Locateable, TypeChecker, Variance,
-        places::PlacePath,
         errors::TypeErrorKind,
         get_type::{get_partial_type, try_get_generalized_type},
+        places::PlacePath,
         types::{self, FunctionType, GenericSubstitutions, ParameterType, Type, TypeBindings},
     },
 };
@@ -78,13 +78,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
 
         self.with_next_id(|next_id| {
-            get_partial_type(
-                definition,
-                self.current_context(),
-                self.current_resolve(),
-                self.compiler,
-                next_id,
-            )
+            get_partial_type(definition, self.current_context(), self.current_resolve(), self.compiler, next_id)
         })
     }
 
@@ -790,7 +784,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             }
 
             // Copy the field if the expected is not a reference and the field is Copy
-            if expected.reference_element(&self.bindings).is_none()
+            if !self.inferring_assignment_lhs
+                && expected.reference_element(&self.bindings).is_none()
                 && let Some((_, inner_field_type)) = field.reference_element(&self.bindings)
                 && self.type_is_copy(&inner_field_type, expr.locate(self))
             {
@@ -893,6 +888,19 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         Some(object)
     }
 
+    /// Ensure `expr` in `mut expr` is actually mutable
+    fn check_mutable_borrow_of_place(&mut self, object: ExprId) {
+        let Some(root) = self.owned_place_root(object) else { return };
+        if self.mutable_definitions.contains(&root) {
+            return;
+        }
+        if let Some(path) = self.try_build_move_path(object) {
+            let name = path.display_name(self.current_extended_context());
+            let location = object.locate(self);
+            self.compiler.accumulate(Diagnostic::MutableReferenceToImmutable { name, location });
+        }
+    }
+
     fn infer_if(&mut self, if_: &cst::If, expected: &Type, expr: ExprId) -> Type {
         self.check_expr(if_.condition, &Type::BOOL, TypeErrorKind::Condition);
 
@@ -981,10 +989,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             let (place, element) = match rhs_type_followed.reference_element(&self.bindings) {
                 Some((inner_kind, inner_element)) if matches!(inner_kind, ReferenceKind::Mut | ReferenceKind::Uniq) => {
                     // Reborrow
+                    // TODO: Remove, `mut (mut e)` should be a nested reference not a reborrow
                     let place = rhs_type_followed.reference_places(&self.bindings).unwrap_or(Type::Places(None));
                     (place, inner_element)
                 },
-                _ => (self.infer_place(reference.rhs), rhs_type),
+                _ => {
+                    self.check_mutable_borrow_of_place(reference.rhs);
+                    (self.infer_place(reference.rhs), rhs_type)
+                },
             };
 
             return Type::Application(Arc::new(constructor), Arc::new(vec![place, element]));
@@ -1164,19 +1176,21 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     fn infer_assignment(&mut self, assignment: &cst::Assignment) -> Type {
         let lhs_hint = self.next_type_variable();
+        let was_inferring_lhs = std::mem::replace(&mut self.inferring_assignment_lhs, true);
         let mut lhs_type = self.infer_expr(assignment.lhs, &lhs_hint);
+        self.inferring_assignment_lhs = was_inferring_lhs;
 
-        if let Err((name, location)) = self.check_lhs_mutable(assignment.lhs) {
-            self.compiler.accumulate(Diagnostic::AssignToImmutable { name, location });
+        let lhs_is_var = self.lhs_is_var_place(assignment.lhs);
+        if !lhs_is_var && let Err(diagnostic) = self.check_lhs_mutable(assignment.lhs, true) {
+            self.compiler.accumulate(diagnostic);
         }
 
         // Wrap `var`s in `mut` so `x := 3` becomes `mut x := 3` so the LHS of an assignment is
         // always a reference.
-        // FIXME: Likely broken for `var`s of reference types
         let lhs_has_reference = self.follow_type(&lhs_type).reference_element(&self.bindings).is_some();
         let lhs_is_call = matches!(self.current_extended_context()[assignment.lhs], Expr::Call(_));
 
-        if !lhs_has_reference && !lhs_is_call {
+        if lhs_is_var || (!lhs_has_reference && !lhs_is_call) {
             let new_expr = self.auto_ref_coercion(assignment.lhs, ReferenceKind::Mut, lhs_type.clone());
             let Expr::Reference(reference) = &new_expr else { unreachable!() };
             let place = self.infer_place(reference.rhs);
@@ -1274,18 +1288,39 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
+    /// True if `lhs` is storage owned by a `var`
+    fn lhs_is_var_place(&self, lhs: ExprId) -> bool {
+        self.owned_place_root(lhs).is_some_and(|root| self.mutable_definitions.contains(&root))
+    }
+
+    /// If `expr` is a local or a field chain from one that never crosses a reference, return that local
+    fn owned_place_root(&self, expr: ExprId) -> Option<NameId> {
+        match &self.current_extended_context()[expr] {
+            Expr::Variable(path) => match self.path_origin(*path) {
+                Some(Origin::Local(name)) => Some(name),
+                _ => None,
+            },
+            Expr::TypeAnnotation(ta) => self.owned_place_root(ta.lhs),
+            Expr::MemberAccess(access) => {
+                let object = access.object;
+                let object_is_indirect = self.expr_types.get(&object).is_some_and(|typ| {
+                    typ.reference_element(&self.bindings).is_some() || self.is_shared_mut_user_defined(typ)
+                });
+                if object_is_indirect {
+                    return None;
+                }
+                self.owned_place_root(object)
+            },
+            _ => None,
+        }
+    }
+
     /// A place is mutable if any of these hold:
     /// - it is declared with `var`
     /// - the local's type is a `mut`/`uniq` reference
     /// - it is a deref of a mutable place
     /// - it is a field access `l.r` where `l` is a mutable place
-    ///
-    /// On error, returns the first offending name not matching the above rules if found
-    fn check_lhs_mutable(&self, lhs: ExprId) -> Result<(), (Option<Name>, Location)> {
-        self.check_lhs_mutable_rec(lhs, true)
-    }
-
-    fn check_lhs_mutable_rec(&self, lhs: ExprId, lvalue: bool) -> Result<(), (Option<Name>, Location)> {
+    fn check_lhs_mutable(&self, lhs: ExprId, lvalue: bool) -> Result<(), Diagnostic> {
         match &self.current_extended_context()[lhs] {
             Expr::Variable(path) => {
                 let path_id = *path;
@@ -1295,50 +1330,75 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                             return Ok(());
                         }
                         if let Some(typ) = self.name_types.get(&name)
-                            && (self.is_mut_or_uniq_reference(typ) || self.is_shared_mut_user_defined(typ))
+                            && self.is_mutable_indirection(typ)
                         {
                             return Ok(());
                         }
                         let name = self.current_extended_context()[name].clone();
-                        Err((Some(name), path_id.locate(self)))
+                        Err(Diagnostic::AssignToImmutable { name: Some(name), location: path_id.locate(self) })
                     },
                     // Top-level definitions, builtins, and type-resolution paths are not assignable.
                     Some(_) => {
                         let path = self.current_extended_context()[path_id].to_string();
-                        Err((Some(Arc::new(path)), path_id.locate(self)))
+                        Err(Diagnostic::AssignToImmutable {
+                            name: Some(Arc::new(path)),
+                            location: path_id.locate(self),
+                        })
                     },
                     // Unresolved name, ignore further errors
                     None => Ok(()),
                 }
             },
-            Expr::TypeAnnotation(ta) => self.check_lhs_mutable_rec(ta.lhs, lvalue),
+            Expr::TypeAnnotation(ta) => self.check_lhs_mutable(ta.lhs, lvalue),
             Expr::MemberAccess(access) => {
+                if let Some(result) = self.check_assign_through(lhs) {
+                    return result;
+                }
                 let object = access.object;
-                // TODO: This allows `x: ref (mut a, b)` to assign to the inner `mut a`
                 if let Some(typ) = self.expr_types.get(&object)
-                    && (self.is_mut_or_uniq_reference(typ) || self.is_shared_mut_user_defined(typ))
+                    && self.is_mutable_indirection(typ)
                 {
                     return Ok(());
                 }
-                self.check_lhs_mutable_rec(object, false)
+                self.check_lhs_mutable(object, false)
             },
             Expr::Call(call) => {
-                // If this is a call, just assume it is something like `a.* :=` or `a.[0] :=` and check the obj type.
+                if let Some(result) = self.check_assign_through(lhs) {
+                    return result;
+                }
+                // Otherwise assume this is `a.* :=` and check the object being dereferenced.
                 // TODO: Make this check more rigorous
                 if let Some(obj) = call.arguments.first() {
-                    self.check_lhs_mutable_rec(obj.expr, false)
+                    self.check_lhs_mutable(obj.expr, false)
                 } else {
                     let location = self.current_extended_context().expr_location(lhs);
-                    Err((None, location))
+                    Err(Diagnostic::AssignToImmutable { name: None, location })
                 }
             },
             // TODO: We could have a different variant for lvalues instead of reusing ExprIds
             _ if lvalue => {
                 let location = self.current_extended_context().expr_location(lhs);
-                Err((None, location))
+                Err(Diagnostic::AssignToImmutable { name: None, location })
             },
             _ => Ok(()),
         }
+    }
+
+    /// `None` if `lhs` is not a reference, otherwise whether it may be assigned through
+    fn check_assign_through(&self, lhs: ExprId) -> Option<Result<(), Diagnostic>> {
+        let typ = self.expr_types.get(&lhs)?;
+        if self.is_mutable_indirection(typ) {
+            return Some(Ok(()));
+        }
+        typ.reference_element(&self.bindings)?;
+        let typ = self.type_to_string(typ);
+        let location = self.current_extended_context().expr_location(lhs);
+        Some(Err(Diagnostic::AssignThroughImmutableReference { typ, location }))
+    }
+
+    /// A `mut`/`uniq` reference or a `shared mut` type
+    fn is_mutable_indirection(&self, typ: &Type) -> bool {
+        self.is_mut_or_uniq_reference(typ) || self.is_shared_mut_user_defined(typ)
     }
 
     fn is_mut_or_uniq_reference(&self, typ: &Type) -> bool {

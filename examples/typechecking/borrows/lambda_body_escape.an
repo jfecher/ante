@@ -22,41 +22,40 @@ main () =
 // expected exit status: 1
 // expected stderr:
 // examples/typechecking/borrows/lambda_body_escape.an:6:31
+// 5 | // it is similar to 'static in Rust.
 //   | // error: This reference to x outlives its scope
 //   | // note: x is only valid until the end of this scope
 // 6 | bad_param (x: I32): ref I32 = ref x
 //   |            -                  ^^^^^
 // 
 // examples/typechecking/borrows/lambda_body_escape.an:10:5
-//  8 | bad_param_block (x: I32): ref I32 =	// note: x is only valid until the end of this scope
+//  8 | // This used to issue duplicate errors
+//  9 | bad_param_block (x: I32): ref I32 =	// note: x is only valid until the end of this scope
 //    |                  -
-//  9 |     _y = x
 // 10 |     ref x	// error: This reference to x outlives its scope
 //    |     ^^^^^
 // 
-// examples/typechecking/borrows/lambda_body_escape.an:13:22
-//    | // note: x is only valid until the end of this scope
-// 12 | bad_early_return (x: I32) (b: Bool) (other: ref I32): ref I32 =
-//    |                   -
-// 13 |     if b then return ref x	// error: This reference to x outlives its scope
-//    |                      ^^^^^
-// 14 |     other
-// 
-// examples/typechecking/borrows/lambda_body_escape.an:17:24
-// 16 | main () =
-//    |     // error: This reference to x outlives its scope
-//    |     // note: x is only valid until the end of this scope
-// 17 |     f = fn (x: I32) -> ref x
-//    |             -          ^^^^^
-// 18 |     g = fn () -> ref (compute ())
+// examples/typechecking/borrows/lambda_body_escape.an:14:22
+// 13 |     // We should catch the auto-ref return here
+//    |     // error: This returns a value of type I32 but the enclosing function returns ref I32
+// 14 |     if b then return x
+//    |                      ^
+// 15 |     other
 // 
 // examples/typechecking/borrows/lambda_body_escape.an:18:18
-// 17 |     f = fn (x: I32) -> ref x
+// 17 | main () =
+//    |     // error: This reference to x outlives its scope
+//    |     // note: x is only valid until the end of this scope
+// 18 |     _f = fn x -> ref x
+//    |             -    ^^^^^
+// 19 |     _g = do ref four ()
+// 
+// examples/typechecking/borrows/lambda_body_escape.an:19:13
+// 18 |     _f = fn x -> ref x
 //    |     // error: This reference to a temporary value outlives its scope
 //    |     // note: this value is only valid until the end of this scope
-// 18 |     g = fn () -> ref (compute ())
-//    |                  ^^^^^^^^^^^^^^^
-// 19 |     _ = f
+// 19 |     _g = do ref four ()
+//    |             ^^^^^^^^^^^
 // 
 // Found 5 errors and 0 warnings
 

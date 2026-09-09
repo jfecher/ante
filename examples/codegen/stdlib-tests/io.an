@@ -2,7 +2,7 @@ import Std.IO.File, iterator_file
 import Std.C.fputs, fopen, fclose
 
 write_test_file (path: String): Unit can Fs =
-    f = File.open path "w\0"
+    var f = File.open path "w\0"
     f.write "line1\nline2\nline3\n\0"
     f.close ()
 
@@ -19,7 +19,7 @@ main () =
     f1.close ()
 
     // Test next_line reads complete lines
-    f2 = File.open (clone path) "r\0"
+    var f2 = File.open (clone path) "r\0"
     println (f2.next_line ())
     println (f2.next_line ())
     println (f2.eof ())
@@ -31,8 +31,7 @@ main () =
     f2.close ()
 
     // Test iterating over file lines using the File Iterator impl
-    f3 = File.open path "r\0"
-    // FIXME: Error when taking `mut` of immutable variable
+    var f3 = File.open path "r\0"
     iter (mut f3) println
     f3.close ()
 

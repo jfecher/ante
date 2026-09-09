@@ -17,7 +17,7 @@ main () =
     arr.[3] := 77
     println arr
 
-    p: Ptr I32 = malloc 8
+    var p: Ptr I32 = malloc 8
     p.[0] := 5
     p.[1] := 9
     println p.[0]
