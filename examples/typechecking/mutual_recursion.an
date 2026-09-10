@@ -16,7 +16,7 @@ main () =
 // expected stdout:
 // (is_even: fn I32 -> Bool can Fs) (n: I32) =
 //     if (==: fn (ref 'n I32) (ref '_24 I32) {Eq I32 pure} [Ptr Unit] -> Bool is pure) (ref (n: I32)) (ref 0) {(eq_i32: Eq I32 pure)} then true else 
-//         (print: fn (ref 'n I32) {Print I32} [Ptr Unit] -> Unit can Fs) (ref (n: I32)) {(print_i32: Print I32)}
+//         (print: fn (ref 'n I32) {Print I32 pure} [Ptr Unit] -> Unit can Fs) (ref (n: I32)) {(print_i32: Print I32 pure)}
 //         (not: fn Bool {Not Bool} [Ptr Unit] -> Bool is pure) ((is_odd: fn I32 -> Bool can Fs) ((-: fn I32 I32 {Sub I32} [Ptr Unit] -> I32 is pure) (n: I32) 1 {(sub_i32: Sub I32)})) {(not_bool: Not Bool)}
 // 
 // (is_odd: fn I32 -> Bool can Fs) (n: I32) =

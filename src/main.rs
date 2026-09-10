@@ -162,8 +162,7 @@ fn compile(request: CompileRequest) {
     incremental::set_trace_enabled(options.show_queries);
     let (mut compiler, metadata_file) = make_compiler(&request.files, options.incremental);
 
-    let program_name =
-        if request.is_project { project_program_name(&mut compiler) } else { files_to_program_name(&request.files) };
+    let program_name = get_program_name(&mut compiler, &request);
 
     // TODO: Pointer size should be configurable depending on the target machine
     TargetPointerSize.set(&mut compiler, 8);
@@ -222,6 +221,20 @@ fn compile(request: CompileRequest) {
 
     if error_count != 0 {
         std::process::exit(1);
+    }
+}
+
+/// Return the name of the program which will be used for the name of the output executable
+fn get_program_name(compiler: &mut Db, request: &CompileRequest) -> String {
+    let name =
+        if request.is_project { project_program_name(compiler) } else { files_to_program_name(&request.files) };
+
+    // If --delete-binary is set the name doesn't matter anyway so append a per-process id
+    // to prevent races when running tests on the same files over multiple backends.
+    if request.delete_binary {
+        format!("{name}_{}", std::process::id())
+    } else {
+        name
     }
 }
 

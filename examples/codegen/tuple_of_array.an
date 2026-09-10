@@ -2,6 +2,8 @@
 // since arrays in C otherwise degrade into pointers. This test is to ensure consistency
 // with the llvm backend and array value semantics.
 main () =
+    abort_on_panic do
+
     t = ([10, 20, 30], 99)
     var got = t.first
     array_set (mut got) 0 999

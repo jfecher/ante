@@ -1,6 +1,6 @@
 type S = message: String
 
-impl print_s: Print S with
+impl print_s: Print S pure with
     print s = print s.message
 
 impl copy_s: Copy S with

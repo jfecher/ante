@@ -5,6 +5,8 @@ import Std.Hash.hash_u8
 import Std.Stream.iter, stream_array, stream_fn
 
 main () =
+    abort_on_panic do
+
     test_basics ()
     test_of_extend_retain_merge ()
     test_stream_and_print ()

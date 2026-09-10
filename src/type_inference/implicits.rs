@@ -738,10 +738,15 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
-    /// True if a `Type::Application`'s arguments are all unbound (false for non-type applications)
+    /// True if a `Type::Application`'s arguments are all unbound (false for non-type applications).
+    /// An effect-kind argument counts as unbound if its row is still fully open (no concrete effects).
     fn type_args_all_unbound(target: &Type) -> bool {
         let Some((_ctor, args)) = target.as_application() else { return false };
-        args.iter().all(|arg| matches!(arg, Type::Variable(_)))
+        args.iter().all(|arg| match arg {
+            Type::Variable(_) => true,
+            Type::Effects(Some(entries)) => entries.iter().all(|effect| matches!(effect.typ, Type::Variable(_))),
+            _ => false,
+        })
     }
 
     /// Check if the given `implicit_type` matches the `target_type` directly, or if it can be

@@ -6,21 +6,21 @@ foo a =
 // expected exit status: 1
 // expected stdout:
 // (foo: fn _ -> Unit can Fs) (a: _) =
-//     (print: fn (ref 'a _) {Print _} [Ptr Unit] -> Unit can Fs) (ref (a: _)) {(error)}
-//     (print: fn (ref 'a _) {Print _} [Ptr Unit] -> Unit can Fs) (ref (a: _)) {(error)}
+//     (print: fn (ref 'a _) {Print _ pure} [Ptr Unit] -> Unit can Fs) (ref (a: _)) {(error)}
+//     (print: fn (ref 'a _) {Print _ pure} [Ptr Unit] -> Unit can Fs) (ref (a: _)) {(error)}
 
 
 // expected stderr:
 // examples/typechecking/repeated_traits.an:2:5
 // 1 | foo a =
-//   |     // error: Ambiguous implicit of type Print _ required by print, type annotation required
+//   |     // error: Ambiguous implicit of type Print _ _ required by print, type annotation required
 // 2 |     print a
 //   |     ^^^^^
 // 3 |     print a
 // 
 // examples/typechecking/repeated_traits.an:3:5
 // 2 |     print a
-//   |     // error: Ambiguous implicit of type Print _ required by print, type annotation required
+//   |     // error: Ambiguous implicit of type Print _ _ required by print, type annotation required
 // 3 |     print a
 //   |     ^^^^^
 // 

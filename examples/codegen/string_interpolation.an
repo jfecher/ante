@@ -1,4 +1,5 @@
 main () =
+    abort_on_panic do
     name = "world"
     n: I32 = 42
     println "hello, ${name}! n=${n}"

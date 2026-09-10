@@ -2,6 +2,8 @@
 import Std.Vec.print_vec
 
 main () =
+    abort_on_panic do
+
     var v = Std.Vec.empty ()
     Std.Vec.push (mut v) 3i32
     Std.Vec.push (mut v) 4

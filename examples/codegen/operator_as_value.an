@@ -3,6 +3,7 @@
 apply (f: fn t t -> r) a b = f a b
 
 main () =
+    abort_on_panic do
     g = (+)
     println (g 2 3)
 

@@ -68,7 +68,7 @@ substr (var s: String) (begin: Usz) (end: Usz): String =
     String buf s.refcount len (s.offset + U32 begin)
 
 /// Collect each character from the given stream into a String
-string_of (s: s) {Stream s Char e}: String can Fs, e =
+string_of (s: s) {Stream s Char e}: String can Panic, e =
     var chars = Vec.of s
     result = String.from_parts (chars.data) (U32 chars.len)
     // Leak the Vec, it has been transferred to the String

@@ -1,7 +1,7 @@
-foo {Print I32} =
+foo {Print I32 e} =
     println "in foo"
 
-foo2 {Print I32} {Print I32} =
+foo2 {Print I32 e} {Print I32 e} =
     println "in foo2"
 
 // We should allow calling functions like `foo` with only implicit args with a ()

@@ -20,7 +20,7 @@ HashSet.is_empty (set: ref HashSet k): Bool =
 
 HashSet.empty (): HashSet k = HashSet (HashMap.empty ())
 
-HashSet.of (s: s) {Stream s k e} {Hash k} {Eq k e}: HashSet k can Fs, e =
+HashSet.of (s: s) {Stream s k e} {Hash k} {Eq k e}: HashSet k can Panic, e =
     map s to_unit_tuple
         |> HashMap.of
         |> HashSet
@@ -34,7 +34,7 @@ HashSet.contains (set: ref HashSet k) (key: ref k) {Hash k} {Eq k e}: Bool can e
 // Insert a new element into the HashSet
 // Returns True if the key is newly inserted
 // Returns False if the key already existed
-HashSet.insert (set: mut HashSet k) (key: k) {Hash k} {Eq k e}: Bool can Fs, e =
+HashSet.insert (set: mut HashSet k) (key: k) {Hash k} {Eq k e}: Bool can Panic, e =
     set.inner.insert key () is None
 
 // Remove an element from the HashSet
@@ -43,7 +43,7 @@ HashSet.insert (set: mut HashSet k) (key: k) {Hash k} {Eq k e}: Bool can Fs, e =
 HashSet.remove (set: mut HashSet k) (key: ref k) {Hash k} {Eq k e}: Bool can e =
     set.inner.remove key is Some _
 
-HashSet.extend (set: mut HashSet k) (s: s) {Stream s k e} {Hash k} {Eq k e}: Unit can Fs, e =
+HashSet.extend (set: mut HashSet k) (s: s) {Stream s k e} {Hash k} {Eq k e}: Unit can Panic, e =
     result = map s to_unit_tuple
     set.inner.extend result
 
@@ -55,7 +55,7 @@ HashSet.retain (set: mut HashSet k) (predicate: fn k => Bool) {Copy k}: Unit =
             entry.tombstone := true
             set.inner.len -= 1
 
-HashSet.merge (dst: mut HashSet k) (src: HashSet k) {Hash k} {Eq k e}: Unit can Fs, e =
+HashSet.merge (dst: mut HashSet k) (src: HashSet k) {Hash k} {Eq k e}: Unit can Panic, e =
     dst.inner.merge src.inner
 
 HashSet.keys (set: ref HashSet k) =
@@ -73,7 +73,7 @@ implicit stream_ref_hashset: Stream (ref HashSet k) k pure =
         keys = HashMap.keys set.inner
         keys ()
 
-impl print_hashset {Print k}: Print (HashSet k) with
+impl print_hashset {Print k e}: Print (HashSet k) e with
     print set =
         var printed_first = false
 

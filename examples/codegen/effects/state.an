@@ -2,13 +2,13 @@ effect Use a =
     get: fn Unit -> a
     set: fn a -> Unit
 
-use_state (y: I32): Unit can Use I32, Fs =
+use_state (y: I32): Unit can Use I32, Fs, Panic =
     x = get ()
     set (x + y)
     state = get ()
     println "Ending state = ${state}"
 
-state (f: fn Unit => a can Use s, Fs) (initial: s) {Copy s}: a can Fs =
+state (f: fn Unit => a can Use s, Fs, e) (initial: s) {Copy s}: a can Fs, e =
     var current = initial
     handler h for
     | get () -> resume current
@@ -18,8 +18,9 @@ state (f: fn Unit => a can Use s, Fs) (initial: s) {Copy s}: a can Fs =
     in f ()
 
 main () =
-    state (fn () -> use_state 10) 1
-    state (fn () -> use_state 20) 2
+    abort_on_panic do
+    state (do use_state 10) 1
+    state (do use_state 20) 2
 
 // args: --delete-binary --no-color
 // expected stdout:

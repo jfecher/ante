@@ -6,6 +6,8 @@ import Std.Fail.on_fail, panic_on_fail
 import Std.Stream.iter, stream_array
 
 main () =
+    abort_on_panic do
+
     test_basics ()
     test_remove_first ()
     test_remove_indices ()

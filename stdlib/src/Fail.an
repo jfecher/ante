@@ -22,11 +22,22 @@ fail_if (cond: Bool): Unit can Fail =
 
 /// Asserts the operation cannot fail.
 /// Panics at runtime if it does.
-panic_on_fail (f: fn Unit => a can Fail, e): a can Fs, e =
+panic_on_fail (f: fn Unit => a can Fail, e): a can Panic, e =
     on_fail f do panic "panic_on_fail: failed"
 
+/// Similar to panic_on_fail but aborts the entire process instead of panicking.
+/// Generally this should be avoided when possible unless you can guarantee a
+/// panic will not occur and cannot have the Panic effect in a function.
+abort_on_fail (f: fn Unit => a can Fail, e): a can e =
+    on_fail f do
+        // Temporary hack to print without an effect
+        pure_puts: fn String -> I32 = extern "puts"
+        pure_puts "abort_on_fail: failed\n"
+        Std.C.exit 1
+        deref_ptr (null ())
+
 /// Panics on failure with the given error message
-or_panic (f: fn Unit => a can Fail, e) (message: String): a can Fs, e =
+or_panic (f: fn Unit => a can Fail, e) (message: String): a can Panic, e =
     on_fail f do panic message
 
 /// Ignores a `Fail` effect, discarding it and returning Unit

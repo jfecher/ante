@@ -2,6 +2,7 @@ import Std.HashMap.HashMap
 import Std.Fail.or_panic
 
 main () =
+    abort_on_panic do
     map: HashMap U8 I32 = HashMap.empty ()
     // Error here should suggest importing `hash_u8`
     elem = map.get (ref 4) ~> or_panic "map get failed"
@@ -12,13 +13,13 @@ main () =
 // args: --no-color
 // expected exit status: 1
 // expected stderr:
-// examples/typechecking/missing_implicit_import.an:7:15
-// 6 |     // Error here should suggest importing `hash_u8`
-//   |     // error: No implicit found for type Hash U8 required by get
-// 7 |     elem = map.get (ref 4) ~> or_panic "map get failed"
-//   |               ^^^^
-// 8 |     println elem
-//   = note: did you mean to import Std.Hash.hash_u8?
+// examples/typechecking/missing_implicit_import.an:8:15
+//  7 |     // Error here should suggest importing `hash_u8`
+//    |     // error: No implicit found for type Hash U8 required by get
+//  8 |     elem = map.get (ref 4) ~> or_panic "map get failed"
+//    |               ^^^^
+//  9 |     println elem
+//    = note: did you mean to import Std.Hash.hash_u8?
 // 
 // Found 1 error and 0 warnings
 

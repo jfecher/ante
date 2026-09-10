@@ -5,6 +5,7 @@ import Std.Stream.iota, enumerate, map, filter, iter, stream_fn, all, any, foldl
 import Std.Fail.Fail, try
 
 main () =
+    abort_on_panic do
     iota 10
         |> filter (fn x -> x.* %% 2)
         |> map (_ * 2)

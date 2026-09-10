@@ -8,6 +8,7 @@ import Std.String.starts_with, ends_with, contains, trim, trim_start, trim_end
 import Std.Fail.try
 
 main () =
+    abort_on_panic do
     // bytes & chars:
     iter (bytes "AB") println
     iter (chars "AB") println

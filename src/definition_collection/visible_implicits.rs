@@ -114,6 +114,11 @@ pub fn visible_implicits_impl(context: &VisibleImplicits, db: &DbHandle) -> Arc<
         else {
             continue;
         };
+
+        if typ.is_error() {
+            continue;
+        }
+
         let mut inserted = false;
 
         if let Some((ability_id, arg_key)) = get_ability_id_and_first_argument(&typ, true) {

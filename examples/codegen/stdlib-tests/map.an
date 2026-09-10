@@ -5,6 +5,8 @@ import Std.Hash.Hash, hash_u8
 import Std.Fail.try, panic_on_fail
 
 main () =
+    abort_on_panic do
+
     var map = empty ()
     map.insert 1u8 3u16
     map.insert 2 6

@@ -21,30 +21,29 @@ Vec.len (v: ref Vec a) = v.len
 Vec.capacity (v: ref Vec a) = v.cap
 
 // Create a new Vec with the elements from the given stream
-Vec.of (s: s) {Stream s t e}: Vec t can Fs, e =
+Vec.of (s: s) {Stream s t e}: Vec t can Panic, e =
     var vec = Vec.empty ()
     vec.extend s
     vec
 
-Vec.extend (vec: mut Vec t) (s: s) {Stream s t e}: Unit can Fs, e =
+Vec.extend (vec: mut Vec t) (s: s) {Stream s t e}: Unit can Panic, e =
     iter s (vec.push _)
 
 //reserve numElements in Vec v, elements will be uninitialized
-Vec.reserve (v: mut Vec t) (numElems: Usz): Unit can Fs =
+Vec.reserve (v: mut Vec t) (numElems: Usz): Unit can Panic =
     if v.len + numElems > v.cap then
         size = (v.cap + numElems) * size_of (MkType: Type t)
         ptr = realloc v.data size
 
         if ptr == null () then
-            print "Error in reserving more elements for Vec"
-            return ()
+            panic "Error in reserving more elements for Vec"
 
         v.data := ptr
         v.cap := v.cap + numElems
 
 //push an element onto the end of the vector.
 //resizes if necessary
-Vec.push (v: mut Vec t) (elem: t): Unit can Fs =
+Vec.push (v: mut Vec t) (elem: t): Unit can Panic =
     if v.len >= v.cap then
         v.reserve (if v.cap == 0 then 1 else v.cap)
 
@@ -87,7 +86,7 @@ Vec.get_mut_unchecked (v: uniq Vec t) (i: Usz): uniq t =
 
 /// Remove the element at the given index and return it.
 /// will Fail if the index is out of bounds.
-Vec.remove_index (v: mut Vec t) (idx: Usz): t can Fail, Fs =
+Vec.remove_index (v: mut Vec t) (idx: Usz): t can Fail =
     if idx >= 0 and idx < v.len then
         item = v.data.[idx]
         for i in idx .. v.len - 1 do
@@ -100,17 +99,17 @@ Vec.remove_index (v: mut Vec t) (idx: Usz): t can Fail, Fs =
 
 /// Removes the first instance of the given element from the vector,
 /// returning the index it was found at. Returns `None` if the element was not found.
-Vec.remove_first (v: mut Vec t) (elem: t) {Eq t e} {Copy t}: Maybe Usz can Fs, e =
+Vec.remove_first (v: mut Vec t) (elem: t) {Eq t e} {Copy t}: Maybe Usz can Panic, e =
     for i in 0 .. v.len do
         if elem == v.data.[i] then
-            panic_on_fail (fn () -> v.remove_index i)
+            v.remove_index i ~> panic_on_fail
             return Some i
     None
 
 /// Remove the given indices from the vector
 /// Expects the indices to be in sorted order.
 /// Will Fail if any index is out of bounds.
-Vec.remove_indices (v: mut Vec t) (idxs: Vec Usz): Unit can Fail, Fs =
+Vec.remove_indices (v: mut Vec t) (idxs: Vec Usz): Unit can Fail =
     var moved = 0usz
     for i in 0 .. idxs.len do
         cur = idxs.data.[i]
@@ -134,14 +133,14 @@ Vec.remove_indices (v: mut Vec t) (idxs: Vec Usz): Unit can Fail, Fs =
 /// Remove all matching elements from the vector and
 /// return the number of elements removed.
 /// Uses = to determine element equality.
-Vec.remove_all (v: mut Vec t) (elem: t) {Eq t e} {Copy t}: Usz can Fs, e =
+Vec.remove_all (v: mut Vec t) (elem: t) {Eq t e} {Copy t}: Usz can Panic, e =
     var idxs = Vec.empty ()
     for i in 0 .. v.len do
         if elem == v.data.[i] then
             idxs.push i
 
     count = idxs.len
-    panic_on_fail (fn () -> v.remove_indices idxs)
+    v.remove_indices idxs ~> panic_on_fail
     count
 
 
@@ -175,7 +174,7 @@ Vec.swap (v: mut Vec t) (i: Usz) (j: Usz): Unit can Fail, Fs =
 
 /// Insert `elem` at `idx`, shifting elements at `[idx, len)` one position right.
 /// Fails if `idx > len`.
-Vec.insert (v: mut Vec t) (idx: Usz) (elem: t): Unit can Fail, Fs =
+Vec.insert (v: mut Vec t) (idx: Usz) (elem: t): Unit can Fail, Panic =
     if idx > v.len then fail ()
     if v.len >= v.cap then
         v.reserve (if v.cap == 0 then 1 else v.cap)
@@ -213,7 +212,7 @@ Vec.clear (v: mut Vec t) {Drop t e}: Unit can e =
 
 /// Sort the vector in place using `cmp` to compare elements.
 /// Insertion sort: stable, O(n^2) worst case. Good enough for small vectors.
-Vec.sort_by (v: mut Vec t) (cmp: fn (ref t) (ref t) => Bool): Unit can Fs =
+Vec.sort_by (v: mut Vec t) (cmp: fn (ref t) (ref t) => Bool): Unit =
     if v.len < 2 then return ()
     for i in 1 .. v.len do
         var j = i
@@ -230,7 +229,7 @@ Vec.sort (v: mut Vec t) {Cmp t}: Unit can Fs =
     v.sort_by (<)
 
 
-impl print_vec {p: Print t}: Print (Vec t) with
+impl print_vec {p: Print t e}: Print (Vec t) e with
     print v =
         print "["
 
@@ -251,7 +250,7 @@ impl extract_vec: Extract (ref Vec t) Usz (ref t) pure with
 // Vec.insert will insert into a slot, moving the previous element and each
 // element after to the right. This `Insert` implementation will instead
 // directly mutate the element at the given index to the new element.
-impl insert_vec: Insert (mut Vec t) Usz t Fs with
+impl insert_vec: Insert (mut Vec t) Usz t Panic with
     (.[]:=) (v: mut Vec t) i e =
         v: uniq Vec t = transmute v
         slot = v.get_mut i ~> panic_on_fail
