@@ -31,8 +31,8 @@ panic_on_fail (f: fn Unit => a can Fail, e): a can Panic, e =
 abort_on_fail (f: fn Unit => a can Fail, e): a can e =
     on_fail f do
         // Temporary hack to print without an effect
-        pure_puts: fn String -> I32 = extern "puts"
-        pure_puts "abort_on_fail: failed\n"
+        pure_puts: fn (Ptr Char) -> I32 = extern "puts"
+        pure_puts "abort_on_fail: failed\n".data
         Std.C.exit 1
         deref_ptr (null ())
 

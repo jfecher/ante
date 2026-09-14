@@ -1,0 +1,26 @@
+import Std.C
+
+// TODO: This is mainly to redeclare C functions as having no effects
+// but there is likely a different workaround that is possible.
+
+// `abs` as a plain function and as an effectful one
+abs_pure: fn I32 -> I32 = extern "abs"
+abs_fs: fn I32 -> I32 can Fs = extern "abs"
+
+strlen_cstring: fn C.String -> Usz = extern "strlen"
+strlen_ptr: fn (Ptr Char) -> Usz = extern "strlen"
+
+main () =
+    println (abs_pure (-3))
+    println (abs_fs (-4))
+
+    s = "hello"
+    println (strlen_ptr s.data)
+    println (strlen_cstring (C.String s.data))
+
+// args: --delete-binary
+// expected stdout:
+// 3
+// 4
+// 5
+// 5

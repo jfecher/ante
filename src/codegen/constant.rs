@@ -161,8 +161,9 @@ pub(crate) fn is_c_constant(value: &ConstantValue, mir: &mir::Mir) -> bool {
         | ConstantValue::Int(_)
         | ConstantValue::Float(_)
         | ConstantValue::Bytes(_)
-        | ConstantValue::Extern { .. }
         | ConstantValue::Transmute { .. } => true,
+        // A function's address is constant but reading an extern variable is not
+        ConstantValue::Extern { typ, .. } => matches!(typ, mir::Type::Function(_)),
         ConstantValue::Definition(id) => !mir.definitions.get(id).is_some_and(|d| d.is_global()),
         ConstantValue::Tuple(values) => values.iter().all(|v| is_c_constant(v, mir)),
         ConstantValue::Array { elements, .. } => elements.iter().all(|v| is_c_constant(v, mir)),

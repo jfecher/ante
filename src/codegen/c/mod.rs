@@ -83,6 +83,9 @@ struct Builder {
 
     /// Shared across all builders so the same tuple type resolves to the same C type.
     tuples: TupleCache,
+
+    /// Each external symbol's declared type
+    externs: Arc<DashMap<String, mir::Type>>,
 }
 
 /// A concurrent cache mapping each distinct tuple type to a stable id and its generated C
@@ -104,10 +107,21 @@ pub(crate) fn build_c_file(mir: &mir::Mir, selected_main: Option<TopLevelName>) 
     // One cache shared by every worker so a tuple type from any of them is named consistently.
     let tuples = TupleCache::default();
 
-    let mut file = (0..n)
+    let externs = Arc::new(DashMap::new());
+
+    let file = (0..n)
         .into_par_iter()
-        .map(|i| c_file_with_definitions_subset(mir, n, i, tuples.clone()))
+        .map(|i| c_file_with_definitions_subset(mir, n, i, tuples.clone(), externs.clone()))
         .reduce(CFile::default, CFile::extend);
+
+    // Declared after the workers, which record each extern's first use. Must precede
+    // collecting tuple definitions since declaring a type may register new tuples.
+    let mut declarations = Builder { tuples: tuples.clone(), ..Default::default() };
+    let externs: std::collections::BTreeMap<_, _> = Arc::unwrap_or_clone(externs).into_iter().collect();
+    for (name, typ) in externs {
+        declarations.emit_extern_declaration(&name, &typ);
+    }
+    let mut file = file.extend(declarations.file);
 
     // Emit tuple structs in id order. Inner tuples are registered while generating the body of
     // the tuples that embed them, so they receive smaller ids and are defined first as C requires.
@@ -199,8 +213,10 @@ fn visit_initializer(
 
 /// Create a C file with only definitions of the mir with ids such that `id % n = i`.
 /// This is meant to distribute work over `n` workers evenly.
-fn c_file_with_definitions_subset(mir: &mir::Mir, n: u32, i: u32, tuples: TupleCache) -> CFile {
-    let mut builder = Builder { tuples, ..Default::default() };
+fn c_file_with_definitions_subset(
+    mir: &mir::Mir, n: u32, i: u32, tuples: TupleCache, externs: Arc<DashMap<String, mir::Type>>,
+) -> CFile {
+    let mut builder = Builder { tuples, externs, ..Default::default() };
 
     mir.definitions
         .iter()
@@ -344,10 +360,7 @@ impl Builder {
 
                 self.write(&name);
             },
-            ConstantValue::Extern { name, typ } => {
-                self.emit_extern_declaration(name, typ);
-                self.write(name);
-            },
+            ConstantValue::Extern { name, typ } => self.write_extern_value(name, typ),
             ConstantValue::Shared { value, typ } => {
                 let name = format!("__shared_{}_{}", global_id.0, *aux_index);
                 *aux_index += 1;
@@ -963,9 +976,8 @@ impl Builder {
             },
             mir::Instruction::Extern(name) => {
                 let typ = definition.instruction_result_type(id).clone();
-                self.emit_extern_declaration(name, &typ);
                 self.write_result_binding(id, definition);
-                self.write(name);
+                self.write_extern_value(name, &typ);
                 self.write(";");
             },
             mir::Instruction::AtomicLoad { pointer, ordering } => {
@@ -1128,13 +1140,35 @@ impl Builder {
         }
     }
 
-    /// Forward-declare an external symbol referenced by an [mir::Instruction::Extern]. Function
-    /// types become prototypes; other types become `extern` variable declarations.
-    fn emit_extern_declaration(&mut self, name: &str, typ: &mir::Type) {
+    /// Write an external symbol's value through its address
+    fn write_extern_value(&mut self, name: &str, typ: &mir::Type) {
+        self.record_extern_use(name, typ);
+        if matches!(typ, mir::Type::Function(_)) {
+            self.write("((");
+            self.write_type(typ, "");
+            self.write(")&");
+            self.write(name);
+            self.write(")");
+        } else {
+            self.write("(*(");
+            self.write_type(typ, "");
+            self.write("*)&");
+            self.write(name);
+            self.write(")");
+        }
+    }
+
+    /// Record `name`'s declared type as the type of its first use
+    fn record_extern_use(&self, name: &str, typ: &mir::Type) {
         // These are already declared in [CFile::add_starter_items], redeclaring would conflict.
         if matches!(name, "malloc" | "memcpy" | "fmod") {
             return;
         }
+        self.externs.entry(name.to_string()).or_insert_with(|| typ.clone());
+    }
+
+    /// Forward-declare an external symbol as a function prototype or an `extern` variable
+    fn emit_extern_declaration(&mut self, name: &str, typ: &mir::Type) {
         let declaration = self.capture(|this| {
             match typ {
                 mir::Type::Function(function) => {
