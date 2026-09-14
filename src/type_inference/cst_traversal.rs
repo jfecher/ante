@@ -376,7 +376,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             if !member.is_function {
                 return self.infer_trait_constant(member, path, expr);
             }
-            self.trait_method_references.push(expr);
+            let typ = self.infer_path(path, expected);
+            return self.wrap_trait_method(expr, typ);
         }
         let typ = self.infer_path(path, expected);
         if let Some(Origin::Local(_)) = self.path_origin(path) {
@@ -385,13 +386,24 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         typ
     }
 
+    /// A trait method used as a value becomes `fn p.. {d} -> Trait.method p.. {d}`
+    fn wrap_trait_method(&mut self, expr: ExprId, typ: Type) -> Type {
+        let parameters = match self.follow_type(&typ) {
+            Type::Function(function_type) => function_type.parameters.clone(),
+            _ => return typ,
+        };
+        let wrapper = self.create_closure_wrapper_for_implicit(expr, vec![None; parameters.len()], parameters);
+        self.current_extended_context_mut().insert_expr(expr, wrapper);
+        self.infer_expr(expr, &typ)
+    }
+
     /// The name a trait member is referred to by, which is also its dictionary field's name
     pub(super) fn trait_member_name(&self, path: PathId) -> cst::Name {
         Arc::new(self.current_extended_context()[path].last_ident().to_string())
     }
 
     /// Trait constants like `Foo.field` are changed into a member access `foo_implicit.field`.
-    /// The same happens for trait functions but this occurs as a type coercion when calling them.
+    /// Trait methods get the same rewrite when called directly, see `rewrite_trait_method_callee`.
     fn infer_trait_constant(&mut self, member: TraitMember, path: PathId, expr: ExprId) -> Type {
         let trait_name = TopLevelName::new(member.name.top_level_item, member.trait_name);
         let mut dictionary_type = Type::UserDefined(Origin::TopLevelDefinition(trait_name));
@@ -403,16 +415,16 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let Some((field_type, _)) = self.get_field_types(&dictionary_type, None).get(&member_name).cloned() else {
             return Type::ERROR;
         };
-        self.trait_member_access(expr, &dictionary_type, &member_name, member.index, field_type.clone());
+        let dictionary = self.delay_find_implicit_value(&dictionary_type, 0, expr, None);
+        self.trait_member_access(expr, dictionary, &member_name, member.index, field_type.clone());
         self.request_copy_witness(expr, &field_type);
         field_type
     }
 
-    /// Replace `expr` with `<implicit dictionary>.member`, whose type is `member_type`
+    /// Replace `expr` with `dictionary.member`, whose type is `member_type`
     pub(super) fn trait_member_access(
-        &mut self, expr: ExprId, dictionary_type: &Type, member: &cst::Name, index: u32, member_type: Type,
+        &mut self, expr: ExprId, dictionary: ExprId, member: &cst::Name, index: u32, member_type: Type,
     ) {
-        let dictionary = self.delay_find_implicit_value(dictionary_type, 0, expr, None);
         let access = cst::MemberAccess { object: dictionary, member: member.to_string() };
         let context = self.current_extended_context_mut();
         context.insert_expr(expr, Expr::MemberAccess(access));
@@ -420,7 +432,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         self.expr_types.insert(expr, member_type);
     }
 
-    fn infer_path(&mut self, path: PathId, expected: &Type) -> Type {
+    pub(super) fn infer_path(&mut self, path: PathId, expected: &Type) -> Type {
         let actual = match self.path_origin(path) {
             Some(
                 Origin::TopLevelDefinition(id)
@@ -571,6 +583,16 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             return self.infer_expr(new_expr, expected);
         }
 
+        // Taken before rewriting a trait method callee so its dictionary counts as one of this call's implicits
+        let implicit_count_before_call = self.delayed_implicits_count();
+
+        let mut call = Cow::Borrowed(call);
+        let method_type = self.rewrite_trait_method_callee(call.function, &call.arguments);
+        if let Some((_, Some(dictionary_index))) = method_type {
+            call.to_mut().arguments.remove(dictionary_index);
+            self.current_extended_context_mut().insert_expr(call_expr, Expr::Call((*call).clone()));
+        }
+
         let expected_parameter_types =
             mapvec(&call.arguments, |arg| ParameterType::new(self.next_type_variable(), arg.is_implicit));
 
@@ -581,12 +603,13 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             return_type: expected.clone(),
             effects: effects_var.clone(),
         });
-        let actual_function_type = self.infer_expr(call.function, &Type::Function(expected_function_type.clone()));
+        let actual_function_type = match method_type {
+            Some((method_type, _)) => method_type,
+            None => self.infer_expr(call.function, &Type::Function(expected_function_type.clone())),
+        };
 
         let actual_return_type = self.next_type_variable();
         Arc::make_mut(&mut expected_function_type).return_type = actual_return_type.clone();
-
-        let implicit_count_before_call = self.delayed_implicits_count();
 
         // This coerce covers inserting any necessary implicit arguments to this function call
         self.coerce(
@@ -1280,9 +1303,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 return_type: value_type.clone(),
                 effects: effects_var.clone(),
             }));
-            // The operator's ability constraint is an implicit parameter, so coerce
-            // before unifying like other function positions
-            let actual = self.infer_expr(op_expr, &expected_fn_type);
+            // The operator may still have implicit parameters, so coerce before unifying
+            let actual = match self.rewrite_trait_method_callee(op_expr, &[]) {
+                Some((method_type, _)) => method_type,
+                None => self.infer_expr(op_expr, &expected_fn_type),
+            };
             match self.try_coercion(&actual, &expected_fn_type, op_expr, None) {
                 super::CoercionOutcome::ReplacedExpr | super::CoercionOutcome::AutoRef => {
                     self.check_expr(op_expr, &expected_fn_type, TypeErrorKind::CompoundOperator);
@@ -1290,7 +1315,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 super::CoercionOutcome::InPlaceCall | super::CoercionOutcome::None => {
                     self.unify(&actual, &expected_fn_type, TypeErrorKind::CompoundOperator, op_expr);
                 },
-                super::CoercionOutcome::InPlace => (),
                 super::CoercionOutcome::FunctionEffects => unreachable!("try_coercion never coerces effects"),
             }
 

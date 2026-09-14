@@ -78,8 +78,6 @@ pub fn type_check_impl(context: &TypeCheckSCC, compiler: &DbHandle) -> Arc<TypeC
             TopLevelItemKind::Comptime(comptime) => checker.check_comptime(comptime),
         };
 
-        checker.wrap_uncoerced_trait_methods();
-
         // Need to resolve any remaining implicits before the borrowing pass runs
         checker.pop_implicits_scope();
 
@@ -211,9 +209,6 @@ struct TypeChecker<'local, 'inner> {
     /// item that may move a local place.
     copy_witnesses: FxHashMap<ExprId, ExprId>,
 
-    /// Trait method references in the current item, wrapped in a lambda if never coerced
-    trait_method_references: Vec<ExprId>,
-
     /// Cached TopLevelName for the Prelude's `Copy` type, lazily resolved on first use.
     copy_type_name: Option<TopLevelName>,
 
@@ -270,7 +265,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             deref_origin: None,
             binding_places: Default::default(),
             copy_witnesses: Default::default(),
-            trait_method_references: Vec::new(),
             copy_type_name: None,
             mutable_definitions: Default::default(),
             inferring_assignment_lhs: false,
@@ -447,7 +441,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         self.current_item = Some(item_id);
         self.binding_places = Default::default();
         self.copy_witnesses = Default::default();
-        self.trait_method_references = Vec::new();
 
         for (name, typ) in self.item_types.iter() {
             if name.top_level_item == item_id {
@@ -685,8 +678,6 @@ pub(super) enum CoercionOutcome {
     /// The Call at `call_expr` had implicit arguments spliced in; the function expression
     /// itself is untouched and should not be re-checked against the reduced expected type.
     InPlaceCall,
-    /// The function expression at `expr` was rewritten in place and already has its coerced type.
-    InPlace,
     /// The function value at `expr` is coerced to a wider effect row.
     /// We want to create a function wrapper which has the additional effects but does not use them.
     FunctionEffects,
@@ -724,7 +715,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                         CoercionOutcome::ReplacedExpr
                     },
                     Some(implicits::CoercionKind::DirectCallInsertion) => CoercionOutcome::InPlaceCall,
-                    Some(implicits::CoercionKind::InPlace) => CoercionOutcome::InPlace,
                     None => CoercionOutcome::None,
                 }
             },
@@ -826,7 +816,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
             // implicit_parameter_coercion already performed the needed unification against the type
             CoercionOutcome::InPlaceCall | CoercionOutcome::FunctionEffects => actual.clone(),
-            CoercionOutcome::InPlace => self.expr_types[&expr].clone(),
         }
     }
 

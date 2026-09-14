@@ -109,8 +109,6 @@ pub(super) enum CoercionKind {
     /// The enclosing Call had its arguments rewritten in place; the function expression is
     /// unchanged and should not be re-checked against the reduced expected type.
     DirectCallInsertion,
-    /// The function expression was rewritten in place and already has its coerced type.
-    InPlace,
 }
 
 impl<'local, 'inner> TypeChecker<'local, 'inner> {
@@ -131,9 +129,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// In the case a matching implicit value cannot be found, an error is issued and an error
     /// expression is slotted in as the argument instead.
     pub(super) fn implicit_parameter_coercion(
-        &mut self, mut actual: Arc<FunctionType>, expected: Arc<FunctionType>, function: ExprId, call: Option<ExprId>,
+        &mut self, actual: Arc<FunctionType>, expected: Arc<FunctionType>, function: ExprId, call: Option<ExprId>,
     ) -> Option<CoercionKind> {
-        let (mut missing, extra_expected) = missing_implicits(&actual, &expected)?;
+        let actual_flags = actual.parameters.iter().map(|parameter| parameter.is_implicit);
+        let expected_flags = expected.parameters.iter().map(|parameter| parameter.is_implicit);
+        let (missing, extra_expected) = missing_implicits(actual_flags, expected_flags)?;
         if !missing.contains(&true) {
             // A type-error is expected when type checking this call
             return None;
@@ -145,22 +145,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             && !self.drop_trailing_unit_arg(call_expr)
         {
             return None;
-        }
-
-        // A trait method's dictionary is always its last parameter
-        let mut rewrote_trait_method = false;
-        if missing.last() == Some(&true)
-            && let cst::Expr::Variable(path) = &self.current_extended_context()[function]
-            && let Some(Origin::TraitMember(member)) = self.path_origin(*path)
-        {
-            rewrote_trait_method = true;
-            let member_name = self.trait_member_name(*path);
-            let mut method = actual.as_ref().clone();
-            let dictionary_type = method.parameters.pop().expect("trait method has a dictionary parameter").typ;
-            missing.pop();
-            actual = Arc::new(method);
-            let method_type = Type::Function(actual.clone());
-            self.trait_member_access(function, &dictionary_type, &member_name, member.index, method_type);
         }
 
         let mut expected_params = expected.parameters.iter().cloned();
@@ -189,43 +173,48 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 effects: expected.effects.clone(),
             }));
             self.unify(&Type::Function(actual), &new_fn, TypeErrorKind::General, function);
-            Some(if rewrote_trait_method { CoercionKind::InPlace } else { CoercionKind::DirectCallInsertion })
+            Some(CoercionKind::DirectCallInsertion)
         } else {
-            // A trait method's `Ptr Unit` environment can't be passed as another closure type, so it is wrapped too
             let wrapper = self.create_closure_wrapper_for_implicit(function, implicits_added, new_expected);
             Some(CoercionKind::Wrapper(wrapper))
         }
     }
 
-    /// Trait methods never coerced, e.g. `g = (+)`, become `fn p.. {d} -> d.method p..`
-    pub(super) fn wrap_uncoerced_trait_methods(&mut self) {
-        for expr in std::mem::take(&mut self.trait_method_references) {
-            let cst::Expr::Variable(path) = &self.current_extended_context()[expr] else { continue };
-            let Some(Origin::TraitMember(_)) = self.path_origin(*path) else { continue };
-            let member_name = self.trait_member_name(*path);
-            let typ = self.expr_types[&expr].clone();
-            let Type::Function(function_type) = self.follow_type(&typ).clone() else { continue };
-
-            let location = expr.locate(self);
-            let mut parameters = Vec::new();
-            let mut arguments = Vec::new();
-            for parameter in function_type.parameters.iter() {
-                let (path, name) = self.fresh_variable("p", parameter.typ.clone(), location.clone());
-                let pattern = self.push_pattern(cst::Pattern::Variable(name), location.clone());
-                let variable = self.push_expr(cst::Expr::Variable(path), parameter.typ.clone(), location.clone());
-                parameters.push(cst::Parameter::with_implicit(pattern, parameter.is_implicit));
-                arguments.push(cst::Argument { is_implicit: parameter.is_implicit, expr: variable });
-            }
-
-            let dictionary = arguments.pop().expect("trait method has a dictionary parameter").expr;
-
-            let access = cst::MemberAccess { object: dictionary, member: member_name.to_string() };
-            let function = self.push_expr(cst::Expr::MemberAccess(access), Type::ERROR, location.clone());
-            let body = self.push_expr(cst::Expr::Call(cst::Call { function, arguments }), Type::ERROR, location);
-            let lambda = cst::Lambda { parameters, body, return_type: None, is_move: false, effects: None };
-            self.current_extended_context_mut().insert_expr(expr, cst::Expr::Lambda(lambda));
-            self.check_expr(expr, &typ, TypeErrorKind::General);
+    /// Rewrite trait method callee `function` to `<dictionary>.method`, returning its type and explicit dictionary index
+    pub(super) fn rewrite_trait_method_callee(
+        &mut self, function: ExprId, arguments: &[cst::Argument],
+    ) -> Option<(Type, Option<usize>)> {
+        let &cst::Expr::Variable(path) = &self.current_extended_context()[function] else { return None };
+        let Some(Origin::TraitMember(member)) = self.path_origin(path) else { return None };
+        if !member.is_function {
+            return None;
         }
+
+        let typ = self.infer_path(path, &Type::ERROR);
+        let Type::Function(method) = self.follow_type(&typ).clone() else { return None };
+
+        // The dictionary is the method's last parameter, find the argument it aligns with, if any
+        let parameter_flags = method.parameters.iter().map(|parameter| parameter.is_implicit);
+        let argument_flags = arguments.iter().map(|argument| argument.is_implicit);
+        let explicit_dictionary = missing_implicits(parameter_flags, argument_flags).and_then(|(missing, _)| {
+            (missing.last() == Some(&false)).then(|| missing.iter().filter(|missing| !**missing).count() - 1)
+        });
+
+        let mut method = method.as_ref().clone();
+        let dictionary_type = method.parameters.pop().expect("trait method has a dictionary parameter").typ;
+        let object = match explicit_dictionary {
+            Some(index) => {
+                let object = arguments[index].expr;
+                self.check_expr(object, &dictionary_type, TypeErrorKind::General);
+                object
+            },
+            None => self.delay_find_implicit_value(&dictionary_type, 0, function, None),
+        };
+
+        let member_name = self.trait_member_name(path);
+        let method_type = Type::Function(Arc::new(method));
+        self.trait_member_access(function, object, &member_name, member.index, method_type.clone());
+        Some((method_type, explicit_dictionary))
     }
 
     /// Remove the last argument of the call if it is a unit literal, returning true if one was removed.
@@ -1040,7 +1029,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     ///
     /// Create:
     /// `fn (a: t) (c: v) -> f a {i} c`
-    fn create_closure_wrapper_for_implicit(
+    pub(super) fn create_closure_wrapper_for_implicit(
         &mut self, function: ExprId, implicits_added: Vec<Option<ExprId>>, argument_types: Vec<ParameterType>,
     ) -> cst::Expr {
         let mut parameters = Vec::new();
@@ -1152,19 +1141,20 @@ enum ImplicitMatch {
     Call(Arc<FunctionType>, TypeBindings),
 }
 
-/// For each `actual` parameter, whether it is an implicit omitted by `expected`, and whether `expected` has leftover
-/// parameters. Returns `None` if `expected` has too few parameters.
-fn missing_implicits(actual: &FunctionType, expected: &FunctionType) -> Option<(Vec<bool>, bool)> {
-    let mut expected_params = expected.parameters.iter().peekable();
-    let missing = actual.parameters.iter().map(|parameter| {
-        if parameter.is_implicit && expected_params.peek().is_none_or(|expected| !expected.is_implicit) {
+/// Which `actual` implicits `expected` omits and whether `expected` has leftovers, or `None` if it has too few
+fn missing_implicits(
+    actual: impl Iterator<Item = bool>, expected: impl Iterator<Item = bool>,
+) -> Option<(Vec<bool>, bool)> {
+    let mut expected = expected.peekable();
+    let missing = actual.map(|is_implicit| {
+        if is_implicit && expected.peek().is_none_or(|expected| !expected) {
             Some(true)
         } else {
-            expected_params.next().map(|_| false)
+            expected.next().map(|_| false)
         }
     });
     let missing = missing.collect::<Option<Vec<_>>>()?;
-    Some((missing, expected_params.next().is_some()))
+    Some((missing, expected.next().is_some()))
 }
 
 /// Format an import path: `CrateName.module.path.itemName`.

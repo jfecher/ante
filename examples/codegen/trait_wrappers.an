@@ -1,0 +1,35 @@
+trait Scale t =
+    scale: fn t I32 -> t
+
+impl scale_i32: Scale I32 with
+    scale x n = x * n
+
+apply (f: fn a b -> r) x y = f x y
+
+main () =
+    println ((if true then Scale.scale else Scale.scale) 3 4)
+    println (apply (if false then Scale.scale else Scale.scale) 5 6)
+    println ((if true then (+) else (+)) 1 2)
+
+    op = match 1
+        | 0 -> (*)
+        | _ -> (*)
+    println (op 7 8)
+
+    println ((match 2
+        | 0 -> Scale.scale
+        | _ -> Scale.scale) 9 10)
+
+    x = 3
+    var y = 4
+    y += x
+    println y
+
+// args: --delete-binary --no-color
+// expected stdout:
+// 12
+// 30
+// 3
+// 56
+// 90
+// 7
