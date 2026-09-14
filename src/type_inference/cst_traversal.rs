@@ -2,10 +2,10 @@ use std::{borrow::Cow, collections::BTreeMap, sync::Arc};
 
 use crate::{
     diagnostics::{Diagnostic, Location, UnimplementedItem},
-    incremental::{AllDefinitions, ExportedDefinitions, GetItemRaw, GetType, Resolve},
+    incremental::{AllDefinitions, ExportedDefinitions, GetItem, GetItemRaw, GetType, Resolve},
     iterator_extensions::{map, mapvec},
     lexer::token::Integer,
-    name_resolution::{Origin, builtin::Builtin, namespace::SourceFileId},
+    name_resolution::{Origin, TraitMember, origin_of_top_level_definition, builtin::Builtin, namespace::SourceFileId},
     parser::{
         cst::{self, Definition, Expr, Literal, Pattern, ReferenceKind},
         ids::{ExprId, NameId, PathId, PatternId, TopLevelId, TopLevelName},
@@ -99,7 +99,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     pub(super) fn infer_expr(&mut self, id: ExprId, expected: &Type) -> Type {
         // Pre-insert the hint so coercions copying this expression mid-inference
         // can read a type for it. This is overwritten with the inferred type below.
-        self.expr_types.insert(id, expected.clone());
+        let previous_type = self.expr_types.insert(id, expected.clone());
 
         let expr = self.resolved_expr(id);
 
@@ -150,10 +150,13 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 Type::NEVER
             },
             Expr::Assignment(assignment) => self.infer_assignment(assignment),
-            // Error expressions assume the expected type to suppress cascading errors.
-            // This also preserves the recorded types of implicit-argument placeholder
-            // slots when their wrapper is re-inferred.
-            Expr::Error => expected.clone(),
+            Expr::Error => match previous_type {
+                Some(typ) => {
+                    self.unify(&typ, expected, TypeErrorKind::General, id);
+                    typ
+                },
+                None => expected.clone(),
+            },
             Expr::Extern(_) => self.next_type_variable(),
             Expr::InterpolatedString(_) => {
                 unreachable!("InterpolatedString should be desugared before type inference")
@@ -369,6 +372,12 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     /// Infer the type of a variable, and record whether it implements `Copy` or not for the borrow checker
     fn infer_variable(&mut self, path: PathId, expected: &Type, expr: ExprId) -> Type {
+        if let Some(Origin::TraitMember(member)) = self.path_origin(path) {
+            if !member.is_function {
+                return self.infer_trait_constant(member, path, expr);
+            }
+            self.trait_method_references.push(expr);
+        }
         let typ = self.infer_path(path, expected);
         if let Some(Origin::Local(_)) = self.path_origin(path) {
             self.request_copy_witness(expr, &typ);
@@ -376,9 +385,48 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         typ
     }
 
+    /// The name a trait member is referred to by, which is also its dictionary field's name
+    pub(super) fn trait_member_name(&self, path: PathId) -> cst::Name {
+        Arc::new(self.current_extended_context()[path].last_ident().to_string())
+    }
+
+    /// Trait constants like `Foo.field` are changed into a member access `foo_implicit.field`.
+    /// The same happens for trait functions but this occurs as a type coercion when calling them.
+    fn infer_trait_constant(&mut self, member: TraitMember, path: PathId, expr: ExprId) -> Type {
+        let trait_name = TopLevelName::new(member.name.top_level_item, member.trait_name);
+        let mut dictionary_type = Type::UserDefined(Origin::TopLevelDefinition(trait_name));
+        if member.generic_count != 0 {
+            let arguments = (0..member.generic_count).map(|_| self.next_type_variable()).collect();
+            dictionary_type = Type::Application(Arc::new(dictionary_type), Arc::new(arguments));
+        }
+        let member_name = self.trait_member_name(path);
+        let Some((field_type, _)) = self.get_field_types(&dictionary_type, None).get(&member_name).cloned() else {
+            return Type::ERROR;
+        };
+        self.trait_member_access(expr, &dictionary_type, &member_name, member.index, field_type.clone());
+        self.request_copy_witness(expr, &field_type);
+        field_type
+    }
+
+    /// Replace `expr` with `<implicit dictionary>.member`, whose type is `member_type`
+    pub(super) fn trait_member_access(
+        &mut self, expr: ExprId, dictionary_type: &Type, member: &cst::Name, index: u32, member_type: Type,
+    ) {
+        let dictionary = self.delay_find_implicit_value(dictionary_type, 0, expr, None);
+        let access = cst::MemberAccess { object: dictionary, member: member.to_string() };
+        let context = self.current_extended_context_mut();
+        context.insert_expr(expr, Expr::MemberAccess(access));
+        context.push_member_access_index(expr, index);
+        self.expr_types.insert(expr, member_type);
+    }
+
     fn infer_path(&mut self, path: PathId, expected: &Type) -> Type {
         let actual = match self.path_origin(path) {
-            Some(Origin::TopLevelDefinition(id)) => self.type_of_top_level_name(&id, path),
+            Some(
+                Origin::TopLevelDefinition(id)
+                | Origin::TraitMember(TraitMember { name: id, .. })
+                | Origin::EffectOperation { name: id, .. },
+            ) => self.type_of_top_level_name(&id, path),
             Some(Origin::Local(name)) => {
                 let Some(typ) = self.name_types.get(&name).cloned() else {
                     // Name wasn't defined, name resolution should already have emitted an error
@@ -461,7 +509,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         };
 
         // Remember what this `Origin::TypeResolution` path actually refers to from now on
-        self.current_extended_context_mut().insert_path_origin(path, Origin::TopLevelDefinition(id));
+        let (item, _) = GetItem(id.top_level_item).get(self.compiler);
+        self.current_extended_context_mut().insert_path_origin(path, origin_of_top_level_definition(id, &item.kind));
         self.type_of_top_level_name(&id, path)
     }
 
@@ -1241,6 +1290,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 super::CoercionOutcome::InPlaceCall | super::CoercionOutcome::None => {
                     self.unify(&actual, &expected_fn_type, TypeErrorKind::CompoundOperator, op_expr);
                 },
+                super::CoercionOutcome::InPlace => (),
                 super::CoercionOutcome::FunctionEffects => unreachable!("try_coercion never coerces effects"),
             }
 

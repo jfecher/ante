@@ -75,6 +75,10 @@ pub enum Origin {
     /// The `NameId` here is local to the given top-level definition, using it in another context
     /// is always a bug.
     TopLevelDefinition(TopLevelName),
+    /// A member of a trait, which reads that field of the trait's dictionary
+    TraitMember(TraitMember),
+    /// An operation of an effect, at `index` in its capability tuple
+    EffectOperation { name: TopLevelName, index: u32 },
     /// This name comes from a local binding (parameter, let-binding, match-binding, etc)
     Local(NameId),
     /// This name did not resolve, try to perform type based resolution on it during type inference
@@ -83,13 +87,24 @@ pub enum Origin {
     Builtin(Builtin),
 }
 
+/// A field in a trait dictionary
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Hash, PartialOrd, Ord)]
+pub struct TraitMember {
+    pub name: TopLevelName,
+    pub trait_name: NameId,
+    /// The field index in the trait's dictionary
+    pub index: u32,
+    pub generic_count: u32,
+    pub is_function: bool,
+}
+
 impl Origin {
     /// True if this Origin _may_ be a type. This does not have the proper context to check whether
     /// any internal IDs actually refer to types.
     pub fn may_be_a_type(self) -> bool {
         match self {
             Origin::TopLevelDefinition(..) | Origin::Local(_) => true,
-            Origin::TypeResolution => false,
+            Origin::TraitMember(_) | Origin::EffectOperation { .. } | Origin::TypeResolution => false,
             Origin::Builtin(builtin) => matches!(builtin, Builtin::Unit | Builtin::Char),
         }
     }
@@ -141,6 +156,24 @@ impl Origin {
             _ => FieldsResult::NotAStruct,
         }
     }
+}
+
+/// Whether `name` is a trait member, effect operation, or plain definition
+pub fn origin_of_top_level_definition(name: TopLevelName, item: &TopLevelItemKind) -> Origin {
+    if let TopLevelItemKind::TypeDefinition(definition) = item
+        && definition.kind.is_ability()
+        && let TypeDefinitionBody::Struct(fields) = &definition.body
+        && let Some(index) = fields.iter().position(|(field, _)| *field == name.local_name_id)
+    {
+        if definition.kind.is_effect() {
+            return Origin::EffectOperation { name, index: index as u32 };
+        }
+        let is_function = matches!(fields[index].1.kind, TypeKind::Function(_));
+        let generic_count = definition.generics.len() as u32;
+        let trait_name = definition.name;
+        return Origin::TraitMember(TraitMember { name, trait_name, index: index as u32, generic_count, is_function });
+    }
+    Origin::TopLevelDefinition(name)
 }
 
 /// Returns the fields of a struct type a type alias may refer to, if any
@@ -422,6 +455,10 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                 {
                     origin = followed;
                 }
+                if let Origin::TopLevelDefinition(name) = origin {
+                    let (item, _) = GetItem(name.top_level_item).get(self.compiler);
+                    origin = origin_of_top_level_definition(name, &item.kind);
+                }
                 if !self.is_valid_for_position(origin, is_type) {
                     let last = self.context[path].components.last().unwrap();
                     let location = self.context.path_location(path).clone();
@@ -463,7 +500,8 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             if let Some(method) = methods.get(item_name_string) {
                 self.top_level_names.push(item_name);
                 self.name_links.insert(type_name, Origin::TopLevelDefinition(type_id));
-                self.name_links.insert(item_name, Origin::TopLevelDefinition(*method));
+                let (item, _) = GetItem(method.top_level_item).get(self.compiler);
+                self.name_links.insert(item_name, origin_of_top_level_definition(*method, &item.kind));
             }
         } else {
             println!(
@@ -558,6 +596,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             Origin::TypeResolution => !is_type,
             // Local names (type vars or value bindings) are accepted in either position
             Origin::Local(_) => true,
+            Origin::TraitMember(_) | Origin::EffectOperation { .. } => !is_type,
             Origin::TopLevelDefinition(name) => {
                 let (item, _) = GetItem(name.top_level_item).get(self.compiler);
                 match &item.kind {
@@ -1125,14 +1164,11 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             self.used_locals.insert(pattern.resume_name);
             self.resolve_expr(*branch);
 
-            let Some(Origin::TopLevelDefinition(name)) = self.path_links.get(&path).copied() else {
+            let Some(Origin::EffectOperation { name, .. }) = self.path_links.get(&path).copied() else {
                 continue;
             };
             let (item, item_context) = GetItem(name.top_level_item).get(self.compiler);
             let TopLevelItemKind::TypeDefinition(type_definition) = &item.kind else { continue };
-            if !type_definition.kind.is_ability() {
-                continue;
-            }
             let TypeDefinitionBody::Struct(fields) = &type_definition.body else { continue };
 
             let method_name = item_context[name.local_name_id].clone();

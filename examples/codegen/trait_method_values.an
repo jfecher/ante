@@ -1,0 +1,36 @@
+trait Scale t =
+    scale: fn t I32 -> t
+    unit: t
+
+impl scale_i32: Scale I32 with
+    scale x n = x * n
+    unit = 1
+
+apply (f: fn a b -> r) x y = f x y
+
+apply_scale (f: fn t I32 {Scale t} => t) (x: t) {Scale t}: t = f x 3
+
+double_unit (_x: t) {Scale t}: t =
+    Scale.scale Scale.unit 2
+
+call_with (f: fn a => Unit) (x: a) = f x
+
+main () =
+    println (apply (+) 1 2)
+    println (apply Scale.scale 5 4)
+    println (apply_scale Scale.scale 7)
+    s = Scale.scale
+    println (s 6 2)
+    println (double_unit 0)
+    println (Scale.scale 2 5 {scale_i32})
+    call_with println 11
+
+// args: --delete-binary --no-color
+// expected stdout:
+// 3
+// 20
+// 21
+// 12
+// 2
+// 10
+// 11

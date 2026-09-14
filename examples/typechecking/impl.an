@@ -25,11 +25,12 @@ c = foo "one" "two"
 // implicit (foo_f64: Foo F64) =
 //     (Foo: fn (fn F64 F64 [Ptr Unit] -> F64 is pure) -> Foo F64 is pure) (fn (_a: F64) (b: F64) -> (b: F64))
 // 
-// (a: I32) = (foo: fn I32 I32 {Foo I32} [Ptr Unit] -> I32 is pure) 1 2_I32 {(foo_i32: Foo I32)}
+// (a: I32) = (foo_i32: Foo I32).foo 1 2_I32
 // 
-// (b: F64) = (foo: fn F64 F64 {Foo F64} [Ptr Unit] -> F64 is pure) 1.0 2.0 {(foo_f64: Foo F64)}
+// (b: F64) = (foo_f64: Foo F64).foo 1.0 2.0
 // 
-// (c: String) = (foo: fn String String {Foo String} [Ptr Unit] -> String is pure) "one" "two" {(error)}
+// (c: String) = (error).foo "one" "two"
+
 
 // expected stderr:
 // examples/typechecking/impl.an:14:5

@@ -9,13 +9,18 @@ use crate::{
     incremental::{ExportedDefinitions, GetCrateGraph, GetItem, VisibleImplicits},
     iterator_extensions::mapvec,
     lexer::token::{FloatKind, Integer, IntegerKind},
-    name_resolution::{namespace::CrateId, Origin},
+    name_resolution::{Origin, namespace::CrateId},
     parser::{
         cst::{self, Name, Pattern, TopLevelItemKind},
         ids::{ExprId, NameId, PatternId},
     },
     type_inference::{
-        errors::TypeErrorKind, places::ScopeDepth, row::RowMode, types::{FunctionType, ParameterType, PrimitiveType, Type, TypeBindings, TypeVariableId}, Locateable, TypeChecker, Variance::Covariant
+        Locateable, TypeChecker,
+        Variance::Covariant,
+        errors::TypeErrorKind,
+        places::ScopeDepth,
+        row::RowMode,
+        types::{FunctionType, ParameterType, PrimitiveType, Type, TypeBindings, TypeVariableId},
     },
 };
 
@@ -104,6 +109,8 @@ pub(super) enum CoercionKind {
     /// The enclosing Call had its arguments rewritten in place; the function expression is
     /// unchanged and should not be re-checked against the reduced expected type.
     DirectCallInsertion,
+    /// The function expression was rewritten in place and already has its coerced type.
+    InPlace,
 }
 
 impl<'local, 'inner> TypeChecker<'local, 'inner> {
@@ -124,51 +131,57 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// In the case a matching implicit value cannot be found, an error is issued and an error
     /// expression is slotted in as the argument instead.
     pub(super) fn implicit_parameter_coercion(
-        &mut self, actual: Arc<FunctionType>, expected: Arc<FunctionType>, function: ExprId, call: Option<ExprId>,
+        &mut self, mut actual: Arc<FunctionType>, expected: Arc<FunctionType>, function: ExprId, call: Option<ExprId>,
     ) -> Option<CoercionKind> {
-        // Looking for implicit parameters that are in `actual` but not `expected`.
-        // The reverse would be a type error.
-        let mut new_expected = Vec::new();
+        let (mut missing, extra_expected) = missing_implicits(&actual, &expected)?;
+        if !missing.contains(&true) {
+            // A type-error is expected when type checking this call
+            return None;
+        }
 
-        let actual_params = actual.parameters.iter();
+        // Allow `foo ()` to call an implicit-only function by dropping the trailing `()`.
+        if let Some(call_expr) = call
+            && extra_expected
+            && !self.drop_trailing_unit_arg(call_expr)
+        {
+            return None;
+        }
+
+        // A trait method's dictionary is always its last parameter
+        let mut rewrote_trait_method = false;
+        if missing.last() == Some(&true)
+            && let cst::Expr::Variable(path) = &self.current_extended_context()[function]
+            && let Some(Origin::TraitMember(member)) = self.path_origin(*path)
+        {
+            rewrote_trait_method = true;
+            let member_name = self.trait_member_name(*path);
+            let mut method = actual.as_ref().clone();
+            let dictionary_type = method.parameters.pop().expect("trait method has a dictionary parameter").typ;
+            missing.pop();
+            actual = Arc::new(method);
+            let method_type = Type::Function(actual.clone());
+            self.trait_member_access(function, &dictionary_type, &member_name, member.index, method_type);
+        }
+
         let mut expected_params = expected.parameters.iter().cloned();
-        let mut current_expected = expected_params.next();
+        let mut new_expected = Vec::with_capacity(actual.parameters.len());
 
         // For each parameter, this is either `None` if no new implicit was inserted
         // at that position, or it is `Some(expr_id)` of the new expression.
-        let mut implicits_added = Vec::new();
+        let mut implicits_added = Vec::with_capacity(actual.parameters.len());
 
-        for actual in actual_params {
-            match (actual.is_implicit, current_expected.as_ref()) {
-                // actual is implicit, but expected isn't, search for an implicit in scope
-                (true, expected) if expected.is_none_or(|param| !param.is_implicit) => {
-                    let value = self.delay_find_implicit_value(&actual.typ, new_expected.len(), function, call);
-                    implicits_added.push(Some(value));
-                    new_expected.push(ParameterType::implicit(self.expr_types[&value].clone()));
-                },
-                _ => {
-                    let Some(expected) = current_expected else {
-                        // User underprovided explicit args - avoid OOB indexing into the call's args.
-                        return None;
-                    };
-                    new_expected.push(expected);
-                    implicits_added.push(None);
-                    current_expected = expected_params.next();
-                },
+        for (index, (parameter, missing)) in actual.parameters.iter().zip(missing).enumerate() {
+            if missing {
+                let value = self.delay_find_implicit_value(&parameter.typ, index, function, call);
+                implicits_added.push(Some(value));
+                new_expected.push(ParameterType::implicit(self.expr_types[&value].clone()));
+            } else {
+                implicits_added.push(None);
+                new_expected.push(expected_params.next().expect("aligned by missing_implicits"));
             }
         }
 
-        if let Some(call_expr) = call {
-            // Only rewrite the call if we actually inserted an implicit.
-            if !implicits_added.iter().any(|param| param.is_some()) {
-                return None;
-            }
-
-            // Allow `foo ()` to call an implicit-only function by dropping the trailing `()`.
-            if current_expected.is_some() && !self.drop_trailing_unit_arg(call_expr) {
-                return None;
-            }
-
+        if call.is_some() {
             let new_fn = Type::Function(Arc::new(FunctionType {
                 parameters: new_expected,
                 environment: expected.environment.clone(),
@@ -176,10 +189,42 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 effects: expected.effects.clone(),
             }));
             self.unify(&Type::Function(actual), &new_fn, TypeErrorKind::General, function);
-
-            Some(CoercionKind::DirectCallInsertion)
+            Some(if rewrote_trait_method { CoercionKind::InPlace } else { CoercionKind::DirectCallInsertion })
         } else {
-            self.create_closure_wrapper_for_implicit(function, implicits_added, new_expected).map(CoercionKind::Wrapper)
+            // A trait method's `Ptr Unit` environment can't be passed as another closure type, so it is wrapped too
+            let wrapper = self.create_closure_wrapper_for_implicit(function, implicits_added, new_expected);
+            Some(CoercionKind::Wrapper(wrapper))
+        }
+    }
+
+    /// Trait methods never coerced, e.g. `g = (+)`, become `fn p.. {d} -> d.method p..`
+    pub(super) fn wrap_uncoerced_trait_methods(&mut self) {
+        for expr in std::mem::take(&mut self.trait_method_references) {
+            let cst::Expr::Variable(path) = &self.current_extended_context()[expr] else { continue };
+            let Some(Origin::TraitMember(_)) = self.path_origin(*path) else { continue };
+            let member_name = self.trait_member_name(*path);
+            let typ = self.expr_types[&expr].clone();
+            let Type::Function(function_type) = self.follow_type(&typ).clone() else { continue };
+
+            let location = expr.locate(self);
+            let mut parameters = Vec::new();
+            let mut arguments = Vec::new();
+            for parameter in function_type.parameters.iter() {
+                let (path, name) = self.fresh_variable("p", parameter.typ.clone(), location.clone());
+                let pattern = self.push_pattern(cst::Pattern::Variable(name), location.clone());
+                let variable = self.push_expr(cst::Expr::Variable(path), parameter.typ.clone(), location.clone());
+                parameters.push(cst::Parameter::with_implicit(pattern, parameter.is_implicit));
+                arguments.push(cst::Argument { is_implicit: parameter.is_implicit, expr: variable });
+            }
+
+            let dictionary = arguments.pop().expect("trait method has a dictionary parameter").expr;
+
+            let access = cst::MemberAccess { object: dictionary, member: member_name.to_string() };
+            let function = self.push_expr(cst::Expr::MemberAccess(access), Type::ERROR, location.clone());
+            let body = self.push_expr(cst::Expr::Call(cst::Call { function, arguments }), Type::ERROR, location);
+            let lambda = cst::Lambda { parameters, body, return_type: None, is_move: false, effects: None };
+            self.current_extended_context_mut().insert_expr(expr, cst::Expr::Lambda(lambda));
+            self.check_expr(expr, &typ, TypeErrorKind::General);
         }
     }
 
@@ -188,12 +233,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         if !self.call_ends_with_unit_arg(call_expr) {
             return false;
         }
-        if let Some(cst::Expr::Call(call)) = self.current_extended_context_mut().extended_expr_mut(call_expr) {
-            call.arguments.truncate(call.arguments.len() - 1);
-            true
-        } else {
-            false
-        }
+        let cst::Expr::Call(mut call) = self.current_extended_context()[call_expr].clone() else { return false };
+        call.arguments.pop();
+        self.current_extended_context_mut().insert_expr(call_expr, cst::Expr::Call(call));
+        true
     }
 
     pub(super) fn call_ends_with_unit_arg(&self, call_expr: ExprId) -> bool {
@@ -210,6 +253,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     fn try_get_name(&self, expr: ExprId) -> Option<String> {
         match &self.current_extended_context()[expr] {
             cst::Expr::Variable(path) => Some(self.current_extended_context()[*path].last_ident().to_string()),
+            cst::Expr::MemberAccess(access) => Some(access.member.clone()),
             _ => None,
         }
     }
@@ -471,7 +515,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// inserted in order of `parameter_index` (matching the ordering of `actual.parameters`
     /// traversal in [`Self::implicit_parameter_coercion`]), later insertions see earlier ones
     /// already in place and `parameter_index` is directly the correct insertion position.
-    fn delay_find_implicit_value(
+    pub(super) fn delay_find_implicit_value(
         &mut self, target_type: &Type, parameter_index: usize, function: ExprId, call: Option<ExprId>,
     ) -> ExprId {
         let location = function.locate(self);
@@ -998,15 +1042,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// `fn (a: t) (c: v) -> f a {i} c`
     fn create_closure_wrapper_for_implicit(
         &mut self, function: ExprId, implicits_added: Vec<Option<ExprId>>, argument_types: Vec<ParameterType>,
-    ) -> Option<cst::Expr> {
-        // We should always have at least 1 added implicit parameter
-        let implicit_added = implicits_added.iter().any(|param| param.is_some());
-
-        // A type-error is expected when type checking this call
-        if !implicit_added || implicits_added.len() != argument_types.len() {
-            return None;
-        }
-
+    ) -> cst::Expr {
         let mut parameters = Vec::new();
         let mut arguments = Vec::new();
 
@@ -1029,7 +1065,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             }
         }
 
-        Some(self.create_call_wrapper_lambda(function, parameters, arguments))
+        self.create_call_wrapper_lambda(function, parameters, arguments)
     }
 
     /// Build `fn parameters.. -> function arguments..`, a lambda forwarding to `function`.
@@ -1114,6 +1150,21 @@ enum ImplicitMatch {
     NoMatch,
     MatchedAsIs(TypeBindings),
     Call(Arc<FunctionType>, TypeBindings),
+}
+
+/// For each `actual` parameter, whether it is an implicit omitted by `expected`, and whether `expected` has leftover
+/// parameters. Returns `None` if `expected` has too few parameters.
+fn missing_implicits(actual: &FunctionType, expected: &FunctionType) -> Option<(Vec<bool>, bool)> {
+    let mut expected_params = expected.parameters.iter().peekable();
+    let missing = actual.parameters.iter().map(|parameter| {
+        if parameter.is_implicit && expected_params.peek().is_none_or(|expected| !expected.is_implicit) {
+            Some(true)
+        } else {
+            expected_params.next().map(|_| false)
+        }
+    });
+    let missing = missing.collect::<Option<Vec<_>>>()?;
+    Some((missing, expected_params.next().is_some()))
 }
 
 /// Format an import path: `CrateName.module.path.itemName`.

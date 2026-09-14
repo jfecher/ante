@@ -110,14 +110,6 @@ fn function_returns_never<'a>(mut typ: &'a TCType, bindings: &'a type_inference:
     }
 }
 
-/// Whether a top-level item is a trait, an effect, or neither.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum AbilityKind {
-    NotAbility,
-    Trait,
-    Effect,
-}
-
 /// Where a call's evidence for one concrete effect comes from
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CapabilitySource {
@@ -162,9 +154,6 @@ struct Context<'local, Db> {
     /// Any external items will have their name & type stored here
     external: FxHashMap<DefinitionId, super::Extern>,
 
-    /// Cache of whether each item is a trait/effect or not. Caching this avoids reissuing GetItemRaw per call site.
-    ability_defs: FxHashMap<TopLevelId, AbilityKind>,
-
     /// Position of each effect op within its ability's body. Propagated to [Mir::preserved_op_indices]
     /// so [crate::mir::effects::effect_lowering] can look up the slot of an op in the capability tuple.
     effect_op_indices: FxHashMap<DefinitionId, u32>,
@@ -201,7 +190,6 @@ impl<'local, Db> Context<'local, Db> {
             finished_functions: Default::default(),
             name_to_id: name_mappings,
             external: Default::default(),
-            ability_defs: Default::default(),
             effect_op_indices: Default::default(),
             effects: Default::default(),
             handle_capabilities: Default::default(),
@@ -457,7 +445,7 @@ where
 
     fn variable(&mut self, path_id: PathId) -> Value {
         // An effect operation as a first-class value gets its capability through its own evidence.
-        if let Some((effect_op, op_index, AbilityKind::Effect)) = self.try_resolve_ability_method(path_id) {
+        if let Some((effect_op, op_index)) = self.try_resolve_effect_op(path_id) {
             self.effect_op_indices.insert(effect_op, op_index);
             return self.effect_op_value_wrapper(path_id, op_index);
         }
@@ -497,6 +485,8 @@ where
                     panic!("No cached variable for {} with origin {origin}", self.context()[path_id])
                 }),
                 Some(Origin::TypeResolution) => unreachable!("Unresolved TypeResolution origin found"),
+                Some(Origin::EffectOperation { .. }) => unreachable!("Effect operations are handled above"),
+                Some(Origin::TraitMember(_)) => unreachable!("Trait members are rewritten to member accesses by type inference"),
                 // This is possible if there were errors during name resolution
                 None => Value::Error,
             };
@@ -613,20 +603,12 @@ where
         let diverges = self.callee_diverges(call.function);
         let result_type = if diverges { Type::UNIT } else { self.expr_type(id) };
 
-        // Trait & effect method calls dispatch through `IndexTuple cap op_index + CallClosure`.
+        // Effect operation calls dispatch through `IndexTuple cap op_index + CallClosure`.
         if let cst::Expr::Variable(path_id) = &self.context()[call.function]
-            && let Some((effect_op, op_index, kind)) = self.try_resolve_ability_method(*path_id)
+            && let Some((effect_op, op_index)) = self.try_resolve_effect_op(*path_id)
         {
             let arguments = mapvec(&call.arguments, |expr| self.expression(expr.expr));
-            return match kind {
-                AbilityKind::Trait => {
-                    self.emit_trait_method_call(call.function, effect_op, op_index, arguments, result_type, diverges)
-                },
-                AbilityKind::Effect => {
-                    self.emit_effect_op_call(call.function, effect_op, op_index, arguments, result_type, diverges)
-                },
-                AbilityKind::NotAbility => unreachable!(),
-            };
+            return self.emit_effect_op_call(call.function, effect_op, op_index, arguments, result_type, diverges);
         }
 
         let function = self.expression(call.function);
@@ -1091,16 +1073,12 @@ where
         self.push_instruction(Instruction::IndexTuple { tuple: cap_value, index: op_index }, method_type)
     }
 
-    /// Emits the `IndexTuple cap op_index + CallClosure` sequence for a trait or effect method call.
+    /// Emits the `IndexTuple cap op_index + CallClosure` sequence for an effect operation call.
     fn emit_indexed_method_call(
-        &mut self, callee_expr: Option<ExprId>, cap_value: Value, op_index: u32, mut arguments: Vec<Value>,
-        result_type: Type, diverges: bool,
+        &mut self, cap_value: Value, op_index: u32, arguments: Vec<Value>, result_type: Type, diverges: bool,
     ) -> Value {
         let method = self.index_capability_method(cap_value, op_index);
         let method_type = self.type_of_value(&method);
-        if let Some(callee_expr) = callee_expr {
-            self.append_evidence_argument(callee_expr, &method, &mut arguments);
-        }
 
         let instruction = if method_type.is_closure() {
             Instruction::CallClosure { closure: method, arguments }
@@ -1115,16 +1093,6 @@ where
         value
     }
 
-    /// `arguments` must contain the operation args followed by the implicit dictionary value
-    fn emit_trait_method_call(
-        &mut self, callee_expr: ExprId, effect_op: DefinitionId, op_index: u32, mut arguments: Vec<Value>,
-        result_type: Type, diverges: bool,
-    ) -> Value {
-        self.effect_op_indices.insert(effect_op, op_index);
-        let cap_value = arguments.pop().expect("trait method call: no implicit cap argument");
-        self.emit_indexed_method_call(Some(callee_expr), cap_value, op_index, arguments, result_type, diverges)
-    }
-
     fn emit_effect_op_call(
         &mut self, callee_expr: ExprId, effect_op: DefinitionId, op_index: u32, arguments: Vec<Value>,
         result_type: Type, diverges: bool,
@@ -1133,7 +1101,7 @@ where
         let effect = self.effect_of_op(callee_expr);
         let source = self.resolve_one_capability_source(&effect);
         let cap_value = self.capability_value(source);
-        self.emit_indexed_method_call(None, cap_value, op_index, arguments, result_type, diverges)
+        self.emit_indexed_method_call(cap_value, op_index, arguments, result_type, diverges)
     }
 
     /// The effect an operation reference performs.
@@ -1154,56 +1122,23 @@ where
         self.convert_context().effect_capability_tuple_type_of(effect)
     }
 
-    /// Whether a top-level item is a trait, effect, or neither
-    fn ability_kind(&mut self, item: TopLevelId) -> AbilityKind {
-        if let Some(kind) = self.ability_defs.get(&item).copied() {
-            return kind;
-        }
-        let (cst_item, _) = GetItemRaw(item).get(self.compiler);
-        let kind = match &cst_item.kind {
-            cst::TopLevelItemKind::TraitDefinition(_) => AbilityKind::Trait,
-            cst::TopLevelItemKind::EffectDefinition(_) => AbilityKind::Effect,
-            _ => AbilityKind::NotAbility,
-        };
-        self.ability_defs.insert(item, kind);
-        kind
+    /// If `path` resolves to an effect operation declaration, return its [DefinitionId] and
+    /// its position within its effect's body.
+    fn try_resolve_effect_op(&mut self, path: PathId) -> Option<(DefinitionId, u32)> {
+        let Origin::EffectOperation { name, index } = self.context().path_origin(path)? else { return None };
+        Some((self.get_definition_id(&name), index))
     }
 
-    /// If `path` resolves to a trait or effect operation declaration, return its
-    /// [DefinitionId], its position within its ability's body (for indexing its capability tuple),
-    /// and the ability's kind. Otherwise return None.
-    fn try_resolve_ability_method(&mut self, path: PathId) -> Option<(DefinitionId, u32, AbilityKind)> {
-        let origin = self.context().path_origin(path)?;
-        let Origin::TopLevelDefinition(name) = origin else { return None };
-
-        let kind = self.ability_kind(name.top_level_item);
-        if kind == AbilityKind::NotAbility {
-            return None;
-        }
-
-        let (item, _) = GetItemRaw(name.top_level_item).get(self.compiler);
-        if let cst::TopLevelItemKind::TraitDefinition(effect) | cst::TopLevelItemKind::EffectDefinition(effect) =
-            &item.kind
-            && let Some(op_index) = effect.body.iter().position(|d| d.name == name.local_name_id)
-        {
-            let id = self.get_definition_id(&name);
-            return Some((id, op_index as u32, kind));
-        }
-        None
-    }
-
-    /// Looks up the callee via `path_types` rather than `expr_types`: the latter is overwritten
+    /// Looks up a variable callee via `path_types` rather than `expr_types`: the latter is overwritten
     /// with the post-unification expected type, which may have erased `Never`.
     fn callee_diverges(&self, callee_expr: ExprId) -> bool {
         // TODO: Test whether this and `Never` handling in MIR in general holds up for generic functions.
         // if a return type is a generic bound to Never by monomorphization we won't find it here.
-        let cst::Expr::Variable(path_id) = &self.context()[callee_expr] else {
-            return false;
+        let typ = match &self.context()[callee_expr] {
+            cst::Expr::Variable(path_id) => self.types.result.maps.path_types.get(path_id),
+            _ => self.types.result.maps.expr_types.get(&callee_expr),
         };
-        let Some(typ) = self.types.result.maps.path_types.get(path_id) else {
-            return false;
-        };
-        function_returns_never(typ, &self.types.bindings)
+        typ.is_some_and(|typ| function_returns_never(typ, &self.types.bindings))
     }
 
     fn try_find_name(&self, pattern: PatternId) -> Option<(Name, NameId)> {
@@ -1992,8 +1927,8 @@ where
         };
 
         let cases = mapvec(&handle.cases, |(pattern, branch)| {
-            let (effect_op, op_index, _) =
-                self.try_resolve_ability_method(pattern.function).expect("Couldn't find effect op in MIR handle");
+            let (effect_op, op_index) =
+                self.try_resolve_effect_op(pattern.function).expect("Couldn't find effect op in MIR handle");
             self.effect_op_indices.insert(effect_op, op_index);
             let handler = match &self.context()[*branch] {
                 cst::Expr::Lambda(branch_lambda) => {
@@ -2383,14 +2318,6 @@ where
             let shared = type_definition.shared;
             self.define_type_constructor(constructor_name, &constructor_type, parameters, tag, shared, with_field_count);
         }
-
-        // Abilities are sugar for a struct of function-typed fields, however each field is treated
-        // as a function by the frontend so we must generate actual functions for each field such
-        // that `Cast.cast` is an actual function accepting a `Cast` instance and forwarding the
-        // appropriate arguments to the `cast` field.
-        if type_definition.kind.is_ability() {
-            self.define_ability_methods(type_definition);
-        }
     }
 
     fn define_type_constructor(
@@ -2493,71 +2420,5 @@ where
         }
 
         payload
-    }
-
-    fn define_ability_methods(&mut self, type_definition: &cst::TypeDefinition) {
-        if let cst::TypeDefinitionBody::Struct(fields) = &type_definition.body {
-            let constructor_type = self.types.get_generalized(type_definition.name);
-            self.set_generics_in_scope(&constructor_type);
-            let generic_count = self.generics_in_scope.len() as u32;
-            let constructor_mir_type = self.convert_type(&constructor_type, None);
-
-            let struct_type =
-                constructor_mir_type.function_return_type().cloned().unwrap_or_else(|| constructor_mir_type.clone());
-
-            let field_mir_types: Vec<Type> =
-                if let Type::Function(fn_type) = &constructor_mir_type { fn_type.parameters.clone() } else { vec![] };
-
-            for (i, (field_name_id, _)) in fields.iter().enumerate() {
-                let Some(field_type) = field_mir_types.get(i) else { continue };
-
-                // Only generate wrappers for function-typed fields (all ability methods).
-                // TODO: We should still generate wrappers for other types
-                let Type::Function(fn_type) = field_type else { continue };
-                let (value_param_types, return_type) = (fn_type.parameters.clone(), fn_type.return_type.clone());
-
-                // Callers see the method's TC type: surface params, implicit receiver, then
-                // the uniform evidence parameter last.
-                let mut wrapper_params = value_param_types;
-                let evidence = wrapper_params.pop().unwrap_or_else(|| Type::tuple(Vec::new()));
-                wrapper_params.push(struct_type.clone());
-                wrapper_params.push(evidence);
-                let wrapper_type = Type::Function(Arc::new(super::FunctionType {
-                    parameters: wrapper_params.clone(),
-                    environment: Type::NO_CLOSURE_ENV,
-                    return_type: return_type.clone(),
-                }));
-
-                let name = self.context()[*field_name_id].clone();
-                let top_level_name = TopLevelName::new(self.top_level_id, *field_name_id);
-                let field_type_clone = field_type.clone();
-                let field_is_closure = field_type_clone.is_closure();
-                let n_params = wrapper_params.len();
-
-                let id = self.new_definition(name.clone(), Some(*field_name_id), generic_count, wrapper_type, |this| {
-                    for pt in &wrapper_params {
-                        this.push_parameter(pt.clone());
-                    }
-                    // Second-to-last parameter is the implicit struct receiver (evidence is last).
-                    let struct_index = n_params - 2;
-                    let struct_param = Value::Parameter(BlockId::ENTRY_BLOCK, struct_index as u32);
-                    let extracted = this.push_instruction(
-                        Instruction::IndexTuple { tuple: struct_param, index: i as u32 },
-                        field_type_clone,
-                    );
-                    let value_args = mapvec((0..n_params).filter(|j| *j != struct_index), |j| {
-                        Value::Parameter(BlockId::ENTRY_BLOCK, j as u32)
-                    });
-                    let instruction = if field_is_closure {
-                        Instruction::CallClosure { closure: extracted, arguments: value_args }
-                    } else {
-                        Instruction::Call { function: extracted, arguments: value_args }
-                    };
-                    let result = this.push_instruction(instruction, return_type.clone());
-                    this.terminate_block(TerminatorInstruction::Return(result));
-                });
-                self.name_to_id.insert(top_level_name, id);
-            }
-        }
     }
 }

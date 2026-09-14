@@ -1,0 +1,24 @@
+trait Describe t =
+    describe: fn t -> I32
+
+impl describe_i32: Describe I32 with
+    describe x = x + 100
+
+trait Twice t =
+    twice: fn {Describe t} t -> I32
+
+impl twice_i32: Twice I32 with
+    twice {_d} x = (x + 100) * 2
+
+apply (f: fn a -> r) x = f x
+
+main () =
+    println (Twice.twice 1)
+    println (Twice.twice 2 {twice_i32})
+    println (apply Twice.twice 3)
+
+// args: --delete-binary --no-color
+// expected stdout:
+// 202
+// 204
+// 206

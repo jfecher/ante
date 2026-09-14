@@ -20,7 +20,7 @@ use ante::incremental::{
 };
 use ante::name_resolution::{
     namespace::{CrateId, SourceFileId},
-    Origin, ResolutionResult,
+    Origin, ResolutionResult, TraitMember, origin_of_top_level_definition,
 };
 use ante::parser::ids::{IdStore, NameId, NameStore, PathId, TopLevelId, TopLevelName};
 
@@ -135,7 +135,11 @@ fn symbol_at_inner(compiler: &Db, file_id: SourceFileId, byte_offset: usize) -> 
 
     let target = match origin {
         Some(Origin::Local(name_id)) => RenameTarget::local(item_id, name_id),
-        Some(Origin::TopLevelDefinition(name)) => RenameTarget::top_level(name),
+        Some(
+            Origin::TopLevelDefinition(name)
+            | Origin::TraitMember(TraitMember { name, .. })
+            | Origin::EffectOperation { name, .. },
+        ) => RenameTarget::top_level(name),
         Some(Origin::Builtin(_)) => return Err(RenameError::ExternalCrate),
         Some(Origin::TypeResolution) | None => return Err(RenameError::NoSymbol),
     };
@@ -273,7 +277,8 @@ pub fn collect_reference_locations(compiler: &Db, target: &RenameTarget) -> Vec<
         locations.push(declaration);
     }
 
-    let target_origin = Origin::TopLevelDefinition(name);
+    let (item, _) = GetItem(name.top_level_item).get(compiler);
+    let target_origin = origin_of_top_level_definition(name, &item.kind);
 
     let is_method = AllDefinitions(name.top_level_item.source_file)
         .get(compiler)

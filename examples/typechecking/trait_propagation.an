@@ -13,7 +13,8 @@ foo () = baz bar
 // type Baz a =
 //     baz: fn a [Ptr Unit] -> Unit
 // 
-// (foo: fn Unit -> Unit is pure) () = (baz: fn _ {Baz _} [Ptr Unit] -> Unit is pure) (bar: _) {(error)}
+// (foo: fn Unit -> Unit is pure) () = (error).baz (bar: _)
+
 
 // expected stderr:
 // examples/typechecking/trait_propagation.an:6:10

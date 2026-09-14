@@ -1445,7 +1445,9 @@ enum FmtOperatorKind {
 impl Display for Origin {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         match self {
-            Origin::TopLevelDefinition(top_level_id) => write!(f, "{top_level_id}"),
+            Origin::TopLevelDefinition(top_level_id)
+            | Origin::TraitMember(crate::name_resolution::TraitMember { name: top_level_id, .. })
+            | Origin::EffectOperation { name: top_level_id, .. } => write!(f, "{top_level_id}"),
             Origin::Local(name_id) => write!(f, "{name_id}"),
             Origin::TypeResolution => write!(f, "td"), // type-directed
             Origin::Builtin(builtin) => write!(f, "b{builtin}"),

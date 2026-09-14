@@ -244,7 +244,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     // The type checker should hold the origin of paths that require type resolution
                     origin = self.current_extended_context().path_origin(path)?;
                 },
-                Origin::Builtin(_) => {
+                Origin::TraitMember(_) | Origin::EffectOperation { .. } | Origin::Builtin(_) => {
                     let location = self.current_context().path_location(path).clone();
                     self.compiler.accumulate(Diagnostic::InvalidPattern { location });
                     return None;
@@ -985,7 +985,9 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
                         TypeBody::Sum(variants) => variants[variant_index].1.clone(),
                     }
                 },
-                Origin::Local(_) | Origin::TypeResolution => unreachable!(),
+                Origin::Local(_) | Origin::TypeResolution | Origin::TraitMember(_) | Origin::EffectOperation { .. } => {
+                    unreachable!()
+                },
                 Origin::Builtin(builtin) => Arc::new(builtin.to_string()),
             },
             Type::Application(constructor, _) => {
@@ -1068,6 +1070,9 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
                 }
             },
             Origin::Local(_) => unreachable!("Origin::Local used in classify_type_origin"),
+            Origin::TraitMember(_) | Origin::EffectOperation { .. } => {
+                unreachable!("Ability member used as a type in classify_type_origin")
+            },
             Origin::TypeResolution => {
                 unreachable!(
                     "Origin::TypeResolution encountered in classify_type_origin, should be unreachable in a type position"

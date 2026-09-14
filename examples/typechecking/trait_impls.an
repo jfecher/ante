@@ -34,13 +34,14 @@ _ = bar "four" "five"
 // implicit (bar4: Bar I32 F64) =
 //     (Bar: fn (fn I32 I32 [Ptr Unit] -> F64 is pure) -> Bar I32 F64 is pure) (fn (_: I32) (_: I32) -> 23.2)
 // 
-// (foo: fn _ _ -> _ is pure) (a: _) (b: _) = (bar: fn _ _ {Bar _ _} [Ptr Unit] -> _ is pure) (a: _) (b: _) {(error)}
+// (foo: fn _ _ -> _ is pure) (a: _) (b: _) = (error).bar (a: _) (b: _)
 // 
-// (baz: fn String String -> _ is pure) ((x: String)) (y: String) = (bar: fn String String {Bar String _} [Ptr Unit] -> _ is pure) (x: String) (y: String) {(error)}
+// (baz: fn String String -> _ is pure) ((x: String)) (y: String) = (error).bar (x: String) (y: String)
 // 
-// (_: _) = (bar: fn I32 I32 {Bar I32 _} [Ptr Unit] -> _ is pure) 3 2 {(error)}
+// (_: _) = (error).bar 3 2
 // 
-// (_: _) = (bar: fn String String {Bar String _} [Ptr Unit] -> _ is pure) "four" "five" {(error)}
+// (_: _) = (error).bar "four" "five"
+
 
 // expected stderr:
 // examples/typechecking/trait_impls.an:15:11

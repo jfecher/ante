@@ -1,0 +1,25 @@
+trait Named t =
+    name: I32
+    fallback: t
+
+impl named_bool: Named Bool with
+    name = 7
+    fallback = true
+
+impl named_i32: Named I32 with
+    name = 8
+    fallback = 42
+
+fallback_of (_x: t) {Named t}: t = Named.fallback
+
+main () =
+    println (fallback_of false)
+    println (fallback_of 0i32)
+    b: Bool = Named.fallback
+    println b
+
+// args: --delete-binary --no-color
+// expected stdout:
+// true
+// 42
+// true

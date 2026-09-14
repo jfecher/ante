@@ -78,6 +78,8 @@ pub fn type_check_impl(context: &TypeCheckSCC, compiler: &DbHandle) -> Arc<TypeC
             TopLevelItemKind::Comptime(comptime) => checker.check_comptime(comptime),
         };
 
+        checker.wrap_uncoerced_trait_methods();
+
         // Need to resolve any remaining implicits before the borrowing pass runs
         checker.pop_implicits_scope();
 
@@ -198,8 +200,8 @@ struct TypeChecker<'local, 'inner> {
     /// Cached type for the Prelude's `String` struct, lazily resolved on first use.
     string_type: Option<Type>,
 
-    /// Cached TopLevelName for the Prelude's `(.*)` (deref/Copy) function, lazily resolved on first use.
-    deref_name: Option<TopLevelName>,
+    /// Cached origin of the Prelude's `(.*)` deref function.
+    deref_origin: Option<Origin>,
 
     /// Keep track of which variable pattern aliases alias to catch double or partial
     /// moves when both an alias and the original name are moved.
@@ -208,6 +210,9 @@ struct TypeChecker<'local, 'inner> {
     /// The `Copy` impl requested for each variable or member access expression in the current
     /// item that may move a local place.
     copy_witnesses: FxHashMap<ExprId, ExprId>,
+
+    /// Trait method references in the current item, wrapped in a lambda if never coerced
+    trait_method_references: Vec<ExprId>,
 
     /// Cached TopLevelName for the Prelude's `Copy` type, lazily resolved on first use.
     copy_type_name: Option<TopLevelName>,
@@ -262,9 +267,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             scope_depth: 0,
             coercion_wrapper_exprs: Default::default(),
             string_type: None,
-            deref_name: None,
+            deref_origin: None,
             binding_places: Default::default(),
             copy_witnesses: Default::default(),
+            trait_method_references: Vec::new(),
             copy_type_name: None,
             mutable_definitions: Default::default(),
             inferring_assignment_lhs: false,
@@ -385,15 +391,17 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         typ
     }
 
-    /// Returns the TopLevelName for the Prelude's `(.*)` (deref/Copy) function, caching it.
-    fn get_deref_name(&mut self) -> TopLevelName {
-        if let Some(name) = self.deref_name {
-            return name;
+    /// Returns the origin of the Prelude's `(.*)`, caching it.
+    fn get_deref_origin(&mut self) -> Origin {
+        if let Some(origin) = self.deref_origin {
+            return origin;
         }
         let exported = ExportedDefinitions(SourceFileId::prelude()).get(self.compiler);
-        let top_level_name = exported.definitions.get(&Arc::new(".*".to_string())).expect("(.*) not found in Prelude");
-        self.deref_name = Some(*top_level_name);
-        *top_level_name
+        let name = *exported.definitions.get(&Arc::new(".*".to_string())).expect("(.*) not found in Prelude");
+        let (item, _) = GetItem(name.top_level_item).get(self.compiler);
+        let origin = crate::name_resolution::origin_of_top_level_definition(name, &item.kind);
+        self.deref_origin = Some(origin);
+        origin
     }
 
     /// Returns the `IO` effect alias defined in the Prelude
@@ -439,6 +447,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         self.current_item = Some(item_id);
         self.binding_places = Default::default();
         self.copy_witnesses = Default::default();
+        self.trait_method_references = Vec::new();
 
         for (name, typ) in self.item_types.iter() {
             if name.top_level_item == item_id {
@@ -676,6 +685,8 @@ pub(super) enum CoercionOutcome {
     /// The Call at `call_expr` had implicit arguments spliced in; the function expression
     /// itself is untouched and should not be re-checked against the reduced expected type.
     InPlaceCall,
+    /// The function expression at `expr` was rewritten in place and already has its coerced type.
+    InPlace,
     /// The function value at `expr` is coerced to a wider effect row.
     /// We want to create a function wrapper which has the additional effects but does not use them.
     FunctionEffects,
@@ -713,6 +724,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                         CoercionOutcome::ReplacedExpr
                     },
                     Some(implicits::CoercionKind::DirectCallInsertion) => CoercionOutcome::InPlaceCall,
+                    Some(implicits::CoercionKind::InPlace) => CoercionOutcome::InPlace,
                     None => CoercionOutcome::None,
                 }
             },
@@ -814,6 +826,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
             // implicit_parameter_coercion already performed the needed unification against the type
             CoercionOutcome::InPlaceCall | CoercionOutcome::FunctionEffects => actual.clone(),
+            CoercionOutcome::InPlace => self.expr_types[&expr].clone(),
         }
     }
 
@@ -936,6 +949,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     fn is_arithmetic_operator(&self, function: ExprId) -> bool {
         let name = match &self.current_extended_context()[function] {
             cst::Expr::Variable(path) => self.current_extended_context()[*path].last_ident(),
+            cst::Expr::MemberAccess(access) => access.member.as_str(),
             _ => return false,
         };
         matches!(name, "+" | "-" | "*" | "/" | "%")
@@ -952,13 +966,13 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let original_type = self.expr_types[&expr].clone();
         let arg_id = self.push_expr(original_expr, original_type.clone(), location.clone());
 
-        let deref_name = self.get_deref_name();
+        let deref_origin = self.get_deref_origin();
         let deref_path = self.push_path(
             cst::Path::ident(".*".to_string(), location.clone()),
             Type::ERROR, // overwritten when check_expr re-checks the synthesized call
             location.clone(),
         );
-        self.current_extended_context_mut().insert_path_origin(deref_path, Origin::TopLevelDefinition(deref_name));
+        self.current_extended_context_mut().insert_path_origin(deref_path, deref_origin);
 
         let function_type = Type::Function(Arc::new(FunctionType {
             parameters: vec![ParameterType::explicit(original_type)],

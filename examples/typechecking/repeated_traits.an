@@ -6,8 +6,8 @@ foo a =
 // expected exit status: 1
 // expected stdout:
 // (foo: fn _ -> Unit can Fs) (a: _) =
-//     (print: fn (ref 'a _) {Print _ pure} [Ptr Unit] -> Unit can Fs) (ref (a: _)) {(error)}
-//     (print: fn (ref 'a _) {Print _ pure} [Ptr Unit] -> Unit can Fs) (ref (a: _)) {(error)}
+//     (error).print (ref (a: _))
+//     (error).print (ref (a: _))
 
 
 // expected stderr:

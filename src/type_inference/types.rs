@@ -1118,9 +1118,9 @@ impl Type {
                 let kind = local_kinds.get(&name).cloned().unwrap_or(Kind::Type);
                 (make_type(origin), kind)
             },
+            // Assume name resolution has already issued an error for these cases
+            Some(Origin::TraitMember(_) | Origin::EffectOperation { .. }) | None => (Type::ERROR, Kind::Error),
             Some(origin) => (make_type(origin), Kind::Type),
-            // Assume name resolution has already issued an error for this case
-            None => (Type::ERROR, Kind::Error),
         }
     }
 
@@ -1820,7 +1820,9 @@ where
 
     fn fmt_type_origin(&self, origin: Origin, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match origin {
-            Origin::TopLevelDefinition(id) => {
+            Origin::TopLevelDefinition(id)
+            | Origin::TraitMember(crate::name_resolution::TraitMember { name: id, .. })
+            | Origin::EffectOperation { name: id, .. } => {
                 let (item, context) = GetItem(id.top_level_item).get(self.db);
                 match &item.kind {
                     // A variant type
