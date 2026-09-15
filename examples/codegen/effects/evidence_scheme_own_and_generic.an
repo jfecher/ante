@@ -1,0 +1,24 @@
+import Std.Stream.Emit, emit
+
+outer_fn (f: fn Unit => Unit can e): Unit can Emit I32, e =
+    emit 1
+    f ()
+
+main () =
+    handler ho for emit (x: I32) ->
+        print "outer "
+        println x
+        resume ()
+    in
+        thunk = fn () -> emit 2
+        handler hi for emit (x: I32) ->
+            print "inner "
+            println x
+            resume ()
+        in outer_fn thunk
+
+// args: --delete-binary --no-color
+// expected stdout:
+// inner 1
+// inner 2
+

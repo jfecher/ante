@@ -1,0 +1,28 @@
+import Std.Stream.Stream, Emit, emit
+
+type Pair = a: I32, b: I32
+
+// `e` is instantiated with `Emit I32`, which the method's row already lists
+impl stream_pair: Stream Pair I32 (Emit I32) with
+    stream (p: Pair): Unit can Emit I32 =
+        emit p.a
+        emit p.b
+
+each (s: s) {Stream s a e} (f: fn a -> Unit can Fs, e): Unit can Fs, e =
+    handler h for emit x ->
+        f x
+        resume ()
+    Stream.stream s
+
+main () =
+    handler h for emit (x: I32) ->
+        print "outer "
+        println x
+        resume ()
+    in each (Pair 1 2) println
+
+// args: --delete-binary --no-color
+// expected stdout:
+// 1
+// 2
+

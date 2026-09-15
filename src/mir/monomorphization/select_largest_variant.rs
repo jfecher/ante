@@ -31,25 +31,14 @@ impl Definition {
     /// `ptr_size` should be the size of a pointer in bytes.
     fn select_largest_variants(&mut self, ptr_size: u32) {
         self.typ.select_largest_variants(ptr_size);
-
-        for typ in self.instruction_result_types.values_mut() {
-            typ.select_largest_variants(ptr_size);
-        }
-
-        for block in self.blocks.values_mut() {
-            for parameter in block.parameter_types.iter_mut() {
-                parameter.select_largest_variants(ptr_size);
-            }
-        }
+        self.for_each_type_mut(|typ| typ.select_largest_variants(ptr_size));
 
         // Resolve SizeOf / ArrayLen of concrete types to Usz constants now that all types are concrete.
         for instruction in self.instructions.values_mut() {
             if let Instruction::SizeOf(typ) = instruction {
-                typ.select_largest_variants(ptr_size);
                 let size = typ.size_in_bytes(ptr_size) as usize;
                 *instruction = Instruction::Id(Value::Integer(IntConstant::Usz(size)));
             } else if let Instruction::ArrayLen(typ) = instruction {
-                typ.select_largest_variants(ptr_size);
                 let Type::Array { length, .. } = typ else {
                     unreachable!("ArrayLen on non-Array type after monomorphization: {typ}")
                 };
@@ -57,10 +46,6 @@ impl Definition {
                     unreachable!("ArrayLen with non-constant length after monomorphization: {length}")
                 };
                 *instruction = Instruction::Id(Value::Integer(IntConstant::Usz(*n as usize)));
-            } else if let Instruction::StackAllocUninit(typ) = instruction {
-                typ.select_largest_variants(ptr_size);
-            } else if let Instruction::GetFieldPtr { struct_type, .. } = instruction {
-                struct_type.select_largest_variants(ptr_size);
             }
         }
     }
@@ -70,6 +55,7 @@ impl Type {
     fn contains_union(&self) -> bool {
         match self {
             Type::Primitive(_) | Type::Generic(_) | Type::U32(_) => false,
+            Type::Evidence(_) => unreachable!("evidence is lowered before selecting largest variants"),
             Type::Union(_) => true,
             Type::Tuple(fields) => fields.iter().any(Type::contains_union),
             Type::Array { length: _, element } => element.contains_union(),
@@ -84,7 +70,7 @@ impl Type {
     fn select_largest_variants(&mut self, ptr_size: u32) {
         if self.contains_union() {
             match self {
-                Type::Primitive(_) | Type::Generic(_) | Type::U32(_) => unreachable!(),
+                Type::Primitive(_) | Type::Generic(_) | Type::U32(_) | Type::Evidence(_) => unreachable!(),
                 Type::Tuple(items) => {
                     let items = Arc::make_mut(items);
                     items.iter_mut().for_each(|typ| typ.select_largest_variants(ptr_size));

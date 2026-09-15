@@ -6,7 +6,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::{
     incremental::{GetItem, GetItemRaw, GetTypeBody, TypeCheck},
     iterator_extensions::mapvec,
-    mir::{FunctionType, Type, builder::Context},
+    mir::{EffectKey, EvidenceEntry, FunctionType, Generic, Type, builder::Context},
     name_resolution::{Origin, builtin::Builtin},
     parser::{
         cst::{TopLevelItem, TopLevelItemKind, TypeDefinition, TypeDefinitionBody},
@@ -85,29 +85,16 @@ pub(super) struct ConvertTypeContext<'a, Db> {
 
 #[derive(Clone)]
 pub(super) struct Effects {
-    /// Evidence slots in [Effect::id] order
+    /// The concrete effects of the row, each carrying its capability
     pub(super) entries: Vec<Effect>,
 
-    /// The row generic this row stays polymorphic over, if any.
-    pub(super) end: Option<TCType>,
+    /// The row generics in scope this row stays polymorphic over
+    pub(super) generics: Vec<Generic>,
 }
 
 /// True if both row entries name the same capability
 pub(super) fn same_effect_id(a: &Effect, b: &Effect, bindings: &TypeBindings) -> bool {
     a.id.follow(bindings) == b.id.follow(bindings)
-}
-
-impl Effects {
-    /// The slot holding the capability for `id`, if found
-    pub(super) fn slot_of(&self, effect: &Effect, bindings: &TypeBindings) -> Option<usize> {
-        self.entries.iter().position(|entry| same_effect_id(entry, effect, bindings))
-    }
-
-    /// The slot holding this row's open end bundle or the empty tuple that stands in
-    /// for one when the row is closed.
-    pub(super) fn rest_slot(&self) -> usize {
-        self.entries.len()
-    }
 }
 
 impl<Db> ConvertTypeContext<'_, Db>
@@ -122,8 +109,8 @@ where
             TCType::Variable(id) => {
                 // Any unbound variables at this point should be defaultable with only slight
                 // changes in behavior. Implicits should already be found so this won't affect
-                // impl search. The empty tuple doubles as the evidence of a residual row
-                // variable, keeping instantiation bindings consistent with `evidence_type`.
+                // impl search. A residual row variable also becomes `()`, which
+                // `Type::substitute_evidence` treats as empty evidence.
                 self.convert_type_variable(*id, Type::tuple(Vec::new()))
             },
             TCType::Function(function_type) => {
@@ -156,37 +143,49 @@ where
         }
     }
 
-    /// An effect row's chain of `(capability, rest)` pairs ending in the row's open
-    /// end or a unit value.
+    /// The canonical evidence type of an effect row, see [Type::Evidence]
     pub(super) fn evidence_type(&self, effects: &TCType) -> Type {
         self.row_evidence_type(&self.split_row(effects))
     }
 
     pub(super) fn row_evidence_type(&self, row: &Effects) -> Type {
-        let mut evidence = match &row.end {
-            Some(generic) => self.convert_type(generic, None),
-            None => Type::tuple(Vec::new()),
-        };
-        for effect in row.entries.iter().rev() {
-            evidence = Type::tuple(vec![self.effect_capability_tuple_type_of(effect), evidence]);
-        }
-        evidence
+        let mut entries = mapvec(&row.entries, |effect| EvidenceEntry::Capability {
+            key: self.effect_key(effect),
+            capability: self.effect_capability_tuple_type_of(effect),
+        });
+        entries.extend(row.generics.iter().map(|generic| EvidenceEntry::Rest(*generic)));
+        Type::evidence(entries)
     }
 
-    /// Resolves a row into its evidence slots and its end.
+    /// The mir generic a row's open end converts to
+    fn row_generic(&self, generic: &TCType) -> Generic {
+        match self.convert_type(generic, None) {
+            Type::Generic(generic) => generic,
+            other => panic!("row end `{generic:?}` is not a generic in scope, it converted to `{other}`"),
+        }
+    }
+
+    /// The identity of a row entry's effect within evidence
+    pub(super) fn effect_key(&self, effect: &Effect) -> EffectKey {
+        let Some((name, args)) = self.definition_head(&effect.typ) else {
+            panic!("effect_key: not an effect type: {:?}", effect.typ);
+        };
+        self.effect_key_of(name, args)
+    }
+
+    /// The identity of the effect `name` applied to `args` within evidence
+    pub(super) fn effect_key_of(&self, name: TopLevelName, args: Option<&[TCType]>) -> EffectKey {
+        let args = mapvec(args.unwrap_or(&[]), |arg| self.convert_type(arg, None));
+        EffectKey { effect: name, args }
+    }
+
+    /// Resolves a row into its concrete effects and its open ends.
     pub(super) fn split_row(&self, effects: &TCType) -> Effects {
         let mut entries = Vec::new();
         let mut ends = Vec::new();
 
         // Only entries have ids so the row starts with the id that matches nothing
         self.collect_row_items(effects, &TCType::ERROR, &mut entries, &mut ends);
-
-        let mut rigid = ends.iter().filter(|end| matches!(end, TCType::Generic(_)));
-        let end = match (rigid.next(), rigid.next()) {
-            // TODO: This will not work when a row has multiple open variables
-            (Some(first), _) => Some(first.clone()),
-            (None, _) => ends.first().cloned(),
-        };
 
         let mut deduped: Vec<Effect> = Vec::with_capacity(entries.len());
         for entry in entries {
@@ -197,7 +196,7 @@ where
 
         // No reason to carry capabilities for effects with no operations
         deduped.retain(|effect| !self.effect_has_no_operations(&effect.typ));
-        Effects { entries: deduped, end }
+        Effects { entries: deduped, generics: mapvec(&ends, |end| self.row_generic(end)) }
     }
 
     /// Recursively flattens `typ` into concrete effects and any open ends
@@ -226,19 +225,17 @@ where
 
     /// True if `effect` refers to an effect definition with zero operations.
     fn effect_has_no_operations(&self, effect: &TCType) -> bool {
-        let Some((id, _)) = self.definition_head(effect) else { return false };
-        let (item, _) = GetItem(id).get(self.compiler);
+        let Some((name, _)) = self.definition_head(effect) else { return false };
+        let (item, _) = GetItem(name.top_level_item).get(self.compiler);
         matches!(Self::type_definition(&item), Some(definition) if Self::is_empty_effect(definition))
     }
 
     /// The top-level definition `typ` names with its arguments if applied
-    fn definition_head<'t>(&'t self, typ: &'t TCType) -> Option<(TopLevelId, Option<&'t [TCType]>)> {
+    fn definition_head<'t>(&'t self, typ: &'t TCType) -> Option<(TopLevelName, Option<&'t [TCType]>)> {
         match typ.follow(self.type_bindings) {
-            TCType::UserDefined(Origin::TopLevelDefinition(name)) => Some((name.top_level_item, None)),
+            TCType::UserDefined(Origin::TopLevelDefinition(name)) => Some((*name, None)),
             TCType::Application(constructor, args) => match constructor.follow(self.type_bindings) {
-                TCType::UserDefined(Origin::TopLevelDefinition(name)) => {
-                    Some((name.top_level_item, Some(args.as_slice())))
-                },
+                TCType::UserDefined(Origin::TopLevelDefinition(name)) => Some((*name, Some(args.as_slice()))),
                 _ => None,
             },
             _ => None,
@@ -260,10 +257,10 @@ where
 
     /// The method types of a trait dictionary type
     pub(super) fn trait_method_types(&self, dictionary: &TCType) -> Vec<TCType> {
-        let Some((id, args)) = self.definition_head(dictionary) else {
+        let Some((name, args)) = self.definition_head(dictionary) else {
             panic!("trait_method_types: `{dictionary:?}` is not a trait");
         };
-        match id.type_body(args, self.compiler, None) {
+        match name.top_level_item.type_body(args, self.compiler, None) {
             TypeBody::Product { fields, .. } => mapvec(fields, |(_, typ)| typ),
             TypeBody::Sum(_) => panic!("trait_method_types: trait is a sum type"),
         }
@@ -328,10 +325,10 @@ where
 
     /// Resolves a [Self::split_row] entry to its capability tuple type
     pub(super) fn effect_capability_tuple_type_of(&self, effect: &Effect) -> Type {
-        let Some((id, args)) = self.definition_head(&effect.typ) else {
+        let Some((name, args)) = self.definition_head(&effect.typ) else {
             panic!("effect_capability_tuple_type_of: not an effect type: {:?}", effect.typ);
         };
-        self.effect_capability_tuple_type(id, args)
+        self.effect_capability_tuple_type(name.top_level_item, args)
     }
 
     fn convert_type_variable(&self, id: TypeVariableId, default: Type) -> Type {
@@ -361,13 +358,14 @@ where
                     if definition.shared && id.local_name_id == definition.name {
                         return Type::POINTER;
                     }
+                    // An effect used as a type is the evidence of the row holding just that effect
                     if definition.kind.is_effect() {
-                        let unit = Type::tuple(Vec::new());
                         if Self::is_empty_effect(definition) {
-                            return unit;
+                            return Type::evidence(Vec::new());
                         }
                         let capability = self.effect_capability_tuple_type(id.top_level_item, args);
-                        return Type::tuple(vec![capability, unit]);
+                        let key = self.effect_key_of(id, args);
+                        return Type::evidence(vec![EvidenceEntry::Capability { key, capability }]);
                     }
                 }
                 let key = (origin, Arc::new(args.unwrap_or(&[]).to_vec()));

@@ -1,5 +1,5 @@
-//! This file has any type-checker specific code for places - ante's version of lifetimes.
-//! Places are sets of variables or values a reference may refer to.
+//! This file has any type-checker specific code for places.
+//! Places are sets of variables or values a reference may refer to like `'a` or `'(x, y)`.
 
 use std::sync::Arc;
 
@@ -209,7 +209,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Row-subtype two places rows: is `a`'s actual set of places permitted by `b`'s expected set?
     pub(super) fn place_subtype(&self, a: &Type, b: &Type, new_bindings: &mut TypeBindings) -> Result<(), ()> {
         let Some(m) = self.match_places(a, b, new_bindings) else { return Ok(()) };
-        self.row_subtype_generic(m, |_: &Type| false, new_bindings)
+        self.row_subtype_generic(m, new_bindings)
     }
 
     /// Unify two places rows: both must end up with the same set of places.

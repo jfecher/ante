@@ -1177,8 +1177,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 | Type::Place(_),
             ) => {
                 // TODO: Remove this check and combine the if branches below
-                let is_place = matches!(a, Type::Places(..) | Type::Place(_))
-                    || matches!(b, Type::Places(..) | Type::Place(_));
+                let is_place =
+                    matches!(a, Type::Places(..) | Type::Place(_)) || matches!(b, Type::Places(..) | Type::Place(_));
                 if is_place {
                     match row_mode {
                         RowMode::Coercible => self.place_subtype(a, b, new_bindings),
@@ -1241,15 +1241,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// This is expected to never fail.
     fn link_effect_ids(&self, a: &Type, b: &Type, new_bindings: &mut TypeBindings) {
         assert!(self.subtype(a, b, Variance::Invariant, RowMode::Exact, new_bindings).is_ok());
-    }
-
-    fn is_implicit_effect_placeholder(&self, typ: &Type) -> bool {
-        match typ {
-            Type::Generic(Generic::Named(Origin::Local(name_id))) => {
-                self.current_context()[*name_id].as_str() == crate::parser::get_item::IMPLICIT_EFFECT_NAME
-            },
-            _ => false,
-        }
     }
 
     /// Flatten `effects` into a list of effects, merging any entries which refer to the same effect.

@@ -84,15 +84,13 @@ impl MoveScope {
 
 /// Tracks which paths have been moved, as a stack of [MoveScope]s: one scope is pushed for each
 /// `if`/`match` branch and each loop/lambda body currently being walked, then popped once that
-/// branch/body is finished (and either merged into the parent scope, for branches, or checked
-/// against the names declared outside it, for loop/lambda bodies — see `borrows.rs`).
+/// branch/body is finished.
 ///
-/// Reassigning a path (`clear_moves`) never mutates an *enclosing* scope directly: `if`/`match`
-/// walk each of their branches against the *same* enclosing scopes (only ever pushing one fresh
-/// scope per branch), so mutating an enclosing scope while walking one branch would leak into
-/// every sibling branch walked afterward. Instead, a reassignment records a `Cleared` tombstone
-/// in the *current* (topmost) scope, which shadows (for lookups only) any move of that path, or
-/// of one of its descendants, recorded further down the stack.
+/// Reassigning a path never mutates an enclosing scope directly: `if`/`match`
+/// walk each of their branches against the same enclosing scopes, so mutating an enclosing scope
+/// while walking one branch would leak into every sibling branch walked afterward. Instead, a
+/// reassignment records a `Cleared` tombstone in the current scope, which shadows any move of
+/// that path, or of one of its descendants, recorded further down the stack.
 pub(super) struct MoveTracker {
     scopes: Vec<MoveScope>,
     /// Paths already reported as used after being moved

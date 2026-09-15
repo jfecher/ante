@@ -123,6 +123,19 @@ impl Display for Type {
             },
             Type::Function(function_type) => write!(f, "{function_type}"),
             Type::Generic(id) => write!(f, "'{}", id.0),
+            Type::Evidence(entries) => {
+                write!(f, "evidence[")?;
+                for (i, entry) in entries.iter().enumerate() {
+                    if i != 0 {
+                        write!(f, ", ")?;
+                    }
+                    match entry {
+                        mir::EvidenceEntry::Capability { key, capability } => write!(f, "{key}: {capability}")?,
+                        mir::EvidenceEntry::Rest(generic) => write!(f, "'{}", generic.0)?,
+                    }
+                }
+                write!(f, "]")
+            },
             Type::Union(variants) => {
                 write!(f, "{{")?;
                 for (i, variant) in variants.iter().enumerate() {
@@ -322,6 +335,19 @@ fn fmt_instruction(
             }
         },
         mir::Instruction::Capability => write!(f, "handler_cap")?,
+        mir::Instruction::LookupEvidence { evidence, key } => write!(f, "lookup {} {key}", v(evidence))?,
+        mir::Instruction::MakeEvidence { capabilities, rest } => {
+            write!(f, "evidence(")?;
+            let mut separator = "";
+            for (key, value) in capabilities {
+                write!(f, "{separator}{key}: {}", v(value))?;
+                separator = ", ";
+            }
+            if let Some(rest) = rest {
+                write!(f, "{separator}..{}", v(rest))?;
+            }
+            write!(f, ")")?;
+        },
         mir::Instruction::PackClosure { function, environment } => {
             write!(f, "pack-closure {}, {}", function, environment)?;
         },
@@ -438,5 +464,15 @@ impl Display for Value {
             Value::Parameter(block_id, i) => write!(f, "b{}_{}", block_id.0, i),
             Value::Definition(id) => write!(f, "{id}"),
         }
+    }
+}
+
+impl Display for mir::EffectKey {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        write!(f, "effect{}", self.effect)?;
+        for arg in &self.args {
+            write!(f, " {arg}")?;
+        }
+        Ok(())
     }
 }

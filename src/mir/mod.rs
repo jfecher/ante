@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     iterator_extensions::mapvec,
     lexer::token::{F64, FloatKind, IntegerKind},
-    parser::cst::Name,
+    parser::{cst::Name, ids::TopLevelName},
     vecmap::VecMap,
 };
 
@@ -30,6 +30,7 @@ pub(crate) mod builder;
 mod display;
 mod effects;
 mod lower_closures;
+mod lower_evidence;
 pub(crate) mod monomorphization;
 mod remove_unreachable;
 mod validation;
@@ -197,6 +198,31 @@ impl Definition {
         &self.instruction_result_types[id]
     }
 
+    /// The type of a value defined within this definition, `None` for constants and definitions
+    pub fn local_value_type(&self, value: &Value) -> Option<&Type> {
+        match value {
+            Value::InstructionResult(id) => self.instruction_result_types.get(*id),
+            Value::Parameter(block, index) => self.blocks.get(*block)?.parameter_types.get(*index as usize),
+            _ => None,
+        }
+    }
+
+    /// Invoke `f` on each type this definition's blocks and instructions carry, excluding its own [Definition::typ]
+    pub fn for_each_type_mut(&mut self, mut f: impl FnMut(&mut Type)) {
+        for block in self.blocks.values_mut() {
+            block.parameter_types.iter_mut().for_each(&mut f);
+        }
+        self.instruction_result_types.values_mut().for_each(&mut f);
+        for instruction in self.instructions.values_mut() {
+            match instruction {
+                Instruction::StackAllocUninit(typ) | Instruction::SizeOf(typ) | Instruction::ArrayLen(typ) => f(typ),
+                Instruction::GetFieldPtr { struct_type, .. } => f(struct_type),
+                Instruction::Instantiate(_, bindings) => Arc::make_mut(bindings).iter_mut().for_each(&mut f),
+                _ => (),
+            }
+        }
+    }
+
     pub fn type_of_value(
         &self, value: &Value, externals: &FxHashMap<DefinitionId, Extern>,
         definitions: &FxHashMap<DefinitionId, Definition>,
@@ -216,17 +242,10 @@ impl Definition {
             Value::Char(_) => Type::CHAR,
             Value::Integer(constant) => Type::int(constant.kind()),
             Value::Float(constant) => Type::float(constant.kind()),
-            Value::InstructionResult(instruction_id) => self.instruction_result_types[*instruction_id].clone(),
-            Value::Parameter(block_id, parameter_index) => {
-                // Return Error for out-of-bounds parameters. This can occur when closure
-                // conversion has not yet been implemented and a lambda body references a captured
-                // outer parameter that was not declared as a block parameter.
-                self.blocks
-                    .get(*block_id)
-                    .and_then(|b| b.parameter_types.get(*parameter_index as usize))
-                    .cloned()
-                    .unwrap_or(Type::ERROR)
-            },
+            Value::InstructionResult(id) => self.instruction_result_types[*id].clone(),
+            // Out-of-bounds parameters are errors: a lambda body may reference a captured outer
+            // parameter that was not declared as a block parameter before closure conversion.
+            Value::Parameter(..) => self.local_value_type(value).cloned().unwrap_or(Type::ERROR),
             Value::Definition(definition_id) => {
                 if let Some(definition) = definitions.get(definition_id) {
                     definition.typ.clone()
@@ -477,6 +496,20 @@ pub enum Instruction {
     /// fetch, and [crate::mir::tail_resume_optimization] rewrites it to `Id(cap)` where `cap` is
     /// a directly-built capability tuple. Must be removed before LLVM codegen.
     Capability,
+
+    /// The capability for `key` within `evidence`. Lowered to an [Instruction::IndexTuple] after monomorphization.
+    LookupEvidence {
+        evidence: Value,
+        key: EffectKey,
+    },
+
+    /// Evidence built from capabilities plus the wider evidence its row generics are taken from.
+    /// Lowered to an [Instruction::MakeTuple] after monomorphization.
+    MakeEvidence {
+        capabilities: Vec<(EffectKey, Value)>,
+        rest: Option<Value>,
+    },
+
     /// Returns a closure value after packing the function with the given environment.
     /// This is equivalent to a `MakeTuple` instruction but is distinguished because the
     /// compiler will optimize closure values & calls into free functions, removing the
@@ -637,6 +670,11 @@ impl Instruction {
                 }
             },
             Instruction::Capability => (),
+            Instruction::LookupEvidence { evidence, key: _ } => f(evidence),
+            Instruction::MakeEvidence { capabilities, rest } => {
+                capabilities.iter().for_each(|(_, value)| f(value));
+                rest.iter().for_each(&mut f);
+            },
             Instruction::PackClosure { function, environment } => two(function, environment),
             Instruction::IndexTuple { tuple, index: _ } => f(tuple),
             Instruction::MakeBytes(_) => (),
@@ -836,7 +874,7 @@ impl FloatConstant {
 }
 
 /// TODO: This is very similar to [crate::type_inference::types::Type] - do we really need both?
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Type {
     Primitive(PrimitiveType),
     Tuple(Arc<Vec<Type>>),
@@ -854,6 +892,30 @@ pub enum Type {
     U32(u32),
 
     Generic(Generic),
+
+    /// The evidence of an effect row: one capability per effect plus the evidence of each row
+    /// generic. Always canonical (sorted by effect, no repeats), so any two rows with the same
+    /// effects have the same evidence type once their generics are substituted. Lowered to a
+    /// tuple of capabilities after monomorphization by [lower_evidence].
+    Evidence(Arc<Vec<EvidenceEntry>>),
+}
+
+/// The identity of an effect within evidence: its definition applied to its type arguments
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct EffectKey {
+    pub effect: TopLevelName,
+    pub args: Vec<Type>,
+}
+
+/// One slot of an effect row's evidence, see [Type::Evidence]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum EvidenceEntry {
+    Capability {
+        key: EffectKey,
+        capability: Type,
+    },
+    /// The evidence of a row generic, spliced in once the generic is substituted
+    Rest(Generic),
 }
 
 impl Type {
@@ -894,6 +956,54 @@ impl Type {
 
     pub fn tuple(fields: Vec<Type>) -> Type {
         Type::Tuple(Arc::new(fields))
+    }
+
+    /// Canonical evidence: entries sorted by effect with repeats removed.
+    /// Equal keys always carry equal capability types, so plain equality dedups.
+    pub fn evidence(mut entries: Vec<EvidenceEntry>) -> Type {
+        entries.sort();
+        entries.dedup();
+        Type::Evidence(Arc::new(entries))
+    }
+
+    /// Rebuilds evidence entries with `substitute` applied to each, splicing the evidence a
+    /// [EvidenceEntry::Rest] generic maps to. `None` when `substitute` changed nothing.
+    pub(crate) fn substitute_evidence(
+        entries: &[EvidenceEntry], substitute: impl Fn(&Type) -> Option<Type>,
+    ) -> Option<Type> {
+        let mut changed = false;
+        let mut substitute = |typ: &Type| {
+            let result = substitute(typ);
+            changed |= result.is_some();
+            result.unwrap_or_else(|| typ.clone())
+        };
+        let mut out = Vec::with_capacity(entries.len());
+        for entry in entries {
+            match entry {
+                EvidenceEntry::Capability { key, capability } => {
+                    let args = mapvec(&key.args, &mut substitute);
+                    let capability = substitute(capability);
+                    let key = EffectKey { effect: key.effect, args };
+                    out.push(EvidenceEntry::Capability { key, capability });
+                },
+                EvidenceEntry::Rest(generic) => match substitute(&Type::Generic(*generic)) {
+                    Type::Evidence(inner) => out.extend(inner.iter().cloned()),
+                    Type::Generic(generic) => out.push(EvidenceEntry::Rest(generic)),
+                    // A residual row variable converts to `()`, see `convert_type`
+                    Type::Tuple(fields) if fields.is_empty() => (),
+                    other => panic!("a row generic was bound to the non-evidence type `{other}`"),
+                },
+            }
+        }
+        changed.then(|| Type::evidence(out))
+    }
+
+    /// The capabilities of fully substituted evidence, in canonical order
+    pub(crate) fn evidence_capabilities(entries: &[EvidenceEntry]) -> impl Iterator<Item = (&EffectKey, &Type)> {
+        entries.iter().map(|entry| match entry {
+            EvidenceEntry::Capability { key, capability } => (key, capability),
+            EvidenceEntry::Rest(generic) => panic!("evidence still holds the row generic {generic:?}"),
+        })
     }
 
     pub fn union(variants: Vec<Type>) -> Type {
@@ -952,6 +1062,8 @@ impl Type {
                 length: Arc::new(length.substitute(generic_args)),
                 element: Arc::new(element.substitute(generic_args)),
             },
+            Type::Evidence(entries) => Type::substitute_evidence(entries, |typ| Some(typ.substitute(generic_args)))
+                .unwrap_or_else(|| self.clone()),
         }
     }
 
@@ -995,6 +1107,7 @@ impl Type {
             },
             Type::U32(_) => 0,
             Type::Generic(_) => panic!("size_in_bytes called on Type::Generic"),
+            Type::Evidence(_) => panic!("size_in_bytes called on Type::Evidence"),
         }
     }
 
@@ -1009,6 +1122,7 @@ impl Type {
             Type::Array { length: _, element } => element.align_in_bytes(ptr_size),
             Type::U32(_) => 1,
             Type::Generic(_) => panic!("align_in_bytes called on Type::Generic"),
+            Type::Evidence(_) => panic!("align_in_bytes called on Type::Evidence"),
         }
     }
 
@@ -1049,7 +1163,7 @@ impl Type {
 }
 
 /// Generics are represented as their index into their function's generic_count
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Generic(u32);
 
 /// Each nth item in the bindings Vec corresponds to the nth generic of a definition.
@@ -1090,7 +1204,7 @@ impl PrimitiveType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct FunctionType {
     pub parameters: Vec<Type>,
 

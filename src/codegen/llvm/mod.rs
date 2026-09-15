@@ -433,6 +433,7 @@ impl<'ctx> ModuleContext<'ctx> {
             },
             mir::Type::U32(_) => self.llvm.struct_type(&[], false).into(),
             mir::Type::Generic(_) => self.llvm.ptr_type(AddressSpace::default()).into(),
+            mir::Type::Evidence(_) => unreachable!("evidence is lowered before codegen"),
         }
     }
 
@@ -557,6 +558,9 @@ impl<'ctx> ModuleContext<'ctx> {
             },
             mir::Instruction::Capability => {
                 unreachable!("Instruction::Capability remaining in LLVM codegen")
+            },
+            mir::Instruction::LookupEvidence { .. } | mir::Instruction::MakeEvidence { .. } => {
+                unreachable!("evidence instruction remaining in LLVM codegen")
             },
             mir::Instruction::CallClosure { .. } => {
                 unreachable!("Instruction::CallClosure remaining in LLVM codegen")

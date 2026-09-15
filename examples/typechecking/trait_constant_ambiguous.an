@@ -9,9 +9,9 @@ show (_x: t) {Named t}: I32 = Named.name
 // args: --check --no-color
 // expected exit status: 1
 // expected stderr:
-// examples/typechecking/trait_constant_ambiguous.an:8:31
-//    | // error: Multiple matching implicits found for type Named _ required by name: _, named_bool
-//  8 | show (_x: t) {Named t}: I32 = Named.name
-//    |                               ^^^^^^^^^^
+// examples/typechecking/trait_constant_ambiguous.an:7:31
+//   | // error: Multiple matching implicits found for type Named _ required by name: _, named_bool
+// 7 | show (_x: t) {Named t}: I32 = Named.name
+//   |                               ^^^^^^^^^^
 // 
 // Found 1 error and 0 warnings

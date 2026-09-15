@@ -22,97 +22,97 @@ use _y = ()
 
 // args: -emir --no-color
 // expected stdout:
-// extern , d4: fn I32 I32 (#empty_tuple) -> (I32, I32)
-// extern use d2: fn (I32, I32) (#empty_tuple) -> Unit
+// extern , d4: fn I32 I32 (evidence[]) -> (I32, I32)
+// extern use d2: fn (I32, I32) (evidence[]) -> Unit
 // 
-// fn main d0: fn Unit (#empty_tuple) -> Unit
-//   b0(b0_0: Unit, b0_1: #empty_tuple):
+// fn main d0: fn Unit (evidence[]) -> Unit
+//   b0(b0_0: Unit, b0_1: evidence[]):
 //     v0: I32, = (1_i32)
-//     v1: fn I32 (#empty_tuple) [I32,] -> Unit = pack-closure d3, v0
+//     v1: fn I32 (evidence[]) [I32,] -> Unit = pack-closure d3, v0
 //     v2: I32, I32 = (1_i32, 2_i32)
-//     v3: fn I32 (#empty_tuple) [I32, I32] -> Unit = pack-closure d5, v2
-//     v4: (fn I32 (#empty_tuple) [I32, I32] -> Unit), = (v3)
-//     v5: fn I32 (#empty_tuple) [(fn I32 (#empty_tuple) [I32, I32] -> Unit),] -> Unit = pack-closure d6, v4
+//     v3: fn I32 (evidence[]) [I32, I32] -> Unit = pack-closure d5, v2
+//     v4: (fn I32 (evidence[]) [I32, I32] -> Unit), = (v3)
+//     v5: fn I32 (evidence[]) [(fn I32 (evidence[]) [I32, I32] -> Unit),] -> Unit = pack-closure d6, v4
 //     v6: I32, = (1_i32)
-//     v7: fn I32 (#empty_tuple) [I32,] -> Unit = pack-closure d7, v6
-//     v8: #empty_tuple = ()
+//     v7: fn I32 (evidence[]) [I32,] -> Unit = pack-closure d7, v6
+//     v8: evidence[] = evidence()
 //     v9: Unit = free_function_d1 0_i32 v8
-//     v10: #empty_tuple = ()
+//     v10: evidence[] = evidence()
 //     v11: Unit = closure-call v1 0_i32 v10
-//     v12: #empty_tuple = ()
+//     v12: evidence[] = evidence()
 //     v13: Unit = closure-call v3 0_i32 v12
-//     v14: #empty_tuple = ()
+//     v14: evidence[] = evidence()
 //     v15: Unit = closure-call v5 0_i32 v14
-//     v16: #empty_tuple = ()
+//     v16: evidence[] = evidence()
 //     v17: Unit = closure-call v7 0_i32 v16
 //     return ()
 // 
-// fn captures_nested d7: fn I32 (#empty_tuple) [I32,] -> Unit
-//   b0(b0_0: I32, b0_1: #empty_tuple, b0_2: I32,):
+// fn captures_nested d7: fn I32 (evidence[]) [I32,] -> Unit
+//   b0(b0_0: I32, b0_1: evidence[], b0_2: I32,):
 //     v0: I32 = b0_2.0
-//     v1: fn I32 (#empty_tuple) [I32,] -> Unit = pack-closure d7, b0_2
+//     v1: fn I32 (evidence[]) [I32,] -> Unit = pack-closure d7, b0_2
 //     v2: I32, = (v0)
-//     v3: fn Unit (#empty_tuple) [I32,] -> I32 = pack-closure d8, v2
-//     v4: fn (I32, I32) (#empty_tuple) -> Unit = instantiate d2 I32, I32
-//     v5: fn I32 I32 (#empty_tuple) -> (I32, I32) = instantiate d4 I32 I32
-//     v6: #empty_tuple = ()
+//     v3: fn Unit (evidence[]) [I32,] -> I32 = pack-closure d8, v2
+//     v4: fn (I32, I32) (evidence[]) -> Unit = instantiate d2 I32, I32
+//     v5: fn I32 I32 (evidence[]) -> (I32, I32) = instantiate d4 I32 I32
+//     v6: evidence[] = evidence()
 //     v7: I32 = closure-call v3 () v6
-//     v8: #empty_tuple = ()
+//     v8: evidence[] = evidence()
 //     v9: I32, I32 = v5 b0_0 v7 v8
-//     v10: #empty_tuple = ()
+//     v10: evidence[] = evidence()
 //     v11: Unit = v4 v9 v10
 //     return v11
 // 
-// fn captures2 d5: fn I32 (#empty_tuple) [I32, I32] -> Unit
-//   b0(b0_0: I32, b0_1: #empty_tuple, b0_2: I32, I32):
+// fn captures2 d5: fn I32 (evidence[]) [I32, I32] -> Unit
+//   b0(b0_0: I32, b0_1: evidence[], b0_2: I32, I32):
 //     v0: I32 = b0_2.0
 //     v1: I32 = b0_2.1
-//     v2: fn I32 (#empty_tuple) [I32, I32] -> Unit = pack-closure d5, b0_2
-//     v3: fn (I32, (I32, I32)) (#empty_tuple) -> Unit = instantiate d2 I32, (I32, I32)
-//     v4: fn I32 (I32, I32) (#empty_tuple) -> (I32, (I32, I32)) = instantiate d4 I32 I32, I32
-//     v5: fn I32 I32 (#empty_tuple) -> (I32, I32) = instantiate d4 I32 I32
-//     v6: #empty_tuple = ()
+//     v2: fn I32 (evidence[]) [I32, I32] -> Unit = pack-closure d5, b0_2
+//     v3: fn (I32, (I32, I32)) (evidence[]) -> Unit = instantiate d2 I32, (I32, I32)
+//     v4: fn I32 (I32, I32) (evidence[]) -> (I32, (I32, I32)) = instantiate d4 I32 I32, I32
+//     v5: fn I32 I32 (evidence[]) -> (I32, I32) = instantiate d4 I32 I32
+//     v6: evidence[] = evidence()
 //     v7: I32, I32 = v5 v0 v1 v6
-//     v8: #empty_tuple = ()
+//     v8: evidence[] = evidence()
 //     v9: I32, (I32, I32) = v4 b0_0 v7 v8
-//     v10: #empty_tuple = ()
+//     v10: evidence[] = evidence()
 //     v11: Unit = v3 v9 v10
 //     return v11
 // 
-// fn captures1 d3: fn I32 (#empty_tuple) [I32,] -> Unit
-//   b0(b0_0: I32, b0_1: #empty_tuple, b0_2: I32,):
+// fn captures1 d3: fn I32 (evidence[]) [I32,] -> Unit
+//   b0(b0_0: I32, b0_1: evidence[], b0_2: I32,):
 //     v0: I32 = b0_2.0
-//     v1: fn I32 (#empty_tuple) [I32,] -> Unit = pack-closure d3, b0_2
-//     v2: fn (I32, I32) (#empty_tuple) -> Unit = instantiate d2 I32, I32
-//     v3: fn I32 I32 (#empty_tuple) -> (I32, I32) = instantiate d4 I32 I32
-//     v4: #empty_tuple = ()
+//     v1: fn I32 (evidence[]) [I32,] -> Unit = pack-closure d3, b0_2
+//     v2: fn (I32, I32) (evidence[]) -> Unit = instantiate d2 I32, I32
+//     v3: fn I32 I32 (evidence[]) -> (I32, I32) = instantiate d4 I32 I32
+//     v4: evidence[] = evidence()
 //     v5: I32, I32 = v3 b0_0 v0 v4
-//     v6: #empty_tuple = ()
+//     v6: evidence[] = evidence()
 //     v7: Unit = v2 v5 v6
 //     return v7
 // 
-// fn free_function d1: fn I32 (#empty_tuple) -> Unit
-//   b0(b0_0: I32, b0_1: #empty_tuple):
-//     v0: fn I32 (#empty_tuple) -> Unit = instantiate d2 I32
-//     v1: #empty_tuple = ()
+// fn free_function d1: fn I32 (evidence[]) -> Unit
+//   b0(b0_0: I32, b0_1: evidence[]):
+//     v0: fn I32 (evidence[]) -> Unit = instantiate d2 I32
+//     v1: evidence[] = evidence()
 //     v2: Unit = v0 b0_0 v1
 //     return v2
 // 
-// fn captures_closure d6: fn I32 (#empty_tuple) [(fn I32 (#empty_tuple) [I32, I32] -> Unit),] -> Unit
-//   b0(b0_0: I32, b0_1: #empty_tuple, b0_2: (fn I32 (#empty_tuple) [I32, I32] -> Unit),):
-//     v0: fn I32 (#empty_tuple) [I32, I32] -> Unit = b0_2.0
-//     v1: fn I32 (#empty_tuple) [(fn I32 (#empty_tuple) [I32, I32] -> Unit),] -> Unit = pack-closure d6, b0_2
-//     v2: #empty_tuple = ()
+// fn captures_closure d6: fn I32 (evidence[]) [(fn I32 (evidence[]) [I32, I32] -> Unit),] -> Unit
+//   b0(b0_0: I32, b0_1: evidence[], b0_2: (fn I32 (evidence[]) [I32, I32] -> Unit),):
+//     v0: fn I32 (evidence[]) [I32, I32] -> Unit = b0_2.0
+//     v1: fn I32 (evidence[]) [(fn I32 (evidence[]) [I32, I32] -> Unit),] -> Unit = pack-closure d6, b0_2
+//     v2: evidence[] = evidence()
 //     v3: Unit = closure-call v0 b0_0 v2
 //     return v3
 // 
-// fn nested d8: fn Unit (#empty_tuple) [I32,] -> I32
-//   b0(b0_0: Unit, b0_1: #empty_tuple, b0_2: I32,):
+// fn nested d8: fn Unit (evidence[]) [I32,] -> I32
+//   b0(b0_0: Unit, b0_1: evidence[], b0_2: I32,):
 //     v0: I32 = b0_2.0
-//     v1: fn Unit (#empty_tuple) [I32,] -> I32 = pack-closure d8, b0_2
+//     v1: fn Unit (evidence[]) [I32,] -> I32 = pack-closure d8, b0_2
 //     return v0
 // 
-// fn use d2: forall '0. fn '0 (#empty_tuple) -> Unit
-//   b0(b0_0: '0, b0_1: #empty_tuple):
+// fn use d2: forall '0. fn '0 (evidence[]) -> Unit
+//   b0(b0_0: '0, b0_1: evidence[]):
 //     return ()
 

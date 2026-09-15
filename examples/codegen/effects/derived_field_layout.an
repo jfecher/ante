@@ -1,0 +1,42 @@
+effect Log =
+    log: fn Unit -> Unit
+
+effect Fail =
+    fail: fn Unit -> Unit
+
+type Holder (e: effect) = f: fn Unit -> Unit can Fail, e
+
+both () : Unit can Fail, Log =
+    fail ()
+    log ()
+
+// `Holder Log` lays the field out as `(Fail, (Log, ()))`, `both` as `(Log, (Fail, ()))`
+make (): Holder Log = Holder both
+
+call_field (h: Holder Log): Unit can Fail, Log = h.f ()
+
+call_match (h: Holder Log): Unit can Fail, Log =
+    match h
+    | Holder f -> f ()
+
+main () =
+    handler h1 for fail () ->
+        println "fail"
+        resume ()
+    handler h2 for log () ->
+        println "log"
+        resume ()
+    in
+        call_field (make ())
+        call_match (make ())
+        (make ()).f ()
+
+// args: --delete-binary
+// expected stdout:
+// fail
+// log
+// fail
+// log
+// fail
+// log
+

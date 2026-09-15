@@ -16,7 +16,7 @@ use crate::{
 };
 
 /// Unspellable name for the synthetic generic used to default a bare parameter's missing effects.
-pub(crate) const IMPLICIT_EFFECT_NAME: &str = "$effect";
+const IMPLICIT_EFFECT_NAME: &str = "$effect";
 
 pub fn get_item_impl(context: &GetItem, db: &DbHandle) -> (Arc<TopLevelItem>, Arc<DesugarContext>) {
     incremental::enter_query();
@@ -210,7 +210,7 @@ fn default_effects(expr: ExprId, context: &mut DesugarContext) {
     // A fully unannotated function (no return type, no explicit clause) is left as `None`
     // so its own row stays a genuinely open, flexible variable that inference extends
     // naturally as calls to the bare parameter (and anything else) are checked -- pinning
-    // it to `$effect` here would wrongly close the row (see `is_implicit_effect_placeholder`).
+    // it to `$effect` here would wrongly close the row.
     if existing_row_variable.is_none() && (lambda.effects.is_some() || lambda.return_type.is_some()) {
         let effect_entry = Type::new(TypeKind::Variable(e), location);
         match &mut lambda.effects {

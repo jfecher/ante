@@ -590,6 +590,7 @@ impl Builder {
                 unreachable!("Function and Array types are handled by write_declarator")
             },
             mir::Type::Generic(_) => unreachable!("Generic found in C codegen"),
+            mir::Type::Evidence(_) => unreachable!("evidence is lowered before codegen"),
         };
         self.write(s);
     }
@@ -1133,6 +1134,9 @@ impl Builder {
             mir::Instruction::Perform { .. } => unreachable!("Instruction::Perform remaining in C codegen"),
             mir::Instruction::Handle { .. } => unreachable!("Instruction::Handle remaining in C codegen"),
             mir::Instruction::Capability => unreachable!("Instruction::Capability remaining in C codegen"),
+            mir::Instruction::LookupEvidence { .. } | mir::Instruction::MakeEvidence { .. } => {
+                unreachable!("evidence instruction remaining in C codegen")
+            },
             mir::Instruction::PackClosure { .. } => unreachable!("Instruction::PackClosure remaining in C codegen"),
             mir::Instruction::Instantiate(..) => unreachable!("Instruction::Instantiate remaining in C codegen"),
             mir::Instruction::SizeOf(_) => todo!("SizeOf should be removed by monomorphization"),

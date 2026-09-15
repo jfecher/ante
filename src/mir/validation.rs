@@ -422,6 +422,9 @@ impl Definition {
                     instr_assert_subtype!(*result_type, Type::POINTER, self, id, mir, "GetFieldPtr result must be a pointer");
                 },
                 Instruction::Extern(_) => (),
+                Instruction::LookupEvidence { .. } | Instruction::MakeEvidence { .. } => {
+                    instr_panic!(self, id, mir, "evidence instruction should have been lowered before validation");
+                },
                 Instruction::Capability => {
                     instr_assert!(
                         matches!(result_type, Type::Tuple(_)) || *result_type == Type::ERROR,
@@ -590,7 +593,7 @@ impl Type {
     fn contains_union_or_generic(&self) -> bool {
         match self {
             Type::Primitive(_) | Type::U32(_) => false,
-            Type::Union(_) | Type::Generic(_) => true,
+            Type::Union(_) | Type::Generic(_) | Type::Evidence(_) => true,
             Type::Tuple(fields) => fields.iter().any(Type::contains_union_or_generic),
             Type::Array { length, element } => {
                 length.contains_union_or_generic() || element.contains_union_or_generic()

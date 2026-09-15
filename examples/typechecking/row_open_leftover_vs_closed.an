@@ -1,0 +1,39 @@
+effect Log =
+    log: fn Unit -> Unit
+
+effect Fail =
+    fail: fn Unit -> Unit
+
+mk (f: fn Unit -> Unit can Fail, e): Maybe (fn Unit -> Unit can Fail, e) = Some f
+
+use_it (_m: Maybe (fn Unit -> Unit can Log)): Unit = ()
+
+// An open row that still has an unmatched effect cannot unify with a closed row lacking it
+foo c = use_it (mk c)
+
+bar (_m: Maybe (fn Unit -> Unit can Fail, e)): Unit = ()
+
+baz (m: Maybe (fn Unit -> Unit can Log)): Unit = bar m
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/row_open_leftover_vs_closed.an:12:17
+// 11 | // An open row that still has an unmatched effect cannot unify with a closed row lacking it
+//    | // error: Argument 1 has type Maybe (fn Unit -> Unit can Fail, _) but Maybe (fn Unit -> Unit can Log) was expected
+// 12 | foo c = use_it (mk c)
+//    |                 ^^^^
+// 
+// examples/typechecking/row_open_leftover_vs_closed.an:12:17
+// 11 | // An open row that still has an unmatched effect cannot unify with a closed row lacking it
+//    | // error: This function call returns Maybe (fn Unit -> Unit can Fail, _) but Maybe (fn Unit -> Unit can Log) was expected
+// 12 | foo c = use_it (mk c)
+//    |                 ^^^^
+// 
+// examples/typechecking/row_open_leftover_vs_closed.an:16:54
+//    | // error: Argument 1 has type Maybe (fn Unit -> Unit can Log) but Maybe (fn Unit -> Unit can Fail, _) was expected
+// 16 | baz (m: Maybe (fn Unit -> Unit can Log)): Unit = bar m
+//    |                                                      ^
+// 
+// Found 3 errors and 0 warnings
+

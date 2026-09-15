@@ -2,8 +2,10 @@
 //! Both effects and places are row polymorphic, although they also use subtyping as well.
 use std::sync::Arc;
 
-use crate::type_inference::{types::{Effect, Type, TypeBindings}, TypeChecker, Variance};
-
+use crate::type_inference::{
+    TypeChecker, Variance,
+    types::{Effect, Type, TypeBindings},
+};
 
 pub type Row<T> = Option<Arc<Vec<T>>>;
 
@@ -93,7 +95,9 @@ impl RowEntry for Effect {
 }
 
 /// Flatten every entry reachable from `entries` into `found`
-pub(super) fn flatten_row_into<T: RowEntry>(entries: &[T], found: &mut Vec<T>, bindings: &TypeBindings, more_bindings: &TypeBindings) {
+pub(super) fn flatten_row_into<T: RowEntry>(
+    entries: &[T], found: &mut Vec<T>, bindings: &TypeBindings, more_bindings: &TypeBindings,
+) {
     for entry in entries {
         let followed = entry.inner_type().follow_two(bindings, more_bindings);
         match T::as_row(&followed) {
@@ -186,7 +190,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Partition `a_list`/`b_list` into open vs. concrete entries, then pair up
     /// concrete entries between the two sides using `try_match`. Entries must already
     /// be flattened, zonked, and deduplicated.
-    pub(super) fn match_row_entries<T: RowEntry>(a_list: Vec<T>, b_list: Vec<T>, mut try_match: impl FnMut(&T, &T) -> bool) -> RowMatch<T> {
+    pub(super) fn match_row_entries<T: RowEntry>(
+        a_list: Vec<T>, b_list: Vec<T>, mut try_match: impl FnMut(&T, &T) -> bool,
+    ) -> RowMatch<T> {
         let (a_open, a_concrete): (Vec<T>, Vec<T>) = a_list.into_iter().partition(RowEntry::is_open);
         let (b_open, b_concrete): (Vec<T>, Vec<T>) = b_list.into_iter().partition(RowEntry::is_open);
 
@@ -201,13 +207,16 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             }
         }
 
-        let b_leftover = b_concrete.into_iter().zip(b_matched).filter_map(|(item, matched)| (!matched).then_some(item)).collect();
+        let b_leftover =
+            b_concrete.into_iter().zip(b_matched).filter_map(|(item, matched)| (!matched).then_some(item)).collect();
         RowMatch { a_open, b_open, a_leftover, b_leftover }
     }
 
     /// Flattens two effect rows and matches `a`'s concrete effects against `b`'s.
     /// Returns `None` if either row contains an error type
-    fn match_rows(&self, a: &Type, b: &Type, variance: Variance, new_bindings: &mut TypeBindings) -> Option<RowMatch<Effect>> {
+    fn match_rows(
+        &self, a: &Type, b: &Type, variance: Variance, new_bindings: &mut TypeBindings,
+    ) -> Option<RowMatch<Effect>> {
         let a_list = self.collect_and_merge_effects(a, new_bindings);
         let b_list = self.collect_and_merge_effects(b, new_bindings);
 
@@ -222,9 +231,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     }
 
     /// Row-subtype two rows of `T`: is `a`'s actual set of entries permitted by `b`'s expected set?
-    /// `skip_leftover` lets a caller ignore certain unmatched `a` entries when `b`'s row is closed
     pub(super) fn row_subtype_generic<T: RowEntry>(
-        &self, m: RowMatch<T>, skip_leftover: impl Fn(&T) -> bool, new_bindings: &mut TypeBindings,
+        &self, m: RowMatch<T>, new_bindings: &mut TypeBindings,
     ) -> Result<(), ()> {
         let RowMatch { a_open, b_open, mut a_leftover, mut b_leftover } = m;
 
@@ -238,7 +246,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 self.subtype(open.inner_type(), &binding, Variance::Invariant, RowMode::Exact, new_bindings)?;
                 Some(fresh)
             },
-            (None, false) if a_leftover.iter().all(&skip_leftover) => None,
             (None, false) => return Err(()),
         };
 
@@ -258,16 +265,18 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Row-subtype two effect rows: is `a`'s actual set of effects permitted by `b`'s expected set?
     pub(super) fn row_subtype(&self, a: &Type, b: &Type, new_bindings: &mut TypeBindings) -> Result<(), ()> {
         let Some(m) = self.match_rows(a, b, Variance::Contravariant, new_bindings) else { return Ok(()) };
-        // TODO: Hack: review & potentionally remove `is_implicit_effect_placeholder`
-        self.row_subtype_generic(m, |effect: &Effect| self.is_implicit_effect_placeholder(&effect.typ), new_bindings)
+        self.row_subtype_generic(m, new_bindings)
     }
 
     /// Unify two rows of `T`: both must end up with the same set of entries.
-    pub(super) fn row_unify_generic<T: RowEntry>(&self, m: RowMatch<T>, new_bindings: &mut TypeBindings) -> Result<(), ()> {
+    pub(super) fn row_unify_generic<T: RowEntry>(
+        &self, m: RowMatch<T>, new_bindings: &mut TypeBindings,
+    ) -> Result<(), ()> {
         let RowMatch { a_open, b_open, mut a_leftover, mut b_leftover } = m;
 
-        let both_closed =
-            |a_leftover: &[T], b_leftover: &[T]| (a_leftover.is_empty() && b_leftover.is_empty()).then_some(()).ok_or(());
+        let both_closed = |a_leftover: &[T], b_leftover: &[T]| {
+            (a_leftover.is_empty() && b_leftover.is_empty()).then_some(()).ok_or(())
+        };
         match (a_open.first(), b_open.first()) {
             (None, None) => both_closed(&a_leftover, &b_leftover),
             (Some(a_end), None) if a_leftover.is_empty() => self.bind_row_end(a_end, &b_leftover, new_bindings),
@@ -301,6 +310,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     /// True if both entries are exactly equal after following type variables
     fn identical_entries<T: RowEntry>(&self, a: &T, b: &T, new_bindings: &TypeBindings) -> bool {
-        a.inner_type().follow_two(&self.bindings, new_bindings) == b.inner_type().follow_two(&self.bindings, new_bindings)
+        a.inner_type().follow_two(&self.bindings, new_bindings)
+            == b.inner_type().follow_two(&self.bindings, new_bindings)
     }
 }

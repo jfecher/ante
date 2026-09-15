@@ -1,0 +1,24 @@
+import Std.Stream.Emit, emit
+
+h (k: fn Unit -> Unit is pure): Unit = k ()
+
+// `f` has an implicit `can $effect`, so passing it to `h` must be rejected
+g (f: fn Unit => Unit): Unit =
+    h f
+
+main () =
+    handler _ for emit _x -> resume ()
+    g do emit 3
+    ()
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/implicit_effect_closed_row.an:7:7
+// 6 | g (f: fn Unit => Unit): Unit =
+//   |     // error: Argument 1 has type fn Unit => Unit can $effect but fn Unit -> Unit is pure was expected
+// 7 |     h f
+//   |       ^
+// 
+// Found 1 error and 0 warnings
+

@@ -13,8 +13,8 @@ use crate::{
     iterator_extensions::mapvec,
     lexer::token::{FloatKind, Integer, IntegerKind},
     mir::{
-        Block, BlockId, Definition, DefinitionId, FloatConstant, FunctionType, Generic, Instruction, IntConstant, Mir,
-        PrimitiveType, TerminatorInstruction, Type, Value, next_definition_id,
+        Block, BlockId, Definition, DefinitionId, FloatConstant, FunctionType, Generic,
+        Instruction, IntConstant, Mir, PrimitiveType, TerminatorInstruction, Type, Value, next_definition_id,
     },
     name_resolution::Origin,
     parser::{
@@ -123,7 +123,7 @@ struct SavedScope {
     mutable_locals: rustc_hash::FxHashSet<NameId>,
     effects: Vec<(Effect, Value)>,
     handle_capabilities: FxHashMap<ExprId, (Effect, Value)>,
-    capability_bundle: Option<(TCType, Value)>,
+    own_evidence: Option<Value>,
 }
 
 /// The per-[TopLevelId] context. Intended for each top-level item convert to MIR in parallel.
@@ -167,8 +167,8 @@ struct Context<'local, Db> {
     /// from the handled body's row.
     handle_capabilities: FxHashMap<ExprId, (Effect, Value)>,
 
-    /// This function's own trailing capability bundle for its row's open end, if any.
-    capability_bundle: Option<(TCType, Value)>,
+    /// The evidence value holding this function's own row generics
+    own_evidence: Option<Value>,
 }
 
 impl<'local, Db> Context<'local, Db> {
@@ -193,7 +193,7 @@ impl<'local, Db> Context<'local, Db> {
             effect_op_indices: Default::default(),
             effects: Default::default(),
             handle_capabilities: Default::default(),
-            capability_bundle: None,
+            own_evidence: None,
         }
     }
 
@@ -323,8 +323,8 @@ where
             Some(expected) => {
                 let target = self.convert_type(&expected, None);
                 match &target {
-                    Type::Function(_) => self.coerce_function_value(value, expr, &expected, target),
-                    Type::Tuple(_) => self.coerce_dictionary_value(value, expr, &expected, target),
+                    Type::Function(_) => self.coerce_function_value(value, expr, target),
+                    Type::Tuple(_) => self.coerce_dictionary_value(value, expr, target),
                     _ => value,
                 }
             },
@@ -486,7 +486,9 @@ where
                 }),
                 Some(Origin::TypeResolution) => unreachable!("Unresolved TypeResolution origin found"),
                 Some(Origin::EffectOperation { .. }) => unreachable!("Effect operations are handled above"),
-                Some(Origin::TraitMember(_)) => unreachable!("Trait members are rewritten to member accesses by type inference"),
+                Some(Origin::TraitMember(_)) => {
+                    unreachable!("Trait members are rewritten to member accesses by type inference")
+                },
                 // This is possible if there were errors during name resolution
                 None => Value::Error,
             };
@@ -629,7 +631,7 @@ where
         value
     }
 
-    /// A first-class effect operation: projects the operation out of the capability at the head of its own evidence.
+    /// A first-class effect operation: projects the operation out of the capability within its own evidence.
     fn effect_op_value_wrapper(&mut self, path_id: PathId, op_index: u32) -> Value {
         let uniform_type = self.convert_path_type(path_id);
         let Type::Function(uniform_ft) = &uniform_type else { return Value::Error };
@@ -641,12 +643,8 @@ where
         let name = Arc::new("effect_op".to_string());
         let id = self.new_isolated_definition(name.clone(), generics_count, uniform_type.clone(), |this| {
             let params = this.push_capability_parameters(&parameters);
-            let evidence = params[surface_count];
-            let Type::Tuple(fields) = &parameters[surface_count] else {
-                unreachable!("effect operation's evidence must contain its capability")
-            };
-            let index = Instruction::IndexTuple { tuple: evidence, index: 0 };
-            let capability = this.push_instruction(index, fields[0].clone());
+            let effect = this.effect_of_operation(&this.types.result.maps.path_types[&path_id]);
+            let capability = this.lookup_capability(params[surface_count], &effect);
             let method = this.index_capability_method(capability, op_index);
             let arguments = params[..surface_count].to_vec();
             let instruction = Instruction::CallClosure { closure: method, arguments };
@@ -654,6 +652,20 @@ where
             this.terminate_block(TerminatorInstruction::Return(result));
         });
         self.make_definition_value(id, name, uniform_type)
+    }
+
+    /// The effect an operation of type `typ` performs, from the head of its own row.
+    /// Its id is what says which capability in scope the operation dispatches through.
+    fn effect_of_operation(&self, typ: &TCType) -> Effect {
+        let Some(row) = self.function_row(typ) else { panic!("effect operation is not a function") };
+        row.entries.into_iter().next().unwrap_or_else(|| panic!("effect operation has an empty row"))
+    }
+
+    /// Looks the capability for `effect` up within the evidence value `evidence`
+    fn lookup_capability(&mut self, evidence: Value, effect: &Effect) -> Value {
+        let key = self.convert_context().effect_key(effect);
+        let typ = self.effect_capability_tuple_type_of(effect);
+        self.push_instruction(Instruction::LookupEvidence { evidence, key }, typ)
     }
 
     /// Wraps a C-shaped extern function value into the uniform evidence convention.
@@ -699,8 +711,11 @@ where
         }
     }
 
-    /// The callee's type as type inference solved it at this call site.
+    /// The callee's type as type inference solved it at this call site, after any coercion of the callee value.
     fn callee_tc_type(&self, callee_expr: ExprId) -> &TCType {
+        if let Some(expected) = self.types.result.context.get_function_coercion(callee_expr) {
+            return expected;
+        }
         match &self.context()[callee_expr] {
             cst::Expr::Variable(path_id) => &self.types.result.maps.path_types[path_id],
             _ => &self.types.result.maps.expr_types[&callee_expr],
@@ -718,7 +733,7 @@ where
     /// Wraps a function value type inference coerced to a wider row in a closure of the coerced type.
     /// For example, a pure function `f` may be used in a context where `can Fail` was expected.
     /// This will create a wrapper which ignores the additional capability: `fn fail -> f ()`
-    fn coerce_function_value(&mut self, value: Value, expr: ExprId, expected: &TCType, target: Type) -> Value {
+    fn coerce_function_value(&mut self, value: Value, expr: ExprId, target: Type) -> Value {
         let value_type = self.type_of_value(&value);
         let Type::Function(expected_ft) = &target else { return value };
         assert_eq!(
@@ -726,16 +741,16 @@ where
             "coerced function's environment does not match the value being coerced"
         );
         let actual = &self.types.result.maps.expr_types[&expr];
-        let Some((value_row, expected_row)) = self.function_rows(actual, expected) else { return value };
+        let Some(value_row) = self.function_row(actual) else { return value };
 
         // The value is the adapter's environment, so the callee is the environment parameter itself
-        self.evidence_adapter("evidence_adapter", target, value_type, &value_row, &expected_row, value, |_, env, _| env)
+        self.evidence_adapter("evidence_adapter", target, value_type, &value_row, value, |_, env, _| env)
     }
 
     /// Rebuilds a trait dictionary whose effect args type inference widened, wrapping each method
     /// whose row changed in a closure taking the wider evidence. For example, a `Stream s a e`
     /// dictionary may be passed where `Stream s a (Fail, e)` is expected.
-    fn coerce_dictionary_value(&mut self, value: Value, expr: ExprId, expected: &TCType, target: Type) -> Value {
+    fn coerce_dictionary_value(&mut self, value: Value, expr: ExprId, target: Type) -> Value {
         let value_type = self.type_of_value(&value);
         if target == value_type {
             return value;
@@ -745,9 +760,7 @@ where
         };
         assert_eq!(expected_fields.len(), value_fields.len(), "dictionary coercion changes the method count");
 
-        let convert = self.convert_context();
-        let actual_methods = convert.trait_method_types(&self.types.result.maps.expr_types[&expr]);
-        let expected_methods = convert.trait_method_types(expected);
+        let actual_methods = self.convert_context().trait_method_types(&self.types.result.maps.expr_types[&expr]);
 
         let fields = mapvec(expected_fields.iter().zip(value_fields.iter()).enumerate(), |(i, (expected, actual))| {
             let field =
@@ -755,7 +768,7 @@ where
             if expected == actual {
                 field
             } else {
-                self.adapt_dictionary_method(field, &actual_methods[i], &expected_methods[i], expected.clone())
+                self.adapt_dictionary_method(field, &actual_methods[i], expected.clone())
             }
         });
         self.push_instruction(Instruction::MakeTuple(fields), target)
@@ -764,7 +777,7 @@ where
     /// Wraps the dictionary method `method` in a closure of the wider `target` type. The wrapper
     /// keeps `method` in its environment and projects the evidence it needs out of
     /// the evidence it is given.
-    fn adapt_dictionary_method(&mut self, method: Value, actual: &TCType, expected: &TCType, target: Type) -> Value {
+    fn adapt_dictionary_method(&mut self, method: Value, actual: &TCType, target: Type) -> Value {
         let method_type = self.type_of_value(&method);
         let (Type::Function(expected_ft), Type::Function(method_ft)) = (&target, &method_type) else {
             panic!("dictionary method coercion from `{method_type}` to `{target}` is not between functions");
@@ -773,28 +786,20 @@ where
             method_ft.environment, expected_ft.environment,
             "dictionary method coercion changes the environment: `{method_type}` to `{target}`"
         );
-        let Some((method_row, expected_row)) = self.function_rows(actual, expected) else { return method };
+        let Some(method_row) = self.function_row(actual) else { return method };
 
         let environment = self.push_instruction(Instruction::AllocShared(method), Type::POINTER);
         let load_method =
             |this: &mut Self, env, typ: &Type| this.push_instruction(Instruction::Deref(env), typ.clone());
-        self.evidence_adapter(
-            "dictionary_adapter",
-            target,
-            method_type,
-            &method_row,
-            &expected_row,
-            environment,
-            load_method,
-        )
+        self.evidence_adapter("dictionary_adapter", target, method_type, &method_row, environment, load_method)
     }
 
     /// Builds a closure of the function type `target` around a callee of a narrower row. The closure's
     /// body loads the callee out of `environment` with `load_callee` and calls
     /// it with the evidence `callee_row` needs projected out of the evidence `target_row` provides.
     fn evidence_adapter(
-        &mut self, name: &str, target: Type, callee_type: Type, callee_row: &Effects, target_row: &Effects,
-        environment: Value, load_callee: impl FnOnce(&mut Self, Value, &Type) -> Value,
+        &mut self, name: &str, target: Type, callee_type: Type, callee_row: &Effects, environment: Value,
+        load_callee: impl FnOnce(&mut Self, Value, &Type) -> Value,
     ) -> Value {
         let (Type::Function(target_ft), Type::Function(callee_ft)) = (&target, &callee_type) else {
             panic!("evidence adapter from `{callee_type}` to `{target}` is not between functions");
@@ -817,7 +822,7 @@ where
             let env = this.push_capability_parameter(environment_type);
             let callee = load_callee(this, env, &callee_type);
 
-            let evidence = this.project_evidence(params[surface_count], target_row, callee_row);
+            let evidence = this.project_evidence(params[surface_count], callee_row);
             let mut arguments: Vec<Value> = params[..surface_count].to_vec();
             arguments.push(evidence);
             let instruction = if callee_is_closure {
@@ -833,116 +838,26 @@ where
         self.push_instruction(Instruction::PackClosure { function: adapter, environment }, target)
     }
 
-    /// The rows of a function value and of the function type it flows into, as type inference
-    /// solved them. `None` unless both are function types.
-    fn function_rows(&self, value: &TCType, expected: &TCType) -> Option<(Effects, Effects)> {
+    /// The row of a function value as type inference solved it, `None` unless it is a function type
+    fn function_row(&self, value: &TCType) -> Option<Effects> {
         let TCType::Function(value) = value.follow(&self.types.bindings) else { return None };
-        let TCType::Function(expected) = expected.follow(&self.types.bindings) else { return None };
-        let convert = self.convert_context();
-        Some((convert.split_row(&value.effects), convert.split_row(&expected.effects)))
+        Some(self.convert_context().split_row(&value.effects))
     }
 
-    /// Builds the evidence `needed` describes out of the evidence `provided` holds.
-    fn project_evidence(&mut self, provided: Value, provided_row: &Effects, needed: &Effects) -> Value {
-        let links = self.evidence_chain_links(provided, provided_row);
-
-        let mut fields = Vec::with_capacity(needed.entries.len() + 1);
-        for entry in &needed.entries {
-            let slot = provided_row.slot_of(entry, &self.types.bindings).unwrap_or_else(|| {
-                let effect = entry.typ.follow_all(&self.types.bindings);
-                panic!("evidence for {effect:?} is missing from the row it should be projected out of")
-            });
-            fields.push(self.evidence_chain_head(links[slot]));
-        }
-
-        // A closed row wants no rest, whatever bundle the provided row carries
-        let rest = match &needed.end {
-            Some(_) => links[provided_row.rest_slot()],
-            None => self.push_instruction(Instruction::MakeTuple(Vec::new()), Type::tuple(Vec::new())),
-        };
-        self.cons_evidence(fields, rest)
+    /// Builds the evidence `needed` describes out of the wider evidence value `provided`
+    fn project_evidence(&mut self, provided: Value, needed: &Effects) -> Value {
+        let capabilities = mapvec(&needed.entries, |entry| self.lookup_capability(provided, entry));
+        let rest = (!needed.generics.is_empty()).then_some(provided);
+        self.make_evidence(needed, capabilities, rest)
     }
 
-    /// Chain `capabilities` onto `rest`, in order, as nested `(capability, rest)` pairs.
-    fn cons_evidence(&mut self, capabilities: Vec<Value>, rest: Value) -> Value {
-        let mut evidence = rest;
-        for capability in capabilities.into_iter().rev() {
-            let typ = Type::tuple(vec![self.type_of_value(&capability), self.type_of_value(&evidence)]);
-            evidence = self.push_instruction(Instruction::MakeTuple(vec![capability, evidence]), typ);
-        }
-        evidence
-    }
-
-    /// Rebuild `provided` into the layout `expected` describes.
-    fn reconcile_evidence(&mut self, provided: Value, expected: &Type) -> Value {
-        let provided_type = self.type_of_value(&provided);
-        if provided_type == *expected {
-            return provided;
-        }
-
-        let mut links = Vec::new();
-        let mut rest = provided;
-        let mut rest_type = provided_type.clone();
-        while let Type::Tuple(slots) = &rest_type
-            && let [head, tail] = slots.as_slice()
-        {
-            links.push((head.clone(), rest));
-            rest = self.evidence_chain_rest(rest);
-            rest_type = tail.clone();
-        }
-
-        let mut capabilities = Vec::new();
-        let mut needed = expected;
-        while let Type::Tuple(slots) = needed
-            && let [head, tail] = slots.as_slice()
-        {
-            let Some((_, link)) = links.iter().find(|(candidate, _)| candidate == head) else {
-                panic!("no capability `{head}` within the evidence `{provided_type}`")
-            };
-            capabilities.push(self.evidence_chain_head(*link));
-            needed = tail;
-        }
-
-        // The rest is the callee's own bundle
-        let rest = match (&rest_type, needed) {
-            _ if rest_type == *needed => rest,
-            // A closed row wants no rest at all, whatever the provided one holds
-            (_, Type::Tuple(slots)) if slots.is_empty() => {
-                self.push_instruction(Instruction::MakeTuple(Vec::new()), needed.clone())
-            },
-            (Type::Generic(_), Type::Generic(_)) => self.push_instruction(Instruction::Id(rest), needed.clone()),
-            _ => panic!("cannot reconcile the evidence `{provided_type}` with the callee's `{expected}`"),
-        };
-        self.cons_evidence(capabilities, rest)
-    }
-
-    /// Each link of an evidence chain laid out by `row`.
-    /// Given `(a, (b, (c, rest)))`, returns `(a, b, c, rest)`
-    fn evidence_chain_links(&mut self, evidence: Value, row: &Effects) -> Vec<Value> {
-        let mut links = Vec::with_capacity(row.rest_slot() + 1);
-        let mut current = evidence;
-        links.push(current);
-        for _ in 0..row.rest_slot() {
-            current = self.evidence_chain_rest(current);
-            links.push(current);
-        }
-        links
-    }
-
-    /// Helper to index an evidence chain tuple. `index` should be 0 for the head or 1 for the tail.
-    fn evidence_chain_field(&mut self, evidence: Value, index: u32) -> Value {
-        let typ = Self::tuple_field_type(&self.type_of_value(&evidence), index as usize);
-        self.push_instruction(Instruction::IndexTuple { tuple: evidence, index }, typ)
-    }
-
-    /// Given `(head, tail)`, returns `head`
-    fn evidence_chain_head(&mut self, evidence: Value) -> Value {
-        self.evidence_chain_field(evidence, 0)
-    }
-
-    /// Given `(head, tail)`, returns `tail`
-    fn evidence_chain_rest(&mut self, evidence: Value) -> Value {
-        self.evidence_chain_field(evidence, 1)
+    /// Assembles the evidence value of `row` from its capabilities and the evidence holding its generics
+    fn make_evidence(&mut self, row: &Effects, capabilities: Vec<Value>, rest: Option<Value>) -> Value {
+        let context = self.convert_context();
+        let typ = context.row_evidence_type(row);
+        let keys = mapvec(&row.entries, |effect| context.effect_key(effect));
+        let capabilities = keys.into_iter().zip(capabilities).collect();
+        self.push_instruction(Instruction::MakeEvidence { capabilities, rest }, typ)
     }
 
     /// Appends the callee's evidence argument. A callee whose value type has no evidence
@@ -955,37 +870,35 @@ where
             _ => None,
         };
         let effects = self.callee_effects(callee_expr);
-        let mut evidence = self.build_evidence(&effects);
+        let evidence = self.build_evidence(&effects);
 
-        // Subtyping can widen our effects past what the callee's value type has.
-        // Peel the built evidence down to the rest the callee actually asked for.
         if let Some(expected) = expected_evidence_type {
-            evidence = self.reconcile_evidence(evidence, &expected);
+            assert_eq!(
+                self.type_of_value(&evidence),
+                expected,
+                "the evidence built for calling `{:?}` (row {:?}) does not match the callee's evidence parameter",
+                self.context()[callee_expr],
+                effects.follow_all(&self.types.bindings)
+            );
         }
         arguments.push(evidence);
     }
 
-    /// Builds the evidence tuple for an effect row: each capability in the row's slot
-    /// order, then one bundle per open end forwarded from this function's own.
+    /// Builds the evidence value for an effect row from the capabilities in scope and this
+    /// function's own evidence for each row generic it forwards.
     fn build_evidence(&mut self, effects: &TCType) -> Value {
         let row = self.convert_context().split_row(effects);
-        let sources = mapvec(&row.entries, |entry| self.resolve_one_capability_source(entry));
-        let rest = match &row.end {
-            Some(generic) => self.ambient_bundle(generic),
-            None => self.push_instruction(Instruction::MakeTuple(Vec::new()), Type::tuple(Vec::new())),
-        };
-
-        let capabilities = mapvec(sources, |source| self.capability_value(source));
-        self.cons_evidence(capabilities, rest)
+        let capabilities = mapvec(&row.entries, |entry| {
+            let source = self.resolve_one_capability_source(entry);
+            self.capability_value(source)
+        });
+        let rest = (!row.generics.is_empty()).then(|| self.own_evidence_value());
+        self.make_evidence(&row, capabilities, rest)
     }
 
-    /// This function's own bundle, which a callee that stays polymorphic over the same open end
-    /// forwards the rest of its row through.
-    fn ambient_bundle(&self, generic: &TCType) -> Value {
-        self.capability_bundle
-            .as_ref()
-            .map(|(_, bundle)| *bundle)
-            .unwrap_or_else(|| panic!("no ambient evidence to forward for the open row end {generic:?}"))
+    /// The evidence value holding this function's own row generics
+    fn own_evidence_value(&self) -> Value {
+        self.own_evidence.unwrap_or_else(|| panic!("no evidence in scope holds this function's row generics"))
     }
 
     /// Resolves the capability a row entry needs, by its [Effect::id].
@@ -1098,23 +1011,10 @@ where
         result_type: Type, diverges: bool,
     ) -> Value {
         self.effect_op_indices.insert(effect_op, op_index);
-        let effect = self.effect_of_op(callee_expr);
+        let effect = self.effect_of_operation(&self.types.result.maps.expr_types[&callee_expr]);
         let source = self.resolve_one_capability_source(&effect);
         let cap_value = self.capability_value(source);
         self.emit_indexed_method_call(cap_value, op_index, arguments, result_type, diverges)
-    }
-
-    /// The effect an operation reference performs.
-    /// Its id is what says which capability in scope the operation dispatches through.
-    fn effect_of_op(&self, callee_expr: ExprId) -> Effect {
-        let typ = self.types.result.maps.expr_types[&callee_expr].follow(&self.types.bindings);
-        let TCType::Function(function_type) = typ else {
-            panic!("effect_of_op: operation is not a function type");
-        };
-        let TCType::Effects(Some(list)) = function_type.effects.follow(&self.types.bindings) else {
-            panic!("effect_of_op: operation has no effects row");
-        };
-        list.first().unwrap_or_else(|| panic!("effect_of_op: operation has an empty effects row")).clone()
     }
 
     /// Resolves a `split_row` entry to its capability tuple type.
@@ -1224,7 +1124,7 @@ where
             mutable_locals: std::mem::take(&mut self.mutable_locals),
             effects: std::mem::take(&mut self.effects),
             handle_capabilities: std::mem::take(&mut self.handle_capabilities),
-            capability_bundle: self.capability_bundle.take(),
+            own_evidence: self.own_evidence.take(),
         }
     }
 
@@ -1234,7 +1134,7 @@ where
         self.mutable_locals = saved.mutable_locals;
         self.effects = saved.effects;
         self.handle_capabilities = saved.handle_capabilities;
-        self.capability_bundle = saved.capability_bundle;
+        self.own_evidence = saved.own_evidence;
     }
 
     fn start_global(
@@ -1304,13 +1204,11 @@ where
 
         let needed_capability_values = mapvec(&needed_capabilities, |(_, v)| *v);
 
-        // Suppressed lambdas must use their environment to capture any extra effects needed.
-        let bundle_capture: Option<(TCType, Value)> = match (&own_row.end, suppress_capabilities) {
-            (Some(generic), true) => Some((generic.clone(), self.ambient_bundle(generic))),
-            _ => None,
-        };
-        let bundle_env_field: Option<(TCType, Type)> =
-            bundle_capture.as_ref().map(|(generic, value)| (generic.clone(), self.type_of_value(value)));
+        // A suppressed lambda must use its environment to capture the evidence holding the row
+        // generics it forwards.
+        let forwarded_evidence =
+            (suppress_capabilities && !own_row.generics.is_empty()).then(|| self.own_evidence_value());
+        let forwarded_evidence_type = forwarded_evidence.map(|value| self.type_of_value(&value));
 
         // A handler branch's trailing `resume` parameter is a coroutine primitive: C-shaped, no evidence.
         let parameter_types: Vec<Type> = mapvec(lambda.parameters.iter().enumerate(), |(i, parameter)| {
@@ -1321,7 +1219,7 @@ where
                 self.convert_type(parameter_type, None)
             }
         });
-        let evidence_type = self.convert_context().evidence_type(&tc_effects);
+        let evidence_type = self.convert_context().row_evidence_type(&own_row);
 
         // A suppressed lambda routes capabilities through the environment instead of an evidence parameter.
         let full_type = {
@@ -1332,8 +1230,7 @@ where
             self.convert_context().build_function_type(&tc_function_type, parameters)
         };
         let full_type = self.extend_environment_with_capabilities(full_type, &needed_capability_values);
-        let full_type =
-            self.extend_environment_with_fields(full_type, bundle_env_field.as_ref().map(|(_, typ)| typ.clone()));
+        let full_type = self.extend_environment_with_fields(full_type, forwarded_evidence_type.clone());
         let Type::Function(function_type) = &full_type else { unreachable!("Lambda does not have a function type") };
 
         let is_move = self.context().is_move_closure(expr);
@@ -1354,7 +1251,7 @@ where
         let saved_scope = self.take_scope();
 
         let mut captured_values = needed_capability_values.clone();
-        captured_values.extend(bundle_capture.as_ref().map(|(_, value)| *value));
+        captured_values.extend(forwarded_evidence);
 
         let id = self.new_definition(name.clone(), name_id, generics_count, full_type.clone(), |this| {
             for (i, parameter) in lambda.parameters.iter().enumerate() {
@@ -1372,25 +1269,20 @@ where
                 }
             }
 
-            // Push the evidence parameter: `(effect0, (effect1, (effect2, bundle)))`
+            // Push the evidence parameter and register the capability of each effect within it
             if !suppress_capabilities {
                 let evidence = this.push_capability_parameter(evidence_type.clone());
-
-                let mut current = evidence;
                 for effect in own_row.entries.iter() {
-                    let capability = this.evidence_chain_head(current);
+                    let capability = this.lookup_capability(evidence, effect);
                     this.effects.push((effect.clone(), capability));
-                    current = this.evidence_chain_rest(current);
                 }
-                if let Some(generic) = &own_row.end {
-                    this.capability_bundle = Some((generic.clone(), current));
-                }
+                this.own_evidence = Some(evidence);
             }
 
             let env_is_pointer =
                 matches!(function_type.environment, Type::Primitive(crate::mir::PrimitiveType::Pointer));
             let free_vars = this.context().get_closure_environment(expr);
-            let has_captures = free_vars.is_some() || !needed_capabilities.is_empty() || bundle_capture.is_some();
+            let has_captures = free_vars.is_some() || !needed_capabilities.is_empty() || forwarded_evidence.is_some();
             let needs_env_param = has_captures || env_is_pointer;
             let pushed_capability_count = if suppress_capabilities { 0 } else { 1 };
             let env_param_index = lambda.parameters.len() as u32 + pushed_capability_count;
@@ -1406,7 +1298,7 @@ where
                     this.unpack_closure_environment(
                         free_vars.iter().copied(),
                         &needed_capabilities,
-                        bundle_env_field.as_ref(),
+                        forwarded_evidence_type.as_ref(),
                         environment,
                     );
 
@@ -1518,11 +1410,11 @@ where
         }
     }
 
-    /// Unpack a closure environment parameter, binding each captured name and needed capability
-    /// to its value. Each unpacked capability is pushed onto `self.effects` in order.
+    /// Unpack a closure environment parameter, binding each captured name, needed capability and
+    /// forwarded evidence to its value. Each unpacked capability is pushed onto `self.effects` in order.
     fn unpack_closure_environment(
         &mut self, free_vars: impl ExactSizeIterator<Item = NameId> + Clone, capabilities: &[(Effect, Value)],
-        bundle: Option<&(TCType, Type)>, environment: Value,
+        forwarded_evidence: Option<&Type>, environment: Value,
     ) {
         let free_vars_len = free_vars.len();
         let env_value =
@@ -1535,7 +1427,7 @@ where
                     })
                     .collect();
                 field_types.extend(capabilities.iter().map(|(_, v)| self.type_of_value(v)));
-                field_types.extend(bundle.map(|(_, typ)| typ.clone()));
+                field_types.extend(forwarded_evidence.cloned());
                 let tuple_type = Type::tuple(field_types);
                 self.push_instruction(Instruction::Deref(environment), tuple_type)
             } else {
@@ -1543,7 +1435,7 @@ where
             };
 
         let Type::Tuple(env_fields) = self.type_of_value(&env_value) else { unreachable!() };
-        let expected_len = free_vars_len + capabilities.len() + bundle.is_some() as usize;
+        let expected_len = free_vars_len + capabilities.len() + forwarded_evidence.is_some() as usize;
         assert_eq!(env_fields.len(), expected_len);
 
         for (i, (var, env_field)) in free_vars.zip(env_fields.iter().cloned()).enumerate() {
@@ -1558,12 +1450,11 @@ where
             let result = self.push_instruction(index, field_ty);
             self.effects.push((effect.clone(), result));
         }
-        if let Some((generic, _)) = bundle {
-            let idx = free_vars_len + capabilities.len();
-            let field_ty = env_fields[idx].clone();
-            let index = Instruction::IndexTuple { tuple: env_value, index: idx as u32 };
-            let result = self.push_instruction(index, field_ty);
-            self.capability_bundle = Some((generic.clone(), result));
+        if forwarded_evidence.is_some() {
+            let index = free_vars_len + capabilities.len();
+            let field_type = env_fields[index].clone();
+            let instruction = Instruction::IndexTuple { tuple: env_value, index: index as u32 };
+            self.own_evidence = Some(self.push_instruction(instruction, field_type));
         }
     }
 
@@ -1780,7 +1671,8 @@ where
                             self.push_instruction(index_tuple, field_type)
                         } else {
                             let common_index = (i - own_count) as u32;
-                            let field_type = Self::tuple_field_type(outer_type.as_ref().unwrap(), common_index as usize);
+                            let field_type =
+                                Self::tuple_field_type(outer_type.as_ref().unwrap(), common_index as usize);
                             let index_tuple = Instruction::IndexTuple { tuple: outer_value, index: common_index };
                             self.push_instruction(index_tuple, field_type)
                         };
@@ -1837,6 +1729,7 @@ where
             Type::Union(_) => unreachable!("Cannot match on a raw union type"),
             Type::Function(_) => unreachable!("Cannot match on a function type"),
             Type::Generic(_) => unreachable!("Cannot match on a generic type"),
+            Type::Evidence(_) => unreachable!("Cannot match on evidence"),
             Type::Array { .. } => unreachable!("Cannot match on an array type"),
             Type::U32(_) => unreachable!("Cannot match on a type-level integer"),
         }
@@ -1888,8 +1781,7 @@ where
 
     /// Combines `variant` with the with-clause fields in `outer_value`
     fn reconstruct_whole_variant(
-        &mut self, variant: Value, outer_value: Value, own_count: usize, with_field_count: usize,
-        target_path: PathId,
+        &mut self, variant: Value, outer_value: Value, own_count: usize, with_field_count: usize, target_path: PathId,
     ) -> Value {
         if with_field_count == 0 {
             return variant;
@@ -1905,7 +1797,9 @@ where
         }
         for j in 0..with_field_count {
             let field_type = Self::tuple_field_type(&outer_type, j);
-            fields.push(self.push_instruction(Instruction::IndexTuple { tuple: outer_value, index: j as u32 }, field_type));
+            fields.push(
+                self.push_instruction(Instruction::IndexTuple { tuple: outer_value, index: j as u32 }, field_type),
+            );
         }
 
         let target_type = self.convert_path_type(target_path);
@@ -2316,7 +2210,14 @@ where
             };
 
             let shared = type_definition.shared;
-            self.define_type_constructor(constructor_name, &constructor_type, parameters, tag, shared, with_field_count);
+            self.define_type_constructor(
+                constructor_name,
+                &constructor_type,
+                parameters,
+                tag,
+                shared,
+                with_field_count,
+            );
         }
     }
 
@@ -2386,7 +2287,7 @@ where
         });
         // The (ignored) evidence parameter every function takes.
         if !field_types.is_empty() {
-            self.push_parameter(Type::tuple(Vec::new()));
+            self.push_parameter(Type::evidence(Vec::new()));
         }
 
         let k = with_field_count;

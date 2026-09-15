@@ -15,8 +15,8 @@ mod select_largest_variant;
 use crate::{
     incremental::{GetCrateGraph, GetItem, GetItemRaw, GetTypeBody, Parse, TargetPointerSize, TypeCheck},
     mir::{
-        self, Block, BlockId, Definition, DefinitionId, FunctionType, GenericBindings, Instruction, InstructionId, Mir,
-        Type, Value, builder::build_initial_mir_with_shared_map, next_definition_id,
+        self, Block, BlockId, Definition, DefinitionId, EffectKey, FunctionType, GenericBindings, Instruction,
+        InstructionId, Mir, Type, Value, builder::build_initial_mir_with_shared_map, next_definition_id,
     },
     parser::ids::TopLevelId,
     vecmap::VecMap,
@@ -91,11 +91,11 @@ where
         //.into_par_iter()
         .into_iter()
         .fold(Mir::default(), |acc, definition| {
-            let monomorphized = monomorphize_non_generic_definition(definition, &shared, &initial_mir)
-                .select_largest_variants(compiler);
-            acc.extend(monomorphized)
+            acc.extend(monomorphize_non_generic_definition(definition, &shared, &initial_mir))
         })
         //.reduce(Mir::default, Mir::extend)
+        .lower_evidence()
+        .select_largest_variants(compiler)
         .lower_closures();
 
     #[cfg(debug_assertions)]
@@ -343,6 +343,17 @@ impl<'local> FunctionContext<'local> {
                     self.remap_value(e);
                 }
             },
+            Instruction::LookupEvidence { evidence, key } => {
+                self.remap_value(evidence);
+                self.specialize_key(key);
+            },
+            Instruction::MakeEvidence { capabilities, rest } => {
+                for (key, value) in capabilities.iter_mut() {
+                    self.remap_value(value);
+                    self.specialize_key(key);
+                }
+                rest.iter_mut().for_each(|value| self.remap_value(value));
+            },
             Instruction::StackAlloc(v)
             | Instruction::AllocShared(v)
             | Instruction::Transmute(v)
@@ -434,6 +445,12 @@ impl<'local> FunctionContext<'local> {
         }
     }
 
+    fn specialize_key(&self, key: &mut EffectKey) {
+        if !self.generic_mapping.is_empty() {
+            key.args.iter_mut().for_each(|arg| self.specialize_type(arg));
+        }
+    }
+
     /// Returns `Some(new_type)` when a generic was specialized somewhere within `typ`, and `None`
     /// when the subtree contains no generic so that the caller can reuse the original `Arc`s.
     fn specialize_type_opt(&self, typ: &Type) -> Option<Type> {
@@ -447,6 +464,7 @@ impl<'local> FunctionContext<'local> {
             },
             Type::Tuple(fields) => self.specialize_each(fields).map(|v| Type::Tuple(Arc::new(v))),
             Type::Union(variants) => self.specialize_each(variants).map(|v| Type::Union(Arc::new(v))),
+            Type::Evidence(entries) => Type::substitute_evidence(entries, |typ| self.specialize_type_opt(typ)),
             Type::Function(function) => {
                 let parameters = self.specialize_each(&function.parameters);
                 let environment = self.specialize_type_opt(&function.environment);

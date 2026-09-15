@@ -1,0 +1,29 @@
+import Std.Fail.Fail, fail, on_fail
+
+// Both callbacks share `e`, so `e` should have both Panic and Fail and both calls should have duplicated capabilities
+run (f: fn Unit => a can Fail, e) (g: fn Unit => a can Panic, e): a can Panic, e =
+    on_fail f g
+
+may_fail (x: I32): I32 can Fail, Panic =
+    if x < 0 then fail ()
+    if x > 100 then panic "too big"
+    x
+
+main () =
+    abort_on_panic do
+
+    println (run (do may_fail 5) (do panic "unused"))
+    println (run (do may_fail -1) (do 7))
+
+    f () = may_fail 3
+    g () = 9
+    println (run f g)
+    println (run (fn () -> may_fail -2) g)
+
+// args: --delete-binary --no-color
+// expected stdout:
+// 5
+// 7
+// 3
+// 9
+
