@@ -1,4 +1,5 @@
 main () =
+    print_to_stdout do
     var x = 0
     if true then x := 5
     println x

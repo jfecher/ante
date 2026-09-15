@@ -1,4 +1,5 @@
 main () =
+    print_to_stdout do
     var num = 32
     println num
     num := 7

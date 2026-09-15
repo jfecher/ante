@@ -15,7 +15,9 @@ my_iter iterable f =
         f elem
         my_iter rest f
 
-main () = my_iter 10 println
+main () =
+    print_to_stdout do
+    my_iter 10 println
 
 // args: --delete-binary --no-color
 // expected stdout:

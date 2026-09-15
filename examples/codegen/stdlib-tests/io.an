@@ -7,6 +7,7 @@ write_test_file (path: String): Unit can Fs =
     f.close ()
 
 main () =
+    print_to_stdout do
     path = "/tmp/ante_io_test.txt\0"
     write_test_file (clone path)
 

@@ -388,13 +388,17 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     /// A trait method used as a value becomes `fn p.. {d} -> Trait.method p.. {d}`
     fn wrap_trait_method(&mut self, expr: ExprId, typ: Type) -> Type {
-        let parameters = match self.follow_type(&typ) {
-            Type::Function(function_type) => function_type.parameters.clone(),
+        let function_type = match self.follow_type(&typ) {
+            Type::Function(function_type) => function_type.clone(),
             _ => return typ,
         };
+        let parameters = function_type.parameters.clone();
         let wrapper = self.create_closure_wrapper_for_implicit(expr, vec![None; parameters.len()], parameters);
         self.current_extended_context_mut().insert_expr(expr, wrapper);
-        self.infer_expr(expr, &typ)
+
+        let effects = self.fresh_effect_row();
+        let wrapper_type = Type::Function(Arc::new(FunctionType { effects, ..(*function_type).clone() }));
+        self.infer_expr(expr, &wrapper_type)
     }
 
     /// The name a trait member is referred to by, which is also its dictionary field's name

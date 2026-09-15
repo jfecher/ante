@@ -3,6 +3,7 @@ import Std.Stream.Emit, emit
 apply (f: fn Unit => a): a = f ()
 
 main () =
+    print_to_stdout do
     x = 3
 
     // `g` is a closure (it captures x) with an explicitly pure row. Passing it to `apply`

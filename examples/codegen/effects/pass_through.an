@@ -3,13 +3,14 @@ effect Emit a =
 
 // This function used to incorrectly not forward the `Emit` capability leading to
 // this program not printing anything
-pass_through (f: fn Unit [env] -> Unit can Emit I32, Fs): fn Unit [env] -> Unit can Emit I32, Fs = f
+pass_through (f: fn Unit [env] -> Unit can Emit I32, Print): fn Unit [env] -> Unit can Emit I32, Print = f
 
-use_it (g: fn Unit => Unit can Fs): Unit can Emit I32, Fs =
+use_it (g: fn Unit => Unit can Print): Unit can Emit I32, Print =
     h = pass_through g
     h ()
 
 main () =
+    print_to_stdout do
     x = 111
     handler _ for emit _v ->
         resume ()

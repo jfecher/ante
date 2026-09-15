@@ -6,6 +6,7 @@ ignored_param _x = 0
 typed (a: t): t = a
 
 main () =
+    print_to_stdout do
     unused = 1
 
     used = 2
@@ -28,12 +29,13 @@ main () =
 // 
 // // id = c1m723_1944
 // main_c1m723_1944_0 () =
-//     unused_1 = 1
-//     used_2 = 2
-//     print_c0m703_7924_3 used_2
-//     match Maybe.Some_c0m703_5164_3 used_2
-//     | Some_td bound_3 -> ()
-//     | None_td -> ()
+//     print_to_stdout_c0m703_1603_0 (move fn __4 ->
+//         unused_1 = 1
+//         used_2 = 2
+//         print_c0m703_3948_3 used_2
+//         match Maybe.Some_c0m703_5164_3 used_2
+//         | Some_td bound_3 -> ()
+//         | None_td -> ())
 
 
 // expected stderr:
@@ -45,20 +47,20 @@ main () =
 //   |              ^
 // 3 | ignored_param _x = 0
 // 
-// examples/nameresolution/unused_local.an:9:5
-//  8 | main () =
+// examples/nameresolution/unused_local.an:10:5
+//  9 |     print_to_stdout do
 //    |     // warning: `unused` is never used
 //    |     // note: Prefix the name with `_` to silence this warning
-//  9 |     unused = 1
+// 10 |     unused = 1
 //    |     ^^^^^^
 // 
-// examples/nameresolution/unused_local.an:15:12
-// 14 |     match Maybe.Some used
+// examples/nameresolution/unused_local.an:16:12
+// 15 |     match Maybe.Some used
 //    |     // warning: `bound` is never used
 //    |     // note: Prefix the name with `_` to silence this warning
-// 15 |     | Some bound -> ()
+// 16 |     | Some bound -> ()
 //    |            ^^^^^
-// 16 |     | None -> ()
+// 17 |     | None -> ()
 // 
 // Compiled with 3 warnings
 

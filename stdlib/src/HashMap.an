@@ -1,4 +1,4 @@
-import Std.C.putchar, calloc
+import Std.C.calloc
 import Std.Stream.Stream, iter, stream_fn, Emit, emit
 import Std.Hash.Hash
 import Std.Fail.Fail, fail, panic_on_fail, or_panic, on_fail, try
@@ -173,9 +173,9 @@ HashMap.remove (map: mut HashMap k v) (key: ref k) {Hash k} {Eq k e} : Maybe v c
         map.len := map.len - 1
         Some (deref entry.value)
 
-impl print_hashmap {Print k e} {Print v e}: Print (HashMap k v) e with
+impl print_hashmap {Display k e} {Display v e}: Display (HashMap k v) e with
     print map =
-        putchar '['
+        write "["
         var printed_first = false
         for i in 0 .. map.capacity do
             entry = ptr_to_mut (offset map.entries i)
@@ -188,7 +188,7 @@ impl print_hashmap {Print k e} {Print v e}: Print (HashMap k v) e with
                 print entry.value
                 printed_first := true
 
-        putchar ']'
+        write "]"
 
 implicit stream_map: Stream (HashMap k v) (k, v) pure =
     Stream fn map ->

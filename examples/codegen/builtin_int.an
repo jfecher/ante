@@ -1,4 +1,4 @@
-test_int (x: t) {Add t} {Sub t} {Mul t} {Div t} {Mod t} {Print t e} {Copy t} =
+test_int (x: t) {Add t} {Sub t} {Mul t} {Div t} {Mod t} {Display t e} {Copy t} =
     print (x + x)
     print " "
     print (x - x - x)
@@ -10,6 +10,7 @@ test_int (x: t) {Add t} {Sub t} {Mul t} {Div t} {Mod t} {Print t e} {Copy t} =
     println (x % x)
 
 main () =
+    print_to_stdout do
     test_int 3_i8
     test_int 3_u8
 

@@ -30,9 +30,7 @@ panic_on_fail (f: fn Unit => a can Fail, e): a can Panic, e =
 /// panic will not occur and cannot have the Panic effect in a function.
 abort_on_fail (f: fn Unit => a can Fail, e): a can e =
     on_fail f do
-        // Temporary hack to print without an effect
-        pure_puts: fn (Ptr Char) -> I32 = extern "puts"
-        pure_puts "abort_on_fail: failed\n".data
+        dbg "abort_on_fail: failed"
         Std.C.exit 1
         deref_ptr (null ())
 

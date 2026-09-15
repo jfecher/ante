@@ -5,6 +5,7 @@ import Std.HashMap.print_hashmap
 import Std.Hash.Hash, hash_u8
 
 main () =
+    print_to_stdout do
     abort_on_panic do
     var v = Vec.empty ()
     // These get converted to `push (mut v) 10`

@@ -44,6 +44,7 @@ compound_field_assign () =
     println p.x
 
 main () =
+    print_to_stdout do
     struct_field_assign ()
     partial_field_assign ()
     struct_ref_assign ()

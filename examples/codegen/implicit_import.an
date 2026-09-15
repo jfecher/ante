@@ -2,6 +2,7 @@
 import Std.Vec.print_vec
 
 main () =
+    print_to_stdout do
     abort_on_panic do
 
     var v = Std.Vec.empty ()

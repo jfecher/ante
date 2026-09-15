@@ -1,8 +1,9 @@
-foo (a, (b: t), _) {Print t e} =
+foo (a, (b: t), _) {Display t e} =
     _: String = a
     println b
 
 main () =
+    print_to_stdout do
     foo ("test", 2, 'c')
     foo ("hi", 7, 2.0, 3, 4, 5)
 

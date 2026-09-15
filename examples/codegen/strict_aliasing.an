@@ -7,6 +7,7 @@ bits_roundtrip (i: mut I64) (f: mut F64): I64 =
     i.*
 
 main () =
+    print_to_stdout do
     var x = 0 : I64
     f = transmute (mut x) : mut F64
     println (bits_roundtrip (mut x) f)

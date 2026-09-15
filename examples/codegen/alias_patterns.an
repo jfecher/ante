@@ -22,6 +22,7 @@ first (pair: (I32, I32)): I32 =
     | (a @ x, _) -> a + x
 
 main () =
+    print_to_stdout do
     println (double_area (Circle 5))
     println (double_area (Rect 3 4))
     println (describe (Circle 7))

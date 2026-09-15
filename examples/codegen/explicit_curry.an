@@ -3,6 +3,7 @@ foo (a: I32) b c =
     a + b + c
 
 main () =
+    print_to_stdout do
     plus2 = foo _ 2 _
     plus4 = foo 2 2 _
 

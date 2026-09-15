@@ -2,6 +2,7 @@
 apply (f: fn a -> b can e) (x: a) {Copy a}: b can e = f x
 
 main () =
+    print_to_stdout do
     g = apply _ true
     g println
 

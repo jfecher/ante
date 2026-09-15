@@ -4,6 +4,7 @@ maybe_next (t: mut Thing): Maybe (mut Thing) =
     if t.x == 1 then None else Some t
 
 main () =
+    print_to_stdout do
     var first = mut Thing 1
     second = mut Thing 2
 

@@ -1,7 +1,7 @@
-foo {Print I32 e} =
+foo {Display I32 e} =
     println "in foo"
 
-foo2 {Print I32 e} {Print I32 e} =
+foo2 {Display I32 e} {Display I32 e} =
     println "in foo2"
 
 // We should allow calling functions like `foo` with only implicit args with a ()
@@ -9,7 +9,9 @@ bar {Copy I32} =
     foo ()
     foo2 ()
 
-main () = bar ()
+main () =
+    print_to_stdout do
+    bar ()
 
 // args: --delete-binary --no-color
 // expected stdout:

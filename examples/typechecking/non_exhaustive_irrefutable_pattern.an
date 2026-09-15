@@ -3,6 +3,7 @@ f (Maybe.Some x: Maybe I32): I32 = x
 
 main () =
     // Without parentheses this is parsed as a function definition
+    print_to_stdout do
     (Maybe.Some y) = Maybe.Some 3
     println (f (Maybe.Some y))
 
@@ -14,11 +15,11 @@ main () =
 // 2 | f (Maybe.Some x: Maybe I32): I32 = x	// error: Missing case: None
 //   |    ^^^^^^^^^^
 // 
-// examples/typechecking/non_exhaustive_irrefutable_pattern.an:6:6
-// 5 |     // Without parentheses this is parsed as a function definition
-// 6 |     (Maybe.Some y) = Maybe.Some 3	// error: Missing case: None
+// examples/typechecking/non_exhaustive_irrefutable_pattern.an:7:6
+// 6 |     print_to_stdout do
+// 7 |     (Maybe.Some y) = Maybe.Some 3	// error: Missing case: None
 //   |      ^^^^^^^^^^
-// 7 |     println (f (Maybe.Some y))
+// 8 |     println (f (Maybe.Some y))
 // 
 // Found 2 errors and 0 warnings
 

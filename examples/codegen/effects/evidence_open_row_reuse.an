@@ -19,6 +19,7 @@ failing_gen () =
     fail ()
 
 main () =
+    print_to_stdout do
     println <| foldr emit_1_2_3 0 (+)
     println <| try do foldr failing_gen 0 (+)
 

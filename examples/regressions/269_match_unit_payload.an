@@ -1,4 +1,5 @@
 main () =
+    print_to_stdout do
     result: Result Unit String = Ok ()
 
     match result

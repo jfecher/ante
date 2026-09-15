@@ -5,7 +5,7 @@ foo a =
 // args: -e ast-t --no-color
 // expected exit status: 1
 // expected stdout:
-// (foo: fn _ -> Unit can Fs) (a: _) =
+// (foo: fn _ -> Unit can Print) (a: _) =
 //     (error).print (ref (a: _))
 //     (error).print (ref (a: _))
 
@@ -13,14 +13,14 @@ foo a =
 // expected stderr:
 // examples/typechecking/repeated_traits.an:2:5
 // 1 | foo a =
-//   |     // error: Ambiguous implicit of type Print _ _ required by print, type annotation required
+//   |     // error: Ambiguous implicit of type Display _ _ required by print, type annotation required
 // 2 |     print a
 //   |     ^^^^^
 // 3 |     print a
 // 
 // examples/typechecking/repeated_traits.an:3:5
 // 2 |     print a
-//   |     // error: Ambiguous implicit of type Print _ _ required by print, type annotation required
+//   |     // error: Ambiguous implicit of type Display _ _ required by print, type annotation required
 // 3 |     print a
 //   |     ^^^^^
 // 

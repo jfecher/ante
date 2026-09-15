@@ -1,4 +1,5 @@
 main () =
+    print_to_stdout do
     var i = 0
     while i < 3 do
         println i

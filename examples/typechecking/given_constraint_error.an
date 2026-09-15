@@ -1,17 +1,18 @@
 
-impl print_impl {DoesNotExist a}: Print a e with
+impl print_impl {DoesNotExist a}: Display a e with
     print _ = ()
 
 // args: -e ast-t --no-color
 // expected exit status: 1
 // expected stdout:
-// implicit (print_impl: fn {(error) a} -> Print a e is pure) {(_: (error) a)} : Print a e = Print a e with
-//     (print: fn (ref a) [Ptr Unit] -> Unit can Fs, e) = fn (_: ref a) -> ()
+// implicit (print_impl: fn {(error) a} -> Display a e is pure) {(_: (error) a)} : Display a e = Display a e with
+//     (print: fn (ref a) [Ptr Unit] -> Unit can Print, e) = fn (_: ref a) -> ()
 
 
 // expected stderr:
 // examples/typechecking/given_constraint_error.an:2:18
-// 2 | impl print_impl {DoesNotExist a}: Print a e with	// error: `DoesNotExist` not found in scope
+//   | // error: `DoesNotExist` not found in scope
+// 2 | impl print_impl {DoesNotExist a}: Display a e with
 //   |                  ^^^^^^^^^^^^
 // 3 |     print _ = ()
 // 

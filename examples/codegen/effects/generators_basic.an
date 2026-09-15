@@ -12,6 +12,7 @@ for_ (stream: fn Unit => Unit can Emit a) (f: fn a [env] -> Unit) =
     in stream ()
 
 main () =
+    print_to_stdout do
     for_ (fn () -> iota 10) print
 
 // args: --delete-binary --no-color

@@ -15,6 +15,7 @@ foo (): U32 can MyFail, Read U32 =
     read ()
 
 main () =
+    print_to_stdout do
     println <| read_or_none foo
 
 // args: --delete-binary --no-color

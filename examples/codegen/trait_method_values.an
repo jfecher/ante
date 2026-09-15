@@ -16,6 +16,7 @@ double_unit (_x: t) {Scale t}: t =
 call_with (f: fn a => Unit) (x: a) = f x
 
 main () =
+    print_to_stdout do
     println (apply (+) 1 2)
     println (apply Scale.scale 5 4)
     println (apply_scale Scale.scale 7)

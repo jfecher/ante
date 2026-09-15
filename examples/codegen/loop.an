@@ -1,4 +1,5 @@
 main () =
+    print_to_stdout do
     println (sum_up_to 10)
 
     loop (collatz = 7) ->

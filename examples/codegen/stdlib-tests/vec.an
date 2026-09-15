@@ -6,6 +6,7 @@ import Std.Fail.on_fail, panic_on_fail
 import Std.Stream.iter, stream_array
 
 main () =
+    print_to_stdout do
     abort_on_panic do
 
     test_basics ()

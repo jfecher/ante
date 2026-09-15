@@ -10,6 +10,7 @@ may_fail (x: I32): I32 can Fail, Panic =
     x
 
 main () =
+    print_to_stdout do
     abort_on_panic do
 
     println (run (do may_fail 5) (do panic "unused"))

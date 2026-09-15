@@ -12,6 +12,7 @@ get3 (b: ref Array 2 (Array 2 (Array 2 I32))) (i: Usz) (j: Usz) (k: Usz): I32 ca
     b.[i].[j].[k].*
 
 main () =
+    print_to_stdout do
     abort_on_panic do
 
     var arr: Array 4 I32 = [10, 20, 30, 40]

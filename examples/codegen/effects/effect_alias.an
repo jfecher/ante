@@ -11,6 +11,7 @@ copy_file (): Unit can FileIO =
     read () |> write
 
 main () =
+    print_to_stdout do
     handler _ for read () -> resume "hello"
     handler _ for write s ->
       println s

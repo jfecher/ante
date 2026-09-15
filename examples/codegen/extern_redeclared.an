@@ -11,6 +11,7 @@ strlen_cstring: fn C.String -> Usz = extern "strlen"
 strlen_ptr: fn (Ptr Char) -> Usz = extern "strlen"
 
 main () =
+    print_to_stdout do
     println (abs_pure (-3))
     println (abs_fs (-4))
 

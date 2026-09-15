@@ -22,6 +22,7 @@ rest_tag (e: Tagged): I32 =
     | Bin ..c -> c.tag
 
 main () =
+    print_to_stdout do
     println (describe (Var "leaf"))
     println (describe (Bin (Var "a") (Var "b")))
     println (tag_of (Var "x" 1))

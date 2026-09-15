@@ -4,12 +4,13 @@ import Std.Stream.iota, stream_fn
 
 type Tag = id: U32
 
-impl drop_tag: Drop Tag Fs with
+impl drop_tag: Drop Tag Print with
     drop (t: mut Tag) =
         print "drop "
         println t.id
 
 main () =
+    print_to_stdout do
     var seq = Seq.empty ()
     seq := seq.push 33
     seq := seq.push 44

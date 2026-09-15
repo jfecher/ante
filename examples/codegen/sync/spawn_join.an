@@ -2,6 +2,7 @@ import Std.Sync.Thread, spawn, join
 
 // Spawn a thread running a capturing closure, then join for its result.
 main () =
+    print_to_stdout do
     base = 100
     t = spawn (do base + 42)
     println (join t)

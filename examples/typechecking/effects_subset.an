@@ -21,6 +21,7 @@ for_ (stream: fn Unit => Unit can Emit a) (f: fn a => b) =
     in stream ()
 
 main () =
+    print_to_stdout do
     stream = filter (do iota 10) (_ %% 2)
     for_ stream (println _ {print_u32})
 
@@ -52,6 +53,7 @@ main () =
 //     in fn () [(stream: fn Unit [_] -> Unit can Emit a)] -> (stream: fn Unit [_] -> Unit can Emit a) ()
 // 
 // (main: fn Unit -> Unit can Fs) () =
-//     (stream: fn Unit [(fn Unit -> Unit can Emit U32), (fn U32 -> Bool is pure)] -> Unit can Emit U32) = (filter: fn (fn Unit -> Unit can Emit U32) (fn U32 -> Bool is pure) {Copy U32} -> (fn Unit [(fn Unit -> Unit can Emit U32), (fn U32 -> Bool is pure)] -> Unit can Emit U32) is pure) (move fn (_: Unit) -> (iota: fn U32 -> Unit can Emit U32) 10) (fn (_1: U32) -> (%%: fn U32 U32 {Mod U32} {Eq U32 pure} {Cast U8 U32 pure} -> Bool is pure) (_1: U32) 2 {(mod_u32: Mod U32)} {(eq_u32: Eq U32 pure)} {(cast_u8_u32: Cast U8 U32 pure)}) {(copy_u32: Copy U32)}
-//     (for_: fn (fn Unit [fn Unit [(fn Unit -> Unit can Emit U32), (fn U32 -> Bool is pure)] -> Unit can Emit U32] -> Unit can Emit U32) (fn U32 -> Unit can Fs) -> Unit can Fs) (stream: fn Unit [(fn Unit -> Unit can Emit U32), (fn U32 -> Bool is pure)] -> Unit can Emit U32) (fn (_1: U32) -> (println: fn (ref '_1 U32) {Print U32 pure} -> Unit can Fs) (ref (_1: U32)) {(print_u32: Print U32 pure)})
+//     (print_to_stdout: fn (fn Unit -> Unit can Print) -> Unit can Fs) (move fn (_: Unit) ->
+//         (stream: fn Unit [(fn Unit -> Unit can Emit U32), (fn U32 -> Bool is pure)] -> Unit can Emit U32) = (filter: fn (fn Unit -> Unit can Emit U32) (fn U32 -> Bool is pure) {Copy U32} -> (fn Unit [(fn Unit -> Unit can Emit U32), (fn U32 -> Bool is pure)] -> Unit can Emit U32) is pure) (move fn (_: Unit) -> (iota: fn U32 -> Unit can Emit U32) 10) (fn (_1: U32) -> (%%: fn U32 U32 {Mod U32} {Eq U32 pure} {Cast U8 U32 pure} -> Bool is pure) (_1: U32) 2 {(mod_u32: Mod U32)} {(eq_u32: Eq U32 pure)} {(cast_u8_u32: Cast U8 U32 pure)}) {(copy_u32: Copy U32)}
+//         (for_: fn (fn Unit [fn Unit [(fn Unit -> Unit can Emit U32), (fn U32 -> Bool is pure)] -> Unit can Emit U32] -> Unit can Emit U32) (fn U32 -> Unit can Print) -> Unit can Print) (stream: fn Unit [(fn Unit -> Unit can Emit U32), (fn U32 -> Bool is pure)] -> Unit can Emit U32) (fn (_1: U32) -> (println: fn (ref '_1 U32) {Display U32 pure} -> Unit can Print) (ref (_1: U32)) {(print_u32: Display U32 pure)}))
 

@@ -5,6 +5,7 @@ type Plain =
     n: I32
 
 main () =
+    print_to_stdout do
     var v = 0
     var w = 10
     var v2 = 20

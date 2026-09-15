@@ -203,7 +203,7 @@ Seq.iter_mut (seq: mut Seq t) (f: fn (mut t) => Unit): Unit =
         f (ptr_to_mut elem)
 
 // Paper cut #2: Copy t
-impl print_seq {p: Print t e} {Copy t}: Print (Seq t) e with
+impl print_seq {p: Display t e} {Copy t}: Display (Seq t) e with
     print (seq: ref Seq t): Unit =
         print "["
         for i in 0 .. seq.len do

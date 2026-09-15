@@ -10,6 +10,7 @@ use_it (g: fn Unit -> I32 is pure): I32 can Emit I32 =
     apply g
 
 main () =
+    print_to_stdout do
     handler h for emit y ->
         println y
         resume ()

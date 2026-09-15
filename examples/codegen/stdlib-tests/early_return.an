@@ -3,6 +3,7 @@ import Std.Stream.iota, iter, stream_fn
 
 main () =
     // Early return out of a stream consumer
+    print_to_stdout do
     println <| with_early_return do
         iter (iota 10) fn x ->
             if x > 3 then early_return x

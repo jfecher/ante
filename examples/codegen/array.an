@@ -1,6 +1,7 @@
 my_arr: Array 4 I32 = [10, 20, 30, 40]
 
 main () =
+    print_to_stdout do
     abort_on_panic do
     println my_arr.[0]
     println my_arr.[3]

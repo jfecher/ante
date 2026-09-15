@@ -13,6 +13,7 @@ handle_count (f: fn Unit => Unit can Count) =
         0
 
 main () =
+    print_to_stdout do
     handle_count foo |> println
 
 // args: --delete-binary --no-color

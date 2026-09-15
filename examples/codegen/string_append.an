@@ -1,4 +1,5 @@
 main () =
+    print_to_stdout do
     a = "你好"
     print (a ++ "，世界")
 

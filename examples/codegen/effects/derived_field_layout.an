@@ -20,6 +20,7 @@ call_match (h: Holder Log): Unit can Fail, Log =
     | Holder f -> f ()
 
 main () =
+    print_to_stdout do
     handler h1 for fail () ->
         println "fail"
         resume ()

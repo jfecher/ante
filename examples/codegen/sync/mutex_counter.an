@@ -8,6 +8,7 @@ worker (m: Arc (Mutex U32)): Unit =
             v += 1
 
 main () =
+    print_to_stdout do
     m = Arc.of (Mutex.of 0)
     c1 = clone m
     c2 = clone m

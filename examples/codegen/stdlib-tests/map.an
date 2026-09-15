@@ -5,6 +5,7 @@ import Std.Hash.Hash, hash_u8
 import Std.Fail.try, panic_on_fail
 
 main () =
+    print_to_stdout do
     abort_on_panic do
 
     var map = empty ()

@@ -1,4 +1,3 @@
-import Std.C.putchar
 import Std.Hash.Hash
 import Std.HashMap.HashMap
 import Std.Stream.Stream, iter, stream_fn, Emit, emit, map
@@ -73,7 +72,7 @@ implicit stream_ref_hashset: Stream (ref HashSet k) k pure =
         keys = HashMap.keys set.inner
         keys ()
 
-impl print_hashset {Print k e}: Print (HashSet k) e with
+impl print_hashset {Display k e}: Display (HashSet k) e with
     print set =
         var printed_first = false
 
@@ -83,6 +82,6 @@ impl print_hashset {Print k e}: Print (HashSet k) e with
             print key
             printed_first := true
 
-        putchar '['
+        write "["
         iter set print_contents
-        putchar ']'
+        write "]"

@@ -28,6 +28,7 @@ area (s: Shape): I32 =
     | Tri b h -> (b * h) / 2
 
 main () =
+    print_to_stdout do
     println <| area <| mk_shape 0 9
     println <| area <| mk_shape 5 9
     println <| area <| mk_shape 6 9

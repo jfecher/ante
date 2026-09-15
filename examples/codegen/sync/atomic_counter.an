@@ -8,6 +8,7 @@ worker (counter: ref Atomic U32): Unit =
         ()
 
 main () =
+    print_to_stdout do
     counter = ref Atomic.of 0
     t1 = spawn (do worker counter)
     t2 = spawn (do worker counter)

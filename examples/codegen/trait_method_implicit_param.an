@@ -13,6 +13,7 @@ impl twice_i32: Twice I32 with
 apply (f: fn a -> r) x = f x
 
 main () =
+    print_to_stdout do
     println (Twice.twice 1)
     println (Twice.twice 2 {twice_i32})
     println (apply Twice.twice 3)

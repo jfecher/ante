@@ -1,4 +1,5 @@
 main () =
+    print_to_stdout do
     foo = "hi there"
     stuff () = println foo
     stuff ()

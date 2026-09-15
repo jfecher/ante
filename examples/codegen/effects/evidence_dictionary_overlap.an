@@ -8,13 +8,14 @@ impl stream_pair: Stream Pair I32 (Emit I32) with
         emit p.a
         emit p.b
 
-each (s: s) {Stream s a e} (f: fn a -> Unit can Fs, e): Unit can Fs, e =
+each (s: s) {Stream s a e} (f: fn a -> Unit can Print, e): Unit can Print, e =
     handler h for emit x ->
         f x
         resume ()
     Stream.stream s
 
 main () =
+    print_to_stdout do
     handler h for emit (x: I32) ->
         print "outer "
         println x

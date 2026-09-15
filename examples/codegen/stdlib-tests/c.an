@@ -5,6 +5,7 @@ import Std.C.puts, putchar, strlen, system, memcmp, memcpy, malloc, free,
 
 main () =
     // puts writes a line and appends a newline
+    print_to_stdout do
     _ = puts (C.String "hello\0".data)
 
     // putchar

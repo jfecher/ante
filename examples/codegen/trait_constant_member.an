@@ -13,6 +13,7 @@ impl named_i32: Named I32 with
 fallback_of (_x: t) {Named t}: t = Named.fallback
 
 main () =
+    print_to_stdout do
     println (fallback_of false)
     println (fallback_of 0i32)
     b: Bool = Named.fallback

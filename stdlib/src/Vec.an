@@ -229,7 +229,7 @@ Vec.sort (v: mut Vec t) {Cmp t}: Unit can Fs =
     v.sort_by (<)
 
 
-impl print_vec {p: Print t e}: Print (Vec t) e with
+impl print_vec {p: Display t e}: Display (Vec t) e with
     print v =
         print "["
 

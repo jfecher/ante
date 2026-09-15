@@ -49,6 +49,7 @@ set_loc (e: mut Expr) =
     e.location := 99
 
 main () =
+    print_to_stdout do
     print (area_by_field (Circle 2))
     print ", "
     println (area_by_field (Square 4))

@@ -2,6 +2,7 @@
 // since arrays in C otherwise degrade into pointers. This test is to ensure consistency
 // with the llvm backend and array value semantics.
 main () =
+    print_to_stdout do
     abort_on_panic do
 
     t = ([10, 20, 30], 99)

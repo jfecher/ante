@@ -13,6 +13,7 @@ print_mytype (res: imm MyType) =
     println res.aboolean
 
 main () =
+    print_to_stdout do
     abort_on_panic do
     x = Vec.of [MyType 1 () true true, MyType 2 () false false]
     iter (imm x) print_mytype

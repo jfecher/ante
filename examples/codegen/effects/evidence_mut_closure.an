@@ -1,6 +1,7 @@
 import Std.Stream.Emit, emit
 
 main () =
+    print_to_stdout do
     var k = fn () -> emit 10
     handler h for emit x ->
         println x

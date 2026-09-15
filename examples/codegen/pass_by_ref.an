@@ -1,6 +1,6 @@
 type S = message: String
 
-impl print_s: Print S pure with
+impl print_s: Display S pure with
     print s = print s.message
 
 impl copy_s: Copy S with
@@ -20,6 +20,7 @@ foo (x: S) (y: S) =
     println x
 
 main () =
+    print_to_stdout do
     var x = S "original x string"
     foo x x
 

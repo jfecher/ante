@@ -1,6 +1,7 @@
 type T = a: I32, b: String
 
 main () =
+    print_to_stdout do
     t = T 1 "one"
     print "t = "
     print t.a

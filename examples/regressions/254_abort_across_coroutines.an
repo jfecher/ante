@@ -18,6 +18,7 @@ foldr (gen: fn Unit => Unit can Emit a, e) (initial: b) (f: fn a b => b): b can 
     initial
 
 main () =
+    print_to_stdout do
     gen = do
         result = try do
             gen2 = do

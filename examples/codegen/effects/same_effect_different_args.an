@@ -11,6 +11,7 @@ take_u8 (_v: U8): Unit = ()
 take_i32 (_v: I32): Unit = ()
 
 main () =
+    print_to_stdout do
     handler hu for send v ->
         take_u8 v
         println "u8"

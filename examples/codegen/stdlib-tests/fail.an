@@ -6,6 +6,7 @@ ok_int (): I32 can Fail = 7
 
 main () =
     // try:
+    print_to_stdout do
     println (try ok_int : Maybe I32)   // Some 7
     println (try fail_int : Maybe I32) // None
 

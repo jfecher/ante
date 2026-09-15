@@ -2,6 +2,7 @@ import Std.Char.is_ascii, is_digit, is_alpha, is_alphanumeric, is_whitespace,
     to_ascii_lower, to_ascii_upper, to_digit
 
 main () =
+    print_to_stdout do
     println <| is_digit '7'
     println <| is_digit 'z'
     println <| is_alpha 'A'

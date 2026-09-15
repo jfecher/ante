@@ -28,7 +28,7 @@ export String, String.from_parts, Maybe, Maybe.None, Maybe.Some, iff, Maybe.unwr
     Num, num_i8, num_i16, num_i32, num_i64, num_isz, num_u8, num_u16, num_u32, num_u64, num_usz, num_f32, num_f64,
     Append, (++), append_string,
     (|>), (<|),
-    Extract, (.[]), extract_ptr_usz, extract_array, extract_array_move, extract_array_mut,
+    Extract, (.[]), extract_ptr_usz, extract_string, extract_array, extract_array_move, extract_array_mut,
     Insert, (.[]:=), insert_ptr_usz, insert_array,
     array_len, array_get, array_get_mut, array_set, array_get_unchecked, array_set_unchecked,
     Bitwise, band, bor, bxor, bitwise_i32, bitwise_u64,
@@ -38,7 +38,8 @@ export String, String.from_parts, Maybe, Maybe.None, Maybe.Some, iff, Maybe.unwr
     drop_i8, drop_i16, drop_i32, drop_i64, drop_isz, drop_u8, drop_u16, drop_u32, drop_u64, drop_usz, drop_f32, drop_f64, drop_unit, drop_bool, drop_char, drop_ptr,
     Copy, (.*), copy_i8, copy_i16, copy_i32, copy_i64, copy_isz, copy_u8, copy_u16, copy_u32, copy_u64, copy_usz, copy_f32, copy_f64, copy_unit, copy_bool, copy_char, copy_ptr, copy_ref, copy_mut, copy_imm, copy_uniq, clone_string, copy_pair, copy_maybe,
     null, transmute,
-    Print, print, println, print_unsigned, print_signed, print_float, print_u8, print_u16, print_u32, print_u64, print_usz, print_i8, print_i16, print_i32, print_i64, print_isz, print_char, print_f64, print_f32, print_pair, print_string, print_maybe, print_bool, print_array, print_ref,
+    Print, Print.write, write, Print.write_char, write_char, Print.write_u64, write_u64, Print.write_i64, write_i64, Print.write_f64, write_f64,
+    print_to_stdout, dbg, Display, print, println, print_float, print_u8, print_u16, print_u32, print_u64, print_usz, print_i8, print_i16, print_i32, print_i64, print_isz, print_char, print_f64, print_f32, print_pair, print_string, print_maybe, print_bool, print_array, print_ref,
     Iterator, next, iter, Range, iterator_range, iter_range, repeat,
     Panic, Panic.panic, panic, abort_on_panic, ignore
 
@@ -245,8 +246,7 @@ impl cast_char_u64: Cast Char U64 pure with cast x = intrinsic "ZeroExtend" x
 
 impl cast_bool_i32: Cast Bool I32 pure with cast b = if b then 1 else 0
 
-// TODO: This `Cast I32 String` machinery is temporary. We should unify
-// `Cast x String` and `Print x` into a single `Display` ability
+// TODO: String interpolation desugars to `Cast x String`; it should use `Display` instead.
 count_digits (x: U64): U32 =
     loop x (sum = 1) ->
         if x < 10 then sum
@@ -633,6 +633,9 @@ trait Extract collection index elem (e: effect) =
 impl extract_ptr_usz: Extract (Ptr t) Usz t pure with
     (.[]) ptr index = deref_ptr <| offset ptr index
 
+impl extract_string: Extract (ref String) Usz Char pure with
+    (.[]) s index = deref_ptr <| offset s.data index
+
 array_len (_array: ref Array n t): Usz =
     size_t = size_of (MkType : Type t)
     if size_t == 0 then 0 else
@@ -837,56 +840,76 @@ impl insert_ptr_usz: Insert (mut Ptr t) Usz t pure with
 impl insert_array: Insert (mut Array n t) Usz t Panic with
     (.[]:=) arr index value = array_set arr index value
 
-trait Print t (e: effect) =
-    print: fn (ref t) -> Unit can Fs, e
+effect Print =
+    write: fn (ref String) -> Unit
+    write_char: fn Char -> Unit
+    write_u64: fn U64 -> Unit
+    write_i64: fn I64 -> Unit
+    write_f64: fn F64 -> Unit
 
-println (x: ref t) {Print t e} =
-    Print.print x
-    putchar '\n'
+write_stdout: fn (Ptr Char) Usz -> Unit can Fs = extern "ante_write_stdout"
 
-impl print_u8: Print U8 pure with
-    print x = print_unsigned (U64 x.*)
-impl print_u16: Print U16 pure with
-    print x = print_unsigned (U64 x.*)
-impl print_u32: Print U32 pure with
-    print x = print_unsigned (U64 x.*)
-impl print_u64: Print U64 pure with
-    print x = print_unsigned x
-impl print_usz: Print Usz pure with
-    print x = print_unsigned (U64 x.*)
+// Handles `Print` by piping to stdout
+print_to_stdout (f: fn Unit => a can Print, e): a can Fs, e =
+    handler h for
+    | write s -> resume (write_stdout s.data (Usz s.length))
+    | write_char c -> resume (putchar c)
+    | write_u64 x -> resume (print_unsigned x)
+    | write_i64 x -> resume (print_signed x)
+    | write_f64 x -> resume (print_float x)
+    in f ()
 
-impl print_i8: Print I8 pure with
-    print x = print_signed (I64 x.*) -128i64 "-128"
+/// Display the given String to stderr without using any effects.
+/// 
+/// This function is intended for debugging purposes. Because it
+/// appears pure to the compiler, there is no guarantee it won't be
+/// optimized out of the program.
+dbg (s: String): Unit =
+    write_stderr: fn (Ptr Char) Usz -> Unit = extern "ante_write_stderr"
+    write_stderr s.data (Usz s.length)
+    write_stderr "\n".data 1
 
-impl print_i16: Print I16 pure with
-    print x = print_signed (I64 x.*) -32_768i64 "-32_768"
+trait Display t (e: effect) =
+    print: fn (ref t) -> Unit can Print, e
 
-impl print_i32: Print I32 pure with
-    print x = print_signed (I64 x.*) -2_147_483_648i64 "-2_147_483_648"
+println (x: ref t) {Display t e} =
+    print x
+    write_char '\n'
 
-impl print_i64: Print I64 pure with
-    print x = print_signed x -9_223_372_036_854_775_808i64 "-9_223_372_036_854_775_808"
+impl print_u8: Display U8 pure with
+    print x = write_u64 (U64 x.*)
+impl print_u16: Display U16 pure with
+    print x = write_u64 (U64 x.*)
+impl print_u32: Display U32 pure with
+    print x = write_u64 (U64 x.*)
+impl print_u64: Display U64 pure with
+    print x = write_u64 x.*
+impl print_usz: Display Usz pure with
+    print x = write_u64 (U64 x.*)
+
+impl print_i8: Display I8 pure with
+    print x = write_i64 (I64 x.*)
+
+impl print_i16: Display I16 pure with
+    print x = write_i64 (I64 x.*)
+
+impl print_i32: Display I32 pure with
+    print x = write_i64 (I64 x.*)
+
+impl print_i64: Display I64 pure with
+    print x = write_i64 x.*
 
 // TODO: This is broken for non-64-bit platforms.
-impl print_isz: Print Isz pure with
-    print x =
-        print_signed (I64 x.*) -9_223_372_036_854_775_808i64 "-9_223_372_036_854_775_808"
+impl print_isz: Display Isz pure with
+    print x = write_i64 (I64 x.*)
 
+impl print_char: Display Char pure with
+    print x = write_char x.*
 
-impl print_char: Print Char pure with
-    print x = putchar x
-
-impl print_f64: Print F64 pure with
-    print x = print_float x.*
-impl print_f32: Print F32 pure with
-    print x = print_float (F64 x.*)
-
-impl print_pair {Print a e} {Print b e}: Print (a, b) e with
-    print pair =
-        // TODO: Parenthesization for nested pairs while keeping `a, (b, (c, d))` unparenthesized
-        print pair.first
-        print ", "
-        print pair.second
+impl print_f64: Display F64 pure with
+    print x = write_f64 x.*
+impl print_f32: Display F32 pure with
+    print x = write_f64 (F64 x.*)
 
 // TODO: temporary, very inaccurate
 print_float (f: F64): Unit can Fs =
@@ -901,15 +924,17 @@ print_float (f: F64): Unit can Fs =
         // Show up to 5 decimal places
         print_unsigned (U64 (f2 * 10_000.0))
 
-impl print_string: Print String pure with
-    print s = loop (i = 0) ->
-        if i < s.length then
-            off = offset_bytes (s.data) (Usz i.*)
-            c = deref_ptr off
-            putchar c
-            recur (i + 1)
+impl print_pair {Display a e} {Display b e}: Display (a, b) e with
+    print pair =
+        // TODO: Parenthesization for nested pairs while keeping `a, (b, (c, d))` unparenthesized
+        print pair.first
+        print ", "
+        print pair.second
 
-impl print_maybe {Print a e}: Print (Maybe a) e with
+impl print_string: Display String pure with
+    print s = write s
+
+impl print_maybe {Display a e}: Display (Maybe a) e with
     print m =
         match deref m
         | Some a ->
@@ -920,26 +945,28 @@ impl print_maybe {Print a e}: Print (Maybe a) e with
 
 // Naive replacement for printf which isn't supported by the cranelift backend
 print_unsigned (x: U64): Unit can Fs =
-    if x >= 10u64 then print_unsigned (x / 10u64)
-    digit = x % 10u64 + U64 '0'
+    if x >= 10u64 then print_unsigned (x / 10)
+    digit = x % 10 + U64 '0'
     putchar (Char digit)
 
-print_signed (x: I64) (min: I64) (min_string: String): Unit can Fs =
-    if x < 0i64 then
-        if x == min then
-            print min_string
+print_signed (x: I64): Unit can Fs =
+    if x < 0 then
+        if x == -9_223_372_036_854_775_808 then
+            min_string = "-9223372036854775808"
+            for i in 0 .. Usz min_string.length do
+                putchar (ref min_string).[i]
         else
             putchar '-'
             print_unsigned (try_cast (0i64 - x) ~> abort_on_fail)
     else
         print_unsigned (try_cast x ~> abort_on_fail)
 
-impl print_bool: Print Bool pure with
+impl print_bool: Display Bool pure with
     print b =
         if b.* then print "true"
         else print "false"
 
-impl print_array {Print t e}: Print (Array n t) (Panic & e) with
+impl print_array {Display t e}: Display (Array n t) (Panic & e) with
     print array =
         print "["
         for i in 0 .. array_len array do
@@ -949,7 +976,7 @@ impl print_array {Print t e}: Print (Array n t) (Panic & e) with
             print elem
         print "]"
 
-impl print_ref {Print a e}: Print (ref a) e with
+impl print_ref {Display a e}: Display (ref a) e with
     print x = print x.*
 
 trait Iterator it elem (effects: effect) =
@@ -984,9 +1011,9 @@ repeat (count: Usz) (f: fn Usz => Unit): Unit =
 effect Panic =
     panic: fn String -> Never
 
-abort_on_panic (f: fn Unit => a can Panic, e): a can Fs, e =
+abort_on_panic (f: fn Unit => a can Panic, e): a can e =
     handler h for panic msg ->
-        println msg
+        dbg msg
         exit 1
         // Unreachable, return any type
         deref_ptr (null ())

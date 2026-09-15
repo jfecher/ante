@@ -1,4 +1,5 @@
 main () =
+    print_to_stdout do
     var x: I32 = 10
 
     // A move fn captures x by value (move or copy)

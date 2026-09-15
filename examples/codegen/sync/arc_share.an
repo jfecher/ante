@@ -6,6 +6,7 @@ reader (a: Arc I32): I32 =
     deref (Arc.as_ref a)
 
 main () =
+    print_to_stdout do
     original = Arc.of 99
     c = clone original
     t = spawn (do reader c)

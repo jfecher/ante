@@ -8,6 +8,7 @@ import Std.String.starts_with, ends_with, contains, trim, trim_start, trim_end
 import Std.Fail.try
 
 main () =
+    print_to_stdout do
     abort_on_panic do
     // bytes & chars:
     iter (bytes "AB") println
@@ -193,7 +194,7 @@ test_parse () =
 // None
 // None
 // Some -2147483647
-// Some -2_147_483_648
+// Some -2147483648
 // None
 // None
 // Some 321
@@ -203,10 +204,10 @@ test_parse () =
 // None
 // Some 32767
 // None
-// Some -32_768
+// Some -32768
 // None
 // Some 123456789012345
-// Some -9_223_372_036_854_775_808
+// Some -9223372036854775808
 // None
 // None
 // Some 12345
@@ -245,3 +246,4 @@ test_parse () =
 // Some 42
 // None
 // Some 12345
+

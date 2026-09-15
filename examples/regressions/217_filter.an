@@ -20,6 +20,7 @@ for_ (stream: fn Unit => Unit can Emit a) (f: fn a -> Unit) =
     in stream ()
 
 main () =
+    print_to_stdout do
     for_ (do filter (do iota 10) (_ %% 2))
         println
 

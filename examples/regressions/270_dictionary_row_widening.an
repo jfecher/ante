@@ -19,6 +19,7 @@ consume (source: s) {Stream s U32 e}: Unit can Observe, e =
     iter source observe
 
 main () =
+    print_to_stdout do
     handler t for tick () ->
         println "tick"
         resume ()

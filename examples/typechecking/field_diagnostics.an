@@ -27,7 +27,7 @@ main () =
 // expected stdout:
 // (main: fn Unit -> Unit is pure) () =
 //     mut (tuple: I32, I32) = 1 (,: fn I32 I32 -> I32, I32 is pure) 1
-//     (_: ref '_7 (ref 'tuple I32)) = (ref ref (tuple: I32, I32)).first
+//     (_: ref 'tuple I32) = (copy_ref: Copy (ref 'tuple I32))..* (ref ref (tuple: I32, I32)).first
 //     (_: mut 'tuple.first I32) = mut (tuple: I32, I32).first
 //     (_: mut 'tuple.missing (error)) = mut (tuple: I32, I32).missing
 //     (imm_ref: ref 'tuple (I32, I32)) = ref (tuple: I32, I32)
@@ -39,7 +39,7 @@ main () =
 //     (mut_ref: mut 'mut_tuple (I32, I32)) = mut (mut_tuple: I32, I32)
 //     (_: ref 'mut_tuple (error)) = ref (mut_ref: mut 'mut_tuple (I32, I32)).missing
 //     (_: mut 'mut_tuple (error)) = mut (mut_ref: mut 'mut_tuple (I32, I32)).missing
-//     (_: mut '_56 (ref 'tuple I32)) = mut (mut ref (tuple: I32, I32)).first
+//     (_: mut '_58 (ref 'tuple I32)) = mut (copy_ref: Copy (ref 'tuple I32))..* (mut ref (tuple: I32, I32)).first
 
 
 // expected stderr:
