@@ -31,25 +31,20 @@ impl TopLevelId {
     /// Note that if `arguments` are not provided, the type will be instantiated and thus
     /// any fields may refer to type type variables that have not been tracked.
     ///
-    /// The constructor's generalized type carries its effect ids.
-    /// When `next_id` is given these are instantiated to fresh variables.
-    /// Otherwise, the same effect ids are kept.
-    ///
     /// - For a struct: returns each field name & type
     /// - For a union: returns each variant with its name and arguments
-    pub fn type_body<Db>(self, arguments: Option<&[Type]>, compiler: &Db, next_id: Option<&mut u32>) -> TypeBody
+    pub fn type_body<Db>(self, arguments: Option<&[Type]>, compiler: &Db) -> TypeBody
     where
         Db: DbGet<TypeCheck> + DbGet<GetItem>,
     {
         let result = TypeCheck(self).get(compiler);
         let (item, item_context) = GetItem(self).get(compiler);
-        type_body_from_item(&item, &item_context, &result, arguments, next_id)
+        type_body_from_item(&item, &item_context, &result, arguments)
     }
 }
 
 fn type_body_from_item(
     item: &TopLevelItem, item_context: &DesugarContext, result: &TypeCheckResult, arguments: Option<&[Type]>,
-    mut next_id: Option<&mut u32>,
 ) -> TypeBody {
     let TopLevelItemKind::TypeDefinition(type_definition) = &item.kind else {
         panic!("type_body: passed type_id is not a type!")
@@ -63,7 +58,7 @@ fn type_body_from_item(
         cst::TypeDefinitionBody::Struct(fields) => {
             // This'd be easier with an explicit type data field
             let constructor_type = result.get_generalized(type_definition.name);
-            let constructor = apply_type_constructor(&constructor_type, arguments, result, next_id);
+            let constructor = apply_type_constructor(&constructor_type, arguments, result);
             let field_types = constructor.function_parameter_types();
 
             assert_eq!(fields.len(), field_types.len());
@@ -76,7 +71,7 @@ fn type_body_from_item(
         },
         cst::TypeDefinitionBody::Enum(variants, _) => {
             let mut variants = mapvec(variants, |(name, cst_fields)| {
-                variant_name_and_fields(*name, cst_fields, arguments, result, next_id.as_deref_mut(), item_context)
+                variant_name_and_fields(*name, cst_fields, arguments, result, item_context)
             });
             if variants.len() == 1 {
                 let (_name_id, type_name, fields) = variants.pop().unwrap();
@@ -101,7 +96,7 @@ impl TopLevelName {
     ///
     /// If `self.local_name_id` is the type's own name, this delegates directly to
     /// [TopLevelId::type_body]. Otherwise the name may refer to a variant type of an enum.
-    pub fn type_body<Db>(self, arguments: Option<&[Type]>, compiler: &Db, mut next_id: Option<&mut u32>) -> TypeBody
+    pub fn type_body<Db>(self, arguments: Option<&[Type]>, compiler: &Db) -> TypeBody
     where
         Db: DbGet<TypeCheck> + DbGet<GetItem>,
     {
@@ -112,7 +107,7 @@ impl TopLevelName {
 
         if self.local_name_id == type_definition.name {
             let result = TypeCheck(self.top_level_item).get(compiler);
-            return type_body_from_item(&item, &item_context, &result, arguments, next_id);
+            return type_body_from_item(&item, &item_context, &result, arguments);
         }
 
         let (_, (_, cst_fields)) = type_definition
@@ -121,14 +116,8 @@ impl TopLevelName {
             .expect("TopLevelName::type_body: local_name_id names neither the type nor one of its variants");
 
         let result = TypeCheck(self.top_level_item).get(compiler);
-        let (_name_id, type_name, fields) = variant_name_and_fields(
-            self.local_name_id,
-            cst_fields,
-            arguments,
-            &result,
-            next_id.as_deref_mut(),
-            &item_context,
-        );
+        let (_name_id, type_name, fields) =
+            variant_name_and_fields(self.local_name_id, cst_fields, arguments, &result, &item_context);
         TypeBody::Product { type_name, fields }
     }
 
@@ -142,10 +131,10 @@ impl TopLevelName {
 
 fn variant_name_and_fields(
     name: NameId, cst_fields: &[(Option<NameId>, cst::Type)], arguments: Option<&[Type]>, result: &TypeCheckResult,
-    next_id: Option<&mut u32>, item_context: &DesugarContext,
+    item_context: &DesugarContext,
 ) -> (NameId, Name, Vec<(Name, Type)>) {
     let constructor_type = result.get_generalized(name);
-    let constructor = apply_type_constructor(&constructor_type, arguments, result, next_id);
+    let constructor = apply_type_constructor(&constructor_type, arguments, result);
     let field_types = constructor.function_parameter_types();
     let fields = mapvec(field_types.enumerate(), |(i, field_type)| {
         let field_name = item_context.field_name_or_index(cst_fields.get(i).and_then(|(n, _)| *n), i);
@@ -157,13 +146,9 @@ fn variant_name_and_fields(
 /// Try to apply the given type to the given type arguments. Note that this assumes there are no
 /// bound type variables within `typ`!
 ///
-/// `next_id`, if given, instantiates the constructor's effect ids.
-///
 // This assumes constructor args are in the same order as the type args.
 // This should be guaranteed by [TypeChecker::build_constructor_type].
-pub(crate) fn apply_type_constructor(
-    typ: &Type, args: Option<&[Type]>, types: &TypeCheckResult, next_id: Option<&mut u32>,
-) -> Type {
+pub(crate) fn apply_type_constructor(typ: &Type, args: Option<&[Type]>, types: &TypeCheckResult) -> Type {
     let expected_generic_count = match typ.follow(&types.bindings) {
         Type::Forall(generics, _) => generics.len(),
         _ => 0,
@@ -197,8 +182,5 @@ pub(crate) fn apply_type_constructor(
         },
     };
 
-    match next_id.and_then(|next_id| applied.instantiate_effect_ids(next_id, &no_type_var_bindings)) {
-        Some(instantiated) => instantiated,
-        None => applied,
-    }
+    applied
 }

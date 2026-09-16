@@ -13,7 +13,7 @@ use crate::{
     type_inference::{
         Locateable, TypeChecker,
         generics::Generic,
-        types::{self, Effect, GenericSubstitutions, ParameterType, Type},
+        types::{self, GenericSubstitutions, ParameterType, Type},
     },
 };
 
@@ -316,9 +316,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     /// Given an effect operation's function type, set its effect row to the closed singleton containing `effect_type`.
     fn set_effect_on_function_type(&self, method_type: Type, effect_type: Type) -> Type {
-        let id = self.next_type_variable();
         Self::map_function_type(method_type, "set_effect_on_function_type", |function_type| {
-            function_type.effects = Effect { id, typ: effect_type }.into_type();
+            function_type.effects = Type::Effects(Some(Arc::new(vec![effect_type])));
         })
     }
 

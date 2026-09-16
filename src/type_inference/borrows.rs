@@ -280,7 +280,7 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
             Type::Effects(effects) => {
                 if let Some(effects) = effects.as_ref() {
                     for effect in effects.iter() {
-                        self.collect_place_atoms(&effect.typ, out);
+                        self.collect_place_atoms(effect, out);
                     }
                 }
             },
@@ -298,12 +298,7 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
                 self.collect_place_atoms(&function.return_type, &mut returned);
                 out.extend(returned.into_iter().filter(|atom| !supplied.contains(atom)));
             },
-            Type::Primitive(_)
-            | Type::Generic(_)
-            | Type::Variable(_)
-            | Type::UserDefined(_)
-            | Type::U32(_)
-            | Type::EffectId(_) => (),
+            Type::Primitive(_) | Type::Generic(_) | Type::Variable(_) | Type::UserDefined(_) | Type::U32(_) => (),
         }
     }
 

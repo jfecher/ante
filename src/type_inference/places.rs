@@ -16,7 +16,7 @@ use crate::{
     },
     type_inference::{
         TypeChecker,
-        row::{RowMatch, canonicalize_row, construct_row, flatten_row_into, follow_row, sort_and_dedup_row},
+        row::{RowKind, RowMatch, canonicalize_row, construct_row, flatten_row_into, follow_row, sort_and_dedup_row},
     },
 };
 
@@ -90,7 +90,7 @@ impl Type {
     pub(crate) fn flatten_places_into(
         places: &[Type], found: &mut Vec<Type>, bindings: &TypeBindings, more_bindings: &TypeBindings,
     ) {
-        flatten_row_into(places, found, bindings, more_bindings);
+        flatten_row_into(RowKind::Places, places, found, bindings, more_bindings);
     }
 
     /// Flatten, follow, sort, and deduplicate `places`.
@@ -98,7 +98,7 @@ impl Type {
     pub(crate) fn canonicalize_places(
         places: &[Type], bindings: &TypeBindings, more_bindings: &TypeBindings,
     ) -> Vec<Type> {
-        canonicalize_row(places, bindings, more_bindings, |_: &Type, _: &Type| ())
+        canonicalize_row(RowKind::Places, places, bindings, more_bindings)
     }
 
     /// Zonk each entry in place
@@ -108,12 +108,12 @@ impl Type {
 
     /// Sort and deduplicate the given places row. Entries must already be zonked.
     pub(crate) fn sort_and_dedup_places(places: &mut Vec<Type>) {
-        sort_and_dedup_row(places, |_: &Type, _: &Type| ());
+        sort_and_dedup_row(RowKind::Places, places);
     }
 
     /// Construct a canonicalized places row by following & deduplicating entries.
     pub(crate) fn places(list: &[Type], bindings: &TypeBindings, more_bindings: &TypeBindings) -> Type {
-        construct_row(list, bindings, more_bindings)
+        construct_row(RowKind::Places, list, bindings, more_bindings)
     }
 
     /// If this is a reference application, return its places argument
@@ -195,7 +195,7 @@ where
 
 impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Flattens two places rows and matches `a`'s concrete places against `b`'s
-    fn match_places(&self, a: &Type, b: &Type, new_bindings: &TypeBindings) -> Option<RowMatch<Type>> {
+    fn match_places(&self, a: &Type, b: &Type, new_bindings: &TypeBindings) -> Option<RowMatch> {
         let a_list = self.collect_and_merge_places(a, new_bindings);
         let b_list = self.collect_and_merge_places(b, new_bindings);
 
@@ -209,13 +209,13 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Row-subtype two places rows: is `a`'s actual set of places permitted by `b`'s expected set?
     pub(super) fn place_subtype(&self, a: &Type, b: &Type, new_bindings: &mut TypeBindings) -> Result<(), ()> {
         let Some(m) = self.match_places(a, b, new_bindings) else { return Ok(()) };
-        self.row_subtype_generic(m, new_bindings)
+        self.row_subtype_generic(RowKind::Places, m, new_bindings)
     }
 
     /// Unify two places rows: both must end up with the same set of places.
     pub(super) fn place_unify(&self, a: &Type, b: &Type, new_bindings: &mut TypeBindings) -> Result<(), ()> {
         let Some(m) = self.match_places(a, b, new_bindings) else { return Ok(()) };
-        self.row_unify_generic(m, new_bindings)
+        self.row_unify_generic(RowKind::Places, m, new_bindings)
     }
 
     fn collect_and_merge_places(&self, places: &Type, new_bindings: &TypeBindings) -> Vec<Type> {

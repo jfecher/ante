@@ -519,7 +519,6 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
             | Type::Forall(..)
             | Type::Tuple(_)
             | Type::U32(_)
-            | Type::EffectId(_)
             | Type::Effects(..)
             | Type::Place(_)
             | Type::Places(..) => {
@@ -980,7 +979,7 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
         match self.checker.follow_type(typ) {
             Type::UserDefined(origin) => match origin {
                 Origin::TopLevelDefinition(top_level_name) => {
-                    match top_level_name.top_level_item.type_body(None, self.checker.compiler, None) {
+                    match top_level_name.top_level_item.type_body(None, self.checker.compiler) {
                         TypeBody::Product { type_name, .. } => type_name,
                         TypeBody::Sum(variants) => variants[variant_index].1.clone(),
                     }
@@ -1058,9 +1057,7 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
         match origin {
             Origin::TopLevelDefinition(top_level_name) => {
                 let compiler = self.checker.compiler;
-                let body = self
-                    .checker
-                    .with_next_id(|next_id| top_level_name.type_body(Some(arguments), compiler, Some(next_id)));
+                let body = top_level_name.type_body(Some(arguments), compiler);
                 match body {
                     TypeBody::Product { type_name: _, fields } => {
                         let fields = mapvec(fields, |(_name, typ)| typ);

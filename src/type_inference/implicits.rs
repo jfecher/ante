@@ -777,7 +777,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let Some((_ctor, args)) = target.as_application() else { return false };
         args.iter().all(|arg| match arg {
             Type::Variable(_) => true,
-            Type::Effects(Some(entries)) => entries.iter().all(|effect| matches!(effect.typ, Type::Variable(_))),
+            Type::Effects(Some(entries)) => entries.iter().all(|effect| matches!(effect, Type::Variable(_))),
             _ => false,
         })
     }
@@ -1196,7 +1196,7 @@ fn collect_user_defined_crates(typ: &Type, out: &mut BTreeSet<CrateId>) {
         },
         Type::Effects(_) => {
             for effect in typ.effect_entries() {
-                collect_user_defined_crates(&effect.typ, out);
+                collect_user_defined_crates(effect, out);
             }
         },
         Type::UserDefined(_)
@@ -1204,7 +1204,6 @@ fn collect_user_defined_crates(typ: &Type, out: &mut BTreeSet<CrateId>) {
         | Type::Generic(_)
         | Type::Primitive(_)
         | Type::U32(_)
-        | Type::EffectId(_)
         | Type::Place(_)
         | Type::Places(_) => {},
     }

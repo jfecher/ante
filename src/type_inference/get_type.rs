@@ -126,8 +126,7 @@ fn constructor_type_is_fully_applied(typ: &cst::Type, resolve: &ResolutionResult
 
 /// If a definition is fully annotated with no type holes, this returns `(seeded, declared)`
 /// where `declared` is the declared type and `seeded` is `declared` but with all
-/// `Type::Generic(Generic::Inferred(id))` replaced with `Type::Variable(id)`, and with effect
-/// ids instantiated as well.
+/// `Type::Generic(Generic::Inferred(id))` replaced with `Type::Variable(id)`.
 pub fn try_get_seeded_and_declared_type(
     definition: &Definition, context: &DesugarContext, resolve: &ResolutionResult, compiler: &DbHandle,
     next_id: &mut u32,
@@ -135,7 +134,6 @@ pub fn try_get_seeded_and_declared_type(
     let declared = try_get_generalized_type(definition, context, resolve, compiler)?;
     let declared = declared.generalize(&TypeBindings::default());
     let (seeded, declared) = declared.open_inferred_generics(next_id);
-    let seeded = seeded.instantiate_effect_ids(next_id, &TypeBindings::default()).unwrap_or(seeded);
     Some((seeded, declared))
 }
 

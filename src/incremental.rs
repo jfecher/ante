@@ -445,5 +445,5 @@ define_intermediate!(1900, CheckAll -> (), DbStorage, check_all);
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct GetTypeBody(pub TopLevelName, pub Option<Vec<type_inference::types::Type>>);
 define_intermediate!(2000, GetTypeBody -> Arc<type_inference::TypeBody>, DbStorage, |context, db| {
-    Arc::new(context.0.type_body(context.1.as_deref(), db, None))
+    Arc::new(context.0.type_body(context.1.as_deref(), db))
 });

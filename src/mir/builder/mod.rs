@@ -13,8 +13,8 @@ use crate::{
     iterator_extensions::mapvec,
     lexer::token::{FloatKind, Integer, IntegerKind},
     mir::{
-        Block, BlockId, Definition, DefinitionId, FloatConstant, FunctionType, Generic,
-        Instruction, IntConstant, Mir, PrimitiveType, TerminatorInstruction, Type, Value, next_definition_id,
+        Block, BlockId, Definition, DefinitionId, EffectKey, FloatConstant, FunctionType, Generic, Instruction,
+        IntConstant, Mir, PrimitiveType, TerminatorInstruction, Type, Value, next_definition_id,
     },
     name_resolution::Origin,
     parser::{
@@ -26,14 +26,14 @@ use crate::{
         dependency_graph::TypeCheckResult,
         fresh_expr::ExtendedTopLevelContext,
         patterns::{Case, Constructor, DecisionTree},
-        types::{Effect, Type as TCType},
+        types::Type as TCType,
     },
 };
 
 mod intrinsics;
 mod types;
 
-use types::{Effects, same_effect_id};
+use types::Effects;
 
 /// Maps each TopLevelName to a unique DefinitionId
 pub(crate) type SharedIdsMap = DashMap<TopLevelName, DefinitionId>;
@@ -110,19 +110,11 @@ fn function_returns_never<'a>(mut typ: &'a TCType, bindings: &'a type_inference:
     }
 }
 
-/// Where a call's evidence for one concrete effect comes from
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum CapabilitySource {
-    CanClause(usize),
-    Handle(ExprId),
-}
-
 /// Saved/restored around building a definition in isolation. See [Context::take_scope].
 struct SavedScope {
     local_variables: FxHashMap<NameId, Value>,
     mutable_locals: rustc_hash::FxHashSet<NameId>,
-    effects: Vec<(Effect, Value)>,
-    handle_capabilities: FxHashMap<ExprId, (Effect, Value)>,
+    capabilities: Vec<(EffectKey, Value)>,
     own_evidence: Option<Value>,
 }
 
@@ -158,14 +150,8 @@ struct Context<'local, Db> {
     /// so [crate::mir::effects::effect_lowering] can look up the slot of an op in the capability tuple.
     effect_op_indices: FxHashMap<DefinitionId, u32>,
 
-    /// The current function's effects. One (row entry, capability value) pair per evidence slot.
-    /// Slot order is determined by the [TCType::EffectId] and [Effect::id] of the effect.
-    effects: Vec<(Effect, Value)>,
-
-    /// Capabilities from enclosing `handle`s, keyed by the handle's [ExprId]. The [Effect] is the
-    /// row entry the handler discharges, whose id type inference linked to the entry it removed
-    /// from the handled body's row.
-    handle_capabilities: FxHashMap<ExprId, (Effect, Value)>,
+    /// The capabilities in scope
+    capabilities: Vec<(EffectKey, Value)>,
 
     /// The evidence value holding this function's own row generics
     own_evidence: Option<Value>,
@@ -191,8 +177,7 @@ impl<'local, Db> Context<'local, Db> {
             name_to_id: name_mappings,
             external: Default::default(),
             effect_op_indices: Default::default(),
-            effects: Default::default(),
-            handle_capabilities: Default::default(),
+            capabilities: Default::default(),
             own_evidence: None,
         }
     }
@@ -654,15 +639,14 @@ where
         self.make_definition_value(id, name, uniform_type)
     }
 
-    /// The effect an operation of type `typ` performs, from the head of its own row.
-    /// Its id is what says which capability in scope the operation dispatches through.
-    fn effect_of_operation(&self, typ: &TCType) -> Effect {
+    /// The effect an operation of type `typ` performs
+    fn effect_of_operation(&self, typ: &TCType) -> TCType {
         let Some(row) = self.function_row(typ) else { panic!("effect operation is not a function") };
         row.entries.into_iter().next().unwrap_or_else(|| panic!("effect operation has an empty row"))
     }
 
     /// Looks the capability for `effect` up within the evidence value `evidence`
-    fn lookup_capability(&mut self, evidence: Value, effect: &Effect) -> Value {
+    fn lookup_capability(&mut self, evidence: Value, effect: &TCType) -> Value {
         let key = self.convert_context().effect_key(effect);
         let typ = self.effect_capability_tuple_type_of(effect);
         self.push_instruction(Instruction::LookupEvidence { evidence, key }, typ)
@@ -888,10 +872,7 @@ where
     /// function's own evidence for each row generic it forwards.
     fn build_evidence(&mut self, effects: &TCType) -> Value {
         let row = self.convert_context().split_row(effects);
-        let capabilities = mapvec(&row.entries, |entry| {
-            let source = self.resolve_one_capability_source(entry);
-            self.capability_value(source)
-        });
+        let capabilities = mapvec(&row.entries, |entry| self.capability_of(entry));
         let rest = (!row.generics.is_empty()).then(|| self.own_evidence_value());
         self.make_evidence(&row, capabilities, rest)
     }
@@ -901,48 +882,49 @@ where
         self.own_evidence.unwrap_or_else(|| panic!("no evidence in scope holds this function's row generics"))
     }
 
-    /// Resolves the capability a row entry needs, by its [Effect::id].
-    fn resolve_one_capability_source(&self, effect: &Effect) -> CapabilitySource {
-        let bindings = &self.types.bindings;
-        if let Some(i) = self.effects.iter().position(|(owned, _)| same_effect_id(owned, effect, bindings)) {
-            return CapabilitySource::CanClause(i);
-        }
-        for (handle_expr, (owned, _)) in &self.handle_capabilities {
-            if same_effect_id(owned, effect, bindings) {
-                return CapabilitySource::Handle(*handle_expr);
-            }
-        }
-        let effect_type = effect.typ.follow_all(bindings);
-        let id = effect.id.follow(bindings);
-        panic!("no capability for effect {effect_type:?} (id {id:?}) in scope at this call site")
+    /// The capability in scope for a row entry
+    fn capability_of(&self, effect: &TCType) -> Value {
+        let key = self.convert_context().effect_key(effect);
+        self.capability(&key)
     }
 
-    fn capability_value(&self, source: CapabilitySource) -> Value {
-        match source {
-            CapabilitySource::CanClause(i) => self.effects[i].1,
-            CapabilitySource::Handle(id) => {
-                self.handle_capabilities.get(&id).unwrap_or_else(|| panic!("no capability for handle {id:?}")).1
-            },
-        }
+    /// The capability in scope for `key`
+    fn capability(&self, key: &EffectKey) -> Value {
+        self.capabilities
+            .iter()
+            .find(|(owned, _)| owned == key)
+            .map(|(_, value)| *value)
+            .unwrap_or_else(|| panic!("no capability for {key} in scope at this call site"))
     }
 
-    /// The effects a handler body/branch needs beyond what it handles.
-    /// A body excludes its own handled effect(s) while a branch excludes nothing.
+    /// The effect the handler named `handler_name` discharges
+    fn handled_effect(&self, handler_name: NameId) -> TCType {
+        let h_tc_type = self.types.result.maps.name_types[&handler_name].follow_all(&self.types.bindings);
+        let handled = self.convert_context().split_row(&h_tc_type);
+        let [handled] = handled.entries.as_slice() else {
+            panic!("a handler handles exactly one effect, found {h_tc_type:?}")
+        };
+        handled.clone()
+    }
+
+    /// The capabilities a handler branch needs from the enclosing scope.
+    /// A body excludes its own handled effect while a branch excludes nothing.
     fn suppressed_lambda_needed_capabilities(
         &self, tc_effects: &TCType, handle_body_handler_name: Option<NameId>,
-    ) -> Vec<Effect> {
+    ) -> Vec<(EffectKey, Value)> {
         let row = self.convert_context().split_row(tc_effects);
+        let handled =
+            handle_body_handler_name.map(|name| self.convert_context().effect_key(&self.handled_effect(name)));
 
-        let handled: Vec<Effect> = match handle_body_handler_name {
-            Some(handler_name) => {
-                let h_tc_type = self.types.result.maps.name_types[&handler_name].follow_all(&self.types.bindings);
-                self.convert_context().split_row(&h_tc_type).entries
-            },
-            None => Vec::new(),
-        };
-
-        let bindings = &self.types.bindings;
-        row.entries.into_iter().filter(|effect| !handled.iter().any(|h| same_effect_id(h, effect, bindings))).collect()
+        let mut needed = Vec::with_capacity(row.entries.len());
+        for effect in &row.entries {
+            let key = self.convert_context().effect_key(effect);
+            if handled.as_ref() != Some(&key) {
+                let value = self.capability(&key);
+                needed.push((key, value));
+            }
+        }
+        needed
     }
 
     /// Extends a lambda's environment type with trailing fields.
@@ -1012,13 +994,12 @@ where
     ) -> Value {
         self.effect_op_indices.insert(effect_op, op_index);
         let effect = self.effect_of_operation(&self.types.result.maps.expr_types[&callee_expr]);
-        let source = self.resolve_one_capability_source(&effect);
-        let cap_value = self.capability_value(source);
+        let cap_value = self.capability_of(&effect);
         self.emit_indexed_method_call(cap_value, op_index, arguments, result_type, diverges)
     }
 
     /// Resolves a `split_row` entry to its capability tuple type.
-    fn effect_capability_tuple_type_of(&self, effect: &Effect) -> Type {
+    fn effect_capability_tuple_type_of(&self, effect: &TCType) -> Type {
         self.convert_context().effect_capability_tuple_type_of(effect)
     }
 
@@ -1122,8 +1103,7 @@ where
         SavedScope {
             local_variables: std::mem::take(&mut self.local_variables),
             mutable_locals: std::mem::take(&mut self.mutable_locals),
-            effects: std::mem::take(&mut self.effects),
-            handle_capabilities: std::mem::take(&mut self.handle_capabilities),
+            capabilities: std::mem::take(&mut self.capabilities),
             own_evidence: self.own_evidence.take(),
         }
     }
@@ -1132,8 +1112,7 @@ where
     fn restore_scope(&mut self, saved: SavedScope) {
         self.local_variables = saved.local_variables;
         self.mutable_locals = saved.mutable_locals;
-        self.effects = saved.effects;
-        self.handle_capabilities = saved.handle_capabilities;
+        self.capabilities = saved.capabilities;
         self.own_evidence = saved.own_evidence;
     }
 
@@ -1192,12 +1171,8 @@ where
         let own_row = self.convert_context().split_row(&tc_effects);
 
         // Resolved against the enclosing scope's still-current tables, before they're taken below.
-        let needed_capabilities: Vec<(Effect, Value)> = if suppress_capabilities {
-            let effects = self.suppressed_lambda_needed_capabilities(&tc_effects, handle_body_handler_name);
-            mapvec(effects, |effect| {
-                let value = self.capability_value(self.resolve_one_capability_source(&effect));
-                (effect, value)
-            })
+        let needed_capabilities = if suppress_capabilities {
+            self.suppressed_lambda_needed_capabilities(&tc_effects, handle_body_handler_name)
         } else {
             Vec::new()
         };
@@ -1274,7 +1249,7 @@ where
                 let evidence = this.push_capability_parameter(evidence_type.clone());
                 for effect in own_row.entries.iter() {
                     let capability = this.lookup_capability(evidence, effect);
-                    this.effects.push((effect.clone(), capability));
+                    this.capabilities.push((this.convert_context().effect_key(effect), capability));
                 }
                 this.own_evidence = Some(evidence);
             }
@@ -1316,16 +1291,11 @@ where
             // For a `handle` expression's body lambda, bind `h` to a placeholder [Instruction::Capability].
             // The lowering passes are responsible for replacing it.
             if let Some(handler_name) = handle_body_handler_name {
-                let h_tc_type = this.types.result.maps.name_types[&handler_name].follow_all(&this.types.bindings);
-                let handled = this.convert_context().split_row(&h_tc_type);
-                let [handled] = handled.entries.as_slice() else {
-                    panic!("a handler handles exactly one effect, found {h_tc_type:?}")
-                };
-                let handled = handled.clone();
+                let handled = this.handled_effect(handler_name);
                 let h_type = this.effect_capability_tuple_type_of(&handled);
                 let cap = this.push_instruction(Instruction::Capability, h_type);
                 this.local_variables.insert(handler_name, cap);
-                this.handle_capabilities.insert(expr, (handled, cap));
+                this.capabilities.push((this.convert_context().effect_key(&handled), cap));
             }
 
             // Bind the self-reference so recursive calls within the body can resolve to Origin::Local.
@@ -1411,9 +1381,9 @@ where
     }
 
     /// Unpack a closure environment parameter, binding each captured name, needed capability and
-    /// forwarded evidence to its value. Each unpacked capability is pushed onto `self.effects` in order.
+    /// forwarded evidence to its value. Each unpacked capability is pushed onto `self.capabilities` in order.
     fn unpack_closure_environment(
-        &mut self, free_vars: impl ExactSizeIterator<Item = NameId> + Clone, capabilities: &[(Effect, Value)],
+        &mut self, free_vars: impl ExactSizeIterator<Item = NameId> + Clone, capabilities: &[(EffectKey, Value)],
         forwarded_evidence: Option<&Type>, environment: Value,
     ) {
         let free_vars_len = free_vars.len();
@@ -1444,11 +1414,11 @@ where
             let existing = self.local_variables.insert(var, result);
             assert!(existing.is_none(), "Closure is overwriting values from the outer scope");
         }
-        for (i, (effect, _)) in capabilities.iter().enumerate() {
+        for (i, (key, _)) in capabilities.iter().enumerate() {
             let field_ty = env_fields[free_vars_len + i].clone();
             let index = Instruction::IndexTuple { tuple: env_value, index: (free_vars_len + i) as u32 };
             let result = self.push_instruction(index, field_ty);
-            self.effects.push((effect.clone(), result));
+            self.capabilities.push((key.clone(), result));
         }
         if forwarded_evidence.is_some() {
             let index = free_vars_len + capabilities.len();

@@ -14,7 +14,7 @@ use crate::{
     },
     type_inference::{
         TypeBody,
-        types::{Effect, Type as TCType, TypeBindings, TypeVariableId},
+        types::{Type as TCType, TypeBindings, TypeVariableId},
     },
 };
 
@@ -86,15 +86,10 @@ pub(super) struct ConvertTypeContext<'a, Db> {
 #[derive(Clone)]
 pub(super) struct Effects {
     /// The concrete effects of the row, each carrying its capability
-    pub(super) entries: Vec<Effect>,
+    pub(super) entries: Vec<TCType>,
 
     /// The row generics in scope this row stays polymorphic over
     pub(super) generics: Vec<Generic>,
-}
-
-/// True if both row entries name the same capability
-pub(super) fn same_effect_id(a: &Effect, b: &Effect, bindings: &TypeBindings) -> bool {
-    a.id.follow(bindings) == b.id.follow(bindings)
 }
 
 impl<Db> ConvertTypeContext<'_, Db>
@@ -138,7 +133,6 @@ where
             TCType::U32(n) => Type::U32(*n),
             // A row used as a type (e.g. a row-generic instantiation binding) is its evidence.
             TCType::Effects(_) => self.evidence_type(typ),
-            TCType::EffectId(id) => unreachable!("convert_type: effect id #{id} in a type position"),
             TCType::Place(_) | TCType::Places(_) => Type::UNIT,
         }
     }
@@ -166,9 +160,9 @@ where
     }
 
     /// The identity of a row entry's effect within evidence
-    pub(super) fn effect_key(&self, effect: &Effect) -> EffectKey {
-        let Some((name, args)) = self.definition_head(&effect.typ) else {
-            panic!("effect_key: not an effect type: {:?}", effect.typ);
+    pub(super) fn effect_key(&self, effect: &TCType) -> EffectKey {
+        let Some((name, args)) = self.definition_head(effect) else {
+            panic!("effect_key: not an effect type: {effect:?}");
         };
         self.effect_key_of(name, args)
     }
@@ -184,30 +178,27 @@ where
         let mut entries = Vec::new();
         let mut ends = Vec::new();
 
-        // Only entries have ids so the row starts with the id that matches nothing
-        self.collect_row_items(effects, &TCType::ERROR, &mut entries, &mut ends);
+        self.collect_row_items(effects, &mut entries, &mut ends);
 
-        let mut deduped: Vec<Effect> = Vec::with_capacity(entries.len());
+        let mut deduped: Vec<TCType> = Vec::with_capacity(entries.len());
         for entry in entries {
-            if !deduped.iter().any(|kept: &Effect| kept.typ == entry.typ) {
+            if !deduped.contains(&entry) {
                 deduped.push(entry);
             }
         }
 
         // No reason to carry capabilities for effects with no operations
-        deduped.retain(|effect| !self.effect_has_no_operations(&effect.typ));
+        deduped.retain(|effect| !self.effect_has_no_operations(effect));
         Effects { entries: deduped, generics: mapvec(&ends, |end| self.row_generic(end)) }
     }
 
     /// Recursively flattens `typ` into concrete effects and any open ends
-    ///
-    /// `id` is the id of the row entry `typ` came from.
-    fn collect_row_items(&self, typ: &TCType, id: &TCType, entries: &mut Vec<Effect>, ends: &mut Vec<TCType>) {
+    fn collect_row_items(&self, typ: &TCType, entries: &mut Vec<TCType>, ends: &mut Vec<TCType>) {
         let followed = typ.follow(self.type_bindings);
         match followed {
             TCType::Effects(_) => {
                 for effect in followed.effect_entries() {
-                    self.collect_row_items(&effect.typ, &effect.id, entries, ends);
+                    self.collect_row_items(effect, entries, ends);
                 }
             },
             // An unbound variable is only open if it is one of the enclosing function's own generics,
@@ -219,7 +210,7 @@ where
             },
             TCType::Variable(_) => (),
             other if other.is_error() => (),
-            typ => entries.push(Effect { id: id.clone(), typ: typ.clone() }),
+            typ => entries.push(typ.clone()),
         }
     }
 
@@ -260,7 +251,7 @@ where
         let Some((name, args)) = self.definition_head(dictionary) else {
             panic!("trait_method_types: `{dictionary:?}` is not a trait");
         };
-        match name.top_level_item.type_body(args, self.compiler, None) {
+        match name.top_level_item.type_body(args, self.compiler) {
             TypeBody::Product { fields, .. } => mapvec(fields, |(_, typ)| typ),
             TypeBody::Sum(_) => panic!("trait_method_types: trait is a sum type"),
         }
@@ -284,8 +275,7 @@ where
         let checked = TypeCheck(effect_item).get(self.compiler);
         let fields = mapvec(effect.body.iter(), |decl| {
             let method_type = checked.get_generalized(decl.name);
-            let method_type =
-                crate::type_inference::type_body::apply_type_constructor(&method_type, args, &checked, None);
+            let method_type = crate::type_inference::type_body::apply_type_constructor(&method_type, args, &checked);
             self.convert_operation_type(&method_type)
         });
         Type::Tuple(Arc::new(fields))
@@ -324,9 +314,9 @@ where
     }
 
     /// Resolves a [Self::split_row] entry to its capability tuple type
-    pub(super) fn effect_capability_tuple_type_of(&self, effect: &Effect) -> Type {
-        let Some((name, args)) = self.definition_head(&effect.typ) else {
-            panic!("effect_capability_tuple_type_of: not an effect type: {:?}", effect.typ);
+    pub(super) fn effect_capability_tuple_type_of(&self, effect: &TCType) -> Type {
+        let Some((name, args)) = self.definition_head(effect) else {
+            panic!("effect_capability_tuple_type_of: not an effect type: {effect:?}");
         };
         self.effect_capability_tuple_type(name.top_level_item, args)
     }

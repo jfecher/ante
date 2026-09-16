@@ -25,7 +25,7 @@ use crate::{
         generics::Generic,
         kinds::Kind,
         places::{self, Place},
-        row::{Row, RowEntry, canonicalize_row, construct_row, flatten_row_into, follow_row, sort_and_dedup_row},
+        row::{Row, RowKind, canonicalize_row, construct_row, flatten_row_into, follow_row, sort_and_dedup_row},
     },
 };
 
@@ -80,15 +80,7 @@ pub enum Type {
     /// An effects row, each effect is sorted & deduplicated
     ///
     /// A value of None corresponds to an empty effect set to avoid allocation
-    Effects(Row<Effect>),
-
-    /// The canonical form of an [Effect::id] in a generalized type.
-    ///
-    /// This names a capability slot so that Mir can find where to link the capability of each
-    /// effect from parameters or Handles to call sites.
-    ///
-    /// These are replaced with [Type::Variable]s when instantiated
-    EffectId(u32),
+    Effects(Row<Type>),
 
     /// A single concrete place a reference may point to. Only ever appears as an entry
     /// inside a [Type::Places] row
@@ -99,64 +91,6 @@ pub enum Type {
     ///
     /// A value of None corresponds to a reference pointing to nothing
     Places(Row<Type>),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct Effect {
-    /// This id identifies the capability value used at runtime for this effect.
-    /// Effects with the same id will have the same value threaded through.
-    ///
-    /// These cannot be manually specified by users, so they are always a [Type::EffectId] or [Type::Variable].
-    pub id: Type,
-    pub typ: Type,
-}
-
-impl Effect {
-    /// Return this effect as an effect row of just this effect
-    pub(crate) fn into_type(self) -> Type {
-        Type::Effects(Some(Arc::new(vec![self])))
-    }
-
-    /// Rewrite both halves of this entry with `f`, cloning whichever half `f` left alone.
-    /// `None` if neither changed, so the caller can reuse the original entry.
-    fn map_opt(&self, mut f: impl FnMut(&Type) -> Option<Type>) -> Option<Effect> {
-        let typ = f(&self.typ);
-        let id = f(&self.id);
-        (typ.is_some() || id.is_some())
-            .then(|| Effect { typ: typ.unwrap_or_else(|| self.typ.clone()), id: id.unwrap_or_else(|| self.id.clone()) })
-    }
-
-    fn follow_all_opt(&self, bindings: &TypeBindings, more_bindings: &TypeBindings) -> Option<Effect> {
-        self.map_opt(|typ| typ.follow_all_opt(bindings, more_bindings))
-    }
-
-    fn substitute_opt(
-        &self, bindings_to_substitute: &GenericSubstitutions, bindings_in_scope: &TypeBindings,
-    ) -> Option<Effect> {
-        self.map_opt(|typ| typ.substitute_opt(bindings_to_substitute, bindings_in_scope))
-    }
-}
-
-/// Assigns a canonical [Type::EffectId] to each distinct effect met while walking a signature.
-/// See [Type::canonicalize_effect_ids].
-#[derive(Default)]
-struct EffectIds {
-    /// Maps effect type -> effect id
-    assigned: Vec<(Type, u32)>,
-}
-
-impl EffectIds {
-    /// Retrieve the id for the given type, or make a new one otherwise.
-    /// This is meant to work on types that are translated from [cst::Type]s, so unbound type variables
-    /// are less of a concern. Exact equality should be sufficient.
-    fn get_or_create_id(&mut self, typ: &Type) -> Type {
-        if let Some((_, id)) = self.assigned.iter().find(|(assigned, _)| assigned == typ) {
-            return Type::EffectId(*id);
-        }
-        let id = self.assigned.len() as u32;
-        self.assigned.push((typ.clone(), id));
-        Type::EffectId(id)
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -385,7 +319,6 @@ impl Type {
             | Type::Generic(_)
             | Type::UserDefined(_)
             | Type::U32(_)
-            | Type::EffectId(_)
             | Type::Place(_)
             | Type::Effects(_)
             | Type::Places(_) => false,
@@ -417,12 +350,7 @@ impl Type {
     /// when the subtree is unchanged so the caller can reuse the original `Arc` instead of allocating.
     pub(super) fn follow_all_opt(&self, bindings: &TypeBindings, more_bindings: &TypeBindings) -> Option<Type> {
         match self {
-            Type::Primitive(_)
-            | Type::Generic(_)
-            | Type::UserDefined(_)
-            | Type::U32(_)
-            | Type::EffectId(_)
-            | Type::Place(_) => None,
+            Type::Primitive(_) | Type::Generic(_) | Type::UserDefined(_) | Type::U32(_) | Type::Place(_) => None,
             Type::Variable(id) => {
                 let binding = bindings.get(id).or_else(|| more_bindings.get(id))?;
                 Some(binding.follow_all_two(bindings, more_bindings))
@@ -510,7 +438,7 @@ impl Type {
         let self_is_var = matches!(self, Type::Variable(_));
 
         match self.follow(bindings_in_scope) {
-            Type::Primitive(_) | Type::UserDefined(_) | Type::U32(_) | Type::EffectId(_) | Type::Place(_) => None,
+            Type::Primitive(_) | Type::UserDefined(_) | Type::U32(_) | Type::Place(_) => None,
             Type::Generic(generic) => bindings_to_substitute.get(generic).cloned(),
             Type::Variable(id) => bindings_to_substitute.get(&Generic::Inferred(*id)).cloned(),
             Type::Function(function) => {
@@ -987,9 +915,7 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
     /// Convert an effects clause into an effect row; `None` is open or closed per `self.open_effects_by_default`.
     fn convert_effects_clause(&mut self, effects: Option<&[cst::Type]>) -> Type {
         match effects {
-            None if self.open_effects_by_default => {
-                Effect { typ: self.next_type_variable(), id: self.next_type_variable() }.into_type()
-            },
+            None if self.open_effects_by_default => Type::Effects(Some(Arc::new(vec![self.next_type_variable()]))),
             None => Type::pure(),
             Some(list) => self.convert_effect_row_entries(list),
         }
@@ -997,11 +923,7 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
 
     /// Convert a list of effect type entries into an effect row
     fn convert_effect_row_entries(&mut self, list: &[cst::Type]) -> Type {
-        let effects = mapvec(list, |e| {
-            let typ = self.convert_with_kind(e, Kind::Effect);
-            let id = self.next_type_variable();
-            Effect { typ, id }
-        });
+        let effects = mapvec(list, |e| self.convert_with_kind(e, Kind::Effect));
         Type::effects(&effects, &Default::default(), &Default::default())
     }
 
@@ -1126,15 +1048,13 @@ impl Type {
 
     /// Generalize a type, making it generic. Any holes in the type become generic types.
     pub fn generalize(&self, bindings: &TypeBindings) -> Type {
-        // Effect ids are converted from [Type::Variable]s to [Type::EffectId]s first so they aren't generalized
-        let this = self.generalize_effect_ids(bindings);
-        let free_vars = this.free_vars(bindings);
+        let free_vars = self.free_vars(bindings);
 
         if free_vars.is_empty() {
-            this
+            self.clone()
         } else {
             let substitutions = free_vars.iter().map(|var| (*var, Type::Generic(*var))).collect();
-            let typ = this.substitute(&substitutions, bindings);
+            let typ = self.substitute(&substitutions, bindings);
             Type::Forall(Arc::new(free_vars), Arc::new(typ))
         }
     }
@@ -1222,112 +1142,8 @@ impl Type {
             | Type::UserDefined(_)
             | Type::U32(_)
             | Type::Effects(_)
-            | Type::EffectId(_)
             | Type::Place(_)
             | Type::Places(_) => (),
-        }
-    }
-
-    /// Rewrite every [Effect::id] into a [Type::EffectId] numbered from the position it was found during
-    /// traversal. Any uses of the same effect are linked with the same id even if that effect will
-    /// not actually be performed in the function.
-    pub fn generalize_effect_ids(&self, bindings: &TypeBindings) -> Type {
-        let mut ids = EffectIds::default();
-        self.map_effect_ids(bindings, &mut |effect| ids.get_or_create_id(&effect.typ)).unwrap_or_else(|| self.clone())
-    }
-
-    /// Replace each [Type::EffectId] with a fresh variable numbered from `next_id`.
-    /// Returns `None` with `next_id` untouched when the type holds no ids.
-    pub(crate) fn instantiate_effect_ids(&self, next_id: &mut u32, bindings: &TypeBindings) -> Option<Type> {
-        let base = *next_id;
-        let mut count = 0;
-        let typ = self.map_effect_ids(bindings, &mut |effect| match &effect.id {
-            Type::EffectId(id) => {
-                count = count.max(id + 1);
-                Type::Variable(TypeVariableId(base + id))
-            },
-            other => other.clone(),
-        });
-        *next_id += count;
-        typ
-    }
-
-    /// Rebuild this type with each row entry's id replaced by `new_id`, returning `None` when
-    /// nothing changed.
-    ///
-    /// An entry's own type is rewritten before `new_id` is called on it, and a function's row is
-    /// rewritten before the rest of its signature, so a numbering pass sees each effect in
-    /// outermost-row-first order.
-    fn map_effect_ids(&self, bindings: &TypeBindings, new_id: &mut impl FnMut(&Effect) -> Type) -> Option<Type> {
-        let self_is_var = matches!(self, Type::Variable(_));
-
-        match self.follow(bindings) {
-            Type::Function(function) => {
-                let effects = function.effects.map_effect_ids(bindings, new_id);
-                let parameters = Self::follow_all_each(&function.parameters, |parameter| {
-                    let typ = parameter.typ.map_effect_ids(bindings, new_id)?;
-                    Some(ParameterType::new(typ, parameter.is_implicit))
-                });
-                let environment = function.environment.map_effect_ids(bindings, new_id);
-                let return_type = function.return_type.map_effect_ids(bindings, new_id);
-                if effects.is_none()
-                    && parameters.is_none()
-                    && environment.is_none()
-                    && return_type.is_none()
-                    && !self_is_var
-                {
-                    return None;
-                }
-                Some(Type::Function(Arc::new(FunctionType {
-                    parameters: parameters.unwrap_or_else(|| function.parameters.clone()),
-                    environment: environment.unwrap_or_else(|| function.environment.clone()),
-                    return_type: return_type.unwrap_or_else(|| function.return_type.clone()),
-                    effects: effects.unwrap_or_else(|| function.effects.clone()),
-                })))
-            },
-            Type::Effects(effects) => {
-                let Some(effects) = effects else { return self_is_var.then(Type::pure) };
-
-                // Canonicalize before numbering so an id's number is based on the canonical shape
-                let mapped = Self::follow_all_each(effects, |effect| {
-                    let typ = effect.typ.map_effect_ids(bindings, new_id)?;
-                    Some(Effect { id: effect.id.clone(), typ })
-                });
-                let entries = mapped.as_deref().unwrap_or(effects);
-                let canonical = Self::canonicalize_effects(entries, bindings, &Default::default(), |_, _| ());
-                let renumbered =
-                    mapvec(canonical.iter(), |effect| Effect { id: new_id(effect), typ: effect.typ.clone() });
-
-                if mapped.is_none() && !self_is_var && renumbered == **effects {
-                    return None;
-                }
-                Some(Effect::row_from_canonical(renumbered))
-            },
-            Type::Application(constructor, args) => {
-                let new_constructor = constructor.map_effect_ids(bindings, new_id);
-                let new_args = Self::follow_all_each(args, |arg| arg.map_effect_ids(bindings, new_id));
-                if new_constructor.is_none() && new_args.is_none() && !self_is_var {
-                    return None;
-                }
-                let constructor = new_constructor.map(Arc::new).unwrap_or_else(|| constructor.clone());
-                let args = new_args.map(Arc::new).unwrap_or_else(|| args.clone());
-                Some(Type::Application(constructor, args))
-            },
-            Type::Tuple(elements) => {
-                let new_elements = Self::follow_all_each(elements, |e| e.map_effect_ids(bindings, new_id));
-                if new_elements.is_none() && !self_is_var {
-                    return None;
-                }
-                Some(Type::Tuple(new_elements.map(Arc::new).unwrap_or_else(|| elements.clone())))
-            },
-            Type::Forall(generics, typ) => {
-                let new_typ = typ.map_effect_ids(bindings, new_id);
-                if new_typ.is_none() && !self_is_var {
-                    return None;
-                }
-                Some(Type::Forall(generics.clone(), new_typ.map(Arc::new).unwrap_or_else(|| typ.clone())))
-            },
-            other => self_is_var.then(|| other.clone()),
         }
     }
 
@@ -1338,7 +1154,7 @@ impl Type {
             match followed {
                 Type::Effects(_) => {
                     for effect in followed.effect_entries() {
-                        match effect.typ.follow(bindings) {
+                        match effect.follow(bindings) {
                             Type::Variable(id) => ends.push(*id),
                             nested => go(nested, bindings, ends),
                         }
@@ -1382,7 +1198,6 @@ impl Type {
             | Type::Variable(_)
             | Type::Generic(_)
             | Type::U32(_)
-            | Type::EffectId(_)
             | Type::Place(_) => (),
             Type::Function(function) => {
                 for parameter in &function.parameters {
@@ -1409,8 +1224,7 @@ impl Type {
             Type::Effects(effects) => {
                 if let Some(effects) = effects.as_ref() {
                     for effect in effects.iter() {
-                        effect.typ.for_each_subterm(bindings, f);
-                        effect.id.for_each_subterm(bindings, f);
+                        effect.for_each_subterm(bindings, f);
                     }
                 }
             },
@@ -1557,35 +1371,31 @@ impl Type {
 
     /// Flatten every effect reachable from `effects` into `found`
     pub(crate) fn flatten_effects_into(
-        effects: &[Effect], found: &mut Vec<Effect>, bindings: &TypeBindings, more_bindings: &TypeBindings,
+        effects: &[Type], found: &mut Vec<Type>, bindings: &TypeBindings, more_bindings: &TypeBindings,
     ) {
-        flatten_row_into(effects, found, bindings, more_bindings);
+        flatten_row_into(RowKind::Effects, effects, found, bindings, more_bindings);
     }
 
-    /// Flatten, follow, sort, and deduplicate `effects`.
-    /// Deduplication is done via exact equality rather than unification.
+    /// Flatten, follow, sort, and deduplicate `effects` by exact equality rather than unification
     pub(crate) fn canonicalize_effects(
-        effects: &[Effect], bindings: &TypeBindings, more_bindings: &TypeBindings,
-        mut on_merge: impl FnMut(&Type, &Type),
-    ) -> Vec<Effect> {
-        canonicalize_row(effects, bindings, more_bindings, |dropped: &Effect, kept: &Effect| {
-            on_merge(&dropped.id, &kept.id)
-        })
+        effects: &[Type], bindings: &TypeBindings, more_bindings: &TypeBindings,
+    ) -> Vec<Type> {
+        canonicalize_row(RowKind::Effects, effects, bindings, more_bindings)
     }
 
-    /// Zonk each entry's type in place
-    pub(crate) fn follow_effects(effects: &mut [Effect], bindings: &TypeBindings, more_bindings: &TypeBindings) {
+    /// Zonk each entry in place
+    pub(crate) fn follow_effects(effects: &mut [Type], bindings: &TypeBindings, more_bindings: &TypeBindings) {
         follow_row(effects, bindings, more_bindings);
     }
 
     /// Sort and deduplicate the given effect set. Entries must already be zonked.
-    pub(crate) fn sort_and_dedup_effects(effects: &mut Vec<Effect>, mut on_merge: impl FnMut(&Type, &Type)) {
-        sort_and_dedup_row(effects, |dropped: &Effect, kept: &Effect| on_merge(&dropped.id, &kept.id));
+    pub(crate) fn sort_and_dedup_effects(effects: &mut Vec<Type>) {
+        sort_and_dedup_row(RowKind::Effects, effects);
     }
 
     /// Construct a canonicalized effect row by following & deduplicating entries.
-    pub(crate) fn effects(list: &[Effect], bindings: &TypeBindings, more_bindings: &TypeBindings) -> Type {
-        construct_row(list, bindings, more_bindings)
+    pub(crate) fn effects(list: &[Type], bindings: &TypeBindings, more_bindings: &TypeBindings) -> Type {
+        construct_row(RowKind::Effects, list, bindings, more_bindings)
     }
 
     /// The effect constructor an effect-row entry refers to, ignoring its type arguments.
@@ -1601,7 +1411,7 @@ impl Type {
     }
 
     /// If this is [Type::Effects], return the inner effects. Otherwise return an empty slice.
-    pub(crate) fn effect_entries(&self) -> &[Effect] {
+    pub(crate) fn effect_entries(&self) -> &[Type] {
         match self {
             Type::Effects(Some(effects)) => effects,
             _ => &[],
@@ -1663,7 +1473,6 @@ where
     pub(super) fn fmt_type(&self, typ: &Type, parenthesize: bool, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match typ {
             Type::Primitive(primitive_type) => write!(f, "{primitive_type}"),
-            Type::EffectId(id) => write!(f, "#{id}"),
             Type::UserDefined(origin) => self.fmt_type_origin(*origin, f),
             Type::Generic(Generic::Named(origin)) => self.fmt_type_origin(*origin, f),
             Type::Generic(Generic::Inferred(id)) => write!(f, "g{id}"),
@@ -1772,29 +1581,29 @@ where
     }
 
     fn fmt_effects(
-        &self, effects: &Option<Arc<Vec<Effect>>>, parenthesize: bool, f: &mut std::fmt::Formatter,
+        &self, effects: &Option<Arc<Vec<Type>>>, parenthesize: bool, f: &mut std::fmt::Formatter,
     ) -> std::fmt::Result {
         let effects = self.canonicalize(effects);
         match effects.as_slice() {
             [] => write!(f, "pure"),
-            [effect] => self.fmt_type(&effect.typ, parenthesize, f),
+            [effect] => self.fmt_type(effect, parenthesize, f),
             _ => try_parenthesize(parenthesize, f, |f| self.fmt_non_empty_effects(&effects, f)),
         }
     }
 
     /// Canonicalize a row for printing
-    fn canonicalize(&self, effects: &Option<Arc<Vec<Effect>>>) -> Vec<Effect> {
+    fn canonicalize(&self, effects: &Option<Arc<Vec<Type>>>) -> Vec<Type> {
         let effects = effects.as_deref().map_or(&[][..], Vec::as_slice);
-        Type::canonicalize_effects(effects, self.bindings, &Default::default(), |_, _| ())
+        Type::canonicalize_effects(effects, self.bindings, &Default::default())
     }
 
     /// Print each entry of an already-canonicalized, non-empty row
-    fn fmt_non_empty_effects(&self, effects: &[Effect], f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    fn fmt_non_empty_effects(&self, effects: &[Type], f: &mut std::fmt::Formatter) -> std::fmt::Result {
         for (i, effect) in effects.iter().enumerate() {
             if i != 0 {
                 write!(f, ", ")?;
             }
-            self.fmt_type(&effect.typ, false, f)?;
+            self.fmt_type(effect, false, f)?;
         }
         Ok(())
     }

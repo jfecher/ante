@@ -25,8 +25,8 @@ use crate::{
         fresh_expr::ExtendedTopLevelContext,
         generics::Generic,
         implicits::ImplicitsContext,
-        row::{RowEntry, RowMode},
-        types::{Effect, FunctionType, LocalKinds, ParameterType, PrimitiveType, Type, TypeBindings, TypeVariableId},
+        row::{RowKind, RowMode},
+        types::{FunctionType, LocalKinds, ParameterType, PrimitiveType, Type, TypeBindings, TypeVariableId},
     },
 };
 
@@ -481,7 +481,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     /// A fresh, open effect row.
     fn fresh_effect_row(&self) -> Type {
-        Effect::fresh(&mut || self.next_type_variable()).into_type()
+        Type::Effects(Some(Arc::new(vec![self.next_type_variable()])))
     }
 
     /// Generalize all types in the current SCC.
@@ -510,10 +510,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         let effects = self.collect_effects(&function_type.effects, &Default::default());
         for effect in &effects {
-            let Type::Variable(id) = effect.typ.follow(&self.bindings) else { continue };
+            let Type::Variable(id) = effect.follow(&self.bindings) else { continue };
             if root.count_unification_var_occurrences(*id, &self.bindings) <= 1 {
                 let location = self.current_context().location().clone();
-                self.unify(&effect.typ, &Type::pure(), TypeErrorKind::Effects, location);
+                self.unify(effect, &Type::pure(), TypeErrorKind::Effects, location);
             }
         }
 
@@ -582,7 +582,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         let mut new_bindings = TypeBindings::default();
         let merged = self.collect_and_merge_effects(&current_row, &mut new_bindings);
-        self.current_effect_row = Effect::row_from_canonical(merged);
+        self.current_effect_row = RowKind::Effects.row_from_canonical(merged);
         self.bindings.extend(new_bindings);
     }
 
@@ -658,7 +658,6 @@ fn strip_environments(typ: &Type) -> Type {
         | Type::Variable(_)
         | Type::UserDefined(_)
         | Type::U32(_)
-        | Type::EffectId(_)
         | Type::Effects(_)
         | Type::Place(_)
         | Type::Places(_) => typ.clone(),
@@ -906,7 +905,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let a = self.collect_effects(a, &no_bindings);
         let b = self.collect_effects(b, &no_bindings);
         a.len() == b.len()
-            && a.iter().zip(b.iter()).all(|(a, b)| a.typ.follow_all(&self.bindings) == b.typ.follow_all(&self.bindings))
+            && a.iter().zip(b.iter()).all(|(a, b)| a.follow_all(&self.bindings) == b.follow_all(&self.bindings))
     }
 
     /// Wrap the expression's type in the given expected reference type. `expected` is a full reference
@@ -1156,9 +1155,6 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     Err(())
                 }
             },
-            (Type::EffectId(_), _) | (_, Type::EffectId(_)) => {
-                unreachable!("ICE: an effect id reached unification: {a:?} against {b:?}")
-            },
             // Prevents infinite recursion in row_subtype below which calls into try_unify
             (Type::UserDefined(_), Type::Application(..)) | (Type::Application(..), Type::UserDefined(_)) => Err(()),
             // Any of these variants can be an effect row or a places row
@@ -1217,19 +1213,17 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     }
 
     /// Find a non-skipped head-matching candidate that subtypes `target` per `variance`.
-    /// Finding a candidate will also link its [Type::EffectId] with the target's.
-    fn subtype_matching_effect(
-        &self, candidates: &[Effect], skip: impl Fn(usize) -> bool, target: &Effect, variance: Variance,
+    pub(super) fn subtype_matching_effect(
+        &self, candidates: &[Type], skip: impl Fn(usize) -> bool, target: &Type, variance: Variance,
         new_bindings: &mut TypeBindings,
     ) -> Option<usize> {
         for (i, candidate) in candidates.iter().enumerate() {
-            if skip(i) || std::mem::discriminant(&candidate.typ) != std::mem::discriminant(&target.typ) {
+            if skip(i) || std::mem::discriminant(candidate) != std::mem::discriminant(target) {
                 continue;
             }
 
             let mut trial = new_bindings.clone();
-            if self.subtype(&candidate.typ, &target.typ, variance, RowMode::Exact, &mut trial).is_ok() {
-                self.link_effect_ids(&candidate.id, &target.id, &mut trial);
+            if self.subtype(candidate, target, variance, RowMode::Exact, &mut trial).is_ok() {
                 *new_bindings = trial;
                 return Some(i);
             }
@@ -1237,22 +1231,16 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         None
     }
 
-    /// Record that two row entries refer to the same capability by unifying their ids.
-    /// This is expected to never fail.
-    fn link_effect_ids(&self, a: &Type, b: &Type, new_bindings: &mut TypeBindings) {
-        assert!(self.subtype(a, b, Variance::Invariant, RowMode::Exact, new_bindings).is_ok());
-    }
-
-    /// Flatten `effects` into a list of effects, merging any entries which refer to the same effect.
-    fn collect_and_merge_effects(&self, effects: &Type, new_bindings: &mut TypeBindings) -> Vec<Effect> {
+    /// Flatten `effects` into a zonked, sorted, deduplicated list of effects
+    pub(super) fn collect_and_merge_effects(&self, effects: &Type, new_bindings: &mut TypeBindings) -> Vec<Type> {
         let mut effects = self.collect_effects(effects, new_bindings);
         Type::follow_effects(&mut effects, &self.bindings, new_bindings);
-        Type::sort_and_dedup_effects(&mut effects, |dropped, kept| self.link_effect_ids(dropped, kept, new_bindings));
+        Type::sort_and_dedup_effects(&mut effects);
         effects
     }
 
     /// Flatten `effect` into a list of effects
-    fn collect_effects(&self, effect: &Type, new_bindings: &TypeBindings) -> Vec<Effect> {
+    fn collect_effects(&self, effect: &Type, new_bindings: &TypeBindings) -> Vec<Type> {
         match effect.follow_two(&self.bindings, new_bindings) {
             Type::Effects(row) => {
                 let mut found = Vec::new();
@@ -1263,9 +1251,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
             // A single effect, or an unbound variable standing in for the rest of the row.
             // TODO: Expand aliases or verify that we don't need to
-            typ @ (Type::Application(..) | Type::UserDefined(..) | Type::Generic(_) | Type::Variable(_)) => {
-                vec![Effect { id: self.next_type_variable(), typ }]
-            },
+            typ @ (Type::Application(..) | Type::UserDefined(..) | Type::Generic(_) | Type::Variable(_)) => vec![typ],
             // Any remaining variant should be a kind error, emitted elsewhere (TODO: verify)
             _ => Vec::new(),
         }
@@ -1349,12 +1335,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Used to prevent the creation of infinitely recursive types when binding type variables.
     fn occurs(&self, typ: &Type, variable: TypeVariableId, new_bindings: &TypeBindings) -> bool {
         match typ {
-            Type::Primitive(_)
-            | Type::Generic(_)
-            | Type::UserDefined(_)
-            | Type::U32(_)
-            | Type::EffectId(_)
-            | Type::Place(_) => false,
+            Type::Primitive(_) | Type::Generic(_) | Type::UserDefined(_) | Type::U32(_) | Type::Place(_) => false,
             Type::Variable(candidate_id) => {
                 if let Some(binding) = self.bindings.get(candidate_id) {
                     self.occurs(binding, variable, new_bindings)
@@ -1376,9 +1357,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
             Type::Forall(_, typ) => self.occurs(typ, variable, new_bindings),
             Type::Tuple(elements) => elements.iter().any(|element| self.occurs(element, variable, new_bindings)),
-            row @ Type::Effects(_) => row.effect_entries().iter().any(|effect| {
-                self.occurs(&effect.typ, variable, new_bindings) || self.occurs(&effect.id, variable, new_bindings)
-            }),
+            row @ Type::Effects(_) => {
+                row.effect_entries().iter().any(|effect| self.occurs(effect, variable, new_bindings))
+            },
             Type::Places(places) => places
                 .as_ref()
                 .is_some_and(|places| places.iter().any(|place| self.occurs(place, variable, new_bindings))),
@@ -1490,7 +1471,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
             Type::UserDefined(origin) => {
                 if let Origin::TopLevelDefinition(id) = origin {
-                    let body = self.with_next_id(|next_id| id.type_body(generic_args, self.compiler, Some(next_id)));
+                    let body = id.type_body(generic_args, self.compiler);
                     match body {
                         TypeBody::Product { fields, .. } => {
                             let fields = fields.into_iter().enumerate();

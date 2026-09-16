@@ -505,11 +505,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Cow::Owned(body.substitute(&substitutions, &self.bindings))
         };
 
-        // Effect ids aren't generics but still need to be fresh per call site
-        let instantiated = self.with_next_id(|next_id| body.instantiate_effect_ids(next_id, &self.bindings));
-        let body = match (instantiated, body) {
-            (Some(body), _) | (None, Cow::Owned(body)) => body,
-            (None, Cow::Borrowed(_)) => return (typ, None),
+        let body = match body {
+            Cow::Owned(body) => body,
+            Cow::Borrowed(_) => return (typ, None),
         };
         self.record_fresh_effect_variables(&body);
         (body, bindings)
