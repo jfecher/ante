@@ -1,0 +1,26 @@
+try_ (f: a can Fail, e): Maybe a can e = None
+
+state (f: a can Use s, Print, e) (initial: s): a can Print, e = f ()
+
+apply (f: fn a -> b can e) (x: a): b can e = f x
+
+run (g: fn (a can e) -> a): Unit = ()
+
+nested (f: (fn a -> b) can e): Unit = ()
+
+lambda () = fn (x: I32) : I32 can Fail -> x
+
+// args: -e ast --no-color
+// expected stdout:
+// try_ (f: a can Fail, e) : Maybe a can e = None
+// 
+// state (f: a can Use s, Print, e) (initial: s) : a can Print, e = f ()
+// 
+// apply (f: fn a -> b can e) (x: a) : b can e = f x
+// 
+// run (g: fn (a can e) -> a) : Unit = ()
+// 
+// nested (f: (fn a -> b) can e) : Unit = ()
+// 
+// lambda () = fn (x: I32) : I32 can Fail -> x
+

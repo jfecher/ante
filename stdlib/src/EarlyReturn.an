@@ -1,6 +1,6 @@
 effect EarlyReturn t =
     early_return: fn t -> Never
 
-with_early_return (f: fn Unit => t can (EarlyReturn t)): t =
+with_early_return (f: t can EarlyReturn t): t =
     handler h for early_return x -> x
     f ()

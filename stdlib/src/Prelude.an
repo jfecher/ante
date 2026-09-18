@@ -850,7 +850,7 @@ effect Print =
 write_stdout: fn (Ptr Char) Usz -> Unit can Fs = extern "ante_write_stdout"
 
 // Handles `Print` by piping to stdout
-print_to_stdout (f: fn Unit => a can Print, e): a can Fs, e =
+print_to_stdout (f: a can Print, e): a can Fs, e =
     handler h for
     | write s -> resume (write_stdout s.data (Usz s.length))
     | write_char c -> resume (putchar c)
@@ -1011,7 +1011,7 @@ repeat (count: Usz) (f: fn Usz => Unit): Unit =
 effect Panic =
     panic: fn String -> Never
 
-abort_on_panic (f: fn Unit => a can Panic, e): a can e =
+abort_on_panic (f: a can Panic, e): a can e =
     handler h for panic msg ->
         dbg msg
         exit 1

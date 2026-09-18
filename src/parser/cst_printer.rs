@@ -705,6 +705,18 @@ impl<'a> CstDisplay<'a> {
     fn fmt_function_type(
         &self, function_type: &FunctionType, context: &impl IdStore, f: &mut Formatter,
     ) -> std::fmt::Result {
+        if Self::is_thunk_shorthand(function_type) {
+            let return_type = &function_type.return_type;
+            if matches!(return_type.kind, TypeKind::Function(_) | TypeKind::Forall(..)) {
+                write!(f, "(")?;
+                self.fmt_type(return_type, context, f)?;
+                write!(f, ")")?;
+            } else {
+                self.fmt_type(return_type, context, f)?;
+            }
+            return self.fmt_effects_clause(&function_type.effects, context, f);
+        }
+
         write!(f, "fn")?;
 
         let requires_parens = |typ: &Type| matches!(typ.kind, TypeKind::Function(_) | TypeKind::Application(..));
@@ -732,6 +744,15 @@ impl<'a> CstDisplay<'a> {
         write!(f, " -> ")?;
         self.fmt_type(&function_type.return_type, context, f)?;
         self.fmt_effects_clause(&function_type.effects, context, f)
+    }
+
+    /// Can this be written as `a can e`
+    fn is_thunk_shorthand(function_type: &FunctionType) -> bool {
+        let [parameter] = function_type.parameters.as_slice() else { return false };
+        let unit_parameter = !parameter.is_implicit && matches!(parameter.typ.kind, TypeKind::Unit);
+        let hole_environment = matches!(function_type.environment.as_deref(), Some(env) if matches!(env.kind, TypeKind::Hole));
+        let has_effects = function_type.effects.as_ref().is_some_and(|effects| !effects.is_empty());
+        unit_parameter && hole_environment && has_effects
     }
 
     fn fmt_effects_clause(

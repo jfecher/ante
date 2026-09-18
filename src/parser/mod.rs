@@ -728,7 +728,7 @@ impl<'tokens> Parser<'tokens> {
         self.accept(Token::Newline);
 
         let return_type = self.accept(Token::Colon).then_some(()).and_then(|_| {
-            self.parse_with_recovery(Self::parse_type, Token::Equal, &[Token::Newline, Token::Indent]).ok()
+            self.parse_with_recovery(Self::parse_pair_type, Token::Equal, &[Token::Newline, Token::Indent]).ok()
         });
 
         let effects = self.parse_effects_clause()?;
@@ -979,8 +979,20 @@ impl<'tokens> Parser<'tokens> {
         Ok(result.unwrap_or_else(|_| T::error_default(self.current_token_location())))
     }
 
+    /// type: pair_type ('can' effect_list)?
     fn parse_type(&mut self) -> Result<Type> {
-        self.parse_pair_type()
+        let typ = self.parse_pair_type()?;
+
+        if !self.accept(Token::Can) {
+            return Ok(typ);
+        }
+
+        let effects = Some(self.parse_effect_list());
+        let location = typ.location.to(&self.previous_token_location());
+        let parameters = vec![ParameterType::explicit(Type::new(TypeKind::Unit, typ.location.clone()))];
+        let environment = Some(Box::new(Type::new(TypeKind::Hole, typ.location.clone())));
+        let return_type = Box::new(typ);
+        Ok(Type::new(TypeKind::Function(cst::FunctionType { parameters, environment, return_type, effects }), location))
     }
 
     fn parse_reference_type(&mut self) -> Result<Type> {
@@ -1047,7 +1059,7 @@ impl<'tokens> Parser<'tokens> {
             self.expect(Token::RightArrow, "`->` to separate this function type's parameters from its return type")?;
         }
 
-        let return_type = Box::new(self.parse_type()?);
+        let return_type = Box::new(self.parse_pair_type()?);
         let effects = self.parse_effects_clause()?;
         let location = start.to(&self.previous_token_location());
 
@@ -2129,7 +2141,7 @@ impl<'tokens> Parser<'tokens> {
             let parameters = this.parse_function_parameters()?;
 
             let return_type = if this.accept(Token::Colon) {
-                Some(this.parse_with_recovery(Self::parse_type, Token::RightArrow, &[Token::Newline, Token::Indent])?)
+                Some(this.parse_with_recovery(Self::parse_pair_type, Token::RightArrow, &[Token::Newline, Token::Indent])?)
             } else {
                 None
             };
