@@ -1,0 +1,11 @@
+[package]
+name = "ante-capi"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "ante_capi"
+crate-type = ["staticlib"]
+
+[dependencies]
+ante = { path = "..", default-features = false }

@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [workspace]
-members = [ "ante-ls" ]
+members = [ "ante-ls", "ante-capi" ]
 
 [features]
 default = ["llvm"]
