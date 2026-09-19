@@ -47,6 +47,9 @@ pub struct CstDisplayConfig<'db> {
 
     /// Show types for each name. Requires `db` to bet set.
     pub show_types: bool,
+
+    /// Omit comments, attributes, and definition bodies
+    pub signature_only: bool,
 }
 
 impl Cst {
@@ -69,6 +72,51 @@ impl Cst {
     ) -> CstDisplayContext<'a> {
         let config = CstDisplayConfig { show_types: true, db: Some(compiler), ..Default::default() };
         CstDisplayContext { cst: self, context, config }
+    }
+}
+
+pub struct SignatureDisplayContext<'a, C> {
+    item: &'a TopLevelItem,
+    context: &'a C,
+    config: CstDisplayConfig<'a>,
+}
+
+impl TopLevelItem {
+    /// Display this item's signature only
+    pub fn display_signature<'a>(
+        &'a self, context: &'a TopLevelContext,
+    ) -> SignatureDisplayContext<'a, TopLevelContext> {
+        let config = CstDisplayConfig { signature_only: true, ..Default::default() };
+        SignatureDisplayContext { item: self, context, config }
+    }
+
+    /// Display a signature with inferred types
+    pub fn display_typed_signature<'a, C: IdStore>(
+        &'a self, context: &'a C, compiler: &'a Db,
+    ) -> SignatureDisplayContext<'a, C> {
+        let config =
+            CstDisplayConfig { signature_only: true, show_types: true, db: Some(compiler), ..Default::default() };
+        SignatureDisplayContext { item: self, context, config }
+    }
+}
+
+impl<'a, C: IdStore> Display for SignatureDisplayContext<'a, C> {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        let empty = BTreeMap::new();
+        let mut printer = CstDisplay::new(&empty, self.config);
+        printer.current_item_id = Some(self.item.id);
+        let context = self.context;
+
+        match &self.item.kind {
+            TopLevelItemKind::TypeDefinition(type_definition) => {
+                printer.fmt_type_definition(type_definition, context, f)
+            },
+            TopLevelItemKind::Definition(definition) => printer.fmt_definition(definition, context, f),
+            TopLevelItemKind::TraitDefinition(def) => printer.fmt_trait_or_effect("trait", def, context, f),
+            TopLevelItemKind::EffectDefinition(def) => printer.fmt_trait_or_effect("effect", def, context, f),
+            TopLevelItemKind::TraitImpl(trait_impl) => printer.fmt_trait_impl(trait_impl, context, f),
+            TopLevelItemKind::Comptime(comptime) => printer.fmt_comptime(comptime, context, f),
+        }
     }
 }
 
@@ -257,7 +305,9 @@ impl<'a> CstDisplay<'a> {
         Ok(())
     }
 
-    fn fmt_attributes(&mut self, attributes: &[Attribute], context: &impl IdStore, f: &mut Formatter) -> std::fmt::Result {
+    fn fmt_attributes(
+        &mut self, attributes: &[Attribute], context: &impl IdStore, f: &mut Formatter,
+    ) -> std::fmt::Result {
         for attribute in attributes {
             write!(f, "#{}", attribute.name)?;
             for arg in &attribute.args {
@@ -286,6 +336,15 @@ impl<'a> CstDisplay<'a> {
         }
 
         self.fmt_pattern(definition.pattern, context, f)?;
+
+        if self.config.signature_only {
+            // Keep `extern "f": fn a -> b` style annotations, which live on the rhs
+            if let Expr::TypeAnnotation(annotation) = context.get_expr(definition.rhs) {
+                write!(f, ": ")?;
+                self.fmt_type(&annotation.rhs, context, f)?;
+            }
+            return Ok(());
+        }
 
         write!(f, " =")?;
         if !self.is_block(definition.rhs, context) {
@@ -355,15 +414,20 @@ impl<'a> CstDisplay<'a> {
             write!(f, "_{id}")?;
         }
 
-        if let Some(db) = self.db_type_check()
-            && show_type
-        {
-            let check = TypeCheck(self.current_item_id.unwrap()).get(db);
-            let typ = check.result.maps.name_types.get(&name).cloned().unwrap_or(types::Type::ERROR);
-            write!(f, ": {})", typ.to_string(&check.bindings, context, db))?
+        if self.config.show_types && show_type {
+            self.fmt_name_type(name, context, f)?;
+            write!(f, ")")?;
         }
 
         Ok(())
+    }
+
+    /// Write `: T` where `T` is `name`'s inferred type
+    fn fmt_name_type(&self, name: NameId, context: &impl IdStore, f: &mut Formatter) -> std::fmt::Result {
+        let db = self.db_type_check().expect("fmt_name_type requires show_types");
+        let check = TypeCheck(self.current_item_id.unwrap()).get(db);
+        let typ = check.result.maps.name_types.get(&name).cloned().unwrap_or(types::Type::ERROR);
+        write!(f, ": {}", typ.to_string(&check.bindings, context, db))
     }
 
     fn fmt_path(&self, path: PathId, context: &impl IdStore, f: &mut Formatter) -> std::fmt::Result {
@@ -432,12 +496,16 @@ impl<'a> CstDisplay<'a> {
         }
 
         if let Some(typ) = &lambda.return_type {
-            write!(f, " : ")?;
+            write!(f, ": ")?;
             self.fmt_type(typ, context, f)?;
         }
 
         if lambda.effects.is_some() {
             self.fmt_effects_clause(&lambda.effects, context, f)?;
+        }
+
+        if self.config.signature_only {
+            return Ok(());
         }
 
         write!(f, " {}", if write_arrow { "->" } else { "=" })?;
@@ -659,7 +727,9 @@ impl<'a> CstDisplay<'a> {
                 write!(f, " ")?;
                 self.fmt_type(&args[0], context, f)?;
             }
-            return self.fmt_type_args(&args[1..], context, f);
+            write!(f, " ")?;
+            let is_function = matches!(args[1].kind, TypeKind::Function(_));
+            return self.parenthesize_type(&args[1], is_function, context, f);
         }
 
         let requires_parens = |typ: &Type| matches!(typ.kind, TypeKind::Function(_) | TypeKind::Application(..));
@@ -750,7 +820,8 @@ impl<'a> CstDisplay<'a> {
     fn is_thunk_shorthand(function_type: &FunctionType) -> bool {
         let [parameter] = function_type.parameters.as_slice() else { return false };
         let unit_parameter = !parameter.is_implicit && matches!(parameter.typ.kind, TypeKind::Unit);
-        let hole_environment = matches!(function_type.environment.as_deref(), Some(env) if matches!(env.kind, TypeKind::Hole));
+        let hole_environment =
+            matches!(function_type.environment.as_deref(), Some(env) if matches!(env.kind, TypeKind::Hole));
         let has_effects = function_type.effects.as_ref().is_some_and(|effects| !effects.is_empty());
         unit_parameter && hole_environment && has_effects
     }
@@ -1029,6 +1100,10 @@ impl<'a> CstDisplay<'a> {
         self.fmt_path(trait_impl.trait_path, context, f)?;
         self.fmt_type_args(&trait_impl.trait_arguments, context, f)?;
 
+        if self.config.signature_only {
+            return Ok(());
+        }
+
         write!(f, " with")?;
         self.indent_level += 1;
         for (name, expr) in &trait_impl.body {
@@ -1220,9 +1295,17 @@ impl<'a> CstDisplay<'a> {
                 Ok(())
             },
             Pattern::MethodName { type_name, item_name } => {
+                if self.config.show_types {
+                    write!(f, "(")?;
+                }
                 self.fmt_type_name(*type_name, context, f)?;
                 write!(f, ".")?;
-                self.fmt_name(*item_name, context, f)
+                self.fmt_name_helper(*item_name, context, f, false)?;
+                if self.config.show_types {
+                    self.fmt_name_type(*item_name, context, f)?;
+                    write!(f, ")")?;
+                }
+                Ok(())
             },
             Pattern::Or(alts) => {
                 let mut first = true;
@@ -1316,7 +1399,7 @@ impl<'a> CstDisplay<'a> {
             Error | Variable(_) | Literal(_) | MethodName { .. } => true,
             Constructor(_, args) => args.is_empty(),
             ConstructorRest(_, _, _) => false,
-            TypeAnnotation(_, _) => false,
+            TypeAnnotation(inner, _) => self.config.show_types && matches!(context.get_pattern(*inner), Variable(_)),
             Or(_) => false,
             Alias(_, _) => false,
         }

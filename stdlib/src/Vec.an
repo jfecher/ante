@@ -20,7 +20,7 @@ Vec.len (v: ref Vec a) = v.len
 
 Vec.capacity (v: ref Vec a) = v.cap
 
-// Create a new Vec with the elements from the given stream
+/// Create a new Vec with the elements from the given stream
 Vec.of (s: s) {Stream s t e}: Vec t can Panic, e =
     var vec = Vec.empty ()
     vec.extend s
@@ -29,7 +29,7 @@ Vec.of (s: s) {Stream s t e}: Vec t can Panic, e =
 Vec.extend (vec: mut Vec t) (s: s) {Stream s t e}: Unit can Panic, e =
     iter s (vec.push _)
 
-//reserve numElements in Vec v, elements will be uninitialized
+/// Reserve space for `numElems` more elements in `v`. The new slots are uninitialized.
 Vec.reserve (v: mut Vec t) (numElems: Usz): Unit can Panic =
     if v.len + numElems > v.cap then
         size = (v.cap + numElems) * size_of (MkType: Type t)
@@ -41,8 +41,8 @@ Vec.reserve (v: mut Vec t) (numElems: Usz): Unit can Panic =
         v.data := ptr
         v.cap := v.cap + numElems
 
-//push an element onto the end of the vector.
-//resizes if necessary
+/// Push an element onto the end of the vector.
+/// Resizes if necessary.
 Vec.push (v: mut Vec t) (elem: t): Unit can Panic =
     if v.len >= v.cap then
         v.reserve (if v.cap == 0 then 1 else v.cap)
@@ -144,9 +144,9 @@ Vec.remove_all (v: mut Vec t) (elem: t) {Eq t e} {Copy t}: Usz can Panic, e =
     count
 
 
-//Remove an element by swapping it with the last element in O(1) time.
-//Returns true if a swap was performed or false otherwise.
-//Will not swap if the given index is the index of the last element.
+/// Remove an element by swapping it with the last element in O(1) time.
+/// Returns true if a swap was performed or false otherwise.
+/// Will not swap if the given index is the index of the last element.
 Vec.swap_last (v: mut Vec t) (idx: Usz) : Bool can Fs =
     if idx >= v.len or idx + 1 == v.len then false
     else
@@ -246,10 +246,10 @@ impl extract_vec_move: Extract (Vec t) Usz t pure with
 impl extract_vec: Extract (ref Vec t) Usz (ref t) pure with
     (.[]) v i = transmute (offset v.data i)
 
-// Note that this impl is different from `Vec.insert`.
-// Vec.insert will insert into a slot, moving the previous element and each
-// element after to the right. This `Insert` implementation will instead
-// directly mutate the element at the given index to the new element.
+/// Note that this impl is different from `Vec.insert`.
+/// Vec.insert will insert into a slot, moving the previous element and each
+/// element after to the right. This `Insert` implementation will instead
+/// directly mutate the element at the given index to the new element.
 impl insert_vec: Insert (mut Vec t) Usz t Panic with
     (.[]:=) (v: mut Vec t) i e =
         v: uniq Vec t = transmute v

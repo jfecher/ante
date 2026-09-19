@@ -1,4 +1,4 @@
-export String, cstring_copy, puts, putchar, getchar, exit, system, strlen,
+export String, copy_cstring, puts, putchar, getchar, exit, system, strlen,
     malloc, calloc, realloc, free, memcpy, memcmp,
     File, copy_file, fopen, fclose, fputs, fputc, fwrite,
     fgetc, fgets, ungetc, fgetpos, ftell, fsetpos, fseek, feof, ferror,
@@ -7,7 +7,7 @@ export String, cstring_copy, puts, putchar, getchar, exit, system, strlen,
 /// A C string is a pointer to a null-terminated character array.
 /// This is meant to be used qualified as `C.String`
 type String = ptr: Ptr Char
-impl cstring_copy: Copy String with (.*) = deref
+impl copy_cstring: Copy String with (.*) = deref
 
 /// A convenience type for translating C APIs
 type VoidPtr = Ptr U8
@@ -17,7 +17,7 @@ type VoidPtr = Ptr U8
 puts: fn String -> I32 can Fs = extern "puts"
 putchar: fn Char -> Unit can Fs = extern "putchar"
 getchar: fn Unit -> I32 can Fs = extern "getchar"
-exit: fn I32 -> Unit = extern "exit"
+exit: fn I32 -> Never = extern "exit"
 system: fn String -> I32 can IO = extern "system"
 strlen: fn String -> Usz = extern "strlen"
 

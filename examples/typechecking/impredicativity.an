@@ -34,20 +34,20 @@ a7 = choose id auto
 // 
 // (ids: _) = (error)
 // 
-// (auto: fn (fn a -> a can _) -> a can _) ((x: fn a -> a can _)) = (x: fn a -> a can _) (error)
+// (auto: fn (fn a -> a can _) -> a can _) (x: fn a -> a can _) = (x: fn a -> a can _) (error)
 // 
-// (auto_prime: fn (fn a -> a can _) -> a can _) ((x: fn a -> a can _)) = (x: fn a -> a can _) (x: fn a -> a can _)
+// (auto_prime: fn (fn a -> a can _) -> a can _) (x: fn a -> a can _) = (x: fn a -> a can _) (x: fn a -> a can _)
 // 
 // (f5: _) = (auto: fn (fn _ -> _ is pure) -> _ is pure) (error)
 // 
-// (poly: fn (fn a -> a can _) -> a, a can _) ((f: fn a -> a can _)) =
+// (poly: fn (fn a -> a can _) -> a, a can _) (f: fn a -> a can _) =
 //     (f: fn a -> a can _) 42 (,: fn a a -> a, a is pure) (f: fn a -> a can _) true
 // 
 // (f9: _) =
 //     (f: fn (fn (fn _ -> _ is pure) -> _, _ is pure) [_] -> _ is pure) = (revapp: fn _ [_] -> (fn (fn (fn _ -> _ is pure) -> _, _ is pure) [_] -> _ is pure) is pure) (error)
 //     (f: fn (fn (fn _ -> _ is pure) -> _, _ is pure) [_] -> _ is pure) (poly: fn (fn _ -> _ is pure) -> _, _ is pure)
 // 
-// (choose: fn a a -> a is pure) ((x: a)) ((_y: a)) = (x: a)
+// (choose: fn a a -> a is pure) (x: a) (_y: a) = (x: a)
 // 
 // (a5: fn (fn _ -> _ is pure) -> _ is pure) = (id: fn (fn (fn _ -> _ is pure) -> _ is pure) -> (fn (fn _ -> _ is pure) -> _ is pure) is pure) (auto: fn (fn _ -> _ is pure) -> _ is pure)
 // 

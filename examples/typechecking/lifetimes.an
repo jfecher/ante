@@ -21,13 +21,13 @@ main () =
 // expected stdout:
 // import Std.Slice.Slice, slice
 // 
-// (first_of: fn (ref (Array n t)) -> ref t is pure) ((array: ref (Array n t))) : ref t is pure =
+// (first_of: fn (ref (Array n t)) -> ref t is pure) (array: ref (Array n t)): ref t is pure =
 //     (array_get_unchecked: fn (ref (Array n t)) Usz -> ref t is pure) (array: ref (Array n t)) 0
 // 
-// (first_of_explicit: fn (ref 'a (Array n t)) -> ref 'a t is pure) ((array: ref 'a (Array n t))) : ref 'a t is pure =
+// (first_of_explicit: fn (ref 'a (Array n t)) -> ref 'a t is pure) (array: ref 'a (Array n t)): ref 'a t is pure =
 //     (array_get_unchecked: fn (ref 'a (Array n t)) Usz -> ref 'a t is pure) (array: ref 'a (Array n t)) 0
 // 
-// (mix: fn (ref 'a (Array n t)) (ref (Array m t)) -> ref 'a t is pure) ((a: ref 'a (Array n t))) ((_b: ref (Array m t))) : ref 'a t is pure =
+// (mix: fn (ref 'a (Array n t)) (ref (Array m t)) -> ref 'a t is pure) (a: ref 'a (Array n t)) (_b: ref (Array m t)): ref 'a t is pure =
 //     (array_get_unchecked: fn (ref 'a (Array n t)) Usz -> ref 'a t is pure) (a: ref 'a (Array n t)) 0
 // 
 // (main: fn Unit -> Unit is pure) () =

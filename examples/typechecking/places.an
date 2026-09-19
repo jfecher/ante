@@ -16,7 +16,7 @@ main () =
 
 // args: -e ast-t --no-color
 // expected stdout:
-// (foo: fn Unit -> I32 is pure) () : I32 is pure = 5
+// (foo: fn Unit -> I32 is pure) (): I32 is pure = 5
 // 
 // type Pair =
 //     a: I32
@@ -31,3 +31,4 @@ main () =
 //     (b: I32) = 2
 //     (_z: ref '(a, b) I32) = if true then ref (a: I32) else ref (b: I32)
 //     (_w: ref '_29 I32) = ref (foo: fn Unit -> I32 is pure) ()
+

@@ -16,7 +16,7 @@ id x = x
 
 // args: -e ast-t --no-color
 // expected stdout:
-// (add: fn (fn t _ [_] -> _ can _) (fn t _ [_] -> _ can _) -> (fn t {Copy t} [(fn t _ [_] -> _ can _), (fn t _ [_] -> _ can _)] -> (fn _ [(fn t _ [_] -> _ can _), (fn t _ [_] -> _ can _), t] -> _ can _) is pure) is pure) (m: fn t _ [_] -> _ can _) (n: fn t _ [_] -> _ can _) = fn ((f: t)) {(_: Copy t)} [(m: fn t _ [_] -> _ can _), (n: fn t _ [_] -> _ can _)] -> fn (x: _) [(m: fn t _ [_] -> _ can _), (n: fn t _ [_] -> _ can _), (f: t)] -> (m: fn t _ [_] -> _ can _) (f: t) ((n: fn t _ [_] -> _ can _) (f: t) (x: _))
+// (add: fn (fn t _ [_] -> _ can _) (fn t _ [_] -> _ can _) -> (fn t {Copy t} [(fn t _ [_] -> _ can _), (fn t _ [_] -> _ can _)] -> (fn _ [(fn t _ [_] -> _ can _), (fn t _ [_] -> _ can _), t] -> _ can _) is pure) is pure) (m: fn t _ [_] -> _ can _) (n: fn t _ [_] -> _ can _) = fn (f: t) {(_: Copy t)} [(m: fn t _ [_] -> _ can _), (n: fn t _ [_] -> _ can _)] -> fn (x: _) [(m: fn t _ [_] -> _ can _), (n: fn t _ [_] -> _ can _), (f: t)] -> (m: fn t _ [_] -> _ can _) (f: t) ((n: fn t _ [_] -> _ can _) (f: t) (x: _))
 // 
 // (one: fn (fn _ [_] -> _ can _) _ -> _ can _) (f: fn _ [_] -> _ can _) (x: _) = (f: fn _ [_] -> _ can _) (x: _)
 // 

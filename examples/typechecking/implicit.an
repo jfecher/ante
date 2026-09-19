@@ -46,13 +46,13 @@ implicit_call () =
 // type Box a =
 //     x: a
 // 
-// (requires_string: fn {String} Unit -> Unit is pure) {(s: String)} () : Unit is pure = ()
+// (requires_string: fn {String} Unit -> Unit is pure) {(s: String)} (): Unit is pure = ()
 // 
-// (requires_u32: fn {U32} Unit -> Unit is pure) {(x: U32)} () : Unit is pure = ()
+// (requires_u32: fn {U32} Unit -> Unit is pure) {(x: U32)} (): Unit is pure = ()
 // 
-// (requires_bool: fn {Bool} Unit -> Unit is pure) {(b: Bool)} () : Unit is pure = ()
+// (requires_bool: fn {Bool} Unit -> Unit is pure) {(b: Bool)} (): Unit is pure = ()
 // 
-// (requires_box: fn {Box a} Unit -> Unit is pure) {(b: Box a)} () : Unit is pure = ()
+// (requires_box: fn {Box a} Unit -> Unit is pure) {(b: Box a)} (): Unit is pure = ()
 // 
 // (zero_matching: fn Unit -> Unit is pure) () =
 //     (requires_string: fn {String} Unit -> Unit is pure) {(error)} ()

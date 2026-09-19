@@ -30,15 +30,15 @@ HashSet.clear (set: mut HashSet k) : Unit =
 HashSet.contains (set: ref HashSet k) (key: ref k) {Hash k} {Eq k e}: Bool can e =
     set.inner.contains key
 
-// Insert a new element into the HashSet
-// Returns True if the key is newly inserted
-// Returns False if the key already existed
+/// Insert a new element into the HashSet
+/// Returns True if the key is newly inserted
+/// Returns False if the key already existed
 HashSet.insert (set: mut HashSet k) (key: k) {Hash k} {Eq k e}: Bool can Panic, e =
     set.inner.insert key () is None
 
-// Remove an element from the HashSet
-// Returns True if the key existed and was removed
-// Return False if the key was not present in the HashSet
+/// Remove an element from the HashSet
+/// Returns True if the key existed and was removed
+/// Return False if the key was not present in the HashSet
 HashSet.remove (set: mut HashSet k) (key: ref k) {Hash k} {Eq k e}: Bool can e =
     set.inner.remove key is Some _
 

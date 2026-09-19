@@ -20,7 +20,7 @@ impl iter_take_while {Iterator i a e} {Copy a}: Iterator (TakeWhile i a) a e wit
 main () =
     print_to_stdout do
     i = TakeWhile 8 (_ >= 5)
-    iter i println
+    iterate i println
 
 // args: --delete-binary --no-color
 // expected stdout:

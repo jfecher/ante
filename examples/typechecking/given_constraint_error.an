@@ -5,9 +5,8 @@ impl print_impl {DoesNotExist a}: Display a e with
 // args: -e ast-t --no-color
 // expected exit status: 1
 // expected stdout:
-// implicit (print_impl: fn {(error) a} -> Display a e is pure) {(_: (error) a)} : Display a e = Display a e with
+// implicit (print_impl: fn {(error) a} -> Display a e is pure) {(_: (error) a)}: Display a e = Display a e with
 //     (print: fn (ref a) [Ptr Unit] -> Unit can Print, e) = fn (_: ref a) -> ()
-
 
 // expected stderr:
 // examples/typechecking/given_constraint_error.an:2:18

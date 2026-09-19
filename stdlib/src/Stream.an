@@ -31,7 +31,7 @@ impl stream_array: Stream (Array n t) t pure with
 /// Consumes the given stream, applying `f` to each element
 /// 
 /// E.g. `iter (iota 5) print` will print `01234`
-iter (s: s) {Stream s a e} (f: fn a => b): Unit can e =
+iter (s: s) {Stream s a e} (f: fn a => b can e2): Unit can e, e2 =
     handler h for emit a ->
         f a
         resume ()

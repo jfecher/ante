@@ -33,7 +33,7 @@ main () =
 
     // Test iterating over file lines using the File Iterator impl
     var f3 = File.open path "r\0"
-    iter (mut f3) println
+    iterate (mut f3) println
     f3.close ()
 
 // args: --delete-binary --no-color

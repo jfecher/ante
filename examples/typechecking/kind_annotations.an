@@ -37,7 +37,7 @@ type Mismatch (n: type) =
 //     fst: a
 //     snd: b
 // 
-// (get_first: fn (ref (Array n t)) -> ref t is pure) ((arr: ref (Array n t))) : ref t is pure =
+// (get_first: fn (ref (Array n t)) -> ref t is pure) (arr: ref (Array n t)): ref t is pure =
 //     (array_get_unchecked: fn (ref (Array n t)) Usz -> ref t is pure) (arr: ref (Array n t)) 0
 // 
 // (take_len: fn (ref (Array n t)) -> Usz is pure) =
@@ -47,7 +47,7 @@ type Mismatch (n: type) =
 //     arr: Array n t
 //     extra: n
 // 
-// (bad_fn: fn n (Array n t) -> n is pure) ((x: n)) ((_array: Array n t)) = (x: n)
+// (bad_fn: fn n (Array n t) -> n is pure) (x: n) (_array: Array n t) = (x: n)
 // 
 // type Mismatch (n: type) =
 //     arr: Array n I32

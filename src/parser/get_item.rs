@@ -872,9 +872,19 @@ fn compile_chain(parts: &[ChainElement], then_expr: ExprId, else_expr: ExprId, c
 fn desugar_if_with_is(expr: ExprId, context: &mut DesugarContext) {
     let Expr::If(if_) = context[expr].clone() else { unreachable!() };
     let location = context.expr_location(expr).clone();
-    let else_branch = if_.else_.unwrap_or_else(|| context.push_expr(Expr::Literal(Literal::Unit), location));
+    let (then_branch, else_branch) = match if_.else_ {
+        Some(else_) => (if_.then, else_),
+        // We desugar `if _ is _ then` to a match, so if there's no else we need to make the `then`
+        // branch end with a unit literal so that it returns Unit like other ifs without elses.
+        None => {
+            let then_unit = context.push_expr(Expr::Literal(Literal::Unit), location.clone());
+            let items = [if_.then, then_unit].map(|expr| SequenceItem { expr, comments: Vec::new() });
+            let then_branch = context.push_expr(Expr::Sequence(items.to_vec()), location.clone());
+            (then_branch, context.push_expr(Expr::Literal(Literal::Unit), location))
+        },
+    };
     let parts = flatten_and_chain(if_.condition, context);
-    let compiled = compile_chain(&parts, if_.then, else_branch, context);
+    let compiled = compile_chain(&parts, then_branch, else_branch, context);
     context.set_expr(expr, context[compiled].clone());
 }
 

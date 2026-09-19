@@ -13,7 +13,7 @@ add
 
 // args: -e ast --no-color
 // expected stdout:
-// get_default (map: mut 'r a) (key: k) {_: Hash k} {_: Eq k} : mut 'r v =
+// get_default (map: mut 'r a) (key: k) {_: Hash k} {_: Eq k}: mut 'r v =
 //     key
 // 
 // add (a: I32) b = a + b

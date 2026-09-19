@@ -15,7 +15,9 @@ export String, String.from_parts, Maybe, Maybe.None, Maybe.Some, iff, Maybe.unwr
     cast_i64_i8, cast_i64_i16, cast_i64_i32, cast_i64_isz, cast_isz_i8, cast_isz_i16, cast_isz_i32, cast_isz_i64, cast_i8_f32, cast_i16_f32, cast_i32_f32, cast_i64_f32, cast_isz_f32, cast_i8_f64, cast_i16_f64, cast_i32_f64,
     cast_u8_f32, cast_u16_f64, cast_u32_f64, cast_u64_f64, cast_usz_f64, cast_u8_f64, cast_u16_f32, cast_u32_f32, cast_u64_f32, cast_usz_f32, cast_f32_i8, cast_f32_i16, cast_f32_i32, cast_f32_i64, cast_f32_isz, cast_f64_i8,
     cast_f32_u8, cast_f32_u16, cast_f32_u32, cast_f32_u64, cast_f32_usz, cast_f64_u8, cast_f64_u16, cast_f64_u32, cast_f64_u64, cast_f64_usz, cast_i8_char, cast_i16_char, cast_i32_char, cast_i64_char, cast_isz_char, cast_u8_i32,
-    cast_i64_f64, cast_isz_f64, cast_f64_i16, cast_f64_i32, cast_f64_i64, cast_f64_isz, cast_u8_char, cast_u16_char, cast_u32_char, cast_u64_char, cast_usz_char, cast_f64_f32, cast_f32_f64, cast_i32_usz, cast_usz_i64, cast_i64_usz, cast_char_u8, cast_char_i32, cast_char_u64, cast_i32_string, cast_f32_string, cast_f64_string, cast_bool_i32,
+    cast_i64_f64, cast_isz_f64, cast_f64_i16, cast_f64_i32, cast_f64_i64, cast_f64_isz, cast_u8_char, cast_u16_char, cast_u32_char, cast_u64_char, cast_usz_char, cast_f64_f32, cast_f32_f64, cast_i32_usz, cast_usz_i64, cast_i64_usz, cast_char_u8, cast_char_i32, cast_char_u64, cast_u8_string, cast_u16_string, cast_u32_string, cast_u64_string, cast_usz_string,
+    cast_i8_string, cast_i16_string, cast_i32_string, cast_i64_string, cast_isz_string, cast_char_string, cast_bool_string,
+    cast_f32_string, cast_f64_string, cast_bool_i32,
     TryCast, try_cast, try_cast_from_cast, try_cast_i64_u64, try_cast_u64,
     Add, (+), add_i8, add_i16, add_i32, add_i64, add_isz, add_u8, add_u16, add_u32, add_u64, add_usz, add_f32, add_f64,
     Sub, (-), sub_i8, sub_i16, sub_i32, sub_i64, sub_isz, sub_u8, sub_u16, sub_u32, sub_u64, sub_usz, sub_f32, sub_f64,
@@ -40,7 +42,7 @@ export String, String.from_parts, Maybe, Maybe.None, Maybe.Some, iff, Maybe.unwr
     null, transmute,
     Print, Print.write, write, Print.write_char, write_char, Print.write_u64, write_u64, Print.write_i64, write_i64, Print.write_f64, write_f64,
     print_to_stdout, dbg, Display, print, println, print_float, print_u8, print_u16, print_u32, print_u64, print_usz, print_i8, print_i16, print_i32, print_i64, print_isz, print_char, print_f64, print_f32, print_pair, print_string, print_maybe, print_bool, print_array, print_ref,
-    Iterator, next, iter, Range, iterator_range, iter_range, repeat,
+    Iterator, next, iterate, Range, iterator_range, iterate_range, repeat,
     Panic, Panic.panic, panic, abort_on_panic, ignore
 
 type String =
@@ -50,7 +52,7 @@ type String =
     // Substrings store their offset into the original string for use when freeing them later
     offset: U32
 
-// Construct a fresh, unaliased string from an owned pointer to characters and a length.
+/// Construct a fresh, unaliased string from an owned pointer to characters and a length.
 String.from_parts (pointer: Ptr Char) (length: U32): String =
     rc: Ptr U32 = malloc 4
     ptr_store rc 1
@@ -75,18 +77,18 @@ Maybe.unwrap_or_else (m: Maybe t) (f: fn Unit => t): t =
     | Some x -> x
     | None -> f ()
 
-// Any file system-modifying action
 // TODO: Temporarily an empty effect set rather than a built-in.
 //       This being empty instead of a primitive incorrectly allows users to handle these effects.
+/// Any file system-modifying action
 effect Fs =
 
-// Any action connecting to a network
 // TODO: Temporarily an empty effect set rather than a built-in.
 //       This being empty instead of a primitive incorrectly allows users to handle these effects.
+/// Any action connecting to a network
 effect Net =
 
-// A convenience alias for the set of all primitive effects.
-// This may expand over time.
+/// A convenience alias for the set of all primitive effects.
+/// This may expand over time.
 effect IO = Fs, Net
 
 type Result t e =
@@ -246,50 +248,56 @@ impl cast_char_u64: Cast Char U64 pure with cast x = intrinsic "ZeroExtend" x
 
 impl cast_bool_i32: Cast Bool I32 pure with cast b = if b then 1 else 0
 
-// TODO: String interpolation desugars to `Cast x String`; it should use `Display` instead.
+// TODO: String interpolation desugars to `Cast x String`, it should use `Display` instead.
 count_digits (x: U64): U32 =
     loop x (sum = 1) ->
         if x < 10 then sum
         else recur (x / 10) (sum + 1)
 
-impl cast_i32_string: Cast I32 String Panic with
-    cast x =
-        x = I64 x
-        is_neg = x < 0
-        abs = if is_neg then 0 - x else x
-        var digits: U64 = try_cast abs ~> panic_on_fail
-
-        var len = count_digits digits
-        if is_neg then
-            len += 1
-
-        buf: Ptr Char = malloc (Usz len)
-        if is_neg then
-            ptr_store buf '-'
-
-        var pos = Usz (len - 1)
-        while
-            digit = digits % 10 + U64 '0'
-            array_insert buf pos (Char digit)
-            digits /= 10
-            pos -= 1
-            digits > 0
-        do ()
-
-        String.from_parts buf len
-
-unsigned_to_string (var digits: U64): String =
-    len = count_digits digits
+/// Format `magnitude` in decimal, prefixed with `-` when `negative`
+decimal_string (var magnitude: U64) (negative: Bool): String =
+    sign_length: U32 = if negative then 1 else 0
+    len = count_digits magnitude + sign_length
     buf: Ptr Char = malloc (Usz len)
+    if negative then
+        ptr_store buf '-'
+
     var pos = Usz (len - 1)
     while
-        digit = digits % 10 + U64 '0'
+        digit = magnitude % 10 + U64 '0'
         array_insert buf pos (Char digit)
-        digits /= 10
+        magnitude /= 10
         pos -= 1
-        digits > 0
+        magnitude > 0
     do ()
     String.from_parts buf len
+
+unsigned_to_string (x: U64): String = decimal_string x false
+
+signed_to_string (x: I64): String =
+    // Negating the minimum I64 overflows, so offset by one before negating
+    if x < 0 then decimal_string (transmute (0 - (x + 1)) + 1) true
+    else decimal_string (transmute x) false
+
+impl cast_u8_string:  Cast U8  String pure with cast x = unsigned_to_string (U64 x)
+impl cast_u16_string: Cast U16 String pure with cast x = unsigned_to_string (U64 x)
+impl cast_u32_string: Cast U32 String pure with cast x = unsigned_to_string (U64 x)
+impl cast_u64_string: Cast U64 String pure with cast x = unsigned_to_string x
+impl cast_usz_string: Cast Usz String pure with cast x = unsigned_to_string (U64 x)
+impl cast_i8_string:  Cast I8  String pure with cast x = signed_to_string (I64 x)
+impl cast_i16_string: Cast I16 String pure with cast x = signed_to_string (I64 x)
+impl cast_i32_string: Cast I32 String pure with cast x = signed_to_string (I64 x)
+impl cast_i64_string: Cast I64 String pure with cast x = signed_to_string x
+impl cast_isz_string: Cast Isz String pure with cast x = signed_to_string (I64 x)
+
+impl cast_char_string: Cast Char String pure with
+    cast c =
+        buf: Ptr Char = malloc 1
+        ptr_store buf c
+        String.from_parts buf 1
+
+impl cast_bool_string: Cast Bool String pure with
+    cast b = if b then "true" else "false"
 
 float_to_string (f: F64): String =
     is_neg = f < 0.0
@@ -405,11 +413,11 @@ impl eq_f64: Eq F64 pure with (==) x y = intrinsic "EqFloat" x.* y.*
 impl eq_char: Eq Char pure with (==) x y = intrinsic "EqInt" x.* y.*
 impl eq_bool: Eq Bool pure with (==) x y = intrinsic "EqInt" x.* y.*
 
-// References are equal if their elements are equal
+/// References are equal if their elements are equal
 impl eq_ref {Eq t e}: Eq (ref t) e with
     (==) l r = deref l == deref r
 
-// Pointers are equal if their addresses are equal
+/// Pointers are equal if their addresses are equal
 impl eq_ptr: Eq (Ptr t) pure with
     (==) l r = (transmute l.* : Usz) == (transmute r.* : Usz)
 
@@ -641,12 +649,12 @@ array_len (_array: ref Array n t): Usz =
     if size_t == 0 then 0 else
         size_of (MkType : Type (Array n t)) / size_t
 
-// Unsafe get without bounds-checking
+/// Unsafe get without bounds-checking
 array_get_unchecked (array: ref Array n t) (i: Usz): ref t =
     ptr: Ptr t = transmute array
     ptr_to_mut (offset ptr i)
 
-// Unsafe set without bounds-checking
+/// Unsafe set without bounds-checking
 array_set_unchecked (array: mut Array n t) (i: Usz) (v: t): Unit =
     ptr: Ptr t = transmute array
     ptr_store (offset ptr i) v
@@ -711,7 +719,7 @@ offset_negative (ptr: Ptr t) (index: Usz): Ptr t =
     addr = Usz ptr
     transmute (addr - index)
 
-// Dereference without a Copy constraint. This is unsafe to use directly
+/// Dereference without a Copy constraint. This is unsafe to use directly
 deref (x: ref t): t =
     intrinsic "Deref" x
 
@@ -849,7 +857,7 @@ effect Print =
 
 write_stdout: fn (Ptr Char) Usz -> Unit can Fs = extern "ante_write_stdout"
 
-// Handles `Print` by piping to stdout
+/// Handles `Print` by piping to stdout
 print_to_stdout (f: a can Print, e): a can Fs, e =
     handler h for
     | write s -> resume (write_stdout s.data (Usz s.length))
@@ -982,12 +990,12 @@ impl print_ref {Display a e}: Display (ref a) e with
 trait Iterator it elem (effects: effect) =
     next: fn it -> Maybe (it, elem) can effects
 
-iter (iterable: it) f {i: Iterator it elem effects} =
+iterate (iterable: it) f {i: Iterator it elem effects} =
     match i.next iterable
     | None -> ()
     | Some (rest, elem) ->
         f elem
-        iter rest f
+        iterate rest f
 
 type Range t = start: t, end: t
 
@@ -999,8 +1007,8 @@ impl iterator_range: Iterator (Range Usz) Usz pure with
             next = Range (range.start + 1) range.end
             Some (next, range.start)
 
-iter_range (from: Usz) (to: Usz) (f: fn Usz => Unit): Unit =
-    iter (Range from to) f
+iterate_range (from: Usz) (to: Usz) (f: fn Usz => Unit): Unit =
+    iterate (Range from to) f
 
 repeat (count: Usz) (f: fn Usz => Unit): Unit =
     loop (i = 0) ->

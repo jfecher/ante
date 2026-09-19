@@ -16,5 +16,5 @@ f (g: fn _ -> _) = g 1
 //     (p: Pair I32 I32) = (Pair: fn I32 I32 -> Pair I32 I32 is pure) 1 2
 //     (p: Pair I32 I32).first
 // 
-// (f: fn (fn I32 -> _ can $effect) -> _ can $effect) ((g: fn I32 -> _ can $effect)) = (g: fn I32 -> _ can $effect) 1
+// (f: fn (fn I32 -> _ can $effect) -> _ can $effect) (g: fn I32 -> _ can $effect) = (g: fn I32 -> _ can $effect) 1
 

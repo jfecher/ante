@@ -19,9 +19,9 @@ main () = ()
 // type Thunk (e: effect) =
 //     f: fn Unit -> Unit can e
 // 
-// (id: fn (Thunk (Fs, Throw Unit, e)) -> Thunk (Fs, Throw Unit, e) is pure) ((b: Thunk (Fs, Throw Unit, e))) : Thunk e & Fs & Throw Unit is pure = (b: Thunk (Fs, Throw Unit, e))
+// (id: fn (Thunk (Fs, Throw Unit, e)) -> Thunk (Fs, Throw Unit, e) is pure) (b: Thunk (Fs, Throw Unit, e)): Thunk e & Fs & Throw Unit is pure = (b: Thunk (Fs, Throw Unit, e))
 // 
-// (mismatch: fn (Thunk (Fs, Throw Unit, e)) -> I32 is pure) ((b: Thunk (Fs, Throw Unit, e))) : I32 is pure = (b: Thunk (Fs, Throw Unit, e))
+// (mismatch: fn (Thunk (Fs, Throw Unit, e)) -> I32 is pure) (b: Thunk (Fs, Throw Unit, e)): I32 is pure = (b: Thunk (Fs, Throw Unit, e))
 // 
 // (main: fn Unit -> Unit is pure) () = ()
 

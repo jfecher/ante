@@ -17,7 +17,7 @@ impl drop_file: Drop File Fs with
     drop f =
         fclose f.c_file
 
-//Convenience function for using feof with better types
+/// Convenience function for using feof with better types
 File.eof (f: ref File): Bool can Fs =
     feof f.c_file != 0
 
@@ -54,13 +54,13 @@ File.next_line (f: mut File): String can Fs =
     array_insert cstr len '\0'
     String.from_parts cstr (U32 len)
 
-// Iterating through a File iterates through each line
+/// Iterating through a File iterates through each line
 impl iterator_file: Iterator (mut File) String Fs with
     next file =
         if file.eof () then None
         else Some (file, file.next_line ())
 
-// Read a line from stdin, ending with (and not including) a terminating '\n'
+/// Read a line from stdin, ending with (and not including) a terminating '\n'
 read_line (): String can Fs =
     buffer, len = loop (buffer = null ()) (len = 0) ->
         c = getchar ()

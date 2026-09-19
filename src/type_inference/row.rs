@@ -77,6 +77,30 @@ fn is_open(typ: &Type) -> bool {
     matches!(typ, Type::Variable(_))
 }
 
+/// Remove any open tails both rows share
+fn cancel_shared_open(mut a_open: Vec<Type>, b_open: Vec<Type>) -> (Vec<Type>, Vec<Type>) {
+    let b_open = b_open
+        .into_iter()
+        .filter(|b| match a_open.iter().position(|a| a == b) {
+            Some(i) => {
+                a_open.remove(i);
+                false
+            },
+            None => true,
+        })
+        .collect();
+    (a_open, b_open)
+}
+
+/// Split a row's open tails into the first, which the row algorithms bind, and the rest
+fn split_first_open(mut open: Vec<Type>) -> (Option<Type>, Vec<Type>) {
+    if open.is_empty() {
+        return (None, open);
+    }
+    let first = open.remove(0);
+    (Some(first), open)
+}
+
 /// Flatten every entry reachable from `entries` into `found`
 pub(super) fn flatten_row_into(
     kind: RowKind, entries: &[Type], found: &mut Vec<Type>, bindings: &TypeBindings, more_bindings: &TypeBindings,
@@ -175,9 +199,23 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         &self, kind: RowKind, m: RowMatch, new_bindings: &mut TypeBindings,
     ) -> Result<(), ()> {
         let RowMatch { a_open, b_open, mut a_leftover, mut b_leftover } = m;
+        let (a_open, b_open) = cancel_shared_open(a_open, b_open);
+        let (a_open, a_extra_open) = split_first_open(a_open);
+        let (b_open, b_extra_open) = split_first_open(b_open);
+
+        // If there are multiple unbound variables, combine them into leftovers so they get bound
+        b_leftover.extend(b_extra_open);
+        if b_open.is_some() {
+            a_leftover.extend(a_extra_open);
+        } else {
+            let binding = construct_row(kind, &b_leftover, &self.bindings, new_bindings);
+            for extra in &a_extra_open {
+                self.subtype(extra, &binding, Variance::Invariant, RowMode::Exact, new_bindings)?;
+            }
+        }
 
         // What is left of `b`'s row end after it absorbs the entries `a` has that `b` didn't list
-        let b_residual = match (b_open.first(), a_leftover.is_empty()) {
+        let b_residual = match (b_open.as_ref(), a_leftover.is_empty()) {
             (open, true) => open.cloned(),
             (Some(open), false) => {
                 let fresh = self.next_type_variable();
@@ -189,7 +227,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             (None, false) => return Err(()),
         };
 
-        let Some(a_open_first) = a_open.first() else { return Ok(()) };
+        let Some(a_open_first) = a_open.as_ref() else { return Ok(()) };
 
         match b_residual {
             // Binding `a_open_first` to a row containing itself would create an infinitely recursive type
@@ -213,11 +251,17 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         &self, kind: RowKind, m: RowMatch, new_bindings: &mut TypeBindings,
     ) -> Result<(), ()> {
         let RowMatch { a_open, b_open, mut a_leftover, mut b_leftover } = m;
+        // Tails past the first must be absorbed by the other side like any other entry
+        let (a_open, b_open) = cancel_shared_open(a_open, b_open);
+        let (a_open, a_extra_open) = split_first_open(a_open);
+        let (b_open, b_extra_open) = split_first_open(b_open);
+        a_leftover.extend(a_extra_open);
+        b_leftover.extend(b_extra_open);
 
         let both_closed = |a_leftover: &[Type], b_leftover: &[Type]| {
             (a_leftover.is_empty() && b_leftover.is_empty()).then_some(()).ok_or(())
         };
-        match (a_open.first(), b_open.first()) {
+        match (a_open.as_ref(), b_open.as_ref()) {
             (None, None) => both_closed(&a_leftover, &b_leftover),
             (Some(a_end), None) if a_leftover.is_empty() => self.bind_row_end(kind, a_end, &b_leftover, new_bindings),
             (None, Some(b_end)) if b_leftover.is_empty() => self.bind_row_end(kind, b_end, &a_leftover, new_bindings),

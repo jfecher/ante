@@ -8,7 +8,7 @@ export HashMap, Entry, Hash, HashMap.empty, HashMap.of, HashMap.clear, HashMap.r
     HashMap.get_or_insert, HashMap.get_or_insert_with, HashMap.retain, HashMap.merge,
     HashMap.extend, print_hashmap, stream_map
 
-// A linear-scan mutable HashMap using a resize factor of 2.0
+/// A linear-scan mutable HashMap using a resize factor of 2.0
 type HashMap k v =
     len: Usz
     capacity: Usz
@@ -64,7 +64,7 @@ HashMap.resize (map: mut HashMap k v) (new_capacity: Usz) {Hash k} {Eq k e}: Uni
         map.capacity := new_capacity
         map.entries := new_memory
 
-// Should we resize this map when pushing another element?
+/// Should we resize this map when pushing another element?
 HashMap.should_resize (map: ref HashMap k v) : Bool =
     scale_factor = 2
     (map.len + 1) * scale_factor > map.capacity

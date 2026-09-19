@@ -232,9 +232,9 @@ impl drop_seq {Drop t e}: Drop (Seq t) e with
                 if data.fork_rc == 0 then
                     drop_data seq.data
 
-// Free ancestors that only this child keeps alive. When an ancestor has
-// direct_rc == 0 and fork_rc == 1, this child is its sole referent so
-// we remove the parent from the chain and place the child in its place.
+/// Free ancestors that only this child keeps alive. When an ancestor has
+/// direct_rc == 0 and fork_rc == 1, this child is its sole referent so
+/// we remove the parent from the chain and place the child in its place.
 collapse_parents (child: Ptr (Data t)) {Drop t e}: Unit can e =
     child = ptr_to_mut child
     var parent_ptr = child.parent
@@ -253,8 +253,8 @@ collapse_parents (child: Ptr (Data t)) {Drop t e}: Unit can e =
             free parent_ptr
             parent_ptr := child.parent
 
-// Walk up the parent chain, dropping each ancestor's private data and
-// freeing its allocation when both its rcs reach zero.
+/// Walk up the parent chain, dropping each ancestor's private data and
+/// freeing its allocation when both its rcs reach zero.
 drop_data (var data: Ptr (Data t)) {Drop t e}: Unit can e =
     while data != null () do
         cur = ptr_to_mut data

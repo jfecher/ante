@@ -10,4 +10,5 @@ foo (f: fn Unit -> Unit can FileIO) : Unit = ()
 // 
 // effect WithLog e = Log, e
 // 
-// foo (f: fn Unit -> Unit can FileIO) : Unit = ()
+// foo (f: fn Unit -> Unit can FileIO): Unit = ()
+

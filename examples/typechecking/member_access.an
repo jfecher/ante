@@ -30,7 +30,7 @@ main () =
 // type Bar =
 //     bar: Char
 // 
-// (stringify: fn String -> String is pure) ((s: String)) = (s: String)
+// (stringify: fn String -> String is pure) (s: String) = (s: String)
 // 
 // (foo_and_bar: fn _ _ -> String is pure) (a: _) (b: _) =
 //     (a: _).foo

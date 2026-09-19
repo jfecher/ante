@@ -55,9 +55,9 @@ map3 (l: List a) (f: fn a -> b) {Log} : List b = ()
 //         | log _ -> fn _ resume -> "foo"
 //         in fn () -> ()
 // 
-// map1 (l: List a) (f: fn a {Log} -> b) : List b = ()
+// map1 (l: List a) (f: fn a {Log} -> b): List b = ()
 // 
-// map2 (l: List a) (f: fn a -> b) : List b = ()
+// map2 (l: List a) (f: fn a -> b): List b = ()
 // 
-// map3 (l: List a) (f: fn a -> b) {_: Log} : List b = ()
+// map3 (l: List a) (f: fn a -> b) {_: Log}: List b = ()
 
