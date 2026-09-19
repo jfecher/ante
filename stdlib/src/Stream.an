@@ -200,6 +200,21 @@ any (s: s) {Stream s a e} (f: fn a => Bool): Bool can e =
     Stream.stream s
     false
 
+/// Returns the first element of the stream or `None` if it is empty
+first (s: s) {Stream s a e}: Maybe a can e =
+    handler h for emit a -> Some a
+    Stream.stream s
+    None
+
+/// Returns the final element of the stream or `None` if it is empty
+last (s: s) {Stream s a e}: Maybe a can e =
+    var result = Maybe.None
+    handler h for emit a ->
+        result := Maybe.Some a
+        resume ()
+    in Stream.stream s
+    result
+
 /// Intersperse an item in between each element of the stream.
 ///
 /// Given `a1, a2, .., aN` and `item`, emit `a1, item, a2, item, .., item, aN`
@@ -248,7 +263,7 @@ find (s: s) {Stream s a e} (predicate: fn (ref a) => Bool): a can Fail, e =
 /// Find an element in the stream for which `predicate` returns `Some b`, and return that `b`.
 /// Fails if there is no such element
 find_map (s: s) {Stream s a e} (predicate: fn a => Maybe b): b can Fail, e =
-    // TODO: Should `predicate` be `fn a {Fail} => b` instead?
+    // TODO: Should `predicate` be `fn a => b can Fail` instead?
     handler h for emit a ->
         match predicate a
         | Some b -> b

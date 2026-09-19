@@ -1,3 +1,4 @@
+import Std.Stream.last
 import Std.Stream.iota, enumerate, map, filter, iter, stream_fn, all, any, foldl, foldr,
     filter_map, reduce, map2, zip, intersperse, intersperse_with, chain, count,
     find, find_map, take, take_while, skip, skip_while, sum, product, for_, Loop,
@@ -91,6 +92,10 @@ extra_tests () =
         if x == 8 then break_ ()
         println x
 
+    println "last:"
+    println (last (iota 5))
+    println (last (take (iota 5) 0))
+
 // args: --delete-binary --no-color
 // expected stdout:
 // 0, 0
@@ -151,4 +156,7 @@ extra_tests () =
 // 4
 // 5
 // 7
+// last:
+// Some 4
+// None
 

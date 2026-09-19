@@ -1,18 +1,23 @@
-import Std.IO.File, iterator_file
-import Std.C.fputs, fopen, fclose
+import Std.IO.File, iterator_file, print_to_file, create_dir, create_dir_all
+import Std.C
+import Std.C.fputs, fopen, fclose, system
+import Std.Fail.try
 
 write_test_file (path: String): Unit can Fs =
-    var f = File.open path "w\0"
-    f.write "line1\nline2\nline3\n\0"
+    var f = File.open path "w"
+    f.write "line1\nline2\nline3\n"
     f.close ()
+
+test_dir (name: String): String =
+    "/tmp/ante_io_test_dir" ++ name
 
 main () =
     print_to_stdout do
-    path = "/tmp/ante_io_test.txt\0"
+    path = "/tmp/ante_io_test.txt"
     write_test_file (clone path)
 
     // Test next_char reads the first character
-    f1 = File.open (clone path) "r\0"
+    f1 = File.open (clone path) "r"
     c1 = f1.next_char ()
     c2 = f1.next_char ()
     print c1
@@ -20,7 +25,7 @@ main () =
     f1.close ()
 
     // Test next_line reads complete lines
-    var f2 = File.open (clone path) "r\0"
+    var f2 = File.open (clone path) "r"
     println (f2.next_line ())
     println (f2.next_line ())
     println (f2.eof ())
@@ -32,9 +37,30 @@ main () =
     f2.close ()
 
     // Test iterating over file lines using the File Iterator impl
-    var f3 = File.open path "r\0"
+    var f3 = File.open (clone path) "r"
     iterate (mut f3) println
     f3.close ()
+
+    // Test print_to_file
+    var f4 = File.open (clone path) "w"
+    print_to_file f4 do
+        print "printed "
+        println 42
+    f4.close ()
+
+    var f5 = File.open (clone path) "r"
+    println (f5.next_line ())
+    f5.close ()
+
+    // TODO: Add function to remove directories
+    _ = system (C.String "rm -rf /tmp/ante_io_test_dir\0".data)
+    println (try (do create_dir_all (test_dir "/a//b/c/")) is Some _)
+    println (try (do create_dir_all (test_dir "/a/b/c")) is Some _)
+    println (try (do create_dir (test_dir "/a")) is Some _)
+    // Parents are not created by create_dir
+    println (try (do create_dir (test_dir "/missing/x")) is Some _)
+    // A file is not a directory
+    println (try (do create_dir (clone path)) is Some _)
 
 // args: --delete-binary --no-color
 // expected stdout:
@@ -49,4 +75,9 @@ main () =
 // line1
 // line2
 // line3
-
+// printed 42
+// true
+// true
+// true
+// false
+// false

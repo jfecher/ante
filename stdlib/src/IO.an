@@ -1,14 +1,16 @@
-import Std.C.fclose, fopen, fputs, fgetc, ungetc, feof, malloc, realloc, getchar, copy_file
+import Std.C.fclose, fopen, fwrite, fgetc, ungetc, feof, malloc, realloc, getchar, copy_file
 import Std.C
+import Std.Fail.Fail, fail, fail_if
+import Std.String.split
+import Std.Stream.iter, stream_fn, foldl
 
 export File, File.open, File.close, drop_file, File.eof, File.write, File.next_char, File.next_line,
-    iterator_file, read_line
+    iterator_file, read_line, print_to_file, create_dir, create_dir_all
 
 type File = c_file: C.File
 
 File.open (path: String) (mode: String): File can Fs =
-    // TODO: Add null byte here
-    File <| fopen (C.String path.data) (C.String mode.data)
+    File <| fopen (C.String.new path) (C.String.new mode)
 
 File.close (file: File): Unit can Fs =
     fclose file.c_file
@@ -22,9 +24,12 @@ File.eof (f: ref File): Bool can Fs =
     feof f.c_file != 0
 
 File.write (f: mut File) (text: String): Unit can Fs =
-    // TODO: Add null byte here
-    fputs (C.String text.data) f.c_file
+    fwrite (transmute text.data) 1 (Usz text.length) f.c_file
     ()
+
+/// Handles `Print` by writing everything printed to `file`
+print_to_file (file: ref File) (f: a can Print, e): a can Fs, e =
+    print_to_sink (fn data len -> ignore (fwrite (transmute data) 1 len file.c_file)) f
 
 File.next_char (f: ref File): Char can Fs =
     Char (fgetc f.c_file)
@@ -78,3 +83,23 @@ read_line (): String can Fs =
 
     array_insert buffer len '\0'
     String.from_parts buffer (U32 len)
+
+create_dir_: fn C.String -> I32 can Fs = extern "ante_create_dir"
+
+/// Create the directory at `path`.
+/// Fails if it cannot be created, unless a directory already exists there.
+create_dir (path: String): Unit can Fs, Fail =
+    fail_if <| create_dir_ (C.String.new path) != 0
+
+/// Create each directory in `path` along with any missing parent directories.
+/// Fails if any of them cannot be created.
+create_dir_all (path: String): Unit can Fs, Fail =
+    split path '/' |> foldl "" fn prefix component ->
+        if component.length == 0 then
+            // An empty first component means the path is absolute.
+            if prefix.length == 0 then "/" else prefix
+        else
+            prefix = prefix ++ component ++ "/"
+            create_dir (clone prefix)
+            prefix
+    ()

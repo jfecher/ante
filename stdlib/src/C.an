@@ -1,4 +1,4 @@
-export String, copy_cstring, puts, putchar, getchar, exit, system, strlen,
+export String, copy_cstring, String.new, puts, putchar, getchar, exit, system, strlen,
     malloc, calloc, realloc, free, memcpy, memcmp,
     File, copy_file, fopen, fclose, fputs, fputc, fwrite,
     fgetc, fgets, ungetc, fgetpos, ftell, fsetpos, fseek, feof, ferror,
@@ -8,6 +8,11 @@ export String, copy_cstring, puts, putchar, getchar, exit, system, strlen,
 /// This is meant to be used qualified as `C.String`
 type String = ptr: Ptr Char
 impl copy_cstring: Copy String with (.*) = deref
+
+/// Copy a prelude string, append a '\0', and return it as a new C.String
+// TODO: Fail if the string already contains any '\0' bytes
+String.new (s: Std.Prelude.String): String =
+    String (s ++ "\0").data
 
 /// A convenience type for translating C APIs
 type VoidPtr = Ptr U8

@@ -41,7 +41,7 @@ export String, String.from_parts, Maybe, Maybe.None, Maybe.Some, iff, Maybe.unwr
     Copy, (.*), copy_i8, copy_i16, copy_i32, copy_i64, copy_isz, copy_u8, copy_u16, copy_u32, copy_u64, copy_usz, copy_f32, copy_f64, copy_unit, copy_bool, copy_char, copy_ptr, copy_ref, copy_mut, copy_imm, copy_uniq, clone_string, copy_pair, copy_maybe,
     null, transmute,
     Print, Print.write, write, Print.write_char, write_char, Print.write_u64, write_u64, Print.write_i64, write_i64, Print.write_f64, write_f64,
-    print_to_stdout, dbg, Display, print, println, print_float, print_u8, print_u16, print_u32, print_u64, print_usz, print_i8, print_i16, print_i32, print_i64, print_isz, print_char, print_f64, print_f32, print_pair, print_string, print_maybe, print_bool, print_array, print_ref,
+    print_to_sink, print_to_stdout, print_to_stderr, dbg, Display, print, println, print_float, print_u8, print_u16, print_u32, print_u64, print_usz, print_i8, print_i16, print_i32, print_i64, print_isz, print_char, print_f64, print_f32, print_pair, print_string, print_maybe, print_bool, print_array, print_ref,
     Iterator, next, iterate, Range, iterator_range, iterate_range, repeat,
     Panic, Panic.panic, panic, abort_on_panic, ignore
 
@@ -856,16 +856,27 @@ effect Print =
     write_f64: fn F64 -> Unit
 
 write_stdout: fn (Ptr Char) Usz -> Unit can Fs = extern "ante_write_stdout"
+write_stderr: fn (Ptr Char) Usz -> Unit can Fs = extern "ante_write_stderr"
+
+/// Forwards each printed string to the given function expecting a string pointer
+/// and the length in bytes of that string pointer.
+print_to_sink (sink: fn (Ptr Char) Usz => Unit can Fs) (f: a can Print, e): a can Fs, e =
+    write_string (s: String) = sink s.data (Usz s.length)
+    handler h for
+    | write s -> resume (sink s.data (Usz s.length))
+    | write_char c -> resume (write_string "${c}")
+    | write_u64 x -> resume (write_string "${x}")
+    | write_i64 x -> resume (write_string "${x}")
+    | write_f64 x -> resume (write_string "${x}")
+    in f ()
 
 /// Handles `Print` by piping to stdout
 print_to_stdout (f: a can Print, e): a can Fs, e =
-    handler h for
-    | write s -> resume (write_stdout s.data (Usz s.length))
-    | write_char c -> resume (putchar c)
-    | write_u64 x -> resume (print_unsigned x)
-    | write_i64 x -> resume (print_signed x)
-    | write_f64 x -> resume (print_float x)
-    in f ()
+    print_to_sink write_stdout f
+
+/// Handles `Print` by piping to stderr
+print_to_stderr (f: a can Print, e): a can Fs, e =
+    print_to_sink write_stderr f
 
 /// Display the given String to stderr without using any effects.
 /// 

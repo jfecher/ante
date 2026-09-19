@@ -1,3 +1,5 @@
+import Std.String.from_c_string, to_ascii_lowercase, to_ascii_uppercase
+import Std.C
 import Std.String.bytes, chars, substr, string_of, join, split, reverse
 import Std.String.parse_i8, parse_i16, parse_i32, parse_i64, parse_isz
 import Std.String.parse_u8, parse_u16, parse_u32, parse_u64, parse_usz
@@ -30,10 +32,18 @@ main () =
     split "foo bar  baz " ' ' |> iter println
     println "end of split"
 
-    // join over an interspersed stream → single String "a, b, c"
+    // intersperse:
     println (intersperse abc_stream ", " |> join)
     test_predicates ()
     test_parse ()
+
+    // C strings:
+    println (from_c_string (C.String.new "round trip"))
+    println (C.strlen (C.String.new "abc"))
+
+    // case conversion:
+    println (to_ascii_lowercase "Std.HashMap 123")
+    println (to_ascii_uppercase "Std.HashMap 123")
 
 abc_stream (): Unit can Emit String =
     emit "a"
@@ -41,14 +51,14 @@ abc_stream (): Unit can Emit String =
     emit "c"
 
 test_predicates () =
-    println (starts_with (ref "hello world") (ref "hello"))
-    println (starts_with (ref "hello world") (ref "world"))
-    println (starts_with (ref "hi") (ref "hello"))
-    println (ends_with (ref "hello world") (ref "world"))
-    println (ends_with (ref "hello world") (ref "hello"))
-    println (contains (ref "hello world") (ref "lo wo"))
-    println (contains (ref "hello world") (ref "xyz"))
-    println (contains (ref "abc") (ref ""))
+    println (starts_with "hello world" "hello")
+    println (starts_with "hello world" "world")
+    println (starts_with "hi" "hello")
+    println (ends_with "hello world" "world")
+    println (ends_with "hello world" "hello")
+    println (contains "hello world" "lo wo")
+    println (contains "hello world" "xyz")
+    println (contains "abc" "")
     // Brackets so trailing whitespace is more visible
     println ("[" ++ trim "  hi  " ++ "]")
     println ("[" ++ trim_start "  hi  " ++ "]")
@@ -246,4 +256,8 @@ test_parse () =
 // Some 42
 // None
 // Some 12345
+// round trip
+// 3
+// std.hashmap 123
+// STD.HASHMAP 123
 

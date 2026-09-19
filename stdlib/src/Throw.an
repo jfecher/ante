@@ -35,3 +35,10 @@ unwrap_err (f: t can Throw e): e can Fail =
     handler h for throw e -> e
     f ()
     fail ()
+
+/// If an error is thrown when running `f`, print it to stderr and exit 1
+exit_on_throw (f: a can Throw t, e) {Display t e2}: a can Fs, e, e2 =
+    handler h for throw error ->
+        print_to_stderr do println error
+        Std.C.exit 1
+    f ()

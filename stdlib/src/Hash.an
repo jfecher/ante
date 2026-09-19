@@ -4,8 +4,8 @@ import Std.String.bytes
 trait Hash t =
     hash: fn t -> U64
 
-/// FNV-1a 64-bit. Offset basis: 14695981039346656037 (0xcbf29ce484222325).
-/// Prime: 1099511628211 (0x100000001b3).
+/// FNV-1a 64-bit with an offset basis of 14695981039346656037 (0xcbf29ce484222325),
+/// and prime of 1099511628211 (0x100000001b3).
 impl hash_string: Hash String with
     hash s =
         foldl (bytes s) 14695981039346656037 fn acc c ->
@@ -26,7 +26,6 @@ impl hash_u32: Hash U32 with
 impl hash_usz: Hash Usz with
     hash x = cast x
 
-// Reinterpret as same-width unsigned then zero-extend.
 impl hash_i8: Hash I8 with
     hash (x: I8) = cast (transmute x : U8)
 
@@ -54,8 +53,8 @@ impl hash_bool: Hash Bool with
 impl hash_char: Hash Char with
     hash (c: Char) = U64 c
 
-/// Combine two hashes to form a new one. Order-sensitive so (a, b) and
-/// (b, a) hash differently. Mixing constant is 2^64 / phi.
+/// Combine two hashes to form a new one. This is order-sensitive so (a, b) and
+/// (b, a) hash differently. Uses a mixing constant of 2^64 / phi.
 hash_combine (h1: U64) (h2: U64): U64 =
     // TODO: `Bitwise` has no bit shifting operators. Should be `shl h1 6 + shr h1 2`
     bxor h1 (h2 + 11400714819323198485 + h1*64 + h1/4)

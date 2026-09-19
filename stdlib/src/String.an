@@ -1,8 +1,9 @@
 import Std.Vec
-import Std.C.malloc, memcpy, memcmp
+import Std.C
+import Std.C.malloc, memcpy, memcmp, strlen, copy_cstring
 import Std.Stream.Emit, emit, Stream, foldl, map, stream_fn
 import Std.Vec.Vec
-import Std.Char.is_whitespace, to_digit
+import Std.Char.is_whitespace, to_digit, to_ascii_lower, to_ascii_upper
 import Std.Math.CheckedNum, checked_add, checked_sub, checked_mul
 import Std.Math.checked_num_i8, checked_num_i16, checked_num_i32, checked_num_i64, checked_num_isz
 import Std.Math.checked_num_u8, checked_num_u16, checked_num_u32, checked_num_u64, checked_num_usz
@@ -120,7 +121,6 @@ contains (s: ref String) (needle: ref String): Bool =
     false
 
 /// Return a substring with leading ASCII whitespace removed.
-/// Reuses the source refcount; no allocation.
 trim_start (s: String): String can Fs =
     len = Usz s.length
     for i in 0 .. len do
@@ -268,3 +268,30 @@ impl try_cast_string_u64: TryCast String U64 Fs with
 
 impl try_cast_string_usz: TryCast String Usz Fs with
     try_cast s = parse_usz s
+
+/// Copy a null-terminated C string into a new string.
+from_c_string (cstr: C.String): String =
+    len = strlen cstr
+    buf = malloc len
+    memcpy buf cstr.ptr len
+    String.from_parts buf (U32 len)
+
+/// Returns the given string with each ASCII letter converted to lowercase.
+/// The original string is never mutated.
+// TODO: Return the original string if it was already lowercase
+to_ascii_lowercase (s: ref String): String =
+    len = Usz s.length
+    buf = malloc len
+    for i in 0 .. len do
+        array_insert buf i (to_ascii_lower s.data.[i])
+    String.from_parts buf s.length
+
+/// Returns the given string with each ASCII letter converted to uppercase.
+/// The original string is never mutated.
+// TODO: Return the original string if it was already uppercase
+to_ascii_uppercase (s: ref String): String =
+    len = Usz s.length
+    buf = malloc len
+    for i in 0 .. len do
+        array_insert buf i (to_ascii_upper s.data.[i])
+    String.from_parts buf s.length
