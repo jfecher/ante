@@ -1,0 +1,33 @@
+import Std.Vec.Vec
+
+reads (v: mut 'v (Vec (ref 'e I32))) (_: ref 'k I32) = ()
+
+writes (v: mut 'v (Vec (ref 'e I32))) (elem: ref 'e I32) =
+    v.push elem
+
+ok () =
+    var nums = Vec.empty ()
+    nums.push (ref 1)
+    if true then
+        reads (mut nums) 5
+
+bad () =
+    var nums = Vec.empty ()
+    nums.push (ref 1)
+    if true then
+        writes (mut nums) 5
+
+main () = ()
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/borrows/vec_read_and_write.an:18:27
+// 17 |     if true then
+//    |         // error: This reference to a temporary value outlives its scope
+//    |         // note: this value is only valid until the end of this scope
+// 18 |         writes (mut nums) 5
+//    |                           ^
+// 
+// Found 1 error and 0 warnings
+

@@ -1,0 +1,22 @@
+// `a := v` inside `store` is invisible at the call site: only the shared place row records
+// that `r` may now refer to `y`.
+store (a: mut 'a (ref 'b I32)) (v: ref 'b I32): Unit = a := v
+
+main () =
+    var r = ref 0
+    if true then
+        y = 10
+        store (mut r) y
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/borrows/store_through_call.an:9:23
+//  7 |     if true then
+//  8 |         y = 10	// note: y is only valid until the end of this scope
+//    |         -
+//  9 |         store (mut r) y	// error: This reference to y outlives its scope
+//    |                       ^
+// 
+// Found 1 error and 0 warnings
+

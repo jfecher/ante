@@ -212,6 +212,19 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         self.row_subtype_generic(RowKind::Places, m, new_bindings)
     }
 
+    /// Replace an open places row's tail with a fresh variable.
+    /// Returns `None` unless `row` is a places row with an open tail.
+    pub(super) fn reopen_places_row(&self, row: &Type, new_bindings: &TypeBindings) -> Option<Type> {
+        if !matches!(row, Type::Places(Some(_))) {
+            return None;
+        }
+        let mut places = self.collect_and_merge_places(row, new_bindings);
+        let open = places.iter().position(|place| matches!(place, Type::Variable(_)))?;
+        places.truncate(open);
+        places.push(self.next_type_variable());
+        Some(Type::places(&places, &self.bindings, new_bindings))
+    }
+
     /// Unify two places rows: both must end up with the same set of places.
     pub(super) fn place_unify(&self, a: &Type, b: &Type, new_bindings: &mut TypeBindings) -> Result<(), ()> {
         let Some(m) = self.match_places(a, b, new_bindings) else { return Ok(()) };

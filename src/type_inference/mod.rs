@@ -1035,7 +1035,12 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     self.subtype(a, &b, variance, row_mode, new_bindings)
                 } else {
                     let a = a.follow_two(&self.bindings, new_bindings);
-                    self.try_bind_type_variable(*b_id, a, new_bindings)
+
+                    // Avoid b aliasing an open row to get subtype-like semantics instead of row polymorphism semantics
+                    let coercible = variance == Variance::Covariant && row_mode == RowMode::Coercible;
+                    let reopened = coercible.then(|| self.reopen_places_row(&a, new_bindings)).flatten();
+
+                    self.try_bind_type_variable(*b_id, reopened.unwrap_or(a), new_bindings)
                 }
             },
             // The bottom type is a subtype of every type in covariant position.

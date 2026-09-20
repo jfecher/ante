@@ -47,6 +47,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             name_depths: FxHashMap::default(),
             function_depth: None,
             reported_escapes: FxHashSet::default(),
+            binding_places: FxHashMap::default(),
+            reference_sites: FxHashMap::default(),
             moves: MoveTracker::default(),
         };
         checker.record_name_depths_in_pattern(definition.pattern, depth);
@@ -65,6 +67,15 @@ struct BorrowChecker<'a, 'local, 'inner> {
 
     /// Used so we only issue an error for each [Place] once
     reported_escapes: FxHashSet<Place>,
+
+    /// The places reachable from each binding whose type mentions any.
+    /// Bindings with no places are left out to avoid unnecessary iterations over this later.
+    binding_places: FxHashMap<NameId, Vec<Place>>,
+
+    /// The expression each place was last borrowed at, used for error messages only.
+    /// The boolean is whether it was used as a call argument, which are currently prioritized
+    /// for including in error messages but this may change.
+    reference_sites: FxHashMap<Place, (ExprId, bool)>,
 
     moves: MoveTracker,
 }
@@ -85,6 +96,7 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
                 if let Some(tail) = items.last() {
                     self.check_escapes(tail.expr, new_depth);
                 }
+                self.check_outer_bindings(new_depth);
             },
             Expr::Definition(definition) => {
                 self.record_name_depths_in_pattern(definition.pattern, depth);
@@ -105,7 +117,10 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
                 }
             },
             Expr::Assignment(assignment) => self.walk_assignment(&assignment, depth, check_move, record_move),
-            Expr::Reference(reference) => self.walk_expr(reference.rhs, depth, check_move, false),
+            Expr::Reference(reference) => {
+                self.record_reference_site(reference.rhs, expr, false);
+                self.walk_expr(reference.rhs, depth, check_move, false)
+            },
             Expr::MemberAccess(access) => {
                 self.walk_expr(access.object, depth, false, false);
                 self.check_member_access_move(&access, expr, check_move, record_move);
@@ -113,6 +128,12 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
             Expr::Call(call) => {
                 self.walk_expr(call.function, depth, check_move, record_move);
                 for arg in &call.arguments {
+                    // TODO: Generalize this by looking at all places in the argument type.
+                    // We should also find a better heuristic than "prioritize arg positions" when
+                    // finding error locations.
+                    if let Expr::Reference(reference) = self.tc.resolved_expr(arg.expr).as_ref() {
+                        self.record_reference_site(reference.rhs, arg.expr, true);
+                    }
                     self.walk_expr(arg.expr, depth, check_move, record_move);
                 }
             },
@@ -136,14 +157,26 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
         }
     }
 
+    /// Record the scope depth `name` was bound at, along with any places its type may refer to.
+    fn bind_name(&mut self, name: NameId, depth: ScopeDepth) {
+        self.name_depths.insert(name, depth);
+
+        let Some(typ) = self.tc.name_types.get(&name) else { return };
+        let mut places = Vec::new();
+        self.collect_place_atoms(typ, &mut places);
+        if !places.is_empty() {
+            self.binding_places.insert(name, places);
+        }
+    }
+
     /// Record the scope depth of every name a pattern binds.
     fn record_name_depths_in_pattern(&mut self, pattern: PatternId, depth: ScopeDepth) {
         match self.tc.pattern_of(pattern).as_ref() {
             Pattern::Variable(name) | Pattern::MethodName { item_name: name, .. } => {
-                self.name_depths.insert(*name, depth);
+                self.bind_name(*name, depth);
             },
             Pattern::Alias(name, inner) => {
-                self.name_depths.insert(*name, depth);
+                self.bind_name(*name, depth);
                 self.record_name_depths_in_pattern(*inner, depth);
             },
             Pattern::Constructor(_, args) => {
@@ -156,7 +189,7 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
                     self.record_name_depths_in_pattern(*arg, depth);
                 }
                 if let Some(name) = name {
-                    self.name_depths.insert(*name, depth);
+                    self.bind_name(*name, depth);
                 }
             },
             Pattern::TypeAnnotation(inner, _) => self.record_name_depths_in_pattern(*inner, depth),
@@ -187,6 +220,7 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
     fn walk_and_check_escapes(&mut self, expr: ExprId, depth: ScopeDepth, check_move: bool, record_move: bool) {
         self.walk_expr(expr, depth, check_move, record_move);
         self.check_escapes(expr, depth);
+        self.check_outer_bindings(depth);
     }
 
     /// The scope depth `e` in `x := e` must be valid for
@@ -224,6 +258,15 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
         }
     }
 
+    /// Remember that `borrow` borrows from `referent`, for locating escapes later.
+    fn record_reference_site(&mut self, referent: ExprId, borrow: ExprId, is_argument: bool) {
+        let Some(path) = self.tc.try_build_move_path(referent) else { return };
+        let site = self.reference_sites.entry(Place::Path(path)).or_insert((borrow, is_argument));
+        if is_argument || !site.1 {
+            *site = (borrow, is_argument);
+        }
+    }
+
     /// Check that `value`'s type carries only places that outlive `boundary`.
     fn check_escapes(&mut self, value: ExprId, boundary: ScopeDepth) {
         let Some(typ) = self.tc.expr_types.get(&value) else { return };
@@ -232,20 +275,60 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
         self.collect_place_atoms(typ, &mut offending);
         offending.retain(|atom| self.atom_depth(atom).is_some_and(|depth| depth >= boundary));
 
+        let location = self.narrow_value_expr(value);
         for atom in offending {
-            if !self.reported_escapes.insert(atom.clone()) {
+            self.report_escape(atom, location);
+        }
+    }
+
+    /// A binding declared outside the scope being left may have been widened, by a store through a
+    /// `mut` reference or an assignment, to refer to a place declared inside it. The block tail and
+    /// branch checks only look at one value's type, so nothing else catches this.
+    fn check_outer_bindings(&mut self, boundary: ScopeDepth) {
+        let mut escapes = Vec::new();
+        for (name, places) in &self.binding_places {
+            if self.name_depths.get(name).is_none_or(|depth| *depth >= boundary) {
                 continue;
             }
-            let location = self.narrow_value_expr(value).locate(self.tc);
-            let (name, declared_at) = match atom {
-                Place::Path(path) => {
-                    let name = path.display_name(self.tc.current_extended_context());
-                    (Some(name), path.root_variable().locate(self.tc))
-                },
-                Place::Anonymous(origin, _) => (None, origin.locate(self.tc)),
-            };
-            self.tc.compiler.accumulate(Diagnostic::EscapingReference { name, location, declared_at });
+            let offending = places.iter().filter(|atom| self.atom_depth(atom).is_some_and(|d| d >= boundary));
+            escapes.extend(offending.cloned());
         }
+
+        for atom in escapes {
+            let Some(location) = self.escape_location(&atom) else {
+                // TODO: panicking here makes closure_capture_escape.an panic. Are we missing an error there?
+                continue;
+            };
+            self.report_escape(atom, location);
+        }
+
+        // Drop the bindings this scope owned so they aren't rechecked later
+        let Self { binding_places, name_depths, .. } = self;
+        binding_places.retain(|name, _| name_depths.get(name).is_some_and(|depth| *depth < boundary));
+    }
+
+    /// The expression to blame for `atom` escaping, if one is known
+    fn escape_location(&self, atom: &Place) -> Option<ExprId> {
+        match atom {
+            Place::Path(_) => self.reference_sites.get(atom).map(|(expr, _)| *expr),
+            Place::Anonymous(origin, _) => Some(*origin),
+        }
+    }
+
+    /// Issue an escaping reference error for `atom`, avoiding multiple errors for the same place
+    fn report_escape(&mut self, atom: Place, location: ExprId) {
+        if !self.reported_escapes.insert(atom.clone()) {
+            return;
+        }
+        let location = location.locate(self.tc);
+        let (name, declared_at) = match atom {
+            Place::Path(path) => {
+                let name = path.display_name(self.tc.current_extended_context());
+                (Some(name), path.root_variable().locate(self.tc))
+            },
+            Place::Anonymous(origin, _) => (None, origin.locate(self.tc)),
+        };
+        self.tc.compiler.accumulate(Diagnostic::EscapingReference { name, location, declared_at });
     }
 
     /// Make an expr's location a bit more precise by returning the last expr of a block
@@ -517,7 +600,7 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
         self.walk_expr(for_.end, depth, check_move, record_move);
 
         let body_depth = depth.deeper();
-        self.name_depths.insert(for_.variable, body_depth);
+        self.bind_name(for_.variable, body_depth);
 
         self.moves.push_scope();
         self.walk_and_check_escapes(for_.body, body_depth, check_move, record_move);

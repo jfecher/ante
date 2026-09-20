@@ -1,0 +1,21 @@
+import Std.Vec.Vec
+
+bad () =
+    var vec = Vec.empty ()
+    for i in 0 .. 3 do
+        vec.push (ref i)
+
+main () = ()
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/borrows/push_in_loop.an:6:19
+// 4 |     var vec = Vec.empty ()
+// 5 |     for i in 0 .. 3 do	// note: i is only valid until the end of this scope
+//   |         -
+// 6 |         vec.push (ref i)	// error: This reference to i outlives its scope
+//   |                   ^^^^^
+// 
+// Found 1 error and 0 warnings
+

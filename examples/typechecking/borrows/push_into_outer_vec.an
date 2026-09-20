@@ -1,0 +1,24 @@
+import Std.Vec.Vec
+
+bad () =
+    var vec = Vec.empty ()
+    vec.push (ref "Hello")
+
+    if true then
+        world = "World"
+        vec.push world
+
+main () = ()
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/borrows/push_into_outer_vec.an:9:18
+//  7 |     if true then
+//  8 |         world = "World"	// note: world is only valid until the end of this scope
+//    |         -----
+//  9 |         vec.push world	// error: This reference to world outlives its scope
+//    |                  ^^^^^
+// 
+// Found 1 error and 0 warnings
+

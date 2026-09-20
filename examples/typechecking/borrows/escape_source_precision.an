@@ -2,9 +2,8 @@ pick2 (x: ref 'a I32) (_y: ref 'a I32): ref 'a I32 = x
 
 main () =
     a = 1
-    // r: ref '(a, y) I32
-    // should be just 'a but row polymorphism infers the above instead.
-    // This makes the current system less precise then pure subtyping
+    // r: ref 'a I32
+    // An old type inference issue with row polymorphism used to give it the type `ref '(a, y) I32`
     r = ref a
     if true then
         y = 2
