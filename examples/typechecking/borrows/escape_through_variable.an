@@ -3,6 +3,12 @@ bad_return (): ref I32 =
     r = ref x
     r
 
+bad_early_return_direct (b: Bool) (other: ref I32): ref I32 =
+    if b then
+        x = 1
+        return ref x
+    other
+
 bad_early_return (b: Bool) (other: ref I32): ref I32 =
     if b then
         x = 1
@@ -35,30 +41,38 @@ main () = ()
 // 4 |     r	// error: This reference to x outlives its scope
 //   |     ^
 // 
-// examples/typechecking/borrows/escape_through_variable.an:10:16
+// examples/typechecking/borrows/escape_through_variable.an:9:16
 //  7 |     if b then
 //  8 |         x = 1	// note: x is only valid until the end of this scope
 //    |         -
-//  9 |         r = ref x
-// 10 |         return r	// error: This reference to x outlives its scope
-//    |                ^
-// 11 |     other
+//  9 |         return ref x	// error: This reference to x outlives its scope
+//    |                ^^^^^
+// 10 |     other
 // 
-// examples/typechecking/borrows/escape_through_variable.an:17:9
-// 15 |     | true ->
-// 16 |         r = ref 1	// note: this value is only valid until the end of this scope
-//    |                 -
-// 17 |         r	// error: This reference to a temporary value outlives its scope
-//    |         ^
-// 18 |     | false -> other
+// examples/typechecking/borrows/escape_through_variable.an:16:16
+// 13 |     if b then
+// 14 |         x = 1	// note: x is only valid until the end of this scope
+//    |         -
+// 15 |         r = ref x
+// 16 |         return r	// error: This reference to x outlives its scope
+//    |                ^
+// 17 |     other
 // 
 // examples/typechecking/borrows/escape_through_variable.an:23:9
-// 20 | bad_tuple_field (): ref I32 =
-// 21 |     x = 5	// note: x is only valid until the end of this scope
+// 21 |     | true ->
+// 22 |         r = ref 1	// note: this value is only valid until the end of this scope
+//    |                 -
+// 23 |         r	// error: This reference to a temporary value outlives its scope
+//    |         ^
+// 24 |     | false -> other
+// 
+// examples/typechecking/borrows/escape_through_variable.an:29:9
+// 26 | bad_tuple_field (): ref I32 =
+// 27 |     x = 5	// note: x is only valid until the end of this scope
 //    |     -
-// 22 |     pair = ref x, 1
-// 23 |     pair.first	// error: This reference to x outlives its scope
+// 28 |     pair = ref x, 1
+// 29 |     pair.first	// error: This reference to x outlives its scope
 //    |         ^^^^^^
 // 
-// Found 4 errors and 0 warnings
+// Found 5 errors and 0 warnings
 

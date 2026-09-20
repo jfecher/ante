@@ -1,6 +1,10 @@
 import Std.Vec.Vec
 
-bad () =
+type Person =
+    name: String
+    age: I32
+
+autoref () =
     var vec = Vec.empty ()
     vec.push (ref "Hello")
 
@@ -8,17 +12,72 @@ bad () =
         world = "World"
         vec.push world
 
+annotated () =
+    var v = Vec.empty ()
+    v.push (ref 1)
+    if true then
+        y = 10
+        // We weren't seeing through type annotation exprs previously so the
+        // previous location reported for this error was worse
+        v.push (ref (y: I32))
+
+member_path () =
+    var v = Vec.empty ()
+    v.push (ref "seed")
+    if true then
+        p = Person "ann" 3
+        v.push (ref p.name)
+
+innocent_borrow_not_blamed () =
+    var v = Vec.empty ()
+    v.push (ref 1)
+    if true then
+        y = 10
+        _ = ref y
+        yref = ref y
+        _ = ref y
+        v.push yref
+        _ = ref y
+        _ = ref y
+
 main () = ()
 
 // args: --check --no-color
 // expected exit status: 1
 // expected stderr:
-// examples/typechecking/borrows/push_into_outer_vec.an:9:18
-//  7 |     if true then
-//  8 |         world = "World"	// note: world is only valid until the end of this scope
+// examples/typechecking/borrows/push_into_outer_vec.an:13:18
+// 11 |     if true then
+// 12 |         world = "World"	// note: world is only valid until the end of this scope
 //    |         -----
-//  9 |         vec.push world	// error: This reference to world outlives its scope
+// 13 |         vec.push world	// error: This reference to world outlives its scope
 //    |                  ^^^^^
 // 
-// Found 1 error and 0 warnings
+// examples/typechecking/borrows/push_into_outer_vec.an:22:17
+// 18 |     if true then
+// 19 |         y = 10	// note: y is only valid until the end of this scope
+//    |         -
+// 20 |         // We weren't seeing through type annotation exprs previously so the
+// 21 |         // previous location reported for this error was worse
+// 22 |         v.push (ref (y: I32))	// error: This reference to y outlives its scope
+//    |                 ^^^^^^^^^^^
+// 
+// examples/typechecking/borrows/push_into_outer_vec.an:29:17
+// 27 |     if true then
+// 28 |         p = Person "ann" 3	// note: p.name is only valid until the end of this scope
+//    |         -
+// 29 |         v.push (ref p.name)	// error: This reference to p.name outlives its scope
+//    |                 ^^^^^^^^^^
+// 
+// examples/typechecking/borrows/push_into_outer_vec.an:39:16
+// 34 |     if true then
+// 35 |         y = 10	// note: y is only valid until the end of this scope
+//    |         -
+// 36 |         _ = ref y
+// .. | 
+// 38 |         _ = ref y
+// 39 |         v.push yref	// error: This reference to y outlives its scope
+//    |                ^^^^
+// 40 |         _ = ref y
+// 
+// Found 4 errors and 0 warnings
 

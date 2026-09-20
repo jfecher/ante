@@ -1,0 +1,27 @@
+type Holder 'a = value: ref 'a I32
+
+store (dst: mut 'd (Holder 'a)) (src: Holder 'a): Unit =
+    dst := src
+
+bad_constructor () =
+    var out = Holder (ref 0)
+    if true then
+        y = 10
+        h = Holder (ref y)
+        store (mut out) h
+
+main () = ()
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/borrows/aggregate_escape_through_call.an:11:25
+//  8 |     if true then
+//  9 |         y = 10	// note: y is only valid until the end of this scope
+//    |         -
+// 10 |         h = Holder (ref y)
+// 11 |         store (mut out) h	// error: This reference to y outlives its scope
+//    |                         ^
+// 
+// Found 1 error and 0 warnings
+

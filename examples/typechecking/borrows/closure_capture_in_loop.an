@@ -1,0 +1,31 @@
+import Std.Vec.Vec
+
+bad () =
+    var v = Vec.empty ()
+    var n = 0
+    while n < 3 do
+        var y = n
+        v.push (fn () -> y)
+        n += 1
+
+    var v = Vec.empty ()
+    for i in 0 .. 3 do
+        // TODO: i is immutable so it is captured by value currently
+        // we should capture everything by reference unless it is a `move fn`
+        v.push (fn () -> i)
+
+main () = ()
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/borrows/closure_capture_in_loop.an:8:17
+//  6 |     while n < 3 do
+//  7 |         var y = n	// note: y is only valid until the end of this scope
+//    |             -
+//  8 |         v.push (fn () -> y)	// error: This reference to y outlives its scope
+//    |                 ^^^^^^^^^^
+//  9 |         n += 1
+// 
+// Found 1 error and 0 warnings
+

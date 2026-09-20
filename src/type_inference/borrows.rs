@@ -16,6 +16,7 @@
 //! - Each move of a variable is recorded in the current block. We merge these moves when branches
 //! are merged and check at the end of each loop to ensure each variable moved was declared within
 //! the loop body.
+//! - On each scope exit, we check each variable only mentions places from that scope or prior.
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -48,7 +49,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             function_depth: None,
             reported_escapes: FxHashSet::default(),
             binding_places: FxHashMap::default(),
-            reference_sites: FxHashMap::default(),
+            borrow_sites: Vec::new(),
+            parents: FxHashMap::default(),
             moves: MoveTracker::default(),
         };
         checker.record_name_depths_in_pattern(definition.pattern, depth);
@@ -72,10 +74,13 @@ struct BorrowChecker<'a, 'local, 'inner> {
     /// Bindings with no places are left out to avoid unnecessary iterations over this later.
     binding_places: FxHashMap<NameId, Vec<Place>>,
 
-    /// The expression each place was last borrowed at, used for error messages only.
-    /// The boolean is whether it was used as a call argument, which are currently prioritized
-    /// for including in error messages but this may change.
-    reference_sites: FxHashMap<Place, (ExprId, bool)>,
+    /// Every expression whose type mentions a place, in walk order. Used to work out the location
+    /// of an escaping place after the fact.
+    borrow_sites: Vec<ExprId>,
+
+    /// Maps each expression to the one it is nested within, so that [Self::escape_location] can
+    /// widen a borrow outwards to the expression which actually extended its lifetime.
+    parents: FxHashMap<ExprId, ExprId>,
 
     moves: MoveTracker,
 }
@@ -87,6 +92,10 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
     /// `check_move` is false on assignment's lhs and a member access' object.
     /// `record_move` is false on the rhs of reference expressions.
     fn walk_expr(&mut self, expr: ExprId, depth: ScopeDepth, check_move: bool, record_move: bool) {
+        for child in self.child_exprs(expr) {
+            self.parents.insert(child, expr);
+        }
+
         match self.tc.resolved_expr(expr).into_owned() {
             Expr::Sequence(items) => {
                 let new_depth = depth.deeper();
@@ -104,7 +113,10 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
             },
             Expr::If(if_) => self.walk_if(&if_, depth, check_move, record_move),
             Expr::Match(match_) => self.walk_match(&match_, depth, check_move, record_move),
-            Expr::Lambda(_) => self.walk_lambda(expr, depth, None, None),
+            Expr::Lambda(_) => {
+                self.borrow_sites.push(expr);
+                self.walk_lambda(expr, depth, None, None)
+            },
             Expr::While(while_) => self.walk_while(&while_, depth, check_move, record_move),
             Expr::For(for_) => self.walk_for(&for_, depth, check_move, record_move),
             Expr::Return(ret) => {
@@ -118,7 +130,7 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
             },
             Expr::Assignment(assignment) => self.walk_assignment(&assignment, depth, check_move, record_move),
             Expr::Reference(reference) => {
-                self.record_reference_site(reference.rhs, expr, false);
+                self.borrow_sites.push(expr);
                 self.walk_expr(reference.rhs, depth, check_move, false)
             },
             Expr::MemberAccess(access) => {
@@ -128,12 +140,6 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
             Expr::Call(call) => {
                 self.walk_expr(call.function, depth, check_move, record_move);
                 for arg in &call.arguments {
-                    // TODO: Generalize this by looking at all places in the argument type.
-                    // We should also find a better heuristic than "prioritize arg positions" when
-                    // finding error locations.
-                    if let Expr::Reference(reference) = self.tc.resolved_expr(arg.expr).as_ref() {
-                        self.record_reference_site(reference.rhs, arg.expr, true);
-                    }
                     self.walk_expr(arg.expr, depth, check_move, record_move);
                 }
             },
@@ -258,15 +264,6 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
         }
     }
 
-    /// Remember that `borrow` borrows from `referent`, for locating escapes later.
-    fn record_reference_site(&mut self, referent: ExprId, borrow: ExprId, is_argument: bool) {
-        let Some(path) = self.tc.try_build_move_path(referent) else { return };
-        let site = self.reference_sites.entry(Place::Path(path)).or_insert((borrow, is_argument));
-        if is_argument || !site.1 {
-            *site = (borrow, is_argument);
-        }
-    }
-
     /// Check that `value`'s type carries only places that outlive `boundary`.
     fn check_escapes(&mut self, value: ExprId, boundary: ScopeDepth) {
         let Some(typ) = self.tc.expr_types.get(&value) else { return };
@@ -290,16 +287,20 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
             if self.name_depths.get(name).is_none_or(|depth| *depth >= boundary) {
                 continue;
             }
-            let offending = places.iter().filter(|atom| self.atom_depth(atom).is_some_and(|d| d >= boundary));
-            escapes.extend(offending.cloned());
+            // Skipping already-reported places here rather than in report_escape keeps us from
+            // searching for an error location we would only throw away.
+            let offending = places.iter().filter(|atom| {
+                !self.reported_escapes.contains(atom) && self.atom_depth(atom).is_some_and(|d| d >= boundary)
+            });
+            escapes.extend(offending.cloned().map(|atom| (atom, *name)));
         }
 
-        for atom in escapes {
-            let Some(location) = self.escape_location(&atom) else {
-                // TODO: panicking here makes closure_capture_escape.an panic. Are we missing an error there?
-                continue;
-            };
-            self.report_escape(atom, location);
+        for (atom, name) in escapes {
+            let carrier = self.tc.name_types.get(&name).cloned();
+            match carrier.and_then(|carrier| self.escape_location(&atom, name, &carrier)) {
+                Some(location) => self.report_escape(atom, location),
+                None => self.report_escape(atom, name),
+            }
         }
 
         // Drop the bindings this scope owned so they aren't rechecked later
@@ -307,16 +308,171 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
         binding_places.retain(|name, _| name_depths.get(name).is_some_and(|depth| *depth < boundary));
     }
 
-    /// The expression to blame for `atom` escaping, if one is known
-    fn escape_location(&self, atom: &Place) -> Option<ExprId> {
-        match atom {
-            Place::Path(_) => self.reference_sites.get(atom).map(|(expr, _)| *expr),
-            Place::Anonymous(origin, _) => Some(*origin),
+    /// The expression to blame for `atom` escaping out of `binding`, if one is known.
+    fn escape_location(&self, atom: &Place, binding: NameId, carrier: &Type) -> Option<ExprId> {
+        if let Place::Anonymous(origin, _) = atom {
+            return Some(*origin);
+        }
+
+        let target = self.row_carrying(carrier, atom)?;
+
+        if let Some(location) = self.widening_argument(atom, binding, &target) {
+            return Some(location);
+        }
+
+        let mut last_origin = None;
+        for origin in self.borrow_sites.iter().rev().copied() {
+            if !self.places_originated_by(origin).contains(atom) {
+                continue;
+            }
+            last_origin.get_or_insert(origin);
+
+            let mut current = Some(origin);
+            while let Some(expr) = current {
+                let row = self.tc.expr_types.get(&expr).and_then(|typ| self.row_carrying(typ, atom));
+                if row.as_ref() == Some(&target) {
+                    return Some(expr);
+                }
+                current = self.parents.get(&expr).copied();
+            }
+        }
+
+        last_origin
+    }
+
+    /// Find a call which is passed a borrow of `binding`, and return the argument beside it which
+    /// carries `atom` in `target`.
+    fn widening_argument(&self, atom: &Place, binding: NameId, target: &[Type]) -> Option<ExprId> {
+        let binding_place = Place::Path(self.tc.binding_place(binding));
+
+        for borrow in self.borrow_sites.iter().rev().copied() {
+            if !self.places_originated_by(borrow).contains(&binding_place) {
+                continue;
+            }
+
+            let Some(parent) = self.parents.get(&borrow).copied() else { continue };
+            let Expr::Call(call) = self.tc.resolved_expr(parent).into_owned() else { continue };
+
+            let stored = call.arguments.iter().map(|arg| arg.expr).find(|arg| {
+                *arg != borrow
+                    && self
+                        .tc
+                        .expr_types
+                        .get(arg)
+                        .and_then(|typ| self.row_carrying(typ, atom))
+                        .is_some_and(|row| row == target)
+            });
+
+            if stored.is_some() {
+                return stored;
+            }
+        }
+
+        None
+    }
+
+    /// The places `expr` creates, as opposed to just carries.
+    fn places_originated_by(&self, expr: ExprId) -> Vec<Place> {
+        let mut places = Vec::new();
+        match self.tc.resolved_expr(expr).as_ref() {
+            Expr::Reference(reference) => {
+                let row = self.tc.infer_place(reference.rhs);
+                self.collect_place_atoms_row(&row, &mut places);
+            },
+            Expr::Lambda(_) => {
+                if let Some(typ) = self.tc.expr_types.get(&expr)
+                    && let Type::Function(function) = typ.follow(&self.tc.bindings)
+                {
+                    self.collect_place_atoms(&function.environment, &mut places);
+                }
+            },
+            _ => (),
+        }
+        places
+    }
+
+    /// The canonicalized places row within `typ` which carries `atom`, if any.
+    fn row_carrying(&self, typ: &Type, atom: &Place) -> Option<Vec<Type>> {
+        match typ.follow(&self.tc.bindings) {
+            Type::Application(constructor, args) => self
+                .row_carrying(constructor, atom)
+                .or_else(|| args.iter().find_map(|arg| self.row_carrying(arg, atom))),
+            Type::Tuple(elements) => elements.iter().find_map(|element| self.row_carrying(element, atom)),
+            Type::Places(_) | Type::Place(_) => {
+                let row = Type::canonicalize_places(
+                    std::slice::from_ref(typ),
+                    &self.tc.bindings,
+                    &TypeBindings::default(),
+                );
+                row.contains(&Type::Place(atom.clone())).then_some(row)
+            },
+            Type::Forall(_, typ) => self.row_carrying(typ, atom),
+            Type::Effects(effects) => effects
+                .as_ref()
+                .and_then(|effects| effects.iter().find_map(|effect| self.row_carrying(effect, atom))),
+            Type::Function(function) => self
+                .row_carrying(&function.environment, atom)
+                .or_else(|| self.row_carrying(&function.effects, atom))
+                .or_else(|| self.row_carrying(&function.return_type, atom))
+                .or_else(|| function.parameters.iter().find_map(|p| self.row_carrying(&p.typ, atom))),
+            Type::Primitive(_) | Type::Generic(_) | Type::Variable(_) | Type::UserDefined(_) | Type::U32(_) => None,
+        }
+    }
+
+    /// Every expression directly nested within `expr`
+    fn child_exprs(&self, expr: ExprId) -> Vec<ExprId> {
+        match self.tc.resolved_expr(expr).as_ref() {
+            Expr::Sequence(items) => mapvec(items, |item| item.expr),
+            Expr::Definition(definition) => vec![definition.rhs],
+            Expr::MemberAccess(access) => vec![access.object],
+            Expr::Call(call) => {
+                let mut children = vec![call.function];
+                children.extend(call.arguments.iter().map(|arg| arg.expr));
+                children
+            },
+            Expr::Lambda(lambda) => vec![lambda.body],
+            Expr::If(if_) => {
+                let mut children = vec![if_.condition, if_.then];
+                children.extend(if_.else_);
+                children
+            },
+            Expr::Match(match_) => {
+                let mut children = vec![match_.expression];
+                children.extend(match_.cases.iter().map(|(_, branch)| *branch));
+                children
+            },
+            Expr::Handle(handle) => {
+                let mut children = vec![handle.expression];
+                children.extend(handle.cases.iter().map(|(_, branch)| *branch));
+                children
+            },
+            Expr::Reference(reference) => vec![reference.rhs],
+            Expr::TypeAnnotation(annotation) => vec![annotation.lhs],
+            Expr::Constructor(constructor) => constructor.fields.iter().map(|(_, field)| *field).collect(),
+            Expr::While(while_) => vec![while_.condition, while_.body],
+            Expr::For(for_) => vec![for_.start, for_.end, for_.body],
+            Expr::Return(ret) => vec![ret.expression],
+            Expr::Assignment(assignment) => {
+                let mut children = vec![assignment.lhs, assignment.rhs];
+                children.extend(assignment.op.map(|(_, op_expr)| op_expr));
+                children
+            },
+            Expr::ArrayLiteral(elements) => elements.clone(),
+            Expr::Literal(_)
+            | Expr::Variable(_)
+            | Expr::Break
+            | Expr::Continue
+            | Expr::Error
+            | Expr::Extern(_)
+            | Expr::Quoted(_) => Vec::new(),
+            Expr::Is(_) | Expr::Do(_) | Expr::Loop(_) | Expr::InterpolatedString(_) => {
+                unreachable!("desugared before type inference")
+            },
         }
     }
 
     /// Issue an escaping reference error for `atom`, avoiding multiple errors for the same place
-    fn report_escape(&mut self, atom: Place, location: ExprId) {
+    fn report_escape(&mut self, atom: Place, location: impl Locateable) {
         if !self.reported_escapes.insert(atom.clone()) {
             return;
         }
