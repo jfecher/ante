@@ -129,7 +129,7 @@ fn symbol_at_inner(compiler: &Db, file_id: SourceFileId, byte_offset: usize) -> 
                 TypeCheck(item_id).get(compiler).result.context.path_origin(path_id)
             });
             let (name, loc) = ctx.get_path(path_id).components.last().unwrap();
-            (origin, byte_span(loc), name.clone())
+            (origin, byte_span(loc), name.to_string())
         },
     };
 

@@ -968,7 +968,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         let deref_origin = self.get_deref_origin();
         let deref_path = self.push_path(
-            cst::Path::ident(".*".to_string(), location.clone()),
+            cst::Path::ident(Arc::new(".*".to_string()), location.clone()),
             Type::ERROR, // overwritten when check_expr re-checks the synthesized call
             location.clone(),
         );

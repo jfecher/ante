@@ -36,12 +36,12 @@ impl ScopeDepth {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum PlacePath {
     Variable(NameId),
-    Field(Box<PlacePath>, String),
+    Field(Box<PlacePath>, cst::Name),
 }
 
 impl PlacePath {
     /// Return `parent.field`
-    pub fn field(parent: PlacePath, field: String) -> PlacePath {
+    pub fn field(parent: PlacePath, field: cst::Name) -> PlacePath {
         PlacePath::Field(Box::new(parent), field)
     }
 

@@ -353,7 +353,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
         &mut self, mut path: Iter, mut namespace: Namespace, allow_type_based_resolution: bool,
     ) -> Result<Origin, Diagnostic>
     where
-        Iter: ExactSizeIterator<Item = &'a (String, Location)>,
+        Iter: ExactSizeIterator<Item = &'a (Name, Location)>,
     {
         while path.len() > 1 {
             let (item_name, item_location) = path.next().unwrap();
@@ -361,7 +361,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             if let Some(next_namespace) = self.get_child_namespace(item_name, namespace) {
                 namespace = next_namespace;
             } else {
-                let name = item_name.clone();
+                let name = item_name.to_string();
                 let location = item_location.clone();
                 return Err(Diagnostic::NamespaceNotFound { name, location });
             }
@@ -390,12 +390,12 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
         // Ad-hoc check to define `intrinsic` only within the stdlib for compiler intrinsics
         } else if namespace == Namespace::Local
             && self.item.source_file.crate_id == CrateId::STDLIB
-            && name == "intrinsic"
+            && name.as_str() == "intrinsic"
         {
             Ok(Origin::Builtin(Builtin::Intrinsic))
         } else {
             let location = location.clone();
-            let name = Arc::new(name.clone());
+            let name = name.clone();
             Err(Diagnostic::NameNotInScope { name, location })
         }
     }
@@ -464,10 +464,10 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                     let last = self.context[path].components.last().unwrap();
                     let location = self.context.path_location(path).clone();
                     if is_type {
-                        let name = Arc::new(last.0.clone());
+                        let name = last.0.clone();
                         self.emit_diagnostic(Diagnostic::TypeExpected { name, location });
                     } else {
-                        let typ = Arc::new(last.0.clone());
+                        let typ = last.0.clone();
                         self.emit_diagnostic(Diagnostic::ValueExpected { location, typ });
                     }
                 }
@@ -1235,7 +1235,7 @@ pub enum Qualifier {
 /// namespaces `Resolver::lookup` does. `index` must not be the final component of a path.
 #[allow(unused)] // used by ante-ls
 pub fn resolve_path_qualifier<Db>(
-    db: &Db, file: SourceFileId, components: &[(String, Location)], index: usize,
+    db: &Db, file: SourceFileId, components: &[(Name, Location)], index: usize,
 ) -> Option<Qualifier>
 where
     Db: DbGet<GetCrateGraph> + DbGet<VisibleDefinitions> + DbGet<GetItem> + DbGet<ExportedTypes> + DbGet<Submodules>,
@@ -1251,7 +1251,7 @@ where
     let crates = GetCrateGraph.get(db);
     if let Some(local_crate) = crates.get(&CrateId::LOCAL) {
         let dependency =
-            local_crate.dependencies.iter().copied().find(|dependency| components[0].0 == crates[dependency].name);
+            local_crate.dependencies.iter().copied().find(|dependency| *components[0].0 == crates[dependency].name);
 
         if let Some(crate_id) = dependency {
             current = Some(Qualifier::Module(SourceFileId { crate_id, local_module_id: CRATE_ROOT_MODULE }));

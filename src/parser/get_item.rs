@@ -392,7 +392,7 @@ fn desugar_loop(expr: ExprId, context: &mut DesugarContext) {
     let definition = context.push_expr(definition, location.clone());
 
     // Create `recur args...`
-    let function_path = cst::Path::ident("recur".to_string(), location.clone());
+    let function_path = cst::Path::ident(Arc::new("recur".to_string()), location.clone());
     let function_path = context.push_path(function_path, location.clone());
     let function = cst::Expr::Variable(function_path);
     let function = context.push_expr(function, location.clone());
@@ -414,8 +414,7 @@ fn pattern_to_expr(pattern: PatternId, context: &mut DesugarContext) -> ExprId {
         cst::Pattern::Variable(name)
         | cst::Pattern::Alias(name, _)
         | cst::Pattern::ConstructorRest(_, _, Some(name)) => {
-            let name_string = context[name].clone();
-            let path = cst::Path::ident(name_string.to_string(), location.clone());
+            let path = cst::Path::ident(context[name].clone(), location.clone());
             let path = context.push_path(path, location.clone());
             context.push_expr(cst::Expr::Variable(path), location)
         },
@@ -450,10 +449,10 @@ fn desugar_call_wildcards(expr: ExprId, context: &mut DesugarContext) {
 
     let new_arguments = mapvec(&call.arguments, |arg| {
         if is_wildcard(arg.expr, context) {
-            let name = format!("_{}", counter);
+            let name = cst::Name::new(format!("_{}", counter));
             counter += 1;
 
-            let name_id = context.push_name(cst::Name::new(name.clone()), location.clone());
+            let name_id = context.push_name(name.clone(), location.clone());
 
             let pattern = context.push_pattern(Pattern::Variable(name_id), location.clone());
             parameters.push(Parameter::with_implicit(pattern, arg.is_implicit));
@@ -604,10 +603,10 @@ fn desugar_type_cast(expr: ExprId, target_type: Type, context: &mut DesugarConte
 
     let cast_path = Path {
         components: vec![
-            ("Std".to_string(), location.clone()),
-            ("Prelude".to_string(), location.clone()),
-            ("Cast".to_string(), location.clone()),
-            ("cast".to_string(), location.clone()),
+            (Arc::new("Std".to_string()), location.clone()),
+            (Arc::new("Prelude".to_string()), location.clone()),
+            (Arc::new("Cast".to_string()), location.clone()),
+            (Arc::new("cast".to_string()), location.clone()),
         ],
     };
     let cast_path = context.push_path(cast_path, location.clone());
@@ -624,7 +623,7 @@ fn desugar_type_cast(expr: ExprId, target_type: Type, context: &mut DesugarConte
 fn desugar_string_interpolation(expr: ExprId, context: &mut DesugarContext) {
     let Expr::InterpolatedString(interpolated) = context[expr].clone() else { unreachable!() };
     let location = context.expr_location(expr).clone();
-    let item = |name: &str| (name.to_string(), location.clone());
+    let item = |name: &str| (Arc::new(name.to_string()), location.clone());
 
     let string_type = {
         let string_path = Path { components: vec![item("Std"), item("Prelude"), item("String")] };
@@ -666,7 +665,7 @@ fn desugar_string_interpolation(expr: ExprId, context: &mut DesugarContext) {
 
 // Returns `lhs ++ rhs`
 fn push_append(lhs: ExprId, rhs: ExprId, location: &Location, context: &mut DesugarContext) -> ExprId {
-    let append_path = Path::ident("++".to_string(), location.clone());
+    let append_path = Path::ident(Arc::new("++".to_string()), location.clone());
     let append_path = context.push_path(append_path, location.clone());
     let append_var = context.push_expr(Expr::Variable(append_path), location.clone());
     let call = Expr::Call(cst::Call {

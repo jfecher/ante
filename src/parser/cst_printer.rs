@@ -1021,7 +1021,7 @@ impl<'a> CstDisplay<'a> {
         }
 
         let name = &path.components[0].0;
-        if name == INDEX_OPERATOR_FUNCTION_NAME {
+        if name.as_str() == INDEX_OPERATOR_FUNCTION_NAME {
             FmtOperatorKind::Index
         } else if !name.chars().next().unwrap().is_alphanumeric() {
             FmtOperatorKind::Infix

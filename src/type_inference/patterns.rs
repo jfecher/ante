@@ -328,15 +328,15 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     pub(super) fn fresh_variable(
         &mut self, name_prefix: &str, variable_type: Type, location: Location,
     ) -> (PathId, NameId) {
-        let mut name = String::new();
+        let mut name: cst::Name = Arc::default();
         let path_id = self.current_extended_context_mut().push_path_with_id(location.clone(), |id| {
-            name = format!("{name_prefix}{}", usize::from(id));
+            name = Arc::new(format!("{name_prefix}{}", usize::from(id)));
             Path { components: vec![(name.clone(), location.clone())] }
         });
 
         self.path_types.insert(path_id, variable_type);
 
-        let name_id = self.push_name(Arc::new(name), location);
+        let name_id = self.push_name(name, location);
         self.current_extended_context_mut().insert_name_origin(name_id, Origin::Local(name_id));
         self.current_extended_context_mut().insert_path_origin(path_id, Origin::Local(name_id));
         (path_id, name_id)

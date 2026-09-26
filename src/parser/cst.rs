@@ -354,18 +354,18 @@ impl Expr {
 /// A path is always guaranteed to have at least 1 component
 #[derive(Debug, Serialize, Deserialize, Hash, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct Path {
-    pub components: Vec<(String, Location)>,
+    pub components: Vec<(Name, Location)>,
 }
 
 impl Path {
-    pub fn ident(name: String, location: Location) -> Path {
+    pub fn ident(name: Name, location: Location) -> Path {
         Path { components: vec![(name, location)] }
     }
 
     pub fn into_file_path(self) -> Arc<PathBuf> {
         let mut path = PathBuf::new();
         for (component, _) in self.components {
-            path.push(component);
+            path.push(component.as_str());
         }
         Arc::new(path)
     }
@@ -374,6 +374,10 @@ impl Path {
     ///
     /// Paths are guaranteed to have at least 1 component, so this will never panic.
     pub fn last_ident(&self) -> &str {
+        self.last_name()
+    }
+
+    pub fn last_name(&self) -> &Name {
         &self.components.last().unwrap().0
     }
 }
@@ -453,7 +457,7 @@ impl Argument {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
 pub struct MemberAccess {
     pub object: ExprId,
-    pub member: String,
+    pub member: Name,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]

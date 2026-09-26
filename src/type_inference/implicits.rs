@@ -243,7 +243,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     fn try_get_name(&self, expr: ExprId) -> Option<String> {
         match &self.current_extended_context()[expr] {
             cst::Expr::Variable(path) => Some(self.current_extended_context()[*path].last_ident().to_string()),
-            cst::Expr::MemberAccess(access) => Some(access.member.clone()),
+            cst::Expr::MemberAccess(access) => Some(access.member.to_string()),
             _ => None,
         }
     }
@@ -1130,8 +1130,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// - 0 arguments: The expression is a variable
     /// - 1+ arguments: The expression is a function call to the given name, using the given arguments.
     fn create_implicit_argument_expr(&mut self, candidate: Candidate, destination: ExprId, location: Location) {
-        let name = candidate.name.as_ref().clone();
-        let path = self.push_path(cst::Path::ident(name, location.clone()), candidate.typ.clone(), location.clone());
+        let path = self.push_path(cst::Path::ident(candidate.name.clone(), location.clone()), candidate.typ.clone(), location.clone());
         let variable = cst::Expr::Variable(path);
 
         // Row subtyping may have accepted a dictionary whose trait effect args are narrower than

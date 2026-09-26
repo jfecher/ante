@@ -356,7 +356,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // Prefer real struct field names; enum payloads and tuples fall back to indices.
         let names_by_index = self.field_names_by_index(id);
         for (i, arg) in args.iter().enumerate() {
-            let field = names_by_index.get(&(i as u32)).cloned().unwrap_or_else(|| i.to_string());
+            let field = names_by_index.get(&(i as u32)).cloned().unwrap_or_else(|| Arc::new(i.to_string()));
             let child = PlacePath::field(place.clone(), field);
             self.assign_binding_places(*arg, child);
         }
@@ -364,11 +364,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     /// Map each field index of the constructor pattern `id` to its declared field name.
     /// Returns an empty map for non-struct types.
-    fn field_names_by_index(&mut self, id: PatternId) -> BTreeMap<u32, String> {
+    fn field_names_by_index(&mut self, id: PatternId) -> BTreeMap<u32, cst::Name> {
         let Some(typ) = self.pattern_types.get(&id).cloned() else {
             return BTreeMap::default();
         };
-        self.get_field_types(&typ, None).into_iter().map(|(name, (_, index))| (index, name.to_string())).collect()
+        self.get_field_types(&typ, None).into_iter().map(|(name, (_, index))| (index, name)).collect()
     }
 
     /// Infer the type of a variable, and record whether it implements `Copy` or not for the borrow checker
@@ -404,7 +404,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     /// The name a trait member is referred to by, which is also its dictionary field's name
     pub(super) fn trait_member_name(&self, path: PathId) -> cst::Name {
-        Arc::new(self.current_extended_context()[path].last_ident().to_string())
+        self.current_extended_context()[path].last_name().clone()
     }
 
     /// Trait constants like `Foo.field` are changed into a member access `foo_implicit.field`.
@@ -430,7 +430,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     pub(super) fn trait_member_access(
         &mut self, expr: ExprId, dictionary: ExprId, member: &cst::Name, index: u32, member_type: Type,
     ) {
-        let access = cst::MemberAccess { object: dictionary, member: member.to_string() };
+        let access = cst::MemberAccess { object: dictionary, member: member.clone() };
         let context = self.current_extended_context_mut();
         context.insert_expr(expr, Expr::MemberAccess(access));
         context.push_member_access_index(expr, index);
@@ -531,7 +531,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     /// Issue a NameNotInScope error and return Type::Error
     fn issue_name_not_in_scope_error(&self, path: PathId) -> Type {
-        let name = Arc::new(self.current_context()[path].last_ident().to_owned());
+        let name = self.current_context()[path].last_name().clone();
         let location = self.current_context().path_location(path).clone();
         self.compiler.accumulate(Diagnostic::NameNotInScope { name, location });
         Type::ERROR
@@ -876,7 +876,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         } else {
             let typ = self.type_to_string(&struct_type);
             let location = expr.locate(self);
-            let name = Arc::new(member_access.member.clone());
+            let name = member_access.member.clone();
             self.compiler.accumulate(Diagnostic::NoSuchFieldForType { typ, location, name });
             Type::ERROR
         }
@@ -885,7 +885,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Resolve a method name on a type to its top-level function definition.
     /// Returns the method's name, function type, and optional generic bindings.
     fn resolve_method_for_type(
-        &mut self, struct_type: &Type, member: &str,
+        &mut self, struct_type: &Type, member: &cst::Name,
     ) -> Option<(TopLevelName, Shared<FunctionType>, Option<Vec<Type>>)> {
         let (source_file, type_top_level_id) = self.find_type_info(struct_type)?;
 
@@ -904,8 +904,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             ExportedDefinitions(source_file).get(self.compiler)
         };
 
-        let member_name = Arc::new(member.to_owned());
-        let name = *definitions.methods.get(&type_top_level_id)?.get(&member_name)?;
+        let name = *definitions.methods.get(&type_top_level_id)?.get(member)?;
 
         let (method_type, bindings) = self.type_and_bindings_of_top_level_name(&name);
 

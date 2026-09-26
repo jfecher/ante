@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use cst::{Attribute, Constructor, Declaration, ExportEntry, Lambda, MemberAccess, Name, Parameter, Pattern};
 use ids::{ExprId, NameId, PathId, PatternId, TopLevelId};
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -71,6 +71,10 @@ struct Parser<'tokens> {
 
     /// Failures recorded while `report_errors` was false
     unreported_errors: usize,
+
+    /// Shared names for operators and compiler-inserted identifiers
+    operator_names: FxHashMap<Token, Name>,
+    static_names: FxHashMap<&'static str, Name>,
 }
 
 pub fn parse_impl(ctx: &incremental::Parse, db: &incremental::DbHandle) -> Arc<ParseResult> {
@@ -114,7 +118,23 @@ impl<'tokens> Parser<'tokens> {
             current_context: TopLevelContext::new(file_id),
             report_errors,
             unreported_errors: 0,
+            operator_names: Default::default(),
+            static_names: Default::default(),
         }
+    }
+
+    /// The name of an operator or builtin type token, e.g. `+` or `I32`
+    fn operator_name(&mut self, token: &Token) -> Name {
+        if let Some(name) = self.operator_names.get(token) {
+            return name.clone();
+        }
+        let name = Arc::new(token.to_string());
+        self.operator_names.insert(token.clone(), name.clone());
+        name
+    }
+
+    fn static_name(&mut self, name: &'static str) -> Name {
+        self.static_names.entry(name).or_insert_with(|| Arc::new(name.to_string())).clone()
     }
 
     fn parse(&mut self) -> ParseResult {
@@ -522,11 +542,11 @@ impl<'tokens> Parser<'tokens> {
                     continue;
                 }
 
-                let crate_name = path.components.remove(0).0;
+                let crate_name = String::clone(&path.components.remove(0).0);
 
                 let mut items = Vec::with_capacity(1);
                 if let Some((name, location)) = path.components.pop() {
-                    items.push((Arc::new(name), location));
+                    items.push((name, location));
                 }
 
                 // Parse any extra items e.g. `, b, c, d`. The leading separator is consumed here
@@ -620,7 +640,8 @@ impl<'tokens> Parser<'tokens> {
     fn parse_value_path(&mut self) -> Result<Path> {
         let mut components = Vec::new();
 
-        while let Ok(typename) = self.parse_type_name() {
+        while matches!(self.current_token(), Token::TypeName(_)) || self.at_operator_reference() {
+            let typename = self.parse_type_name()?;
             let location = self.previous_token_location();
             components.push((typename, location));
 
@@ -737,7 +758,7 @@ impl<'tokens> Parser<'tokens> {
         }
 
         let location = start_location.to(&self.previous_token_location());
-        Ok(Attribute { name: Arc::new(name), args, location })
+        Ok(Attribute { name, args, location })
     }
 
     /// attributes: (attribute newline?)*
@@ -1341,7 +1362,7 @@ impl<'tokens> Parser<'tokens> {
         if *self.current_token() == Token::Comma {
             let location = self.current_token_location();
             self.advance();
-            let comma = Token::Comma.to_string();
+            let comma = self.operator_name(&Token::Comma);
             let components = vec![(comma, location.clone())];
             Ok(self.push_path(Path { components }, location))
         } else {
@@ -1349,49 +1370,48 @@ impl<'tokens> Parser<'tokens> {
         }
     }
 
-    fn parse_type_name(&mut self) -> Result<String> {
+    /// Parses `(op)`, assuming [Self::at_operator_reference] holds
+    fn parse_operator_reference(&mut self) -> Result<Name> {
+        self.advance();
+        let operator = self.operator_name(self.current_token());
+        self.advance();
+        self.expect(Token::ParenthesisRight, "a `)` to close the opening parenthesis from this operator")?;
+        Ok(operator)
+    }
+
+    fn parse_type_name(&mut self) -> Result<Name> {
         match self.current_token() {
             Token::TypeName(name) => {
+                let name = name.clone();
                 self.advance();
-                Ok(String::clone(name))
+                Ok(name)
             },
             // We allow all overloadable operators here like with identifiers but
             // in reality this is mostly to allow `(,)` to be the pair type.
-            Token::ParenthesisLeft if self.at_operator_reference() => {
-                self.advance();
-                let operator = self.current_token().to_string();
-                self.advance();
-                self.expect(Token::ParenthesisRight, "a `)` to close the opening parenthesis from this operator")?;
-                Ok(operator)
-            },
+            Token::ParenthesisLeft if self.at_operator_reference() => self.parse_operator_reference(),
             _ => self.expected("a capitalized type name"),
         }
     }
 
-    fn parse_ident(&mut self) -> Result<String> {
+    fn parse_ident(&mut self) -> Result<Name> {
         match self.current_token() {
             Token::Identifier(name) => {
+                let name = name.clone();
                 self.advance();
-                Ok(String::clone(name))
+                Ok(name)
             },
-            Token::ParenthesisLeft if self.at_operator_reference() => {
-                self.advance();
-                let operator = self.current_token().to_string();
-                self.advance();
-                self.expect(Token::ParenthesisRight, "a `)` to close the opening parenthesis from this operator")?;
-                Ok(operator)
-            },
+            Token::ParenthesisLeft if self.at_operator_reference() => self.parse_operator_reference(),
             _ => self.expected("an identifier"),
         }
     }
 
     /// Parses the field name after a `.`
-    fn parse_member_name(&mut self) -> Result<String> {
+    fn parse_member_name(&mut self) -> Result<Name> {
         match self.current_token() {
             Token::IntegerLiteral(value, _) => {
                 let magnitude = value.magnitude;
                 self.advance();
-                Ok(magnitude.to_string())
+                Ok(Arc::new(magnitude.to_string()))
             },
             _ => self.parse_ident(),
         }
@@ -1413,12 +1433,8 @@ impl<'tokens> Parser<'tokens> {
             },
             Token::ParenthesisLeft if self.at_operator_reference() => {
                 let start = self.current_token_location();
-                self.advance();
-                let operator = Arc::new(self.current_token().to_string());
-                self.advance();
-                let end = self.current_token_location();
-                self.expect(Token::ParenthesisRight, "a `)` to close the opening parenthesis from this operator")?;
-                Ok((operator, start.to(&end)))
+                let operator = self.parse_operator_reference()?;
+                Ok((operator, start.to(&self.previous_token_location())))
             },
             _ => self.expected("an identifier"),
         }
@@ -1616,7 +1632,8 @@ impl<'tokens> Parser<'tokens> {
                         this.expect(Token::BraceRight, "a `}` to close the opening `{` from the implicit parameter")?;
                         // Need to expand the type into a parameter with a fake name.
                         // We'll expand to: `_: typ`
-                        let name_id = this.push_name(Arc::new("_".to_string()), location.clone());
+                        let name = this.static_name("_");
+                        let name_id = this.push_name(name, location.clone());
                         let no_name = this.push_pattern(Pattern::Variable(name_id), location.clone());
                         Ok(this.push_pattern(Pattern::TypeAnnotation(no_name, typ), location))
                     },
@@ -1728,7 +1745,7 @@ impl<'tokens> Parser<'tokens> {
 
         while self.accept(Token::Comma) {
             let comma_location = self.previous_token_location();
-            let components = vec![(Token::Comma.to_string(), comma_location.clone())];
+            let components = vec![(self.operator_name(&Token::Comma), comma_location.clone())];
             let comma_path = self.push_path(Path { components }, comma_location.clone());
             commas.push((comma_location, comma_path));
 
@@ -1858,10 +1875,10 @@ impl<'tokens> Parser<'tokens> {
         let call = self.reserve_expr();
         let function = self.reserve_expr();
 
-        let (operator, span) = operator_stack.pop().unwrap().clone();
+        let (operator, span) = operator_stack.pop().unwrap();
         let function_location = span.in_file(self.file_id);
 
-        let components = vec![(operator.to_string(), function_location.clone())]; // TODO: Variable::operator
+        let components = vec![(self.operator_name(operator), function_location.clone())];
         let path_id = self.push_path(Path { components }, function_location.clone());
         self.insert_expr(function, Expr::Variable(path_id), function_location);
 
@@ -2008,7 +2025,7 @@ impl<'tokens> Parser<'tokens> {
                 let location = operator_location.to(&self.expr_location(rhs));
                 let rhs = Argument::explicit(rhs);
 
-                let components = vec![(operator.to_string(), operator_location.clone())];
+                let components = vec![(self.operator_name(operator), operator_location.clone())];
                 let path_id = self.push_path(Path { components }, operator_location.clone());
                 self.insert_expr(function_id, Expr::Variable(path_id), operator_location);
 
@@ -2049,7 +2066,7 @@ impl<'tokens> Parser<'tokens> {
                         this.advance();
                         // Transform this into a call to copy
                         let argument = Argument::explicit(result);
-                        let path = Path::ident(".*".to_string(), location.clone());
+                        let path = Path::ident(this.static_name(".*"), location.clone());
                         let path = this.push_path(path, location.clone());
                         let function = this.push_expr(Expr::Variable(path), location);
                         Ok(Expr::Call(Call { function, arguments: vec![argument] }))
@@ -2070,7 +2087,7 @@ impl<'tokens> Parser<'tokens> {
                         this.advance();
                         let index = Argument::explicit(this.parse_expression()?);
                         this.expect(Token::BracketRight, "a `]` to terminate the index expression")?;
-                        let path = Path::ident(INDEX_OPERATOR_FUNCTION_NAME.to_string(), location.clone());
+                        let path = Path::ident(this.static_name(INDEX_OPERATOR_FUNCTION_NAME), location.clone());
                         let path = this.push_path(path, location.clone());
                         let function = this.push_expr(Expr::Variable(path), location);
                         Ok(Expr::Call(Call { function, arguments: vec![result, index] }))
@@ -2107,16 +2124,16 @@ impl<'tokens> Parser<'tokens> {
                 Ok(self.push_expr(expr, location))
             },
             Token::Identifier(_) | Token::TypeName(_) => self.parse_variable(),
-            Token::IntegerType(kind) => {
-                let name = kind.to_string();
+            token @ Token::IntegerType(_) => {
+                let name = self.operator_name(token);
                 let location = self.current_token_location();
                 self.advance();
                 let path = Path::ident(name, location.clone());
                 let path = self.push_path(path, location.clone());
                 Ok(self.push_expr(Expr::Variable(path), location))
             },
-            Token::FloatType(kind) => {
-                let name = kind.to_string();
+            token @ Token::FloatType(_) => {
+                let name = self.operator_name(token);
                 let location = self.current_token_location();
                 self.advance();
                 let path = Path::ident(name, location.clone());
@@ -2358,7 +2375,7 @@ impl<'tokens> Parser<'tokens> {
             // Create a synthetic Variable expression for the operator function (e.g., "+")
             // so it goes through normal name resolution and ability dispatch.
             let op_location = location.clone();
-            let components = vec![(op_str.to_string(), op_location.clone())];
+            let components = vec![(self.static_name(op_str), op_location.clone())];
             let path_id = self.push_path(cst::Path { components }, op_location.clone());
             let op_expr = self.push_expr(Expr::Variable(path_id), op_location);
 
@@ -2380,7 +2397,7 @@ impl<'tokens> Parser<'tokens> {
                 // intermediate `.[` read resolves to a `mut`-returning Extract.
                 let collection = self.mutify_receiver(collection);
 
-                let path = Path::ident(INDEX_ASSIGN_OPERATOR_FUNCTION_NAME.to_string(), location.clone());
+                let path = Path::ident(self.static_name(INDEX_ASSIGN_OPERATOR_FUNCTION_NAME), location.clone());
                 let path = self.push_path(path, location.clone());
                 let function = self.push_expr(Expr::Variable(path), location.clone());
                 let arguments =
@@ -2403,7 +2420,7 @@ impl<'tokens> Parser<'tokens> {
         let location = self.expr_location(expr);
         if let Some((receiver, index)) = self.index_call_args(expr) {
             let receiver = self.mutify_receiver(receiver);
-            let path = Path::ident(INDEX_OPERATOR_FUNCTION_NAME.to_string(), location.clone());
+            let path = Path::ident(self.static_name(INDEX_OPERATOR_FUNCTION_NAME), location.clone());
             let path = self.push_path(path, location.clone());
             let function = self.push_expr(Expr::Variable(path), location.clone());
             let arguments = vec![Argument::explicit(receiver), Argument::explicit(index)];
@@ -2422,7 +2439,7 @@ impl<'tokens> Parser<'tokens> {
         }
         let Expr::Variable(path_id) = &self.current_context.exprs[call.function] else { return None };
         let path = &self.current_context.paths[*path_id];
-        (path.components.len() == 1 && path.components[0].0 == INDEX_OPERATOR_FUNCTION_NAME)
+        (path.components.len() == 1 && path.components[0].0.as_str() == INDEX_OPERATOR_FUNCTION_NAME)
             .then(|| (call.arguments[0].expr, call.arguments[1].expr))
     }
 
@@ -2634,7 +2651,8 @@ impl<'tokens> Parser<'tokens> {
         // Each handle branch gets its own `resume` variable. Creating the
         // `NameId` here makes it easier to find later.
         let resume_location = self.current_context.path_locations[function].clone();
-        let resume_name = self.push_name(Arc::new("resume".to_string()), resume_location);
+        let resume_name = self.static_name("resume");
+        let resume_name = self.push_name(resume_name, resume_location);
 
         Ok(cst::HandlePattern { function, args, resume_name })
     }
@@ -2798,7 +2816,7 @@ impl<'tokens> Parser<'tokens> {
         }
 
         // Otherwise this is just `field`, which is sugar for `field = field`
-        let name_string = self.current_context.names[name].as_ref().clone();
+        let name_string = self.current_context.names[name].clone();
         let location = self.current_context.name_locations[name].clone();
         let path = Path::ident(name_string, location.clone());
         let path = self.push_path(path, location.clone());
@@ -2876,11 +2894,8 @@ impl<'tokens> Parser<'tokens> {
                 Ok(self.push_name(name, location))
             },
             Token::ParenthesisLeft if self.at_operator_reference() => {
-                self.advance();
-                let location = self.current_token_location();
-                let name = Arc::new(self.current_token().to_string());
-                self.advance();
-                self.expect(Token::ParenthesisRight, "`)` to close the opening `(`")?;
+                let location = self.token_location(self.token_index + 1);
+                let name = self.parse_operator_reference()?;
                 Ok(self.push_name(name, location))
             },
             _ => self.expected("an identifier"),
@@ -2888,14 +2903,7 @@ impl<'tokens> Parser<'tokens> {
     }
 
     fn parse_type_name_id(&mut self) -> Result<NameId> {
-        let name = match self.current_token() {
-            Token::TypeName(name) => {
-                let name = name.clone();
-                self.advance();
-                name
-            },
-            _ => Arc::new(self.parse_type_name()?),
-        };
+        let name = self.parse_type_name()?;
         let location = self.previous_token_location();
         Ok(self.push_name(name, location))
     }
@@ -2997,7 +3005,8 @@ impl<'tokens> Parser<'tokens> {
                 Pattern::Variable(name) => (*name, definition.rhs),
                 _ => {
                     let location = self.current_context.pattern_locations[definition.pattern].clone();
-                    let name = self.push_name(Arc::new("(placeholder)".to_string()), location.clone());
+                    let name = self.static_name("(placeholder)");
+                    let name = self.push_name(name, location.clone());
                     self.diagnostics.push(Diagnostic::ParserComplexImplItemName { location });
                     (name, definition.rhs)
                 },
