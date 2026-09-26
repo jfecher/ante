@@ -20,6 +20,7 @@ use crate::{
         desugar_context::DesugarContext,
         ids::{ExprId, NameId, PathId, PatternId, TopLevelId, TopLevelName},
     },
+    shared_arc::Shared,
     type_inference::{
         errors::{Locateable, TypeErrorKind},
         fresh_expr::ExtendedTopLevelContext,
@@ -60,7 +61,7 @@ pub fn type_check_impl(context: &TypeCheckSCC, compiler: &DbHandle) -> Arc<TypeC
     let mut checker = TypeChecker::new(&items, compiler);
 
     let items = mapvec(context.0.iter(), |item_id| {
-        incremental::println(format!("Type checking {item_id:?}"));
+        incremental::println(format_args!("Type checking {item_id:?}"));
         checker.start_item(*item_id);
         checker.push_implicits_scope();
         let depth = checker.current_scope_depth();
@@ -95,13 +96,12 @@ pub fn type_check_impl(context: &TypeCheckSCC, compiler: &DbHandle) -> Arc<TypeC
 /// the SCC for a particular TopLevelId
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TypeCheckSCCResult {
-    pub items: BTreeMap<TopLevelId, IndividualTypeCheckResult>,
-    pub bindings: Arc<TypeBindings>,
+    pub items: BTreeMap<TopLevelId, Shared<IndividualTypeCheckResult>>,
+    pub bindings: Shared<TypeBindings>,
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IndividualTypeCheckResult {
-    #[serde(flatten)]
     pub maps: TypeMaps,
 
     /// The type checker may create additional expressions, patterns, etc.,
@@ -231,10 +231,13 @@ struct TypeChecker<'local, 'inner> {
     /// them from later unifying with references, otherwise it could bind to `ref (ref t)` internally
     /// which can lead to soundness errors causing segfaults at runtime.
     value_type_vars: FxHashSet<TypeVariableId>,
+
+    /// Failed implicit searches by destination
+    failed_implicit_searches: FxHashMap<ExprId, implicits::ImplicitError>,
 }
 
 /// Map from each TopLevelId to a tuple of (the item, parse context, resolution context)
-type ItemContexts = FxHashMap<TopLevelId, (Arc<TopLevelItem>, Arc<DesugarContext>, Arc<ResolutionResult>)>;
+type ItemContexts = FxHashMap<TopLevelId, (Shared<TopLevelItem>, Shared<DesugarContext>, Arc<ResolutionResult>)>;
 
 impl<'local, 'inner> TypeChecker<'local, 'inner> {
     fn new(item_contexts: &'local ItemContexts, compiler: &'local DbHandle<'inner>) -> Self {
@@ -271,6 +274,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             integer_literal_vars: Default::default(),
             float_literal_vars: Default::default(),
             value_type_vars: Default::default(),
+            failed_implicit_searches: Default::default(),
         };
 
         let mut item_types = FxHashMap::default();
@@ -416,11 +420,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 let mut context = self.id_contexts.remove(&id).unwrap();
                 let item_context = self.item_contexts.get(&id).unwrap();
                 context.extend_from_resolution_result(item_context.2.as_ref());
-                (id, IndividualTypeCheckResult { maps, generalized, context })
+                (id, Shared::new(IndividualTypeCheckResult { maps, generalized, context }))
             })
             .collect();
 
-        TypeCheckSCCResult { items, bindings: Arc::new(self.bindings) }
+        TypeCheckSCCResult { items, bindings: Shared::new(self.bindings) }
     }
 
     /// Check if the integer fits in the given kind, error if not
@@ -441,6 +445,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         self.current_item = Some(item_id);
         self.binding_places = Default::default();
         self.copy_witnesses = Default::default();
+        self.failed_implicit_searches.clear();
+
+        // Nearly every id in the item gets a type
+        let context = &self.item_contexts[&item_id].1;
+        self.expr_types.reserve(context.exprs_len());
+        self.name_types.reserve(context.names_len());
+        self.path_types.reserve(context.paths_len());
+        self.pattern_types.reserve(context.patterns_len());
 
         for (name, typ) in self.item_types.iter() {
             if name.top_level_item == item_id {
@@ -481,7 +493,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     /// A fresh, open effect row.
     fn fresh_effect_row(&self) -> Type {
-        Type::Effects(Some(Arc::new(vec![self.next_type_variable()])))
+        Type::Effects(Some(Shared::new(vec![self.next_type_variable()])))
     }
 
     /// Generalize all types in the current SCC.
@@ -639,7 +651,7 @@ impl Variance {
 /// Used to compare two types while ignoring their closure environments.
 fn strip_environments(typ: &Type) -> Type {
     match typ {
-        Type::Function(function) => Type::Function(Arc::new(FunctionType {
+        Type::Function(function) => Type::Function(Shared::new(FunctionType {
             parameters: mapvec(&function.parameters, |param| {
                 ParameterType::new(strip_environments(&param.typ), param.is_implicit)
             }),
@@ -648,11 +660,11 @@ fn strip_environments(typ: &Type) -> Type {
             effects: function.effects.clone(),
         })),
         Type::Application(constructor, args) => Type::Application(
-            Arc::new(strip_environments(constructor)),
-            Arc::new(mapvec(args.iter(), strip_environments)),
+            Shared::new(strip_environments(constructor)),
+            Shared::new(mapvec(args.iter(), strip_environments)),
         ),
-        Type::Tuple(elements) => Type::Tuple(Arc::new(mapvec(elements.iter(), strip_environments))),
-        Type::Forall(generics, body) => Type::Forall(generics.clone(), Arc::new(strip_environments(body))),
+        Type::Tuple(elements) => Type::Tuple(Shared::new(mapvec(elements.iter(), strip_environments))),
+        Type::Forall(generics, body) => Type::Forall(generics.clone(), Shared::new(strip_environments(body))),
         Type::Primitive(_)
         | Type::Generic(_)
         | Type::Variable(_)
@@ -853,7 +865,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             return true;
         }
 
-        let adapted = Type::Function(Arc::new(FunctionType {
+        let adapted = Type::Function(Shared::new(FunctionType {
             parameters: actual_fn.parameters.clone(),
             environment: Type::Function(actual_fn.clone()),
             return_type: actual_fn.return_type.clone(),
@@ -874,7 +886,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Returns `actual` and `expected` as functions if they have the same arity
     fn function_row_candidates<'a>(
         &'a self, actual: &'a Type, expected: &'a Type,
-    ) -> Option<(&'a Arc<FunctionType>, &'a Arc<FunctionType>)> {
+    ) -> Option<(&'a Shared<FunctionType>, &'a Shared<FunctionType>)> {
         let (Type::Function(actual_fn), Type::Function(expected_fn)) =
             (self.follow_type(actual), self.follow_type(expected))
         else {
@@ -918,7 +930,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let element = self.expr_types[&reference.rhs].clone();
         let place = self.infer_place(reference.rhs);
         let constructor = Type::reference(reference.kind);
-        let typ = Type::Application(Arc::new(constructor), Arc::new(vec![place, element]));
+        let typ = Type::Application(Shared::new(constructor), Shared::new(vec![place, element]));
         self.expr_types.insert(expr, typ.clone());
         self.unify(&typ, expected, kind, expr);
         typ
@@ -962,7 +974,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         );
         self.current_extended_context_mut().insert_path_origin(deref_path, deref_origin);
 
-        let function_type = Type::Function(Arc::new(FunctionType {
+        let function_type = Type::Function(Shared::new(FunctionType {
             parameters: vec![ParameterType::explicit(original_type)],
             environment: Type::NO_CLOSURE_ENV,
             return_type: element_type,
@@ -1467,7 +1479,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                                 Some(lifetime) => vec![lifetime.clone(), field_type],
                                 None => vec![field_type],
                             };
-                            let wrapped = Type::Application(constructor.clone(), Arc::new(wrapped_args));
+                            let wrapped = Type::Application(constructor.clone(), Shared::new(wrapped_args));
                             (name, (wrapped, index))
                         })
                         .collect();
@@ -1542,7 +1554,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         let main_effects = self.next_type_variable();
 
-        let expected = Type::Function(Arc::new(FunctionType {
+        let expected = Type::Function(Shared::new(FunctionType {
             parameters: vec![ParameterType::explicit(Type::UNIT)],
             environment: Type::NO_CLOSURE_ENV,
             return_type: Type::UNIT,

@@ -16,6 +16,8 @@ use std::{
 use colored::Colorize;
 use serde::{Deserialize, Serialize};
 
+use crate::parser::cst::Name;
+
 /// This constant is meant to match the "name" of the index operator when used as an identifier in
 /// source code (the `Extract` ability's method). The surface index syntax is `a.[i]`, but the
 /// operator referenced as a value / defined in an ability is written `(.[])`.
@@ -234,7 +236,7 @@ pub enum Token {
 
     DocComment(String),
 
-    Identifier(String),
+    Identifier(Name),
     StringLiteral(String),
     IntegerLiteral(Integer, Option<IntegerKind>),
     FloatLiteral(F64, Option<FloatKind>),
@@ -246,7 +248,7 @@ pub enum Token {
     Quoted(Arc<Vec<Token>>),
 
     // Types
-    TypeName(String),
+    TypeName(Name),
     IntegerType(IntegerKind),
     FloatType(FloatKind),
     Mut,

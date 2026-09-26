@@ -1,8 +1,6 @@
 //! This file has any type-checker specific code for places.
 //! Places are sets of variables or values a reference may refer to like `'a` or `'(x, y)`.
 
-use std::sync::Arc;
-
 use inc_complete::DbGet;
 use serde::{Deserialize, Serialize};
 
@@ -14,6 +12,7 @@ use crate::{
         cst::{self, Expr},
         ids::{ExprId, NameId, NameStore},
     },
+    shared_arc::Shared,
     type_inference::{
         TypeChecker,
         row::{RowKind, RowMatch, canonicalize_row, construct_row, flatten_row_into, follow_row, sort_and_dedup_row},
@@ -133,7 +132,7 @@ where
     Names: NameStore,
 {
     /// Canonicalize a places row for printing
-    pub(super) fn canonicalize_place_entries(&self, places: &Option<Arc<Vec<Type>>>) -> Vec<Type> {
+    pub(super) fn canonicalize_place_entries(&self, places: &Option<Shared<Vec<Type>>>) -> Vec<Type> {
         let places = places.as_deref().map_or(&[][..], Vec::as_slice);
         Type::canonicalize_places(places, self.bindings, &Default::default())
             .into_iter()

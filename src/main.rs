@@ -44,6 +44,7 @@ use diagnostics::Diagnostic;
 use incremental::{AllDefinitions, Db, GetCrateGraph, Parse, Resolve};
 use name_resolution::namespace::{CrateId, LocalModuleId, SourceFileId};
 use parser::ids::TopLevelName;
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::{
     collections::BTreeSet,
     ffi::OsString,
@@ -79,6 +80,7 @@ mod incremental;
 mod iterator_extensions;
 mod manifest;
 mod paths;
+mod shared_arc;
 mod timings;
 mod vecmap;
 
@@ -219,6 +221,9 @@ fn compile(request: CompileRequest) {
         print_total_time_of_phases();
     }
 
+    // Cheat a bit to exit faster. It's the OS's problem now
+    std::mem::forget(compiler);
+
     if error_count != 0 {
         std::process::exit(1);
     }
@@ -226,16 +231,11 @@ fn compile(request: CompileRequest) {
 
 /// Return the name of the program which will be used for the name of the output executable
 fn get_program_name(compiler: &mut Db, request: &CompileRequest) -> String {
-    let name =
-        if request.is_project { project_program_name(compiler) } else { files_to_program_name(&request.files) };
+    let name = if request.is_project { project_program_name(compiler) } else { files_to_program_name(&request.files) };
 
     // If --delete-binary is set the name doesn't matter anyway so append a per-process id
     // to prevent races when running tests on the same files over multiple backends.
-    if request.delete_binary {
-        format!("{name}_{}", std::process::id())
-    } else {
-        name
-    }
+    if request.delete_binary { format!("{name}_{}", std::process::id()) } else { name }
 }
 
 /// Resolve the effective backend from the user's `--backend` choice, exiting with an error
@@ -266,32 +266,23 @@ fn resolve_backend(requested: Option<cli::Backend>) -> cli::Backend {
 /// order so each has its own `--show-time` line. inc-complete caches the results, so
 /// the downstream compile mode reuses them.
 fn print_phase_timings(compiler: &mut Db) {
-    let item_ids = time_phase("Parsing", true, || {
-        let crates = GetCrateGraph.get(compiler);
-        let mut item_ids = Vec::new();
-        for crate_ in crates.values() {
-            for file in crate_.source_files.values() {
-                let parse = Parse(*file).get(compiler);
-                for item in parse.cst.top_level_items.iter() {
-                    item_ids.push(item.id);
-                }
-            }
-        }
-        item_ids
-    });
+    let item_ids = time_phase("Parsing", true, || mir::monomorphization::collect_all_items(compiler));
 
     // Per-item: rolls up dependent definition-collection queries into this bucket.
     time_phase("Name resolution", true, || {
-        for id in &item_ids {
-            Resolve(*id).get(&*compiler);
-        }
+        let compiler = &*compiler;
+        item_ids.par_iter().for_each(|id| {
+            Resolve(*id).get(compiler);
+        });
     });
 
     // Per-item: rolls up the type-check dependency graph and SCC partitioning.
     time_phase("Type inference", true, || {
-        for id in &item_ids {
-            incremental::TypeCheck(*id).get(&*compiler);
-        }
+        let compiler = &*compiler;
+        incremental::TypeCheckDependencyGraph.get(compiler);
+        item_ids.par_iter().for_each(|id| {
+            incremental::TypeCheck(*id).get(compiler);
+        });
     });
 }
 
@@ -501,8 +492,8 @@ fn codegen_all(
             codegen::llvm::link(modules, program_name, show_time, opt_level, link_options)
         },
         cli::Backend::C => {
-            let mir = mir::monomorphization::monomorphize(compiler);
-            codegen::c::codegen_c_for_mir(&mir, program_name, opt_level, Some(selected_main), link_options);
+            let mir = time_phase("Monomorphization", show_time, || mir::monomorphization::monomorphize(compiler));
+            codegen::c::codegen_c_for_mir(&mir, program_name, opt_level, Some(selected_main), link_options, show_time);
             true
         },
         _ => unreachable!("resolve_backend only returns backends this compiler can run"),

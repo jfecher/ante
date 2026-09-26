@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::{
     diagnostics::Location,
-    incremental::{self, DbHandle, GetItem, GetItemRaw},
+    incremental::{self, DbHandle, GetItem, GetItemRaw, RawItem},
     iterator_extensions::mapvec,
     lexer::token::{FloatKind, IntegerKind},
     parser::{
@@ -13,52 +13,53 @@ use crate::{
         desugar_context::DesugarContext,
         ids::{ExprId, PathId, PatternId},
     },
+    shared_arc::Shared,
 };
 
 /// Unspellable name for the synthetic generic used to default a bare parameter's missing effects.
 const IMPLICIT_EFFECT_NAME: &str = "$effect";
 
-pub fn get_item_impl(context: &GetItem, db: &DbHandle) -> (Arc<TopLevelItem>, Arc<DesugarContext>) {
+pub fn get_item_impl(context: &GetItem, db: &DbHandle) -> (Shared<TopLevelItem>, Shared<DesugarContext>) {
     incremental::enter_query();
-    incremental::println(format!("Desugaring {:?}", context.0));
+    incremental::println(format_args!("Desugaring {:?}", context.0));
 
-    let (item, context) = GetItemRaw(context.0).get(db);
+    let RawItem(item, context) = GetItemRaw(context.0).get(db);
 
     let result = match &item.kind {
         TopLevelItemKind::TraitDefinition(def) | TopLevelItemKind::EffectDefinition(def) => {
             let is_effect = matches!(&item.kind, TopLevelItemKind::EffectDefinition(_));
             let mut new_context = DesugarContext::new(context);
             let new_kind = desugar_trait_or_effect(def, is_effect, &mut new_context);
-            let new_item = Arc::new(TopLevelItem {
+            let new_item = Shared::new(TopLevelItem {
                 attributes: item.attributes.clone(),
                 comments: item.comments.clone(),
                 kind: new_kind,
                 id: item.id,
             });
-            (new_item, Arc::new(new_context))
+            (new_item, Shared::new(new_context))
         },
         TopLevelItemKind::TraitImpl(trait_impl) => {
             let mut new_context = DesugarContext::new(context);
             let new_definition = desugar_trait_impl(trait_impl, &mut new_context);
             desugar_expression(new_definition.rhs, &mut new_context);
             let kind = TopLevelItemKind::Definition(new_definition);
-            let new_item = Arc::new(TopLevelItem {
+            let new_item = Shared::new(TopLevelItem {
                 attributes: item.attributes.clone(),
                 comments: item.comments.clone(),
                 kind,
                 id: item.id,
             });
-            (new_item, Arc::new(new_context))
+            (new_item, Shared::new(new_context))
         },
         TopLevelItemKind::Definition(definition) => {
             let mut new_context = DesugarContext::new(context);
             default_effects(definition.rhs, &mut new_context);
             desugar_expression(definition.rhs, &mut new_context);
-            (item, Arc::new(new_context))
+            (item, Shared::new(new_context))
         },
         _ => {
             let new_context = DesugarContext::new(context);
-            (item, Arc::new(new_context))
+            (item, Shared::new(new_context))
         },
     };
 

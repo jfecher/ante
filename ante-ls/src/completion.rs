@@ -1,6 +1,6 @@
 use std::collections::{BTreeSet, HashSet};
 
-use ante::incremental::{Db, GetItemRaw, Parse, Resolve, TypeCheck, VisibleDefinitions, VisibleTypes};
+use ante::incremental::{Db, GetItemRaw, Parse, RawItem, Resolve, TypeCheck, VisibleDefinitions, VisibleTypes};
 use ante::name_resolution::namespace::SourceFileId;
 use ante::name_resolution::Origin;
 use ante::parser::context::TopLevelContext;
@@ -80,7 +80,7 @@ fn format_type_detail(tc: &TypeCheckResult, compiler: &Db, label: &str, name_id:
 }
 
 fn doc_comments_for(compiler: &Db, item_id: TopLevelId) -> Option<tower_lsp::lsp_types::Documentation> {
-    let (item, _ctx) = GetItemRaw(item_id).get(compiler);
+    let RawItem(item, _ctx) = GetItemRaw(item_id).get(compiler);
     format_doc_comments(&item.comments)
 }
 

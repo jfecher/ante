@@ -10,6 +10,7 @@ use crate::{
         cst::{Expr, Name, Path, Pattern},
         ids::{ExprId, IdStore, NameId, NameStore, PathId, PatternId},
     },
+    shared_arc::Shared,
 };
 
 /// Extends a [TopLevelContext] with additional expressions, names, paths, and patterns
@@ -19,7 +20,7 @@ use crate::{
 /// Modeled after [crate::type_inference::fresh_expr::ExtendedTopLevelContext].
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DesugarContext {
-    original: Arc<TopLevelContext>,
+    original: Shared<TopLevelContext>,
 
     /// Stores both newly-added items (id >= original length) and overrides to existing
     /// items (id < original length). Reads check this map first before falling back to
@@ -36,7 +37,7 @@ pub struct DesugarContext {
 }
 
 impl DesugarContext {
-    pub fn new(original: Arc<TopLevelContext>) -> Self {
+    pub fn new(original: Shared<TopLevelContext>) -> Self {
         Self {
             original,
             more_exprs: Default::default(),

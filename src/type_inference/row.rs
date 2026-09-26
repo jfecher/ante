@@ -1,13 +1,13 @@
 //! Row polymorphism helpers shared by effect rows and places rows: sets of entries with an
 //! open tail, compared by subtyping or unification.
-use std::sync::Arc;
+use crate::shared_arc::Shared;
 
 use crate::type_inference::{
     TypeChecker, Variance,
     types::{Type, TypeBindings},
 };
 
-pub type Row<T> = Option<Arc<Vec<T>>>;
+pub type Row<T> = Option<Shared<Vec<T>>>;
 
 /// Whether an effect row being compared sits in a covariant or invariant position
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -53,7 +53,7 @@ impl RowKind {
 
     /// Build a row type from an already-canonical (flattened/followed/sorted/deduped) list
     pub(super) fn row_from_canonical(self, list: Vec<Type>) -> Type {
-        let row = (!list.is_empty()).then(|| Arc::new(list));
+        let row = (!list.is_empty()).then(|| Shared::new(list));
         match self {
             RowKind::Effects => Type::Effects(row),
             RowKind::Places => Type::Places(row),

@@ -41,6 +41,7 @@ pub mod token;
 use crate::{
     diagnostics::{Diagnostic, Position, Span},
     name_resolution::namespace::SourceFileId,
+    parser::cst::Name,
 };
 use std::{str::Chars, sync::Arc};
 use token::{ClosingBracket, F64, FloatKind, Integer, IntegerKind, LexerError, LexerWarning, Token, lookup_keyword};
@@ -70,6 +71,10 @@ pub struct Lexer<'contents> {
     pending_interpolations: Vec<usize>,
     errors: Vec<(LexerError, Span)>,
     warnings: Vec<(LexerWarning, Span)>,
+
+    /// Each name found in a file is deduplicated to save allocations.
+    /// TODO: Consider refactoring to a single global string interner
+    names: rustc_hash::FxHashMap<&'contents str, Name>,
 }
 
 /// The lexer maintains a stack of IndentLevels to remember
@@ -116,6 +121,7 @@ impl<'contents> Lexer<'contents> {
             pending_interpolations: Vec::new(),
             errors: Vec::new(),
             warnings: Vec::new(),
+            names: Default::default(),
         }
     }
 
@@ -375,8 +381,11 @@ impl<'contents> Lexer<'contents> {
                 self.previous_token_expects_indent = Lexer::should_expect_indent_after_token(&keyword);
                 Some((keyword, location))
             },
-            None if is_type => Some((Token::TypeName(word.to_owned()), location)),
-            None => Some((Token::Identifier(word.to_owned()), location)),
+            None => {
+                let name = self.names.entry(word).or_insert_with(|| Arc::new(word.to_owned())).clone();
+                let token = if is_type { Token::TypeName } else { Token::Identifier };
+                Some((token(name), location))
+            },
         }
     }
 
@@ -781,7 +790,9 @@ impl<'contents> Lexer<'contents> {
 
     pub fn lex(file_contents: &'contents str, id: SourceFileId) -> (Vec<(Token, Span)>, Vec<Diagnostic>) {
         let mut lexer = Lexer::new(file_contents);
-        let tokens = (&mut lexer).collect();
+        // There's roughly one token per 4 bytes of source
+        let mut tokens = Vec::with_capacity(file_contents.len() / 4);
+        tokens.extend(&mut lexer);
         let diagnostics = lexer.errors(id).chain(lexer.warnings(id)).collect();
         (tokens, diagnostics)
     }

@@ -14,7 +14,8 @@ pub mod namespace;
 use crate::{
     diagnostics::{Diagnostic, Location},
     incremental::{
-        self, DbHandle, ExportedTypes, GetCrateGraph, GetItem, Resolve, VisibleDefinitions, VisibleDefinitionsResult,
+        self, DbHandle, ExportedTypes, GetCrateGraph, GetItem, Resolve, Submodules, VisibleDefinitions,
+        VisibleDefinitionsResult,
     },
     iterator_extensions::mapvec,
     name_resolution::{builtin::Builtin, namespace::CrateId},
@@ -201,7 +202,7 @@ fn alias_body_head_origin(alias_item: TopLevelId, body: &Type, db: &DbHandle) ->
 pub fn resolve_impl(context: &Resolve, compiler: &DbHandle) -> Arc<ResolutionResult> {
     incremental::enter_query();
     let (statement, statement_ctx) = GetItem(context.0).get(compiler);
-    incremental::println(format!("Resolving {:?}", statement.kind.name()));
+    incremental::println(format_args!("Resolving {:?}", statement.kind.name()));
 
     // Note that we discord errors here because they're errors for the entire file and we are
     // resolving just one statement in it. This does mean that `CompileFile` will later need to
@@ -612,7 +613,9 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
                         }
                     },
                     // Variant types are structs and are thus valid as types or values
-                    TopLevelItemKind::TypeDefinition(def) if matches!(&def.body, TypeDefinitionBody::Enum(_, _)) => true,
+                    TopLevelItemKind::TypeDefinition(def) if matches!(&def.body, TypeDefinitionBody::Enum(_, _)) => {
+                        true
+                    },
                     // Ability methods are only values
                     TopLevelItemKind::TypeDefinition(_) => !is_type,
                     TopLevelItemKind::TraitDefinition(_) | TopLevelItemKind::EffectDefinition(_) => {
@@ -788,11 +791,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
 
                     if let Some(first_location) = already_defined.get(&name).cloned() {
                         let second_location = location;
-                        self.emit_diagnostic(Diagnostic::DuplicateField {
-                            name,
-                            first_location,
-                            second_location,
-                        });
+                        self.emit_diagnostic(Diagnostic::DuplicateField { name, first_location, second_location });
                         return;
                     }
 
@@ -1239,7 +1238,7 @@ pub fn resolve_path_qualifier<Db>(
     db: &Db, file: SourceFileId, components: &[(String, Location)], index: usize,
 ) -> Option<Qualifier>
 where
-    Db: DbGet<GetCrateGraph> + DbGet<VisibleDefinitions> + DbGet<GetItem> + DbGet<ExportedTypes> + DbGet<SourceFileId>,
+    Db: DbGet<GetCrateGraph> + DbGet<VisibleDefinitions> + DbGet<GetItem> + DbGet<ExportedTypes> + DbGet<Submodules>,
 {
     if index + 1 >= components.len() {
         return None;
@@ -1273,7 +1272,7 @@ fn resolve_qualifier_child<Db>(
     db: &Db, current_file: SourceFileId, name: &String, current: Option<Qualifier>,
 ) -> Option<Qualifier>
 where
-    Db: DbGet<GetCrateGraph> + DbGet<VisibleDefinitions> + DbGet<GetItem> + DbGet<ExportedTypes> + DbGet<SourceFileId>,
+    Db: DbGet<GetCrateGraph> + DbGet<VisibleDefinitions> + DbGet<GetItem> + DbGet<ExportedTypes> + DbGet<Submodules>,
 {
     match current {
         None => {
@@ -1303,7 +1302,7 @@ where
 }
 
 fn get_item_in_submodule(
-    db: &(impl DbGet<GetCrateGraph> + DbGet<SourceFileId>), parent_module: SourceFileId, name: &str,
+    db: &(impl DbGet<GetCrateGraph> + DbGet<Submodules>), parent_module: SourceFileId, name: &str,
 ) -> Option<SourceFileId> {
     if parent_module.local_module_id == CRATE_ROOT_MODULE {
         let crates = GetCrateGraph.get(db);
@@ -1326,6 +1325,6 @@ fn get_item_in_submodule(
         let absolute = crate_.path.join(SRC_FOLDER).join(&module_file);
         crate_.source_files.get(&absolute).copied()
     } else {
-        parent_module.get(db).submodules.get(name).copied()
+        Submodules(parent_module).get(db).get(name).copied()
     }
 }

@@ -1,6 +1,7 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use petgraph::graph::DiGraph;
+use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use rustc_hash::{FxHashMap, FxHashSet};
 use serde::{Deserialize, Serialize};
 
@@ -14,6 +15,7 @@ use crate::{
         cst::TopLevelItemKind,
         ids::{NameId, TopLevelId},
     },
+    shared_arc::Shared,
     type_inference::{
         IndividualTypeCheckResult, TypeMaps,
         fresh_expr::ExtendedTopLevelContext,
@@ -45,6 +47,9 @@ pub type SCC = Arc<Vec<TopLevelId>>;
 /// Build a type inference dependency graph for the entire local crate, finding the
 /// SCCs in the graph, and deferring to TypeCheckSCC.
 pub fn get_type_check_graph_impl(_: &TypeCheckDependencyGraph, db: &DbHandle) -> Arc<TypeCheckDependencyGraphResult> {
+    incremental::enter_query();
+    incremental::println(format_args!("Building the type-check dependency graph"));
+
     let mut graph = DiGraph::new();
     let mut item_to_index = FxHashMap::default();
     let mut index_to_item = FxHashMap::default();
@@ -63,6 +68,17 @@ pub fn get_type_check_graph_impl(_: &TypeCheckDependencyGraph, db: &DbHandle) ->
     let mut queue = get_all_top_level_ids(db);
     let mut visited = FxHashSet::default();
 
+    let lacks_known_type_map: FxHashMap<TopLevelId, bool> = queue
+        .par_iter()
+        .map(|item| {
+            // Warm the cache for the loop below
+            Resolve(*item).get(db);
+            (*item, item_lacks_known_type(*item, db))
+        })
+        .collect();
+
+    let lacks_known_type = |item: TopLevelId| lacks_known_type_map[&item];
+
     while let Some(item) = queue.pop() {
         if !visited.insert(item) {
             continue;
@@ -74,7 +90,7 @@ pub fn get_type_check_graph_impl(_: &TypeCheckDependencyGraph, db: &DbHandle) ->
         for &dependency_id in &resolution.referenced_items {
             let dependency_index = add_node(&mut graph, dependency_id);
 
-            if item_lacks_known_type(dependency_id, db) {
+            if lacks_known_type(dependency_id) {
                 graph.update_edge(item_index, dependency_index, ());
             }
         }
@@ -90,7 +106,7 @@ pub fn get_type_check_graph_impl(_: &TypeCheckDependencyGraph, db: &DbHandle) ->
             let exported = ExportedDefinitions(*file).get(db);
             for methods in exported.methods.values() {
                 let mut method_ids =
-                    methods.values().map(|name| &name.top_level_item).filter(|id| item_lacks_known_type(**id, db));
+                    methods.values().map(|name| &name.top_level_item).filter(|id| lacks_known_type(**id));
 
                 if let Some(representative) = method_ids.next() {
                     let rep_index = add_node(&mut graph, *representative);
@@ -117,20 +133,17 @@ pub fn get_type_check_graph_impl(_: &TypeCheckDependencyGraph, db: &DbHandle) ->
         scc.sort_unstable();
         Arc::new(scc)
     });
+
+    incremental::exit_query();
     Arc::new(TypeCheckDependencyGraphResult { sccs: order, id_to_scc })
 }
 
 /// Retrieves all top-level ids in the program (including dependencies)
 fn get_all_top_level_ids(db: &DbHandle) -> Vec<TopLevelId> {
     let crates = GetCrateGraph.get(db);
-    let mut ids = Vec::new();
-    for crate_ in crates.values() {
-        for file in crate_.source_files.values() {
-            let parse = Parse(*file).get(db);
-            ids.extend(parse.top_level_data.keys().copied());
-        }
-    }
-    ids
+    let files: Vec<_> = crates.values().flat_map(|crate_| crate_.source_files.values().copied()).collect();
+    let parses: Vec<_> = files.into_par_iter().map(|file| Parse(file).get(db)).collect();
+    parses.iter().flat_map(|parse| parse.top_level_data.keys().copied()).collect()
 }
 
 /// If the dependency in question lacks a known type it means we must infer its
@@ -157,7 +170,7 @@ fn item_lacks_known_type(dependency_id: TopLevelId, db: &DbHandle) -> bool {
 
 pub fn get_type_check_scc_impl(context: &GetTypeCheckSCC, db: &DbHandle) -> SCC {
     incremental::enter_query();
-    incremental::println(format!("Getting the type-check SCC of {:?}", context.0));
+    incremental::println(format_args!("Getting the type-check SCC of {:?}", context.0));
 
     let graph = TypeCheckDependencyGraph.get(db);
 
@@ -175,13 +188,13 @@ pub fn get_type_check_scc_impl(context: &GetTypeCheckSCC, db: &DbHandle) -> SCC 
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TypeCheckResult {
-    pub result: IndividualTypeCheckResult,
-    pub bindings: Arc<TypeBindings>,
+    pub result: Shared<IndividualTypeCheckResult>,
+    pub bindings: Shared<TypeBindings>,
 }
 
 pub fn type_check_impl(context: &TypeCheck, db: &DbHandle) -> Arc<TypeCheckResult> {
     incremental::enter_query();
-    incremental::println(format!("Type checking {:?}", context.0));
+    incremental::println(format_args!("Type checking {:?}", context.0));
 
     let scc = GetTypeCheckSCC(context.0).get(db);
     let result = TypeCheckSCC(scc).get(db);
@@ -190,11 +203,11 @@ pub fn type_check_impl(context: &TypeCheck, db: &DbHandle) -> Arc<TypeCheckResul
         // This item has no top-level names (e.g. it failed to parse). Return an empty result
         // so that callers can continue without panicking.
         let (_, item_context) = GetItem(context.0).get(db);
-        IndividualTypeCheckResult {
+        Shared::new(IndividualTypeCheckResult {
             maps: TypeMaps::default(),
             generalized: FxHashMap::default(),
             context: ExtendedTopLevelContext::new(item_context),
-        }
+        })
     });
 
     incremental::exit_query();

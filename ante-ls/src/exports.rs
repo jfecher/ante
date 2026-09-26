@@ -34,7 +34,7 @@ pub fn add_to_exports_action(
 
 /// Find the name of the top-level item whose own declaration contains `byte_offset`.
 fn find_top_level_name_at(
-    cst: &Cst, top_level_data: &std::collections::BTreeMap<TopLevelId, std::sync::Arc<TopLevelContext>>,
+    cst: &Cst, top_level_data: &std::collections::BTreeMap<TopLevelId, ante::shared_arc::Shared<TopLevelContext>>,
     byte_offset: usize,
 ) -> Option<String> {
     let mut searcher = SpanSearcher::new(byte_offset);

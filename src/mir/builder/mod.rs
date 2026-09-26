@@ -9,7 +9,7 @@ use inc_complete::DbGet;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    incremental::{GetItem, GetItemRaw, GetTypeBody, TypeCheck},
+    incremental::{GetItem, GetItemRaw, GetTypeBody, RawItem, TypeCheck},
     iterator_extensions::mapvec,
     lexer::token::{FloatKind, Integer, IntegerKind},
     mir::{
@@ -287,7 +287,7 @@ where
     }
 
     fn get_definition_name(&self, name: &TopLevelName) -> Name {
-        let (_, context) = GetItemRaw(name.top_level_item).get(self.compiler);
+        let RawItem(_, context) = GetItemRaw(name.top_level_item).get(self.compiler);
         context.names[name.local_name_id].clone()
     }
 

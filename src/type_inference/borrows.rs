@@ -399,17 +399,14 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
                 .or_else(|| args.iter().find_map(|arg| self.row_carrying(arg, atom))),
             Type::Tuple(elements) => elements.iter().find_map(|element| self.row_carrying(element, atom)),
             Type::Places(_) | Type::Place(_) => {
-                let row = Type::canonicalize_places(
-                    std::slice::from_ref(typ),
-                    &self.tc.bindings,
-                    &TypeBindings::default(),
-                );
+                let row =
+                    Type::canonicalize_places(std::slice::from_ref(typ), &self.tc.bindings, &TypeBindings::default());
                 row.contains(&Type::Place(atom.clone())).then_some(row)
             },
             Type::Forall(_, typ) => self.row_carrying(typ, atom),
-            Type::Effects(effects) => effects
-                .as_ref()
-                .and_then(|effects| effects.iter().find_map(|effect| self.row_carrying(effect, atom))),
+            Type::Effects(effects) => {
+                effects.as_ref().and_then(|effects| effects.iter().find_map(|effect| self.row_carrying(effect, atom)))
+            },
             Type::Function(function) => self
                 .row_carrying(&function.environment, atom)
                 .or_else(|| self.row_carrying(&function.effects, atom))

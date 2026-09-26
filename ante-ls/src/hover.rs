@@ -1,9 +1,8 @@
-use std::sync::Arc;
-
 use ante::incremental::{Db, GetItem, Parse, TypeCheck};
 use ante::name_resolution::namespace::SourceFileId;
 use ante::parser::desugar_context::DesugarContext;
 use ante::parser::ids::{IdStore, NameStore};
+use ante::shared_arc::Shared;
 
 use crate::util::{is_internal_only_type, SpanSearcher};
 
@@ -26,7 +25,7 @@ pub fn hover_at(compiler: &Db, file_id: SourceFileId, byte_offset: usize) -> Opt
     let parse = Parse(file_id).get(compiler);
 
     let mut searcher = SpanSearcher::new(byte_offset);
-    let mut best: Option<(Hit, TopLevelId, Arc<DesugarContext>)> = None;
+    let mut best: Option<(Hit, TopLevelId, Shared<DesugarContext>)> = None;
 
     for item in &parse.cst.top_level_items {
         // Use the desugared context so node IDs match what TypeCheck stored.

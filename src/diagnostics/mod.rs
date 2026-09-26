@@ -11,7 +11,10 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    incremental::{self, CheckAll, Db, DbHandle, GetCrateGraph, Parse, SourceFile, TypeCheck, ValidateExports},
+    incremental::{
+        self, CheckAll, Db, DbHandle, GetCrateGraph, Parse, SourceFile, TypeCheck, TypeCheckDependencyGraph,
+        ValidateExports,
+    },
     iterator_extensions::mapvec,
     lexer::{
         Lexer,
@@ -1292,16 +1295,19 @@ impl std::fmt::Display for DiagnosticDisplay<'_> {
 /// Check the entire program, collecting all diagnostics
 pub(crate) fn check_all(_: &CheckAll, compiler: &DbHandle) {
     incremental::enter_query();
-    incremental::println("Checking the entire program".to_string());
+    incremental::println(format_args!("Checking the entire program"));
+
+    // Built first so rayon workers aren't all blocked on it while it runs its own par_iter
+    TypeCheckDependencyGraph.get(compiler);
 
     let crates = GetCrateGraph.get(compiler);
     crates.par_iter().for_each(|(_, crate_)| {
         crate_.source_files.par_iter().for_each(|(_, file)| {
             let parse = Parse(*file).get(compiler);
 
-            for item in &parse.cst.top_level_items {
+            parse.cst.top_level_items.par_iter().for_each(|item| {
                 TypeCheck(item.id).get(compiler);
-            }
+            });
 
             ValidateExports(*file).get(compiler);
         });

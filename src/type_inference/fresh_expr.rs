@@ -5,7 +5,6 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     ops::Index,
-    sync::Arc,
 };
 
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -19,6 +18,7 @@ use crate::{
         desugar_context::DesugarContext,
         ids::{ExprId, IdStore, NameId, NameStore, PathId, PatternId},
     },
+    shared_arc::Shared,
     type_inference::{TypeChecker, patterns::DecisionTree, types::Type},
 };
 
@@ -26,7 +26,7 @@ use crate::{
 /// from the [TypeChecker] after performing type-checking and match compilation.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExtendedTopLevelContext {
-    original: Arc<DesugarContext>,
+    original: Shared<DesugarContext>,
 
     /// The TypeChecker may insert new variables into the code, most commonly
     /// during match compilation where each step is broken into a new variable.
@@ -112,7 +112,7 @@ impl<'local, 'innter> TypeChecker<'local, 'innter> {
 }
 
 impl ExtendedTopLevelContext {
-    pub(crate) fn new(original: Arc<DesugarContext>) -> Self {
+    pub(crate) fn new(original: Shared<DesugarContext>) -> Self {
         Self {
             original,
             name_origins: Default::default(),

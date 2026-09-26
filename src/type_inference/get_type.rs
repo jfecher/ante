@@ -20,7 +20,7 @@ use crate::{
 pub fn get_type_impl(context: &GetType, compiler: &DbHandle) -> Type {
     incremental::enter_query();
     let (item, item_context) = compiler.get(GetItem(context.0.top_level_item));
-    incremental::println(format!("Get type of {:?}", item.id));
+    incremental::println(format_args!("Get type of {:?}", item.id));
 
     let typ = match &item.kind {
         TopLevelItemKind::Definition(definition) => {

@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, sync::Arc};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    incremental::{DbHandle, GetItem, Resolve, VisibleDefinitions, VisibleImplicits},
+    incremental::{self, DbHandle, GetItem, Resolve, VisibleDefinitions, VisibleImplicits},
     name_resolution::Origin,
     parser::{
         cst::{Name, TopLevelItemKind},
@@ -95,6 +95,9 @@ impl TypeKey {
 /// Returns any global implicits visible to the given item in the context.
 /// This will always be a subset of all VisibleDefinitions to the same item.
 pub fn visible_implicits_impl(context: &VisibleImplicits, db: &DbHandle) -> Arc<Implicits> {
+    incremental::enter_query();
+    incremental::println(format_args!("Collecting visible implicits in {:?}", context.0));
+
     let definitions = VisibleDefinitions(context.0).get(db);
     let mut implicits = Implicits::default();
 
@@ -149,6 +152,7 @@ pub fn visible_implicits_impl(context: &VisibleImplicits, db: &DbHandle) -> Arc<
         }
     }
 
+    incremental::exit_query();
     Arc::new(implicits)
 }
 

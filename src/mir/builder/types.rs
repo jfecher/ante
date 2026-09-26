@@ -4,7 +4,7 @@ use inc_complete::DbGet;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
-    incremental::{GetItem, GetItemRaw, GetTypeBody, TypeCheck},
+    incremental::{GetItem, GetItemRaw, GetTypeBody, RawItem, TypeCheck},
     iterator_extensions::mapvec,
     mir::{EffectKey, EvidenceEntry, FunctionType, Generic, Type, builder::Context},
     name_resolution::{Origin, builtin::Builtin},
@@ -268,7 +268,7 @@ where
 
     /// Builds an effect's capability tuple type. The resulting tuple has each effect in declared order.
     pub(super) fn effect_capability_tuple_type(&self, effect_item: TopLevelId, args: Option<&[TCType]>) -> Type {
-        let (item, _) = GetItemRaw(effect_item).get(self.compiler);
+        let RawItem(item, _) = GetItemRaw(effect_item).get(self.compiler);
         let TopLevelItemKind::EffectDefinition(effect) = &item.kind else {
             panic!("effect_capability_tuple_type: item is not an effect definition");
         };

@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use rustc_hash::FxHashMap;
 
 use crate::{
@@ -10,6 +8,7 @@ use crate::{
         cst,
         ids::{NameId, TopLevelId, TopLevelName},
     },
+    shared_arc::Shared,
     type_inference::{
         Locateable, TypeChecker,
         generics::Generic,
@@ -169,10 +168,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             if instantiate {
                 let fresh_vars = mapvec(&item.generics, |_| self.next_type_variable());
                 substitutions = Self::datatype_generic_substitutions(item, &fresh_vars);
-                data_type = Type::Application(Arc::new(data_type), Arc::new(fresh_vars));
+                data_type = Type::Application(Shared::new(data_type), Shared::new(fresh_vars));
             } else {
                 let generics = mapvec(&item.generics, |p| Type::Generic(Generic::Named(Origin::Local(p.name))));
-                data_type = Type::Application(Arc::new(data_type), Arc::new(generics));
+                data_type = Type::Application(Shared::new(data_type), Shared::new(generics));
             }
         }
 
@@ -214,7 +213,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         });
 
         if !variant_args.is_empty() {
-            result = Type::Function(Arc::new(types::FunctionType {
+            result = Type::Function(Shared::new(types::FunctionType {
                 parameters,
                 environment: Type::NO_CLOSURE_ENV,
                 return_type: result,
@@ -223,7 +222,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
 
         if !generics.is_empty() {
-            result = Type::Forall(Arc::new(generics.to_vec()), Arc::new(result));
+            result = Type::Forall(Shared::new(generics.to_vec()), Shared::new(result));
         }
 
         // The `false` flag above is normally enough to keep types closed, but ability
@@ -252,9 +251,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                         let mut combined = Vec::with_capacity(existing.len() + inferred.len());
                         combined.extend(existing.iter().copied());
                         combined.extend(inferred);
-                        Type::Forall(Arc::new(combined), body)
+                        Type::Forall(Shared::new(combined), body)
                     },
-                    other => Type::Forall(Arc::new(inferred), Arc::new(other)),
+                    other => Type::Forall(Shared::new(inferred), Shared::new(other)),
                 };
             }
         }
@@ -317,16 +316,16 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Given an effect operation's function type, set its effect row to the closed singleton containing `effect_type`.
     fn set_effect_on_function_type(&self, method_type: Type, effect_type: Type) -> Type {
         Self::map_function_type(method_type, "set_effect_on_function_type", |function_type| {
-            function_type.effects = Type::Effects(Some(Arc::new(vec![effect_type])));
+            function_type.effects = Type::Effects(Some(Shared::new(vec![effect_type])));
         })
     }
 
     fn map_function_type(method_type: Type, caller: &str, f: impl FnOnce(&mut types::FunctionType)) -> Type {
         match method_type {
             Type::Function(function_type) => {
-                let mut function_type = Arc::unwrap_or_clone(function_type);
+                let mut function_type = Shared::unwrap_or_clone(function_type);
                 f(&mut function_type);
-                Type::Function(Arc::new(function_type))
+                Type::Function(Shared::new(function_type))
             },
             other => unreachable!("{caller} expected function type, found {other:?}"),
         }

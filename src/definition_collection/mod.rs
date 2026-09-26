@@ -27,7 +27,7 @@ pub mod visible_implicits;
 /// This includes all top-level definitions within this file, as well as any imported ones.
 pub fn visible_definitions_impl(context: &VisibleDefinitions, db: &DbHandle) -> Arc<VisibleDefinitionsResult> {
     incremental::enter_query();
-    incremental::println(format!("Collecting visible definitions in {:?}", context.0));
+    incremental::println(format_args!("Collecting visible definitions in {:?}", context.0));
 
     let mut visible = AllDefinitions(context.0).get(db).as_ref().clone();
 
@@ -159,7 +159,7 @@ fn resolve_submodule_imports(import: &Import, visible: &mut VisibleDefinitionsRe
 
 pub fn visible_types_impl(context: &VisibleTypes, db: &DbHandle) -> Arc<TypeDefinitions> {
     incremental::enter_query();
-    incremental::println(format!("Collecting visible types in {:?}", context.0));
+    incremental::println(format_args!("Collecting visible types in {:?}", context.0));
 
     let all = AllTypes(context.0).get(db);
 
@@ -246,7 +246,7 @@ fn insert_unique_name(
 /// Collect all type definitions within a file (unfiltered by export list).
 pub fn all_types_impl(context: &AllTypes, db: &DbHandle) -> Arc<TypeDefinitions> {
     incremental::enter_query();
-    incremental::println(format!("Collecting all types in {:?}", context.0));
+    incremental::println(format_args!("Collecting all types in {:?}", context.0));
 
     let result = Parse(context.0).get(db);
     let mut definitions = TypeDefinitions::default();
@@ -322,7 +322,7 @@ pub fn exported_types_impl(context: &ExportedTypes, db: &DbHandle) -> Arc<TypeDe
 /// Collect all definitions within a file (unfiltered by export list).
 pub fn all_definitions_impl(context: &AllDefinitions, db: &DbHandle) -> Arc<VisibleDefinitionsResult> {
     incremental::enter_query();
-    incremental::println(format!("Collecting all definitions in {:?}", context.0));
+    incremental::println(format_args!("Collecting all definitions in {:?}", context.0));
 
     let result = Parse(context.0).get(db);
     let mut declarer = Declarer::new(db);
@@ -425,7 +425,7 @@ pub fn exported_definitions_impl(context: &ExportedDefinitions, db: &DbHandle) -
 /// here, issuing `ExportedItemNotFound` diagnostics if not.
 pub fn validate_exports_impl(context: &ValidateExports, db: &DbHandle) {
     incremental::enter_query();
-    incremental::println(format!("Validating exports of {:?}", context.0));
+    incremental::println(format_args!("Validating exports of {:?}", context.0));
     let parse = Parse(context.0).get(db);
 
     if let Some(exports) = &parse.cst.exports {
@@ -575,7 +575,7 @@ impl<'local, 'db> Declarer<'local, 'db> {
 /// Collects the file names of all imports within this file.
 pub fn get_imports_impl(context: &GetImports, db: &DbHandle) -> Vec<(Arc<PathBuf>, Location)> {
     incremental::enter_query();
-    incremental::println(format!("Collecting imports of {:?}", context.0));
+    incremental::println(format_args!("Collecting imports of {:?}", context.0));
 
     // Ignore parse errors for now, we can report them later
     let result = Parse(context.0).get(db);

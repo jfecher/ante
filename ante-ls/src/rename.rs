@@ -20,7 +20,7 @@ use ante::incremental::{
 };
 use ante::name_resolution::{
     namespace::{CrateId, SourceFileId},
-    Origin, ResolutionResult, TraitMember, origin_of_top_level_definition,
+    origin_of_top_level_definition, Origin, ResolutionResult, TraitMember,
 };
 use ante::parser::ids::{IdStore, NameId, NameStore, PathId, TopLevelId, TopLevelName};
 

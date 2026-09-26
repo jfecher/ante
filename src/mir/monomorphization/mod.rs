@@ -25,7 +25,7 @@ use crate::{
 /// Collect all items in the program.
 /// This is discouraged since it limits parallelism but required for certain passes like
 /// monomorphization which need access to the entire program.
-fn collect_all_items<Db>(compiler: &Db) -> Vec<TopLevelId>
+pub(crate) fn collect_all_items<Db>(compiler: &Db) -> Vec<TopLevelId>
 where
     Db: DbGet<GetCrateGraph> + DbGet<Parse>,
 {

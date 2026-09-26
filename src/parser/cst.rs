@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     diagnostics::{ErrorDefault, Location},
     lexer::token::{F64, FloatKind, Integer, IntegerKind, Token},
+    shared_arc::Shared,
 };
 
 use super::ids::{ExprId, IdStore, NameId, PathId, PatternId, TopLevelId};
@@ -20,7 +21,7 @@ pub struct Cst {
     /// `None` when the file has no `export` statement (all items are exported by default).
     /// `Some(list)` when an explicit `export` statement restricts visibility to those items.
     pub exports: Option<Vec<ExportEntry>>,
-    pub top_level_items: Vec<Arc<TopLevelItem>>,
+    pub top_level_items: Vec<Shared<TopLevelItem>>,
 
     /// Comments after the last top level item
     pub ending_comments: Vec<String>,

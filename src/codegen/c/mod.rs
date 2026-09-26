@@ -35,6 +35,8 @@ use crate::{
 mod cfile;
 use cfile::CFile;
 
+use crate::timings::time_phase;
+
 use super::{
     OverflowingIntOp,
     constant::{self, ConstantValue},
@@ -45,29 +47,30 @@ use super::{
 /// the .c file is kept.
 pub fn codegen_c_for_mir(
     mir: &mir::Mir, binary_name: &str, opt_level: OptLevel, selected_main: Option<TopLevelName>,
-    link_options: &super::LinkOptions,
+    link_options: &super::LinkOptions, show_time: bool,
 ) {
     // Create the C file
-    let c_file = build_c_file(mir, selected_main);
+    let c_file = time_phase("C codegen", show_time, || build_c_file(mir, selected_main));
     let c_file_name = format!("{binary_name}.c");
     std::fs::write(&c_file_name, c_file).unwrap();
 
     // Create the .o file
     let o_file_name = format!("{binary_name}.o");
-    let mut child = Command::new("cc")
-        .arg(&c_file_name)
-        .arg(format!("-o{o_file_name}"))
-        .arg(opt_level.as_cc_opt_string())
-        .arg("-fno-strict-aliasing")
-        .arg("-c")
-        .arg("-w")
-        .spawn()
-        .unwrap();
+    let status = time_phase("C compilation", show_time, || {
+        Command::new("cc")
+            .arg(&c_file_name)
+            .arg(format!("-o{o_file_name}"))
+            .arg(opt_level.as_cc_opt_string())
+            .arg("-fno-strict-aliasing")
+            .arg("-c")
+            .arg("-w")
+            .status()
+            .unwrap()
+    });
 
     // And link it into a binary
-    let status = child.wait().unwrap();
     if status.success() {
-        super::link_with_cc(&o_file_name, binary_name, link_options);
+        time_phase("Linking", show_time, || super::link_with_cc(&o_file_name, binary_name, link_options));
         std::fs::remove_file(&c_file_name).unwrap();
     }
 }

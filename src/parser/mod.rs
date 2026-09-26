@@ -18,6 +18,7 @@ use crate::{
         context::TopLevelContext,
         cst::{Argument, Extern, HandlePattern, Loop, LoopParameter, ParameterType, ReferenceKind},
     },
+    shared_arc::Shared,
 };
 
 use self::cst::{
@@ -35,16 +36,25 @@ pub mod ids;
 #[derive(Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct ParseResult {
     pub cst: Cst,
-    pub top_level_data: BTreeMap<TopLevelId, Arc<TopLevelContext>>,
+    pub top_level_data: BTreeMap<TopLevelId, Shared<TopLevelContext>>,
 }
 
-type Result<T> = std::result::Result<T, Diagnostic>;
+type Result<T> = std::result::Result<T, ParseError>;
+
+/// Diagnostics are only built when [Parser::report_errors] is set
+struct ParseError(Option<Box<Diagnostic>>);
+
+impl ParseError {
+    fn with_hint(self, hint: Hint) -> Self {
+        ParseError(self.0.map(|diagnostic| Box::new(diagnostic.with_hint(hint))))
+    }
+}
 
 struct Parser<'tokens> {
     file_id: SourceFileId,
     tokens: &'tokens [(Token, Span)],
     diagnostics: Vec<Diagnostic>,
-    top_level_data: BTreeMap<TopLevelId, Arc<TopLevelContext>>,
+    top_level_data: BTreeMap<TopLevelId, Shared<TopLevelContext>>,
 
     /// Keep track of any name collisions in the top level items
     top_level_item_hashes: FxHashSet<u64>,
@@ -52,47 +62,77 @@ struct Parser<'tokens> {
     current_context: TopLevelContext,
 
     token_index: usize,
+
+    /// Each token's location, created on first use so nodes starting at the same token share it
+    token_locations: Vec<std::cell::OnceCell<Location>>,
+
+    /// When false, failures carry no diagnostic and recording one triggers a reparse with this set
+    report_errors: bool,
+
+    /// Failures recorded while `report_errors` was false
+    unreported_errors: usize,
 }
 
 pub fn parse_impl(ctx: &incremental::Parse, db: &incremental::DbHandle) -> Arc<ParseResult> {
     incremental::enter_query();
-    incremental::println(format!("Parsing {:?}", ctx.0));
+    incremental::println(format_args!("Parsing {:?}", ctx.0));
 
     let file = ctx.0.get(db);
     let (tokens, errors) = Lexer::lex(&file.contents, ctx.0);
     for error in errors {
         db.accumulate(error);
     }
-    let result = Arc::new(Parser::new(ctx.0, &tokens).parse(db));
+
+    let mut parser = Parser::new(ctx.0, &tokens, false);
+    let mut result = parser.parse();
+    if parser.unreported_errors != 0 {
+        let token_locations = std::mem::take(&mut parser.token_locations);
+        parser = Parser::new(ctx.0, &tokens, true);
+        parser.token_locations = token_locations;
+        result = parser.parse();
+    }
+
+    for diagnostic in parser.diagnostics {
+        db.accumulate(diagnostic);
+    }
+    let result = Arc::new(result);
 
     incremental::exit_query();
     result
 }
 
 impl<'tokens> Parser<'tokens> {
-    fn new(file_id: SourceFileId, tokens: &'tokens [(Token, Span)]) -> Self {
+    fn new(file_id: SourceFileId, tokens: &'tokens [(Token, Span)], report_errors: bool) -> Self {
         Self {
             file_id,
             tokens,
             diagnostics: Vec::new(),
             token_index: 0,
+            token_locations: vec![std::cell::OnceCell::new(); tokens.len()],
             top_level_data: Default::default(),
             top_level_item_hashes: Default::default(),
             current_context: TopLevelContext::new(file_id),
+            report_errors,
+            unreported_errors: 0,
         }
     }
 
-    fn parse(mut self, db: &incremental::DbHandle) -> ParseResult {
+    fn parse(&mut self) -> ParseResult {
         let imports = self.parse_imports();
         let exports = self.parse_exports();
         let top_level_items = self.parse_top_level_items();
         self.accept(Token::Newline);
         let ending_comments = self.parse_comments();
         let cst = Cst { imports, exports, top_level_items, ending_comments };
-        for diagnostic in self.diagnostics {
-            db.accumulate(diagnostic);
+        ParseResult { cst, top_level_data: std::mem::take(&mut self.top_level_data) }
+    }
+
+    /// Record a parse failure which was recovered from
+    fn report(&mut self, error: ParseError) {
+        match error.0 {
+            Some(diagnostic) => self.diagnostics.push(*diagnostic),
+            None => self.unreported_errors += 1,
         }
-        ParseResult { cst, top_level_data: self.top_level_data }
     }
 
     fn current_token(&self) -> &'tokens Token {
@@ -128,7 +168,11 @@ impl<'tokens> Parser<'tokens> {
     }
 
     fn current_token_location(&self) -> Location {
-        self.current_token_span().in_file(self.file_id)
+        self.token_location(self.token_index)
+    }
+
+    fn token_location(&self, index: usize) -> Location {
+        self.token_locations[index].get_or_init(|| self.tokens[index].1.in_file(self.file_id)).clone()
     }
 
     /// True if the current token is `|`, or a newline immediately followed by `|`.
@@ -136,6 +180,35 @@ impl<'tokens> Parser<'tokens> {
     fn at_pipe(&self) -> bool {
         *self.current_token() == Token::Pipe
             || (*self.current_token() == Token::Newline && *self.peek_next_token() == Token::Pipe)
+    }
+
+    /// False if no `=` can occur before the current statement ends
+    fn may_be_definition(&self) -> bool {
+        for (index, (token, _)) in self.tokens.iter().enumerate().skip(self.token_index) {
+            match token {
+                Token::Equal | Token::Indent => return true,
+                Token::Unindent | Token::EndOfInput => return false,
+                // A function's signature may continue on the next line
+                Token::Newline => match self.tokens.get(index + 1) {
+                    Some((Token::Colon | Token::Can | Token::Is | Token::Equal, _)) => (),
+                    _ => return false,
+                },
+                _ => (),
+            }
+        }
+        false
+    }
+
+    /// False if the current line has no `with`, which a named constructor requires.
+    fn may_be_named_constructor(&self) -> bool {
+        for (token, _) in &self.tokens[self.token_index..] {
+            match token {
+                Token::With | Token::Indent => return true,
+                Token::Newline | Token::Unindent | Token::EndOfInput => return false,
+                _ => (),
+            }
+        }
+        false
     }
 
     /// True if we are at (or past) the end of input
@@ -159,7 +232,7 @@ impl<'tokens> Parser<'tokens> {
     /// Returns the previous token's location, if it exists.
     /// Returns the current token's location otherwise.
     fn previous_token_location(&self) -> Location {
-        self.previous_token_span().in_file(self.file_id)
+        self.token_location(self.token_index.saturating_sub(1))
     }
 
     fn current_token_and_span(&self) -> &'tokens (Token, Span) {
@@ -189,6 +262,9 @@ impl<'tokens> Parser<'tokens> {
     /// Return a `ParserExpected` error.
     /// Uses the current token as the actual token for comparison and for the location for the error.
     fn expected<T>(&self, message: impl Into<String>) -> Result<T> {
+        if !self.report_errors {
+            return Err(ParseError(None));
+        }
         let message = message.into();
         let actual = self.current_token().clone();
         let location = match self.current_token() {
@@ -196,7 +272,7 @@ impl<'tokens> Parser<'tokens> {
             Token::Newline => self.previous_token_location(),
             _ => self.current_token_location(),
         };
-        Err(Diagnostic::ParserExpected { message, actual, location, hint: None })
+        Err(ParseError(Some(Box::new(Diagnostic::ParserExpected { message, actual, location, hint: None }))))
     }
 
     /// Reserve a space for an expression.
@@ -291,7 +367,7 @@ impl<'tokens> Parser<'tokens> {
         let id = TopLevelId::new(self.file_id, hash);
         let empty_context = TopLevelContext::new(self.file_id);
         let old_context = std::mem::replace(&mut self.current_context, empty_context);
-        self.top_level_data.insert(id, Arc::new(old_context));
+        self.top_level_data.insert(id, Shared::new(old_context));
         id
     }
 
@@ -364,7 +440,7 @@ impl<'tokens> Parser<'tokens> {
         match parser(self) {
             Ok(item) => Some(item),
             Err(error) => {
-                self.diagnostics.push(error);
+                self.report(error);
                 self.recover_to_next_newline_or_unindent();
                 None
             },
@@ -387,7 +463,7 @@ impl<'tokens> Parser<'tokens> {
             Err(error) => {
                 let location = self.current_token_location();
                 if self.recover_to(recover_to, too_far) {
-                    self.diagnostics.push(error);
+                    self.report(error);
                     Ok(T::error_default(location))
                 } else {
                     Err(error)
@@ -406,7 +482,7 @@ impl<'tokens> Parser<'tokens> {
             Err(error) => {
                 let start = self.current_token_span();
                 if self.recover_to(recover_to, too_far) {
-                    self.diagnostics.push(error);
+                    self.report(error);
                     let end = self.current_token_span();
                     let location = start.to(&end).in_file(self.file_id);
                     let expr = self.push_expr(Expr::Error, location);
@@ -508,7 +584,7 @@ impl<'tokens> Parser<'tokens> {
 
         if *self.current_token() != Newline {
             let error = self.expected::<()>("an identifier, type name, or operator to export").unwrap_err();
-            self.diagnostics.push(error);
+            self.report(error);
             self.recover_to_next_newline_or_unindent();
         }
 
@@ -560,7 +636,7 @@ impl<'tokens> Parser<'tokens> {
         Ok(Path { components })
     }
 
-    fn parse_top_level_items(&mut self) -> Vec<Arc<TopLevelItem>> {
+    fn parse_top_level_items(&mut self) -> Vec<Shared<TopLevelItem>> {
         let mut items = Vec::new();
 
         while !self.at_end_of_input() {
@@ -576,7 +652,7 @@ impl<'tokens> Parser<'tokens> {
             }
 
             if let Some(item) = self.try_parse_or_recover_to_newline(|this| this.parse_top_level_item(comments)) {
-                items.push(Arc::new(item));
+                items.push(Shared::new(item));
             }
 
             // In case there is no newline at the end of the file
@@ -970,7 +1046,7 @@ impl<'tokens> Parser<'tokens> {
 
         if expect_unindent && let Err(error) = self.expect(Token::Unindent, "the end of this block") {
             // If we stopped short of the unindent, skip everything until the unindent
-            self.diagnostics.push(error);
+            self.report(error);
             if self.recover_to(Token::Unindent, &[]) {
                 self.advance();
             }
@@ -1233,7 +1309,7 @@ impl<'tokens> Parser<'tokens> {
                 let location = start.to(&self.previous_token_location());
                 Ok(Type::new(TypeKind::Place(name), location))
             },
-            Token::Identifier(name) if name == "_" => {
+            Token::Identifier(name) if name.as_str() == "_" => {
                 let location = self.current_token_location();
                 self.advance();
                 Ok(Type::new(TypeKind::Hole, location))
@@ -1277,7 +1353,7 @@ impl<'tokens> Parser<'tokens> {
         match self.current_token() {
             Token::TypeName(name) => {
                 self.advance();
-                Ok(name.clone())
+                Ok(String::clone(name))
             },
             // We allow all overloadable operators here like with identifiers but
             // in reality this is mostly to allow `(,)` to be the pair type.
@@ -1296,7 +1372,7 @@ impl<'tokens> Parser<'tokens> {
         match self.current_token() {
             Token::Identifier(name) => {
                 self.advance();
-                Ok(name.clone())
+                Ok(String::clone(name))
             },
             Token::ParenthesisLeft if self.at_operator_reference() => {
                 self.advance();
@@ -1325,13 +1401,13 @@ impl<'tokens> Parser<'tokens> {
         match self.current_token() {
             Token::Identifier(name) => {
                 let location = self.current_token_location();
-                let name = Arc::new(name.clone());
+                let name = name.clone();
                 self.advance();
                 Ok((name, location))
             },
             Token::TypeName(name) => {
                 let location = self.current_token_location();
-                let name = Arc::new(name.clone());
+                let name = name.clone();
                 self.advance();
                 Ok((name, location))
             },
@@ -1401,7 +1477,7 @@ impl<'tokens> Parser<'tokens> {
                 },
                 Err(_) if allow_trailing => break,
                 Err(error) => {
-                    self.diagnostics.push(error);
+                    self.report(error);
                     break;
                 },
             }
@@ -1457,7 +1533,7 @@ impl<'tokens> Parser<'tokens> {
             match parser(self) {
                 Ok(item) => items.push(item),
                 Err(error) => {
-                    self.diagnostics.push(error);
+                    self.report(error);
                     if is_terminator(self) {
                         break;
                     }
@@ -1474,7 +1550,7 @@ impl<'tokens> Parser<'tokens> {
             }
             let message = format!("`{separator}` to separate items");
             let error = self.expected::<()>(message).unwrap_err();
-            self.diagnostics.push(error);
+            self.report(error);
         }
         items
     }
@@ -2141,7 +2217,11 @@ impl<'tokens> Parser<'tokens> {
             let parameters = this.parse_function_parameters()?;
 
             let return_type = if this.accept(Token::Colon) {
-                Some(this.parse_with_recovery(Self::parse_pair_type, Token::RightArrow, &[Token::Newline, Token::Indent])?)
+                Some(this.parse_with_recovery(
+                    Self::parse_pair_type,
+                    Token::RightArrow,
+                    &[Token::Newline, Token::Indent],
+                )?)
             } else {
                 None
             };
@@ -2217,6 +2297,7 @@ impl<'tokens> Parser<'tokens> {
     fn try_<T>(&mut self, f: impl FnOnce(&mut Self) -> Result<T>) -> Result<T> {
         let start_position = self.token_index;
         let diagnostic_count = self.diagnostics.len();
+        let unreported_errors = self.unreported_errors;
         let exprs_len = self.current_context.exprs.len();
         let patterns_len = self.current_context.patterns.len();
         let paths_len = self.current_context.paths.len();
@@ -2225,6 +2306,7 @@ impl<'tokens> Parser<'tokens> {
         if result.is_err() {
             self.token_index = start_position;
             self.diagnostics.truncate(diagnostic_count);
+            self.unreported_errors = unreported_errors;
             // Roll back any ids the failed branch pushed into the per-item context.
             // In addition to saving space, ante-ls iterates over all of these and
             // relies on them all being in the program.
@@ -2257,7 +2339,9 @@ impl<'tokens> Parser<'tokens> {
     fn parse_statement_trailing(&mut self, min_prec: i8, ban_do: bool) -> Result<ExprId> {
         let start = self.current_token_span();
 
-        if let Ok(definition) = self.try_(Self::parse_definition) {
+        if self.may_be_definition()
+            && let Ok(definition) = self.try_(Self::parse_definition)
+        {
             let end = self.previous_token_span();
             let location = start.to(&end).in_file(self.file_id);
             let expr = Expr::Definition(definition);
@@ -2637,6 +2721,7 @@ impl<'tokens> Parser<'tokens> {
         // so speculatively try to parse one when at a type name. We only commit to this
         // parse if the type is followed by `with`.
         if matches!(self.current_token(), Token::TypeName(_))
+            && self.may_be_named_constructor()
             && let Ok(constructor) = self.try_(|this| this.parse_named_constructor(ban_do))
         {
             return Ok(constructor);
@@ -2785,7 +2870,7 @@ impl<'tokens> Parser<'tokens> {
     fn parse_ident_id(&mut self) -> Result<NameId> {
         match self.current_token() {
             Token::Identifier(name) => {
-                let name = Arc::new(name.clone());
+                let name = name.clone();
                 let location = self.current_token_location();
                 self.advance();
                 Ok(self.push_name(name, location))
@@ -2803,7 +2888,14 @@ impl<'tokens> Parser<'tokens> {
     }
 
     fn parse_type_name_id(&mut self) -> Result<NameId> {
-        let name = Arc::new(self.parse_type_name()?);
+        let name = match self.current_token() {
+            Token::TypeName(name) => {
+                let name = name.clone();
+                self.advance();
+                name
+            },
+            _ => Arc::new(self.parse_type_name()?),
+        };
         let location = self.previous_token_location();
         Ok(self.push_name(name, location))
     }
@@ -2821,7 +2913,7 @@ impl<'tokens> Parser<'tokens> {
 
             let name = match this.current_token() {
                 Token::StringLiteral(name) => Ok(name.clone()),
-                Token::Identifier(name) => Ok(name.clone()),
+                Token::Identifier(name) => Ok(String::clone(name)),
                 _ => this.expected("an identifier or string for the name of this extern")?,
             }?;
             this.advance();

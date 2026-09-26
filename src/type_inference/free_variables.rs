@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, sync::Arc};
+use std::collections::BTreeSet;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -8,6 +8,7 @@ use crate::{
         cst,
         ids::{ExprId, NameId, PathId, PatternId},
     },
+    shared_arc::Shared,
     type_inference::{
         TypeChecker,
         errors::TypeErrorKind,
@@ -238,7 +239,7 @@ fn make_env_type_with_names(free_vars: &BTreeSet<NameId>, checker: &TypeChecker,
         // - Capture everything by move if it is a `move` closure
         if !is_move && checker.mutable_definitions.contains(name) {
             let place = checker.open_place(Place::Path(checker.binding_place(*name)));
-            Type::Application(Arc::new(Type::MUT), Arc::new(vec![place, typ]))
+            Type::Application(Shared::new(Type::MUT), Shared::new(vec![place, typ]))
         } else {
             typ
         }
@@ -250,5 +251,5 @@ fn make_env_type(free_vars: impl ExactSizeIterator<Item = Type>) -> Type {
     if free_vars.len() == 0 {
         return Type::Primitive(PrimitiveType::NoClosureEnv);
     }
-    Type::Tuple(Arc::new(free_vars.collect()))
+    Type::Tuple(Shared::new(free_vars.collect()))
 }

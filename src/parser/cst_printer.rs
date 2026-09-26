@@ -1,7 +1,6 @@
 use std::{
     collections::BTreeMap,
     fmt::{Display, Formatter},
-    sync::Arc,
 };
 
 use crate::{
@@ -12,6 +11,7 @@ use crate::{
         cst::{Argument, Constructor, For, Loop, LoopParameter, ReferenceKind, TopLevelItemKind, While},
         ids::{IdStore, NameId, PathId},
     },
+    shared_arc::Shared,
     type_inference::{
         patterns::DecisionTree,
         types::{self, NO_CLOSURE_ENV_STRING},
@@ -31,7 +31,7 @@ use super::{
 
 pub struct CstDisplayContext<'a> {
     cst: &'a Cst,
-    context: &'a BTreeMap<TopLevelId, Arc<TopLevelContext>>,
+    context: &'a BTreeMap<TopLevelId, Shared<TopLevelContext>>,
     config: CstDisplayConfig<'a>,
 }
 
@@ -53,14 +53,14 @@ pub struct CstDisplayConfig<'db> {
 }
 
 impl Cst {
-    pub fn display<'a>(&'a self, context: &'a BTreeMap<TopLevelId, Arc<TopLevelContext>>) -> CstDisplayContext<'a> {
+    pub fn display<'a>(&'a self, context: &'a BTreeMap<TopLevelId, Shared<TopLevelContext>>) -> CstDisplayContext<'a> {
         CstDisplayContext { cst: self, context, config: CstDisplayConfig::default() }
     }
 
     /// Display this Cst, annotating each name with a number pointing to its
     /// resolved definition
     pub fn display_resolved<'a>(
-        &'a self, context: &'a BTreeMap<TopLevelId, Arc<TopLevelContext>>, compiler: &'a Db,
+        &'a self, context: &'a BTreeMap<TopLevelId, Shared<TopLevelContext>>, compiler: &'a Db,
     ) -> CstDisplayContext<'a> {
         let config = CstDisplayConfig { show_resolved: true, db: Some(compiler), ..Default::default() };
         CstDisplayContext { cst: self, context, config }
@@ -68,7 +68,7 @@ impl Cst {
 
     /// Display this Cst, annotating each name with its type
     pub fn display_typed<'a>(
-        &'a self, context: &'a BTreeMap<TopLevelId, Arc<TopLevelContext>>, compiler: &'a Db,
+        &'a self, context: &'a BTreeMap<TopLevelId, Shared<TopLevelContext>>, compiler: &'a Db,
     ) -> CstDisplayContext<'a> {
         let config = CstDisplayConfig { show_types: true, db: Some(compiler), ..Default::default() };
         CstDisplayContext { cst: self, context, config }
@@ -190,7 +190,7 @@ impl<'a> Display for TypeDisplayContext<'a> {
 struct CstDisplay<'a> {
     indent_level: u32,
     current_item_id: Option<TopLevelId>,
-    context: &'a BTreeMap<TopLevelId, Arc<TopLevelContext>>,
+    context: &'a BTreeMap<TopLevelId, Shared<TopLevelContext>>,
     config: CstDisplayConfig<'a>,
 }
 
@@ -201,7 +201,7 @@ impl<'a> Display for CstDisplayContext<'a> {
 }
 
 impl<'a> CstDisplay<'a> {
-    fn new(context: &'a BTreeMap<TopLevelId, Arc<TopLevelContext>>, config: CstDisplayConfig<'a>) -> Self {
+    fn new(context: &'a BTreeMap<TopLevelId, Shared<TopLevelContext>>, config: CstDisplayConfig<'a>) -> Self {
         Self { context, current_item_id: None, indent_level: 0, config }
     }
 

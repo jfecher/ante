@@ -14,6 +14,7 @@ use crate::{
         cst::{self, Name, Pattern, TopLevelItemKind},
         ids::{ExprId, NameId, PatternId},
     },
+    shared_arc::Shared,
     type_inference::{
         Locateable, TypeChecker,
         Variance::Covariant,
@@ -129,7 +130,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// In the case a matching implicit value cannot be found, an error is issued and an error
     /// expression is slotted in as the argument instead.
     pub(super) fn implicit_parameter_coercion(
-        &mut self, actual: Arc<FunctionType>, expected: Arc<FunctionType>, function: ExprId, call: Option<ExprId>,
+        &mut self, actual: Shared<FunctionType>, expected: Shared<FunctionType>, function: ExprId, call: Option<ExprId>,
     ) -> Option<CoercionKind> {
         let actual_flags = actual.parameters.iter().map(|parameter| parameter.is_implicit);
         let expected_flags = expected.parameters.iter().map(|parameter| parameter.is_implicit);
@@ -166,7 +167,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
 
         if call.is_some() {
-            let new_fn = Type::Function(Arc::new(FunctionType {
+            let new_fn = Type::Function(Shared::new(FunctionType {
                 parameters: new_expected,
                 environment: expected.environment.clone(),
                 return_type: expected.return_type.clone(),
@@ -212,7 +213,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         };
 
         let member_name = self.trait_member_name(path);
-        let method_type = Type::Function(Arc::new(method));
+        let method_type = Type::Function(Shared::new(method));
         self.trait_member_access(function, object, &member_name, member.index, method_type.clone());
         Some((method_type, explicit_dictionary))
     }
@@ -427,7 +428,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 }
             }
             if !progressed || still_pending.is_empty() {
-                break still_pending;
+                break mapvec(still_pending, |(implicit, error)| {
+                    (implicit, self.implicit_error_diagnostic(error, &implicit))
+                });
             }
             pending = still_pending.into_iter().map(|(implicit, _)| implicit).collect();
         };
@@ -661,20 +664,44 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// across nested & repeated calls.
     fn find_implicit_value(
         &mut self, implicit: DelayedImplicit, implicits_in_local_scope: &[NameId],
-    ) -> Result<(), Diagnostic> {
+    ) -> Result<(), ImplicitError> {
         // TODO: This prevents infinite recursion but still slows us down when searching for an implicit
         // N levels deep. We could check for `Type::ERROR` object/implicit types to help catch this early.
         let arbitrary_recursion_limit = 8;
         // The type bindings parameter is for recursive calls when we need to find implicits
         // to slot in for another implicit function's arguments.
         let no_bindings = TypeBindings::default();
-        self.find_implicit_value_inner(implicit, implicits_in_local_scope, &no_bindings, arbitrary_recursion_limit)
+
+        // Local implicits' types may still be refined, so only searches without them are cached
+        let mut cacheable = implicits_in_local_scope.is_empty();
+        if cacheable
+            && let Some(error) = self.failed_implicit_searches.get(&implicit.destination)
+            && error.target_type() == &self.expr_types[&implicit.destination].follow_all(&self.bindings)
+        {
+            return Err(error.clone());
+        }
+
+        let result = self.find_implicit_value_inner(
+            implicit,
+            implicits_in_local_scope,
+            &no_bindings,
+            &mut cacheable,
+            arbitrary_recursion_limit,
+        );
+
+        if let Err(error) = &result
+            && cacheable
+            && !matches!(error, ImplicitError::Multiple(..))
+        {
+            self.failed_implicit_searches.insert(implicit.destination, error.clone());
+        }
+        result
     }
 
     fn find_implicit_value_inner(
         &mut self, implicit: DelayedImplicit, implicits_in_local_scope: &[NameId], type_bindings: &TypeBindings,
-        fuel: u32,
-    ) -> Result<(), Diagnostic> {
+        cacheable: &mut bool, fuel: u32,
+    ) -> Result<(), ImplicitError> {
         let target_type = self.expr_types[&implicit.destination].clone();
         let target_type = target_type.follow_all_two(&self.bindings, type_bindings);
 
@@ -685,7 +712,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // Searching with unbound type variables could bind them to whichever impl happens to
         // match, which can change the inferred type of types in optional implicits.
         if implicit.optional && target_type.has_unbound_type_variables(&self.bindings) {
-            return Err(self.no_implicit_found_error(&target_type, parameter_index, function));
+            return Err(ImplicitError::NotFound(target_type));
         }
 
         // If every argument of the target type is an unbound type variable, any implicit
@@ -718,6 +745,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 function,
                 implicits_in_local_scope,
                 type_bindings,
+                cacheable,
                 fuel,
             );
         }
@@ -729,7 +757,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             let visible_implicits = VisibleImplicits(item.source_file).get(self.compiler);
 
             if unbound && !visible_implicits.at_most_1_candidate(&target_type) {
-                return Err(self.ambiguous_implicits_error(&target_type, parameter_index, function));
+                return Err(ImplicitError::Ambiguous(target_type));
             }
 
             visible_implicits.iter_possibly_matching_impls(&target_type, |name, name_id| {
@@ -739,6 +767,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     return true;
                 }
 
+                // Types of items in this SCC aren't generalized yet and may still be refined
+                if self.item_types.contains_key(name_id) {
+                    *cacheable = false;
+                }
                 let (name_type, impl_bindings) = self.type_and_bindings_of_top_level_name(name_id);
 
                 let origin = Origin::TopLevelDefinition(*name_id);
@@ -753,6 +785,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     function,
                     implicits_in_local_scope,
                     type_bindings,
+                    cacheable,
                     fuel,
                 );
                 false
@@ -760,14 +793,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
 
         if candidates.is_empty() {
-            Err(self.no_implicit_found_error(&target_type, parameter_index, function))
+            Err(ImplicitError::NotFound(target_type))
         } else if candidates.len() == 1 {
             let candidate = candidates.remove(0);
             let location = function.locate(self);
             self.create_implicit_argument_expr(candidate, destination, location);
             Ok(())
         } else {
-            Err(self.multiple_matching_implicits_error(candidates, &target_type, parameter_index, function))
+            Err(ImplicitError::Multiple(candidates, target_type))
         }
     }
 
@@ -790,7 +823,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     fn check_implicit_candidate(
         &mut self, implicit_type: Type, instantiation_bindings: Option<Vec<Type>>, target_type: &Type, name: Name,
         origin: Origin, candidates: &mut Vec<Candidate>, parameter_index: usize, function: ExprId,
-        implicits_in_local_scope: &[NameId], type_bindings: &TypeBindings, fuel: u32,
+        implicits_in_local_scope: &[NameId], type_bindings: &TypeBindings, cacheable: &mut bool, fuel: u32,
     ) {
         match self.implicit_type_matches(&implicit_type, target_type, type_bindings) {
             // Prevent infinite recursion
@@ -819,7 +852,13 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                             DelayedImplicit { source: function, destination, parameter_index, optional: false };
 
                         if self
-                            .find_implicit_value_inner(implicit, implicits_in_local_scope, &type_bindings, fuel - 1)
+                            .find_implicit_value_inner(
+                                implicit,
+                                implicits_in_local_scope,
+                                &type_bindings,
+                                cacheable,
+                                fuel - 1,
+                            )
                             .is_ok()
                         {
                             arguments.push(cst::Argument::implicit(destination));
@@ -864,6 +903,18 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             }
         } else {
             ImplicitMatch::NoMatch
+        }
+    }
+
+    /// Create a [Diagnostic] from the given [ImplicitError]
+    fn implicit_error_diagnostic(&self, error: ImplicitError, implicit: &DelayedImplicit) -> Diagnostic {
+        let (index, function) = (implicit.parameter_index, implicit.source);
+        match error {
+            ImplicitError::NotFound(typ) => self.no_implicit_found_error(&typ, index, function),
+            ImplicitError::Ambiguous(typ) => self.ambiguous_implicits_error(&typ, index, function),
+            ImplicitError::Multiple(candidates, typ) => {
+                self.multiple_matching_implicits_error(candidates, &typ, index, function)
+            },
         }
     }
 
@@ -1118,10 +1169,27 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     }
 }
 
+/// A failed implicit search along with the followed target type
+#[derive(Clone)]
+pub(super) enum ImplicitError {
+    NotFound(Type),
+    Ambiguous(Type),
+    Multiple(Vec<Candidate>, Type),
+}
+
+impl ImplicitError {
+    fn target_type(&self) -> &Type {
+        match self {
+            ImplicitError::NotFound(typ) | ImplicitError::Ambiguous(typ) | ImplicitError::Multiple(_, typ) => typ,
+        }
+    }
+}
+
 /// Candidates when searching for an implicit value.
 /// Contains the name, origin, instantiation type bindings, type for the implicit, along with any arguments to
 /// call it with (if any) if we should call this implicit for its return value.
-struct Candidate {
+#[derive(Clone)]
+pub(super) struct Candidate {
     name: Name,
     origin: Origin,
     instantiation_bindings: Option<Vec<Type>>,
@@ -1138,7 +1206,7 @@ struct Candidate {
 enum ImplicitMatch {
     NoMatch,
     MatchedAsIs(TypeBindings),
-    Call(Arc<FunctionType>, TypeBindings),
+    Call(Shared<FunctionType>, TypeBindings),
 }
 
 /// Which `actual` implicits `expected` omits and whether `expected` has leftovers, or `None` if it has too few

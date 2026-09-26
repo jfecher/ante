@@ -1,7 +1,4 @@
-use std::{
-    borrow::Cow,
-    sync::{Arc, LazyLock},
-};
+use std::{borrow::Cow, sync::LazyLock};
 
 use inc_complete::DbGet;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -20,6 +17,7 @@ use crate::{
         desugar_context::DesugarContext,
         ids::{NameId, NameStore, TopLevelName},
     },
+    shared_arc::Shared,
     type_inference::{
         TypeChecker,
         generics::Generic,
@@ -58,20 +56,20 @@ pub enum Type {
     /// version so we use a BTreeMap internally then freeze it in an Arc when finished to be
     /// able to access it from other threads.
     Variable(TypeVariableId),
-    Function(Arc<FunctionType>),
-    Application(Arc<Type>, Arc<Vec<Type>>),
+    Function(Shared<FunctionType>),
+    Application(Shared<Type>, Shared<Vec<Type>>),
     UserDefined(Origin),
 
     /// A polytype such as `forall a. fn a -> a`.
     /// During unification the ordering of the type variables matters.
     /// `forall a b. (a, b)` will not unify with `forall b a. (a, b)`
-    Forall(Arc<Vec<Generic>>, Arc<Type>),
+    Forall(Shared<Vec<Generic>>, Shared<Type>),
 
     /// This is an internal type only created when handling closure environments.
     /// Most tuple types in source code refer to the `,` type defined in the prelude. While they
     /// could use this type instead, using a UserDefinedType for them lets us reuse the existing
     /// mechanisms to automatically define their constructor and retrieve their fields.
-    Tuple(Arc<Vec<Type>>),
+    Tuple(Shared<Vec<Type>>),
 
     /// A type-level U32 constant, used as the length parameter of [PrimitiveType::Array].
     /// Has [Kind::U32].
@@ -193,7 +191,7 @@ impl Type {
     pub fn retarget_user_defined(&self, new_name: TopLevelName) -> Type {
         match self {
             Type::Application(_, args) => {
-                Type::Application(Arc::new(Type::UserDefined(Origin::TopLevelDefinition(new_name))), args.clone())
+                Type::Application(Shared::new(Type::UserDefined(Origin::TopLevelDefinition(new_name))), args.clone())
             },
             _ => Type::UserDefined(Origin::TopLevelDefinition(new_name)),
         }
@@ -370,7 +368,7 @@ impl Type {
                     return None;
                 }
 
-                Some(Type::Function(Arc::new(FunctionType {
+                Some(Type::Function(Shared::new(FunctionType {
                     parameters: parameters.unwrap_or_else(|| function.parameters.clone()),
                     environment: environment.unwrap_or_else(|| function.environment.clone()),
                     return_type: return_type.unwrap_or_else(|| function.return_type.clone()),
@@ -383,17 +381,17 @@ impl Type {
                 if new_constructor.is_none() && new_args.is_none() {
                     return None;
                 }
-                let constructor = new_constructor.map(Arc::new).unwrap_or_else(|| constructor.clone());
-                let args = new_args.map(Arc::new).unwrap_or_else(|| args.clone());
+                let constructor = new_constructor.map(Shared::new).unwrap_or_else(|| constructor.clone());
+                let args = new_args.map(Shared::new).unwrap_or_else(|| args.clone());
                 Some(Type::Application(constructor, args))
             },
             Type::Forall(generics, typ) => {
                 let typ = typ.follow_all_opt(bindings, more_bindings)?;
-                Some(Type::Forall(generics.clone(), Arc::new(typ)))
+                Some(Type::Forall(generics.clone(), Shared::new(typ)))
             },
             Type::Tuple(elements) => {
                 let new_elements = Self::follow_all_each(elements, |t| t.follow_all_opt(bindings, more_bindings))?;
-                Some(Type::Tuple(Arc::new(new_elements)))
+                Some(Type::Tuple(Shared::new(new_elements)))
             },
             Type::Effects(effects) => {
                 let effects = Self::follow_all_each(effects.as_ref()?, |e| e.follow_all_opt(bindings, more_bindings))?;
@@ -459,7 +457,7 @@ impl Type {
                 {
                     return None;
                 }
-                Some(Type::Function(Arc::new(FunctionType {
+                Some(Type::Function(Shared::new(FunctionType {
                     parameters: parameters.unwrap_or_else(|| function.parameters.clone()),
                     environment: environment.unwrap_or_else(|| function.environment.clone()),
                     return_type: return_type.unwrap_or_else(|| function.return_type.clone()),
@@ -474,8 +472,8 @@ impl Type {
                 if new_constructor.is_none() && new_args.is_none() && !self_is_var {
                     return None;
                 }
-                let constructor = new_constructor.map(Arc::new).unwrap_or_else(|| constructor.clone());
-                let args = new_args.map(Arc::new).unwrap_or_else(|| args.clone());
+                let constructor = new_constructor.map(Shared::new).unwrap_or_else(|| constructor.clone());
+                let args = new_args.map(Shared::new).unwrap_or_else(|| args.clone());
                 Some(Type::Application(constructor, args))
             },
             Type::Forall(generics, typ) => {
@@ -500,7 +498,7 @@ impl Type {
                     return None;
                 }
                 let elements = new_elements.unwrap_or_else(|| elements.to_vec());
-                Some(Type::Tuple(Arc::new(elements)))
+                Some(Type::Tuple(Shared::new(elements)))
             },
             Type::Effects(effects) => {
                 let new_effects = effects.as_ref().and_then(|effects| {
@@ -565,7 +563,7 @@ impl Type {
     /// Otherwise, return the non-forall type as is.
     fn remove_forall(self) -> Type {
         match self {
-            Type::Forall(_, typ) => Arc::unwrap_or_clone(typ),
+            Type::Forall(_, typ) => Shared::unwrap_or_clone(typ),
             other => other,
         }
     }
@@ -800,7 +798,7 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
 
                 let effects = self.convert_effects_clause(function.effects.as_deref());
 
-                let f = Type::Function(Arc::new(FunctionType { parameters, environment, return_type, effects }));
+                let f = Type::Function(Shared::new(FunctionType { parameters, environment, return_type, effects }));
                 (f, Kind::Type)
             },
             crate::parser::cst::TypeKind::Error => (Type::ERROR, Kind::Error),
@@ -833,7 +831,7 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
                     }
                 }
 
-                let typ = Type::Application(Arc::new(f), Arc::new(converted_args));
+                let typ = Type::Application(Shared::new(f), Shared::new(converted_args));
                 (typ, result_kind)
             },
             crate::parser::cst::TypeKind::Reference(kind) => {
@@ -843,7 +841,7 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
             crate::parser::cst::TypeKind::Pointer => (Type::POINTER, Kind::from_args(vec![Kind::Type])),
             crate::parser::cst::TypeKind::Tuple(elements) => {
                 let elements = mapvec(elements, |t| self.convert_with_kind(t, Kind::Type));
-                (Type::Tuple(Arc::new(elements)), Kind::Type)
+                (Type::Tuple(Shared::new(elements)), Kind::Type)
             },
             crate::parser::cst::TypeKind::Hole if self.insert_implicit_type_vars => {
                 let typ = Type::Variable(TypeVariableId(*self.next_id));
@@ -915,7 +913,7 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
     /// Convert an effects clause into an effect row; `None` is open or closed per `self.open_effects_by_default`.
     fn convert_effects_clause(&mut self, effects: Option<&[cst::Type]>) -> Type {
         match effects {
-            None if self.open_effects_by_default => Type::Effects(Some(Arc::new(vec![self.next_type_variable()]))),
+            None if self.open_effects_by_default => Type::Effects(Some(Shared::new(vec![self.next_type_variable()]))),
             None => Type::pure(),
             Some(list) => self.convert_effect_row_entries(list),
         }
@@ -964,7 +962,7 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
     }
 
     fn expand_alias(
-        &mut self, name: TopLevelName, ctx: Arc<DesugarContext>, definition: &cst::TypeDefinition, args: &[Type],
+        &mut self, name: TopLevelName, ctx: Shared<DesugarContext>, definition: &cst::TypeDefinition, args: &[Type],
         convert_body: impl FnOnce(&mut TypeConverter) -> Type,
     ) -> Option<Type> {
         if self.visited.contains(&name) {
@@ -1055,7 +1053,7 @@ impl Type {
         } else {
             let substitutions = free_vars.iter().map(|var| (*var, Type::Generic(*var))).collect();
             let typ = self.substitute(&substitutions, bindings);
-            Type::Forall(Arc::new(free_vars), Arc::new(typ))
+            Type::Forall(Shared::new(free_vars), Shared::new(typ))
         }
     }
 
@@ -1100,7 +1098,7 @@ impl Type {
         } else {
             body.substitute(&declared_substitutions, &TypeBindings::default())
         };
-        (seeded, Type::Forall(Arc::new(new_generics), Arc::new(declared_body)))
+        (seeded, Type::Forall(Shared::new(new_generics), Shared::new(declared_body)))
     }
 
     /// Collect each [Type::Generic] with [Kind::Place].
@@ -1304,7 +1302,7 @@ impl Type {
     }
 
     /// If this is a type application, return the constructor and arguments
-    pub fn as_application(&self) -> Option<(&Arc<Type>, &Arc<Vec<Type>>)> {
+    pub fn as_application(&self) -> Option<(&Shared<Type>, &Shared<Vec<Type>>)> {
         match self {
             Type::Application(constructor, args) => Some((constructor, args)),
             _ => None,
@@ -1581,7 +1579,7 @@ where
     }
 
     fn fmt_effects(
-        &self, effects: &Option<Arc<Vec<Type>>>, parenthesize: bool, f: &mut std::fmt::Formatter,
+        &self, effects: &Option<Shared<Vec<Type>>>, parenthesize: bool, f: &mut std::fmt::Formatter,
     ) -> std::fmt::Result {
         let effects = self.canonicalize(effects);
         match effects.as_slice() {
@@ -1592,7 +1590,7 @@ where
     }
 
     /// Canonicalize a row for printing
-    fn canonicalize(&self, effects: &Option<Arc<Vec<Type>>>) -> Vec<Type> {
+    fn canonicalize(&self, effects: &Option<Shared<Vec<Type>>>) -> Vec<Type> {
         let effects = effects.as_deref().map_or(&[][..], Vec::as_slice);
         Type::canonicalize_effects(effects, self.bindings, &Default::default())
     }

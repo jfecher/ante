@@ -4,13 +4,14 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
     diagnostics::Location,
-    incremental::{ExportedTypes, GetItemRaw},
+    incremental::{ExportedTypes, GetItemRaw, RawItem},
     iterator_extensions::mapvec,
     name_resolution::Origin,
     parser::{
         cst::{Expr, ReferenceKind, TopLevelItemKind},
         ids::{ExprId, NameId, TopLevelName},
     },
+    shared_arc::Shared,
     type_inference::{
         Locateable, TypeChecker,
         types::{PrimitiveType, Type},
@@ -239,7 +240,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     fn copy_type(&mut self, typ: Type) -> Type {
         let copy_name = self.get_copy_type_name();
         let copy_constructor = Type::UserDefined(Origin::TopLevelDefinition(copy_name));
-        Type::Application(Arc::new(copy_constructor), Arc::new(vec![typ]))
+        Type::Application(Shared::new(copy_constructor), Shared::new(vec![typ]))
     }
 
     /// Returns true if `typ` is known to implement `Copy`.
@@ -277,7 +278,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Type::Application(constructor, _) => self.is_ability(constructor),
             Type::UserDefined(origin) => match origin {
                 Origin::TopLevelDefinition(name) => {
-                    let (item, _) = GetItemRaw(name.top_level_item).get(self.compiler);
+                    let RawItem(item, _) = GetItemRaw(name.top_level_item).get(self.compiler);
                     matches!(&item.kind, TopLevelItemKind::TraitDefinition(_) | TopLevelItemKind::EffectDefinition(_))
                 },
                 _ => false,
@@ -291,7 +292,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         match typ.follow(&self.bindings) {
             Type::Application(constructor, _) => self.shared_type_flags(constructor),
             Type::UserDefined(Origin::TopLevelDefinition(name)) => {
-                let (item, _) = GetItemRaw(name.top_level_item).get(self.compiler);
+                let RawItem(item, _) = GetItemRaw(name.top_level_item).get(self.compiler);
                 match &item.kind {
                     TopLevelItemKind::TypeDefinition(td) => Some((td.shared, td.mutable)),
                     _ => None,

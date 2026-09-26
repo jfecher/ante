@@ -2,14 +2,15 @@ use std::{borrow::Cow, collections::BTreeMap, sync::Arc};
 
 use crate::{
     diagnostics::{Diagnostic, Location, UnimplementedItem},
-    incremental::{AllDefinitions, ExportedDefinitions, GetItem, GetItemRaw, GetType, Resolve},
+    incremental::{AllDefinitions, ExportedDefinitions, GetItem, GetItemRaw, GetType, RawItem, Resolve},
     iterator_extensions::{map, mapvec},
     lexer::token::Integer,
-    name_resolution::{Origin, TraitMember, origin_of_top_level_definition, builtin::Builtin, namespace::SourceFileId},
+    name_resolution::{Origin, TraitMember, builtin::Builtin, namespace::SourceFileId, origin_of_top_level_definition},
     parser::{
         cst::{self, Definition, Expr, Literal, Pattern, ReferenceKind},
         ids::{ExprId, NameId, PathId, PatternId, TopLevelId, TopLevelName},
     },
+    shared_arc::Shared,
     type_inference::{
         Locateable, TypeChecker, Variance,
         errors::TypeErrorKind,
@@ -249,7 +250,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 let expected_function_type = if args.is_empty() {
                     expected.clone()
                 } else {
-                    Type::Function(Arc::new(FunctionType {
+                    Type::Function(Shared::new(FunctionType {
                         parameters: parameters.clone(),
                         // Any type constructor we can match on shouldn't be a closure
                         environment: Type::NO_CLOSURE_ENV,
@@ -397,7 +398,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         self.current_extended_context_mut().insert_expr(expr, wrapper);
 
         let effects = self.fresh_effect_row();
-        let wrapper_type = Type::Function(Arc::new(FunctionType { effects, ..(*function_type).clone() }));
+        let wrapper_type = Type::Function(Shared::new(FunctionType { effects, ..(*function_type).clone() }));
         self.infer_expr(expr, &wrapper_type)
     }
 
@@ -413,7 +414,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let mut dictionary_type = Type::UserDefined(Origin::TopLevelDefinition(trait_name));
         if member.generic_count != 0 {
             let arguments = (0..member.generic_count).map(|_| self.next_type_variable()).collect();
-            dictionary_type = Type::Application(Arc::new(dictionary_type), Arc::new(arguments));
+            dictionary_type = Type::Application(Shared::new(dictionary_type), Shared::new(arguments));
         }
         let member_name = self.trait_member_name(path);
         let Some((field_type, _)) = self.get_field_types(&dictionary_type, None).get(&member_name).cloned() else {
@@ -541,7 +542,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Type::UserDefined(Origin::TopLevelDefinition(id)) => {
                 // We found which type this name belongs to, but if it is a variant we have to
                 // check which constructor we want.
-                let (_, item_context) = GetItemRaw(id.top_level_item).get(self.compiler);
+                let RawItem(_, item_context) = GetItemRaw(id.top_level_item).get(self.compiler);
                 let resolve = Resolve(id.top_level_item).get(self.compiler);
                 let name_id = resolve
                     .top_level_names
@@ -599,7 +600,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             mapvec(&call.arguments, |arg| ParameterType::new(self.next_type_variable(), arg.is_implicit));
 
         let effects_var = self.fresh_effect_row();
-        let mut expected_function_type = Arc::new(FunctionType {
+        let mut expected_function_type = Shared::new(FunctionType {
             parameters: expected_parameter_types.clone(),
             environment: self.next_type_variable(),
             return_type: expected.clone(),
@@ -611,7 +612,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         };
 
         let actual_return_type = self.next_type_variable();
-        Arc::make_mut(&mut expected_function_type).return_type = actual_return_type.clone();
+        Shared::make_mut(&mut expected_function_type).return_type = actual_return_type.clone();
 
         // This coerce covers inserting any necessary implicit arguments to this function call
         self.coerce(
@@ -761,7 +762,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 let environment = self.next_type_variable();
                 let return_type = self.next_type_variable();
                 let effects = self.effects_from_lambda_clause(lambda);
-                let new_type = Arc::new(FunctionType { parameters, environment, return_type, effects });
+                let new_type = Shared::new(FunctionType { parameters, environment, return_type, effects });
                 let function_type = Type::Function(new_type.clone());
                 self.unify(expected, &function_type, TypeErrorKind::Lambda { expected_parameter_count }, expr);
                 new_type
@@ -885,11 +886,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Returns the method's name, function type, and optional generic bindings.
     fn resolve_method_for_type(
         &mut self, struct_type: &Type, member: &str,
-    ) -> Option<(TopLevelName, Arc<FunctionType>, Option<Vec<Type>>)> {
+    ) -> Option<(TopLevelName, Shared<FunctionType>, Option<Vec<Type>>)> {
         let (source_file, type_top_level_id) = self.find_type_info(struct_type)?;
 
         // Only resolve methods on actual type definitions, not on traits or effects
-        let (item, _) = GetItemRaw(type_top_level_id).get(self.compiler);
+        let RawItem(item, _) = GetItemRaw(type_top_level_id).get(self.compiler);
         if !matches!(item.kind, cst::TopLevelItemKind::TypeDefinition(_)) {
             return None;
         }
@@ -1073,7 +1074,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 },
             };
 
-            return Type::Application(Arc::new(constructor), Arc::new(vec![place, element]));
+            return Type::Application(Shared::new(constructor), Shared::new(vec![place, element]));
         }
 
         // Use the expected element type as a hint when it is available
@@ -1085,7 +1086,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let element = self.infer_expr(reference.rhs, &element_hint);
 
         let place = self.infer_place(reference.rhs);
-        Type::Application(Arc::new(constructor), Arc::new(vec![place, element]))
+        Type::Application(Shared::new(constructor), Shared::new(vec![place, element]))
     }
 
     fn infer_constructor(&mut self, constructor: &cst::Constructor, expected: &Type, id: ExprId) -> Type {
@@ -1095,7 +1096,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let required_argument_count = kind.required_argument_count();
         if required_argument_count != 0 {
             let args = mapvec(0..required_argument_count, |_| self.next_type_variable());
-            typ = Type::Application(Arc::new(typ), Arc::new(args));
+            typ = Type::Application(Shared::new(typ), Shared::new(args));
 
             // TODO: Is this tested?
             // Eagerly unify with expected so fields below check against concrete types. The caller reports any errors later.
@@ -1134,7 +1135,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // The parser wraps the handled expression in `fn () -> <body>` to serve as the
         // coroutine's init function.
         let body_row = self.fresh_effect_row();
-        let body_type = Type::Function(Arc::new(FunctionType {
+        let body_type = Type::Function(Shared::new(FunctionType {
             parameters: vec![ParameterType::explicit(Type::UNIT)],
             environment: self.next_type_variable(),
             return_type: result_type.clone(),
@@ -1157,7 +1158,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             let e = self.next_type_variable();
 
             // The effect operation is now an ordinary top-level function (see `build_method_types`).
-            let function_type = Type::Function(Arc::new(FunctionType {
+            let function_type = Type::Function(Shared::new(FunctionType {
                 parameters: parameter_types.clone(),
                 environment: Type::NO_CLOSURE_ENV,
                 return_type: r.clone(),
@@ -1175,7 +1176,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
             // resume is a closure capturing its environment by reference.
             // The coroutine lowering pass supplies a closure with an env pointing to `(coro, handlers..)`.
-            let resume_type = Type::Function(Arc::new(FunctionType {
+            let resume_type = Type::Function(Shared::new(FunctionType {
                 parameters: vec![ParameterType::explicit(r)],
                 environment: Type::Primitive(types::PrimitiveType::Pointer),
                 return_type: result_type.clone(),
@@ -1185,7 +1186,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             let mut handler_params = parameter_types;
             handler_params.push(ParameterType::explicit(resume_type));
             let branch_row = self.fresh_effect_row();
-            let handler_type = Type::Function(Arc::new(FunctionType {
+            let handler_type = Type::Function(Shared::new(FunctionType {
                 parameters: handler_params,
                 environment: self.next_type_variable(),
                 return_type: result_type.clone(),
@@ -1269,7 +1270,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             let Expr::Reference(reference) = &new_expr else { unreachable!() };
             let place = self.infer_place(reference.rhs);
             let new_type =
-                Type::Application(Arc::new(Type::reference(ReferenceKind::Mut)), Arc::new(vec![place, lhs_type]));
+                Type::Application(Shared::new(Type::reference(ReferenceKind::Mut)), Shared::new(vec![place, lhs_type]));
             self.current_extended_context_mut().insert_expr(assignment.lhs, new_expr);
             self.expr_types.insert(assignment.lhs, new_type.clone());
             lhs_type = new_type;
@@ -1296,7 +1297,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         if let Some((_, op_expr)) = assignment.op {
             let implicit_count_before_op = self.delayed_implicits_count();
             let effects_var = self.fresh_effect_row();
-            let expected_fn_type = Type::Function(Arc::new(FunctionType {
+            let expected_fn_type = Type::Function(Shared::new(FunctionType {
                 parameters: vec![
                     ParameterType::explicit(value_type.clone()),
                     ParameterType::explicit(value_type.clone()),
@@ -1538,7 +1539,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         for element in elements {
             self.check_expr(*element, &element_type, TypeErrorKind::ArrayElement);
         }
-        let array_args = Arc::new(vec![Type::U32(elements.len() as u32), element_type]);
-        Type::Application(Arc::new(Type::ARRAY), array_args)
+        let array_args = Shared::new(vec![Type::U32(elements.len() as u32), element_type]);
+        Type::Application(Shared::new(Type::ARRAY), array_args)
     }
 }

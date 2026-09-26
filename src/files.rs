@@ -1,27 +1,37 @@
 use std::{
     fs::File,
-    io::{Read, Write},
-    path::{Path, PathBuf},
+    io::{BufWriter, Read, Write},
+    path::PathBuf,
+    sync::OnceLock,
 };
 
 use crate::incremental::Db;
 
+/// The incremental metadata file along with the state it was loaded in
+pub struct MetadataFile {
+    path: PathBuf,
+
+    /// The compiler version loaded, if any
+    loaded_version: Option<u32>,
+}
+
 /// Deserialize the compiler from our metadata file, returning it along with the file.
 ///
 /// If we fail, just default to a fresh compiler with no cached compilations.
-pub fn make_compiler(source_files: &[PathBuf], incremental: bool) -> (Db, Option<PathBuf>) {
+pub fn make_compiler(source_files: &[PathBuf], incremental: bool) -> (Db, Option<MetadataFile>) {
     let (mut compiler, metadata_file) = if let Some(file) = source_files.first()
         && incremental
     {
-        let metadata_file = file.with_extension("inc");
-        let db = match read_binary_file(&metadata_file) {
-            Ok(bytes) => rmp_serde::from_slice(&bytes).unwrap_or_else(|error| {
-                eprintln!("warning: failed to load incremental cache `{}`: {error}", metadata_file.display());
-                Db::default()
-            }),
-            Err(_) => Db::default(),
-        };
-        (db, Some(metadata_file))
+        let path = file.with_extension("inc");
+        let db = read_binary_file(&path).ok().and_then(|bytes| {
+            // Ignore caches from other compiler versions
+            let bytes = bytes.strip_prefix(build_stamp())?;
+            let db = crate::shared_arc::with_sharing(|| postcard::from_bytes::<Db>(bytes));
+            db.inspect_err(|error| eprintln!("warning: failed to load incremental cache `{}`: {error}", path.display()))
+                .ok()
+        });
+        let loaded_version = db.as_ref().map(|db| db.version());
+        (db.unwrap_or_default(), Some(MetadataFile { path, loaded_version }))
     } else {
         (Db::default(), None)
     };
@@ -37,14 +47,36 @@ pub fn make_compiler(source_files: &[PathBuf], incremental: bool) -> (Db, Option
     (compiler, metadata_file)
 }
 
-/// This could be changed so that we only write if the metadata actually
-/// changed but to simplify things we just always write.
-pub fn write_metadata(compiler: &Db, metadata_file: &Path) -> Result<(), String> {
-    let bytes = rmp_serde::to_vec(compiler).map_err(|error| format!("Failed to serialize database:\n{error}"))?;
+/// Write the compiler's cache to the metadata file, unless it is unchanged.
+pub fn write_metadata(compiler: &Db, metadata_file: &MetadataFile) -> Result<(), String> {
+    if metadata_file.loaded_version == Some(compiler.version()) && !crate::incremental::query_ran() {
+        return Ok(());
+    }
 
-    let mut file = File::create(metadata_file)
-        .map_err(|error| format!("Failed to create file `{}`:\n{error}", metadata_file.display()))?;
-    file.write_all(&bytes).map_err(|error| format!("Failed to write to file `{}`:\n{error}", metadata_file.display()))
+    // Written to a temporary file first so an interrupted write never leaves a truncated cache
+    let metadata_file = &metadata_file.path;
+    let temporary = metadata_file.with_extension("inc.tmp");
+    let write_error = |error| format!("Failed to write to file `{}`:\n{error}", temporary.display());
+
+    let file = File::create(&temporary).map_err(write_error)?;
+    let mut writer = BufWriter::with_capacity(1 << 20, file);
+    writer.write_all(build_stamp()).map_err(write_error)?;
+    crate::shared_arc::with_sharing(|| postcard::to_io(compiler, &mut writer))
+        .map_err(|error| format!("Failed to serialize database:\n{error}"))?;
+    writer.flush().map_err(write_error)?;
+
+    std::fs::rename(&temporary, metadata_file)
+        .map_err(|error| format!("Failed to replace `{}`:\n{error}", metadata_file.display()))
+}
+
+/// Prefix of each metadata file identifying the compiler build that wrote it
+fn build_stamp() -> &'static [u8] {
+    static STAMP: OnceLock<Vec<u8>> = OnceLock::new();
+    STAMP.get_or_init(|| {
+        let executable = std::env::current_exe().and_then(std::fs::metadata);
+        let (size, modified) = executable.map(|file| (file.len(), file.modified().ok())).unwrap_or_default();
+        format!("ante {} {size} {modified:?}\n", env!("CARGO_PKG_VERSION")).into_bytes()
+    })
 }
 
 pub(crate) fn read_file(file_name: &std::path::Path) -> Result<String, String> {
