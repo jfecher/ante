@@ -410,11 +410,31 @@ impl Definition {
                 Instruction::ArrayLen(_) => {
                     instr_assert_subtype!(*result_type, Type::int(IntegerKind::Usz), self, id, mir, "ArrayLen result must be Usz");
                 },
-                Instruction::StackAllocUninit(_) => {
-                    instr_assert_subtype!(*result_type, Type::POINTER, self, id, mir, "StackAllocUninit result must be a pointer");
+                Instruction::StackAllocUninit(_)
+                | Instruction::AllocShared(_)
+                | Instruction::GlobalAddress(_) => {
+                    instr_assert_subtype!(*result_type, Type::POINTER, self, id, mir, "Result must be a pointer");
                 },
-                Instruction::AllocShared(_) => {
-                    instr_assert_subtype!(*result_type, Type::POINTER, self, id, mir, "AllocShared result must be a pointer");
+                Instruction::StackAllocBytes(size) => {
+                    let size_type = mir.type_of_value(size, self);
+                    instr_assert_subtype!(size_type, Type::int(IntegerKind::Usz), self, id, mir, "StackAllocBytes size must be Usz");
+                    instr_assert_subtype!(*result_type, Type::POINTER, self, id, mir, "StackAllocBytes result must be a pointer");
+                },
+                Instruction::MemCopy { destination, source, size } => {
+                    let destination_type = mir.type_of_value(destination, self);
+                    let source_type = mir.type_of_value(source, self);
+                    let size_type = mir.type_of_value(size, self);
+                    instr_assert_subtype!(destination_type, Type::POINTER, self, id, mir, "MemCopy destination must be a pointer");
+                    instr_assert_subtype!(source_type, Type::POINTER, self, id, mir, "MemCopy source must be a pointer");
+                    instr_assert_subtype!(size_type, Type::int(IntegerKind::Usz), self, id, mir, "MemCopy size must be Usz");
+                    instr_assert_subtype!(*result_type, Type::UNIT, self, id, mir, "MemCopy result must be unit");
+                },
+                Instruction::PointerOffset { pointer, offset } => {
+                    let pointer_type = mir.type_of_value(pointer, self);
+                    let offset_type = mir.type_of_value(offset, self);
+                    instr_assert_subtype!(pointer_type, Type::POINTER, self, id, mir, "PointerOffset pointer must be a pointer");
+                    instr_assert_subtype!(offset_type, Type::int(IntegerKind::Usz), self, id, mir, "PointerOffset offset must be Usz");
+                    instr_assert_subtype!(*result_type, Type::POINTER, self, id, mir, "PointerOffset result must be a pointer");
                 },
                 Instruction::GetFieldPtr { struct_ptr, .. } => {
                     let ptr_type = mir.type_of_value(struct_ptr, self);

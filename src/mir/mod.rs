@@ -16,19 +16,29 @@ use std::sync::{
     atomic::{AtomicU32, Ordering},
 };
 
+use inc_complete::DbGet;
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rustc_hash::{FxHashMap, FxHashSet};
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    cli::GenericsStrategy,
+    incremental::{GetCrateGraph, GetItem, GetItemRaw, GetTypeBody, Parse, TypeCheck},
     iterator_extensions::mapvec,
     lexer::token::{F64, FloatKind, IntegerKind},
-    parser::{cst::Name, ids::TopLevelName},
+    mir::builder::build_initial_mir_with_shared_map,
+    parser::{
+        cst::Name,
+        ids::{TopLevelId, TopLevelName},
+    },
     vecmap::VecMap,
 };
 
 pub(crate) mod builder;
 mod display;
 mod effects;
+pub(crate) mod existentialization;
+mod inline;
 mod lower_closures;
 mod lower_evidence;
 pub(crate) mod monomorphization;
@@ -84,6 +94,68 @@ impl Mir {
         self.externals.retain(|k, _| !self.definitions.contains_key(k));
         self
     }
+}
+
+/// Lower the whole program's generics away with the given strategy
+pub(crate) fn lower_generics<Db>(compiler: &Db, strategy: crate::cli::GenericsStrategy) -> Mir
+where
+    Db: inc_complete::DbGet<crate::incremental::TypeCheck>
+        + inc_complete::DbGet<crate::incremental::GetItem>
+        + inc_complete::DbGet<crate::incremental::GetItemRaw>
+        + inc_complete::DbGet<crate::incremental::GetTypeBody>
+        + inc_complete::DbGet<crate::incremental::GetCrateGraph>
+        + inc_complete::DbGet<crate::incremental::Parse>
+        + inc_complete::DbGet<crate::incremental::TargetPointerSize>
+        + Sync,
+{
+    match strategy {
+        crate::cli::GenericsStrategy::Mono => monomorphization::monomorphize(compiler),
+        crate::cli::GenericsStrategy::Existential => existentialization::existentialize(compiler),
+    }
+}
+
+/// Collect all items in the program.
+/// This is discouraged since it limits parallelism but required for certain passes like
+/// monomorphization which need access to the entire program.
+pub(crate) fn collect_all_items<Db>(compiler: &Db) -> Vec<TopLevelId>
+where
+    Db: DbGet<GetCrateGraph> + DbGet<Parse>,
+{
+    let mut items = Vec::new();
+
+    for crate_ in GetCrateGraph.get(compiler).values() {
+        for file in crate_.source_files.values() {
+            let parse = Parse(*file).get(compiler);
+            for item in parse.cst.top_level_items.iter() {
+                items.push(item.id);
+            }
+        }
+    }
+    items
+}
+
+/// The whole program's effect-lowered MIR, the input to both monomorphization and existentialization
+pub(crate) fn build_effect_lowered_mir<Db>(compiler: &Db, generics: GenericsStrategy) -> Mir
+where
+    Db: DbGet<TypeCheck>
+        + DbGet<GetItem>
+        + DbGet<GetItemRaw>
+        + DbGet<GetTypeBody>
+        + DbGet<GetCrateGraph>
+        + DbGet<Parse>
+        + Sync,
+{
+    collect_all_items(compiler)
+        .into_par_iter()
+        .flat_map(|item| build_initial_mir_with_shared_map(compiler, item))
+        .fold(Mir::default, Mir::extend)
+        .reduce(Mir::default, Mir::extend)
+        .remove_internal_externs()
+        .remove_unreachable_functions()
+        .optimize_tail_resume()
+        .optimize_abort_handlers()
+        .lower_effects(generics == GenericsStrategy::Existential)
+        .inline_small_functions()
 }
 
 impl std::ops::Index<DefinitionId> for Mir {
@@ -157,14 +229,14 @@ impl Definition {
 
     /// Invoke `f` once for each [DefinitionId] this definition references
     pub fn for_each_referenced_definition(&self, mut f: impl FnMut(DefinitionId)) {
+        self.for_each_used_value(|value| {
+            if let Value::Definition(id) = value {
+                f(*id);
+            }
+        });
         for instruction in self.instructions.values() {
-            instruction.for_each_value(|value| {
-                if let Value::Definition(id) = value {
-                    f(*id);
-                }
-            });
             match instruction {
-                Instruction::Instantiate(id, _) => f(*id),
+                Instruction::Instantiate(id, _) | Instruction::GlobalAddress(id) => f(*id),
                 Instruction::Perform { effect_op, .. } => f(*effect_op),
                 Instruction::Handle { cases, .. } => {
                     for case in cases {
@@ -174,15 +246,54 @@ impl Definition {
                 _ => (),
             }
         }
-        for block in self.blocks.values() {
-            if let Some(terminator) = &block.terminator {
-                terminator.for_each_value(|value| {
-                    if let Value::Definition(id) = value {
-                        f(*id);
-                    }
-                });
-            }
+    }
+
+    /// The definition `value` refers to, with the bindings of its [Instruction::Instantiate] if any
+    pub fn definition_of(&self, value: Value) -> Option<(DefinitionId, Option<Arc<GenericBindings>>)> {
+        match self.follow_ids(value) {
+            Value::Definition(id) => Some((id, None)),
+            Value::InstructionResult(id) => match &self.instructions[id] {
+                Instruction::Instantiate(id, bindings) => Some((*id, Some(bindings.clone()))),
+                _ => None,
+            },
+            _ => None,
         }
+    }
+
+    /// The function and environment of closure field `index` of this global, if it is a constant tuple
+    pub fn constant_closure_field(&self, index: u32) -> Option<(Value, ConstantEnvironment)> {
+        let Some(TerminatorInstruction::Result(result)) = &self.entry_block().terminator else { return None };
+        let Value::InstructionResult(result) = self.follow_ids(*result) else { return None };
+        let Instruction::MakeTuple(fields) = &self.instructions[result] else { return None };
+        let Value::InstructionResult(field) = self.follow_ids(*fields.get(index as usize)?) else { return None };
+        let Instruction::PackClosure { function, environment } = &self.instructions[field] else { return None };
+        let environment = match self.follow_ids(*environment) {
+            Value::InstructionResult(id) => match &self.instructions[id] {
+                Instruction::Transmute(constant) if constant.is_constant() => ConstantEnvironment::Transmuted(*constant, id),
+                _ => ConstantEnvironment::Runtime,
+            },
+            constant if constant.is_constant() => ConstantEnvironment::Constant(constant),
+            _ => ConstantEnvironment::Runtime,
+        };
+        Some((*function, environment))
+    }
+
+    /// Invoke `f` on each value used by an instruction or terminator of this definition
+    pub fn for_each_used_value(&self, mut f: impl FnMut(&Value)) {
+        self.instructions.values().for_each(|instruction| instruction.for_each_value(&mut f));
+        for block in self.blocks.values() {
+            block.terminator.iter().for_each(|terminator| terminator.for_each_value(&mut f));
+        }
+    }
+
+    /// Follow `value` through any chain of [Instruction::Id]s
+    pub fn follow_ids(&self, mut value: Value) -> Value {
+        while let Value::InstructionResult(id) = value
+            && let Instruction::Id(inner) = &self.instructions[id]
+        {
+            value = *inner;
+        }
+        value
     }
 
     pub fn entry_block(&self) -> &Block {
@@ -214,12 +325,7 @@ impl Definition {
         }
         self.instruction_result_types.values_mut().for_each(&mut f);
         for instruction in self.instructions.values_mut() {
-            match instruction {
-                Instruction::StackAllocUninit(typ) | Instruction::SizeOf(typ) | Instruction::ArrayLen(typ) => f(typ),
-                Instruction::GetFieldPtr { struct_type, .. } => f(struct_type),
-                Instruction::Instantiate(_, bindings) => Arc::make_mut(bindings).iter_mut().for_each(&mut f),
-                _ => (),
-            }
+            instruction.for_each_type_mut(&mut f);
         }
     }
 
@@ -386,6 +492,10 @@ pub enum Value {
 }
 
 impl Value {
+    pub(crate) fn is_constant(&self) -> bool {
+        !matches!(self, Value::InstructionResult(_) | Value::Parameter(..) | Value::Definition(_) | Value::Error)
+    }
+
     /// Returns a value representing a union's tag.
     /// This should always be of type [Type::tag_type()]
     pub fn tag_value(value: u8) -> Value {
@@ -396,6 +506,9 @@ impl Value {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct DefinitionId(pub u32);
 
+/// The alignment of every [Instruction::StackAllocBytes], enough for any type
+pub(crate) const MAX_ALIGNMENT: u32 = 16;
+
 /// DefinitionIds are assigned in monotonically increasing order. These IDs are nondeterministic in
 /// practice due to this counter being used concurrently. As a result, anything using these ids
 /// should not be used as the input or result of an incremental computation.
@@ -404,6 +517,11 @@ static NEXT_DEFINITION_ID: AtomicU32 = AtomicU32::new(0);
 fn next_definition_id() -> DefinitionId {
     // Relaxed ordering since we only care the resulting id is unique
     DefinitionId(NEXT_DEFINITION_ID.fetch_add(1, Ordering::Relaxed))
+}
+
+/// Return the next definition id without incrementing it
+fn peek_next_definition_id() -> u32 {
+    NEXT_DEFINITION_ID.load(Ordering::Relaxed)
 }
 
 /// A basic block with linear control-flow until the terminator instruction which may branch.
@@ -426,7 +544,7 @@ impl Block {
 
 /// Memory ordering for atomic operations
 /// TODO: Use other variants besides SeqCst
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AtomicOrdering {
     #[allow(dead_code)]
     Relaxed,
@@ -440,7 +558,7 @@ pub enum AtomicOrdering {
 }
 
 /// The read-modify-write operation performed by [Instruction::AtomicRmw].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AtomicRmwOp {
     Xchg,
     Add,
@@ -531,6 +649,25 @@ pub enum Instruction {
     // TODO: Should we remove this in favor of StackAllocUninit + Store?
     StackAlloc(Value),
     StackAllocUninit(Type),
+
+    /// Allocate a runtime number of bytes on the stack aligned to [MAX_ALIGNMENT], returning a `Pointer`
+    StackAllocBytes(Value),
+
+    /// A `Pointer` to immutable static storage holding the value of the global definition
+    GlobalAddress(DefinitionId),
+
+    /// Copy `size` bytes from `source` to `destination`, which must not partially overlap
+    MemCopy {
+        destination: Value,
+        source: Value,
+        size: Value,
+    },
+
+    /// A `Pointer` `offset` (a `Usz`) bytes past `pointer`
+    PointerOffset {
+        pointer: Value,
+        offset: Value,
+    },
 
     /// Heap-allocate and store a shared value, returning its pointer.
     AllocShared(Value),
@@ -639,6 +776,15 @@ pub enum Instruction {
     },
 }
 
+/// The environment of a closure stored in a constant global, see [Definition::constant_closure_field]
+pub enum ConstantEnvironment {
+    Constant(Value),
+    /// A constant transmuted to the environment's type by the given instruction
+    Transmuted(Value, InstructionId),
+    /// Only known at runtime, so it must be read out of the function value
+    Runtime,
+}
+
 /// A handler case attached to an [Instruction::Handle]. Maps an effect operation
 /// (identified by its top-level [DefinitionId]) to the function that handles it.
 #[derive(Debug, Clone)]
@@ -647,41 +793,51 @@ pub struct HandlerCase {
     pub handler: Value,
 }
 
-impl Instruction {
-    pub fn for_each_value(&self, mut f: impl FnMut(&Value)) {
+/// Visits each operand of an instruction, by reference or mutable reference
+macro_rules! for_each_instruction_value {
+    ($self:expr, $f:expr, $iter:ident $(, $mut:tt)?) => {{
+        let mut f = $f;
         let mut two = |a, b| {
             f(a);
             f(b);
         };
-        match self {
+        match $self {
             Instruction::Call { function, arguments } => {
                 f(function);
-                arguments.iter().for_each(f);
+                arguments.$iter().for_each(f);
             },
             Instruction::CallClosure { closure: function, arguments } => {
                 f(function);
-                arguments.iter().for_each(f);
+                arguments.$iter().for_each(f);
             },
-            Instruction::Perform { effect_op: _, arguments } => arguments.iter().for_each(f),
+            Instruction::Perform { effect_op: _, arguments } => arguments.$iter().for_each(f),
             Instruction::Handle { body, cases } => {
                 f(body);
                 for case in cases {
-                    f(&case.handler);
+                    f(& $($mut)? case.handler);
                 }
             },
             Instruction::Capability => (),
             Instruction::LookupEvidence { evidence, key: _ } => f(evidence),
             Instruction::MakeEvidence { capabilities, rest } => {
-                capabilities.iter().for_each(|(_, value)| f(value));
-                rest.iter().for_each(&mut f);
+                capabilities.$iter().for_each(|(_, value)| f(value));
+                rest.$iter().for_each(&mut f);
             },
             Instruction::PackClosure { function, environment } => two(function, environment),
             Instruction::IndexTuple { tuple, index: _ } => f(tuple),
             Instruction::MakeBytes(_) => (),
-            Instruction::MakeTuple(elements) => elements.iter().for_each(f),
-            Instruction::MakeArray(elements) => elements.iter().for_each(f),
+            Instruction::MakeTuple(elements) => elements.$iter().for_each(f),
+            Instruction::MakeArray(elements) => elements.$iter().for_each(f),
             Instruction::StackAlloc(value) => f(value),
             Instruction::StackAllocUninit(_) => (),
+            Instruction::StackAllocBytes(size) => f(size),
+            Instruction::GlobalAddress(_) => (),
+            Instruction::MemCopy { destination, source, size } => {
+                f(destination);
+                f(source);
+                f(size);
+            },
+            Instruction::PointerOffset { pointer, offset } => two(pointer, offset),
             Instruction::AllocShared(value) => f(value),
             Instruction::Store { pointer, value } => two(pointer, value),
             Instruction::Transmute(value) => f(value),
@@ -734,6 +890,30 @@ impl Instruction {
                 f(desired);
             },
         }
+    }};
+}
+
+impl Instruction {
+    pub fn for_each_value(&self, f: impl FnMut(&Value)) {
+        for_each_instruction_value!(self, f, iter)
+    }
+
+    pub fn for_each_value_mut(&mut self, f: impl FnMut(&mut Value)) {
+        for_each_instruction_value!(self, f, iter_mut, mut)
+    }
+
+    /// Invoke `f` on each type this instruction carries, excluding its result type
+    pub fn for_each_type_mut(&mut self, mut f: impl FnMut(&mut Type)) {
+        match self {
+            Instruction::StackAllocUninit(typ) | Instruction::SizeOf(typ) | Instruction::ArrayLen(typ) => f(typ),
+            Instruction::GetFieldPtr { struct_type, .. } => f(struct_type),
+            Instruction::Instantiate(_, bindings) => Arc::make_mut(bindings).iter_mut().for_each(&mut f),
+            Instruction::LookupEvidence { key, .. } => key.args.iter_mut().for_each(f),
+            Instruction::MakeEvidence { capabilities, .. } => {
+                capabilities.iter_mut().flat_map(|(key, _)| key.args.iter_mut()).for_each(f)
+            },
+            _ => (),
+        }
     }
 }
 
@@ -766,6 +946,40 @@ pub enum TerminatorInstruction {
     Result(Value),
 }
 
+/// Visits each value a terminator passes on, by reference or mutable reference
+macro_rules! for_each_terminator_value {
+    ($self:expr, $f:expr $(, $mut:tt)?) => {{
+        let mut f = $f;
+        match $self {
+            TerminatorInstruction::Jmp((_, Some(value))) => f(value),
+            TerminatorInstruction::Jmp((_, None)) => (),
+            TerminatorInstruction::If { condition, then, else_, end: _ } => {
+                f(condition);
+                if let Some(then) = & $($mut)? then.1 {
+                    f(then);
+                }
+                if let Some(else_) = & $($mut)? else_.1 {
+                    f(else_);
+                }
+            },
+            TerminatorInstruction::Switch { int_value, cases, else_, end: _ } => {
+                f(int_value);
+                for (_, (_, case_value)) in cases {
+                    if let Some(value) = case_value {
+                        f(value);
+                    }
+                }
+                if let Some(else_value) = & $($mut)? else_.1 {
+                    f(else_value);
+                }
+            },
+            TerminatorInstruction::Unreachable => (),
+            TerminatorInstruction::Return(value) => f(value),
+            TerminatorInstruction::Result(value) => f(value),
+        }
+    }};
+}
+
 impl TerminatorInstruction {
     fn jmp(target: BlockId, arg: Value) -> Self {
         TerminatorInstruction::Jmp((target, Some(arg)))
@@ -779,34 +993,12 @@ impl TerminatorInstruction {
         TerminatorInstruction::If { condition, then: (then, None), else_: (else_, None), end }
     }
 
-    pub fn for_each_value(&self, mut f: impl FnMut(&Value)) {
-        match self {
-            TerminatorInstruction::Jmp((_, Some(value))) => f(value),
-            TerminatorInstruction::Jmp((_, None)) => (),
-            TerminatorInstruction::If { condition, then, else_, end: _ } => {
-                f(condition);
-                if let Some(then) = &then.1 {
-                    f(then);
-                }
-                if let Some(else_) = &else_.1 {
-                    f(else_);
-                }
-            },
-            TerminatorInstruction::Switch { int_value, cases, else_, end: _ } => {
-                f(int_value);
-                for (_, (_, case_value)) in cases {
-                    if let Some(value) = case_value {
-                        f(value);
-                    }
-                }
-                if let Some(else_value) = &else_.1 {
-                    f(else_value);
-                }
-            },
-            TerminatorInstruction::Unreachable => (),
-            TerminatorInstruction::Return(value) => f(value),
-            TerminatorInstruction::Result(value) => f(value),
-        }
+    pub fn for_each_value(&self, f: impl FnMut(&Value)) {
+        for_each_terminator_value!(self, f)
+    }
+
+    pub fn for_each_value_mut(&mut self, f: impl FnMut(&mut Value)) {
+        for_each_terminator_value!(self, f, mut)
     }
 }
 
@@ -841,7 +1033,6 @@ impl IntConstant {
     }
 
     /// Bitcast this value to a u64
-    #[cfg(feature = "llvm")]
     pub(crate) fn as_u64(&self) -> u64 {
         match self {
             IntConstant::U8(x) => *x as u64,
@@ -958,6 +1149,11 @@ impl Type {
         Type::Tuple(Arc::new(fields))
     }
 
+    /// A function type without a closure environment
+    pub fn function(parameters: Vec<Type>, return_type: Type) -> Type {
+        Type::Function(Arc::new(FunctionType { parameters, environment: Type::NO_CLOSURE_ENV, return_type }))
+    }
+
     /// Canonical evidence: entries sorted by effect with repeats removed.
     /// Equal keys always carry equal capability types, so plain equality dedups.
     pub fn evidence(mut entries: Vec<EvidenceEntry>) -> Type {
@@ -1072,38 +1268,34 @@ impl Type {
     /// Result depends on the target machine.
     ///
     /// Panics if there is a generic within this type.
-    fn size_in_bytes(&self, ptr_size: u32) -> u32 {
+    pub(crate) fn size_in_bytes(&self, ptr_size: u32) -> u32 {
         match self {
             Type::Primitive(primitive) => primitive.size_in_bytes(ptr_size),
             Type::Tuple(fields) => {
-                // The tuple's total size is rounded up to the tuple's own alignment
-                let mut offset: u32 = 0;
-                let mut max_align: u32 = 1;
-                for field in fields.iter() {
-                    let a = field.align_in_bytes(ptr_size).max(1);
-                    let s = field.size_in_bytes(ptr_size);
-                    offset = (offset + a - 1) & !(a - 1);
-                    offset += s;
-                    if a > max_align {
-                        max_align = a;
-                    }
-                }
+                let offsets = Type::field_offsets(fields, ptr_size);
+                let end = offsets.last().zip(fields.last());
+                let end = end.map_or(0, |(offset, field)| offset + field.size_in_bytes(ptr_size));
+                let align = self.align_in_bytes(ptr_size).max(1);
                 // empty tuples are emitted as one byte struct in C backend
                 // so we clamp to 1 minimum to match
-                ((offset + max_align - 1) & !(max_align - 1)).max(1)
+                end.next_multiple_of(align).max(1)
             },
-            Type::Function(_) => ptr_size,
+            Type::Function(function) => match function.environment() {
+                Some(environment) => {
+                    let environment_offset = ptr_size.next_multiple_of(environment.align_in_bytes(ptr_size).max(1));
+                    let end = environment_offset + environment.size_in_bytes(ptr_size);
+                    end.next_multiple_of(self.align_in_bytes(ptr_size))
+                },
+                None => ptr_size,
+            },
             // This is a raw union so the tag isn't counted here
             Type::Union(variants) => variants.iter().map(|typ| typ.size_in_bytes(ptr_size)).max().unwrap_or(0),
             Type::Array { length, element } => {
-                let elem_size = element.size_in_bytes(ptr_size);
-                let elem_align = element.align_in_bytes(ptr_size).max(1);
-                let stride = (elem_size + elem_align - 1) & !(elem_align - 1);
                 let length = match length.as_ref() {
                     Type::U32(n) => *n,
                     other => panic!("size_in_bytes called on Array with non-constant length: {other}"),
                 };
-                stride * length
+                element.stride(ptr_size) * length
             },
             Type::U32(_) => 0,
             Type::Generic(_) => panic!("size_in_bytes called on Type::Generic"),
@@ -1113,17 +1305,36 @@ impl Type {
 
     /// Natural alignment of this type in bytes (LLVM's `getABITypeAlignment`).
     /// For tuples this is the maximum alignment of any field. Panics on generics.
-    fn align_in_bytes(&self, ptr_size: u32) -> u32 {
+    pub(crate) fn align_in_bytes(&self, ptr_size: u32) -> u32 {
         match self {
             Type::Primitive(primitive) => primitive.size_in_bytes(ptr_size).max(1),
             Type::Tuple(fields) => fields.iter().map(|f| f.align_in_bytes(ptr_size)).max().unwrap_or(1),
-            Type::Function(_) => ptr_size,
+            // A closure is its function pointer followed by its environment, see `lower_closures`
+            Type::Function(function) => match function.environment() {
+                Some(environment) => environment.align_in_bytes(ptr_size).max(ptr_size),
+                None => ptr_size,
+            },
             Type::Union(variants) => variants.iter().map(|v| v.align_in_bytes(ptr_size)).max().unwrap_or(1),
             Type::Array { length: _, element } => element.align_in_bytes(ptr_size),
             Type::U32(_) => 1,
             Type::Generic(_) => panic!("align_in_bytes called on Type::Generic"),
             Type::Evidence(_) => panic!("align_in_bytes called on Type::Evidence"),
         }
+    }
+
+    /// The offset of each field of a tuple
+    pub(crate) fn field_offsets(fields: &[Type], ptr_size: u32) -> Vec<u32> {
+        let mut offset = 0u32;
+        mapvec(fields, |field| {
+            let field_offset = offset.next_multiple_of(field.align_in_bytes(ptr_size).max(1));
+            offset = field_offset + field.size_in_bytes(ptr_size);
+            field_offset
+        })
+    }
+
+    /// The distance between consecutive array elements of this type
+    pub(crate) fn stride(&self, ptr_size: u32) -> u32 {
+        self.size_in_bytes(ptr_size).next_multiple_of(self.align_in_bytes(ptr_size).max(1))
     }
 
     /// True if the underlying representation of this type can be treated as an integer,

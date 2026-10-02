@@ -1,0 +1,26 @@
+shared type Unit0 = | U0
+shared type Cell = value: U32
+type Pair = cell: Cell, n: U8
+
+u0_addr: Usz = transmute Unit0.U0
+
+pair = Pair (Cell 3) 1
+
+// `first` should have the same address as `pair.cell`
+first = pair.cell
+first_addr: Usz = transmute pair.cell
+
+main () =
+    print_to_stdout do
+    here: Usz = transmute Unit0.U0
+    println (here == u0_addr)
+    a: Usz = transmute pair.cell
+    b: Usz = transmute first
+    println (a == b)
+    println (a == first_addr)
+
+// args: --delete-binary --no-color
+// expected stdout:
+// true
+// true
+// true

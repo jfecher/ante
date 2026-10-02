@@ -598,7 +598,10 @@ where
             return self.emit_effect_op_call(call.function, effect_op, op_index, arguments, result_type, diverges);
         }
 
-        let function = self.expression(call.function);
+        let function = match self.direct_extern_callee(call.function) {
+            Some(function) => function,
+            None => self.expression(call.function),
+        };
         let mut arguments = mapvec(&call.arguments, |arg| self.expression(arg.expr));
         self.append_evidence_argument(call.function, &function, &mut arguments);
 
@@ -614,6 +617,22 @@ where
             self.terminate_block(TerminatorInstruction::Unreachable);
         }
         value
+    }
+
+    /// A directly called extern is called as the C function itself rather than through its wrapper
+    fn direct_extern_callee(&mut self, callee: ExprId) -> Option<Value> {
+        let cst::Expr::Variable(path_id) = &self.context()[callee] else { return None };
+        let Some(Origin::TopLevelDefinition(name)) = self.context().path_origin(*path_id) else { return None };
+        let uncoerced = self.types.result.context.get_function_coercion(callee).is_none();
+        let uninstantiated = self.types.result.context.get_instantiation(*path_id).is_none();
+        if !uncoerced || !uninstantiated || !self.name_is_extern(&name) {
+            return None;
+        }
+        let id = self.get_definition_id(&name);
+        let tc_type = &self.types.result.maps.path_types[path_id];
+        let c_type = self.convert_context().convert_c_function_type(tc_type);
+        let name = self.get_definition_name(&name);
+        Some(self.make_definition_value(id, name, c_type))
     }
 
     /// A first-class effect operation: projects the operation out of the capability within its own evidence.

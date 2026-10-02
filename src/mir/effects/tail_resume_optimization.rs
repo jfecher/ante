@@ -16,7 +16,8 @@ use crate::mir::{
 };
 
 use super::effect_lowering::{
-    CaseShape, case_shape_from_handler_type, resolve_body_function, run_handle_optimization_worklist,
+    CaseShape, Referrers, WorklistState, case_shape_from_handler_type, resolve_body_function,
+    run_handle_optimization_worklist,
 };
 
 impl Mir {
@@ -38,12 +39,10 @@ struct HandleSite {
 
 /// Optimize every tail-resumptive Handle in `definition_id`, returning the ids of any new
 /// definitions created so the caller can enqueue them for processing.
-fn optimize_in_definition(
-    mir: &mut Mir, definition_id: DefinitionId, dead_bodies: &mut FxHashSet<DefinitionId>,
-) -> Vec<DefinitionId> {
+fn optimize_in_definition(mir: &mut Mir, definition_id: DefinitionId, state: &mut WorklistState) -> Vec<DefinitionId> {
     collect_handle_sites(mir, definition_id)
         .into_iter()
-        .flat_map(|site| try_optimize_handle(mir, definition_id, site, dead_bodies))
+        .flat_map(|site| try_optimize_handle(mir, definition_id, site, state))
         .collect()
 }
 
@@ -85,7 +84,7 @@ fn analyze_handle(mir: &Mir, definition_id: DefinitionId, site: &HandleSite) -> 
     for case in &site.cases {
         let handler_type = definition.type_of_value(&case.handler, &mir.externals, &mir.definitions);
         let shape = case_shape_from_handler_type(&handler_type)?;
-        let (handler_def_id, handler_env, handler_bindings) = resolve_handler(case.handler, definition)?;
+        let (handler_def_id, handler_env, handler_bindings) = resolve_body_function(case.handler, definition)?;
         let handler_def = mir.definitions.get(&handler_def_id)?;
         if !case_is_tail_resumptive(handler_def, &shape) {
             return None;
@@ -93,42 +92,6 @@ fn analyze_handle(mir: &Mir, definition_id: DefinitionId, site: &HandleSite) -> 
         decisions.push(CaseDecision { handler_def_id, handler_env, handler_bindings, shape });
     }
     Some(decisions)
-}
-
-/// Resolve the handler value to its underlying [DefinitionId], optional closure env,
-/// and optional generic bindings recovered from any `Instantiate` along the chain. Mirrors
-/// [resolve_body_function] but tolerates handler shapes specifically.
-pub(super) fn resolve_handler(
-    handler: Value, definition: &Definition,
-) -> Option<(DefinitionId, Option<Value>, Option<Arc<GenericBindings>>)> {
-    fn resolve_id(value: Value, definition: &Definition) -> Option<(DefinitionId, Option<Arc<GenericBindings>>)> {
-        match value {
-            Value::Definition(id) => Some((id, None)),
-            Value::InstructionResult(iid) => match &definition.instructions[iid] {
-                Instruction::Id(inner) => resolve_id(*inner, definition),
-                Instruction::Instantiate(id, bindings) => Some((*id, Some(bindings.clone()))),
-                _ => None,
-            },
-            _ => None,
-        }
-    }
-
-    match handler {
-        Value::InstructionResult(iid) => match &definition.instructions[iid] {
-            Instruction::PackClosure { function, environment } => {
-                let (id, bindings) = resolve_id(*function, definition)?;
-                Some((id, Some(*environment), bindings))
-            },
-            _ => {
-                let (id, bindings) = resolve_id(handler, definition)?;
-                Some((id, None, bindings))
-            },
-        },
-        _ => {
-            let (id, bindings) = resolve_id(handler, definition)?;
-            Some((id, None, bindings))
-        },
-    }
 }
 
 /// True if every Return in `handler_def` is a tail-call to `resume_param`, the resume parameter
@@ -215,7 +178,7 @@ fn case_is_tail_resumptive(handler_def: &Definition, shape: &CaseShape) -> bool 
 }
 
 fn try_optimize_handle(
-    mir: &mut Mir, definition_id: DefinitionId, site: HandleSite, dead_bodies: &mut FxHashSet<DefinitionId>,
+    mir: &mut Mir, definition_id: DefinitionId, site: HandleSite, state: &mut WorklistState,
 ) -> Vec<DefinitionId> {
     let Some(decisions) = analyze_handle(mir, definition_id, &site) else { return Vec::new() };
 
@@ -235,20 +198,18 @@ fn try_optimize_handle(
     let cap_tuple_type = Type::Tuple(Arc::new(wrapper_closure_types.clone()));
 
     // Resolve the body once more (we re-fetched definition because `mir` may have changed).
-    let (orig_body_fn_id, body_env_value, body_bindings) = {
-        let definition = &mir.definitions[&definition_id];
-        resolve_body_function(site.body, definition)
-    };
+    let (orig_body_fn_id, body_env_value, body_bindings) =
+        resolve_body_function(site.body, &mir.definitions[&definition_id]).expect("handle body is not a function");
 
     // Clone body_fn into a fresh definition specialized for tail-resume. We MUST clone rather
     // than mutate in-place because the outer definition still contains the original
     // PackClosure / Id instructions for body_fn (now dead but still type-checked by validation),
     // and changing body_fn's type would leave those instructions with stale `result_types`.
     let (body_fn_id, original_env_layout, created_ids) =
-        clone_body_with_extended_env(mir, orig_body_fn_id, &cap_tuple_type);
+        clone_body_with_extended_env(mir, orig_body_fn_id, &cap_tuple_type, state.referrers());
 
     // The original body fn is now dead. Don't process its Handles again
-    dead_bodies.insert(orig_body_fn_id);
+    state.dead_bodies.insert(orig_body_fn_id);
 
     // The original body_fn still gets visited by validation and codegen,
     // so we have to neutralize any `Capability` it contains.
@@ -299,12 +260,12 @@ pub(super) struct OriginalEnvLayout {
 /// reference the original body_fn (e.g. the original PackClosure produced by the MIR builder
 /// before the Handle was rewritten) keep type-checking against the original signature.
 pub(super) fn clone_body_with_extended_env(
-    mir: &mut Mir, orig_body_fn_id: DefinitionId, cap_type: &Type,
+    mir: &mut Mir, orig_body_fn_id: DefinitionId, cap_type: &Type, referrers: &mut Referrers,
 ) -> (DefinitionId, OriginalEnvLayout, Vec<DefinitionId>) {
     // Deep-clone the body together with the nested sub-definitions it privately owns. This keeps
     // the live clone's nested-handle subtree separate from the now-dead original, so neutralizing
     // the original's capabilities can never corrupt the clone.
-    let (new_id, id_map) = deep_clone_body_subtree(mir, orig_body_fn_id);
+    let (new_id, id_map) = deep_clone_body_subtree(mir, orig_body_fn_id, referrers);
     let created_ids: Vec<DefinitionId> = id_map.values().copied().collect();
 
     let original_typ = mir.definitions[&orig_body_fn_id].typ.clone();
@@ -351,14 +312,8 @@ pub(super) fn clone_body_with_extended_env(
 /// The set of definitions privately owned by `root`: `root` itself plus every definition reachable
 /// from it whose every referrer is also owned. Definitions referenced from outside this set (named
 /// top-level functions, shared helpers) and externals stay shared and are not cloned.
-fn owned_subtree(mir: &Mir, root: DefinitionId) -> FxHashSet<DefinitionId> {
-    let mut referrers: FxHashMap<DefinitionId, FxHashSet<DefinitionId>> = FxHashMap::default();
-    for (id, def) in mir.definitions.iter() {
-        def.for_each_referenced_definition(|child| {
-            referrers.entry(child).or_default().insert(*id);
-        });
-    }
-
+fn owned_subtree(mir: &Mir, root: DefinitionId, referrers: &mut Referrers) -> FxHashSet<DefinitionId> {
+    referrers.sync(mir);
     let mut owned = FxHashSet::default();
     owned.insert(root);
     loop {
@@ -372,7 +327,7 @@ fn owned_subtree(mir: &Mir, root: DefinitionId) -> FxHashSet<DefinitionId> {
         }
         let mut changed = false;
         for c in candidates {
-            let all_referrers_owned = referrers.get(&c).is_none_or(|rs| rs.iter().all(|r| owned.contains(r)));
+            let all_referrers_owned = referrers.get(c).is_none_or(|rs| rs.iter().all(|r| owned.contains(r)));
             if all_referrers_owned && owned.insert(c) {
                 changed = true;
             }
@@ -386,8 +341,10 @@ fn owned_subtree(mir: &Mir, root: DefinitionId) -> FxHashSet<DefinitionId> {
 
 /// Deep-clone `root` and its [`owned_subtree`] into fresh definitions, remapping all internal
 /// definition-id references to the clones. Returns the cloned root id and the full old→new id map.
-fn deep_clone_body_subtree(mir: &mut Mir, root: DefinitionId) -> (DefinitionId, FxHashMap<DefinitionId, DefinitionId>) {
-    let owned = owned_subtree(mir, root);
+fn deep_clone_body_subtree(
+    mir: &mut Mir, root: DefinitionId, referrers: &mut Referrers,
+) -> (DefinitionId, FxHashMap<DefinitionId, DefinitionId>) {
+    let owned = owned_subtree(mir, root, referrers);
     let id_map: FxHashMap<DefinitionId, DefinitionId> = owned.iter().map(|&old| (old, next_definition_id())).collect();
 
     for (&old, &new) in id_map.iter() {
@@ -563,149 +520,9 @@ pub(super) fn substitute_value(definition: &mut Definition, find: Value, replace
             *v = replace;
         }
     };
-    for instruction in definition.instructions.values_mut() {
-        match instruction {
-            Instruction::Call { function, arguments } => {
-                sub(function);
-                for a in arguments.iter_mut() {
-                    sub(a);
-                }
-            },
-            Instruction::CallClosure { closure, arguments } => {
-                sub(closure);
-                for a in arguments.iter_mut() {
-                    sub(a);
-                }
-            },
-            Instruction::Perform { effect_op: _, arguments } => {
-                for a in arguments.iter_mut() {
-                    sub(a);
-                }
-            },
-            Instruction::Handle { body, cases } => {
-                sub(body);
-                for case in cases.iter_mut() {
-                    sub(&mut case.handler);
-                }
-            },
-            Instruction::PackClosure { function, environment } => {
-                sub(function);
-                sub(environment);
-            },
-            Instruction::IndexTuple { tuple, .. } => sub(tuple),
-            Instruction::LookupEvidence { evidence, .. } => sub(evidence),
-            Instruction::MakeEvidence { capabilities, rest } => {
-                for (_, v) in capabilities.iter_mut() {
-                    sub(v);
-                }
-                rest.iter_mut().for_each(sub);
-            },
-            Instruction::MakeTuple(values) | Instruction::MakeArray(values) => {
-                for v in values.iter_mut() {
-                    sub(v);
-                }
-            },
-            Instruction::StackAlloc(v)
-            | Instruction::AllocShared(v)
-            | Instruction::Transmute(v)
-            | Instruction::Id(v) => sub(v),
-            Instruction::Store { pointer, value } => {
-                sub(pointer);
-                sub(value);
-            },
-            Instruction::AddInt(a, b)
-            | Instruction::OverflowingAddInt(a, b)
-            | Instruction::AddFloat(a, b)
-            | Instruction::SubInt(a, b)
-            | Instruction::OverflowingSubInt(a, b)
-            | Instruction::SubFloat(a, b)
-            | Instruction::MulInt(a, b)
-            | Instruction::OverflowingMulInt(a, b)
-            | Instruction::MulFloat(a, b)
-            | Instruction::DivSigned(a, b)
-            | Instruction::DivUnsigned(a, b)
-            | Instruction::DivFloat(a, b)
-            | Instruction::ModSigned(a, b)
-            | Instruction::ModUnsigned(a, b)
-            | Instruction::ModFloat(a, b)
-            | Instruction::LessSigned(a, b)
-            | Instruction::LessUnsigned(a, b)
-            | Instruction::LessFloat(a, b)
-            | Instruction::EqInt(a, b)
-            | Instruction::EqFloat(a, b)
-            | Instruction::BitwiseAnd(a, b)
-            | Instruction::BitwiseOr(a, b)
-            | Instruction::BitwiseXor(a, b) => {
-                sub(a);
-                sub(b);
-            },
-            Instruction::BitwiseNot(v)
-            | Instruction::SignExtend(v)
-            | Instruction::ZeroExtend(v)
-            | Instruction::SignedToFloat(v)
-            | Instruction::UnsignedToFloat(v)
-            | Instruction::FloatToSigned(v)
-            | Instruction::FloatToUnsigned(v)
-            | Instruction::FloatPromote(v)
-            | Instruction::FloatDemote(v)
-            | Instruction::Truncate(v)
-            | Instruction::Deref(v) => sub(v),
-            Instruction::GetFieldPtr { struct_ptr, .. } => sub(struct_ptr),
-            Instruction::AtomicLoad { pointer, .. } => sub(pointer),
-            Instruction::AtomicStore { pointer, value, .. } => {
-                sub(pointer);
-                sub(value);
-            },
-            Instruction::AtomicRmw { pointer, value, .. } => {
-                sub(pointer);
-                sub(value);
-            },
-            Instruction::AtomicCmpxchg { pointer, expected, desired, .. } => {
-                sub(pointer);
-                sub(expected);
-                sub(desired);
-            },
-            Instruction::MakeBytes(_)
-            | Instruction::Instantiate(_, _)
-            | Instruction::Extern(_)
-            | Instruction::SizeOf(_)
-            | Instruction::ArrayLen(_)
-            | Instruction::StackAllocUninit(_)
-            | Instruction::Capability => (),
-        }
-    }
-    for block in definition.blocks.values_mut() {
-        let Some(t) = &mut block.terminator else { continue };
-        match t {
-            TerminatorInstruction::Jmp((_, arg)) => {
-                if let Some(a) = arg {
-                    sub(a);
-                }
-            },
-            TerminatorInstruction::If { condition, then, else_, end: _ } => {
-                sub(condition);
-                if let Some(a) = &mut then.1 {
-                    sub(a);
-                }
-                if let Some(a) = &mut else_.1 {
-                    sub(a);
-                }
-            },
-            TerminatorInstruction::Switch { int_value, cases, else_, end: _ } => {
-                sub(int_value);
-                for (_, jt) in cases.iter_mut() {
-                    if let Some(a) = &mut jt.1 {
-                        sub(a);
-                    }
-                }
-                if let Some(a) = &mut else_.1 {
-                    sub(a);
-                }
-            },
-            TerminatorInstruction::Unreachable => (),
-            TerminatorInstruction::Return(v) => sub(v),
-            TerminatorInstruction::Result(v) => sub(v),
-        }
+    definition.instructions.values_mut().for_each(|instruction| instruction.for_each_value_mut(sub));
+    for terminator in definition.blocks.values_mut().filter_map(|block| block.terminator.as_mut()) {
+        terminator.for_each_value_mut(sub);
     }
 }
 

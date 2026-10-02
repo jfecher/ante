@@ -143,22 +143,25 @@ type Thread a = handle: VoidPtr
 
 /// Spawn a new OS thread running `f`. The returned thread must be joined or detached.
 Thread.spawn (f: fn Unit [e] -> a is pure): Thread a =
-    // pthread_create needs a free function so we use this wrapper to take a pointer
-    // to the closure to run as an argument.
-    wrapper (thunk: VoidPtr): VoidPtr =
-        closure_ptr = transmute thunk : Ptr (fn Unit [e] -> a is pure)
-        thunk = deref_ptr closure_ptr
-        free closure_ptr
+    // `run` captures nothing, so its pointer environment is null and `thread_entry` needs neither `a` nor `e`
+    run: fn VoidPtr [Ptr Unit] -> VoidPtr is pure = fn payload ->
+        pair = transmute payload : Ptr (fn VoidPtr [Ptr Unit] -> VoidPtr is pure, fn Unit [e] -> a is pure)
+        _, thunk = deref_ptr pair
+        free pair
         out = malloc (size_of (MkType: Type a))
         ptr_store out (thunk ())
         transmute out
 
-    closure_ptr = malloc (size_of (MkType: Type (fn Unit [e] -> a is pure)))
-    ptr_store closure_ptr f
-    args_ptr = transmute closure_ptr : VoidPtr
+    pair = malloc (size_of (MkType: Type (fn VoidPtr [Ptr Unit] -> VoidPtr is pure, fn Unit [e] -> a is pure)))
+    ptr_store pair (run, f)
     handle = malloc pthread_t_size
-    pthread_create handle (null ()) wrapper args_ptr
+    pthread_create handle (null ()) thread_entry (transmute pair)
     Thread handle
+
+/// pthread_create needs a free function, so this takes a pointer whose first field is the closure to run
+thread_entry (payload: VoidPtr): VoidPtr =
+    run = deref_ptr (transmute payload : Ptr (fn VoidPtr [Ptr Unit] -> VoidPtr is pure))
+    run payload
 
 /// Block until the thread finishes and return its result.
 Thread.join (t: Thread a): a =

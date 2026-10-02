@@ -8,39 +8,20 @@ use std::sync::Arc;
 
 use dashmap::DashMap;
 use inc_complete::DbGet;
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rustc_hash::FxHashMap;
 
 mod select_largest_variant;
 
 use crate::{
+    cli::GenericsStrategy,
     incremental::{GetCrateGraph, GetItem, GetItemRaw, GetTypeBody, Parse, TargetPointerSize, TypeCheck},
     mir::{
         self, Block, BlockId, Definition, DefinitionId, EffectKey, FunctionType, GenericBindings, Instruction,
-        InstructionId, Mir, Type, Value, builder::build_initial_mir_with_shared_map, next_definition_id,
+        InstructionId, Mir, Type, Value, build_effect_lowered_mir, next_definition_id,
     },
-    parser::ids::TopLevelId,
     vecmap::VecMap,
 };
-
-/// Collect all items in the program.
-/// This is discouraged since it limits parallelism but required for certain passes like
-/// monomorphization which need access to the entire program.
-pub(crate) fn collect_all_items<Db>(compiler: &Db) -> Vec<TopLevelId>
-where
-    Db: DbGet<GetCrateGraph> + DbGet<Parse>,
-{
-    let mut items = Vec::new();
-
-    for crate_ in GetCrateGraph.get(compiler).values() {
-        for file in crate_.source_files.values() {
-            let parse = Parse(*file).get(compiler);
-            for item in parse.cst.top_level_items.iter() {
-                items.push(item.id);
-            }
-        }
-    }
-    items
-}
 
 /// Monomorphize the whole program, returning a MIR function if the item refers to a function.
 /// If the item does not refer to a function (e.g. it is a type definition), `None` is returned.
@@ -59,17 +40,7 @@ where
         + DbGet<TargetPointerSize>
         + Sync,
 {
-    let initial_mir = collect_all_items(compiler)
-        //.into_par_iter()
-        .into_iter()
-        .flat_map(|item| build_initial_mir_with_shared_map(compiler, item))
-        .fold(Mir::default(), Mir::extend)
-        //.reduce(Mir::default, Mir::extend)
-        .remove_internal_externs()
-        .remove_unreachable_functions()
-        .optimize_tail_resume()
-        .optimize_abort_handlers()
-        .lower_effects();
+    let initial_mir = build_effect_lowered_mir(compiler, GenericsStrategy::Mono);
 
     let shared = SharedDefinitions::default();
 
@@ -86,14 +57,12 @@ where
         })
         .collect::<Vec<_>>();
 
-    // TODO: More concrete perf testing, but this is fine for smaller programs.
     let mir = monomorphic_definitions
-        //.into_par_iter()
-        .into_iter()
-        .fold(Mir::default(), |acc, definition| {
+        .into_par_iter()
+        .fold(Mir::default, |acc, definition| {
             acc.extend(monomorphize_non_generic_definition(definition, &shared, &initial_mir))
         })
-        //.reduce(Mir::default, Mir::extend)
+        .reduce(Mir::default, Mir::extend)
         .lower_evidence()
         .select_largest_variants(compiler)
         .lower_closures();
@@ -309,124 +278,19 @@ impl<'local> FunctionContext<'local> {
     /// This handles direct references to generic functions (e.g. recursive self-calls or
     /// mutual recursion partners in the same SCC) that bypass the `Instantiate` instruction path.
     fn remap_definition_values_in_instruction(&mut self, instruction: &mut Instruction) {
+        instruction.for_each_value_mut(|value| self.remap_value(value));
         match instruction {
-            Instruction::Call { function, arguments } => {
-                self.remap_value(function);
-                for arg in arguments.iter_mut() {
-                    self.remap_value(arg);
-                }
+            Instruction::LookupEvidence { key, .. } => self.specialize_key(key),
+            Instruction::MakeEvidence { capabilities, .. } => {
+                capabilities.iter_mut().for_each(|(key, _)| self.specialize_key(key))
             },
-            Instruction::CallClosure { closure: function, arguments } => {
-                self.remap_value(function);
-                for arg in arguments.iter_mut() {
-                    self.remap_value(arg);
-                }
-            },
-            Instruction::Perform { effect_op: _, arguments } => {
-                for arg in arguments.iter_mut() {
-                    self.remap_value(arg);
-                }
-            },
-            Instruction::Handle { body, cases } => {
-                self.remap_value(body);
-                for case in cases.iter_mut() {
-                    self.remap_value(&mut case.handler);
-                }
-            },
-            Instruction::PackClosure { function, environment } => {
-                self.remap_value(function);
-                self.remap_value(environment);
-            },
-            Instruction::IndexTuple { tuple, .. } => self.remap_value(tuple),
-            Instruction::MakeTuple(elements) | Instruction::MakeArray(elements) => {
-                for e in elements.iter_mut() {
-                    self.remap_value(e);
-                }
-            },
-            Instruction::LookupEvidence { evidence, key } => {
-                self.remap_value(evidence);
-                self.specialize_key(key);
-            },
-            Instruction::MakeEvidence { capabilities, rest } => {
-                for (key, value) in capabilities.iter_mut() {
-                    self.remap_value(value);
-                    self.specialize_key(key);
-                }
-                rest.iter_mut().for_each(|value| self.remap_value(value));
-            },
-            Instruction::StackAlloc(v)
-            | Instruction::AllocShared(v)
-            | Instruction::Transmute(v)
-            | Instruction::Id(v) => self.remap_value(v),
-            Instruction::StackAllocUninit(typ) => {
+            Instruction::StackAllocUninit(typ) | Instruction::GetFieldPtr { struct_type: typ, .. } => {
                 if !self.generic_mapping.is_empty() {
                     self.specialize_type(typ);
                 }
             },
-            Instruction::Store { pointer, value } => {
-                self.remap_value(pointer);
-                self.remap_value(value);
-            },
-            Instruction::AddInt(a, b)
-            | Instruction::OverflowingAddInt(a, b)
-            | Instruction::AddFloat(a, b)
-            | Instruction::SubInt(a, b)
-            | Instruction::OverflowingSubInt(a, b)
-            | Instruction::SubFloat(a, b)
-            | Instruction::MulInt(a, b)
-            | Instruction::OverflowingMulInt(a, b)
-            | Instruction::MulFloat(a, b)
-            | Instruction::DivSigned(a, b)
-            | Instruction::DivUnsigned(a, b)
-            | Instruction::DivFloat(a, b)
-            | Instruction::ModSigned(a, b)
-            | Instruction::ModUnsigned(a, b)
-            | Instruction::ModFloat(a, b)
-            | Instruction::LessSigned(a, b)
-            | Instruction::LessUnsigned(a, b)
-            | Instruction::LessFloat(a, b)
-            | Instruction::EqInt(a, b)
-            | Instruction::EqFloat(a, b)
-            | Instruction::BitwiseAnd(a, b)
-            | Instruction::BitwiseOr(a, b)
-            | Instruction::BitwiseXor(a, b) => {
-                self.remap_value(a);
-                self.remap_value(b);
-            },
-            Instruction::BitwiseNot(v)
-            | Instruction::SignExtend(v)
-            | Instruction::ZeroExtend(v)
-            | Instruction::SignedToFloat(v)
-            | Instruction::UnsignedToFloat(v)
-            | Instruction::FloatToSigned(v)
-            | Instruction::FloatToUnsigned(v)
-            | Instruction::FloatPromote(v)
-            | Instruction::FloatDemote(v)
-            | Instruction::Truncate(v)
-            | Instruction::Deref(v) => self.remap_value(v),
             Instruction::SizeOf(typ) | Instruction::ArrayLen(typ) => self.specialize_type(typ),
-            Instruction::MakeBytes(_) | Instruction::Instantiate(..) | Instruction::Extern(_) => {},
-            Instruction::Capability => {},
-            Instruction::GetFieldPtr { struct_ptr, struct_type, .. } => {
-                self.remap_value(struct_ptr);
-                if !self.generic_mapping.is_empty() {
-                    self.specialize_type(struct_type);
-                }
-            },
-            Instruction::AtomicLoad { pointer, .. } => self.remap_value(pointer),
-            Instruction::AtomicStore { pointer, value, .. } => {
-                self.remap_value(pointer);
-                self.remap_value(value);
-            },
-            Instruction::AtomicRmw { pointer, value, .. } => {
-                self.remap_value(pointer);
-                self.remap_value(value);
-            },
-            Instruction::AtomicCmpxchg { pointer, expected, desired, .. } => {
-                self.remap_value(pointer);
-                self.remap_value(expected);
-                self.remap_value(desired);
-            },
+            _ => (),
         }
     }
 

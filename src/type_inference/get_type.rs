@@ -41,6 +41,25 @@ pub fn get_type_impl(context: &GetType, compiler: &DbHandle) -> Type {
     typ
 }
 
+/// True if the annotated result type of a definition has a hole
+fn result_annotation_contains_hole(definition: &Definition, context: &DesugarContext) -> bool {
+    fn result_contains_hole(typ: &cst::Type) -> bool {
+        match &typ.kind {
+            TypeKind::Function(function) => function.return_type.contains_hole(),
+            TypeKind::Forall(_, typ) => result_contains_hole(typ),
+            _ => typ.contains_hole(),
+        }
+    }
+    if let Pattern::TypeAnnotation(_, typ) = &context[definition.pattern] {
+        return result_contains_hole(typ);
+    }
+    match &context[definition.rhs] {
+        Expr::Lambda(lambda) => lambda.return_type.as_ref().is_some_and(|typ| typ.contains_hole()),
+        Expr::TypeAnnotation(annotation) => result_contains_hole(&annotation.rhs),
+        _ => false,
+    }
+}
+
 /// Make a best-effort attempt to get the type of a definition.
 /// If the type is successfully found then this definition will not be dependent on the
 /// types of its contents to get its type. Put another way, if the type is known then
@@ -53,6 +72,11 @@ pub fn get_type_impl(context: &GetType, compiler: &DbHandle) -> Type {
 pub fn try_get_generalized_type(
     definition: &Definition, context: &DesugarContext, resolve: &ResolutionResult, compiler: &DbHandle,
 ) -> Option<Type> {
+    // A hole in the result, such as a returned `=>` function's environment, is only known from the body
+    if result_annotation_contains_hole(definition, context) {
+        return None;
+    }
+
     if let Pattern::TypeAnnotation(_, typ) = &context[definition.pattern] {
         return Some(Type::from_cst_type_generalized(typ, resolve, compiler, true, false));
     }

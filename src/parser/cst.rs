@@ -127,6 +127,23 @@ impl Type {
     pub fn new(kind: TypeKind, location: Location) -> Type {
         Type { kind, location }
     }
+
+    /// True if this type has a hole to infer, such as the environment of a `=>` function type
+    pub fn contains_hole(&self) -> bool {
+        match &self.kind {
+            TypeKind::Hole => true,
+            TypeKind::Function(function) => {
+                function.parameters.iter().any(|parameter| parameter.typ.contains_hole())
+                    || function.environment.as_ref().is_some_and(|environment| environment.contains_hole())
+                    || function.return_type.contains_hole()
+                    || function.effects.iter().flatten().any(Type::contains_hole)
+            },
+            TypeKind::Application(function, args) => function.contains_hole() || args.iter().any(Type::contains_hole),
+            TypeKind::Tuple(types) | TypeKind::EffectUnion(types) => types.iter().any(Type::contains_hole),
+            TypeKind::Forall(_, typ) => typ.contains_hole(),
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]

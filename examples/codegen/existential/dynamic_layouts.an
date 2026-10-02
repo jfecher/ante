@@ -1,0 +1,69 @@
+// Generic sum types, branches merging generic values, loops, and references into generic
+// structs, all of which existentialization lays out at runtime.
+
+type Either a b =
+   | Left a
+   | Right b
+
+type Pair a b =
+    first: a
+    second: b
+
+// Variants of different sizes, chosen at runtime
+choose (flag: Bool) (x: a) (y: b): Either a b =
+    if flag then Left x else Right y
+
+describe (e: Either a b) (show_a: fn a => String) (show_b: fn b => String): String =
+    match e
+    | Left a -> "Left ${show_a a}"
+    | Right b -> "Right ${show_b b}"
+
+// A branch merging two generic values, then a loop carrying one
+pick (flag: Bool) (x: a) (y: a): a =
+    if flag then x else y
+
+swap_n (n: U32) (x: a) (y: a): a =
+    var current = x
+    var other = y
+    var i = 0
+    while i < n do
+        tmp = current
+        current := other
+        other := tmp
+        i += 1
+    current
+
+// Writing through a reference to a field whose offset depends on the size of `a`
+set_second (p: mut Pair a b) (value: b): Unit =
+    p.second := value
+
+main () =
+    print_to_stdout do
+    show_i = fn (x: I64) -> "${x}"
+    show_s = fn (s: String) -> s
+    println (describe (choose true 12i64 "right") show_i show_s)
+    println (describe (choose false 12i64 "right") show_i show_s)
+
+    println (pick true "yes" "no")
+    println (pick false 1u8 2u8)
+    println (swap_n 3 "a" "b")
+    (n, c) = swap_n 4 (1u16, 'x') (2u16, 'y')
+    println "${n} ${c}"
+
+    var p = Pair 'q' 1i64
+    set_second (mut p) 99
+    println p.second
+    var p2 = Pair (1u8, 2u8, 3u8) "before"
+    set_second (mut p2) "after"
+    println p2.second
+
+// args: --delete-binary --no-color
+// expected stdout:
+// Left 12
+// Right right
+// yes
+// 2
+// b
+// 1 x
+// 99
+// after

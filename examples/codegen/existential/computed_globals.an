@@ -1,0 +1,28 @@
+// Globals built by generic constructors. Existentialization computes these at each use rather
+// than folding them to constants.
+
+type Wrapper a = inner: a
+
+nothing: Maybe I32 = Maybe.None
+wrapped: Wrapper (U8, U16) = Wrapper (3u8, 4u16)
+nested: Wrapper (Wrapper Char) = Wrapper (Wrapper 'n')
+some_fn = fn (x: I32) -> x + 1
+pair_fn = (some_fn, 7i32)
+
+main () =
+    print_to_stdout do
+    match nothing
+    | Some x -> println x
+    | None -> println "none"
+    (a, b) = wrapped.inner
+    println "${a} ${b}"
+    println nested.inner.inner
+    (f, n) = pair_fn
+    println (f n)
+
+// args: --delete-binary --no-color
+// expected stdout:
+// none
+// 3 4
+// n
+// 8

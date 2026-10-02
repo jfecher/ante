@@ -26,6 +26,8 @@
 //!   - Closure Lowering `src/mir/lower_closures.an`
 //!   - Remove Unreachable `src/mir/remove_unreachable.an`
 //!   - Monomorphization `src/mir/monomorphization/mod.rs`
+//!   - Existentialization `src/mir/existentialization/mod.rs`, used instead of monomorphization in
+//!     unoptimized builds
 //!   - Select Largest Variant `src/mir/select_largest_variant.rs`
 //! - Backend Codegen - choose your backend:
 //!   - LLVM `src/codegen/llvm/mod.rs`
@@ -55,10 +57,11 @@ use std::{
 #[cfg(feature = "llvm")]
 use crate::codegen::llvm::codegen_llvm;
 use crate::{
-    cli::{CommandError, EmitTarget, OptLevel},
+    cli::{CommandError, EmitTarget, GenericsStrategy, OptLevel},
     diagnostics::{DiagnosticKind, collect_all_diagnostics},
     files::{make_compiler, write_metadata},
     incremental::{TargetPointerSize, TypeCheck, ValidateExports},
+    mir::collect_all_items,
     paths::binary_name,
 };
 
@@ -175,6 +178,7 @@ fn compile(request: CompileRequest) {
     }
 
     let opt_level = optimization_level(options);
+    let generics = generics_strategy(options, opt_level);
 
     let diagnostics = match request.emit {
         _ if request.check => time_phase("Diagnostics", options.show_time, || collect_all_diagnostics(&mut compiler)),
@@ -187,9 +191,10 @@ fn compile(request: CompileRequest) {
         Some(EmitTarget::AstT) => display_type_checking(&mut compiler, true, request.emit_all),
         Some(EmitTarget::Mir) => display_mir(&mut compiler, request.emit_all, false),
         Some(EmitTarget::MirTail) => display_mir(&mut compiler, request.emit_all, true),
-        Some(EmitTarget::MirMono) => display_mir_mono(&mut compiler),
+        Some(EmitTarget::MirMono) => display_lowered_mir(&mut compiler, GenericsStrategy::Mono),
+        Some(EmitTarget::MirExist) => display_lowered_mir(&mut compiler, GenericsStrategy::Existential),
         Some(EmitTarget::Ir) => {
-            display_ir(&mut compiler, resolve_backend(options.backend), options.show_time, opt_level)
+            display_ir(&mut compiler, resolve_backend(options.backend), options.show_time, opt_level, generics)
         },
         None => {
             let link_options = build_link_options(&mut compiler, options);
@@ -201,6 +206,7 @@ fn compile(request: CompileRequest) {
                 request.delete_binary,
                 options.show_time,
                 opt_level,
+                generics,
                 options.bin.as_deref(),
                 &link_options,
                 &request.program_args,
@@ -266,7 +272,7 @@ fn resolve_backend(requested: Option<cli::Backend>) -> cli::Backend {
 /// order so each has its own `--show-time` line. inc-complete caches the results, so
 /// the downstream compile mode reuses them.
 fn print_phase_timings(compiler: &mut Db) {
-    let item_ids = time_phase("Parsing", true, || mir::monomorphization::collect_all_items(compiler));
+    let item_ids = time_phase("Parsing", true, || collect_all_items(compiler));
 
     // Per-item: rolls up dependent definition-collection queries into this bucket.
     time_phase("Name resolution", true, || {
@@ -297,6 +303,15 @@ fn optimization_level(args: &CompileArgs) -> OptLevel {
         'z' => OptLevel::Oz,
         _ if args.release => OptLevel::O2,
         _ => OptLevel::O0,
+    }
+}
+
+/// Existentialization is the default for unoptimized builds and monomorphization otherwise
+fn generics_strategy(args: &CompileArgs, opt_level: OptLevel) -> GenericsStrategy {
+    match args.generics {
+        Some(strategy) => strategy,
+        None if opt_level == OptLevel::O0 => GenericsStrategy::Existential,
+        None => GenericsStrategy::Mono,
     }
 }
 
@@ -414,7 +429,7 @@ fn display_mir(compiler: &mut Db, emit_all: bool, optimize_tail_calls: bool) -> 
 
             if let Some(mut mir) = mir::builder::build_initial_mir_with_shared_map(compiler, item.id) {
                 if optimize_tail_calls {
-                    mir = mir.optimize_tail_resume().optimize_abort_handlers().lower_effects();
+                    mir = mir.optimize_tail_resume().optimize_abort_handlers().lower_effects(false);
                 }
                 print!("{mir}");
             }
@@ -423,29 +438,31 @@ fn display_mir(compiler: &mut Db, emit_all: bool, optimize_tail_calls: bool) -> 
     })
 }
 
-fn display_mir_mono(compiler: &mut Db) -> BTreeSet<Diagnostic> {
+fn display_lowered_mir(compiler: &mut Db, generics: GenericsStrategy) -> BTreeSet<Diagnostic> {
     let diagnostics = collect_all_diagnostics(compiler);
     let (errors, _) = classify_diagnostics(&diagnostics);
     if errors == 0 {
-        let mir = mir::monomorphization::monomorphize(compiler);
+        let mir = mir::lower_generics(compiler, generics);
         println!("{mir}");
     }
     diagnostics
 }
 
 /// Emit the backend IR to stdout: Either llvm-ir or C depending on the backend.
-fn display_ir(compiler: &mut Db, backend: cli::Backend, show_time: bool, opt_level: OptLevel) -> BTreeSet<Diagnostic> {
+fn display_ir(
+    compiler: &mut Db, backend: cli::Backend, show_time: bool, opt_level: OptLevel, generics: GenericsStrategy,
+) -> BTreeSet<Diagnostic> {
     let diagnostics = time_phase("Diagnostics", show_time, || collect_all_diagnostics(compiler));
     if classify_diagnostics(&diagnostics).0 == 0 {
         match backend {
             #[cfg(feature = "llvm")]
             cli::Backend::Llvm => {
-                codegen_llvm(compiler, show_time, opt_level, true, None);
+                codegen_llvm(compiler, show_time, opt_level, generics, true, None);
             },
             cli::Backend::C => {
                 let _ = opt_level;
-                let mir = mir::monomorphization::monomorphize(compiler);
-                print!("{}", codegen::c::build_c_file(&mir, None));
+                let mir = mir::lower_generics(compiler, generics);
+                print!("{}", codegen::c::build_c_file(&mir, TargetPointerSize.get(compiler), None));
             },
             _ => unreachable!("resolve_backend only returns backends this compiler can run"),
         }
@@ -474,7 +491,8 @@ fn build_link_options(compiler: &mut Db, args: &CompileArgs) -> codegen::LinkOpt
 #[allow(clippy::too_many_arguments)]
 fn codegen_all(
     compiler: &mut Db, backend: cli::Backend, program_name: &str, run: bool, delete_binary: bool, show_time: bool,
-    opt_level: OptLevel, bin: Option<&str>, link_options: &codegen::LinkOptions, program_args: &[OsString],
+    opt_level: OptLevel, generics: GenericsStrategy, bin: Option<&str>, link_options: &codegen::LinkOptions,
+    program_args: &[OsString],
 ) -> BTreeSet<Diagnostic> {
     let (diagnostics, selected_main) = match check_and_select_main(compiler, show_time, bin) {
         Ok(ok) => ok,
@@ -484,16 +502,17 @@ fn codegen_all(
     let ready = match backend {
         #[cfg(feature = "llvm")]
         cli::Backend::Llvm => {
-            // Each module is currently the whole program (monomorphization isn't yet incremental).
-            let modules = match codegen_llvm(compiler, show_time, opt_level, false, Some(selected_main)) {
-                Some(result) => vec![result.object],
+            let modules = match codegen_llvm(compiler, show_time, opt_level, generics, false, Some(selected_main)) {
+                Some(result) => result.objects,
                 None => Vec::new(),
             };
             codegen::llvm::link(modules, program_name, show_time, opt_level, link_options)
         },
         cli::Backend::C => {
-            let mir = time_phase("Monomorphization", show_time, || mir::monomorphization::monomorphize(compiler));
-            codegen::c::codegen_c_for_mir(&mir, program_name, opt_level, Some(selected_main), link_options, show_time);
+            let mir = time_phase("Lowering generics", show_time, || mir::lower_generics(compiler, generics));
+            let ptr_size = TargetPointerSize.get(compiler);
+            let main = Some(selected_main);
+            codegen::c::codegen_c_for_mir(&mir, ptr_size, program_name, opt_level, main, link_options, show_time);
             true
         },
         _ => unreachable!("resolve_backend only returns backends this compiler can run"),
@@ -522,9 +541,13 @@ fn run_binary(program_name: &str, delete_binary: bool, program_args: &[OsString]
     let binary_path = binary_name(program_name);
     let run_path =
         if binary_path.components().count() == 1 { Path::new(".").join(&binary_path) } else { binary_path.clone() };
-    Command::new(&run_path).args(program_args).spawn().unwrap().wait().unwrap();
+    let status = Command::new(&run_path).args(program_args).spawn().unwrap().wait().unwrap();
     if delete_binary {
-        std::fs::remove_file(binary_path).unwrap();
+        std::fs::remove_file(&binary_path).unwrap();
+    }
+    // A crash loses whatever the program had buffered, so it would otherwise look like a clean exit
+    if status.code().is_none() {
+        eprintln!("{} exited with {status}", binary_path.display());
     }
 }
 

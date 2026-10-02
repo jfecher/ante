@@ -150,6 +150,10 @@ pub struct CompileArgs {
     #[arg(long, value_name = "NAME")]
     pub bin: Option<String>,
 
+    /// How generics are compiled. Defaults to `existential` without optimizations, `mono` otherwise
+    #[arg(long, value_enum)]
+    pub generics: Option<GenericsStrategy>,
+
     /// Link the resulting binary against the given native library. May be repeated.
     #[arg(long = "link-lib", short = 'l', value_name = "LIB")]
     pub link_lib: Vec<String>,
@@ -213,6 +217,7 @@ impl CompileArgs {
             || self.incremental
             || self.show_queries
             || self.bin.is_some()
+            || self.generics.is_some()
             || !self.link_lib.is_empty()
             || !self.link_search.is_empty()
     }
@@ -241,8 +246,19 @@ pub enum EmitTarget {
     /// Monomorphized Mir
     MirMono,
 
+    /// Existentialized Mir
+    MirExist,
+
     /// LLVM-IR or Cranelift IR depending on the selected backend
     Ir,
+}
+
+#[derive(Debug, PartialEq, Eq, Copy, Clone, ValueEnum)]
+pub enum GenericsStrategy {
+    /// Monomorphization
+    Mono,
+    /// Existentialization
+    Existential,
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone, ValueEnum)]

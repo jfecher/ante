@@ -1,0 +1,24 @@
+// A global built from a sum type constructor keeps its payload when folded to a constant
+type Wrapper a = inner: a
+
+wrapped: Wrapper (Maybe U8) = Wrapper (Maybe.Some 3u8)
+greeting: Maybe String = Maybe.Some "hi"
+nothing: Maybe I64 = Maybe.None
+
+main () =
+    print_to_stdout do
+    match wrapped.inner
+    | Some x -> println x
+    | None -> println "none"
+    match greeting
+    | Some s -> println s
+    | None -> println "none"
+    match nothing
+    | Some x -> println x
+    | None -> println "none"
+
+// args: --delete-binary --no-color
+// expected stdout:
+// 3
+// hi
+// none
