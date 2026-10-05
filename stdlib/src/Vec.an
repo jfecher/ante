@@ -2,10 +2,10 @@ import Std.C.realloc, free
 import Std.Stream.Stream, iter, emit
 import Std.Fail.Fail, fail, panic_on_fail
 
-export Vec, Vec.empty, Vec.of, Vec.is_empty, Vec.len, Vec.extend, Vec.capacity, Vec.reserve, Vec.push, Vec.pop, Vec.get, Vec.get_unchecked,
+export Vec, Vec.empty, Vec.of, Vec.is_empty, Vec.len, Vec.extend, Vec.capacity, Vec.reserve, Vec.push, Vec.pop, Vec.get, Vec.get_mut, Vec.get_unchecked, Vec.get_mut_unchecked,
     Vec.remove_index, Vec.remove_first, Vec.remove_indices, Vec.remove_all, Vec.swap_last,
     Vec.reverse, Vec.swap, Vec.insert, Vec.dedup, Vec.truncate, Vec.clear, Vec.sort_by, Vec.sort,
-    print_vec, extract_vec, stream_vec, stream_imm_vec, eq_vec, drop_vec
+    print_vec, extract_vec, extract_vec_move, stream_vec, stream_imm_vec, eq_vec, drop_vec, insert_vec
 
 type Vec t =
     data: Ptr t
@@ -240,11 +240,17 @@ impl print_vec {p: Display t e}: Display (Vec t) e with
 
         print "]"
 
-impl extract_vec_move: Extract (Vec t) Usz t pure with
-    (.[]) v i = v.data.[i]
+impl extract_vec_move: Extract (Vec t) Usz t Panic with
+    (.[]) v i =
+        if i >= v.len () then
+            panic "Vec index out of bounds"
+        v.data.[i]
 
-impl extract_vec: Extract (ref Vec t) Usz (ref t) pure with
-    (.[]) v i = transmute (offset v.data i)
+impl extract_vec: Extract (ref Vec t) Usz (ref t) Panic with
+    (.[]) v i =
+        if i >= v.len () then
+            panic "Vec index out of bounds"
+        transmute (offset v.data i)
 
 /// Note that this impl is different from `Vec.insert`.
 /// Vec.insert will insert into a slot, moving the previous element and each

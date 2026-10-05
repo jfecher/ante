@@ -642,8 +642,11 @@ trait Extract collection index elem (e: effect) =
 impl extract_ptr_usz: Extract (Ptr t) Usz t pure with
     (.[]) ptr index = deref_ptr <| offset ptr index
 
-impl extract_string: Extract (ref String) Usz Char pure with
-    (.[]) s index = deref_ptr <| offset s.data index
+impl extract_string: Extract (ref String) Usz Char Panic with
+    (.[]) s index =
+        if index >= Usz s.length then
+            panic "extract_string: character index out of bounds"
+        deref_ptr <| offset s.data index
 
 array_len (_array: ref Array n t): Usz =
     size_t = size_of (MkType : Type t)
@@ -968,7 +971,7 @@ print_unsigned (x: U64): Unit can Fs =
     digit = x % 10 + U64 '0'
     putchar (Char digit)
 
-print_signed (x: I64): Unit can Fs =
+print_signed (x: I64): Unit can Panic, Fs =
     if x < 0 then
         if x == -9_223_372_036_854_775_808 then
             min_string = "-9223372036854775808"
