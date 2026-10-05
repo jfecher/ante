@@ -12,11 +12,12 @@ copy_file (): Unit can FileIO =
 
 main () =
     print_to_stdout do
-    handler _ for read () -> resume "hello"
-    handler _ for write s ->
-      println s
-      resume ()
-    copy_file ()
+    handle
+        handle copy_file ()
+        | write s ->
+          println s
+          resume ()
+    | read () -> resume "hello"
 
 // args: --delete-binary --no-color
 // expected stdout:

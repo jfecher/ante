@@ -7,9 +7,10 @@ g (f: fn Unit => Unit): Unit =
     h f
 
 main () =
-    handler _ for emit _x -> resume ()
-    g do emit 3
-    ()
+    handle
+        g do emit 3
+        ()
+    | emit _x -> resume ()
 
 // args: --check --no-color
 // expected exit status: 1

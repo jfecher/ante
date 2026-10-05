@@ -3,12 +3,12 @@ effect Fail =
     fail: fn Unit -> Never
 
 try (f: a can Fail, e): Maybe a can e =
-    handler h for fail () -> None
-    Some (f ())
+    handle Some (f ())
+    | fail () -> None
 
 on_fail (f: a can Fail, e) (default: a can e): a can e =
-    handler h for fail () -> default ()
-    f ()
+    handle f ()
+    | fail () -> default ()
 
 /// Fails if `cond` is false
 /// Note that this is the inverse of `fail_if`
@@ -55,5 +55,5 @@ ignore_fail (f: a can Fail, e): Unit can e =
 ///     parse input
 /// ```
 retry_until_success (f: a can Fail, e): a can e =
-    handler h for fail () -> retry_until_success f
-    f ()
+    handle f ()
+    | fail () -> retry_until_success f

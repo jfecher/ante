@@ -536,9 +536,12 @@ pub struct Match {
     pub cases: Vec<(PatternId, ExprId)>,
 }
 
-/// `handler <name> for <cases> in <expression>`
+/// `handle <expression> | <cases>`
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
 pub struct Handle {
+    /// Holdover from when `handler` expressions created named handlers
+    /// There's no name in the source now but some type checking/mir code uses the
+    /// effect type which is bound to this name.
     pub handler_name: NameId,
     pub expression: ExprId,
     pub cases: Vec<(HandlePattern, ExprId)>,

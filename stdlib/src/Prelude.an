@@ -862,13 +862,12 @@ write_stderr: fn (Ptr Char) Usz -> Unit can Fs = extern "ante_write_stderr"
 /// and the length in bytes of that string pointer.
 print_to_sink (sink: fn (Ptr Char) Usz => Unit can Fs) (f: a can Print, e): a can Fs, e =
     write_string (s: String) = sink s.data (Usz s.length)
-    handler h for
+    handle f ()
     | write s -> resume (sink s.data (Usz s.length))
     | write_char c -> resume (write_string "${c}")
     | write_u64 x -> resume (write_string "${x}")
     | write_i64 x -> resume (write_string "${x}")
     | write_f64 x -> resume (write_string "${x}")
-    in f ()
 
 /// Handles `Print` by piping to stdout
 print_to_stdout (f: a can Print, e): a can Fs, e =
@@ -1031,11 +1030,11 @@ effect Panic =
     panic: fn String -> Never
 
 abort_on_panic (f: a can Panic, e): a can e =
-    handler h for panic msg ->
+    handle f ()
+    | panic msg ->
         dbg msg
         exit 1
         // Unreachable, return any type
         deref_ptr (null ())
-    f ()
 
 ignore _x = ()

@@ -21,16 +21,17 @@ call_match (h: Holder Log): Unit can Fail, Log =
 
 main () =
     print_to_stdout do
-    handler h1 for fail () ->
+    handle
+        handle
+            call_field (make ())
+            call_match (make ())
+            (make ()).f ()
+        | log () ->
+            println "log"
+            resume ()
+    | fail () ->
         println "fail"
         resume ()
-    handler h2 for log () ->
-        println "log"
-        resume ()
-    in
-        call_field (make ())
-        call_match (make ())
-        (make ()).f ()
 
 // args: --delete-binary
 // expected stdout:

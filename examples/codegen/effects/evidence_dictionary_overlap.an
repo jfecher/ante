@@ -9,18 +9,18 @@ impl stream_pair: Stream Pair I32 (Emit I32) with
         emit p.b
 
 each (s: s) {Stream s a e} (f: fn a -> Unit can Print, e): Unit can Print, e =
-    handler h for emit x ->
+    handle Stream.stream s
+    | emit x ->
         f x
         resume ()
-    Stream.stream s
 
 main () =
     print_to_stdout do
-    handler h for emit (x: I32) ->
+    handle each (Pair 1 2) println
+    | emit (x: I32) ->
         print "outer "
         println x
         resume ()
-    in each (Pair 1 2) println
 
 // args: --delete-binary --no-color
 // expected stdout:

@@ -5,9 +5,10 @@ unit_neverizer {Throw Never} =
 
 main () =
     print_to_stdout do
-    handler h for throw _ -> println "threw!"
-    unit_neverizer h
-    println "through!"
+    handle
+        unit_neverizer ()
+        println "through!"
+    | throw _ -> println "threw!"
 
 // args: --check --no-color
 // expected exit status: 1
@@ -18,10 +19,12 @@ main () =
 //   |                 ^^^^^^^^^^^
 // 4 |     throw ()
 // 
-// examples/regressions/230_unit_is_never.an:6:1
-// 6 | main () =	// error: main here uses Fs, Throw Unit but it should only use Fs, Net
-//   | ^^^^
-// 7 |     print_to_stdout do
+// examples/regressions/230_unit_is_never.an:9:9
+//  8 |     handle
+//    |         // error: No implicit found for type Throw Never required by unit_neverizer
+//  9 |         unit_neverizer ()
+//    |         ^^^^^^^^^^^^^^
+// 10 |         println "through!"
 // 
 // Found 2 errors and 0 warnings
 

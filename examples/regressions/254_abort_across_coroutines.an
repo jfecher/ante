@@ -11,11 +11,12 @@ import Std.C.VoidPtr
 // For now we have this copy
 // TODO: This fails to type check without an explicit signature
 foldr (gen: fn Unit => Unit can Emit a, e) (initial: b) (f: fn a b => b): b can e =
-    handler h for emit value ->
+    handle
+        gen ()
+        initial
+    | emit value ->
         rest = resume ()
         f value rest
-    gen ()
-    initial
 
 main () =
     print_to_stdout do

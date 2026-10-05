@@ -132,7 +132,7 @@ impl<'contents> Lexer<'contents> {
                 | Token::Do
                 | Token::Else
                 | Token::Extern
-                | Token::Handler
+                | Token::Handle
                 | Token::If
                 | Token::In
                 | Token::Match

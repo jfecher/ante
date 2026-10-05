@@ -15,8 +15,8 @@ uses_effect_as_implicit {Log}: Unit = ()
 
 main () =
     foo (fn () -> ())
-    handler h for log _ -> resume ()
-    in bar (fn () -> ())
+    handle bar (fn () -> ())
+    | log _ -> resume ()
 
 // expected exit status: 1
 // expected stderr:

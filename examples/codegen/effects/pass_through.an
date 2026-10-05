@@ -12,9 +12,9 @@ use_it (g: fn Unit => Unit can Print): Unit can Emit I32, Print =
 main () =
     print_to_stdout do
     x = 111
-    handler _ for emit _v ->
+    handle use_it do println x
+    | emit _v ->
         resume ()
-    use_it do println x
 
 // args: --delete-binary --no-color
 // expected stdout:

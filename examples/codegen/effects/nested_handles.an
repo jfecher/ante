@@ -12,20 +12,20 @@ foo (): (U32, U64) can Ping, Pong =
     a + c, b + d
 
 ping (f: fn Unit => a can Ping, Print) =
-    handler h for do_ping x ->
+    handle f ()
+    | do_ping x ->
         println "ping?"
         r = resume (x * 2)
         println "ping!"
         r
-    in f ()
 
 pong (f: fn Unit => a can Ping, Pong) =
-    handler h for do_pong x ->
+    handle f ()
+    | do_pong x ->
         println "pong?"
         r = resume (x * 3)
         println "pong!"
         r
-    in f ()
 
 main () =
     print_to_stdout do

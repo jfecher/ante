@@ -6,9 +6,10 @@ effect Read a =
     read: fn Unit -> a
 
 read_or_none (f: fn Unit => U32 can MyFail, Read U32): Maybe U32 =
-    handler hf for fail () -> None
-    handler hr for read () -> resume 5u32
-    Some (f ())
+    handle
+        handle Some (f ())
+        | read () -> resume 5u32
+    | fail () -> None
 
 foo (): U32 can MyFail, Read U32 =
     if false then fail ()

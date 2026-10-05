@@ -8,17 +8,17 @@ iota (n: U32): Unit can Emit U32 = loop (i = 0) ->
         recur (i + 1)
 
 filter (stream: fn Unit => Unit can Emit a) (predicate: fn a => Bool can e) {Copy a} = fn () can Emit a, e ->
-    handler h for emit x ->
+    handle stream ()
+    | emit x ->
         if predicate x then
             emit x
         resume ()
-    in stream ()
 
 for_ (stream: fn Unit => Unit can Emit a) (f: fn a => b) =
-    handler h for emit x ->
+    handle stream ()
+    | emit x ->
         f x
         resume ()
-    in stream ()
 
 main () =
     print_to_stdout do
@@ -38,19 +38,17 @@ main () =
 //     (recur: fn U32 [U32] -> Unit can Emit U32) 0
 // 
 // (filter: fn (fn Unit [_] -> Unit can Emit a) (fn a [_] -> Bool can e) {Copy a} -> (fn Unit [(fn Unit [_] -> Unit can Emit a), (fn a [_] -> Bool can e)] -> Unit can Emit a, e) is pure) (stream: fn Unit [_] -> Unit can Emit a) (predicate: fn a [_] -> Bool can e) {(_: Copy a)} = fn () [(stream: fn Unit [_] -> Unit can Emit a), (predicate: fn a [_] -> Bool can e)] can Emit a, e ->
-//     handler (h: Emit a) for
+//     handle fn () [(stream: fn Unit [_] -> Unit can Emit a)] -> (stream: fn Unit [_] -> Unit can Emit a) ()
 //     | (emit: fn a -> Unit can Emit a) (x: a) -> fn (x: a) (resume: fn Unit [Ptr] -> Unit is pure) [(predicate: fn a [_] -> Bool can e)] ->
 //         if (predicate: fn a [_] -> Bool can e) (x: a) then 
 //             (emit: fn a -> Unit can Emit a) (x: a)
 //         (resume: fn Unit [Ptr] -> Unit is pure) ()
-//     in fn () [(stream: fn Unit [_] -> Unit can Emit a)] -> (stream: fn Unit [_] -> Unit can Emit a) ()
 // 
 // (for_: fn (fn Unit [_] -> Unit can Emit a) (fn a [_] -> b can $effect) -> Unit can $effect) (stream: fn Unit [_] -> Unit can Emit a) (f: fn a [_] -> b can $effect) =
-//     handler (h: Emit a) for
+//     handle fn () [(stream: fn Unit [_] -> Unit can Emit a)] -> (stream: fn Unit [_] -> Unit can Emit a) ()
 //     | (emit: fn a -> Unit can Emit a) (x: a) -> fn (x: a) (resume: fn Unit [Ptr] -> Unit is pure) [(f: fn a [_] -> b can $effect)] ->
 //         (f: fn a [_] -> b can $effect) (x: a)
 //         (resume: fn Unit [Ptr] -> Unit is pure) ()
-//     in fn () [(stream: fn Unit [_] -> Unit can Emit a)] -> (stream: fn Unit [_] -> Unit can Emit a) ()
 // 
 // (main: fn Unit -> Unit can Fs) () =
 //     (print_to_stdout: fn (fn Unit -> Unit can Print) -> Unit can Fs) (move fn (_: Unit) ->

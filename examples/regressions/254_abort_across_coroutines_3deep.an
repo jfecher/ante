@@ -5,11 +5,12 @@ import Std.Fail.Fail, fail, try
 import Std.C.VoidPtr
 
 foldr (gen: fn Unit => Unit can Emit a, e) (initial: b) (f: fn a b => b): b can e =
-    handler h for emit value ->
+    handle
+        gen ()
+        initial
+    | emit value ->
         rest = resume ()
         f value rest
-    gen ()
-    initial
 
 main () =
     print_to_stdout do

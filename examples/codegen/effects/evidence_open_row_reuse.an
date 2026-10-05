@@ -3,11 +3,12 @@ import Std.Fail.Fail, fail, try
 
 // This used to panic MIR evidence projection since `e` would end up duplicating an effect
 foldr (gen: fn Unit => Unit can Emit a, e) (initial: b) (f: fn a b => b): b can e =
-    handler h for emit value ->
+    handle
+        gen ()
+        initial
+    | emit value ->
         rest = resume ()
         f value rest
-    gen ()
-    initial
 
 emit_1_2_3 () =
     emit 1

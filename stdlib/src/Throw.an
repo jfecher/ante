@@ -8,37 +8,39 @@ type Result t e =
    | Err e
 
 catch (f: a can Throw e): Result a e =
-    handler h for throw e -> Err e
-    Ok (f ())
+    handle Ok (f ())
+    | throw e -> Err e
 
 catch_or (f: a can Throw e) (default: a): a =
-    handler h for throw _ -> default
-    f ()
+    handle f ()
+    | throw _ -> default
 
 catch_or_else (f: a can Throw e) (default: fn e => a): a =
-    handler h for throw e -> default e
-    f ()
+    handle f ()
+    | throw e -> default e
 
 on_err (f: a can Throw e) (on_err: fn e => Unit): Unit =
-    handler h for throw e -> on_err e
-    f ()
-    ()
+    handle
+        f ()
+        ()
+    | throw e -> on_err e
 
 /// Apply the given function to the thrown value and re-throw it
 map_err (f: t can Throw e1) (f2: fn e1 => e2): t can Throw e2 =
-    handler h for throw e ->
+    handle f ()
+    | throw e ->
         throw (f2 e)
-    f ()
 
 /// Returns the error when thrown or fails if the operation finishes without throwing.
 unwrap_err (f: t can Throw e): e can Fail =
-    handler h for throw e -> e
-    f ()
-    fail ()
+    handle
+        f ()
+        fail ()
+    | throw e -> e
 
 /// If an error is thrown when running `f`, print it to stderr and exit 1
 exit_on_throw (f: a can Throw t, e) {Display t e2}: a can Fs, e, e2 =
-    handler h for throw error ->
+    handle f ()
+    | throw error ->
         print_to_stderr do println error
         Std.C.exit 1
-    f ()

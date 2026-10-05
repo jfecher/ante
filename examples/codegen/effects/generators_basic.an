@@ -6,10 +6,10 @@ iota (n: U32): Unit can Emit U32 = loop (i = 0) ->
         recur (i + 1)
 
 for_ (stream: fn Unit => Unit can Emit a) (f: fn a [env] -> Unit) =
-    handler h for emit x ->
+    handle stream ()
+    | emit x ->
         f x
         resume ()
-    in stream ()
 
 main () =
     print_to_stdout do

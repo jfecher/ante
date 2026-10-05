@@ -12,17 +12,19 @@ take_i32 (_v: I32): Unit = ()
 
 main () =
     print_to_stdout do
-    handler hu for send v ->
+    handle
+        handle
+            both 1u8 2i32 fn () ->
+                send 3u8
+                send 4i32
+        | send v ->
+            take_i32 v
+            println "i32"
+            resume ()
+    | send v ->
         take_u8 v
         println "u8"
         resume ()
-    in handler hi for send v ->
-        take_i32 v
-        println "i32"
-        resume ()
-    in both 1u8 2i32 fn () ->
-        send 3u8
-        send 4i32
 
 // args: --delete-binary --no-color
 // expected stdout:

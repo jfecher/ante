@@ -1895,7 +1895,7 @@ impl<'tokens> Parser<'tokens> {
         match self.current_token() {
             Token::If => self.parse_if_expr(),
             Token::Match => self.parse_match(),
-            Token::Handler => self.parse_handler(),
+            Token::Handle => self.parse_handle(),
             Token::Loop => self.parse_loop(),
             Token::While => self.parse_while(),
             Token::For => self.parse_for(),
@@ -2588,14 +2588,24 @@ impl<'tokens> Parser<'tokens> {
         })
     }
 
-    fn parse_handler(&mut self) -> Result<ExprId> {
+    fn parse_handle(&mut self) -> Result<ExprId> {
         self.with_expr_id_and_location(|this| {
-            this.expect(Token::Handler, "`handler` to start this handler expression")?;
+            let handle_location = this.current_token_location();
+            this.expect(Token::Handle, "`handle` to start this handle expression")?;
 
-            let handler_name = this.parse_ident_id()?;
-            this.expect(Token::For, "`for` to introduce the handler branches")?;
+            let body = this.parse_block_or_expression()?;
 
-            let parse_branch = |this: &mut Self| -> Result<(HandlePattern, ExprId)> {
+            // Wrap the handled expression in a lambda. This will be the init function for the coroutine
+            let body_location = this.current_context.expr_locations[body].clone();
+            let unit_pattern = this.push_pattern(Pattern::Literal(Literal::Unit), body_location);
+            let expression = this.wrap_in_lambda(vec![cst::Parameter::new(unit_pattern)], body);
+
+            let cases = this.many1(|this| {
+                if *this.peek_next_token() == Token::Pipe {
+                    this.accept(Token::Newline);
+                }
+
+                this.expect(Token::Pipe, "a `|` to start a new handle pattern")?;
                 let pattern = this.parse_handle_pattern()?;
                 this.expect(Token::RightArrow, "a `->` to separate the handle pattern from the branch body")?;
                 let branch = this.parse_block_or_expression()?;
@@ -2607,32 +2617,13 @@ impl<'tokens> Parser<'tokens> {
                 params.push(cst::Parameter::new(resume_pattern));
 
                 Ok((pattern, this.wrap_in_lambda(params, branch)))
-            };
+            })?;
 
-            // Allow an optional leading newline before the first `|` in the pipe-prefixed form.
-            let mut cases = Vec::new();
-            if this.at_pipe() {
-                while this.at_pipe() {
-                    this.accept(Token::Newline);
-                    this.advance(); // consume `|`
-                    cases.push(parse_branch(this)?);
-                }
-            } else {
-                // Single branch with no leading `|`.
-                cases.push(parse_branch(this)?);
-            }
-
-            this.accept(Token::Newline);
-            let expect_block = this.accept(Token::In);
-            this.accept(Token::Newline);
-
-            let body = if expect_block { this.parse_block_or_expression()? } else { this.parse_sequence_items_expr() };
-
-            // Wrap the handled expression in a `fn () = <expression>`. This will be the init
-            // function for the coroutine.
-            let body_location = this.current_context.expr_locations[body].clone();
-            let unit_pattern = this.push_pattern(Pattern::Literal(Literal::Unit), body_location);
-            let expression = this.wrap_in_lambda(vec![cst::Parameter::new(unit_pattern)], body);
+            // This is a holdover from when handler exprs defined named handlers. Now it is just
+            // kept to make the migration to `handle` exprs easier since type checking still sets
+            // the effect type as this name's type.
+            let handler_name = this.static_name("$handler");
+            let handler_name = this.push_name(handler_name, handle_location);
 
             Ok(Expr::Handle(cst::Handle { handler_name, expression, cases }))
         })

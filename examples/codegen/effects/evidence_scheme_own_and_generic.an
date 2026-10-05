@@ -6,17 +6,17 @@ outer_fn (f: fn Unit => Unit can e): Unit can Emit I32, e =
 
 main () =
     print_to_stdout do
-    handler ho for emit (x: I32) ->
-        print "outer "
-        println x
-        resume ()
-    in
+    handle
         thunk = fn () -> emit 2
-        handler hi for emit (x: I32) ->
+        handle outer_fn thunk
+        | emit (x: I32) ->
             print "inner "
             println x
             resume ()
-        in outer_fn thunk
+    | emit (x: I32) ->
+        print "outer "
+        println x
+        resume ()
 
 // args: --delete-binary --no-color
 // expected stdout:

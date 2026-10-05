@@ -20,13 +20,14 @@ consume (source: s) {Stream s U32 e}: Unit can Observe, e =
 
 main () =
     print_to_stdout do
-    handler t for tick () ->
+    handle
+        handle consume (Counter 3)
+        | observe x ->
+            println x
+            resume ()
+    | tick () ->
         println "tick"
         resume ()
-    in handler o for observe x ->
-        println x
-        resume ()
-    in consume (Counter 3)
 
 // args: --delete-binary --no-color
 // expected stdout:

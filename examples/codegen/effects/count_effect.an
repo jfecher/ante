@@ -6,11 +6,11 @@ foo (): Unit can Count =
     repeat 10 fn _ -> count ()
 
 handle_count (f: fn Unit => Unit can Count) =
-    handler h for count () ->
-        1 + resume ()
-    in
+    handle
         f ()
         0
+    | count () ->
+        1 + resume ()
 
 main () =
     print_to_stdout do

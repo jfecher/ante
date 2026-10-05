@@ -6,22 +6,19 @@ effect Use a =
     set: fn a I32 -> Unit
 
 main () =
-    handler h1 for log s -> print s
-    log "test1" {h1}
+    handle log "test1"
+    | log s -> print s
 
-    handler h2 for
-      | log _   -> print "logged"
-    in
-        log "test2" {h2}
+    handle
+        log "test2"
+    | log _   -> print "logged"
 
-    handler h3 for
-      | get () -> foo resume 1 // test 'resume' is parsed as a normal identifier
-      | set _ b -> resume ()
-    in foo + bar
+    handle foo + bar
+    | get () -> foo resume 1 // test 'resume' is parsed as a normal identifier
+    | set _ b -> resume ()
 
-    handler h4 for
+    handle ()
       | log _ -> "foo"
-    in ()
 
 map1 (l: List a) (f: fn a {Log} -> b) : List b = ()
 
@@ -39,21 +36,16 @@ map3 (l: List a) (f: fn a -> b) {Log} : List b = ()
 //     set: fn a I32 -> Unit
 // 
 // main () =
-//     handler h1 for
+//     handle fn () -> log "test1"
 //     | log s -> fn s resume -> print s
-//     in fn () ->
-//         log "test1" {h1}
-//         handler h2 for
-//         | log _ -> fn _ resume -> print "logged"
-//         in fn () ->
-//             log "test2" {h2}
-//         handler h3 for
-//         | get () -> fn () resume -> foo resume 1
-//         | set _ b -> fn _ b resume -> resume ()
-//         in fn () -> foo + bar
-//         handler h4 for
-//         | log _ -> fn _ resume -> "foo"
-//         in fn () -> ()
+//     handle fn () ->
+//         log "test2"
+//     | log _ -> fn _ resume -> print "logged"
+//     handle fn () -> foo + bar
+//     | get () -> fn () resume -> foo resume 1
+//     | set _ b -> fn _ b resume -> resume ()
+//     handle fn () -> ()
+//     | log _ -> fn _ resume -> "foo"
 // 
 // map1 (l: List a) (f: fn a {Log} -> b): List b = ()
 // 

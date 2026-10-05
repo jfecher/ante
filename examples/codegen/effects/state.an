@@ -10,12 +10,11 @@ use_state (y: I32): Unit can Use I32, Print, Panic =
 
 state (f: fn Unit => a can Use s, Print, e) (initial: s) {Copy s}: a can Print, e =
     var current = initial
-    handler h for
+    handle f ()
     | get () -> resume current
     | set new_state ->
         current := new_state
         resume ()
-    in f ()
 
 main () =
     print_to_stdout do

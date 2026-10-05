@@ -12,15 +12,15 @@ bar (): Unit can AddEff, Print =
     add 4
 
 sum_all () =
-    handler h for add y ->
+    handle
+        foo ()
+        bar ()
+        0
+    | add y ->
         println "add called"
         r = resume ()
         println "add resume finished"
         y + r
-
-    foo ()
-    bar ()
-    0
 
 // 10
 main () =

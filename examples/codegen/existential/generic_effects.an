@@ -8,11 +8,11 @@ effect Emit a =
 collect (f: fn Unit => Unit can Emit a, e): (U32, Maybe a) can e =
     var count = 0
     var last = Maybe.None
-    handler h for emit x ->
+    handle f ()
+    | emit x ->
         count += 1
         last := Maybe.Some x
         resume ()
-    in f ()
     count, last
 
 // Emits `x` `n` times, forwarding the generic effect
@@ -24,10 +24,10 @@ emit_n (n: U32) (x: a) {Copy a}: Unit can Emit a =
 // Handles `Emit a` by emitting `(b, a)` pairs: two instantiations of one effect are in
 // scope at once inside the handler
 tag_each (tag: b) (f: fn Unit => Unit can Emit a, Emit (b, a), e) {Copy b}: Unit can Emit (b, a), e =
-    handler h for emit x ->
+    handle f ()
+    | emit x ->
         emit (tag, x)
         resume ()
-    in f ()
 
 main () =
     print_to_stdout do

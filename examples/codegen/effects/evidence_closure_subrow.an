@@ -10,10 +10,10 @@ main () =
     // whose row-generic instantiates non-pure requires an evidence coercion of a closure.
     g: fn Unit [_] -> I32 is pure = fn () -> x
 
-    handler h for emit y ->
+    handle emit (apply g)
+    | emit y ->
         println y
         resume ()
-    in emit (apply g)
 
 // args: --delete-binary --no-color
 // expected stdout:
