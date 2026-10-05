@@ -377,6 +377,7 @@ impl Token {
                 | IndexBrackets
                 | IndexAssign
                 | Copy
+                | Semicolon
         )
     }
 }

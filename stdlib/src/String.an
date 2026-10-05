@@ -220,8 +220,7 @@ parse_unsigned_int (s: String) {n: Num t} {CheckedNum t} {Cast U8 t e} {Copy t}:
 
     first: Char = s.data.[0]
     fail_if (first == '-')
-    if first == '+' then
-        i += 1
+    if first == '+' then i += 1
 
     fail_if (i == len)
 

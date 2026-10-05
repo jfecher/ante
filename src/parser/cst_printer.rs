@@ -874,7 +874,8 @@ impl<'a> CstDisplay<'a> {
                 self.fmt_expr(return_.expression, context, f)
             },
             Expr::Assignment(assignment) => {
-                self.fmt_expr(assignment.lhs, context, f)?;
+                let lhs_parens = self.is_infix_operator_or_assignment(assignment.lhs, context);
+                self.parenthesize(assignment.lhs, lhs_parens, context, f)?;
                 match &assignment.op {
                     Some((CompoundAssignOp::Add, _)) => write!(f, " += ")?,
                     Some((CompoundAssignOp::Sub, _)) => write!(f, " -= ")?,
@@ -883,7 +884,8 @@ impl<'a> CstDisplay<'a> {
                     Some((CompoundAssignOp::Mod, _)) => write!(f, " %= ")?,
                     None => write!(f, " := ")?,
                 }
-                self.fmt_expr(assignment.rhs, context, f)
+                let rhs_parens = self.is_infix_operator_or_assignment(assignment.rhs, context);
+                self.parenthesize(assignment.rhs, rhs_parens, context, f)
             },
             Expr::Extern(extern_) => self.fmt_extern(extern_, f),
             Expr::InterpolatedString(interpolated) => self.fmt_interpolated_string(interpolated, context, f),
@@ -1007,6 +1009,17 @@ impl<'a> CstDisplay<'a> {
             write!(f, ")")
         } else {
             self.fmt_expr(expr, context, f)
+        }
+    }
+
+    fn is_infix_operator_or_assignment(&self, expr: ExprId, context: &impl IdStore) -> bool {
+        match context.get_expr(expr) {
+            Expr::Call(call) => {
+                call.arguments.len() == 2
+                    && matches!(self.classify_operator(call.function, context), FmtOperatorKind::Infix)
+            },
+            Expr::Assignment(_) => true,
+            _ => false,
         }
     }
 

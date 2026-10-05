@@ -1833,25 +1833,31 @@ impl<'tokens> Parser<'tokens> {
     fn precedence(token: &Token, ban_comma: bool) -> Option<(i8, bool)> {
         match token {
             Token::Semicolon => Some((1, false)),
-            Token::ApplyLeft => Some((2, true)),
-            Token::ApplyRight | Token::TildeArrow => Some((3, false)),
-            Token::Comma if !ban_comma => Some((4, true)),
-            Token::Or => Some((5, false)),
-            Token::And => Some((6, false)),
-            Token::Is => Some((7, false)),
+            Token::Assignment
+            | Token::AddAssign
+            | Token::SubAssign
+            | Token::MulAssign
+            | Token::DivAssign
+            | Token::ModAssign => Some((2, true)),
+            Token::ApplyLeft => Some((3, true)),
+            Token::ApplyRight | Token::TildeArrow => Some((4, false)),
+            Token::Comma if !ban_comma => Some((5, true)),
+            Token::Or => Some((6, false)),
+            Token::And => Some((7, false)),
+            Token::Is => Some((8, false)),
             Token::EqualEqual
             | Token::NotEqual
             | Token::GreaterThan
             | Token::LessThan
             | Token::GreaterThanOrEqual
             | Token::Divides
-            | Token::LessThanOrEqual => Some((8, false)),
-            Token::Append => Some((9, false)),
-            Token::Range => Some((10, false)),
-            Token::Add | Token::Subtract => Some((11, false)),
-            Token::Multiply | Token::Divide | Token::Modulus => Some((12, false)),
-            Token::Index => Some((13, false)),
-            Token::As => Some((14, false)),
+            | Token::LessThanOrEqual => Some((9, false)),
+            Token::Append => Some((10, false)),
+            Token::Range => Some((11, false)),
+            Token::Add | Token::Subtract => Some((12, false)),
+            Token::Multiply | Token::Divide | Token::Modulus => Some((13, false)),
+            Token::Index => Some((14, false)),
+            Token::As => Some((15, false)),
             _ => None,
         }
     }
@@ -1869,14 +1875,30 @@ impl<'tokens> Parser<'tokens> {
         let lhs = results.pop().unwrap();
         let location = self.expr_location(lhs).to(&self.expr_location(rhs));
 
+        let (operator, span) = operator_stack.pop().unwrap();
+        let function_location = span.in_file(self.file_id);
+
+        if *operator == Token::Assignment {
+            let assignment = self.make_assignment(lhs, rhs, location);
+            results.push(assignment);
+            return;
+        }
+
+        if let Some((op, op_str)) = Self::compound_assign_op(operator) {
+            let path = Path::ident(self.static_name(op_str), function_location.clone());
+            let path_id = self.push_path(path, function_location.clone());
+            let op_expr = self.push_expr(Expr::Variable(path_id), function_location);
+
+            let assignment = cst::Assignment { lhs, rhs, op: Some((op, op_expr)) };
+            results.push(self.push_expr(Expr::Assignment(assignment), location));
+            return;
+        }
+
         let lhs = Argument::explicit(lhs);
         let rhs = Argument::explicit(rhs);
 
         let call = self.reserve_expr();
         let function = self.reserve_expr();
-
-        let (operator, span) = operator_stack.pop().unwrap();
-        let function_location = span.in_file(self.file_id);
 
         let components = vec![(self.operator_name(operator), function_location.clone())];
         let path_id = self.push_path(Path { components }, function_location.clone());
@@ -2365,50 +2387,23 @@ impl<'tokens> Parser<'tokens> {
             return Ok(self.push_expr(expr, location));
         }
 
-        let expression = self.parse_expression_trailing(min_prec, ban_do)?;
+        self.parse_expression_trailing(min_prec, ban_do)
+    }
 
-        // Try to parse a compound assignment (+=, -=, *=, /=, %=)
-        if let Some((op, op_str)) = self.try_accept_compound_assign_op() {
-            let rhs = self.parse_expression()?;
-            let location = self.expr_location(expression).to(&self.expr_location(rhs));
+    /// Build `lhs := rhs`. `collection.[index] := rhs` needs to resolve to the `Insert` ability so
+    /// we rewrite it into a call in the form `(.[]:=) collection index rhs`.
+    fn make_assignment(&mut self, lhs: ExprId, rhs: ExprId, location: Location) -> ExprId {
+        if let Some((collection, index)) = self.index_call_args(lhs) {
+            let collection = self.mutify_receiver(collection);
 
-            // Create a synthetic Variable expression for the operator function (e.g., "+")
-            // so it goes through normal name resolution and ability dispatch.
-            let op_location = location.clone();
-            let components = vec![(self.static_name(op_str), op_location.clone())];
-            let path_id = self.push_path(cst::Path { components }, op_location.clone());
-            let op_expr = self.push_expr(Expr::Variable(path_id), op_location);
-
-            let assignment = cst::Assignment { lhs: expression, rhs, op: Some((op, op_expr)) };
-            return Ok(self.push_expr(Expr::Assignment(assignment), location));
+            let path = Path::ident(self.static_name(INDEX_ASSIGN_OPERATOR_FUNCTION_NAME), location.clone());
+            let path = self.push_path(path, location.clone());
+            let function = self.push_expr(Expr::Variable(path), location.clone());
+            let arguments = vec![Argument::explicit(collection), Argument::explicit(index), Argument::explicit(rhs)];
+            return self.push_expr(Expr::Call(Call { function, arguments }), location);
         }
 
-        // Try to parse a regular assignment (:=)
-        if self.accept(Token::Assignment) {
-            let rhs = self.parse_expression()?;
-            let location = self.expr_location(expression).to(&self.expr_location(rhs));
-
-            // `collection.[index] := rhs` resolves to the `Insert` ability rather than a plain
-            // store: rewrite it into a call `(.[]:=) collection index rhs` so it goes through
-            // normal ability dispatch. Reads (`a.[i]`) still resolve to `Extract`.
-            if let Some((collection, index)) = self.index_call_args(expression) {
-                // Borrow the collection mutably so the insertion mutates it in place. For nested
-                // indices (`a.[i].[j] := v`) this pushes `mut` to the innermost receiver so each
-                // intermediate `.[` read resolves to a `mut`-returning Extract.
-                let collection = self.mutify_receiver(collection);
-
-                let path = Path::ident(self.static_name(INDEX_ASSIGN_OPERATOR_FUNCTION_NAME), location.clone());
-                let path = self.push_path(path, location.clone());
-                let function = self.push_expr(Expr::Variable(path), location.clone());
-                let arguments =
-                    vec![Argument::explicit(collection), Argument::explicit(index), Argument::explicit(rhs)];
-                return Ok(self.push_expr(Expr::Call(Call { function, arguments }), location));
-            }
-
-            Ok(self.push_expr(Expr::Assignment(cst::Assignment { lhs: expression, rhs, op: None }), location))
-        } else {
-            Ok(expression)
-        }
+        self.push_expr(Expr::Assignment(cst::Assignment { lhs, rhs, op: None }), location)
     }
 
     /// Borrow the base of a (possibly nested) index expression mutably so that
@@ -2443,20 +2438,15 @@ impl<'tokens> Parser<'tokens> {
             .then(|| (call.arguments[0].expr, call.arguments[1].expr))
     }
 
-    fn try_accept_compound_assign_op(&mut self) -> Option<(cst::CompoundAssignOp, &'static str)> {
+    fn compound_assign_op(token: &Token) -> Option<(cst::CompoundAssignOp, &'static str)> {
         use cst::CompoundAssignOp;
-        if self.accept(Token::AddAssign) {
-            Some((CompoundAssignOp::Add, "+"))
-        } else if self.accept(Token::SubAssign) {
-            Some((CompoundAssignOp::Sub, "-"))
-        } else if self.accept(Token::MulAssign) {
-            Some((CompoundAssignOp::Mul, "*"))
-        } else if self.accept(Token::DivAssign) {
-            Some((CompoundAssignOp::Div, "/"))
-        } else if self.accept(Token::ModAssign) {
-            Some((CompoundAssignOp::Mod, "%"))
-        } else {
-            None
+        match token {
+            Token::AddAssign => Some((CompoundAssignOp::Add, "+")),
+            Token::SubAssign => Some((CompoundAssignOp::Sub, "-")),
+            Token::MulAssign => Some((CompoundAssignOp::Mul, "*")),
+            Token::DivAssign => Some((CompoundAssignOp::Div, "/")),
+            Token::ModAssign => Some((CompoundAssignOp::Mod, "%")),
+            _ => None,
         }
     }
 
