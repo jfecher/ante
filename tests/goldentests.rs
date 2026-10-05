@@ -13,3 +13,11 @@ fn goldentests_c_backend() -> TestResult<()> {
     config.base_args = "--backend=c".to_string();
     config.run_tests()
 }
+
+/// Unoptimized builds existentialize generics by default, so test monomorphization separately
+#[test]
+fn goldentests_monomorphization() -> TestResult<()> {
+    let mut config = TestConfig::new(env!("CARGO_BIN_EXE_ante"), "examples/codegen", "// ");
+    config.base_args = "--generics=mono".to_string();
+    config.run_tests()
+}

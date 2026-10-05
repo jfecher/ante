@@ -14,7 +14,7 @@
 //! Performs are left unchanged by this pass.
 use std::sync::Arc;
 
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashMap;
 
 use crate::iterator_extensions::{mapvec, opt_mapvec};
 use crate::lexer::token::IntegerKind;
@@ -24,10 +24,11 @@ use crate::mir::{
 };
 
 use super::effect_lowering::{
-    CaseShape, Emitter, case_shape_from_handler_type, resolve_body_function, run_handle_optimization_worklist,
+    CaseShape, Emitter, WorklistState, case_shape_from_handler_type, resolve_body_function,
+    run_handle_optimization_worklist,
 };
 use super::tail_resume_optimization::{
-    OriginalEnvLayout, clone_body_with_extended_env, neutralize_handler_caps_in_dead_body, resolve_handler,
+    OriginalEnvLayout, clone_body_with_extended_env, neutralize_handler_caps_in_dead_body,
     rewrite_handler_caps_in_body, substitute_value,
 };
 
@@ -40,12 +41,10 @@ impl Mir {
 
 /// Optimize every abort-only Handle in `definition_id`, returning the ids of any new definitions
 /// created so the caller can enqueue them for processing.
-fn optimize_in_definition(
-    mir: &mut Mir, definition_id: DefinitionId, dead_bodies: &mut FxHashSet<DefinitionId>,
-) -> Vec<DefinitionId> {
+fn optimize_in_definition(mir: &mut Mir, definition_id: DefinitionId, state: &mut WorklistState) -> Vec<DefinitionId> {
     collect_handle_sites(mir, definition_id)
         .into_iter()
-        .flat_map(|site| try_optimize_handle(mir, definition_id, site, dead_bodies))
+        .flat_map(|site| try_optimize_handle(mir, definition_id, site, state))
         .collect()
 }
 
@@ -95,7 +94,7 @@ fn analyze_handle(mir: &Mir, definition_id: DefinitionId, site: &HandleSite) -> 
     opt_mapvec(&site.cases, |case| {
         let handler_type = definition.type_of_value(&case.handler, &mir.externals, &mir.definitions);
         let shape = case_shape_from_handler_type(&handler_type)?;
-        let (handler_def_id, handler_env, handler_bindings) = resolve_handler(case.handler, definition)?;
+        let (handler_def_id, handler_env, handler_bindings) = resolve_body_function(case.handler, definition)?;
         let handler_def = mir.definitions.get(&handler_def_id)?;
         if !case_is_abort_only(handler_def, &shape) {
             return None;
@@ -123,20 +122,12 @@ fn analyze_handle(mir: &Mir, definition_id: DefinitionId, site: &HandleSite) -> 
 fn case_is_abort_only(handler_def: &Definition, shape: &CaseShape) -> bool {
     let resume_param = Value::Parameter(BlockId::ENTRY_BLOCK, shape.op_arg_types.len() as u32);
     let mut uses_resume = false;
-    let mut check = |v: &Value| uses_resume |= *v == resume_param;
-    for instr in handler_def.instructions.values() {
-        instr.for_each_value(&mut check);
-    }
-    for (_, block) in handler_def.blocks.iter() {
-        if let Some(t) = &block.terminator {
-            t.for_each_value(&mut check);
-        }
-    }
+    handler_def.for_each_used_value(|v| uses_resume |= *v == resume_param);
     !uses_resume
 }
 
 fn try_optimize_handle(
-    mir: &mut Mir, definition_id: DefinitionId, site: HandleSite, dead_bodies: &mut FxHashSet<DefinitionId>,
+    mir: &mut Mir, definition_id: DefinitionId, site: HandleSite, state: &mut WorklistState,
 ) -> Vec<DefinitionId> {
     let Some(decisions) = analyze_handle(mir, definition_id, &site) else { return Vec::new() };
     preserve_op_indices(&mut mir.preserved_op_indices, &site.cases);
@@ -144,7 +135,7 @@ fn try_optimize_handle(
     let wrapper_ids = mapvec(decisions.iter().enumerate(), |(i, d)| materialize_abort_wrapper(mir, d, i as u32));
     let cap_tuple_type = Type::Tuple(Arc::new(mapvec(&wrapper_ids, |id| mir.definitions[id].typ.clone())));
 
-    let (prepared, created_ids) = prepare_body_fn(mir, definition_id, site.body, &cap_tuple_type, dead_bodies);
+    let (prepared, created_ids) = prepare_body_fn(mir, definition_id, site.body, &cap_tuple_type, state);
     splice_in_handle_replacement(mir, definition_id, site, &wrapper_ids, decisions, prepared, &cap_tuple_type);
     created_ids
 }
@@ -165,17 +156,17 @@ struct PreparedBody {
 
 /// Returns the prepared body plus the ids of the body clones created here to be handled later
 fn prepare_body_fn(
-    mir: &mut Mir, definition_id: DefinitionId, body: Value, cap_tuple_type: &Type,
-    dead_bodies: &mut FxHashSet<DefinitionId>,
+    mir: &mut Mir, definition_id: DefinitionId, body: Value, cap_tuple_type: &Type, state: &mut WorklistState,
 ) -> (PreparedBody, Vec<DefinitionId>) {
-    let (orig_id, env_value, bindings) = resolve_body_function(body, &mir.definitions[&definition_id]);
-    let (fn_id, layout, created_ids) = clone_body_with_extended_env(mir, orig_id, cap_tuple_type);
+    let (orig_id, env_value, bindings) =
+        resolve_body_function(body, &mir.definitions[&definition_id]).expect("handle body is not a function");
+    let (fn_id, layout, created_ids) = clone_body_with_extended_env(mir, orig_id, cap_tuple_type, state.referrers());
     neutralize_handler_caps_in_dead_body(mir, orig_id);
     rewrite_handler_caps_in_body(mir, fn_id, &layout, cap_tuple_type);
 
     // The original body fn is now dead (only the outer definition's dead PackClosure references it).
     // Don't re-process its Handles, the clone carries the live copies.
-    dead_bodies.insert(orig_id);
+    state.dead_bodies.insert(orig_id);
 
     (PreparedBody { fn_id, env_value, bindings, layout }, created_ids)
 }

@@ -45,10 +45,10 @@ pub struct LinkOptions {
     pub search_paths: Vec<String>,
 }
 
-pub fn link_with_cc(object_filename: &str, binary_filename: &str, link_options: &LinkOptions) -> bool {
+pub fn link_with_cc(object_filenames: &[String], binary_filename: &str, link_options: &LinkOptions) -> bool {
     let output = format!("-o{}", binary_filename);
     let mut command = Command::new("cc");
-    command.arg(object_filename).arg(aminicoro_path()).arg("-O0").arg("-lm").arg("-lpthread").arg("-w").arg(output);
+    command.args(object_filenames).arg(aminicoro_path()).arg("-O0").arg("-lm").arg("-lpthread").arg("-w").arg(output);
 
     for path in &link_options.search_paths {
         command.arg(format!("-L{path}"));
@@ -59,8 +59,10 @@ pub fn link_with_cc(object_filename: &str, binary_filename: &str, link_options: 
 
     let mut child = command.spawn().unwrap();
 
-    // remove the temporary bitcode file
+    // remove the temporary object files
     let status = child.wait().unwrap();
-    std::fs::remove_file(object_filename).unwrap();
+    for object_filename in object_filenames {
+        std::fs::remove_file(object_filename).unwrap();
+    }
     status.success()
 }

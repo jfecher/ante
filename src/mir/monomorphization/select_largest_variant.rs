@@ -98,7 +98,7 @@ impl Type {
         }
     }
 
-    fn find_largest_variant(variants: &[Type], ptr_size: u32) -> Type {
+    pub(crate) fn find_largest_variant(variants: &[Type], ptr_size: u32) -> Type {
         match variants.len() {
             0 => Type::UNIT,
             1 => variants[0].clone(),

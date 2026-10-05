@@ -10,6 +10,7 @@ use std::{
 pub(crate) const SRC_FOLDER: &str = "src";
 pub(crate) const MAIN_FILE: &str = "main.an";
 const DEFAULT_MAIN_SOURCE: &str = r#"main () =
+    print_to_stdout do
     println "Hello, World!"
 "#;
 

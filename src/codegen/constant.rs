@@ -9,7 +9,10 @@
 
 use rustc_hash::FxHashMap;
 
-use crate::mir::{self, BlockId, DefinitionId, InstructionId, TerminatorInstruction, Type, Value};
+use crate::{
+    lexer::token::{F64, FloatKind, IntegerKind},
+    mir::{self, BlockId, DefinitionId, InstructionId, TerminatorInstruction, Type, Value},
+};
 
 /// The constant value a global evaluates to. Variants cover exactly the instructions that are
 /// constant-foldable in a global initializer.
@@ -21,41 +24,65 @@ pub(crate) enum ConstantValue {
     Int(mir::IntConstant),
     Float(mir::FloatConstant),
     Tuple(Vec<ConstantValue>),
-    /// `element_type` lets a backend spell the array type even when `elements` is empty (the C
-    /// backend reads it via the variable's declarator instead, so it ignores this field, which is
-    /// why it is only present in llvm builds).
     Array {
         elements: Vec<ConstantValue>,
         #[cfg(feature = "llvm")]
         element_type: Type,
     },
-    /// An immutable byte blob (a string literal). Backed by static storage; rendered as a pointer.
+    /// The bytes of a string literal in immutable static storage
     Bytes(Vec<u8>),
-    /// A reference to another global or function, rendered by name.
+    /// A reference to a global or function
     Definition(DefinitionId),
-    /// An external symbol, rendered by name (its `typ` lets a backend declare it).
+    /// An external symbol
     Extern {
         name: String,
         typ: Type,
     },
-    /// A heap-shared value. A backend with no heap at init time backs it with static storage of
-    /// `typ` and takes its address.
+    /// A value of a `shared type`
     Shared {
         value: Box<ConstantValue>,
         typ: Type,
+        cell: SharedCell,
     },
-    /// A transmute from a zero-sized source: yields an indeterminate value of `typ`.
-    Transmute {
+    /// A value of `typ` whose bytes are all zero
+    Zeroed {
         typ: Type,
     },
+    /// A pointer of type `typ` with the address `bits`
+    IntToPtr {
+        bits: u64,
+        typ: Type,
+    },
+    /// The low bytes of `pointer` as an integer no wider than a Usz
+    PtrToInt {
+        pointer: Box<ConstantValue>,
+        kind: IntegerKind,
+    },
+    /// `value` of type `from` with its bytes reinterpreted as a `to`
+    Reinterpret {
+        value: Box<ConstantValue>,
+        from: Type,
+        to: Type,
+    },
+}
+
+/// Used so that a global folded into another keeps its original pointer.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct SharedCell {
+    /// The global whose initializer allocates the cell
+    pub(crate) global: DefinitionId,
+
+    /// Numbers `global`'s cells in the order they are evaluated
+    pub(crate) index: u32,
 }
 
 /// Fold a global definition into a [ConstantValue]. Panics if the definition contains an
 /// instruction that is not constant-foldable in a global initializer.
-pub(crate) fn evaluate_global(mir: &mir::Mir, global: &mir::Definition) -> ConstantValue {
+pub(crate) fn evaluate_global(mir: &mir::Mir, global: &mir::Definition, ptr_size: u32) -> ConstantValue {
     let mut values = FxHashMap::default();
+    let mut next_cell = SharedCell { global: global.id, index: 0 };
     for id in global.entry_block().instructions.iter().copied() {
-        let value = evaluate_instruction(mir, global, id, &values);
+        let value = evaluate_instruction(mir, global, id, &values, &mut next_cell, ptr_size);
         values.insert(Value::InstructionResult(id), value);
     }
 
@@ -83,6 +110,7 @@ fn constant_value(value: Value, values: &FxHashMap<Value, ConstantValue>) -> Con
 
 fn evaluate_instruction(
     mir: &mir::Mir, definition: &mir::Definition, id: InstructionId, values: &FxHashMap<Value, ConstantValue>,
+    next_cell: &mut SharedCell, ptr_size: u32,
 ) -> ConstantValue {
     match &definition.instructions[id] {
         mir::Instruction::MakeTuple(fields) => {
@@ -96,25 +124,36 @@ fn evaluate_instruction(
                 other => panic!("MakeArray result type is not an array: {other}"),
             },
         },
+        mir::Instruction::IndexTuple { tuple, index } => {
+            let typ = definition.instruction_result_type(id);
+            let tuple_type = mir.type_of_value(tuple, definition);
+            index_tuple(mir, constant_value(*tuple, values), &tuple_type, *index as usize, typ, ptr_size)
+        },
         mir::Instruction::MakeBytes(bytes) => ConstantValue::Bytes(bytes.clone()),
         mir::Instruction::Id(value) => constant_value(*value, values),
-        mir::Instruction::Transmute(_) => {
-            // Const context can only transmute zero-sized sources, so the result is just an
-            // indeterminate value of the destination type (mirrors the LLVM backend's `undef`).
-            ConstantValue::Transmute { typ: definition.instruction_result_type(id).clone() }
+        mir::Instruction::Transmute(value) => {
+            let from = mir.type_of_value(value, definition);
+            let to = definition.instruction_result_type(id);
+            let value = constant_value(*value, values);
+            let mut image = Image::new(mir, ptr_size);
+            let folded = image.write(&value, &from, 0).and_then(|()| image.read(to, 0));
+            folded.unwrap_or_else(|| ConstantValue::Reinterpret { value: Box::new(value), from, to: to.clone() })
         },
         mir::Instruction::Extern(name) => {
             ConstantValue::Extern { name: name.clone(), typ: definition.instruction_result_type(id).clone() }
         },
         mir::Instruction::AllocShared(value) => {
             let typ = mir.type_of_value(value, definition);
-            ConstantValue::Shared { value: Box::new(constant_value(*value, values)), typ }
+            let cell = *next_cell;
+            next_cell.index += 1;
+            ConstantValue::Shared { value: Box::new(constant_value(*value, values)), typ, cell }
         },
         mir::Instruction::Call { function, arguments } => {
             // Constructor-style calls appear in `implicit` globals after monomorphization. The
             // callee is a single-block, constant-foldable function, so inline it: bind its entry
             // parameters to the argument values and fold its body.
-            let callee_id = resolve_constant_call_target(definition, *function)
+            let (callee_id, _) = definition
+                .definition_of(*function)
                 .unwrap_or_else(|| panic!("Call in global initializer to non-resolvable function value: {function}"));
             let callee = mir
                 .definitions
@@ -139,7 +178,7 @@ fn evaluate_instruction(
                 callee_values.insert(Value::Parameter(BlockId::ENTRY_BLOCK, i as u32), value);
             }
             for instr_id in callee.entry_block().instructions.iter().copied() {
-                let value = evaluate_instruction(mir, callee, instr_id, &callee_values);
+                let value = evaluate_instruction(mir, callee, instr_id, &callee_values, next_cell, ptr_size);
                 callee_values.insert(Value::InstructionResult(instr_id), value);
             }
             constant_value(callee_result, &callee_values)
@@ -155,55 +194,211 @@ fn evaluate_instruction(
 /// whose own initializer must likewise be constant, so it inherits its inner value's constness.
 pub(crate) fn is_c_constant(value: &ConstantValue, mir: &mir::Mir) -> bool {
     match value {
-        ConstantValue::Unit
-        | ConstantValue::Bool(_)
-        | ConstantValue::Char(_)
-        | ConstantValue::Int(_)
-        | ConstantValue::Float(_)
-        | ConstantValue::Bytes(_)
-        | ConstantValue::Transmute { .. } => true,
+        ConstantValue::PtrToInt { .. } | ConstantValue::Reinterpret { .. } => false,
         // A function's address is constant but reading an extern variable is not
         ConstantValue::Extern { typ, .. } => matches!(typ, mir::Type::Function(_)),
         ConstantValue::Definition(id) => !mir.definitions.get(id).is_some_and(|d| d.is_global()),
-        ConstantValue::Tuple(values) => values.iter().all(|v| is_c_constant(v, mir)),
-        ConstantValue::Array { elements, .. } => elements.iter().all(|v| is_c_constant(v, mir)),
-        ConstantValue::Shared { value, .. } => is_c_constant(value, mir),
+        other => other.children().iter().all(|v| is_c_constant(v, mir)),
     }
 }
 
 /// Collect into `out` every other global variable this value reads by value.
 /// These are the globals whose runtime initialization must precede this one's. Functions are skipped.
 pub(crate) fn referenced_globals(value: &ConstantValue, mir: &mir::Mir, out: &mut Vec<DefinitionId>) {
-    match value {
-        ConstantValue::Definition(id) => {
-            if mir.definitions.get(id).is_some_and(|d| d.is_global()) {
-                out.push(*id);
-            }
-        },
-        ConstantValue::Tuple(values) => values.iter().for_each(|v| referenced_globals(v, mir, out)),
-        ConstantValue::Array { elements, .. } => elements.iter().for_each(|v| referenced_globals(v, mir, out)),
-        ConstantValue::Shared { value, .. } => referenced_globals(value, mir, out),
-        ConstantValue::Unit
-        | ConstantValue::Bool(_)
-        | ConstantValue::Char(_)
-        | ConstantValue::Int(_)
-        | ConstantValue::Float(_)
-        | ConstantValue::Bytes(_)
-        | ConstantValue::Extern { .. }
-        | ConstantValue::Transmute { .. } => {},
+    if let ConstantValue::Definition(id) = value
+        && mir.definitions.get(id).is_some_and(|d| d.is_global())
+    {
+        out.push(*id);
+    }
+    value.children().iter().for_each(|v| referenced_globals(v, mir, out));
+}
+
+impl ConstantValue {
+    fn children(&self) -> &[ConstantValue] {
+        match self {
+            ConstantValue::Tuple(values) | ConstantValue::Array { elements: values, .. } => values,
+            ConstantValue::Shared { value, .. } | ConstantValue::Reinterpret { value, .. } => {
+                std::slice::from_ref(value)
+            },
+            ConstantValue::PtrToInt { pointer, .. } => std::slice::from_ref(pointer),
+            _ => &[],
+        }
     }
 }
 
-/// Trace a Call's function-position value back to a [DefinitionId]. Follows `Id`-chains since
-/// `lower_closures` leaves a free function reference as `Id(Value::Definition(_))`.
-fn resolve_constant_call_target(definition: &mir::Definition, value: Value) -> Option<DefinitionId> {
-    match value {
-        Value::Definition(id) => Some(id),
-        Value::InstructionResult(iid) => match &definition.instructions[iid] {
-            mir::Instruction::Id(inner) => resolve_constant_call_target(definition, *inner),
-            mir::Instruction::Instantiate(id, _) => Some(*id),
-            _ => None,
+/// Field `index` of the constant `tuple`
+fn index_tuple(
+    mir: &mir::Mir, tuple: ConstantValue, tuple_type: &Type, index: usize, field_type: &Type, ptr_size: u32,
+) -> ConstantValue {
+    match tuple {
+        ConstantValue::Definition(id) if mir.definitions.get(&id).is_some_and(|d| d.is_global()) => {
+            let tuple = evaluate_global(mir, &mir.definitions[&id], ptr_size);
+            index_tuple(mir, tuple, tuple_type, index, field_type, ptr_size)
         },
-        _ => None,
+        ConstantValue::Tuple(mut fields) => fields.swap_remove(index),
+        ConstantValue::Zeroed { .. } => ConstantValue::Zeroed { typ: field_type.clone() },
+        other => {
+            let Type::Tuple(fields) = tuple_type else { panic!("IndexTuple of a non-tuple `{tuple_type}`") };
+            let offset = Type::field_offsets(fields, ptr_size)[index] as usize;
+            let mut image = Image::new(mir, ptr_size);
+            let field = image.write(&other, tuple_type, 0).and_then(|()| image.read(field_type, offset));
+            field.unwrap_or_else(|| panic!("cannot fold a field of {other:?} in a global initializer"))
+        },
+    }
+}
+
+/// The bytes of a constant being transmuted, with pointers kept symbolically. Unwritten bytes are zero.
+struct Image<'a> {
+    mir: &'a mir::Mir,
+    ptr_size: u32,
+    bytes: Vec<u8>,
+    pointers: std::collections::BTreeMap<usize, ConstantValue>,
+}
+
+impl<'a> Image<'a> {
+    fn new(mir: &'a mir::Mir, ptr_size: u32) -> Self {
+        Self { mir, ptr_size, bytes: Vec::new(), pointers: Default::default() }
+    }
+
+    fn field_offsets(&self, fields: &[Type]) -> Vec<u32> {
+        Type::field_offsets(fields, self.ptr_size)
+    }
+
+    fn write_bytes(&mut self, offset: usize, bytes: &[u8]) {
+        if self.bytes.len() < offset + bytes.len() {
+            self.bytes.resize(offset + bytes.len(), 0);
+        }
+        self.bytes[offset..offset + bytes.len()].copy_from_slice(bytes);
+    }
+
+    /// The pointers overlapping `length` bytes at `offset`
+    fn overlapping_pointers(&self, offset: usize, length: usize) -> impl Iterator<Item = (&usize, &ConstantValue)> {
+        self.pointers.range(offset.saturating_sub(self.ptr_size as usize - 1)..offset + length)
+    }
+
+    fn read_bytes(&self, offset: usize, length: usize) -> Option<[u8; 8]> {
+        if self.overlapping_pointers(offset, length).next().is_some() {
+            return None;
+        }
+        let mut bytes = [0; 8];
+        for (i, byte) in bytes.iter_mut().take(length).enumerate() {
+            *byte = self.bytes.get(offset + i).copied().unwrap_or(0);
+        }
+        Some(bytes)
+    }
+
+    fn write(&mut self, value: &ConstantValue, typ: &Type, offset: usize) -> Option<()> {
+        use mir::PrimitiveType as P;
+        match (value, typ) {
+            (ConstantValue::Definition(id), _) if self.mir.definitions.get(id).is_some_and(|d| d.is_global()) => {
+                let value = evaluate_global(self.mir, &self.mir.definitions[id], self.ptr_size);
+                self.write(&value, typ, offset)?;
+            },
+            (ConstantValue::Zeroed { .. }, _) => (),
+            (ConstantValue::Int(int), _) => {
+                let size = int.kind().size_in_bytes(self.ptr_size) as usize;
+                self.write_bytes(offset, &int.as_u64().to_le_bytes()[..size]);
+            },
+            (ConstantValue::Float(mir::FloatConstant::F32(float)), _) => {
+                self.write_bytes(offset, &(float.0 as f32).to_bits().to_le_bytes());
+            },
+            (ConstantValue::Float(mir::FloatConstant::F64(float)), _) => {
+                self.write_bytes(offset, &float.0.to_bits().to_le_bytes());
+            },
+            (ConstantValue::Bool(b), _) => self.write_bytes(offset, &[*b as u8]),
+            (ConstantValue::Char(c), _) => self.write_bytes(offset, &[*c as u8]),
+            (ConstantValue::Unit, _) => (),
+            (ConstantValue::Tuple(values), Type::Tuple(fields)) => {
+                for ((value, field), field_offset) in values.iter().zip(fields.iter()).zip(self.field_offsets(fields)) {
+                    self.write(value, field, offset + field_offset as usize)?;
+                }
+            },
+            (ConstantValue::Array { elements, .. }, Type::Array { element, .. }) => {
+                let stride = element.stride(self.ptr_size) as usize;
+                for (i, value) in elements.iter().enumerate() {
+                    self.write(value, element, offset + i * stride)?;
+                }
+            },
+            (ConstantValue::IntToPtr { bits, .. }, _) => {
+                self.write_bytes(offset, &bits.to_le_bytes()[..self.ptr_size as usize]);
+            },
+            (ConstantValue::PtrToInt { pointer, kind }, _) if kind.size_in_bytes(self.ptr_size) == self.ptr_size => {
+                self.pointers.insert(offset, (**pointer).clone());
+            },
+            (ConstantValue::Reinterpret { value, from, .. }, _) => self.write(value, from, offset)?,
+            (_, Type::Primitive(P::Pointer) | Type::Function(_)) => {
+                self.pointers.insert(offset, value.clone());
+            },
+            _ => return None,
+        }
+        Some(())
+    }
+
+    fn read(&self, typ: &Type, offset: usize) -> Option<ConstantValue> {
+        use mir::{IntConstant as I, PrimitiveType as P};
+        Some(match typ {
+            Type::Primitive(P::Int(kind)) => {
+                let size = kind.size_in_bytes(self.ptr_size) as usize;
+
+                // TODO: This assumes the target is little-endian
+                let mut pointers = self.overlapping_pointers(offset, size);
+                if let Some((pointer_offset, pointer)) = pointers.next() {
+                    let one_pointer = pointers.next().is_none();
+                    return (*pointer_offset == offset && size <= self.ptr_size as usize && one_pointer)
+                        .then(|| ConstantValue::PtrToInt { pointer: Box::new(pointer.clone()), kind: *kind });
+                }
+                let bits = u64::from_le_bytes(self.read_bytes(offset, size)?);
+                ConstantValue::Int(match kind {
+                    IntegerKind::U8 => I::U8(bits as u8),
+                    IntegerKind::U16 => I::U16(bits as u16),
+                    IntegerKind::U32 => I::U32(bits as u32),
+                    IntegerKind::U64 => I::U64(bits),
+                    IntegerKind::Usz => I::Usz(bits as usize),
+                    IntegerKind::I8 => I::I8(bits as i8),
+                    IntegerKind::I16 => I::I16(bits as i16),
+                    IntegerKind::I32 => I::I32(bits as i32),
+                    IntegerKind::I64 => I::I64(bits as i64),
+                    IntegerKind::Isz => I::Isz(bits as isize),
+                })
+            },
+            Type::Primitive(P::Float(FloatKind::F32)) => {
+                let bits = u32::from_le_bytes(self.read_bytes(offset, 4)?[..4].try_into().unwrap());
+                ConstantValue::Float(mir::FloatConstant::F32(F64(f32::from_bits(bits) as f64)))
+            },
+            Type::Primitive(P::Float(FloatKind::F64)) => {
+                let bits = u64::from_le_bytes(self.read_bytes(offset, 8)?);
+                ConstantValue::Float(mir::FloatConstant::F64(F64(f64::from_bits(bits))))
+            },
+            Type::Primitive(P::Bool) => ConstantValue::Bool(self.read_bytes(offset, 1)?[0] != 0),
+            Type::Primitive(P::Char) => ConstantValue::Char(self.read_bytes(offset, 1)?[0] as char),
+            Type::Primitive(P::Unit) => ConstantValue::Unit,
+            Type::Primitive(P::Pointer) | Type::Function(_) => match self.pointers.get(&offset) {
+                Some(pointer) if self.overlapping_pointers(offset, self.ptr_size as usize).count() == 1 => {
+                    pointer.clone()
+                },
+                Some(_) => return None,
+                None => match u64::from_le_bytes(self.read_bytes(offset, self.ptr_size as usize)?) {
+                    0 => ConstantValue::Zeroed { typ: typ.clone() },
+                    bits => ConstantValue::IntToPtr { bits, typ: typ.clone() },
+                },
+            },
+            Type::Tuple(fields) => {
+                let offsets = self.field_offsets(fields);
+                let fields = fields.iter().zip(offsets);
+                let fields = fields.map(|(field, field_offset)| self.read(field, offset + field_offset as usize));
+                ConstantValue::Tuple(fields.collect::<Option<_>>()?)
+            },
+            Type::Array { length, element } => {
+                let Type::U32(length) = length.as_ref() else { return None };
+                let stride = element.stride(self.ptr_size) as usize;
+                let elements = (0..*length as usize).map(|i| self.read(element, offset + i * stride));
+                ConstantValue::Array {
+                    elements: elements.collect::<Option<_>>()?,
+                    #[cfg(feature = "llvm")]
+                    element_type: (**element).clone(),
+                }
+            },
+            _ => return None,
+        })
     }
 }

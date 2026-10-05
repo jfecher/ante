@@ -1,0 +1,47 @@
+// Effects whose type arguments are only known at runtime. Evidence is searched by a runtime key
+// which includes each effect's type arguments, so two uses of one effect never get mixed up.
+
+effect Emit a =
+    emit: fn a -> Unit
+
+// Counts what `f` emits and keeps the last value, generic in what is emitted
+collect (f: fn Unit => Unit can Emit a, e): (U32, Maybe a) can e =
+    var count = 0
+    var last = Maybe.None
+    handler h for emit x ->
+        count += 1
+        last := Maybe.Some x
+        resume ()
+    in f ()
+    count, last
+
+// Emits `x` `n` times, forwarding the generic effect
+emit_n (n: U32) (x: a) {Copy a}: Unit can Emit a =
+    if n > 0 then
+        emit x
+        emit_n (n - 1) x
+
+// Handles `Emit a` by emitting `(b, a)` pairs: two instantiations of one effect are in
+// scope at once inside the handler
+tag_each (tag: b) (f: fn Unit => Unit can Emit a, Emit (b, a), e) {Copy b}: Unit can Emit (b, a), e =
+    handler h for emit x ->
+        emit (tag, x)
+        resume ()
+    in f ()
+
+main () =
+    print_to_stdout do
+    (n, last) = collect (fn () -> emit_n 3 (1u8, 2i16, 3u32))
+    match last
+    | Some (a, b, c) -> println "${n} ${a} ${b} ${c}"
+    | None -> println "none"
+
+    (n, last) = collect (fn () -> tag_each 'z' (fn () -> emit_n 2 5u64))
+    match last
+    | Some (t, x) -> println "${n} ${t} ${x}"
+    | None -> println "none"
+
+// args: --delete-binary --no-color
+// expected stdout:
+// 3 1 2 3
+// 2 z 5

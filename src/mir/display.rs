@@ -390,7 +390,7 @@ fn fmt_instruction(
         mir::Instruction::EqInt(a, b) => write!(f, "eq_int {}, {}", v(a), v(b))?,
         mir::Instruction::EqFloat(a, b) => write!(f, "eq_float {}, {}", v(a), v(b))?,
         mir::Instruction::BitwiseAnd(a, b) => write!(f, "bitwise_and {}, {}", v(a), v(b))?,
-        mir::Instruction::BitwiseOr(a, b) => write!(f, "bitwise_or{}, {}", v(a), v(b))?,
+        mir::Instruction::BitwiseOr(a, b) => write!(f, "bitwise_or {}, {}", v(a), v(b))?,
         mir::Instruction::BitwiseXor(a, b) => write!(f, "bitwise_xor {}, {}", v(a), v(b))?,
         mir::Instruction::BitwiseNot(x) => write!(f, "bitwise_not {}", v(x))?,
         mir::Instruction::SignExtend(x) => write!(f, "sign_extend {}", v(x))?,
@@ -406,6 +406,14 @@ fn fmt_instruction(
         mir::Instruction::SizeOf(x) => write!(f, "size_of {x}")?,
         mir::Instruction::ArrayLen(x) => write!(f, "array_len {x}")?,
         mir::Instruction::StackAllocUninit(x) => write!(f, "stack_alloc_uninit {x}")?,
+        mir::Instruction::StackAllocBytes(size) => write!(f, "stack_alloc_bytes {}", v(size))?,
+        mir::Instruction::GlobalAddress(id) => write!(f, "global_address {id}")?,
+        mir::Instruction::MemCopy { destination, source, size } => {
+            write!(f, "mem_copy {}, {}, {}", v(destination), v(source), v(size))?
+        },
+        mir::Instruction::PointerOffset { pointer, offset } => {
+            write!(f, "pointer_offset {}, {}", v(pointer), v(offset))?
+        },
         mir::Instruction::AllocShared(value) => write!(f, "alloc_shared {}", v(value))?,
         mir::Instruction::Extern(name) => write!(f, "extern \"{name}\"")?,
         mir::Instruction::AtomicLoad { pointer, .. } => write!(f, "atomic_load {}", v(pointer))?,

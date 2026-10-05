@@ -1,0 +1,44 @@
+type T =
+   | A U32 U32 U32 U32
+   | B (fn Unit -> String)
+
+greet () = "hi"
+
+// The largest variant is `A`, so folding this reads each half of a function pointer as a `U32`
+x: T = B greet
+
+// A global holding a global which cannot be folded
+pair: T, U8 = x, 5
+
+address: Ptr U8 = transmute 4096usz
+
+halves = 1u32, 2u32
+joined: U64 = transmute halves
+
+type Wrap = inner: String
+wrapped: Wrap = Wrap "hello"
+inner_data: Usz = transmute wrapped.inner.data
+
+main () =
+    print_to_stdout do
+    match x
+    | A _ _ _ _ -> println "A"
+    | B f -> println (f ())
+
+    t, n = pair
+    match t
+    | A _ _ _ _ -> println "A"
+    | B f -> println "${f ()} ${n}"
+
+    n: Usz = transmute address
+    println n
+    println joined // 2 << 32 + 1
+    println (inner_data != 0)
+
+// args: --delete-binary --no-color
+// expected stdout:
+// hi
+// hi 5
+// 4096
+// 8589934593
+// true

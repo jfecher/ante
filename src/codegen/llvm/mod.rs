@@ -8,13 +8,14 @@ use inkwell::{
     passes::PassBuilderOptions,
     targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine},
     types::{BasicType, BasicTypeEnum, IntType, StructType},
-    values::{AggregateValue, BasicValue, BasicValueEnum, FunctionValue, PhiValue},
+    values::{AggregateValue, BasicValue, BasicValueEnum, FunctionValue, GlobalValue, PhiValue, PointerValue},
 };
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    cli::OptLevel,
+    cli::{GenericsStrategy, OptLevel},
     codegen::{
         OverflowingIntOp,
         constant::{self, ConstantValue},
@@ -29,7 +30,7 @@ use crate::{
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CodegenLlvmResult {
-    pub object: Arc<Vec<u8>>,
+    pub objects: Vec<Arc<Vec<u8>>>,
 }
 
 pub fn initialize_native_target() {
@@ -38,12 +39,12 @@ pub fn initialize_native_target() {
 }
 
 pub fn codegen_llvm(
-    compiler: &Db, show_time: bool, opt_level: OptLevel, emit_ir: bool, selected_main: Option<TopLevelName>,
+    compiler: &Db, show_time: bool, opt_level: OptLevel, generics: GenericsStrategy, emit_ir: bool,
+    selected_main: Option<TopLevelName>,
 ) -> Option<CodegenLlvmResult> {
     // Whole-program for now; ideally `CodegenLlvmResult` could be split per item.
     // NOTE: Monomorphization being whole-program essentially prevents the above comment
-    let mir =
-        crate::timings::time_phase("Monomorphization", show_time, || mir::monomorphization::monomorphize(compiler));
+    let mir = crate::timings::time_phase("Lowering generics", show_time, || mir::lower_generics(compiler, generics));
     crate::timings::time_phase("LLVM codegen", show_time, || {
         codegen_llvm_for_mir(&mir, opt_level, emit_ir, show_time, selected_main)
     })
@@ -54,27 +55,25 @@ pub fn codegen_llvm(
 pub(crate) fn codegen_llvm_for_mir(
     mir: &mir::Mir, opt_level: OptLevel, emit_ir: bool, show_time: bool, selected_main: Option<TopLevelName>,
 ) -> Option<CodegenLlvmResult> {
-    let name = &mir.definitions.iter().next().map_or("_", |(_, function)| &function.name);
     let main_id = super::resolve_main_id(selected_main);
-
     initialize_native_target();
-    let llvm = inkwell::context::Context::create();
-    let mut module = ModuleContext::new(&llvm, mir, name, main_id);
-
-    for (id, function) in &mir.definitions {
-        module.codegen_function(function, *id);
-    }
-
-    module.codegen_main_wrapper();
-
     assert!(mir.externals.is_empty(), "All Mir compilation units should be linked");
 
-    if let Err(error) = module.module.verify() {
-        module.module.print_to_stderr();
-        eprintln!("llvm module failed to verify: {error}");
+    // Unoptimized builds are split into parallel modules, optimized builds are a single module
+    // so LLVM can do whole-program optimizations.
+    let partitions = if opt_level == OptLevel::O0 && !emit_ir { partition_count() } else { 1 };
+    if partitions > 1 {
+        let parts = partition(mir, partitions);
+        let objects = crate::timings::time_phase("Object emission", show_time, || {
+            parts.par_iter().map(|part| codegen_partition(mir, part, main_id)).collect()
+        });
+        return Some(CodegenLlvmResult { objects });
     }
 
+    let name = &mir.definitions.iter().next().map_or("_", |(_, function)| &function.name);
+    let llvm = inkwell::context::Context::create();
     let target_machine = native_target_machine(opt_level);
+    let module = build_module(&llvm, mir, &target_machine, name, main_id, mir.definitions.keys().copied());
 
     if opt_level != OptLevel::O0 {
         module
@@ -87,12 +86,59 @@ pub(crate) fn codegen_llvm_for_mir(
         println!("{}", module.module.print_to_string().to_string_lossy());
     }
 
-    let object = crate::timings::time_phase("Object emission", show_time, || {
-        target_machine.write_to_memory_buffer(&module.module, FileType::Object).expect("Failed to emit object code")
-    });
-    let object = Arc::new(object.as_slice().to_vec());
+    let object = crate::timings::time_phase("Object emission", show_time, || emit_object(&module, &target_machine));
+    Some(CodegenLlvmResult { objects: vec![object] })
+}
 
-    Some(CodegenLlvmResult { object })
+/// Build a module defining only `ids`
+fn build_module<'ctx>(
+    llvm: &'ctx inkwell::context::Context, mir: &'ctx mir::Mir, target_machine: &TargetMachine, name: &str,
+    main_id: Option<DefinitionId>, ids: impl IntoIterator<Item = DefinitionId>,
+) -> ModuleContext<'ctx> {
+    let mut module = ModuleContext::new(llvm, mir, target_machine, name, main_id);
+    for id in ids {
+        module.codegen_function(&mir.definitions[&id], id);
+    }
+    module.codegen_main_wrapper();
+
+    if let Err(error) = module.module.verify() {
+        module.module.print_to_stderr();
+        eprintln!("llvm module failed to verify: {error}");
+    }
+    module
+}
+
+fn emit_object(module: &ModuleContext, target_machine: &TargetMachine) -> Arc<Vec<u8>> {
+    let object =
+        target_machine.write_to_memory_buffer(&module.module, FileType::Object).expect("Failed to emit object code");
+    Arc::new(object.as_slice().to_vec())
+}
+
+fn partition_count() -> usize {
+    rayon::current_num_threads().min(16)
+}
+
+/// Split the definitions into `count` groups of about the same number of instructions
+fn partition(mir: &mir::Mir, count: usize) -> Vec<Vec<DefinitionId>> {
+    let mut definitions = mapvec(&mir.definitions, |(id, definition)| (*id, definition.instructions.len() + 1));
+
+    // Largest first so it balances well
+    definitions.sort_unstable_by_key(|(id, size)| (std::cmp::Reverse(*size), id.0));
+    let mut parts = vec![(0usize, Vec::new()); count];
+    for (id, size) in definitions {
+        let smallest = parts.iter_mut().min_by_key(|(total, _)| *total).unwrap();
+        smallest.0 += size;
+        smallest.1.push(id);
+    }
+    parts.into_iter().map(|(_, ids)| ids).filter(|ids| !ids.is_empty()).collect()
+}
+
+fn codegen_partition(mir: &mir::Mir, part: &[DefinitionId], main_id: Option<DefinitionId>) -> Arc<Vec<u8>> {
+    let llvm = inkwell::context::Context::create();
+    let name = format!("part{}", part[0]);
+    let target_machine = native_target_machine(OptLevel::O0);
+    let module = build_module(&llvm, mir, &target_machine, &name, main_id, part.iter().copied());
+    emit_object(&module, &target_machine)
 }
 
 /// Link the given list of object code blobs into an executable.
@@ -101,16 +147,17 @@ pub fn link(
     objects: Vec<Arc<Vec<u8>>>, binary_name: &str, show_time: bool, _opt_level: OptLevel,
     link_options: &super::LinkOptions,
 ) -> bool {
-    let path = std::path::Path::new(binary_name).with_extension("o");
-
-    crate::timings::time_phase("Object emission", show_time, || {
-        let object = objects.first().expect("Expected at least one object to link");
-        std::fs::write(&path, object.as_slice()).expect("Failed to write object file");
+    let paths = crate::timings::time_phase("Object emission", show_time, || {
+        assert!(!objects.is_empty(), "Expected at least one object to link");
+        mapvec(objects.iter().enumerate(), |(index, object)| {
+            let extension = if objects.len() == 1 { "o".to_string() } else { format!("{index}.o") };
+            let path = std::path::Path::new(binary_name).with_extension(extension);
+            std::fs::write(&path, object.as_slice()).expect("Failed to write object file");
+            path.to_string_lossy().into_owned()
+        })
     });
 
-    crate::timings::time_phase("Linking", show_time, || {
-        super::link_with_cc(path.to_string_lossy().as_ref(), binary_name, link_options)
-    })
+    crate::timings::time_phase("Linking", show_time, || super::link_with_cc(&paths, binary_name, link_options))
 }
 
 fn native_target_machine(opt_level: OptLevel) -> TargetMachine {
@@ -128,15 +175,26 @@ fn native_target_machine(opt_level: OptLevel) -> TargetMachine {
 enum CodegenValue<'ctx> {
     Function(FunctionValue<'ctx>),
     Literal(BasicValueEnum<'ctx>),
+
+    /// A global holding a [ConstantValue::Reinterpret], which no constant of its type can express.
+    /// Its bytes live in immutable static storage and each use loads them as `typ`.
+    /// TODO: All globals should be in storage and having them be constants should only be an
+    /// optimization
+    Stored {
+        pointer: PointerValue<'ctx>,
+        typ: BasicTypeEnum<'ctx>,
+        /// The initial element of `pointer`, may be a different LLVM type than `typ`
+        initializer: BasicValueEnum<'ctx>,
+    },
 }
 
 impl<'ctx> CodegenValue<'ctx> {
-    /// Project this codegen value to the [BasicValueEnum] callers see when referencing
-    /// the definition: a function pointer for functions, the inlined literal otherwise.
-    fn into_basic_value(self) -> BasicValueEnum<'ctx> {
+    /// This is `None` for [CodegenValue::Stored] which is loaded instead
+    fn into_basic_value(self) -> Option<BasicValueEnum<'ctx>> {
         match self {
-            CodegenValue::Function(fv) => fv.as_global_value().as_pointer_value().into(),
-            CodegenValue::Literal(v) => v,
+            CodegenValue::Function(function) => Some(function.as_global_value().as_pointer_value().into()),
+            CodegenValue::Literal(value) => Some(value),
+            CodegenValue::Stored { .. } => None,
         }
     }
 }
@@ -164,6 +222,14 @@ struct ModuleContext<'ctx> {
     definitions: FxHashMap<DefinitionId, CodegenValue<'ctx>>,
     values: FxHashMap<mir::Value, BasicValueEnum<'ctx>>,
 
+    /// The storage holding each global whose address was taken with [mir::Instruction::GlobalAddress]
+    /// TODO: Should we store all globals and just rely on llvm to inline/remove those that never
+    /// have their address taken?
+    global_addresses: FxHashMap<DefinitionId, PointerValue<'ctx>>,
+
+    /// See [Self::copy_function]
+    copy_function: Option<FunctionValue<'ctx>>,
+
     /// Block arguments are added here to later insert them as PHI values.
     ///
     /// Maps merge_block to a vec of each incoming block along with the arguments it branches with.
@@ -172,16 +238,27 @@ struct ModuleContext<'ctx> {
     /// PHI nodes created for each block's parameter. Filled in after all blocks are processed,
     /// so that back edges from later-processed blocks are included.
     phi_nodes: FxHashMap<BlockId, PhiValue<'ctx>>,
+
+    /// The integer type the size of a pointer, which is costly to look up
+    pointer_sized_int: IntType<'ctx>,
+
+    /// Positioned by [Self::entry_alloca] at the start of the current function
+    alloca_builder: Builder<'ctx>,
 }
 
 impl<'ctx> ModuleContext<'ctx> {
     fn new(
-        llvm: &'ctx inkwell::context::Context, mir: &'ctx mir::Mir, name: &str, main_id: Option<DefinitionId>,
+        llvm: &'ctx inkwell::context::Context, mir: &'ctx mir::Mir, target_machine: &TargetMachine, name: &str,
+        main_id: Option<DefinitionId>,
     ) -> Self {
         let module = llvm.create_module(name);
-        let target = TargetMachine::get_default_triple();
-        module.set_triple(&target);
+        module.set_triple(&target_machine.get_triple());
+        let target_data = target_machine.get_target_data();
+        module.set_data_layout(&target_data.get_data_layout());
+
+        let pointer_sized_int = llvm.ptr_sized_int_type(&target_data, None);
         Self {
+            pointer_sized_int,
             llvm,
             module,
             mir,
@@ -191,17 +268,110 @@ impl<'ctx> ModuleContext<'ctx> {
             main_id,
             definitions: Default::default(),
             values: Default::default(),
+            global_addresses: Default::default(),
+            copy_function: None,
             builder: llvm.create_builder(),
+            alloca_builder: llvm.create_builder(),
             blocks: Default::default(),
             incoming: Default::default(),
             phi_nodes: Default::default(),
         }
     }
 
+    fn ptr_size(&self) -> u32 {
+        self.pointer_sized_int.get_bit_width() / 8
+    }
+
     fn codegen_global(&mut self, global: &mir::Definition, id: mir::DefinitionId) {
-        let value = constant::evaluate_global(self.mir, global);
-        let initializer = self.lower_constant(&value);
-        self.definitions.insert(id, CodegenValue::Literal(initializer));
+        let value = constant::evaluate_global(self.mir, global, self.ptr_size());
+        let codegen_value = if self.needs_stored_value(&value) {
+            let image = self.lower_constant_image(&value, &global.typ);
+            let storage = self.private_constant(&image, &format!("{id}_stored"));
+
+            storage.set_alignment(global.typ.align_in_bytes(self.ptr_size()));
+            CodegenValue::Stored {
+                pointer: storage.as_pointer_value(),
+                typ: self.convert_type(&global.typ),
+                initializer: image,
+            }
+        } else {
+            CodegenValue::Literal(self.lower_constant(&value))
+        };
+        self.definitions.insert(id, codegen_value);
+    }
+
+    /// True if `value` holds bytes no constant of its own type can express
+    fn needs_stored_value(&mut self, value: &ConstantValue) -> bool {
+        match value {
+            ConstantValue::Reinterpret { .. } => true,
+            ConstantValue::Tuple(values) => values.iter().any(|value| self.needs_stored_value(value)),
+            ConstantValue::Array { elements, .. } => elements.iter().any(|value| self.needs_stored_value(value)),
+            ConstantValue::Definition(id) => matches!(self.codegen_value_for(*id), CodegenValue::Stored { .. }),
+            _ => false,
+        }
+    }
+
+    /// Render `value` of type `typ` into a constant with the same bytes as `typ`'s layout, whose
+    /// LLVM type differs from `typ`'s if [Self::needs_stored_value]
+    fn lower_constant_image(&mut self, value: &ConstantValue, typ: &mir::Type) -> BasicValueEnum<'ctx> {
+        if !self.needs_stored_value(value) {
+            return self.lower_constant(value);
+        }
+        let ptr_size = self.ptr_size();
+        let size = typ.size_in_bytes(ptr_size);
+        match (value, typ) {
+            (ConstantValue::Reinterpret { value, from, .. }, _) => {
+                let image = self.lower_constant_image(value, from);
+                let from_size = from.size_in_bytes(ptr_size);
+                self.packed_image(vec![(0, from_size, image)], size.max(from_size))
+            },
+            (ConstantValue::Tuple(values), mir::Type::Tuple(fields)) => {
+                let offsets = mir::Type::field_offsets(fields, ptr_size);
+                let parts = values.iter().zip(fields.iter()).zip(offsets);
+                let parts = mapvec(parts, |((value, field), offset)| {
+                    (offset, field.size_in_bytes(ptr_size), self.lower_constant_image(value, field))
+                });
+                self.packed_image(parts, size)
+            },
+            (ConstantValue::Array { elements, .. }, mir::Type::Array { element, .. }) => {
+                let stride = element.stride(ptr_size);
+                let element_size = element.size_in_bytes(ptr_size);
+                let parts = mapvec(elements.iter().enumerate(), |(i, value)| {
+                    (i as u32 * stride, element_size, self.lower_constant_image(value, element))
+                });
+                self.packed_image(parts, size)
+            },
+            (ConstantValue::Definition(id), _) => match self.codegen_value_for(*id) {
+                CodegenValue::Stored { initializer: image, .. } => image,
+                _ => unreachable!("needs_image only holds for a stored global"),
+            },
+            (value, typ) => unreachable!("needs_image holds for {value:?} of type `{typ}`"),
+        }
+    }
+
+    /// A packed struct placing each `(offset, size, part)` at its offset, zero-padded to `size`
+    fn packed_image(&self, parts: Vec<(u32, u32, BasicValueEnum<'ctx>)>, size: u32) -> BasicValueEnum<'ctx> {
+        let mut fields = Vec::new();
+        let mut end = 0;
+        for (offset, part_size, part) in parts {
+            if offset > end {
+                fields.push(self.llvm.i8_type().array_type(offset - end).const_zero().into());
+            }
+            fields.push(part);
+            end = offset + part_size;
+        }
+        if size > end {
+            fields.push(self.llvm.i8_type().array_type(size - end).const_zero().into());
+        }
+        self.llvm.const_struct(&fields, true).into()
+    }
+
+    /// The value of the definition `id` where it is used within a function
+    fn definition_value(&mut self, id: DefinitionId) -> BasicValueEnum<'ctx> {
+        match self.codegen_value_for(id) {
+            CodegenValue::Stored { pointer, typ, .. } => self.builder.build_load(typ, pointer, "").unwrap(),
+            value => value.into_basic_value().unwrap(),
+        }
     }
 
     /// Render a folded [ConstantValue] into an inkwell constant
@@ -229,13 +399,12 @@ impl<'ctx> ModuleContext<'ctx> {
             ConstantValue::Bytes(bytes) => {
                 let byte_values = mapvec(bytes, |b| self.llvm.i8_type().const_int(*b as u64, false));
                 let array = self.llvm.i8_type().const_array(&byte_values);
-                let global = self.module.add_global(array.get_type(), None, "__bytes");
-                global.set_linkage(Linkage::Private);
-                global.set_constant(true);
-                global.set_initializer(&array);
-                global.as_pointer_value().into()
+                self.private_constant(&array, "__bytes").as_pointer_value().into()
             },
-            ConstantValue::Definition(id) => self.codegen_value_for(*id).into_basic_value(),
+            ConstantValue::Definition(id) => self
+                .codegen_value_for(*id)
+                .into_basic_value()
+                .expect("a stored global is lowered with lower_constant_image"),
             ConstantValue::Extern { name, typ } => match self.convert_function_type(typ) {
                 Some(fn_type) => {
                     let fn_val =
@@ -250,14 +419,33 @@ impl<'ctx> ModuleContext<'ctx> {
                     global.as_pointer_value().into()
                 },
             },
-            ConstantValue::Shared { value, typ } => {
+            ConstantValue::Shared { value, typ, cell } => {
                 // No malloc in a constant initializer, so back the value with a global instead.
-                let init_value = self.lower_constant(value);
-                let backing = self.module.add_global(self.convert_type(typ), None, "__shared_static");
+                // Every module referencing the cell builds this backing under the same name, so
+                // the linker merges them into one value.
+                let name = format!("{}_shared_{}", cell.global, cell.index);
+                if let Some(backing) = self.module.get_global(&name) {
+                    return backing.as_pointer_value().into();
+                }
+                let init_value = self.lower_constant_image(value, typ);
+                let backing = self.module.add_global(init_value.get_type(), None, &name);
+                backing.set_alignment(typ.align_in_bytes(self.ptr_size()));
+                backing.set_linkage(Linkage::WeakAny);
                 backing.set_initializer(&init_value);
                 backing.as_pointer_value().into()
             },
-            ConstantValue::Transmute { typ } => Self::undef_value(self.convert_type(typ)),
+            ConstantValue::Zeroed { typ } => self.convert_type(typ).const_zero(),
+            ConstantValue::IntToPtr { bits, typ } => {
+                let pointer_type = self.convert_type(typ).into_pointer_type();
+                self.pointer_sized_int.const_int(*bits, false).const_to_pointer(pointer_type).into()
+            },
+            ConstantValue::PtrToInt { pointer, kind } => {
+                let pointer = self.lower_constant(pointer).into_pointer_value();
+                pointer.const_to_int(self.convert_integer_kind(*kind)).into()
+            },
+            ConstantValue::Reinterpret { .. } => {
+                unreachable!("a global holding a Reinterpret is lowered with lower_constant_image")
+            },
         }
     }
 
@@ -270,18 +458,12 @@ impl<'ctx> ModuleContext<'ctx> {
         let is_ante_main = self.main_id == Some(id);
         let function_value = match self.definitions.get(&id) {
             Some(CodegenValue::Function(fv)) => *fv,
-            Some(CodegenValue::Literal(_)) => panic!(
+            Some(CodegenValue::Literal(_) | CodegenValue::Stored { .. }) => panic!(
                 "codegen_function: definition {id} was already codegen'd as a literal global, but its body is a function"
             ),
             None => {
                 let function_type = self.convert_function_type(&function.typ).unwrap();
-                // Rename `main`: see `codegen_main_wrapper`.
-                let mangled_name = if is_ante_main {
-                    format!("main_{}%", function.id)
-                } else {
-                    format!("{}_{}", function.name, function.id)
-                };
-                let function_value = self.module.add_function(&mangled_name, function_type, None);
+                let function_value = self.module.add_function(&self.function_name(id), function_type, None);
                 self.definitions.insert(id, CodegenValue::Function(function_value));
                 function_value
             },
@@ -375,9 +557,9 @@ impl<'ctx> ModuleContext<'ctx> {
         self.builder.build_store(argc_global.as_pointer_value(), argc).unwrap();
         self.builder.build_store(argv_global.as_pointer_value(), argv).unwrap();
 
-        let unit = self.unit_value().into();
-        let evidence = self.unit_value().into();
-        self.builder.build_direct_call(ante_main, &[unit, evidence], "").unwrap();
+        // Pass a zeroed value for each of `main`'s parameters
+        let arguments = mapvec(ante_main.get_param_iter(), |parameter| parameter.get_type().const_zero().into());
+        self.builder.build_direct_call(ante_main, &arguments, "").unwrap();
         self.builder.build_return(Some(&i32_type.const_int(0, false))).unwrap();
     }
 
@@ -457,12 +639,7 @@ impl<'ctx> ModuleContext<'ctx> {
             IntegerKind::I16 | IntegerKind::U16 => self.llvm.i16_type(),
             IntegerKind::I32 | IntegerKind::U32 => self.llvm.i32_type(),
             IntegerKind::I64 | IntegerKind::U64 => self.llvm.i64_type(),
-            IntegerKind::Isz | IntegerKind::Usz => {
-                // Pointer size is a property of the target triple, not the opt level, so O0 is fine here.
-                let machine = native_target_machine(OptLevel::O0);
-                let target_data = machine.get_target_data();
-                self.llvm.ptr_sized_int_type(&target_data, None)
-            },
+            IntegerKind::Isz | IntegerKind::Usz => self.pointer_sized_int,
         }
     }
 
@@ -485,6 +662,11 @@ impl<'ctx> ModuleContext<'ctx> {
         self.mir.get_name(id).unwrap().as_ref()
     }
 
+    fn function_name(&self, id: DefinitionId) -> String {
+        // See [Self::codegen_main_wrapper]
+        if self.main_id == Some(id) { format!("main_{id}%") } else { format!("{}_{id}", self.get_name(id)) }
+    }
+
     /// Resolve a [DefinitionId] to its [CodegenValue], codegen-ing the definition on demand
     /// when this is the first reference to it (e.g. a forward reference from another function,
     /// or a global referenced inside another global initializer).
@@ -502,8 +684,7 @@ impl<'ctx> ModuleContext<'ctx> {
             let fn_type = self
                 .convert_function_type(&def.typ)
                 .expect("codegen_value_for: non-global definition must have a function type");
-            let mangled_name = format!("{}_{}", self.get_name(id), id);
-            let fv = self.module.add_function(&mangled_name, fn_type, None);
+            let fv = self.module.add_function(&self.function_name(id), fn_type, None);
             self.definitions.insert(id, CodegenValue::Function(fv));
         }
         self.definitions[&id]
@@ -525,8 +706,81 @@ impl<'ctx> ModuleContext<'ctx> {
             mir::Value::InstructionResult(_) | mir::Value::Parameter(..) => {
                 *self.values.get(value).unwrap_or_else(|| panic!("llvm codegen: mir value is not cached: {value}"))
             },
-            mir::Value::Definition(function_id) => self.codegen_value_for(*function_id).into_basic_value(),
+            mir::Value::Definition(id) => self.definition_value(*id),
         }
+    }
+
+    /// A module-local constant holding `value`, whose address is not significant
+    fn private_constant(&self, value: &dyn BasicValue<'ctx>, name: &str) -> GlobalValue<'ctx> {
+        let value = value.as_basic_value_enum();
+        let global = self.module.add_global(value.get_type(), None, name);
+        global.set_initializer(&value);
+        global.set_constant(true);
+        global.set_linkage(Linkage::Private);
+        global.set_unnamed_addr(true);
+        global
+    }
+
+    /// A function copying a runtime number of bytes, which handles the common small sizes itself
+    /// rather than calling `memmove`. This is primarily used to speed up compilation of code
+    /// lowered via existentialization.
+    /// TODO: Refactor, clean up
+    fn copy_function(&mut self, size_type: inkwell::types::IntType<'ctx>) -> FunctionValue<'ctx> {
+        if let Some(function) = self.copy_function {
+            return function;
+        }
+        let ptr_type = self.llvm.ptr_type(AddressSpace::default());
+        let fn_type = ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), size_type.into()], false);
+        let function = self.module.add_function("ante_copy", fn_type, Some(Linkage::Private));
+        self.copy_function = Some(function);
+
+        let caller_block = self.builder.get_insert_block();
+        let destination = function.get_nth_param(0).unwrap().into_pointer_value();
+        let source = function.get_nth_param(1).unwrap().into_pointer_value();
+        let size = function.get_nth_param(2).unwrap().into_int_value();
+        let entry = self.llvm.append_basic_block(function, "");
+        self.builder.position_at_end(entry);
+
+        // Every load comes before any store, so overlapping copies work
+        let (i8_type, i64_type) = (self.llvm.i8_type(), self.llvm.i64_type());
+        let byte_at = |base, offset| unsafe {
+            self.builder.build_in_bounds_gep(i8_type, base, &[i64_type.const_int(offset, false)], "").unwrap()
+        };
+        for bytes in [8u64, 16, 24, 4, 1, 2] {
+            let width = bytes.min(8);
+            let word_type = self.llvm.custom_width_int_type(std::num::NonZero::new(width as u32 * 8).unwrap()).unwrap();
+            let words = mapvec((0..bytes).step_by(width as usize), |offset| (word_type, offset));
+            let matched = self.llvm.append_basic_block(function, "");
+            let next = self.llvm.append_basic_block(function, "");
+            let expected = size_type.const_int(bytes, false);
+            let equal = self.builder.build_int_compare(inkwell::IntPredicate::EQ, size, expected, "").unwrap();
+            self.builder.build_conditional_branch(equal, matched, next).unwrap();
+
+            self.builder.position_at_end(matched);
+            let loaded = mapvec(&words, |(typ, offset)| {
+                let load = self.builder.build_load(*typ, byte_at(source, *offset), "").unwrap();
+                load.as_instruction_value().unwrap().set_alignment(1).unwrap();
+                load
+            });
+            for ((_, offset), value) in words.iter().zip(loaded) {
+                self.builder.build_store(byte_at(destination, *offset), value).unwrap().set_alignment(1).unwrap();
+            }
+            self.builder.build_return(Some(&destination)).unwrap();
+            self.builder.position_at_end(next);
+        }
+
+        // LLVM's FastISel handles a plain call but not the intrinsic with a runtime size
+        let memmove =
+            self.module.get_function("memmove").unwrap_or_else(|| self.module.add_function("memmove", fn_type, None));
+        let arguments = [destination.into(), source.into(), size.into()];
+        let function_pointer = memmove.as_global_value().as_pointer_value();
+        self.builder.build_indirect_call(fn_type, function_pointer, &arguments, "").unwrap();
+        self.builder.build_return(Some(&destination)).unwrap();
+
+        if let Some(block) = caller_block {
+            self.builder.position_at_end(block);
+        }
+        function
     }
 
     fn unit_type(&self) -> StructType<'ctx> {
@@ -587,13 +841,53 @@ impl<'ctx> ModuleContext<'ctx> {
             },
             mir::Instruction::StackAlloc(value) => {
                 let value = self.lookup_value(value);
-                let alloca = self.builder.build_alloca(value.get_type(), "").unwrap();
+                let alloca = self.entry_alloca(value.get_type());
                 self.builder.build_store(alloca, value).unwrap();
                 alloca.into()
             },
             mir::Instruction::StackAllocUninit(typ) => {
                 let typ = self.convert_type(typ);
-                self.builder.build_alloca(typ, "").unwrap().into()
+                self.entry_alloca(typ).into()
+            },
+            mir::Instruction::StackAllocBytes(size) => {
+                let size = self.lookup_value(size).into_int_value();
+                let alloca = self.builder.build_array_alloca(self.llvm.i8_type(), size, "").unwrap();
+                alloca.as_instruction().unwrap().set_alignment(mir::MAX_ALIGNMENT).unwrap();
+                alloca.into()
+            },
+            mir::Instruction::GlobalAddress(global) => match self.global_addresses.get(global) {
+                Some(address) => (*address).into(),
+                None => {
+                    let address = match self.codegen_value_for(*global) {
+                        CodegenValue::Stored { pointer, .. } => pointer,
+                        _ => {
+                            let value = self.definition_value(*global);
+                            self.private_constant(&value, &format!("{global}_address")).as_pointer_value()
+                        },
+                    };
+                    self.global_addresses.insert(*global, address);
+                    address.into()
+                },
+            },
+            mir::Instruction::MemCopy { destination, source, size } => {
+                let destination = self.lookup_value(destination).into_pointer_value();
+                let source = self.lookup_value(source).into_pointer_value();
+                let size = self.lookup_value(size).into_int_value();
+                if size.is_const() {
+                    // This makes existentialized code a bit faster to compile
+                    self.builder.build_memcpy(destination, 1, source, 1, size).unwrap();
+                } else {
+                    let copy = self.copy_function(size.get_type());
+                    let arguments = [destination.into(), source.into(), size.into()];
+                    self.builder.build_direct_call(copy, &arguments, "").unwrap();
+                }
+                self.unit_value()
+            },
+            mir::Instruction::PointerOffset { pointer, offset } => {
+                let pointer = self.lookup_value(pointer).into_pointer_value();
+                let offset = self.lookup_value(offset).into_int_value();
+                let i8_type = self.llvm.i8_type();
+                unsafe { self.builder.build_in_bounds_gep(i8_type, pointer, &[offset], "").unwrap().into() }
             },
             mir::Instruction::AllocShared(value) => {
                 let value = self.lookup_value(value);
@@ -866,9 +1160,19 @@ impl<'ctx> ModuleContext<'ctx> {
     fn transmute(&mut self, value: &mir::Value, function: &mir::Definition, id: InstructionId) -> BasicValueEnum<'ctx> {
         let result_type = self.convert_type(function.instruction_result_type(id));
         let value = self.lookup_value(value);
-        let alloca = self.builder.build_alloca(value.get_type(), "").unwrap();
+        let alloca = self.entry_alloca(value.get_type());
         self.builder.build_store(alloca, value).unwrap();
         self.builder.build_load(result_type, alloca, "").unwrap()
+    }
+
+    /// An alloca in the entry block, since one elsewhere allocates more stack each time it runs
+    fn entry_alloca(&self, typ: BasicTypeEnum<'ctx>) -> inkwell::values::PointerValue<'ctx> {
+        let entry = self.current_function_value.unwrap().get_first_basic_block().unwrap();
+        match entry.get_first_instruction() {
+            Some(first) => self.alloca_builder.position_before(&first),
+            None => self.alloca_builder.position_at_end(entry),
+        }
+        self.alloca_builder.build_alloca(typ, "").unwrap()
     }
 
     fn make_tuple(&mut self, fields: &[mir::Value]) -> BasicValueEnum<'ctx> {

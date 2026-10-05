@@ -1130,7 +1130,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// - 0 arguments: The expression is a variable
     /// - 1+ arguments: The expression is a function call to the given name, using the given arguments.
     fn create_implicit_argument_expr(&mut self, candidate: Candidate, destination: ExprId, location: Location) {
-        let path = self.push_path(cst::Path::ident(candidate.name.clone(), location.clone()), candidate.typ.clone(), location.clone());
+        let path = self.push_path(
+            cst::Path::ident(candidate.name.clone(), location.clone()),
+            candidate.typ.clone(),
+            location.clone(),
+        );
         let variable = cst::Expr::Variable(path);
 
         // Row subtyping may have accepted a dictionary whose trait effect args are narrower than

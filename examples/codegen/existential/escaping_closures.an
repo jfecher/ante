@@ -1,0 +1,49 @@
+// Closures created in generic functions capture the type information they need, so they
+// keep working after escaping the call which created them.
+
+pair_with (x: a) = fn (y: b) -> (x, y)
+
+// `wrap` is instantiated with `(a, a)`, a type argument `outer` builds at runtime.
+// The closure must still work after `outer` returns.
+wrap (x: a) = fn () -> (x, 7i32)
+outer (x: a) (y: a) = wrap (x, y)
+
+compose f g = fn x -> f (g x)
+
+twice (f: fn a => a) (x: a): a = f (f x)
+
+id (x: a): a = x
+
+// `id` used as a function value at a type argument only known at runtime
+twice_id (x: a): a = twice id x
+
+main () =
+    print_to_stdout do
+    p = pair_with "hi"
+    (s, n) = p 3u8
+    println "${s} ${n}"
+
+    f = outer 5u16 6u16
+    ((a, b), c) = f ()
+    println "${a} ${b} ${c}"
+
+    g = outer "str" "ing"
+    ((a, b), c) = g ()
+    println "${a} ${b} ${c}"
+
+    h = compose (fn (x: U32) -> x * 2) (fn (s: String) -> s.length)
+    println (h "four")
+
+    println (twice (fn x -> x + 1) 40)
+    println (twice_id 'c')
+    println (twice_id "id")
+
+// args: --delete-binary --no-color
+// expected stdout:
+// hi 3
+// 5 6 7
+// str ing 7
+// 8
+// 42
+// c
+// id
