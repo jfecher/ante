@@ -1,0 +1,120 @@
+type Wrap t = inner: t
+
+type Foo a (b = I32) = x: a, y: b
+
+type Three a b (c = I32) = x: a, y: b, z: c
+
+type Bar (t = _) = value: t
+
+type Nested a (b = Wrap a) (c = b) = first: a, second: b, third: c
+
+type Sized (n: U32 = 4) (t = I32) = storage: Array n t
+
+foo_default (f: Foo String) = f.y
+foo_explicit (f: Foo String String) = f.y
+nested (n: Nested I32) = n.third
+nested_partial (n: Nested I32 String) = n.third
+sized (s: Sized) = s.storage
+
+// A `_` default is a fresh type variable
+bar_param (b: Bar) = b.value
+
+// Constructors infer omitted type arguments rather than using their defaults
+bar_constructed () = Bar with value = "hi"
+foo_constructed () = Foo String with x = "hi", y = 3
+
+three_too_few (t: Three I32) = t
+too_many (f: Foo I32 I32 I32) = f
+
+// A `_` default must be explicitly specified within a type definition
+type UsesHole = b: Bar
+
+type Recursive a (b = Recursive a) = x: a
+
+type BadKind (n: U32 = I32) = x: Array n I32
+
+// args: -e ast-t --no-color
+// expected exit status: 1
+// expected stdout:
+// type Wrap t =
+//     inner: t
+// 
+// type Foo a (b = I32) =
+//     x: a
+//     y: b
+// 
+// type Three a b (c = I32) =
+//     x: a
+//     y: b
+//     z: c
+// 
+// type Bar (t = _) =
+//     value: t
+// 
+// type Nested a (b = Wrap a) (c = b) =
+//     first: a
+//     second: b
+//     third: c
+// 
+// type Sized (n: U32 = 4) (t = I32) =
+//     storage: Array n t
+// 
+// (foo_default: fn (Foo String I32) -> I32 is pure) (f: Foo String I32) = (f: Foo String I32).y
+// 
+// (foo_explicit: fn (Foo String String) -> String is pure) (f: Foo String String) = (f: Foo String String).y
+// 
+// (nested: fn (Nested I32 (Wrap I32) (Wrap I32)) -> Wrap I32 is pure) (n: Nested I32 (Wrap I32) (Wrap I32)) = (n: Nested I32 (Wrap I32) (Wrap I32)).third
+// 
+// (nested_partial: fn (Nested I32 String String) -> String is pure) (n: Nested I32 String String) = (n: Nested I32 String String).third
+// 
+// (sized: fn (Sized 4 I32) -> Array 4 I32 is pure) (s: Sized 4 I32) = (s: Sized 4 I32).storage
+// 
+// (bar_param: fn (Bar _) -> _ is pure) (b: Bar _) = (b: Bar _).value
+// 
+// (bar_constructed: fn Unit -> Bar String is pure) () = Bar with
+//     (value: String) = "hi"
+// 
+// (foo_constructed: fn Unit -> Foo String I32 is pure) () = Foo String with
+//     (x: String) = "hi"
+//     (y: I32) = 3
+// 
+// (three_too_few: fn (error) -> (error) is pure) (t: (error)) = (t: (error))
+// 
+// (too_many: fn (error) -> (error) is pure) (f: (error)) = (f: (error))
+// 
+// type UsesHole =
+//     b: Bar
+// 
+// type Recursive a (b = Recursive a) =
+//     x: a
+// 
+// type BadKind (n: U32 = I32) =
+//     x: Array n I32
+
+// expected stderr:
+// examples/typechecking/default_type_params.an:26:19
+// 26 | three_too_few (t: Three I32) = t	// error: Expected 2 arguments but found 1
+//    |                   ^^^^^^^^^
+// 27 | too_many (f: Foo I32 I32 I32) = f
+// 
+// examples/typechecking/default_type_params.an:27:14
+// 26 | three_too_few (t: Three I32) = t
+// 27 | too_many (f: Foo I32 I32 I32) = f	// error: Expected 2 arguments but found 3
+//    |              ^^^^^^^^^^^^^^^
+// 
+// examples/typechecking/default_type_params.an:30:20
+// 29 | // A `_` default can't be inferred within a type definition
+//    | // error: `Bar`'s omitted parameter `t` defaults to `_`, which can't be inferred in this position
+// 30 | type UsesHole = b: Bar
+//    |                    ^^^
+// 
+// examples/typechecking/default_type_params.an:32:6
+// 32 | type Recursive a (b = Recursive a) = x: a	// error: `Recursive` is infinitely recursive
+//    |      ^^^^^^^^^
+// 
+// examples/typechecking/default_type_params.an:34:24
+//    | // error: Expected a type constructor of kind U32, but found one of kind type
+// 34 | type BadKind (n: U32 = I32) = x: Array n I32
+//    |                        ^^^
+// 
+// Found 5 errors and 0 warnings

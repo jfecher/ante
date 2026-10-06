@@ -1,10 +1,11 @@
 use crate::{
     incremental::{self, DbHandle, GetItem, GetType, Resolve, TypeCheck},
     iterator_extensions::mapvec,
-    name_resolution::ResolutionResult,
+    name_resolution::{Origin, ResolutionResult},
     parser::{
         cst::{self, Definition, Expr, Pattern, TopLevelItemKind, TypeKind},
         desugar_context::DesugarContext,
+        ids::TopLevelName,
     },
     type_inference::types::{LocalKinds, Type, TypeBindings},
 };
@@ -41,23 +42,63 @@ pub fn get_type_impl(context: &GetType, compiler: &DbHandle) -> Type {
     typ
 }
 
-/// True if the annotated result type of a definition has a hole
-fn result_annotation_contains_hole(definition: &Definition, context: &DesugarContext) -> bool {
-    fn result_contains_hole(typ: &cst::Type) -> bool {
+/// True if the result type of a definition has a hole
+fn result_annotation_contains_hole(
+    definition: &Definition, context: &DesugarContext, resolve: &ResolutionResult, compiler: &DbHandle,
+) -> bool {
+    fn result_contains_hole(typ: &cst::Type, resolve: &ResolutionResult, compiler: &DbHandle) -> bool {
         match &typ.kind {
-            TypeKind::Function(function) => function.return_type.contains_hole(),
-            TypeKind::Forall(_, typ) => result_contains_hole(typ),
-            _ => typ.contains_hole(),
+            TypeKind::Function(function) => contains_hole(&function.return_type, resolve, compiler),
+            TypeKind::Forall(_, typ) => result_contains_hole(typ, resolve, compiler),
+            _ => contains_hole(typ, resolve, compiler),
         }
     }
     if let Pattern::TypeAnnotation(_, typ) = &context[definition.pattern] {
-        return result_contains_hole(typ);
+        return result_contains_hole(typ, resolve, compiler);
     }
     match &context[definition.rhs] {
-        Expr::Lambda(lambda) => lambda.return_type.as_ref().is_some_and(|typ| typ.contains_hole()),
-        Expr::TypeAnnotation(annotation) => result_contains_hole(&annotation.rhs),
+        Expr::Lambda(lambda) => match (&lambda.return_type, &context[lambda.body]) {
+            (Some(typ), _) | (None, Expr::Constructor(cst::Constructor { typ, .. })) => {
+                contains_hole(typ, resolve, compiler)
+            },
+            _ => false,
+        },
+        Expr::TypeAnnotation(annotation) => result_contains_hole(&annotation.rhs, resolve, compiler),
+        Expr::Constructor(constructor) => contains_hole(&constructor.typ, resolve, compiler),
         _ => false,
     }
+}
+
+/// True if `typ` has a hole, including one from an omitted type argument defaulting to `_`
+fn contains_hole(typ: &cst::Type, resolve: &ResolutionResult, compiler: &DbHandle) -> bool {
+    contains_hole_helper(typ, resolve, compiler, &mut Vec::new())
+}
+
+fn contains_hole_helper(
+    typ: &cst::Type, resolve: &ResolutionResult, compiler: &DbHandle, visited: &mut Vec<TopLevelName>,
+) -> bool {
+    typ.contains_hole_with(&mut |path, arg_count| {
+        let Some(Origin::TopLevelDefinition(name)) = resolve.path_origins.get(&path).copied() else {
+            return false;
+        };
+        let (item, _) = compiler.get(GetItem(name.top_level_item));
+        let TopLevelItemKind::TypeDefinition(definition) = &item.kind else {
+            return false;
+        };
+
+        // Omitted arguments are only filled in if they all have defaults
+        let omitted = definition.generics.get(arg_count..).unwrap_or_default();
+        if omitted.is_empty() || arg_count < definition.required_generic_count() || visited.contains(&name) {
+            return false;
+        }
+
+        visited.push(name);
+        let resolve = Resolve(name.top_level_item).get(compiler);
+        let mut defaults = omitted.iter().filter_map(|param| param.default.as_ref());
+        let result = defaults.any(|default| contains_hole_helper(default, &resolve, compiler, visited));
+        visited.pop();
+        result
+    })
 }
 
 /// Make a best-effort attempt to get the type of a definition.
@@ -73,7 +114,7 @@ pub fn try_get_generalized_type(
     definition: &Definition, context: &DesugarContext, resolve: &ResolutionResult, compiler: &DbHandle,
 ) -> Option<Type> {
     // A hole in the result, such as a returned `=>` function's environment, is only known from the body
-    if result_annotation_contains_hole(definition, context) {
+    if result_annotation_contains_hole(definition, context, resolve, compiler) {
         return None;
     }
 
@@ -135,7 +176,7 @@ pub fn try_get_generalized_type(
 fn constructor_type_is_fully_applied(typ: &cst::Type, resolve: &ResolutionResult, compiler: &DbHandle) -> bool {
     match &typ.kind {
         TypeKind::Named(path) => match resolve.path_origins.get(path) {
-            Some(crate::name_resolution::Origin::TopLevelDefinition(name)) => {
+            Some(Origin::TopLevelDefinition(name)) => {
                 let (item, _) = compiler.get(GetItem(name.top_level_item));
                 match &item.kind {
                     TopLevelItemKind::TypeDefinition(definition) => definition.generics.is_empty(),

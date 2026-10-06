@@ -1132,7 +1132,15 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
     }
 
     fn declare_generics(&mut self, generics: &Generics) {
+        let mut seen_default = false;
         for generic in generics {
+            if let Some(default) = &generic.default {
+                self.resolve_type(default, false);
+                seen_default = true;
+            } else if seen_default {
+                let location = self.context.name_location(generic.name).clone();
+                self.emit_diagnostic(Diagnostic::RequiredTypeParameterAfterDefault { location });
+            }
             self.declare_name(generic.name, false);
         }
     }

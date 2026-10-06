@@ -1,0 +1,28 @@
+type Foo a (b = I32) = x: a, y: b
+
+type Bar (t = _) = value: t
+
+type Sized (n: U32 = 4) (t: type = I32) = storage: Array n t
+
+type Nested a (b = Wrap a) (c = b) = first: a, second: b, third: c
+
+type Thunk t (env = _) = fn Unit [env] -> t
+
+// args: -e ast --no-color
+// expected stdout:
+// type Foo a (b = I32) =
+//     x: a
+//     y: b
+// 
+// type Bar (t = _) =
+//     value: t
+// 
+// type Sized (n: U32 = 4) (t: type = I32) =
+//     storage: Array n t
+// 
+// type Nested a (b = Wrap a) (c = b) =
+//     first: a
+//     second: b
+//     third: c
+// 
+// type Thunk t (env = _) = fn Unit [env] -> t

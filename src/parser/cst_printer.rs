@@ -377,23 +377,30 @@ impl<'a> CstDisplay<'a> {
     fn fmt_generic_param(
         &self, param: &cst::GenericParam, context: &impl IdStore, f: &mut Formatter,
     ) -> std::fmt::Result {
-        match param.kind {
-            Some(cst::KindAnnotation::Place) => {
+        match (param.kind, &param.default) {
+            (Some(cst::KindAnnotation::Place), _) => {
                 write!(f, "'")?;
                 self.fmt_type_name(param.name, context, f)
             },
-            Some(kind) => {
-                let kind_str = match kind {
-                    cst::KindAnnotation::Type => "type",
-                    cst::KindAnnotation::U32 => "U32",
-                    cst::KindAnnotation::Effect => "effect",
-                    cst::KindAnnotation::Place => unreachable!(),
-                };
+            (None, None) => self.fmt_type_name(param.name, context, f),
+            (kind, default) => {
                 write!(f, "(")?;
                 self.fmt_type_name(param.name, context, f)?;
-                write!(f, ": {kind_str})")
+                if let Some(kind) = kind {
+                    let kind_str = match kind {
+                        cst::KindAnnotation::Type => "type",
+                        cst::KindAnnotation::U32 => "U32",
+                        cst::KindAnnotation::Effect => "effect",
+                        cst::KindAnnotation::Place => unreachable!(),
+                    };
+                    write!(f, ": {kind_str}")?;
+                }
+                if let Some(default) = default {
+                    write!(f, " = ")?;
+                    self.fmt_type(default, context, f)?;
+                }
+                write!(f, ")")
             },
-            None => self.fmt_type_name(param.name, context, f),
         }
     }
 

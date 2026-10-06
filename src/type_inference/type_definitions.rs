@@ -12,6 +12,7 @@ use crate::{
     type_inference::{
         Locateable, TypeChecker,
         generics::Generic,
+        kinds::Kind,
         types::{self, GenericSubstitutions, ParameterType, Type},
     },
 };
@@ -19,6 +20,7 @@ use crate::{
 impl<'local, 'inner> TypeChecker<'local, 'inner> {
     pub(super) fn check_type_definition(&mut self, definition: &cst::TypeDefinition) {
         let id = self.current_item.unwrap();
+        self.check_generic_defaults(definition);
 
         let constructors: Vec<(NameId, Vec<&cst::Type>)> = match &definition.body {
             cst::TypeDefinitionBody::Error => Vec::new(),
@@ -26,7 +28,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 // Convert the body even though the result is unused to issue kind or recursion errors
                 Self::reject_implicit_places(body, self.compiler);
                 let mut local_kinds = Self::local_kinds_from_generics(&definition.generics);
-                let _ = self.from_cst_type_with_local_kinds(body, false, false, &mut local_kinds);
+                let _ = self.from_cst_type_with_local_kinds(body, Kind::Type, false, false, &mut local_kinds);
                 return;
             },
             cst::TypeDefinitionBody::EffectAlias(effects) => {
@@ -79,6 +81,18 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         for (constructor_name, args) in constructors.iter() {
             let actual = self.build_constructor_type(type_name, definition, &generics, args, &mut local_kinds);
             self.check_name(*constructor_name, &actual);
+        }
+    }
+
+    /// Convert each parameter default to issue errors
+    fn check_generic_defaults(&mut self, definition: &cst::TypeDefinition) {
+        let mut local_kinds = Self::local_kinds_from_generics(&definition.generics);
+        for param in &definition.generics {
+            let Some(default) = &param.default else { continue };
+            Self::reject_implicit_places(default, self.compiler);
+
+            let kind = local_kinds[&param.name].clone();
+            let _ = self.from_cst_type_with_local_kinds(default, kind, true, false, &mut local_kinds);
         }
     }
 
@@ -208,7 +222,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         // `false` here stops `can` clauses from being polymorphic by default.
         let parameters = mapvec(variant_args, |arg| {
-            let param = self.from_cst_type_with_local_kinds(arg, insert_implicit_type_vars, false, local_kinds);
+            let param =
+                self.from_cst_type_with_local_kinds(arg, Kind::Type, insert_implicit_type_vars, false, local_kinds);
             types::ParameterType::explicit(param)
         });
 
@@ -282,7 +297,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             let mut local_kinds = Self::local_kinds_from_generics(&definition.generics);
 
             let cst_method_type = method_type;
-            let mut method_type = self.from_cst_type_with_local_kinds(cst_method_type, true, false, &mut local_kinds);
+            let mut method_type =
+                self.from_cst_type_with_local_kinds(cst_method_type, Kind::Type, true, false, &mut local_kinds);
 
             if is_effect {
                 match &cst_method_type.kind {

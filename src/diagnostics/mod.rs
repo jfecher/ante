@@ -283,6 +283,14 @@ pub enum Diagnostic {
     HoleCantBeUsed {
         location: Location,
     },
+    DefaultHoleCantBeUsed {
+        typ: String,
+        param: String,
+        location: Location,
+    },
+    RequiredTypeParameterAfterDefault {
+        location: Location,
+    },
     MissingExplicitPlace {
         location: Location,
     },
@@ -699,6 +707,17 @@ impl Diagnostic {
                 "Ability types can't be used in this position".to_string()
             },
             Diagnostic::HoleCantBeUsed { location: _ } => "A type hole can't be used in this position".to_string(),
+            Diagnostic::DefaultHoleCantBeUsed { typ, param, location: _ } => {
+                let suffix = if typ.ends_with("s") { "'" } else { "'s" };
+                format!(
+                    "{}{suffix} omitted parameter {} defaults to `_`, which can't be used in this position",
+                    color_type(typ),
+                    color_type(param)
+                )
+            },
+            Diagnostic::RequiredTypeParameterAfterDefault { location: _ } => {
+                "Type parameters without a default must come before those with one".to_string()
+            },
             Diagnostic::MissingExplicitPlace { location: _ } => {
                 "A reference in this position requires an explicit `'a` place".to_string()
             },
@@ -823,6 +842,8 @@ impl Diagnostic {
             | Diagnostic::ReferenceToMovedValue { location, .. }
             | Diagnostic::AbilityTypeCantBeUsed { location, .. }
             | Diagnostic::HoleCantBeUsed { location, .. }
+            | Diagnostic::DefaultHoleCantBeUsed { location, .. }
+            | Diagnostic::RequiredTypeParameterAfterDefault { location, .. }
             | Diagnostic::MissingExplicitPlace { location, .. }
             | Diagnostic::AmbiguousElidedPlace { location, .. }
             | Diagnostic::FreeVarsInTypeConstructor { location, .. }

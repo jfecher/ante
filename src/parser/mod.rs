@@ -178,9 +178,14 @@ impl<'tokens> Parser<'tokens> {
 
     /// True if positioned at `(` identifier `:`
     fn at_parenthesized_name_colon(&self) -> bool {
+        self.at_parenthesized_name_then(Token::Colon)
+    }
+
+    /// True if positioned at `(` identifier `token`
+    fn at_parenthesized_name_then(&self, token: Token) -> bool {
         *self.current_token() == Token::ParenthesisLeft
             && matches!(self.peek_next_token(), Token::Identifier(_))
-            && self.tokens.get(self.token_index + 2).map(|(t, _)| t) == Some(&Token::Colon)
+            && self.tokens.get(self.token_index + 2).map(|(t, _)| t) == Some(&token)
     }
 
     fn current_token_span(&self) -> Span {
@@ -855,7 +860,7 @@ impl<'tokens> Parser<'tokens> {
 
         self.expect(Token::Type, "`type`")?;
         let name = self.parse_type_name_id()?;
-        let generics = self.parse_generics();
+        let generics = self.parse_generics(true);
         self.expect(Token::Equal, "`=` to begin the type definition").map_err(|e| match self.current_token() {
             Token::Newline | Token::EndOfInput => e.with_hint(Hint::FieldlessTypesNeedConstructors),
             _ => e,
@@ -866,35 +871,34 @@ impl<'tokens> Parser<'tokens> {
         Ok(TypeDefinition { shared, mutable, name, generics, body, kind: TypeDefinitionKind::Type })
     }
 
-    /// generics: ( ident | '(' ident ':' kind ')' )*
-    fn parse_generics(&mut self) -> Vec<GenericParam> {
-        self.many0(Self::parse_generic_param)
+    /// generics: ( ident | '(' ident (':' kind)? ('=' type)? ')' )*
+    fn parse_generics(&mut self, allow_defaults: bool) -> Vec<GenericParam> {
+        self.many0(|this| this.parse_generic_param(allow_defaults))
     }
 
-    /// A single generic parameter: either a bare identifier (kind defaults to `Type`)
-    /// or `( ident : kind )` to explicitly annotate the kind.
-    ///
-    /// We must be careful only to consume the opening `(` when this really is an annotated
-    /// generic parameter, since `many0` keeps calling us in contexts (like type definitions)
-    /// where a `(` might also begin something else.
-    fn parse_generic_param(&mut self) -> Result<GenericParam> {
+    /// generic_param: '(' ident (':' kind)? ('=' type)? ')'
+    ///              | ident
+    fn parse_generic_param(&mut self, allow_defaults: bool) -> Result<GenericParam> {
         match self.current_token() {
             Token::Identifier(_) => {
                 let name = self.parse_ident_id()?;
-                Ok(GenericParam { name, kind: None })
+                Ok(GenericParam { name, kind: None, default: None })
             },
             Token::Apostrophe if matches!(self.try_peek_next_token(), Some(Token::Identifier(_))) => {
                 self.advance();
                 let name = self.parse_ident_id()?;
-                Ok(GenericParam { name, kind: Some(KindAnnotation::Place) })
+                Ok(GenericParam { name, kind: Some(KindAnnotation::Place), default: None })
             },
-            Token::ParenthesisLeft if self.at_parenthesized_name_colon() => {
+            Token::ParenthesisLeft
+                if self.at_parenthesized_name_colon()
+                    || (allow_defaults && self.at_parenthesized_name_then(Token::Equal)) =>
+            {
                 self.advance();
                 let name = self.parse_ident_id()?;
-                self.expect(Token::Colon, "a `:` between the generic name and its kind")?;
-                let kind = self.parse_kind_annotation()?;
-                self.expect(Token::ParenthesisRight, "a closing `)` after the kind annotation")?;
-                Ok(GenericParam { name, kind: Some(kind) })
+                let kind = if self.accept(Token::Colon) { Some(self.parse_kind_annotation()?) } else { None };
+                let default = if allow_defaults && self.accept(Token::Equal) { Some(self.parse_type()?) } else { None };
+                self.expect(Token::ParenthesisRight, "a closing `)` after the generic parameter")?;
+                Ok(GenericParam { name, kind, default })
             },
             _ => self.expected("a generic parameter"),
         }
@@ -1244,7 +1248,7 @@ impl<'tokens> Parser<'tokens> {
         let start = self.current_token_location();
         self.expect(Token::Forall, "`forall` to start this polytype")?;
 
-        let generics = self.parse_generics();
+        let generics = self.parse_generics(false);
         if generics.is_empty() {
             return self.expected("a generic parameter after `forall`");
         }
@@ -2920,13 +2924,9 @@ impl<'tokens> Parser<'tokens> {
 
     fn parse_trait_definition(&mut self) -> Result<cst::TraitOrEffectDefinition> {
         self.expect(Token::Trait, "`trait` to start this trait definition")?;
-        self.parse_trait_or_effect_body()
-    }
-
-    fn parse_trait_or_effect_body(&mut self) -> Result<cst::TraitOrEffectDefinition> {
         let name = self.parse_type_name_id()?;
-        let generics = self.parse_generics();
-        self.expect(Token::Equal, "`=` to separate this definition's signature from its body")?;
+        let generics = self.parse_generics(true);
+        self.expect(Token::Equal, "`=` to separate this trait's signature from its body")?;
         let body = self.parse_declaration_block()?;
         Ok(cst::TraitOrEffectDefinition { name, generics, body })
     }
@@ -2944,8 +2944,8 @@ impl<'tokens> Parser<'tokens> {
     fn parse_effect_definition(&mut self) -> Result<(NameId, TopLevelItemKind)> {
         self.expect(Token::Effect, "`effect` to start this effect definition")?;
         let name = self.parse_type_name_id()?;
-        let generics = self.parse_generics();
-        self.expect(Token::Equal, "`=` to separate this definition's signature from its body")?;
+        let generics = self.parse_generics(true);
+        self.expect(Token::Equal, "`=` to separate this effect's signature from its body")?;
 
         let item = if self.at_declaration_block() {
             let body = self.parse_declaration_block()?;

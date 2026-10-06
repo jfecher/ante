@@ -621,7 +621,7 @@ impl Type {
     /// Convert this [cst::Type] into a [Type] with the expected [Kind].
     /// Error if the converted [Kind] does not match the expected [Kind].
     #[allow(clippy::too_many_arguments)]
-    fn from_cst_type_with_kind(
+    pub(crate) fn from_cst_type_with_kind(
         typ: &cst::Type, expected: Kind, resolve: &ResolutionResult, db: &DbHandle, next_id: &mut u32,
         local_kinds: &mut LocalKinds, insert_implicit_type_vars: bool, open_effects_by_default: bool,
     ) -> Type {
@@ -751,11 +751,20 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
             crate::parser::cst::TypeKind::Char => (Type::CHAR, Kind::Type),
             crate::parser::cst::TypeKind::Named(path) => {
                 let origin = self.resolve.path_origins.get(path).copied();
+                let location = &typ.location;
                 let (typ, kind) =
-                    Type::convert_origin_to_type(origin, self.db, &typ.location, self.local_kinds, Type::UserDefined);
+                    Type::convert_origin_to_type(origin, self.db, location, self.local_kinds, Type::UserDefined);
 
-                // Expand a type or effect alias if necessary
                 if let Type::UserDefined(Origin::TopLevelDefinition(name)) = typ {
+                    // A bare type with all-default parameters gets them, unless it is an application head or constructor
+                    if expected.is_some()
+                        && kind.required_argument_count() != 0
+                        && self.required_parameter_count(name) == Some(0)
+                    {
+                        return self.convert_application(typ, kind, &[], location);
+                    }
+
+                    // Expand a type or effect alias if necessary
                     if kind == Kind::Type
                         && let Some(expanded) = self.expand_type_alias(name, &[])
                     {
@@ -805,34 +814,7 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
             crate::parser::cst::TypeKind::Unit => (Type::UNIT, Kind::Type),
             crate::parser::cst::TypeKind::Application(f, args) => {
                 let (f, f_kind) = self.convert(f, None);
-
-                if !f_kind.accepts_n_arguments(args.len()) {
-                    let expected = f_kind.required_argument_count();
-                    let location = typ.location.clone();
-                    self.db.accumulate(Diagnostic::FunctionArgCountMismatch { actual: args.len(), expected, location });
-                    return (Type::ERROR, Kind::Type);
-                }
-
-                let result_kind = f_kind.result_kind();
-
-                let converted_args = mapvec(args.iter().enumerate(), |(i, arg)| {
-                    let expected_kind = f_kind.get_nth_parameter_kind(i);
-                    self.convert_with_kind(arg, expected_kind)
-                });
-
-                assert!(!converted_args.is_empty());
-
-                // Expand a generic type or effect alias if necessary
-                if let Type::UserDefined(Origin::TopLevelDefinition(name)) = &f {
-                    if let Some(expanded) = self.expand_type_alias(*name, &converted_args) {
-                        return (expanded, Kind::Type);
-                    } else if let Some(expanded) = self.expand_effect_alias(*name, &converted_args) {
-                        return (expanded, Kind::Effect);
-                    }
-                }
-
-                let typ = Type::Application(Shared::new(f), Shared::new(converted_args));
-                (typ, result_kind)
+                self.convert_application(f, f_kind, args, &typ.location)
             },
             crate::parser::cst::TypeKind::Reference(kind) => {
                 (Type::Primitive(PrimitiveType::Reference(*kind)), Kind::from_args(vec![Kind::Place, Kind::Type]))
@@ -875,6 +857,82 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
                 }
                 self.convert(body, expected)
             },
+        }
+    }
+
+    /// Apply the type constructor `f` to `args`, filling in the defaults of any omitted trailing arguments
+    fn convert_application(&mut self, f: Type, f_kind: Kind, args: &[cst::Type], location: &Location) -> (Type, Kind) {
+        let arity = f_kind.required_argument_count();
+        let name = match &f {
+            Type::UserDefined(Origin::TopLevelDefinition(name)) => Some(*name),
+            _ => None,
+        };
+
+        if !f_kind.accepts_n_arguments(args.len()) {
+            let required = name.and_then(|name| self.required_parameter_count(name)).unwrap_or(arity);
+            if !(required..arity).contains(&args.len()) {
+                let expected = if args.len() < required { required } else { arity };
+                let location = location.clone();
+                self.db.accumulate(Diagnostic::FunctionArgCountMismatch { actual: args.len(), expected, location });
+                return (Type::ERROR, Kind::Type);
+            }
+        }
+
+        let result_kind = f_kind.result_kind();
+
+        let mut converted_args = mapvec(args.iter().enumerate(), |(i, arg)| {
+            let expected_kind = f_kind.get_nth_parameter_kind(i);
+            self.convert_with_kind(arg, expected_kind)
+        });
+
+        if let Some(name) = name {
+            if converted_args.len() < arity {
+                self.push_default_arguments(name, &f_kind, &mut converted_args, location);
+            }
+
+            // Expand a generic type or effect alias if necessary
+            if let Some(expanded) = self.expand_type_alias(name, &converted_args) {
+                return (expanded, Kind::Type);
+            } else if let Some(expanded) = self.expand_effect_alias(name, &converted_args) {
+                return (expanded, Kind::Effect);
+            }
+        }
+
+        assert!(!converted_args.is_empty());
+        let typ = Type::Application(Shared::new(f), Shared::new(converted_args));
+        (typ, result_kind)
+    }
+
+    /// The minimum number of arguments `name` accepts. Returns `None` if it is not a type definition
+    fn required_parameter_count(&self, name: TopLevelName) -> Option<usize> {
+        let (item, _) = GetItem(name.top_level_item).get(self.db);
+        let cst::TopLevelItemKind::TypeDefinition(definition) = &item.kind else {
+            return None;
+        };
+        Some(definition.required_generic_count())
+    }
+
+    /// Push the defaults of `name`'s parameters after `args`
+    fn push_default_arguments(&mut self, name: TopLevelName, kind: &Kind, args: &mut Vec<Type>, location: &Location) {
+        let (item, ctx) = GetItem(name.top_level_item).get(self.db);
+        let cst::TopLevelItemKind::TypeDefinition(definition) = &item.kind else {
+            return;
+        };
+
+        for (i, param) in definition.generics.iter().enumerate().skip(args.len()) {
+            let default = param.default.as_ref().expect("omitted parameters should all have defaults");
+
+            let typ = if !self.insert_implicit_type_vars && default.contains_hole() {
+                let typ = ctx[definition.name].to_string();
+                let param = ctx[param.name].to_string();
+                self.db.accumulate(Diagnostic::DefaultHoleCantBeUsed { typ, param, location: location.clone() });
+                Type::ERROR
+            } else {
+                let implicit = self.insert_implicit_type_vars;
+                let kind = kind.get_nth_parameter_kind(i);
+                self.expand_alias(name, &ctx, definition, args, implicit, |c| c.convert_with_kind(default, kind))
+            };
+            args.push(typ);
         }
     }
 
@@ -943,7 +1001,9 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
         let cst::TypeDefinitionBody::Alias(body) = &definition.body else {
             return None;
         };
-        self.expand_alias(name, ctx, definition, args, |converter| converter.convert(body, Some(&Kind::Type)).0)
+        Some(self.expand_alias(name, &ctx, definition, args, false, |converter| {
+            converter.convert(body, Some(&Kind::Type)).0
+        }))
     }
 
     /// If `name` refers to an effect alias, return its expansion with `args` substituted
@@ -958,25 +1018,35 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
         let cst::TypeDefinitionBody::EffectAlias(effects) = &definition.body else {
             return None;
         };
-        self.expand_alias(name, ctx, definition, args, |converter| converter.convert_effects_clause(Some(effects)))
+        Some(self.expand_alias(name, &ctx, definition, args, false, |converter| {
+            converter.convert_effects_clause(Some(effects))
+        }))
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn expand_alias(
-        &mut self, name: TopLevelName, ctx: Shared<DesugarContext>, definition: &cst::TypeDefinition, args: &[Type],
-        convert_body: impl FnOnce(&mut TypeConverter) -> Type,
-    ) -> Option<Type> {
+        &mut self, name: TopLevelName, ctx: &DesugarContext, definition: &cst::TypeDefinition, args: &[Type],
+        insert_implicit_type_vars: bool, convert_body: impl FnOnce(&mut TypeConverter) -> Type,
+    ) -> Type {
         if self.visited.contains(&name) {
             let typ = ctx[definition.name].to_string();
             let location = ctx.name_location(definition.name).clone();
             self.db.accumulate(Diagnostic::RecursiveTypeAlias { typ, location });
-            return Some(Type::ERROR);
+            return Type::ERROR;
         }
         self.visited.push(name);
 
         let resolve = Resolve(name.top_level_item).get(self.db);
         let mut local_kinds = TypeChecker::local_kinds_from_generics(&definition.generics);
-        let mut converter =
-            TypeConverter::new(&resolve, self.db, self.next_id, &mut local_kinds, false, false, self.visited);
+        let mut converter = TypeConverter::new(
+            &resolve,
+            self.db,
+            self.next_id,
+            &mut local_kinds,
+            insert_implicit_type_vars,
+            false,
+            self.visited,
+        );
 
         let body_type = convert_body(&mut converter);
 
@@ -990,7 +1060,7 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
         };
 
         self.visited.pop();
-        Some(result)
+        result
     }
 }
 

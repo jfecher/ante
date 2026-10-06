@@ -130,17 +130,30 @@ impl Type {
 
     /// True if this type has a hole to infer, such as the environment of a `=>` function type
     pub fn contains_hole(&self) -> bool {
+        self.contains_hole_with(&mut |_, _| false)
+    }
+
+    /// Like [Type::contains_hole], but also calls `on_named(path, arg_count)` on each named type
+    pub fn contains_hole_with(&self, on_named: &mut impl FnMut(PathId, usize) -> bool) -> bool {
+        let mut recur = |typ: &Type| typ.contains_hole_with(on_named);
         match &self.kind {
             TypeKind::Hole => true,
+            TypeKind::Named(path) => on_named(*path, 0),
             TypeKind::Function(function) => {
-                function.parameters.iter().any(|parameter| parameter.typ.contains_hole())
-                    || function.environment.as_ref().is_some_and(|environment| environment.contains_hole())
-                    || function.return_type.contains_hole()
-                    || function.effects.iter().flatten().any(Type::contains_hole)
+                function.parameters.iter().any(|parameter| recur(&parameter.typ))
+                    || function.environment.as_ref().is_some_and(|environment| recur(environment))
+                    || recur(&function.return_type)
+                    || function.effects.iter().flatten().any(recur)
             },
-            TypeKind::Application(function, args) => function.contains_hole() || args.iter().any(Type::contains_hole),
-            TypeKind::Tuple(types) | TypeKind::EffectUnion(types) => types.iter().any(Type::contains_hole),
-            TypeKind::Forall(_, typ) => typ.contains_hole(),
+            TypeKind::Application(function, args) => {
+                args.iter().any(&mut recur)
+                    || match &function.kind {
+                        TypeKind::Named(path) => on_named(*path, args.len()),
+                        _ => recur(function),
+                    }
+            },
+            TypeKind::Tuple(types) | TypeKind::EffectUnion(types) => types.iter().any(recur),
+            TypeKind::Forall(_, typ) => recur(typ),
             _ => false,
         }
     }
@@ -284,6 +297,13 @@ pub struct TypeDefinition {
     pub name: NameId,
     pub generics: Generics,
     pub body: TypeDefinitionBody,
+}
+
+impl TypeDefinition {
+    /// Number of generic parameters without a default
+    pub fn required_generic_count(&self) -> usize {
+        self.generics.iter().rposition(|param| param.default.is_none()).map_or(0, |index| index + 1)
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -688,11 +708,13 @@ pub struct GenericParam {
     pub name: NameId,
     /// When `None`, this parameter's kind defaults to `Type`.
     pub kind: Option<KindAnnotation>,
+    /// The type used when this parameter's argument is omitted, e.g. `I32` for `(b = I32)`
+    pub default: Option<Type>,
 }
 
 impl GenericParam {
     pub fn new(name: NameId) -> Self {
-        Self { name, kind: None }
+        Self { name, kind: None, default: None }
     }
 }
 
