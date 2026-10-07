@@ -103,8 +103,8 @@ type BadKind (n: U32 = I32) = x: Array n I32
 //    |              ^^^^^^^^^^^^^^^
 // 
 // examples/typechecking/default_type_params.an:30:20
-// 29 | // A `_` default can't be inferred within a type definition
-//    | // error: `Bar`'s omitted parameter `t` defaults to `_`, which can't be inferred in this position
+// 29 | // A `_` default must be explicitly specified within a type definition
+//    | // error: Bar's omitted parameter t defaults to `_`, which can't be used in this position
 // 30 | type UsesHole = b: Bar
 //    |                    ^^^
 // 

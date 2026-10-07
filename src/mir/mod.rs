@@ -1289,7 +1289,10 @@ impl Type {
                 None => ptr_size,
             },
             // This is a raw union so the tag isn't counted here
-            Type::Union(variants) => variants.iter().map(|typ| typ.size_in_bytes(ptr_size)).max().unwrap_or(0),
+            Type::Union(variants) => {
+                let size = variants.iter().map(|typ| typ.size_in_bytes(ptr_size)).max().unwrap_or(0);
+                size.next_multiple_of(self.align_in_bytes(ptr_size))
+            },
             Type::Array { length, element } => {
                 let length = match length.as_ref() {
                     Type::U32(n) => *n,

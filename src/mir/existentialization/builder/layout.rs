@@ -44,16 +44,16 @@ impl FunctionBuilder<'_> {
                 Layout { size, align_mask: self.sub(align, Op::Const(1)) }
             },
             Type::Union(variants) => {
-                // Mirrors `select_largest_variants`: the last variant of the largest size
+                // Mirrors `find_largest_variant`: the largest size rounded up to the largest alignment
                 let mut largest = self.layout(&variants[0]);
                 for variant in &variants[1..] {
                     let layout = self.layout(variant);
                     let keep = self.less_mask(layout.size, largest.size);
                     let size = self.select(keep, largest.size, layout.size);
-                    let align_mask = self.select(keep, largest.align_mask, layout.align_mask);
+                    let align_mask = self.or(largest.align_mask, layout.align_mask);
                     largest = Layout { size, align_mask };
                 }
-                largest
+                Layout { size: self.align_up(largest.size, largest.align_mask), ..largest }
             },
             Type::Array { length, element } => {
                 let stride = self.stride(element);

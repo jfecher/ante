@@ -5,6 +5,7 @@
 
 use crate::{
     incremental::TargetPointerSize,
+    lexer::token::IntegerKind,
     mir::{Definition, Instruction, IntConstant, Mir, Type, Value},
 };
 use inc_complete::DbGet;
@@ -98,11 +99,25 @@ impl Type {
         }
     }
 
+    /// The largest variant, or aligned words when that variant is less aligned than another
     pub(crate) fn find_largest_variant(variants: &[Type], ptr_size: u32) -> Type {
         match variants.len() {
             0 => Type::UNIT,
             1 => variants[0].clone(),
-            _ => variants.iter().max_by_key(|typ| typ.size_in_bytes(ptr_size)).unwrap().clone(),
+            _ => {
+                let largest = variants.iter().max_by_key(|typ| typ.size_in_bytes(ptr_size)).unwrap();
+                let align = variants.iter().map(|typ| typ.align_in_bytes(ptr_size)).max().unwrap();
+                if largest.align_in_bytes(ptr_size) == align {
+                    return largest.clone();
+                }
+                let word = match align {
+                    2 => IntegerKind::U16,
+                    4 => IntegerKind::U32,
+                    _ => IntegerKind::U64,
+                };
+                let words = largest.size_in_bytes(ptr_size).div_ceil(align) as usize;
+                Type::tuple(vec![Type::int(word); words])
+            },
         }
     }
 }
