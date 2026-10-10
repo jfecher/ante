@@ -9,8 +9,14 @@ export File, File.open, File.close, drop_file, File.eof, File.write, File.next_c
 
 type File = c_file: C.File
 
-File.open (path: String) (mode: String): File can Fs =
-    File <| fopen (C.String.new path) (C.String.new mode)
+/// Open the file at `path` with the given `fopen` mode.
+/// Fails if it cannot be opened.
+///
+/// This function is temporary, mode will eventually become a union, and `path` a proper path type.
+File.open (path: String) (mode: String): File can Fs, Fail =
+    c_file = fopen (C.String.new path) (C.String.new mode)
+    fail_if (c_file.f == null ())
+    File c_file
 
 File.close (file: File): Unit can Fs =
     fclose file.c_file
@@ -31,8 +37,12 @@ File.write (f: mut File) (text: String): Unit can Fs =
 print_to_file (file: ref File) (f: a can Print, e): a can Fs, e =
     print_to_sink (fn data len -> ignore (fwrite (transmute data) 1 len file.c_file)) f
 
-File.next_char (f: ref File): Char can Fs =
-    Char (fgetc f.c_file)
+/// Read the next character.
+/// Fails if at the end of the file or on a read error.
+File.next_char (f: ref File): Char can Fs, Fail =
+    c = fgetc f.c_file
+    fail_if (c < 0)
+    Char c
 
 File.next_line (f: mut File): String can Fs =
     if f.eof () then return ""
