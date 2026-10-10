@@ -1276,6 +1276,7 @@ fn collect_user_defined_crates(typ: &Type, out: &mut BTreeSet<CrateId>) {
         | Type::Primitive(_)
         | Type::U32(_)
         | Type::Place(_)
-        | Type::Places(_) => {},
+        | Type::Places(_)
+        | Type::PlaceProjection(..) => {},
     }
 }

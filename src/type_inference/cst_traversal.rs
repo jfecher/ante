@@ -15,7 +15,7 @@ use crate::{
         Locateable, TypeChecker, Variance,
         errors::TypeErrorKind,
         get_type::{get_partial_type, try_get_generalized_type},
-        places::PlacePath,
+        places::Place,
         types::{self, FunctionType, GenericSubstitutions, ParameterType, Type, TypeBindings},
     },
 };
@@ -314,14 +314,14 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 self.check_name(*name, expected);
                 self.check_pattern_rec(*inner_pattern, expected, irrefutable);
                 // Runs after `check_pattern` so `pattern_types` is populated for the whole subtree.
-                let root = PlacePath::Variable(*name);
+                let root = Place::variable(*name);
                 self.assign_binding_places(*inner_pattern, root);
             },
         };
     }
 
-    /// Assigns each binding in `pattern` its PlacePath rooted at `place`, so it matches the equivalent member access.
-    fn assign_binding_places(&mut self, id: PatternId, place: PlacePath) {
+    /// Assigns each binding in `pattern` its Place rooted at `place`, so it matches the equivalent member access.
+    fn assign_binding_places(&mut self, id: PatternId, place: Place) {
         let pattern = self.pattern_of(id);
         match pattern.as_ref() {
             Pattern::Variable(name) | Pattern::MethodName { item_name: name, .. } => {
@@ -351,13 +351,13 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
-    /// Assigns each argument in `args` its PlacePath as a field of `place`
-    fn assign_binding_places_for_args(&mut self, id: PatternId, place: &PlacePath, args: &[PatternId]) {
+    /// Assigns each argument in `args` its Place as a field of `place`
+    fn assign_binding_places_for_args(&mut self, id: PatternId, place: &Place, args: &[PatternId]) {
         // Prefer real struct field names; enum payloads and tuples fall back to indices.
         let names_by_index = self.field_names_by_index(id);
         for (i, arg) in args.iter().enumerate() {
             let field = names_by_index.get(&(i as u32)).cloned().unwrap_or_else(|| Arc::new(i.to_string()));
-            let child = PlacePath::field(place.clone(), field);
+            let child = place.clone().field(field);
             self.assign_binding_places(*arg, child);
         }
     }

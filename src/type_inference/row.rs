@@ -63,12 +63,12 @@ impl RowKind {
 
 /// The result of matching one row's concrete entries against another's (effects or places).
 pub(super) struct RowMatch {
-    a_open: Vec<Type>,
-    b_open: Vec<Type>,
+    pub(super) a_open: Vec<Type>,
+    pub(super) b_open: Vec<Type>,
     /// `a`'s concrete entries with no match in `b`
-    a_leftover: Vec<Type>,
+    pub(super) a_leftover: Vec<Type>,
     /// `b`'s concrete entries with no match in `a`
-    b_leftover: Vec<Type>,
+    pub(super) b_leftover: Vec<Type>,
 }
 
 /// True if this entry is an unbound type variable acting as the row's open tail.
@@ -106,6 +106,14 @@ pub(super) fn flatten_row_into(
 ) {
     for entry in entries {
         let followed = entry.follow_two(bindings, more_bindings);
+        // Push the segments into whatever the base is bound to
+        if let Type::PlaceProjection(base, segments) = &followed {
+            match Type::project_place(base, segments, bindings, more_bindings) {
+                projection @ Type::PlaceProjection(..) => found.push(projection),
+                projected => flatten_row_into(kind, &[projected], found, bindings, more_bindings),
+            }
+            continue;
+        }
         match kind.as_row(&followed) {
             Some(Some(row)) => flatten_row_into(kind, &row, found, bindings, more_bindings),
             Some(None) => (),
@@ -286,7 +294,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     }
 
     /// Bind a row's open end to the row of `entries`
-    fn bind_row_end(
+    pub(super) fn bind_row_end(
         &self, kind: RowKind, end: &Type, entries: &[Type], new_bindings: &mut TypeBindings,
     ) -> Result<(), ()> {
         let binding = construct_row(kind, entries, &self.bindings, new_bindings);

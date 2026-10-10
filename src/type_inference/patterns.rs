@@ -521,7 +521,8 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
             | Type::U32(_)
             | Type::Effects(..)
             | Type::Place(_)
-            | Type::Places(..) => {
+            | Type::Places(..)
+            | Type::PlaceProjection(..) => {
                 let typ = self.checker.type_to_string(definition_type);
                 Err(Diagnostic::CannotMatchOnType { typ, location })
             },

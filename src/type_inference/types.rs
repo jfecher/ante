@@ -13,7 +13,7 @@ use crate::{
     lexer::token::{FloatKind, IntegerKind},
     name_resolution::{Origin, ResolutionResult, builtin::Builtin},
     parser::{
-        cst::{self, KindAnnotation, ReferenceKind},
+        cst::{self, KindAnnotation, PlaceSegment, ReferenceKind},
         desugar_context::DesugarContext,
         ids::{NameId, NameStore, TopLevelName},
     },
@@ -89,6 +89,9 @@ pub enum Type {
     ///
     /// A value of None corresponds to a reference pointing to nothing
     Places(Row<Type>),
+
+    /// A generic or unbound place followed by fields and `!`s, like `'a!`
+    PlaceProjection(Shared<Type>, Shared<Vec<PlaceSegment>>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -271,6 +274,11 @@ impl Type {
         matches!(self, Type::Primitive(PrimitiveType::Error))
     }
 
+    /// True if this is a place, a places row, or a projection of one
+    pub(crate) fn is_place_row(&self) -> bool {
+        matches!(self, Type::Places(_) | Type::Place(_) | Type::PlaceProjection(..))
+    }
+
     /// Follow all of this type's type variable bindings so that we only return
     /// `Type::Variable` if the type variable is unbound. Note that this may still return
     /// a composite type such as `Type::Application` with bound type variables within.
@@ -319,7 +327,8 @@ impl Type {
             | Type::U32(_)
             | Type::Place(_)
             | Type::Effects(_)
-            | Type::Places(_) => false,
+            | Type::Places(_)
+            | Type::PlaceProjection(..) => false,
             Type::Function(function) => {
                 function.parameters.iter().any(|param| param.typ.has_unbound_type_variables(bindings))
                     || function.environment.has_unbound_type_variables(bindings)
@@ -400,6 +409,10 @@ impl Type {
             Type::Places(places) => {
                 let places = Self::follow_all_each(places.as_ref()?, |p| p.follow_all_opt(bindings, more_bindings))?;
                 Some(Type::places(&places, bindings, more_bindings))
+            },
+            Type::PlaceProjection(base, segments) => {
+                let base = base.follow_all_opt(bindings, more_bindings)?;
+                Some(Type::project_place(&base, segments, bindings, more_bindings))
             },
         }
     }
@@ -525,6 +538,14 @@ impl Type {
                     None => places.as_ref().map_or(&[][..], |places| places.as_slice()),
                 };
                 Some(Type::places(entries, bindings_in_scope, &Default::default()))
+            },
+            Type::PlaceProjection(base, segments) => {
+                let new_base = base.substitute_opt(bindings_to_substitute, bindings_in_scope);
+                if new_base.is_none() && !self_is_var {
+                    return None;
+                }
+                let base = new_base.as_ref().unwrap_or(base.as_ref());
+                Some(Type::project_place(base, segments, bindings_in_scope, &Default::default()))
             },
         }
     }
@@ -717,12 +738,16 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
 
     /// Convert `typ` and error if its [Kind] does not unify with `expected`.
     fn convert_with_kind(&mut self, typ: &cst::Type, expected: Kind) -> Type {
-        let location = typ.location.clone();
-        let (typ, kind) = self.convert(typ, Some(&expected));
-        if !expected.unifies(&kind) {
-            self.db.accumulate(Diagnostic::ExpectedKind { actual: kind, expected, location });
+        let (converted, kind) = self.convert(typ, Some(&expected));
+        self.check_kind(kind, expected, &typ.location);
+        converted
+    }
+
+    /// Error if `actual` does not unify with `expected`
+    fn check_kind(&self, actual: Kind, expected: Kind, location: &Location) {
+        if !expected.unifies(&actual) {
+            self.db.accumulate(Diagnostic::ExpectedKind { actual, expected, location: location.clone() });
         }
-        typ
     }
 
     /// Convert a [cst::Type] into a [Type]. Returns the converted type and its kind.
@@ -777,14 +802,17 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
                 }
                 (typ, kind)
             },
-            crate::parser::cst::TypeKind::Variable(name) | crate::parser::cst::TypeKind::Place(name) => {
-                let origin = self.resolve.name_origins.get(name).copied();
-                if let (Some(expected), Some(Origin::Local(name_id))) = (expected, origin) {
-                    self.local_kinds.entry(name_id).or_insert_with(|| expected.clone());
-                }
-                Type::convert_origin_to_type(origin, self.db, &typ.location, self.local_kinds, |origin| {
-                    Type::Generic(Generic::Named(origin))
-                })
+            crate::parser::cst::TypeKind::Variable(name) => self.convert_type_variable(*name, expected, &typ.location),
+            crate::parser::cst::TypeKind::Place(paths) => {
+                let none = TypeBindings::default();
+                let entries = mapvec(paths, |path| {
+                    let (root, kind) = self.convert_type_variable(path.root, Some(&Kind::Place), &typ.location);
+                    self.check_kind(kind, Kind::Place, &typ.location);
+                    Type::project_place(&root, &path.segments, &none, &none)
+                });
+                let place =
+                    if let [entry] = entries.as_slice() { entry.clone() } else { Type::places(&entries, &none, &none) };
+                (place, Kind::Place)
             },
             crate::parser::cst::TypeKind::Function(function) => {
                 // TODO: Places on higher-order functions should likely be inferred to have
@@ -858,6 +886,17 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
                 self.convert(body, expected)
             },
         }
+    }
+
+    /// Convert a type variable or place name, recording its kind as `expected` if it has none yet
+    fn convert_type_variable(&mut self, name: NameId, expected: Option<&Kind>, location: &Location) -> (Type, Kind) {
+        let origin = self.resolve.name_origins.get(&name).copied();
+        if let (Some(expected), Some(Origin::Local(name_id))) = (expected, origin) {
+            self.local_kinds.entry(name_id).or_insert_with(|| expected.clone());
+        }
+        Type::convert_origin_to_type(origin, self.db, location, self.local_kinds, |origin| {
+            Type::Generic(Generic::Named(origin))
+        })
     }
 
     /// Apply the type constructor `f` to `args`, filling in the defaults of any omitted trailing arguments
@@ -950,16 +989,7 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
                 Some(place)
             },
             places::PlaceElision::Free => None,
-            places::PlaceElision::Named(origin) => {
-                let (place, _) = Type::convert_origin_to_type(
-                    Some(origin),
-                    self.db,
-                    &function.return_type.location,
-                    self.local_kinds,
-                    |origin| Type::Generic(Generic::Named(origin)),
-                );
-                Some(place)
-            },
+            places::PlaceElision::Named(place) => Some(self.convert(place, Some(&Kind::Place)).0),
             places::PlaceElision::Ambiguous => {
                 let location = function.return_type.location.clone();
                 self.db.accumulate(Diagnostic::AmbiguousElidedPlace { location });
@@ -1182,8 +1212,12 @@ impl Type {
     fn collect_place_kinded_generics(&self, out: &mut FxHashSet<Generic>) {
         match self {
             Type::Application(constructor, args) => {
-                if let Some(Type::Generic(g)) = args.first() {
-                    if constructor.reference_constructor(&TypeBindings::default()).is_some() {
+                if constructor.reference_constructor(&TypeBindings::default()).is_some() {
+                    let place = match args.first() {
+                        Some(Type::PlaceProjection(base, _)) => Some(base.as_ref()),
+                        other => other,
+                    };
+                    if let Some(Type::Generic(g)) = place {
                         out.insert(*g);
                     }
                 }
@@ -1211,7 +1245,8 @@ impl Type {
             | Type::U32(_)
             | Type::Effects(_)
             | Type::Place(_)
-            | Type::Places(_) => (),
+            | Type::Places(_)
+            | Type::PlaceProjection(..) => (),
         }
     }
 
@@ -1303,6 +1338,7 @@ impl Type {
                     }
                 }
             },
+            Type::PlaceProjection(base, _) => base.for_each_subterm(bindings, f),
         }
     }
 
@@ -1585,18 +1621,19 @@ where
                 self.fmt_effects_suffix(&function.effects, f)
             }),
             Type::Application(constructor, args) => try_parenthesize(parenthesize, f, |f| {
-                // Hack: If the constructor formats to `,` then print it infix
                 let constructor = constructor.follow(self.bindings);
-                let is_pair = if let Type::UserDefined(Origin::TopLevelDefinition(name)) = constructor {
-                    let (item, context) = GetItem(name.top_level_item).get(self.db);
-                    if let cst::ItemName::Single(name) = item.kind.name() {
-                        context[name].as_str() == ","
-                    } else {
-                        unreachable!()
-                    }
-                } else {
-                    false
+                let item = match constructor {
+                    Type::UserDefined(Origin::TopLevelDefinition(name)) => {
+                        Some(GetItem(name.top_level_item).get(self.db))
+                    },
+                    _ => None,
                 };
+
+                // Hack: If the constructor formats to `,` then print it infix
+                let is_pair = item.as_ref().is_some_and(|(item, context)| match item.kind.name() {
+                    cst::ItemName::Single(name) => context[name].as_str() == ",",
+                    _ => unreachable!(),
+                });
 
                 if is_pair && args.len() == 2 {
                     self.fmt_type(&args[0], true, f)?;
@@ -1606,13 +1643,18 @@ where
                     let is_reference = args.len() == 2
                         && matches!(constructor.follow(self.bindings), Type::Primitive(PrimitiveType::Reference(_)));
 
+                    let generics = match item.as_ref().map(|(item, _)| &item.kind) {
+                        Some(cst::TopLevelItemKind::TypeDefinition(definition)) => definition.generics.as_slice(),
+                        _ => &[],
+                    };
+
                     self.fmt_type(constructor, true, f)?;
-                    if is_reference {
-                        self.fmt_place_arg(&args[0], f)?;
-                        write!(f, " ")?;
-                        self.fmt_type(&args[1], true, f)?;
-                    } else {
-                        for arg in args.iter() {
+                    for (i, arg) in args.iter().enumerate() {
+                        let place_param =
+                            generics.get(i).is_some_and(|param| param.kind == Some(KindAnnotation::Place));
+                        if (is_reference && i == 0) || place_param || arg.follow(self.bindings).is_place_row() {
+                            self.fmt_place_arg(arg, is_reference, f)?;
+                        } else {
                             write!(f, " ")?;
                             self.fmt_type(arg, true, f)?;
                         }
@@ -1640,10 +1682,14 @@ where
             }),
             Type::U32(n) => write!(f, "{n}"),
             Type::Effects(effects) => self.fmt_effects(effects, parenthesize, f),
-            Type::Place(atom) => self.fmt_place_atom(atom, f),
-            Type::Places(places) => {
-                let entries = self.canonicalize_place_entries(places);
+            Type::Place(atom) => write!(f, "{}", atom.display_name(self.names)),
+            Type::Places(_) => {
+                let entries = self.printed_places(typ).unwrap_or_default();
                 if entries.is_empty() { write!(f, "()") } else { self.fmt_place_entries(&entries, f) }
+            },
+            Type::PlaceProjection(base, segments) => {
+                self.fmt_type(base, false, f)?;
+                write!(f, "{}", cst::Segments(segments))
             },
         }
     }

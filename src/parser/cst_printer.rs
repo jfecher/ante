@@ -660,9 +660,19 @@ impl<'a> CstDisplay<'a> {
             TypeKind::Error => write!(f, "(error)"),
             TypeKind::Named(path) => self.fmt_type_path(*path, context, f),
             TypeKind::Variable(name) => self.fmt_type_name(*name, context, f),
-            TypeKind::Place(name) => {
+            TypeKind::Place(paths) => {
                 write!(f, "'")?;
-                self.fmt_type_name(*name, context, f)
+                if let [path] = paths.as_slice() {
+                    return self.fmt_place_path(path, context, f);
+                }
+                write!(f, "(")?;
+                for (i, path) in paths.iter().enumerate() {
+                    if i != 0 {
+                        write!(f, ", ")?;
+                    }
+                    self.fmt_place_path(path, context, f)?;
+                }
+                write!(f, ")")
             },
             TypeKind::Unit => write!(f, "Unit"),
             TypeKind::Integer(kind) => write!(f, "{kind}"),
@@ -697,6 +707,11 @@ impl<'a> CstDisplay<'a> {
                 self.fmt_type(body, context, f)
             },
         }
+    }
+
+    fn fmt_place_path(&self, path: &cst::PlacePath, context: &impl IdStore, f: &mut Formatter) -> std::fmt::Result {
+        self.fmt_type_name(path.root, context, f)?;
+        write!(f, "{}", cst::Segments(&path.segments))
     }
 
     fn fmt_reference_type(&self, kind: ReferenceKind, f: &mut Formatter) -> std::fmt::Result {

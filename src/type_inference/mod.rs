@@ -203,7 +203,7 @@ struct TypeChecker<'local, 'inner> {
 
     /// Keep track of which variable pattern aliases alias to catch double or partial
     /// moves when both an alias and the original name are moved.
-    binding_places: FxHashMap<NameId, places::PlacePath>,
+    binding_places: FxHashMap<NameId, places::Place>,
 
     /// The `Copy` impl requested for each variable or member access expression in the current
     /// item that may move a local place.
@@ -672,7 +672,8 @@ fn strip_environments(typ: &Type) -> Type {
         | Type::U32(_)
         | Type::Effects(_)
         | Type::Place(_)
-        | Type::Places(_) => typ.clone(),
+        | Type::Places(_)
+        | Type::PlaceProjection(..) => typ.clone(),
     }
 }
 
@@ -1185,18 +1186,18 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 | Type::Effects(..)
                 | Type::Generic(_)
                 | Type::Places(..)
-                | Type::Place(_),
+                | Type::Place(_)
+                | Type::PlaceProjection(..),
                 Type::UserDefined(_)
                 | Type::Application(..)
                 | Type::Effects(..)
                 | Type::Generic(_)
                 | Type::Places(..)
-                | Type::Place(_),
+                | Type::Place(_)
+                | Type::PlaceProjection(..),
             ) => {
                 // TODO: Remove this check and combine the if branches below
-                let is_place =
-                    matches!(a, Type::Places(..) | Type::Place(_)) || matches!(b, Type::Places(..) | Type::Place(_));
-                if is_place {
+                if a.is_place_row() || b.is_place_row() {
                     self.relate_places(a, b, row_mode, new_bindings)
                 } else {
                     match row_mode {
@@ -1381,6 +1382,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             Type::Places(places) => places
                 .as_ref()
                 .is_some_and(|places| places.iter().any(|place| self.occurs(place, variable, new_bindings))),
+            Type::PlaceProjection(base, _) => self.occurs(base, variable, new_bindings),
         }
     }
 

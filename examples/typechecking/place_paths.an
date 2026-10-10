@@ -1,0 +1,118 @@
+type MyVec t =
+    data: Ptr t
+    len: Usz
+
+get (v: ref 'v MyVec t) (i: Usz): ref 'v! t =
+    transmute (offset v.data i)
+
+get_nested (v: ref 'v MyVec (MyVec t)) (i: Usz): ref 'v!! t =
+    inner = get v i
+    get inner 0
+
+forward (v: ref 'v MyVec t): ref 'v! t = get v 0
+
+inferred (v: ref MyVec t) = get v 0
+
+either (x: ref 'a I32) (y: ref 'b I32): ref '(a, b) I32 =
+    if true then x else y
+
+mixed (_x: ref '(a, b!) I32) (y: ref 'b! I32): ref '(a, b!) I32 = y
+
+elided (x: ref 'a! I32): ref I32 = x
+
+annotated (vec: ref 'v MyVec t): Unit =
+    _a: ref 'v! t = get vec 0
+    ()
+
+use_elem (_r: ref 'v! I32) (_v: ref 'v MyVec I32): Unit = ()
+
+type Pair =
+    first: I32
+    second: I32
+
+first (p: ref 'p Pair): ref 'p.first I32 = transmute p
+
+type Rc 'p t = ptr: Ptr t
+
+rc_get (rc: ref 'outer Rc 'inner t): ref '(outer!, inner) t = transmute rc.ptr
+
+type L 'q t = value: ref 'q t
+
+holder (l: L 'q! t): ref 'q! t = l.value
+
+main () =
+    xs = MyVec (transmute 0) 0
+    ys = MyVec (transmute 0) 0
+    _e = get (ref xs) 0
+    _f = forward (ref xs)
+    _i = inferred (ref xs)
+    use_elem (get (ref xs) 0) (ref xs)
+    _j = if true then get (ref xs) 0 else get (ref ys) 0
+    _k = elided (get (ref xs) 0)
+    pair = Pair 1 2
+    _p = first (ref pair)
+    rc = Rc (transmute 0)
+    _g = rc_get (ref rc)
+    _h = holder (L (get (ref xs) 0))
+
+// args: -e ast-t --no-color
+// expected stdout:
+// type MyVec t =
+//     data: Ptr t
+//     len: Usz
+// 
+// (get: fn (ref 'v (MyVec t)) Usz -> ref 'v! t is pure) (v: ref 'v (MyVec t)) (i: Usz): ref 'v! t is pure =
+//     (transmute: fn (Ptr t) -> ref 'v! t is pure) ((offset: fn (Ptr t) Usz -> Ptr t is pure) ((copy_ptr: Copy (Ptr t))..* (v: ref 'v (MyVec t)).data) (i: Usz))
+// 
+// (get_nested: fn (ref 'v (MyVec (MyVec t))) Usz -> ref 'v!! t is pure) (v: ref 'v (MyVec (MyVec t))) (i: Usz): ref 'v!! t is pure =
+//     (inner: ref 'v! (MyVec t)) = (get: fn (ref 'v (MyVec (MyVec t))) Usz -> ref 'v! (MyVec t) is pure) (v: ref 'v (MyVec (MyVec t))) (i: Usz)
+//     (get: fn (ref 'v! (MyVec t)) Usz -> ref 'v!! t is pure) (inner: ref 'v! (MyVec t)) 0
+// 
+// (forward: fn (ref 'v (MyVec t)) -> ref 'v! t is pure) (v: ref 'v (MyVec t)): ref 'v! t is pure = (get: fn (ref 'v (MyVec t)) Usz -> ref 'v! t is pure) (v: ref 'v (MyVec t)) 0
+// 
+// (inferred: fn (ref (MyVec t)) -> ref t is pure) (v: ref (MyVec t)) = (get: fn (ref (MyVec t)) Usz -> ref t is pure) (v: ref (MyVec t)) 0
+// 
+// (either: fn (ref 'a I32) (ref 'b I32) -> ref '(a, b) I32 is pure) (x: ref 'a I32) (y: ref 'b I32): ref '(a, b) I32 is pure =
+//     if true then (x: ref 'a I32) else (y: ref 'b I32)
+// 
+// (mixed: fn (ref '(a, b!) I32) (ref 'b! I32) -> ref '(a, b!) I32 is pure) (_x: ref '(a, b!) I32) (y: ref 'b! I32): ref '(a, b!) I32 is pure = (y: ref 'b! I32)
+// 
+// (elided: fn (ref 'a! I32) -> ref 'a! I32 is pure) (x: ref 'a! I32): ref I32 is pure = (x: ref 'a! I32)
+// 
+// (annotated: fn (ref 'v (MyVec t)) -> Unit is pure) (vec: ref 'v (MyVec t)): Unit is pure =
+//     (_a: ref 'v! t) = (get: fn (ref 'v (MyVec t)) Usz -> ref 'v! t is pure) (vec: ref 'v (MyVec t)) 0
+//     ()
+// 
+// (use_elem: fn (ref 'v! I32) (ref 'v (MyVec I32)) -> Unit is pure) (_r: ref 'v! I32) (_v: ref 'v (MyVec I32)): Unit is pure = ()
+// 
+// type Pair =
+//     first: I32
+//     second: I32
+// 
+// (first: fn (ref 'p Pair) -> ref 'p.first I32 is pure) (p: ref 'p Pair): ref 'p.first I32 is pure = (transmute: fn (ref 'p Pair) -> ref 'p.first I32 is pure) (p: ref 'p Pair)
+// 
+// type Rc 'p t =
+//     ptr: Ptr t
+// 
+// (rc_get: fn (ref 'outer (Rc 'inner t)) -> ref '(inner, outer!) t is pure) (rc: ref 'outer (Rc 'inner t)): ref '(outer!, inner) t is pure = (transmute: fn (Ptr t) -> ref '(inner, outer!) t is pure) ((copy_ptr: Copy (Ptr t))..* (rc: ref 'outer (Rc 'inner t)).ptr)
+// 
+// type L 'q t =
+//     value: ref 'q t
+// 
+// (holder: fn (L 'q! t) -> ref 'q! t is pure) (l: L 'q! t): ref 'q! t is pure = (l: L 'q! t).value
+// 
+// (main: fn Unit -> Unit is pure) () =
+//     (xs: MyVec I32) = (MyVec: fn (Ptr I32) Usz -> MyVec I32 is pure) ((transmute: fn I32 -> Ptr I32 is pure) 0) 0
+//     (ys: MyVec I32) = (MyVec: fn (Ptr I32) Usz -> MyVec I32 is pure) ((transmute: fn I32 -> Ptr I32 is pure) 0) 0
+//     (_e: ref 'xs! I32) = (get: fn (ref 'xs (MyVec I32)) Usz -> ref 'xs! I32 is pure) (ref (xs: MyVec I32)) 0
+//     (_f: ref 'xs! I32) = (forward: fn (ref 'xs (MyVec I32)) -> ref 'xs! I32 is pure) (ref (xs: MyVec I32))
+//     (_i: ref 'xs! I32) = (inferred: fn (ref 'xs (MyVec I32)) -> ref 'xs! I32 is pure) (ref (xs: MyVec I32))
+//     (use_elem: fn (ref 'xs! I32) (ref 'xs (MyVec I32)) -> Unit is pure) ((get: fn (ref 'xs (MyVec I32)) Usz -> ref 'xs! I32 is pure) (ref (xs: MyVec I32)) 0) (ref (xs: MyVec I32))
+//     (_j: ref '(xs!, ys!) I32) = if true then (get: fn (ref 'xs (MyVec I32)) Usz -> ref 'xs! I32 is pure) (ref (xs: MyVec I32)) 0 else (get: fn (ref 'ys (MyVec I32)) Usz -> ref 'ys! I32 is pure) (ref (ys: MyVec I32)) 0
+//     (_k: ref 'xs! I32) = (elided: fn (ref 'xs! I32) -> ref 'xs! I32 is pure) ((get: fn (ref 'xs (MyVec I32)) Usz -> ref 'xs! I32 is pure) (ref (xs: MyVec I32)) 0)
+//     (pair: Pair) = (Pair: fn I32 I32 -> Pair is pure) 1 2
+//     (_p: ref 'pair.first I32) = (first: fn (ref 'pair Pair) -> ref 'pair.first I32 is pure) (ref (pair: Pair))
+//     (rc: Rc _ _) = (Rc: fn (Ptr _) -> Rc _ _ is pure) ((transmute: fn I32 -> Ptr _ is pure) 0)
+//     (_g: ref 'rc! _) = (rc_get: fn (ref 'rc (Rc _ _)) -> ref 'rc! _ is pure) (ref (rc: Rc _ _))
+//     (_h: ref 'xs! I32) = (holder: fn (L 'xs! I32) -> ref 'xs! I32 is pure) ((L: fn (ref 'xs! I32) -> L 'xs! I32 is pure) ((get: fn (ref 'xs (MyVec I32)) Usz -> ref 'xs! I32 is pure) (ref (xs: MyVec I32)) 0))
+

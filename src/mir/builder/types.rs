@@ -133,7 +133,7 @@ where
             TCType::U32(n) => Type::U32(*n),
             // A row used as a type (e.g. a row-generic instantiation binding) is its evidence.
             TCType::Effects(_) => self.evidence_type(typ),
-            TCType::Place(_) | TCType::Places(_) => Type::UNIT,
+            TCType::Place(_) | TCType::Places(_) | TCType::PlaceProjection(..) => Type::UNIT,
         }
     }
 

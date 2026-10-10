@@ -37,7 +37,7 @@ use crate::{
 use super::{
     free_variables::FreeVars,
     patterns::WILDCARD_PATTERN,
-    places::{Place, PlacePath, ScopeDepth},
+    places::{Place, PlaceRoot, ScopeDepth},
     types::{Type, TypeBindings},
 };
 
@@ -258,9 +258,9 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
 
     /// The scope depth `atom` is valid for, if known.
     fn atom_depth(&self, atom: &Place) -> Option<ScopeDepth> {
-        match atom {
-            Place::Path(path) => self.name_depths.get(&path.root_variable()).copied(),
-            Place::Anonymous(_, depth) => Some(*depth),
+        match atom.root {
+            PlaceRoot::Variable(name) => self.name_depths.get(&name).copied(),
+            PlaceRoot::Anonymous(_, depth) => Some(depth),
         }
     }
 
@@ -310,8 +310,8 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
 
     /// The expression to blame for `atom` escaping out of `binding`, if one is known.
     fn escape_location(&self, atom: &Place, binding: NameId, carrier: &Type) -> Option<ExprId> {
-        if let Place::Anonymous(origin, _) = atom {
-            return Some(*origin);
+        if let PlaceRoot::Anonymous(origin, _) = atom.root {
+            return Some(origin);
         }
 
         let target = self.row_carrying(carrier, atom)?;
@@ -343,7 +343,7 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
     /// Find a call which is passed a borrow of `binding`, and return the argument beside it which
     /// carries `atom` in `target`.
     fn widening_argument(&self, atom: &Place, binding: NameId, target: &[Type]) -> Option<ExprId> {
-        let binding_place = Place::Path(self.tc.binding_place(binding));
+        let binding_place = self.tc.binding_place(binding);
 
         for borrow in self.borrow_sites.iter().rev().copied() {
             if !self.places_originated_by(borrow).contains(&binding_place) {
@@ -398,7 +398,7 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
                 .row_carrying(constructor, atom)
                 .or_else(|| args.iter().find_map(|arg| self.row_carrying(arg, atom))),
             Type::Tuple(elements) => elements.iter().find_map(|element| self.row_carrying(element, atom)),
-            Type::Places(_) | Type::Place(_) => {
+            Type::Places(_) | Type::Place(_) | Type::PlaceProjection(..) => {
                 let row =
                     Type::canonicalize_places(std::slice::from_ref(typ), &self.tc.bindings, &TypeBindings::default());
                 row.contains(&Type::Place(atom.clone())).then_some(row)
@@ -474,12 +474,12 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
             return;
         }
         let location = location.locate(self.tc);
-        let (name, declared_at) = match atom {
-            Place::Path(path) => {
-                let name = path.display_name(self.tc.current_extended_context());
-                (Some(name), path.root_variable().locate(self.tc))
+        let (name, declared_at) = match atom.root {
+            PlaceRoot::Variable(root) => {
+                let name = atom.display_name(self.tc.current_extended_context());
+                (Some(name), root.locate(self.tc))
             },
-            Place::Anonymous(origin, _) => (None, origin.locate(self.tc)),
+            PlaceRoot::Anonymous(origin, _) => (None, origin.locate(self.tc)),
         };
         self.tc.compiler.accumulate(Diagnostic::EscapingReference { name, location, declared_at });
     }
@@ -511,7 +511,7 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
                     self.collect_place_atoms(element, out);
                 }
             },
-            Type::Places(_) | Type::Place(_) => self.collect_place_atoms_row(&typ, out),
+            Type::Places(_) | Type::Place(_) | Type::PlaceProjection(..) => self.collect_place_atoms_row(&typ, out),
             Type::Forall(_, typ) => self.collect_place_atoms(typ, out),
             Type::Effects(effects) => {
                 if let Some(effects) = effects.as_ref() {
@@ -559,8 +559,10 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
         let mut atoms = Vec::new();
         self.collect_place_atoms(typ, &mut atoms);
 
-        for atom in atoms {
-            let Place::Path(path) = atom else { continue };
+        for path in atoms {
+            if matches!(path.root, PlaceRoot::Anonymous(..)) {
+                continue;
+            }
 
             let moved = if let Some(moved_in) = self.moves.is_moved(&path) {
                 Some((path, moved_in.clone()))
@@ -582,7 +584,7 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
     /// Check if using `path` is valid (not already moved or partially moved).
     /// Emits a diagnostic if the path was already moved.
     /// Only emits the first error per path to avoid noisy duplicate diagnostics.
-    fn check_use_of_move_path(&mut self, path: &PlacePath, locator: impl Locateable) {
+    fn check_use_of_move_path(&mut self, path: &Place, locator: impl Locateable) {
         if self.moves.errored.contains(path) {
             return;
         }
@@ -609,7 +611,8 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
     fn check_moves_in_repeated_context(
         &mut self, body_scope: &MoveScope, body_depth: ScopeDepth, context: RepeatedContext,
     ) {
-        let moved = body_scope.moved_paths().filter(|(path, _)| self.name_depths[&path.root_variable()] < body_depth);
+        let moved =
+            body_scope.moved_paths().filter(|(path, _)| self.atom_depth(path).is_some_and(|depth| depth < body_depth));
         let outer_moves = mapvec(moved, |(path, location)| (path.clone(), location.clone()));
 
         for (path, location) in outer_moves {
@@ -637,7 +640,7 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
         }
     }
 
-    fn move_path_of_assignment_lhs(&self, lhs: ExprId) -> Option<PlacePath> {
+    fn move_path_of_assignment_lhs(&self, lhs: ExprId) -> Option<Place> {
         match self.tc.resolved_expr(lhs).as_ref() {
             Expr::Reference(reference) => self.tc.try_build_move_path(reference.rhs),
             _ => self.tc.try_build_move_path(lhs),
@@ -679,7 +682,7 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
             return;
         }
 
-        let move_path = PlacePath::field(parent_path, access.member.clone());
+        let move_path = parent_path.field(access.member.clone());
         if check_move {
             self.check_use_of_move_path(&move_path, expr);
         }

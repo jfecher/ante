@@ -1116,11 +1116,7 @@ impl<'tokens> Parser<'tokens> {
         // placeholder so the type lowering can insert a fresh place variable (or, in
         // type-definition bodies, reject it).
         let place = if matches!(self.current_token(), Token::Apostrophe) {
-            let start = self.current_token_location();
-            self.advance();
-            let name = self.parse_ident_id()?;
-            let location = start.to(&self.previous_token_location());
-            Type::new(TypeKind::Place(name), location)
+            self.parse_place_type()?
         } else {
             Type::new(TypeKind::ImplicitPlace, ref_location.clone())
         };
@@ -1132,6 +1128,45 @@ impl<'tokens> Parser<'tokens> {
                 Ok(Type::new(TypeKind::Application(Box::new(ref_type), vec![place, application]), location))
             },
             Err(_) => Ok(Type::new(TypeKind::Reference(kind), ref_location)),
+        }
+    }
+
+    /// place_type: "'" place_path
+    ///           | "'(" place_path (',' place_path)* ')'
+    fn parse_place_type(&mut self) -> Result<Type> {
+        let start = self.current_token_location();
+        self.expect(Token::Apostrophe, "a `'` to start a place")?;
+
+        let paths = if self.accept(Token::ParenthesisLeft) {
+            let paths = self.delimited_until(Token::Comma, Token::ParenthesisRight, Self::parse_place_path)?;
+            self.expect(Token::ParenthesisRight, "a `)` to close the list of places")?;
+            if paths.is_empty() {
+                return self.expected("at least one place");
+            }
+            paths
+        } else {
+            vec![self.parse_place_path()?]
+        };
+
+        let location = start.to(&self.previous_token_location());
+        Ok(Type::new(TypeKind::Place(paths), location))
+    }
+
+    /// place_path: ident ('.' member_name | '!')*
+    fn parse_place_path(&mut self) -> Result<cst::PlacePath> {
+        let root = self.parse_ident_id()?;
+        let mut segments = Vec::new();
+        loop {
+            if self.accept(Token::ExclamationMark) {
+                segments.push(cst::PlaceSegment::Unstable);
+            } else if matches!(self.current_token(), Token::MemberAccess)
+                && matches!(self.try_peek_next_token(), Some(Token::Identifier(_) | Token::IntegerLiteral(..)))
+            {
+                self.advance();
+                segments.push(cst::PlaceSegment::Field(self.parse_member_name()?));
+            } else {
+                return Ok(cst::PlacePath { root, segments });
+            }
         }
     }
 
@@ -1327,13 +1362,7 @@ impl<'tokens> Parser<'tokens> {
                 let location = start.to(&self.previous_token_location());
                 Ok(Type::new(TypeKind::Named(path), location))
             },
-            Token::Apostrophe => {
-                let start = self.current_token_location();
-                self.advance();
-                let name = self.parse_ident_id()?;
-                let location = start.to(&self.previous_token_location());
-                Ok(Type::new(TypeKind::Place(name), location))
-            },
+            Token::Apostrophe => self.parse_place_type(),
             Token::Identifier(name) if name.as_str() == "_" => {
                 let location = self.current_token_location();
                 self.advance();

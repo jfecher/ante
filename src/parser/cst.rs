@@ -202,14 +202,48 @@ pub enum TypeKind {
     /// bodies where places must be explicit.
     ImplicitPlace,
 
-    /// A generic prepended with '
-    Place(NameId),
+    /// A place written with `'`, e.g. `'a`, `'p.f!` or `'(a, b!)`
+    Place(Vec<PlacePath>),
 
     /// An explicit `forall (n: U32) t. T` polytype
     Forall(Generics, Box<Type>),
 
     /// An empty effect set
     Pure,
+}
+
+/// A single place in a type, e.g. `'a.b!`
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
+pub struct PlacePath {
+    pub root: NameId,
+    pub segments: Vec<PlaceSegment>,
+}
+
+/// One step along a place's path after its root
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone, PartialOrd, Ord)]
+pub enum PlaceSegment {
+    /// `.foo`
+    Field(Name),
+    /// `!`, this place may be invalidated by a mutation to any ancestor place.
+    Unstable,
+}
+
+impl std::fmt::Display for PlaceSegment {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            PlaceSegment::Field(name) => write!(f, ".{name}"),
+            PlaceSegment::Unstable => write!(f, "!"),
+        }
+    }
+}
+
+/// Displays a place's segments in source form, like `.a!.b`
+pub struct Segments<'a>(pub &'a [PlaceSegment]);
+
+impl std::fmt::Display for Segments<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        self.0.iter().try_for_each(|segment| write!(f, "{segment}"))
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Copy, Clone, PartialOrd, Ord)]

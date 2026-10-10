@@ -7,15 +7,16 @@ use serde::{Deserialize, Serialize};
 use crate::{
     diagnostics::Diagnostic,
     incremental::{DbHandle, GetItem},
+    iterator_extensions::mapvec,
     name_resolution::{Origin, ResolutionResult},
     parser::{
-        cst::{self, Expr, ReferenceKind},
+        cst::{self, Expr, PlaceSegment, ReferenceKind, Segments},
         ids::{ExprId, NameId, NameStore},
     },
     shared_arc::Shared,
     type_inference::{
         TypeChecker,
-        row::{RowKind, RowMatch, RowMode, canonicalize_row, construct_row, flatten_row_into, follow_row, sort_and_dedup_row},
+        row::{RowKind, RowMatch, RowMode, canonicalize_row, construct_row, flatten_row_into},
     },
 };
 
@@ -31,57 +32,74 @@ impl ScopeDepth {
     }
 }
 
-/// A local variable or a chain of field accesses on one.
-/// Note that this alone cannot represent all places since it excludes anonymous places.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-pub enum PlacePath {
+/// What a [Place] is rooted in
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum PlaceRoot {
     Variable(NameId),
-    Field(Box<PlacePath>, cst::Name),
+    Anonymous(ExprId, ScopeDepth),
 }
 
-impl PlacePath {
-    /// Return `parent.field`
-    pub fn field(parent: PlacePath, field: cst::Name) -> PlacePath {
-        PlacePath::Field(Box::new(parent), field)
+/// A concrete place a reference may point to, like `x.a!.b`
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct Place {
+    pub root: PlaceRoot,
+    pub segments: Vec<PlaceSegment>,
+}
+
+impl Place {
+    pub fn variable(name: NameId) -> Place {
+        Place { root: PlaceRoot::Variable(name), segments: Vec::new() }
+    }
+
+    pub fn anonymous(expr: ExprId, depth: ScopeDepth) -> Place {
+        Place { root: PlaceRoot::Anonymous(expr, depth), segments: Vec::new() }
+    }
+
+    /// Return `self.field`
+    pub fn field(mut self, field: cst::Name) -> Place {
+        self.segments.push(PlaceSegment::Field(field));
+        self
+    }
+
+    /// Return `self` followed by each of `segments`
+    pub fn project(mut self, segments: &[PlaceSegment]) -> Place {
+        self.segments.extend_from_slice(segments);
+        self
     }
 
     /// Check if `self` is a descendant of `ancestor` but is not itself the ancestor.
     /// E.g. `x.a.b` is a descendant of `x.a` and `x`, but not of `x.a.b`.
-    pub fn is_descendant_of(&self, ancestor: &PlacePath) -> bool {
-        match self {
-            _ if self == ancestor => false,
-            PlacePath::Field(parent, _) => parent.as_ref() == ancestor || parent.is_descendant_of(ancestor),
-            PlacePath::Variable(_) => false,
-        }
+    pub fn is_descendant_of(&self, ancestor: &Place) -> bool {
+        self.root == ancestor.root
+            && self.segments.len() > ancestor.segments.len()
+            && self.segments.starts_with(&ancestor.segments)
     }
 
-    /// Return the root variable name of this path.
-    /// E.g. for `x.one.two`, returns `x`.
-    pub fn root_variable(&self) -> NameId {
-        match self {
-            PlacePath::Variable(name) => *name,
-            PlacePath::Field(parent, _) => parent.root_variable(),
+    /// True if mutating `mutated` may invalidate a reference to `self`
+    pub fn invalidated_by(&self, mutated: &Place) -> bool {
+        if self.root != mutated.root {
+            return false;
+        }
+        let common = self.segments.iter().zip(&mutated.segments).take_while(|(a, b)| a == b).count();
+        match (self.segments.get(common), mutated.segments.get(common)) {
+            (None, _) => false,
+            (Some(_), None) => self.segments[common..].contains(&PlaceSegment::Unstable),
+            (Some(segment), Some(_)) => *segment == PlaceSegment::Unstable,
         }
     }
 
     /// Build a display name for error messages
     pub fn display_name(&self, names: &impl NameStore) -> String {
-        match self {
-            PlacePath::Variable(name) => match names.try_get_name(*name) {
+        let root = match self.root {
+            PlaceRoot::Variable(name) => match names.try_get_name(name) {
                 Some(name) => name.to_string(),
                 // TODO: Is this reachable?
                 None => "#name-not-in-context".to_string(),
             },
-            PlacePath::Field(parent, field) => format!("{}.{}", parent.display_name(names), field),
-        }
+            PlaceRoot::Anonymous(expr, _) => format!("_{}", expr.index()),
+        };
+        format!("{root}{}", Segments(&self.segments))
     }
-}
-
-/// A concrete place a reference may point to
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-pub enum Place {
-    Path(PlacePath),
-    Anonymous(ExprId, ScopeDepth),
 }
 
 impl Type {
@@ -100,19 +118,35 @@ impl Type {
         canonicalize_row(RowKind::Places, places, bindings, more_bindings)
     }
 
-    /// Zonk each entry in place
-    pub(crate) fn follow_places(places: &mut [Type], bindings: &TypeBindings, more_bindings: &TypeBindings) {
-        follow_row(places, bindings, more_bindings);
-    }
-
-    /// Sort and deduplicate the given places row. Entries must already be zonked.
-    pub(crate) fn sort_and_dedup_places(places: &mut Vec<Type>) {
-        sort_and_dedup_row(RowKind::Places, places);
-    }
-
     /// Construct a canonicalized places row by following & deduplicating entries.
     pub(crate) fn places(list: &[Type], bindings: &TypeBindings, more_bindings: &TypeBindings) -> Type {
         construct_row(RowKind::Places, list, bindings, more_bindings)
+    }
+
+    /// `base` followed by `segments`, applied to each place `base` is bound to
+    pub(crate) fn project_place(
+        base: &Type, segments: &[PlaceSegment], bindings: &TypeBindings, more_bindings: &TypeBindings,
+    ) -> Type {
+        if segments.is_empty() {
+            return base.clone();
+        }
+        match base.follow_two(bindings, more_bindings) {
+            Type::Place(place) => Type::Place(place.project(segments)),
+            Type::Places(Some(entries)) => {
+                let entries =
+                    mapvec(entries.iter(), |entry| Type::project_place(entry, segments, bindings, more_bindings));
+                Type::places(&entries, bindings, more_bindings)
+            },
+            Type::PlaceProjection(inner, inner_segments) => {
+                let segments = [inner_segments.as_slice(), segments].concat();
+                Type::project_place(&inner, &segments, bindings, more_bindings)
+            },
+            base @ (Type::Variable(_) | Type::Generic(_)) => {
+                Type::PlaceProjection(Shared::new(base), Shared::new(segments.to_vec()))
+            },
+            // Any other type is a kind error reported elsewhere
+            other => other,
+        }
     }
 
     /// If this is a reference application, return its places argument
@@ -131,61 +165,39 @@ where
     Db: DbGet<GetItem>,
     Names: NameStore,
 {
-    /// Canonicalize a places row for printing
-    pub(super) fn canonicalize_place_entries(&self, places: &Option<Shared<Vec<Type>>>) -> Vec<Type> {
-        let places = places.as_deref().map_or(&[][..], Vec::as_slice);
-        Type::canonicalize_places(places, self.bindings, &Default::default())
-            .into_iter()
-            .filter(|t| matches!(t, Type::Place(_) | Type::Generic(_)))
-            .collect()
+    /// The places to print for `places`, or `None` if it is closed and empty
+    pub(super) fn printed_places(&self, places: &Type) -> Option<Vec<Type>> {
+        let mut entries = Type::canonicalize_places(std::slice::from_ref(places), self.bindings, &Default::default());
+        if entries.is_empty() {
+            return None;
+        }
+        entries.retain(is_printed_place);
+        Some(entries)
     }
 
-    /// Print a reference's place argument, prefixed with a space and `'`, or nothing at all
-    /// when it has no concrete places to show
-    pub(super) fn fmt_place_arg(&self, places: &Type, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match places.follow(self.bindings) {
-            Type::Variable(_) => Ok(()),
-            Type::Places(row) => {
-                let entries = self.canonicalize_place_entries(row);
-                if entries.is_empty() {
-                    Ok(())
-                } else {
-                    write!(f, " '")?;
-                    self.fmt_place_entries(&entries, f)
-                }
-            },
-            generic @ Type::Generic(_) => {
+    /// Print a place argument as ` 'p`, ` '()` if closed and empty, or ` _` if unbound and not `elidable`
+    pub(super) fn fmt_place_arg(&self, places: &Type, elidable: bool, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self.printed_places(places) {
+            None => write!(f, " '()"),
+            Some(entries) if !entries.is_empty() => {
                 write!(f, " '")?;
-                self.fmt_type(generic, false, f)
+                self.fmt_place_entries(&entries, f)
             },
-            _ => Ok(()),
-        }
-    }
-
-    pub(super) fn fmt_place_atom(&self, atom: &Place, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match atom {
-            Place::Path(path) => write!(f, "{}", path.display_name(self.names)),
-            Place::Anonymous(expr, _scope) => write!(f, "_{}", expr.index()),
-        }
-    }
-
-    fn fmt_place_entry(&self, entry: &Type, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match entry {
-            Type::Place(atom) => self.fmt_place_atom(atom, f),
-            other => self.fmt_type(other, false, f),
+            Some(_) if elidable => Ok(()),
+            Some(_) => write!(f, " _"),
         }
     }
 
     pub(super) fn fmt_place_entries(&self, entries: &[Type], f: &mut std::fmt::Formatter) -> std::fmt::Result {
         if entries.len() == 1 {
-            self.fmt_place_entry(&entries[0], f)
+            self.fmt_type(&entries[0], false, f)
         } else {
             write!(f, "(")?;
             for (i, entry) in entries.iter().enumerate() {
                 if i != 0 {
                     write!(f, ", ")?;
                 }
-                self.fmt_place_entry(entry, f)?;
+                self.fmt_type(entry, false, f)?;
             }
             write!(f, ")")
         }
@@ -207,8 +219,59 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     /// Row-subtype two places rows: is `a`'s actual set of places permitted by `b`'s expected set?
     pub(super) fn place_subtype(&self, a: &Type, b: &Type, new_bindings: &mut TypeBindings) -> Result<(), ()> {
-        let Some(m) = self.match_places(a, b, new_bindings) else { return Ok(()) };
+        let Some(mut m) = self.match_places(a, b, new_bindings) else { return Ok(()) };
+        if m.b_open.is_empty() {
+            self.absorb_into_projections(&mut m.b_leftover, &mut m.a_leftover, RowMode::Coercible, new_bindings)?;
+            self.bind_projections(&mut m.a_leftover, &m.b_leftover, new_bindings)?;
+        }
         self.row_subtype_generic(RowKind::Places, m, new_bindings)
+    }
+
+    /// Bind each open projection like `?t!` in `absorbers` to the `entries` ending in its segments
+    fn absorb_into_projections(
+        &self, absorbers: &mut Vec<Type>, entries: &mut Vec<Type>, row_mode: RowMode, new_bindings: &mut TypeBindings,
+    ) -> Result<(), ()> {
+        for absorber in std::mem::take(absorbers) {
+            let Some((base, segments)) = open_projection(&absorber) else {
+                absorbers.push(absorber);
+                continue;
+            };
+
+            let mut absorbed = Vec::new();
+            entries.retain(|entry| match strip_segments(entry, segments) {
+                Some(stripped) => {
+                    absorbed.push(stripped);
+                    false
+                },
+                None => true,
+            });
+            if absorbed.is_empty() {
+                absorbers.push(absorber);
+                continue;
+            }
+
+            if row_mode == RowMode::Coercible {
+                absorbed.push(self.next_type_variable());
+            }
+            self.bind_row_end(RowKind::Places, base, &absorbed, new_bindings)?;
+        }
+        Ok(())
+    }
+
+    /// Bind and remove each open projection in `entries` using the `candidates` ending in its segments
+    fn bind_projections(
+        &self, entries: &mut Vec<Type>, candidates: &[Type], new_bindings: &mut TypeBindings,
+    ) -> Result<(), ()> {
+        for entry in std::mem::take(entries) {
+            let Some((base, segments)) = open_projection(&entry) else {
+                entries.push(entry);
+                continue;
+            };
+            let stripped: Vec<_> =
+                candidates.iter().filter_map(|candidate| strip_segments(candidate, segments)).collect();
+            self.bind_row_end(RowKind::Places, base, &stripped, new_bindings)?;
+        }
+        Ok(())
     }
 
     /// A places row with every place in `places` plus a fresh tail to widen into
@@ -260,28 +323,30 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     /// Unify two places rows: both must end up with the same set of places.
     pub(super) fn place_unify(&self, a: &Type, b: &Type, new_bindings: &mut TypeBindings) -> Result<(), ()> {
-        let Some(m) = self.match_places(a, b, new_bindings) else { return Ok(()) };
+        let Some(mut m) = self.match_places(a, b, new_bindings) else { return Ok(()) };
+        if m.b_open.is_empty() {
+            self.absorb_into_projections(&mut m.b_leftover, &mut m.a_leftover, RowMode::Exact, new_bindings)?;
+        }
+        if m.a_open.is_empty() {
+            self.absorb_into_projections(&mut m.a_leftover, &mut m.b_leftover, RowMode::Exact, new_bindings)?;
+        }
+        if m.b_open.is_empty() {
+            self.bind_projections(&mut m.a_leftover, &[], new_bindings)?;
+        }
+        if m.a_open.is_empty() {
+            self.bind_projections(&mut m.b_leftover, &[], new_bindings)?;
+        }
         self.row_unify_generic(RowKind::Places, m, new_bindings)
     }
 
+    /// Flatten, follow, sort, and deduplicate the places in `places`
     fn collect_and_merge_places(&self, places: &Type, new_bindings: &TypeBindings) -> Vec<Type> {
-        let mut places = self.collect_places(places, new_bindings);
-        Type::follow_places(&mut places, &self.bindings, new_bindings);
-        Type::sort_and_dedup_places(&mut places);
-        places
-    }
-
-    /// Flatten `places` into a list of places
-    fn collect_places(&self, places: &Type, new_bindings: &TypeBindings) -> Vec<Type> {
         match places.follow_two(&self.bindings, new_bindings) {
-            Type::Places(row) => {
-                let mut found = Vec::new();
-                if let Some(row) = row {
-                    Type::flatten_places_into(&row, &mut found, &self.bindings, new_bindings);
-                }
-                found
-            },
-            typ @ (Type::Place(_) | Type::Generic(_) | Type::Variable(_)) => vec![typ],
+            typ @ (Type::Places(_)
+            | Type::PlaceProjection(..)
+            | Type::Place(_)
+            | Type::Generic(_)
+            | Type::Variable(_)) => Type::canonicalize_places(std::slice::from_ref(&typ), &self.bindings, new_bindings),
             // Any remaining variant should be a kind error emitted elsewhere
             _ => Vec::new(),
         }
@@ -292,7 +357,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     pub(super) fn infer_place(&self, expr: ExprId) -> Type {
         match &self.current_extended_context()[expr] {
             Expr::Variable(path) => match self.path_origin(*path) {
-                Some(Origin::Local(name)) => self.open_place(Place::Path(self.binding_place(name))),
+                Some(Origin::Local(name)) => self.open_place(self.binding_place(name)),
                 // TODO: Track places for globals
                 _ => self.next_type_variable(),
             },
@@ -304,7 +369,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                         t.reference_places(&self.bindings).unwrap_or_else(|| self.next_type_variable())
                     },
                     _ => match self.try_build_move_path(expr) {
-                        Some(path) => self.open_place(Place::Path(path)),
+                        Some(path) => self.open_place(path),
                         None => self.infer_place(object),
                     },
                 }
@@ -313,7 +378,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             // A diverging expr may be coerced to any place
             _ if self.expr_types.get(&expr).is_some_and(|t| self.diverges(t)) => self.next_type_variable(),
             // Otherwise we have an anonymous local like `ref my_call ()`
-            _ => self.open_place(Place::Anonymous(expr, self.current_scope_depth())),
+            _ => self.open_place(Place::anonymous(expr, self.current_scope_depth())),
         }
     }
 
@@ -369,12 +434,44 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     }
 }
 
+/// True if `entry` is shown when printing places
+fn is_printed_place(entry: &Type) -> bool {
+    match entry {
+        Type::Place(_) | Type::Generic(_) => true,
+        Type::PlaceProjection(base, _) => matches!(base.as_ref(), Type::Generic(_)),
+        _ => false,
+    }
+}
+
+/// If `entry` is an unbound variable followed by segments like `?t!`, return both
+fn open_projection(entry: &Type) -> Option<(&Type, &[PlaceSegment])> {
+    match entry {
+        Type::PlaceProjection(base, segments) if matches!(base.as_ref(), Type::Variable(_)) => Some((base, segments)),
+        _ => None,
+    }
+}
+
+/// `entry` without `suffix` at the end of its path, if it ends in `suffix`
+fn strip_segments(entry: &Type, suffix: &[PlaceSegment]) -> Option<Type> {
+    match entry {
+        Type::Place(place) => {
+            let segments = place.segments.strip_suffix(suffix)?.to_vec();
+            Some(Type::Place(Place { root: place.root, segments }))
+        },
+        Type::PlaceProjection(base, segments) => {
+            let none = TypeBindings::default();
+            Some(Type::project_place(base, segments.strip_suffix(suffix)?, &none, &none))
+        },
+        _ => None,
+    }
+}
+
 /// This is the place inferred when a place in a return type position is elided
-pub enum PlaceElision {
+pub enum PlaceElision<'a> {
     /// There is one candidate input place, and it is an `ImplicitPlace`.
     Elided,
     /// There is one candidate input place, and it is already named.
-    Named(Origin),
+    Named(&'a cst::Type),
     /// No input place, this occurs in e.g. `ptr_to_ref: fn (Ptr t) -> ref t`.
     Free,
     /// Two or more candidate input places: an error should be issued.
@@ -397,8 +494,18 @@ pub fn cst_type_has_elided_place(typ: &cst::Type) -> bool {
     }
 }
 
+/// What a written place refers to, used to tell whether two written places are the same
+type PlaceKey<'a> = Vec<(Option<Origin>, &'a [PlaceSegment])>;
+
+fn place_key<'a>(resolve: &ResolutionResult, paths: &'a [cst::PlacePath]) -> PlaceKey<'a> {
+    mapvec(paths, |path| (resolve.name_origins.get(&path.root).copied(), path.segments.as_slice()))
+}
+
 /// Collect every place in `typ`
-fn collect_places(resolve: &ResolutionResult, typ: &cst::Type, implicit_count: &mut usize, named: &mut Vec<Origin>) {
+fn collect_places<'a>(
+    resolve: &ResolutionResult, typ: &'a cst::Type, implicit_count: &mut usize,
+    named: &mut Vec<(PlaceKey<'a>, &'a cst::Type)>,
+) {
     match &typ.kind {
         cst::TypeKind::Application(f, args) => {
             if matches!(f.kind, cst::TypeKind::Reference(_))
@@ -406,11 +513,10 @@ fn collect_places(resolve: &ResolutionResult, typ: &cst::Type, implicit_count: &
             {
                 match &place_arg.kind {
                     cst::TypeKind::ImplicitPlace => *implicit_count += 1,
-                    cst::TypeKind::Place(name) => {
-                        if let Some(origin) = resolve.name_origins.get(name).copied()
-                            && !named.contains(&origin)
-                        {
-                            named.push(origin);
+                    cst::TypeKind::Place(paths) => {
+                        let key = place_key(resolve, paths);
+                        if named.iter().all(|(other, _)| *other != key) {
+                            named.push((key, place_arg));
                         }
                     },
                     _ => (),
@@ -430,7 +536,7 @@ fn collect_places(resolve: &ResolutionResult, typ: &cst::Type, implicit_count: &
 }
 
 /// Which input place an elided return place should be inferred from
-pub fn function_place_elision(resolve: &ResolutionResult, function: &cst::FunctionType) -> PlaceElision {
+pub fn function_place_elision<'a>(resolve: &ResolutionResult, function: &'a cst::FunctionType) -> PlaceElision<'a> {
     let mut implicit_count = 0;
     let mut named = Vec::new();
     for param in &function.parameters {
@@ -442,7 +548,69 @@ pub fn function_place_elision(resolve: &ResolutionResult, function: &cst::Functi
     match (implicit_count, named.len()) {
         (0, 0) => PlaceElision::Free,
         (1, 0) => PlaceElision::Elided,
-        (0, 1) => PlaceElision::Named(named[0]),
+        (0, 1) => PlaceElision::Named(named[0].1),
         _ => PlaceElision::Ambiguous,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use super::{Place, PlaceSegment, ScopeDepth, mapvec};
+    use crate::parser::ids::{ExprId, NameId};
+
+    /// Parse `path` like `x.a!.b`, where `x` and `y` are variables and `_` is a temporary
+    fn place(path: &str) -> Place {
+        let (root, rest) = path.split_at(1);
+        let mut place = match root {
+            "x" => Place::variable(NameId::new(0)),
+            "y" => Place::variable(NameId::new(1)),
+            "_" => Place::anonymous(ExprId::new(0), ScopeDepth(0)),
+            _ => unreachable!("unknown root in {path}"),
+        };
+        place.segments = mapvec(rest.replace('!', ".!").split('.').skip(1), |segment| match segment {
+            "!" => PlaceSegment::Unstable,
+            field => PlaceSegment::Field(Arc::new(field.to_string())),
+        });
+        place
+    }
+
+    fn invalidates(mutated: &str, reference: &str) -> bool {
+        place(reference).invalidated_by(&place(mutated))
+    }
+
+    #[test]
+    fn mutating_a_parent_invalidates_unstable_children() {
+        assert!(invalidates("x", "x!"));
+        assert!(invalidates("x!", "x!!"));
+        assert!(invalidates("x", "x.bar!.baz"));
+        assert!(invalidates("x.bar", "x.bar!.baz"));
+        assert!(invalidates("_", "_!"));
+    }
+
+    #[test]
+    fn stable_references_survive_mutation() {
+        assert!(!invalidates("x", "x"));
+        assert!(!invalidates("x!", "x!"));
+        assert!(!invalidates("x", "x.a"));
+        assert!(!invalidates("x.bar!", "x.bar!.baz"));
+        assert!(!invalidates("x.a", "x"));
+        assert!(!invalidates("x!", "x"));
+    }
+
+    #[test]
+    fn sibling_paths() {
+        assert!(invalidates("x.data", "x!"));
+        assert!(!invalidates("x!", "x.data"));
+        assert!(!invalidates("x.a", "x.b"));
+        assert!(!invalidates("x.b", "x.a!"));
+        assert!(invalidates("x.a.b", "x.a!"));
+    }
+
+    #[test]
+    fn different_roots() {
+        assert!(!invalidates("x", "y!"));
+        assert!(!invalidates("_", "x!"));
     }
 }

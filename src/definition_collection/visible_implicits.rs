@@ -86,7 +86,7 @@ impl TypeKey {
             // TODO: Is this correct?
             Type::Forall(_, typ) => return TypeKey::from_type(typ),
             Type::Tuple(_) => TypeKey::Tuple,
-            Type::U32(_) | Type::Place(_) | Type::Places(_) => return None,
+            Type::U32(_) | Type::Place(_) | Type::Places(_) | Type::PlaceProjection(..) => return None,
             Type::Effects(_) => TypeKey::Effects,
         })
     }

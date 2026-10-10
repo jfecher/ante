@@ -1,0 +1,28 @@
+import Std.Vec.Vec, of
+import Std.Stream.stream_array
+
+get (v: ref 'v Vec t) (i: Usz): ref 'v! t =
+    transmute (offset v.data i)
+
+get_nested (v: ref 'v Vec (Vec t)) (i: Usz): ref 'v!! t =
+    get (get v i) 0
+
+type Holder 'p = value: ref 'p I32
+
+holder (h: Holder 'q!): ref 'q! I32 = h.value
+
+main () =
+    print_to_stdout do
+    abort_on_panic do
+    v = Vec.of [1, 2, 3]
+    println (get v 1).*
+    vv = Vec.of [Vec.of [4, 5], Vec.of [6]]
+    println (get_nested vv 1).*
+    println (holder (Holder (get v 2))).*
+
+// args: --delete-binary --no-color
+// expected stdout:
+// 2
+// 6
+// 3
+
