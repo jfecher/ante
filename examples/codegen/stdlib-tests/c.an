@@ -2,10 +2,21 @@ import Std.C
 import Std.C.puts, putchar, strlen, system, memcmp, memcpy, malloc, free,
     fopen, fclose, fputs, fputc, fwrite, fseek, ftell, ferror, calloc, realloc,
     copy_file
+import Std.String.from_c_string
+
+mkdtemp = extern "mkdtemp": fn C.String -> C.String can Fs
+
+/// A fresh directory, so files left by other users or concurrent runs can't collide
+make_temp_dir (): String can Fs, Panic =
+    template = "/tmp/ante_c_test_XXXXXX" ++ "\0"
+    dir = mkdtemp (C.String template.data)
+    if dir.ptr == null () then panic "mkdtemp failed to create a temporary directory"
+    from_c_string dir
 
 main () =
     // puts writes a line and appends a newline
     print_to_stdout do
+    abort_on_panic do
     _ = puts (C.String "hello\0".data)
 
     // putchar
@@ -50,9 +61,12 @@ main () =
     free p2
 
     // File round-trip exercising fopen/fputs/fputc/fwrite/fseek/ftell/ferror/fclose
-    path_w = C.String "/tmp/ante_c_test.txt\0".data
-    path_r = C.String "/tmp/ante_c_test.txt\0".data
+    dir = make_temp_dir ()
+    path = clone dir ++ "/test.txt\0"
+    path_w = C.String path.data
+    path_r = C.String path.data
     fw = fopen path_w (C.String "w\0".data)
+    if fw.f == null () then panic "fopen failed to open the test file for writing"
     _ = fputs (C.String "Y\0".data) fw.*       // 1 byte 'Y'
     _ = fputc 90i32 fw.*                       // ASCII 'Z'
     one_byte = malloc 1 : Ptr U8
@@ -62,12 +76,15 @@ main () =
     fclose fw
 
     fr = fopen path_r (C.String "r\0".data)
+    if fr.f == null () then panic "fopen failed to open the test file for reading"
     _ = fseek fr.* 0i32 2i32                   // SEEK_END
     println (ftell fr.*)                       // 3
     _ = fseek fr.* 0i32 0i32                   // SEEK_SET
     println (ferror fr.*)                      // 0
     fclose fr
 
+    remove_dir = "rm -rf " ++ dir ++ "\0"
+    _ = system (C.String remove_dir.data)
     println "done"
 
 // args: --delete-binary --no-color
