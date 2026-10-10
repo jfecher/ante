@@ -6,11 +6,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     diagnostics::Diagnostic,
-    incremental::{DbHandle, GetItem},
+    incremental::{DbHandle, GetItem, GetItemRaw, RawItem},
     iterator_extensions::mapvec,
     name_resolution::{Origin, ResolutionResult},
     parser::{
-        cst::{self, Expr, PlaceSegment, ReferenceKind, Segments},
+        cst::{self, Expr, PlaceSegment, ReferenceKind, Segments, TopLevelItemKind, TypeDefinitionBody},
         ids::{ExprId, NameId, NameStore},
     },
     shared_arc::Shared,
@@ -20,7 +20,7 @@ use crate::{
     },
 };
 
-use super::types::{Type, TypeBindings, TypePrinter};
+use super::types::{Type, TypeBindings, TypePrinter, TypeVariableId};
 
 /// Anonymous references record the scope depth they're valid in for escape analysis
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -64,6 +64,14 @@ impl Place {
     /// Return `self` followed by each of `segments`
     pub fn project(mut self, segments: &[PlaceSegment]) -> Place {
         self.segments.extend_from_slice(segments);
+        self
+    }
+
+    /// `self` up to its first `!`
+    pub fn stable_prefix(mut self) -> Place {
+        if let Some(index) = self.segments.iter().position(|segment| *segment == PlaceSegment::Unstable) {
+            self.segments.truncate(index);
+        }
         self
     }
 
@@ -339,6 +347,13 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         self.row_unify_generic(RowKind::Places, m, new_bindings)
     }
 
+    /// True if the unbound `variable` is itself an entry of `places`
+    pub(super) fn places_entry_is(&self, places: &Type, variable: TypeVariableId, new_bindings: &TypeBindings) -> bool {
+        let mut entries = Vec::new();
+        Type::flatten_places_into(std::slice::from_ref(places), &mut entries, &self.bindings, new_bindings);
+        entries.contains(&Type::Variable(variable))
+    }
+
     /// Flatten, follow, sort, and deduplicate the places in `places`
     fn collect_and_merge_places(&self, places: &Type, new_bindings: &TypeBindings) -> Vec<Type> {
         match places.follow_two(&self.bindings, new_bindings) {
@@ -379,6 +394,61 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             _ if self.expr_types.get(&expr).is_some_and(|t| self.diverges(t)) => self.next_type_variable(),
             // Otherwise we have an anonymous local like `ref my_call ()`
             _ => self.open_place(Place::anonymous(expr, self.current_scope_depth())),
+        }
+    }
+
+    /// Split `typ` into the type a pattern matches and the reference it matches through, if any
+    pub(super) fn match_through_reference(&self, typ: &Type) -> (Type, Option<MatchedReference>) {
+        if let Type::Application(constructor, args) = typ.follow(&self.bindings)
+            && let Some(kind) = constructor.reference_constructor(&self.bindings)
+        {
+            return (args[1].clone(), Some(MatchedReference { kind, places: args[0].clone() }));
+        }
+        (typ.clone(), None)
+    }
+
+    /// The type of `field` reached through `reference`, which is unstable inside a union's payload
+    pub(super) fn field_through_reference(&self, reference: &MatchedReference, field: Type, unstable: bool) -> Type {
+        let places = if unstable {
+            Type::project_place(&reference.places, &[PlaceSegment::Unstable], &self.bindings, &TypeBindings::default())
+        } else {
+            reference.places.clone()
+        };
+        Type::Application(Shared::new(Type::reference(reference.kind)), Shared::new(vec![places, field]))
+    }
+
+    /// The types `fields` of a `matched` constructor are bound at, reached through `reference` if any
+    pub(super) fn fields_through_reference(
+        &self, matched: &Type, reference: Option<&MatchedReference>, fields: Vec<Type>,
+    ) -> Vec<Type> {
+        let Some(reference) = reference else { return fields };
+        let payload_count = match self.union_common_field_count(matched) {
+            Some(common) => fields.len().saturating_sub(common),
+            None => 0,
+        };
+        let fields = fields.into_iter().enumerate();
+        mapvec(fields, |(i, field)| self.field_through_reference(reference, field, i < payload_count))
+    }
+
+    /// If `typ` is a union of more than one variant, return how many `with` fields it has
+    pub(super) fn union_common_field_count(&self, typ: &Type) -> Option<usize> {
+        let name = match typ.follow(&self.bindings) {
+            Type::Application(constructor, _) => match constructor.follow(&self.bindings) {
+                Type::UserDefined(Origin::TopLevelDefinition(name)) => *name,
+                _ => return None,
+            },
+            Type::UserDefined(Origin::TopLevelDefinition(name)) => *name,
+            _ => return None,
+        };
+        let RawItem(item, _) = GetItemRaw(name.top_level_item).get(self.compiler);
+        match &item.kind {
+            TopLevelItemKind::TypeDefinition(definition) if definition.name == name.local_name_id => {
+                match &definition.body {
+                    TypeDefinitionBody::Enum(variants, common) if variants.len() > 1 => Some(common.len()),
+                    _ => None,
+                }
+            },
+            _ => None,
         }
     }
 
@@ -432,6 +502,12 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             | cst::TypeKind::IntegerConstant(_) => (),
         }
     }
+}
+
+/// A reference a pattern matches through, which each field it binds is reached through
+pub(super) struct MatchedReference {
+    kind: ReferenceKind,
+    places: Type,
 }
 
 /// True if `entry` is shown when printing places

@@ -472,7 +472,8 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
         let branch_var = self.branch_variable(&rows);
         let location = self.checker.current_extended_context().path_location(branch_var);
 
-        let definition_type = &self.checker.path_types[&branch_var];
+        let (definition_type, _) = self.checker.match_through_reference(&self.checker.path_types[&branch_var]);
+        let definition_type = &definition_type;
         match self.checker.follow_type(definition_type) {
             Type::Primitive(PrimitiveType::Int(_)) => {
                 let (cases, fallback) = self.compile_int_cases(rows, branch_var)?;
@@ -529,10 +530,14 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
         }
     }
 
+    /// `typ` is the type `branch_var` refers to if it is a reference
     fn compile_userdefined_cases(
         &mut self, rows: Vec<Row>, branch_var: PathId, typ: &Type, origin: Origin, generics: &[Type],
         location: Location,
     ) -> Result<DecisionTree, Diagnostic> {
+        let (_, reference) = self.checker.match_through_reference(&self.checker.path_types[&branch_var]);
+        let reference = reference.as_ref();
+
         // Which variant indices have a `Circle ..c`-style row
         let rest_variant_indices: BTreeSet<usize> = rows
             .iter()
@@ -549,11 +554,15 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
 
                 let cases = mapvec(variants.iter().enumerate(), |(idx, (name_id, _name, fields))| {
                     let constructor = Constructor::Variant(typ.clone(), idx);
-                    let arg_types = fields.iter().map(|(_, t)| t);
-                    let args = self.fresh_match_variables(arg_types, location.clone());
+                    let arg_types = mapvec(fields, |(_, t)| t.clone());
+                    let arg_types = self.checker.fields_through_reference(typ, reference, arg_types);
+                    let args = self.fresh_match_variables(arg_types.iter(), location.clone());
                     let whole_value = rest_variant_indices.contains(&idx).then(|| {
                         let variant_name = TopLevelName::new(enum_name.top_level_item, *name_id);
-                        let variant_type = typ.retarget_user_defined(variant_name);
+                        let mut variant_type = typ.retarget_user_defined(variant_name);
+                        if let Some(reference) = reference {
+                            variant_type = self.checker.field_through_reference(reference, variant_type, true);
+                        }
                         self.fresh_match_variables(std::iter::once(&variant_type), location.clone())[0]
                     });
                     (constructor, args, whole_value, Vec::new())
@@ -564,10 +573,15 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
             },
             Some(UserDefinedTypeKind::Product(fields)) => {
                 let constructor = Constructor::struct_(typ.clone());
+                let fields = self.checker.fields_through_reference(typ, reference, fields);
                 let field_variables = self.fresh_match_variables(fields.iter(), location.clone());
+                let whole_type = match reference {
+                    Some(reference) => self.checker.field_through_reference(reference, typ.clone(), false),
+                    None => typ.clone(),
+                };
                 let whole_value = rest_variant_indices
                     .contains(&0)
-                    .then(|| self.fresh_match_variables(std::iter::once(typ), location.clone())[0]);
+                    .then(|| self.fresh_match_variables(std::iter::once(&whole_type), location.clone())[0]);
                 let cases = vec![(constructor, field_variables, whole_value, Vec::new())];
                 let (cases, fallback) = self.compile_constructor_cases(rows, branch_var, cases)?;
                 Ok(DecisionTree::Switch(branch_var, cases, fallback))
@@ -871,7 +885,7 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
                 }
 
                 if let Some(else_case) = else_case {
-                    let typ = self.checker.path_types[variable].clone();
+                    let (typ, _) = self.checker.match_through_reference(&self.checker.path_types[variable]);
 
                     for case in self.missing_cases(cases, &typ, location) {
                         env.insert(*variable, case);
@@ -1034,6 +1048,8 @@ impl<'tc, 'local, 'db> MatchCompiler<'tc, 'local, 'db> {
     }
 
     fn classify_type(&mut self, typ: &Type) -> Option<UserDefinedTypeKind> {
+        let (typ, _) = self.checker.match_through_reference(typ);
+        let typ = &typ;
         match self.checker.follow_type(typ) {
             Type::Application(constructor, arguments) => match self.checker.follow_type(constructor) {
                 Type::UserDefined(origin) => {

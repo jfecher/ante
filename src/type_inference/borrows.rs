@@ -563,6 +563,7 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
             if matches!(path.root, PlaceRoot::Anonymous(..)) {
                 continue;
             }
+            let path = path.stable_prefix();
 
             let moved = if let Some(moved_in) = self.moves.is_moved(&path) {
                 Some((path, moved_in.clone()))

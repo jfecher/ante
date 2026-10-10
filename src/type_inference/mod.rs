@@ -1038,7 +1038,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                             self.try_bind_type_variable(b_id, Type::Variable(*a_id), new_bindings)
                         },
                         // `a` may already be an entry of `b`'s row
-                        b @ Type::Places(_) if self.occurs(&b, *a_id, new_bindings) => {
+                        b @ Type::Places(_) if self.places_entry_is(&b, *a_id, new_bindings) => {
                             self.relate_places(a, &b, row_mode, new_bindings)
                         },
                         b => self.try_bind_type_variable(*a_id, b, new_bindings),

@@ -110,6 +110,14 @@ fn function_returns_never<'a>(mut typ: &'a TCType, bindings: &'a type_inference:
     }
 }
 
+/// A value being matched on, or a pointer to it when matching through a reference
+#[derive(Clone)]
+struct Matched {
+    value: Value,
+    /// The layout `value` points to, if it is a pointer
+    pointee: Option<Type>,
+}
+
 /// Saved/restored around building a definition in isolation. See [Context::take_scope].
 struct SavedScope {
     local_variables: FxHashMap<NameId, Value>,
@@ -1600,11 +1608,12 @@ where
 
     fn switch(&mut self, tag: PathId, cases: Vec<Case>, else_: Option<Box<DecisionTree>>, match_expr: ExprId) -> Value {
         let path_type = self.types.result.maps.path_types[&tag].clone();
-        let outer_value = self.variable(tag);
-        let outer_value = self.deref_if_shared(outer_value, &path_type);
-        let with_field_count = self.convert_context().common_field_count_of_type(&path_type);
-        let value_being_matched = self.unwrap_hoisted_common_fields(outer_value, with_field_count);
-        let int_value = self.extract_tag_value(value_being_matched);
+        let value = self.variable(tag);
+        let outer = self.matched(value, &path_type);
+        let matched_type = path_type.reference_element(&self.types.bindings).map_or(path_type, |(_, element)| element);
+        let with_field_count = self.convert_context().common_field_count_of_type(&matched_type);
+        let value_being_matched = self.unwrap_hoisted_common_fields(&outer, with_field_count);
+        let int_value = self.extract_tag_value(&value_being_matched);
         let start = self.current_block;
 
         // The case key must be the actual value to compare against `int_value`. For variants
@@ -1635,8 +1644,7 @@ where
 
                 // Cast the whole value being matched `(tag, union)` to `(tag, this_variant)`
                 // and extract the variant from the tuple.
-                let variant = self.extract_variant(value_being_matched, *variant_index);
-                let variant_type = self.type_of_value(&variant);
+                let variant = self.extract_variant(&value_being_matched, *variant_index);
                 // `case.arguments` has one entry per declared field, including any from a with-clause
                 let own_count = case.arguments.len() - with_field_count;
 
@@ -1645,27 +1653,20 @@ where
                     && let Some(origin) = self.context().path_origin(whole_value)
                 {
                     let whole =
-                        self.reconstruct_whole_variant(variant, outer_value, own_count, with_field_count, whole_value);
+                        self.reconstruct_whole_variant(&variant, &outer, own_count, with_field_count, whole_value);
                     self.define_variable(origin, whole);
                 }
 
                 // And for each variable, extract the relevant field of the variant.
                 // with-clause fields get extracted from outer_value instead
-                let outer_type = (with_field_count > 0).then(|| self.type_of_value(&outer_value));
                 for (i, argument) in case.arguments.iter().enumerate() {
                     if let Some(origin) = self.context().path_origin(*argument) {
                         let field = if i < own_count {
-                            let field_type = Self::tuple_field_type(&variant_type, i);
-                            let index_tuple = Instruction::IndexTuple { tuple: variant, index: i as u32 };
-                            self.push_instruction(index_tuple, field_type)
+                            self.matched_field(&variant, i as u32)
                         } else {
-                            let common_index = (i - own_count) as u32;
-                            let field_type =
-                                Self::tuple_field_type(outer_type.as_ref().unwrap(), common_index as usize);
-                            let index_tuple = Instruction::IndexTuple { tuple: outer_value, index: common_index };
-                            self.push_instruction(index_tuple, field_type)
+                            self.matched_field(&outer, (i - own_count) as u32)
                         };
-                        self.define_variable(origin, field);
+                        self.define_variable(origin, field.value);
                     }
                 }
             }
@@ -1696,10 +1697,51 @@ where
         Value::Parameter(end, 0)
     }
 
-    fn extract_tag_value(&mut self, value_being_matched: Value) -> Value {
-        match self.type_of_value(&value_being_matched) {
+    /// `value` of type `typ` to match on, or a pointer to it if `typ` is a reference
+    fn matched(&mut self, value: Value, typ: &TCType) -> Matched {
+        match typ.reference_element(&self.types.bindings) {
+            Some((_, element)) => {
+                let (value, layout) = self.field_access_target(&element, value);
+                Matched { value, pointee: Some(layout) }
+            },
+            None => Matched { value: self.deref_if_shared(value, typ), pointee: None },
+        }
+    }
+
+    /// The layout of the value `matched` holds or points to
+    fn matched_layout(&self, matched: &Matched) -> Type {
+        matched.pointee.clone().unwrap_or_else(|| self.type_of_value(&matched.value))
+    }
+
+    /// Field `index` of `matched`, or a pointer to it if `matched` is a pointer
+    fn matched_field(&mut self, matched: &Matched, index: u32) -> Matched {
+        let layout = self.matched_layout(matched);
+        let field_type = Self::tuple_field_type(&layout, index as usize);
+        match matched.pointee {
+            None => {
+                let value = self.push_instruction(Instruction::IndexTuple { tuple: matched.value, index }, field_type);
+                Matched { value, pointee: None }
+            },
+            Some(_) => {
+                let get_field = Instruction::GetFieldPtr { struct_ptr: matched.value, struct_type: layout, index };
+                let value = self.push_instruction(get_field, Type::POINTER);
+                Matched { value, pointee: Some(field_type) }
+            },
+        }
+    }
+
+    /// The value `matched` holds or points to
+    fn load_matched(&mut self, matched: Matched) -> Value {
+        match matched.pointee {
+            Some(pointee) => self.push_instruction(Instruction::Deref(matched.value), pointee),
+            None => matched.value,
+        }
+    }
+
+    fn extract_tag_value(&mut self, matched: &Matched) -> Value {
+        match self.matched_layout(matched) {
             Type::Primitive(PrimitiveType::Unit) => Value::tag_value(0),
-            Type::Primitive(_) => value_being_matched,
+            Type::Primitive(_) => self.load_matched(matched.clone()),
             Type::Tuple(fields) => {
                 if fields.is_empty() {
                     unreachable!("Cannot match on an empty tuple")
@@ -1708,9 +1750,8 @@ where
                 // types (pairs, structs) there is always exactly one case, so return
                 // a constant 0 so the switch always selects case 0.
                 if fields.len() == 2 && matches!(fields[1], Type::Union(_)) {
-                    let tag_type = fields[0].clone();
-                    let instruction = Instruction::IndexTuple { tuple: value_being_matched, index: 0 };
-                    self.push_instruction(instruction, tag_type)
+                    let tag = self.matched_field(matched, 0);
+                    self.load_matched(tag)
                 } else {
                     Value::tag_value(0)
                 }
@@ -1727,20 +1768,16 @@ where
     /// Cast & Extract the variant value from the given `(tag, union)` tuple,
     /// or return the product type value directly if it has no union tag.
     /// Returns the variant (as a tuple, no longer a union).
-    fn extract_variant(&mut self, value_being_matched: Value, variant_index: usize) -> Value {
-        let fields = match self.type_of_value(&value_being_matched) {
-            Type::Tuple(fields) => fields,
-            _ => unreachable!("Only `(tag, union)` tuples may have fields to extract"),
+    fn extract_variant(&mut self, matched: &Matched, variant_index: usize) -> Matched {
+        let Type::Tuple(fields) = self.matched_layout(matched) else {
+            unreachable!("Only `(tag, union)` tuples may have fields to extract")
         };
 
         // Tagged unions have the form `(u8_tag, Union[...])` while
         // product types are plain tuples and should be returned directly
-        if fields.len() != 2 || !matches!(fields[1], Type::Union(_)) {
-            return value_being_matched;
-        }
-
-        let union_type = fields[1].clone();
-        let Type::Union(variants) = &union_type else { unreachable!() };
+        let Some(Type::Union(variants)) = fields.get(1).filter(|_| fields.len() == 2) else {
+            return matched.clone();
+        };
 
         let variant_type = variants
             .get(variant_index)
@@ -1749,46 +1786,46 @@ where
             })
             .clone();
 
-        let extract_union = Instruction::IndexTuple { tuple: value_being_matched, index: 1 };
-        let union = self.push_instruction(extract_union, union_type);
-        self.push_instruction(Instruction::Transmute(union), variant_type)
+        let union = self.matched_field(matched, 1);
+        match union.pointee {
+            // Each variant starts at the union's address
+            Some(_) => Matched { value: union.value, pointee: Some(variant_type) },
+            None => {
+                let value = self.push_instruction(Instruction::Transmute(union.value), variant_type);
+                Matched { value, pointee: None }
+            },
+        }
     }
 
     /// If hoisted, indexes into the last field to get the inner `(tag, Union)` pair.
     /// Callers should pass the result to `extract_tag_value`/`extract_variant`.
-    fn unwrap_hoisted_common_fields(&mut self, value: Value, with_field_count: usize) -> Value {
+    fn unwrap_hoisted_common_fields(&mut self, outer: &Matched, with_field_count: usize) -> Matched {
         if with_field_count == 0 {
-            return value;
+            return outer.clone();
         }
-        let Type::Tuple(fields) = self.type_of_value(&value) else {
+        let Type::Tuple(fields) = self.matched_layout(outer) else {
             unreachable!("A union type with common fields must convert to a hoisted tuple layout")
         };
-        let inner_type = fields.last().unwrap().clone();
-        let index = (fields.len() - 1) as u32;
-        self.push_instruction(Instruction::IndexTuple { tuple: value, index }, inner_type)
+        self.matched_field(outer, (fields.len() - 1) as u32)
     }
 
-    /// Combines `variant` with the with-clause fields in `outer_value`
+    /// Combines `variant` with the with-clause fields in `outer`
     fn reconstruct_whole_variant(
-        &mut self, variant: Value, outer_value: Value, own_count: usize, with_field_count: usize, target_path: PathId,
+        &mut self, variant: &Matched, outer: &Matched, own_count: usize, with_field_count: usize, target_path: PathId,
     ) -> Value {
         if with_field_count == 0 {
-            return variant;
+            return variant.value;
         }
-        let outer_type = self.type_of_value(&outer_value);
-        debug_assert!(matches!(&outer_type, Type::Tuple(fields) if fields.len() > with_field_count));
+        debug_assert!(matches!(self.matched_layout(outer), Type::Tuple(fields) if fields.len() > with_field_count));
 
-        let variant_type = self.type_of_value(&variant);
         let mut fields = Vec::with_capacity(own_count + with_field_count);
         for i in 0..own_count {
-            let field_type = Self::tuple_field_type(&variant_type, i);
-            fields.push(self.push_instruction(Instruction::IndexTuple { tuple: variant, index: i as u32 }, field_type));
+            let field = self.matched_field(variant, i as u32);
+            fields.push(self.load_matched(field));
         }
         for j in 0..with_field_count {
-            let field_type = Self::tuple_field_type(&outer_type, j);
-            fields.push(
-                self.push_instruction(Instruction::IndexTuple { tuple: outer_value, index: j as u32 }, field_type),
-            );
+            let field = self.matched_field(outer, j as u32);
+            fields.push(self.load_matched(field));
         }
 
         let target_type = self.convert_path_type(target_path);
@@ -2077,19 +2114,18 @@ where
         self.push_instruction(Instruction::Extern(extern_.name.clone()), typ)
     }
 
-    /// Deconstructs `value` as a tuple, binding each element to the corresponding pattern in `args`.
+    /// Deconstructs `matched` as a tuple, binding each element to the corresponding pattern in `args`.
     /// Does nothing if `args` is empty, since there is then nothing to deconstruct.
-    fn deconstruct_tuple_pattern_args(&mut self, value: Value, args: &[PatternId]) {
+    fn deconstruct_tuple_pattern_args(&mut self, matched: &Matched, args: &[PatternId]) {
         if args.is_empty() {
             return;
         }
-        match self.type_of_value(&value) {
+        match self.matched_layout(matched) {
             Type::Union(_variants) => todo!("Deconstruct union"),
-            Type::Tuple(fields) => {
-                for (i, (field_type, argument)) in fields.iter().zip(args).enumerate() {
-                    let instruction = Instruction::IndexTuple { tuple: value, index: i as u32 };
-                    let field = self.push_instruction(instruction, field_type.clone());
-                    self.bind_pattern(*argument, field);
+            Type::Tuple(_) => {
+                for (i, argument) in args.iter().enumerate() {
+                    let field = self.matched_field(matched, i as u32);
+                    self.bind_pattern(*argument, field.value);
                 }
             },
             other => unreachable!("Expected tuple or union when deconstructing pattern, found {other}"),
@@ -2109,17 +2145,17 @@ where
             cst::Pattern::Literal(_) => (),
             cst::Pattern::Constructor(_type, arguments) => {
                 let pattern_tc_type = self.types.result.maps.pattern_types[&pattern].clone();
-                let value = self.deref_if_shared(value, &pattern_tc_type);
-                self.deconstruct_tuple_pattern_args(value, arguments);
+                let matched = self.matched(value, &pattern_tc_type);
+                self.deconstruct_tuple_pattern_args(&matched, arguments);
             },
             cst::Pattern::ConstructorRest(_path, args, name) => {
                 let pattern_tc_type = self.types.result.maps.pattern_types[&pattern].clone();
-                let value = self.deref_if_shared(value, &pattern_tc_type);
-                self.deconstruct_tuple_pattern_args(value, args);
+                let matched = self.matched(value, &pattern_tc_type);
+                self.deconstruct_tuple_pattern_args(&matched, args);
 
                 if let Some(name) = name {
                     if let Some(origin) = self.context().name_origin(*name) {
-                        self.define_variable(origin, value);
+                        self.define_variable(origin, matched.value);
                     }
                 }
             },

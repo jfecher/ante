@@ -1,0 +1,152 @@
+// Matching through a reference binds each field by reference. Fields in a union's payload are unstable.
+type Shape =
+    | Circle F64
+    | Rect F64 F64
+    with name: String
+
+set_some (b: mut 'b Maybe String) =
+    if b is Maybe.Some s then
+        s := "changed"
+
+pair_fields (p: ref 'p (I32, String)) =
+    match p
+    | (a, _) -> a
+
+nested (m: ref 'm Maybe (I32, String)): ref 'm! String can Panic =
+    match m
+    | Some (_, y) -> y
+    | None -> panic "none"
+
+shape_fields (s: ref 's Shape) =
+    match s
+    | Circle radius _ -> radius
+    | Rect _ _ name ->
+        _name = name
+        panic ""
+
+whole_variant (m: ref 'm Maybe I32) =
+    match m
+    | Some ..c -> c
+    | None -> panic ""
+
+alias (m: ref 'm Maybe I32) =
+    match m
+    | whole @ Some x -> (whole, x)
+    | None -> panic ""
+
+literal (r: ref I32): Bool =
+    match r
+    | 0 -> true
+    | _ -> false
+
+parameter ((a, _): mut 'p (I32, I32)) = a
+
+inferred (m: ref Maybe String) (default: ref String) =
+    match m
+    | Some s -> s
+    | None -> default
+
+main () =
+    m = Maybe.Some "x"
+    default = "y"
+    _s = inferred (ref m) (ref default)
+
+// args: -e ast-t --no-color
+// expected stdout:
+// type Shape =
+//     | Circle F64
+//     | Rect F64 F64
+//     with (name: (error)): String
+// 
+// (set_some: fn (mut 'b (Maybe String)) -> Unit is pure) (b: mut 'b (Maybe String)) =
+//     (match_var7: (error)) = (b: mut 'b (Maybe String))
+//     switch (match_var7: mut 'b (Maybe String))
+//     | 0 -> 
+//             (_: mut 'b (Maybe String)) = (match_var7: mut 'b (Maybe String))
+//             ()
+//     | 1, (match_var8: mut 'b! String) -> 
+//             (s: mut 'b! String) = (match_var8: mut 'b! String)
+//             
+//                 
+//                     (s: mut 'b! String) := "changed"
+//                 ()
+// 
+// (pair_fields: fn (ref 'p (I32, String)) -> ref 'p I32 is pure) (p: ref 'p (I32, String)) =
+//     (match_var5: (error)) = (p: ref 'p (I32, String))
+//     switch (match_var5: ref 'p (I32, String))
+//     | 0, (match_var6: ref 'p I32), (match_var7: ref 'p String) -> 
+//             (_: ref 'p String) = (match_var7: ref 'p String)
+//             
+//                 (a: ref 'p I32) = (match_var6: ref 'p I32)
+//                 (a: ref 'p I32)
+// 
+// (nested: fn (ref 'm (Maybe (I32, String))) -> ref 'm! String can Panic) (m: ref 'm (Maybe (I32, String))): ref 'm! String can Panic =
+//     (match_var11: (error)) = (m: ref 'm (Maybe (I32, String)))
+//     switch (match_var11: ref 'm (Maybe (I32, String)))
+//     | 0 -> ref (panic: fn String -> Never can Panic) "none"
+//     | 1, (match_var12: ref 'm! (I32, String)) -> switch (match_var12: ref 'm! (I32, String))
+//         | 0, (match_var13: ref 'm! I32), (match_var14: ref 'm! String) -> 
+//                 (y: ref 'm! String) = (match_var14: ref 'm! String)
+//                 
+//                     (_: ref 'm! I32) = (match_var13: ref 'm! I32)
+//                     (y: ref 'm! String)
+// 
+// (shape_fields: fn (ref 's Shape) -> ref 's! F64 can Panic) (s: ref 's Shape) =
+//     (match_var7: (error)) = (s: ref 's Shape)
+//     switch (match_var7: ref 's Shape)
+//     | 0, (match_var8: ref 's! F64), (match_var9: ref 's String) -> 
+//             (_: ref 's String) = (match_var9: ref 's String)
+//             
+//                 (radius: ref 's! F64) = (match_var8: ref 's! F64)
+//                 (radius: ref 's! F64)
+//     | 1, (match_var10: ref 's! F64), (match_var11: ref 's! F64), (match_var12: ref 's String) -> 
+//             (name: ref 's String) = (match_var12: ref 's String)
+//             
+//                 (_: ref 's! F64) = (match_var11: ref 's! F64)
+//                 
+//                     (_: ref 's! F64) = (match_var10: ref 's! F64)
+//                     
+//                         (_name: ref 's String) = (name: ref 's String)
+//                         ref (panic: fn String -> Never can Panic) ""
+// 
+// (whole_variant: fn (ref 'm (Maybe I32)) -> ref 'm! (Maybe.Some I32) can Panic) (m: ref 'm (Maybe I32)) =
+//     (match_var6: (error)) = (m: ref 'm (Maybe I32))
+//     switch (match_var6: ref 'm (Maybe I32))
+//     | 0 -> ref (panic: fn String -> Never can Panic) ""
+//     | 1, (match_var7: ref 'm! I32) -> 
+//             (c: ref 'm! (Maybe.Some I32)) = (match_var8: ref 'm! (Maybe.Some I32))
+//             (c: ref 'm! (Maybe.Some I32))
+// 
+// (alias: fn (ref 'm (Maybe I32)) -> (ref 'm (Maybe I32)), (ref 'm! I32) can Panic) (m: ref 'm (Maybe I32)) =
+//     (match_var8: (error)) = (m: ref 'm (Maybe I32))
+//     switch (match_var8: ref 'm (Maybe I32))
+//     | 0 -> (panic: fn String -> Never can Panic) ""
+//     | 1, (match_var9: ref 'm! I32) -> 
+//             (x: ref 'm! I32) = (match_var9: ref 'm! I32)
+//             
+//                 (whole: ref 'm (Maybe I32)) = (match_var8: ref 'm (Maybe I32))
+//                 (whole: ref 'm (Maybe I32)) (,: fn (ref 'm (Maybe I32)) (ref 'm! I32) -> (ref 'm (Maybe I32)), (ref 'm! I32) is pure) (x: ref 'm! I32)
+// 
+// (literal: fn (ref I32) -> Bool is pure) (r: ref I32): Bool is pure =
+//     (match_var2: (error)) = (r: ref I32)
+//     switch (match_var2: ref I32)
+//     | 0 -> true
+//     | _ -> 
+//             (_: ref I32) = (match_var2: ref I32)
+//             false
+// 
+// (parameter: fn (mut 'p (I32, I32)) -> mut 'p I32 is pure) ((,: fn I32 I32 -> I32, I32 is pure) (a: mut 'p I32) (_: mut 'p I32): mut 'p I32, I32) = (a: mut 'p I32)
+// 
+// (inferred: fn (ref (Maybe String)) (ref String) -> ref String is pure) (m: ref (Maybe String)) (default: ref String) =
+//     (match_var8: (error)) = (m: ref (Maybe String))
+//     switch (match_var8: ref (Maybe String))
+//     | 0 -> (default: ref String)
+//     | 1, (match_var9: ref String) -> 
+//             (s: ref String) = (match_var9: ref String)
+//             (s: ref String)
+// 
+// (main: fn Unit -> Unit is pure) () =
+//     (m: Maybe String) = (Maybe.Some: fn String -> Maybe String is pure) "x"
+//     (default: String) = "y"
+//     (_s: ref '(m!, default) String) = (inferred: fn (ref 'm (Maybe String)) (ref '(m!, default) String) -> ref '(m!, default) String is pure) (ref (m: Maybe String)) (ref (default: String))
+

@@ -20,7 +20,7 @@ main () =
     // Mutate through as_mut on a uniquely-owned Rc
     var rc3 = Rc.of 7
     // FIXME: This syntax is painful
-    (as_mut (uniq rc3)).* := 99
+    (as_mut (mut rc3)).* := 99
     println (as_ref rc3).*       // 99
 
     println "done"

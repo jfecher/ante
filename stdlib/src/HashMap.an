@@ -123,11 +123,11 @@ type EntryResult k v =
     | NotFound
     | NotFinished
 
-HashMap.get_entry (map: ref 'm HashMap k v) (key: ref k) {Hash k} {eq: Eq k e}: Maybe (ref 'm (Entry k v)) can e =
+HashMap.get_entry (map: ref 'm HashMap k v) (key: ref k) {Hash k} {eq: Eq k e}: Maybe (ref 'm! (Entry k v)) can e =
     map = transmute map : mut HashMap k v
     map.get_entry_mut key
 
-HashMap.get_entry_mut (map: mut 'm HashMap k v) (key: ref k) {Hash k} {eq: Eq k e}: Maybe (mut 'm (Entry k v)) can e =
+HashMap.get_entry_mut (map: mut 'm HashMap k v) (key: ref k) {Hash k} {eq: Eq k e}: Maybe (mut 'm! (Entry k v)) can e =
     if map.capacity == 0 then return None
 
     // Return whether to continue by wrapping around the end, and the value if found
@@ -156,7 +156,7 @@ HashMap.get_entry_mut (map: mut 'm HashMap k v) (key: ref k) {Hash k} {eq: Eq k 
         | Found value -> Some (ptr_to_mut value)
         | _ -> None
 
-HashMap.get (map: ref 'm HashMap k v) (key: ref k) {Hash k} {Eq k e}: ref 'm v can Fail, e =
+HashMap.get (map: ref 'm HashMap k v) (key: ref k) {Hash k} {Eq k e}: ref 'm! v can Fail, e =
     match map.get_entry key
     | Some entry -> entry.value
     | None -> fail ()
@@ -210,13 +210,13 @@ HashMap.values (m: ref HashMap k v) = fn () can Emit v ->
         if entry.occupied then emit entry.value
 
 /// Return the existing value at `key`, or insert `default` and return it.
-HashMap.get_or_insert (m: mut HashMap k v) (key: k) (default: v) {Hash k} {Eq k e} {Copy k}: ref v can Panic, e =
+HashMap.get_or_insert (m: mut 'm HashMap k v) (key: k) (default: v) {Hash k} {Eq k e} {Copy k}: ref 'm! v can Panic, e =
     m.get key ~> on_fail do
         ignore (m.insert key default)
         m.get key ~> or_panic "HashMap.get_or_insert: lookup after insert failed"
 
 /// Same as `get_or_insert` but builds the default lazily.
-HashMap.get_or_insert_with (m: mut HashMap k v) (key: k) (mk: fn Unit => v) {Hash k} {Eq k e} {Copy k}: ref v can Panic, e =
+HashMap.get_or_insert_with (m: mut 'm HashMap k v) (key: k) (mk: fn Unit => v) {Hash k} {Eq k e} {Copy k}: ref 'm! v can Panic, e =
     m.get key ~> on_fail do
         ignore (m.insert key (mk ()))
         m.get key ~> or_panic "HashMap.get_or_insert_with: lookup after insert failed"

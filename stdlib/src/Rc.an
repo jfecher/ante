@@ -13,21 +13,13 @@ Rc.of (value: t): Rc t =
     ptr_store ptr (1, value)
     Rc ptr
 
-/// Returns a shared reference into the inner element. Since other Rc clones of
-/// the same value may exist and may mutate the element via [Rc.as_mut], this
-/// can only be a shared `ref` reference instead of a fully immutable `imm`
-/// reference. Similarly, requiring a `uniq Rc t` ensures this Rc is not dropped
-/// while the returned reference is still alive.
-Rc.as_ref (rc: imm Rc t): ref t =
+/// Returns a reference into the inner element
+Rc.as_ref (rc: ref 'rc Rc t): ref 'rc! t =
     rc = ptr_to_mut rc.ptr
     rc.second
 
-/// Returns a shared, mutable reference into the inner element. Since other Rc
-/// clones of the same value may exist and may mutate the element through this
-/// function, this can only give a shared `mut` reference instead of a `uniq`
-/// reference. Similarly, requiring a `uniq Rc t` ensures this Rc is not dropped
-/// while the returned reference is still alive.
-Rc.as_mut (rc: uniq Rc t): mut t =
+/// Returns a mutable reference into the inner element
+Rc.as_mut (rc: mut 'rc Rc t): mut 'rc! t =
     rc = ptr_to_mut rc.ptr
     rc.second
 

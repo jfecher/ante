@@ -242,19 +242,21 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
             Pattern::Literal(literal) => {
                 let actual = self.infer_literal(literal, id);
-                self.unify(&actual, expected, TypeErrorKind::Pattern, id);
+                let (matched, _) = self.match_through_reference(expected);
+                self.unify(&actual, &matched, TypeErrorKind::Pattern, id);
             },
             Pattern::Constructor(path, args) => {
+                let (matched, reference) = self.match_through_reference(expected);
                 let parameters = mapvec(args, |_| types::ParameterType::explicit(self.next_type_variable()));
 
                 let expected_function_type = if args.is_empty() {
-                    expected.clone()
+                    matched.clone()
                 } else {
                     Type::Function(Shared::new(FunctionType {
                         parameters: parameters.clone(),
                         // Any type constructor we can match on shouldn't be a closure
                         environment: Type::NO_CLOSURE_ENV,
-                        return_type: expected.clone(),
+                        return_type: matched.clone(),
                         effects: Type::pure(),
                     }))
                 };
@@ -267,25 +269,31 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     self.check_constructor_exhaustive(*path, &location);
                 }
 
+                let parameters = mapvec(parameters, |parameter| parameter.typ);
+                let parameters = self.fields_through_reference(&matched, reference.as_ref(), parameters);
                 for (expected_arg_type, arg) in parameters.into_iter().zip(args) {
-                    self.check_pattern_rec(*arg, &expected_arg_type.typ, irrefutable);
+                    self.check_pattern_rec(*arg, &expected_arg_type, irrefutable);
                 }
             },
             Pattern::ConstructorRest(path, args, name) => {
-                let actual = self.infer_path(*path, expected);
+                let (matched, reference) = self.match_through_reference(expected);
+                let actual = self.infer_path(*path, &matched);
                 let (parameters, return_type) = match actual.follow(&self.bindings) {
-                    Type::Function(f) => (f.parameters.clone(), f.return_type.clone()),
+                    Type::Function(f) => {
+                        (mapvec(&f.parameters, |parameter| parameter.typ.clone()), f.return_type.clone())
+                    },
                     other => (Vec::new(), other.clone()),
                 };
-                self.unify(&return_type, expected, TypeErrorKind::Pattern, *path);
+                self.unify(&return_type, &matched, TypeErrorKind::Pattern, *path);
 
                 if irrefutable {
                     let location = self.current_context().path_location(*path).clone();
                     self.check_constructor_exhaustive(*path, &location);
                 }
 
+                let parameters = self.fields_through_reference(&matched, reference.as_ref(), parameters);
                 for (parameter, arg) in parameters.iter().zip(args) {
-                    self.check_pattern_rec(*arg, &parameter.typ, irrefutable);
+                    self.check_pattern_rec(*arg, parameter, irrefutable);
                 }
 
                 if let Some(name) = name {
@@ -295,7 +303,17 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     }
                     if let Some(Origin::TopLevelDefinition(variant_name)) = origin {
                         // TODO: A bit of a hack, we should change `return_type` to be the variant type to begin with
-                        let variant_type = return_type.follow(&self.bindings).retarget_user_defined(variant_name);
+                        let mut variant_type = return_type.follow(&self.bindings).retarget_user_defined(variant_name);
+                        if let Some(reference) = &reference {
+                            let common_fields = self.union_common_field_count(&matched);
+                            // The variant's standalone layout puts its `with` fields last, so there is nothing to point to
+                            if common_fields.is_some_and(|count| count > 0) {
+                                let location = self.current_context().pattern_location(id).clone();
+                                UnimplementedItem::RestPatternThroughReference.issue(self.compiler, location);
+                            }
+                            variant_type =
+                                self.field_through_reference(reference, variant_type, common_fields.is_some());
+                        }
                         self.check_name(*name, &variant_type);
                     }
                 }
@@ -337,6 +355,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                     self.assign_binding_places(*alt, place.clone());
                 }
             },
+            Pattern::Constructor(..) | Pattern::ConstructorRest(..) if self.pattern_matches_through_reference(id) => {},
             Pattern::Constructor(_, args) => {
                 // Prefer real struct field names; enum payloads and tuples fall back to indices.
                 self.assign_binding_places_for_args(id, &place, args);
@@ -349,6 +368,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             },
             Pattern::Literal(_) | Pattern::Error => (),
         }
+    }
+
+    /// True if the pattern `id` was checked against a reference
+    fn pattern_matches_through_reference(&self, id: PatternId) -> bool {
+        self.pattern_types.get(&id).is_some_and(|typ| typ.reference_element(&self.bindings).is_some())
     }
 
     /// Assigns each argument in `args` its Place as a field of `place`

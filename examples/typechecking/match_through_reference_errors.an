@@ -1,0 +1,52 @@
+type Shape =
+    | Circle F64
+    | Rect F64 F64
+    with name: String
+
+// Payload references are unstable, so they can't be returned as a stable place
+stable_lie (m: ref 'm Maybe String) (default: ref 'm String): ref 'm String =
+    match m
+    | Some s -> s
+    | None -> default
+
+// The variant's standalone layout puts its `with` fields last, so there is nothing to point to
+rest_with_fields (s: ref Shape) =
+    if s is Circle .._c then ()
+
+consume (_s: String): Unit = ()
+
+// `'s!` may point anywhere within `s`, including its moved `name`
+moved_with_field (s: Shape) =
+    r = ref s
+    if r is Circle radius _ then
+        consume s.name
+        _radius = radius
+        ()
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/match_through_reference_errors.an:8:1
+//  7 | stable_lie (m: ref 'm Maybe String) (default: ref 'm String): ref 'm String =
+//    |     // error: The body of this function has type ref '(m, m!) String but it is expected to return ref 'm String
+//  8 |     match m
+//    | ^^^^^^^^^^^
+//  9 |     | Some s -> s
+// 
+// examples/typechecking/match_through_reference_errors.an:14:13
+// 13 | rest_with_fields (s: ref Shape) =
+//    |     // error: `..` patterns through a reference to a type with `with` fields are currently unimplemented
+// 14 |     if s is Circle .._c then ()
+//    |             ^^^^^^^^^^^
+// 
+// examples/typechecking/match_through_reference_errors.an:23:19
+// 21 |     if r is Circle radius _ then
+// 22 |         consume s.name	// note: s.name was previously moved here
+//    |                  -----
+//    |         // error: This reference may refer to s.name which has already been moved
+// 23 |         _radius = radius
+//    |                   ^^^^^^
+// 24 |         ()
+// 
+// Found 3 errors and 0 warnings
+

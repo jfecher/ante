@@ -1,4 +1,4 @@
-import Std.Vec.Vec, stream_imm_vec
+import Std.Vec.Vec, stream_ref_vec
 import Std.Stream.iter, stream_array
 
 type MyType =
@@ -7,7 +7,7 @@ type MyType =
     aboolean: Bool
     tombstone: Bool
 
-print_mytype (res: imm MyType) =
+print_mytype (res: ref MyType) =
     print res.key
     print ", "
     println res.aboolean
@@ -16,7 +16,7 @@ main () =
     print_to_stdout do
     abort_on_panic do
     x = Vec.of [MyType 1 () true true, MyType 2 () false false]
-    iter (imm x) print_mytype
+    iter (ref x) print_mytype
 
 
     println (size_of (MkType: Type Unit))

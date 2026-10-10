@@ -197,9 +197,8 @@ Arc.of (value: t): Arc t =
     ptr_store ptr (ArcInner count value)
     Arc ptr
 
-Arc.as_ref (a: imm Arc t): imm t =
-    ptr_to_imm: fn (Ptr (ArcInner t)) -> imm ArcInner t = transmute
-    inner = ptr_to_imm a.ptr
+Arc.as_ref (a: ref 'a Arc t): ref 'a t =
+    inner = ptr_to_mut a.ptr
     inner.value
 
 impl clone_arc: Clone (Arc t) with

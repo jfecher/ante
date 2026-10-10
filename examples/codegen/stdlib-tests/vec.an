@@ -1,6 +1,6 @@
 import Std.Vec.Vec, empty, of, is_empty, len, capacity, reserve, push, pop, get, get_unchecked,
     remove_index, remove_first, remove_indices, remove_all, swap_last,
-    print_vec, extract_vec, stream_imm_vec, eq_vec
+    print_vec, extract_vec, stream_ref_vec, eq_vec
 
 import Std.Fail.on_fail, panic_on_fail
 import Std.Stream.iter, stream_array
@@ -80,7 +80,7 @@ test_indexing () =
 
 test_stream () =
     v = Vec.of [7, 8, 9]
-    iter (imm v) (fn (x: imm I32) -> println x.*)
+    iter (ref v) (fn (x: ref I32) -> println x.*)
 
 test_eq () =
     println (Vec.of [1, 2] == Vec.of [1, 2])
