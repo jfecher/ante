@@ -1036,6 +1036,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                         Type::Variable(b_id) if b_id > *a_id => {
                             self.try_bind_type_variable(b_id, Type::Variable(*a_id), new_bindings)
                         },
+                        // `a` may already be an entry of `b`'s row
+                        b @ Type::Places(_) if self.occurs(&b, *a_id, new_bindings) => {
+                            self.relate_places(a, &b, row_mode, new_bindings)
+                        },
                         b => self.try_bind_type_variable(*a_id, b, new_bindings),
                     }
                 }
@@ -1050,7 +1054,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
                     // Avoid b aliasing an open row to get subtype-like semantics instead of row polymorphism semantics
                     let coercible = variance == Variance::Covariant && row_mode == RowMode::Coercible;
-                    let reopened = coercible.then(|| self.reopen_places_row(&a, new_bindings)).flatten();
+                    let reopened = coercible.then(|| self.reopen_covariant_places(&a, new_bindings)).flatten();
 
                     self.try_bind_type_variable(*b_id, reopened.unwrap_or(a), new_bindings)
                 }
@@ -1193,10 +1197,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 let is_place =
                     matches!(a, Type::Places(..) | Type::Place(_)) || matches!(b, Type::Places(..) | Type::Place(_));
                 if is_place {
-                    match row_mode {
-                        RowMode::Coercible => self.place_subtype(a, b, new_bindings),
-                        RowMode::Exact => self.place_unify(a, b, new_bindings),
-                    }
+                    self.relate_places(a, b, row_mode, new_bindings)
                 } else {
                     match row_mode {
                         RowMode::Coercible => self.row_subtype(a, b, new_bindings),

@@ -9,13 +9,13 @@ use crate::{
     incremental::{DbHandle, GetItem},
     name_resolution::{Origin, ResolutionResult},
     parser::{
-        cst::{self, Expr},
+        cst::{self, Expr, ReferenceKind},
         ids::{ExprId, NameId, NameStore},
     },
     shared_arc::Shared,
     type_inference::{
         TypeChecker,
-        row::{RowKind, RowMatch, canonicalize_row, construct_row, flatten_row_into, follow_row, sort_and_dedup_row},
+        row::{RowKind, RowMatch, RowMode, canonicalize_row, construct_row, flatten_row_into, follow_row, sort_and_dedup_row},
     },
 };
 
@@ -211,17 +211,51 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         self.row_subtype_generic(RowKind::Places, m, new_bindings)
     }
 
-    /// Replace an open places row's tail with a fresh variable.
-    /// Returns `None` unless `row` is a places row with an open tail.
-    pub(super) fn reopen_places_row(&self, row: &Type, new_bindings: &TypeBindings) -> Option<Type> {
-        if !matches!(row, Type::Places(Some(_))) {
-            return None;
+    /// A places row with every place in `places` plus a fresh tail to widen into
+    fn reopen_places(&self, places: &Type, new_bindings: &TypeBindings) -> Type {
+        let mut entries = self.collect_and_merge_places(places, new_bindings);
+        entries.push(self.next_type_variable());
+        Type::places(&entries, &self.bindings, new_bindings)
+    }
+
+    /// Reopen each places row in a covariant position of `typ` so a variable bound to it
+    /// widens without widening `typ`. Returns `None` if there are no such rows.
+    pub(super) fn reopen_covariant_places(&self, typ: &Type, new_bindings: &TypeBindings) -> Option<Type> {
+        match typ {
+            Type::Places(_) => Some(self.reopen_places(typ, new_bindings)),
+            Type::Application(constructor, args) => {
+                let constructor_type = constructor.follow_two(&self.bindings, new_bindings);
+                let kind = constructor_type.reference_constructor(&self.bindings)?;
+                let mut args = args.as_ref().clone();
+                args[0] = self.reopen_places(&args[0], new_bindings);
+
+                // A `mut` element must stay shared so stores through it widen the original
+                if matches!(kind, ReferenceKind::Ref | ReferenceKind::Imm) {
+                    let element = args[1].follow_two(&self.bindings, new_bindings);
+                    if let Some(element) = self.reopen_covariant_places(&element, new_bindings) {
+                        args[1] = element;
+                    }
+                }
+                Some(Type::Application(constructor.clone(), Shared::new(args)))
+            },
+            _ => None,
         }
-        let mut places = self.collect_and_merge_places(row, new_bindings);
-        let open = places.iter().position(|place| matches!(place, Type::Variable(_)))?;
-        places.truncate(open);
-        places.push(self.next_type_variable());
-        Some(Type::places(&places, &self.bindings, new_bindings))
+    }
+
+    /// A supertype of a branch's type for later branches to widen without widening that branch
+    pub(super) fn branch_join_type(&self, typ: Type) -> Type {
+        let followed = typ.follow(&self.bindings);
+        self.reopen_covariant_places(followed, &TypeBindings::default()).unwrap_or(typ)
+    }
+
+    /// Subtype or unify two places rows depending on `row_mode`
+    pub(super) fn relate_places(
+        &self, a: &Type, b: &Type, row_mode: RowMode, new_bindings: &mut TypeBindings,
+    ) -> Result<(), ()> {
+        match row_mode {
+            RowMode::Coercible => self.place_subtype(a, b, new_bindings),
+            RowMode::Exact => self.place_unify(a, b, new_bindings),
+        }
     }
 
     /// Unify two places rows: both must end up with the same set of places.

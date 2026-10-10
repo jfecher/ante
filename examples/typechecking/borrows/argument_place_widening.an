@@ -1,0 +1,66 @@
+bar (x: t) (_y: t): t = x
+
+call_arg (r: ref I32) =
+    q = 2
+    _z = bar r (ref q)
+
+call_arg_annotated (r: ref I32): Unit =
+    q = 2
+    _z = bar r (ref q)
+
+if_branch (r: ref I32) =
+    q = 2
+    _z = if true then r else ref q
+
+match_branch (r: ref I32) =
+    q = 2
+    _z = match true
+        | true -> r
+        | false -> ref q
+
+either (x: ref 'a I32) (y: ref 'b I32) = if true then x else y
+
+main () =
+    p = 1
+    q = 2
+    call_arg (ref p)
+    call_arg_annotated (ref p)
+    if_branch (ref p)
+    match_branch (ref p)
+    _ = either (ref p) (ref q)
+
+// args: -e ast-t --no-color
+// expected stdout:
+// (bar: fn t t -> t is pure) (x: t) (_y: t): t is pure = (x: t)
+// 
+// (call_arg: fn (ref I32) -> Unit is pure) (r: ref I32) =
+//     (q: I32) = 2
+//     (_z: ref 'q I32) = (bar: fn (ref 'q I32) (ref 'q I32) -> ref 'q I32 is pure) (r: ref I32) (ref (q: I32))
+// 
+// (call_arg_annotated: fn (ref I32) -> Unit is pure) (r: ref I32): Unit is pure =
+//     (q: I32) = 2
+//     (_z: ref 'q I32) = (bar: fn (ref 'q I32) (ref 'q I32) -> ref 'q I32 is pure) (r: ref I32) (ref (q: I32))
+// 
+// (if_branch: fn (ref I32) -> Unit is pure) (r: ref I32) =
+//     (q: I32) = 2
+//     (_z: ref 'q I32) = if true then (r: ref I32) else ref (q: I32)
+// 
+// (match_branch: fn (ref I32) -> Unit is pure) (r: ref I32) =
+//     (q: I32) = 2
+//     (_z: ref 'q I32) = (match_var2: (error)) = true
+//     switch (match_var2: Bool)
+//     | false -> ref (q: I32)
+//     | true -> (r: ref I32)
+// 
+// (either: fn (ref 'a I32) (ref 'b I32) -> ref '(a, b) I32 is pure) (x: ref 'a I32) (y: ref 'b I32) = if true then (x: ref 'a I32) else (y: ref 'b I32)
+// 
+// (main: fn Unit -> Unit is pure) () =
+//     (p: I32) = 1
+//     (q: I32) = 2
+//     (call_arg: fn (ref 'p I32) -> Unit is pure) (ref (p: I32))
+//     (call_arg_annotated: fn (ref 'p I32) -> Unit is pure) (ref (p: I32))
+//     (if_branch: fn (ref 'p I32) -> Unit is pure) (ref (p: I32))
+//     (match_branch: fn (ref 'p I32) -> Unit is pure) (ref (p: I32))
+//     (_: ref '(p, q) I32) = (either: fn (ref 'p I32) (ref 'q I32) -> ref '(p, q) I32 is pure) (ref (p: I32)) (ref (q: I32))
+// 
+// 

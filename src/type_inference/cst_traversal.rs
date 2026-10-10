@@ -1001,8 +1001,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             } else if else_diverges {
                 then_type
             } else {
-                self.unify(&else_type, &then_type, TypeErrorKind::Else, else_);
-                then_type
+                let joined = self.branch_join_type(then_type);
+                self.unify(&else_type, &joined, TypeErrorKind::Else, else_);
+                joined
             }
         } else {
             let ok = self.unify(&Type::UNIT, expected, TypeErrorKind::IfStatement, expr);
@@ -1026,7 +1027,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             self.check_refutable_pattern(*pattern, &expr_type);
             self.push_implicits_scope();
             if self.diverges(&result_type) {
-                result_type = self.infer_expr(*branch, expected);
+                let branch_type = self.infer_expr(*branch, expected);
+                result_type = self.branch_join_type(branch_type);
             } else {
                 self.check_expr(*branch, &result_type, TypeErrorKind::MatchBranch);
             }

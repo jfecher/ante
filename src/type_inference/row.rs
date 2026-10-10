@@ -92,13 +92,12 @@ fn cancel_shared_open(mut a_open: Vec<Type>, b_open: Vec<Type>) -> (Vec<Type>, V
     (a_open, b_open)
 }
 
-/// Split a row's open tails into the first, which the row algorithms bind, and the rest
-fn split_first_open(mut open: Vec<Type>) -> (Option<Type>, Vec<Type>) {
+fn split_bound_open(mut open: Vec<Type>) -> (Option<Type>, Vec<Type>) {
     if open.is_empty() {
         return (None, open);
     }
-    let first = open.remove(0);
-    (Some(first), open)
+    let bound = open.remove(open.len() - 1);
+    (Some(bound), open)
 }
 
 /// Flatten every entry reachable from `entries` into `found`
@@ -200,8 +199,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
     ) -> Result<(), ()> {
         let RowMatch { a_open, b_open, mut a_leftover, mut b_leftover } = m;
         let (a_open, b_open) = cancel_shared_open(a_open, b_open);
-        let (a_open, a_extra_open) = split_first_open(a_open);
-        let (b_open, b_extra_open) = split_first_open(b_open);
+        let (a_open, a_extra_open) = split_bound_open(a_open);
+        let (b_open, b_extra_open) = split_bound_open(b_open);
 
         // If there are multiple unbound variables, combine them into leftovers so they get bound
         b_leftover.extend(b_extra_open);
@@ -253,8 +252,8 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         let RowMatch { a_open, b_open, mut a_leftover, mut b_leftover } = m;
         // Tails past the first must be absorbed by the other side like any other entry
         let (a_open, b_open) = cancel_shared_open(a_open, b_open);
-        let (a_open, a_extra_open) = split_first_open(a_open);
-        let (b_open, b_extra_open) = split_first_open(b_open);
+        let (a_open, a_extra_open) = split_bound_open(a_open);
+        let (b_open, b_extra_open) = split_bound_open(b_open);
         a_leftover.extend(a_extra_open);
         b_leftover.extend(b_extra_open);
 
