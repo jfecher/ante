@@ -2,3 +2,6 @@ binary_path = "target/debug/ante"
 test_path = "examples"
 test_line_prefix = "// "
 glob = "*.an"
+
+# goldentests already runs each test in parallel so --threads 1 noticeably decreases contention
+base_args = "--threads 1 --stdlib-cache target/goldentests-stdlib.inc"

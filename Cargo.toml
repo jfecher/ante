@@ -32,6 +32,9 @@ mimalloc = { version = "0.1", default-features = false }
 goldentests = { version = "1.4.2", default-features = false }
 tempfile = "3"
 
+[profile.dev.package."*"]
+opt-level = 3
+
 [profile.release]
 debug = true
 lto = "thin"

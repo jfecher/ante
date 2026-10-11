@@ -165,12 +165,21 @@ fn run() -> Result<(), CommandError> {
 fn compile(request: CompileRequest) {
     let options = &request.options;
     incremental::set_trace_enabled(options.show_queries);
-    let (mut compiler, metadata_file) = make_compiler(&request.files, options.incremental);
+
+    if let Some(threads) = options.threads {
+        rayon::ThreadPoolBuilder::new().num_threads(threads).build_global().expect("Failed to create thread pool");
+    }
+
+    let checks_whole_program = request.check
+        || matches!(request.emit, None | Some(EmitTarget::Ir | EmitTarget::MirMono | EmitTarget::MirExist));
+
+    let stdlib_cache = options.stdlib_cache.as_deref().filter(|_| checks_whole_program);
+    let (mut compiler, metadata_file) = make_compiler(&request.files, options.incremental, stdlib_cache);
 
     let program_name = get_program_name(&mut compiler, &request);
 
     // TODO: Pointer size should be configurable depending on the target machine
-    TargetPointerSize.set(&mut compiler, 8);
+    TargetPointerSize.set(&mut compiler, std::mem::size_of::<usize>() as u32);
 
     if options.show_time {
         eprintln!("Phase timings:");

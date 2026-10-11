@@ -146,6 +146,15 @@ pub struct CompileArgs {
     #[arg(long)]
     pub show_queries: bool,
 
+    /// Maximum number of threads to compile with. Defaults to the number of CPUs
+    #[arg(long, short = 'j', value_name = "N")]
+    pub threads: Option<usize>,
+
+    /// Reuse the standard library's checked results stored in this file, creating it when missing or stale.
+    /// Meant for test runners compiling many small programs
+    #[arg(long, hide = true, value_name = "PATH", value_hint = ValueHint::FilePath, conflicts_with = "incremental")]
+    pub stdlib_cache: Option<PathBuf>,
+
     /// Path to the file containing the `main` function to use as an entry-point
     #[arg(long, value_name = "NAME")]
     pub bin: Option<String>,
@@ -216,6 +225,8 @@ impl CompileArgs {
             || self.show_time
             || self.incremental
             || self.show_queries
+            || self.threads.is_some()
+            || self.stdlib_cache.is_some()
             || self.bin.is_some()
             || self.generics.is_some()
             || !self.link_lib.is_empty()

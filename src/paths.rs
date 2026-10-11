@@ -14,9 +14,14 @@ pub fn binary_name(module_name: &str) -> PathBuf {
 
 /// The path to `aminicoro`, the runtime library for coroutines
 /// which effects are currently lowered into.
-pub fn aminicoro_path() -> &'static str {
+pub fn aminicoro_path() -> PathBuf {
+    let object = stdlib_path().join("minicoro.o");
+    if object.is_file() {
+        return object;
+    }
+
     match option_env!("ANTE_MINICORO_PATH") {
-        Some(path) => path,
+        Some(path) => PathBuf::from(path),
         None => panic!("ANTE_MINICORO_PATH is not set"),
     }
 }

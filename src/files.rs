@@ -1,8 +1,9 @@
 use std::{
     fs::File,
     io::{BufWriter, Read, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::OnceLock,
+    time::SystemTime,
 };
 
 use crate::incremental::Db;
@@ -13,25 +14,33 @@ pub struct MetadataFile {
 
     /// The compiler version loaded, if any
     loaded_version: Option<u32>,
+
+    /// Written before the database to identify what it is valid for
+    stamp: &'static [u8],
 }
 
 /// Deserialize the compiler from our metadata file, returning it along with the file.
 ///
 /// If we fail, just default to a fresh compiler with no cached compilations.
-pub fn make_compiler(source_files: &[PathBuf], incremental: bool) -> (Db, Option<MetadataFile>) {
-    let (mut compiler, metadata_file) = if let Some(file) = source_files.first()
+pub fn make_compiler(
+    source_files: &[PathBuf], incremental: bool, stdlib_cache: Option<&Path>,
+) -> (Db, Option<MetadataFile>) {
+    let (mut compiler, metadata_file) = if let Some(path) = stdlib_cache {
+        match read_db(path, stdlib_cache_stamp()) {
+            Some(db) => (db, None),
+            None => {
+                let metadata_file =
+                    MetadataFile { path: path.to_owned(), loaded_version: None, stamp: stdlib_cache_stamp() };
+                (Db::default(), Some(metadata_file))
+            },
+        }
+    } else if let Some(file) = source_files.first()
         && incremental
     {
         let path = file.with_extension("inc");
-        let db = read_binary_file(&path).ok().and_then(|bytes| {
-            // Ignore caches from other compiler versions
-            let bytes = bytes.strip_prefix(build_stamp())?;
-            let db = crate::shared_arc::with_sharing(|| postcard::from_bytes::<Db>(bytes));
-            db.inspect_err(|error| eprintln!("warning: failed to load incremental cache `{}`: {error}", path.display()))
-                .ok()
-        });
+        let db = read_db(&path, build_stamp());
         let loaded_version = db.as_ref().map(|db| db.version());
-        (db.unwrap_or_default(), Some(MetadataFile { path, loaded_version }))
+        (db.unwrap_or_default(), Some(MetadataFile { path, loaded_version, stamp: build_stamp() }))
     } else {
         (Db::default(), None)
     };
@@ -47,20 +56,29 @@ pub fn make_compiler(source_files: &[PathBuf], incremental: bool) -> (Db, Option
     (compiler, metadata_file)
 }
 
+/// Deserialize the database in `path`, ignoring it if it was written for a different `stamp`
+fn read_db(path: &Path, stamp: &[u8]) -> Option<Db> {
+    let bytes = read_binary_file(path).ok()?;
+    let bytes = bytes.strip_prefix(stamp)?;
+    let db = crate::shared_arc::with_sharing(|| postcard::from_bytes::<Db>(bytes));
+    db.inspect_err(|error| eprintln!("warning: failed to load incremental cache `{}`: {error}", path.display())).ok()
+}
+
 /// Write the compiler's cache to the metadata file, unless it is unchanged.
 pub fn write_metadata(compiler: &Db, metadata_file: &MetadataFile) -> Result<(), String> {
     if metadata_file.loaded_version == Some(compiler.version()) && !crate::incremental::query_ran() {
         return Ok(());
     }
 
-    // Written to a temporary file first so an interrupted write never leaves a truncated cache
+    // Written to a temporary file first so an interrupted write never leaves a truncated cache.
+    let stamp = metadata_file.stamp;
     let metadata_file = &metadata_file.path;
-    let temporary = metadata_file.with_extension("inc.tmp");
+    let temporary = metadata_file.with_extension(format!("inc.tmp{}", std::process::id()));
     let write_error = |error| format!("Failed to write to file `{}`:\n{error}", temporary.display());
 
     let file = File::create(&temporary).map_err(write_error)?;
     let mut writer = BufWriter::with_capacity(1 << 20, file);
-    writer.write_all(build_stamp()).map_err(write_error)?;
+    writer.write_all(stamp).map_err(write_error)?;
     crate::shared_arc::with_sharing(|| postcard::to_io(compiler, &mut writer))
         .map_err(|error| format!("Failed to serialize database:\n{error}"))?;
     writer.flush().map_err(write_error)?;
@@ -77,6 +95,37 @@ fn build_stamp() -> &'static [u8] {
         let (size, modified) = executable.map(|file| (file.len(), file.modified().ok())).unwrap_or_default();
         format!("ante {} {size} {modified:?}\n", env!("CARGO_PKG_VERSION")).into_bytes()
     })
+}
+
+/// [build_stamp] plus a fingerprint of the stdlib's source files, so editing the stdlib replaces a stale stdlib cache
+fn stdlib_cache_stamp() -> &'static [u8] {
+    static STAMP: OnceLock<Vec<u8>> = OnceLock::new();
+    STAMP.get_or_init(|| {
+        let mut files = Vec::new();
+        collect_file_metadata(&crate::paths::stdlib_path().join(crate::project::SRC_FOLDER), &mut files);
+        files.sort();
+        let mut stamp = build_stamp().to_vec();
+        stamp.extend_from_slice(format!("stdlib {:x}\n", crate::parser::ids::hash(&files)).as_bytes());
+        stamp
+    })
+}
+
+/// Collect the path, length, and modification time of every file in `dir`, recursively
+fn collect_file_metadata(dir: &Path, files: &mut Vec<(PathBuf, u64, Option<SystemTime>)>) {
+    let Ok(entries) = dir.read_dir() else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Ok(metadata) = std::fs::metadata(&path) else {
+            continue;
+        };
+        if metadata.is_dir() {
+            collect_file_metadata(&path, files);
+        } else {
+            files.push((path, metadata.len(), metadata.modified().ok()));
+        }
+    }
 }
 
 pub(crate) fn read_file(file_name: &std::path::Path) -> Result<String, String> {
