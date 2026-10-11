@@ -49,6 +49,13 @@ main () = ()
 //    |                ^^^^^
 // 10 |     other
 // 
+// examples/typechecking/borrows/escape_through_variable.an:9:16
+//  8 |         x = 1
+//    |         // error: This returns a value of type ref 'x I32 but the enclosing function returns ref 'other I32
+//  9 |         return ref x
+//    |                ^^^^^
+// 10 |     other
+// 
 // examples/typechecking/borrows/escape_through_variable.an:16:16
 // 13 |     if b then
 // 14 |         x = 1	// note: x is only valid until the end of this scope
@@ -57,6 +64,20 @@ main () = ()
 // 16 |         return r	// error: This reference to x outlives its scope
 //    |                ^
 // 17 |     other
+// 
+// examples/typechecking/borrows/escape_through_variable.an:16:16
+// 15 |         r = ref x
+//    |         // error: This returns a value of type ref 'x I32 but the enclosing function returns ref 'other I32
+// 16 |         return r
+//    |                ^
+// 17 |     other
+// 
+// examples/typechecking/borrows/escape_through_variable.an:20:1
+// 19 | bad_match (b: Bool) (other: ref I32): ref I32 =
+//    |     // error: The body of this function has type ref '(_4, other) I32 but it is expected to return ref 'other I32
+// 20 |     match b
+//    | ^^^^^^^^^^^
+// 21 |     | true ->
 // 
 // examples/typechecking/borrows/escape_through_variable.an:23:9
 // 21 |     | true ->
@@ -74,5 +95,5 @@ main () = ()
 // 29 |     pair.first	// error: This reference to x outlives its scope
 //    |         ^^^^^^
 // 
-// Found 5 errors and 0 warnings
+// Found 8 errors and 0 warnings
 

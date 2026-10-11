@@ -1,11 +1,8 @@
-use std::sync::Arc;
-
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
     diagnostics::Location,
-    incremental::{ExportedTypes, GetItemRaw, RawItem},
-    iterator_extensions::mapvec,
+    incremental::{GetItemRaw, RawItem},
     name_resolution::Origin,
     parser::{
         cst::{Expr, ReferenceKind, TopLevelItemKind},
@@ -13,29 +10,35 @@ use crate::{
     },
     shared_arc::Shared,
     type_inference::{
-        Locateable, TypeChecker,
+        Locateable, TypeChecker, prelude_type_name,
         types::{PrimitiveType, Type},
     },
 };
 
-use super::places::Place;
-
-use crate::name_resolution::namespace::SourceFileId;
+use super::places::{Place, PlaceEntry};
 
 /// The set of paths moved (or reassigned) within one `if`/`match` branch, one loop or lambda
-/// body, or the top-level definition body.
+/// body, or the top-level definition body, along with each mutation performed within it.
 #[derive(Default)]
 pub(super) struct MoveScope {
     entries: FxHashMap<Place, MoveState>,
+    mutations: Vec<Mutation>,
 }
 
 /// Whether a path was moved (and where) or was explicitly reassigned since, within one scope.
 enum MoveState {
     /// The path was moved at this location and has not since been reassigned in this scope.
     Moved(Location),
-    /// The path was reassigned in this scope, shadowing any move of it (or of any of its
-    /// descendants) recorded in an enclosing scope. See [MoveTracker::clear_moves].
-    Cleared,
+    /// The path was reassigned in this scope at this tick, shadowing any move of it (or of any of
+    /// its descendants) recorded in an enclosing scope. See [MoveTracker::clear_moves].
+    Cleared(u32),
+}
+
+/// A mutation of `place`, which invalidates references assigned before `tick`
+struct Mutation {
+    place: PlaceEntry,
+    location: Location,
+    tick: u32,
 }
 
 impl MoveScope {
@@ -46,9 +49,10 @@ impl MoveScope {
     /// it) and are removed before inserting. This is what collapses e.g. a move of `x` and a
     /// move of `x.y` down to just a move of `x`, regardless of insertion order.
     fn insert_moved(&mut self, path: Place, location: Location) {
-        let subsumed = self.entries.iter().any(|(existing, state)| {
-            matches!(state, MoveState::Moved(_)) && (*existing == path || path.is_descendant_of(existing))
-        });
+        let subsumed = self
+            .entries
+            .iter()
+            .any(|(existing, state)| matches!(state, MoveState::Moved(_)) && path.is_within(existing));
         if subsumed {
             return;
         }
@@ -56,22 +60,22 @@ impl MoveScope {
         self.entries.insert(path, MoveState::Moved(location));
     }
 
-    /// Record that `path` was reassigned: drop any finer-grained entries this scope had for a
-    /// descendant of `path` (now stale) and mark `path` itself `Cleared`.
-    fn insert_cleared(&mut self, path: Place) {
+    /// Record that `path` was reassigned at `tick`: drop any finer-grained entries this scope had
+    /// for a descendant of `path` (now stale) and mark `path` itself `Cleared`.
+    fn insert_cleared(&mut self, path: Place, tick: u32) {
         self.entries.retain(|existing, _| !existing.is_descendant_of(&path));
-        self.entries.insert(path, MoveState::Cleared);
+        self.entries.insert(path, MoveState::Cleared(tick));
     }
 
     /// The most specific entry in this scope that is `key` itself or an ancestor of `key`.
-    fn most_specific_containing(&self, key: &Place) -> Option<&MoveState> {
+    fn most_specific_containing(&self, key: &Place) -> Option<(&Place, &MoveState)> {
         if self.entries.is_empty() {
             return None;
         }
         let mut candidate = key.clone();
         loop {
-            if let Some(state) = self.entries.get(&candidate) {
-                return Some(state);
+            if let Some(entry) = self.entries.get_key_value(&candidate) {
+                return Some(entry);
             }
             candidate.segments.pop()?;
         }
@@ -81,8 +85,15 @@ impl MoveScope {
     pub(super) fn moved_paths(&self) -> impl Iterator<Item = (&Place, &Location)> {
         self.entries.iter().filter_map(|(path, state)| match state {
             MoveState::Moved(location) => Some((path, location)),
-            MoveState::Cleared => None,
+            MoveState::Cleared(_) => None,
         })
+    }
+
+    /// Where a mutation in this scope after `since` may have invalidated a reference to `place`
+    fn invalidating(&self, place: &PlaceEntry, since: u32) -> Option<&Location> {
+        let mut mutations = self.mutations.iter();
+        let mutation = mutations.find(|mutation| mutation.tick > since && place.invalidated_by(&mutation.place));
+        mutation.map(|mutation| &mutation.location)
     }
 }
 
@@ -95,15 +106,19 @@ impl MoveScope {
 /// while walking one branch would leak into every sibling branch walked afterward. Instead, a
 /// reassignment records a `Cleared` tombstone in the current scope, which shadows any move of
 /// that path, or of one of its descendants, recorded further down the stack.
+///
+/// Mutations are recorded alongside moves, ticked so they can be ordered against reassignments.
 pub(super) struct MoveTracker {
     scopes: Vec<MoveScope>,
     /// Paths already reported as used after being moved
     pub(super) errored: FxHashSet<Place>,
+    /// The tick of the latest mutation
+    clock: u32,
 }
 
 impl Default for MoveTracker {
     fn default() -> Self {
-        MoveTracker { scopes: vec![MoveScope::default()], errored: FxHashSet::default() }
+        MoveTracker { scopes: vec![MoveScope::default()], errored: FxHashSet::default(), clock: 0 }
     }
 }
 
@@ -125,11 +140,28 @@ impl MoveTracker {
         self.scopes.last_mut().unwrap().insert_moved(path, location);
     }
 
+    /// Record that each of `places` was mutated at `location`, in the current scope.
+    pub(super) fn record_mutation(&mut self, places: Vec<PlaceEntry>, location: Location) {
+        self.clock += 1;
+        let tick = self.clock;
+        let mutations = places.into_iter().map(|place| Mutation { place, location: location.clone(), tick });
+        self.scopes.last_mut().unwrap().mutations.extend(mutations);
+    }
+
+    /// Move a finished body's mutations into the current scope, since the body ran in place
+    pub(super) fn absorb_mutations(&mut self, body: MoveScope) {
+        self.scopes.last_mut().unwrap().mutations.extend(body.mutations);
+    }
+
     /// Clear any move record for `path` and its descendants. Called when `path` is being
     /// reassigned. Only ever touches the current (topmost) scope; see the [MoveTracker] doc
     /// comment for why.
     pub(super) fn clear_moves(&mut self, path: &Place) {
-        self.scopes.last_mut().unwrap().insert_cleared(path.clone());
+        self.clear_moves_at(path, self.clock);
+    }
+
+    fn clear_moves_at(&mut self, path: &Place, tick: u32) {
+        self.scopes.last_mut().unwrap().insert_cleared(path.clone(), tick);
         self.errored.remove(path);
         self.errored.retain(|p| !p.is_descendant_of(path));
     }
@@ -140,21 +172,35 @@ impl MoveTracker {
     /// determines the answer. This means a `Cleared` entry for an ancestor of `key` recorded in
     /// an inner scope correctly shadows a `Moved` entry for `key` (or an ancestor of it) recorded
     /// in an outer scope, without ever mutating that outer scope.
-    fn effective_state(&self, key: &Place) -> Option<&MoveState> {
+    fn effective_state(&self, key: &Place) -> Option<(&Place, &MoveState)> {
         self.scopes.iter().rev().find_map(|scope| scope.most_specific_containing(key))
     }
 
-    /// Check if this path or any ancestor is currently moved (and not since reassigned).
-    pub(super) fn is_moved(&self, path: &Place) -> Option<&Location> {
+    /// The tick `path` was last assigned at
+    fn assigned_at(&self, path: &Place) -> u32 {
         match self.effective_state(path) {
-            Some(MoveState::Moved(location)) => Some(location),
-            _ => None,
+            Some((_, MoveState::Cleared(tick))) => *tick,
+            _ => 0,
+        }
+    }
+
+    /// Where a mutation since `holder` was assigned may have invalidated one of its references to `entries`
+    pub(super) fn invalidated(&self, holder: &Place, entries: &[PlaceEntry]) -> Option<&Location> {
+        let since = self.assigned_at(holder);
+        entries.iter().find_map(|entry| self.scopes.iter().find_map(|scope| scope.invalidating(entry, since)))
+    }
+
+    /// The moved path within or containing `path`, if any, checking ancestors first
+    pub(super) fn moved(&self, path: &Place) -> Option<(&Place, &Location)> {
+        match self.effective_state(path) {
+            Some((moved, MoveState::Moved(location))) => Some((moved, location)),
+            _ => self.has_child_moved(path),
         }
     }
 
     /// Check if any descendant of this path is currently moved (and not since reassigned).
-    /// Returns the first one found, if any. Only meaningful once `is_moved(path)` returns `None`.
-    pub(super) fn has_child_moved(&self, path: &Place) -> Option<(&Place, &Location)> {
+    /// Returns the first one found, if any. Only meaningful once `path` itself isn't moved.
+    fn has_child_moved(&self, path: &Place) -> Option<(&Place, &Location)> {
         let mut candidates: Vec<&Place> = Vec::new();
         for scope in &self.scopes {
             for key in scope.entries.keys() {
@@ -164,28 +210,35 @@ impl MoveTracker {
             }
         }
         candidates.into_iter().find_map(|key| match self.effective_state(key) {
-            Some(MoveState::Moved(location)) => Some((key, location)),
+            Some((_, MoveState::Moved(location))) => Some((key, location)),
             _ => None,
         })
     }
 
     /// Merge each non-diverging branch into the current scope:
-    /// - A path reassigned in every branch is reassigned after the whole `if`/`match`.
+    /// - A path reassigned in every branch is reassigned after the whole `if`/`match`, as of the
+    ///   earliest of those reassignments.
     /// - A path moved in any branch is moved after the whole `if`/`match`.
+    /// - A mutation in any branch is a mutation after the whole `if`/`match`.
     ///
     /// Reassignments are applied first so that a branch which reassigns `x` merged with one
     /// that moves `x` ends with `x` being moved in the parent.
     pub(super) fn merge_branches_into_parent(&mut self, branches: Vec<MoveScope>) {
-        let cleared_in = |scope: &MoveScope, path: &Place| matches!(scope.entries.get(path), Some(MoveState::Cleared));
+        let cleared_in = |scope: &MoveScope, path: &Place| match scope.entries.get(path) {
+            Some(MoveState::Cleared(tick)) => Some(*tick),
+            _ => None,
+        };
 
-        let cleared_everywhere = branches.first().map_or(Vec::new(), |first| {
-            let cleared = first.entries.iter().filter(|(path, _)| cleared_in(first, path));
-            let cleared = cleared.filter(|(path, _)| branches[1..].iter().all(|branch| cleared_in(branch, path)));
-            mapvec(cleared, |(path, _)| path.clone())
+        let Some(first) = branches.first() else { return };
+        let cleared = first.entries.keys().filter_map(|path| {
+            // `None` sorts first, so this is only `Some` if every branch reassigned `path`
+            let earliest = branches.iter().map(|branch| cleared_in(branch, path)).min()??;
+            Some((path.clone(), earliest))
         });
+        let cleared_everywhere: Vec<_> = cleared.collect();
 
-        for path in &cleared_everywhere {
-            self.clear_moves(path);
+        for (path, tick) in &cleared_everywhere {
+            self.clear_moves_at(path, *tick);
         }
 
         let parent = self.scopes.last_mut().unwrap();
@@ -195,6 +248,7 @@ impl MoveTracker {
                     parent.insert_moved(path, location);
                 }
             }
+            parent.mutations.extend(branch.mutations);
         }
     }
 }
@@ -205,10 +259,9 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         if let Some(name) = self.copy_type_name {
             return name;
         }
-        let exported_types = ExportedTypes(SourceFileId::prelude()).get(self.compiler);
-        let top_level_name = exported_types.get(&Arc::new("Copy".to_string())).expect("Copy type not found in Prelude");
-        self.copy_type_name = Some(*top_level_name);
-        *top_level_name
+        let name = prelude_type_name(self.compiler, "Copy");
+        self.copy_type_name = Some(name);
+        name
     }
 
     /// Types that are `Copy` without needing to find a `Copy` impl
@@ -219,11 +272,13 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             // for functions in the stdlib because we can't manually access a closure's environment
             // and we can't define every copy impl for every possible parameter count.
             Type::Function(_) => true,
-            // `ref` and `imm` references are always Copy, see `copy_ref` and `copy_imm`
+            // `ref`, `mut`, and `imm` references are always Copy, see `copy_ref`, `copy_mut`, and `copy_imm`
             Type::Application(constructor, _)
                 if matches!(
                     constructor.follow(&self.bindings),
-                    Type::Primitive(PrimitiveType::Reference(ReferenceKind::Ref | ReferenceKind::Imm))
+                    Type::Primitive(PrimitiveType::Reference(
+                        ReferenceKind::Ref | ReferenceKind::Mut | ReferenceKind::Imm
+                    ))
                 ) =>
             {
                 true

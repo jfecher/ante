@@ -58,14 +58,14 @@ main () =
 //     | Rect F64 F64
 //     with (name: (error)): String
 // 
-// (set_some: fn (mut 'b (Maybe String)) -> Unit is pure) (b: mut 'b (Maybe String)) =
-//     (match_var7: (error)) = (b: mut 'b (Maybe String))
-//     switch (match_var7: mut 'b (Maybe String))
+// (set_some: fn (mut 'b (Maybe String)) -> Unit can Mutate 'b!) (b: mut 'b (Maybe String)) =
+//     (match_var5: (error)) = (b: mut 'b (Maybe String))
+//     switch (match_var5: mut 'b (Maybe String))
 //     | 0 -> 
-//             (_: mut 'b (Maybe String)) = (match_var7: mut 'b (Maybe String))
+//             (_: mut 'b (Maybe String)) = (match_var5: mut 'b (Maybe String))
 //             ()
-//     | 1, (match_var8: mut 'b! String) -> 
-//             (s: mut 'b! String) = (match_var8: mut 'b! String)
+//     | 1, (match_var6: mut 'b! String) -> 
+//             (s: mut 'b! String) = (match_var6: mut 'b! String)
 //             
 //                 
 //                     (s: mut 'b! String) := "changed"
@@ -127,26 +127,26 @@ main () =
 //                 (whole: ref 'm (Maybe I32)) = (match_var8: ref 'm (Maybe I32))
 //                 (whole: ref 'm (Maybe I32)) (,: fn (ref 'm (Maybe I32)) (ref 'm! I32) -> (ref 'm (Maybe I32)), (ref 'm! I32) is pure) (x: ref 'm! I32)
 // 
-// (literal: fn (ref I32) -> Bool is pure) (r: ref I32): Bool is pure =
-//     (match_var2: (error)) = (r: ref I32)
-//     switch (match_var2: ref I32)
+// (literal: fn (ref 'r I32) -> Bool is pure) (r: ref 'r I32): Bool is pure =
+//     (match_var2: (error)) = (r: ref 'r I32)
+//     switch (match_var2: ref 'r I32)
 //     | 0 -> true
 //     | _ -> 
-//             (_: ref I32) = (match_var2: ref I32)
+//             (_: ref 'r I32) = (match_var2: ref 'r I32)
 //             false
 // 
 // (parameter: fn (mut 'p (I32, I32)) -> mut 'p I32 is pure) ((,: fn I32 I32 -> I32, I32 is pure) (a: mut 'p I32) (_: mut 'p I32): mut 'p I32, I32) = (a: mut 'p I32)
 // 
-// (inferred: fn (ref (Maybe String)) (ref String) -> ref String is pure) (m: ref (Maybe String)) (default: ref String) =
-//     (match_var8: (error)) = (m: ref (Maybe String))
-//     switch (match_var8: ref (Maybe String))
-//     | 0 -> (default: ref String)
-//     | 1, (match_var9: ref String) -> 
-//             (s: ref String) = (match_var9: ref String)
-//             (s: ref String)
+// (inferred: fn (ref 'm (Maybe String)) (ref 'default String) -> ref '(default, m!) String is pure) (m: ref 'm (Maybe String)) (default: ref 'default String) =
+//     (match_var8: (error)) = (m: ref 'm (Maybe String))
+//     switch (match_var8: ref 'm (Maybe String))
+//     | 0 -> (default: ref 'default String)
+//     | 1, (match_var9: ref 'm! String) -> 
+//             (s: ref 'm! String) = (match_var9: ref 'm! String)
+//             (s: ref 'm! String)
 // 
 // (main: fn Unit -> Unit is pure) () =
 //     (m: Maybe String) = (Maybe.Some: fn String -> Maybe String is pure) "x"
 //     (default: String) = "y"
-//     (_s: ref '(m!, default) String) = (inferred: fn (ref 'm (Maybe String)) (ref '(m!, default) String) -> ref '(m!, default) String is pure) (ref (m: Maybe String)) (ref (default: String))
+//     (_s: ref '(m!, default) String) = (inferred: fn (ref 'm (Maybe String)) (ref 'default String) -> ref '(m!, default) String is pure) (ref (m: Maybe String)) (ref (default: String))
 

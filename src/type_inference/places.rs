@@ -16,11 +16,16 @@ use crate::{
     shared_arc::Shared,
     type_inference::{
         TypeChecker,
-        row::{RowKind, RowMatch, RowMode, canonicalize_row, construct_row, flatten_row_into},
+        row::{RowKind, RowMatch, RowMode, canonicalize_row, construct_row, flatten_row_into, is_open},
     },
 };
 
-use super::types::{Type, TypeBindings, TypePrinter, TypeVariableId};
+use super::{
+    TypeErrorKind,
+    free_variables::FreeVars,
+    generics::Generic,
+    types::{FunctionType, Type, TypeBindings, TypePrinter, TypeVariableId},
+};
 
 /// Anonymous references record the scope depth they're valid in for escape analysis
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -39,12 +44,23 @@ pub enum PlaceRoot {
     Anonymous(ExprId, ScopeDepth),
 }
 
-/// A concrete place a reference may point to, like `x.a!.b`
+/// What any places row entry is rooted in, including generic and unbound places
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum EntryRoot {
+    Concrete(PlaceRoot),
+    Generic(Generic),
+    Unbound(TypeVariableId),
+}
+
+/// A place a reference may point to, like `x.a!.b`. Concrete unless `R` is [EntryRoot].
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct Place {
-    pub root: PlaceRoot,
+pub struct Place<R = PlaceRoot> {
+    pub root: R,
     pub segments: Vec<PlaceSegment>,
 }
+
+/// Any places row entry, which may be rooted in a generic or unbound place
+pub type PlaceEntry = Place<EntryRoot>;
 
 impl Place {
     pub fn variable(name: NameId) -> Place {
@@ -75,27 +91,6 @@ impl Place {
         self
     }
 
-    /// Check if `self` is a descendant of `ancestor` but is not itself the ancestor.
-    /// E.g. `x.a.b` is a descendant of `x.a` and `x`, but not of `x.a.b`.
-    pub fn is_descendant_of(&self, ancestor: &Place) -> bool {
-        self.root == ancestor.root
-            && self.segments.len() > ancestor.segments.len()
-            && self.segments.starts_with(&ancestor.segments)
-    }
-
-    /// True if mutating `mutated` may invalidate a reference to `self`
-    pub fn invalidated_by(&self, mutated: &Place) -> bool {
-        if self.root != mutated.root {
-            return false;
-        }
-        let common = self.segments.iter().zip(&mutated.segments).take_while(|(a, b)| a == b).count();
-        match (self.segments.get(common), mutated.segments.get(common)) {
-            (None, _) => false,
-            (Some(_), None) => self.segments[common..].contains(&PlaceSegment::Unstable),
-            (Some(segment), Some(_)) => *segment == PlaceSegment::Unstable,
-        }
-    }
-
     /// Build a display name for error messages
     pub fn display_name(&self, names: &impl NameStore) -> String {
         let root = match self.root {
@@ -107,6 +102,81 @@ impl Place {
             PlaceRoot::Anonymous(expr, _) => format!("_{}", expr.index()),
         };
         format!("{root}{}", Segments(&self.segments))
+    }
+}
+
+impl PlaceEntry {
+    /// Split a flattened places row entry into its root and segments
+    pub fn new(entry: &Type) -> Option<PlaceEntry> {
+        let (root, segments) = match entry {
+            Type::Place(place) => (EntryRoot::Concrete(place.root), place.segments.clone()),
+            Type::PlaceProjection(base, segments) => match base.as_ref() {
+                Type::Generic(generic) => (EntryRoot::Generic(*generic), segments.to_vec()),
+                Type::Variable(id) => (EntryRoot::Unbound(*id), segments.to_vec()),
+                _ => return None,
+            },
+            Type::Generic(generic) => (EntryRoot::Generic(*generic), Vec::new()),
+            Type::Variable(id) => (EntryRoot::Unbound(*id), Vec::new()),
+            _ => return None,
+        };
+        Some(Place { root, segments })
+    }
+
+    /// This entry as a [Place], if it is concrete
+    pub fn concrete(self) -> Option<Place> {
+        match self.root {
+            EntryRoot::Concrete(root) => Some(Place { root, segments: self.segments }),
+            _ => None,
+        }
+    }
+}
+
+impl From<Place> for PlaceEntry {
+    fn from(place: Place) -> Self {
+        Place { root: EntryRoot::Concrete(place.root), segments: place.segments }
+    }
+}
+
+impl<R: PartialEq> Place<R> {
+    /// Check if `self` is a descendant of `ancestor` but is not itself the ancestor.
+    /// E.g. `x.a.b` is a descendant of `x.a` and `x`, but not of `x.a.b`.
+    pub fn is_descendant_of(&self, ancestor: &Self) -> bool {
+        self.root == ancestor.root
+            && self.segments.len() > ancestor.segments.len()
+            && self.segments.starts_with(&ancestor.segments)
+    }
+
+    /// True if `self` is a descendant of `place` reached only through fields, like `x.a.b` from `x`
+    pub fn is_field_of(&self, place: &Self) -> bool {
+        self.is_descendant_of(place) && !self.segments[place.segments.len()..].contains(&PlaceSegment::Unstable)
+    }
+
+    /// True if `self` is `place` or one of its descendants
+    pub fn is_within(&self, place: &Self) -> bool {
+        self == place || self.is_descendant_of(place)
+    }
+
+    /// True if `self` and `place` may refer to the same memory
+    pub fn overlaps(&self, place: &Self) -> bool {
+        self.is_within(place) || place.is_within(self)
+    }
+
+    /// True if mutating `mutated` may invalidate a reference to `self`
+    pub fn invalidated_by(&self, mutated: &Self) -> bool {
+        if self.root != mutated.root {
+            return false;
+        }
+        let common = self.segments.iter().zip(&mutated.segments).take_while(|(a, b)| a == b).count();
+        match (self.segments.get(common), mutated.segments.get(common)) {
+            (None, _) => false,
+            (Some(_), None) => self.segments[common..].contains(&PlaceSegment::Unstable),
+            (Some(segment), Some(_)) => *segment == PlaceSegment::Unstable,
+        }
+    }
+
+    /// True if `self` contains a `!`
+    pub fn is_unstable(&self) -> bool {
+        self.segments.contains(&PlaceSegment::Unstable)
     }
 }
 
@@ -214,12 +284,21 @@ where
 
 impl<'local, 'inner> TypeChecker<'local, 'inner> {
     /// Flattens two places rows and matches `a`'s concrete places against `b`'s
-    fn match_places(&self, a: &Type, b: &Type, new_bindings: &TypeBindings) -> Option<RowMatch> {
-        let a_list = self.collect_and_merge_places(a, new_bindings);
+    fn match_places(&self, a: &Type, b: &Type, row_mode: RowMode, new_bindings: &TypeBindings) -> Option<RowMatch> {
+        let mut a_list = self.collect_and_merge_places(a, new_bindings);
         let b_list = self.collect_and_merge_places(b, new_bindings);
 
         if a_list.iter().chain(b_list.iter()).any(|place| place.is_error()) {
             return None;
+        }
+
+        // A place is a subtype of any stable place containing it, like `'m.value <: 'm`
+        if row_mode == RowMode::Coercible {
+            let b_entries: Vec<_> = b_list.iter().filter_map(PlaceEntry::new).collect();
+            a_list.retain(|a_place| {
+                let a_place = PlaceEntry::new(a_place);
+                !a_place.is_some_and(|a_place| b_entries.iter().any(|b_place| a_place.is_field_of(b_place)))
+            });
         }
 
         Some(Self::match_row_entries(a_list, b_list, |a_place, b_place| a_place == b_place))
@@ -227,7 +306,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     /// Row-subtype two places rows: is `a`'s actual set of places permitted by `b`'s expected set?
     pub(super) fn place_subtype(&self, a: &Type, b: &Type, new_bindings: &mut TypeBindings) -> Result<(), ()> {
-        let Some(mut m) = self.match_places(a, b, new_bindings) else { return Ok(()) };
+        let Some(mut m) = self.match_places(a, b, RowMode::Coercible, new_bindings) else { return Ok(()) };
         if m.b_open.is_empty() {
             self.absorb_into_projections(&mut m.b_leftover, &mut m.a_leftover, RowMode::Coercible, new_bindings)?;
             self.bind_projections(&mut m.a_leftover, &m.b_leftover, new_bindings)?;
@@ -331,7 +410,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     /// Unify two places rows: both must end up with the same set of places.
     pub(super) fn place_unify(&self, a: &Type, b: &Type, new_bindings: &mut TypeBindings) -> Result<(), ()> {
-        let Some(mut m) = self.match_places(a, b, new_bindings) else { return Ok(()) };
+        let Some(mut m) = self.match_places(a, b, RowMode::Exact, new_bindings) else { return Ok(()) };
         if m.b_open.is_empty() {
             self.absorb_into_projections(&mut m.b_leftover, &mut m.a_leftover, RowMode::Exact, new_bindings)?;
         }
@@ -367,6 +446,189 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }
     }
 
+    /// `Mutate places`
+    pub(super) fn mutate_effect(&self, places: Type) -> Type {
+        let mutate = Type::UserDefined(Origin::TopLevelDefinition(self.mutate_name));
+        Type::Application(Shared::new(mutate), Shared::new(vec![places]))
+    }
+
+    /// If `effect` is `Mutate 'p`, return `'p`
+    pub(super) fn mutated_places(&self, effect: &Type) -> Option<Type> {
+        let Type::Application(constructor, args) = effect.follow(&self.bindings) else { return None };
+        match constructor.follow(&self.bindings) {
+            Type::UserDefined(Origin::TopLevelDefinition(name)) if *name == self.mutate_name => args.first().cloned(),
+            _ => None,
+        }
+    }
+
+    /// Every place mutated by a `Mutate` effect in the effect row `effects`
+    pub(super) fn mutated_entries(&self, effects: &Type) -> Vec<PlaceEntry> {
+        let effects = self.collect_effects(effects, &TypeBindings::default());
+        let mutated = effects.iter().filter_map(|effect| self.mutated_places(effect));
+        mutated.flat_map(|places| self.place_entries(&places)).collect()
+    }
+
+    /// Split `effects` into the row that applies now and the entries only this function's boundary can decide
+    pub(super) fn split_deferred_effects(&self, effects: &Type) -> (Type, Vec<Type>) {
+        let none = TypeBindings::default();
+        let mut now = Vec::new();
+        let mut deferred = Vec::new();
+        for entry in self.collect_effects(effects, &none) {
+            match (self.mutated_places(&entry), entry) {
+                (Some(places), _) => {
+                    // A generic place is named by a signature, so it is never local
+                    let places = self.collect_and_merge_places(&places, &none);
+                    let (generic, local) = places.into_iter().partition(|place| {
+                        PlaceEntry::new(place).is_some_and(|place| matches!(place.root, EntryRoot::Generic(_)))
+                    });
+                    self.push_mutate(&mut now, self.unmutated_places(generic, &self.current_effect_row));
+                    self.push_mutate(&mut deferred, local);
+                },
+                (None, entry @ Type::Variable(_)) => deferred.push(entry),
+                (None, entry) => now.push(entry),
+            }
+        }
+        (Type::effects(&now, &self.bindings, &none), deferred)
+    }
+
+    /// Push `Mutate places` onto `effects` unless `places` is empty
+    fn push_mutate(&self, effects: &mut Vec<Type>, places: Vec<Type>) {
+        if !places.is_empty() {
+            effects.push(self.mutate_effect(Type::places(&places, &self.bindings, &TypeBindings::default())));
+        }
+    }
+
+    /// Each of `places` not within a place `effects` already mutates
+    fn unmutated_places(&self, mut places: Vec<Type>, effects: &Type) -> Vec<Type> {
+        if places.is_empty() {
+            return places;
+        }
+        let mutated = self.mutated_entries(effects);
+        places.retain(|place| !PlaceEntry::new(place).is_some_and(|place| mutated.iter().any(|m| place.is_within(m))));
+        places
+    }
+
+    /// Apply a body's deferred effects to its function's row, handling `Mutate`s of places it doesn't mention
+    pub(super) fn discharge_effects(
+        &mut self, deferred: Vec<Type>, function: &FunctionType, lambda: ExprId, implicits_delayed: bool,
+    ) {
+        if deferred.is_empty() {
+            return;
+        }
+        let none = TypeBindings::default();
+        let row = self.collect_effects(&function.effects, &none);
+        let closed = !row.iter().any(is_open);
+
+        let mut mentioned = None;
+        let mut kept = Vec::new();
+        for entry in Type::canonicalize_effects(&deferred, &self.bindings, &none) {
+            match (self.mutated_places(&entry), entry) {
+                (Some(places), _) => {
+                    let mentioned = mentioned.get_or_insert_with(|| self.mentioned_places(function, lambda));
+                    let mut places = self.collect_and_merge_places(&places, &none);
+                    // A closed row can't name an inferred place, as in a trait method's parameter
+                    places.retain(|place| {
+                        PlaceEntry::new(place).is_some_and(|place| {
+                            mentioned.iter().any(|m| place.overlaps(m))
+                                && !(closed && matches!(place.root, EntryRoot::Unbound(_)))
+                        })
+                    });
+                    self.push_mutate(&mut kept, self.unmutated_places(places, &function.effects));
+                },
+                // Against a closed row, an open end nothing bound performs nothing
+                (None, Type::Variable(id)) if closed && !implicits_delayed => {
+                    let location = self.current_context().expr_location(lambda).clone();
+                    self.try_default_effect_to_pure(id, location);
+                },
+                (None, entry) => kept.push(entry),
+            }
+        }
+        let kept = Type::effects(&kept, &self.bindings, &none);
+        self.unify(&kept, &function.effects, TypeErrorKind::Effects, lambda);
+    }
+
+    /// Every place a function's type mentions, including those of each variable it captures
+    fn mentioned_places(&self, function: &FunctionType, lambda: ExprId) -> Vec<PlaceEntry> {
+        let mut captures = FreeVars::default();
+        captures.find_free_variables(lambda, self);
+
+        let mut entries = Vec::new();
+        for parameter in &function.parameters {
+            self.collect_place_entries(&parameter.typ, &mut entries);
+        }
+        self.collect_place_entries(&function.return_type, &mut entries);
+        for name in &captures.free_vars {
+            entries.push(self.binding_place(*name).into());
+            if let Some(typ) = self.name_types.get(name) {
+                self.collect_place_entries(typ, &mut entries);
+            }
+        }
+        entries
+    }
+
+    /// Recursively collect every places row entry reachable from `typ`
+    pub(super) fn collect_place_entries(&self, typ: &Type, out: &mut Vec<PlaceEntry>) {
+        match typ.follow(&self.bindings) {
+            // A reference's place may also be a lone generic or variable
+            Type::Application(constructor, args)
+                if args.len() == 2 && constructor.reference_constructor(&self.bindings).is_some() =>
+            {
+                out.extend(self.place_entries(&args[0]));
+                self.collect_place_entries(&args[1], out);
+            },
+            Type::Application(constructor, args) => {
+                self.collect_place_entries(constructor, out);
+                for arg in args.iter() {
+                    self.collect_place_entries(arg, out);
+                }
+            },
+            Type::Tuple(elements) => {
+                for element in elements.iter() {
+                    self.collect_place_entries(element, out);
+                }
+            },
+            Type::Places(_) | Type::Place(_) | Type::PlaceProjection(..) => out.extend(self.place_entries(typ)),
+            Type::Forall(_, typ) => self.collect_place_entries(typ, out),
+            // Mutating a place doesn't need it to still be alive
+            Type::Effects(effects) => {
+                if let Some(effects) = effects.as_ref() {
+                    for effect in effects.iter() {
+                        if self.mutated_places(effect).is_none() {
+                            self.collect_place_entries(effect, out);
+                        }
+                    }
+                }
+            },
+            // A function holds its environment's places plus whatever its result may refer to
+            Type::Function(function) => {
+                self.collect_place_entries(&function.environment, out);
+                self.collect_place_entries(&function.effects, out);
+
+                // TODO: This keeps tests working but seems like a hack, investigate further
+                let mut supplied = Vec::new();
+                for parameter in &function.parameters {
+                    self.collect_place_entries(&parameter.typ, &mut supplied);
+                }
+                let mut returned = Vec::new();
+                self.collect_place_entries(&function.return_type, &mut returned);
+                out.extend(returned.into_iter().filter(|entry| !supplied.contains(entry)));
+            },
+            Type::Primitive(_) | Type::Generic(_) | Type::Variable(_) | Type::UserDefined(_) | Type::U32(_) => (),
+        }
+    }
+
+    /// Every entry of the places row `places`
+    pub(super) fn place_entries(&self, places: &Type) -> Vec<PlaceEntry> {
+        let mut flattened = Vec::new();
+        Type::flatten_places_into(
+            std::slice::from_ref(places),
+            &mut flattened,
+            &self.bindings,
+            &TypeBindings::default(),
+        );
+        flattened.iter().filter_map(PlaceEntry::new).collect()
+    }
+
     /// Returns the set of places a reference to the given expression may refer to.
     /// This is generally either a single variable or an anonymous place.
     pub(super) fn infer_place(&self, expr: ExprId) -> Type {
@@ -381,7 +643,13 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                 match self.expr_types.get(&object) {
                     // Object is already a reference
                     Some(t) if t.reference_element(&self.bindings).is_some() => {
-                        t.reference_places(&self.bindings).unwrap_or_else(|| self.next_type_variable())
+                        match t.reference_places(&self.bindings) {
+                            Some(places) => {
+                                let field = [PlaceSegment::Field(access.member.clone())];
+                                Type::project_place(&places, &field, &self.bindings, &TypeBindings::default())
+                            },
+                            None => self.next_type_variable(),
+                        }
                     },
                     _ => match self.try_build_move_path(expr) {
                         Some(path) => self.open_place(path),
@@ -554,22 +822,6 @@ pub enum PlaceElision<'a> {
     Ambiguous,
 }
 
-/// Does `typ` contain at least one `ImplicitPlace`?
-///
-/// TODO: Kinds for type variables aren't tracked yet so only places on reference types are
-/// checked at the moment.
-pub fn cst_type_has_elided_place(typ: &cst::Type) -> bool {
-    match &typ.kind {
-        cst::TypeKind::Application(f, args) => {
-            let is_elided_ref_place = matches!(f.kind, cst::TypeKind::Reference(_))
-                && args.first().is_some_and(|arg| matches!(arg.kind, cst::TypeKind::ImplicitPlace));
-            is_elided_ref_place || args.iter().any(cst_type_has_elided_place)
-        },
-        cst::TypeKind::Tuple(elements) => elements.iter().any(cst_type_has_elided_place),
-        _ => false,
-    }
-}
-
 /// What a written place refers to, used to tell whether two written places are the same
 type PlaceKey<'a> = Vec<(Option<Origin>, &'a [PlaceSegment])>;
 
@@ -682,6 +934,16 @@ mod tests {
         assert!(!invalidates("x.a", "x.b"));
         assert!(!invalidates("x.b", "x.a!"));
         assert!(invalidates("x.a.b", "x.a!"));
+    }
+
+    #[test]
+    fn fields_of_a_place() {
+        assert!(place("x.a").is_field_of(&place("x")));
+        assert!(place("x!.a.b").is_field_of(&place("x!")));
+        assert!(!place("x!").is_field_of(&place("x")));
+        assert!(!place("x.a!").is_field_of(&place("x")));
+        assert!(!place("x").is_field_of(&place("x")));
+        assert!(!place("y.a").is_field_of(&place("x")));
     }
 
     #[test]

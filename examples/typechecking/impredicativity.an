@@ -44,8 +44,8 @@ a7 = choose id auto
 //     (f: fn a -> a can _) 42 (,: fn a a -> a, a is pure) (f: fn a -> a can _) true
 // 
 // (f9: _) =
-//     (f: fn (fn (fn _ -> _ is pure) -> _, _ is pure) [_] -> _ is pure) = (revapp: fn _ [_] -> (fn (fn (fn _ -> _ is pure) -> _, _ is pure) [_] -> _ is pure) is pure) (error)
-//     (f: fn (fn (fn _ -> _ is pure) -> _, _ is pure) [_] -> _ is pure) (poly: fn (fn _ -> _ is pure) -> _, _ is pure)
+//     (f: fn (fn (fn _ -> _ is pure) -> _, _ is pure) [_] -> _ can _) = (revapp: fn _ [_] -> (fn (fn (fn _ -> _ is pure) -> _, _ is pure) [_] -> _ can _) can _) (error)
+//     (f: fn (fn (fn _ -> _ is pure) -> _, _ is pure) [_] -> _ can _) (poly: fn (fn _ -> _ is pure) -> _, _ is pure)
 // 
 // (choose: fn a a -> a is pure) (x: a) (_y: a) = (x: a)
 // 

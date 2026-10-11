@@ -1,0 +1,102 @@
+// A place a function mutates may not alias any of its other places
+import Std.Vec.Vec, of, get, clear
+import Std.Stream.stream_array
+import Std.Fail.Fail
+
+use (_x: ref t): Unit = ()
+
+twice (f: fn a a => Unit can e) (x: a) {Copy a}: Unit can e =
+    f x x
+
+mutate_b (a: mut 'a Vec I32) (b: mut 'b Vec I32): Unit can Mutate 'b =
+    use a
+    b.clear ()
+
+bad1 () =
+    var v = Vec.of [1, 2, 3]
+    twice mutate_b (mut v)
+
+run (f: Unit can e) (xs: ref Vec I32): Unit can e, Fail =
+    first = xs.get 0
+    f ()
+    use first
+
+bad2 () =
+    var v = Vec.of [1, 2, 3]
+    run (fn () -> v.clear ()) (ref v)
+
+ok2 () =
+    var v = Vec.of [1, 2, 3]
+    other = Vec.of [4]
+    run (fn () -> v.clear ()) (ref other)
+
+bad3 () =
+    var v = Vec.of [1, 2, 3]
+    clear_v = fn () -> v.clear ()
+    run clear_v (ref v)
+
+two_args (a: ref 'a Vec I32) (b: mut 'b Vec I32): Unit can Mutate 'b, Fail =
+    a_elem = a.get 0
+    b.clear ()
+    use a_elem
+
+two_args2 (a: mut _) b =
+    two_args a b
+
+bad4 (v: mut Vec I32) =
+    two_args v v
+
+bad5 (p: mut (Vec I32, Vec I32)) =
+    two_args p.first p.first
+
+bad6 v =
+    two_args2 v v
+
+ok3 (p: mut (Vec I32, Vec I32)) =
+    two_args p.first p.second
+
+ok4 () =
+    var pair = Vec.of [1], Vec.of [2]
+    two_args pair.first (mut pair.second)
+
+// args: --check --no-color
+// expected exit status: 1
+// expected stderr:
+// examples/typechecking/borrows/distinct_places.an:17:11
+// 16 |     var v = Vec.of [1, 2, 3]
+//    |     // error: 'a cannot alias 'b in this use of mutate_b, but 'v was used for both
+// 17 |     twice mutate_b (mut v)
+//    |           ^^^^^^^^
+// 
+// examples/typechecking/borrows/distinct_places.an:26:5
+// 25 |     var v = Vec.of [1, 2, 3]
+//    |     // error: 'xs cannot alias a place mutated by e in this use of run, but 'v was used for both
+// 26 |     run (fn () -> v.clear ()) (ref v)
+//    |     ^^^
+// 
+// examples/typechecking/borrows/distinct_places.an:36:5
+// 35 |     clear_v = fn () -> v.clear ()
+//    |     // error: 'xs cannot alias a place mutated by e in this use of run, but 'v was used for both
+// 36 |     run clear_v (ref v)
+//    |     ^^^
+// 
+// examples/typechecking/borrows/distinct_places.an:47:5
+// 46 | bad4 (v: mut Vec I32) =
+//    |     // error: 'a cannot alias 'b in this use of two_args, but 'v was used for both
+// 47 |     two_args v v
+//    |     ^^^^^^^^
+// 
+// examples/typechecking/borrows/distinct_places.an:50:5
+// 49 | bad5 (p: mut (Vec I32, Vec I32)) =
+//    |     // error: 'a cannot alias 'b in this use of two_args, but 'p.first was used for both
+// 50 |     two_args p.first p.first
+//    |     ^^^^^^^^
+// 
+// examples/typechecking/borrows/distinct_places.an:53:5
+// 52 | bad6 v =
+//    |     // error: 'a cannot alias an inferred place in this use of two_args2, but both may refer to the same place
+// 53 |     two_args2 v v
+//    |     ^^^^^^^^^
+// 
+// Found 6 errors and 0 warnings
+

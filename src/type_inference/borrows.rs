@@ -17,16 +17,19 @@
 //! are merged and check at the end of each loop to ensure each variable moved was declared within
 //! the loop body.
 //! - On each scope exit, we check each variable only mentions places from that scope or prior.
+//! - Each mutation is recorded like a move. Using a value with an unstable reference like
+//! `elem: ref 'v! t` is an error if `v` was mutated since the value's holder was assigned.
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
-    diagnostics::{Diagnostic, RepeatedContext},
+    diagnostics::{Diagnostic, Location, RepeatedContext},
+    incremental::{GetItem, GetType},
     iterator_extensions::mapvec,
     name_resolution::Origin,
     parser::{
-        cst::{self, Expr, Pattern},
-        ids::{ExprId, NameId, PathId, PatternId},
+        cst::{self, Expr, KindAnnotation, Pattern},
+        ids::{ExprId, NameId, NameStore, PathId, PatternId, TopLevelName},
     },
     type_inference::{
         Locateable, TypeChecker,
@@ -36,9 +39,10 @@ use crate::{
 
 use super::{
     free_variables::FreeVars,
+    generics::Generic,
     patterns::WILDCARD_PATTERN,
-    places::{Place, PlaceRoot, ScopeDepth},
-    types::{Type, TypeBindings},
+    places::{EntryRoot, Place, PlaceEntry, PlaceRoot, ScopeDepth},
+    types::{GenericSubstitutions, PrimitiveType, Type, TypeBindings},
 };
 
 impl<'local, 'inner> TypeChecker<'local, 'inner> {
@@ -48,6 +52,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             name_depths: FxHashMap::default(),
             function_depth: None,
             reported_escapes: FxHashSet::default(),
+            uses: Vec::new(),
             binding_places: FxHashMap::default(),
             borrow_sites: Vec::new(),
             parents: FxHashMap::default(),
@@ -69,6 +74,9 @@ struct BorrowChecker<'a, 'local, 'inner> {
 
     /// Used so we only issue an error for each [Place] once
     reported_escapes: FxHashSet<Place>,
+
+    /// The first use of each holder of unstable references within each enclosing loop or lambda body
+    uses: Vec<Uses>,
 
     /// The places reachable from each binding whose type mentions any.
     /// Bindings with no places are left out to avoid unnecessary iterations over this later.
@@ -108,14 +116,14 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
                 self.check_outer_bindings(new_depth);
             },
             Expr::Definition(definition) => {
-                self.record_name_depths_in_pattern(definition.pattern, depth);
                 self.walk_expr(definition.rhs, depth, check_move, record_move);
+                self.record_name_depths_in_pattern(definition.pattern, depth);
             },
             Expr::If(if_) => self.walk_if(&if_, depth, check_move, record_move),
             Expr::Match(match_) => self.walk_match(&match_, depth, check_move, record_move),
             Expr::Lambda(_) => {
                 self.borrow_sites.push(expr);
-                self.walk_lambda(expr, depth, None, None)
+                self.walk_lambda(expr, depth, None, Some(RepeatedContext::Closure))
             },
             Expr::While(while_) => self.walk_while(&while_, depth, check_move, record_move),
             Expr::For(for_) => self.walk_for(&for_, depth, check_move, record_move),
@@ -128,7 +136,7 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
                     // return outside of a function, name resolution should already error here
                 }
             },
-            Expr::Assignment(assignment) => self.walk_assignment(&assignment, depth, check_move, record_move),
+            Expr::Assignment(assignment) => self.walk_assignment(&assignment, expr, depth, check_move, record_move),
             Expr::Reference(reference) => {
                 self.borrow_sites.push(expr);
                 self.walk_expr(reference.rhs, depth, check_move, false)
@@ -142,6 +150,8 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
                 for arg in &call.arguments {
                     self.walk_expr(arg.expr, depth, check_move, record_move);
                 }
+                let mutated = self.call_mutated_places(call.function);
+                self.record_mutation(mutated, expr);
             },
             Expr::TypeAnnotation(annotation) => self.walk_expr(annotation.lhs, depth, check_move, record_move),
             Expr::Constructor(constructor) => {
@@ -168,8 +178,15 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
         self.name_depths.insert(name, depth);
 
         let Some(typ) = self.tc.name_types.get(&name) else { return };
-        let mut places = Vec::new();
-        self.collect_place_atoms(typ, &mut places);
+        let mut entries = Vec::new();
+        self.tc.collect_place_entries(typ, &mut entries);
+
+        // Mutations before now can't invalidate this binding's references
+        if !entries.is_empty() {
+            self.moves.clear_moves(&self.tc.binding_place(name));
+        }
+
+        let places: Vec<_> = entries.into_iter().filter_map(PlaceEntry::concrete).collect();
         if !places.is_empty() {
             self.binding_places.insert(name, places);
         }
@@ -246,14 +263,9 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
     fn reference_target_depth(&self, lhs: ExprId) -> Option<ScopeDepth> {
         let typ = self.tc.expr_types.get(&lhs)?;
         let places = typ.reference_places(&self.tc.bindings)?;
-        let mut flattened = Vec::new();
-        let places = std::slice::from_ref(&places);
-        Type::flatten_places_into(places, &mut flattened, &self.tc.bindings, &TypeBindings::default());
-        let depths = flattened.into_iter().filter_map(|entry| match entry {
-            Type::Place(atom) => self.atom_depth(&atom),
-            _ => None,
-        });
-        depths.min()
+        let mut atoms = Vec::new();
+        self.collect_place_atoms(&places, &mut atoms);
+        atoms.iter().filter_map(|atom| self.atom_depth(atom)).min()
     }
 
     /// The scope depth `atom` is valid for, if known.
@@ -330,7 +342,7 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
             let mut current = Some(origin);
             while let Some(expr) = current {
                 let row = self.tc.expr_types.get(&expr).and_then(|typ| self.row_carrying(typ, atom));
-                if row.as_ref() == Some(&target) {
+                if row.is_some_and(|row| is_subrow(&row, &target)) {
                     return Some(expr);
                 }
                 current = self.parents.get(&expr).copied();
@@ -360,7 +372,7 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
                         .expr_types
                         .get(arg)
                         .and_then(|typ| self.row_carrying(typ, atom))
-                        .is_some_and(|row| row == target)
+                        .is_some_and(|row| is_subrow(&row, target))
             });
 
             if stored.is_some() {
@@ -377,7 +389,7 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
         match self.tc.resolved_expr(expr).as_ref() {
             Expr::Reference(reference) => {
                 let row = self.tc.infer_place(reference.rhs);
-                self.collect_place_atoms_row(&row, &mut places);
+                self.collect_place_atoms(&row, &mut places);
             },
             Expr::Lambda(_) => {
                 if let Some(typ) = self.tc.expr_types.get(&expr)
@@ -499,87 +511,215 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
 
     /// Recursively collect every concrete [Place] reachable from `typ`
     fn collect_place_atoms(&self, typ: &Type, out: &mut Vec<Place>) {
-        match typ.follow(&self.tc.bindings) {
+        let mut entries = Vec::new();
+        self.tc.collect_place_entries(typ, &mut entries);
+        out.extend(entries.into_iter().filter_map(PlaceEntry::concrete));
+    }
+
+    /// Record that `mutated` was mutated at `locator`
+    fn record_mutation(&mut self, mutated: Vec<PlaceEntry>, locator: impl Locateable) {
+        if !mutated.is_empty() {
+            let location = locator.locate(self.tc);
+            self.moves.record_mutation(mutated, location);
+        }
+    }
+
+    /// The places in each `Mutate` effect calling `function` performs
+    fn call_mutated_places(&self, function: ExprId) -> Vec<PlaceEntry> {
+        match self.tc.expr_types.get(&function).map(|typ| typ.follow(&self.tc.bindings)) {
+            Some(Type::Function(function)) => self.tc.mutated_entries(&function.effects),
+            _ => Vec::new(),
+        }
+    }
+
+    /// Error if a place `name` mutates is instantiated at `path` to one overlapping another of its place generics
+    fn check_mutated_places_distinct(&mut self, path: PathId, name: TopLevelName) {
+        let Some(instantiation) = self.tc.current_extended_context().get_instantiation(path) else { return };
+        let Type::Forall(generics, body) = GetType(name).get(self.tc.compiler) else { return };
+        let Type::Function(function) = body.as_ref() else { return };
+        let substitutions: GenericSubstitutions = generics.iter().copied().zip(instantiation.iter().cloned()).collect();
+
+        let mut mutated = Vec::new();
+        let mut effect_mutations = Vec::new();
+        for effect in self.tc.collect_effects(&function.effects, &TypeBindings::default()) {
+            match (self.tc.mutated_places(&effect), effect) {
+                (Some(places), _) => self.collect_place_generics_in_row(&places, &mut mutated),
+                (None, Type::Generic(generic)) => {
+                    let places = self.tc.mutated_entries(&substitutions[&generic]);
+                    if !places.is_empty() {
+                        effect_mutations.push((generic, places));
+                    }
+                },
+                (None, _) => (),
+            }
+        }
+        if mutated.is_empty() && effect_mutations.is_empty() {
+            return;
+        }
+
+        let mut place_generics = Vec::new();
+        for parameter in &function.parameters {
+            self.collect_place_generics(&parameter.typ, &mut place_generics);
+        }
+        self.collect_place_generics(&function.return_type, &mut place_generics);
+        let place_generics =
+            mapvec(place_generics, |generic| (generic, self.tc.place_entries(&substitutions[&generic])));
+
+        let (_, names) = GetItem(name.top_level_item).get(self.tc.compiler);
+        let named = |generic| match generic {
+            Generic::Named(Origin::Local(name)) => Some(name),
+            _ => None,
+        };
+        let place_name =
+            |generic| named(generic).map_or("an inferred place".to_string(), |name| format!("'{}", names[name]));
+        let effect_name = |generic| {
+            let name = named(generic).filter(|name| !names.is_synthetic_name(*name));
+            name.map_or("its arguments".to_string(), |name| names[name].to_string())
+        };
+        let function_name = &names[name.local_name_id];
+
+        for (i, (first, first_places)) in place_generics.iter().enumerate() {
+            for (second, second_places) in &place_generics[i + 1..] {
+                if (mutated.contains(first) || mutated.contains(second))
+                    && let Some(place) = overlapping(first_places, second_places)
+                {
+                    self.report_alias(function_name, place_name(*first), place_name(*second), place, path);
+                }
+            }
+
+            for (effect, mutated) in &effect_mutations {
+                if let Some(place) = overlapping(mutated, first_places) {
+                    let effect = format!("a place mutated by {}", effect_name(*effect));
+                    self.report_alias(function_name, place_name(*first), effect, place, path);
+                }
+            }
+        }
+    }
+
+    fn report_alias(
+        &self, function: &str, first: String, second: String, place: &PlaceEntry, locator: impl Locateable,
+    ) {
+        let function = function.to_string();
+        let place = self.entry_display_name(place);
+        let location = locator.locate(self.tc);
+        self.tc.compiler.accumulate(Diagnostic::PlacesMayAlias { function, first, second, place, location });
+    }
+
+    /// The name of a place in the current item for error messages, if it has one
+    fn entry_display_name(&self, place: &PlaceEntry) -> Option<String> {
+        let names = self.tc.current_extended_context();
+        let root = match place.root {
+            EntryRoot::Concrete(root) => Place { root, segments: Vec::new() }.display_name(names),
+            EntryRoot::Generic(Generic::Named(Origin::Local(name))) => names.try_get_name(name)?.to_string(),
+            EntryRoot::Generic(_) | EntryRoot::Unbound(_) => return None,
+        };
+        Some(format!("'{root}{}", cst::Segments(&place.segments)))
+    }
+
+    /// Collect each generic used as a place within the generalized type `typ`, except in function parameters
+    fn collect_place_generics(&self, typ: &Type, out: &mut Vec<Generic>) {
+        match typ {
             Type::Application(constructor, args) => {
-                self.collect_place_atoms(constructor, out);
-                for arg in args.iter() {
-                    self.collect_place_atoms(arg, out);
-                }
-            },
-            Type::Tuple(elements) => {
-                for element in elements.iter() {
-                    self.collect_place_atoms(element, out);
-                }
-            },
-            Type::Places(_) | Type::Place(_) | Type::PlaceProjection(..) => self.collect_place_atoms_row(&typ, out),
-            Type::Forall(_, typ) => self.collect_place_atoms(typ, out),
-            Type::Effects(effects) => {
-                if let Some(effects) = effects.as_ref() {
-                    for effect in effects.iter() {
-                        self.collect_place_atoms(effect, out);
+                let place_parameters = match constructor.as_ref() {
+                    Type::Primitive(PrimitiveType::Reference(_)) => vec![true, false],
+                    Type::UserDefined(Origin::TopLevelDefinition(name)) => {
+                        let (item, _) = GetItem(name.top_level_item).get(self.tc.compiler);
+                        match &item.kind {
+                            cst::TopLevelItemKind::TypeDefinition(definition) => {
+                                mapvec(&definition.generics, |param| param.kind == Some(KindAnnotation::Place))
+                            },
+                            _ => Vec::new(),
+                        }
+                    },
+                    _ => Vec::new(),
+                };
+                for (i, arg) in args.iter().enumerate() {
+                    if place_parameters.get(i).copied().unwrap_or(false) {
+                        self.collect_place_generics_in_row(arg, out);
+                    } else {
+                        self.collect_place_generics(arg, out);
                     }
                 }
             },
-            // A function holds its environment's places plus whatever its result may refer to
-            Type::Function(function) => {
-                self.collect_place_atoms(&function.environment, out);
-                self.collect_place_atoms(&function.effects, out);
-
-                // TODO: This keeps tests working but seems like a hack, investigate further
-                let mut supplied = Vec::new();
-                for parameter in &function.parameters {
-                    self.collect_place_atoms(&parameter.typ, &mut supplied);
-                }
-                let mut returned = Vec::new();
-                self.collect_place_atoms(&function.return_type, &mut returned);
-                out.extend(returned.into_iter().filter(|atom| !supplied.contains(atom)));
+            Type::Places(_) | Type::Place(_) | Type::PlaceProjection(..) => {
+                self.collect_place_generics_in_row(typ, out)
             },
-            Type::Primitive(_) | Type::Generic(_) | Type::Variable(_) | Type::UserDefined(_) | Type::U32(_) => (),
+            // A function parameter's places are given by the callee rather than to it
+            Type::Function(function) => {
+                self.collect_place_generics(&function.environment, out);
+                self.collect_place_generics(&function.return_type, out);
+                self.collect_place_generics(&function.effects, out);
+            },
+            Type::Tuple(elements) => {
+                for element in elements.iter() {
+                    self.collect_place_generics(element, out);
+                }
+            },
+            Type::Effects(Some(effects)) => {
+                for effect in effects.iter() {
+                    self.collect_place_generics(effect, out);
+                }
+            },
+            Type::Forall(_, typ) => self.collect_place_generics(typ, out),
+            Type::Effects(None)
+            | Type::Primitive(_)
+            | Type::Generic(_)
+            | Type::Variable(_)
+            | Type::UserDefined(_)
+            | Type::U32(_) => (),
         }
     }
 
-    /// Collect the concrete places of a reference's places row
-    fn collect_place_atoms_row(&self, places: &Type, out: &mut Vec<Place>) {
-        let mut flattened = Vec::new();
-        Type::flatten_places_into(
-            std::slice::from_ref(places),
-            &mut flattened,
-            &self.tc.bindings,
-            &TypeBindings::default(),
-        );
-        for entry in flattened {
-            if let Type::Place(atom) = entry {
-                out.push(atom);
-            }
-        }
-    }
-
-    /// Check that no place a value of type `typ` may refer to has been moved
-    fn check_referents_moved(&mut self, typ: &Type, locator: impl Locateable) {
-        let mut atoms = Vec::new();
-        self.collect_place_atoms(typ, &mut atoms);
-
-        for path in atoms {
-            if matches!(path.root, PlaceRoot::Anonymous(..)) {
-                continue;
-            }
-            let path = path.stable_prefix();
-
-            let moved = if let Some(moved_in) = self.moves.is_moved(&path) {
-                Some((path, moved_in.clone()))
-            } else {
-                self.moves.has_child_moved(&path).map(|(child, moved_in)| (child.clone(), moved_in.clone()))
-            };
-
-            if let Some((moved_path, moved_in)) = moved
-                && !self.moves.errored.contains(&moved_path)
+    /// Collect each generic in the generalized places row `places`
+    fn collect_place_generics_in_row(&self, places: &Type, out: &mut Vec<Generic>) {
+        for entry in self.tc.place_entries(places) {
+            if let EntryRoot::Generic(generic) = entry.root
+                && !out.contains(&generic)
             {
+                out.push(generic);
+            }
+        }
+    }
+
+    /// Check that no place `typ` may refer to was moved, or mutated since `holder` was assigned
+    fn check_referents(&mut self, typ: &Type, locator: impl Locateable, holder: Option<&Place>) {
+        let mut entries = Vec::new();
+        self.tc.collect_place_entries(typ, &mut entries);
+
+        for entry in &entries {
+            let EntryRoot::Concrete(root @ PlaceRoot::Variable(_)) = entry.root else { continue };
+            let path = Place { root, segments: entry.segments.clone() }.stable_prefix();
+
+            if let Some((moved_path, moved_in)) = self.moves.moved(&path)
+                && !self.moves.errored.contains(moved_path)
+            {
+                let (moved_path, moved_in) = (moved_path.clone(), moved_in.clone());
                 let name = moved_path.display_name(self.tc.current_extended_context());
                 let location = locator.locate(self.tc);
                 self.tc.compiler.accumulate(Diagnostic::ReferenceToMovedValue { name, location, moved_in });
                 self.moves.errored.insert(moved_path);
             }
         }
+
+        let unstable: Vec<_> = entries.into_iter().filter(PlaceEntry::is_unstable).collect();
+        let Some(holder) = holder.filter(|_| !unstable.is_empty()) else { return };
+        let location = locator.locate(self.tc);
+
+        if let Some((name, invalidated_at)) = self.invalidation(holder, &unstable) {
+            let location = location.clone();
+            self.tc.compiler.accumulate(Diagnostic::UseOfInvalidatedReference { name, location, invalidated_at });
+        }
+
+        if let Some(uses) = self.uses.last_mut() {
+            uses.entry(holder.clone()).or_insert((location, unstable));
+        }
+    }
+
+    /// The name of `holder` and where it was invalidated, if a mutation since it was assigned invalidates `entries`
+    fn invalidation(&mut self, holder: &Place, entries: &[PlaceEntry]) -> Option<(String, Location)> {
+        let invalidated_at = self.moves.invalidated(holder, entries)?.clone();
+        let names = self.tc.current_extended_context();
+        self.moves.errored.insert(holder.clone()).then(|| (holder.display_name(names), invalidated_at))
     }
 
     /// Check if using `path` is valid (not already moved or partially moved).
@@ -590,19 +730,10 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
             return;
         }
 
-        // Check if this exact path or an ancestor was moved
-        if let Some(moved_loc) = self.moves.is_moved(path) {
+        if let Some((_, moved_in)) = self.moves.moved(path) {
             let name = path.display_name(self.tc.current_extended_context());
             let location = locator.locate(self.tc);
-            let moved_in = moved_loc.clone();
-            self.tc.compiler.accumulate(Diagnostic::UseOfMovedValue { name: name.clone(), location, moved_in });
-            self.moves.errored.insert(path.clone());
-
-        // Check if any child was moved (partial move)
-        } else if let Some((_child_path, moved_loc)) = self.moves.has_child_moved(path) {
-            let name = path.display_name(self.tc.current_extended_context());
-            let location = locator.locate(self.tc);
-            let moved_in = moved_loc.clone();
+            let moved_in = moved_in.clone();
             self.tc.compiler.accumulate(Diagnostic::UseOfMovedValue { name, location, moved_in });
             self.moves.errored.insert(path.clone());
         }
@@ -619,6 +750,22 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
         for (path, location) in outer_moves {
             let name = path.display_name(self.tc.current_extended_context());
             self.tc.compiler.accumulate(Diagnostic::MoveInRepeatedContext { name, context, location });
+        }
+    }
+
+    /// Emit errors for any outer holder the current body uses then may invalidate before running again
+    fn check_invalidations_in_repeated_context(
+        &mut self, uses: &Uses, body_depth: ScopeDepth, context: RepeatedContext,
+    ) {
+        for (holder, (location, entries)) in uses {
+            if self.atom_depth(holder).is_none_or(|depth| depth >= body_depth) {
+                continue;
+            }
+            if let Some((name, invalidated_at)) = self.invalidation(holder, entries) {
+                let location = location.clone();
+                let diagnostic = Diagnostic::InvalidatedInRepeatedContext { name, context, location, invalidated_at };
+                self.tc.compiler.accumulate(diagnostic);
+            }
         }
     }
 
@@ -649,13 +796,17 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
     }
 
     fn walk_variable(&mut self, path: PathId, expr: ExprId, check_move: bool, record_move: bool) {
-        let Some(Origin::Local(name)) = self.tc.path_origin(path) else { return };
+        let name = match self.tc.path_origin(path) {
+            Some(Origin::Local(name)) => name,
+            Some(Origin::TopLevelDefinition(name)) => return self.check_mutated_places_distinct(path, name),
+            _ => return,
+        };
 
         let move_path = self.tc.binding_place(name);
         let typ = self.tc.path_types[&path].clone();
         if check_move {
             self.check_use_of_move_path(&move_path, path);
-            self.check_referents_moved(&typ, path);
+            self.check_referents(&typ, path, Some(&move_path));
         }
 
         if record_move && !self.tc.expr_is_copy(expr, &typ) {
@@ -669,21 +820,20 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
     fn check_member_access_move(
         &mut self, access: &cst::MemberAccess, expr: ExprId, check_move: bool, record_move: bool,
     ) {
-        if check_move {
-            let typ = self.tc.expr_types[&expr].clone();
-            self.check_referents_moved(&typ, expr);
-        }
-
-        let Some(parent_path) = self.tc.try_build_move_path(access.object) else { return };
-
         let struct_type = self.tc.expr_types[&access.object].clone();
         let indirect = struct_type.reference_element(&self.tc.bindings).is_some()
             || struct_type.pointer_element(&self.tc.bindings).is_some();
-        if indirect {
-            return;
+
+        // A field reached through a reference is held by the object rather than the field
+        let parent_path = self.tc.try_build_move_path(access.object);
+        let holder = parent_path.map(|parent| if indirect { parent } else { parent.field(access.member.clone()) });
+
+        if check_move {
+            let typ = self.tc.expr_types[&expr].clone();
+            self.check_referents(&typ, expr, holder.as_ref());
         }
 
-        let move_path = parent_path.field(access.member.clone());
+        let Some(move_path) = holder.filter(|_| !indirect) else { return };
         if check_move {
             self.check_use_of_move_path(&move_path, expr);
         }
@@ -744,12 +894,10 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
 
     fn walk_while(&mut self, while_: &cst::While, depth: ScopeDepth, check_move: bool, record_move: bool) {
         let body_depth = depth.deeper();
-        self.moves.push_scope();
+        self.enter_body();
         self.walk_expr(while_.condition, depth, check_move, record_move);
         self.walk_and_check_escapes(while_.body, body_depth, check_move, record_move);
-        let body_scope = self.moves.pop_scope();
-
-        self.check_moves_in_repeated_context(&body_scope, body_depth, RepeatedContext::WhileLoop);
+        self.finish_body(body_depth, Some(RepeatedContext::WhileLoop));
     }
 
     fn walk_for(&mut self, for_: &cst::For, depth: ScopeDepth, check_move: bool, record_move: bool) {
@@ -759,21 +907,50 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
         let body_depth = depth.deeper();
         self.bind_name(for_.variable, body_depth);
 
-        self.moves.push_scope();
+        self.enter_body();
         self.walk_and_check_escapes(for_.body, body_depth, check_move, record_move);
-        let body_scope = self.moves.pop_scope();
+        self.finish_body(body_depth, Some(RepeatedContext::ForLoop));
+    }
 
-        self.check_moves_in_repeated_context(&body_scope, body_depth, RepeatedContext::ForLoop);
+    /// Track a body's moves, mutations, and uses of unstable references
+    fn enter_body(&mut self) {
+        self.moves.push_scope();
+        self.uses.push(FxHashMap::default());
+    }
+
+    /// Check what a body moves or invalidates outside it, erroring if `context` says it may run again
+    fn finish_body(&mut self, body_depth: ScopeDepth, context: Option<RepeatedContext>) {
+        let uses = self.uses.pop().unwrap();
+        if let Some(context) = context {
+            self.check_invalidations_in_repeated_context(&uses, body_depth, context);
+        }
+
+        let body_scope = self.moves.pop_scope();
+        // A closure's body runs when it is called rather than where it is written
+        if context != Some(RepeatedContext::Closure) {
+            if let Some(context) = context {
+                self.check_moves_in_repeated_context(&body_scope, body_depth, context);
+            }
+            self.moves.absorb_mutations(body_scope);
+        }
+
+        if let Some(parent) = self.uses.last_mut() {
+            for (holder, used) in uses {
+                parent.entry(holder).or_insert(used);
+            }
+        }
     }
 
     fn walk_assignment(
-        &mut self, assignment: &cst::Assignment, depth: ScopeDepth, check_move: bool, record_move: bool,
+        &mut self, assignment: &cst::Assignment, expr: ExprId, depth: ScopeDepth, check_move: bool, record_move: bool,
     ) {
-        // Allow `x := v` to use `x` even if moved, but `x += v` cannot since it reads `x`
+        // Allow `x := v` to use `x` even if moved, but `x += v` cannot since it reads `x`.
+        // Writing through an existing reference also uses that reference.
         if assignment.op.is_some() {
             self.walk_expr(assignment.lhs, depth, check_move, record_move);
         } else {
-            self.walk_expr(assignment.lhs, depth, false, false);
+            let writes_through = !matches!(self.tc.resolved_expr(assignment.lhs).as_ref(), Expr::Reference(_));
+            self.walk_expr(assignment.lhs, depth, check_move && writes_through, false);
         }
         self.walk_expr(assignment.rhs, depth, check_move, record_move);
         if let Some((_, op_expr)) = assignment.op {
@@ -782,6 +959,11 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
 
         let target_depth = self.assignment_target_depth(assignment.lhs).unwrap_or(ScopeDepth(0));
         self.check_escapes(assignment.rhs, target_depth.deeper());
+
+        if let Some(mutated) = self.tc.assignment_mutated_places(assignment.lhs) {
+            let mutated = self.tc.place_entries(&mutated);
+            self.record_mutation(mutated, expr);
+        }
 
         // The LHS always holds a value after an assignment.
         if let Some(path) = self.move_path_of_assignment_lhs(assignment.lhs) {
@@ -805,8 +987,7 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
     }
 
     fn walk_lambda(
-        &mut self, lambda_expr: ExprId, depth: ScopeDepth, self_name: Option<NameId>,
-        repeated_context: Option<RepeatedContext>,
+        &mut self, lambda_expr: ExprId, depth: ScopeDepth, self_name: Option<NameId>, context: Option<RepeatedContext>,
     ) {
         let Expr::Lambda(lambda) = self.tc.resolved_expr(lambda_expr).into_owned() else {
             unreachable!("walk_lambda called on a non-lambda expr")
@@ -818,17 +999,26 @@ impl<'a, 'local, 'inner> BorrowChecker<'a, 'local, 'inner> {
         }
 
         let old_function_depth = self.function_depth.replace(body_depth);
-        self.moves.push_scope();
+        self.enter_body();
         self.walk_and_check_escapes(lambda.body, body_depth, true, true);
-        let body_scope = self.moves.pop_scope();
-
-        if let Some(context) = repeated_context {
-            self.check_moves_in_repeated_context(&body_scope, body_depth, context);
-        }
         self.function_depth = old_function_depth;
+        self.finish_body(body_depth, context);
 
         if lambda.is_move {
             self.record_move_captures(lambda_expr, self_name);
         }
     }
+}
+
+/// True if every entry of the canonical row `row` is in `target`, as when `row` flowed into it
+fn is_subrow(row: &[Type], target: &[Type]) -> bool {
+    row.iter().all(|entry| target.contains(entry))
+}
+
+/// The first use of each holder of unstable references in a body, and those references
+type Uses = FxHashMap<Place, (Location, Vec<PlaceEntry>)>;
+
+/// An entry of `a` overlapping one of `b`
+fn overlapping<'a>(a: &'a [PlaceEntry], b: &[PlaceEntry]) -> Option<&'a PlaceEntry> {
+    a.iter().find(|a| b.iter().any(|b| a.overlaps(b)))
 }

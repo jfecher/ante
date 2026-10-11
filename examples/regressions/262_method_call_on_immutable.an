@@ -1,7 +1,7 @@
 type Counter =
     value: I32
 
-Counter.increment (counter: mut Counter): Unit =
+Counter.increment (counter: mut Counter): Unit can Mutate 'counter =
     counter.value += 1
 
 main () =

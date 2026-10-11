@@ -5,6 +5,9 @@ ignored_param _x = 0
 // Type variables should never warn
 typed (a: t): t = a
 
+// Naming a parameter's place doesn't use the parameter
+named_place (x: ref 'x I32): Unit = ()
+
 main () =
     print_to_stdout do
     unused = 1
@@ -27,6 +30,9 @@ main () =
 // // id = c1m723_2389
 // typed_c1m723_2389_0 (a_1: t_2): t_2 is pure = a_1
 // 
+// // id = c1m723_507
+// named_place_c1m723_507_0 (x_1: ref 'x_1 I32): Unit_bUnit is pure = ()
+// 
 // // id = c1m723_1944
 // main_c1m723_1944_0 () =
 //     print_to_stdout_c0m703_1603_0 (move fn __4 ->
@@ -37,6 +43,7 @@ main () =
 //         | Some_td bound_3 -> ()
 //         | None_td -> ())
 
+
 // expected stderr:
 // examples/nameresolution/unused_local.an:2:14
 // 1 | // An unused parameter warns, but a `_`-prefixed one does not.
@@ -46,20 +53,27 @@ main () =
 //   |              ^
 // 3 | ignored_param _x = 0
 // 
-// examples/nameresolution/unused_local.an:10:5
-//  9 |     print_to_stdout do
+// examples/nameresolution/unused_local.an:9:14
+//  8 | // Naming a parameter's place doesn't use the parameter
+//    | // warning: `x` is never used
+//    | // note: Prefix the name with `_` to silence this warning
+//  9 | named_place (x: ref 'x I32): Unit = ()
+//    |              ^
+// 
+// examples/nameresolution/unused_local.an:13:5
+// 12 |     print_to_stdout do
 //    |     // warning: `unused` is never used
 //    |     // note: Prefix the name with `_` to silence this warning
-// 10 |     unused = 1
+// 13 |     unused = 1
 //    |     ^^^^^^
 // 
-// examples/nameresolution/unused_local.an:16:12
-// 15 |     match Maybe.Some used
+// examples/nameresolution/unused_local.an:19:12
+// 18 |     match Maybe.Some used
 //    |     // warning: `bound` is never used
 //    |     // note: Prefix the name with `_` to silence this warning
-// 16 |     | Some bound -> ()
+// 19 |     | Some bound -> ()
 //    |            ^^^^^
-// 17 |     | None -> ()
+// 20 |     | None -> ()
 // 
-// Compiled with 3 warnings
+// Compiled with 4 warnings
 

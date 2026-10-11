@@ -13,13 +13,13 @@ tree_sum (t: ref Tree): I32 =
 // expected stderr:
 // examples/typechecking/polymorphic_place_recursion.an:9:28
 //  8 |     | Leaf x -> x.*
-//    |     // error: Argument 1 has type ref Tree but ref Tree was expected
+//    |     // error: Argument 1 has type ref 't! Tree but ref 't Tree was expected
 //  9 |     | Node l r -> tree_sum l + tree_sum r
 //    |                            ^
 // 
 // examples/typechecking/polymorphic_place_recursion.an:9:41
 //  8 |     | Leaf x -> x.*
-//    |     // error: Argument 1 has type ref Tree but ref Tree was expected
+//    |     // error: Argument 1 has type ref 't! Tree but ref 't Tree was expected
 //  9 |     | Node l r -> tree_sum l + tree_sum r
 //    |                                         ^
 // 

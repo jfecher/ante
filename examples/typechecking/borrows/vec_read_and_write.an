@@ -1,6 +1,6 @@
 import Std.Vec.Vec
 
-reads (v: mut 'v (Vec (ref 'e I32))) (_: ref 'k I32) = ()
+reads (_v: mut 'v (Vec (ref 'e I32))) (_: ref 'k I32) = ()
 
 writes (v: mut 'v (Vec (ref 'e I32))) (elem: ref 'e I32) =
     v.push elem

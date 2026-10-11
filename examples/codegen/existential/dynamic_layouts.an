@@ -34,7 +34,7 @@ swap_n (n: U32) (x: a) (y: a): a =
     current
 
 // Writing through a reference to a field whose offset depends on the size of `a`
-set_second (p: mut Pair a b) (value: b): Unit =
+set_second (p: mut Pair a b) (value: b): Unit can Mutate 'p =
     p.second := value
 
 main () =

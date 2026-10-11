@@ -172,6 +172,9 @@ struct TypeChecker<'local, 'inner> {
     /// The effect row of the function whose body is currently being checked.
     current_effect_row: Type,
 
+    /// Effects of the current function body left to its boundary, see [Self::split_deferred_effects]
+    deferred_effects: Vec<Type>,
+
     /// Types of each top-level item in the current SCC being worked on
     item_types: Rc<FxHashMap<TopLevelName, Type>>,
 
@@ -211,6 +214,9 @@ struct TypeChecker<'local, 'inner> {
 
     /// Cached TopLevelName for the Prelude's `Copy` type, lazily resolved on first use.
     copy_type_name: Option<TopLevelName>,
+
+    /// The Prelude's `Mutate` effect
+    mutate_name: TopLevelName,
 
     /// Names defined with `var` or as mutable parameters. Used by closure capture analysis
     /// to wrap mutable captures in a reference type so the closure shares the outer scope's storage.
@@ -259,6 +265,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             current_item: None,
             function_return_type: None,
             current_effect_row: Type::pure(),
+            deferred_effects: Vec::new(),
             item_contexts,
             id_contexts,
             implicits: Vec::new(),
@@ -269,6 +276,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             binding_places: Default::default(),
             copy_witnesses: Default::default(),
             copy_type_name: None,
+            mutate_name: prelude_type_name(compiler, "Mutate"),
             mutable_definitions: Default::default(),
             inferring_assignment_lhs: false,
             integer_literal_vars: Default::default(),
@@ -381,10 +389,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         if let Some(typ) = &self.string_type {
             return typ.clone();
         }
-        let exported_types = ExportedTypes(SourceFileId::prelude()).get(self.compiler);
-        let top_level_name =
-            exported_types.get(&Arc::new("String".to_string())).expect("String type not found in Prelude");
-        let typ = Type::UserDefined(Origin::TopLevelDefinition(*top_level_name));
+        let typ = Type::UserDefined(Origin::TopLevelDefinition(prelude_type_name(self.compiler, "String")));
         self.string_type = Some(typ.clone());
         typ
     }
@@ -404,9 +409,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
     /// Returns the `IO` effect alias defined in the Prelude
     fn get_io_effects(&mut self) -> Type {
-        let exported_types = ExportedTypes(SourceFileId::prelude()).get(self.compiler);
-        let io_name = *exported_types.get(&Arc::new("IO".to_string())).expect("IO effect not found in Prelude");
-
+        let io_name = prelude_type_name(self.compiler, "IO");
         self.with_next_id(|next_id| crate::type_inference::types::expand_effect_alias(self.compiler, io_name, next_id))
             .expect("ICE: IO effect not found in Prelude")
     }
@@ -589,8 +592,15 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
             }
         }
 
+        self.propagate_effects(effects_var, locator);
+    }
+
+    /// Adds `effects` to the ambient row, deferring what only the function's boundary can decide
+    fn propagate_effects(&mut self, effects: &Type, locator: impl Locateable) {
+        let (effects, deferred) = self.split_deferred_effects(effects);
+        self.deferred_effects.extend(deferred);
         let current_row = self.current_effect_row.clone();
-        self.unify(effects_var, &current_row, TypeErrorKind::Effects, locator);
+        self.unify(&effects, &current_row, TypeErrorKind::Effects, locator);
 
         let mut new_bindings = TypeBindings::default();
         let merged = self.collect_and_merge_effects(&current_row, &mut new_bindings);
@@ -645,6 +655,12 @@ impl Variance {
             Variance::Invariant => Variance::Invariant,
         }
     }
+}
+
+/// The type or effect `name` exported by the Prelude
+fn prelude_type_name(compiler: &DbHandle, name: &str) -> TopLevelName {
+    let exported_types = ExportedTypes(SourceFileId::prelude()).get(compiler);
+    *exported_types.get(&Arc::new(name.to_string())).unwrap_or_else(|| panic!("{name} not found in Prelude"))
 }
 
 /// Rewrite `typ`, erasing every function environment to [`Type::NO_CLOSURE_ENV`].
@@ -1481,7 +1497,11 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
                         .into_iter()
                         .map(|(name, (field_type, index))| {
                             let wrapped_args = match &lifetime {
-                                Some(lifetime) => vec![lifetime.clone(), field_type],
+                                Some(lifetime) => {
+                                    let field = [cst::PlaceSegment::Field(name.clone())];
+                                    let none = TypeBindings::default();
+                                    vec![Type::project_place(lifetime, &field, &self.bindings, &none), field_type]
+                                },
                                 None => vec![field_type],
                             };
                             let wrapped = Type::Application(constructor.clone(), Shared::new(wrapped_args));

@@ -796,6 +796,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         // Remember the return type so that it can be checked by `return` statements
         let old_return_type = self.function_return_type.replace(function_type.return_type.clone());
         let old_effect_row = std::mem::replace(&mut self.current_effect_row, function_type.effects.clone());
+        let old_deferred_effects = std::mem::take(&mut self.deferred_effects);
 
         self.push_implicits_scope();
         self.check_function_parameter_count(&function_type.parameters, lambda.parameters.len(), expr);
@@ -832,8 +833,10 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         self.function_return_type = old_return_type;
         self.current_effect_row = old_effect_row;
+        let deferred_effects = std::mem::replace(&mut self.deferred_effects, old_deferred_effects);
 
         let delayed = self.pop_implicits_scope();
+        self.discharge_effects(deferred_effects, &function_type, expr, delayed);
 
         // pop_implicits_scope modifies the function by inserting implicit arguments, we need
         // to check captures only after that step in case any of those arguments are captured.
@@ -1246,8 +1249,7 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         for branch_row in &branch_rows {
             self.unify(branch_row, &combined, TypeErrorKind::Effects, handle.expression);
         }
-        let current_row = self.current_effect_row.clone();
-        self.unify(&combined, &current_row, TypeErrorKind::Effects, handle.expression);
+        self.propagate_effects(&combined, handle.expression);
 
         result_type
     }
@@ -1352,7 +1354,24 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
 
         self.check_expr(assignment.rhs, &value_type, TypeErrorKind::Assignment);
 
+        if let Some(places) = self.assignment_mutated_places(assignment.lhs) {
+            self.propagate_effects(&self.mutate_effect(places), assignment.lhs);
+        }
+
         Type::UNIT
+    }
+
+    /// The places an assignment to `lhs` mutates
+    pub(super) fn assignment_mutated_places(&self, lhs: ExprId) -> Option<Type> {
+        if let Some(typ) = self.expr_types.get(&lhs)
+            && self.is_mut_or_uniq_reference(typ)
+        {
+            return typ.reference_places(&self.bindings);
+        }
+        match &self.current_extended_context()[lhs] {
+            Expr::Call(call) => self.assignment_mutated_places(call.arguments.first()?.expr),
+            _ => None,
+        }
     }
 
     /// Walk a pattern declared with `var` and add every variable name it

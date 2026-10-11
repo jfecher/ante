@@ -277,6 +277,24 @@ pub enum Diagnostic {
         location: Location,
         moved_in: Location,
     },
+    UseOfInvalidatedReference {
+        name: String,
+        location: Location,
+        invalidated_at: Location,
+    },
+    InvalidatedInRepeatedContext {
+        name: String,
+        context: RepeatedContext,
+        location: Location,
+        invalidated_at: Location,
+    },
+    PlacesMayAlias {
+        function: String,
+        first: String,
+        second: String,
+        place: Option<String>,
+        location: Location,
+    },
     AbilityTypeCantBeUsed {
         location: Location,
     },
@@ -394,6 +412,7 @@ pub enum RepeatedContext {
     HandlerBranch,
     ForLoop,
     WhileLoop,
+    Closure,
 }
 
 impl RepeatedContext {
@@ -402,6 +421,7 @@ impl RepeatedContext {
             RepeatedContext::HandlerBranch => "a handler branch",
             RepeatedContext::ForLoop => "a for loop",
             RepeatedContext::WhileLoop => "a while loop",
+            RepeatedContext::Closure => "a closure",
         }
     }
 }
@@ -703,6 +723,24 @@ impl Diagnostic {
             Diagnostic::ReferenceToMovedValue { name, location: _, moved_in: _ } => {
                 format!("This reference may refer to {} which has already been moved", color_name(name))
             },
+            Diagnostic::UseOfInvalidatedReference { name, location: _, invalidated_at: _ } => {
+                format!("{} may have been invalidated by an earlier mutation", color_name(name))
+            },
+            Diagnostic::PlacesMayAlias { function, first, second, place, location: _ } => {
+                let function = color_name(function);
+                let shared = match place {
+                    Some(place) => format!("{} was used for both", color_name(place)),
+                    None => "both may refer to the same place".to_string(),
+                };
+                format!("{first} cannot alias {second} in this use of {function}, but {shared}")
+            },
+            Diagnostic::InvalidatedInRepeatedContext { name, context, location: _, invalidated_at: _ } => {
+                format!(
+                    "{} may be invalidated by a later mutation in {}, which may run again",
+                    color_name(name),
+                    context.description()
+                )
+            },
             Diagnostic::AbilityTypeCantBeUsed { location: _ } => {
                 "Ability types can't be used in this position".to_string()
             },
@@ -840,6 +878,9 @@ impl Diagnostic {
             | Diagnostic::UseOfMovedValue { location, .. }
             | Diagnostic::MoveInRepeatedContext { location, .. }
             | Diagnostic::ReferenceToMovedValue { location, .. }
+            | Diagnostic::UseOfInvalidatedReference { location, .. }
+            | Diagnostic::InvalidatedInRepeatedContext { location, .. }
+            | Diagnostic::PlacesMayAlias { location, .. }
             | Diagnostic::AbilityTypeCantBeUsed { location, .. }
             | Diagnostic::HoleCantBeUsed { location, .. }
             | Diagnostic::DefaultHoleCantBeUsed { location, .. }
@@ -868,6 +909,11 @@ impl Diagnostic {
             | Diagnostic::ReferenceToMovedValue { name, location: _, moved_in } => {
                 let message = format!("{} was previously moved here", color_name(name));
                 Some((moved_in, message))
+            },
+            Diagnostic::UseOfInvalidatedReference { name, location: _, invalidated_at }
+            | Diagnostic::InvalidatedInRepeatedContext { name, location: _, invalidated_at, .. } => {
+                let message = format!("{} may be invalidated by this mutation", color_name(name));
+                Some((invalidated_at, message))
             },
             Diagnostic::NoImplicitFound { suggestions, .. } if !suggestions.is_empty() => {
                 let first = color_name(&suggestions[0].qualified_path);

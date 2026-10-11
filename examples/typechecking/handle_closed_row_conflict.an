@@ -28,7 +28,7 @@ main () = ()
 // expected stderr:
 // examples/typechecking/handle_closed_row_conflict.an:18:1
 // 17 |     handle
-// 18 |         f ()	// error: This can perform Bail, Log, _ but only Count is allowed here
+// 18 |         f ()	// error: This can perform Bail, Log but only Count is allowed here
 //    | ^^^^^^^^^^^^
 // 19 |         0
 // 

@@ -73,7 +73,7 @@ pub(super) struct RowMatch {
 
 /// True if this entry is an unbound type variable acting as the row's open tail.
 /// Entries must already be zonked.
-fn is_open(typ: &Type) -> bool {
+pub(super) fn is_open(typ: &Type) -> bool {
     matches!(typ, Type::Variable(_))
 }
 
@@ -90,14 +90,6 @@ fn cancel_shared_open(mut a_open: Vec<Type>, b_open: Vec<Type>) -> (Vec<Type>, V
         })
         .collect();
     (a_open, b_open)
-}
-
-fn split_bound_open(mut open: Vec<Type>) -> (Option<Type>, Vec<Type>) {
-    if open.is_empty() {
-        return (None, open);
-    }
-    let bound = open.remove(open.len() - 1);
-    (Some(bound), open)
 }
 
 /// Flatten every entry reachable from `entries` into `found`
@@ -201,50 +193,24 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         }))
     }
 
-    /// Row-subtype two rows: is `a`'s actual set of entries permitted by `b`'s expected set?
+    /// Row-subtype two rows, adding `a`'s open ends to `b` rather than binding them to `b`'s other entries
     pub(super) fn row_subtype_generic(
         &self, kind: RowKind, m: RowMatch, new_bindings: &mut TypeBindings,
     ) -> Result<(), ()> {
-        let RowMatch { a_open, b_open, mut a_leftover, mut b_leftover } = m;
-        let (a_open, b_open) = cancel_shared_open(a_open, b_open);
-        let (a_open, a_extra_open) = split_bound_open(a_open);
-        let (b_open, b_extra_open) = split_bound_open(b_open);
+        let RowMatch { mut a_open, b_open, mut a_leftover, b_leftover } = m;
+        a_open.retain(|a_end| !b_open.contains(a_end));
 
-        // If there are multiple unbound variables, combine them into leftovers so they get bound
-        b_leftover.extend(b_extra_open);
-        if b_open.is_some() {
-            a_leftover.extend(a_extra_open);
-        } else {
-            let binding = construct_row(kind, &b_leftover, &self.bindings, new_bindings);
-            for extra in &a_extra_open {
-                self.subtype(extra, &binding, Variance::Invariant, RowMode::Exact, new_bindings)?;
-            }
-        }
-
-        // What is left of `b`'s row end after it absorbs the entries `a` has that `b` didn't list
-        let b_residual = match (b_open.as_ref(), a_leftover.is_empty()) {
-            (open, true) => open.cloned(),
-            (Some(open), false) => {
-                let fresh = self.next_type_variable();
-                a_leftover.push(fresh.clone());
-                let binding = construct_row(kind, &a_leftover, &self.bindings, new_bindings);
-                self.subtype(open, &binding, Variance::Invariant, RowMode::Exact, new_bindings)?;
-                Some(fresh)
+        // `b` grows through its newest open end, even one `a` shares, rather than another row within it
+        match b_open.last() {
+            Some(_) if a_leftover.is_empty() && a_open.is_empty() => Ok(()),
+            Some(b_end) => {
+                a_leftover.extend(a_open);
+                a_leftover.push(self.next_type_variable());
+                self.bind_row_end(kind, b_end, &a_leftover, new_bindings)
             },
-            (None, false) => return Err(()),
-        };
-
-        let Some(a_open_first) = a_open.as_ref() else { return Ok(()) };
-
-        match b_residual {
-            // Binding `a_open_first` to a row containing itself would create an infinitely recursive type
-            Some(residual) if self.identical_entries(&residual, a_open_first, new_bindings) => return Ok(()),
-            Some(residual) => b_leftover.push(residual),
-            None => (),
+            None if !a_leftover.is_empty() => Err(()),
+            None => a_open.iter().try_for_each(|a_end| self.bind_row_end(kind, a_end, &b_leftover, new_bindings)),
         }
-
-        let binding = construct_row(kind, &b_leftover, &self.bindings, new_bindings);
-        self.subtype(a_open_first, &binding, Variance::Invariant, RowMode::Exact, new_bindings)
     }
 
     /// Row-subtype two effect rows: is `a`'s actual set of effects permitted by `b`'s expected set?
@@ -258,20 +224,29 @@ impl<'local, 'inner> TypeChecker<'local, 'inner> {
         &self, kind: RowKind, m: RowMatch, new_bindings: &mut TypeBindings,
     ) -> Result<(), ()> {
         let RowMatch { a_open, b_open, mut a_leftover, mut b_leftover } = m;
+        let (mut a_open, mut b_open) = cancel_shared_open(a_open, b_open);
+
+        // Against a closed row, every open end is bound to that row's remaining entries
+        match (a_open.is_empty(), b_open.is_empty()) {
+            (false, true) if a_leftover.is_empty() => {
+                return a_open.iter().try_for_each(|end| self.bind_row_end(kind, end, &b_leftover, new_bindings));
+            },
+            (true, false) if b_leftover.is_empty() => {
+                return b_open.iter().try_for_each(|end| self.bind_row_end(kind, end, &a_leftover, new_bindings));
+            },
+            _ => (),
+        }
+
         // Tails past the first must be absorbed by the other side like any other entry
-        let (a_open, b_open) = cancel_shared_open(a_open, b_open);
-        let (a_open, a_extra_open) = split_bound_open(a_open);
-        let (b_open, b_extra_open) = split_bound_open(b_open);
-        a_leftover.extend(a_extra_open);
-        b_leftover.extend(b_extra_open);
+        let (a_end, b_end) = (a_open.pop(), b_open.pop());
+        a_leftover.extend(a_open);
+        b_leftover.extend(b_open);
 
         let both_closed = |a_leftover: &[Type], b_leftover: &[Type]| {
             (a_leftover.is_empty() && b_leftover.is_empty()).then_some(()).ok_or(())
         };
-        match (a_open.as_ref(), b_open.as_ref()) {
+        match (a_end.as_ref(), b_end.as_ref()) {
             (None, None) => both_closed(&a_leftover, &b_leftover),
-            (Some(a_end), None) if a_leftover.is_empty() => self.bind_row_end(kind, a_end, &b_leftover, new_bindings),
-            (None, Some(b_end)) if b_leftover.is_empty() => self.bind_row_end(kind, b_end, &a_leftover, new_bindings),
             (Some(_), None) | (None, Some(_)) => Err(()),
             (Some(a_end), Some(b_end)) if self.identical_entries(a_end, b_end, new_bindings) => {
                 both_closed(&a_leftover, &b_leftover)

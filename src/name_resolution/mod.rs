@@ -404,13 +404,16 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
         Builtin::from_name(name).map(Origin::Builtin)
     }
 
+    /// Find a local `name` without marking it used
+    fn find_local(&self, name: &String) -> Option<NameId> {
+        self.names_in_local_scope.iter().rev().find_map(|scope| scope.get(name)).copied()
+    }
+
     /// Lookup a single name (not a full path) in local scope
     fn lookup_local_name(&mut self, name: &String) -> Option<Origin> {
-        for scope in self.names_in_local_scope.iter().rev() {
-            if let Some(expr) = scope.get(name) {
-                self.used_locals.insert(*expr);
-                return Some(Origin::Local(*expr));
-            }
+        if let Some(local) = self.find_local(name) {
+            self.used_locals.insert(local);
+            return Some(Origin::Local(local));
         }
 
         if let Some(id) = self.names_in_global_scope.definitions.get(name) {
@@ -1015,7 +1018,7 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             TypeKind::Variable(name) => self.resolve_variable(*name, declare_type_vars),
             TypeKind::Place(paths) => {
                 for path in paths {
-                    self.resolve_variable(path.root, declare_type_vars);
+                    self.resolve_place_root(path.root, declare_type_vars);
                 }
             },
             TypeKind::Function(function) => {
@@ -1064,6 +1067,18 @@ impl<'local, 'inner> Resolver<'local, 'inner> {
             let name = self.context[name_id].clone();
             //panic!("`{name}` is unresolved");
             self.emit_diagnostic(Diagnostic::NameNotInScope { name, location });
+        }
+    }
+
+    /// Like [Self::resolve_variable], but naming a variable's place doesn't count as using it
+    fn resolve_place_root(&mut self, name_id: NameId, auto_declare: bool) {
+        match self.find_local(&self.context[name_id]) {
+            Some(local) => {
+                self.name_links.insert(name_id, Origin::Local(local));
+            },
+            // Places named during desugaring are either a parameter's or fresh
+            None if self.context.is_synthetic_name(name_id) => self.declare_name(name_id, false),
+            None => self.resolve_variable(name_id, auto_declare),
         }
     }
 

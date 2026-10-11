@@ -86,9 +86,9 @@ main () = ()
 // 
 // examples/typechecking/borrows/use_ref_after_move.an:27:9
 // 25 |     x = ref p.first
-// 26 |     consume p	// note: p.first was previously moved here
+// 26 |     consume p	// note: p was previously moved here
 //    |             -
-//    |     // error: This reference may refer to p.first which has already been moved
+//    |     // error: This reference may refer to p which has already been moved
 // 27 |     _ = x  // error, p is moved
 //    |         ^
 // 

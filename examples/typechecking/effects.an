@@ -59,7 +59,7 @@ main () =
 // expected stderr:
 // examples/typechecking/effects.an:24:5
 // 23 | pure_fn (): Unit is pure =
-// 24 |     log "foo"	// error: This can perform Log, _ but only pure is allowed here
+// 24 |     log "foo"	// error: This can perform Log but only pure is allowed here
 //    |     ^^^
 // 
 // examples/typechecking/effects.an:27:1

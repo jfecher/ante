@@ -7,7 +7,7 @@ import Std.C.putchar, exit, memcmp, malloc, memcpy, free
 import Std.Fail.Fail, fail, panic_on_fail, abort_on_fail, fail_if
 
 export String, String.from_parts, Maybe, Maybe.None, Maybe.Some, iff, Maybe.unwrap, Maybe.unwrap_or_else, Result, Result.Ok, Result.Error, (,),
-    Fs, Net, IO,
+    Fs, Net, IO, Mutate,
     first, second, third, fourth, fifth,
     Cast, cast, cast_same, cast_ptr_usz, cast_usz_ptr,
     cast_u8_u16, cast_u8_u32, cast_u8_u64, cast_u8_usz, cast_u16_u8, cast_u16_u32, cast_u16_u64, cast_u16_usz, cast_u32_u8, cast_u32_u16, cast_u32_u64, cast_u32_usz, cast_u64_u8, cast_u64_u16, cast_u64_u32, cast_u64_usz,
@@ -90,6 +90,10 @@ effect Net =
 /// A convenience alias for the set of all primitive effects.
 /// This may expand over time.
 effect IO = Fs, Net
+
+/// Mutating a place `'p`, which invalidates any reference to an unstable place within it like `'p!`.
+/// This is performed by assigning through a `mut 'p` reference and cannot be handled.
+effect Mutate 'p =
 
 type Result t e =
    | Ok t

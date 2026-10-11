@@ -36,10 +36,10 @@ HashMap.of (s: s) {Stream s (k, v) e} {Hash k} {Eq k e}: HashMap k v can Panic, 
     map.extend s
     map
 
-HashMap.extend (map: mut HashMap k v) (s: s) {Stream s (k, v) e} {Hash k} {Eq k e}: Unit can Panic, e =
+HashMap.extend (map: mut HashMap k v) (s: s) {Stream s (k, v) e} {Hash k} {Eq k e}: Unit can Panic, e, Mutate 'map =
     iter s (fn (k, v) -> map.insert k v)
  
-HashMap.clear (map: mut HashMap k v) : Unit =
+HashMap.clear (map: mut HashMap k v) : Unit can Mutate 'map =
     if map.capacity != 0 then
         repeat map.capacity fn i ->
             entry = ptr_to_mut (offset map.entries i)
@@ -47,7 +47,7 @@ HashMap.clear (map: mut HashMap k v) : Unit =
             entry.tombstone := false
         map.len := 0usz
 
-HashMap.resize (map: mut HashMap k v) (new_capacity: Usz) {Hash k} {Eq k e}: Unit can Panic, e =
+HashMap.resize (map: mut HashMap k v) (new_capacity: Usz) {Hash k} {Eq k e}: Unit can Panic, e, Mutate 'map =
     if new_capacity > map.capacity then
         new_memory = calloc new_capacity (size_of (MkType : Type (Entry k v)))
 
@@ -71,7 +71,7 @@ HashMap.should_resize (map: ref HashMap k v) : Bool =
 
 /// Inserts a key-value pair into the map, removing any item that may previously
 /// have been associated with the same key and returning the removed value if there was one.
-HashMap.insert (map: mut HashMap k v) (key: k) (value: v) {Hash k} {Eq k e}: Maybe v can Panic, e =
+HashMap.insert (map: mut HashMap k v) (key: k) (value: v) {Hash k} {Eq k e}: Maybe v can Panic, e, Mutate 'map =
     if map.should_resize () then
         map.resize ((map.capacity + 1) * 2)
 
@@ -164,14 +164,15 @@ HashMap.get (map: ref 'm HashMap k v) (key: ref k) {Hash k} {Eq k e}: ref 'm! v 
 HashMap.contains (map: ref HashMap k v) (key: ref k) {Hash k} {Eq k e}: Bool can e =
     try (do map.get key) is Some _
 
-HashMap.remove (map: mut HashMap k v) (key: ref k) {Hash k} {Eq k e} : Maybe v can e =
+HashMap.remove (map: mut HashMap k v) (key: ref k) {Hash k} {Eq k e} : Maybe v can e, Mutate 'map =
     match map.get_entry_mut key
     | None -> None
     | Some entry ->
         entry.occupied := false
         entry.tombstone := true
+        value = deref entry.value
         map.len := map.len - 1
-        Some (deref entry.value)
+        Some value
 
 impl print_hashmap {Display k e} {Display v e}: Display (HashMap k v) e with
     print map =
@@ -210,19 +211,19 @@ HashMap.values (m: ref HashMap k v) = fn () can Emit v ->
         if entry.occupied then emit entry.value
 
 /// Return the existing value at `key`, or insert `default` and return it.
-HashMap.get_or_insert (m: mut 'm HashMap k v) (key: k) (default: v) {Hash k} {Eq k e} {Copy k}: ref 'm! v can Panic, e =
+HashMap.get_or_insert (m: mut 'm HashMap k v) (key: k) (default: v) {Hash k} {Eq k e} {Copy k}: ref 'm! v can Panic, e, Mutate 'm =
     m.get key ~> on_fail do
         ignore (m.insert key default)
         m.get key ~> or_panic "HashMap.get_or_insert: lookup after insert failed"
 
 /// Same as `get_or_insert` but builds the default lazily.
-HashMap.get_or_insert_with (m: mut 'm HashMap k v) (key: k) (mk: fn Unit => v) {Hash k} {Eq k e} {Copy k}: ref 'm! v can Panic, e =
+HashMap.get_or_insert_with (m: mut 'm HashMap k v) (key: k) (mk: fn Unit => v) {Hash k} {Eq k e} {Copy k}: ref 'm! v can Panic, e, Mutate 'm =
     m.get key ~> on_fail do
         ignore (m.insert key (mk ()))
         m.get key ~> or_panic "HashMap.get_or_insert_with: lookup after insert failed"
 
 /// Remove every entry for which `pred key value` returns false.
-HashMap.retain (m: mut HashMap k v) (pred: fn k v => Bool) {Copy k} {Copy v}: Unit =
+HashMap.retain (m: mut HashMap k v) (pred: fn k v => Bool) {Copy k} {Copy v}: Unit can Mutate 'm =
     for i in 0 .. m.capacity do
         entry_ptr = offset m.entries i
         entry = ptr_to_mut entry_ptr
@@ -233,7 +234,7 @@ HashMap.retain (m: mut HashMap k v) (pred: fn k v => Bool) {Copy k} {Copy v}: Un
                 m.len -= 1
 
 /// Insert every entry from `src` into `dst`, overwriting on conflict.
-HashMap.merge (dst: mut HashMap k v) (src: HashMap k v) {Hash k} {Eq k e}: Unit can Panic, e =
+HashMap.merge (dst: mut HashMap k v) (src: HashMap k v) {Hash k} {Eq k e}: Unit can Panic, e, Mutate 'dst =
     iter src (fn (k, v) -> ignore (HashMap.insert dst k v))
 
 impl extract_hashmap {Hash k} {Eq k e}: Extract (ref HashMap k v) (ref k) (ref v) (Panic & e) with

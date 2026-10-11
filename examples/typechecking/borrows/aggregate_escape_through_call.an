@@ -1,6 +1,6 @@
 type Holder 'a = value: ref 'a I32
 
-store (dst: mut 'd (Holder 'a)) (src: Holder 'a): Unit =
+store (dst: mut 'd (Holder 'a)) (src: Holder 'a): Unit can Mutate 'd =
     dst := src
 
 bad_constructor () =

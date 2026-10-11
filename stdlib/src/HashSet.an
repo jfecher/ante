@@ -24,7 +24,7 @@ HashSet.of (s: s) {Stream s k e} {Hash k} {Eq k e}: HashSet k can Panic, e =
         |> HashMap.of
         |> HashSet
 
-HashSet.clear (set: mut HashSet k) : Unit =
+HashSet.clear (set: mut HashSet k) : Unit can Mutate 'set =
     set.inner.clear ()
 
 HashSet.contains (set: ref HashSet k) (key: ref k) {Hash k} {Eq k e}: Bool can e =
@@ -33,20 +33,20 @@ HashSet.contains (set: ref HashSet k) (key: ref k) {Hash k} {Eq k e}: Bool can e
 /// Insert a new element into the HashSet
 /// Returns True if the key is newly inserted
 /// Returns False if the key already existed
-HashSet.insert (set: mut HashSet k) (key: k) {Hash k} {Eq k e}: Bool can Panic, e =
+HashSet.insert (set: mut HashSet k) (key: k) {Hash k} {Eq k e}: Bool can Panic, e, Mutate 'set =
     set.inner.insert key () is None
 
 /// Remove an element from the HashSet
 /// Returns True if the key existed and was removed
 /// Return False if the key was not present in the HashSet
-HashSet.remove (set: mut HashSet k) (key: ref k) {Hash k} {Eq k e}: Bool can e =
+HashSet.remove (set: mut HashSet k) (key: ref k) {Hash k} {Eq k e}: Bool can e, Mutate 'set =
     set.inner.remove key is Some _
 
-HashSet.extend (set: mut HashSet k) (s: s) {Stream s k e} {Hash k} {Eq k e}: Unit can Panic, e =
+HashSet.extend (set: mut HashSet k) (s: s) {Stream s k e} {Hash k} {Eq k e}: Unit can Panic, e, Mutate 'set =
     result = map s to_unit_tuple
     set.inner.extend result
 
-HashSet.retain (set: mut HashSet k) (predicate: fn k => Bool) {Copy k}: Unit =
+HashSet.retain (set: mut HashSet k) (predicate: fn k => Bool) {Copy k}: Unit can Mutate 'set =
     for i in 0 .. set.inner.capacity do
         entry = ptr_to_mut (offset set.inner.entries i)
         if entry.occupied and not (predicate entry.key) then
@@ -54,7 +54,7 @@ HashSet.retain (set: mut HashSet k) (predicate: fn k => Bool) {Copy k}: Unit =
             entry.tombstone := true
             set.inner.len -= 1
 
-HashSet.merge (dst: mut HashSet k) (src: HashSet k) {Hash k} {Eq k e}: Unit can Panic, e =
+HashSet.merge (dst: mut HashSet k) (src: HashSet k) {Hash k} {Eq k e}: Unit can Panic, e, Mutate 'dst =
     dst.inner.merge src.inner
 
 HashSet.keys (set: ref HashSet k) =

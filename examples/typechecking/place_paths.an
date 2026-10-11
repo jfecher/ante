@@ -70,7 +70,7 @@ main () =
 // 
 // (forward: fn (ref 'v (MyVec t)) -> ref 'v! t is pure) (v: ref 'v (MyVec t)): ref 'v! t is pure = (get: fn (ref 'v (MyVec t)) Usz -> ref 'v! t is pure) (v: ref 'v (MyVec t)) 0
 // 
-// (inferred: fn (ref (MyVec t)) -> ref t is pure) (v: ref (MyVec t)) = (get: fn (ref (MyVec t)) Usz -> ref t is pure) (v: ref (MyVec t)) 0
+// (inferred: fn (ref 'v (MyVec t)) -> ref 'v! t is pure) (v: ref 'v (MyVec t)) = (get: fn (ref 'v (MyVec t)) Usz -> ref 'v! t is pure) (v: ref 'v (MyVec t)) 0
 // 
 // (either: fn (ref 'a I32) (ref 'b I32) -> ref '(a, b) I32 is pure) (x: ref 'a I32) (y: ref 'b I32): ref '(a, b) I32 is pure =
 //     if true then (x: ref 'a I32) else (y: ref 'b I32)

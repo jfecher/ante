@@ -37,7 +37,7 @@ main () =
 // 
 // examples/typechecking/borrows/lambda_body_escape.an:14:22
 // 13 |     // We should catch the auto-ref return here
-//    |     // error: This returns a value of type I32 but the enclosing function returns ref I32
+//    |     // error: This returns a value of type I32 but the enclosing function returns ref 'other I32
 // 14 |     if b then return x
 //    |                      ^
 // 15 |     other

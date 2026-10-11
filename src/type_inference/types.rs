@@ -23,7 +23,9 @@ use crate::{
         generics::Generic,
         kinds::Kind,
         places::{self, Place},
-        row::{Row, RowKind, canonicalize_row, construct_row, flatten_row_into, follow_row, sort_and_dedup_row},
+        row::{
+            Row, RowKind, canonicalize_row, construct_row, flatten_row_into, follow_row, is_open, sort_and_dedup_row,
+        },
     },
 };
 
@@ -978,7 +980,7 @@ impl<'a, 'b> TypeConverter<'a, 'b> {
     /// If this function's return type has an elided place in its return,
     /// return what it should be treated as, or error if it is ambiguous.
     fn find_elided_place(&mut self, function: &cst::FunctionType) -> Option<Type> {
-        if !places::cst_type_has_elided_place(&function.return_type) {
+        if !function.return_type.has_elided_place() {
             return None;
         }
 
@@ -1705,10 +1707,15 @@ where
         }
     }
 
-    /// Canonicalize a row for printing
+    /// Canonicalize a row for printing, showing any number of open ends as one `_`
     fn canonicalize(&self, effects: &Option<Shared<Vec<Type>>>) -> Vec<Type> {
         let effects = effects.as_deref().map_or(&[][..], Vec::as_slice);
-        Type::canonicalize_effects(effects, self.bindings, &Default::default())
+        let mut effects = Type::canonicalize_effects(effects, self.bindings, &Default::default());
+        // Open ends are sorted last
+        if let Some(first_open) = effects.iter().position(is_open) {
+            effects.truncate(first_open + 1);
+        }
+        effects
     }
 
     /// Print each entry of an already-canonicalized, non-empty row

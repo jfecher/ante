@@ -128,6 +128,22 @@ impl Type {
         Type { kind, location }
     }
 
+    /// Does this type contain at least one `ImplicitPlace` outside of function types?
+    ///
+    /// TODO: Kinds for type variables aren't tracked yet so only places on reference types are
+    /// checked at the moment.
+    pub fn has_elided_place(&self) -> bool {
+        match &self.kind {
+            TypeKind::Application(f, args) => {
+                let is_elided_ref_place = matches!(f.kind, TypeKind::Reference(_))
+                    && args.first().is_some_and(|arg| matches!(arg.kind, TypeKind::ImplicitPlace));
+                is_elided_ref_place || args.iter().any(Type::has_elided_place)
+            },
+            TypeKind::Tuple(elements) => elements.iter().any(Type::has_elided_place),
+            _ => false,
+        }
+    }
+
     /// True if this type has a hole to infer, such as the environment of a `=>` function type
     pub fn contains_hole(&self) -> bool {
         self.contains_hole_with(&mut |_, _| false)

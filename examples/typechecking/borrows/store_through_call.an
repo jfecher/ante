@@ -1,6 +1,6 @@
 // `a := v` inside `store` is invisible at the call site: only the shared place row records
 // that `r` may now refer to `y`.
-store (a: mut 'a (ref 'b I32)) (v: ref 'b I32): Unit = a := v
+store (a: mut 'a (ref 'b I32)) (v: ref 'b I32): Unit can Mutate 'a = a := v
 
 main () =
     var r = ref 0

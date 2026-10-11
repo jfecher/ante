@@ -26,11 +26,11 @@ Vec.of (s: s) {Stream s t e}: Vec t can Panic, e =
     vec.extend s
     vec
 
-Vec.extend (vec: mut Vec t) (s: s) {Stream s t e}: Unit can Panic, e =
+Vec.extend (vec: mut Vec t) (s: s) {Stream s t e}: Unit can Panic, e, Mutate 'vec =
     iter s (vec.push _)
 
 /// Reserve space for `numElems` more elements in `v`. The new slots are uninitialized.
-Vec.reserve (v: mut Vec t) (numElems: Usz): Unit can Panic =
+Vec.reserve (v: mut Vec t) (numElems: Usz): Unit can Panic, Mutate 'v =
     if v.len + numElems > v.cap then
         size = (v.cap + numElems) * size_of (MkType: Type t)
         ptr = realloc v.data size
@@ -43,7 +43,7 @@ Vec.reserve (v: mut Vec t) (numElems: Usz): Unit can Panic =
 
 /// Push an element onto the end of the vector.
 /// Resizes if necessary.
-Vec.push (v: mut Vec t) (elem: t): Unit can Panic =
+Vec.push (v: mut Vec t) (elem: t): Unit can Panic, Mutate 'v =
     if v.len >= v.cap then
         v.reserve (if v.cap == 0 then 1 else v.cap)
 
@@ -52,7 +52,7 @@ Vec.push (v: mut Vec t) (elem: t): Unit can Panic =
 
 /// Removes the last element of this vector and returns it.
 /// Returns None if the vector is empty.
-Vec.pop (v: mut Vec t): Maybe t can Fs =
+Vec.pop (v: mut Vec t): Maybe t can Fs, Mutate 'v =
     if v.is_empty () then None
     else
         v.len -= 1
@@ -86,7 +86,7 @@ Vec.get_mut_unchecked (v: mut 'v Vec t) (i: Usz): mut 'v! t =
 
 /// Remove the element at the given index and return it.
 /// will Fail if the index is out of bounds.
-Vec.remove_index (v: mut Vec t) (idx: Usz): t can Fail =
+Vec.remove_index (v: mut Vec t) (idx: Usz): t can Fail, Mutate 'v =
     if idx >= 0 and idx < v.len then
         item = v.data.[idx]
         for i in idx .. v.len - 1 do
@@ -99,7 +99,7 @@ Vec.remove_index (v: mut Vec t) (idx: Usz): t can Fail =
 
 /// Removes the first instance of the given element from the vector,
 /// returning the index it was found at. Returns `None` if the element was not found.
-Vec.remove_first (v: mut Vec t) (elem: t) {Eq t e} {Copy t}: Maybe Usz can Panic, e =
+Vec.remove_first (v: mut Vec t) (elem: t) {Eq t e} {Copy t}: Maybe Usz can Panic, e, Mutate 'v =
     for i in 0 .. v.len do
         if elem == v.data.[i] then
             v.remove_index i ~> panic_on_fail
@@ -109,7 +109,7 @@ Vec.remove_first (v: mut Vec t) (elem: t) {Eq t e} {Copy t}: Maybe Usz can Panic
 /// Remove the given indices from the vector
 /// Expects the indices to be in sorted order.
 /// Will Fail if any index is out of bounds.
-Vec.remove_indices (v: mut Vec t) (idxs: Vec Usz): Unit can Fail =
+Vec.remove_indices (v: mut Vec t) (idxs: Vec Usz): Unit can Fail, Mutate 'v =
     var moved = 0usz
     for i in 0 .. idxs.len do
         cur = idxs.data.[i]
@@ -133,7 +133,7 @@ Vec.remove_indices (v: mut Vec t) (idxs: Vec Usz): Unit can Fail =
 /// Remove all matching elements from the vector and
 /// return the number of elements removed.
 /// Uses = to determine element equality.
-Vec.remove_all (v: mut Vec t) (elem: t) {Eq t e} {Copy t}: Usz can Panic, e =
+Vec.remove_all (v: mut Vec t) (elem: t) {Eq t e} {Copy t}: Usz can Panic, e, Mutate 'v =
     var idxs = Vec.empty ()
     for i in 0 .. v.len do
         if elem == v.data.[i] then
@@ -147,7 +147,7 @@ Vec.remove_all (v: mut Vec t) (elem: t) {Eq t e} {Copy t}: Usz can Panic, e =
 /// Remove an element by swapping it with the last element in O(1) time.
 /// Returns true if a swap was performed or false otherwise.
 /// Will not swap if the given index is the index of the last element.
-Vec.swap_last (v: mut Vec t) (idx: Usz) : Bool can Fs =
+Vec.swap_last (v: mut Vec t) (idx: Usz) : Bool can Fs, Mutate 'v =
     if idx >= v.len or idx + 1 == v.len then false
     else
         v.len := v.len - 1
@@ -174,7 +174,7 @@ Vec.swap (v: mut Vec t) (i: Usz) (j: Usz): Unit can Fail, Fs =
 
 /// Insert `elem` at `idx`, shifting elements at `[idx, len)` one position right.
 /// Fails if `idx > len`.
-Vec.insert (v: mut Vec t) (idx: Usz) (elem: t): Unit can Fail, Panic =
+Vec.insert (v: mut Vec t) (idx: Usz) (elem: t): Unit can Fail, Panic, Mutate 'v =
     if idx > v.len then fail ()
     if v.len >= v.cap then
         v.reserve (if v.cap == 0 then 1 else v.cap)
@@ -186,7 +186,7 @@ Vec.insert (v: mut Vec t) (idx: Usz) (elem: t): Unit can Fail, Panic =
     v.len += 1
 
 /// Remove consecutive runs of equal elements, keeping only the first of each run.
-Vec.dedup (v: mut Vec t) {Eq t e} {Copy t}: Unit can Fs, e =
+Vec.dedup (v: mut Vec t) {Eq t e} {Copy t}: Unit can Fs, e, Mutate 'v =
     if v.len < 2 then return ()
     var write = 1
     for read in 1 .. v.len do
@@ -198,7 +198,7 @@ Vec.dedup (v: mut Vec t) {Eq t e} {Copy t}: Unit can Fs, e =
 
 /// Shrink the vector to at most `new_len` elements, dropping any tail.
 /// Does nothing if `new_len >= v.len`.
-Vec.truncate (v: mut Vec t) (new_len: Usz) {Drop t e}: Unit can e =
+Vec.truncate (v: mut Vec t) (new_len: Usz) {Drop t e}: Unit can e, Mutate 'v =
     if new_len >= v.len then return ()
     for i in new_len .. v.len do
         elem = offset v.data i
@@ -207,7 +207,7 @@ Vec.truncate (v: mut Vec t) (new_len: Usz) {Drop t e}: Unit can e =
 
 /// Remove and drop every element.
 /// After being cleared, a Vec's length will be zero, but its capacity will be unchanged.
-Vec.clear (v: mut Vec t) {Drop t e}: Unit can e =
+Vec.clear (v: mut Vec t) {Drop t e}: Unit can e, Mutate 'v =
     v.truncate 0
 
 /// Sort the vector in place using `cmp` to compare elements.

@@ -1,0 +1,12 @@
+maybe (_m: Maybe (fn I32 -> Unit)): Unit = ()
+
+use _y = ()
+
+mk () = Maybe.Some (fn n -> use n)
+
+main () =
+    local () = Maybe.Some (fn n -> use n)
+    maybe (mk ())
+    maybe (local ())
+
+// args: --check
