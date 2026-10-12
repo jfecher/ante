@@ -166,17 +166,41 @@ impl<R: PartialEq> Place<R> {
         if self.root != mutated.root {
             return false;
         }
-        let common = self.segments.iter().zip(&mutated.segments).take_while(|(a, b)| a == b).count();
-        match (self.segments.get(common), mutated.segments.get(common)) {
-            (None, _) => false,
-            (Some(_), None) => self.segments[common..].contains(&PlaceSegment::Unstable),
-            (Some(segment), Some(_)) => *segment == PlaceSegment::Unstable,
-        }
+        let mut owned = mutated.segments.clone();
+        owned.push(PlaceSegment::Unstable);
+        may_be_within(&self.segments, &owned)
     }
 
     /// True if `self` contains a `!`
     pub fn is_unstable(&self) -> bool {
         self.segments.contains(&PlaceSegment::Unstable)
+    }
+}
+
+/// True if a place with `segments` may be `region` or below it.
+/// Since a place like `'p.foo!` coerces to `'p!`, this needs to be a bit more involved
+/// than just checking the ancestors of two places all match. For example, mutating
+/// `'p.foo` needs to invalidate `'p!`.
+fn may_be_within(segments: &[PlaceSegment], region: &[PlaceSegment]) -> bool {
+    let after_unstable = |segments: &[PlaceSegment]| {
+        segments.iter().position(|segment| *segment == PlaceSegment::Unstable).map(|index| index + 1)
+    };
+    match (segments.split_first(), region.split_first()) {
+        (_, None) => true,
+        // An ancestor holds `region` inline only if no `!` leads to it
+        (None, Some(_)) => !region.contains(&PlaceSegment::Unstable),
+        (Some((segment, rest)), Some((region_segment, region_rest))) if segment == region_segment => {
+            may_be_within(rest, region_rest)
+        },
+        (Some((PlaceSegment::Unstable, rest)), Some(_)) => match after_unstable(region) {
+            Some(index) => may_be_within(rest, &region[index..]),
+            None => true,
+        },
+        (Some(_), Some((PlaceSegment::Unstable, region_rest))) => match after_unstable(segments) {
+            Some(index) => may_be_within(&segments[index..], region_rest),
+            None => false,
+        },
+        (Some(_), Some(_)) => false,
     }
 }
 
@@ -934,6 +958,26 @@ mod tests {
         assert!(!invalidates("x.a", "x.b"));
         assert!(!invalidates("x.b", "x.a!"));
         assert!(invalidates("x.a.b", "x.a!"));
+    }
+
+    #[test]
+    fn summary_places() {
+        // `x!` may be an element of `x.a`, so replacing it drops what that element owns
+        assert!(invalidates("x!", "x.a!!"));
+        assert!(invalidates("x!.b", "x.a!.b!"));
+        assert!(!invalidates("x!.b", "x.a!.c!"));
+        assert!(!invalidates("x!", "x.a!"));
+    }
+
+    #[test]
+    fn mutating_an_element() {
+        // Replacing an element drops only what it owns
+        assert!(invalidates("x.a!", "x.a!!"));
+        assert!(invalidates("x.a!", "x!!"));
+        assert!(!invalidates("x.a!", "x.a!"));
+        assert!(!invalidates("x.a!", "x!"));
+        assert!(!invalidates("x.a!", "x.b!!"));
+        assert!(!invalidates("x.a!", "x.a"));
     }
 
     #[test]
