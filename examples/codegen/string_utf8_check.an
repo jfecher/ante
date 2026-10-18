@@ -1,0 +1,27 @@
+import Std.String
+import Std.C.malloc
+import Std.String.is_valid_utf8
+
+main () =
+    println (is_valid_utf8 "你好")
+    println (is_valid_utf8 "Hello")
+    println (is_valid_utf8 "🙂")
+    println (is_valid_utf8 "")
+
+    data = malloc 4 : Ptr U8
+    array_insert data 0usz 0xffu8
+    array_insert data 1usz 0xfeu8
+    array_insert data 2usz 0x80u8
+    array_insert data 3usz 0u8
+
+    ptr = transmute data : Ptr Char
+    invalid = String.from_parts ptr 3
+    println (is_valid_utf8 invalid)
+
+// args: --delete-binary --no-color
+// expected stdout:
+// true
+// true
+// true
+// true
+// false
